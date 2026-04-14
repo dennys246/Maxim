@@ -152,8 +152,12 @@ class LinguisticEncoder:
         embedding = self.embed(text)
         percept.embedding = embedding
 
-        # Step 2: EC pattern complete or separate
-        threshold_override = self._get_reward_overrides(percept) if self._nac else None
+        # Step 2: EC pattern complete or separate.
+        # Note: `is not None` — NAc defines __len__ over causal links, so
+        # `if self._nac` is falsy for a fresh NAc with zero links even
+        # though it's wired. P2 reward overrides must fire regardless of
+        # whether any causal links have been recorded yet.
+        threshold_override = self._get_reward_overrides(percept) if self._nac is not None else None
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
             modality=modality,
@@ -175,12 +179,18 @@ class LinguisticEncoder:
         percept.substrate_node_id = result.node_id
 
         # P2: Update eligibility trace — this node is now "active" and
-        # eligible for credit when a reward arrives.
-        if self._nac is not None and not result.is_new:
+        # eligible for credit when a reward arrives. Fires on BOTH new-node
+        # creation and existing-node completion: a just-created target node
+        # must be creditable by a reward that arrives in the same tick,
+        # otherwise the reward-widens-recognition-radius story can't bootstrap.
+        # New nodes seed eligibility at 1.0 (perfect self-match); completions
+        # weight by the measured similarity.
+        if self._nac is not None:
             agent_id = ""
             if percept.context is not None and hasattr(percept.context, "agent_id"):
                 agent_id = percept.context.agent_id or ""
-            self._nac.update_eligibility(agent_id, result.node_id, result.similarity)
+            activation = 1.0 if result.is_new else result.similarity
+            self._nac.update_eligibility(agent_id, result.node_id, activation)
 
         logger.debug(
             "Encoded percept → node %s (sim=%.3f, new=%s, mod=%s)",

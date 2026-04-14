@@ -1,0 +1,181 @@
+# Substrate P2 — Reward-Modulated Recognition Fixture
+#
+# 10 clusters × 3 paraphrases = 30 sentences, designed to produce
+# measurable fragmentation at threshold=0.50 (stricter than P1's 0.40)
+# so the reward-bias pathway has room to demonstrate collapse.
+#
+# Target clusters receive a reward event after the first encoded
+# sentence. The bias widens EC's recognition radius around the
+# rewarded node, and subsequent paraphrases should complete to it
+# instead of separating.
+#
+# Distractor clusters receive no reward — they exist to verify
+# non-interference: the bias on target nodes must not bleed into
+# distractor-cluster recognition.
+#
+# Design criteria:
+#   - Lexical diversity within clusters (not trivial rewordings) so
+#     threshold=0.50 produces baseline fragmentation
+#   - Distractors share some vocabulary with targets to stress-test
+#     non-interference
+#   - Near-miss target paraphrases that flip from separate → collapse
+#     under reward bias
+
+name: p2_reward_modulation_v1
+description: |
+  P2 reward-modulated recognition fixture. 10 clusters, 5 target + 5
+  distractor. Injects reward after first sentence of each target
+  cluster; distractor clusters receive no reward. Validates the
+  rewarded-collapse ≥30% / distractor-interference ≤5% criteria.
+
+timing: step_based
+
+reward_schedule:
+  reward: 1.0
+  targets:
+    - morning_coffee
+    - sunset_view
+    - bookstore_visit
+    - ocean_wave
+    - garden_bloom
+
+percepts:
+  # ── Target cluster 1: morning_coffee ─────────────────────────────
+  - at: 0
+    source: cli
+    cli_input: "I had a hot coffee this morning to wake up."
+    metadata: { cluster: morning_coffee, role: target }
+  - at: 1
+    source: cli
+    cli_input: "My morning started with a strong espresso to get going."
+    metadata: { cluster: morning_coffee, role: target }
+  - at: 2
+    source: cli
+    cli_input: "Brewed a fresh cup at breakfast to shake off sleep."
+    metadata: { cluster: morning_coffee, role: target }
+
+  # ── Target cluster 2: sunset_view ────────────────────────────────
+  - at: 3
+    source: cli
+    cli_input: "The sunset painted the sky in orange and pink tonight."
+    metadata: { cluster: sunset_view, role: target }
+  - at: 4
+    source: cli
+    cli_input: "Watched the sun go down and the clouds turn red."
+    metadata: { cluster: sunset_view, role: target }
+  - at: 5
+    source: cli
+    cli_input: "Evening light turned the horizon into warm colors."
+    metadata: { cluster: sunset_view, role: target }
+
+  # ── Target cluster 3: bookstore_visit ────────────────────────────
+  - at: 6
+    source: cli
+    cli_input: "I spent hours browsing novels at the local bookstore."
+    metadata: { cluster: bookstore_visit, role: target }
+  - at: 7
+    source: cli
+    cli_input: "Wandered the aisles of a bookshop looking at fiction."
+    metadata: { cluster: bookstore_visit, role: target }
+  - at: 8
+    source: cli
+    cli_input: "Picked up a few paperbacks from the store downtown."
+    metadata: { cluster: bookstore_visit, role: target }
+
+  # ── Target cluster 4: ocean_wave ─────────────────────────────────
+  - at: 9
+    source: cli
+    cli_input: "Waves crashed loudly against the rocky shoreline."
+    metadata: { cluster: ocean_wave, role: target }
+  - at: 10
+    source: cli
+    cli_input: "The surf pounded the beach with white foam and spray."
+    metadata: { cluster: ocean_wave, role: target }
+  - at: 11
+    source: cli
+    cli_input: "Tide rolled in fast, breaking hard on the sand."
+    metadata: { cluster: ocean_wave, role: target }
+
+  # ── Target cluster 5: garden_bloom ───────────────────────────────
+  - at: 12
+    source: cli
+    cli_input: "Spring flowers opened across the whole garden today."
+    metadata: { cluster: garden_bloom, role: target }
+  - at: 13
+    source: cli
+    cli_input: "Tulips and daffodils filled the beds with color."
+    metadata: { cluster: garden_bloom, role: target }
+  - at: 14
+    source: cli
+    cli_input: "The yard burst into petals after the warm week."
+    metadata: { cluster: garden_bloom, role: target }
+
+  # ── Distractor cluster 1: city_traffic ───────────────────────────
+  - at: 15
+    source: cli
+    cli_input: "Traffic was backed up for miles this morning downtown."
+    metadata: { cluster: city_traffic, role: distractor }
+  - at: 16
+    source: cli
+    cli_input: "Cars crawled along the interstate during rush hour."
+    metadata: { cluster: city_traffic, role: distractor }
+  - at: 17
+    source: cli
+    cli_input: "Gridlock on the highway kept everyone stuck for hours."
+    metadata: { cluster: city_traffic, role: distractor }
+
+  # ── Distractor cluster 2: laptop_repair ──────────────────────────
+  - at: 18
+    source: cli
+    cli_input: "My laptop battery died and I need a replacement."
+    metadata: { cluster: laptop_repair, role: distractor }
+  - at: 19
+    source: cli
+    cli_input: "The computer needs a new power supply, it won't charge."
+    metadata: { cluster: laptop_repair, role: distractor }
+  - at: 20
+    source: cli
+    cli_input: "Notebook stopped holding charge, time for service."
+    metadata: { cluster: laptop_repair, role: distractor }
+
+  # ── Distractor cluster 3: dog_walk ───────────────────────────────
+  - at: 21
+    source: cli
+    cli_input: "Took the dog around the neighborhood for exercise."
+    metadata: { cluster: dog_walk, role: distractor }
+  - at: 22
+    source: cli
+    cli_input: "Walked my puppy to the park and back this afternoon."
+    metadata: { cluster: dog_walk, role: distractor }
+  - at: 23
+    source: cli
+    cli_input: "Leashed up the retriever for a long stroll."
+    metadata: { cluster: dog_walk, role: distractor }
+
+  # ── Distractor cluster 4: pizza_order ────────────────────────────
+  - at: 24
+    source: cli
+    cli_input: "Ordered a large pepperoni pizza for dinner tonight."
+    metadata: { cluster: pizza_order, role: distractor }
+  - at: 25
+    source: cli
+    cli_input: "Got a pie with extra cheese delivered to the house."
+    metadata: { cluster: pizza_order, role: distractor }
+  - at: 26
+    source: cli
+    cli_input: "Delivery arrived with a hot pepperoni from the place uptown."
+    metadata: { cluster: pizza_order, role: distractor }
+
+  # ── Distractor cluster 5: rainstorm ──────────────────────────────
+  - at: 27
+    source: cli
+    cli_input: "Heavy rain pounded the windows all afternoon."
+    metadata: { cluster: rainstorm, role: distractor }
+  - at: 28
+    source: cli
+    cli_input: "A thunderstorm rolled through and soaked everything."
+    metadata: { cluster: rainstorm, role: distractor }
+  - at: 29
+    source: cli
+    cli_input: "Downpour kept the streets flooded for hours."
+    metadata: { cluster: rainstorm, role: distractor }

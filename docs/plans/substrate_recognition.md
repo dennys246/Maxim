@@ -37,6 +37,15 @@ Text flows through the substrate and learning modulates it. Specifically: text p
 - `CausalLink.percept_refs: tuple[TraceSnapshot, ...]` — Phase 5 of reaction abstraction
 - NAc save/load persists reward biases
 
+**P2 core fixes shipped on `feat/substrate-p2-finish` (2026-04-13):**
+The P2 core commit (`734f3ca`) landed two latent bugs in `similarity/encoder.py` that blocked the reward-widens-recognition story from bootstrapping. Both surfaced during Stage 1 validation and are fixed in the same branch as the metric extractor and validation tests:
+
+1. **Eligibility-on-new-node guard.** `encoder.encode()` originally only updated NAc eligibility on existing-node completion (`if self._nac is not None and not result.is_new`). A brand-new target node could not be credited by a reward arriving in the same tick, so the first paraphrase of a target cluster left no eligibility trace for `distribute_reward` to find. Fix: always update eligibility, seeding new nodes at activation=1.0 (perfect self-match) and weighting completions by measured similarity. Regression test: `tests/unit/test_substrate_recognition.py::TestEncoderNAcEligibility`.
+
+2. **NAc truthy check vs `__len__`.** `encoder.encode()` used `threshold_override = self._get_reward_overrides(percept) if self._nac else None`. `NAc.__len__` returns the count of causal links, so a fresh NAc with zero links evaluates as falsy and the reward-bias override pathway was silently disabled for every NAc that hadn't yet recorded a causal link — the common case in P2 tests and in early-session agents. Fix: `if self._nac is not None`. Regression test: `tests/unit/test_substrate_recognition.py::TestEncoderNAcEligibility::test_reward_overrides_fire_on_empty_nac`.
+
+Both bugs are the same root-cause class: conflating "wired NAc" with "NAc that has learned something." Any future code that checks for NAc wiring must use `is not None`, never truthiness. Grep enforcement is not yet in place — candidate for CI invariant if another recurrence lands.
+
 **P2 remaining (what needs to ship for this plan to close):**
 - P2 metric extractor plugin (~100 LOC)
 - Reward-annotated fixtures (extend paraphrase_clusters.yaml with reward events)

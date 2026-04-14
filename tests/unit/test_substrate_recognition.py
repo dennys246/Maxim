@@ -439,6 +439,111 @@ class TestLinguisticEncoder:
         assert "using_fallback" in stats
 
 
+class TestEncoderNAcEligibility:
+    """P2: encoder must seed eligibility on BOTH new-node and completion paths.
+
+    Regression guard for the `not is_new` asymmetry that blocked the
+    reward-widens-recognition bootstrap — a just-created target node
+    must be creditable by a reward arriving in the same tick.
+    """
+
+    def _make(self):
+        from maxim.decisions.nac import NAc
+        from maxim.similarity.encoder import LinguisticEncoder
+
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.50))
+        atl = ATL()
+        nac = NAc()
+        encoder = LinguisticEncoder(ec=ec, atl=atl, nac=nac)
+        return encoder, ec, atl, nac
+
+    def test_new_node_creation_seeds_eligibility(self):
+        encoder, _, _, nac = self._make()
+        percept = Percept(timestamp=0.0, source="test", transcript_chunk="first encounter")
+        node_id = encoder.encode(percept)
+        assert node_id is not None
+        # Eligibility trace for the brand-new node should be non-zero
+        # so a reward arriving next tick can credit it.
+        assert ("", node_id) in nac._eligibility
+        assert nac._eligibility[("", node_id)] == pytest.approx(1.0)
+
+    def test_completion_updates_eligibility_with_similarity(self):
+        encoder, _, _, nac = self._make()
+        p1 = Percept(timestamp=0.0, source="test", transcript_chunk="hello world")
+        p2 = Percept(timestamp=0.0, source="test", transcript_chunk="hello world")
+        n1 = encoder.encode(p1)
+        # First encode seeded eligibility at 1.0; second (identical) encode
+        # completes and overwrites with similarity (≈1.0 for identical text).
+        n2 = encoder.encode(p2)
+        assert n1 == n2
+        assert nac._eligibility[("", n1)] > 0.0
+
+    def test_reward_credits_just_created_node(self):
+        """End-to-end: encode → distribute_reward → reward_bias > 0."""
+        encoder, _, _, nac = self._make()
+        percept = Percept(timestamp=0.0, source="test", transcript_chunk="target concept")
+        node_id = encoder.encode(percept)
+        credited = nac.distribute_reward(agent_id="", reward=1.0)
+        # The brand-new node must appear in the credited list — this is the
+        # bootstrap case the old guard broke.
+        credited_ids = [nid for nid, _ in credited]
+        assert node_id in credited_ids
+        assert nac.reward_bias("", node_id) > 0.0
+
+    def test_no_nac_no_eligibility_updates(self):
+        """Encoder without NAc wiring must not crash."""
+        from maxim.similarity.encoder import LinguisticEncoder
+
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.50))
+        atl = ATL()
+        encoder = LinguisticEncoder(ec=ec, atl=atl)  # no nac
+        percept = Percept(timestamp=0.0, source="test", transcript_chunk="hello")
+        assert encoder.encode(percept) is not None
+
+    def test_reward_overrides_fire_on_empty_nac(self):
+        """Regression: NAc.__len__ returns 0 for fresh NAc, which made
+        `if self._nac` falsy and silently suppressed reward-bias threshold
+        overrides. Must use `is not None` to check wiring.
+        """
+        from maxim.decisions.nac import NAc
+        from maxim.similarity.encoder import LinguisticEncoder
+
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.50))
+        atl = ATL()
+        nac = NAc()
+        assert len(nac) == 0
+        assert bool(nac) is False  # ← the footgun
+        encoder = LinguisticEncoder(ec=ec, atl=atl, nac=nac)
+
+        # Encode one percept and credit its node.
+        p1 = Percept(timestamp=0.0, source="test", transcript_chunk="anchor")
+        node_id = encoder.encode(p1)
+        nac.credit_node(agent_id="", node_id=node_id, reward=2.0)
+        assert nac.get_threshold_overrides("") == {node_id: pytest.approx(0.20)}
+
+        # Spy on EC to capture the threshold_override dict the encoder passes.
+        captured: list[dict[str, float] | None] = []
+        orig = ec.pattern_complete_or_separate
+
+        def spy(embedding, modality, threshold=None, threshold_override=None):
+            captured.append(threshold_override)
+            return orig(embedding, modality, threshold, threshold_override)
+
+        ec.pattern_complete_or_separate = spy  # type: ignore[method-assign]
+
+        p2 = Percept(timestamp=0.0, source="test", transcript_chunk="second")
+        encoder.encode(p2)
+
+        # The encoder must have passed a non-empty override dict through
+        # to EC. Before the fix, `if self._nac` was False (empty __len__)
+        # and the override was silently None.
+        assert captured, "EC.pattern_complete_or_separate was not called"
+        assert captured[-1] is not None, (
+            "encoder suppressed reward overrides because `if self._nac` treated an empty NAc as falsy — regression!"
+        )
+        assert node_id in captured[-1]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # MemorySummary + PromptAssembler tests
 # ─────────────────────────────────────────────────────────────────────────────
