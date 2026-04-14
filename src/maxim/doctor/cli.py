@@ -215,7 +215,7 @@ def _retry_loop(
     def _make_mesh_node_reprobe(node_name: str):
         def _reprobe():
             from maxim.doctor.checks import _probe_mesh_node_to_check
-            from maxim.peer.mesh_config import read_drained_nodes, read_or_synthesize_mesh_config
+            from maxim.peer.mesh_config import read_or_synthesize_mesh_config
 
             try:
                 mesh = read_or_synthesize_mesh_config()
@@ -226,7 +226,7 @@ def _retry_loop(
             node = mesh.get_node(node_name)
             if node is None:
                 return None
-            return _probe_mesh_node_to_check(node, mesh.cluster_key, read_drained_nodes())
+            return _probe_mesh_node_to_check(node, mesh.cluster_key)
 
         return _reprobe
 

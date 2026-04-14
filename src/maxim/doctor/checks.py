@@ -1994,17 +1994,23 @@ def check_mesh_nodes() -> list[CheckResult]:
     :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.health_check`.
 
     Returns one :class:`CheckResult` per node. When ``mesh.yml`` is
-    absent (and no ``peer.yml`` fallback), returns a single ``info``
-    result so doctor falls through to the existing per-check paths
-    instead of erroring.
-
-    Drained nodes are reported as ``info`` (not probed) — drain is
-    operator-intentional, not a failure signal.
+    absent (and no ``peer.yml`` fallback), returns ``[]`` so the caller
+    can cleanly skip the section via a normal truthy check. Schema
+    errors in ``mesh.yml`` surface as a single ``fail`` result.
 
     Retry ids are per-node: ``mesh_node_<name>``. The retry loop in
-    ``doctor/cli.py`` wires them to a re-probe callable.
+    ``doctor/cli.py`` decides whether each id's status warrants a
+    re-probe — the producer just sets the stable identity.
+
+    **Shared classifier:** probe-outcome → (status, message, fix_hint)
+    classification routes through
+    :func:`maxim.peer.probe_classify.classify_probe_outcome` — the
+    single source of truth for this mapping across mesh_cli, doctor,
+    and future C2/C3 callers. Callers pass a caller-specific ``detail``
+    string through the classifier rather than post-processing the
+    returned message.
     """
-    from maxim.peer.mesh_config import MeshConfigError, read_drained_nodes, read_or_synthesize_mesh_config
+    from maxim.peer.mesh_config import MeshConfigError, read_or_synthesize_mesh_config
 
     try:
         mesh = read_or_synthesize_mesh_config()
@@ -2018,38 +2024,32 @@ def check_mesh_nodes() -> list[CheckResult]:
             )
         ]
     if mesh is None:
-        return [
-            CheckResult(
-                name="Mesh nodes",
-                status="info",
-                message="no mesh.yml or peer.yml configured — skipping mesh probe",
-            )
-        ]
+        return []
 
-    drained = read_drained_nodes()
-    return [_probe_mesh_node_to_check(node, mesh.cluster_key, drained) for node in mesh.nodes]
+    return [_probe_mesh_node_to_check(node, mesh.cluster_key) for node in mesh.nodes]
 
 
-def _probe_mesh_node_to_check(node, cluster_key: str, drained: set[str]) -> CheckResult:  # type: ignore[no-untyped-def]
+def _probe_mesh_node_to_check(node: "MeshNode", cluster_key: str) -> CheckResult:  # noqa: F821
     """Run one ``health_check`` and render a :class:`CheckResult`.
 
     Uses ``_MaximPeerBackend.for_url(url, api_key=k)`` — the canonical
     probe entry point (Plan 3 R2.6) that does NOT mutate
     ``os.environ`` and is concurrency-safe via instance-level
-    ``_api_key_override``.
-    """
-    retry_id = f"mesh_node_{node.name}"
+    ``_api_key_override``. Routes classification through
+    :func:`maxim.peer.probe_classify.classify_probe_outcome`.
 
-    if node.name in drained:
-        return CheckResult(
-            name=f"Node {node.name}",
-            status="info",
-            message=f"drained (operator-intentional) — {node.url}",
-        )
+    Doctor passes ``detail = f"{node.role}, {node.url}"`` so the
+    classifier's "reachable" message includes the operator-relevant
+    context without any post-hoc override — round 2 review A1R2
+    flagged message rewriting as a shared-helper leak.
+    """
+    from maxim.peer.probe_classify import classify_probe_outcome
+
+    retry_id = f"mesh_node_{node.name}"
 
     try:
         from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
-    except Exception as e:
+    except ImportError as e:
         return CheckResult(
             name=f"Node {node.name}",
             status="warn",
@@ -2058,64 +2058,33 @@ def _probe_mesh_node_to_check(node, cluster_key: str, drained: set[str]) -> Chec
             retry_id=retry_id,
         )
 
-    try:
-        backend = _MaximPeerBackend.for_url(node.url, api_key=cluster_key)
-        result = backend.health_check(enable_stage2=True)
-    except Exception as e:
-        return CheckResult(
-            name=f"Node {node.name}",
-            status="warn",
-            message=f"probe raised: {type(e).__name__}: {e}",
-            retry_id=retry_id,
-        )
+    # health_check is contractually required to return a ProbeResult
+    # rather than raise (Plan 3 R2.6). Catching Exception broadly
+    # here would hide backend regressions as silent warnings — let
+    # them propagate up to the doctor runner.
+    backend = _MaximPeerBackend.for_url(node.url, api_key=cluster_key)
+    result = backend.health_check(enable_stage2=True)
 
     outcome = getattr(result, "outcome", "other")
-    detail = getattr(result, "detail", "")
     latency = getattr(result, "latency_ms", None)
-    latency_tag = f" [{latency:.0f}ms]" if latency is not None else ""
-
-    # Specific-before-general classification (Plan 2 R2c contract):
-    # auth and inference_broken get dedicated fix hints; everything
-    # else falls to a generic network hint.
+    # Doctor's richer detail flows through the classifier rather than
+    # being patched in afterwards. For non-ok outcomes we still want
+    # the raw detail so operators see probe-level context.
     if outcome == "ok":
-        return CheckResult(
-            name=f"Node {node.name}",
-            status="ok",
-            message=f"reachable ({node.role}, {node.url}){latency_tag}",
-        )
-    if outcome == "auth_rejected":
-        return CheckResult(
-            name=f"Node {node.name}",
-            status="fail",
-            message=f"auth rejected ({node.url}): {detail}",
-            fix=(
-                "Cluster key mismatch. On the leader:\n"
-                "  maxim tunnel key rotate && maxim tunnel key export\n"
-                "Then update mesh.yml::cluster_key on this node."
-            ),
-            retry_id=retry_id,
-        )
-    if outcome == "inference_broken":
-        return CheckResult(
-            name=f"Node {node.name}",
-            status="fail",
-            message=f"chat endpoint broken ({node.url}): {detail}",
-            fix=(
-                "Leader is reachable but chat/completions is failing. Check:\n"
-                "  1. A model is loaded: maxim peer llm --status\n"
-                "  2. Leader logs: maxim peer logs\n"
-                "  3. VRAM pressure: maxim doctor --as leader"
-            ),
-            retry_id=retry_id,
-        )
-    # All remaining network-layer outcomes (timeout / connection_refused
-    # / dns_fail / tls_error / http_5xx / other) get the same generic
-    # "is it reachable?" fix.
+        detail = f"{node.role}, {node.url}"
+    else:
+        detail = getattr(result, "detail", "")
+    classification = classify_probe_outcome(outcome, detail, latency, node.url)
+
+    # retry_id is always set; the retry loop in doctor/cli.py filters on
+    # status to decide which checks to re-run. Coupling status and
+    # retry_id at the producer (round 1 fold) was redundant and meant
+    # future info-status results couldn't be re-probed (round 2 A2R2).
     return CheckResult(
         name=f"Node {node.name}",
-        status="warn",
-        message=f"{outcome.replace('_', ' ')} ({node.url}): {detail}",
-        fix=f"Is {node.url} reachable from here? Try: curl -v {node.url}/models",
+        status=classification.status,
+        message=classification.message,
+        fix=classification.fix,
         retry_id=retry_id,
     )
 
@@ -2231,11 +2200,10 @@ def run_all_checks(
         ]
 
     # Mesh topology (Plan 4 Stage C1): only shown when mesh.yml or
-    # peer.yml exists. When neither is present, check_mesh_nodes returns
-    # a single ``info`` result which is suppressed here so unconfigured
-    # leaders / solo installs don't see an empty "Mesh Topology" section.
+    # peer.yml exists. ``check_mesh_nodes`` returns ``[]`` for the
+    # unconfigured case so the section is skipped naturally.
     mesh_results = check_mesh_nodes()
-    if mesh_results and not (len(mesh_results) == 1 and mesh_results[0].status == "info"):
+    if mesh_results:
         sections.append(("Mesh Topology", mesh_results))
 
     # Lane metrics (only show if any calls have been recorded)

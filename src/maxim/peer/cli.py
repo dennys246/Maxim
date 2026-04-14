@@ -123,7 +123,7 @@ def _print_peer_usage() -> None:
     print("  install <extras> Install optional extras on leader (e.g., semantic,llm-torch)")
     print("  deps [url]       Show installed packages on leader")
     print("  list-nodes       List mesh nodes + live status (Plan 4 C1, needs mesh.yml)")
-    print("  --node <n> <v>   Per-node verbs: status|health|drain|resume")
+    print("  --node <n> <v>   Per-node verbs: status|health (drain/resume defer to C2)")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────

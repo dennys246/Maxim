@@ -1,4 +1,4 @@
-"""Mesh config: multi-node cluster topology + drain state.
+"""Mesh config: multi-node cluster topology for ``maxim peer list-nodes``.
 
 Plan 4 Stage C1. Sibling of ``peer.yml`` (leader URL + key for a single
 peer-leader pair) — ``mesh.yml`` describes a named set of nodes that
@@ -21,8 +21,6 @@ Schema::
       - name: mac-studio
         url: https://mac.example.com/v1
         role: peer
-    drain:                       # optional; names of nodes to skip
-      - mac-studio
 
 **Fallback path.** When ``mesh.yml`` is absent,
 :func:`read_or_synthesize_mesh_config` loads the legacy ``peer.yml``
@@ -34,23 +32,39 @@ is deferred to probe time via
 :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.health_check`.
 This keeps parse offline-safe for tests and startup.
 
-**Drain state is persisted separately** at
-``~/.maxim/util/drained_nodes.{role}.txt`` (one node name per line).
-Role comes from ``MAXIM_ROLE`` env var (Plan 2 R2a) so leader drain
-state does not leak to peer drain state on the same machine.
+**Parser dialect.** Deliberately trivial: flat ``key: value`` top-level
+scalars plus a single nested ``nodes:`` list of ``- name: foo`` blocks
+with indented ``key: value`` continuation lines. Tabs and inline
+comments are rejected loudly — if you need anchors, quoted strings,
+tab indentation, or embedded comments, edit ``mesh.yml`` via a
+generator, do NOT bolt those features onto this parser. The
+architectural escape hatches are PyYAML as an optional extra or
+switching the config format to TOML (stdlib ``tomllib``); both are
+open questions for C2.
+
+**Drain state is NOT in this module.** Plan 4 C1 review flagged the
+original two-layer design (``mesh.yml::drain`` + runtime state file)
+as under-specified: no reconciliation contract, no role-detection
+timing story, read/write race, no orphan validation. Drain + resume
+verbs defer to Plan 4 C2 with a proper design pass. The ``drain:``
+field is intentionally absent from the schema for C1.
+
+**Probe classification is NOT in this module.** The shared helper
+that maps ``ProbeResult.outcome`` to an operator-readable
+``ProbeClassification`` lives in :mod:`maxim.peer.probe_classify`
+so that callers can use it without pulling the parser layer. Round 2
+review (A4R2) flagged the previous in-module placement as coupling
+concerns that should stay separate.
 """
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
 from maxim.peer.config import peer_config_path, read_peer_config
-from maxim.utils.atomic_io import atomic_write_text
-from maxim.utils.paths import resolve_user_state
 
 NodeRole = Literal["leader", "peer"]
 
@@ -79,7 +93,6 @@ class MeshConfig:
     self_name: str
     nodes: tuple[MeshNode, ...]
     protocol_version: int = 1
-    drain: tuple[str, ...] = field(default_factory=tuple)
 
     def get_node(self, name: str) -> MeshNode | None:
         for n in self.nodes:
@@ -94,6 +107,29 @@ class MeshConfig:
 def mesh_config_path() -> Path:
     """Return the platform-appropriate mesh config path (next to peer.yml)."""
     return peer_config_path().parent / "mesh.yml"
+
+
+# ─── parser ─────────────────────────────────────────────────────────────
+
+
+def _strip_inline_comment(value: str) -> str:
+    """Remove trailing ``# ...`` from a value.
+
+    Round 2 review E1: the naive ``value.find("#")`` silently truncates
+    legitimate ``#`` characters in values — a ``cluster_key: sk-abc#literal``
+    would become ``sk-abc`` with no error, surfacing later as
+    ``auth_rejected`` with no visible root cause. Require whitespace
+    before the ``#`` (the common ``foo  # comment`` pattern) so bare
+    ``#`` characters inside a value are preserved.
+    """
+    stripped = value.strip()
+    # Find ``#`` only when preceded by whitespace (or at start-of-string
+    # — empty ``#`` comments are caller-rejected elsewhere). Scan so a
+    # ``#`` preceded by a non-space character is left in place.
+    for i in range(1, len(stripped)):
+        if stripped[i] == "#" and stripped[i - 1].isspace():
+            return stripped[:i].rstrip()
+    return stripped
 
 
 def _validate_url_syntax(url: str, *, line: int) -> None:
@@ -114,11 +150,9 @@ def _validate_url_syntax(url: str, *, line: int) -> None:
 def parse_mesh_config(content: str) -> MeshConfig:
     """Parse mesh.yml content without PyYAML (matches peer.yml style).
 
-    Supports the minimal YAML dialect used by ``peer.yml``: top-level
-    ``key: value`` lines plus a ``nodes:`` list where each entry is a
-    ``- name: foo`` block followed by indented ``key: value`` lines.
-    Good enough for a 2-5 node mesh; if operators want nested anchors
-    they can file an issue and we bring in PyYAML.
+    **Loud errors:** rejects tabs, bare ``-`` entries, duplicate node
+    names, unknown top-level keys, and inline comments inside values
+    (comments only allowed on their own lines).
 
     Raises :class:`MeshConfigError` with a line number on any problem.
     """
@@ -126,9 +160,17 @@ def parse_mesh_config(content: str) -> MeshConfig:
     self_name: str | None = None
     protocol_version = 1
     nodes: list[MeshNode] = []
-    drain: list[str] = []
 
     lines = content.splitlines()
+    # Reject tab indentation outright — mixing tabs and spaces is the
+    # top source of silent YAML mis-parse bugs.
+    for idx, raw in enumerate(lines, start=1):
+        if "\t" in raw:
+            raise MeshConfigError(
+                "tab characters are not allowed; indent with spaces only",
+                line=idx,
+            )
+
     i = 0
     while i < len(lines):
         raw = lines[i]
@@ -138,11 +180,11 @@ def parse_mesh_config(content: str) -> MeshConfig:
             i += 1
             continue
 
-        # Top-level scalars
-        if raw[:1] not in (" ", "\t") and ":" in stripped and not stripped.startswith("-"):
+        # Top-level scalars: no leading whitespace, has a ``:``, not a list item.
+        if not raw.startswith(" ") and ":" in stripped and not stripped.startswith("-"):
             key, _, value = stripped.partition(":")
             key = key.strip()
-            value = value.strip()
+            value = _strip_inline_comment(value)
             if key == "cluster_key":
                 cluster_key = value
                 i += 1
@@ -164,9 +206,6 @@ def parse_mesh_config(content: str) -> MeshConfig:
             if key == "nodes":
                 i, nodes = _parse_nodes_block(lines, i + 1)
                 continue
-            if key == "drain":
-                i, drain = _parse_drain_block(lines, i + 1)
-                continue
             raise MeshConfigError(f"unknown top-level key {key!r}", line=line_no)
 
         raise MeshConfigError(f"unexpected line: {stripped!r}", line=line_no)
@@ -178,9 +217,15 @@ def parse_mesh_config(content: str) -> MeshConfig:
     if not nodes:
         raise MeshConfigError("missing required field 'nodes' (must list at least one node)")
 
-    node_names = {n.name for n in nodes}
-    if self_name not in node_names:
-        raise MeshConfigError(f"'self: {self_name}' does not match any entry in nodes: (known: {sorted(node_names)})")
+    node_names = [n.name for n in nodes]
+    seen: set[str] = set()
+    for name in node_names:
+        if name in seen:
+            raise MeshConfigError(f"duplicate node name {name!r} in nodes:")
+        seen.add(name)
+
+    if self_name not in seen:
+        raise MeshConfigError(f"'self: {self_name}' does not match any entry in nodes: (known: {sorted(seen)})")
 
     if protocol_version != 1:
         raise MeshConfigError(f"unsupported protocol_version {protocol_version} (this build speaks 1)")
@@ -190,7 +235,6 @@ def parse_mesh_config(content: str) -> MeshConfig:
         self_name=self_name,
         protocol_version=protocol_version,
         nodes=tuple(nodes),
-        drain=tuple(drain),
     )
 
 
@@ -208,8 +252,12 @@ def _parse_nodes_block(lines: list[str], start: int) -> tuple[int, list[MeshNode
             i += 1
             continue
         # End of indented block: a non-indented line closes the list.
-        if raw[:1] not in (" ", "\t"):
+        if not raw.startswith(" "):
             break
+        # Bare dash ``- `` is always an error — silent entry corruption
+        # bit us during pre-merge review.
+        if stripped == "-":
+            raise MeshConfigError("empty list entry '-'; each node needs 'name: <val>'", line=line_no)
         if stripped.startswith("- "):
             if current:
                 nodes.append(_finalize_node(current, line=current_line or line_no))
@@ -218,32 +266,14 @@ def _parse_nodes_block(lines: list[str], start: int) -> tuple[int, list[MeshNode
             body = stripped[2:].strip()
             if body:
                 key, _, value = body.partition(":")
-                current[key.strip()] = value.strip()
+                current[key.strip()] = _strip_inline_comment(value)
         else:
             key, _, value = stripped.partition(":")
-            current[key.strip()] = value.strip()
+            current[key.strip()] = _strip_inline_comment(value)
         i += 1
     if current:
         nodes.append(_finalize_node(current, line=current_line or start + 1))
     return i, nodes
-
-
-def _parse_drain_block(lines: list[str], start: int) -> tuple[int, list[str]]:
-    """Parse a ``drain:`` list block. Returns (next_index, names)."""
-    names: list[str] = []
-    i = start
-    while i < len(lines):
-        raw = lines[i]
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#"):
-            i += 1
-            continue
-        if raw[:1] not in (" ", "\t"):
-            break
-        if stripped.startswith("- "):
-            names.append(stripped[2:].strip())
-        i += 1
-    return i, names
 
 
 def _finalize_node(raw: dict[str, str], *, line: int) -> MeshNode:
@@ -261,6 +291,9 @@ def _finalize_node(raw: dict[str, str], *, line: int) -> MeshNode:
         )
     _validate_url_syntax(url, line=line)
     return MeshNode(name=name, url=url, role=role)  # type: ignore[arg-type]
+
+
+# ─── disk I/O ───────────────────────────────────────────────────────────
 
 
 def read_mesh_config(path: Path | None = None) -> MeshConfig | None:
@@ -285,14 +318,6 @@ def synthesize_from_peer_config() -> MeshConfig | None:
 
     Used by :func:`read_or_synthesize_mesh_config` when ``mesh.yml``
     doesn't exist. Returns None if ``peer.yml`` is also absent.
-
-    The synthesized mesh has:
-
-    - ``self_name = "leader"`` (single-node topology; this peer sees
-      just the leader)
-    - A single ``MeshNode(name="leader", url=peer.url, role="leader")``
-    - ``cluster_key`` set from ``peer.api_key``
-    - Empty drain list
     """
     peer = read_peer_config()
     if peer is None:
@@ -303,17 +328,12 @@ def synthesize_from_peer_config() -> MeshConfig | None:
         self_name="leader",
         nodes=(node,),
         protocol_version=1,
-        drain=(),
     )
 
 
 def read_or_synthesize_mesh_config() -> MeshConfig | None:
     """Return a :class:`MeshConfig` from ``mesh.yml`` OR a synthesized
     one from ``peer.yml``. Returns None if neither source exists.
-
-    This is the entry point callers should use when they want to
-    operate on "whatever the user has configured" without caring which
-    of the two files it came from.
     """
     mesh = read_mesh_config()
     if mesh is not None:
@@ -321,66 +341,14 @@ def read_or_synthesize_mesh_config() -> MeshConfig | None:
     return synthesize_from_peer_config()
 
 
-# ─── drain state persistence ─────────────────────────────────────────────
-
-
-def _drain_state_path() -> Path:
-    """Role-scoped drain state file. Role from ``MAXIM_ROLE`` (Plan 2 R2a)."""
-    role = os.environ.get("MAXIM_ROLE", "leader")
-    return resolve_user_state(f"util/drained_nodes.{role}.txt")
-
-
-def read_drained_nodes() -> set[str]:
-    """Return the set of node names currently drained (role-scoped)."""
-    path = _drain_state_path()
-    if not path.is_file():
-        return set()
-    try:
-        content = path.read_text()
-    except OSError:
-        return set()
-    return {line.strip() for line in content.splitlines() if line.strip()}
-
-
-def write_drained_nodes(names: set[str]) -> Path:
-    """Persist the drain set atomically. Returns the path written."""
-    path = _drain_state_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    content = "\n".join(sorted(names))
-    if content:
-        content += "\n"
-    atomic_write_text(str(path), content)
-    return path
-
-
-def drain_node(name: str) -> set[str]:
-    """Add ``name`` to the drain set. Returns the new set."""
-    current = read_drained_nodes()
-    current.add(name)
-    write_drained_nodes(current)
-    return current
-
-
-def resume_node(name: str) -> set[str]:
-    """Remove ``name`` from the drain set. Returns the new set."""
-    current = read_drained_nodes()
-    current.discard(name)
-    write_drained_nodes(current)
-    return current
-
-
 __all__ = [
     "MeshConfig",
     "MeshConfigError",
     "MeshNode",
     "NodeRole",
-    "drain_node",
     "mesh_config_path",
     "parse_mesh_config",
-    "read_drained_nodes",
     "read_mesh_config",
     "read_or_synthesize_mesh_config",
-    "resume_node",
     "synthesize_from_peer_config",
-    "write_drained_nodes",
 ]

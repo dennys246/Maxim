@@ -7,15 +7,12 @@ import pytest
 from maxim.peer.mesh_config import (
     MeshConfigError,
     MeshNode,
-    drain_node,
     parse_mesh_config,
-    read_drained_nodes,
     read_mesh_config,
     read_or_synthesize_mesh_config,
-    resume_node,
     synthesize_from_peer_config,
-    write_drained_nodes,
 )
+from maxim.peer.probe_classify import ProbeClassification, classify_probe_outcome
 
 
 VALID_YAML = """\
@@ -29,8 +26,6 @@ nodes:
   - name: mac-studio
     url: https://mac.example.com/v1
     role: peer
-drain:
-  - mac-studio
 """
 
 
@@ -48,7 +43,6 @@ class TestParseMeshConfig:
         )
         assert cfg.nodes[1].name == "mac-studio"
         assert cfg.nodes[1].role == "peer"
-        assert cfg.drain == ("mac-studio",)
 
     def test_self_must_match_a_node(self) -> None:
         yaml = VALID_YAML.replace("self: leader-desk", "self: ghost")
@@ -72,13 +66,15 @@ class TestParseMeshConfig:
 
     def test_unknown_role_rejected_with_line_number(self) -> None:
         yaml = VALID_YAML.replace("role: peer", "role: overlord")
-        with pytest.raises(MeshConfigError, match=r"mesh\.yml line \d+:.*invalid role 'overlord'"):
+        with pytest.raises(MeshConfigError, match=r"mesh\.yml line \d+:.*invalid role 'overlord'") as exc:
             parse_mesh_config(yaml)
+        assert exc.value.line is not None
 
-    def test_malformed_url_scheme_rejected(self) -> None:
+    def test_malformed_url_scheme_rejected_with_line_number(self) -> None:
         yaml = VALID_YAML.replace("http://192.168.1.10:8099/v1", "ftp://bad/v1")
-        with pytest.raises(MeshConfigError, match="must use http:// or https://"):
+        with pytest.raises(MeshConfigError, match="must use http:// or https://") as exc:
             parse_mesh_config(yaml)
+        assert exc.value.line is not None
 
     def test_url_without_hostname_rejected(self) -> None:
         yaml = VALID_YAML.replace("http://192.168.1.10:8099/v1", "http:///v1")
@@ -105,12 +101,137 @@ class TestParseMeshConfig:
         cfg = parse_mesh_config(yaml)
         assert len(cfg.nodes) == 2
 
-    def test_optional_drain_absent(self) -> None:
-        yaml = "\n".join(
-            line for line in VALID_YAML.splitlines() if not (line.startswith("drain") or line.strip() == "- mac-studio")
-        )
+    def test_comment_between_nodes_entries(self) -> None:
+        """Pre-merge review F18: comments inside nodes: block."""
+        yaml = """\
+cluster_key: sk-x
+self: a
+nodes:
+  - name: a
+    url: http://a/v1
+    role: leader
+  # interstitial comment
+  - name: b
+    url: http://b/v1
+    role: peer
+"""
         cfg = parse_mesh_config(yaml)
-        assert cfg.drain == ()
+        assert len(cfg.nodes) == 2
+        assert cfg.nodes[0].name == "a"
+        assert cfg.nodes[1].name == "b"
+
+    def test_drain_field_is_rejected_as_unknown_key(self) -> None:
+        """C1 intentionally does not support ``drain:``. Pre-merge review
+        flagged the two-layer design (config + runtime state) as
+        under-specified; drain/resume defer to C2 with a proper design pass.
+        """
+        yaml = VALID_YAML + "drain:\n  - mac-studio\n"
+        with pytest.raises(MeshConfigError, match="unknown top-level key 'drain'"):
+            parse_mesh_config(yaml)
+
+
+class TestParserHardening:
+    """Parser hardening added in response to pre-merge review findings."""
+
+    def test_tab_indentation_rejected(self) -> None:
+        """F1: tab-indented input silently mis-parses."""
+        yaml = "cluster_key: sk-x\nself: a\nnodes:\n\t- name: a\n\t  url: http://a/v1\n\t  role: leader\n"
+        with pytest.raises(MeshConfigError, match="tab characters are not allowed"):
+            parse_mesh_config(yaml)
+
+    def test_inline_comment_on_value_stripped(self) -> None:
+        """F2: ``name: foo  # note`` must not make a node named ``foo  # note``."""
+        yaml = """\
+cluster_key: sk-x
+self: leader-desk  # primary node
+nodes:
+  - name: leader-desk  # not part of the name
+    url: http://a/v1  # LAN
+    role: leader
+"""
+        cfg = parse_mesh_config(yaml)
+        assert cfg.self_name == "leader-desk"
+        assert cfg.nodes[0].name == "leader-desk"
+        assert cfg.nodes[0].url == "http://a/v1"
+
+    def test_bare_dash_entry_rejected(self) -> None:
+        """F3: dangling ``- `` silently corrupts the next node."""
+        yaml = """\
+cluster_key: sk-x
+self: a
+nodes:
+  -
+  - name: a
+    url: http://a/v1
+    role: leader
+"""
+        with pytest.raises(MeshConfigError, match="empty list entry"):
+            parse_mesh_config(yaml)
+
+    def test_duplicate_node_name_rejected(self) -> None:
+        """F5: duplicate node names must be loud."""
+        yaml = """\
+cluster_key: sk-x
+self: a
+nodes:
+  - name: a
+    url: http://a/v1
+    role: leader
+  - name: a
+    url: http://b/v1
+    role: peer
+"""
+        with pytest.raises(MeshConfigError, match="duplicate node name 'a'"):
+            parse_mesh_config(yaml)
+
+    def test_cluster_key_with_hash_is_preserved(self) -> None:
+        """Round 2 E1: ``cluster_key: sk-abc#literal`` must NOT silently
+        truncate to ``sk-abc``. The naive comment stripper would have
+        produced ``auth_rejected`` at probe time with no visible root
+        cause — a silent-corruption bug.
+        """
+        yaml = """\
+cluster_key: sk-cluster#notes-are-part-of-key
+self: a
+nodes:
+  - name: a
+    url: http://a/v1
+    role: leader
+"""
+        cfg = parse_mesh_config(yaml)
+        assert cfg.cluster_key == "sk-cluster#notes-are-part-of-key"
+
+    def test_url_with_hash_preserved_if_no_whitespace(self) -> None:
+        """Same E1 concern for URLs with fragments — though URLs typically
+        don't have fragments in the OpenAI-compatible base path, the
+        parser must not corrupt them silently.
+        """
+        yaml = """\
+cluster_key: sk-x
+self: a
+nodes:
+  - name: a
+    url: http://a/v1#fragment
+    role: leader
+"""
+        cfg = parse_mesh_config(yaml)
+        assert cfg.nodes[0].url == "http://a/v1#fragment"
+
+    def test_inline_comment_still_stripped_when_preceded_by_space(self) -> None:
+        """E1 regression guard: the space-before-# rule must still strip
+        legitimate trailing comments.
+        """
+        yaml = """\
+cluster_key: sk-abc  # this is a trailing comment
+self: a
+nodes:
+  - name: a
+    url: http://a/v1  # the leader
+    role: leader
+"""
+        cfg = parse_mesh_config(yaml)
+        assert cfg.cluster_key == "sk-abc"
+        assert cfg.nodes[0].url == "http://a/v1"
 
 
 class TestReadMeshConfig:
@@ -174,56 +295,63 @@ class TestSynthesizeFromPeerConfig:
         assert cfg.cluster_key == "sk-fallback"
 
 
-class TestDrainState:
-    def test_round_trip(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
-        monkeypatch.setenv("MAXIM_ROLE", "leader")
-        from maxim.utils import paths
+class TestClassifyProbeOutcome:
+    """Shared classifier — single source of truth for probe outcome mapping.
 
-        paths._reset_caches()
+    Specific-before-general ordering is load-bearing (Plan 2 R2c).
+    """
 
-        write_drained_nodes({"mac-studio", "tablet"})
-        assert read_drained_nodes() == {"mac-studio", "tablet"}
+    def test_returns_frozen_dataclass(self) -> None:
+        """Round 2 A3R2: structured result, not a tuple — fields stay stable
+        across C2/C3 additions.
+        """
+        result = classify_probe_outcome("ok", "HTTP 200", 5.0, "http://a/v1")
+        assert isinstance(result, ProbeClassification)
+        with pytest.raises(Exception):
+            result.status = "fail"  # type: ignore[misc]
 
-    def test_drain_and_resume(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
-        monkeypatch.setenv("MAXIM_ROLE", "leader")
-        from maxim.utils import paths
+    def test_ok_returns_reachable_with_latency(self) -> None:
+        r = classify_probe_outcome("ok", "HTTP 200", 5.0, "http://a/v1")
+        assert r.status == "ok"
+        assert "reachable" in r.message
+        assert "5ms" in r.message
+        assert r.fix is None
 
-        paths._reset_caches()
+    def test_ok_detail_flows_through_message(self) -> None:
+        """Round 2 A1R2: callers pass richer detail through, no post-hoc
+        override. Doctor passes ``f"{role}, {url}"`` as detail; mesh_cli
+        passes the raw probe detail.
+        """
+        r = classify_probe_outcome("ok", "leader, http://192.168.1.10/v1", 42.0, "http://192.168.1.10/v1")
+        assert r.status == "ok"
+        assert "leader, http://192.168.1.10/v1" in r.message
+        assert "42ms" in r.message
 
-        drain_node("mac-studio")
-        assert read_drained_nodes() == {"mac-studio"}
-        drain_node("tablet")
-        assert read_drained_nodes() == {"mac-studio", "tablet"}
-        resume_node("mac-studio")
-        assert read_drained_nodes() == {"tablet"}
-        resume_node("tablet")
-        assert read_drained_nodes() == set()
+    def test_auth_rejected_is_fail_with_key_rotate_hint(self) -> None:
+        r = classify_probe_outcome("auth_rejected", "HTTP 401", 12.0, "http://a/v1")
+        assert r.status == "fail"
+        assert "auth rejected" in r.message
+        assert r.fix is not None
+        assert "tunnel key rotate" in r.fix
 
-    def test_role_isolation(self, tmp_path, monkeypatch) -> None:
-        """Leader and peer drain state files must not leak into each other."""
-        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
-        from maxim.utils import paths
+    def test_inference_broken_is_fail_with_chat_hint(self) -> None:
+        r = classify_probe_outcome("inference_broken", "stage2: HTTP 500", 800.0, "http://a/v1")
+        assert r.status == "fail"
+        assert "chat endpoint broken" in r.message
+        assert r.fix is not None
+        assert "maxim peer llm --status" in r.fix
 
-        paths._reset_caches()
+    def test_network_outcomes_warn(self) -> None:
+        for outcome in ("timeout", "connection_refused", "dns_fail", "tls_error", "http_5xx", "other"):
+            r = classify_probe_outcome(outcome, "detail", None, "http://a/v1")
+            assert r.status == "warn", f"{outcome} should be warn"
+            assert "curl -v" in (r.fix or "")
 
-        monkeypatch.setenv("MAXIM_ROLE", "leader")
-        write_drained_nodes({"mac-studio"})
+    def test_unknown_outcome_falls_through_to_warn(self) -> None:
+        r = classify_probe_outcome("plasma_storm", "?", None, "http://a/v1")
+        assert r.status == "warn"
+        assert "unknown outcome" in r.message
 
-        monkeypatch.setenv("MAXIM_ROLE", "peer")
-        assert read_drained_nodes() == set()
-        write_drained_nodes({"tablet"})
-
-        monkeypatch.setenv("MAXIM_ROLE", "leader")
-        assert read_drained_nodes() == {"mac-studio"}
-
-    def test_empty_file_handled(self, tmp_path, monkeypatch) -> None:
-        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
-        monkeypatch.setenv("MAXIM_ROLE", "leader")
-        from maxim.utils import paths
-
-        paths._reset_caches()
-
-        write_drained_nodes(set())
-        assert read_drained_nodes() == set()
+    def test_no_latency_omits_bracket(self) -> None:
+        r = classify_probe_outcome("ok", "HTTP 200", None, "http://a/v1")
+        assert "ms]" not in r.message

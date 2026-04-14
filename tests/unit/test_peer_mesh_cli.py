@@ -7,7 +7,6 @@ import json
 import pytest
 
 from maxim.peer import mesh_cli
-from maxim.peer.mesh_config import MeshNode
 
 
 # Canonical mesh.yml used across the test file. Two nodes, leader + peer.
@@ -32,27 +31,32 @@ class _FakeProbeResult:
         self.latency_ms = latency_ms
 
 
-class _FakeBackend:
-    """Stub for ``_MaximPeerBackend.for_url(...).health_check()``."""
+def _make_fake_backend(result: _FakeProbeResult):
+    """Build a fake _MaximPeerBackend class bound to a specific probe
+    result. Each call to ``_install_fake_backend`` gets a fresh class
+    so there's no shared mutable state between tests (pre-merge review
+    F15 fix).
+    """
 
-    def __init__(self, result: _FakeProbeResult):
-        self._result = result
+    class _FakeBackend:
+        def __init__(self, r):
+            self._result = r
 
-    @classmethod
-    def for_url(cls, url: str, *, api_key: str | None = None, model: str | None = None):
-        return cls(cls._next_result)
+        @classmethod
+        def for_url(cls, url: str, *, api_key: str | None = None, model: str | None = None):
+            return cls(result)
 
-    def health_check(self, *, enable_stage2: bool = True):
-        return self._result
+        def health_check(self, *, enable_stage2: bool = True):
+            return self._result
+
+    return _FakeBackend
 
 
 def _install_fake_backend(monkeypatch, outcome: str, detail: str = "ok", latency_ms: float = 10.0):
-    _FakeBackend._next_result = _FakeProbeResult(outcome, detail, latency_ms)
-
-    # The import happens inside _probe_node, so we patch the real module.
+    fake = _make_fake_backend(_FakeProbeResult(outcome, detail, latency_ms))
     import maxim.models.language.maxim_peer_backend as mpb
 
-    monkeypatch.setattr(mpb, "_MaximPeerBackend", _FakeBackend)
+    monkeypatch.setattr(mpb, "_MaximPeerBackend", fake)
 
 
 @pytest.fixture
@@ -67,6 +71,21 @@ def mesh_home(tmp_path, monkeypatch):
     mesh_path = tmp_path / "config" / "maxim" / "mesh.yml"
     mesh_path.parent.mkdir(parents=True)
     mesh_path.write_text(VALID_MESH_YAML)
+    return tmp_path
+
+
+@pytest.fixture
+def peer_only_home(tmp_path, monkeypatch):
+    """No mesh.yml, only peer.yml — for testing the fallback path (F16)."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("MAXIM_ROLE", "leader")
+    from maxim.utils import paths
+
+    paths._reset_caches()
+    peer_path = tmp_path / "config" / "maxim" / "peer.yml"
+    peer_path.parent.mkdir(parents=True)
+    peer_path.write_text("url: https://leader.example.com/v1\napi_key: sk-peer-fallback\n")
     return tmp_path
 
 
@@ -93,37 +112,13 @@ class TestListNodes:
         names = [n["name"] for n in doc["nodes"]]
         assert names == ["leader-desk", "mac-studio"]
         assert all("status" in n and "url" in n and "role" in n for n in doc["nodes"])
+        # No drained field in the C1 JSON schema — drain deferred to C2.
+        assert all("drained" not in n for n in doc["nodes"])
 
     def test_exit_code_nonzero_on_any_fail(self, mesh_home, monkeypatch, capsys):
         _install_fake_backend(monkeypatch, outcome="auth_rejected", detail="HTTP 401")
         rc = mesh_cli.run_list_nodes([])
         assert rc == 1
-
-    def test_drained_node_shown_as_drained_not_probed(self, mesh_home, monkeypatch, capsys):
-        # Drain mac-studio first.
-        from maxim.peer.mesh_config import drain_node
-
-        drain_node("mac-studio")
-
-        # Set up a backend that would fail if it were called — but for
-        # drained nodes it should never be invoked.
-        call_counter = {"n": 0}
-
-        class _CountingBackend(_FakeBackend):
-            @classmethod
-            def for_url(cls, url, *, api_key=None, model=None):
-                call_counter["n"] += 1
-                return cls(_FakeProbeResult("ok"))
-
-        import maxim.models.language.maxim_peer_backend as mpb
-
-        monkeypatch.setattr(mpb, "_MaximPeerBackend", _CountingBackend)
-
-        rc = mesh_cli.run_list_nodes([])
-        out = capsys.readouterr().out
-        assert rc == 0
-        assert "drained" in out.lower()
-        assert call_counter["n"] == 1  # only leader-desk probed; mac-studio skipped
 
     def test_no_mesh_config_errors_out(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "empty"))
@@ -142,6 +137,16 @@ class TestListNodes:
         out = capsys.readouterr().out
         assert "auth rejected" in out
         assert "tunnel key rotate" in out
+
+    def test_fallback_from_peer_yml_end_to_end(self, peer_only_home, monkeypatch, capsys):
+        """F16: peer.yml → synthesized one-node mesh. Zero breaking change."""
+        _install_fake_backend(monkeypatch, outcome="ok", detail="HTTP 200", latency_ms=25.0)
+        rc = mesh_cli.run_list_nodes([])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "1 node(s)" in out
+        assert "leader" in out  # synthesized name
+        assert "https://leader.example.com/v1" in out
 
 
 class TestNodeSubcommand:
@@ -173,19 +178,6 @@ class TestNodeSubcommand:
         assert rc == 2
         assert "Unknown --node verb" in err
 
-    def test_drain_and_resume_round_trip(self, mesh_home, capsys):
-        from maxim.peer.mesh_config import read_drained_nodes
-
-        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
-        assert rc == 0
-        assert "mac-studio" in read_drained_nodes()
-        assert "✓ Drained mac-studio" in capsys.readouterr().out
-
-        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "resume"])
-        assert rc == 0
-        assert "mac-studio" not in read_drained_nodes()
-        assert "✓ Resumed mac-studio" in capsys.readouterr().out
-
     def test_inference_broken_has_chat_endpoint_hint(self, mesh_home, monkeypatch, capsys):
         _install_fake_backend(monkeypatch, outcome="inference_broken", detail="stage2: timeout")
         rc = mesh_cli.run_node_subcommand(["--node", "leader-desk", "status"])
@@ -194,40 +186,51 @@ class TestNodeSubcommand:
         assert "chat endpoint broken" in out
         assert "maxim peer llm --status" in out
 
-    def test_missing_args_errors(self, mesh_home, capsys):
+    def test_missing_args_distinguishes_missing_name_from_verb(self, mesh_home, capsys):
+        """F14: the error must say what's missing."""
         rc = mesh_cli.run_node_subcommand(["--node"])
         assert rc == 2
+        assert "Missing node name" in capsys.readouterr().err
+
+        rc = mesh_cli.run_node_subcommand(["--node", "leader-desk"])
+        assert rc == 2
+        assert "Missing verb" in capsys.readouterr().err
+
+    def test_drain_verb_removed_in_c1(self, mesh_home, capsys):
+        """Pre-merge review: drain/resume deferred to C2 with proper design."""
+        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        assert rc == 2
+        assert "Unknown --node verb" in capsys.readouterr().err
+
+    def test_resume_verb_removed_in_c1(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "resume"])
+        assert rc == 2
+        assert "Unknown --node verb" in capsys.readouterr().err
 
 
-class TestClassifyProbeResult:
-    """Direct coverage of the outcome → CheckResult mapping table."""
+class TestImportErrorFallback:
+    """Round 2 A5R2: the ``ImportError`` defensive branch in ``_probe_node``
+    needs regression coverage or it's a comment in code form.
 
-    def _mk_node(self):
-        return MeshNode(name="x", url="http://a/v1", role="leader")
+    Simulates the ``llm-server`` extra not being installed.
+    """
 
-    def test_ok(self):
-        node = self._mk_node()
-        r = mesh_cli._classify_probe_result(node, _FakeProbeResult("ok", "HTTP 200", 5))
-        assert r.status == "ok"
+    def test_missing_backend_produces_warn_with_extra_hint(self, mesh_home, monkeypatch, capsys):
+        import sys
 
-    def test_auth_rejected_specific_first(self):
-        node = self._mk_node()
-        r = mesh_cli._classify_probe_result(node, _FakeProbeResult("auth_rejected", "HTTP 401"))
-        assert r.status == "fail"
-        assert "tunnel key rotate" in (r.fix or "")
+        # Force the import to fail at call time. Using a class that raises
+        # on __getattr__ is cleaner than setitem(None) because we need the
+        # specific ``ImportError`` branch path.
+        class _Broken:
+            def __getattr__(self, name):
+                raise ImportError("simulated: llm-server extra not installed")
 
-    def test_inference_broken_specific(self):
-        node = self._mk_node()
-        r = mesh_cli._classify_probe_result(node, _FakeProbeResult("inference_broken", "stage2: HTTP 500"))
-        assert r.status == "fail"
-        assert "chat" in (r.fix or "").lower()
+        monkeypatch.setitem(sys.modules, "maxim.models.language.maxim_peer_backend", _Broken())
 
-    def test_dns_fail_bucketed_as_warn(self):
-        node = self._mk_node()
-        r = mesh_cli._classify_probe_result(node, _FakeProbeResult("dns_fail", "no such host"))
-        assert r.status == "warn"
-
-    def test_unknown_outcome_warn(self):
-        node = self._mk_node()
-        r = mesh_cli._classify_probe_result(node, _FakeProbeResult("plasma_storm", "?"))
-        assert r.status == "warn"
+        rc = mesh_cli.run_list_nodes([])
+        out = capsys.readouterr().out
+        # Probe reports warn (not fail) so the exit code is 0 — import
+        # failure is graceful degrade, not an operator error.
+        assert rc == 0
+        assert "peer backend import failed" in out
+        assert "llm-server" in out
