@@ -155,9 +155,14 @@ class LoopController:
         raw = self.state.data.get("pending_timeout_retry")
         if raw is None:
             return None
+        # Plan 3.5 R2: fall back to the current agent-level LLM timeout
+        # default if the persisted state is missing timeout_s. Was
+        # hardcoded 60.0 pre-plan (mesh-era value).
+        from maxim.agents.llm_worker import DEFAULT_LLM_CALL_TIMEOUT_S
+
         return TimeoutRetry(
             original_request=raw.get("original_request"),
-            timeout_s=raw.get("timeout_s", 60.0),
+            timeout_s=raw.get("timeout_s", DEFAULT_LLM_CALL_TIMEOUT_S),
         )
 
     def set_timeout_retry(self, tr: TimeoutRetry | None) -> None:

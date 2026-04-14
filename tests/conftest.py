@@ -106,6 +106,26 @@ def _isolate_maxim_substrate_path_env():
             os.environ["MAXIM_SUBSTRATE_PATH"] = saved
 
 
+@pytest.fixture(autouse=True)
+def _isolate_maxim_llm_call_timeout_env():
+    """Scrub ``MAXIM_LLM_CALL_TIMEOUT_S`` across every test (Plan 3.5 R2).
+
+    ``LLMWorker.__init__`` reads this env var to override the agent-level
+    LLM call timeout. Tests that set it to simulate fast timeouts or slow
+    timeouts would leak the value into every later test that constructs
+    an LLMWorker, breaking assertions about default behavior and causing
+    flaky timing tests. Follow the Plan 2 R2a pattern: always unset on
+    entry, restore any pre-existing user value on exit.
+    """
+    saved = os.environ.pop("MAXIM_LLM_CALL_TIMEOUT_S", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_LLM_CALL_TIMEOUT_S", None)
+        if saved is not None:
+            os.environ["MAXIM_LLM_CALL_TIMEOUT_S"] = saved
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Memory Types Fixtures
 # ─────────────────────────────────────────────────────────────────────────────

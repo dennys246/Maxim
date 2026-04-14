@@ -40,7 +40,11 @@ from unittest.mock import patch
 
 import pytest
 
-from maxim.agents.llm_worker import LLMWorker
+from maxim.agents.llm_worker import (
+    DEFAULT_LLM_CALL_TIMEOUT_S,
+    LLMWorker,
+    _read_llm_call_timeout_env,
+)
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.router import LLMRouter
 from maxim.models.language.types import ProviderState
@@ -180,3 +184,85 @@ def test_inference_lock_released_after_timeout(blocking_backend):
 # fix to exist before their assertions can be made tight enough — the
 # pre-fix code path can accidentally satisfy loose assertions, leading to
 # false-positive passes that mask the bug.
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Plan 3.5 R2 — timeout alignment
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_default_llm_call_timeout_is_300s():
+    """The default agent-level LLM call timeout is 300s (Plan 3.5 R2).
+
+    Regression guard: if this is ever changed back to 60s or another
+    value below the HTTP layer's _INFERENCE_PROXY_TIMEOUT_S, the
+    stacked-timeout cascade from Plan 3.5's evidence section returns.
+    """
+    assert DEFAULT_LLM_CALL_TIMEOUT_S == 300.0
+
+
+def test_env_var_unset_returns_default(monkeypatch):
+    """Unset env var → fallback to the default."""
+    monkeypatch.delenv("MAXIM_LLM_CALL_TIMEOUT_S", raising=False)
+    assert _read_llm_call_timeout_env() == DEFAULT_LLM_CALL_TIMEOUT_S
+    assert _read_llm_call_timeout_env(fallback=42.0) == 42.0
+
+
+def test_env_var_parseable_value_wins(monkeypatch):
+    """Valid numeric env var overrides the fallback."""
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "120")
+    assert _read_llm_call_timeout_env() == 120.0
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "45.5")
+    assert _read_llm_call_timeout_env() == 45.5
+
+
+def test_env_var_clamped_to_min(monkeypatch):
+    """Values below 10.0 are clamped up to 10.0 (can't disable the safety net)."""
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "0.5")
+    assert _read_llm_call_timeout_env() == 10.0
+
+
+def test_env_var_clamped_to_max(monkeypatch):
+    """Values above 1800.0 are clamped down to 1800.0 (30 minutes absolute max)."""
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "3600")
+    assert _read_llm_call_timeout_env() == 1800.0
+
+
+def test_env_var_unparseable_returns_fallback(monkeypatch):
+    """Garbage in env var → fallback, not a crash."""
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "not-a-number")
+    assert _read_llm_call_timeout_env() == DEFAULT_LLM_CALL_TIMEOUT_S
+
+
+def test_llm_worker_uses_env_override(monkeypatch):
+    """Constructing an LLMWorker with no explicit timeout reads the env var."""
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "150")
+    router = _make_router()
+    worker = LLMWorker(llm=router)  # no explicit llm_timeout_s
+    try:
+        assert worker._llm_timeout == 150.0
+    finally:
+        worker.stop()
+
+
+def test_llm_worker_explicit_arg_wins_over_env(monkeypatch):
+    """An explicit ``llm_timeout_s`` parameter overrides the env var."""
+    monkeypatch.setenv("MAXIM_LLM_CALL_TIMEOUT_S", "150")
+    router = _make_router()
+    worker = LLMWorker(llm=router, llm_timeout_s=45.0)
+    try:
+        assert worker._llm_timeout == 45.0
+    finally:
+        worker.stop()
+
+
+def test_llm_worker_defaults_to_300s_when_neither_set(monkeypatch):
+    """With no env var and no explicit arg, default is 300s."""
+    monkeypatch.delenv("MAXIM_LLM_CALL_TIMEOUT_S", raising=False)
+    router = _make_router()
+    worker = LLMWorker(llm=router)
+    try:
+        assert worker._llm_timeout == DEFAULT_LLM_CALL_TIMEOUT_S
+        assert worker._llm_timeout == 300.0
+    finally:
+        worker.stop()

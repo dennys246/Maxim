@@ -597,10 +597,10 @@ class _MaximPeerBackend:
 
         Raises :class:`BackendInferenceBroken` when ``choices`` is empty —
         this surfaces as a typed router exception so the provider gets a
-        15s backoff and failover is attempted.  Returning an empty
-        :class:`LLMResponse` silently would bypass the typed exception path
-        entirely (no backoff, no fallback, empty content propagates to the
-        agent).
+        15-second cooldown window and the router tries the next provider.
+        Returning an empty :class:`LLMResponse` silently would bypass the
+        typed exception path entirely (no cooldown, no router-level
+        re-dispatch, empty content propagates to the agent).
         """
         choices = raw.get("choices") or []
         if not choices:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import logging
+import os
 import queue
 import threading
 import time
@@ -100,6 +101,63 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Plan 3.5 R2 — agent-level LLM call timeout
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# The agent-level timeout is a STRICT safety net above the HTTP-layer
+# timeout in ``utils/http.py`` / ``runtime/leader_proxy.py`` (300s via
+# ``_INFERENCE_PROXY_TIMEOUT_S``). Under normal operation the HTTP layer
+# fires first with a typed ``HTTPTimeout`` → ``BackendTimeout`` → router
+# records the attempt and releases ``_inference_lock`` cleanly. The
+# agent-level timeout only fires if the HTTP layer is wedged (deadlock,
+# stuck thread, genuine bug) — when it fires, it's a LOUD bug signal.
+#
+# The pre-Plan-3.5 default was 60s, a mesh-era value that was smaller
+# than the HTTP layer's read timeout. That inverted ordering meant the
+# agent-level timeout fired routinely on normal 14B inference (63-64s
+# observed with Qwen-14B through Cloudflare), abandoning the in-flight
+# call via ``future.cancel()`` which only sets a flag and does NOT stop
+# the running thread. The orphan kept ``_inference_lock`` held until
+# the underlying HTTP call eventually errored, blocking every
+# subsequent request and stacking 60s timeouts back-to-back.
+#
+# The new default (300s) is strictly larger than the HTTP layer's
+# timeout so the HTTP layer always errors first. Override via
+# ``MAXIM_LLM_CALL_TIMEOUT_S`` for edge cases (clamped 10s-1800s).
+
+DEFAULT_LLM_CALL_TIMEOUT_S: float = 300.0
+
+
+def _read_llm_call_timeout_env(fallback: float = DEFAULT_LLM_CALL_TIMEOUT_S) -> float:
+    """Read ``MAXIM_LLM_CALL_TIMEOUT_S`` with clamping to a sane range.
+
+    Returns ``fallback`` if the env var is unset or unparseable.
+    Clamps the parsed value to ``[10.0, 1800.0]`` so a typo can't
+    disable the safety net entirely or make it absurdly long.
+    """
+    raw = os.environ.get("MAXIM_LLM_CALL_TIMEOUT_S", "").strip()
+    if not raw:
+        return fallback
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "MAXIM_LLM_CALL_TIMEOUT_S=%r is not a valid float; using fallback %.1fs",
+            raw,
+            fallback,
+        )
+        return fallback
+    clamped = max(10.0, min(value, 1800.0))
+    if clamped != value:
+        logger.warning(
+            "MAXIM_LLM_CALL_TIMEOUT_S=%.1f clamped to %.1f (range 10.0-1800.0)",
+            value,
+            clamped,
+        )
+    return clamped
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Plan 2 R2b — canonical request context normalization
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -152,7 +210,7 @@ class LLMWorker:
         llm: LLMBackend,
         max_queue_size: int = 5,
         stale_threshold_s: float = 5.0,
-        llm_timeout_s: float = 60.0,
+        llm_timeout_s: float | None = None,
         energy_tracker: "LLMEnergyTracker | None" = None,
         n_ctx: int = 4096,
         token_counter: Any | None = None,
@@ -161,7 +219,15 @@ class LLMWorker:
     ):
         self._llm = llm
         self._stale_threshold = stale_threshold_s
-        self._llm_timeout = llm_timeout_s
+        # Plan 3.5 R2: agent-level timeout is a strict safety net above
+        # the HTTP layer (default 300s, was 60s pre-plan). Explicit caller
+        # value wins; otherwise read MAXIM_LLM_CALL_TIMEOUT_S (clamped);
+        # otherwise fall back to DEFAULT_LLM_CALL_TIMEOUT_S. See module
+        # docstring for the "HTTP layer fires first" contract.
+        if llm_timeout_s is None:
+            self._llm_timeout = _read_llm_call_timeout_env()
+        else:
+            self._llm_timeout = llm_timeout_s
         self._energy_tracker = energy_tracker
         self._n_ctx = n_ctx
         self._tool_index = tool_index
