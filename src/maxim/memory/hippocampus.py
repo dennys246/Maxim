@@ -26,7 +26,18 @@ if TYPE_CHECKING:
     from maxim.memory.strategies import MemoryStrategy
     from maxim.time.scn import SCN
 
-from maxim.agents.bus import DependencyGraph
+from maxim.agents.bus import DependencyGraph, EdgeType
+from maxim.memory.episode import (
+    CaptureEvent,
+    Episode,
+    EpisodeBoundaryDetector,
+    EpisodeStore,
+    PendingEpisodeState,
+    apply_hebbian_on_close,
+    channel_change_rule,
+    scn_tag_change_rule,
+    tick_gap_rule,
+)
 from maxim.memory.hippocampus_consolidation import ConsolidationMixin
 from maxim.memory.hippocampus_persistence import PersistenceMixin
 from maxim.memory.hippocampus_retrieval import RetrievalMixin
@@ -134,6 +145,41 @@ class HippocampusConfig:
 
     # Maximum pending captures before drop-oldest
     capture_queue_size: int = 100
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # P3a Stage 1 — Episode binding settings
+    # Held as a nested EpisodeConfig block so tests + Stage 2 sweeps can
+    # override these independently of the rest of HippocampusConfig.
+    # ─────────────────────────────────────────────────────────────────────────
+
+    episode: EpisodeConfig = field(default_factory=lambda: EpisodeConfig())
+
+
+@dataclass(frozen=True)
+class EpisodeConfig:
+    """P3a Stage 1 — configuration knobs for episode binding.
+
+    All four fields override cleanly via ``HippocampusConfig(episode=
+    EpisodeConfig(hebbian_delta=0.2))``. No module-level constants, no
+    monkeypatching required — this is the home for the knobs that
+    Stage 2's fixture sweeps will move.
+    """
+
+    # Episode boundary detector: close the pending episode when the next
+    # capture is more than this many ticks after the previous capture.
+    boundary_tick_gap: int = 50
+
+    # Initial edge weight for a fresh Hebbian edge between two nodes
+    # co-occurring in an episode for the first time.
+    hebbian_init: float = 0.3
+
+    # Per-close weight increment for an existing Hebbian edge whose
+    # endpoints co-occur again in a newly-closed episode.
+    hebbian_delta: float = 0.1
+
+    # Upper clamp on Hebbian edge weight — no single episode sequence
+    # can drive a weight above this.
+    hebbian_max: float = 1.0
 
 
 class _SnapshotState:
@@ -256,6 +302,43 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
         # Dedup tracking: hash of recent observations → timestamp
         self._recent_observations: dict[int, float] = {}
+
+        # ─────────────────────────────────────────────────────────────
+        # P3a Stage 1 — Episode binding surface
+        # ─────────────────────────────────────────────────────────────
+
+        # Standalone store for closed episodes (held here rather than
+        # inlined so P3b + P5 can extend EpisodeStore without touching
+        # Hippocampus — Round 1 Arch important finding #1).
+        self._episode_store: EpisodeStore = EpisodeStore()
+
+        # Separate DependencyGraph for Hebbian co-activation edges. Kept
+        # orthogonal to self._graph (which carries associative edges
+        # between memory records) and orthogonal to ATL.graph (the
+        # concept topology). See memory/episode.py for the binding-graph
+        # ownership rationale.
+        self._binding_graph: DependencyGraph[str] = DependencyGraph()
+
+        # Pending-episode state — the episode currently being built,
+        # one per Hippocampus instance. Created lazily on the first
+        # observe_episode_event() call; cleared when the boundary
+        # detector decides to close.
+        self._pending_episode: PendingEpisodeState | None = None
+
+        # Episode boundary detector with three default rules.
+        # P3b will append per-channel rules via detector.add_rule().
+        self._episode_detector = EpisodeBoundaryDetector(
+            rules=[
+                tick_gap_rule(self.config.episode.boundary_tick_gap),
+                channel_change_rule(),
+                scn_tag_change_rule(),
+            ]
+        )
+
+        # Monotonic episode-id counter. Kept simple (string, not UUID)
+        # so Stage 1 tests get deterministic ids.
+        self._next_episode_ordinal: int = 0
+        self._episode_lock = threading.RLock()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Factory class methods
@@ -1012,6 +1095,119 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         """Iterate over all memories (both full and compressed)."""
         with self._rwlock.read():
             yield from self._memories.values()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # P3a Stage 1 — Episode binding (public surface)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def observe_episode_event(self, event: CaptureEvent) -> None:
+        """Feed an event into the episode boundary detector.
+
+        If no pending episode exists, this opens one. Otherwise the
+        detector's rule list decides whether to close the pending
+        episode first (which triggers Hebbian updates on the binding
+        graph) and open a new one.
+
+        This method is separate from ``capture()`` / ``capture_from_loop``
+        to keep P3a Stage 1 fully isolated from the existing memory
+        capture path. Production integration (wiring the agent loop to
+        call this alongside capture) is a post-Stage-1 task.
+        """
+        with self._episode_lock:
+            if self._pending_episode is None:
+                self._pending_episode = self._start_episode(event)
+                return
+
+            if self._episode_detector.should_close(self._pending_episode, event):
+                self._close_pending_episode_locked()
+                self._pending_episode = self._start_episode(event)
+                return
+
+            # Extend the pending episode with this event
+            pending = self._pending_episode
+            pending.last_tick = event.tick
+            if event.sender_id is not None:
+                pending.sender_ids.add(event.sender_id)
+            if event.thread_id is not None and pending.thread_id is None:
+                pending.thread_id = event.thread_id
+            for node_id in event.activated_nodes:
+                pending.activated_nodes.append(node_id)
+
+    def finalize_pending_episode(self) -> Episode | None:
+        """Force-close the current pending episode, if any.
+
+        Used by tests + by end-of-session teardown. Returns the closed
+        episode (or ``None`` if there was nothing pending).
+        """
+        with self._episode_lock:
+            if self._pending_episode is None:
+                return None
+            return self._close_pending_episode_locked()
+
+    def retrieve_on_cue(self, cue_node_id: str, limit: int = 10) -> list[tuple[str, float]]:
+        """Return nodes co-activated with the cue, ranked by binding weight.
+
+        One-hop retrieval via ``DependencyGraph.get_associated`` — the
+        simplest possible partial-cue path. Multi-hop via
+        ``spreading_activation`` is a Stage 2 fallback per the plan.
+        """
+        associated = self._binding_graph.get_associated(
+            cue_node_id,
+            edge_types={EdgeType.ASSOCIATES},
+        )
+        # get_associated returns list[(neighbor, weight)]; sort + cap
+        associated.sort(key=lambda pair: pair[1], reverse=True)
+        return associated[:limit]
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # P3a Stage 1 — Episode binding (private helpers)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _start_episode(self, event: CaptureEvent) -> PendingEpisodeState:
+        """Open a fresh pending episode seeded by ``event``. Caller must
+        hold ``self._episode_lock``."""
+        self._next_episode_ordinal += 1
+        pending = PendingEpisodeState(
+            id=f"ep_{self._next_episode_ordinal}",
+            start_tick=event.tick,
+            last_tick=event.tick,
+            channel=event.channel,
+            sender_ids=set(),
+            thread_id=event.thread_id,
+            activated_nodes=list(event.activated_nodes),
+            reward_events=[],
+            scn_tag=event.scn_tag,
+        )
+        if event.sender_id is not None:
+            pending.sender_ids.add(event.sender_id)
+        return pending
+
+    def _close_pending_episode_locked(self) -> Episode:
+        """Finalize ``self._pending_episode``, add it to the store, and
+        apply Hebbian updates to the binding graph. Caller must hold
+        ``self._episode_lock``."""
+        assert self._pending_episode is not None, "caller must check before closing"
+        episode = self._pending_episode.finalize()
+        self._pending_episode = None
+
+        # Add to store first (so the store has the episode before Hebbian
+        # edges reference its nodes). EpisodeStore takes its own lock;
+        # since we already hold self._episode_lock, the ordering is
+        # deterministic: episode_lock → episode_store._lock →
+        # binding_graph._lock.
+        self._episode_store.add(episode)
+
+        # Hebbian updates on the binding graph
+        cfg = self.config.episode
+        apply_hebbian_on_close(
+            self._binding_graph,
+            episode,
+            hebbian_init=cfg.hebbian_init,
+            hebbian_delta=cfg.hebbian_delta,
+            hebbian_max=cfg.hebbian_max,
+        )
+
+        return episode
 
     # ─────────────────────────────────────────────────────────────────────────
     # Internal Helpers
