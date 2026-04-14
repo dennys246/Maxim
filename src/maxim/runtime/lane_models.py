@@ -183,6 +183,131 @@ _NCTX_SAFE_FALLBACK: dict[str, tuple[tuple[float, int], ...]] = {
 }
 
 
+# Plan 3.6 R5: VRAM spillover projection.
+#
+# When projected (weights + KV cache + headroom) > 95% of physical VRAM, NVIDIA
+# drivers silently spill KV cache into shared system memory on Windows (and
+# some Linux configurations). The model still loads cleanly — it just runs at
+# PCIe speeds, roughly 5-30x slower than on-GPU inference. llama-cpp-server
+# has no log line for this; it's invisible from the outside.
+#
+# This ratio is a deliberate floor. The user's 2026-04-13 incident had a
+# 16 GB RTX 5080 at vram_used/vram_total ≈ 0.97 running Qwen-14B Q4 at
+# n_ctx=12380 and measured 0.9 tok/s (vs the 30-50 tok/s healthy baseline).
+# 95% leaves room for llama-cpp's ~1.5 GB of activation scratchpads +
+# driver overhead before the UMA fallback kicks in.
+_SPILLOVER_RATIO = 0.95
+
+# Dynamic headroom for Plan 3.6's spillover projection. The _DEFAULT_SAFETY_MARGIN_GB
+# above (1.5 GB) is calibrated for 7B-class models and underestimates activation
+# scratchpads + CUDA allocator overhead + driver reserved memory for 14B+ models.
+#
+# The 2026-04-13 incident observation: qwen2.5-14b-instruct (8.4 GB weights) at
+# n_ctx=12380 (KV ≈ 2.27 GB) measured 15.3 GB VRAM used on a 16 GB card. That's
+# 15.3 - 8.4 - 2.27 = 4.63 GB of non-weights-non-KV overhead. The 1.5 GB floor
+# would have projected 12.17 GB and declared the config safe — silently wrong.
+#
+# Empirical ratio: 4.63 / 8.4 ≈ 0.55. Applied as floor:
+#     headroom_gb = max(1.5, weights_gb * 0.55)
+#
+# This is OBSERVABILITY, not a routing change. estimate_max_ctx() continues to
+# use the 1.5 GB floor because its callers are protected by _NCTX_SAFE_FALLBACK
+# (which encodes measured-good n_ctx values per profile and VRAM). Lowering
+# estimate_max_ctx's headroom would ripple through auto-spawn on every install.
+_ACTIVATION_OVERHEAD_RATIO = 0.55
+
+
+def _dynamic_headroom_gb(weights_gb: float) -> float:
+    """Plan 3.6 R5: activation+allocator+driver overhead scales with model size."""
+    return max(_DEFAULT_SAFETY_MARGIN_GB, weights_gb * _ACTIVATION_OVERHEAD_RATIO)
+
+
+@dataclass(frozen=True)
+class VRAMProjection:
+    """Projected VRAM footprint for a (profile, n_ctx) pair.
+
+    Pure data object — no side effects. Callers decide how to surface the
+    result (doctor WARN, startup log, refusal to spawn, …).
+    """
+
+    profile: str
+    n_ctx: int
+    physical_vram_gb: float
+    weights_gb: float
+    kv_cache_gb: float
+    headroom_gb: float  # activation scratchpads + driver overhead + OS
+    projected_total_gb: float
+    spillover_risk: bool  # projected_total_gb > physical_vram_gb * _SPILLOVER_RATIO
+    recommended_n_ctx: int  # largest n_ctx that fits; 0 if profile too big for card
+
+
+def project_vram_usage(
+    profile_name: str,
+    profile_meta: dict,
+    n_ctx: int,
+    physical_vram_gb: float,
+    *,
+    kv_quant_mode: str = "f16",
+    headroom_gb: float | None = None,
+) -> VRAMProjection | None:
+    """Compute projected VRAM footprint for the given profile + n_ctx.
+
+    Returns ``None`` when the profile has no ``arch`` block (custom profiles
+    or cloud profiles) — callers should treat the result as "cannot project"
+    rather than "safe". Same contract as :func:`estimate_max_ctx`.
+
+    The returned :class:`VRAMProjection` is pure data; it never raises.
+    ``recommended_n_ctx`` is the largest value that fits under
+    ``_SPILLOVER_RATIO * physical_vram_gb``, rounded to a multiple of 1024 —
+    the same rounding :func:`estimate_max_ctx` applies.
+    """
+    arch = profile_meta.get("arch")
+    if not arch:
+        return None
+    try:
+        weights_gb = float(arch["weights_gb"])
+        n_layers = int(arch["n_layers"])
+        n_kv_heads = int(arch["n_kv_heads"])
+        head_dim = int(arch["head_dim"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    effective_headroom_gb = headroom_gb if headroom_gb is not None else _dynamic_headroom_gb(weights_gb)
+
+    kv_type_bytes = _KV_TYPE_BYTES.get(kv_quant_mode, 2.0)
+    kv_bytes_per_token = 2 * n_layers * n_kv_heads * head_dim * kv_type_bytes
+    kv_cache_gb = (kv_bytes_per_token * max(n_ctx, 0)) / (1024**3)
+    projected_total_gb = weights_gb + kv_cache_gb + effective_headroom_gb
+    spillover_threshold_gb = physical_vram_gb * _SPILLOVER_RATIO
+    spillover_risk = projected_total_gb > spillover_threshold_gb
+
+    # Recommended n_ctx: use the allowed KV budget (threshold - weights - headroom)
+    # not the absolute budget — that's the value that actually fits UNDER the
+    # spillover ratio, not right up against it. estimate_max_ctx uses the raw
+    # VRAM budget which is what causes the silent spillover in the first place.
+    allowed_kv_gb = spillover_threshold_gb - weights_gb - effective_headroom_gb
+    if allowed_kv_gb <= 0 or kv_bytes_per_token <= 0:
+        recommended_n_ctx = 0
+    else:
+        max_tokens = int(allowed_kv_gb * (1024**3) / kv_bytes_per_token)
+        profile_max = profile_meta.get("n_ctx")
+        if isinstance(profile_max, int) and profile_max > 0:
+            max_tokens = min(max_tokens, profile_max)
+        recommended_n_ctx = max((max_tokens // 1024) * 1024, 0)
+
+    return VRAMProjection(
+        profile=profile_name,
+        n_ctx=int(n_ctx),
+        physical_vram_gb=float(physical_vram_gb),
+        weights_gb=weights_gb,
+        kv_cache_gb=round(kv_cache_gb, 2),
+        headroom_gb=round(effective_headroom_gb, 2),
+        projected_total_gb=round(projected_total_gb, 2),
+        spillover_risk=spillover_risk,
+        recommended_n_ctx=recommended_n_ctx,
+    )
+
+
 def _lookup_fallback_nctx(profile_name: str, vram_gb: float) -> int:
     """Return the measured-safe n_ctx for ``profile_name`` at this VRAM, or 0."""
     rows = _NCTX_SAFE_FALLBACK.get(profile_name)

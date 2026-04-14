@@ -660,3 +660,173 @@ class TestDescribeIncludesKind:
             }
         )
         assert mgr.describe()["large"]["kind"] == "cloud"
+
+
+# ─── VRAM spillover warning (Plan 3.6 R5) ────────────────────────────────
+
+
+class TestCheckVramSpilloverRisk:
+    """Tests for _check_vram_spillover_risk — the spawn-time observability
+    hook that emits a structured WARNING when the resolved (profile, n_ctx)
+    will push VRAM past the 95% spillover ratio.
+    """
+
+    def _logger(self):
+        import logging
+        from unittest.mock import MagicMock
+
+        return MagicMock(spec=logging.Logger)
+
+    def test_qwen14b_32k_on_16gb_fires_warning(self):
+        from maxim.runtime.lane_backends import _check_vram_spillover_risk
+
+        logger = self._logger()
+        _check_vram_spillover_risk(
+            profile_name="qwen2.5-14b-instruct",
+            resolved_n_ctx=32768,
+            vram_gb=16.0,
+            kv_quant_mode="f16",
+            logger=logger,
+        )
+        logger.warning.assert_called_once()
+        call = logger.warning.call_args
+        extra = call.kwargs["extra"]
+        assert extra["event"] == "vram_spillover_risk"
+        assert extra["profile"] == "qwen2.5-14b-instruct"
+        assert extra["n_ctx"] == 32768
+        assert extra["physical_vram_gb"] == 16.0
+        assert 0 < extra["recommended_n_ctx"] < 32768
+        assert extra["projected_gb"] > 15.2
+
+    def test_qwen7b_8k_on_16gb_does_not_fire(self):
+        from maxim.runtime.lane_backends import _check_vram_spillover_risk
+
+        logger = self._logger()
+        _check_vram_spillover_risk(
+            profile_name="qwen2-7b-instruct",
+            resolved_n_ctx=8192,
+            vram_gb=16.0,
+            kv_quant_mode="f16",
+            logger=logger,
+        )
+        logger.warning.assert_not_called()
+
+    def test_unknown_profile_no_op(self):
+        from maxim.runtime.lane_backends import _check_vram_spillover_risk
+
+        logger = self._logger()
+        _check_vram_spillover_risk(
+            profile_name="custom-unmetered-profile",
+            resolved_n_ctx=8192,
+            vram_gb=16.0,
+            kv_quant_mode="f16",
+            logger=logger,
+        )
+        logger.warning.assert_not_called()
+
+    def test_zero_vram_no_op(self):
+        from maxim.runtime.lane_backends import _check_vram_spillover_risk
+
+        logger = self._logger()
+        _check_vram_spillover_risk(
+            profile_name="qwen2.5-14b-instruct",
+            resolved_n_ctx=32768,
+            vram_gb=0.0,
+            kv_quant_mode="f16",
+            logger=logger,
+        )
+        logger.warning.assert_not_called()
+
+    def test_empty_profile_name_no_op(self):
+        from maxim.runtime.lane_backends import _check_vram_spillover_risk
+
+        logger = self._logger()
+        _check_vram_spillover_risk(
+            profile_name="",
+            resolved_n_ctx=32768,
+            vram_gb=16.0,
+            kv_quant_mode="f16",
+            logger=logger,
+        )
+        logger.warning.assert_not_called()
+
+    def test_none_logger_no_op(self):
+        from maxim.runtime.lane_backends import _check_vram_spillover_risk
+
+        _check_vram_spillover_risk(
+            profile_name="qwen2.5-14b-instruct",
+            resolved_n_ctx=32768,
+            vram_gb=16.0,
+            kv_quant_mode="f16",
+            logger=None,
+        )
+
+    def test_24gb_card_fits_qwen14b_at_16k(self):
+        from maxim.runtime.lane_backends import _check_vram_spillover_risk
+
+        logger = self._logger()
+        _check_vram_spillover_risk(
+            profile_name="qwen2.5-14b-instruct",
+            resolved_n_ctx=16384,
+            vram_gb=24.0,
+            kv_quant_mode="f16",
+            logger=logger,
+        )
+        logger.warning.assert_not_called()
+
+
+class TestProjectVramUsage:
+    """Direct tests for the pure math in lane_models.project_vram_usage."""
+
+    def test_qwen14b_32k_on_16gb_projects_spillover(self):
+        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.runtime.lane_models import project_vram_usage
+
+        proj = project_vram_usage(
+            "qwen2.5-14b-instruct",
+            _BUILTIN_PROFILES["qwen2.5-14b-instruct"],
+            32768,
+            16.0,
+        )
+        assert proj is not None
+        assert proj.spillover_risk is True
+        assert proj.weights_gb == 8.4
+        assert proj.kv_cache_gb > 5.0
+        assert proj.recommended_n_ctx > 0
+        assert proj.recommended_n_ctx % 1024 == 0
+        assert proj.recommended_n_ctx < 32768
+
+    def test_profile_without_arch_returns_none(self):
+        from maxim.runtime.lane_models import project_vram_usage
+
+        proj = project_vram_usage(
+            "custom-noarch",
+            {"backend": "llama_cpp", "model": "foo"},
+            8192,
+            16.0,
+        )
+        assert proj is None
+
+    def test_recommended_uses_spillover_ratio_not_raw_budget(self):
+        """The recommended n_ctx must target 95% of VRAM, not the raw budget.
+        estimate_max_ctx targets raw VRAM and that's what caused the silent
+        2026-04-13 spillover — project_vram_usage must not repeat the bug."""
+        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.runtime.lane_models import estimate_max_ctx, project_vram_usage
+
+        raw_budget_ctx = estimate_max_ctx(
+            _BUILTIN_PROFILES["qwen2.5-14b-instruct"],
+            16.0,
+        )
+        if raw_budget_ctx <= 0:
+            pytest.skip("estimate_max_ctx returned 0 for this budget")
+        proj = project_vram_usage(
+            "qwen2.5-14b-instruct",
+            _BUILTIN_PROFILES["qwen2.5-14b-instruct"],
+            raw_budget_ctx,
+            16.0,
+        )
+        assert proj is not None
+        # recommended must be strictly smaller than the raw-budget value,
+        # since the spillover ratio is tighter than the raw budget.
+        assert proj.recommended_n_ctx < raw_budget_ctx

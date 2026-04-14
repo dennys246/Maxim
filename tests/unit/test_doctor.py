@@ -1021,3 +1021,161 @@ class TestCheckContextWindow:
         assert result.status == "warn"
         assert "4096" in result.message
         assert "overflow" in result.message or "KV cache" in result.message
+
+
+# ─── VRAM pressure (Plan 3.6 R5) ──────────────────────────────────────────
+
+
+class TestCheckVramPressure:
+    """Tests for the Plan 3.6 R5 VRAM spillover detection check.
+
+    All tests monkeypatch nvidia-smi + the running server's n_ctx detection so
+    they run offline on any machine. The incident signature (16 GB card,
+    15.3 GB used, Qwen-14B at n_ctx=12380 producing 0.9 tok/s) is the primary
+    reproduction target.
+    """
+
+    def test_nvidia_smi_unavailable_returns_info(self):
+        from maxim.doctor.checks import check_vram_pressure
+
+        with patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=None):
+            result = check_vram_pressure()
+        assert result.status == "info"
+        assert "nvidia-smi" in result.message
+
+    def test_live_spillover_fails_with_fix(self):
+        """The 2026-04-13 incident: 15.3/16 GB, Qwen-14B, n_ctx=12380."""
+        from maxim.doctor.checks import check_vram_pressure
+
+        gpu = {
+            "utilization_pct": 95.0,
+            "vram_used_gb": 15.3,
+            "vram_total_gb": 16.0,
+            "temperature_c": 72.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", "qwen2.5-14b-instruct"),
+            patch("maxim.doctor.checks._current_llama_server_n_ctx", return_value=12380),
+        ):
+            result = check_vram_pressure()
+
+        assert result.status == "fail"
+        assert "15.3" in result.message
+        assert "16" in result.message
+        # Must name spillover + expected slowdown in actionable terms
+        assert "spill" in result.message.lower()
+        # Fix string must contain a concrete MAXIM_LLM_N_CTX= with a real value
+        assert result.fix is not None
+        assert "MAXIM_LLM_N_CTX=" in result.fix
+        # Recommended n_ctx should be smaller than the spilling n_ctx (12380)
+        import re
+
+        match = re.search(r"MAXIM_LLM_N_CTX=(\d+)", result.fix)
+        assert match is not None
+        recommended = int(match.group(1))
+        assert recommended < 12380
+        assert recommended > 0
+        assert result.retry_id == "vram_pressure"
+
+    def test_predictive_spillover_fires_without_live_ratio(self):
+        """Qwen-14B at 32k n_ctx on a 16 GB card — math says we'll spill even
+        though the current ratio is low (model just loaded, KV cache empty).
+        """
+        from maxim.doctor.checks import check_vram_pressure
+
+        # Model just loaded — weights only in VRAM, KV cache empty.
+        gpu = {
+            "utilization_pct": 20.0,
+            "vram_used_gb": 8.5,
+            "vram_total_gb": 16.0,
+            "temperature_c": 45.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", "qwen2.5-14b-instruct"),
+            patch("maxim.doctor.checks._current_llama_server_n_ctx", return_value=32768),
+        ):
+            result = check_vram_pressure()
+
+        assert result.status == "fail"
+        # Projection fields should surface in the message
+        assert "Projected" in result.message
+        assert "weights" in result.message
+        assert "KV" in result.message
+        assert result.fix is not None
+        assert "MAXIM_LLM_N_CTX=" in result.fix
+
+    def test_warning_band_850_to_950_produces_warn(self):
+        from maxim.doctor.checks import check_vram_pressure
+
+        gpu = {
+            "utilization_pct": 60.0,
+            "vram_used_gb": 14.0,  # 87.5% of 16.0 — in the warn band
+            "vram_total_gb": 16.0,
+            "temperature_c": 60.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", None),
+            patch("maxim.doctor.checks._current_llama_server_n_ctx", return_value=None),
+        ):
+            result = check_vram_pressure()
+
+        assert result.status == "warn"
+        assert "headroom" in result.message.lower()
+
+    def test_healthy_card_returns_ok(self):
+        """Qwen-7B at n_ctx=8192 on a 16 GB card — ~6 GB used, ~38% ratio."""
+        from maxim.doctor.checks import check_vram_pressure
+
+        gpu = {
+            "utilization_pct": 40.0,
+            "vram_used_gb": 6.0,
+            "vram_total_gb": 16.0,
+            "temperature_c": 55.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", "qwen2-7b-instruct"),
+            patch("maxim.doctor.checks._current_llama_server_n_ctx", return_value=8192),
+        ):
+            result = check_vram_pressure()
+
+        assert result.status == "ok"
+        assert "6.0" in result.message
+        assert "16" in result.message
+
+    def test_zero_total_vram_returns_info(self):
+        from maxim.doctor.checks import check_vram_pressure
+
+        gpu = {
+            "utilization_pct": 0.0,
+            "vram_used_gb": 0.0,
+            "vram_total_gb": 0.0,
+            "temperature_c": 0.0,
+        }
+        with patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu):
+            result = check_vram_pressure()
+        assert result.status == "info"
+
+    def test_fix_string_mentions_smaller_profile_for_qwen_14b(self):
+        """Fix hint should be profile-aware: Qwen-14B users get a concrete
+        smaller-model suggestion (qwen2-7b), not a generic placeholder."""
+        from maxim.doctor.checks import check_vram_pressure
+
+        gpu = {
+            "utilization_pct": 98.0,
+            "vram_used_gb": 15.5,
+            "vram_total_gb": 16.0,
+            "temperature_c": 75.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", "qwen2.5-14b-instruct"),
+            patch("maxim.doctor.checks._current_llama_server_n_ctx", return_value=12380),
+        ):
+            result = check_vram_pressure()
+
+        assert result.fix is not None
+        assert "qwen2-7b" in result.fix
