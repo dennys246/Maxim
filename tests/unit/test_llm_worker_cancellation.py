@@ -408,3 +408,177 @@ def test_llm_worker_defaults_to_300s_when_neither_set(monkeypatch):
         assert worker._llm_timeout == 300.0
     finally:
         worker.stop()
+
+
+# ─── Plan 4 A.2: set_context boundary binding regression tests ────────────
+
+
+def test_set_context_binding_propagates_into_worker_thread():
+    """**Load-bearing regression guard for Plan 4 A.2.**
+
+    When ``_call_llm_with_timeout`` binds the normalized RequestContext
+    via ``set_context`` BEFORE ``contextvars.copy_context()`` captures
+    the snapshot, the worker thread's ``current_context()`` call must
+    return a RequestContext with the agent_id from the caller's dict.
+
+    Pre-fix (Phase D): the contextvar was never set, so ``peer_backend_call``
+    events logged agent_id=null. Post-fix: the binding lands, copy_context
+    snapshots it, the worker thread's ctx.run inherits it, and
+    _normalize_request_context (or any downstream current_context() read)
+    returns the live RequestContext.
+    """
+    import threading
+
+    router = _make_router()
+    worker = _make_worker(router, timeout_s=5.0)
+
+    observed: dict[str, Any] = {"contextvar_ctx": None, "called": threading.Event()}
+
+    def fake_invoke_backend(**kwargs):
+        # Read the contextvar INSIDE the worker thread — this is the
+        # critical boundary check. If copy_context() ran before
+        # set_context(), this will return None or a stale context.
+        from maxim.utils.http import current_context
+
+        observed["contextvar_ctx"] = current_context()
+        observed["called"].set()
+        return "fake response", {"prompt_tokens": 1, "completion_tokens": 1}
+
+    try:
+        with patch.object(router, "_invoke_backend", side_effect=fake_invoke_backend):
+            result = worker._call_llm_with_timeout(
+                prompt="hi",
+                temperature=0.0,
+                max_tokens=1,
+                request_context={
+                    "request_id": "r-plan4-a2",
+                    "agent_id": "npc-mother",
+                    "session_id": "sim-42",
+                    "lane": "large",
+                },
+            )
+            assert observed["called"].wait(timeout=3.0), "mock _invoke_backend was not called"
+            ctx = observed["contextvar_ctx"]
+            assert ctx is not None, (
+                "current_context() returned None inside worker thread — set_context was not bound before copy_context()"
+            )
+            assert ctx.agent_id == "npc-mother"
+            assert ctx.session_id == "sim-42"
+            assert ctx.request_id == "r-plan4-a2"
+            assert ctx.lane == "large"
+            # Note: we do not assert on `result` because the fake
+            # _invoke_backend returns plain text that the router's JSON
+            # extraction can't parse — this test's concern is the
+            # contextvar propagation, not the response shape.
+            _ = result
+    finally:
+        worker.stop()
+
+
+def test_set_context_binding_is_reset_between_sequential_calls():
+    """Regression guard: sequential calls must not leak contextvar state.
+
+    The finally block in ``_call_llm_with_timeout`` calls reset_context
+    to restore the prior binding. Without this, a long-running sim would
+    see every subsequent call inherit the first call's agent_id, which
+    would be worse than the pre-fix null (it would be stale data
+    attributed to the wrong agent).
+    """
+    import threading
+
+    router = _make_router()
+    worker = _make_worker(router, timeout_s=5.0)
+
+    observed_agents: list[str | None] = []
+    called = threading.Event()
+
+    def fake_invoke_backend(**kwargs):
+        from maxim.utils.http import current_context
+
+        ctx = current_context()
+        observed_agents.append(ctx.agent_id if ctx else None)
+        called.set()
+        return "fake", {"prompt_tokens": 1, "completion_tokens": 1}
+
+    try:
+        with patch.object(router, "_invoke_backend", side_effect=fake_invoke_backend):
+            called.clear()
+            worker._call_llm_with_timeout(
+                prompt="first",
+                temperature=0.0,
+                max_tokens=1,
+                request_context={"agent_id": "agent-A", "request_id": "r1"},
+            )
+            assert called.wait(timeout=3.0)
+
+            called.clear()
+            worker._call_llm_with_timeout(
+                prompt="second",
+                temperature=0.0,
+                max_tokens=1,
+                request_context={"agent_id": "agent-B", "request_id": "r2"},
+            )
+            assert called.wait(timeout=3.0)
+
+            # Between the two calls, the main thread's contextvar must
+            # have been reset, so each call sees its own agent_id.
+            assert observed_agents == ["agent-A", "agent-B"], (
+                f"contextvar leaked between sequential calls: {observed_agents}"
+            )
+
+            # And the main thread's contextvar must be empty after the
+            # second call's finally block runs.
+            from maxim.utils.http import current_context
+
+            assert current_context() is None, "reset_context() did not restore the main thread's binding"
+    finally:
+        worker.stop()
+
+
+def test_outbound_headers_populate_from_bound_context():
+    """Integration-ish check: when set_context has bound a RequestContext,
+    ``utils/http._build_headers`` populates X-Maxim-Agent-Id on internal
+    endpoints. This is the operator-visible effect — peer trace correlation
+    across nodes.
+    """
+    from maxim.utils.http import (
+        HTTPEndpoint,
+        RequestContext,
+        _build_headers,
+        reset_context,
+        set_context,
+    )
+
+    internal_ep = HTTPEndpoint(
+        name="test-internal",
+        base_url="http://127.0.0.1:9999",
+        default_headers={},
+        internal=True,
+    )
+    external_ep = HTTPEndpoint(
+        name="test-external",
+        base_url="https://example.com",
+        default_headers={},
+        internal=False,
+    )
+
+    bound = RequestContext(
+        request_id="r-hdrs",
+        agent_id="npc-outbound",
+        session_id="sim-outbound",
+        lane="large",
+    )
+    token = set_context(bound)
+    try:
+        internal_headers = _build_headers(internal_ep, None, None)
+        external_headers = _build_headers(external_ep, None, None)
+    finally:
+        reset_context(token)
+
+    # Internal endpoint gets the agent_id + session_id
+    assert internal_headers.get("X-Maxim-Agent-Id") == "npc-outbound"
+    assert internal_headers.get("X-Maxim-Session-Id") == "sim-outbound"
+    assert internal_headers.get("X-Maxim-Request-Id") == "r-hdrs"
+    # External endpoint never sees X-Maxim-* (SSRF-style isolation)
+    assert "X-Maxim-Agent-Id" not in external_headers
+    assert "X-Maxim-Session-Id" not in external_headers

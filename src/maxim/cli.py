@@ -219,6 +219,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         from maxim.doctor import run_doctor_subcommand
 
         return run_doctor_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "bench":
+        # Plan 4 B: recovery-time (and future) benchmark harnesses.
+        # Entry point lives in maxim.bench.cli — no CUDA imports,
+        # no sim orchestrator, just a tight LLM call loop.
+        from maxim.bench import run_bench_subcommand
+
+        return run_bench_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "peer":
         # `peer connect/show/forget` go to the peer config module;
         # `peer test` is a diagnostic that lives with `doctor`.

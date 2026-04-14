@@ -1,15 +1,168 @@
 # LLM Path Refinement — Plan 4: Operator Visibility
 
-**Status:** Draft v3 — renumbered 2026-04-12 after Plan 2 (Typed Errors) split out of former Plan 1
-**Scope:** ~650 LOC new
-**Target version:** 0.4 (single stability version)
+**Status:** Draft v4 — 2026-04-14: split into three sequential stages after Phase D2 surfaced two concrete must-ship items (A+B) that close out the 0.4 stability story before the bigger mesh.yml / admin-API work (C).
+**Scope:** ~750 LOC new (A: ~150, B: ~550, C: ~650 as originally scoped — ships across 2-3 sessions)
+**Target version:** A+B in 0.4. C spans 0.4/0.5 depending on session cadence.
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md)
 **Depends on:**
 - [llm_path_fast_failover.md](llm_path_fast_failover.md) (Plan 3) — typed-exception router loop ✅ shipped
 - [llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md) (Plan 3.5) — "HTTP fires first" contract ✅ shipped
-- [llm_path_peer_failover.md](llm_path_peer_failover.md) (Plan 3.6) — multi-leader `peer.yml` precursor (not strictly required but recommended; `mesh.yml` is the canonical successor)
+- [llm_path_peer_failover.md](llm_path_peer_failover.md) (Plan 3.6) — VRAM spillover detection + multi-leader precursor ✅ shipped
 **Note:** renamed from "Reactive Mesh" in v1. Multi-peer dispatch moved to [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md). Capability-aware ranking is [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md).
 **Bake-in target (2026-04-13):** the user's RTX 5080 + RTX 3070 setup is the concrete two-node deployment for testing `mesh.yml`'s schema validation, drain/resume, per-node admin endpoints, and per-agent rate limiting. Plan 3.6 unblocks failover testing without waiting for the full Plan 4 admin API.
+
+---
+
+## Shipping stages (2026-04-14)
+
+Plan 4 is split into three sequential stages so each ships cleanly in
+its own session with its own pre-merge review. **Stage A+B are
+Phase-D-surfaced must-ships**; Stage C is the original platform-grade
+operator-visibility scope that needs a dedicated multi-session effort.
+
+### Stage A — agent_id observability fix ✅ SHIPPED (2026-04-14)
+
+Fixes the Phase D report's "agent_id=null in peer_backend_call events"
+gap via three complementary changes:
+
+1. **Router capability-flag forwarding.** `LLMRouter._invoke_backend`
+   now forwards `request_context` through `kwargs` for backends that
+   declare `accepts_request_context = True`. Matches the existing
+   `supports_model_override`/`supports_tool_use`/`supports_streaming`
+   capability-flag pattern. Only `_MaximPeerBackend` sets this flag;
+   cloud backends are unchanged (no `**kwargs` catch-all →
+   `TypeError` if unconditionally forwarded).
+2. **Boundary contextvar binding.**
+   `LLMWorker._call_llm_with_timeout` calls
+   `maxim.utils.http.set_context(normalized)` next to the existing
+   `set_cancel_event` binding, BEFORE `contextvars.copy_context()`
+   snapshots the context into the worker thread. Resets in `finally`.
+   This populates `X-Maxim-Agent-Id` / `X-Maxim-Session-Id` /
+   `X-Maxim-Request-Id` on all outbound internal HTTP calls
+   automatically — the previously-dead path that `utils/http.py`
+   was wired for but nobody called.
+3. **Contextvar fallback in the shim.**
+   `_normalize_request_context(None)` now reads `current_context()`
+   before manufacturing a fresh empty RequestContext. Defense in
+   depth for paths that bypass the kwarg threading.
+
+**Regression guards (11 new tests):**
+- `TestRequestContext::test_contextvar_fallback_populates_context_when_dict_is_none`
+- `TestRequestContext::test_explicit_dict_still_wins_over_contextvar`
+- `TestRequestContext::test_accepts_request_context_capability_flag_is_declared`
+- `TestRequestContextForwarding` in `test_router_typed_exceptions.py` — 3 tests
+- `test_set_context_binding_propagates_into_worker_thread`
+- `test_set_context_binding_is_reset_between_sequential_calls`
+- `test_outbound_headers_populate_from_bound_context`
+
+**Load-bearing invariants locked in:**
+- The `accepts_request_context` capability flag on `_MaximPeerBackend`
+  is load-bearing. Removing it silently drops `agent_id` from
+  `peer_backend_call` logs.
+- The `set_context` binding in `_call_llm_with_timeout` must live
+  BEFORE `copy_context()` so the worker thread inherits it. Moving
+  it below breaks contextvar propagation across the ThreadPoolExecutor
+  boundary (same mechanism as cancellation).
+- `reset_context(context_token)` in `finally` is mandatory — without
+  it, sequential calls leak the first call's `agent_id` into later
+  calls' outbound HTTP headers.
+
+**Out of scope (deferred):** `session_id` plumbing from
+`SimulationOrchestrator` through `MaximAgent` → `LLMWorker`. The orchestrator
+generates a session_id but doesn't thread it into the dict that
+llm_worker builds. Fix is architectural (add a session field to the
+agent-facing interface) and belongs in its own small PR.
+
+### Stage B — recovery-time benchmark harness ✅ SHIPPED (2026-04-14)
+
+New `maxim bench recovery-time` CLI subcommand that fires chat
+completions in a tight loop against the peer URL, records per-call
+timing + outcome, and extracts a rigorous recovery-time number from
+the first `success → failure → success` transition.
+
+**Rationale:** the Phase D report (2026-04-13) flagged the
+leader-ready-to-first-success recovery gate as "inconclusive under sim
+workload" because the orchestrator does 30+s of local agent work
+between LLM calls. The observed 30.7s gap was sim cadence, not
+peer-side wedge state. A tight-loop bench eliminates the cadence
+artifact and gives a clean number.
+
+**Implementation:**
+- `src/maxim/bench/recovery_time.py` — `run_recovery_benchmark()`
+  pure function with a `backend_factory` test hook for offline unit
+  tests. Uses `_MaximPeerBackend` directly (no router, no
+  `_inference_lock` contention). Each attempt binds its own
+  `RequestContext` with `BENCH_AGENT_ID = "bench_recovery_time"`.
+- `src/maxim/bench/cli.py` — `run_bench_subcommand()` dispatch +
+  `_run_recovery_time()` argparse entry point. Emits JSONL events
+  matching production `peer_backend_call` / `peer_backend_failed`
+  shape so existing `jq 'select(.e=="peer_backend_call")'` queries
+  work unchanged on the bench output.
+- `src/maxim/cli.py::main` dispatches `maxim bench <subcommand>`.
+
+**Regression guards (21 new tests):**
+- `TestClassifyError` — 8 tests covering the typed exception mapping
+- `TestAnalyseRecovery` — 5 tests covering the recovery-window analysis
+  (simple recovery, no outage, did-not-recover, no-pre-outage-success,
+  first-failure-as-denominator)
+- `TestRunRecoveryBenchmark` — 5 tests (tight loop, recovery transition,
+  SIGINT stop, stable bench agent_id, contextvar cleanup)
+- `TestBenchCliOutput` — 3 tests (JSONL shape, unknown subcommand,
+  empty argv)
+
+**Real-hardware validation:** first Phase D2 run (2026-04-14) measured
+**58.68s recovery window** on a 16 GB RTX 5080 running Qwen-14B Q4_K_M
+vs 53s leader-self-reported restart duration. Peer-side overhead ≈ 0s
+beyond the leader's intrinsic reload time. All failures fast-failed
+within 3.1s (p99 = 614ms). Every one of the 750 JSONL events had
+`agent_id=bench_recovery_time` — Stage A validated end-to-end on real
+traffic.
+
+**Report:** [../experiments/results/llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md)
+**Rerun runbook:** [../experiments/protocols/bench_recovery_time_rerun.md](../experiments/protocols/bench_recovery_time_rerun.md)
+
+### Stage C — mesh.yml + admin API + per-agent rate limiting (DEFERRED to future sessions)
+
+This is the original Plan 4 scope (R3.0 + R3.5-lite + R3.6-lite, ~650
+LOC). Deferred to dedicated multi-session work because it requires:
+
+- ~250 LOC for `mesh.yml` config + schema validation + 11 new CLI verbs
+- ~100 LOC for `install` + VRAM precheck
+- ~300 LOC for admin API + per-agent rate limiting + ring buffer +
+  cluster key rotation
+- 6 new doc files (mesh_operations.md, mesh_debug.md, CLAUDE.md updates,
+  architecture updates)
+- 2-node integration test fixture + a hard-testing manual smoke
+  covering drain/resume/rotate-cluster-key
+
+Attempting C in a single session would guarantee a shallow
+implementation. It will ship as three sub-stages (C1 = R3.0, C2 =
+R3.5-lite, C3 = R3.6-lite) across dedicated sessions, each with its
+own pre-merge review round.
+
+The **full scope for C is defined in the "Phases" section below**
+(unchanged from v3 of this doc). Read the existing R3.0 / R3.5-lite /
+R3.6-lite sections for the concrete deliverables, load-bearing
+invariants, logging requirements, success criteria, and hard-testing
+gate. Nothing in those sections is obsolete post Plans 2/3/3.5/3.6 —
+the typed exception hierarchy, the `_MaximPeerBackend` contract, the
+"HTTP fires first" cancellation pattern, and the Plan 3.6 R5 VRAM
+spillover detection all compose cleanly with the Stage C admin API.
+
+**Not obsolete after prior plans:** the per-agent rate limiting
+(`KeyedRateLimiter` from `runtime/rate_limit.py`) is still cherry-picked
+dormant code from Plan 1 R0 and is waiting for Stage C to light it up
+at the router entry point.
+
+**Still-open questions for Stage C kickoff:**
+- Should Stage C1 (`mesh.yml`) merge the existing `peer.yml` schema
+  instead of running alongside it? (Plan 3.6 R5 already added mesh.yml
+  as a later canonical successor per its plan doc.)
+- Does the dispatch-trace ring buffer need to be persistent (e.g.,
+  JSONL rotation) or is in-memory + jq-on-MAXIM_LOG_FILE enough for
+  post-mortem?
+
+---
 
 ## Goal
 

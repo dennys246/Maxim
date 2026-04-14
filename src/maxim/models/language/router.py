@@ -1156,6 +1156,17 @@ class LLMRouter:
                 kwargs["thinking"] = thinking
             if stream and getattr(backend, "supports_streaming", False):
                 kwargs["stream"] = True
+            # Plan 4 A.1: forward request_context to backends that accept
+            # it (capability flag, matches existing supports_* pattern).
+            # _MaximPeerBackend needs this to populate agent_id/session_id/
+            # request_id/lane fields on its peer_backend_call and
+            # peer_backend_failed structured log events — the Phase D
+            # report flagged these as agent_id=null because this kwarg
+            # was being dropped on the floor here. Cloud backends
+            # (_OpenAIBackend, _AnthropicBackend) do not declare this
+            # capability and continue to receive the same kwargs as before.
+            if request_context is not None and getattr(backend, "accepts_request_context", False):
+                kwargs["request_context"] = request_context
             resp = backend.complete_with_usage(**kwargs)
             if isinstance(resp, LLMResponse) and resp.content:
                 self._note_provider_success(
