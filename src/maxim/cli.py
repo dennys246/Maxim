@@ -243,6 +243,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "install",
             "deps",
             "list-nodes",
+            "list-drained",
             "--node",
         ):
             from maxim.peer import run_peer_connect_subcommand

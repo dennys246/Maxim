@@ -112,8 +112,9 @@ class TestListNodes:
         names = [n["name"] for n in doc["nodes"]]
         assert names == ["leader-desk", "mac-studio"]
         assert all("status" in n and "url" in n and "role" in n for n in doc["nodes"])
-        # No drained field in the C1 JSON schema — drain deferred to C2.
-        assert all("drained" not in n for n in doc["nodes"])
+        # Plan 4 C2: drained boolean field on every node report
+        assert all("drained" in n and n["drained"] is False for n in doc["nodes"])
+        assert doc["orphans"] == []
 
     def test_exit_code_nonzero_on_any_fail(self, mesh_home, monkeypatch, capsys):
         _install_fake_backend(monkeypatch, outcome="auth_rejected", detail="HTTP 401")
@@ -196,16 +197,264 @@ class TestNodeSubcommand:
         assert rc == 2
         assert "Missing verb" in capsys.readouterr().err
 
-    def test_drain_verb_removed_in_c1(self, mesh_home, capsys):
-        """Pre-merge review: drain/resume deferred to C2 with proper design."""
+    def test_drain_ships_in_c2(self, mesh_home, capsys):
+        """Plan 4 C2: drain verb now works against a known node."""
         rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
-        assert rc == 2
-        assert "Unknown --node verb" in capsys.readouterr().err
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Drained 'mac-studio'" in out
+        # Verify persistence
+        from maxim.peer.drain_state import read_drained_nodes
 
-    def test_resume_verb_removed_in_c1(self, mesh_home, capsys):
+        result = read_drained_nodes({"leader-desk", "mac-studio"})
+        assert "mac-studio" in result.drained
+
+    def test_resume_ships_in_c2(self, mesh_home, capsys):
+        """Plan 4 C2: resume verb removes the drain entry."""
+        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        assert rc == 0
+        capsys.readouterr()
         rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "resume"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Resumed 'mac-studio'" in out
+        from maxim.peer.drain_state import read_drained_nodes
+
+        result = read_drained_nodes({"leader-desk", "mac-studio"})
+        assert result.drained == frozenset()
+
+
+class TestDrainResumeExitCodes:
+    """Plan 4 C2: exit code contract from review finding E9."""
+
+    def test_drain_unknown_node_exit_2(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(["--node", "ghost", "drain"])
+        err = capsys.readouterr().err
         assert rc == 2
-        assert "Unknown --node verb" in capsys.readouterr().err
+        assert "Unknown node" in err
+
+    def test_drain_idempotent_exit_0(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        assert rc == 0
+        capsys.readouterr()
+        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "already drained" in out
+
+    def test_resume_idempotent_exit_0(self, mesh_home, capsys):
+        """Resume on a not-drained node should succeed silently."""
+        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "resume"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "was not drained" in out
+
+    def test_drain_self_rejected_without_force(self, mesh_home, capsys):
+        """Draining yourself strands in-flight requests. Require
+        --force-self to opt in."""
+        rc = mesh_cli.run_node_subcommand(["--node", "leader-desk", "drain"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Refusing to drain self" in err
+        assert "--force-self" in err
+
+    def test_drain_self_with_force_succeeds(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(["--node", "leader-desk", "drain", "--force-self"])
+        assert rc == 0
+        assert "Drained" in capsys.readouterr().out
+
+
+class TestListDrained:
+    def test_empty_state(self, mesh_home, capsys):
+        rc = mesh_cli.run_list_drained([])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "No nodes drained" in out
+
+    def test_with_drains(self, mesh_home, capsys):
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+        rc = mesh_cli.run_list_drained([])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "mac-studio" in out
+
+    def test_orphan_surfaces_with_hint(self, mesh_home, capsys, tmp_path):
+        """Orphan drain entries (drained name no longer in mesh.yml)
+        surface as a warning without blocking the command."""
+        # Drain a node that exists
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+
+        # Rewrite mesh.yml to remove mac-studio
+        mesh_path = tmp_path / "config" / "maxim" / "mesh.yml"
+        mesh_path.write_text(
+            "cluster_key: sk-cluster-abc\n"
+            "self: leader-desk\n"
+            "protocol_version: 1\n"
+            "nodes:\n"
+            "  - name: leader-desk\n"
+            "    url: http://192.168.1.10:8099/v1\n"
+            "    role: leader\n"
+        )
+
+        rc = mesh_cli.run_list_drained([])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Orphan drain entries" in out
+        assert "mac-studio" in out
+        assert "resume" in out
+
+
+class TestListNodesDrainDisplay:
+    def test_drained_node_shown_with_symbol(self, mesh_home, monkeypatch, capsys):
+        _install_fake_backend(monkeypatch, outcome="ok")
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+        rc = mesh_cli.run_list_nodes([])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "⊝" in out  # drained symbol
+        assert "drained (not probed)" in out
+        assert "drained" in out  # header count marker
+
+    def test_drained_node_not_probed(self, mesh_home, monkeypatch, capsys):
+        """Regression guard: drained nodes MUST NOT make a network
+        call. If the fake backend IS called for the drained node, the
+        call counter fires."""
+        call_count = {"n": 0}
+
+        class _CountingBackend:
+            @classmethod
+            def for_url(cls, url, *, api_key=None, model=None):
+                call_count["n"] += 1
+                return cls()
+
+            def health_check(self, *, enable_stage2=True):
+                return _FakeProbeResult("ok", "HTTP 200", 5.0)
+
+        import maxim.models.language.maxim_peer_backend as mpb
+
+        monkeypatch.setattr(mpb, "_MaximPeerBackend", _CountingBackend)
+
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+        mesh_cli.run_list_nodes([])
+        # Only leader-desk should have been probed; mac-studio is drained
+        assert call_count["n"] == 1
+
+    def test_drained_node_status_subcommand(self, mesh_home, monkeypatch, capsys):
+        """`--node X status` for a drained node shows info, no probe."""
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "status"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "drained" in out.lower()
+
+    def test_json_includes_drained_flag(self, mesh_home, monkeypatch, capsys):
+        import json as _json
+
+        _install_fake_backend(monkeypatch, outcome="ok")
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+        mesh_cli.run_list_nodes(["--json"])
+        out = capsys.readouterr().out
+        doc = _json.loads(out)
+        drained_node = next(n for n in doc["nodes"] if n["name"] == "mac-studio")
+        assert drained_node["drained"] is True
+        assert drained_node["status"] == "info"
+        leader = next(n for n in doc["nodes"] if n["name"] == "leader-desk")
+        assert leader["drained"] is False
+
+    def test_json_orphans_field(self, mesh_home, monkeypatch, capsys, tmp_path):
+        """Orphan drain entries appear in the top-level JSON 'orphans' field."""
+        import json as _json
+
+        _install_fake_backend(monkeypatch, outcome="ok")
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+
+        # Remove mac-studio from mesh.yml
+        mesh_path = tmp_path / "config" / "maxim" / "mesh.yml"
+        mesh_path.write_text(
+            "cluster_key: sk-cluster-abc\n"
+            "self: leader-desk\n"
+            "protocol_version: 1\n"
+            "nodes:\n"
+            "  - name: leader-desk\n"
+            "    url: http://192.168.1.10:8099/v1\n"
+            "    role: leader\n"
+        )
+
+        mesh_cli.run_list_nodes(["--json"])
+        out = capsys.readouterr().out
+        doc = _json.loads(out)
+        assert doc["orphans"] == ["mac-studio"]
+
+
+class TestRoleDetectionGuard:
+    """J1 fold (C2 pre-merge review): cli.py::main already calls
+    detect_and_apply_role once before dispatching to the peer
+    subcommand. Calling it a second time would re-emit role_detected
+    with role_source=env_var (confusing) and re-fire role_divergence
+    WARNINGs. The guard in run_peer_connect_subcommand skips the
+    second call when MAXIM_ROLE is already set.
+    """
+
+    def test_second_call_skipped_when_maxim_role_already_set(self, mesh_home, monkeypatch):
+        """Simulate the normal flow: cli.py::main ran and set
+        MAXIM_ROLE. Dispatch to run_peer_connect_subcommand should
+        NOT invoke detect_and_apply_role a second time."""
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+
+        call_count = {"n": 0}
+
+        def _spy(argv):
+            call_count["n"] += 1
+
+        import maxim.runtime.role as role_mod
+
+        monkeypatch.setattr(role_mod, "detect_and_apply_role", _spy)
+
+        from maxim.peer.cli import run_peer_connect_subcommand
+
+        # `show` is a cheap verb that doesn't touch drain state; we
+        # just care that the dispatcher runs without re-triggering
+        # role detection.
+        run_peer_connect_subcommand(["show"])
+
+        assert call_count["n"] == 0, (
+            "detect_and_apply_role must not be called a second time "
+            "when MAXIM_ROLE is already set — cli.py::main ran it "
+            "once upstream."
+        )
+
+    def test_detection_runs_when_maxim_role_unset(self, mesh_home, monkeypatch):
+        """Defensive path: a caller that skips cli.py::main (direct
+        import of run_peer_connect_subcommand from a test or script)
+        and doesn't set MAXIM_ROLE should still get role detection."""
+        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+
+        call_count = {"n": 0}
+
+        def _spy(argv):
+            call_count["n"] += 1
+            import os
+
+            os.environ["MAXIM_ROLE"] = "leader"
+
+        import maxim.runtime.role as role_mod
+
+        monkeypatch.setattr(role_mod, "detect_and_apply_role", _spy)
+
+        from maxim.peer.cli import run_peer_connect_subcommand
+
+        run_peer_connect_subcommand(["show"])
+
+        assert call_count["n"] == 1, (
+            "detect_and_apply_role must run once when MAXIM_ROLE is unset — covers the direct-import defensive path."
+        )
 
 
 class TestImportErrorFallback:

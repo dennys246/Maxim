@@ -160,7 +160,7 @@ class TestEnsureAvailable:
         """
         from contextlib import contextmanager
 
-        from maxim.utils.filelock import LockContended
+        from maxim.utils.process_lock import LockContended
 
         @contextmanager
         def _always_contended(*_args, **_kwargs):
@@ -171,7 +171,7 @@ class TestEnsureAvailable:
             patch("maxim.runtime.llm_server.profile_has_local_file", return_value=False),
             patch("maxim.utils.storage.can_download", return_value=(True, "ok")),
             patch.object(dl_mod, "download_llm") as mock_dl,
-            patch("maxim.utils.filelock.file_lock", _always_contended),
+            patch("maxim.utils.process_lock.file_lock", _always_contended),
         ):
             ok = dl_mod.ensure_available("mistral-7b-instruct-v0.2", auto=True)
             assert ok is False

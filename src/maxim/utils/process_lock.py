@@ -1,5 +1,14 @@
 """Minimal cross-platform advisory file lock.
 
+**Renamed from ``maxim.utils.filelock`` in Plan 4 C2** (2026-04-14) to
+avoid a name collision with the third-party ``filelock`` package that
+Plan 4 C2 added as a core dep (``filelock>=3.0,<4.0``, imported as
+``from filelock import FileLock``). Two locking abstractions with the
+same basename was a footgun — this module is now ``process_lock`` to
+make the distinction clear. The unification of both locking APIs into
+one in-house wrapper is tracked in
+``docs/plans/cross_platform_file_lock.md``.
+
 Used by the model-download path (and any future code that needs to
 serialize file access across concurrent Maxim invocations) to avoid
 two processes racing on the same target — e.g., two ``maxim --sim``

@@ -125,10 +125,21 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 | `maxim peer test <url>` | Verify peer connectivity to a leader URL |
 | `maxim peer install <extras>` | Install optional extras on leader (e.g., `semantic`, `llm-torch`). Accepts comma-separated extras or raw pip package names. |
 | `maxim peer deps` | Show installed packages and extras status on the leader |
-| `maxim peer list-nodes [--json]` | List mesh nodes + live status. Reads `~/.config/maxim/mesh.yml`; falls back to `peer.yml` as a synthesized one-node mesh. Probes each node via `_MaximPeerBackend.health_check()` and reports reachable / auth rejected / chat broken / network down with operator-readable fix hints. `--json` matches the `maxim doctor --json` schema for tooling. (Plan 4 Stage C1) |
-| `maxim peer --node <name> status` | Probe a single mesh node and print its live status + latency. Alias: `health`. |
+| `maxim peer list-nodes [--json]` | List mesh nodes + live status. Reads `~/.config/maxim/mesh.yml`; falls back to `peer.yml` as a synthesized one-node mesh. Probes each node via `_MaximPeerBackend.health_check()` and reports reachable / auth rejected / chat broken / network down with operator-readable fix hints. Drained nodes render inline with the `⊝` symbol and skip the network probe. `--json` matches the `maxim doctor --json` schema and adds a `drained` boolean per node + top-level `orphans` array. (Plan 4 Stage C1 + C2) |
+| `maxim peer list-drained` | Print the current drain set from `~/.maxim/util/drained_nodes.{role}.txt`. Reports active drains (name matches `mesh.yml::nodes`) and orphan drain entries (stale names from a mesh.yml edit) separately so orphans can be cleaned up with `resume`. (Plan 4 Stage C2) |
+| `maxim peer --node <name> status` | Probe a single mesh node and print its live status + latency. Alias: `health`. Drained nodes report `drained (not probed)` without making a network call. |
+| `maxim peer --node <name> drain [--force-self]` | Add `<name>` to the role-scoped drain set. Drain state persists at `~/.maxim/util/drained_nodes.{role}.txt` under a `filelock.FileLock` so concurrent drain calls don't race. Idempotent: draining an already-drained node returns exit 0 with an informational message. Unknown node names return exit 2 with the known-node list. Draining `mesh.yml::self` requires `--force-self` — it strands in-flight requests and is almost always a mistake. (Plan 4 Stage C2) |
+| `maxim peer --node <name> resume` | Remove `<name>` from the drain set. Idempotent: resuming a not-drained node returns exit 0 with an informational message. Unknown node names return exit 2. |
 
-**Deferred to Plan 4 Stage C2:** `--node drain` / `--node resume`, `--node install`, `--node refresh`, `add-node`, `remove-node`. Drain state ships with C2 after a proper reconciliation-contract design pass (C1 pre-merge review flagged the original two-layer design as under-specified).
+**Deferred to Plan 4 Stage C3:** `--node install` + VRAM precheck, `--node refresh`, `add-node`, `remove-node`, `init-mesh` (one-shot converter that synthesizes `mesh.yml` from `peer.yml` so drain/resume work on peer.yml-only installs), `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation. Until `init-mesh` ships, `peer.yml`-only installs that try to drain will get an error pointing at `~/.config/maxim/mesh.yml` — create it manually (see "Mesh config" below).
+
+### Drain state layer
+
+Drain state is deliberately separated from `mesh.yml` as a runtime-mutable file at `~/.maxim/util/drained_nodes.{role}.txt` (role from `MAXIM_ROLE`, Plan 2 R2a). This matches the Kubernetes "spec vs status" split: `mesh.yml` holds operator-committed topology (nodes + cluster key), while `~/.maxim/util/` holds transient operational state the CLI mutates directly. Editing by hand is supported but the CLI verbs are safer (they validate against `mesh.yml::nodes` at write time, preventing typos from silently draining nothing).
+
+**Cross-platform concurrency:** the drain file is protected by a `filelock.FileLock` on a sibling `.lock` file. Two parallel `drain` or `resume` calls from an automation script will serialize correctly on POSIX (via `fcntl`) and Windows (via `msvcrt`). Drain operations fail loudly if the 10-second lock timeout elapses — run `lsof drained_nodes.leader.txt.lock` to find the holder if this happens.
+
+**Permission preservation:** drain state itself isn't secret, but writes use `atomic_write_text(preserve_mode=True)` so any pre-existing mode bits (e.g., `0600` if an operator locked the file down) survive rewrites. The same `preserve_mode` flag will be used for C3 credential-bearing files.
 
 ### Mesh config (`mesh.yml`)
 

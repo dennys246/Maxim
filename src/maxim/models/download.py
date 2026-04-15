@@ -459,7 +459,7 @@ def ensure_available(
     import sys
 
     from maxim.runtime.llm_server import profile_has_local_file
-    from maxim.utils.filelock import LockContended, file_lock
+    from maxim.utils.process_lock import LockContended, file_lock
     from maxim.utils.paths import data_home
     from maxim.utils.storage import can_download, format_report, report_storage
 

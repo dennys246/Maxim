@@ -2010,6 +2010,7 @@ def check_mesh_nodes() -> list[CheckResult]:
     string through the classifier rather than post-processing the
     returned message.
     """
+    from maxim.peer.drain_state import read_drained_nodes
     from maxim.peer.mesh_config import MeshConfigError, read_or_synthesize_mesh_config
 
     try:
@@ -2026,7 +2027,52 @@ def check_mesh_nodes() -> list[CheckResult]:
     if mesh is None:
         return []
 
-    return [_probe_mesh_node_to_check(node, mesh.cluster_key) for node in mesh.nodes]
+    # Plan 4 C2: drained nodes render as info (not probed) and orphan
+    # drain entries (drain state names that no longer match any
+    # mesh.yml node) surface as a warn with a resume hint — operator
+    # may be mid-edit, so this is not a hard fail.
+    known_names = {n.name for n in mesh.nodes}
+    drain_result = read_drained_nodes(known_names)
+
+    results: list[CheckResult] = []
+    for node in mesh.nodes:
+        if node.name in drain_result.active:
+            results.append(_drained_mesh_node_check(node))
+        else:
+            results.append(_probe_mesh_node_to_check(node, mesh.cluster_key))
+
+    for orphan in sorted(drain_result.orphans):
+        results.append(
+            CheckResult(
+                name=f"Drain orphan {orphan}",
+                status="warn",
+                message=(
+                    f"drain state entry {orphan!r} has no matching node in mesh.yml "
+                    "— operator mid-edit, or a stale entry"
+                ),
+                fix=(
+                    f"Run `maxim peer --node {orphan} resume` to clean up the drain\n"
+                    f"state, or re-add {orphan!r} to mesh.yml::nodes."
+                ),
+                retry_id=f"mesh_drain_orphan_{orphan}",
+            )
+        )
+    return results
+
+
+def _drained_mesh_node_check(node: "MeshNode") -> CheckResult:  # noqa: F821
+    """Render a drained node as an ``info`` CheckResult without
+    probing. Plan 4 C2: drain is operator-intentional, not a failure
+    signal, and doctor MUST NOT make a network call for drained
+    nodes — regression-guarded in ``test_doctor.py``.
+    """
+    return CheckResult(
+        name=f"Node {node.name}",
+        status="info",
+        message=f"drained (not probed) — {node.role}, {node.url}",
+        fix=None,
+        retry_id=None,
+    )
 
 
 def _probe_mesh_node_to_check(node: "MeshNode", cluster_key: str) -> CheckResult:  # noqa: F821

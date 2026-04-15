@@ -59,7 +59,43 @@ Options:
 
 
 def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
-    """Dispatch peer config subcommands: connect / show / forget."""
+    """Dispatch peer config subcommands: connect / show / forget.
+
+    **Plan 4 C2:** Role detection runs at the top of this function
+    via :func:`maxim.runtime.role.detect_and_apply_role` so that drain
+    / resume verbs (and any other verb that resolves a role-scoped
+    ``~/.maxim/util/*.{role}.txt`` path) see the correct
+    ``MAXIM_ROLE`` env var.
+
+    **J1 guard (C2 pre-merge review):** ``cli.py::main`` already calls
+    ``detect_and_apply_role(raw_argv)`` once before dispatching to the
+    peer subcommand. Calling it a second time here would:
+
+    - Re-emit ``role_detected`` with ``role_source=env_var`` instead
+      of the original ``default`` / ``peer_yml`` / ``mesh_yml`` —
+      confusing log noise for operators.
+    - Re-fire ``role_divergence`` WARNING if leader_mode disagrees.
+    - Re-run ``migrate_persisted_model_file`` (idempotent but wasted).
+
+    So we guard on ``MAXIM_ROLE`` already being set. If it's present,
+    we know the full detection pipeline ran upstream in ``main`` and
+    skip the duplicate call. If it's absent (shouldn't happen post-C2
+    on the normal entry path, but this is defensive — e.g. a direct
+    import of ``run_peer_connect_subcommand`` from a test or script),
+    we run the full detection so drain state paths resolve correctly.
+    """
+    import os as _os
+
+    if not _os.environ.get("MAXIM_ROLE"):
+        try:
+            from maxim.runtime.role import detect_and_apply_role
+
+            detect_and_apply_role(list(argv))
+        except Exception as e:  # pragma: no cover - defensive
+            import logging as _logging
+
+            _logging.getLogger(__name__).debug("role detection skipped: %s", e)
+
     if not argv or argv[0] in ("-h", "--help"):
         _print_peer_usage()
         return 0 if argv else 2
@@ -90,6 +126,10 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         from maxim.peer.mesh_cli import run_list_nodes
 
         return run_list_nodes(list(argv[1:]))
+    if action == "list-drained":
+        from maxim.peer.mesh_cli import run_list_drained
+
+        return run_list_drained(list(argv[1:]))
     if action == "--node":
         from maxim.peer.mesh_cli import run_node_subcommand
 
@@ -122,8 +162,9 @@ def _print_peer_usage() -> None:
     print("  logs [url]       Tail live logs from leader (-f to follow)")
     print("  install <extras> Install optional extras on leader (e.g., semantic,llm-torch)")
     print("  deps [url]       Show installed packages on leader")
-    print("  list-nodes       List mesh nodes + live status (Plan 4 C1, needs mesh.yml)")
-    print("  --node <n> <v>   Per-node verbs: status|health (drain/resume defer to C2)")
+    print("  list-nodes       List mesh nodes + live status (Plan 4 C1)")
+    print("  list-drained     List currently drained mesh nodes (Plan 4 C2)")
+    print("  --node <n> <v>   Per-node verbs: status|health|drain|resume")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────

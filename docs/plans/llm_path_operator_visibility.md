@@ -136,7 +136,7 @@ traffic.
 **Report:** [../experiments/results/llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md)
 **Rerun runbook:** [../experiments/protocols/bench_recovery_time_rerun.md](../experiments/protocols/bench_recovery_time_rerun.md)
 
-### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2/C3 DEFERRED)
+### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2 ✅ SHIPPED, C3 DEFERRED)
 
 **Stage C1 — mesh.yml + CLI verb foundations — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c1-mesh-yml`). Delivered as a read-only-verbs slice of the original Stage C after pre-merge review folded drain state + `drain:` schema field to C2:
 
@@ -154,12 +154,33 @@ Live smoke (RTX 5080 leader via Cloudflare tunnel) validated list-nodes, `--json
 
 **Deferred to C2 as a block** (pre-merge review cross-confirmed finding): drain/resume verbs, `mesh.yml::drain` schema field, runtime drain state file. The original C1 design had a two-layer config-vs-runtime drain with no reconciliation contract, no role-detection timing story for the `MAXIM_ROLE` env var, a read/write race, and no orphan validation. Four findings collapse into one deferral until C2 does a proper drain design pass.
 
-**C2/C3 — DEFERRED to future sessions.** The original Plan 4 scope (R3.0 + R3.5-lite + R3.6-lite, ~650 LOC). Remaining work split:
+**Stage C2 — drain/resume with runtime state layer — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c2-drain`). The pre-design review round surfaced 3 critical findings that killed the original Option A1 proposal (config-only drain with TOML migration): `tomllib` isn't available on Python 3.10, concurrent drain RMW race was unsolved, and config-only drain constrains C3's admin API into a dead end. Pivoted to **Option B (runtime state layer)** which resolves all 4 CC2 findings explicitly without forcing a format migration or deleting the FROZEN parser invariant. Delivered:
 
-- ~250 LOC for `mesh.yml` config + schema validation + 3 new CLI verbs (**shipped in C1**: `list-nodes`, `--node {status|health}`)
-- ~150 LOC for `install` + VRAM precheck + drain design (**C2**: `--node drain|resume`, `mesh.yml::drain` field with reconciliation contract, `--node install`, `--node refresh`, `add-node`, `remove-node`)
+- `src/maxim/peer/drain_state.py` (NEW) — role-scoped drain state at `~/.maxim/util/drained_nodes.{role}.txt`, `filelock.FileLock` serialized RMW cycle, `DrainError` with known-node list for orphan validation, `DrainReadResult` dataclass with active/orphans partition
+- `src/maxim/peer/mesh_cli.py` — new verbs `drain` / `resume` / `list-drained`, drain display in `list-nodes` table + JSON (⊝ symbol, `drained` boolean, top-level `orphans` array), self-drain guard with `--force-self` override
+- `src/maxim/peer/cli.py` — `detect_and_apply_role(argv)` call at the top of `run_peer_connect_subcommand` so drain state path resolution sees the correct `MAXIM_ROLE` on peer subcommand dispatch (fix for CC2 finding #1)
+- `src/maxim/doctor/checks.py::check_mesh_nodes` — drained nodes render as `info` without probing, orphan drain entries surface as `warn` `Drain orphan <name>` CheckResults with resume hints, regression-guarded via counting backend that asserts `call_count == 1` for a 2-node mesh with one drained
+- `src/maxim/utils/atomic_io.py` — new `preserve_mode: bool = False` kwarg preserves pre-existing mode bits across rewrites via `os.stat` + `os.chmod`. Fix for pre-design review finding E3 (silent secret leak when a 0600 file gets widened to umask 0644). Drain state writes opt in; future C3 credential-bearing files inherit the flag.
+- `pyproject.toml` — `filelock>=3.0,<4.0` added as core dep. Already present transitively via `huggingface_hub` / `torch` on most installs; explicit here so headless peers without either optional extra still get it. POSIX `fcntl` + Windows `msvcrt` wrapped under one API.
+- 50+ new unit tests (13 atomic_io `preserve_mode` + 22 drain_state incl. `multiprocessing.Pool(4)` RMW race + 13 mesh_cli drain verb/exit-code/display + 3 doctor drain handling)
+
+**Three-lens pre-design review** (Architecture + Execution + Blast Radius, all run in parallel before any C2 code) caught 31 findings across the original proposal, including 4 criticals that forced the Option A1 → B pivot. See [feedback_cross_confirmed_review_findings.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_cross_confirmed_review_findings.md) for the pattern; the C2 session validates it a fifth time (Plan 3 R3, Plan 3.6 R5, Plan 4 A+B, Plan 4 C1 rounds 1+2, Plan 4 C2 design phase).
+
+**Four CC2 findings from C1 pre-merge review each fixed explicitly** (with a regression test):
+
+| CC2 Finding | C2 Fix | Regression Guard |
+|---|---|---|
+| Role detection timing | `detect_and_apply_role(argv)` at top of `run_peer_connect_subcommand` | `TestRoleIsolation::test_leader_and_peer_have_distinct_files` |
+| Read/write race | `filelock.FileLock` on sibling `.lock` file around RMW | `TestConcurrency::test_ten_parallel_drains_all_land` (via `multiprocessing.Pool`) |
+| Orphan validation | `DrainReadResult.orphans` + orphan warn in `doctor` + `list-drained` footer | `TestOrphanValidation::test_orphans_surfaced_on_read` + doctor equivalent |
+| Permission preservation | `atomic_write_text(preserve_mode=True)` | `TestPreserveMode::test_preserves_0600_on_rewrite` + setuid bits guard |
+
+**Deferred to C3:** `--node install` + VRAM precheck, `--node refresh`, `add-node`, `remove-node`, `init-mesh` (one-shot converter that synthesizes `mesh.yml` from `peer.yml` so drain/resume work on peer.yml-only installs — currently those installs get an error pointing at the manual mesh.yml path), `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation. The `KeyedRateLimiter` dormant code from Plan 1 R0 lights up in C3.
+
+**C3 remaining scope.** The original Plan 4 scope (R3.6-lite, ~300 LOC):
+
 - ~300 LOC for admin API + per-agent rate limiting + ring buffer +
-  cluster key rotation (**C3**: `/v1/mesh/*` endpoints, per-agent rate limiting, request-trace ring buffer, cluster key rotation)
+  cluster key rotation (**C3**: `/v1/mesh/*` endpoints, per-agent rate limiting, request-trace ring buffer, cluster key rotation, `init-mesh` verb)
 - 6 new doc files (mesh_operations.md, mesh_debug.md, CLAUDE.md updates,
   architecture updates)
 - 2-node integration test fixture + a hard-testing manual smoke
