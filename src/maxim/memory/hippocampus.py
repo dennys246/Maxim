@@ -1329,37 +1329,59 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         """
         self._episode_detector.add_rule(rule)
 
-    def channel_membership_filter(
+    def episode_filter(
         self,
-        channel: str,
-        sender: str | None = None,
         *,
         membership_mode: Literal["any", "exclusive"] = "any",
+        **criteria: Any,
     ) -> Callable[[str], bool]:
-        """Convenience alias for ``EpisodeStore.episode_membership_filter``
-        with channel + optional sender criteria.
+        """Convenience forwarder for ``EpisodeStore.episode_membership_filter``.
 
-        Forwards directly to ``self._episode_store.episode_membership_filter(
-        channel=channel, sender_ids=sender, membership_mode=membership_mode)``
-        when ``sender`` is provided, or just ``channel=channel`` otherwise.
+        Builds a ``node_filter`` callable suitable for
+        ``Hippocampus.retrieve_on_cue(cue, node_filter=...)`` by
+        forwarding ``**criteria`` to the underlying store. The general
+        filter lives on ``EpisodeStore`` (Round 1 Arch important #3) —
+        that's where the inverted index is. This method exists for
+        ergonomics on Hippocampus call sites; it adds no logic of its
+        own.
 
-        The general filter lives on ``EpisodeStore`` (Round 1 Arch
-        important #3) — that's where the inverted index is. This
-        method exists for ergonomics on Hippocampus call sites; it
-        forwards without adding any logic of its own.
+        **Round 2 fold: replaces the earlier
+        ``channel_membership_filter(channel, sender)`` per-axis
+        alias** (Round 2 Arch important #1). The narrow alias would
+        have forced P4 cross-modal to add ``modality_membership_filter``,
+        P5 to add ``stress_membership_filter``, and so on — N
+        per-axis aliases each requiring sync with the underlying
+        signature. The general ``**criteria`` form takes any
+        combination of ``Episode`` field matchers and inherits future
+        axes for free.
 
-        Returns a ``node_filter`` callable suitable for
-        ``Hippocampus.retrieve_on_cue(cue, node_filter=...)``.
+        Examples::
+
+            # P3b: SMS channel only
+            h.episode_filter(channel="sms")
+
+            # P3b: SMS + alice as sender (sender_ids is a tuple — pass
+            # the single string to match via membership)
+            h.episode_filter(channel="sms", sender_ids="alice")
+
+            # P4 will use: vision modality only
+            h.episode_filter(modality="vision")
+
+            # Combinations
+            h.episode_filter(channel="sms", thread_id="t_123")
 
         ``membership_mode``:
         - ``"any"`` (default, Stage 1): node retained if it appears
           in ≥1 matching episode.
-        - ``"exclusive"`` (parameter shape committed for P4): node
-          retained ONLY if every episode containing it matches.
+        - ``"exclusive"`` (committed parameter shape, primary
+          consumer is P4 cross-modal): node retained ONLY if every
+          episode containing it matches all criteria.
+
+        Unknown criterion keys raise ``ValueError`` at filter build
+        time (Round 2 cross-confirmed critical). Collection-typed
+        criterion VALUES raise ``TypeError`` (subset semantics are
+        deferred to a future plan).
         """
-        criteria: dict[str, Any] = {"channel": channel}
-        if sender is not None:
-            criteria["sender_ids"] = sender
         return self._episode_store.episode_membership_filter(
             membership_mode=membership_mode,
             **criteria,
@@ -1401,6 +1423,25 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # since we already hold self._episode_lock, the ordering is
         # deterministic: episode_lock → episode_store._lock →
         # binding_graph._lock.
+        #
+        # **Lock-inversion safety (P3b Round 2 self-found critical):**
+        # this ordering would deadlock against any caller that holds
+        # binding_graph._lock and then tries to acquire
+        # episode_store._lock. The most natural such caller is a
+        # node_filter callback passed to retrieve_on_cue —
+        # spreading_activation holds binding_graph._lock for the entire
+        # BFS and invokes node_filter while the lock is held. P3b's
+        # EpisodeStore.episode_membership_filter would have hit this
+        # exact inversion if it had been a lazy lookup. The fix lives
+        # on the FILTER side: episode_membership_filter snapshots the
+        # allowed-node set under episode_store._lock once at filter
+        # construction and returns a lock-free closure. Any future
+        # node_filter implementation that re-acquires
+        # episode_store._lock at call time MUST adopt the same
+        # snapshot pattern, OR this code MUST be reordered to acquire
+        # binding_graph._lock first. See
+        # tests/substrate/test_p3b_channel_integration.py
+        # ::TestConcurrency::test_filter_closure_holds_no_lock_after_construction.
         self._episode_store.add(episode)
 
         # Hebbian updates on the binding graph

@@ -1,6 +1,6 @@
 # Substrate P3b — Channel integration: boundary rules + filtered retrieval
 
-**Status:** Draft (2026-04-14, post-Round-1-review fold)
+**Status:** Stage 1 in progress (2026-04-14, post-Round-2-review fold)
 **Blocks:** P4 cross-modal mug test. **Stage 1 unblocks P4 seam consumption** (`retrieve_on_cue(node_filter=...)` + `EpisodeStore.episode_membership_filter`); **Stage 2 unblocks P4 baseline comparison work** (real-text fixture shape + 10-seed harness).
 **Scope:** ~250 LOC + ~100 metric extractor across 3 stages
 **Target version:** 0.3-target
@@ -40,12 +40,12 @@ Per-channel episode boundary rules produce episodes whose channel-filtered retri
 
 | Surface | Scope | Stage |
 |---|---|---|
-| `sms_gap_rule(max_gap)` | ~15 LOC | 1 |
-| `sms_sender_change_rule()` with cold-start guard | ~25 LOC | 1 |
+| `channel_gap_rule(channel, max_gap_ticks)` — generalized from earlier `sms_gap_rule` per Round 2 Arch important #2 | ~15 LOC | 1 |
+| `sender_change_rule()` (channel-agnostic) with cold-start guard — generalized from `sms_sender_change_rule` per Round 2 Arch important #2 | ~25 LOC | 1 |
 | `channel_specific_rule(channel, inner_rule)` wrapper — gates on `event.channel`, NOT `pending.channel` | ~20 LOC | 1 |
-| `EpisodeStore.episode_membership_filter(*, membership_mode="any", **criteria)` | ~60 LOC | 1 |
-| `Hippocampus.channel_membership_filter(...)` — thin convenience alias delegating to `EpisodeStore` | ~15 LOC | 1 |
-| Synthetic mechanism tests | ~280 LOC test file | 1 |
+| `EpisodeStore.episode_membership_filter(*, membership_mode="any", **criteria)` — snapshot-based, lock-free closure | ~85 LOC | 1 |
+| `Hippocampus.episode_filter(*, membership_mode="any", **criteria)` — thin general forwarder (replaces narrow `channel_membership_filter` per Round 2 Arch important #1) | ~10 LOC | 1 |
+| Synthetic mechanism tests | ~850 LOC test file | 1 |
 | `scenarios/substrate/channel_episodes.yaml` + generator | ~200 LOC generator + YAML | 2 |
 | Cue-aware metadata-grep baseline | ~80 LOC | 2 |
 | Full metric extractor (defers `metrics_common.py` extraction to P4) | ~50 LOC delta | 2 |
@@ -177,9 +177,9 @@ Per-channel episode boundary rules produce episodes whose channel-filtered retri
 
 Stage 1 + 2 + 3 together close P3b's contribution to 0.3-target. 0.3-target closes when P3a ✅ + P3b + P3.5 + P4 are all `Status: COMPLETE`.
 
-## Load-bearing invariants (post-Round-1-review fold)
+## Load-bearing invariants (post-Round-2-review fold)
 
-Surfaced by the plan-level Round 1 pre-merge review (Executor lens + Architecture lens) before any code landed. Code-level Round 2 review will refine / extend after Stage 1 ships.
+Surfaced by the plan-level Round 1 pre-merge review (Executor lens + Architecture lens) before any code landed AND the code-level Round 2 review (Executor lens + Architecture lens) on the Stage 1 implementation. Both rounds folded their critical + important findings into the plan and the code before this commit.
 
 **Rule factories and detector composition:**
 
@@ -198,9 +198,27 @@ Surfaced by the plan-level Round 1 pre-merge review (Executor lens + Architectur
 
 **Persistence and state:**
 
-- **Boundary rules are NOT persisted; callers MUST re-register them at construction time post-load** (Round 1 Exec important #3). `Hippocampus.load_state` restores the `_episode_store` (via P3.5 Stage 1 rebuild-from-episodes) but not `_episode_detector._rules`. Downstream code that adds P3b rules via `add_boundary_rule` must re-add them after each `load_state` call — or, cleaner, add them at `__init__` time via an explicit `boundary_rules` constructor kwarg (consider for Stage 2 if the gap bites in practice). Regression guard: `test_channel_rules_contract_re_registered_on_load`.
-- **Channel-membership filter closures are rebuilt on every call, not cached.** No cached membership maps; the filter is a fresh closure over `self._episode_store` each time. Load doesn't need special handling — the store round-trips via P3.5 Stage 1 and the filter closure re-resolves against the fresh store reference.
+- **Boundary rules are NOT persisted; callers MUST re-register them at construction time post-load** (Round 1 Exec important #3). `Hippocampus.load_state` restores the `_episode_store` (via P3.5 Stage 1 rebuild-from-episodes) but not `_episode_detector._rules`. Downstream code that adds P3b rules via `add_boundary_rule` must re-add them after each `load_state` call — or, cleaner, add them at `__init__` time via an explicit `boundary_rules` constructor kwarg (consider for Stage 2 if the gap bites in practice). Regression guard: `test_boundary_rules_NOT_persisted_post_load` (uses a baseline-snapshot of the default rule count rather than a hard-coded number, per Round 2 Arch minor #1).
 - **`is not None` for bio-system wire checks, never truthy.** Same regression guard pattern as P3a Stage 1.
+
+**Round 2 fold — load-bearing invariants:**
+
+- **`episode_membership_filter` is SNAPSHOT-BASED, not lazy** (Round 2 self-found critical + Exec critical, cross-confirmed). The filter walks `self._episodes` ONCE under `self._lock` at build time and produces a frozen set of allowed node ids. The returned closure is a lock-free `node_id in allowed_set` check. This is **load-bearing for thread safety**: `DependencyGraph.spreading_activation` holds the binding graph's lock for the entire BFS and invokes `node_filter` while it's held. A lazy filter that re-acquired `EpisodeStore._lock` per call would deadlock against `Hippocampus._close_pending_episode_locked` (which acquires store lock first via `store.add(episode)` then binding graph lock via `apply_hebbian_on_close`). Snapshot side effect: episodes added AFTER filter construction are NOT reflected — that's the right retrieval semantics (consistent point-in-time view, not mutation mid-traversal). Regression guards: `test_filter_closure_holds_no_lock_after_construction` (spawns a side thread holding `EpisodeStore._lock` and verifies the filter call returns in <0.5s) + `test_filter_snapshot_does_not_see_episodes_added_after_construction`.
+- **Unknown criterion field names raise `ValueError` at filter build time** (Round 2 cross-confirmed critical, Exec important #1 + Arch critical #1). Pre-fold: typos like `channnel="sms"` or unknown axes like `modality="vision"` (before P4 lands `Episode.modality`) silently returned empty filters because `getattr(episode, key, None)` + the None short-circuit conflated typos with missing fields. The consequence cited by Arch was sharp: "P4 cross-modal mug test would pass at 0% collapse with an empty filter and nobody would know why." Fix: enumerate `dataclasses.fields(Episode)` once at filter build and raise on unknown keys.
+- **Collection-typed criterion VALUES raise `TypeError`** (Round 2 Exec important #3). Pre-fold: passing `sender_ids=("alice", "bob")` (intent: "any of these senders") silently returned nothing because `tuple in tuple` checks element membership, not subset. Fix: type-check at filter build and raise. Subset / set-intersection semantics are explicitly deferred to a future plan.
+- **`field_value is None` is a legitimate scalar match, not a no-match short-circuit** (Round 2 Arch critical #2). Pre-fold: a filter `thread_id=None` (intent: "episodes with no thread") always returned False because the None check bailed before the equality check. Fix: split typo validation from None handling — once the typo check has passed, let `field_value != value` do the work, so `None == None` succeeds. Regression guard: `test_filter_matches_legitimate_none_scalar_field`.
+- **`exclusive` mode + zero containing episodes returns False** (Round 2 Exec important #2). Pinned semantic: a node with no containing episodes has "no evidence either way" and is excluded under `exclusive` mode. The vacuous-truth alternative ("every (zero) episode matches") was rejected as practically wrong. Regression guard: `test_exclusive_mode_zero_episodes_returns_false`.
+- **`exclusive` mode is exercised with a 2-criteria mug-shape test in Stage 1** (Round 2 Arch important #4). Uses `scn_tag` as a stand-in for the P4 `modality` field that doesn't exist yet, validating the `**criteria` cross-criteria pattern works under `exclusive` mode. Regression guard: `test_exclusive_mode_with_two_criteria_cross_mug_shape`.
+
+**Naming and shape (Round 2 Arch fold):**
+
+- **`Hippocampus.episode_filter(**criteria)` is the general forwarder** (Round 2 Arch important #1). Replaces the earlier `channel_membership_filter(channel, sender)` per-axis alias which would have forced P4 to add `modality_membership_filter`, P5 to add `stress_membership_filter`, etc. — N per-axis aliases each requiring sync with the underlying signature. The general `**criteria` form takes any combination of `Episode` field matchers and inherits future axes for free. Common-case ergonomics are preserved via plain kwargs: `h.episode_filter(channel="sms", sender_ids="alice")`.
+- **`channel_gap_rule(channel, max_gap_ticks)` and channel-agnostic `sender_change_rule()` replace the earlier `sms_gap_rule` / `sms_sender_change_rule`** (Round 2 Arch important #2). The earlier `sms_*` factories hard-coded the channel string three layers deep and would have spawned a per-channel rule zoo as P5/P6 added email / slack / voice channels. The renamed factories take the channel as a parameter (or omit it entirely for `sender_change_rule()`, leaving callers to compose with `channel_specific_rule` if they want gating).
+- **`channel_specific_rule` correctness is regression-guarded WITHOUT the default `channel_change_rule`** (Round 2 Arch minor #3). The earlier draft test ran with the full default rule set installed, which masked the difference between event-channel and pending-channel gating. The Round 2 fold adds `test_wrapper_correct_in_isolation_without_default_rules` that builds a detector with ONLY the wrapped rule and verifies it still gates correctly on `event.channel`.
+
+**Per-rule O(1) perf invariant (Round 2 Arch important #3, deferred to P5):**
+
+- **`EpisodeBoundaryDetector.should_close` evaluates every installed rule on every event.** A Slack event pays the SMS-rule cost. At Stage 1's 3-5 rules this is irrelevant; at P5's anticipated channel count (~8-10) it's still cheap. P8 sleep replay pumps O(episodes) events through the detector in a batch — that's where quadratic behavior would bite. **Rule authors:** keep boundary rules to O(1) work per event. P5 should consider a per-channel rule index if the rule list crosses ~8-10 entries. Documented in `EpisodeBoundaryDetector` class docstring.
 
 ## Review questions (Stage 3 reviewers — templates for Round 2 code review)
 
