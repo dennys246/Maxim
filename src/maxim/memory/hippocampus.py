@@ -1385,10 +1385,28 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 node_id for node_id, mod in self._node_modality.items() if mod == target_modality
             )
 
-        # Lock-free closure over the frozenset. Captures `allowed` by
-        # reference but `allowed` is immutable so there is no race.
+        # Lock-free closure over the frozenset. Captures ``allowed`` and
+        # ``cue_node_id`` by value; both are immutable strings/frozensets
+        # so there is no race.
+        #
+        # **Cue exemption is structural to cross-modal semantics, NOT a
+        # band-aid.** ``DependencyGraph.spreading_activation`` applies
+        # the node_filter to the source node first (bus.py line 1302).
+        # For P3b's ``episode_filter(channel="sms")`` this is correct:
+        # if the cue is not in any SMS episode, the user's query "find
+        # SMS neighbors of this cue" is vacuous. For P4 cross-modal the
+        # structural invariant is the OPPOSITE: the cue is in the
+        # opposite modality bucket from the target set BY DEFINITION,
+        # so without exempting the cue the source-filter check would
+        # reject every cross-modal cue and break the mechanism on every
+        # call. The cue is still excluded from the returned ranking by
+        # ``retrieve_on_cue``'s ``node != cue_node_id`` line, so the
+        # exemption only affects traversal seeding, not result
+        # composition. Same exemption is applied for the one-hop
+        # ``multi_hop=False`` branch — its filter runs on neighbors
+        # only, so the exemption is a no-op there.
         def _modality_filter(node_id: str) -> bool:
-            return node_id in allowed
+            return node_id == cue_node_id or node_id in allowed
 
         return self.retrieve_on_cue(
             cue_node_id,
