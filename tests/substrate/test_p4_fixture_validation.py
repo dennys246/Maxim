@@ -196,6 +196,40 @@ class TestFixtureV2BuildConfig:
         assert descriptor.build_text_ec_threshold == pytest.approx(0.60)
         assert descriptor.build_vision_ec_threshold == pytest.approx(1.01)
 
+    def test_thresholds_are_not_the_ec_default(self) -> None:
+        """Round 2 Exec-lens #9 tripwire: the EC default
+        ``pattern_complete_threshold`` is 0.40. Stage 2 v1 shipped the
+        fixture against an OVERRIDE of 0.60/1.01, and the ORIGINAL v1
+        run with default thresholds produced the "fake 1.000 recall"
+        bug caused by every prompt collapsing into one text node.
+        This test pins "the fixture must NOT use the EC default" as a
+        structural regression guard — if a future edit silently drops
+        either threshold to 0.40 (the EC default), the bug class
+        re-surfaces and this test fires.
+
+        The guard is stricter than just "not 0.40" — it asserts both
+        thresholds are at least 0.05 above the EC default so a
+        near-default value can't sneak through.
+        """
+        descriptor = load_fixture_descriptor()
+        assert descriptor.build_text_ec_threshold >= 0.45, (
+            f"build_text_ec_threshold {descriptor.build_text_ec_threshold:.3f} "
+            f"is at or near the EC default 0.40. Stage 2 v1's original sweep "
+            f"with default thresholds produced the tautological 'fake 1.000 "
+            f"recall' bug — every prompt collapsed into one text node. If "
+            f"you're re-calibrating, pick a value ≥0.45 or adjust this "
+            f"tripwire under a `change-fixture` commit."
+        )
+        assert descriptor.build_vision_ec_threshold >= 0.45, (
+            f"build_vision_ec_threshold {descriptor.build_vision_ec_threshold:.3f} "
+            f"is at or near the EC default 0.40. The CLIP within-class vs "
+            f"cross-class similarity distributions overlap on Flowers-102, "
+            f"so default-threshold vision EC produces silent class collapse. "
+            f"Current ship shape is 1.01 ('never collapse'). If you're "
+            f"re-calibrating, pick an honest value ≥0.45 or adjust this "
+            f"tripwire under a `change-fixture` commit."
+        )
+
 
 class TestFixtureRetrievalGate:
     """Stage 2 v2 fold — Arch #6. The plan's Stage 2 deliverable (5)

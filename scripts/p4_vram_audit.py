@@ -103,7 +103,12 @@ def _torch_allocated_reserved_mb() -> tuple[float, float, str]:
         allocated = torch.cuda.memory_allocated() / (1024**2)
         reserved = torch.cuda.memory_reserved() / (1024**2)
         return (allocated, reserved, "cuda")
-    if hasattr(torch, "mps") and torch.mps.is_available():
+    # Round 2 Exec-lens #7 fold: use the canonical
+    # torch.backends.mps.is_available() instead of the torch 2.x-only
+    # torch.mps.is_available() shortcut. The canonical path works on
+    # any torch version that has MPS support; the shortcut exists only
+    # on torch 2.0+ and is not documented as stable.
+    if hasattr(torch, "backends") and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         allocated = torch.mps.current_allocated_memory() / (1024**2)
         # MPS doesn't distinguish allocated vs reserved the same way.
         return (allocated, allocated, "mps")
@@ -220,11 +225,15 @@ def _write_report(out_md: Path, out_json: Path, samples: list[Sample], total_wal
     prev: Sample | None = None
     for s in samples:
         if prev is not None:
+            # Round 2 Exec-lens #6 fold: use explicit signed format
+            # ({:+.0f}) so negative deltas render as "-4 MB" instead of
+            # "+-4 MB" (happens when torch.cuda.empty_cache releases
+            # memory back to the driver).
             smi_delta = ""
             if s.smi_used_mb is not None and prev.smi_used_mb is not None:
-                smi_delta = f" (nvidia-smi: +{s.smi_used_mb - prev.smi_used_mb:.0f} MB)"
+                smi_delta = f" (nvidia-smi: {s.smi_used_mb - prev.smi_used_mb:+.0f} MB)"
             alloc_delta = s.allocated_mb - prev.allocated_mb
-            md_lines.append(f"- **{prev.label} → {s.label}**: torch alloc +{alloc_delta:.0f} MB{smi_delta}")
+            md_lines.append(f"- **{prev.label} → {s.label}**: torch alloc {alloc_delta:+.0f} MB{smi_delta}")
         prev = s
 
     # Headroom check — only meaningful on CUDA where nvidia-smi total is known.
@@ -310,6 +319,51 @@ def _write_report(out_md: Path, out_json: Path, samples: list[Sample], total_wal
     logger.info("wrote json %s", out_json)
 
 
+def _oom_exceptions() -> tuple[type[BaseException], ...]:
+    """Return the exception types that indicate a VRAM OOM condition,
+    degrading gracefully if torch isn't installed."""
+    excs: list[type[BaseException]] = [MemoryError, RuntimeError]
+    try:
+        import torch
+
+        if hasattr(torch.cuda, "OutOfMemoryError"):
+            excs.append(torch.cuda.OutOfMemoryError)  # type: ignore[attr-defined]
+    except ImportError:
+        pass
+    return tuple(excs)
+
+
+def _safe_step(
+    label: str,
+    action,
+    start: float,
+    samples: list[Sample],
+    extra: dict[str, Any] | None = None,
+):
+    """Run one audit step (load CLIP, load mpnet, run mug test, ...)
+    inside a try/except that captures OOM or other fatal errors as a
+    Sample with notes='OOM: …'. Returns the action's return value on
+    success, or None on failure. On failure the caller should break
+    out of the remaining steps but the partial samples list is still
+    written to the report — the whole point of the audit is to
+    measure "does the encoder stack fit?" and an OOM IS the answer.
+
+    Round 2 Arch-lens #7 fold: before this helper, the script crashed
+    on OOM and _write_report was never called, leaving operators with
+    zero data from the audit they specifically ran to detect OOM.
+    """
+    try:
+        result = action()
+        samples.append(_sample(label, start, extra=extra))
+        logger.info("%s: %s", label, samples[-1])
+        return result
+    except _oom_exceptions() as e:
+        notes = f"OOM: {type(e).__name__}: {str(e)[:200]}"
+        samples.append(_sample(label, start, notes=notes, extra=extra))
+        logger.error("%s FAILED with %s", label, notes)
+        return None
+
+
 def main() -> int:
     logger.info("P4 Stage 2 VRAM audit")
 
@@ -320,19 +374,50 @@ def main() -> int:
     logger.info("baseline: %s", samples[-1])
 
     logger.info("loading CLIP ViT-B-32...")
-    clip_enc = _load_clip()
-    samples.append(_sample("after_clip_load", start))
-    logger.info("after CLIP load: %s", samples[-1])
+    clip_enc = _safe_step("after_clip_load", _load_clip, start, samples)
+    if clip_enc is None:
+        logger.error("aborting audit — CLIP load failed; writing partial report")
+        total = time.monotonic() - start
+        repo_root = Path(__file__).resolve().parent.parent
+        out_md = repo_root / "docs" / "experiments" / "p4_vram_audit.md"
+        out_json = repo_root / "docs" / "experiments" / "results" / "p4_vram_audit.json"
+        _write_report(out_md, out_json, samples, total)
+        return 2
 
     logger.info("loading paraphrase-mpnet-base-v2...")
-    mpnet = _load_mpnet()
-    samples.append(_sample("after_mpnet_load", start))
-    logger.info("after mpnet load: %s", samples[-1])
+    mpnet = _safe_step("after_mpnet_load", _load_mpnet, start, samples)
+    if mpnet is None:
+        logger.error("aborting audit — mpnet load failed; writing partial report")
+        total = time.monotonic() - start
+        repo_root = Path(__file__).resolve().parent.parent
+        out_md = repo_root / "docs" / "experiments" / "p4_vram_audit.md"
+        out_json = repo_root / "docs" / "experiments" / "results" / "p4_vram_audit.json"
+        _write_report(out_md, out_json, samples, total)
+        return 2
 
     logger.info("running full mug test encoding...")
-    mug_stats = _run_mug_test_encoding(clip_enc, mpnet)
-    samples.append(_sample("after_mug_test_encode", start, extra=mug_stats))
-    logger.info("after mug test encode: %s", samples[-1])
+    mug_stats_holder: list[dict[str, Any]] = []
+
+    def _encode_action():
+        stats = _run_mug_test_encoding(clip_enc, mpnet)
+        mug_stats_holder.append(stats)
+        return stats
+
+    encoded = _safe_step(
+        "after_mug_test_encode",
+        _encode_action,
+        start,
+        samples,
+        extra=mug_stats_holder[0] if mug_stats_holder else None,
+    )
+    if encoded is None:
+        logger.error("mug test encoding OOM'd; writing partial report")
+        total = time.monotonic() - start
+        repo_root = Path(__file__).resolve().parent.parent
+        out_md = repo_root / "docs" / "experiments" / "p4_vram_audit.md"
+        out_json = repo_root / "docs" / "experiments" / "results" / "p4_vram_audit.json"
+        _write_report(out_md, out_json, samples, total)
+        return 2
 
     if _try_cuda_empty_cache():
         samples.append(_sample("after_cuda_empty_cache", start))
