@@ -483,3 +483,297 @@ class TestImportErrorFallback:
         assert rc == 0
         assert "peer backend import failed" in out
         assert "llm-server" in out
+
+
+# ─── C3.3: maxim peer --node <name> install <extras> ────────────────────
+
+
+class TestParseNodeInstallTokens:
+    """Unit tests for the argv-tail parser used by _run_node_install.
+
+    The parser mirrors _cmd_install's shape (comma-split positional,
+    -- flags ignored) but rejects positional URLs because the mesh-
+    aware verb resolves the URL from mesh.yml::nodes.
+    """
+
+    def test_simple_single_token(self):
+        from maxim.peer.mesh_cli import _parse_node_install_tokens
+
+        assert _parse_node_install_tokens(["semantic"]) == ["semantic"]
+
+    def test_comma_split(self):
+        from maxim.peer.mesh_cli import _parse_node_install_tokens
+
+        assert _parse_node_install_tokens(["semantic,llm-torch"]) == [
+            "semantic",
+            "llm-torch",
+        ]
+
+    def test_multiple_positional_tokens(self):
+        from maxim.peer.mesh_cli import _parse_node_install_tokens
+
+        assert _parse_node_install_tokens(["semantic", "llm-torch"]) == [
+            "semantic",
+            "llm-torch",
+        ]
+
+    def test_double_dash_flag_ignored(self):
+        from maxim.peer.mesh_cli import _parse_node_install_tokens
+
+        assert _parse_node_install_tokens(["--future-flag", "semantic"]) == [
+            "semantic"
+        ]
+
+    def test_positional_url_raises_value_error_with_fallback_hint(self):
+        """Unlike _cmd_install, this verb rejects positional URLs and
+        points the operator at the no-mesh.yml fallback verb."""
+        from maxim.peer.mesh_cli import _parse_node_install_tokens
+
+        with pytest.raises(ValueError, match="maxim peer install"):
+            _parse_node_install_tokens(["semantic", "https://example.com/v1"])
+
+    def test_empty_argv_tail(self):
+        from maxim.peer.mesh_cli import _parse_node_install_tokens
+
+        assert _parse_node_install_tokens([]) == []
+
+
+class TestRunNodeInstall:
+    """Plan 4 C3.3 — mesh-aware install verb composing
+    drain → _install_on_target → resume.
+
+    Mocks `maxim.peer.cli._install_on_target` to avoid real HTTP
+    traffic. The regression test for the core's HTTP body shape lives
+    in test_peer_install.py (commit 1). This class exclusively covers
+    the composition layer: drain/resume bookkeeping, self-guard,
+    error propagation, and was-drained sticky semantics.
+    """
+
+    def _install_stub(self, monkeypatch, return_code: int):
+        """Patch _install_on_target to return a fixed exit code and
+        record its call args for assertion. Returns a dict populated
+        on first call with ``url``, ``key``, ``extras``, ``packages``.
+        """
+        captured: dict = {}
+
+        def fake_install(url, key, extras, packages):
+            captured["url"] = url
+            captured["key"] = key
+            captured["extras"] = extras
+            captured["packages"] = packages
+            return return_code
+
+        import maxim.peer.cli as peer_cli
+
+        monkeypatch.setattr(peer_cli, "_install_on_target", fake_install)
+        return captured
+
+    # ─── self-guard ────────────────────────────────────────────────
+
+    def test_install_on_self_refused_with_pip_hint(self, mesh_home, capsys):
+        """Self-install is a round-trip through the operator's own
+        admin endpoint. Point at `pip install` directly instead."""
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "leader-desk", "install", "semantic"],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Refusing to install on self" in err
+        assert "pip install pymaxim" in err
+
+    # ─── unknown-node guard (via dispatcher) ───────────────────────
+
+    def test_install_unknown_node_exit_2(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "ghost", "install", "semantic"],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Unknown node" in err
+
+    # ─── empty-tokens guard ────────────────────────────────────────
+
+    def test_install_no_tokens_shows_usage(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(["--node", "mac-studio", "install"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Usage:" in err
+        assert "mac-studio" in err
+        assert "extras:" in err
+
+    def test_install_only_whitespace_tokens_shows_no_valid_tokens(
+        self, mesh_home, monkeypatch, capsys
+    ):
+        """A single whitespace-only token (e.g. `install "  "`) passes
+        the empty-tokens check but classifies to nothing — surface a
+        distinct error rather than POSTing an empty body.
+        """
+        self._install_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "   "],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "No valid install tokens" in err
+
+    def test_install_positional_url_rejected_with_fallback_hint(
+        self, mesh_home, capsys
+    ):
+        rc = mesh_cli.run_node_subcommand(
+            [
+                "--node",
+                "mac-studio",
+                "install",
+                "semantic",
+                "https://other.example.com/v1",
+            ],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "positional URL" in err
+        assert "maxim peer install" in err
+
+    # ─── happy path: drain → install → resume ──────────────────────
+
+    def test_happy_path_drains_installs_resumes(
+        self, mesh_home, monkeypatch, capsys
+    ):
+        captured = self._install_stub(monkeypatch, return_code=0)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "semantic"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        # The core got the mesh.yml-resolved URL + cluster key.
+        assert captured["url"] == "https://mac.example.com/v1"
+        assert captured["key"] == "sk-cluster-abc"
+        assert captured["extras"] == ["semantic"]
+        assert captured["packages"] == []
+        # Drain + resume bookkeeping both reported.
+        assert "Drained 'mac-studio' for install" in out
+        assert "Resumed 'mac-studio' after install" in out
+        # Node is NOT in the drain set at the end.
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" not in read_drained_nodes(set()).active
+
+    def test_happy_path_classifies_mixed_tokens(
+        self, mesh_home, monkeypatch, capsys
+    ):
+        """Mixed comma-separated tokens: known extras go to `extras`,
+        unknown go to `packages`. Verifies the classifier is shared
+        with the positional-URL verb's wire-level shape.
+        """
+        captured = self._install_stub(monkeypatch, return_code=0)
+
+        rc = mesh_cli.run_node_subcommand(
+            [
+                "--node",
+                "mac-studio",
+                "install",
+                "semantic,llm-torch,sentence-transformers",
+            ],
+        )
+        assert rc == 0
+        assert captured["extras"] == ["semantic", "llm-torch"]
+        assert captured["packages"] == ["sentence-transformers"]
+
+    # ─── was-drained sticky semantics ──────────────────────────────
+
+    def test_operator_prewalked_drain_is_sticky(
+        self, mesh_home, monkeypatch, capsys
+    ):
+        """If operator drained the node BEFORE running install, the
+        verb must skip both drain AND auto-resume. Operator intent is
+        sticky."""
+        # Operator drains first.
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+
+        captured = self._install_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "semantic"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert captured["extras"] == ["semantic"]
+        assert "already drained by operator" in out
+        # We did NOT resume the node — operator's drain is still sticky.
+        assert "Resumed" not in out
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" in read_drained_nodes(set()).active
+
+    # ─── install-failure branches ──────────────────────────────────
+
+    def test_install_failure_leaves_node_drained_with_loud_message(
+        self, mesh_home, monkeypatch, capsys
+    ):
+        """If drain succeeds but install fails, the node stays
+        drained with a loud 'STILL DRAINED → run resume' message.
+        """
+        self._install_stub(monkeypatch, return_code=1)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "semantic"],
+        )
+        captured = capsys.readouterr()
+
+        assert rc == 1
+        assert "STILL DRAINED" in captured.err
+        assert "maxim peer --node mac-studio resume" in captured.err
+        # Node IS still in the drain set — the verb did not clean up.
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" in read_drained_nodes(set()).active
+
+    def test_install_failure_with_prewalked_drain_no_still_drained_shout(
+        self, mesh_home, monkeypatch, capsys
+    ):
+        """If operator pre-drained AND install fails, we should NOT
+        yell 'STILL DRAINED' because WE didn't drain it — the pre-
+        drained state is operator intent, not a side effect of this
+        verb.
+        """
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+
+        self._install_stub(monkeypatch, return_code=1)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "semantic"],
+        )
+        captured = capsys.readouterr()
+
+        assert rc == 1
+        # No "STILL DRAINED" shout because we didn't change drain state.
+        assert "STILL DRAINED" not in captured.err
+
+    # ─── dispatcher wire-up ────────────────────────────────────────
+
+    def test_dispatcher_routes_install_verb(self, mesh_home, monkeypatch, capsys):
+        """Confirm `--node <name> install` routes through
+        run_node_subcommand to _run_node_install, not some other
+        verb branch.
+        """
+        captured = self._install_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "semantic"],
+        )
+        assert rc == 0
+        assert "url" in captured  # _install_on_target was called
+
+    def test_dispatcher_unknown_verb_includes_install_in_hint(
+        self, mesh_home, capsys
+    ):
+        """The unknown-verb error message should list install as one
+        of the valid verbs.
+        """
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "bogus-verb"],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "install" in err

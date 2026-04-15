@@ -5,7 +5,7 @@ backed by :mod:`maxim.peer.mesh_config`. Node probes route through
 :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.for_url`
 + ``health_check`` — the canonical probe entry point (Plan 3 R2.6).
 
-Verbs (C1 + C2):
+Verbs (C1 + C2 + C3.3):
 
 - ``maxim peer list-nodes [--json]`` — table/JSON of nodes + live status
   with drained nodes shown inline
@@ -13,6 +13,11 @@ Verbs (C1 + C2):
 - ``maxim peer --node <name> status`` / ``health`` — per-node probe
 - ``maxim peer --node <name> drain`` — add to drain state (C2)
 - ``maxim peer --node <name> resume`` — clear from drain state (C2)
+- ``maxim peer --node <name> install <extras>`` — mesh-aware install
+  with drain → install → resume composition (C3.3). Delegates the
+  HTTP body to :func:`maxim.peer.cli._install_on_target`, which is
+  also the core for the no-mesh.yml positional-URL
+  ``maxim peer install <extras> [url]`` verb.
 
 Drain state lives in ``~/.maxim/util/drained_nodes.{role}.txt`` via
 :mod:`maxim.peer.drain_state`. The split between ``mesh.yml``
@@ -24,11 +29,13 @@ Sibling module :mod:`maxim.peer.mesh_setup` houses the operator-
 invoked one-shot setup verbs that mutate ``mesh.yml`` itself
 (``init-mesh``, ``add-node``, ``remove-node``); this module
 (``mesh_cli``) handles the read-only-from-mesh.yml verbs
-(``list-nodes``, ``--node status|health``).
+(``list-nodes``, ``--node <status|health|drain|resume|install>``).
 
-Deferred to remaining Plan 4 C3 work: ``--node install`` + VRAM
-precheck, ``--node refresh``, admin API endpoints, per-agent rate
-limiting, request-trace ring buffer, cluster key rotation.
+Deferred to remaining Plan 4 C3 work: ``/v1/debug/vram`` endpoint
+(C3.4), ``--node update`` / ``--node restart`` (C3.5), ``--node llm``
+(C3.6), admin API endpoints, per-agent rate limiting, request-trace
+ring buffer, cluster key rotation. See
+:doc:`/docs/plans/reactive_peer_mesh_roadmap` for the full arc.
 """
 
 from __future__ import annotations
@@ -56,12 +63,13 @@ from maxim.peer.probe_classify import classify_probe_outcome
 MESH_USAGE_HEAD = """\
 Usage: maxim peer list-nodes [--json]
        maxim peer list-drained
-       maxim peer --node <name> <status|health|drain|resume>
+       maxim peer --node <name> <status|health|drain|resume|install>
 
 Mesh topology verbs. Requires mesh.yml (or falls back to peer.yml as
 a synthesized one-node mesh). Node probes go through
 _MaximPeerBackend.health_check(). Drain state lives at
-~/.maxim/util/drained_nodes.{role}.txt.
+~/.maxim/util/drained_nodes.{role}.txt. The install verb composes
+drain → install → resume around the shared _install_on_target core.
 """
 
 
@@ -152,19 +160,29 @@ def run_node_subcommand(argv: Sequence[str]) -> int:
     ``argv`` is everything after ``peer`` (i.e., starts with
     ``["--node", "<name>", "<verb>"]``).
 
-    Plan 4 C2 verbs: ``drain`` / ``resume`` (in addition to C1's
-    ``status`` / ``health``). Drain rejects unknown nodes with exit 2
-    and lists the known names; resume has the same behavior. Drain is
-    idempotent for already-drained nodes (exit 0, informational
-    message); resume is idempotent for not-drained nodes.
+    Plan 4 C1: ``status`` / ``health``. Plan 4 C2: ``drain`` /
+    ``resume``. Plan 4 C3.3: ``install``.
 
-    ``--force-self`` flag after the verb is required to drain the
-    node matching ``mesh.yml::self``: draining yourself strands
+    Drain + resume reject unknown nodes with exit 2 and list the
+    known names. Drain is idempotent for already-drained nodes (exit
+    0, informational message); resume is idempotent for not-drained
+    nodes.
+
+    ``--force-self`` flag after the drain verb is required to drain
+    the node matching ``mesh.yml::self``: draining yourself strands
     in-flight requests and is almost always a mistake. The override
     exists because there are legitimate cases (e.g., graceful
     shutdown scripts) but it must be explicit.
+
+    Install takes positional tokens after the verb:
+    ``maxim peer --node <name> install <extras_or_packages>``.
+    Composes drain → install → resume around the shared
+    :func:`maxim.peer.cli._install_on_target` core. Refuses self,
+    refuses a positional URL (use ``maxim peer install`` for that),
+    and leaves the node drained on install failure with a loud
+    message pointing at the manual resume command.
     """
-    valid_verbs = "status|health|drain|resume"
+    valid_verbs = "status|health|drain|resume|install"
     if not argv or argv[0] != "--node":
         print(f"Usage: maxim peer --node <name> <{valid_verbs}>", file=sys.stderr)
         return 2
@@ -182,7 +200,7 @@ def run_node_subcommand(argv: Sequence[str]) -> int:
         return 2
     name = argv[1]
     verb = argv[2]
-    verb_flags = set(argv[3:])
+    verb_args = list(argv[3:])
 
     mesh, err = _load_mesh_or_report_error()
     if mesh is None:
@@ -203,9 +221,11 @@ def run_node_subcommand(argv: Sequence[str]) -> int:
         _print_single_node(report)
         return 0 if report.status in ("ok", "info") else 1
     if verb == "drain":
-        return _run_drain(mesh, node, force_self="--force-self" in verb_flags)
+        return _run_drain(mesh, node, force_self="--force-self" in set(verb_args))
     if verb == "resume":
         return _run_resume(mesh, node)
+    if verb == "install":
+        return _run_node_install(mesh, node, verb_args)
     print(
         f"Unknown --node verb: {verb!r} (expected {valid_verbs})",
         file=sys.stderr,
@@ -276,6 +296,205 @@ def _run_resume(mesh: MeshConfig, node: MeshNode) -> int:
     else:
         print(f"✓ Resumed {node.name!r}. Drain set: {sorted(new_set) or '[]'}")
     return 0
+
+
+def _parse_node_install_tokens(verb_args: list[str]) -> list[str]:
+    """Extract raw install tokens from the ``--node <name> install`` argv tail.
+
+    Mirrors :func:`maxim.peer.cli._cmd_install`'s argv parser for
+    behavioral consistency across entry points:
+
+    - Tokens starting with ``--`` are ignored (future flags).
+    - Tokens starting with ``http`` are **rejected** — unlike the
+      positional-URL path through ``maxim peer install``, this verb
+      resolves the target URL from ``mesh.yml::nodes`` by name. A
+      positional URL here would silently override the mesh lookup,
+      which is exactly the kind of dual-source-of-truth footgun the
+      Plan 4 C2 invariant warns against.
+    - Everything else is comma-split into raw install tokens, which
+      the caller passes to :func:`_classify_install_tokens` for the
+      ``KNOWN_EXTRAS`` classification.
+
+    Returns the flat list of raw tokens (no classification yet, no
+    whitespace stripping — the classifier handles both).
+    """
+    raw_tokens: list[str] = []
+    for arg in verb_args:
+        if arg.startswith("http"):
+            # Surfaced to the caller as an empty-tokens error path,
+            # which prints the usage. The caller is expected to detect
+            # this explicitly before classification.
+            raise ValueError(
+                f"positional URL {arg!r} is not allowed for the mesh-aware "
+                f"install verb — use `maxim peer install <extras> {arg}` "
+                f"for the no-mesh.yml positional-URL form instead."
+            )
+        if arg.startswith("--"):
+            continue  # future flags
+        raw_tokens.extend(arg.split(","))
+    return raw_tokens
+
+
+def _run_node_install(
+    mesh: MeshConfig,
+    node: MeshNode,
+    verb_args: list[str],
+) -> int:
+    """Execute ``--node <name> install <tokens>``.
+
+    Plan 4 C3.3. Mesh-aware install with drain → install → resume
+    composition. Resolves the target URL + cluster key from
+    ``mesh.yml::nodes`` by name (unlike the positional-URL
+    ``maxim peer install`` verb, which uses ``peer.yml``), drains the
+    node via the :mod:`drain_state` state layer, delegates the HTTP
+    body to the shared :func:`maxim.peer.cli._install_on_target` core,
+    then resumes the node on success.
+
+    **Failure mode semantics (explicit design choice):** if drain
+    succeeds but the install itself fails, the node is **left
+    drained** with a loud "still drained → run resume" message.
+    Auto-resume-on-failure would mask install failures behind a clean
+    exit. This matches the C2 "fail loud, don't auto-recover from
+    operator-explicit verbs" pattern.
+
+    **Was-drained sticky semantics:** if the node was already drained
+    when this verb started (operator drained it earlier for a
+    different reason), we skip BOTH the drain step AND the
+    auto-resume. The operator's prior drain intent is sticky — we
+    don't clobber it on our way out.
+
+    **Self-guard:** refuses if ``node.name == mesh.self_name`` because
+    remote-installing on yourself is a round-trip through your own
+    admin endpoint when ``pip install pymaxim[<extras>]`` would do
+    the same thing locally. Matches the ``remove-node`` self-guard
+    pattern from C3.2.
+
+    Returns the CLI exit code.
+    """
+    # Lazy import to avoid pulling peer/cli.py (which imports getpass
+    # and other heavy bits) when mesh_cli is loaded for a read-only
+    # verb like list-nodes. Matches the existing lazy-import pattern
+    # in _probe_node.
+    from maxim.peer.cli import (
+        KNOWN_EXTRAS,
+        _classify_install_tokens,
+        _install_on_target,
+    )
+
+    # 1. Self-guard — match C3.2 remove-node pattern. The error
+    # message points at the local pip install as the workaround
+    # rather than offering a --force flag, because self-install has
+    # an obvious non-networked path.
+    if node.name == mesh.self_name:
+        print(
+            f"✗ Refusing to install on self ({node.name!r}) — remote-installing\n"
+            f"  on yourself is a round-trip through your own admin endpoint.\n"
+            f"  → Use `pip install pymaxim[<extras>]` directly on this machine.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # 2. Parse install tokens — rejects positional URL with a hint to
+    # use the no-mesh.yml fallback verb.
+    try:
+        raw_tokens = _parse_node_install_tokens(verb_args)
+    except ValueError as e:
+        print(f"✗ {e}", file=sys.stderr)
+        return 2
+
+    # 3. Empty-tokens guard — matches _cmd_install's usage shape.
+    if not raw_tokens:
+        print(
+            f"Usage: maxim peer --node {node.name} install <extras_or_packages>",
+            file=sys.stderr,
+        )
+        print("  extras: " + ", ".join(sorted(KNOWN_EXTRAS)), file=sys.stderr)
+        print(
+            f"  Example: maxim peer --node {node.name} install semantic",
+            file=sys.stderr,
+        )
+        return 2
+
+    # 4. Classify into extras + packages. The classifier drops
+    # whitespace-only tokens; if every token was whitespace, surface
+    # the same usage error rather than POSTing an empty body.
+    extras, packages = _classify_install_tokens(raw_tokens)
+    if not extras and not packages:
+        print(
+            f"✗ No valid install tokens after stripping whitespace.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # 5. Was-drained check — sticky operator intent.
+    known_names = {n.name for n in mesh.nodes}
+    was_drained = node.name in read_drained_nodes(known_names).active
+    drained_here = False
+
+    if was_drained:
+        print(
+            f"ℹ {node.name!r} already drained by operator — "
+            f"skipping drain/resume bookkeeping."
+        )
+    else:
+        # 6. Drain the node. The state-layer self-drain guard is
+        # redundant with our step 1 self-guard but defense-in-depth
+        # is cheap here (matches the C2 A2 fold rationale).
+        try:
+            _drain_node(
+                node.name,
+                known_names,
+                self_name=mesh.self_name,
+                force_self=False,
+            )
+            drained_here = True
+            print(f"✓ Drained {node.name!r} for install.")
+        except DrainError as e:
+            print(f"✗ Failed to drain {node.name!r}: {e}", file=sys.stderr)
+            return 2
+
+    # 7. Delegate to the shared install core. This makes exactly the
+    # same HTTP call shape as `maxim peer install <extras> <node.url>`
+    # would — all failure modes (401/403/404/500/generic) are handled
+    # inside _install_on_target with the same exit codes as the
+    # positional-URL verb.
+    install_rc = _install_on_target(
+        node.url,
+        mesh.cluster_key,
+        extras,
+        packages,
+    )
+
+    # 8. Success path — resume only if we drained it ourselves. If
+    # the resume itself fails (filelock timeout or similar), warn the
+    # operator but still report the install success as a non-zero
+    # exit because the mesh state is now inconsistent.
+    if install_rc == 0:
+        if drained_here:
+            try:
+                _resume_node(node.name, known_names)
+                print(f"✓ Resumed {node.name!r} after install.")
+            except DrainError as e:
+                print(
+                    f"⚠ Install succeeded but resume failed: {e}\n"
+                    f"  → Run: maxim peer --node {node.name} resume",
+                    file=sys.stderr,
+                )
+                return 1
+        return 0
+
+    # 9. Failure path — leave drained with loud message. The operator
+    # is responsible for debugging and running resume after they've
+    # confirmed the node is healthy. This is the "fail loud, don't
+    # auto-recover from operator-explicit verbs" pattern from C2.
+    if drained_here:
+        print(
+            f"\n✗ Install failed. Node {node.name!r} is STILL DRAINED.\n"
+            f"  → Debug the failure above, then run:\n"
+            f"      maxim peer --node {node.name} resume",
+            file=sys.stderr,
+        )
+    return install_rc
 
 
 # ─── internals ──────────────────────────────────────────────────────────

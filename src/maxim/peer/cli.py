@@ -181,7 +181,7 @@ def _print_peer_usage() -> None:
     print("                   Required: --url <url>; optional: --role peer|leader, --force")
     print("  remove-node <n>  Remove a node from mesh.yml (Plan 4 C3.2)")
     print("                   Auto-clears drain state for the removed node")
-    print("  --node <n> <v>   Per-node verbs: status|health|drain|resume")
+    print("  --node <n> <v>   Per-node verbs: status|health|drain|resume|install")
 
 
 # ─── connect ──────────────────────────────────────────────────────────────
