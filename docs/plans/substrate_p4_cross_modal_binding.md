@@ -271,6 +271,64 @@ Two parallel reviewers (Executor lens + Architecture lens) ran against the post-
 
 All findings folded into "Architectural decisions" + "Stage X" + "Load-bearing invariants" sections above. Round 1 cross-confirmation pattern matches the project's `feedback_review_before_ship.md` rule that two-lens parallel review is non-optional and that Architecture-only criticals are real (P3.5 Stage 2 had the same pattern with the atomicity gap).
 
+## Stage 2/3 open design decision — `node_filter` split (COMMITTED to Option 2, DEFERRED execution)
+
+**Status (2026-04-15):** surfaced by Stage 1 Round 2 pre-merge Arch-lens review. User has committed to Option 2 as the long-term answer; execution deferred until Stage 2's real-CLIP mug test provides empirical data about whether chain traversal matters.
+
+### The underlying problem
+
+`DependencyGraph.spreading_activation` applies one `node_filter: Callable[[str], bool]` to BOTH the source node AND every target visited during BFS. Rejected nodes are not enqueued, so the walk silently truncates at them.
+
+This is correct for P3b's channel filter (`episode_filter(channel="sms")`) — you don't want the BFS wandering through non-SMS nodes to reach distant SMS destinations because each SMS thread is its own conversational context. But it's structurally wrong for P4's cross-modal filter: the cue is ALWAYS in the opposite bucket from the target set (a text cue looking for vision partners), so `retrieve_cross_modal` already has to exempt the cue itself via `node_id == cue_node_id or node_id in allowed` just to let the BFS seed at all. Same-modality INTERMEDIATES between cue and target (`text_cue → text_bridge → vision_target`) are STILL rejected, so multi-hop cross-modal paths through same-modality bridges are silently truncated.
+
+### Why Stage 1 ships with the limitation
+
+Stage 1's mug-test fixture has no such chains — its pairs are always direct text↔vision co-activations in one episode. So the limitation does NOT affect Stage 1 mechanism tests. Stage 3 with real CLIP embeddings may or may not be affected; we don't know yet whether real mug episodes produce rich text-text or vision-vision chains that carry load-bearing cross-modal signal.
+
+`tests/substrate/test_p4_cross_modal_mechanism.py::TestStageThreeLimitation::test_multi_hop_through_same_modality_intermediate_is_blocked` is the forcing regression guard: it pins the current single-hop-only behavior, and if any future refactor enables chain traversal (intentional or accidental), the test fails with a message pointing to this section. **We cannot silently drift into the new semantics without an explicit decision.**
+
+### Option 1 (shipped as Stage 1) — single-hop only, pinned
+
+Keep `spreading_activation` and `retrieve_on_cue` unchanged. `retrieve_cross_modal`'s closure exempts only the cue. Multi-hop through same-modality intermediates is blocked. Regression-test-pinned.
+
+- **When this wins:** if Stage 2's mug test shows healthy F1 (≥0.80) on single-hop only — real mug episodes produce direct text↔vision co-activations in CLIP space, chain traversal doesn't carry load-bearing signal, and the limitation is empirically harmless.
+
+### Option 2 (committed target) — rename `node_filter` → `traversal_filter` + add `result_filter`
+
+Make the two concerns explicit at the API level. `traversal_filter` controls which nodes the BFS walks through (what `node_filter` does today); `result_filter` is a post-filter applied to the ranked output. Rename in `DependencyGraph.spreading_activation` and `Hippocampus.retrieve_on_cue`. Provide a compat shim so P3b's existing single-filter calls (`episode_filter(channel="sms")` → `retrieve_on_cue(node_filter=...)`) map to both traversal + result — which is literally what P3b wants.
+
+After Option 2 ships:
+
+- **P3b** cross-channel filter: `traversal_filter=sms_nodes, result_filter=sms_nodes` (or via the compat shim — unchanged semantics)
+- **P4** cross-modal: `traversal_filter=None, result_filter=modality_membership`. The cue-exemption hack in `retrieve_cross_modal`'s closure is DELETED because the source is no longer filtered at all.
+- **Future filters compose naturally:** `traversal_filter=sms_nodes, result_filter=high_stress_nodes` for "SMS neighbors that are also high stress."
+
+**Pros:** architecturally clean; forces every caller to think about traversal-vs-result semantics; matches the project's "push silent-no-op invariants into types" rule; P4 cue-exemption hack becomes obsolete.
+
+**Cons:** touches `spreading_activation` (a core primitive used by P3a/P3b/P4); P3a Stage 2's 10-seed sweep must be re-run to confirm F1 numbers hold; P3b's ~25 tests need re-audit against the compat shim; ~half to full day of work including its own Round 2 pre-merge review.
+
+### Option 3 (explicitly rejected) — add `result_filter` without renaming
+
+Adding `result_filter` as a new optional parameter without renaming `node_filter`. Smaller blast radius but leaves the API ambiguous — future callers don't know whether to use `node_filter` (traversal) or `result_filter` (post), and the parameter names don't force the right thinking. **User rejected this as architectural debt that violates the "push invariants into types" rule.** Option 2 is the committed answer.
+
+### Trigger for revisit
+
+Stage 2's deliverable includes the subprocess mug test on real CLIP + Oxford Flowers-102 images. Revisit rules:
+
+1. **If Stage 2 mug test F1 is healthy (≥0.80) on single-hop only:** Option 2 still happens before Stage 3 because the user has already committed to it, but without urgency — treat as pre-Stage-3 architectural cleanup at a convenient time.
+2. **If Stage 2 mug test F1 is disappointing AND binding-graph topology inspection shows text-text or vision-vision chains dominating the retrieval path:** Option 2 becomes a BLOCKING prereq for Stage 3. Ship it BEFORE Stage 3's metric freezes so the head-to-head definition is stable.
+3. **If Stage 2 mug test F1 is disappointing but NOT traceable to chain truncation:** investigate other failure modes first (CLIP encoder quality, fixture calibration, Hebbian weight parameters) before reaching for Option 2.
+
+**Do NOT land Option 2 during Stage 3.** The decision window is Stage 2 → Stage 3, not during Stage 3 — metric freezes want stable mechanics.
+
+### Implementation notes for when Option 2 lands
+
+- Activation scores for chain-reached nodes are naturally ~`decay × weight` per hop lower than direct co-occurrences (~0.044 vs ~0.21 at default config). This ranking property is desirable (direct Hebbian evidence should outweigh transitive evidence) and must be preserved through the refactor.
+- The `limit` + `result_filter` interaction has a footgun: `result_filter` MUST run BEFORE `limit`, otherwise the BFS may fill the limit with nodes that all fail the post-filter and return 0 hits. Unit-test this explicitly in the Option 2 PR.
+- Delete the cue-exemption hack (`node_id == cue_node_id or`) from `retrieve_cross_modal`'s closure. The comment explains why the hack existed; it becomes obsolete under the split-filter model.
+- `spreading_activation` signature change is the primary breaking change. Every call site needs audit: P3a (`retrieve_on_cue`), P3b (via `episode_filter` → `retrieve_on_cue`), P4 (`retrieve_cross_modal` → `retrieve_on_cue`), and any future caller.
+- After the change, flip `TestStageThreeLimitation`'s assertion to verify vision_target IS retrieved and rename the test class (the "limitation" framing is obsolete).
+
 ## Deferred (filed before Stage 1)
 
 - **Multi-object vision** — `VisionEncoder` is single-object only in P4. P4-MV (post-1.0) extends to multi-object detection + per-object cross-modal binding.
