@@ -457,18 +457,20 @@ class TestBuildPainBus:
         assert len(nac._links.get("slash:rusty_sword", [])) == 1
 
     def test_additional_subscribers_registered_after_standard_learners(self):
-        """Custom subscribers run after the standard learners."""
-        order: list[str] = []
+        """Custom subscribers run after the standard learners.
 
-        def hippo_marker(_signal: PainSignal) -> None:
-            order.append("hippo")
+        Ordering is documented as a load-bearing contract in
+        ``build_pain_bus``'s docstring — additional subscribers run
+        AFTER the standard learners. Use a hippo MagicMock whose
+        ``capture`` side-effect appends to a shared ``order`` list,
+        and a custom subscriber that does the same. Then assert the
+        list ordering.
+        """
+        order: list[str] = []
 
         def custom_sub(_signal: PainSignal) -> None:
             order.append("custom")
 
-        # Use a hippo MagicMock that records via the order list rather
-        # than the standard create_pain_memory_subscriber, so we can
-        # assert on call ordering directly.
         hippo = MagicMock()
         hippo.capture = MagicMock(side_effect=lambda **_: order.append("hippo"))
 
@@ -480,26 +482,86 @@ class TestBuildPainBus:
         assert bus.get_stats()["direct_pain_subscribers"] == 2
 
         bus.publish(_make_signal(intensity=0.7))
-        # Standard learner runs first, then additional subscriber.
+        # Standard learner (hippocampus memory) runs first, then the
+        # additional subscriber. Reverse order would indicate the
+        # builder is registering additional subscribers BEFORE the
+        # standard learners — the regression guard for the documented
+        # ordering contract.
         assert order == ["hippo", "custom"]
-        # Suppress unused-warning on the unused inner helper.
-        del hippo_marker
 
     def test_history_size_and_refractory_forwarded(self):
-        """history_size and pain_refractory_s reach the PainBus ctor."""
+        """history_size and pain_refractory_s reach the PainBus ctor.
+
+        Hard assertion on both. ``pain_refractory_s`` is exposed on
+        ``PainBus`` directly. ``history_size`` lives on the inner
+        ``ReactionBus``'s ``deque(maxlen=...)`` — assert via
+        ``bus.reaction_bus._history.maxlen`` so a regression that
+        silently drops the kwarg fails loudly.
+        """
         bus = build_pain_bus(
             hippocampus=None,
             nac=None,
             history_size=42,
             pain_refractory_s=1.5,
         )
-        # pain_refractory_s is the simpler one to assert on directly.
         assert bus._pain_refractory_s == 1.5
-        # history_size lives on the inner ReactionBus; sanity-check
-        # that publishing still works (full ReactionBus contract is
-        # tested elsewhere — we only care that the kwarg flowed).
+        # Hard assertion (was a smoke check pre-pre-merge-review fold).
+        assert bus.reaction_bus._history.maxlen == 42
+
+    def test_subscriber_does_not_link_pending_tool_event(self):
+        """REGRESSION GUARD for the latent bridge × subscriber asymmetry.
+
+        Pinned by pain_bus_unification.md pre-merge architecture review
+        finding #10. Documents and pins the load-bearing context-similarity
+        mismatch that prevents double-counting today.
+
+        The setup mimics what the executor does at ``record_tool_start``
+        time: it records a pending tool event with a stripped 1-key
+        ``{"params": ...}`` context. The subscriber's ``record_outcome_full``
+        path uses ``_context_similarity`` directionally with ``len(ctx1)``
+        as the denominator — when the pending event has 1 key and the
+        published pain has 7 keys with zero overlap, similarity = 0/1
+        = 0.0, below the 0.5 threshold, no link forms.
+
+        This is what prevents post-Wave-1 double-counting on CLI paths
+        that wire BOTH ``ToolPainBridge`` (with its ``_pending_tools``
+        guard) AND ``create_pain_nac_subscriber`` (which has no such
+        guard). The guard asymmetry is real but masked by this
+        similarity mismatch.
+
+        **If this test fails**, it means someone enriched
+        ``record_tool_start``'s context dict (e.g., added ``entity`` for
+        the broad-guard narrowing contemplated at
+        ``bridges/tool_pain_bridge.py:367-371``) and the bridge ×
+        subscriber double-counting trap is now active. **DO NOT just
+        relax the assertion.** Instead open
+        ``docs/plans/pain_bus_bridge_subscriber_unification.md`` —
+        the deeper structural fix (Option B: bridge-aware subscriber
+        OR bridge-mediated NAc attribution) is now required.
+        """
+        nac = self._nac()
+        # Mimic ToolPainBridge.record_tool_start: pending event with
+        # the executor's stripped {"params": ...} context, NOT the
+        # rich body context.
+        nac.record_event(
+            event_type="tool",
+            event_signature="tool:slash_modulator",
+            context={"params": {"target": "rusty_sword"}},
+        )
+        assert len(nac._pending_events) == 1
+
+        # Now publish a rich-context PainSignal (what body._publish_pain
+        # actually fires while the tool is in flight) directly through
+        # the NAc subscriber. Using build_pain_bus with the bridge NOT
+        # wired models the post-Gap-A CLI state for this analysis.
+        bus = build_pain_bus(hippocampus=None, nac=nac)
         bus.publish(_make_signal(intensity=0.7))
-        assert len(bus.recent) >= 0  # smoke check, not a hard assertion
+
+        # NO link should form for the pending tool event because the
+        # context-similarity mismatch ({"params":...} vs the 7-key
+        # body context) yields similarity 0/1 = 0.0 < 0.5 threshold.
+        # If this assertion ever fires, see the docstring above.
+        assert "tool:slash_modulator" not in nac._links or len(nac._links.get("tool:slash_modulator", [])) == 0
 
     def test_exceptions_are_logged_not_swallowed(self, caplog):
         """A broken NAc still logs so wiring issues surface."""

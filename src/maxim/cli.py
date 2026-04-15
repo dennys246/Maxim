@@ -1382,6 +1382,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                         hippocampus=_cli_hippocampus,
                         nac=_cli_nac,
                     )
+                    logger.info(
+                        "Interactive sim PainBus wired (hippocampus=%s, nac=%s) for pain capture + causal learning",
+                        _cli_hippocampus is not None,
+                        _cli_nac is not None,
+                    )
 
                     try:
                         run_interactive_sim(
