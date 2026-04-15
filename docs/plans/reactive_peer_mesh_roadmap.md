@@ -1,0 +1,228 @@
+# Reactive Peer Mesh — Roadmap
+
+**Status:** Living roadmap, drafted 2026-04-15.
+**Scope:** Tracks the full arc from "operator manually drives the mesh" to "fully reactive peer mesh." Cross-cuts several active and deferred plans rather than replacing them — this is the index that ties them together.
+**Target versions:** 0.4 → 0.7 (mesh ship). 1.0 banner is cross-session learning, separate from mesh.
+**Maintained alongside:**
+- [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — Plan 4 (Stages A, B, C1-C3.x). The active Plan 4 work feeds this roadmap; this doc is the index.
+- [llm_path_refinement.md](llm_path_refinement.md) — Plan 1-3.6 ancestor.
+- [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — Stage C5.
+- [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
+- [node_security_simplification.md](node_security_simplification.md) — feeds C7.
+
+---
+
+## 1. Definition: what "fully functioning reactive peer mesh" means
+
+A mesh is **reactive** when topology and runtime state changes propagate **automatically** to the components that need them, with no operator hand-holding. Concretely:
+
+1. **Operator declares intent** (`mesh.yml`) and **runtime state changes** (drain, install, restart, model swap) propagate to the **router** without process restart.
+2. **Router consults mesh + state** on every dispatch — drained nodes excluded, failed nodes backed off, healthy nodes load-balanced.
+3. **Failures are observed** (doctor + admin API + structured logs) and **escalated** automatically (auto-drain on persistent failure, auto-recover on health-check pass).
+4. **Operators can SEE** what the mesh is doing (live status, request traces, per-node metrics) without reading log files.
+5. **The mesh is secure by default** — cluster keys are rotatable, peers can be authenticated by identity not just bearer token, request traces don't leak credentials.
+
+By that definition we are at roughly 40%. The skeleton is solid (mesh.yml schema, drain state file, doctor checks, provider fallback), but several load-bearing wires are missing — see Stage C4 below.
+
+---
+
+## 2. What's shipped (the foundation)
+
+| Layer | What's in main | Where | Plan |
+|---|---|---|---|
+| Routing fallback | Provider failover, typed `BackendError` dispatch, `dispatch_exhausted` aggregated WARN, recovery measured at 58.68s p99 | [router.py](../../src/maxim/models/language/router.py) | 3 + 3.5 + 4 A/B |
+| Topology (declarative) | `mesh.yml` schema, FROZEN parser, `MeshConfig` dataclass with `__post_init__` validation | [mesh_config.py](../../src/maxim/peer/mesh_config.py) | 4 C1 |
+| Topology (operator verbs) | `init-mesh`, `add-node`, `remove-node` — strict CI grep allow-list enforces single writer module | [mesh_setup.py](../../src/maxim/peer/mesh_setup.py) | 4 C3.1 + C3.2 |
+| State layer (drain) | `drain` / `resume` / `list-drained`, `filelock` RMW, role-scoped, `atomic_write_secret` pattern | [drain_state.py](../../src/maxim/peer/drain_state.py) | 4 C2 |
+| Probe + classification | `_MaximPeerBackend.health_check` + `for_url`, single shared `classify_probe_outcome` | [maxim_peer_backend.py](../../src/maxim/models/language/maxim_peer_backend.py), [probe_classify.py](../../src/maxim/peer/probe_classify.py) | 3 R2.5/R2.6 + 4 C1 |
+| Observability (doctor) | `check_mesh_nodes` (with drain awareness), `check_vram_pressure`, agent_id binding, per-node `status` / `health` | [doctor/checks.py](../../src/maxim/doctor/checks.py) | 3.6 R5 + 4 A + 4 C1 |
+| Observability (logs) | Structured JSONL via `MAXIM_LOG_FILE`, per-call `peer_backend_call` trace, `role_detected` event | [utils/http.py](../../src/maxim/utils/http.py) | 1 R1 + 2 R2a + 3 R2.5 |
+| Bench harness | `maxim bench recovery-time` measures fail-slow → fail-fast deltas | [bench/](../../src/maxim/bench/) | 4 B |
+
+---
+
+## 3. The honest gap audit
+
+A grep against `src/maxim/models/language/router.py` for any reference to `read_drained_nodes`, `drained_nodes`, or `peer.drain_state` returns **zero matches**. The router does not know that drain exists. An operator who runs `maxim peer --node <name> drain` today will see the node disappear from `list-nodes` and from `doctor`, but the next inference call from a co-resident agent will still hit it.
+
+This is the **single biggest gap** between the current state and the definition in §1. It has its own stage (C4) and gates everything below it.
+
+Two more honest gaps worth flagging up front:
+
+- **`/v1/debug/vram` does not exist.** Plan 3.6 R5 deferred it explicitly. Until it ships (Stage C3.4), no remote node can answer "do you have headroom?" — which means capacity-aware routing (Stage C5) cannot start.
+- **Cluster identity is one bearer token shared by all peers.** No per-peer keypair, no per-peer ACL, no rotation primitive. Acceptable for a research preview, blocking for any multi-tenant or untrusted-peer scenario.
+
+---
+
+## 4. Stages — in priority order
+
+### Stage C3 finish (operator surface — small ships)
+
+These complete the manage-the-mesh-by-hand surface. Each is a small ship.
+
+- **C3.3 (in flight):** `maxim peer --node <name> install <extras>` — mesh-aware install with drain → install → resume composition. Lifts a shared `_install_on_target(url, key, extras, packages)` core out of `_cmd_install` so the existing positional-URL verb and the new mesh-aware verb both call it. Branch: `feat/plan4-c3.3-node-install`. **Status:** commit 1 (regression test) landed; commit 2 (lift) and commit 3 (new verb) pending.
+- **C3.4:** `/v1/debug/vram` admin endpoint. Plan 3.6 R5 explicitly deferred this. Unlocks remote VRAM observability for peer-mode doctor and any future admin dashboard. ~50 LOC + auth + tests.
+- **C3.5:** `maxim peer --node <name> update` and `--node restart` — mesh-aware versions of the existing positional-URL verbs, composing drain/op/resume. Same shape as C3.3, tiny diff each. Probably one PR for both.
+- **C3.6:** `maxim peer --node <name> llm <model>` — per-node model swap. Today `maxim peer llm <model>` operates on the connected leader only.
+
+**Estimated effort:** C3.3 + C3.4 + C3.5 + C3.6 ≈ 4 small PRs over 4 sessions. Mostly composition over existing primitives, low review surface each.
+
+### Stage C4: Wire the router to drain state — THE missing piece
+
+This is the biggest single missing wire and the biggest design problem on the list.
+
+The fix has architectural weight, not just LOC weight, because:
+
+1. The router's provider list comes from `lane_backends.BACKEND_CLASSES` + profile config, **not** from `mesh.yml`. There's currently no concept of "this provider is also a mesh node."
+2. Drain state is role-scoped (`drained_nodes.{role}.txt`) but the router doesn't know its role. It would need to either (a) read the env var (set by Plan 2 R2a `detect_and_apply_role`) or (b) get drain state injected at construction.
+3. The drain state file is a POSIX text file with `filelock`-serialized RMW. Reading it on every dispatch is too expensive — needs an in-memory cache with a watcher (inotify? mtime poll? process-internal pub-sub?).
+4. The provider-name → mesh-node-name correspondence is currently implicit. Drain operates on node names from `mesh.yml`; the router talks about provider URLs. There is no canonical mapping function today.
+
+**Open architectural questions for the C4 plan doc:**
+
+- Is the right primitive a `MeshAwareRouter` decorator that wraps the existing router, or a `drain_constraint` callback registered with `LLMRouter._try_provider`?
+- Where does the in-memory cache live, and who invalidates it? (Options: mtime watcher in a daemon thread; explicit invalidation hook from `drain_node`/`resume_node`; inotify on Linux + polling fallback elsewhere.)
+- How does drain state survive a `maxim` restart? (Answer: it already does — the file is the source of truth. The cache is rebuilt from the file on startup.)
+- Does drain consultation need to happen at lane-binding time (once per worker) or per-dispatch (every call)? The latter is correct but the former is cheaper. Per-dispatch with a 1s mtime cache is probably the right trade.
+- What's the contract when a drained node is the only node? Today the router would fail with `dispatch_exhausted`; with drain consultation it would fail with `dispatch_exhausted_all_drained` — different bug shape, different operator response.
+
+**Estimated effort:** 1-2 sessions of design (with a pre-design review round, like C2) + 2-3 sessions of implementation + review fold. Real plan-doc-worthy ship.
+
+**Should land before:** C4.5, C5, and most of C6. Everything below C4 in this list assumes drain actually constrains routing.
+
+### Stage C4.5: Auto-drain on persistent failure
+
+Once C4 is wired, the next reactive primitive falls out: when a provider hits `_set_long_backoff` for the Nth consecutive time, the router can mark it drained automatically. Operator runs `maxim peer list-drained` → sees the auto-drain → can investigate.
+
+**Open design questions:**
+- Threshold (3 consecutive failures? exponential? time-windowed?)
+- Auto-undrain story (does a successful health probe auto-clear an auto-drain entry? what about a manually-set drain entry — those should be sticky.)
+- How does an auto-drain entry differ from a manual-drain entry in the state file? (Suggestion: separate file `auto_drained_nodes.{role}.txt`, or a typed entry like `mac-studio  # auto:2026-04-15T12:34:56` — the C2 inline-comment-stripping logic already supports the latter.)
+
+**C3.3 re-check trigger:** the C3.3 `--node install` verb currently writes plain drain entries via `drain_node_if_absent`. When C4.5 ships, a C3.3-triggered drain will be indistinguishable from a true operator drain OR from a C4.5 auto-drain. The three categories have different auto-resume semantics:
+- Operator drain → sticky, never auto-resumed
+- Install-triggered drain → auto-resumed on install success (today's behavior)
+- Auto-drain → auto-cleared on health probe success (C4.5 proposed behavior)
+
+C4.5's design should decide whether to tag drain entries with their origin (`# auto`, `# install`, `# operator`) and whether the C3.3 verb should switch to marking its drains as `# install:<timestamp>` so a crashed `--node install` run leaves a recoverable orphan that C4.5's cleanup path can sweep. **Not addressed in C3.3** — deferred to C4.5 with this explicit re-check note so it's not forgotten.
+
+May not need to be its own stage — could fold into C4 if the design is clean. Flag for revisit after C4 lands.
+
+### Stage C5: Capacity-aware routing
+
+Existing skeleton: [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md). Beyond drain (binary in/out), capacity-awareness means **picking among healthy nodes by load** — tok/s baseline, queue depth, current VRAM headroom, model availability.
+
+**Where it pays off:**
+- The `/v1/debug/vram` endpoint from C3.4 starts to pay back: the router becomes able to ask "which of my live nodes has the headroom?"
+- The Plan 3.6 R5 invariant "VRAM is observability-not-routing" gets explicitly broken here, on purpose, with a real plan + review round behind the change.
+- Per-node `last_seen_tok_s` baseline (currently absent) is the input signal for ranking among healthy peers.
+
+**Estimated effort:** multi-session ship with its own pre-design review round. 0.5 → 0.6 territory.
+
+### Stage C6: Admin API + dashboard surface
+
+Today's admin endpoints are minimal: `/v1/admin/update`, `/v1/admin/install`, `/v1/debug/install-status`, `/v1/debug/deps`, the inference endpoints. Missing for full operator visibility:
+
+- `/v1/admin/drain` + `/v1/admin/resume` (admin-API equivalents of the CLI verbs)
+- `/v1/admin/mesh` (read-only `mesh.yml` dump for remote inspection)
+- `/v1/debug/drain-state` (read drain state, for remote doctor)
+- `/v1/debug/router-stats` (per-provider success rate, latency, last-error, current-backoff state)
+- `/v1/debug/request-trace` (ring buffer of recent inference attempts, for post-mortems)
+
+A web TUI or terminal dashboard on top of these is a nice-to-have, **NOT** load-bearing.
+
+**Hard constraint from C2:** all C6 admin-API state writes go to `~/.maxim/util/`, never to `mesh.yml`. The `mesh.yml` declarative-vs-mutable-state split is non-negotiable. When in doubt, the admin endpoint writes to a state file, not topology. Adding a new mutable mesh surface means: (1) put it in `~/.maxim/util/`, (2) role-scope the filename, (3) wrap the RMW in `filelock.FileLock`, (4) `atomic_write_secret` for credentials, (5) validate against `mesh.yml`'s node set at write time.
+
+**Estimated effort:** medium ship. Endpoints themselves are small, but auth + rate-limiting + trace ring buffer + permission model is a coherent design problem.
+
+### Stage C7: Cluster security hardening
+
+Tracked in [node_security_simplification.md](node_security_simplification.md), `feedback_strict_grep_caller_allowlist.md`, and the C2 invariants:
+
+- **Cluster key rotation** (`maxim peer rotate-cluster-key`) — the canonical test of whether the strict CI grep allow-list rule needs to relax. The right answer is probably option (c) from `feedback_strict_grep_caller_allowlist.md`: split the secret into `~/.maxim/util/cluster_key.{role}` and have `mesh.yml::cluster_key` become a fallback. This is the spec-vs-status split applied to the secret.
+- **Cluster-key consistency doctor check** (`check_cluster_key_consistency`) — **surfaced by C3.3 fold review (Blast Radius B2)**. Today `mesh.yml::cluster_key` and `peer.yml::api_key` can diverge silently if the operator rotates one without the other, because `init-mesh` copies once but the two files evolve independently after that. `maxim peer --node X install` uses `mesh.yml::cluster_key`; `maxim peer install` uses `peer.yml::api_key`. The symptom is "one install verb 401s, the other succeeds, against the same target." The doctor check should compare both values when both files are present and warn on mismatch. **Deferred from C3.3** (docs-only warning added to `cli-reference.md` + `mesh_debug.md`) because the full cluster-key rotation story should land before the consistency check so the check has a remediation path to point at.
+- **Per-agent rate limiting** — read from `~/.maxim/util/rate_limits.{role}.json`. Already mentioned as a future C3 deferred item in C2 invariants. The `KeyedRateLimiter` primitive from Plan R0 already lives in [runtime/rate_limit.py](../../src/maxim/runtime/rate_limit.py).
+- **Request trace ring buffer** — `~/.maxim/util/request_trace.{role}.jsonl` with size cap + rotation. Feeds C6's `/v1/debug/request-trace`.
+- **Per-peer identity** — currently every peer has the same bearer token (the cluster key). Real identity (per-peer keypair, per-peer ACL) is a bigger ship.
+
+**Estimated effort:** another multi-session ship, 0.6 → 0.7. Low priority until real multi-tenant use cases show up.
+
+### Stage C8: Cross-version compatibility
+
+`mesh.yml::protocol_version` exists as a field but isn't checked anywhere on probe responses. The intent (per C1) was to support graceful degradation when the mesh has mixed-version nodes. Concrete future work:
+
+- Probe responses include the responder's protocol version
+- Router downgrades capabilities when talking to older nodes
+- `maxim doctor` warns on version skew across nodes
+- `mesh.yml` schema bump migrations (today the parser is FROZEN; the next bump needs a clear migration path)
+
+**Estimated effort:** small unless a real version skew incident forces it. Defer until needed.
+
+---
+
+## 5. Mapping to versions
+
+| Version | Includes | Status |
+|---|---|---|
+| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface complete) + C3.4 VRAM endpoint | C3.3 paused mid-ship for pain-bus parallel work |
+| **0.5** | C4 router-drain coupling + C4.5 auto-drain (the actual reactive ship) + substrate P3a / P4 / B3-B5 | not started |
+| **0.6** | C5 capacity-aware routing + C6 admin API + dashboard | not started |
+| **0.7+** | C7 security hardening + C8 cross-version compat | not started |
+| **1.0** | Cross-session learning demonstration (banner) — separate from mesh | not started |
+
+---
+
+## 6. Recommended sequencing
+
+We have built the **bones** of a reactive peer mesh: declarative topology, mutable state layer, probe primitive, doctor visibility, provider fallback at the router. What's missing is the **nervous system** — the wiring from operator intent (drain) and from observability (failure rates, VRAM pressure) into runtime routing decisions. That wiring lands in **C4**, which is a real plan doc, not a half-day patch.
+
+C3.3 → C3.6 are valuable operator polish but they don't change reactivity at the runtime layer.
+
+**Two competing sequences:**
+
+**Sequence A — finish operator surface first.** C3.3 → C3.4 → C3.5 → C3.6 → C4 → C5 → C6 → C7 → C8.
+Pro: every C3 ship is small and low-risk. Operator gets steady incremental wins.
+Con: reactivity (C4) is delayed by 4 sessions. Operators may grow accustomed to drain-as-UI-hint and be surprised when C4 changes the contract.
+
+**Sequence B — pivot to C4 after C3.3.** C3.3 → C4 → C3.4 (now informs C5) → C5 → C3.5+C3.6 in parallel with C6 design.
+Pro: reactivity gate clears earliest. C4 informs the C5 design. Operators learn drain-as-routing-constraint from day one.
+Con: C3.5+C3.6 (the per-node update/restart/llm verbs) get delayed, which means operators still can't safely update a single node without operating directly on the leader URL.
+
+**My recommendation: Sequence B**, with C3.4 (`/v1/debug/vram`) reordered to run in parallel with C4 because the two have zero file overlap (C3.4 is a leader-side endpoint addition, C4 is a peer-side router consumer change). C3.5+C3.6 land after C4 + C3.4 are both in.
+
+---
+
+## 7. Open architectural questions that need real answers before C4 starts
+
+1. **Provider-name ↔ mesh-node-name mapping.** Is it lookup-by-URL? lookup-by-explicit-binding-in-mesh.yml? lookup-by-profile-name? The answer drives the whole C4 implementation.
+2. **Drain cache invalidation.** mtime poll with a 1s window? inotify with poll fallback? pub-sub via a process-local channel? Each has a different blast radius.
+3. **What happens when mesh.yml changes at runtime?** Today the answer is "nothing — restart the daemon." C4 may force a real answer because drain state and mesh.yml are now jointly consulted on every dispatch.
+4. **Drain semantics in a single-node mesh.** Refusing to drain self is C2 invariant 3. But in a single-node mesh, every node IS self. Does drain become a no-op? An error? An auto-pause-router?
+5. **Auto-drain failure modes.** If C4.5 ships, the router becomes able to evict providers without operator action. Does this need a "panic mode" where if N% of nodes are auto-drained the router holds them all in (because losing N% looks like a network partition, not a node failure)?
+
+These are the things a C4 plan doc has to answer. None of them are blockers for C3.3 → C3.6.
+
+---
+
+## 8. Re-check triggers
+
+Update this roadmap when:
+
+- **C3.3 ships** — mark C3.3 done, update the version table, drop the "in flight" marker.
+- **A new C3.x sub-stage is identified** — most likely from operator feedback during real mesh use.
+- **C4 plan doc is drafted** — link it from §4 Stage C4.
+- **Any C5 / C6 / C7 architectural decision conflicts with a load-bearing invariant** — flag it explicitly here, don't let the conflict accumulate silently.
+- **The "fully reactive" definition in §1 starts to feel wrong** — that's the load-bearing piece. If the definition shifts, every stage estimate shifts with it.
+- **Versions ship and the table in §5 needs to slip** — common, expected, no apology needed; just keep it honest.
+
+---
+
+## 9. Related plans
+
+- [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — the active Plan 4 work, which feeds C3.x in this roadmap.
+- [llm_path_refinement.md](llm_path_refinement.md) — the Plan 1-3.6 ancestor chain.
+- [llm_path_peer_failover.md](llm_path_peer_failover.md) — Plan 3.6 (VRAM spillover detection).
+- [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — the C5 skeleton.
+- [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
+- [node_security_simplification.md](node_security_simplification.md) — feeds C7.
+- [cross_platform_file_lock.md](cross_platform_file_lock.md) — shell plan to unify the two file-lock APIs (`utils/process_lock` and `filelock.FileLock`); blocks nothing, useful cleanup post-C4.

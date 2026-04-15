@@ -151,4 +151,47 @@ jobs:
             echo "tracked friction modes + when the rule needs revisiting."
             exit 1
           fi
+          # Plan 4 C3.3 install_core single-source-of-truth rule:
+          # install_on_target is the only CLIENT-side function that
+          # POSTs to the leader's /v1/admin/install endpoint. Matches
+          # the precedent set by _MaximPeerBackend.complete_with_usage
+          # (Plan 3 R2.5) and write_mesh_config (Plan 4 C3.1): the
+          # shared HTTP core has a strict allow-list so future C3.5
+          # (--node update / --node restart), C3.6 (--node llm), and
+          # admin API verbs cannot silently inline a copy.
+          #
+          # Allow-list rationale:
+          # - install_core.py: the canonical client (where the rule
+          #   points new callers).
+          # - test_peer_install.py: regression assertions against the
+          #   wire-level shape.
+          # - leader_proxy.py: the SERVER side. The leader's admin
+          #   endpoint handler must literally match the string to
+          #   dispatch POST requests. Not a client caller — it's the
+          #   receiver. A separate invariant would be needed to
+          #   guard the server side; keeping leader_proxy in the
+          #   allow-list keeps this grep scoped to "only one client."
+          INSTALL_CORE_MATCHES=$(grep -rn --include="*.py" -F "/v1/admin/install" src/maxim/ tests/ \
+            | grep -vE "^src/maxim/peer/install_core\.py:" \
+            | grep -vE "^tests/unit/test_peer_install\.py:" \
+            | grep -vE "^src/maxim/runtime/leader_proxy\.py:" \
+            || true)
+          if [ -n "$INSTALL_CORE_MATCHES" ]; then
+            echo "ERROR: new caller of /v1/admin/install detected (Plan 4 C3.3)"
+            echo "$INSTALL_CORE_MATCHES"
+            echo ""
+            echo "install_on_target in src/maxim/peer/install_core.py is the"
+            echo "single source of truth for the /v1/admin/install wire shape"
+            echo "(endpoint, headers, JSON body, timeout policy, error"
+            echo "classification, exit codes, probe-cache clear). Do NOT inline"
+            echo "a copy in C3.5 (--node update / --node restart), C3.6"
+            echo "(--node llm), or any future admin API verb. Import"
+            echo "install_on_target from peer/install_core instead."
+            echo ""
+            echo "If you have a legitimate new caller, update both:"
+            echo "  1. The allow list in .github/workflows/test.yml"
+            echo "  2. install_core.py's module docstring"
+            echo "in the same commit so the rule stays coherent."
+            exit 1
+          fi
           echo "CI grep invariants clean"

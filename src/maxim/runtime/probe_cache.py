@@ -140,13 +140,46 @@ def clear_cache() -> None:
         logger.debug("probe_cache clear failed (%s)", e)
 
 
+def _canonical_url(url: str) -> str:
+    """Canonical form for tolerant probe-cache lookups.
+
+    Plan 4 C3.3 fold (CC1): the cache is keyed by whatever
+    ``lane_configs[name].remote_url`` held at write time, with no
+    normalization. When a caller hands us a URL resolved from a
+    different source (``mesh.yml::nodes`` vs ``peer.yml::url``), the
+    shape may not match the cache key byte-for-byte — trailing slash,
+    trailing ``/v1``, etc. — and the exact-match lookup silently
+    becomes a no-op, leaving a stale entry that can wire a lane off
+    on the next startup.
+
+    Strip trailing slashes and a single trailing ``/v1`` so two URLs
+    that differ only in those axes compare equal.
+    """
+    if not url:
+        return ""
+    base = url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    return base
+
+
 def clear_cache_for_url(url: str) -> None:
-    """Remove a single entry. Used when one URL is known transiently stale."""
+    """Remove entries matching ``url`` under canonical-form comparison.
+
+    Plan 4 C3.3 fold (CC1): uses :func:`_canonical_url` on both sides
+    of the comparison so the clear is tolerant of trailing-slash or
+    ``/v1``-suffix drift between the URL we were handed and the URL
+    the cache was keyed with. Any entry whose canonical form matches
+    the target's canonical form is removed, not just the literal key.
+    """
     if not url:
         return
+    target = _canonical_url(url)
     cache = load_cache()
-    if url in cache:
-        cache.pop(url, None)
+    to_remove = [k for k in cache if _canonical_url(k) == target]
+    if to_remove:
+        for k in to_remove:
+            cache.pop(k, None)
         save_cache(cache)
 
 

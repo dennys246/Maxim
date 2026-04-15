@@ -170,6 +170,22 @@ class MeshConfig:
         # construction; subsequent attribute access is read-only.
         _validate_yaml_safe("MeshConfig.cluster_key", self.cluster_key)
         _validate_yaml_safe("MeshConfig.self_name", self.self_name)
+        # I9 fold (C3.3 pre-merge review, Blast Radius): empty string
+        # cluster_key would send ``Authorization: Bearer `` (trailing
+        # space, empty token) to any admin endpoint → cryptic 401
+        # from the leader. The parser rejects a missing key at read
+        # time but ``_validate_yaml_safe`` only checks forbidden
+        # characters, not empty. Hoist the check here so
+        # ``synthesize_from_peer_config`` and direct-construction
+        # paths (tests, future verbs) can't produce a construct that
+        # silently produces a mis-auth request. Same pattern as E7
+        # (empty nodes) and C3.2 A1 (self_name in nodes).
+        if not self.cluster_key:
+            raise ValueError(
+                "MeshConfig.cluster_key must be non-empty — an empty "
+                "cluster key would produce an empty Bearer token on "
+                "every admin request, yielding cryptic 401s."
+            )
         # E7 fold (C3.1 pre-merge review): empty nodes tuple round-
         # trips to parser-rejecting output. parse_mesh_config requires
         # at least one node; the writer must not produce something

@@ -38,6 +38,8 @@ All three of these mutate `mesh.yml` and live in [src/maxim/peer/mesh_setup.py](
 | `maxim peer add-node <name> --url <url> [--role peer\|leader] [--force]` | Append a node to `mesh.yml::nodes`. `--force` replaces an existing entry (does not duplicate). | 0 ok / 2 refused / 3 invalid args |
 | `maxim peer remove-node <name>` | Remove a node from `mesh.yml::nodes`. Side effect: clears any drain state for that node. | 0 ok / 2 refused (incl. self-removal) |
 
+The `--node <name> install <extras>` verb from Stage C3.3 is **not** a setup verb (it does NOT mutate `mesh.yml`). It composes drain → install → resume and lives in [src/maxim/peer/mesh_cli.py](../../src/maxim/peer/mesh_cli.py), delegating the HTTP body to [src/maxim/peer/cli.py](../../src/maxim/peer/cli.py)'s shared `_install_on_target` core — same core the positional-URL `maxim peer install` verb uses.
+
 Pass `--help` to any of them for the full usage string.
 
 ### Walkthrough: cold-start a 3-node mesh
@@ -59,6 +61,56 @@ maxim peer remove-node node-c         # remove from topology (clears drain state
 ```
 
 The `remove-node` verb intentionally clears the drain entry for `node-c` so you don't leave an orphan in the drain state file. If the filelock acquisition warns ("could not acquire drain lock within 5s"), the removal **still proceeds** — the warning means the mesh.yml mutation succeeded but the drain state file may briefly contain a stale entry. Resolve by hand-editing `~/.maxim/util/drained_nodes.{role}.txt` or by running `maxim peer --node node-c resume` followed by `remove-node` again.
+
+### Walkthrough: install an extra on a named mesh node (Plan 4 C3.3)
+
+```bash
+maxim peer --node mac-studio install semantic          # drain → install → resume
+maxim peer --node mac-studio install semantic,llm-torch
+maxim peer --node mac-studio install sentence-transformers  # raw pip package also works
+```
+
+The `--node X install` verb composes **drain → install → resume** around the shared `_install_on_target` HTTP core that the existing positional-URL `maxim peer install` verb also uses. The URL and cluster key are resolved from `mesh.yml::nodes` by name, so you never type a URL.
+
+**Was-drained sticky semantics:** if `mac-studio` was already drained by the operator before the install (for an unrelated reason — e.g. you drained it manually to debug a different issue), the install verb skips BOTH the drain step AND the auto-resume. Your prior drain stays in place after the install completes. This matches the "operator intent is sticky" rule from C2.
+
+**Failure mode:** if the drain succeeds but the install itself fails (network error, 403 disabled, pip resolution error, etc.), the node is **left drained** with a loud stderr message pointing at the manual resume command:
+
+```
+✗ Install failed. Node 'mac-studio' is STILL DRAINED.
+  → Debug the failure above, then run:
+      maxim peer --node mac-studio resume
+```
+
+This is deliberate. Auto-resume-on-failure would mask install failures behind a clean exit — exactly the silent-no-op shape CLAUDE.md's structural-enforcement lesson warns against. If you see this message, investigate the install failure first, then resume by hand when the node is ready.
+
+**Self-install is refused.** `maxim peer --node <self> install <extras>` exits 2 and points you at `pip install pymaxim[<extras>]` directly. Remote-installing on yourself is a round-trip through your own admin endpoint; there's no reason not to use the local pip invocation.
+
+**Positional URL is refused** in the `--node` form. If you want the no-mesh.yml fallback (e.g. you haven't run `init-mesh` yet and know the target's URL directly), use the positional verb: `maxim peer install <extras> https://target.example.com/v1`. The `--node` form's error message redacts the URL to `<scheme>://...` so a secret typo'd into argv doesn't echo to stderr.
+
+**Exit codes.** `0` = installed successfully (and resumed if the verb drained). `1` = install failed (node left drained with loud hint). `2` = refused pre-install (self, unknown node, bad tokens, drain lock timeout). **`3` = install succeeded but the post-install auto-resume failed** — the node IS upgraded but is stuck in the drain state; run `maxim peer --node <name> resume` manually to clear it. The distinct exit code lets scripts tail `$?` to tell `3` ("upgraded but stuck") apart from `1` ("failed and stuck").
+
+**Cluster-key divergence between `mesh.yml::cluster_key` and `peer.yml::api_key`.** `init-mesh` copies `peer.yml::api_key` into `mesh.yml::cluster_key` once. If you later rotate one without the other, the two files hold different secrets. Because the `--node <name> install` verb reads from `mesh.yml::cluster_key` and the positional-URL `maxim peer install` reads from `peer.yml::api_key`, one will 401 while the other succeeds. Symptom: "auth failed" from one install form but not the other against the same target node. Fix: keep the two files in sync by hand until cluster-key rotation lands as a first-class verb (tracked in the roadmap at `docs/plans/reactive_peer_mesh_roadmap.md` Stage C7). A future `maxim doctor check_cluster_key_consistency` check is deferred there.
+
+**Cross-platform quirk: `httpx` / `http-client` / `httpie` are valid install tokens.** Pre-C3.3's argv parser used `arg.startswith("http")` to detect URLs, which false-positived on these real PyPI package names. The C3.3 fold tightened the check to require `"://"` in the token, so `maxim peer --node mac-studio install httpx` now correctly routes to the raw-packages pip install path.
+
+### "I ran `--node install` and got exit code 3"
+
+Install succeeded (the new extra is installed on the leader) but the post-install `resume_node` call failed, most commonly because the drain state file's `filelock.FileLock` timed out. The node is upgraded but still in the drain set. Recovery:
+
+```bash
+maxim peer list-drained                     # confirm it's still drained
+maxim peer --node <name> resume             # clear the drain manually
+maxim peer --node <name> status             # verify the node is probing healthy
+```
+
+If `resume` also fails with a lock timeout, check `lsof ~/.maxim/util/drained_nodes.*.txt.lock` to find the process holding the lock — likely another `maxim peer` command in another terminal.
+
+### "I ran `--node X install` and the node is still drained after"
+
+Expected if the install **failed**. Check the exit code (non-zero) and the stderr "STILL DRAINED" message. After you've debugged and fixed the underlying install failure, run `maxim peer --node <name> resume` by hand to clear the drain.
+
+If the install **succeeded** (exit 0, "Resumed 'X' after install" in stdout) but the node is still drained, check whether you pre-drained it before the install — the was-drained sticky rule means pre-drained nodes never get auto-resumed. Run `maxim peer --node <name> resume` to clear it.
 
 ---
 
