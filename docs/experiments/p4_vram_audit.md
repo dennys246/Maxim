@@ -42,11 +42,12 @@ The Plan 3.6 headroom rule (`max(1.5 GB, 0.55 × weights_gb)`) is a **conservati
 
 On THIS machine in THIS configuration:
 
-- **n_ctx is 8k, not 12k.** The commit headline is "WARN @ 8k" — the leader was intentionally restarted with a reduced context window before the audit. At fixed n_ctx, llama.cpp pre-allocates the KV cache at model load time; there is NO runtime growth pressure. The 3.02 GB headroom is static.
-- **The P4 Stage 2 encoder stack also has no runtime growth pressure.** CLIP + paraphrase-mpnet weights are loaded once and never dynamically re-allocate. The torch caching allocator may briefly overshoot during encode, but the measurements show 0 MB growth between `after_mpnet_load` and `after_mug_test_encode`.
-- **The 3.02 GB free budget is therefore steady-state, not peak.** The Plan 3.6 rule assumes peak-vs-steady-state delta, which doesn't apply here.
+- **n_ctx is 8k, not 12k.** The commit headline is "WARN @ 8k" — the leader was intentionally restarted with a reduced context window before the audit. At fixed n_ctx, llama.cpp pre-allocates the KV cache at model load time; there is NO runtime growth pressure FROM THE LLM. The LLM's contribution to the 3.02 GB free budget is steady-state.
+- **The P4 Stage 2 encoder stack's steady-state footprint is ~1 GB** (CLIP ~600 MB + paraphrase-mpnet ~400 MB). The measurements show 0 MB delta between `after_mpnet_load` and `after_mug_test_encode` for a single-pass encode of 50 images + 10 text prompts.
 
-**Operationally:** the WARN verdict is technically correct per the rule, but the rule over-penalizes fixed-n_ctx configurations. The co-residency works for Phase 2D's single-shot mug test (which is what this audit measured). The open question is Stage 3, which runs 20 seeds × 3 arms = 60 mug-test-equivalent runs back-to-back.
+**Honest caveat (Round 2 Arch-lens #8 fold):** the 0-MB-delta measurement was taken at steady-state *after* a single encode pass completed, NOT at *peak* usage during encoding. The torch caching allocator can briefly overshoot during encode (reserving blocks it doesn't immediately use, holding them for future allocations); nvidia-smi would show those as used bytes but our sampling is at completion, not peak. Additionally, repeated runs under less-favorable allocator fragmentation (Stage 3's 20 seeds × 3 arms = 60 mug-test-equivalent runs back-to-back) could drift the steady-state number upward over time. The 3.02 GB free budget is therefore "steady-state at T0 after one single-shot encode," NOT "guaranteed steady-state across any number of repeated runs."
+
+**Operationally:** the WARN verdict is technically correct per the rule, and the fold-time interpretation "WARN is over-penalizing" is probably correct *for Phase 2D's one-shot workload* but not certainly correct for Stage 3's 60-run sweep. That's why the Stage 3 recommendation below is Option 3γ (dedicated worktree with `MAXIM_LLM_ENABLED=0`) — it sidesteps the allocator-drift uncertainty by removing the LLM from the picture entirely rather than trying to reason about it.
 
 ## Stage 3 implications
 

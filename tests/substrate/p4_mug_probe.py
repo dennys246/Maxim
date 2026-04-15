@@ -12,10 +12,25 @@ diverge and the test fails loudly.
 The probe is intentionally simple: it runs one forward retrieval from
 every text node in ``_node_modality`` against the vision bucket,
 returns a sorted dict keyed by text node id with the result node_ids
-(not weights — float weights can drift across platforms and we want
-exact comparison). This captures the structural correctness of the
-binding graph + sidecar without false negatives from floating-point
-noise.
+sorted lexicographically. We deliberately DO NOT include float weights
+(they can drift across platforms) AND we SORT the node-id list
+(not ranked by weight) so the equality check isn't sensitive to
+weight tie-break order under dict iteration.
+
+**Why the list is sorted, not weight-ranked** (Round 2 Exec-lens #3
+fold): retrieve_cross_modal ranks results by activation descending.
+When multiple nodes tie at the same activation (e.g., 5 class-correct
+vision nodes all reached through identical-weight 1-hop edges), the
+tie-break order is determined by the ``DependencyGraph``'s internal
+dict iteration order under ``activations.items()``. After a P3.5
+``restore_into``, the binding graph is rebuilt from loaded episodes
+via ``apply_hebbian_on_close``, which may insert edges in a different
+order than the original build — so the iteration order can differ
+even though the graph is semantically identical. Weight-ranking the
+probe's output would flake on that tie-break order without
+indicating a real correctness regression. Sorting by node id
+instead captures "the binding graph round-trips" (the actual claim)
+without false flakes from insertion-order drift.
 """
 
 from __future__ import annotations
@@ -26,10 +41,11 @@ from typing import Any
 def retrieve_cross_modal_snapshot(systems: dict[str, Any]) -> dict[str, list[str]]:
     """Run one retrieve_cross_modal call per text-tagged node.
 
-    Returns a sorted dict keyed by text node id, where each value is
-    the list of vision node ids retrieved in order. Deterministic given
-    the hippocampus state — byte-identical pre-shutdown and post-reload
-    when the round-trip works.
+    Returns a dict keyed by text node id, where each value is a
+    lexicographically sorted list of the vision node ids retrieved.
+    Deterministic given the hippocampus state — byte-identical
+    pre-shutdown and post-reload when the round-trip works AND
+    robust against weight tie-break order drift (see module docstring).
     """
     hippocampus = systems["hippocampus"]
 
@@ -43,5 +59,8 @@ def retrieve_cross_modal_snapshot(systems: dict[str, Any]) -> dict[str, list[str
     result: dict[str, list[str]] = {}
     for text_id in text_node_ids:
         hits = hippocampus.retrieve_cross_modal(text_id, target_modality="vision", limit=50)
-        result[text_id] = [node_id for node_id, _weight in hits]
+        # Sort node ids lexicographically (NOT by weight) to make the
+        # equality check insensitive to tie-break order. See module
+        # docstring for the rationale.
+        result[text_id] = sorted(node_id for node_id, _weight in hits)
     return result

@@ -133,10 +133,11 @@ These were decision-point questions in the plan draft; the user's calls are bake
 
 5. **Mug fixture: Oxford Flowers-102 (CLIP ~66% headroom), NOT imagenette.** Round 1 review (cross-confirmed by both lenses, CRITICAL severity) caught a fixture saturation hazard: imagenette's 10 classes are exactly the distribution OpenCLIP zero-shot saturates near 95-99% on, which collapses `baseline_std → 0` and renders the `+2σ` margin vacuous. **The pre-review pick was wrong.** The replacement criterion is "CLIP zero-shot performance leaves enough variance for the head-to-head margin to mean something" — published OpenCLIP numbers on Oxford Flowers-102 are around 66% top-1 (Radford et al. 2021 §3.1.4 + OpenCLIP benchmarks), giving both arms substantial headroom. Alternative considered: CUB-200 (~50% CLIP zero-shot, even more headroom) — rejected because 200 classes inflate the per-class power problem to 0.25 samples/class on a 50-pair fixture. Flowers-102 with 10-class subset (5 samples each) is the sweet spot.
 
-   - **`nelorth/oxford-flowers`** on HuggingFace, 102 flower categories, ~2040 train + 6149 test, License: CC-BY-4.0 (verify before Stage 2). Loads via `datasets.load_dataset("nelorth/oxford-flowers")`.
+   - **Oxford Flowers-102** via `torchvision.datasets.Flowers102` — 102 flower categories, 1020/1020/6149 train/val/test, same Oxford VGG source Radford et al. 2021 measured CLIP on. Cached at `~/.cache/maxim/p4_flowers/` (user-scoped, repo-agnostic).
+   - **Stage 2 v1 plan amendment (2026-04-15):** the plan originally specified `datasets.load_dataset("nelorth/oxford-flowers")` with the HuggingFace `datasets` library + `HF_DATASETS_CACHE` default path, folded in Exec M2 of Round 1. **Stage 2 v1 silently switched to `torchvision.datasets.Flowers102`** because torchvision is a transitive dep of `sentence-transformers` (already present in the `semantic` extra) while the `datasets` library would have added a new optional dep. Phase 2B's calibration sweep was built and run against torchvision, the fixture descriptor is indexed against torchvision's `Flowers102.classes` ordering, and Phase 2D v1's mug test consumed the same path. The two libraries both wrap the same Oxford VGG source files but have INDEPENDENT class-label orderings — the fixture's `class_idx` fields are only valid under torchvision's ordering. Re-doing Stage 2 via `datasets` would require regenerating the fixture. The amendment records the decision: **torchvision is the pinned choice** because (a) zero additional dep cost vs the `datasets` library, (b) torchvision exposes a documented class-name list we can pin in-repo as a drift guard, (c) the Stage 2 v1 work is already indexed against it. The `nelorth/oxford-flowers` HF dataset remains a fallback if torchvision ever ships a Flowers102 reindex, in which case the loader's drift guard raises and we regenerate via either source under a `change-fixture` commit.
    - **Subset choice:** pick 10 classes whose CLIP zero-shot accuracy lands in `[0.50, 0.85]` (substantial headroom in both directions). Stage 2's first deliverable is a one-time CLIP-baseline calibration sweep over the full 102 classes to identify the 10 hardest-but-not-impossible classes — pin them by name in `scenarios/substrate/p4_mug_test.yaml`.
    - **Sample count:** 5 images per class × 10 classes = 50 pairs (matches the original budget). Per-probe metric is `pooled across all 50` (Exec I3 fold).
-   - Image data downloaded lazily via `datasets`, cached at `HF_DATASETS_CACHE` default (`~/.cache/huggingface/datasets/`) — Exec M2 fold, do NOT override the cache path. Doctor surfaces the path.
+   - **Drift guard:** the 102 class names are pinned in-repo (`tests/substrate/p4_fixture_loader.py::FLOWERS102_CLASS_NAMES`) as a tuple, asserted against `torchvision.datasets.Flowers102.classes` at load time. If torchvision ever reorders, the assertion raises immediately instead of silently returning wrong images. Fixture SHA pin complements this: SHA covers the YAML bytes, drift guard covers the class-index-to-name mapping.
 
    Stage 1 uses synthetic embeddings (no real images, no `datasets` dep) so mechanism work runs without the fixture. Stage 2 ships the fixture descriptor + the 10-class calibration sweep + the bundled selection rationale.
 
@@ -396,3 +397,49 @@ Stage 2's deliverable includes the subprocess mug test on real CLIP + Oxford Flo
 - ATL / EC modality awareness — those layers stay modality-agnostic
 - A new `CROSS_MODAL` edge type on `CrossLayerGraph` unless Round 1 review picks Option B
 - Dropping or modifying the `paraphrase-mpnet` text encoder for the substrate path
+
+## Stage 2 v2 fold status (2026-04-15, IN PROGRESS)
+
+**Branch:** `fix/substrate-p4-stage2-fold` off `origin/main` at `761d958`.
+
+**Trigger:** Stage 2 v1 post-merge Round 2 review (Executor + Architecture lenses in parallel). Architecture lens raised 5 CRITICAL findings; the most important is Arch #4 — the Phase 2D v1 mug test is tautological under `VISION_EC_THRESHOLD=1.01`, so the "100% 1-hop → defer Option 2" decision rests on unfalsifiable evidence. The v2 fold rebuilds Phase 2D to produce non-tautological data and re-opens the Option 2 decision empirically.
+
+**Approach C — distractor noise + text-text bridge topology** (agreed with user 2026-04-15):
+
+1. **Parameterize the fixture builder** to sweep two dimensions:
+   - `noise_reps` ∈ {0, 1, 2, 3, 4, 5}: each class's `text_X` gains 1 cross-class contaminant pair reinforced `noise_reps` times (weight 0.3 + (n-1)×0.1)
+   - `bridge_topology` ∈ {none, shared_superclass}: Topology A ships `text_flower` hub node bound once to one vision from each class (10 edges total) + bound once to each `text_X` (10 more edges); Topology B (pairwise) is documented as a known alternative but NOT run in the sweep to save wall clock
+2. **Sweep all 12 combinations** (6 × 2) and measure per combination:
+   - Same-class top-5 recall (Approach A signal-vs-noise ranking validation)
+   - Cross-class single-hop reachability rate
+   - Cross-class simulated-multi-hop reachability rate (Option 2 lift prediction)
+   - Binding graph topology histogram (1-hop direct / 1-hop noise / 2-hop bridge)
+3. **Operating point rule:** pick the LARGEST `noise_reps` at which same-class top-5 recall ≥ **0.90** (user chose 0.90 for tighter pressure test vs. the initial 0.80 proposal) as the canonical fixture. Bridge topology is always shared_superclass for shipping.
+4. **Option 2 decision rule:**
+   - If Option 2 lift is zero at the chosen operating point → Option 2 stays deferred, `TestStageThreeLimitation` pin stays as-is, fold PR lands without touching the retrieval code
+   - If Option 2 lift is non-zero → Option 2 ships in a **separate follow-up PR** (agreed with user 2026-04-15) that renames `node_filter → traversal_filter`, adds `result_filter`, provides P3b compat shim, re-validates P3a's 10-seed sweep, and flips `TestStageThreeLimitation`
+
+**Commit sequence (progress):**
+
+1. ✅ Plan amendment — torchvision-over-datasets decision + Stage 2 v2 fold status section (commit `6de09c6`)
+2. ✅ Refactor `_build_and_bind` — parameterized + moved to `tests/substrate/p4_build_and_bind.py` + noise/bridge layers added (commit `82da6db`)
+3. ✅ Pin 102-class list + enforce `class_idx` drift guard (commit `8d0b92f`)
+4. ✅ Drop PyYAML fallback parser (commit `8d0b92f`)
+5. ✅ Phase 2D v2 parameterized fixture builder (merged into commit `82da6db`)
+6. ✅ Phase 2D v2 sweep runner — 12 combinations (commit `5d25556`)
+7. ✅ **Execute sweep + operating point selected: `noise_reps=1, bridges=shared_superclass` → 0.980 recall, +96.0% Option 2 lift** (commit `5d25556`)
+8. ✅ New fixture YAML v2 with canonical build params + SHA regenerated (commit `3c3c8d9`)
+9. ✅ Round-trip test updated + 0.70 retrieval gate added (commit `3c3c8d9`)
+10. ✅ Tactical fixes bundle (commit `f00fc0f`): probe sort, headroom assert, VRAM OOM, canonical mps, cosmetics, threshold tripwire
+11. ✅ Phase 2D v2 milestone report at `docs/experiments/p4_stage2_v2_milestone.md`
+12. ⏳ Round 2 pre-merge review (Executor + Architecture in parallel)
+13. ⏳ Fold review findings + open PR
+14. ⏳ **Option 2 ship PR — DECISION: SHIP** (separate follow-up PR after fold merges)
+
+**Phase 2D v2 sweep result headline:** Option 2 lift is **+96.0%** at the operating point, with 450/450 cross-class pairs reachable under multi-hop simulation vs 18/450 under Stage 1's single-hop filter. The "defer Option 2" decision from v1 is **REVERSED** — Option 2 SHIPS.
+
+**For successor sessions:** if context runs out mid-fold, read this section plus `git log --oneline fix/substrate-p4-stage2-fold` to see which commit sequence step is done. Each commit message names the step explicitly.
+
+**Topology B — known alternative not run in v2:**
+
+Pairwise bridges construct 5 shared text nodes, each connecting a pair of classes via `(text_bridge_k, text_X, vision_Y)` triples. Sparser than Topology A, tests a different sensitivity regime. **Not sweep-run in Stage 2 v2** per the scope cut the user chose — Topology A is considered the more realistic model of natural language usage (shared attribute text like "flower" co-occurring with multiple vision classes is how actual language carves the world). Topology B is documented here and in `project_p4_stage2_fold.md` memory as the escalation path if Topology A's Stage 3 head-to-head produces ambiguous results (e.g., Arm B's margin over Arm C is exactly at the 2σ boundary and we need a second data point to confirm the direction).
