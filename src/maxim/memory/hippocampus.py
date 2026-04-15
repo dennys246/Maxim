@@ -1438,6 +1438,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             pending.thread_id = event.thread_id
         for node_id in event.activated_nodes:
             pending.activated_nodes.append(node_id)
+            if event.modality is not None:
+                # P4 Stage 1 — modality coupling is structural: the
+                # same loop that adds a node to activated_nodes also
+                # records its modality in the per-node buffer.
+                # _close_pending_episode_locked drains the buffer into
+                # Hippocampus._node_modality before Hebbian close.
+                pending.node_modality_buffer[node_id] = event.modality
 
     def _close_pending_episode_locked(self) -> Episode:
         """Finalize ``self._pending_episode``, add it to the store, and

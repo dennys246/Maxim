@@ -58,6 +58,8 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from maxim.agents.modality import SubstrateModality
+
 
 @dataclass(frozen=True)
 class Episode:
@@ -120,6 +122,15 @@ class CaptureEvent:
     This is a lightweight wrapper that holds only the fields the
     detector rules care about. Real captures in P3a Stage 2+ will come
     from ``Hippocampus.capture_from_loop`` or the runtime agent loop.
+
+    **No modality boundary rule by design** (P4 Stage 1). The whole
+    P4 cross-modal binding mechanism depends on a single episode
+    containing nodes of BOTH modalities co-activating, so a
+    modality-change rule would actively prevent the mechanism from
+    firing. ``modality`` flows through to the per-node sidecar
+    ``Hippocampus._node_modality`` via the pending state's
+    ``node_modality_buffer`` and is consumed by
+    ``Hippocampus.retrieve_cross_modal``.
     """
 
     tick: int
@@ -130,6 +141,12 @@ class CaptureEvent:
     # Substrate node IDs activated by this event; used as the seed for
     # the pending episode's activated_nodes set.
     activated_nodes: tuple[str, ...] = ()
+    # P4 Stage 1 — substrate processing modality of the nodes activated
+    # by this event. ``None`` = caller did not tag (legacy P3a/P3b
+    # callers, never reaches the cross-modal retrieval path). When
+    # non-None, every node in ``activated_nodes`` is tagged with this
+    # modality in ``Hippocampus._node_modality`` at episode close.
+    modality: SubstrateModality | None = None
 
 
 @dataclass
@@ -145,6 +162,16 @@ class PendingEpisodeState:
     activated_nodes: list[str] = field(default_factory=list)
     reward_events: list[tuple[int, float]] = field(default_factory=list)
     scn_tag: str | None = None
+    # P4 Stage 1 — per-node modality buffer. Populated by
+    # ``Hippocampus._apply_event_to_pending`` whenever an incoming
+    # ``CaptureEvent`` carries a non-None ``modality`` field.
+    # Consumed by ``_close_pending_episode_locked``, which copies the
+    # buffer's entries into ``Hippocampus._node_modality`` BEFORE the
+    # Hebbian close runs. A mixed-modality episode (the P4 cross-modal
+    # binding case) accumulates entries from multiple events, each
+    # with its own modality — there is no single per-episode modality
+    # scalar by design (Round 1 Arch M2 fold).
+    node_modality_buffer: dict[str, SubstrateModality] = field(default_factory=dict)
 
     def finalize(self) -> Episode:
         return Episode(
