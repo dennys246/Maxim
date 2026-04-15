@@ -71,25 +71,15 @@ def _save_component(name: str, component: Any, tmp_dir: Path) -> str | None:
     path = tmp_dir / f"{name}.json"
 
     if name == "percept_trace_buffer":
-        # PerceptTraceBuffer has no save() — manually serialize snapshot
+        # Stage 2 review M4 fold — use the Stage 1 dump() contract so
+        # the legacy per-component PTB path round-trips activation
+        # strength faithfully (the pre-fix path serialized via
+        # snapshot() and lost τ-decay state, which the child then
+        # re-recorded at activation=1.0).
         try:
-            entries = component.snapshot()
-            data = {
-                "entries": [
-                    {
-                        "agent_id": e.agent_id,
-                        "percept_id": e.percept_id,
-                        "tick": e.tick,
-                        "activation_strength": e.activation_strength,
-                        "registered_at": e.registered_at,
-                    }
-                    for e in entries
-                ],
-                "tick_counter": component.current_tick,
-            }
             from maxim.utils.atomic_io import atomic_write_json
 
-            atomic_write_json(str(path), data)
+            atomic_write_json(str(path), component.dump())
             return str(path)
         except Exception as e:
             logger.warning("Failed to save %s: %s", name, e)
@@ -254,7 +244,7 @@ def run_session_round_trip(
     systems: dict[str, Any],
     probe: str,
     tolerance: float = 0.0,
-    timeout_s: float = 30.0,
+    timeout_s: float = 60.0,
 ) -> RoundTripResult:
     """P3.5 Stage 2 — round-trip a full SessionSnapshot through a subprocess.
 
@@ -281,6 +271,19 @@ def run_session_round_trip(
         return RoundTripResult(
             success=False,
             error=f"unknown bio-system kinds in session round-trip: {sorted(unknown)}",
+        )
+
+    # Duck-type check at the harness boundary so a wrong-type instance
+    # (e.g., systems={"atl": object()}) gets a clean error instead of
+    # a confusing AttributeError deep inside SessionSnapshot.capture.
+    bad_types = [name for name, obj in systems.items() if not (hasattr(obj, "dump") and hasattr(obj, "load_state"))]
+    if bad_types:
+        return RoundTripResult(
+            success=False,
+            error=(
+                f"systems values must implement BioSystemSnapshot (dump + load_state); "
+                f"missing methods on: {sorted(bad_types)}"
+            ),
         )
 
     try:

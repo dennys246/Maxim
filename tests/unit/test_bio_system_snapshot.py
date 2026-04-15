@@ -30,10 +30,9 @@ from maxim.memory.snapshot import (
     BioSystemSnapshot,
     SNAPSHOT_KINDS,
     SessionSnapshot,
-    _SESSION_MIGRATIONS,
-    _SUBSYSTEM_MIGRATIONS,
     atl_from_snapshot,
     atl_to_snapshot,
+    isolated_migrations,
     migrate_session_envelope,
     migrate_subsystem_envelope,
     register_session_migration,
@@ -274,10 +273,25 @@ class TestEnvelopeShape:
         with pytest.raises(ValueError, match="schema_version must be int"):
             unwrap_envelope(env, "atl")
 
-    def test_unwrap_envelope_unknown_version_rejected(self):
+    def test_unwrap_envelope_future_version_rejected(self):
+        """Stage 2 fold I3 — was named test_unwrap_envelope_unknown_version_rejected
+        but now exercises the future-version branch of the migration chain
+        (`is newer than this build's latest`), not the unknown-source-version
+        branch. See test_unwrap_envelope_unknown_past_version_rejected below
+        for the parallel coverage on the past-version branch."""
         env = {"schema_version": 99, "kind": "atl", "payload": {}}
         with pytest.raises(ValueError, match="schema_version 99 is newer than"):
             unwrap_envelope(env, "atl")
+
+    def test_unwrap_envelope_unknown_past_version_rejected(self):
+        """A v0 sub-system envelope with no registered migration to v1
+        must raise via ``has no migration to`` — the past-version branch
+        of the migration chain. Stage 2 fold I3 — pre-fold there was no
+        coverage of this through the unwrap_envelope entry point."""
+        with isolated_migrations():  # ensure no v0→v1 migration is registered
+            env = {"schema_version": 0, "kind": "atl", "payload": {}}
+            with pytest.raises(ValueError, match="has no migration to 1"):
+                unwrap_envelope(env, "atl")
 
     def test_snapshot_kinds_match_expected_set(self):
         assert set(SNAPSHOT_KINDS) == {
@@ -588,157 +602,378 @@ class TestSessionSnapshotStrictMode:
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# P3.5 Stage 2 — migration chain (synthetic v0 → v1 fixture)
+# Stage 2 review C1 fold — restore_into atomicity (rollback on partial failure)
 # ─────────────────────────────────────────────────────────────────────────
 
 
-@pytest.fixture
-def _isolated_session_migrations():
-    """Snapshot + restore the session migration registry around each test."""
-    saved = dict(_SESSION_MIGRATIONS)
-    try:
-        yield
-    finally:
-        _SESSION_MIGRATIONS.clear()
-        _SESSION_MIGRATIONS.update(saved)
+class TestRestoreIntoAtomicity:
+    """If any sub-system's load_state raises mid-restore, every
+    already-mutated target must roll back to its pre-restore state.
+
+    P4 cross-modal mug test and P5 stress persistence will both consume
+    restore_into in hot loops where a torn restore would brick a
+    multi-agent session.
+    """
+
+    def test_partial_failure_rolls_back_already_applied(self):
+        atl, hc, nac, scn, ptb, clg = _make_live_systems()
+        # Populate ATL with a deterministic state we can verify rolled back.
+        # Use PTB instead — it has a clean public API.
+        ptb.record("alice", "p1")
+        ptb.record("alice", "p2")
+        original_ptb_dump = ptb.dump()
+
+        snap = SessionSnapshot.capture(
+            atl=atl,
+            hippocampus=hc,
+            nac=nac,
+            scn=scn,
+            percept_trace_buffer=ptb,
+            cross_layer_graph=clg,
+            strict=True,
+        )
+
+        # Mutate PTB AFTER capture so the snapshot holds the "two
+        # entries" state but the live PTB is in a different state. We
+        # want to verify rollback restores PRE-restore (3 entries),
+        # not PRE-capture (2 entries).
+        ptb.record("alice", "p3")
+        pre_restore_ptb_dump = ptb.dump()
+        assert pre_restore_ptb_dump != original_ptb_dump
+
+        # Force a failure on a LATER sub-system by passing a stub that
+        # raises in load_state but conforms to the duck-type Protocol.
+        # PTB applies first (per SNAPSHOT_KINDS order is atl, hc, nac,
+        # scn, percept_trace_buffer, cross_layer_graph), so use a
+        # broken cross_layer_graph to fail after PTB is mutated.
+        class _BrokenCLG:
+            schema_version = 1
+            _intentional = True
+
+            def dump(self):
+                return {"sentinel": True}
+
+            def load_state(self, state):
+                raise RuntimeError("intentional cross_layer_graph failure")
+
+        broken_clg = _BrokenCLG()
+
+        with pytest.raises(RuntimeError, match="intentional cross_layer_graph failure"):
+            snap.restore_into(
+                atl=atl,
+                hippocampus=hc,
+                nac=nac,
+                scn=scn,
+                percept_trace_buffer=ptb,
+                cross_layer_graph=broken_clg,  # type: ignore[arg-type]
+                strict=False,
+            )
+
+        # PTB was mutated mid-restore; the rollback must have restored
+        # it to its PRE-restore state (the 3-entry post-capture state),
+        # not the captured 2-entry state.
+        assert ptb.dump() == pre_restore_ptb_dump
+        assert len(ptb) == 3
+
+    def test_no_failure_no_rollback(self):
+        atl, hc, nac, scn, ptb, clg = _make_live_systems()
+        ptb.record("alice", "p1")
+        snap = SessionSnapshot.capture(
+            atl=atl,
+            hippocampus=hc,
+            nac=nac,
+            scn=scn,
+            percept_trace_buffer=ptb,
+            cross_layer_graph=clg,
+            strict=True,
+        )
+        # Apply into fresh empty instances — no failure expected
+        atl2, hc2, nac2, scn2, ptb2, clg2 = _make_live_systems()
+        snap.restore_into(
+            atl=atl2,
+            hippocampus=hc2,
+            nac=nac2,
+            scn=scn2,
+            percept_trace_buffer=ptb2,
+            cross_layer_graph=clg2,
+            strict=True,
+        )
+        assert len(ptb2) == 1
+
+    def test_dump_failure_pre_phase_aborts_cleanly(self):
+        """If the rollback-snapshot phase itself fails on a target,
+        no other target may be mutated."""
+        atl, hc, nac, scn, ptb, clg = _make_live_systems()
+        ptb.record("alice", "p1")
+        ptb_dump_before = ptb.dump()
+        snap = SessionSnapshot.capture(
+            atl=atl,
+            hippocampus=hc,
+            nac=nac,
+            scn=scn,
+            percept_trace_buffer=ptb,
+            cross_layer_graph=clg,
+            strict=True,
+        )
+
+        class _DumpBroken:
+            schema_version = 1
+
+            def dump(self):
+                raise RuntimeError("intentional dump failure")
+
+            def load_state(self, state):
+                raise AssertionError("load_state must not be reached")
+
+        # Replace a LATER kind so the dump-phase iteration reaches it
+        # only after the earlier targets have already been
+        # rollback-snapshotted but not yet mutated.
+        broken = _DumpBroken()
+        with pytest.raises(RuntimeError, match="failed to capture rollback state"):
+            snap.restore_into(
+                atl=atl,
+                hippocampus=hc,
+                nac=nac,
+                scn=scn,
+                percept_trace_buffer=ptb,
+                cross_layer_graph=broken,  # type: ignore[arg-type]
+                strict=False,
+            )
+
+        # PTB must NOT have been mutated — abort happens before phase 2
+        assert ptb.dump() == ptb_dump_before
 
 
-@pytest.fixture
-def _isolated_subsystem_migrations():
-    saved = dict(_SUBSYSTEM_MIGRATIONS)
-    try:
-        yield
-    finally:
-        _SUBSYSTEM_MIGRATIONS.clear()
-        _SUBSYSTEM_MIGRATIONS.update(saved)
+# ─────────────────────────────────────────────────────────────────────────
+# Stage 2 review I1+M5 fold — SessionSnapshot.dump returns a copy
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestSessionSnapshotDumpAliasing:
+    def test_dump_returns_independent_dict(self):
+        atl, hc, nac, scn, ptb, clg = _make_live_systems()
+        snap = SessionSnapshot.capture(
+            atl=atl,
+            hippocampus=hc,
+            nac=nac,
+            scn=scn,
+            percept_trace_buffer=ptb,
+            cross_layer_graph=clg,
+            strict=True,
+        )
+        d1 = snap.dump()
+        d1["systems"]["sentinel"] = "x"
+        d2 = snap.dump()
+        # The mutation to d1 must NOT have leaked into the snapshot's
+        # internal envelope, so a second dump() returns clean state.
+        assert "sentinel" not in d2["systems"]
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# P3.5 Stage 2 — migration chain (synthetic v0 → v1 fixture)
+#
+# Stage 2 review I2 fold — uses the public ``isolated_migrations``
+# context manager rather than reaching into the private
+# ``_SESSION_MIGRATIONS`` / ``_SUBSYSTEM_MIGRATIONS`` globals. A future
+# refactor that moves the registries inside a class only needs to update
+# ``isolated_migrations`` itself; these tests stay stable.
+# ─────────────────────────────────────────────────────────────────────────
 
 
 class TestMigrationV0ToV1:
     """Stage 2 — synthetic legacy fixture proves the migration mechanism.
 
     The current LATEST_SESSION_SCHEMA_VERSION is 1, so there is no
-    in-the-wild v0. These tests register a fake v0→v1 migration via
-    the public ``register_session_migration`` decorator (cleaned up
-    after each test by ``_isolated_session_migrations``).
+    in-the-wild v0. These tests register a fake v0→v1 migration inside
+    an ``isolated_migrations()`` block (registry cleared on entry,
+    restored on exit) so a future real v0 migration registered at
+    module import time will not collide with these synthetic tests.
     """
 
-    def test_session_v0_to_v1_migration_produces_valid_envelope(self, _isolated_session_migrations):
-        @register_session_migration(0)
-        def _v0_to_v1(env):
-            # Pretend v0 had a top-level ``bio_systems`` key that v1
-            # renames to ``systems``. Migration normalizes shape.
-            new_env = dict(env)
-            new_env["systems"] = new_env.pop("bio_systems", {})
-            new_env["schema_version"] = 1
-            return new_env
-
-        legacy = {
-            "schema_version": 0,
-            "kind": "session",
-            "bio_systems": {},  # legacy key
-        }
-        upgraded = migrate_session_envelope(legacy)
-        assert upgraded["schema_version"] == 1
-        assert "systems" in upgraded
-        assert "bio_systems" not in upgraded
-
-    def test_session_from_dict_auto_migrates_v0(self, _isolated_session_migrations):
-        @register_session_migration(0)
-        def _v0_to_v1(env):
-            new_env = dict(env)
-            new_env["systems"] = new_env.pop("bio_systems", {})
-            new_env["schema_version"] = 1
-            return new_env
-
-        legacy = {
-            "schema_version": 0,
-            "kind": "session",
-            "bio_systems": {},
-        }
-        snapshot = SessionSnapshot.from_dict(legacy)
-        assert snapshot.envelope["schema_version"] == LATEST_SESSION_SCHEMA_VERSION
-        assert snapshot.envelope["kind"] == "session"
-
-    def test_unknown_source_version_raises(self, _isolated_session_migrations):
-        # No migration registered for v0 — chain has no path forward
-        legacy = {"schema_version": 0, "kind": "session", "systems": {}}
-        with pytest.raises(ValueError, match="schema_version 0 has no migration to 1"):
-            migrate_session_envelope(legacy)
-
-    def test_future_version_refused(self, _isolated_session_migrations):
-        future = {"schema_version": 999, "kind": "session", "systems": {}}
-        with pytest.raises(ValueError, match="newer than this build's latest"):
-            migrate_session_envelope(future)
-
-    def test_broken_migration_produces_wrong_version_raises(self, _isolated_session_migrations):
-        @register_session_migration(0)
-        def _broken(env):
-            # Returns the same version it received — no progress
-            return dict(env)
-
-        legacy = {"schema_version": 0, "kind": "session", "systems": {}}
-        with pytest.raises(ValueError, match="migration 0→1 produced schema_version 0"):
-            migrate_session_envelope(legacy)
-
-    def test_migration_chain_walks_multiple_steps(self, _isolated_session_migrations):
-        """Two-step migration: v0 → v1 → v2 (when LATEST is bumped to 2)."""
-
-        @register_session_migration(0)
-        def _v0_to_v1(env):
-            new = dict(env)
-            new["schema_version"] = 1
-            new["systems"] = new.pop("bio_systems", {})
-            return new
-
-        @register_session_migration(1)
-        def _v1_to_v2(env):
-            new = dict(env)
-            new["schema_version"] = 2
-            new["fingerprint"] = "v2"
-            return new
-
-        legacy = {"schema_version": 0, "kind": "session", "bio_systems": {"atl": {}}}
-        upgraded = migrate_session_envelope(legacy, target_version=2)
-        assert upgraded["schema_version"] == 2
-        assert upgraded["systems"] == {"atl": {}}
-        assert upgraded["fingerprint"] == "v2"
-
-    def test_register_duplicate_source_version_raises(self, _isolated_session_migrations):
-        @register_session_migration(0)
-        def _first(env):
-            return env
-
-        with pytest.raises(ValueError, match="already registered"):
+    def test_session_v0_to_v1_migration_produces_valid_envelope(self):
+        with isolated_migrations():
 
             @register_session_migration(0)
-            def _second(env):
+            def _v0_to_v1(env):
+                # Pretend v0 had a top-level ``bio_systems`` key that v1
+                # renames to ``systems``. Migration normalizes shape.
+                new_env = dict(env)
+                new_env["systems"] = new_env.pop("bio_systems", {})
+                new_env["schema_version"] = 1
+                return new_env
+
+            legacy = {
+                "schema_version": 0,
+                "kind": "session",
+                "bio_systems": {},  # legacy key
+            }
+            upgraded = migrate_session_envelope(legacy)
+            assert upgraded["schema_version"] == 1
+            assert "systems" in upgraded
+            assert "bio_systems" not in upgraded
+
+    def test_session_from_dict_auto_migrates_v0(self):
+        with isolated_migrations():
+
+            @register_session_migration(0)
+            def _v0_to_v1(env):
+                new_env = dict(env)
+                new_env["systems"] = new_env.pop("bio_systems", {})
+                new_env["schema_version"] = 1
+                return new_env
+
+            legacy = {
+                "schema_version": 0,
+                "kind": "session",
+                "bio_systems": {},
+            }
+            snapshot = SessionSnapshot.from_dict(legacy)
+            assert snapshot.envelope["schema_version"] == LATEST_SESSION_SCHEMA_VERSION
+            assert snapshot.envelope["kind"] == "session"
+
+    def test_unknown_source_version_raises(self):
+        with isolated_migrations():
+            # No migration registered for v0 — chain has no path forward
+            legacy = {"schema_version": 0, "kind": "session", "systems": {}}
+            with pytest.raises(ValueError, match="schema_version 0 has no migration to 1"):
+                migrate_session_envelope(legacy)
+
+    def test_future_version_refused(self):
+        with isolated_migrations():
+            future = {"schema_version": 999, "kind": "session", "systems": {}}
+            with pytest.raises(ValueError, match="newer than this build's latest"):
+                migrate_session_envelope(future)
+
+    def test_broken_migration_produces_wrong_version_raises(self):
+        with isolated_migrations():
+
+            @register_session_migration(0)
+            def _broken(env):
+                # Returns the same version it received — no progress
+                return dict(env)
+
+            legacy = {"schema_version": 0, "kind": "session", "systems": {}}
+            with pytest.raises(ValueError, match="migration 0→1 produced schema_version 0"):
+                migrate_session_envelope(legacy)
+
+    def test_broken_migration_returns_non_dict_raises(self):
+        """Stage 2 review I2 fold — type re-validation in the chain."""
+        with isolated_migrations():
+
+            @register_session_migration(0)
+            def _bad(env):
+                return ["not", "a", "dict"]  # type: ignore[return-value]
+
+            legacy = {"schema_version": 0, "kind": "session", "systems": {}}
+            with pytest.raises(ValueError, match="returned non-dict: list"):
+                migrate_session_envelope(legacy)
+
+    def test_broken_migration_returns_string_version_raises(self):
+        """Stage 2 review I2 fold — the str/int confusion that pre-fold
+        produced a confusing error (string '1' != int 1 vs clear type rejection)."""
+        with isolated_migrations():
+
+            @register_session_migration(0)
+            def _bad(env):
+                new = dict(env)
+                new["schema_version"] = "1"  # str instead of int
+                return new
+
+            legacy = {"schema_version": 0, "kind": "session", "systems": {}}
+            with pytest.raises(ValueError, match="non-int schema_version: str"):
+                migrate_session_envelope(legacy)
+
+    def test_migration_chain_walks_multiple_steps(self):
+        """Two-step migration: v0 → v1 → v2 (when LATEST is bumped to 2)."""
+        with isolated_migrations():
+
+            @register_session_migration(0)
+            def _v0_to_v1(env):
+                new = dict(env)
+                new["schema_version"] = 1
+                new["systems"] = new.pop("bio_systems", {})
+                return new
+
+            @register_session_migration(1)
+            def _v1_to_v2(env):
+                new = dict(env)
+                new["schema_version"] = 2
+                new["fingerprint"] = "v2"
+                return new
+
+            legacy = {"schema_version": 0, "kind": "session", "bio_systems": {"atl": {}}}
+            upgraded = migrate_session_envelope(legacy, target_version=2)
+            assert upgraded["schema_version"] == 2
+            assert upgraded["systems"] == {"atl": {}}
+            assert upgraded["fingerprint"] == "v2"
+
+    def test_register_duplicate_source_version_raises(self):
+        with isolated_migrations():
+
+            @register_session_migration(0)
+            def _first(env):
                 return env
 
-    def test_subsystem_migration_path_works(self, _isolated_subsystem_migrations):
+            with pytest.raises(ValueError, match="already registered"):
+
+                @register_session_migration(0)
+                def _second(env):
+                    return env
+
+    def test_subsystem_migration_path_works(self):
         """The sub-system registry is independent from the session registry."""
+        with isolated_migrations():
 
-        @register_subsystem_migration(0)
-        def _v0_to_v1(env):
-            new = dict(env)
-            new["schema_version"] = 1
-            new["payload"] = {"renamed": "value"} if "old_payload" in new else new.get("payload", {})
-            return new
+            @register_subsystem_migration(0)
+            def _v0_to_v1(env):
+                new = dict(env)
+                new["schema_version"] = 1
+                new["payload"] = {"renamed": "value"} if "old_payload" in new else new.get("payload", {})
+                return new
 
-        legacy = {"schema_version": 0, "kind": "atl", "old_payload": True, "payload": {}}
-        upgraded = migrate_subsystem_envelope(legacy)
-        assert upgraded["schema_version"] == LATEST_SUBSYSTEM_SCHEMA_VERSION
-        assert upgraded["payload"] == {"renamed": "value"}
+            legacy = {"schema_version": 0, "kind": "atl", "old_payload": True, "payload": {}}
+            upgraded = migrate_subsystem_envelope(legacy)
+            assert upgraded["schema_version"] == LATEST_SUBSYSTEM_SCHEMA_VERSION
+            assert upgraded["payload"] == {"renamed": "value"}
 
-    def test_unwrap_envelope_runs_subsystem_migrations(self, _isolated_subsystem_migrations):
+    def test_unwrap_envelope_runs_subsystem_migrations(self):
         """``unwrap_envelope`` is the call site that benefits from migration."""
+        with isolated_migrations():
 
-        @register_subsystem_migration(0)
-        def _v0_to_v1(env):
-            new = dict(env)
-            new["schema_version"] = 1
-            new["payload"] = {"upgraded": True}
-            return new
+            @register_subsystem_migration(0)
+            def _v0_to_v1(env):
+                new = dict(env)
+                new["schema_version"] = 1
+                new["payload"] = {"upgraded": True}
+                return new
 
-        legacy_atl_env = {"schema_version": 0, "kind": "atl", "payload": {}}
-        payload = unwrap_envelope(legacy_atl_env, "atl")
-        assert payload == {"upgraded": True}
+            legacy_atl_env = {"schema_version": 0, "kind": "atl", "payload": {}}
+            payload = unwrap_envelope(legacy_atl_env, "atl")
+            assert payload == {"upgraded": True}
+
+    def test_migrate_does_not_mutate_caller_envelope(self):
+        """Stage 2 review I1+M5 fold — the migration chain never
+        mutates or aliases the caller's envelope."""
+        with isolated_migrations():
+
+            @register_session_migration(0)
+            def _v0_to_v1(env):
+                new = dict(env)
+                new["systems"] = {}
+                new["schema_version"] = 1
+                return new
+
+            legacy = {"schema_version": 0, "kind": "session", "bio_systems": {"atl": {}}}
+            legacy_snapshot = dict(legacy)  # shallow copy for comparison
+            upgraded = migrate_session_envelope(legacy)
+            assert upgraded is not legacy
+            assert legacy == legacy_snapshot, "input envelope was mutated"
+
+    def test_migrate_no_op_path_returns_independent_dict(self):
+        """Even when no migration runs, the return must be caller-independent."""
+        with isolated_migrations():
+            envelope = {"schema_version": 1, "kind": "session", "systems": {}}
+            result = migrate_session_envelope(envelope)
+            assert result is not envelope
+            result["systems"]["sentinel"] = "x"
+            assert "sentinel" not in envelope["systems"]

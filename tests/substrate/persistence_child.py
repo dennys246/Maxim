@@ -47,20 +47,21 @@ def _load_component(name: str, path: str) -> Any:
         return a
 
     if name == "percept_trace_buffer":
+        # Stage 2 review M4 fold — pre-fix this path used buf.record()
+        # to replay entries, which lost the τ-decay activation values
+        # (every entry came back at activation=1.0). With Stage 1's
+        # PerceptTraceBuffer.dump/load_state in place, the legacy
+        # per-component path now uses the same load_state contract as
+        # the session_snapshot path. Backwards-compatible: it accepts
+        # both the new Stage 1 dump shape AND the pre-Stage-1 minimal
+        # shape that ``persistence_harness._save_component`` writes
+        # for PTB (entries + tick_counter only).
         from maxim.memory.percept_trace_buffer import PerceptTraceBuffer
 
         ptb = PerceptTraceBuffer()
         with open(path) as f:
             data = json.load(f)
-        for entry_data in data.get("entries", []):
-            ptb.record(
-                agent_id=entry_data["agent_id"],
-                percept_id=entry_data["percept_id"],
-                activation=entry_data["activation_strength"],
-            )
-        # Advance tick counter to match saved state
-        for _ in range(data.get("tick_counter", 0)):
-            ptb._tick_counter += 1
+        ptb.load_state(data)
         return ptb
 
     raise ValueError(f"Unknown component type: {name}")

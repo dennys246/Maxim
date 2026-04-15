@@ -93,6 +93,17 @@ class TestSessionSubprocessRoundTrip:
         assert not result.success
         assert "unknown bio-system kinds" in result.error
 
+    def test_non_biosystem_value_rejected(self):
+        """Stage 2 review I6 fold — duck-type check at the harness boundary
+        catches misuse cleanly instead of failing deep in capture()."""
+        result = run_session_round_trip(
+            systems={"atl": object()},  # type: ignore[dict-item]
+            probe="tests.substrate.probes:session_signature",
+        )
+        assert not result.success
+        assert "BioSystemSnapshot" in result.error
+        assert "atl" in result.error
+
     def test_state_files_field_carries_session_path(self):
         systems = _build_empty_systems()
         result = run_session_round_trip(

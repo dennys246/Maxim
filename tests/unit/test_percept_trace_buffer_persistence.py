@@ -137,7 +137,14 @@ class TestConcurrentInsertionDuringDump:
         dump uses ``self._lock`` so the snapshot is point-in-time consistent.
         We can't easily prove monotone-snapshot-size from a single dump,
         but we CAN prove no entry is corrupted (every TraceEntry has
-        all fields populated and round-trips cleanly)."""
+        all fields populated and round-trips cleanly).
+
+        Stage 2 review I5 fold — no fixed dump count or wall-clock budget
+        is asserted because that pattern flakes on slow CI under lock
+        contention. Instead the dumper runs until the writers are
+        signaled to stop; the load-bearing invariant is "every dump
+        is well-formed," not "we managed N dumps in M seconds."
+        """
         buf = PerceptTraceBuffer(max_entries=10000)
         stop = threading.Event()
         errors: list[BaseException] = []
@@ -154,7 +161,7 @@ class TestConcurrentInsertionDuringDump:
 
         def dumper() -> None:
             try:
-                for _ in range(50):
+                while not stop.is_set():
                     dumps.append(_drain_to_dump(buf))
             except BaseException as exc:  # pragma: no cover - debugging path
                 errors.append(exc)
@@ -164,13 +171,20 @@ class TestConcurrentInsertionDuringDump:
         for w in writers:
             w.start()
         d.start()
-        d.join(timeout=5)
+
+        # Let the threads run briefly, then signal stop. Even on a
+        # heavily-loaded CI runner the dumper should accumulate at
+        # least one dump in this window.
+        threading.Event().wait(timeout=0.5)
         stop.set()
+
+        d.join(timeout=10)
         for w in writers:
-            w.join(timeout=5)
+            w.join(timeout=10)
 
         assert not errors, f"thread errors: {errors}"
-        assert len(dumps) == 50
+        # The exact count is non-deterministic; existence is the floor.
+        assert len(dumps) >= 1, "dumper produced no snapshots"
         # Every dump's entries must round-trip cleanly into a fresh buffer
         for env in dumps:
             restored = _restore(env, max_entries=10000)
@@ -181,6 +195,50 @@ class TestConcurrentInsertionDuringDump:
                 assert isinstance(e.tick, int)
                 assert isinstance(e.activation_strength, float)
                 assert isinstance(e.registered_at, float)
+
+
+class TestLegacyHarnessFidelity:
+    """Stage 2 review M4 fold — the legacy per-component harness path
+    (``tests/substrate/persistence_harness._save_component`` +
+    ``persistence_child._load_component``) MUST round-trip activation
+    strength faithfully. Pre-fold it lossily replayed entries via
+    ``buf.record()`` which reset every entry to activation=1.0.
+    """
+
+    def test_legacy_path_preserves_activation_strength(self):
+        """Simulates the legacy save → child load cycle in-process,
+        without spawning a subprocess. The save_component writes via
+        ``component.dump()`` and the child loads via ``ptb.load_state``."""
+        from maxim.utils.atomic_io import atomic_write_json
+        import json
+        import tempfile
+        from pathlib import Path
+
+        # Build a PTB with mixed activation strengths via decay
+        buf = PerceptTraceBuffer(tau=10.0)
+        buf.record("a", "old")
+        for _ in range(5):
+            buf.tick()
+        buf.record("a", "fresh")
+        original_dump = buf.dump()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ptb.json"
+            atomic_write_json(str(path), buf.dump())
+
+            # Mirror the child's _load_component PTB branch
+            with open(path) as f:
+                data = json.load(f)
+            restored = PerceptTraceBuffer()
+            restored.load_state(data)
+
+        # Activation values must match exactly — no implicit reset to 1.0
+        original_by_id = {e.percept_id: e.activation_strength for e in buf.snapshot(min_activation=0.0)}
+        post_by_id = {e.percept_id: e.activation_strength for e in restored.snapshot(min_activation=0.0)}
+        assert original_by_id == post_by_id
+        assert post_by_id["old"] < 0.7  # decayed
+        assert post_by_id["fresh"] == pytest.approx(1.0)
+        assert restored.dump() == original_dump
 
 
 class TestTuningDriftWarning:
