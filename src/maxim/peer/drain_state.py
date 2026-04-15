@@ -361,13 +361,20 @@ def resume_node(name: str, known_node_names: set[str]) -> frozenset[str]:
         ) from e
 
 
-def clear_drain_for_removed_node(name: str) -> bool:
+def _clear_drain_unconditional(name: str) -> bool:
     """Unconditionally remove ``name`` from the drain set under lock.
 
-    Plan 4 C3.2. Used by :func:`maxim.peer.mesh_setup.run_remove_node`
-    when an operator removes a node that's currently drained — the
-    drain entry would otherwise become an orphan that surfaces as a
-    warning in ``list-drained`` and ``maxim doctor``.
+    **Module-private** (leading underscore) per C3.2 pre-merge review
+    A2 fold: this helper has exactly one sanctioned caller
+    (:func:`maxim.peer.mesh_setup.run_remove_node`) and a confusingly
+    similar name to :func:`resume_node`. Making it private signals
+    the narrow contract — public API would imply a broader use case
+    that doesn't exist.
+
+    Plan 4 C3.2. Used when an operator removes a node that's
+    currently drained — the drain entry would otherwise become an
+    orphan that surfaces as a warning in ``list-drained`` and
+    ``maxim doctor``.
 
     Unlike :func:`resume_node` this does NOT validate ``name``
     against the mesh node set, because the caller is in the middle
@@ -409,7 +416,6 @@ def clear_drain_for_removed_node(name: str) -> bool:
 __all__ = [
     "DrainError",
     "DrainReadResult",
-    "clear_drain_for_removed_node",
     "drain_node",
     "drain_state_path",
     "read_drained_nodes",

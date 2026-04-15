@@ -619,8 +619,20 @@ class TestRemoveNode:
         cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
         assert cfg.get_node("leader-desk") is not None
 
-    def test_remove_would_leave_empty_mesh_refused(self, isolated_xdg, capsys):
-        """Single-node mesh — can't remove because parser requires ≥1."""
+    def test_single_node_mesh_hits_self_guard_first(self, isolated_xdg, capsys):
+        """E4/A5 fold (C3.2 pre-merge review, cross-confirmed): in a
+        1-node mesh, the only node IS self (parser + the C3.2 A1
+        fold both enforce self_name in nodes). Attempting to remove
+        that node hits the self-refusal guard first, NOT the "would
+        be empty" guard. The empty-mesh branch in run_remove_node is
+        structurally unreachable through C3.2 verbs and is kept as
+        defensive depth only — see the `# pragma: no cover` comment
+        on that branch in mesh_setup.py for the rationale.
+
+        Test renamed from `test_remove_would_leave_empty_mesh_refused`
+        which claimed to test the unreachable path — the new name
+        documents what actually happens.
+        """
         single_node_yaml = (
             "cluster_key: sk\n"
             "self: only\n"
@@ -631,24 +643,12 @@ class TestRemoveNode:
             "    role: leader\n"
         )
         _mesh_path(isolated_xdg).write_text(single_node_yaml)
-
-        # First refuse because it's self; switch self via hand-edit
-        # to a different node — but we only have one node, so the
-        # "would be empty" guard fires first via the self check.
-        # Workaround: test with a 2-node mesh where one is self and
-        # we try to remove the other. The "would be empty" path
-        # kicks in if we remove the non-self node when it's the
-        # only non-self entry. Hmm — that requires a 1-node mesh
-        # where self ≠ that node, which the parser rejects. So this
-        # decision tree row is actually unreachable through normal
-        # ops. Test it by mocking only.
         rc = run_remove_node(["only"])
-        # This exits 2 with "refusing to remove self" because the
-        # only node IS self. The "would be empty" branch is
-        # unreachable — guarded structurally by the parser.
         assert rc == 2
         err = capsys.readouterr().err
+        # The self-refusal fires, NOT the empty-mesh refusal
         assert "Refusing to remove self" in err
+        assert "mesh would be empty" not in err
 
     def test_remove_refuses_when_no_mesh_yml(self, isolated_xdg, capsys):
         rc = run_remove_node(["any"])
@@ -690,6 +690,61 @@ class TestRemoveNode:
         err = capsys.readouterr().err
         assert rc == 2
         assert "extra arguments" in err.lower()
+
+    def test_remove_extra_args_rejected_batch_attempt(self, mesh_with_two_nodes, capsys):
+        """E10 fold (C3.2 pre-merge review): operators expecting batch
+        removal will type `remove-node foo bar`. Both args are valid
+        node names but the verb takes exactly one — explicit reject."""
+        rc = run_remove_node(["mac-studio", "leader-desk"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "extra arguments" in err.lower()
+        # mesh.yml unchanged — neither node was removed
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        assert len(cfg.nodes) == 2
+
+    def test_remove_node_drain_lock_timeout_warns_but_succeeds(self, mesh_with_two_nodes, monkeypatch, capsys):
+        """E2 fold (C3.2 pre-merge review, executor blocking): the
+        DrainError branch in run_remove_node was previously
+        untested. Documents the partial-success contract — mesh.yml
+        write commits, drain cleanup fails, exit 0 + visible warning
+        + structured log + operator must clean up the orphan
+        manually.
+
+        Monkeypatches _clear_drain_unconditional to raise DrainError
+        as if the filelock timed out; verifies all four post-conditions:
+        (1) exit 0 (mesh write was committed)
+        (2) stderr contains "drain state cleanup failed" hint
+        (3) mesh.yml was actually written (mac-studio gone)
+        (4) "also cleared" does NOT appear in stdout (because
+            cleanup didn't happen)
+        """
+        from maxim.peer.drain_state import DrainError as _DrainError
+        import maxim.peer.mesh_setup as _ms
+
+        def _failing_clear(name: str) -> bool:
+            raise _DrainError(f"drain state locked — simulated for test (would-be lock holder: {name})")
+
+        monkeypatch.setattr(_ms, "_clear_drain_unconditional", _failing_clear)
+
+        rc = run_remove_node(["mac-studio"])
+        captured = capsys.readouterr()
+
+        # (1) exit 0 — mesh write committed despite cleanup failure
+        assert rc == 0, "mesh.yml write succeeded; exit code must reflect that"
+
+        # (2) stderr contains the operator-readable hint
+        assert "drain state cleanup failed" in captured.err
+        assert "list-drained" in captured.err  # cleanup hint
+
+        # (3) mesh.yml IS actually written — mac-studio is gone
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        assert cfg.get_node("mac-studio") is None
+        assert cfg.get_node("leader-desk") is not None
+
+        # (4) The success path's "also cleared" message must NOT
+        # appear (since cleanup didn't happen)
+        assert "also cleared" not in captured.out
 
     def test_remove_help(self, mesh_with_two_nodes, capsys):
         for flag in ("-h", "--help"):

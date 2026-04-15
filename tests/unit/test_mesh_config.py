@@ -519,6 +519,53 @@ class TestEmptyNodesRejected:
         assert len(cfg.nodes) == 1
 
 
+class TestSelfNameMustMatchNode:
+    """A1 fold (C3.2 pre-merge review, cross-confirmed E9 + A1):
+    parse_mesh_config validates self_name in nodes but the
+    constructor previously did not. Hoist the check so write-side
+    and read-side parity holds. Same E7 pattern from C3.1 applied
+    to a different invariant.
+    """
+
+    def test_self_name_not_in_nodes_rejected(self):
+        with pytest.raises(ValueError, match="does not match any node"):
+            MeshConfig(
+                cluster_key="sk",
+                self_name="ghost",
+                nodes=(MeshNode(name="real", url="http://r/v1", role="leader"),),
+            )
+
+    def test_self_name_matches_one_node_accepted(self):
+        cfg = MeshConfig(
+            cluster_key="sk",
+            self_name="real",
+            nodes=(MeshNode(name="real", url="http://r/v1", role="leader"),),
+        )
+        assert cfg.self_name == "real"
+
+    def test_self_name_matches_in_multi_node_mesh(self):
+        cfg = MeshConfig(
+            cluster_key="sk",
+            self_name="leader-desk",
+            nodes=(
+                MeshNode(name="leader-desk", url="http://a/v1", role="leader"),
+                MeshNode(name="mac-studio", url="http://b/v1", role="peer"),
+            ),
+        )
+        assert cfg.self_name == "leader-desk"
+
+    def test_error_lists_known_node_names(self):
+        with pytest.raises(ValueError, match="known: \\['mac-studio', 'tablet'\\]"):
+            MeshConfig(
+                cluster_key="sk",
+                self_name="ghost",
+                nodes=(
+                    MeshNode(name="mac-studio", url="http://a/v1", role="leader"),
+                    MeshNode(name="tablet", url="http://b/v1", role="peer"),
+                ),
+            )
+
+
 class TestMeshNodeToYamlLines:
     """A3 fold (C3.1 pre-merge review): node serialization is owned
     by MeshNode so future field additions force the writer to include

@@ -20,10 +20,15 @@ Drain state lives in ``~/.maxim/util/drained_nodes.{role}.txt`` via
 state) is a load-bearing invariant — see the CLAUDE.md lesson
 "mesh.yml is declarative; ~/.maxim/util/ is mutable state."
 
-Deferred to C3: ``--node install`` + VRAM precheck, ``--node refresh``,
-``add-node``, ``remove-node``, ``init-mesh`` (peer.yml → mesh.yml
-converter), admin API endpoints, per-agent rate limiting, request-trace
-ring buffer, cluster key rotation.
+Sibling module :mod:`maxim.peer.mesh_setup` houses the operator-
+invoked one-shot setup verbs that mutate ``mesh.yml`` itself
+(``init-mesh``, ``add-node``, ``remove-node``); this module
+(``mesh_cli``) handles the read-only-from-mesh.yml verbs
+(``list-nodes``, ``--node status|health``).
+
+Deferred to remaining Plan 4 C3 work: ``--node install`` + VRAM
+precheck, ``--node refresh``, admin API endpoints, per-agent rate
+limiting, request-trace ring buffer, cluster key rotation.
 """
 
 from __future__ import annotations

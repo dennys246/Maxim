@@ -89,22 +89,41 @@ Common contracts
   sanctioned writer); the CI grep allow-list enforces this at
   PR-review time.
 - All three verbs validate field contents at construction time via
-  :class:`MeshConfig.__post_init__` (yaml-safe + non-empty nodes).
+  :class:`MeshConfig.__post_init__` (yaml-safe + non-empty nodes +
+  ``self_name`` matches a node, the last enforced via the C3.2 A1
+  fold).
 - All three verbs call :func:`runtime.role.detect_and_apply_role`
   via the dispatcher in :func:`maxim.peer.cli.run_peer_connect_subcommand`
   — they can rely on ``MAXIM_ROLE`` being set when they run.
 - Backup-on-write is non-atomic by design (the safest failure mode
   is partial backup + intact original, NOT atomic backup +
   half-written original). Don't "fix" this.
+- **No filelock around mesh.yml read→mutate→write** (E5/A3 fold,
+  C3.2 pre-merge review). Two parallel ``add-node`` / ``remove-node``
+  calls would race the same way drain state would have without
+  ``filelock.FileLock`` — last writer wins, silently dropping the
+  other's mutation. This is a *conscious trade-off* for C3.2: setup
+  verbs are operator-explicit one-shots, expected to be
+  serial-by-construction (one operator at a time). The C2 invariant
+  ("mesh.yml is declarative; only operator-explicit setup verbs
+  may write") makes this acceptable. **If a future C3.3+ feature
+  wires automatic writes to mesh.yml** — which the C2 invariant
+  explicitly forbids — the lock gap becomes a correctness bug. The
+  right C3.3+ resolution is "don't write to mesh.yml from automatic
+  paths" (write to ``~/.maxim/util/`` instead), NOT "add a filelock
+  to setup verbs." If the rule changes, both this docstring AND the
+  CLAUDE.md C2 invariant lesson must change in the same commit.
 """
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sys
 from collections.abc import Sequence
 
 from maxim.peer.config import peer_config_path, read_peer_config
+from maxim.peer.drain_state import DrainError, _clear_drain_unconditional
 from maxim.peer.mesh_config import (
     MeshConfig,
     MeshConfigError,
@@ -115,6 +134,8 @@ from maxim.peer.mesh_config import (
     synthesize_from_peer_config,
     write_mesh_config,
 )
+
+logger = logging.getLogger(__name__)
 
 
 _USAGE = """\
@@ -320,6 +341,9 @@ Options:
   --force         Replace an existing node with the same name. Without
                   --force, add-node refuses if <name> already exists
                   and points the operator at remove-node + re-add.
+                  On a brand-new name (nothing to replace), --force is
+                  silently a no-op — the verb is idempotent for new
+                  nodes the same way `mkdir -p` is for new directories.
 
 Refuses if mesh.yml does not exist yet — run `maxim peer init-mesh`
 first or hand-create one.
@@ -347,12 +371,22 @@ fail to parse on the next read.
 """
 
 
-def _parse_add_node_argv(argv: Sequence[str]) -> tuple[int, str | None, dict]:
-    """Parse argv for ``add-node``. Returns (exit_code, error_msg_or_None, opts).
+# E1 fold (C3.2 pre-merge review): replace the "__help__" magic
+# string with a sentinel object so the help-vs-error branch in
+# run_add_node can't accidentally swap order under future edits.
+# Identity-comparison via `is _HELP_REQUESTED` is unambiguous and
+# the static type checker can flag misuse.
+_HELP_REQUESTED = object()
 
-    On exit_code != 0 the caller prints error_msg + USAGE and returns
-    the code. opts is empty in that case. On exit_code == 0 opts has
-    keys: ``name``, ``url``, ``role``, ``force``.
+
+def _parse_add_node_argv(argv: Sequence[str]) -> tuple[int, object | None, dict]:
+    """Parse argv for ``add-node``. Returns (exit_code, signal, opts).
+
+    Three return shapes:
+
+    - ``(2, "error string", {})`` — bad input, caller prints error + usage
+    - ``(0, _HELP_REQUESTED, {})`` — operator passed -h/--help
+    - ``(0, None, opts)`` — happy path, opts has name/url/role/force
 
     Split out so the parsing logic is testable in isolation and
     extending the option set in C3.3 (e.g. ``--public-key`` for
@@ -360,7 +394,7 @@ def _parse_add_node_argv(argv: Sequence[str]) -> tuple[int, str | None, dict]:
     """
     args = list(argv)
     if any(a in ("-h", "--help") for a in args):
-        return 0, "__help__", {}
+        return 0, _HELP_REQUESTED, {}
     if not args:
         return 2, "Missing required <name> argument", {}
 
@@ -417,14 +451,15 @@ def run_add_node(argv: Sequence[str]) -> int:
     ``list-nodes`` / doctor probe's job, matching C1's "DNS deferred
     to probe time" invariant.
     """
-    rc, err_msg, opts = _parse_add_node_argv(argv)
-    if rc != 0:
-        print(err_msg, file=sys.stderr)
-        print(_ADD_NODE_USAGE, file=sys.stderr)
-        return rc
-    if err_msg == "__help__":
+    rc, signal, opts = _parse_add_node_argv(argv)
+    if signal is _HELP_REQUESTED:
         print(_ADD_NODE_USAGE)
         return 0
+    if rc != 0:
+        # signal here is the error message string (not the help sentinel)
+        print(signal, file=sys.stderr)
+        print(_ADD_NODE_USAGE, file=sys.stderr)
+        return rc
 
     name: str = opts["name"]
     url: str = opts["url"]
@@ -583,7 +618,26 @@ def run_remove_node(argv: Sequence[str]) -> int:
         print(f"      3. Re-run `maxim peer remove-node {name}` under the new identity", file=sys.stderr)
         return 2
 
-    if len(mesh.nodes) <= 1:
+    # E4/A5 fold (C3.2 pre-merge review, cross-confirmed): this branch
+    # is structurally unreachable through C3.2 verbs — the self-refusal
+    # above guarantees `name != self_name`, and a 1-node mesh always
+    # has that node == self (parser constraint that self_name must
+    # match a node, now also enforced at MeshConfig.__post_init__ via
+    # the A1 fold). So a 1-node mesh hits the self-refusal first, and
+    # multi-node meshes never trigger this branch.
+    #
+    # Kept as defensive depth for two reasons:
+    # 1. If a future C3.3+ verb (rename-node, set-self) loosens the
+    #    self-refusal, this branch becomes the new error surface and
+    #    must produce an actionable message — not a raw ValueError
+    #    from MeshConfig.__post_init__.
+    # 2. The C2 invariant says invariants are enforced at the state
+    #    layer, not the CLI layer. This is the state-layer enforcement.
+    #
+    # No regression test exercises this branch directly because there's
+    # no operator-reachable path to it. test_single_node_mesh_hits_self_guard_first
+    # documents the unreachability explicitly.
+    if len(mesh.nodes) <= 1:  # pragma: no cover - defensive only
         print(
             f"✗ Refusing to remove {name!r}: mesh would be empty.",
             file=sys.stderr,
@@ -617,17 +671,34 @@ def run_remove_node(argv: Sequence[str]) -> int:
 
     # Clear drain state for the removed node. This is operator-visible
     # so they know what happened — option (c) from the C3.2 proposal.
-    from maxim.peer.drain_state import DrainError, clear_drain_for_removed_node
-
+    # Imports are at module top per E6 fold; the underscore-prefixed
+    # function name signals this is the private "no validation" helper
+    # used only by remove-node, not the public resume_node API.
     drain_cleared = False
     try:
-        drain_cleared = clear_drain_for_removed_node(name)
+        drain_cleared = _clear_drain_unconditional(name)
     except DrainError as e:
         # Drain state file is locked — write succeeded, but the
         # cleanup didn't. Surface the failure but don't roll back the
         # mesh.yml write (it's already committed and a partial state
         # is recoverable: operator can manually `resume` the orphan
         # later).
+        #
+        # E3 fold (C3.2 pre-merge review): emit a structured WARN log
+        # alongside the stderr print so script-driven callers get a
+        # machine-readable signal that an orphan was left. Matches
+        # Plan 4's observability discipline (provider_silenced,
+        # role_divergence, etc.).
+        logger.warning(
+            "mesh_setup_drain_cleanup_failed: removed node %r from mesh.yml "
+            "but drain state cleanup failed (%s) — orphan entry may remain",
+            name,
+            e,
+            extra={
+                "event": "mesh_setup_drain_cleanup_failed",
+                "data": {"node_name": name, "error": str(e)},
+            },
+        )
         print(f"⚠ Removed {name!r} from mesh.yml, but drain state cleanup failed: {e}", file=sys.stderr)
         print(
             f"  → The drain state file may now have an orphan entry for {name!r}.",
