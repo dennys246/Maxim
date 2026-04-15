@@ -2,9 +2,9 @@
 
 **Status:** **SPLITTING** (2026-04-14). This monolithic plan is being broken into 8 focused per-phase plans following the P2 shipping pattern. See [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) for the narrative and [sem_execution_hook.md](sem_execution_hook.md) for the companion plan that closes a cross-cutting gap discovered during the split audit. Until all per-phase plan files land, this document remains the canonical reference for scope + pass criteria on phases that haven't been split out yet. Per-phase plan files opening incrementally:
 
-- [substrate_p3_5_persistence_snapshot.md](substrate_p3_5_persistence_snapshot.md) — **OPEN** (Stage 1 in progress, 2026-04-14). Opens first because P3a's round-trip tests need the `BioSystemSnapshot` Protocol shell.
-- [substrate_p3a_episode_binding.md](substrate_p3a_episode_binding.md) — **OPEN** (Stage 1 in progress, 2026-04-14).
-- `substrate_p3b_channel_integration.md` — not yet opened; will follow P3a Stage 1 ship.
+- [substrate_p3_5_persistence_snapshot.md](substrate_p3_5_persistence_snapshot.md) — **Stage 1 SHIPPED** (PR #109). Stage 2+3 still open (non-empty PTB + migration tooling + subprocess round-trip harness).
+- [substrate_p3a_episode_binding.md](substrate_p3a_episode_binding.md) — **Stages 1+2 SHIPPED** (PRs #109 + #112, 2026-04-14). Stage 2 hub+chain fixture + multi-hop retrieval cleared the pass gate at F1 = 0.9955 ± 0.0055 vs TF-IDF 0.6600 ± 0.0058 (margin 0.324).
+- [substrate_p3b_channel_integration.md](substrate_p3b_channel_integration.md) — **OPEN** (Stage 1 in progress, 2026-04-14). Builds directly on the P3a Stage 2 seams (`add_boundary_rule`, `node_filter` on `retrieve_on_cue` / `spreading_activation`).
 - `substrate_p4_cross_modal_binding.md` — 1.0-gating; opens after P3a+P3b+P3.5 all green.
 - `substrate_p5_stress_persistence.md`, `substrate_p6_extinction.md`, `substrate_p8_sleep_replay.md` — 0.5 track.
 - `prompt_b3_b5_track.md` — Track B prompt layer.
