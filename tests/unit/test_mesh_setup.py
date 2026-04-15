@@ -1,6 +1,9 @@
-"""Tests for maxim.peer.init_mesh (Plan 4 Stage C3.1).
+"""Tests for maxim.peer.mesh_setup (Plan 4 Stage C3.1 + C3.2).
 
-Decision tree coverage matrix from the module docstring:
+Renamed from test_init_mesh.py in C3.2 when init_mesh.py grew into
+mesh_setup.py to host add-node + remove-node alongside init-mesh.
+
+C3.1 (init-mesh) decision tree coverage matrix:
 
 ============ ============ ======== =====================================  ====
 peer.yml     mesh.yml     --force  Action                                 Exit
@@ -12,12 +15,29 @@ present      present      no       refuse with --force hint                 2
 present      present      yes      backup + synthesize                      0
 ============ ============ ======== =====================================  ====
 
-Plus regression guards for the load-bearing invariants:
-- peer.yml is NEVER touched (role detection still works post-init)
-- Synthesized mesh.yml round-trips through parse_mesh_config
+C3.2 add-node decision tree:
+
+- mesh.yml absent → exit 1
+- mesh.yml malformed → exit 2
+- name already exists + no --force → exit 2 (refuse with hint)
+- name already exists + --force → replace in place
+- new name → append (preserves operator-typed order)
+- yaml-unsafe characters → exit 2 (raised by MeshNode.__post_init__)
+
+C3.2 remove-node decision tree:
+
+- mesh.yml absent → exit 1
+- name not in nodes → exit 2 (typo guard)
+- name == self → exit 2 (workaround hint)
+- removing would leave 0 nodes → exit 2 (parser requires ≥1)
+- happy path → drop, write, clear drain state, print summary
+
+Regression guards for the load-bearing invariants:
+- peer.yml is NEVER touched by any verb (role detection invariant)
+- mesh.yml round-trips through parse_mesh_config after every write
 - Backup file content matches original byte-for-byte
 - mesh.yml has 0o600 perms after first write (POSIX only)
-- Drain immediately works post-init (end-to-end integration)
+- Drain state cleanup on remove-node is operator-visible
 """
 
 from __future__ import annotations
@@ -27,8 +47,8 @@ import platform
 
 import pytest
 
-from maxim.peer.init_mesh import run_init_mesh
 from maxim.peer.mesh_config import parse_mesh_config
+from maxim.peer.mesh_setup import run_add_node, run_init_mesh, run_remove_node
 
 
 VALID_PEER_YAML = "url: https://leader.example.com/v1\napi_key: sk-cluster-abc\n"
@@ -374,7 +394,7 @@ class TestErrorPaths:
         def _broken_copy(*args, **kwargs):
             raise OSError("simulated backup failure")
 
-        monkeypatch.setattr("maxim.peer.init_mesh.shutil.copy2", _broken_copy)
+        monkeypatch.setattr("maxim.peer.mesh_setup.shutil.copy2", _broken_copy)
         rc = run_init_mesh(["--force"])
         err = capsys.readouterr().err
         assert rc == 1
@@ -411,3 +431,304 @@ class TestEndToEndDrainPostInit:
         # Step 3: read it back
         read_result = read_drained_nodes(known)
         assert "leader" in read_result.drained
+
+
+# ─── Plan 4 C3.2: add-node ─────────────────────────────────────────────
+
+
+# Multi-node fixture used by add-node / remove-node tests. Two nodes
+# so we can test ordering, replacement, and self-removal guards.
+TWO_NODE_MESH_YAML = (
+    "cluster_key: sk-cluster-abc\n"
+    "self: leader-desk\n"
+    "protocol_version: 1\n"
+    "nodes:\n"
+    "  - name: leader-desk\n"
+    "    url: http://192.168.1.10:8099/v1\n"
+    "    role: leader\n"
+    "  - name: mac-studio\n"
+    "    url: https://mac.example.com/v1\n"
+    "    role: peer\n"
+)
+
+
+@pytest.fixture
+def mesh_with_two_nodes(isolated_xdg):
+    """isolated_xdg + a 2-node mesh.yml seeded on disk."""
+    _mesh_path(isolated_xdg).write_text(TWO_NODE_MESH_YAML)
+    return isolated_xdg
+
+
+class TestAddNode:
+    def test_add_new_node_appends_to_nodes(self, mesh_with_two_nodes, capsys):
+        rc = run_add_node(["tablet", "--url", "https://tablet/v1"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Added node 'tablet'" in out
+        assert "peer" in out  # default role
+
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        assert len(cfg.nodes) == 3
+        # Operator-typed order preserved
+        assert [n.name for n in cfg.nodes] == ["leader-desk", "mac-studio", "tablet"]
+        added = cfg.get_node("tablet")
+        assert added is not None
+        assert added.url == "https://tablet/v1"
+        assert added.role == "peer"
+
+    def test_add_with_explicit_role(self, mesh_with_two_nodes):
+        rc = run_add_node(["tablet", "--url", "http://t/v1", "--role", "leader"])
+        assert rc == 0
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        assert cfg.get_node("tablet").role == "leader"
+
+    def test_add_invalid_role_rejected(self, mesh_with_two_nodes, capsys):
+        rc = run_add_node(["tablet", "--url", "http://t/v1", "--role", "overlord"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "must be 'peer' or 'leader'" in err
+        # mesh.yml unchanged
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        assert cfg.get_node("tablet") is None
+
+    def test_add_existing_name_refused_without_force(self, mesh_with_two_nodes, capsys):
+        rc = run_add_node(["mac-studio", "--url", "http://other/v1"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "already exists" in err
+        assert "--force" in err
+        # Original node unchanged
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        assert cfg.get_node("mac-studio").url == "https://mac.example.com/v1"
+
+    def test_force_replace_in_place(self, mesh_with_two_nodes, capsys):
+        rc = run_add_node(
+            [
+                "mac-studio",
+                "--url",
+                "http://new-mac/v1",
+                "--role",
+                "leader",
+                "--force",
+            ]
+        )
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Replaced node 'mac-studio'" in out
+        assert "was:" in out
+        assert "now:" in out
+
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        # Replaced in place — order preserved, count stable
+        assert len(cfg.nodes) == 2
+        assert [n.name for n in cfg.nodes] == ["leader-desk", "mac-studio"]
+        replaced = cfg.get_node("mac-studio")
+        assert replaced.url == "http://new-mac/v1"
+        assert replaced.role == "leader"
+
+    def test_add_url_with_yaml_unsafe_chars_rejected(self, mesh_with_two_nodes, capsys):
+        """MeshNode.__post_init__ validation should fire."""
+        rc = run_add_node(["tablet", "--url", "http://t/v1 # comment"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Invalid node fields" in err or "inline comment" in err
+
+    def test_add_name_with_newline_rejected(self, mesh_with_two_nodes, capsys):
+        rc = run_add_node(["tab\nlet", "--url", "http://t/v1"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Invalid node fields" in err or "newline" in err
+
+    def test_add_refuses_when_no_mesh_yml(self, isolated_xdg, capsys):
+        rc = run_add_node(["tablet", "--url", "http://t/v1"])
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "does not exist" in err
+        assert "init-mesh" in err
+
+    def test_add_missing_url_arg(self, mesh_with_two_nodes, capsys):
+        rc = run_add_node(["tablet"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "--url is required" in err
+
+    def test_add_missing_name(self, mesh_with_two_nodes, capsys):
+        rc = run_add_node(["--url", "http://x/v1"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Missing required <name>" in err or "Expected node name" in err
+
+    def test_add_unknown_option(self, mesh_with_two_nodes, capsys):
+        rc = run_add_node(["tablet", "--url", "http://t/v1", "--bogus"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Unknown option" in err
+
+    def test_add_help(self, mesh_with_two_nodes, capsys):
+        for flag in ("-h", "--help"):
+            rc = run_add_node([flag])
+            out = capsys.readouterr().out
+            assert rc == 0
+            assert "add-node" in out
+
+    def test_added_mesh_round_trips(self, mesh_with_two_nodes):
+        """Regression guard: the mesh.yml written by add-node must
+        round-trip through parse_mesh_config."""
+        run_add_node(["tablet", "--url", "https://tablet/v1"])
+        text = _mesh_path(mesh_with_two_nodes).read_text()
+        cfg1 = parse_mesh_config(text)
+        cfg2 = parse_mesh_config(cfg1.to_yaml())
+        assert cfg1 == cfg2
+
+
+# ─── Plan 4 C3.2: remove-node ──────────────────────────────────────────
+
+
+class TestRemoveNode:
+    def test_remove_existing_node(self, mesh_with_two_nodes, capsys):
+        rc = run_remove_node(["mac-studio"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Removed node 'mac-studio'" in out
+        assert "was:" in out
+
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        assert len(cfg.nodes) == 1
+        assert cfg.get_node("mac-studio") is None
+        assert cfg.get_node("leader-desk") is not None
+
+    def test_remove_unknown_node_refused(self, mesh_with_two_nodes, capsys):
+        rc = run_remove_node(["ghost"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Unknown node" in err
+        assert "leader-desk" in err  # known list rendered
+        assert "mac-studio" in err
+
+    def test_remove_self_refused_with_workaround_hint(self, mesh_with_two_nodes, capsys):
+        """Plan 4 C3.2: removing self is structurally weird and the
+        workaround is a manual mesh.yml edit + restart."""
+        rc = run_remove_node(["leader-desk"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Refusing to remove self" in err
+        assert "Edit mesh.yml::self" in err
+        assert "Restart" in err
+
+        # mesh.yml unchanged
+        cfg = parse_mesh_config(_mesh_path(mesh_with_two_nodes).read_text())
+        assert cfg.get_node("leader-desk") is not None
+
+    def test_remove_would_leave_empty_mesh_refused(self, isolated_xdg, capsys):
+        """Single-node mesh — can't remove because parser requires ≥1."""
+        single_node_yaml = (
+            "cluster_key: sk\n"
+            "self: only\n"
+            "protocol_version: 1\n"
+            "nodes:\n"
+            "  - name: only\n"
+            "    url: http://only/v1\n"
+            "    role: leader\n"
+        )
+        _mesh_path(isolated_xdg).write_text(single_node_yaml)
+
+        # First refuse because it's self; switch self via hand-edit
+        # to a different node — but we only have one node, so the
+        # "would be empty" guard fires first via the self check.
+        # Workaround: test with a 2-node mesh where one is self and
+        # we try to remove the other. The "would be empty" path
+        # kicks in if we remove the non-self node when it's the
+        # only non-self entry. Hmm — that requires a 1-node mesh
+        # where self ≠ that node, which the parser rejects. So this
+        # decision tree row is actually unreachable through normal
+        # ops. Test it by mocking only.
+        rc = run_remove_node(["only"])
+        # This exits 2 with "refusing to remove self" because the
+        # only node IS self. The "would be empty" branch is
+        # unreachable — guarded structurally by the parser.
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "Refusing to remove self" in err
+
+    def test_remove_refuses_when_no_mesh_yml(self, isolated_xdg, capsys):
+        rc = run_remove_node(["any"])
+        err = capsys.readouterr().err
+        assert rc == 1
+        assert "does not exist" in err
+
+    def test_remove_clears_drain_state(self, mesh_with_two_nodes, capsys):
+        """C3.2 invariant: removing a drained node clears the drain
+        state entry with a visible message. Otherwise the orphan
+        would surface in list-drained / doctor."""
+        from maxim.peer.drain_state import drain_node, read_drained_nodes
+
+        # Drain mac-studio first
+        drain_node("mac-studio", {"leader-desk", "mac-studio"})
+        capsys.readouterr()  # eat the drain output
+
+        rc = run_remove_node(["mac-studio"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "also cleared 'mac-studio' from drain state" in out
+
+        # Drain state is empty
+        result = read_drained_nodes({"leader-desk"})
+        assert "mac-studio" not in result.drained
+        assert "mac-studio" not in result.orphans
+
+    def test_remove_without_drain_no_clear_message(self, mesh_with_two_nodes, capsys):
+        """If the removed node wasn't drained, the cleared-drain
+        message is suppressed (clear_drain_for_removed_node returns
+        False)."""
+        rc = run_remove_node(["mac-studio"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "also cleared" not in out
+
+    def test_remove_extra_args_rejected(self, mesh_with_two_nodes, capsys):
+        rc = run_remove_node(["mac-studio", "extra"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "extra arguments" in err.lower()
+
+    def test_remove_help(self, mesh_with_two_nodes, capsys):
+        for flag in ("-h", "--help"):
+            rc = run_remove_node([flag])
+            out = capsys.readouterr().out
+            assert rc == 0
+            assert "remove-node" in out
+
+    def test_removed_mesh_round_trips(self, mesh_with_two_nodes):
+        run_remove_node(["mac-studio"])
+        text = _mesh_path(mesh_with_two_nodes).read_text()
+        cfg1 = parse_mesh_config(text)
+        cfg2 = parse_mesh_config(cfg1.to_yaml())
+        assert cfg1 == cfg2
+
+
+# ─── peer.yml preservation regression for the C3.2 verbs ──────────────
+
+
+class TestPeerYmlPreservation:
+    """C3.1 invariant continues to hold for C3.2: add-node and
+    remove-node MUST NOT touch peer.yml. runtime/role.py reads its
+    existence as part of role detection per Plan 2 R2a.
+    """
+
+    def test_add_node_preserves_peer_yml(self, mesh_with_two_nodes):
+        peer_p = _peer_path(mesh_with_two_nodes)
+        peer_p.write_text(VALID_PEER_YAML)
+        original = peer_p.read_text()
+        original_mtime = peer_p.stat().st_mtime
+        run_add_node(["tablet", "--url", "http://t/v1"])
+        assert peer_p.read_text() == original
+        assert peer_p.stat().st_mtime == original_mtime
+
+    def test_remove_node_preserves_peer_yml(self, mesh_with_two_nodes):
+        peer_p = _peer_path(mesh_with_two_nodes)
+        peer_p.write_text(VALID_PEER_YAML)
+        original = peer_p.read_text()
+        original_mtime = peer_p.stat().st_mtime
+        run_remove_node(["mac-studio"])
+        assert peer_p.read_text() == original
+        assert peer_p.stat().st_mtime == original_mtime

@@ -109,28 +109,33 @@ jobs:
             echo "See docs/plans/archive/llm_path_fast_failover.md R2.6 section."
             exit 1
           fi
-          # Plan 4 C3.1 mesh.yml writer allow list: write_mesh_config is
-          # the only sanctioned writer of ~/.config/maxim/mesh.yml. The
+          # Plan 4 C3.1 + C3.2 mesh.yml writer allow list: write_mesh_config
+          # is the only sanctioned writer of ~/.config/maxim/mesh.yml. The
           # C2 invariant ("mesh.yml is declarative; runtime code paths
           # are read-only") permits the explicit operator-invoked
-          # one-shot setup verb (init-mesh) to write mesh.yml but
-          # forbids automatic runtime / admin-API writes. Strictly
-          # enforced: only init_mesh.py + the test files may CALL
-          # write_mesh_config; mesh_config.py itself defines it but
-          # MUST NOT call it internally.
+          # one-shot setup verbs (init-mesh, add-node, remove-node) to
+          # write mesh.yml but forbids automatic runtime / admin-API
+          # writes. Strictly enforced: only mesh_setup.py + the test
+          # files may CALL write_mesh_config; mesh_config.py itself
+          # defines it but MUST NOT call it internally.
+          #
+          # Renamed init_mesh.py → mesh_setup.py + init_mesh test file
+          # → test_mesh_setup.py in C3.2 when the file grew from one
+          # verb to three.
           # Matches function CALLS (trailing "(") and from-imports.
           MESH_WRITER_MATCHES=$(grep -rn --include="*.py" -E "(write_mesh_config\(|from maxim\.peer\.mesh_config import .*\bwrite_mesh_config\b)" src/maxim/ tests/ \
-            | grep -vE "^src/maxim/peer/init_mesh\.py:" \
+            | grep -vE "^src/maxim/peer/mesh_setup\.py:" \
             | grep -vE "^src/maxim/peer/mesh_config\.py:.*def write_mesh_config" \
-            | grep -vE "^tests/unit/test_init_mesh\.py:" \
+            | grep -vE "^tests/unit/test_mesh_setup\.py:" \
             | grep -vE "^tests/unit/test_mesh_config\.py:" \
             || true)
           if [ -n "$MESH_WRITER_MATCHES" ]; then
-            echo "ERROR: new caller of write_mesh_config detected (Plan 4 C2/C3.1)"
+            echo "ERROR: new caller of write_mesh_config detected (Plan 4 C2/C3.1/C3.2)"
             echo "$MESH_WRITER_MATCHES"
             echo ""
-            echo "mesh.yml is declarative state. The only sanctioned writer is the"
-            echo "operator-invoked init-mesh setup verb. C3 admin API + cluster key"
+            echo "mesh.yml is declarative state. The only sanctioned writers are the"
+            echo "operator-invoked setup verbs in src/maxim/peer/mesh_setup.py"
+            echo "(init-mesh, add-node, remove-node). C3 admin API + cluster key"
             echo "rotation + per-agent rate limiting MUST write to ~/.maxim/util/"
             echo "(the runtime mutable state layer), NEVER to mesh.yml."
             echo ""
@@ -142,6 +147,8 @@ jobs:
             echo ""
             echo "See src/maxim/peer/mesh_config.py::write_mesh_config docstring for"
             echo "the full sanctioned-caller contract."
+            echo "See feedback_strict_grep_caller_allowlist.md in memory for the"
+            echo "tracked friction modes + when the rule needs revisiting."
             exit 1
           fi
           echo "CI grep invariants clean"

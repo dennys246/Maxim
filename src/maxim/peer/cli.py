@@ -131,9 +131,17 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
 
         return run_list_drained(list(argv[1:]))
     if action == "init-mesh":
-        from maxim.peer.init_mesh import run_init_mesh
+        from maxim.peer.mesh_setup import run_init_mesh
 
         return run_init_mesh(list(argv[1:]))
+    if action == "add-node":
+        from maxim.peer.mesh_setup import run_add_node
+
+        return run_add_node(list(argv[1:]))
+    if action == "remove-node":
+        from maxim.peer.mesh_setup import run_remove_node
+
+        return run_remove_node(list(argv[1:]))
     if action == "--node":
         from maxim.peer.mesh_cli import run_node_subcommand
 
@@ -169,6 +177,10 @@ def _print_peer_usage() -> None:
     print("  list-nodes       List mesh nodes + live status (Plan 4 C1)")
     print("  list-drained     List currently drained mesh nodes (Plan 4 C2)")
     print("  init-mesh        Synthesize mesh.yml from peer.yml (Plan 4 C3.1)")
+    print("  add-node <name>  Add a node to mesh.yml (Plan 4 C3.2)")
+    print("                   Required: --url <url>; optional: --role peer|leader, --force")
+    print("  remove-node <n>  Remove a node from mesh.yml (Plan 4 C3.2)")
+    print("                   Auto-clears drain state for the removed node")
     print("  --node <n> <v>   Per-node verbs: status|health|drain|resume")
 
 
