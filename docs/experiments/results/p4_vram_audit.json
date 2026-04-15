@@ -1,0 +1,63 @@
+{
+  "total_wall_clock_s": 53.12,
+  "samples": [
+    {
+      "label": "baseline",
+      "wall_clock_s": 7.27,
+      "backend": "cuda",
+      "allocated_mb": 0.0,
+      "reserved_mb": 0.0,
+      "smi_used_mb": 11810.0,
+      "smi_total_mb": 16303.0,
+      "notes": "before any P4 encoder load",
+      "extra": {}
+    },
+    {
+      "label": "after_clip_load",
+      "wall_clock_s": 48.582,
+      "backend": "cuda",
+      "allocated_mb": 577.1,
+      "reserved_mb": 630.0,
+      "smi_used_mb": 12699.0,
+      "smi_total_mb": 16303.0,
+      "notes": "",
+      "extra": {}
+    },
+    {
+      "label": "after_mpnet_load",
+      "wall_clock_s": 51.001,
+      "backend": "cuda",
+      "allocated_mb": 995.6,
+      "reserved_mb": 1080.0,
+      "smi_used_mb": 13149.0,
+      "smi_total_mb": 16303.0,
+      "notes": "",
+      "extra": {}
+    },
+    {
+      "label": "after_mug_test_encode",
+      "wall_clock_s": 53.08,
+      "backend": "cuda",
+      "allocated_mb": 1004.7,
+      "reserved_mb": 1084.0,
+      "smi_used_mb": 13217.0,
+      "smi_total_mb": 16303.0,
+      "notes": "",
+      "extra": {
+        "n_text_encoded": 10,
+        "n_image_encoded": 50
+      }
+    },
+    {
+      "label": "after_cuda_empty_cache",
+      "wall_clock_s": 53.123,
+      "backend": "cuda",
+      "allocated_mb": 1004.7,
+      "reserved_mb": 1080.0,
+      "smi_used_mb": 13213.0,
+      "smi_total_mb": 16303.0,
+      "notes": "",
+      "extra": {}
+    }
+  ]
+}
