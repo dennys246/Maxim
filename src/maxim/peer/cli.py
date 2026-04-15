@@ -130,6 +130,10 @@ def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
         from maxim.peer.mesh_cli import run_list_drained
 
         return run_list_drained(list(argv[1:]))
+    if action == "init-mesh":
+        from maxim.peer.init_mesh import run_init_mesh
+
+        return run_init_mesh(list(argv[1:]))
     if action == "--node":
         from maxim.peer.mesh_cli import run_node_subcommand
 
@@ -164,6 +168,7 @@ def _print_peer_usage() -> None:
     print("  deps [url]       Show installed packages on leader")
     print("  list-nodes       List mesh nodes + live status (Plan 4 C1)")
     print("  list-drained     List currently drained mesh nodes (Plan 4 C2)")
+    print("  init-mesh        Synthesize mesh.yml from peer.yml (Plan 4 C3.1)")
     print("  --node <n> <v>   Per-node verbs: status|health|drain|resume")
 
 

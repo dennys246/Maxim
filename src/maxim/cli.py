@@ -244,6 +244,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "deps",
             "list-nodes",
             "list-drained",
+            "init-mesh",
             "--node",
         ):
             from maxim.peer import run_peer_connect_subcommand

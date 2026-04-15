@@ -109,4 +109,39 @@ jobs:
             echo "See docs/plans/archive/llm_path_fast_failover.md R2.6 section."
             exit 1
           fi
+          # Plan 4 C3.1 mesh.yml writer allow list: write_mesh_config is
+          # the only sanctioned writer of ~/.config/maxim/mesh.yml. The
+          # C2 invariant ("mesh.yml is declarative; runtime code paths
+          # are read-only") permits the explicit operator-invoked
+          # one-shot setup verb (init-mesh) to write mesh.yml but
+          # forbids automatic runtime / admin-API writes. Strictly
+          # enforced: only init_mesh.py + the test files may CALL
+          # write_mesh_config; mesh_config.py itself defines it but
+          # MUST NOT call it internally.
+          # Matches function CALLS (trailing "(") and from-imports.
+          MESH_WRITER_MATCHES=$(grep -rn --include="*.py" -E "(write_mesh_config\(|from maxim\.peer\.mesh_config import .*\bwrite_mesh_config\b)" src/maxim/ tests/ \
+            | grep -vE "^src/maxim/peer/init_mesh\.py:" \
+            | grep -vE "^src/maxim/peer/mesh_config\.py:.*def write_mesh_config" \
+            | grep -vE "^tests/unit/test_init_mesh\.py:" \
+            | grep -vE "^tests/unit/test_mesh_config\.py:" \
+            || true)
+          if [ -n "$MESH_WRITER_MATCHES" ]; then
+            echo "ERROR: new caller of write_mesh_config detected (Plan 4 C2/C3.1)"
+            echo "$MESH_WRITER_MATCHES"
+            echo ""
+            echo "mesh.yml is declarative state. The only sanctioned writer is the"
+            echo "operator-invoked init-mesh setup verb. C3 admin API + cluster key"
+            echo "rotation + per-agent rate limiting MUST write to ~/.maxim/util/"
+            echo "(the runtime mutable state layer), NEVER to mesh.yml."
+            echo ""
+            echo "If you have a legitimate new call site (e.g., a mesh-edit verb that"
+            echo "extends operator setup workflows), update BOTH:"
+            echo "  1. The allow list in .github/workflows/test.yml"
+            echo "  2. The CLAUDE.md C2 invariant lesson"
+            echo "in the same commit so the rule remains coherent."
+            echo ""
+            echo "See src/maxim/peer/mesh_config.py::write_mesh_config docstring for"
+            echo "the full sanctioned-caller contract."
+            exit 1
+          fi
           echo "CI grep invariants clean"
