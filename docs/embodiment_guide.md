@@ -60,6 +60,55 @@ events = emb.evaluate_failures()
 print(f"Failures: {events}")
 ```
 
+### 2.5 Running an agent with a SEM body (production path)
+
+Once a component is registered in the bundled `_data/components/` tree (or under `~/.maxim/components/` for user-local components), you can give a live agent a body in one CLI flag:
+
+```bash
+# Validate the ref before spinning up the agent
+maxim doctor --embodiment weapons/rusty_sword
+
+# Run an agent that has rusty_sword as its body
+maxim --llm mistral-7b --embodiment weapons/rusty_sword
+```
+
+What happens behind the scenes:
+
+1. `cli.py` reads `--embodiment weapons/rusty_sword`.
+2. `runtime/bootstrap.py::build_executor` (the canonical agent constructor — see [docs/plans/executor_bootstrap_unification.md](plans/executor_bootstrap_unification.md)) instantiates the entity via `ComponentRegistry`, wraps it in `Embodiment(pain_bus=...)`, and calls `generate_tools_for_entity` to register the affordance tools (`rusty_sword_slash`, `rusty_sword_parry`, `rusty_sword_throw`, `rusty_sword_sharpen`, `rusty_sword_repair`) into the agent's tool registry.
+3. The agent's LLM sees those tool names alongside the standard tools and can invoke them by emitting `{"tool_name": "rusty_sword_slash", "params": {"target": "...", "force": 0.9}}`.
+4. When the agent invokes `rusty_sword_slash` on a low-durability sword, `embodiment.evaluate_failures()` fires `shatter` → `PainBus.publish(PainSignal)` → the executor's `ToolPainBridge` calls `record_tool_embodiment_failure` → NAc forms a NEGATIVE causal link on `tool:rusty_sword_slash` → on the next turn, `nac.predict()` returns NEGATIVE for that tool, informing the agent's policy.
+
+The full cascade is verified end-to-end in `tests/substrate/test_sem_execution_production.py::TestSEMProductionCascade` against the real bundled `weapons/rusty_sword.yaml` — no mocks in the chain.
+
+#### Validation flow
+
+If you're not sure whether a ref will resolve, ask `maxim doctor` first:
+
+```bash
+$ maxim doctor --embodiment weapons/nonexistent_sword
+...
+━━━ Embodiment ━━━
+  ✗ Embodiment ref: Component ref 'weapons/nonexistent_sword' not found
+    → Components in 'weapons':
+    →   weapons/cyber_pistol
+    →   weapons/laser_carbine
+    →   weapons/rusty_sword
+    →   weapons/...
+    →
+    → Other available components:
+    →   bodies/cybernetic_arm
+    →   ...
+```
+
+The doctor output groups same-category matches first (so a typo in `weapons/X` surfaces other weapons before unrelated categories) and caps the per-category preview at 20 entries.
+
+#### Constraints (current)
+
+- `--embodiment` is currently **mutually exclusive with `--sim`**. Sim-mode SEM body wiring is tracked as Stage 2c of [docs/plans/sem_execution_hook.md](plans/sem_execution_hook.md). For DM-campaign YAMLs, set `component: <ref>` in the encounter spec instead — the DM runtime loads components per-scene via its own path.
+- Only one entity can be loaded via the flag. Multi-entity bodies (e.g., a full robot arm with child entities) are loaded the old way via `Embodiment(spec.root_entity)` in code — see step 2 above.
+- The bridge attaches to the unwrapped inner `Executor`. If you wrap the executor with `FearGatedExecutor` or similar, do it AFTER `build_executor` returns. This is structurally enforced by the `build_executor` signature contract — see [docs/plans/executor_bootstrap_unification.md](plans/executor_bootstrap_unification.md).
+
 ### 3. Add virtual entities for campaigns
 
 ```yaml

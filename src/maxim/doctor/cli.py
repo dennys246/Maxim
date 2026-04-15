@@ -17,21 +17,26 @@ Usage: maxim doctor [OPTIONS]
 Diagnose your Maxim environment + print platform-specific fix suggestions.
 
 Options:
-  --retry           After printing, offer to re-run failed checks one at a time
-  --json            Output results as machine-readable JSON
-  --as peer <url>   Run peer-mode checks against a remote leader URL
-  --as leader       Force leader-mode checks (skip peer auto-detection)
-  --as solo         Force solo-mode checks (no peer/leader wiring)
-  --last-decision   Print the most recent lane-routing decision (P9) and exit
-  -h, --help        Show this help message
+  --retry                  After printing, offer to re-run failed checks one at a time
+  --json                   Output results as machine-readable JSON
+  --as peer <url>          Run peer-mode checks against a remote leader URL
+  --as leader              Force leader-mode checks (skip peer auto-detection)
+  --as solo                Force solo-mode checks (no peer/leader wiring)
+  --embodiment <REF>       Validate that an SEM component ref resolves
+                           (e.g. weapons/rusty_sword) — same shape as the
+                           agent flag. Adds an Embodiment section to the
+                           report; fails if the ref is unknown.
+  --last-decision          Print the most recent lane-routing decision (P9) and exit
+  -h, --help               Show this help message
 
 Examples:
-  maxim doctor                           Check local environment
-  maxim doctor --retry                   Interactive fix loop
-  maxim doctor --json                    JSON output for CI/scripts
-  maxim doctor --last-decision           Why did the last sim pick its model?
+  maxim doctor                                   Check local environment
+  maxim doctor --retry                           Interactive fix loop
+  maxim doctor --json                            JSON output for CI/scripts
+  maxim doctor --last-decision                   Why did the last sim pick its model?
   maxim doctor --as peer https://maxim.example.com/v1
-                                         Check peer connectivity
+                                                 Check peer connectivity
+  maxim doctor --embodiment weapons/rusty_sword  Validate SEM ref before running
 """
 
 
@@ -47,8 +52,16 @@ def run_doctor_subcommand(argv: Sequence[str]) -> int:
     # Parse --as <role> [url]
     role, peer_url = _parse_as_flag(list(argv))
 
+    # Parse --embodiment <REF>
+    embodiment_ref = _parse_embodiment_flag(list(argv))
+
     info = detect_platform()
-    sections = run_all_checks(info, role=role, peer_url=peer_url)
+    sections = run_all_checks(
+        info,
+        role=role,
+        peer_url=peer_url,
+        embodiment_ref=embodiment_ref,
+    )
 
     if as_json:
         _json_report(sections, info)
@@ -81,6 +94,27 @@ def _print_last_decision() -> int:
         return 1
     print(format_record_human(record))
     return 0
+
+
+def _parse_embodiment_flag(argv: list[str]) -> str | None:
+    """Extract ``--embodiment <REF>`` from argv. Returns None if absent.
+
+    Mirrors the agent-side ``--embodiment`` flag in `cli_parser.py`.
+    The doctor variant validates the ref against ComponentRegistry
+    BEFORE the user spends time spinning up an agent.
+    """
+    try:
+        idx = argv.index("--embodiment")
+    except ValueError:
+        return None
+    if idx + 1 >= len(argv):
+        print("--embodiment requires a component ref (e.g. weapons/rusty_sword)", file=sys.stderr)
+        return None
+    ref = argv[idx + 1]
+    if ref.startswith("-"):
+        print(f"--embodiment expected a ref, got flag {ref!r}", file=sys.stderr)
+        return None
+    return ref
 
 
 def _parse_as_flag(argv: list[str]) -> tuple[str | None, str | None]:

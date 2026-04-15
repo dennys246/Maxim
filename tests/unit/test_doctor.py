@@ -85,6 +85,83 @@ class TestGpuCheck:
         assert result.status in ("ok", "warn")
 
 
+class TestCheckEmbodimentRef:
+    """sem_execution_hook Stage 4 — validate SEM component refs at
+    doctor time so a typo becomes a doctor-level fail with the
+    available list as a fix hint, not a runtime crash."""
+
+    def test_unknown_ref_fails_with_available_list(self):
+        from maxim.doctor.checks import check_embodiment_ref
+
+        result = check_embodiment_ref("weapons/nonexistent_sword")
+        assert result.status == "fail"
+        assert "nonexistent_sword" in result.message
+        assert result.fix is not None
+        # The fix hint should include at least one real available ref
+        # so the user can spot a typo by comparison.
+        assert "weapons/rusty_sword" in result.fix
+
+    def test_real_rusty_sword_ref_succeeds(self):
+        from maxim.doctor.checks import check_embodiment_ref
+
+        result = check_embodiment_ref("weapons/rusty_sword")
+        assert result.status == "ok"
+        assert "weapons/rusty_sword" in result.message
+
+    def test_empty_ref_returns_info(self):
+        """No --embodiment passed → info status, not fail."""
+        from maxim.doctor.checks import check_embodiment_ref
+
+        result = check_embodiment_ref("")
+        assert result.status == "info"
+
+    def test_run_all_checks_skips_section_when_no_ref(self):
+        """The Embodiment section must NOT appear in the output when
+        no --embodiment was passed (preserves existing doctor UX)."""
+        from maxim.doctor.checks import run_all_checks
+        from maxim.doctor.platform_detect import detect_platform
+
+        sections = run_all_checks(detect_platform(), embodiment_ref=None)
+        section_names = [name for name, _ in sections]
+        assert "Embodiment" not in section_names
+
+    def test_run_all_checks_includes_section_when_ref_set(self):
+        from maxim.doctor.checks import run_all_checks
+        from maxim.doctor.platform_detect import detect_platform
+
+        sections = run_all_checks(
+            detect_platform(),
+            embodiment_ref="weapons/rusty_sword",
+        )
+        section_names = [name for name, _ in sections]
+        assert "Embodiment" in section_names
+
+
+class TestDoctorCLIEmbodimentFlag:
+    """The CLI parser for ``--embodiment <REF>`` must extract the ref
+    cleanly and pass it through to run_all_checks."""
+
+    def test_embodiment_flag_parsed(self):
+        from maxim.doctor.cli import _parse_embodiment_flag
+
+        ref = _parse_embodiment_flag(["doctor", "--embodiment", "weapons/rusty_sword"])
+        assert ref == "weapons/rusty_sword"
+
+    def test_no_embodiment_flag_returns_none(self):
+        from maxim.doctor.cli import _parse_embodiment_flag
+
+        assert _parse_embodiment_flag(["doctor"]) is None
+        assert _parse_embodiment_flag(["doctor", "--retry"]) is None
+
+    def test_embodiment_flag_without_value_returns_none(self):
+        from maxim.doctor.cli import _parse_embodiment_flag
+
+        # Trailing --embodiment with no value
+        assert _parse_embodiment_flag(["doctor", "--embodiment"]) is None
+        # --embodiment followed by another flag (not a ref)
+        assert _parse_embodiment_flag(["doctor", "--embodiment", "--json"]) is None
+
+
 class TestServerCheck:
     def test_reachable_returns_ok(self):
         from maxim.doctor.checks import check_server_reachable

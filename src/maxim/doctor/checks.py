@@ -2089,12 +2089,114 @@ def _probe_mesh_node_to_check(node: "MeshNode", cluster_key: str) -> CheckResult
     )
 
 
+def check_embodiment_ref(ref: str) -> CheckResult:
+    """Validate that an SEM component ref resolves in the registry.
+
+    Stage 4 of sem_execution_hook. When the user passes
+    ``maxim doctor --embodiment <REF>`` (mirroring the
+    ``maxim --llm X --embodiment <REF>`` agent flag), this check
+    confirms the ref is loadable BEFORE they start the agent — a typo
+    becomes a doctor-level fail with the available refs as the fix
+    hint, instead of a runtime ``ComponentNotFoundError`` after the
+    agent has spent time spinning up.
+
+    If the ref does not resolve, the fix hint includes a sorted list
+    of available refs (slicing to the first 20 to keep the doctor
+    output bounded; longer registries get a "...and N more" suffix).
+    """
+    if not ref:
+        return CheckResult(
+            name="Embodiment ref",
+            status="info",
+            message="No --embodiment specified",
+        )
+    try:
+        from maxim.embodiment.component_registry import ComponentRegistry
+    except ImportError as e:
+        return CheckResult(
+            name="Embodiment ref",
+            status="warn",
+            message=f"ComponentRegistry import failed: {e}",
+            fix="Install the embodiment extras (typically core install).",
+        )
+
+    try:
+        registry = ComponentRegistry()
+    except Exception as e:
+        return CheckResult(
+            name="Embodiment ref",
+            status="fail",
+            message=f"ComponentRegistry construction failed: {e}",
+            fix=(
+                "Check that ~/.maxim/components/ exists or that the bundled "
+                "_data/components/ tree is intact. Run `maxim --list-models` "
+                "to verify the bundled data is present."
+            ),
+        )
+
+    try:
+        spec = registry.get(ref)
+    except Exception:
+        # ComponentNotFoundError already includes a sorted available
+        # list in its message — but doctor output is bounded, so
+        # rebuild the hint with a length cap. Prefer same-category
+        # matches so a typo in `weapons/X` surfaces weapons options
+        # first instead of alphabetically-first categories.
+        try:
+            available = sorted(getattr(registry, "_index", {}).keys())
+        except Exception:
+            available = []
+        if not available:
+            return CheckResult(
+                name="Embodiment ref",
+                status="fail",
+                message=f"Component ref {ref!r} not found",
+                fix="ComponentRegistry has no components — check your installation.",
+            )
+
+        # Prefix-aware preview: if the user typed `weapons/foo`,
+        # show all weapons/* refs first (likely typo), then a
+        # category sample of the rest.
+        category = ref.split("/", 1)[0] if "/" in ref else ""
+        same_category = [r for r in available if category and r.startswith(f"{category}/")]
+        other = [r for r in available if r not in same_category]
+
+        preview_lines: list[str] = []
+        if same_category:
+            preview_lines.append(f"Components in {category!r}:")
+            preview_lines.extend(f"  {r}" for r in same_category[:20])
+            if len(same_category) > 20:
+                preview_lines.append(f"  ...and {len(same_category) - 20} more in {category!r}")
+            preview_lines.append("")
+        preview_lines.append("Other available components:")
+        preview_lines.extend(f"  {r}" for r in other[:15])
+        if len(other) > 15:
+            preview_lines.append(f"  ...and {len(other) - 15} more")
+
+        return CheckResult(
+            name="Embodiment ref",
+            status="fail",
+            message=f"Component ref {ref!r} not found",
+            fix="\n".join(preview_lines),
+        )
+
+    # Resolution succeeded — surface the entity name + a short stat
+    # so the operator sees what would be loaded.
+    entity_name = spec.get("name") if isinstance(spec, dict) else None
+    return CheckResult(
+        name="Embodiment ref",
+        status="ok",
+        message=f"{ref!r} resolves" + (f" → entity={entity_name!r}" if entity_name else ""),
+    )
+
+
 def run_all_checks(
     info: PlatformInfo,
     *,
     role: str | None = None,
     peer_url: str | None = None,
     peer_key: str | None = None,
+    embodiment_ref: str | None = None,
 ) -> list[tuple[str, list[CheckResult]]]:
     """Return ordered ``[(section_name, results)]`` for ``maxim doctor``.
 
@@ -2205,6 +2307,15 @@ def run_all_checks(
     mesh_results = check_mesh_nodes()
     if mesh_results:
         sections.append(("Mesh Topology", mesh_results))
+
+    # Embodiment ref validation (sem_execution_hook Stage 4): only
+    # shown when ``maxim doctor --embodiment <REF>`` was passed.
+    # Hidden by default so the doctor command behaves identically to
+    # before for users who aren't using SEM bodies.
+    if embodiment_ref:
+        sections.append(
+            ("Embodiment", [check_embodiment_ref(embodiment_ref)]),
+        )
 
     # Lane metrics (only show if any calls have been recorded)
     lane_results = _check_lane_metrics()
