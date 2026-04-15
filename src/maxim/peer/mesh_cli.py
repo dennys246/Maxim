@@ -215,25 +215,40 @@ def _run_drain(mesh: MeshConfig, node: MeshNode, *, force_self: bool) -> int:
     requests and is almost always a mistake. The override flag is
     explicit so scripts that genuinely need it (graceful shutdowns)
     have to opt in.
+
+    **A2 fold (C2 pre-merge review):** the self-drain guard now also
+    lives in :func:`drain_state.drain_node`. The CLI still parses
+    ``--force-self`` and still catches the DrainError to render the
+    operator-readable hint, but if any future caller (C3 admin API,
+    test fixture, recovery script) invokes ``drain_node`` directly,
+    the state layer enforces the same guarantee.
     """
-    if node.name == mesh.self_name and not force_self:
-        print(
-            f"✗ Refusing to drain self ({node.name!r}) — this strands in-flight\n"
-            f"  requests and is almost always a mistake.\n"
-            f"  → If you're sure, re-run with --force-self:\n"
-            f"      maxim peer --node {node.name} drain --force-self",
-            file=sys.stderr,
-        )
-        return 2
     known_names = {n.name for n in mesh.nodes}
     already = node.name in read_drained_nodes(known_names).active
     try:
-        new_set = _drain_node(node.name, known_names)
+        new_set = _drain_node(
+            node.name,
+            known_names,
+            self_name=mesh.self_name,
+            force_self=force_self,
+        )
     except DrainError as e:
-        # Should be unreachable — we validated via mesh.get_node above —
-        # but a concurrent mesh.yml edit between our get_node and the
-        # drain_state call could trigger it. Report clearly.
-        print(f"✗ {e}", file=sys.stderr)
+        # The state layer raises on (a) unknown node (unreachable
+        # here because mesh.get_node validated already, except for
+        # concurrent mesh.yml edits), (b) self-drain without
+        # force_self, and (c) filelock timeout. Render a friendly
+        # CLI message for the self case; the other cases fall
+        # through to the generic format.
+        if node.name == mesh.self_name and not force_self:
+            print(
+                f"✗ Refusing to drain self ({node.name!r}) — this strands in-flight\n"
+                f"  requests and is almost always a mistake.\n"
+                f"  → If you're sure, re-run with --force-self:\n"
+                f"      maxim peer --node {node.name} drain --force-self",
+                file=sys.stderr,
+            )
+        else:
+            print(f"✗ {e}", file=sys.stderr)
         return 2
     if already:
         print(f"ℹ {node.name!r} already drained. Drain set: {sorted(new_set)}")

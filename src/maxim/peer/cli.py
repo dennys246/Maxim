@@ -61,28 +61,40 @@ Options:
 def run_peer_connect_subcommand(argv: Sequence[str]) -> int:
     """Dispatch peer config subcommands: connect / show / forget.
 
-    **Plan 4 C2:** Role detection runs at the top of this function via
-    :func:`maxim.runtime.role.detect_and_apply_role` so that drain /
-    resume verbs (and any other verb that resolves a role-scoped
+    **Plan 4 C2:** Role detection runs at the top of this function
+    via :func:`maxim.runtime.role.detect_and_apply_role` so that drain
+    / resume verbs (and any other verb that resolves a role-scoped
     ``~/.maxim/util/*.{role}.txt`` path) see the correct
-    ``MAXIM_ROLE`` env var. The subcommand dispatch in ``cli.py::main``
-    bypasses the sim-loop entry that does the usual role detection,
-    so we call it explicitly here. Idempotent: re-applying the same
-    role is a no-op, and the legacy ``leader_mode`` divergence
-    warning only fires once per-role regardless.
+    ``MAXIM_ROLE`` env var.
 
-    If role detection raises, we log and continue — peer verbs that
-    don't need role-scoped state (``connect``, ``show``, ``test``,
-    etc.) should still work in a degraded environment.
+    **J1 guard (C2 pre-merge review):** ``cli.py::main`` already calls
+    ``detect_and_apply_role(raw_argv)`` once before dispatching to the
+    peer subcommand. Calling it a second time here would:
+
+    - Re-emit ``role_detected`` with ``role_source=env_var`` instead
+      of the original ``default`` / ``peer_yml`` / ``mesh_yml`` —
+      confusing log noise for operators.
+    - Re-fire ``role_divergence`` WARNING if leader_mode disagrees.
+    - Re-run ``migrate_persisted_model_file`` (idempotent but wasted).
+
+    So we guard on ``MAXIM_ROLE`` already being set. If it's present,
+    we know the full detection pipeline ran upstream in ``main`` and
+    skip the duplicate call. If it's absent (shouldn't happen post-C2
+    on the normal entry path, but this is defensive — e.g. a direct
+    import of ``run_peer_connect_subcommand`` from a test or script),
+    we run the full detection so drain state paths resolve correctly.
     """
-    try:
-        from maxim.runtime.role import detect_and_apply_role
+    import os as _os
 
-        detect_and_apply_role(list(argv))
-    except Exception as e:  # pragma: no cover - defensive
-        import logging as _logging
+    if not _os.environ.get("MAXIM_ROLE"):
+        try:
+            from maxim.runtime.role import detect_and_apply_role
 
-        _logging.getLogger(__name__).debug("role detection skipped: %s", e)
+            detect_and_apply_role(list(argv))
+        except Exception as e:  # pragma: no cover - defensive
+            import logging as _logging
+
+            _logging.getLogger(__name__).debug("role detection skipped: %s", e)
 
     if not argv or argv[0] in ("-h", "--help"):
         _print_peer_usage()

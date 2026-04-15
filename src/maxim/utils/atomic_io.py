@@ -111,3 +111,32 @@ def atomic_write_json(
         path,
         json.dumps(payload, indent=indent, default=default),
     )
+
+
+def atomic_write_secret(path: str, content: str, *, encoding: str = "utf-8") -> None:
+    """Atomically write text to ``path``, preserving pre-existing mode bits.
+
+    Plan 4 C2 review fold A3: make the safe path verbose, not the
+    unsafe path. ``atomic_write_text`` defaults to ``preserve_mode=False``
+    (inherits umask) because that's the right default for the
+    overwhelming majority of Maxim persistence paths — session
+    reports, decision logs, memory state, bench results. None of
+    those are secret.
+
+    This wrapper is for files that DO contain secrets: cluster keys,
+    bearer tokens, API keys, cluster rotation state. The intent is
+    visible at the call site — nobody needs to "remember to pass
+    preserve_mode=True" because they pick a different function
+    entirely.
+
+    When ``path`` doesn't exist yet, there's no mode to preserve;
+    callers that need a specific initial mode on a brand-new secret
+    file should ``os.chmod`` after this function returns (a future
+    C3 cluster-key rotation verb will want 0o600 on first write).
+
+    Plan 4 C2 drain state does NOT use this function because drain
+    state is operator-visible topology, not a secret. Using the
+    wrapper here would over-advertise it and muddy the "this is for
+    secrets" signal.
+    """
+    atomic_write_text(path, content, encoding=encoding, preserve_mode=True)

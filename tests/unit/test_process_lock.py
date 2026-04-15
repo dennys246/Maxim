@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from maxim.utils.filelock import LockContended, file_lock
+from maxim.utils.process_lock import LockContended, file_lock
 
 
 class TestFileLockBasic:

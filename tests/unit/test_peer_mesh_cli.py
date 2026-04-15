@@ -393,6 +393,70 @@ class TestListNodesDrainDisplay:
         assert doc["orphans"] == ["mac-studio"]
 
 
+class TestRoleDetectionGuard:
+    """J1 fold (C2 pre-merge review): cli.py::main already calls
+    detect_and_apply_role once before dispatching to the peer
+    subcommand. Calling it a second time would re-emit role_detected
+    with role_source=env_var (confusing) and re-fire role_divergence
+    WARNINGs. The guard in run_peer_connect_subcommand skips the
+    second call when MAXIM_ROLE is already set.
+    """
+
+    def test_second_call_skipped_when_maxim_role_already_set(self, mesh_home, monkeypatch):
+        """Simulate the normal flow: cli.py::main ran and set
+        MAXIM_ROLE. Dispatch to run_peer_connect_subcommand should
+        NOT invoke detect_and_apply_role a second time."""
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+
+        call_count = {"n": 0}
+
+        def _spy(argv):
+            call_count["n"] += 1
+
+        import maxim.runtime.role as role_mod
+
+        monkeypatch.setattr(role_mod, "detect_and_apply_role", _spy)
+
+        from maxim.peer.cli import run_peer_connect_subcommand
+
+        # `show` is a cheap verb that doesn't touch drain state; we
+        # just care that the dispatcher runs without re-triggering
+        # role detection.
+        run_peer_connect_subcommand(["show"])
+
+        assert call_count["n"] == 0, (
+            "detect_and_apply_role must not be called a second time "
+            "when MAXIM_ROLE is already set — cli.py::main ran it "
+            "once upstream."
+        )
+
+    def test_detection_runs_when_maxim_role_unset(self, mesh_home, monkeypatch):
+        """Defensive path: a caller that skips cli.py::main (direct
+        import of run_peer_connect_subcommand from a test or script)
+        and doesn't set MAXIM_ROLE should still get role detection."""
+        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+
+        call_count = {"n": 0}
+
+        def _spy(argv):
+            call_count["n"] += 1
+            import os
+
+            os.environ["MAXIM_ROLE"] = "leader"
+
+        import maxim.runtime.role as role_mod
+
+        monkeypatch.setattr(role_mod, "detect_and_apply_role", _spy)
+
+        from maxim.peer.cli import run_peer_connect_subcommand
+
+        run_peer_connect_subcommand(["show"])
+
+        assert call_count["n"] == 1, (
+            "detect_and_apply_role must run once when MAXIM_ROLE is unset — covers the direct-import defensive path."
+        )
+
+
 class TestImportErrorFallback:
     """Round 2 A5R2: the ``ImportError`` defensive branch in ``_probe_node``
     needs regression coverage or it's a comment in code form.

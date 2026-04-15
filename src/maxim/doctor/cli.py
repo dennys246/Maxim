@@ -230,11 +230,67 @@ def _retry_loop(
 
         return _reprobe
 
+    # Plan 4 Stage C2 (CCR1 — triple-confirmed review finding): orphan
+    # drain entries get their own re-probe so operators can run
+    # `maxim peer --node <name> resume` to clean up the drain state
+    # file, then hit Enter in the retry loop to confirm the orphan is
+    # gone. The reprobe re-reads drain state + mesh.yml each iteration
+    # and constructs a fresh check result:
+    #
+    # - If the entry is still orphaned → return the same warn
+    # - If the operator ran `resume` (entry removed from drain state) →
+    #   return an info CheckResult "orphan cleared" (status ok from
+    #   retry loop's perspective, exits the loop for this id)
+    # - If the operator edited mesh.yml to re-add the node → the entry
+    #   is no longer an orphan, so read_drained_nodes doesn't surface
+    #   it; return info "orphan cleared"
+    def _make_orphan_reprobe(orphan_name: str):
+        def _reprobe():
+            from maxim.peer.drain_state import read_drained_nodes
+            from maxim.peer.mesh_config import read_or_synthesize_mesh_config
+
+            try:
+                mesh = read_or_synthesize_mesh_config()
+            except Exception:
+                return None
+            if mesh is None:
+                # Mesh config went away entirely — can't classify.
+                return None
+            known_names = {n.name for n in mesh.nodes}
+            drain_result = read_drained_nodes(known_names)
+            if orphan_name not in drain_result.orphans:
+                # Orphan cleared: either operator ran `resume` and it's
+                # gone from drain state, or they re-added the node to
+                # mesh.yml so it's now valid. Either way, report ok so
+                # the retry loop exits for this id.
+                return CheckResult(
+                    name=f"Drain orphan {orphan_name}",
+                    status="ok",
+                    message=f"orphan cleared for {orphan_name!r}",
+                )
+            # Still orphaned — return the same warn so the operator
+            # knows their edit didn't land.
+            return CheckResult(
+                name=f"Drain orphan {orphan_name}",
+                status="warn",
+                message=(f"drain state entry {orphan_name!r} still has no matching node in mesh.yml"),
+                fix=(
+                    f"Run `maxim peer --node {orphan_name} resume` to clean up "
+                    f"the drain state, or re-add {orphan_name!r} to mesh.yml::nodes."
+                ),
+                retry_id=f"mesh_drain_orphan_{orphan_name}",
+            )
+
+        return _reprobe
+
     for _, results in sections:
         for r in results:
             if r.retry_id and r.retry_id.startswith("mesh_node_"):
                 node_name = r.retry_id[len("mesh_node_") :]
                 retryable_fns[r.retry_id] = _make_mesh_node_reprobe(node_name)
+            elif r.retry_id and r.retry_id.startswith("mesh_drain_orphan_"):
+                orphan_name = r.retry_id[len("mesh_drain_orphan_") :]
+                retryable_fns[r.retry_id] = _make_orphan_reprobe(orphan_name)
 
     # Collect failing checks that have retry_id, in section order
     retryable_results: list[tuple[str, CheckResult]] = []
