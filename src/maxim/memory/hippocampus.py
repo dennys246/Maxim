@@ -1205,15 +1205,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 self._pending_episode = self._start_episode(event)
                 return
 
-            # Extend the pending episode with this event
-            pending = self._pending_episode
-            pending.last_tick = event.tick
-            if event.sender_id is not None:
-                pending.sender_ids.add(event.sender_id)
-            if event.thread_id is not None and pending.thread_id is None:
-                pending.thread_id = event.thread_id
-            for node_id in event.activated_nodes:
-                pending.activated_nodes.append(node_id)
+            self._apply_event_to_pending(self._pending_episode, event)
 
     def finalize_pending_episode(self) -> Episode | None:
         """Force-close the current pending episode, if any.
@@ -1393,7 +1385,18 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
     def _start_episode(self, event: CaptureEvent) -> PendingEpisodeState:
         """Open a fresh pending episode seeded by ``event``. Caller must
-        hold ``self._episode_lock``."""
+        hold ``self._episode_lock``.
+
+        Constructs a bare pending state fixed by the episode-open event
+        (``id``, ``start_tick``, ``channel``, ``scn_tag``) and then
+        delegates the per-event merge (``last_tick``, ``sender_ids``,
+        ``thread_id``, ``activated_nodes``, future P4 modality buffer)
+        to ``_apply_event_to_pending`` so there is exactly one site
+        where event fields fold into a pending episode. This is the
+        structural enforcement seam for P4: any new per-event field
+        added to ``CaptureEvent`` is folded into pending state in one
+        place, not at every caller.
+        """
         self._next_episode_ordinal += 1
         pending = PendingEpisodeState(
             id=f"ep_{self._next_episode_ordinal}",
@@ -1401,14 +1404,40 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             last_tick=event.tick,
             channel=event.channel,
             sender_ids=set(),
-            thread_id=event.thread_id,
-            activated_nodes=list(event.activated_nodes),
+            thread_id=None,
+            activated_nodes=[],
             reward_events=[],
             scn_tag=event.scn_tag,
         )
+        self._apply_event_to_pending(pending, event)
+        return pending
+
+    def _apply_event_to_pending(self, pending: PendingEpisodeState, event: CaptureEvent) -> None:
+        """Fold a single event's per-event fields into an existing
+        pending episode. Caller must hold ``self._episode_lock``.
+
+        This is the SINGLE site where ``CaptureEvent`` fields get
+        merged into ``PendingEpisodeState``. Both ``_start_episode``
+        (post-construction) and ``observe_episode_event``'s extend
+        branch route through here. Adding a new per-event field (P4
+        ``modality``, future per-event signals) is one edit, not N.
+
+        Touches ``last_tick``, ``sender_ids``, ``thread_id``, and
+        ``activated_nodes``. Does NOT touch ``id``, ``start_tick``,
+        ``channel``, ``scn_tag``, or ``reward_events``: those are
+        either episode-open invariants (set once by ``_start_episode``,
+        protected from change by the boundary detector closing the
+        episode if they would shift) or fed in via a separate path
+        (reward events are appended by reward-recording code, not by
+        capture events).
+        """
+        pending.last_tick = event.tick
         if event.sender_id is not None:
             pending.sender_ids.add(event.sender_id)
-        return pending
+        if event.thread_id is not None and pending.thread_id is None:
+            pending.thread_id = event.thread_id
+        for node_id in event.activated_nodes:
+            pending.activated_nodes.append(node_id)
 
     def _close_pending_episode_locked(self) -> Episode:
         """Finalize ``self._pending_episode``, add it to the store, and
