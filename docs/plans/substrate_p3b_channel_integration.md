@@ -1,6 +1,7 @@
 # Substrate P3b — Channel integration: boundary rules + filtered retrieval
 
-**Status:** Draft (2026-04-14)
+**Status:** Draft (2026-04-14, post-Round-1-review fold)
+**Blocks:** P4 cross-modal mug test. **Stage 1 unblocks P4 seam consumption** (`retrieve_on_cue(node_filter=...)` + `EpisodeStore.episode_membership_filter`); **Stage 2 unblocks P4 baseline comparison work** (real-text fixture shape + 10-seed harness).
 **Scope:** ~250 LOC + ~100 metric extractor across 3 stages
 **Target version:** 0.3-target
 **Gates:** Second of the four plans (P3a ✅ + P3b + P3.5 + P4) that together close 0.3-target. P3b opens now that P3a Stage 2 has shipped (PR #112 merged).
@@ -40,14 +41,14 @@ Per-channel episode boundary rules produce episodes whose channel-filtered retri
 | Surface | Scope | Stage |
 |---|---|---|
 | `sms_gap_rule(max_gap)` | ~15 LOC | 1 |
-| `sms_sender_change_rule()` | ~20 LOC (new `sender_id` comparison) | 1 |
-| `narrative_scene_rule()` | ~15 LOC (alias/refinement of `scn_tag_change_rule`) | 1 |
-| `channel_specific_rule(channel, inner_rule)` wrapper | ~20 LOC | 1 |
-| `Hippocampus.channel_membership_filter(channel, sender=None)` helper | ~40 LOC | 1 |
-| Synthetic mechanism tests | ~250 LOC test file | 1 |
+| `sms_sender_change_rule()` with cold-start guard | ~25 LOC | 1 |
+| `channel_specific_rule(channel, inner_rule)` wrapper — gates on `event.channel`, NOT `pending.channel` | ~20 LOC | 1 |
+| `EpisodeStore.episode_membership_filter(*, membership_mode="any", **criteria)` | ~60 LOC | 1 |
+| `Hippocampus.channel_membership_filter(...)` — thin convenience alias delegating to `EpisodeStore` | ~15 LOC | 1 |
+| Synthetic mechanism tests | ~280 LOC test file | 1 |
 | `scenarios/substrate/channel_episodes.yaml` + generator | ~200 LOC generator + YAML | 2 |
-| Metadata-grep baseline | ~80 LOC | 2 |
-| Full metric extractor (reuses `p3a_metrics`, may promote shared helpers to `metrics_common.py`) | ~50 LOC delta | 2 |
+| Cue-aware metadata-grep baseline | ~80 LOC | 2 |
+| Full metric extractor (defers `metrics_common.py` extraction to P4) | ~50 LOC delta | 2 |
 | Fixture validation head-to-head test | ~200 LOC | 2 |
 | Results writeup + reproduction protocol | ~300 lines docs | 3 |
 
@@ -57,37 +58,66 @@ Per-channel episode boundary rules produce episodes whose channel-filtered retri
 
 **What's built:**
 
-1. **New rule factories in `memory/episode.py`** (or a new `memory/channel_rules.py` if the growth bothers a reviewer):
-   - `sms_gap_rule(max_gap_ticks=500)` — closes the pending episode when the next event is more than `max_gap_ticks` ticks after the previous capture. SMS-specific because conversations can have minute-to-hour gaps that aren't episode boundaries; narrative gaps are tighter. Default 500 is a tuning placeholder; Stage 2 sweep will refine.
-   - `sms_sender_change_rule()` — closes when the incoming `event.sender_id` differs from ALL senders in the pending episode's `sender_ids` set. "A new person texted" = new episode. Guards against sender=None (no-op).
-   - `narrative_scene_rule()` — thin alias over the existing `scn_tag_change_rule` factory, named for clarity. Stage 2 may refine with narrator-change detection.
-   - `channel_specific_rule(channel: str, rule: BoundaryRule) -> BoundaryRule` — wraps a rule so it only fires when `pending.channel == channel`. Composes with the existing rule-list shape — no detector-core changes. The "per-channel rule set" architecture is a wrapping pattern, not a data-structure change.
+**1. Boundary rule factories** — all land in `memory/episode.py` (no new `channel_rules.py` module; this is two rule factories + one wrapper, which fits the existing file cleanly):
 
-2. **`Hippocampus.channel_membership_filter(channel, sender=None)` helper** — builds a `node_filter` callable that returns True for nodes appearing in ≥1 episode matching the channel (and optionally sender) criteria. Implementation: query `self._episode_store.episodes_containing(node_id)` and check each episode's `channel` + `sender_ids`. Reuses the existing inverted index. Callers pass the result directly to `retrieve_on_cue(cue, node_filter=...)` — no new retrieval method.
+- `sms_gap_rule(max_gap_ticks=500)` — closes the pending episode when the next event is more than `max_gap_ticks` ticks after the previous capture. SMS-specific because conversations can have minute-to-hour gaps that aren't episode boundaries; narrative gaps are tighter. Default 500 is a tuning placeholder; Stage 2 sweep will refine.
 
-3. **Synthetic mechanism tests** — `tests/substrate/test_p3b_channel_integration.py::TestP3bMechanism` (~250 LOC test file, following the P3a Stage 1 pattern):
-   - `test_sms_gap_rule_closes_on_long_gap`: captures at ticks 0, 10, 200 (within 500 gap) vs 0, 10, 600 (> 500 gap). First forms one episode, second closes after tick 10.
-   - `test_sms_sender_change_rule_closes_on_new_contact`: capture from alice then alice then bob on SMS; rule fires on bob, closing the alice episode.
-   - `test_sms_sender_change_rule_no_op_when_sender_is_none`: capture with `sender_id=None` on both events; rule does not fire.
-   - `test_narrative_scene_rule_closes_on_scn_tag_change`: alias-level behavior check.
-   - `test_channel_specific_rule_fires_only_in_matching_channel`: wrap an always-fire rule in `channel_specific_rule("sms", ...)`, confirm it closes SMS episodes but not narrative episodes.
-   - `test_channel_specific_rule_composes_with_default_rules`: default rules (tick_gap, channel_change) still fire alongside the wrapped SMS rule.
-   - **Channel-filtered retrieval tests:**
-     - `test_channel_filter_returns_only_channel_members`: build a fixture with cue=X present in both SMS and narrative episodes. `retrieve_on_cue(X, node_filter=channel_membership_filter("sms"))` returns only nodes from SMS episodes.
-     - `test_sender_filter_returns_only_sender_members`: same but filtered by sender.
-     - `test_channel_and_sender_filter_compose`: both filters together produce the intersection.
-     - `test_channel_filter_empty_channel_returns_empty`: filter on a channel with no episodes returns `[]` (no crash).
-     - `test_channel_filter_respects_multi_hop_traversal`: channel-filtered retrieval still walks multi-hop through filtered-channel nodes (inherits `retrieve_on_cue(multi_hop=True)` default).
-   - **Persistence round-trip tests:**
-     - `test_channel_rules_survive_dump_load`: boundary rules themselves are NOT persisted (they're behavior, not state), but the episodes they produced ARE. Dump + load + rerun channel-filtered retrieval must produce byte-identical results. Reuses P3.5 Stage 1 rebuild-from-episodes.
-     - `test_channel_membership_filter_reconstructs_after_load`: the filter is rebuilt from `episode_store` state post-load; assert it produces the same results as pre-dump.
-   - **Wire discipline regression** (inherited from P3a pattern):
-     - `test_p3b_source_has_no_truthy_biosystem_checks`: AST grep over `memory/episode.py` + `memory/hippocampus.py` P3b-added methods. Reuses the `is not None` invariant.
+- `sms_sender_change_rule()` — closes when the incoming `event.sender_id` differs from all senders in the pending episode's `sender_ids` set. **Cold-start guard (Round 1 Exec critical #1):** rule returns `False` when `pending.sender_ids` is empty — if the first event had `sender_id=None`, a later event with a non-None sender must NOT trivially fire the rule (empty-set-membership would otherwise return True for any non-None string). Full spec:
+  ```python
+  def _rule(pending, event):
+      if event.sender_id is None or not pending.sender_ids:
+          return False
+      return event.sender_id not in pending.sender_ids
+  ```
 
-4. **Metric extractor shell** (`tests/substrate/p3b_metrics.py`, ~50 LOC in Stage 1): imports `aggregate_seeds` + `compare_to_baseline` from `p3a_metrics.py` (deferred consolidation to `metrics_common.py` noted in P3a Stage 2 deferred list; may promote now if Stage 1 adds the third consumer). Stage 1 ships `channel_filtered_precision_at_k` / `channel_filtered_recall_at_k` helpers.
+- `channel_specific_rule(channel: str, rule: BoundaryRule) -> BoundaryRule` — wraps a rule so it only fires when **`event.channel == channel`**, NOT `pending.channel == channel`. **Round 1 Exec important #2 fix:** the earlier draft gated on `pending.channel`, but that only works because the default `channel_change_rule` is always installed (which means `pending.channel` is guaranteed to match `event.channel` when any rule evaluates). The moment someone removes `channel_change_rule` (reasonable for cross-channel threading), `pending.channel` gating silently disables every channel-specific rule. Gating on `event.channel` is the intended semantic — "this rule applies when the incoming event is on channel X" — and it stays correct under any default-rule configuration.
+
+- **`narrative_scene_rule` is NOT shipped.** It would be a one-line alias over `scn_tag_change_rule()` (Round 1 Exec minor #1). Stage 1 P3b call sites use `scn_tag_change_rule()` directly from `episode.py`. If Stage 2 surfaces a genuine need for narrator-change detection on top of scene-tag change, the factory lands then as substantive code, not an alias.
+
+**2. `EpisodeStore.episode_membership_filter(*, membership_mode="any", **criteria) -> Callable[[str], bool]`** — **moved from `Hippocampus` to `EpisodeStore`** (Round 1 Arch important #3). The filter is a pure query over `EpisodeStore._by_node` + episode metadata; putting it on `Hippocampus` made Hippocampus a filter-builder factory that P4/P5 would keep extending with thin forwarding methods.
+
+- **Generalized filter axes** (Round 1 Arch important #4): takes `**criteria` that introspect `Episode` frozen dataclass fields rather than hard-coding `channel` + `sender`. Callers: `episode_membership_filter(channel="sms")`, `episode_membership_filter(channel="sms", sender="alice")`, and — when P4 cross-modal ships — `episode_membership_filter(modality="vision")` without any new code.
+
+- **Membership mode parameter** (Round 1 Arch critical #1): `membership_mode: Literal["any", "exclusive"] = "any"`. Stage 1 ships `"any"` only (node retained if it appears in ≥1 matching episode). `"exclusive"` (node retained ONLY if every episode containing it matches the filter) is **reserved as a parameter value for P4**. P4's cross-modal mug test will need exclusive-modality filters to answer "is this node a bridge between modalities?" — a question ANY-semantics silently erases. Commit the parameter shape now so P4 can add the mode without breaking P3b callers.
+
+- **`sender` criterion matches via `Episode.sender_ids` set membership** — the filter returns True if the sender appears in any matching episode's `sender_ids` tuple. Handles the empty-`sender_ids` case: an episode whose senders were all None has an empty tuple, and the `sender="alice"` filter never matches it (correct — an episode with no known sender can't be attributed to Alice).
+
+- **Implementation detail:** for each candidate node, call `self.episodes_containing(node_id)`, filter by the criteria, count matches. For `"any"` mode: return True if ≥1 episode matches. For `"exclusive"`: return True if EVERY episode in `episodes_containing(node_id)` matches. The inverted index + per-criterion field comparison is O(|episodes containing node| × |criteria|).
+
+**3. `Hippocampus.channel_membership_filter(channel, sender=None, *, membership_mode="any")`** — thin convenience alias that forwards to `self._episode_store.episode_membership_filter(channel=channel, sender=sender, membership_mode=membership_mode)`. Kept on Hippocampus for ergonomics (callers already have a Hippocampus reference in hand) but the real logic lives on `EpisodeStore`. Total LOC: ~5.
+
+**4. Synthetic mechanism tests** — `tests/substrate/test_p3b_channel_integration.py::TestP3bMechanism` (~280 LOC test file, following the P3a Stage 1 pattern):
+
+- **Rule firing tests:**
+  - `test_sms_gap_rule_closes_on_long_gap`: captures at ticks 0, 10, 200 (within 500 gap) vs 0, 10, 600 (> 500 gap). First forms one episode, second closes after tick 10.
+  - `test_sms_sender_change_rule_closes_on_new_contact`: capture from alice then alice then bob on SMS; rule fires on bob, closing the alice episode.
+  - `test_sms_sender_change_rule_no_op_when_event_sender_is_none`: incoming event has `sender_id=None`; rule does not fire.
+  - `test_sms_sender_change_rule_no_op_on_cold_start` (Round 1 Exec C1 regression): first event `sender_id=None` → `pending.sender_ids` stays empty → subsequent event with `sender_id="bob"` must NOT trigger the rule (empty-set cold-start guard).
+  - `test_channel_specific_rule_gates_on_event_channel` (Round 1 Exec I2 regression): wrap an always-fire rule with `channel_specific_rule("sms", ...)`, then feed a non-SMS event → rule must NOT fire regardless of what `pending.channel` is. Regression-guards the `event.channel` gating invariant.
+  - `test_channel_specific_rule_composes_additively_with_defaults`: wrapped rule + default tick_gap + default channel_change all fire via `any()` — explicit commit to the additive composition model (Round 1 Arch minor #1).
+
+- **Channel-filtered retrieval tests:**
+  - `test_channel_filter_returns_only_channel_members_any_mode`: build a fixture with cue=X present in both SMS and narrative episodes. `retrieve_on_cue(X, node_filter=channel_membership_filter("sms"))` returns only nodes from SMS-matching episodes.
+  - `test_sender_filter_returns_only_sender_members`: same but filtered by sender.
+  - `test_channel_and_sender_filter_compose`: both criteria produce the intersection.
+  - `test_channel_filter_empty_channel_returns_empty`: filter on a channel with no episodes returns `[]` (no crash).
+  - `test_channel_filter_exclusive_mode_parameter_accepted`: call `episode_membership_filter(channel="sms", membership_mode="exclusive")` — Stage 1 accepts the kwarg (even if Stage 1 semantics are identical to `"any"` on the synthetic fixture). P4 will land the real exclusive-mode implementation. Regression guard: the parameter name is the API contract, not the implementation.
+  - **`test_channel_filter_mixed_hop_breaks_transitive_path`** (Round 1 Exec C3 regression): fixture has `cue (SMS)` → `intermediate (narrative-only)` → `target (SMS)`. Under `channel=SMS` filter, `spreading_activation` rejects the intermediate → the BFS stops there → target is NOT retrieved. Test explicitly pins this semantic so P4 / future reviewers know that channel-filtered multi-hop is path-strict, not bridge-transparent.
+
+- **Persistence round-trip tests:**
+  - `test_channel_rules_contract_re_registered_on_load` (Round 1 Exec I3 regression): explicit contract — boundary rules are NOT persisted. After `Hippocampus.load_state`, `_episode_detector` contains only rules the NEW instance's `__init__` installed (the defaults). A callsite that added P3b rules via `add_boundary_rule` must re-add them post-load. Test verifies: (a) pre-load behavior with SMS rules added, (b) dump, (c) fresh Hippocampus with DEFAULTS ONLY, (d) load_state, (e) `observe_episode_event` now produces DIFFERENT boundary behavior than pre-dump (the SMS rule is gone). This pins the contract so P3.5 integration work doesn't silently inherit a gap.
+  - `test_channel_membership_filter_reconstructs_after_load`: the filter is rebuilt from `episode_store` state post-load; retrieval results on the reloaded store match pre-dump byte-exactly (filter closures re-resolve against the fresh store reference).
+
+- **Capture-thread deadlock regression** (Round 1 Exec minor #2, following the P3a Stage 1 pattern):
+  - `test_channel_filter_no_deadlock_under_concurrent_capture`: spawn a background worker that repeatedly fires `observe_episode_event` + `finalize_pending_episode`, while the main thread repeatedly calls `retrieve_on_cue(..., node_filter=channel_membership_filter("sms"))`. Assert completion within a 2-second budget. The filter callback runs inside `spreading_activation`'s graph lock and calls `episodes_containing` inside `EpisodeStore._lock` — verifies the acquire order doesn't reverse.
+
+- **Wire discipline regression** (inherited from P3a pattern):
+  - `test_p3b_source_has_no_truthy_biosystem_checks`: AST grep over `memory/episode.py` + `memory/hippocampus.py` P3b-added methods. Reuses the `is not None` invariant.
+
+**5. Metric extractor shell** (`tests/substrate/p3b_metrics.py`, ~50 LOC in Stage 1): imports `aggregate_seeds` + `compare_to_baseline` from `p3a_metrics.py`. **`metrics_common.py` extraction is explicitly deferred to P4** (Round 1 Exec minor #3, Round 1 Arch minor #3). Rationale: two plans currently share the helpers (P2, P3a); P3b makes it three but P4 is the natural consolidation point because P4 will ship the 1.0-gating comparison shape and deserves to drive the shared module's API. Folding the extraction into P3b now would create a rush decision on an API that has to serve P4. Flag with a TODO comment in `p3b_metrics.py` pointing at the P4 entry condition.
 
 **Pass gate (Stage 1):**
-- All 12+ synthetic mechanism tests in `TestP3bMechanism` pass.
+- All 13+ synthetic mechanism tests in `TestP3bMechanism` pass.
 - `ruff check` + `ruff format` clean on all touched files.
 - No truthy bio-system checks in the P3b diff (AST regression guard).
 - Fast suite clean (standing exclusions per CLAUDE.md).
@@ -96,20 +126,32 @@ Per-channel episode boundary rules produce episodes whose channel-filtered retri
 
 **Tests (Stage 1):** See above. No fixture YAML, no baseline, no 10-seed sweep — those are Stage 2.
 
-### Stage 2 — fixture-based validation + metadata-grep baseline
+### Stage 2 — fixture-based validation + cue-aware metadata baseline
+
+**Baseline-first design discipline (Round 1 Arch I4 + Exec I1 cross-confirmed):** the Stage 2 baseline **contract is specified before the fixture is built**, not after. Both reviewers independently flagged that the earlier "grep matching episodes, return all nodes" draft was strictly weaker than Hebbian one-hop — it would clear the `+2σ` gate by construction because Hebbian one-hop returns cue-co-occurring nodes while the baseline returns arbitrary nodes from matching episodes, guaranteeing a precision gap unrelated to the mechanism's actual claim. Fixing this by rebuilding the fixture around the wrong baseline would be the textbook circular-head-to-head trap from the P3a Stage 2 clique-topology finding.
 
 **What's built:**
 
-- `scenarios/substrate/channel_episodes.yaml` — ~100 episodes across SMS + narrative channels with labeled sender metadata + ground truth co-occurrence. Generator pattern: hub+chain topology per (channel, sender) pair, with some cross-channel nodes that test channel-filter discrimination. ~1-2 days authoring time per the parent plan.
-- **Metadata-grep baseline** in `tests/substrate/metadata_grep_baseline.py` (~80 LOC): searches episodes by channel+sender metadata, returns all nodes appearing in matching episodes. No graph traversal. This is the "what you'd get with just episode metadata indexing" baseline the plan's pass gate compares against.
-- **Full metric extractor** in `p3b_metrics.py`: per-seed precision/recall/F1, aggregate mean+std across seeds, baseline comparison by `baseline_mean + 2 × baseline_std`. If `p3b_metrics` ends up with substantial shared logic with `p3a_metrics` + `p2_metrics`, this is the point to extract `tests/substrate/metrics_common.py` (rule of three).
-- **Fixture validation test** `tests/substrate/test_p3b_fixture_validation.py::TestP3bFixture` — 10-seed head-to-head on the 100-episode fixture. Asserts: Hebbian channel-filtered retrieval beats metadata-grep by `baseline_mean + 2×std` on F1, and mean precision/recall both exceed 0.70.
+- **Cue-aware metadata-grep baseline** in `tests/substrate/metadata_grep_baseline.py` (~80 LOC): the baseline returns **nodes that co-occurred with the cue in episodes matching the channel/sender criteria, one-hop only, no graph walk**. Concretely: look up episodes containing the cue (via `EpisodeStore._by_node[cue]`), filter those episodes by the metadata criteria, union the `activated_nodes` across the filtered episodes, return the union minus the cue itself. This is the correct "what you'd get with just episode metadata indexing + one-hop co-occurrence" baseline — a credible adversary for Hebbian multi-hop filtered retrieval.
+
+- **Two head-to-heads in Stage 2**, not one. The pass gate requires BOTH to clear:
+  1. **Hebbian multi-hop filtered vs cue-aware metadata-grep baseline** — measures whether the multi-hop binding-graph walk adds signal beyond one-hop co-occurrence within the same channel filter. This is the real architectural claim P3b is making.
+  2. **Hebbian multi-hop filtered vs Hebbian one-hop filtered** — measures whether multi-hop lift is still ≥ 0.20 when both sides use the channel filter. This is the P3a Stage 2 lift invariant applied to the filtered subgraph. If multi-hop filtered == one-hop filtered, the channel filter is preventing the graph walk from reaching the transitive structure the mechanism depends on — and that's a real problem P3b would need to surface, not hide.
+
+- `scenarios/substrate/channel_episodes.yaml` — ~100 episodes across SMS + narrative channels with labeled sender metadata + ground truth co-occurrence. Generator specified AFTER the baseline is written so the topology can't be tuned to flatter the baseline. Hub+chain topology per (channel, sender) pair with enough cross-channel nodes that the channel filter has a meaningful effect but not so many that the filter becomes trivial. ~1-2 days authoring per the parent plan.
+
+- **Full metric extractor** in `p3b_metrics.py`: per-seed precision/recall/F1, aggregate mean+std across seeds, `compare_to_baseline` reused from `p3a_metrics.py`. `metrics_common.py` extraction deferred to P4 (see Stage 1 note).
+
+- **Fixture validation test** `tests/substrate/test_p3b_fixture_validation.py::TestP3bFixture` — 10-seed head-to-head. Asserts BOTH head-to-heads clear.
+
 - **Variance source:** per-seed episode dropout (10%), matching the P3a Stage 2 pattern. Non-ceremonial `+2σ` gate.
-- **Persistence round-trip** on the fixture: dump → load → re-run retrieval → assert byte-exact metrics (reuses P3.5 Stage 1 harness).
+
+- **Persistence round-trip** on the fixture: dump → load + re-register channel rules at new-instance construction + re-run retrieval → assert byte-exact metrics. The rule-re-registration step pins the Round 1 Exec I3 contract from Stage 1.
 
 **Pass gate (Stage 2):**
 - Aggregate precision > 0.70, recall > 0.70 across ≥10 seeds on the 100-episode fixture.
-- Hebbian channel-filtered retrieval beats metadata-grep baseline by `baseline_mean + 2 × baseline_std`.
+- **Hebbian multi-hop filtered beats cue-aware metadata-grep baseline** by `baseline_mean + 2 × baseline_std` on F1.
+- **Hebbian multi-hop filtered beats Hebbian one-hop filtered** by ≥ 0.20 absolute F1 lift (the same architectural invariant P3a Stage 2 locked in, now applied to the filtered subgraph).
 - Persistence round-trip preserves retrieval F1 within ε=0.01.
 - Fast suite + substrate subset + `ruff check` all green.
 
@@ -135,15 +177,29 @@ Per-channel episode boundary rules produce episodes whose channel-filtered retri
 
 Stage 1 + 2 + 3 together close P3b's contribution to 0.3-target. 0.3-target closes when P3a ✅ + P3b + P3.5 + P4 are all `Status: COMPLETE`.
 
-## Load-bearing invariants (filled in AFTER shipping Stage 1)
+## Load-bearing invariants (post-Round-1-review fold)
 
-TODO — populate after Stage 1 review round. Expected candidates based on the audit:
+Surfaced by the plan-level Round 1 pre-merge review (Executor lens + Architecture lens) before any code landed. Code-level Round 2 review will refine / extend after Stage 1 ships.
 
-- **Channel-specific rules are a WRAPPING pattern, not a data-structure change.** `channel_specific_rule(channel, inner)` wraps any `BoundaryRule` to gate it on `pending.channel == channel`. The detector's `_rules` list stays flat; per-channel rule sets do NOT get their own collection. This keeps the Stage 1 extension minimal and inherits the existing ordering semantics (all rules commute via `any()`).
-- **Channel-filtered retrieval uses `node_filter`, not a new retrieval method.** `Hippocampus.channel_membership_filter(channel, sender=None)` builds a `Callable[[str], bool]` passed to `retrieve_on_cue(node_filter=...)`. This preserves the `retrieve_on_cue` contract shipped in P3a Stage 2 and doesn't create a second retrieval surface P4 would then inherit from.
-- **Sender-change rule guards on `sender_id is None`.** A `None` sender from either side is a no-op (doesn't fire). Otherwise the rule fires on any sender who hasn't appeared in the pending episode's `sender_ids` set yet. "First message from Bob after Alice" closes the Alice episode; "anonymous system message" doesn't.
-- **Channel-filtered retrieval walks multi-hop.** `retrieve_on_cue(cue, node_filter=..., multi_hop=True)` is the default — the channel filter composes cleanly with `spreading_activation`. One-hop is an explicit opt-in, same as P3a Stage 2.
-- **Channel-membership filter recomputes from live `_episode_store` state post-load.** No cached membership maps; the filter is a fresh closure over `hippocampus._episode_store` each time. Load doesn't need special handling — the store round-trips via P3.5 Stage 1 and the filter closure re-resolves.
+**Rule factories and detector composition:**
+
+- **Channel-specific rules are a WRAPPING pattern, not a data-structure change.** `channel_specific_rule(channel, inner)` wraps any `BoundaryRule` to gate it on **`event.channel == channel`** (NOT `pending.channel` — Round 1 Exec important #2). Gating on `event.channel` is correct under any default-rule configuration; `pending.channel` gating silently disables every wrapped rule the moment `channel_change_rule` is removed from the defaults.
+- **Additive rule composition is the committed default.** P3b-registered rules run alongside the P3a defaults (`tick_gap_rule`, `channel_change_rule`, `scn_tag_change_rule`); they do NOT replace them. All rules compose via `EpisodeBoundaryDetector.should_close = any(rule(...) for rule in self._rules)`. Rules commute — insertion order does not affect the close decision. Regression guard: `test_channel_specific_rule_composes_additively_with_defaults`.
+- **Sender-change rule has a cold-start guard.** `sms_sender_change_rule` returns `False` when `pending.sender_ids` is empty. Without this guard, a cold-start episode opened by an event with `sender_id=None` would close the moment any non-None sender arrived, because `"bob" not in empty_set` is trivially True. Round 1 Exec critical #1 regression: `test_sms_sender_change_rule_no_op_on_cold_start`.
+- **No `narrative_scene_rule` alias.** Callers use the existing `scn_tag_change_rule()` directly. Stage 1 does NOT ship a rename-only alias (Round 1 Exec minor #1). If Stage 2 or P3c needs narrator-change detection, the factory lands then as substantive code.
+
+**Filter shape and placement:**
+
+- **`episode_membership_filter` lives on `EpisodeStore`, not `Hippocampus`** (Round 1 Arch important #3). `EpisodeStore` owns the inverted index the filter queries; `Hippocampus.channel_membership_filter` is a thin convenience alias that forwards to it. When P4 cross-modal adds `episode_membership_filter(modality=...)`, it lands in `EpisodeStore` — NOT as another forwarding method on `Hippocampus`.
+- **Filter axes are introspected from `Episode` dataclass fields, not hard-coded.** `episode_membership_filter(*, membership_mode="any", **criteria)` accepts any combination of Episode field matchers (`channel="sms"`, `sender="alice"`, and — after P4 — `modality="vision"`). Adding a new filter axis is a zero-LOC P3b change when P4 ships (Round 1 Arch important #4).
+- **`membership_mode: Literal["any", "exclusive"] = "any"`** is a committed parameter from Stage 1 even though Stage 1 only implements `"any"` (Round 1 Arch critical #1). P4 cross-modal will add `"exclusive"` semantics without breaking P3b callers. A Stage 1 test passes `membership_mode="exclusive"` to verify the parameter is accepted by the API even though Stage 1 semantics are identical to `"any"` on the synthetic fixture.
+- **Channel-filtered multi-hop is path-strict, not bridge-transparent** (Round 1 Exec critical #3). `spreading_activation(node_filter=...)` rejects filtered nodes as both sources AND hop targets → a BFS path through a filtered-out intermediate node breaks at that intermediate; downstream nodes that would be reachable through the intermediate become unreachable even if they pass the filter themselves. This is the intended semantic for channel-segregated retrieval, not a bug. Regression guard: `test_channel_filter_mixed_hop_breaks_transitive_path`.
+- **`node_filter` is the ONLY retrieval filter seam.** P3b commits to using `retrieve_on_cue(cue, node_filter=...)` exclusively — no parallel retrieval methods (`retrieve_on_cue_in_channel`, `retrieve_on_cue_channel_aware`, etc.). **STOP-and-escalate rule**: if Stage 2 fixture validation surfaces a case where `node_filter` is insufficient, do not add a parallel retrieval surface inline — open a discussion + flag it as a P4 blocker so the two plans can pick a unified shape (Round 1 Arch minor #3).
+
+**Persistence and state:**
+
+- **Boundary rules are NOT persisted; callers MUST re-register them at construction time post-load** (Round 1 Exec important #3). `Hippocampus.load_state` restores the `_episode_store` (via P3.5 Stage 1 rebuild-from-episodes) but not `_episode_detector._rules`. Downstream code that adds P3b rules via `add_boundary_rule` must re-add them after each `load_state` call — or, cleaner, add them at `__init__` time via an explicit `boundary_rules` constructor kwarg (consider for Stage 2 if the gap bites in practice). Regression guard: `test_channel_rules_contract_re_registered_on_load`.
+- **Channel-membership filter closures are rebuilt on every call, not cached.** No cached membership maps; the filter is a fresh closure over `self._episode_store` each time. Load doesn't need special handling — the store round-trips via P3.5 Stage 1 and the filter closure re-resolves against the fresh store reference.
 - **`is not None` for bio-system wire checks, never truthy.** Same regression guard pattern as P3a Stage 1.
 
 ## Review questions (Stage 3 reviewers — templates for Round 2 code review)
@@ -161,14 +217,23 @@ TODO — populate after Stage 1 review round. Expected candidates based on the a
 - When P4 cross-modal ships, does it build on `node_filter` (current P3b seam) or does it need a different seam (e.g., a per-modality subgraph)? If P4 needs a different seam, does that invalidate P3b's design or coexist with it?
 - Does the metadata-grep baseline represent a credible adversary, or is it too weak? The plan's premise is that it's the "what you'd get without a binding graph" baseline. Is there a stronger non-Hebbian alternative (e.g., PageRank over channel-filtered subgraphs)?
 
-## Deferred follow-ups
+## Deferred concerns flagged by Round 1 review (documented for downstream plans)
+
+These are P4/P6/P8 entry conditions surfaced by the Round 1 plan review. Not folded into P3b code — documented here so the next session picking them up inherits the constraint.
+
+- **`exclusive` membership mode is a P4 entry condition** (Round 1 Arch critical #1). Stage 1 ships the parameter shape but implements only `"any"`. P4 cross-modal mug test will need `"exclusive"` semantics to answer "is this node a bridge between modalities?" — the ANY-mode filter retains bridge nodes under either side's filter, which is correct for channel isolation but wrong for identifying cross-modal pivots. P4 entry condition: implement `membership_mode="exclusive"` in `EpisodeStore.episode_membership_filter` before opening the mug-test fixture.
+- **P8 sleep replay × channel-rule interaction** (Round 1 Arch important #3). P3b adds channel-aware boundary rules. P8 sleep replay re-runs closed episodes through `apply_hebbian_on_close`. **The open question:** does replay feed events back through the boundary detector (re-firing channel rules and potentially re-segmenting episodes), or does it bypass the detector entirely and replay already-closed `Episode` objects? **P8 entry condition:** pick one explicitly before implementing replay. If going through the detector: channel rules must be replay-idempotent (re-running the same event sequence produces the same boundaries). If bypassing: replay needs its own path into `apply_hebbian_on_close` that doesn't touch `_episode_detector`.
+- **Boundary provenance for P6 extinction** (Round 1 Arch critical #2). P3b's rule-wrapping pattern composes via `any()` — the detector can tell that SOME rule fired but NOT which one. If P6 extinction later wants to decay channel-specific boundaries differently from generic ones (e.g., "SMS-sender-change boundaries decay faster than tick-gap boundaries"), the plan needs `Episode.closed_by: str | None` or similar provenance metadata. **P6 entry condition:** either extend `Episode` with a `closed_by` tag and have rules self-identify, OR document that extinction operates exclusively at the binding-graph edge level and never cares about boundary provenance. Either decision is fine; silence is not. P3b does NOT ship the provenance field — P3b's architectural claim is edge-level Hebbian, not boundary-level.
+
+## Previously-deferred items (unchanged from initial draft)
 
 1. **Real-text channel fixtures** (actual SMS transcripts, actual narrative passages via `LinguisticEncoder`). Stage 2 uses synthetic node IDs with hand-labeled channel metadata. Real text + encoder integration is post-P3b.
 2. **Thread_id handling** in `Episode` — reserved since Stage 1 but still unused. P3b might wire it up if threading matters for retrieval; otherwise defer to P8 or beyond.
 3. **Multi-channel joint retrieval** — "find nodes that co-occurred with cue across BOTH SMS and narrative." Not in Stage 2 scope; add if a behavioral experiment needs it.
 4. **Channel-specific Hebbian tuning** (different `hebbian_init/delta` per channel). SMS might want slower reinforcement than narrative. Deferred until evidence suggests it matters.
-5. **`metrics_common.py` extraction** — if Stage 1 is the third consumer of `aggregate_seeds` / `compare_to_baseline`, extract the shared helpers now per the rule of three. Otherwise defer.
+5. **`metrics_common.py` extraction.** Round 1 Exec minor #3 + Round 1 Arch minor #3 both flagged. Decision: **defer to P4** — P4 is the 1.0-gating comparison shape and deserves to drive the shared module's API. Stage 1 `p3b_metrics.py` imports from `p3a_metrics.py`; a TODO comment in both files points at the P4 entry condition.
 6. **Channel change rule refinement** — the existing `channel_change_rule` closes on any channel switch. P3b may add a "soft" variant that allows cross-channel continuation for multi-channel conversations (e.g., SMS → phone call → SMS without starting a new episode). Not in Stage 1.
+7. **PageRank-over-channel-filtered-subgraph baseline** — Round 1 Arch important #4 asked whether metadata-grep is a strong enough adversary. Stage 2 ships the cue-aware metadata-grep baseline (folded) as the canonical head-to-head, AND adds a second head-to-head (Hebbian multi-hop filtered vs Hebbian one-hop filtered) to prove the multi-hop lift is real within the filtered subgraph. A third head-to-head against a PageRank baseline is an interesting open question but explicitly deferred to P4 or later — two baselines in Stage 2 is enough to clear the pass gate without becoming a baseline-zoo.
 
 ## Not in this plan
 
