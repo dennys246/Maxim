@@ -38,7 +38,12 @@ from maxim.memory.episode import (
     PendingEpisodeState,
     tick_gap_rule,
 )
-from maxim.memory.hippocampus import EpisodeConfig, Hippocampus, HippocampusConfig
+from maxim.memory.hippocampus import (
+    EpisodeConfig,
+    HebbianConfig,
+    Hippocampus,
+    HippocampusConfig,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -57,9 +62,11 @@ def _fresh_hippocampus(
         HippocampusConfig(
             episode=EpisodeConfig(
                 boundary_tick_gap=boundary_tick_gap,
-                hebbian_init=hebbian_init,
-                hebbian_delta=hebbian_delta,
-                hebbian_max=hebbian_max,
+                hebbian=HebbianConfig(
+                    init=hebbian_init,
+                    delta=hebbian_delta,
+                    max_weight=hebbian_max,
+                ),
             )
         )
     )
@@ -150,11 +157,21 @@ class TestP3aMechanism:
 
 
 class TestP3aRetrieval:
+    """Stage 1 retrieval tests exercise ONE-HOP semantics explicitly.
+
+    Stage 2 flipped the ``retrieve_on_cue`` default to ``multi_hop=True``
+    per the pre-merge Arch-lens review (the "backward compat" hedge
+    was protecting exactly these tests while silently degrading every
+    future production caller). These Stage 1 tests now opt into
+    ``multi_hop=False`` explicitly to preserve their one-hop weight
+    assertions.
+    """
+
     def test_partial_cue_retrieves_co_activated_nodes(self):
         h = _fresh_hippocampus()
         _close_episode_with_nodes(h, "a", "b", "c", "d")
 
-        results = h.retrieve_on_cue("a")
+        results = h.retrieve_on_cue("a", multi_hop=False)
         returned_ids = {node for node, _ in results}
         assert returned_ids == {"b", "c", "d"}
         for _, weight in results:
@@ -163,14 +180,14 @@ class TestP3aRetrieval:
     def test_partial_cue_non_member_returns_nothing(self):
         h = _fresh_hippocampus()
         _close_episode_with_nodes(h, "a", "b", "c")
-        assert h.retrieve_on_cue("z") == []
+        assert h.retrieve_on_cue("z", multi_hop=False) == []
 
     def test_multiple_episodes_shared_cue_merge(self):
         h = _fresh_hippocampus()
         _close_episode_with_nodes(h, "a", "b")
         _close_episode_with_nodes(h, "a", "c")
 
-        results = dict(h.retrieve_on_cue("a"))
+        results = dict(h.retrieve_on_cue("a", multi_hop=False))
         assert set(results.keys()) == {"b", "c"}
         # a↔b reinforced once (one episode), so stays at hebbian_init
         assert results["b"] == pytest.approx(0.3)
@@ -181,7 +198,7 @@ class TestP3aRetrieval:
         nodes = [f"n{i}" for i in range(10)]
         _close_episode_with_nodes(h, *nodes)
 
-        results = h.retrieve_on_cue("n0", limit=3)
+        results = h.retrieve_on_cue("n0", limit=3, multi_hop=False)
         assert len(results) == 3
 
 
@@ -337,7 +354,7 @@ class TestP3aLockOrdering:
         deadline = time.monotonic() + 2.0
         iterations = 0
         while time.monotonic() < deadline:
-            h.retrieve_on_cue("a")
+            h.retrieve_on_cue("a", multi_hop=False)
             iterations += 1
 
         stop.set()
@@ -394,8 +411,10 @@ class TestP3aPersistence:
         h2.load_state(dumped)
 
         # retrieve_on_cue on the fresh instance must return the same
-        # co-activated nodes as the original.
-        hits = dict(h2.retrieve_on_cue("a"))
+        # co-activated nodes as the original. Use multi_hop=False to
+        # assert exact direct-edge weights; multi-hop scores would
+        # include decay and wouldn't equal the raw 0.3 hebbian_init.
+        hits = dict(h2.retrieve_on_cue("a", multi_hop=False))
         assert set(hits.keys()) == {"b", "c"}
         assert hits["b"] == pytest.approx(0.3)
         assert hits["c"] == pytest.approx(0.3)

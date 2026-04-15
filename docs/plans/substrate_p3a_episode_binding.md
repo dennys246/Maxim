@@ -1,6 +1,6 @@
 # Substrate P3a — Episode binding produces retrieval on partial cue
 
-**Status:** Stage 1 in progress (2026-04-14, post-Round-1-review fold)
+**Status:** Stage 1 ✅ SHIPPED (PR #109, 2026-04-14) · Stage 2 in progress (2026-04-14, hub+chain fixture + multi-hop retrieval)
 **Scope:** ~400 LOC + ~100 metric extractor across 3 stages
 **Target version:** 0.3-target
 **Gates:** First of the four plans (P3a + P3b + P3.5 + P4) that together close 0.3-target.
@@ -216,27 +216,44 @@ Option 3 wins because:
 
 **Tests (Stage 1):** See above test list. Metric extractor shell loads but only its two basic helpers are exercised; full baseline comparison is Stage 2.
 
-### Stage 2 — fixture-based validation + TF-IDF baseline
+### Stage 2 — fixture-based validation + TF-IDF baseline (**SHIPPED 2026-04-14**)
 
 **What's built:**
 
-- `scenarios/substrate/synthetic_episodes.yaml` — 100 synthetic episodes with labeled co-occurrence ground truth. Each episode names its "cue" node + "target" node set. ~1-2 days authoring (per parent plan scope estimate).
-- TF-IDF bag-of-concepts baseline in `tests/substrate/tfidf_baseline.py`.
-- Full metric extractor in `p3a_metrics.py`: per-seed precision/recall/F1, aggregate mean+std across seeds, baseline comparison (Hebbian vs TF-IDF by `baseline_mean + 2×baseline_std`).
-- Fixture-driven validation test `tests/substrate/test_p3a_fixture_validation.py::TestP3aFixture`.
-- **Shuffle guard:** test MUST run with shuffled fixture ordering (per [feedback_shuffle_fixture_ordering.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_shuffle_fixture_ordering.md) — link fixed per Round 1 Exec minor).
-- Persistence round-trip on the fixture: dump after fixture run, load in subprocess, assert retrieval scores round-trip. Uses the P3.5 Stage 1/2 harness.
-- **Multi-hop switch decision**: if one-hop `get_associated` returns mean recall `< 0.70` on the fixture, switch to `spreading_activation`. Document the decision (and the pre-switch baseline) in the Stage 2 results writeup.
+- `tests/substrate/p3a_fixture_gen.py` — deterministic generator for `scenarios/substrate/synthetic_episodes.yaml`. 10 topics × 17 episodes each (170 total) using a **hub + chain** topology: each topic has a hub node connected to 4 chain nodes, with core episodes reinforced twice to drive edge weights to 0.4 (vs 0.3 for peripherals). See `p3a_fixture_gen.py` module docstring for the full design history.
+- `tests/substrate/tfidf_baseline.py` — TF-IDF bag-of-concepts retriever matching the `retrieve_on_cue` callable shape for head-to-head comparison.
+- `tests/substrate/p3a_metrics.py` — precision/recall/F1@k, per-probe / per-seed / aggregate stats, baseline-comparison helper.
+- `tests/substrate/test_p3a_fixture_validation.py` — 12 tests across `TestStage2PassGate`, `TestOneHopArchitecturalFinding`, `TestRankingStability`, `TestFixturePersistenceRoundTrip`, `TestFixtureShape`, `TestEpisodeConfigRetrievalDefaults`.
+- **`Hippocampus.retrieve_on_cue` now accepts `multi_hop: bool = False`.** Default stays one-hop for Stage 1 backward compatibility. Stage 2 validation calls with `multi_hop=True`, routing through `DependencyGraph.spreading_activation` on the binding graph.
+- **`EpisodeConfig` extended with retrieval tuning** — `retrieval_decay=0.7`, `retrieval_threshold=0.001`, `retrieval_max_depth=5`. These drive the multi-hop path and are fully overridable via `HippocampusConfig(episode=EpisodeConfig(...))`.
+- **Shuffle guard:** `TestRankingStability::test_ranking_robust_to_shuffled_ingestion_order` shuffles episode ingestion 5 ways and asserts byte-identical F1. Regression-guards the tie-fragility the reinforced fixture was specifically built to eliminate.
+- **Persistence round-trip** via the P3.5 Stage 1 rebuild-from-episodes path. `TestFixturePersistenceRoundTrip` asserts byte-exact preservation (not just within ε=0.01).
 
-**Pass gate (Stage 2):**
-- Aggregate precision > 0.70, recall > 0.70 across ≥10 seeds on the 100-episode fixture.
-- Hebbian mechanism beats TF-IDF baseline by `baseline_mean + 2×baseline_std`.
-- Persistence round-trip preserves retrieval F1 within ε=0.01.
-- Fast suite + substrate subset + `ruff check` all green.
+**Stage 2 results:**
 
-**Tests (Stage 2):** See list above.
+| Retriever | mean F1 | std F1 | Beats TF-IDF + 2σ? |
+|---|---|---|---|
+| **Hebbian multi-hop** | **1.0000** | **0.0000** | **✅ YES (margin 0.30)** |
+| Hebbian one-hop | 0.7000 | 0.0000 | ❌ (parity) |
+| TF-IDF baseline | 0.7000 | 0.0000 | — |
 
-**Budget 2-3 metric pivots.** Per [feedback_three_iteration_metric_pivot.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_three_iteration_metric_pivot.md) and the P2 Stage 3 retrospective — the first fixture-based run WILL return numbers that look wrong. The response is NOT to widen the gate; the response is to figure out what the metric is actually measuring and rebuild it. A monolithic "write metric once and run it" approach is explicitly forbidden by the P2 retrospective.
+Full writeup: [../experiments/p3a_episode_binding_sweep.md](../experiments/p3a_episode_binding_sweep.md)
+Results JSON: [../experiments/results/p3a_episode_binding_sweep.json](../experiments/results/p3a_episode_binding_sweep.json)
+Reproduction runbook: [../experiments/protocols/p3a_episode_binding_reproduction.md](../experiments/protocols/p3a_episode_binding_reproduction.md)
+
+**Stage 2 pass gate (all cleared):**
+- ✅ Aggregate precision > 0.70, recall > 0.70 across 10 seeds.
+- ✅ Hebbian multi-hop beats TF-IDF by `baseline_mean + 2 × baseline_std` (margin 0.30 absolute, std=0 makes the gate collapse to baseline_mean=0.70; multi-hop at 1.0 clears cleanly).
+- ✅ Persistence round-trip preserves retrieval F1 within ε=0.01 (actually byte-exact).
+- ✅ Fast suite + substrate subset + `ruff check` all green.
+
+**Stage 2 architectural finding — load-bearing for P4/P6/P8:**
+
+> **On a bag-of-words co-occurrence task, Hebbian one-hop retrieval and TF-IDF are algorithmically near-equivalent. The Hebbian mechanism's value over bag-of-words baselines manifests specifically in multi-hop / transitive retrieval via `spreading_activation` — a capability TF-IDF structurally cannot replicate because bag-of-words has no graph edges to walk.**
+
+The first Stage 2 draft used a **clique-per-topic** fixture (5 core nodes all co-occurring in every episode). Both mechanisms scored F1 ≈ 1.0 because cliques have no transitive structure — one-hop already reaches everything, so TF-IDF matches. The pivot to hub+chain was the metric pivot the plan's "budget 2-3 pivots" guidance anticipated, and it exposed the real capability: chain-interior targets (e.g., `plate` from cue `prep`) are reachable via 2-3 hop graph walks but not via any bag-of-words overlap. `TestOneHopArchitecturalFinding::test_one_hop_does_not_beat_tfidf` locks this parity finding in with ±0.05 tolerance so future refactors don't silently invalidate the architectural claim.
+
+**Tie-fragility fix (caught before ship):** Under single-shot core episodes, multi-hop chain targets tied EXACTLY with peripherals reached through the hub at the same 2-hop distance, leaving ranking dependent on dict-iteration order. Doubling core episode reinforcement (hub↔chain and chain adjacency) pushes core-edge weights to 0.4 vs peripheral 0.3, making chain targets **strictly** higher in `spreading_activation` scores. Regression-guarded by `TestRankingStability::test_chain_targets_strictly_outrank_peripherals`.
 
 ### Stage 3 — real-data sweep + pre-merge review
 
@@ -274,7 +291,20 @@ These are the invariants that both Round 1 and Round 2 pre-merge reviews establi
 - **Lock acquire order:** `Hippocampus._episode_lock` → `EpisodeStore._lock` → `binding_graph._lock`, never the reverse. Regression-guarded by the adversarial-thread deadlock test.
 - **`_next_episode_ordinal` is persisted in `Hippocampus.dump()` and restored on `load_state()`.** Dump+reload+observe pre-fold crashed with `duplicate episode id: ep_1` because the ordinal was re-initialized to 0. Load has a fallback that derives the max ordinal from loaded episode ids for corrupt-file recovery.
 - **Binding graph is rebuilt from loaded episodes on `load_state()`.** The binding graph itself is NOT persisted; its state is derived from the episodes. This eliminates the persistence asymmetry (Round 2 Arch important #4) — a restored Hippocampus produces the same `retrieve_on_cue` results as the original.
-- **One-hop retrieval via `get_associated`**; multi-hop via `spreading_activation` is a Stage 2 fallback, conditional on Stage 2 recall < 0.70.
+- **Multi-hop retrieval via `spreading_activation` is the primary Stage 2 path** and is the `retrieve_on_cue` **default**. `Hippocampus.retrieve_on_cue(cue, multi_hop=True)` is the default for all callers; `multi_hop=False` is an explicit opt-in reserved for Stage 1 mechanism tests that exercise one-hop weight semantics. Post-Stage-2 Arch lens flipped the default from `False` to `True` because the old default silently degraded every caller that forgot the kwarg while the "backward compat" hedge protected exactly one test suite.
+- **`node_filter: Callable[[str], bool] | None` is the P3b/P4 retrieval-filter seam.** `retrieve_on_cue(cue, node_filter=...)` passes through to `spreading_activation(node_filter=...)`, which drops filtered-out nodes from traversal (both as sources and as hop targets). P3b channel integration will use this for per-channel retrieval; P4 cross-modal for modality filtering. Adding the seam in Stage 2 reserves the extension point so P3b/P4 don't rebuild `retrieve_on_cue` from scratch.
+- **Multi-hop lift over one-hop is the architectural invariant**, NOT one-hop parity with TF-IDF. The test is `test_multi_hop_lift_over_one_hop_is_real` asserting `multi_hop_f1 > one_hop_f1 + 0.20` absolute. An earlier draft asserted `|one_hop_f1 - tfidf_f1| < 0.05` as a parity check, but the post-Stage-2 Arch lens flagged that as over-constraining — any future one-hop improvement (normalized edge weights, PageRank-style inference) would trip the test as a regression even though the multi-hop lift is the actual architectural claim. Current sweep: lift = 0.3045.
+- **`EpisodeConfig` composes nested `HebbianConfig` + `RetrievalConfig`.** Field paths are `cfg.episode.hebbian.{init,delta,max_weight}` and `cfg.episode.retrieval.{decay,threshold,max_depth}`. The post-Stage-2 Arch lens flagged the earlier flat layout as a kitchen-sink risk (P3b/P4/P6 would each add their own knobs). The split is cheap now and expensive after P6 lands. `max_weight` is named with the suffix to avoid shadowing the builtin `max`.
+- **Stage 2 fixture reinforces core episodes (hub↔chain and chain adjacency) twice** so core-edge weights (0.4) are strictly higher than peripheral-edge weights (0.3). Single-shot core episodes produced weight ties between chain targets and peripherals at 2-hop distance, making ranking fragile to dict-iteration order. Regression guard: `TestRankingStability::test_chain_targets_strictly_outrank_peripherals` (runs with `episode_dropout_rate=0` for byte-deterministic assertion).
+- **Stage 2 fixture uses 10% per-seed episode dropout as a variance source.** Without dropout, every seed produced byte-identical metrics (std_f1 = 0.000) and the `baseline_mean + 2×std` gate collapsed to `baseline_mean` — ceremonial. With 10% dropout (17 of 170 base episodes dropped per seed via an independent seeded RNG), the gate does real statistical work: std_f1 ≈ 0.006 on all three retrievers, margin over baseline = 0.324 absolute. Probes are topology-only (do NOT depend on dropped episodes) so every seed runs the same 50 retrieval tasks; dropout affects what edges the retriever can build, not what it's asked to retrieve.
+
+## Deferred concerns flagged by post-Stage-2 review (not in Stage 2 code — documented for downstream plans)
+
+- **`spreading_activation` uses `max`-path aggregation.** Each node's final activation is the highest score from any path, not the sum. This means the current reinforcement-doubling fix (core episodes ×2, pushing core weight to 0.4 vs peripheral 0.3) creates a **fragile equilibrium with P6 extinction**: if extinction decays core edges back toward 0.3, the tie with peripherals re-emerges and multi-hop ranking can collapse silently. **P6 must decide:** either (a) add `sum` aggregation as an optional kwarg to `spreading_activation`, (b) use distinct `EdgeType` values (e.g., `HEBBIAN_BIND` vs `ASSOCIATES`) so extinction can decay without colliding with peripheral ranking, or (c) hold core edge weights above a strict floor during extinction. **Do not design P6 without picking one.**
+- **P8 replay + `Hippocampus.load_state` rebuild both call `apply_hebbian_on_close` on the same episodes.** Stage 2 rebuilds the binding graph from persisted episodes on load; P8 sleep-replay will also re-run `apply_hebbian_on_close` on replayed episodes. If load fires on startup and P8 replays the same episode later in the session, edge weights double-apply (currently clamped at `hebbian_max=1.0` — so the bug is silently absorbed until someone raises `hebbian_max` or drops it). **P8 entry condition:** add an `(episode_id, edge_key)` idempotency marker or a `replayed_at_hebbian` flag so replay is by construction non-double-counting.
+- **`RetrievalConfig` defaults are calibrated to the hub+chain fixture's exact weight arithmetic.** With `decay=0.7`, core weight 0.4, threshold 0.001, the effective reach is ~5 hops (before `max_depth=5` cap). On a fixture with different weight stratification (e.g., P3b real-text episodes averaging ~0.2 edge weight, or P5 10k+ node stress with sparser reinforcement), the threshold will prune earlier and multi-hop will not reach deep targets. **Re-tune when `retrieve_on_cue` recall drops on real-text fixtures.** The `RetrievalConfig` docstring (in `memory/hippocampus.py`) documents the calibration derivation.
+- **`TfidfBaseline` currently lives in `tests/substrate/tfidf_baseline.py`.** If P3b / P4 want to reuse it for real-text or cross-modal baselines, they import from `tests.substrate.tfidf_baseline` (test-to-test imports work). When a 3rd consumer emerges, move to `src/maxim/memory/baselines/tfidf.py` (or similar). Rule of three — extract when 3 consumers exist, not 2.
+- **`p3a_metrics.py` shares aggregation helpers with `p2_metrics.py` (P2 Stage 3).** Extract common `aggregate_seeds` / `compare_to_baseline` into `tests/substrate/metrics_common.py` when P3b adds a 3rd consumer. Split rule: anything that doesn't mention the phase's concepts (episode, channel, modality) goes to common.
 
 ## Review questions (Stage 3 reviewers — templates for Round 2 code review)
 
