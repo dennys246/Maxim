@@ -1,0 +1,289 @@
+{
+  "encoder_arm": "Arm A (paraphrase-mpnet text + clip-ViT-B-32 vision + hippocampus)",
+  "wall_clock_s": 16.41,
+  "summary": {
+    "n_classes": 10,
+    "forward_top5_recall_mean": 1.0,
+    "forward_top5_recall_std": 0.0,
+    "forward_top5_recall_min": 1.0,
+    "forward_top5_recall_max": 1.0,
+    "reverse_top5_recall_mean": 1.0,
+    "reverse_top5_recall_std": 0.0,
+    "path_hop_histogram": {
+      "1": 50
+    },
+    "total_forward_hits": 50
+  },
+  "per_class": [
+    {
+      "class_name": "balloon flower",
+      "text_node_id": "f0269ed7-923b-45c7-97ac-b2779ec9858b",
+      "vision_node_ids": [
+        "0b55f2ba-ae98-4e9c-ac4e-ec2f50d89481",
+        "68bd54a2-2c04-4b9f-8160-880deefbb822",
+        "002bbeae-ef9f-4c01-808c-9a517c44408e",
+        "95c585e2-ca57-4a4e-8f6e-7a5b41ece8c6",
+        "2c70da8b-0f81-4160-a6a7-64370e1237f1"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "oxeye daisy",
+      "text_node_id": "50be2720-8a56-4a74-ad96-823d40c0a10c",
+      "vision_node_ids": [
+        "6d5f86e0-fe74-4454-bf34-5b7653939ae3",
+        "7365aea0-f9c7-4d48-9067-6420cd3b782e",
+        "08698290-8dbd-44fd-a0a5-b66234845d4f",
+        "6a9fb9d0-ee4b-4b8f-9ba2-144fb7b72d79",
+        "7f60c693-8c59-49b7-b332-6d873f96321b"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "water lily",
+      "text_node_id": "507c73f0-21a8-45f2-8376-9a4ac9e95ce1",
+      "vision_node_ids": [
+        "69c8b6d6-ce8c-43ed-9d88-366238937ab2",
+        "e9c7f0e8-be7c-49e1-a489-df736ff217d0",
+        "221e67d6-ca7d-49a1-be37-9638d0fe7946",
+        "c840a82e-721a-4304-8a81-c0c0d0dafc00",
+        "b2374496-2a42-4f80-823d-91ddb957dee9"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "lotus",
+      "text_node_id": "084071ad-7777-45a0-979a-788a6984dc8d",
+      "vision_node_ids": [
+        "59292090-fff5-4f39-9fd7-971e4e8c920e",
+        "f39006b3-c1cf-41f1-ba2b-b8472cb7a337",
+        "2f73908e-aa8f-463d-bd2d-4236c22cb262",
+        "6daa4016-0887-4025-ab8d-febce84b78b9",
+        "addb909d-6ec8-453b-82e8-9a423ed7c001"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "pincushion flower",
+      "text_node_id": "94fea8cc-6bcb-40e6-ae74-a5a6ba53711c",
+      "vision_node_ids": [
+        "a01fd8de-472e-43f8-8c25-b05e67033704",
+        "7725036a-4d65-4a9f-aa99-763508c08013",
+        "c7451a1f-a4b1-4715-8208-e3f53c0db938",
+        "af543059-406b-4ef3-b4f8-b50e95895c66",
+        "26f1cdf5-9c5d-4931-b634-849fa184a437"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "azalea",
+      "text_node_id": "11c1429d-ec64-4bbb-bee3-78fcf29ccfa1",
+      "vision_node_ids": [
+        "69c3a816-a212-455b-9382-34994b52b69f",
+        "89c4f755-32b7-4a3b-9182-3e70f3bf5612",
+        "f2a83bd5-1481-471b-8774-5098cf31d261",
+        "c29d9477-852f-4026-b4a0-06b6ca8a5479",
+        "f34116fa-0893-43f2-8c89-6a6031c16844"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "fritillary",
+      "text_node_id": "9e51eeca-528e-4451-82eb-93778941267b",
+      "vision_node_ids": [
+        "e3c49a40-a721-4c60-a8ca-2ab536c10a0e",
+        "7b33e1b6-f7dd-4b68-9be0-83e514dc9ecf",
+        "1d97e3e7-d137-4a86-b30e-955a5282949d",
+        "3be134c7-2b78-48e5-b702-321f384dce1b",
+        "0731206a-2653-42bf-aaa3-e411fb7f5711"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "orange dahlia",
+      "text_node_id": "a55b1d5f-117c-4d4d-9a70-91aa97bb46dc",
+      "vision_node_ids": [
+        "d323f97f-d5f5-497d-9972-c27d138429d3",
+        "9f6a6e21-ab91-41aa-a647-ec0a4a80d5bc",
+        "81d16b0a-ae15-403e-b7fa-b2db987d8cbd",
+        "3dd1c1f1-a7a7-4fcd-98ef-e3bd8b71b920",
+        "3f3b1b66-61ee-4db6-a14d-e86590ee9fc7"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "morning glory",
+      "text_node_id": "9cd10346-fc68-41e9-80c6-a832fd3100dc",
+      "vision_node_ids": [
+        "c49af1d8-cc03-4d2f-a8f2-601f6032dc79",
+        "2ca5a3cb-7233-4bd8-a5f1-10b0cb394b38",
+        "301b7cb9-a297-4409-acbb-e22b1d81886a",
+        "b4e61b2d-2928-48a9-91b8-550fb18418c0",
+        "717bbd60-4457-4978-9bfa-efadca4ea866"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "class_name": "mexican petunia",
+      "text_node_id": "56936ac3-26cc-4b89-89c7-5c04b856c11c",
+      "vision_node_ids": [
+        "b791e172-e73c-489d-8d97-1c65ac710d09",
+        "7b506706-a89b-4bfa-954b-1de402003e00",
+        "602aaf33-692b-40d6-ba05-0abc6d9e36e2",
+        "771a0458-2300-4250-908e-dafd711ef0e8",
+        "94b61762-8cb6-4ff7-b2e0-0d7f8f3879b7"
+      ],
+      "forward_top5_recall": 1.0,
+      "forward_hits_in_topk": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "reverse_text_match_rate": 1.0,
+      "forward_path_hops": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    }
+  ]
+}
