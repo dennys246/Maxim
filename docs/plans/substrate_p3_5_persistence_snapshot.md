@@ -1,6 +1,6 @@
 # Substrate P3.5 — Cross-session persistence + BioSystemSnapshot Protocol
 
-**Status:** Stage 1 SHIPPED (PR #109). Stage 2 pre-merge review COMPLETE (2026-04-14) — Round 2 fold landed (1 critical + 9 important + minors across both lenses; cross-confirmed atomicity / aliasing / fixture-pattern findings all addressed). Ready for PR.
+**Status:** ✅ Stages 1 + 2 SHIPPED (PRs #109, #120; 2026-04-14). Stage 3 (real-data 1000-node sweep) deferred until P3a Stage 2 fixture is reusable at scale — not version-gating for 0.3-target. Stages 1+2 together provide the full subprocess round-trip surface P4 cross-modal mug test consumes.
 **Scope:** ~500 LOC across 3 stages (Stage 1: ~250, Stage 2: ~150, Stage 3: ~100)
 **Target version:** 0.3-target
 **Gates:** Not directly version-gating, but load-bearing for P3a round-trip tests, P4 mug-test subprocess round-trip (1.0-GATING), and P5 stress persistence.

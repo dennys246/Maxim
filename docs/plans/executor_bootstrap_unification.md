@@ -116,7 +116,7 @@ When the helper-discipline approach failed three times, the lesson is that docum
 2. **`CLAUDE.md` "Lessons learned"** — add a new "Three-times-is-structural" meta-lesson:
    > When the same bug shape ("forgot to call helper X on path Y") is fixed in three different locations, the helper is the wrong layer. Push the invariant down into the type/constructor signature so the bug becomes a TypeError, not a silent no-op. The `build_executor(pain_bus=...)` keyword-only requirement is the canonical example.
 3. **New memory file** `feedback_structural_enforcement_over_helper_discipline.md` — when a helper is forgotten three times, push the invariant down a layer. Cross-reference to this plan + the three SEM execution hook stages.
-4. **`docs/plans/sem_execution_hook.md` Stage 2c section** — rewrite to point at this plan as the prerequisite. Stage 2c collapses to "migrate three call sites to the new `build_executor` signature" once this plan ships.
+4. **`docs/plans/archive/sem_execution_hook.md` Stage 2c section** (now archived) — was rewritten to point at this plan as the prerequisite. Stage 2c was structurally absorbed by this unification — the three migration call sites became one-line `pain_bus=` arg additions on the new `build_executor` signature.
 5. **`docs/plans/README.md`** — add this plan to the parallel/maintenance section.
 
 ## Pre-merge review round (mandatory)

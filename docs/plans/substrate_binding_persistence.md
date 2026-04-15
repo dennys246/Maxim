@@ -1,12 +1,12 @@
 # Substrate Binding, Persistence & Consolidation — P3a through P8 + B3-B5
 
-**Status:** **SPLITTING** (2026-04-14). This monolithic plan is being broken into 8 focused per-phase plans following the P2 shipping pattern. See [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) for the narrative and [sem_execution_hook.md](sem_execution_hook.md) for the companion plan that closes a cross-cutting gap discovered during the split audit. Until all per-phase plan files land, this document remains the canonical reference for scope + pass criteria on phases that haven't been split out yet. Per-phase plan files opening incrementally:
+**Status:** **SPLITTING IN PROGRESS** (2026-04-14). This monolithic plan is being broken into 8 focused per-phase plans following the P2 shipping pattern. See [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) for the narrative and [archive/sem_execution_hook.md](archive/sem_execution_hook.md) for the now-closed companion plan that closes a cross-cutting gap discovered during the split audit. Until all per-phase plan files land, this document remains the canonical reference for scope + pass criteria on phases that haven't been split out yet. **0.3-target status: P3a + P3b + P3.5 closed; P4 is the only remaining substrate phase before 0.3 ships.**
 
-- [substrate_p3_5_persistence_snapshot.md](substrate_p3_5_persistence_snapshot.md) — **Stage 1 SHIPPED** (PR #109). Stage 2+3 still open (non-empty PTB + migration tooling + subprocess round-trip harness).
-- [substrate_p3a_episode_binding.md](substrate_p3a_episode_binding.md) — **Stages 1+2 SHIPPED** (PRs #109 + #112, 2026-04-14). Stage 2 hub+chain fixture + multi-hop retrieval cleared the pass gate at F1 = 0.9955 ± 0.0055 vs TF-IDF 0.6600 ± 0.0058 (margin 0.324).
-- [substrate_p3b_channel_integration.md](substrate_p3b_channel_integration.md) — **OPEN** (Stage 1 in progress, 2026-04-14). Builds directly on the P3a Stage 2 seams (`add_boundary_rule`, `node_filter` on `retrieve_on_cue` / `spreading_activation`).
-- `substrate_p4_cross_modal_binding.md` — 1.0-gating; opens after P3a+P3b+P3.5 all green.
-- `substrate_p5_stress_persistence.md`, `substrate_p6_extinction.md`, `substrate_p8_sleep_replay.md` — 0.5 track.
+- [substrate_p3_5_persistence_snapshot.md](substrate_p3_5_persistence_snapshot.md) — **✅ Stages 1 + 2 SHIPPED** (PRs #109, #120; 2026-04-14). Stage 3 (real-data 1000-node sweep) deferred — not version-gating.
+- [substrate_p3a_episode_binding.md](substrate_p3a_episode_binding.md) — **✅ COMPLETE** (PRs #109 + #112, 2026-04-14). Final results: F1 = 0.9955 ± 0.0055 vs TF-IDF 0.6600 ± 0.0058 (margin 0.324).
+- [substrate_p3b_channel_integration.md](substrate_p3b_channel_integration.md) — **✅ Stage 1 SHIPPED** (PR #116, 2026-04-14). Stages 2+3 deferred — not version-gating. Stage 1 alone unblocks P4 via `episode_membership_filter(membership_mode="exclusive")`.
+- [substrate_p4_cross_modal_binding.md](substrate_p4_cross_modal_binding.md) — **OPEN** (2026-04-14). 1.0-gating phase. Round 1 plan-only review COMPLETE; Stage 1 ready for implementation. Three-arm Stage 3 sweep against Oxford Flowers-102 (NOT imagenette — CLIP saturation hazard caught in Round 1 review).
+- `substrate_p5_stress_persistence.md`, `substrate_p6_extinction.md`, `substrate_p8_sleep_replay.md` — 0.5 track. Per-phase plan files open after P4 lands.
 - `prompt_b3_b5_track.md` — Track B prompt layer.
 
 **substrate_recognition.md predecessor closed (2026-04-14) for 0.3-minimum** — P1+P2 Stages 1+2+3 all shipped. This plan is no longer blocked.

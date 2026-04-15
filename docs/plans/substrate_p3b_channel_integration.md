@@ -1,6 +1,6 @@
 # Substrate P3b — Channel integration: boundary rules + filtered retrieval
 
-**Status:** Stage 1 in progress (2026-04-14, post-Round-2-review fold)
+**Status:** ✅ Stage 1 SHIPPED (PR #116, 2026-04-14). Stages 2 + 3 (real fixture YAML + cue-aware metadata-grep baseline + 10-seed sweep) explicitly DEFERRED — not version-gating for 0.3-target. Stage 1 alone unblocks P4 via the `episode_membership_filter(membership_mode="exclusive", **criteria)` + `retrieve_on_cue(node_filter=...)` seams.
 **Blocks:** P4 cross-modal mug test. **Stage 1 unblocks P4 seam consumption** (`retrieve_on_cue(node_filter=...)` + `EpisodeStore.episode_membership_filter`); **Stage 2 unblocks P4 baseline comparison work** (real-text fixture shape + 10-seed harness).
 **Scope:** ~250 LOC + ~100 metric extractor across 3 stages
 **Target version:** 0.3-target
