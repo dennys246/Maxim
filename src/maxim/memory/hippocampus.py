@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from maxim.time.scn import SCN
 
 from maxim.agents.bus import DependencyGraph, EdgeType
+from maxim.agents.modality import SubstrateModality
 from maxim.memory.episode import (
     BoundaryRule,
     CaptureEvent,
@@ -421,6 +422,22 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # so Stage 1 tests get deterministic ids.
         self._next_episode_ordinal: int = 0
         self._episode_lock = threading.RLock()
+
+        # P4 Stage 1 — per-node modality sidecar. Maps substrate node
+        # id → "text" | "vision". Populated automatically inside
+        # _close_pending_episode_locked by draining
+        # pending.node_modality_buffer BEFORE the Hebbian close runs.
+        # There is NO public tag method — modality flows in through
+        # CaptureEvent.modality and is structurally coupled to
+        # activated_nodes by _apply_event_to_pending. Guarded by
+        # self._episode_lock (matches the convention every other piece
+        # of episode-binding state already follows). retrieve_cross_modal
+        # snapshots the matching subset under _episode_lock and returns
+        # a lock-free closure to spreading_activation; see that method
+        # for the lock-inversion rationale. Persisted under the
+        # "node_modality" top-level key in dump(); load_state replaces
+        # wholesale (clear-then-load) for P3.5 atomic-rollback semantics.
+        self._node_modality: dict[str, SubstrateModality] = {}
 
     # ─────────────────────────────────────────────────────────────────────────
     # Factory class methods
@@ -1205,15 +1222,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 self._pending_episode = self._start_episode(event)
                 return
 
-            # Extend the pending episode with this event
-            pending = self._pending_episode
-            pending.last_tick = event.tick
-            if event.sender_id is not None:
-                pending.sender_ids.add(event.sender_id)
-            if event.thread_id is not None and pending.thread_id is None:
-                pending.thread_id = event.thread_id
-            for node_id in event.activated_nodes:
-                pending.activated_nodes.append(node_id)
+            self._apply_event_to_pending(self._pending_episode, event)
 
     def finalize_pending_episode(self) -> Episode | None:
         """Force-close the current pending episode, if any.
@@ -1311,6 +1320,146 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         associated.sort(key=lambda pair: pair[1], reverse=True)
         return associated[:limit]
 
+    def retrieve_cross_modal(
+        self,
+        cue_node_id: str,
+        target_modality: SubstrateModality,
+        limit: int = 10,
+        *,
+        multi_hop: bool = True,
+    ) -> list[tuple[str, float]]:
+        """Cross-modal retrieval — return substrate nodes of
+        ``target_modality`` co-activated with the cue.
+
+        **P4 Stage 1 — the canonical cross-modal retrieval entry point.**
+        Mirror P3b's ``episode_membership_filter`` snapshot pattern
+        exactly: build a frozenset of node ids matching
+        ``target_modality`` under ``self._episode_lock`` at filter
+        construction time, release the lock, return a lock-free closure
+        that just checks set membership, then delegate to
+        ``retrieve_on_cue(cue, limit, multi_hop=multi_hop,
+        node_filter=closure)``.
+
+        **Lock-inversion safety.** ``DependencyGraph.spreading_activation``
+        invokes the ``node_filter`` callback while holding
+        ``binding_graph._lock``. If the closure re-acquired
+        ``self._episode_lock`` at call time, a concurrent
+        ``observe_episode_event`` (which holds ``_episode_lock`` then
+        eventually touches ``binding_graph._lock`` via Hebbian close)
+        would deadlock against it. The snapshot pattern kills the
+        inversion at the closure-build site: the closure does not
+        acquire any lock at call time. This mirrors the P3b regression
+        guard, see
+        ``tests/substrate/test_p3b_channel_integration.py
+        ::TestConcurrency::test_filter_closure_holds_no_lock_after_construction``.
+
+        **Defensive same-modality check.** If the cue's own modality
+        (looked up under the same ``_episode_lock`` snapshot) equals
+        ``target_modality``, raise ``ValueError`` with the cue id and
+        modality. The alternative would be silently returning zero
+        matches (since the snapshot excludes the cue's own modality
+        bucket) — which would mask the caller bug rather than surface
+        it. This is the same "push silent no-op into a TypeError /
+        ValueError" rule the executor-bootstrap unification applies.
+
+        **Cue not yet tagged is OK.** A cue whose modality is unknown
+        (the cue node id never appeared in any episode close before
+        this call, e.g. because the caller is pre-seeding a probe)
+        does NOT raise — the snapshot still returns the target-modality
+        nodes and retrieve_on_cue traverses normally. Same-modality
+        check applies only when the cue IS tagged.
+
+        **Point-in-time read semantics.** The snapshot captures
+        ``_node_modality`` at filter-build time under ``_episode_lock``,
+        then releases the lock before delegating to
+        ``retrieve_on_cue``. A concurrent ``_close_pending_episode_locked``
+        running between release and the start of ``spreading_activation``
+        may add new edges to the binding graph whose endpoint nodes
+        carry modality tags NOT present in the frozenset — those new
+        tags are invisible to this call and surface on the NEXT call.
+        This mirrors P3b's ``episode_membership_filter`` contract;
+        callers that need fresh semantics must re-invoke. Holding
+        ``_episode_lock`` for the full ``spreading_activation`` duration
+        would prevent the torn read but violates the lock-inversion
+        rule the snapshot pattern is designed to kill.
+
+        **Stage 1 limitation: single-hop cross-modal only.** Multi-hop
+        paths that transit a same-modality intermediate node
+        (``text_cue → text_bridge → vision_target``) are silently
+        truncated because ``_modality_filter`` rejects the intermediate
+        at traversal time. The Stage 1 mug-test fixture has no such
+        chains — cross-modal partners are always direct neighbors in
+        one episode — so this limitation does not affect Stage 1 tests.
+        Whether Stage 2/3 needs chain traversal is an open design
+        question: see
+        ``test_p4_cross_modal_mechanism.py::TestStageThreeLimitation``
+        for the pin regression guard, and the PR description for the
+        Stage 2/3 design-decision note. If chain traversal is needed,
+        the fix is at the ``retrieve_on_cue`` layer — split the filter
+        into a ``traversal_filter`` (always True) and a
+        ``result_filter`` (target-modality only) — NOT a band-aid in
+        ``retrieve_cross_modal``.
+
+        **Runtime validation.** ``target_modality`` is a typed Literal
+        at the annotation layer but Python does not enforce Literal
+        values at runtime. A caller passing a typo (``"vison"``)
+        without mypy would produce an empty frozenset and silently
+        return ``[]`` — exactly the silent-no-op failure mode the
+        Literal was introduced to prevent. The explicit runtime check
+        below raises ``ValueError`` loudly on any unknown value,
+        mirroring ``load_state``'s validation of the same field.
+
+        Returns the same ``list[tuple[str, float]]`` shape as
+        ``retrieve_on_cue``.
+        """
+        if target_modality not in ("text", "vision"):
+            raise ValueError(
+                f"retrieve_cross_modal: target_modality must be 'text' or 'vision', got {target_modality!r}"
+            )
+
+        with self._episode_lock:
+            cue_modality = self._node_modality.get(cue_node_id)
+            if cue_modality is not None and cue_modality == target_modality:
+                raise ValueError(
+                    f"retrieve_cross_modal: cue {cue_node_id!r} is already "
+                    f"tagged as modality {cue_modality!r}; cross-modal retrieval "
+                    f"requires target_modality to differ from the cue's modality. "
+                    f"Use retrieve_on_cue for same-modality retrieval."
+                )
+            allowed: frozenset[str] = frozenset(
+                node_id for node_id, mod in self._node_modality.items() if mod == target_modality
+            )
+
+        # Lock-free closure over the frozenset. Captures ``allowed`` and
+        # ``cue_node_id`` by value; both are immutable strings/frozensets
+        # so there is no race.
+        #
+        # **Cue exemption is structural to cross-modal semantics, NOT a
+        # band-aid.** ``DependencyGraph.spreading_activation`` applies
+        # the node_filter to the source node first (bus.py line 1302).
+        # For P3b's ``episode_filter(channel="sms")`` this is correct:
+        # if the cue is not in any SMS episode, the user's query "find
+        # SMS neighbors of this cue" is vacuous. For P4 cross-modal the
+        # structural invariant is the OPPOSITE: the cue is in the
+        # opposite modality bucket from the target set BY DEFINITION,
+        # so without exempting the cue the source-filter check would
+        # reject every cross-modal cue and break the mechanism on every
+        # call. The cue is still excluded from the returned ranking by
+        # ``retrieve_on_cue``'s ``node != cue_node_id`` line, so the
+        # exemption only affects traversal seeding, not result
+        # composition. Same exemption is applied for the one-hop
+        # ``multi_hop=False`` branch — its filter runs on neighbors
+        # only, so the exemption is a no-op there.
+        def _modality_filter(node_id: str) -> bool:
+            return node_id == cue_node_id or node_id in allowed
+
+        return self.retrieve_on_cue(
+            cue_node_id,
+            limit,
+            multi_hop=multi_hop,
+            node_filter=_modality_filter,
+        )
+
     def add_boundary_rule(self, rule: BoundaryRule) -> None:
         """Append a boundary rule to the episode detector.
 
@@ -1393,7 +1542,18 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
 
     def _start_episode(self, event: CaptureEvent) -> PendingEpisodeState:
         """Open a fresh pending episode seeded by ``event``. Caller must
-        hold ``self._episode_lock``."""
+        hold ``self._episode_lock``.
+
+        Constructs a bare pending state fixed by the episode-open event
+        (``id``, ``start_tick``, ``channel``, ``scn_tag``) and then
+        delegates the per-event merge (``last_tick``, ``sender_ids``,
+        ``thread_id``, ``activated_nodes``, future P4 modality buffer)
+        to ``_apply_event_to_pending`` so there is exactly one site
+        where event fields fold into a pending episode. This is the
+        structural enforcement seam for P4: any new per-event field
+        added to ``CaptureEvent`` is folded into pending state in one
+        place, not at every caller.
+        """
         self._next_episode_ordinal += 1
         pending = PendingEpisodeState(
             id=f"ep_{self._next_episode_ordinal}",
@@ -1401,21 +1561,70 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             last_tick=event.tick,
             channel=event.channel,
             sender_ids=set(),
-            thread_id=event.thread_id,
-            activated_nodes=list(event.activated_nodes),
+            thread_id=None,
+            activated_nodes=[],
             reward_events=[],
             scn_tag=event.scn_tag,
         )
+        self._apply_event_to_pending(pending, event)
+        return pending
+
+    def _apply_event_to_pending(self, pending: PendingEpisodeState, event: CaptureEvent) -> None:
+        """Fold a single event's per-event fields into an existing
+        pending episode. Caller must hold ``self._episode_lock``.
+
+        This is the SINGLE site where ``CaptureEvent`` fields get
+        merged into ``PendingEpisodeState``. Both ``_start_episode``
+        (post-construction) and ``observe_episode_event``'s extend
+        branch route through here. Adding a new per-event field (P4
+        ``modality``, future per-event signals) is one edit, not N.
+
+        Touches ``last_tick``, ``sender_ids``, ``thread_id``, and
+        ``activated_nodes``. Does NOT touch ``id``, ``start_tick``,
+        ``channel``, ``scn_tag``, or ``reward_events``: those are
+        either episode-open invariants (set once by ``_start_episode``,
+        protected from change by the boundary detector closing the
+        episode if they would shift) or fed in via a separate path
+        (reward events are appended by reward-recording code, not by
+        capture events).
+        """
+        pending.last_tick = event.tick
         if event.sender_id is not None:
             pending.sender_ids.add(event.sender_id)
-        return pending
+        if event.thread_id is not None and pending.thread_id is None:
+            pending.thread_id = event.thread_id
+        for node_id in event.activated_nodes:
+            pending.activated_nodes.append(node_id)
+            if event.modality is not None:
+                # P4 Stage 1 — modality coupling is structural: the
+                # same loop that adds a node to activated_nodes also
+                # records its modality in the per-node buffer.
+                # _close_pending_episode_locked drains the buffer into
+                # Hippocampus._node_modality before Hebbian close.
+                pending.node_modality_buffer[node_id] = event.modality
 
     def _close_pending_episode_locked(self) -> Episode:
         """Finalize ``self._pending_episode``, add it to the store, and
         apply Hebbian updates to the binding graph. Caller must hold
-        ``self._episode_lock``."""
+        ``self._episode_lock``.
+
+        **P4 Stage 1 — modality drain happens LAST.** After
+        ``_episode_store.add`` and ``apply_hebbian_on_close`` both
+        succeed, drain the pending state's ``node_modality_buffer``
+        into ``self._node_modality``. Drain-last is intentional per the
+        Round 2 pre-merge Executor-lens review: the drain is a pure
+        dict update (essentially infallible), so placing it last
+        means if either of the two earlier mutations raises, neither
+        the episode store nor the binding graph ends up with new
+        entries and the sidecar likewise stays consistent. The
+        symmetric "drain-first" choice introduced a window where the
+        sidecar could hold entries for nodes that never landed in the
+        binding graph; flipping the order closes that window without
+        introducing a new one.
+        """
         assert self._pending_episode is not None, "caller must check before closing"
-        episode = self._pending_episode.finalize()
+        pending = self._pending_episode
+        episode = pending.finalize()
         self._pending_episode = None
 
         # Add to store first (so the store has the episode before Hebbian
@@ -1453,6 +1662,21 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             hebbian_delta=hebbian_cfg.delta,
             hebbian_max=hebbian_cfg.max_weight,
         )
+
+        # P4 Stage 1 — drain the per-node modality buffer into the
+        # sidecar AFTER episode_store.add and apply_hebbian_on_close
+        # both succeed. Drain-last is intentional (Round 2 Exec-lens
+        # fold): the drain is a pure dict update, so placing it last
+        # means a partial failure in either earlier step leaves all
+        # three pieces of episode-binding state consistent (nothing
+        # added to store, nothing added to binding graph, nothing
+        # added to sidecar). Last-write-wins on duplicate keys within
+        # one pending episode's buffer — the degenerate "same node id,
+        # two different modalities in one episode" case is covered by
+        # the last-write-wins regression guard in
+        # test_p4_cross_modal_mechanism.py.
+        for node_id, modality in pending.node_modality_buffer.items():
+            self._node_modality[node_id] = modality
 
         return episode
 
