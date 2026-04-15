@@ -46,6 +46,15 @@ class PersistenceMixin:
         Also dumps ``next_episode_ordinal`` (the monotonic counter that
         generates ``ep_N`` ids) so reload+observe doesn't re-issue a
         duplicate id — Round 2 Exec critical #1 fix.
+
+        P4 Stage 1 — also dumps ``node_modality`` (the per-node
+        substrate-modality sidecar). Acquired under the inner
+        ``_episode_lock`` because the sidecar is episode-binding state,
+        consistent with how ``episode_store.to_dict()`` is called inside
+        the same outer ``_rwlock.read()`` block. Lock-acquisition order
+        ``_rwlock.read() → _episode_lock`` is verified deadlock-free by
+        inspection — no ``_episode_lock`` holder ever acquires
+        ``_rwlock``.
         """
         with self._rwlock.read():
             # Serialize memories (handles both EpisodicMemory and CompressedMemory)
@@ -65,6 +74,17 @@ class PersistenceMixin:
 
             next_episode_ordinal = getattr(self, "_next_episode_ordinal", 0)
 
+            # P4 Stage 1 — snapshot the node-modality sidecar under the
+            # episode lock. Empty dict is the well-defined no-op state
+            # for instances that never received a modality-tagged event.
+            episode_lock = getattr(self, "_episode_lock", None)
+            node_modality_data: dict[str, str] = {}
+            if episode_lock is not None:
+                with episode_lock:
+                    node_modality_source = getattr(self, "_node_modality", None)
+                    if node_modality_source:
+                        node_modality_data = dict(node_modality_source)
+
             return {
                 "saved_at": time.time(),
                 "memories": memories_data,
@@ -74,6 +94,7 @@ class PersistenceMixin:
                 "associative_graph": graph_data,
                 "episodes": episodes_data,
                 "next_episode_ordinal": next_episode_ordinal,
+                "node_modality": node_modality_data,
             }
 
     def load_state(self, state: dict[str, Any]) -> None:
@@ -109,6 +130,21 @@ class PersistenceMixin:
             else:
                 memory = EpisodicMemory.from_dict(m_data)
                 temp_memories[memory.id] = memory
+
+        # P4 Stage 1 — parse the node-modality sidecar outside any lock,
+        # validating the modality literal so a malformed snapshot raises
+        # BEFORE we mutate anything in self. Unknown modality values are
+        # rejected (silent drop would re-introduce the silent-no-op
+        # pattern the typed Literal was added to prevent). Empty / missing
+        # key parses as an empty dict — valid for legacy snapshots.
+        temp_node_modality: dict[str, str] = {}
+        raw_node_modality = state.get("node_modality", {}) or {}
+        if not isinstance(raw_node_modality, dict):
+            raise ValueError(f"node_modality payload must be a dict, got {type(raw_node_modality).__name__}")
+        for nid, mod in raw_node_modality.items():
+            if mod not in ("text", "vision"):
+                raise ValueError(f"node_modality[{nid!r}] has unknown modality {mod!r}; expected 'text' or 'vision'")
+            temp_node_modality[str(nid)] = mod
 
         temp_context_index: defaultdict[str, set[str]] = defaultdict(
             set,
@@ -185,6 +221,23 @@ class PersistenceMixin:
                             except ValueError:
                                 continue
                     self._next_episode_ordinal = max_ordinal
+
+            # P4 Stage 1 — replace the per-node modality sidecar
+            # wholesale (clear-then-load, NOT merge). Required for P3.5
+            # atomic-rollback semantics: a failed restore_into rolls
+            # back to the pre-mutation dump, and the rollback must
+            # scrub stale entries left behind by the failed attempt.
+            # If load_state merged instead of replacing, those stale
+            # entries would survive rollback and the cross-modal
+            # retrieval path would silently return ghost partners that
+            # no longer correspond to any episode in the store.
+            episode_lock = getattr(self, "_episode_lock", None)
+            if episode_lock is not None:
+                with episode_lock:
+                    sidecar = getattr(self, "_node_modality", None)
+                    if sidecar is not None:
+                        sidecar.clear()
+                        sidecar.update(temp_node_modality)
 
     def save(self, path: str | None = None) -> None:
         """Save hippocampus to JSON file.

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from maxim.time.scn import SCN
 
 from maxim.agents.bus import DependencyGraph, EdgeType
+from maxim.agents.modality import SubstrateModality
 from maxim.memory.episode import (
     BoundaryRule,
     CaptureEvent,
@@ -421,6 +422,22 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # so Stage 1 tests get deterministic ids.
         self._next_episode_ordinal: int = 0
         self._episode_lock = threading.RLock()
+
+        # P4 Stage 1 — per-node modality sidecar. Maps substrate node
+        # id → "text" | "vision". Populated automatically inside
+        # _close_pending_episode_locked by draining
+        # pending.node_modality_buffer BEFORE the Hebbian close runs.
+        # There is NO public tag method — modality flows in through
+        # CaptureEvent.modality and is structurally coupled to
+        # activated_nodes by _apply_event_to_pending. Guarded by
+        # self._episode_lock (matches the convention every other piece
+        # of episode-binding state already follows). retrieve_cross_modal
+        # snapshots the matching subset under _episode_lock and returns
+        # a lock-free closure to spreading_activation; see that method
+        # for the lock-inversion rationale. Persisted under the
+        # "node_modality" top-level key in dump(); load_state replaces
+        # wholesale (clear-then-load) for P3.5 atomic-rollback semantics.
+        self._node_modality: dict[str, SubstrateModality] = {}
 
     # ─────────────────────────────────────────────────────────────────────────
     # Factory class methods
@@ -1449,10 +1466,37 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
     def _close_pending_episode_locked(self) -> Episode:
         """Finalize ``self._pending_episode``, add it to the store, and
         apply Hebbian updates to the binding graph. Caller must hold
-        ``self._episode_lock``."""
+        ``self._episode_lock``.
+
+        **P4 Stage 1 — modality drain.** Before any other close work
+        runs, drain the pending state's ``node_modality_buffer`` into
+        ``self._node_modality``. The buffer was populated by
+        ``_apply_event_to_pending`` in the same loop iteration that
+        appended each node id to ``activated_nodes``, so the structural
+        invariant "every node bound into an episode that carries
+        modality information has its modality recorded" holds end-to-end
+        from event ingestion through Hebbian close. The drain runs
+        BEFORE ``_episode_store.add(episode)`` and BEFORE
+        ``apply_hebbian_on_close`` so a partial failure in either of
+        those subsequent steps cannot leave nodes in the binding graph
+        without their modality entries on file.
+        """
         assert self._pending_episode is not None, "caller must check before closing"
-        episode = self._pending_episode.finalize()
+        pending = self._pending_episode
+        episode = pending.finalize()
         self._pending_episode = None
+
+        # P4 Stage 1 — drain the per-node modality buffer into the
+        # sidecar BEFORE the episode_store and binding-graph mutations
+        # below. Last-write-wins on duplicate keys: if a node id
+        # appears in two events with different modalities (degenerate
+        # but legal — same node id activated by two events of opposing
+        # modality within one episode), the later event's modality
+        # overrides. Stage 1 mechanism tests do not exercise this
+        # case; the cluster-aware fixture generates disjoint id
+        # namespaces between modalities.
+        for node_id, modality in pending.node_modality_buffer.items():
+            self._node_modality[node_id] = modality
 
         # Add to store first (so the store has the episode before Hebbian
         # edges reference its nodes). EpisodeStore takes its own lock;
