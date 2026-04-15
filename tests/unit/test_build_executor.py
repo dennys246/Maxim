@@ -35,7 +35,9 @@ class TestBuildExecutorRequiredKeyword:
         from maxim.runtime.bootstrap import build_executor
         from maxim.tools.registry import ToolRegistry
 
-        with pytest.raises(TypeError, match="pain_bus"):
+        # Tight match: must be the missing-keyword-only TypeError, not
+        # some other TypeError that incidentally contains "pain_bus".
+        with pytest.raises(TypeError, match=r"missing.*keyword-only argument.*pain_bus"):
             build_executor(ToolRegistry())  # type: ignore[call-arg]
 
     def test_pain_bus_none_is_explicit_opt_out_no_bridge(self):
@@ -71,6 +73,50 @@ class TestBuildExecutorBridgeWiring:
     is constructed and attached to the inner Executor. This is the
     invariant that closed the CLI gap in sem_execution_hook Stage 2 —
     now structurally enforced."""
+
+    def test_bridge_wired_with_nac_only_no_subscription_source(self):
+        """C2 cross-confirmed regression guard: the bridge's PRIMARY
+        value is direct attribution via record_tool_embodiment_failure
+        (Stage 1). Subscription via pain_bus/pain_detector is the
+        SECONDARY out-of-band path. A caller with NAc but no
+        subscription source (e.g., the sim orchestrator's AUT, where
+        NAc is subscribed to the bus directly via
+        create_pain_nac_subscriber) MUST get a bridge for direct
+        attribution. Pre-fold the bridge was gated on
+        pain_bus|pain_detector — direct-attribution-only callers had
+        to pass a no-op PainDetector to trick the constructor."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        nac = MagicMock()
+
+        executor = build_executor(
+            ToolRegistry(),
+            pain_bus=None,
+            pain_detector=None,
+            nac=nac,
+        )
+
+        assert isinstance(executor._tool_pain_bridge, ToolPainBridge), (
+            "build_executor with nac=NAc, pain_bus=None, pain_detector=None "
+            "must construct a bridge for direct attribution. The bridge is "
+            "the primary path for record_tool_embodiment_failure (Stage 1)."
+        )
+
+    def test_no_bridge_when_nac_is_none(self):
+        """Inverse of the above: explicit opt-out via nac=None
+        produces no bridge regardless of any subscription source."""
+        from maxim.runtime.bootstrap import build_executor
+        from maxim.tools.registry import ToolRegistry
+
+        executor = build_executor(
+            ToolRegistry(),
+            pain_bus=None,
+            nac=None,
+        )
+
+        assert executor._tool_pain_bridge is None
 
     def test_bridge_wired_when_pain_bus_provided(self):
         from maxim.bridges.tool_pain_bridge import ToolPainBridge
@@ -221,7 +267,7 @@ class TestBuildExecutorEmbodiment:
         )
 
         # The embodiment is stashed on the executor for caller access.
-        embodiment = getattr(executor, "_embodiment", None)
+        embodiment = executor.embodiment
         assert isinstance(embodiment, Embodiment)
 
         tool_names = set(executor.registry.list())
@@ -254,7 +300,7 @@ class TestBuildExecutorEmbodiment:
             component_registry=ComponentRegistry(),
         )
 
-        embodiment = executor._embodiment  # type: ignore[attr-defined]
+        embodiment = executor.embodiment
         assert embodiment._pain_bus is pain_bus
 
     def test_missing_entity_ref_raises_with_actionable_hint(self):
@@ -317,7 +363,7 @@ class TestBuildExecutorEndToEndCascade:
         # Drive durability to zero so shatter fires on the next
         # evaluate_failures() call. Deterministic at this durability —
         # verified 2026-04-14, regression-guarded here.
-        embodiment = executor._embodiment  # type: ignore[attr-defined]
+        embodiment = executor.embodiment
         sword = embodiment.root
         sword.vital_metrics["durability"] = 0.0
 

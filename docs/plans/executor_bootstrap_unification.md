@@ -1,6 +1,6 @@
 # Executor Bootstrap Unification — push the bridge invariant into `build_executor`
 
-**Status:** Draft, audit complete, awaiting code.
+**Status:** Implementation complete + pre-merge review folded. Awaiting PR.
 **Branch:** `feat/exec-bootstrap-unify`
 **Scope:** ~200-300 LOC in `src/maxim/`. Tests for new code only; bulk test migration deferred.
 **Target version:** 0.4 maintenance.
@@ -81,9 +81,11 @@ def build_executor(
 1. **`pain_bus` has no default.** Forgetting to think about it is a TypeError, not a silent no-op.
 2. **`pain_bus=None` is a legal, explicit opt-out.** Tests and sandbox executors pass it; the choice is documented at every call site.
 3. **`pain_bus` XOR `pain_detector`.** Same invariant the Stage 2 helper enforced; raised as `ValueError` at the top of the function before any construction.
-4. **`entity_ref` + `component_registry` are optional pass-throughs** — if both are provided, `build_executor` loads the embodiment and registers affordance tools. The Stage 2 helper's `bootstrap_embodiment_and_pain_bridge` becomes obsolete and gets deleted.
-5. **The wrapping-order invariant moves from helper docstring to `build_executor` docstring** — the rule is now "build_executor returns an inner Executor; wrap with FearGated/PainInterceptor AFTER."
-6. **Fail-fast precondition checks** run at the top, before any object construction. Same rule the Stage 2 review folded.
+4. **Bridge construction is gated on `nac is not None`, NOT on subscription source** (folded in pre-merge review C2 — cross-confirmed). The bridge's primary value is direct attribution via `record_tool_complete` / `record_tool_embodiment_failure` (Stage 1). Subscription via pain_bus/pain_detector is the secondary out-of-band path. A caller with NAc and no subscription source gets a bridge for direct-attribution use; this avoids the pre-fold workaround where the sim orchestrator passed a no-op `PainDetector` to trick the constructor.
+5. **`entity_ref` + `component_registry` are optional pass-throughs** — if both are provided, `build_executor` loads the embodiment and registers affordance tools. The Stage 2 helper's `bootstrap_embodiment_and_pain_bridge` becomes obsolete and gets deleted.
+6. **The wrapping-order invariant moves from helper docstring to `build_executor` docstring** — the rule is now "build_executor returns an inner Executor; wrap with FearGated/PainInterceptor AFTER."
+7. **Fail-fast precondition checks** run at the top, before any object construction. Same rule the Stage 2 review folded.
+8. **Loaded embodiment is a declared field** on `Executor` (`Executor.embodiment: Embodiment | None`), not a post-hoc attribute stash. Folded in pre-merge review I1 cross-confirmed.
 
 ### What `runtime/embodiment_bootstrap.py` becomes
 

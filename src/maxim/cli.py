@@ -1078,9 +1078,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         bus=agentic_agent._bus,
                     )
 
-                # Build MemoryHub with Hippocampus for episodic memory
+                # Build MemoryHub with Hippocampus for episodic memory.
+                # All bio-system handles initialized to None up-front so
+                # `build_executor` below sees defined names even if
+                # construction fails inside the try block (pre-existing
+                # latent UnboundLocalError surfaced in pre-merge review).
                 _cli_memory_hub = None
                 _cli_hippocampus = None
+                _cli_nac = None
+                _cli_scn = None
+                _cli_ec = None
                 try:
                     from maxim.integration.memory_hub import MemoryHub
                     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
