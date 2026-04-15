@@ -230,6 +230,74 @@ class TestForceOverwrite:
         assert not backup_p.is_file()
 
 
+class TestRefuseIfBackupExists:
+    """A2 fold (C3.1 pre-merge review): double `--force` would
+    silently destroy the operator's original mesh.yml. Refuse if
+    the .bak file already exists, requiring explicit cleanup.
+    """
+
+    def test_force_refuses_if_bak_already_exists(self, isolated_xdg, capsys):
+        _peer_path(isolated_xdg).write_text(VALID_PEER_YAML)
+        mesh_p = _mesh_path(isolated_xdg)
+        mesh_p.write_text(EXISTING_MESH_YAML)
+
+        # Stale backup from a previous --force operation
+        backup_p = mesh_p.with_suffix(mesh_p.suffix + ".bak")
+        backup_p.write_text("STALE BACKUP CONTENT")
+
+        rc = run_init_mesh(["--force"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "already exists" in err
+        assert "Refusing to overwrite an existing backup" in err
+        assert "rm" in err  # cleanup hint
+
+        # The stale backup is untouched (we refused before doing anything)
+        assert backup_p.read_text() == "STALE BACKUP CONTENT"
+        # Original mesh.yml is also untouched
+        assert mesh_p.read_text() == EXISTING_MESH_YAML
+
+    def test_after_cleanup_force_works(self, isolated_xdg, capsys):
+        """Operator deletes the .bak, re-runs --force → succeeds."""
+        _peer_path(isolated_xdg).write_text(VALID_PEER_YAML)
+        mesh_p = _mesh_path(isolated_xdg)
+        mesh_p.write_text(EXISTING_MESH_YAML)
+        backup_p = mesh_p.with_suffix(mesh_p.suffix + ".bak")
+        backup_p.write_text("STALE")
+
+        # First --force refused
+        run_init_mesh(["--force"])
+        capsys.readouterr()
+
+        # Operator cleans up
+        backup_p.unlink()
+
+        # Second --force succeeds
+        rc = run_init_mesh(["--force"])
+        assert rc == 0
+        # New backup has the original mesh.yml content (not the stale one)
+        assert backup_p.is_file()
+        assert backup_p.read_text() == EXISTING_MESH_YAML
+
+
+class TestRow2InfoLine:
+    """A5 fold (C3.1 pre-merge review): the "peer.yml absent + mesh
+    present" case is unusual but exit 0. Surface the unusual state
+    so the operator knows runtime/role.py will fall through to
+    mesh.yml.
+    """
+
+    def test_unusual_state_surfaces_info(self, isolated_xdg, capsys):
+        _mesh_path(isolated_xdg).write_text(EXISTING_MESH_YAML)
+        rc = run_init_mesh([])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "already exists" in out
+        # New: surfaces the role detection note
+        assert "role detection" in out.lower() or "role" in out.lower()
+        assert "fall through" in out.lower() or "unusual" in out.lower()
+
+
 # ─── option parsing ────────────────────────────────────────────────────
 
 
@@ -252,6 +320,26 @@ class TestOptionParsing:
         assert rc == 2
         assert "Unknown option" in err
 
+    def test_unknown_option_with_help_does_not_swallow_error(self, isolated_xdg, capsys):
+        """E1 fold (C3.1 pre-merge review): `init-mesh --bogus --help`
+        previously triggered help and silently swallowed the bogus
+        error. The fold inverts the order so unknown-option detection
+        runs first."""
+        rc = run_init_mesh(["--bogus", "--help"])
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "Unknown option" in err
+        assert "--bogus" in err
+
+    def test_force_with_help_shows_help(self, isolated_xdg, capsys):
+        """`init-mesh --force --help` is a valid combo (operator
+        types --force, then asks for help). Both are known flags so
+        unknown-detection passes and help wins."""
+        rc = run_init_mesh(["--force", "--help"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "init-mesh" in out
+
 
 # ─── error paths ────────────────────────────────────────────────────────
 
@@ -271,7 +359,14 @@ class TestErrorPaths:
     def test_backup_failure_aborts_before_overwrite(self, isolated_xdg, capsys, monkeypatch):
         """If shutil.copy2 fails (read-only filesystem, perms), init-mesh
         must refuse to proceed — we never want to destroy the original
-        without a backup in place."""
+        without a backup in place.
+
+        E2 polish (C3.1 pre-merge review): the monkeypatch targets
+        ``maxim.peer.init_mesh.shutil.copy2`` (the module-attribute
+        path) rather than the global ``shutil.copy2`` so a future
+        refactor that switches to ``from shutil import copy2`` would
+        catch the test break loudly rather than silently.
+        """
         _peer_path(isolated_xdg).write_text(VALID_PEER_YAML)
         mesh_p = _mesh_path(isolated_xdg)
         mesh_p.write_text(EXISTING_MESH_YAML)
@@ -279,7 +374,7 @@ class TestErrorPaths:
         def _broken_copy(*args, **kwargs):
             raise OSError("simulated backup failure")
 
-        monkeypatch.setattr("shutil.copy2", _broken_copy)
+        monkeypatch.setattr("maxim.peer.init_mesh.shutil.copy2", _broken_copy)
         rc = run_init_mesh(["--force"])
         err = capsys.readouterr().err
         assert rc == 1

@@ -80,15 +80,49 @@ def read_peer_config() -> PeerConfig | None:
 
 
 def write_peer_config(cfg: PeerConfig) -> Path:
-    """Persist a peer config with 0600 perms on POSIX."""
+    """Persist a peer config with 0600 perms on POSIX.
+
+    **Plan 4 C3.1 fold (architecture review A4):** routes through
+    :func:`maxim.utils.atomic_io.atomic_write_secret` for the same
+    reason :func:`maxim.peer.mesh_config.write_mesh_config` does —
+    ``peer.yml::api_key`` is a secret, and the C2 invariant
+    ("credential-bearing files use ``atomic_write_secret``") applies.
+    Pre-C3.1 this used plain ``path.write_text`` + explicit
+    ``os.chmod`` which was a latent inconsistency from before the
+    C2 invariant landed. The architecture lens reviewer flagged
+    leaving it inconsistent as a footgun for the next C3 reviewer
+    (two credential-bearing writers with two different patterns).
+
+    On first write, ``atomic_write_secret`` no-ops the mode preserve
+    (no existing file). The explicit ``os.chmod(0o600)`` runs
+    afterwards. On rewrites, ``atomic_write_secret`` preserves the
+    existing mode bits and the explicit chmod is a no-op assuming
+    the file is already at 0o600 (operator may have widened it
+    intentionally for a shared-group setup, in which case
+    ``preserve_mode=True`` keeps their choice and the chmod here
+    re-tightens — minor disagreement with operator intent that
+    matches the pre-fold behavior, so no behavior regression).
+    """
+    from maxim.utils.atomic_io import atomic_write_secret
+
     path = peer_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(cfg.to_yaml())
-    if platform.system() != "Windows":
+    is_new = not path.is_file()
+    atomic_write_secret(str(path), cfg.to_yaml())
+    if is_new and platform.system() != "Windows":
         try:
             os.chmod(path, 0o600)
         except OSError:
-            pass
+            # Same best-effort + soft-failure mode as
+            # mesh_config.write_mesh_config. The fold there added a
+            # logger.warning; we mirror that here for consistency.
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "write_peer_config: chmod 0o600 on first write failed for %s. "
+                "API key may be readable to other users on this system.",
+                path,
+            )
     return path
 
 

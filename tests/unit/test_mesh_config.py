@@ -439,6 +439,208 @@ class TestWriteMeshConfig:
         assert mode == 0o640
 
 
+class TestYamlSafeValidation:
+    """E3 fold (C3.1 pre-merge review): MeshNode and MeshConfig
+    reject parser-incompatible characters at construction time so a
+    future code path can't silently corrupt mesh.yml via round-trip.
+    """
+
+    def test_node_name_with_newline_rejected(self):
+        with pytest.raises(ValueError, match="newline"):
+            MeshNode(name="leader\nrogue", url="http://a/v1", role="leader")
+
+    def test_node_url_with_carriage_return_rejected(self):
+        with pytest.raises(ValueError, match="newline"):
+            MeshNode(name="a", url="http://a/v1\r\n", role="leader")
+
+    def test_node_url_with_inline_comment_rejected(self):
+        """`http://a/v1 # comment` would round-trip to `http://a/v1`
+        because the parser strips inline comments. Lossy."""
+        with pytest.raises(ValueError, match="inline comment"):
+            MeshNode(name="a", url="http://a/v1 # comment", role="leader")
+
+    def test_cluster_key_with_newline_rejected(self):
+        with pytest.raises(ValueError, match="newline"):
+            MeshConfig(
+                cluster_key="sk\nrogue",
+                self_name="a",
+                nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+            )
+
+    def test_cluster_key_with_inline_comment_rejected(self):
+        """`sk-cluster # not-secret` would round-trip lossy."""
+        with pytest.raises(ValueError, match="inline comment"):
+            MeshConfig(
+                cluster_key="sk-cluster # not-secret",
+                self_name="a",
+                nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+            )
+
+    def test_cluster_key_with_hash_no_whitespace_allowed(self):
+        """C1 E1 fold: the parser preserves `#` when there's no
+        preceding whitespace (e.g., `sk-abc#literal`). The writer
+        validation must mirror this — bare `#` is fine, only
+        whitespace-then-`#` is rejected."""
+        cfg = MeshConfig(
+            cluster_key="sk-cluster#tag",
+            self_name="a",
+            nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+        )
+        # Round trip through to_yaml + parse — must preserve the literal
+        round_tripped = parse_mesh_config(cfg.to_yaml())
+        assert round_tripped.cluster_key == "sk-cluster#tag"
+
+    def test_self_name_with_newline_rejected(self):
+        with pytest.raises(ValueError, match="newline"):
+            MeshConfig(
+                cluster_key="sk",
+                self_name="a\nb",
+                nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+            )
+
+
+class TestEmptyNodesRejected:
+    """E7 fold (C3.1 pre-merge review): empty nodes tuple round-trips
+    to parser-rejecting output. Reject at construction time so the
+    invariant holds throughout the dataclass lifecycle.
+    """
+
+    def test_empty_nodes_tuple_rejected(self):
+        with pytest.raises(ValueError, match="at least one MeshNode"):
+            MeshConfig(cluster_key="sk", self_name="a", nodes=())
+
+    def test_one_node_minimum_accepted(self):
+        # Sanity check: the minimum valid mesh has exactly one node
+        cfg = MeshConfig(
+            cluster_key="sk",
+            self_name="a",
+            nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+        )
+        assert len(cfg.nodes) == 1
+
+
+class TestMeshNodeToYamlLines:
+    """A3 fold (C3.1 pre-merge review): node serialization is owned
+    by MeshNode so future field additions force the writer to include
+    them. This pre-empts the C3 break when MeshNode gains a
+    `public_key` field for cluster key rotation.
+    """
+
+    def test_node_to_yaml_lines_shape(self):
+        node = MeshNode(name="leader", url="https://x/v1", role="leader")
+        lines = node.to_yaml_lines()
+        assert lines == [
+            "  - name: leader",
+            "    url: https://x/v1",
+            "    role: leader",
+        ]
+
+    def test_mesh_to_yaml_uses_node_to_yaml_lines(self):
+        """Regression guard: if a future refactor field-by-field
+        reach-in code returns to MeshConfig.to_yaml, this test should
+        catch it. We assert that the output for a 2-node mesh has
+        exactly 6 node-related lines (2 nodes × 3 lines each)."""
+        cfg = MeshConfig(
+            cluster_key="sk",
+            self_name="a",
+            nodes=(
+                MeshNode(name="a", url="http://a/v1", role="leader"),
+                MeshNode(name="b", url="http://b/v1", role="peer"),
+            ),
+        )
+        lines = cfg.to_yaml().splitlines()
+        # 4 top-level lines (cluster_key, self, protocol_version, nodes:)
+        # + 6 node lines (2 nodes × 3 lines) = 10 total
+        assert len(lines) == 10
+
+
+class TestWritePeerConfigUsesAtomicWriteSecret:
+    """A4 fold (C3.1 pre-merge review): write_peer_config now routes
+    through atomic_write_secret like write_mesh_config. Validates the
+    C2 invariant in production code at both credential-bearing
+    writers, eliminating the latent inconsistency between them.
+    """
+
+    def test_write_then_read_round_trip(self, tmp_path, monkeypatch):
+        from maxim.peer.config import PeerConfig, read_peer_config, write_peer_config
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        cfg = PeerConfig(url="https://x/v1", api_key="sk-test")
+        path = write_peer_config(cfg)
+        assert path.is_file()
+        loaded = read_peer_config()
+        assert loaded == cfg
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only chmod")
+    def test_first_write_is_0600(self, tmp_path, monkeypatch):
+        import os
+
+        from maxim.peer.config import PeerConfig, write_peer_config
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        cfg = PeerConfig(url="https://x/v1", api_key="sk-secret")
+        path = write_peer_config(cfg)
+        mode = os.stat(path).st_mode & 0o777
+        assert mode == 0o600
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only chmod")
+    def test_rewrite_preserves_existing_mode(self, tmp_path, monkeypatch):
+        """A4 fold validates that the C2 preserve_mode behavior holds
+        for peer.yml as well: an operator who chmods peer.yml to a
+        custom mode (e.g., 0o640 for shared-group) shouldn't see it
+        widened on the next write."""
+        import os
+
+        from maxim.peer.config import PeerConfig, write_peer_config
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        cfg = PeerConfig(url="https://x/v1", api_key="sk-1")
+        path = write_peer_config(cfg)
+        os.chmod(path, 0o640)
+
+        cfg2 = PeerConfig(url="https://x/v1", api_key="sk-2")
+        write_peer_config(cfg2)
+        mode = os.stat(path).st_mode & 0o777
+        assert mode == 0o640
+
+
+class TestWriteMeshConfigChmodWarning:
+    """E4 fold (C3.1 pre-merge review): chmod failure on first write
+    is no longer silently swallowed — it surfaces via logger.warning
+    so the failure shows up in MAXIM_LOG_FILE / doctor logs.
+    """
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX chmod path only")
+    def test_chmod_failure_logged(self, tmp_path, monkeypatch, caplog):
+        import logging
+        import os
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        cfg = MeshConfig(
+            cluster_key="sk-secret",
+            self_name="a",
+            nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+        )
+
+        # Monkey-patch os.chmod to fail
+        real_chmod = os.chmod
+
+        def _failing_chmod(path, mode):
+            if str(path).endswith("mesh.yml"):
+                raise OSError("simulated chmod failure")
+            real_chmod(path, mode)
+
+        monkeypatch.setattr(os, "chmod", _failing_chmod)
+
+        with caplog.at_level(logging.WARNING, logger="maxim.peer.mesh_config"):
+            write_mesh_config(cfg)
+
+        # File still got written (atomic_write_secret succeeded)
+        assert (tmp_path / "maxim" / "mesh.yml").is_file()
+        # Warning surfaced
+        assert any("chmod 0o600 on first write failed" in record.message for record in caplog.records)
+
+
 class TestClassifyProbeOutcome:
     """Shared classifier — single source of truth for probe outcome mapping.
 

@@ -70,6 +70,9 @@ peer.yml-only install.
 Options:
   --force    Overwrite an existing mesh.yml (backed up to
              mesh.yml.bak first). Refuses without this flag.
+             Also refuses if mesh.yml.bak already exists — delete
+             or rename the existing backup first to avoid losing
+             your original on a double `--force`.
 
 peer.yml is NOT modified — it stays in place because runtime role
 detection reads its existence as part of the leader/peer decision.
@@ -81,16 +84,24 @@ def run_init_mesh(argv: Sequence[str]) -> int:
 
     Returns the CLI exit code per the decision tree in the module
     docstring. Flags supported: ``--force``, ``-h`` / ``--help``.
+
+    **E1 fold (C3.1 pre-merge review):** the unknown-option filter
+    excludes ``-h``/``--help`` so that ``init-mesh --bogus --help``
+    surfaces the bogus error instead of silently swallowing it via
+    the help short-circuit. Help still wins over ``--force`` alone
+    (operator can ask for help mid-typing) but doesn't mask other
+    unknown flags.
     """
-    if any(a in ("-h", "--help") for a in argv):
-        print(_USAGE)
-        return 0
-    force = "--force" in argv
-    unknown = [a for a in argv if a not in ("--force",)]
+    known_flags = ("--force", "-h", "--help")
+    unknown = [a for a in argv if a not in known_flags]
     if unknown:
         print(f"Unknown option(s): {' '.join(unknown)}", file=sys.stderr)
         print(_USAGE, file=sys.stderr)
         return 2
+    if any(a in ("-h", "--help") for a in argv):
+        print(_USAGE)
+        return 0
+    force = "--force" in argv
 
     peer_path = peer_config_path()
     mesh_path = mesh_config_path()
@@ -105,9 +116,19 @@ def run_init_mesh(argv: Sequence[str]) -> int:
 
     # Decision tree row 2: peer.yml absent but mesh.yml present —
     # operator already has a mesh, no-op success.
+    #
+    # A5 fold (C3.1 pre-merge review): surface the unusual state
+    # rather than silent-success. peer.yml absence isn't a hard
+    # failure — runtime/role.py falls through to mesh.yml — but the
+    # operator who invoked init-mesh expecting "something to happen"
+    # should know why nothing did.
     if not peer_present and mesh_present:
         print(f"ℹ {mesh_path} already exists and there is no peer.yml to convert.")
         print("  Nothing to do.")
+        print()
+        print("  Note: peer.yml is absent. runtime/role.py will fall through to")
+        print("  mesh.yml directly for role detection, which is fine but unusual.")
+        print("  If you want a peer.yml as well, run `maxim peer connect <url>`.")
         return 0
 
     # peer.yml is present from here. Read it before doing anything
@@ -128,6 +149,8 @@ def run_init_mesh(argv: Sequence[str]) -> int:
         print("  → If you want to overwrite, re-run with --force:", file=sys.stderr)
         print("      maxim peer init-mesh --force", file=sys.stderr)
         print("    The existing mesh.yml will be backed up to mesh.yml.bak.", file=sys.stderr)
+        print("    (--force refuses if mesh.yml.bak already exists — delete it first", file=sys.stderr)
+        print("    or rename it to keep multiple history slots.)", file=sys.stderr)
         return 2
 
     # Synthesize the mesh in memory.
@@ -144,9 +167,35 @@ def run_init_mesh(argv: Sequence[str]) -> int:
         return 1
 
     # Decision tree row 5: mesh.yml exists + --force → backup first.
+    #
+    # A2 fold (C3.1 pre-merge review): refuse if mesh.yml.bak already
+    # exists. Without this guard, double `--force` silently destroys
+    # the operator's original mesh.yml: the second --force backs up
+    # the first --force's synthesized output, original is gone. The
+    # refuse-if-exists rule matches the explicit "I-know-what-I'm-
+    # doing" ethos of --force itself; operator must consciously
+    # delete or rename the existing .bak to proceed.
+    #
+    # A6 fold: backup-via-shutil.copy2 is non-atomic, but new write
+    # via atomic_write_secret IS atomic. The asymmetry is the SAFEST
+    # failure mode: a crash between the backup and the new write
+    # leaves a partial .bak (or nothing) AND the original mesh.yml
+    # intact. Operator loses nothing. Do NOT "fix" this by making
+    # the backup atomic too — that would change the failure mode
+    # to "operator might lose the original under concurrent crash".
     backup_path = None
     if mesh_present:
         backup_path = mesh_path.with_suffix(mesh_path.suffix + ".bak")
+        if backup_path.is_file():
+            print(
+                f"✗ {backup_path} already exists.",
+                file=sys.stderr,
+            )
+            print("  → Refusing to overwrite an existing backup. Either:", file=sys.stderr)
+            print(f"      rm {backup_path}", file=sys.stderr)
+            print(f"      mv {backup_path} {backup_path}.old", file=sys.stderr)
+            print("    then re-run `maxim peer init-mesh --force`.", file=sys.stderr)
+            return 2
         try:
             shutil.copy2(str(mesh_path), str(backup_path))
         except OSError as e:

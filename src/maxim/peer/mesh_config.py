@@ -59,12 +59,18 @@ concerns that should stay separate.
 
 from __future__ import annotations
 
+import logging
+import os
+import platform
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
 from maxim.peer.config import peer_config_path, read_peer_config
+from maxim.utils.atomic_io import atomic_write_secret
+
+logger = logging.getLogger(__name__)
 
 NodeRole = Literal["leader", "peer"]
 
@@ -80,11 +86,75 @@ class MeshConfigError(ValueError):
             super().__init__(f"mesh.yml: {message}")
 
 
+def _validate_yaml_safe(field_name: str, value: str) -> None:
+    """E3 fold (C3.1 pre-merge review): reject characters that would
+    break round-trip through ``parse_mesh_config``.
+
+    The FROZEN parser dialect:
+    - Splits on newlines (``\\n``/``\\r``) — embedded newlines would
+      produce extra parse lines, silently corrupting the file
+    - Strips inline ``#`` comments preceded by whitespace — values
+      like ``sk abc # comment-looking`` round-trip lossy because
+      ``# comment-looking`` is dropped
+    - Doesn't support quoted strings — leading/trailing whitespace is
+      ambiguous
+
+    The writer must reject these at construction time so a future
+    code path (e.g. C3 cluster-key rotation that constructs a
+    MeshConfig with a fresh secret) can't silently corrupt mesh.yml.
+    """
+    if "\n" in value or "\r" in value:
+        raise ValueError(
+            f"{field_name}={value!r} contains newline characters; "
+            "the FROZEN parser dialect treats newlines as line breaks "
+            "so the value would round-trip lossily."
+        )
+    # Match `<whitespace>#` — the inline-comment trigger in the parser
+    for i in range(1, len(value)):
+        if value[i] == "#" and value[i - 1].isspace():
+            raise ValueError(
+                f"{field_name}={value!r} contains whitespace followed by '#'; "
+                "the FROZEN parser strips this as an inline comment so the "
+                "value would round-trip lossily. Use '#' without preceding "
+                "whitespace if the literal '#' is required (e.g. "
+                "'sk-cluster#tag' parses correctly)."
+            )
+
+
 @dataclass(frozen=True)
 class MeshNode:
     name: str
     url: str
     role: NodeRole
+
+    def __post_init__(self) -> None:
+        # E3 fold: defense in depth — reject parser-incompatible
+        # values at construction time. The synthesizer + the
+        # init-mesh verb both go through this, so a bad peer.yml
+        # surfaces as a ValueError immediately rather than producing
+        # a corrupt mesh.yml that the next read fails on.
+        _validate_yaml_safe("MeshNode.name", self.name)
+        _validate_yaml_safe("MeshNode.url", self.url)
+        _validate_yaml_safe("MeshNode.role", self.role)
+
+    def to_yaml_lines(self) -> list[str]:
+        """A3 fold (C3.1 pre-merge review): serialize this node as
+        the list of YAML lines it contributes to a parent
+        :meth:`MeshConfig.to_yaml`.
+
+        Pushing serialization into the owning type means any future
+        field added to ``MeshNode`` (e.g. ``public_key`` for C3
+        cluster key rotation) MUST extend this method to land in the
+        round-trip — there's no way for ``MeshConfig.to_yaml`` to
+        silently drop the new field. Without this method, the parent
+        serializer would have field-by-field reach-in code that
+        silently goes stale when the dataclass grows.
+        """
+        return [
+            f"  - name: {self.name}",
+            f"    url: {self.url}",
+            f"    role: {self.role}",
+        ]
 
 
 @dataclass(frozen=True)
@@ -93,6 +163,22 @@ class MeshConfig:
     self_name: str
     nodes: tuple[MeshNode, ...]
     protocol_version: int = 1
+
+    def __post_init__(self) -> None:
+        # E3 fold: validate yaml-safe characters on the top-level
+        # scalars too. The dataclass is frozen so this only runs at
+        # construction; subsequent attribute access is read-only.
+        _validate_yaml_safe("MeshConfig.cluster_key", self.cluster_key)
+        _validate_yaml_safe("MeshConfig.self_name", self.self_name)
+        # E7 fold (C3.1 pre-merge review): empty nodes tuple round-
+        # trips to parser-rejecting output. parse_mesh_config requires
+        # at least one node; the writer must not produce something
+        # that fails to parse. Reject at construction time.
+        if not self.nodes:
+            raise ValueError(
+                "MeshConfig.nodes must contain at least one MeshNode "
+                "(parser requires the same; round-trip would fail otherwise)"
+            )
 
     def get_node(self, name: str) -> MeshNode | None:
         for n in self.nodes:
@@ -124,6 +210,12 @@ class MeshConfig:
         → ``nodes:`` (list, in declaration order). The order matters
         because a future operator-readable diff between two
         ``mesh.yml`` files should be stable across rewrites.
+
+        **A3 fold (C3.1 pre-merge review):** node serialization
+        delegates to :meth:`MeshNode.to_yaml_lines` so that any
+        future ``MeshNode`` field addition forces the writer to
+        include it (rather than this method silently reaching into
+        only the fields it knows about).
         """
         lines = [
             f"cluster_key: {self.cluster_key}",
@@ -132,9 +224,7 @@ class MeshConfig:
             "nodes:",
         ]
         for node in self.nodes:
-            lines.append(f"  - name: {node.name}")
-            lines.append(f"    url: {node.url}")
-            lines.append(f"    role: {node.role}")
+            lines.extend(node.to_yaml_lines())
         return "\n".join(lines) + "\n"
 
 
@@ -363,12 +453,35 @@ def write_mesh_config(cfg: MeshConfig, path: Path | None = None) -> Path:
     operator set are preserved and the explicit chmod is a no-op.
     POSIX-only chmod; Windows skips the permission tighten the same
     way ``write_peer_config`` does.
+
+    **Concurrent reader safety (blast A3 fold):** ``atomic_write_secret``
+    uses ``os.replace`` under the hood, which is an atomic rename on
+    POSIX — concurrent readers (``maxim peer list-nodes`` in another
+    shell, or doctor running concurrently) will observe either the
+    old file or the new file, never a half-written file. No reader-
+    side lock is needed.
+
+    **Sanctioned caller (architecture A1 fold):** the only sanctioned
+    caller of this function is :func:`maxim.peer.init_mesh.run_init_mesh`
+    — the explicit operator-invoked one-shot setup verb. The C2
+    invariant ("mesh.yml is declarative; runtime code paths are
+    read-only") permits operator-explicit edits but forbids automatic
+    runtime / admin-API writes to ``mesh.yml``. A CI grep enforces
+    the allow-list in ``.github/workflows/test.yml``: any new caller
+    of ``write_mesh_config`` outside ``init_mesh.py`` will fail CI
+    with a hint pointing at this docstring. If you have a legitimate
+    new caller (e.g. C3 cluster-key rotation that mutates only the
+    secret field, leaving topology untouched), update both the
+    allow-list AND the C2 CLAUDE.md invariant in the same commit so
+    the rule remains coherent.
+
+    **E4 fold (C3.1 pre-merge review):** chmod failure on first
+    write is no longer silently swallowed — it surfaces via
+    ``logger.warning`` so the failure shows up in ``MAXIM_LOG_FILE``
+    and ``maxim doctor``. We still don't fail-hard because some
+    filesystems (WSL1, certain network mounts) don't support chmod
+    and the alternative is refusing to ship the config at all.
     """
-    import os
-    import platform
-
-    from maxim.utils.atomic_io import atomic_write_secret
-
     p = path or mesh_config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     is_new = not p.is_file()
@@ -376,11 +489,19 @@ def write_mesh_config(cfg: MeshConfig, path: Path | None = None) -> Path:
     if is_new and platform.system() != "Windows":
         try:
             os.chmod(p, 0o600)
-        except OSError:
-            # Best-effort — atomic_write_secret already succeeded;
-            # losing the perm tighten on a brand-new file is a soft
-            # failure mode (operator can chmod manually if needed).
-            pass
+        except OSError as e:
+            # E4 fold: surface this via the structured logger so it
+            # shows up in MAXIM_LOG_FILE / doctor. Brand-new file
+            # would otherwise land at umask (typically 0o644) with
+            # the cluster_key world-readable.
+            logger.warning(
+                "write_mesh_config: chmod 0o600 on first write failed for %s: %s. "
+                "Cluster key may be readable to other users on this system. "
+                "Run `chmod 0600 %s` manually if this is a concern.",
+                p,
+                e,
+                p,
+            )
     return p
 
 
