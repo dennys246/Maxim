@@ -118,9 +118,7 @@ class TestInstallArgvParsing:
         assert "Usage:" in err
         assert "extras:" in err
 
-    def test_known_extras_classified_into_extras_list(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_known_extras_classified_into_extras_list(self, stub_peer_config, no_probe_clear):
         """``semantic`` is in KNOWN_EXTRAS → goes into ``extras``."""
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
@@ -137,9 +135,7 @@ class TestInstallArgvParsing:
         assert rc == 0
         assert captured["json"] == {"extras": ["semantic"], "packages": []}
 
-    def test_unknown_package_classified_into_packages_list(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_unknown_package_classified_into_packages_list(self, stub_peer_config, no_probe_clear):
         """``sentence-transformers`` is not in KNOWN_EXTRAS → packages."""
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
@@ -158,9 +154,7 @@ class TestInstallArgvParsing:
             "packages": ["sentence-transformers"],
         }
 
-    def test_comma_separated_mixed_extras_and_packages(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_comma_separated_mixed_extras_and_packages(self, stub_peer_config, no_probe_clear):
         """``semantic,llm-torch,my-pkg`` → 2 extras + 1 package."""
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
@@ -177,9 +171,7 @@ class TestInstallArgvParsing:
         assert captured["json"]["extras"] == ["semantic", "llm-torch"]
         assert captured["json"]["packages"] == ["my-pkg"]
 
-    def test_unknown_double_dash_flag_ignored(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_unknown_double_dash_flag_ignored(self, stub_peer_config, no_probe_clear):
         """``--future-flag`` → ignored, doesn't become a package name."""
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
@@ -197,9 +189,7 @@ class TestInstallArgvParsing:
         assert "--future-flag" not in captured["json"]["packages"]
         assert captured["json"]["extras"] == ["semantic"]
 
-    def test_empty_string_in_comma_split_skipped(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_empty_string_in_comma_split_skipped(self, stub_peer_config, no_probe_clear):
         """``semantic,,llm-torch`` (trailing/double comma) → no empty entries."""
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
@@ -227,9 +217,7 @@ class TestInstallUrlResolution:
     stripped before composing ``/v1/admin/install``.
     """
 
-    def test_positional_url_overrides_peer_config(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_positional_url_overrides_peer_config(self, stub_peer_config, no_probe_clear):
         """An ``http*`` arg in argv beats the peer.yml-stored URL."""
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
@@ -246,16 +234,11 @@ class TestInstallUrlResolution:
                 ["semantic", "https://other-leader.example.com/v1"],
             )
         assert rc == 0
-        assert (
-            captured["url"]
-            == "https://other-leader.example.com/v1/admin/install"
-        )
+        assert captured["url"] == "https://other-leader.example.com/v1/admin/install"
         # Positional URL path provides no key — no Authorization header.
         assert "Authorization" not in captured["headers"]
 
-    def test_peer_config_fallback_includes_bearer(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_peer_config_fallback_includes_bearer(self, stub_peer_config, no_probe_clear):
         """When no positional URL is given, read_peer_config() supplies
         the URL AND key; the request gets ``Authorization: Bearer``.
         """
@@ -285,9 +268,7 @@ class TestInstallUrlResolution:
         assert rc == 1
         assert "No peer config" in capsys.readouterr().err
 
-    def test_url_without_v1_suffix_works(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_url_without_v1_suffix_works(self, stub_peer_config, no_probe_clear):
         """A bare ``https://host`` URL (no /v1) gets ``/v1/admin/install``
         appended directly — no double /v1.
         """
@@ -305,9 +286,7 @@ class TestInstallUrlResolution:
         assert rc == 0
         assert captured["url"] == "https://bare.example.com/v1/admin/install"
 
-    def test_url_with_trailing_slash_is_normalized(
-        self, stub_peer_config, no_probe_clear
-    ):
+    def test_url_with_trailing_slash_is_normalized(self, stub_peer_config, no_probe_clear):
         """Trailing slash is stripped before /v1 detection."""
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
@@ -330,15 +309,11 @@ class TestInstallUrlResolution:
 class TestInstallSyncSuccess:
     """``status: ok`` → exit 0 + clears probe cache for the URL."""
 
-    def test_sync_ok_returns_0_and_clears_probe_cache(
-        self, stub_peer_config, no_probe_clear, capsys
-    ):
+    def test_sync_ok_returns_0_and_clears_probe_cache(self, stub_peer_config, no_probe_clear, capsys):
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
 
-        with patch.object(
-            _http, "fetch_url", return_value=_FakeResp({"status": "ok"})
-        ):
+        with patch.object(_http, "fetch_url", return_value=_FakeResp({"status": "ok"})):
             rc = peer_cli._cmd_install(["semantic"])
         assert rc == 0
         assert "Installed successfully" in capsys.readouterr().out
@@ -359,9 +334,7 @@ class TestInstallAsyncPolling:
     ``ok`` / ``error`` / 10-min deadline.
     """
 
-    def test_async_started_polls_until_ok(
-        self, stub_peer_config, no_probe_clear, fast_polling, capsys
-    ):
+    def test_async_started_polls_until_ok(self, stub_peer_config, no_probe_clear, fast_polling, capsys):
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
 
@@ -386,9 +359,7 @@ class TestInstallAsyncPolling:
         assert "Install started on leader" in out
         assert "Installed successfully" in out
 
-    def test_async_started_polls_until_error(
-        self, stub_peer_config, no_probe_clear, fast_polling, capsys
-    ):
+    def test_async_started_polls_until_error(self, stub_peer_config, no_probe_clear, fast_polling, capsys):
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
 
@@ -414,15 +385,11 @@ class TestInstallHttpFailures:
     the verb branches on.
     """
 
-    def test_http_403_returns_1_with_remote_update_hint(
-        self, stub_peer_config, no_probe_clear, capsys
-    ):
+    def test_http_403_returns_1_with_remote_update_hint(self, stub_peer_config, no_probe_clear, capsys):
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
 
-        err = _http.HTTPClientError(
-            "peer", status=403, fix_hint="forbidden"
-        )
+        err = _http.HTTPClientError("peer", status=403, fix_hint="forbidden")
         with patch.object(_http, "fetch_url", side_effect=err):
             rc = peer_cli._cmd_install(["semantic"])
         assert rc == 1
@@ -430,9 +397,7 @@ class TestInstallHttpFailures:
         assert "Install disabled" in msg
         assert "MAXIM_ALLOW_REMOTE_UPDATE" in msg
 
-    def test_http_401_returns_1_with_auth_hint(
-        self, stub_peer_config, no_probe_clear, capsys
-    ):
+    def test_http_401_returns_1_with_auth_hint(self, stub_peer_config, no_probe_clear, capsys):
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
 
@@ -442,9 +407,7 @@ class TestInstallHttpFailures:
         assert rc == 1
         assert "Authentication failed" in capsys.readouterr().err
 
-    def test_http_404_returns_1_with_unsupported_hint(
-        self, stub_peer_config, no_probe_clear, capsys
-    ):
+    def test_http_404_returns_1_with_unsupported_hint(self, stub_peer_config, no_probe_clear, capsys):
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
 
@@ -454,36 +417,26 @@ class TestInstallHttpFailures:
         assert rc == 1
         assert "does not support remote install" in capsys.readouterr().err
 
-    def test_http_500_returns_1_with_generic_message(
-        self, stub_peer_config, no_probe_clear, capsys
-    ):
+    def test_http_500_returns_1_with_generic_message(self, stub_peer_config, no_probe_clear, capsys):
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
 
-        err = _http.HTTPServerError(
-            "peer", status=500, fix_hint="upstream crashed"
-        )
+        err = _http.HTTPServerError("peer", status=500, fix_hint="upstream crashed")
         with patch.object(_http, "fetch_url", side_effect=err):
             rc = peer_cli._cmd_install(["semantic"])
         assert rc == 1
         assert "Install failed (HTTP 500)" in capsys.readouterr().err
 
-    def test_generic_exception_returns_1_with_message(
-        self, stub_peer_config, no_probe_clear, capsys
-    ):
+    def test_generic_exception_returns_1_with_message(self, stub_peer_config, no_probe_clear, capsys):
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http
 
-        with patch.object(
-            _http, "fetch_url", side_effect=RuntimeError("network down")
-        ):
+        with patch.object(_http, "fetch_url", side_effect=RuntimeError("network down")):
             rc = peer_cli._cmd_install(["semantic"])
         assert rc == 1
         assert "Install failed: network down" in capsys.readouterr().err
 
-    def test_install_failed_status_in_response_returns_1(
-        self, stub_peer_config, no_probe_clear, capsys
-    ):
+    def test_install_failed_status_in_response_returns_1(self, stub_peer_config, no_probe_clear, capsys):
         """200 OK but ``status`` is neither ``started`` nor ``ok`` → exit 1."""
         from maxim.peer import cli as peer_cli
         from maxim.utils import http as _http

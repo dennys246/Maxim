@@ -421,7 +421,7 @@ def _run_node_install(
     extras, packages = _classify_install_tokens(raw_tokens)
     if not extras and not packages:
         print(
-            f"✗ No valid install tokens after stripping whitespace.",
+            "✗ No valid install tokens after stripping whitespace.",
             file=sys.stderr,
         )
         return 2
@@ -432,10 +432,7 @@ def _run_node_install(
     drained_here = False
 
     if was_drained:
-        print(
-            f"ℹ {node.name!r} already drained by operator — "
-            f"skipping drain/resume bookkeeping."
-        )
+        print(f"ℹ {node.name!r} already drained by operator — skipping drain/resume bookkeeping.")
     else:
         # 6. Drain the node. The state-layer self-drain guard is
         # redundant with our step 1 self-guard but defense-in-depth
@@ -476,8 +473,7 @@ def _run_node_install(
                 print(f"✓ Resumed {node.name!r} after install.")
             except DrainError as e:
                 print(
-                    f"⚠ Install succeeded but resume failed: {e}\n"
-                    f"  → Run: maxim peer --node {node.name} resume",
+                    f"⚠ Install succeeded but resume failed: {e}\n  → Run: maxim peer --node {node.name} resume",
                     file=sys.stderr,
                 )
                 return 1

@@ -520,9 +520,7 @@ class TestParseNodeInstallTokens:
     def test_double_dash_flag_ignored(self):
         from maxim.peer.mesh_cli import _parse_node_install_tokens
 
-        assert _parse_node_install_tokens(["--future-flag", "semantic"]) == [
-            "semantic"
-        ]
+        assert _parse_node_install_tokens(["--future-flag", "semantic"]) == ["semantic"]
 
     def test_positional_url_raises_value_error_with_fallback_hint(self):
         """Unlike _cmd_install, this verb rejects positional URLs and
@@ -601,9 +599,7 @@ class TestRunNodeInstall:
         assert "mac-studio" in err
         assert "extras:" in err
 
-    def test_install_only_whitespace_tokens_shows_no_valid_tokens(
-        self, mesh_home, monkeypatch, capsys
-    ):
+    def test_install_only_whitespace_tokens_shows_no_valid_tokens(self, mesh_home, monkeypatch, capsys):
         """A single whitespace-only token (e.g. `install "  "`) passes
         the empty-tokens check but classifies to nothing — surface a
         distinct error rather than POSTing an empty body.
@@ -616,9 +612,7 @@ class TestRunNodeInstall:
         assert rc == 2
         assert "No valid install tokens" in err
 
-    def test_install_positional_url_rejected_with_fallback_hint(
-        self, mesh_home, capsys
-    ):
+    def test_install_positional_url_rejected_with_fallback_hint(self, mesh_home, capsys):
         rc = mesh_cli.run_node_subcommand(
             [
                 "--node",
@@ -635,9 +629,7 @@ class TestRunNodeInstall:
 
     # ─── happy path: drain → install → resume ──────────────────────
 
-    def test_happy_path_drains_installs_resumes(
-        self, mesh_home, monkeypatch, capsys
-    ):
+    def test_happy_path_drains_installs_resumes(self, mesh_home, monkeypatch, capsys):
         captured = self._install_stub(monkeypatch, return_code=0)
 
         rc = mesh_cli.run_node_subcommand(
@@ -659,9 +651,7 @@ class TestRunNodeInstall:
 
         assert "mac-studio" not in read_drained_nodes(set()).active
 
-    def test_happy_path_classifies_mixed_tokens(
-        self, mesh_home, monkeypatch, capsys
-    ):
+    def test_happy_path_classifies_mixed_tokens(self, mesh_home, monkeypatch, capsys):
         """Mixed comma-separated tokens: known extras go to `extras`,
         unknown go to `packages`. Verifies the classifier is shared
         with the positional-URL verb's wire-level shape.
@@ -682,9 +672,7 @@ class TestRunNodeInstall:
 
     # ─── was-drained sticky semantics ──────────────────────────────
 
-    def test_operator_prewalked_drain_is_sticky(
-        self, mesh_home, monkeypatch, capsys
-    ):
+    def test_operator_prewalked_drain_is_sticky(self, mesh_home, monkeypatch, capsys):
         """If operator drained the node BEFORE running install, the
         verb must skip both drain AND auto-resume. Operator intent is
         sticky."""
@@ -709,9 +697,7 @@ class TestRunNodeInstall:
 
     # ─── install-failure branches ──────────────────────────────────
 
-    def test_install_failure_leaves_node_drained_with_loud_message(
-        self, mesh_home, monkeypatch, capsys
-    ):
+    def test_install_failure_leaves_node_drained_with_loud_message(self, mesh_home, monkeypatch, capsys):
         """If drain succeeds but install fails, the node stays
         drained with a loud 'STILL DRAINED → run resume' message.
         """
@@ -730,9 +716,7 @@ class TestRunNodeInstall:
 
         assert "mac-studio" in read_drained_nodes(set()).active
 
-    def test_install_failure_with_prewalked_drain_no_still_drained_shout(
-        self, mesh_home, monkeypatch, capsys
-    ):
+    def test_install_failure_with_prewalked_drain_no_still_drained_shout(self, mesh_home, monkeypatch, capsys):
         """If operator pre-drained AND install fails, we should NOT
         yell 'STILL DRAINED' because WE didn't drain it — the pre-
         drained state is operator intent, not a side effect of this
@@ -765,9 +749,7 @@ class TestRunNodeInstall:
         assert rc == 0
         assert "url" in captured  # _install_on_target was called
 
-    def test_dispatcher_unknown_verb_includes_install_in_hint(
-        self, mesh_home, capsys
-    ):
+    def test_dispatcher_unknown_verb_includes_install_in_hint(self, mesh_home, capsys):
         """The unknown-verb error message should list install as one
         of the valid verbs.
         """
