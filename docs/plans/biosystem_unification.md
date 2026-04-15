@@ -144,13 +144,13 @@ Total estimate to reach the structural ceiling: ~2-3 weeks of focused work, spre
 
 | Wave | Plan | Branch | PR | Status | Date |
 |---|---|---|---|---|---|
-| 0 | executor_bootstrap_unification | feat/exec-bootstrap-unify | (open in browser) | Pre-merge review folded, awaiting PR open | 2026-04-14 |
-| 1 | pain_bus_unification | — | — | Shell only | — |
+| 0 | executor_bootstrap_unification | feat/exec-bootstrap-unify | #114 (merged) | **SHIPPED** | 2026-04-14 |
+| 1 | pain_bus_unification | feat/pain-bus-unification | (PR pending) | **Audit + builder + migration committed; pre-merge review next.** Closes Gap A (3 CLI sites silently skipping NAc bus subscription). Gap B (DefaultNetwork split ownership) deferred to memory_hub_unification.md per no-band-aid rule. Gap C (api.py headless) structural side resolved, user-facing API question stays at agent_factory_canonicalization.md F5. | 2026-04-14 |
 | 1 | reaction_bus_unification | — | — | Shell only | — |
-| 2 | memory_hub_unification | — | — | Shell only | — |
+| 2 | memory_hub_unification | — | — | Shell only — INHERITS Gap B from pain_bus_unification (DefaultNetwork split subscriber ownership). Address by giving DefaultNetwork a `hippocampus=` kwarg or routing it through `build_pain_bus(...)` once MemoryHub is structurally enforced. | — |
 | 2 | default_network_unification | — | — | Shell only | — |
 | 3 | bio_stack_unification | — | — | Shell only | — |
-| 4 | agent_factory_canonicalization | — | — | Running doc, not scheduled | 2026-04-14 |
+| 4 | agent_factory_canonicalization | — | — | Running doc — INHERITS Gap C from pain_bus_unification (api.py headless `pain_bus=None`). Stage F5 owns the user-facing default-on-vs-default-off bio-learning decision for headless `pymaxim` agents. The structural construction door already exists (`build_pain_bus`). | 2026-04-14 |
 
 ## Cross-references
 
