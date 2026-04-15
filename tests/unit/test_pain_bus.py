@@ -27,6 +27,7 @@ from maxim.decisions.nac import NAc, NACConfig
 from maxim.proprioception.pain import PainSignal, PainType
 from maxim.proprioception.pain_bus import (
     PainBus,
+    build_pain_bus,
     create_pain_nac_subscriber,
 )
 from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
@@ -336,6 +337,231 @@ class TestCreatePainNacSubscriber:
         # No record_event called
         sub(_make_signal(intensity=0.7))
         assert len(nac) == 0
+
+
+class TestBuildPainBus:
+    """Regression guards for the canonical PainBus construction door.
+
+    See ``docs/plans/pain_bus_unification.md`` for the audit + design
+    that motivated this builder. The shape mirrors
+    ``runtime/bootstrap.py::build_executor`` — required keyword-only
+    learning subjects so forgetting either is a ``TypeError``, not a
+    silent no-op.
+    """
+
+    def _nac(self) -> NAc:
+        return NAc(NACConfig(temporal_window_seconds=60.0))
+
+    def test_missing_hippocampus_kwarg_raises_type_error(self):
+        """Forgetting hippocampus= is a TypeError, not a silent no-op."""
+        import pytest
+
+        with pytest.raises(TypeError):
+            build_pain_bus(nac=self._nac())  # type: ignore[call-arg]
+
+    def test_missing_nac_kwarg_raises_type_error(self):
+        """Forgetting nac= is a TypeError, not a silent no-op.
+
+        This is the regression guard for the audited bug class: three
+        CLI sites silently skipped NAc bus subscription. Post-migration,
+        forgetting the argument is loud.
+        """
+        import pytest
+
+        hippo = MagicMock()
+
+        with pytest.raises(TypeError):
+            build_pain_bus(hippocampus=hippo)  # type: ignore[call-arg]
+
+    def test_positional_args_rejected(self):
+        """Both learning subjects are keyword-only."""
+        import pytest
+
+        with pytest.raises(TypeError):
+            build_pain_bus(MagicMock(), self._nac())  # type: ignore[misc]
+
+    def test_returns_painbus_instance(self):
+        """The return type is a real PainBus (not a wrapper)."""
+        bus = build_pain_bus(hippocampus=None, nac=None)
+        assert isinstance(bus, PainBus)
+
+    def test_explicit_no_learners_opt_out(self):
+        """Passing None for both is a legitimate explicit opt-out.
+
+        api.py headless mode and tests need this path. The TypeError
+        safety net is on FORGETTING the parameter, not on PASSING None.
+        """
+        bus = build_pain_bus(hippocampus=None, nac=None)
+        # No direct subscribers should be wired beyond the internal
+        # bridge that PainBus.__init__ registers on reaction_bus.
+        assert bus.get_stats()["direct_pain_subscribers"] == 0
+
+    def test_hippocampus_only_subscribes_memory_subscriber(self):
+        """Passing hippocampus wires create_pain_memory_subscriber."""
+        from maxim.memory.types import Decision, Outcome, Perception  # noqa: F401
+
+        hippo = MagicMock()
+        hippo.capture = MagicMock()
+        bus = build_pain_bus(hippocampus=hippo, nac=None)
+
+        # Direct subscriber count = 1 (memory only)
+        assert bus.get_stats()["direct_pain_subscribers"] == 1
+
+        # Publishing a pain signal triggers hippo.capture
+        bus.publish(_make_signal(intensity=0.7))
+        assert hippo.capture.call_count == 1
+
+    def test_nac_only_subscribes_nac_subscriber(self):
+        """Passing nac wires create_pain_nac_subscriber."""
+        nac = self._nac()
+        bus = build_pain_bus(hippocampus=None, nac=nac)
+
+        assert bus.get_stats()["direct_pain_subscribers"] == 1
+
+        # Record a pending action that the pain context will match.
+        nac.record_event(
+            event_type="action",
+            event_signature="slash:rusty_sword",
+            context={
+                "source": "embodiment",
+                "entity": "body.arm.rusty_sword",
+            },
+        )
+        bus.publish(_make_signal(intensity=0.7))
+
+        # Action→pain link should exist (the very bug class this
+        # builder closes — would have been a silent no-op pre-fix).
+        assert len(nac._links.get("slash:rusty_sword", [])) == 1
+
+    def test_both_learners_subscribe_both(self):
+        """The standard production shape: both subjects wired."""
+        hippo = MagicMock()
+        hippo.capture = MagicMock()
+        nac = self._nac()
+        bus = build_pain_bus(hippocampus=hippo, nac=nac)
+
+        assert bus.get_stats()["direct_pain_subscribers"] == 2
+
+        nac.record_event(
+            event_type="action",
+            event_signature="slash:rusty_sword",
+            context={
+                "source": "embodiment",
+                "entity": "body.arm.rusty_sword",
+            },
+        )
+        bus.publish(_make_signal(intensity=0.7))
+
+        # BOTH paths fire on the same publish.
+        assert hippo.capture.call_count == 1
+        assert len(nac._links.get("slash:rusty_sword", [])) == 1
+
+    def test_additional_subscribers_registered_after_standard_learners(self):
+        """Custom subscribers run after the standard learners.
+
+        Ordering is documented as a load-bearing contract in
+        ``build_pain_bus``'s docstring — additional subscribers run
+        AFTER the standard learners. Use a hippo MagicMock whose
+        ``capture`` side-effect appends to a shared ``order`` list,
+        and a custom subscriber that does the same. Then assert the
+        list ordering.
+        """
+        order: list[str] = []
+
+        def custom_sub(_signal: PainSignal) -> None:
+            order.append("custom")
+
+        hippo = MagicMock()
+        hippo.capture = MagicMock(side_effect=lambda **_: order.append("hippo"))
+
+        bus = build_pain_bus(
+            hippocampus=hippo,
+            nac=None,
+            additional_subscribers=(custom_sub,),
+        )
+        assert bus.get_stats()["direct_pain_subscribers"] == 2
+
+        bus.publish(_make_signal(intensity=0.7))
+        # Standard learner (hippocampus memory) runs first, then the
+        # additional subscriber. Reverse order would indicate the
+        # builder is registering additional subscribers BEFORE the
+        # standard learners — the regression guard for the documented
+        # ordering contract.
+        assert order == ["hippo", "custom"]
+
+    def test_history_size_and_refractory_forwarded(self):
+        """history_size and pain_refractory_s reach the PainBus ctor.
+
+        Hard assertion on both. ``pain_refractory_s`` is exposed on
+        ``PainBus`` directly. ``history_size`` lives on the inner
+        ``ReactionBus``'s ``deque(maxlen=...)`` — assert via
+        ``bus.reaction_bus._history.maxlen`` so a regression that
+        silently drops the kwarg fails loudly.
+        """
+        bus = build_pain_bus(
+            hippocampus=None,
+            nac=None,
+            history_size=42,
+            pain_refractory_s=1.5,
+        )
+        assert bus._pain_refractory_s == 1.5
+        # Hard assertion (was a smoke check pre-pre-merge-review fold).
+        assert bus.reaction_bus._history.maxlen == 42
+
+    def test_subscriber_does_not_link_pending_tool_event(self):
+        """REGRESSION GUARD for the latent bridge × subscriber asymmetry.
+
+        Pinned by pain_bus_unification.md pre-merge architecture review
+        finding #10. Documents and pins the load-bearing context-similarity
+        mismatch that prevents double-counting today.
+
+        The setup mimics what the executor does at ``record_tool_start``
+        time: it records a pending tool event with a stripped 1-key
+        ``{"params": ...}`` context. The subscriber's ``record_outcome_full``
+        path uses ``_context_similarity`` directionally with ``len(ctx1)``
+        as the denominator — when the pending event has 1 key and the
+        published pain has 7 keys with zero overlap, similarity = 0/1
+        = 0.0, below the 0.5 threshold, no link forms.
+
+        This is what prevents post-Wave-1 double-counting on CLI paths
+        that wire BOTH ``ToolPainBridge`` (with its ``_pending_tools``
+        guard) AND ``create_pain_nac_subscriber`` (which has no such
+        guard). The guard asymmetry is real but masked by this
+        similarity mismatch.
+
+        **If this test fails**, it means someone enriched
+        ``record_tool_start``'s context dict (e.g., added ``entity`` for
+        the broad-guard narrowing contemplated at
+        ``bridges/tool_pain_bridge.py:367-371``) and the bridge ×
+        subscriber double-counting trap is now active. **DO NOT just
+        relax the assertion.** Instead open
+        ``docs/plans/pain_bus_bridge_subscriber_unification.md`` —
+        the deeper structural fix (Option B: bridge-aware subscriber
+        OR bridge-mediated NAc attribution) is now required.
+        """
+        nac = self._nac()
+        # Mimic ToolPainBridge.record_tool_start: pending event with
+        # the executor's stripped {"params": ...} context, NOT the
+        # rich body context.
+        nac.record_event(
+            event_type="tool",
+            event_signature="tool:slash_modulator",
+            context={"params": {"target": "rusty_sword"}},
+        )
+        assert len(nac._pending_events) == 1
+
+        # Now publish a rich-context PainSignal (what body._publish_pain
+        # actually fires while the tool is in flight) directly through
+        # the NAc subscriber. Using build_pain_bus with the bridge NOT
+        # wired models the post-Gap-A CLI state for this analysis.
+        bus = build_pain_bus(hippocampus=None, nac=nac)
+        bus.publish(_make_signal(intensity=0.7))
+
+        # NO link should form for the pending tool event because the
+        # context-similarity mismatch ({"params":...} vs the 7-key
+        # body context) yields similarity 0/1 = 0.0 < 0.5 threshold.
+        # If this assertion ever fires, see the docstring above.
+        assert "tool:slash_modulator" not in nac._links or len(nac._links.get("tool:slash_modulator", [])) == 0
 
     def test_exceptions_are_logged_not_swallowed(self, caplog):
         """A broken NAc still logs so wiring issues surface."""
