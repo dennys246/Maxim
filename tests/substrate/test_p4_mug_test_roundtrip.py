@@ -47,15 +47,37 @@ def _prepare_mug_test_hippocampus():
     Encodes the 10 × 5 = 50 fixture pairs via real CLIP + paraphrase-
     mpnet, binds each in an episode. Returns the ready-to-snapshot
     hippocampus instance.
-    """
-    from scripts.p4_mug_test_sweep import _build_and_bind  # reuse orchestrator
 
+    Imports from ``tests.substrate.p4_build_and_bind`` (the canonical
+    shared orchestrator), NOT from ``scripts/p4_mug_test_sweep``. Stage
+    2 v2 fold moved the helper out of the scripts/ layer (Exec #4 /
+    Arch #9). The script still exists for v1 compat but no longer
+    defines the orchestrator.
+    """
+    from .p4_build_and_bind import (
+        BuildConfig,
+        FixtureBridgeConfig,
+        FixtureNoiseConfig,
+        build_and_bind,
+        clip_vision_encoder,
+        paraphrase_mpnet_text_encoder,
+    )
     from .p4_fixture_loader import load_fixture_descriptor, load_fixture_images
 
     descriptor = load_fixture_descriptor()
     images = load_fixture_images()
-    _ec, hippocampus, _results = _build_and_bind(descriptor, images)
-    return hippocampus
+
+    config = BuildConfig(
+        text_encoder=paraphrase_mpnet_text_encoder(),
+        vision_encoder=clip_vision_encoder(),
+        text_ec_threshold=0.60,
+        vision_ec_threshold=1.01,
+        noise=FixtureNoiseConfig(noise_reps=0),
+        bridges=FixtureBridgeConfig(enabled=False),
+        seed=0,
+    )
+    build = build_and_bind(descriptor, images, config)
+    return build.hippocampus
 
 
 class TestP4MugTestRoundTrip:
