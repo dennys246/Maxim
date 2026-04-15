@@ -97,13 +97,16 @@ Every structural enforcement plan ships with: (a) `CLAUDE.md` invariant update, 
 
 | Plan | Status | Bug class | Layer pushed to |
 |---|---|---|---|
-| [executor_bootstrap_unification.md](../plans/executor_bootstrap_unification.md) | **PR in review** (2026-04-14) | "forgot to wire ToolPainBridge on path X" | Layer 5: `build_executor(*, pain_bus)` required keyword arg |
+| [executor_bootstrap_unification.md](../plans/executor_bootstrap_unification.md) | **Shipped** (2026-04-14) | "forgot to wire ToolPainBridge on path X" | Layer 5: `build_executor(*, pain_bus)` required keyword arg |
 | [biosystem_unification.md](../plans/biosystem_unification.md) | **Tracking doc + 5 shells** (2026-04-14) | Same shape applied to PainBus, ReactionBus, MemoryHub, DefaultNetwork, bio_stack umbrella | Layer 5 (planned) |
 | [agent_factory_canonicalization.md](../plans/agent_factory_canonicalization.md) | **Running doc, not scheduled** | "agent constructed via N parallel paths that drift" | Layer 5 + Layer 6 (single canonical AgentFactory) |
 | HTTP call sites | **Shipped** (Plan 1 R1, PR #91) | "forgot User-Agent header on outbound HTTP" | Layer 5: `maxim/utils/http.py` registry + endpoint metadata |
 | `_MaximPeerBackend.complete_with_usage` | **Shipped** (Plan 3, PR #94) | "added a retry loop, amplified the 52s fail-slow" | Layer 3: CI grep gate `grep -nE "retry\|backoff\|gateway"` blocks new matches |
 | `BackendError.fix_hint` | **Shipped** (Plan 2 R2b) | "log injection via user-controlled exception content" | Layer 6: class-level `fix_hint` constants, never user-controlled |
 | `RequestContext` propagation | **Shipped** (Plan 1 R1 + Plan 4 Stage A) | "agent_id missing from outbound headers" | Layer 5 + Layer 6: `contextvars.ContextVar` + canonical `_normalize_request_context` shim |
+| `MeshConfig.__post_init__` | **Shipped** (Plan 4 C3.1 + C3.2) | "constructed an invalid `MeshConfig` that produced parser-rejecting `mesh.yml` on next read" | Layer 5: dataclass `__post_init__` validates yaml-safe characters + non-empty `nodes` (E7 fold from C3.1) + `self_name in nodes` (A1 fold from C3.2). Both folds were cross-confirmed by 2-of-3 review lenses. |
+| `write_mesh_config` caller allow-list | **Shipped** (Plan 4 C3.1 + C3.2) | "future C3 admin-API author writes to `mesh.yml` from runtime code path, breaking the C2 declarative invariant" | Layer 3: CI grep allow-list in `.github/workflows/test.yml` blocks any caller outside `mesh_setup.py` + the test file. Mirrors the `_MaximPeerBackend.complete_with_usage` precedent. CLAUDE.md C2 invariant lesson updated in the same commit per the rule's own requirement. First stress test (C3.2) passed cleanly — see `feedback_strict_grep_caller_allowlist.md`. |
+| `atomic_write_secret` wrapper | **Shipped** (Plan 4 C2 + C3.1) | "future credential writer forgets `preserve_mode=True` on `atomic_write_text` and silently widens 0o600 → umask 0o644" | Layer 5: separate function name encodes "this writes a secret" intent at the call site. Operators who write `atomic_write_text(...)` get the unsafe default; operators who write `atomic_write_secret(...)` get mode-preservation + first-write 0o600 chmod with `logger.warning` on chmod failure. Matches the "make the safe path verbose" principle. |
 
 ## Cross-references
 

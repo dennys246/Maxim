@@ -212,6 +212,84 @@ maxim peer forget
 
 ---
 
+## Mesh management (Plan 4 Stage C)
+
+`peer connect` gives you a single peer → leader pairing via `peer.yml`. Plan 4 Stage C ships a richer mesh management surface backed by `~/.config/maxim/mesh.yml` for operators who want **multiple nodes**, **graceful traffic shaping** via drain/resume, or **read-only health probes** without dropping into `curl`.
+
+### Quick reference
+
+| Verb | What it does | Stage |
+|---|---|---|
+| `maxim peer list-nodes [--json]` | Table or JSON of all configured nodes + live status (single network probe per node, classified into `ok`/`fail`/`warn`/`info`). Reads `mesh.yml`; falls back to `peer.yml` as a synthesized one-node mesh so existing installs see zero behavior change. | C1 |
+| `maxim peer --node <name> status` | Probe a single node and print its current status + latency. Alias: `health`. Drained nodes report `drained (not probed)` without making a network call. | C1 |
+| `maxim peer --node <name> drain [--force-self]` | Add `<name>` to the role-scoped drain set so future routing decisions skip it. Drain state persists at `~/.maxim/util/drained_nodes.{role}.txt` under a `filelock.FileLock` so concurrent drain calls don't race. Refuses to drain `mesh.yml::self` without `--force-self` — draining yourself strands in-flight requests. | C2 |
+| `maxim peer --node <name> resume` | Remove `<name>` from the drain set. Idempotent. | C2 |
+| `maxim peer list-drained` | Dump the current drain set, separated into "active" (drained name matches a real `mesh.yml` node) and "orphans" (drained name no longer matches any node — usually because the operator edited mesh.yml mid-flight). Orphans get a `resume` cleanup hint. | C2 |
+| `maxim peer init-mesh [--force]` | Synthesize `~/.config/maxim/mesh.yml` from the existing `peer.yml`. Use this when you already ran `peer connect` and want to start using the mesh management verbs above. `peer.yml` is left in place by design — `runtime/role.py` reads its existence as part of role detection. `--force` overwrites an existing `mesh.yml` after backing it up to `mesh.yml.bak`. Refuses if `.bak` already exists (prevents losing your original on a double `--force`). | C3.1 |
+| `maxim peer add-node <name> --url <url> [--role peer\|leader] [--force]` | Append a new node to `mesh.yml::nodes`. URL validation is **syntax-only** at add time — reachability is the next `list-nodes` / doctor probe's job. `--force` replaces an existing node in place, preserving operator-typed node order. | C3.2 |
+| `maxim peer remove-node <name>` | Drop a node from `mesh.yml::nodes`. **Side effect:** auto-clears any drain state for the node with a visible "also cleared from drain state" message. Refuses on `self` — you can't delete the running daemon's own identity (the error documents the 3-step workaround). | C3.2 |
+
+### The two config files: `peer.yml` vs `mesh.yml`
+
+The two files coexist by design. Each has a distinct purpose:
+
+- **`~/.config/maxim/peer.yml`** is the **simple-single-leader** config from the `peer connect` flow. Maxim's `runtime/role.py` reads its **existence** as part of the leader-vs-peer role detection decision order (per Plan 2 R2a). Every Plan 4 Stage C verb leaves `peer.yml` untouched — even `init-mesh`, which copies values out of it but never modifies the source. **Do not delete `peer.yml` after running `init-mesh`** — role detection breaks silently on the next `maxim` invocation.
+- **`~/.config/maxim/mesh.yml`** is the **multi-node topology** the C1/C2/C3 verbs read and (for C3.1+) write. It's deliberately declarative — the only sanctioned writers are `init-mesh`, `add-node`, and `remove-node` (all in `src/maxim/peer/mesh_setup.py`, enforced by a CI grep allow-list). Operators can hand-edit it; runtime code paths cannot.
+
+### The two-layer split: declarative topology vs runtime mutable state
+
+`mesh.yml` holds **declarative topology** (cluster_key, self, nodes). It is never mutated by automatic / runtime code paths.
+
+`~/.maxim/util/drained_nodes.{role}.txt` holds **runtime mutable state** (which nodes are currently drained). It's role-scoped via `MAXIM_ROLE` (so leader and peer machines on the same host don't share drain state) and serialized via `filelock.FileLock` so concurrent `drain`/`resume` calls don't race. This is the Kubernetes-style "spec vs status" split — the two layers serve strictly disjoint purposes and need no reconciliation contract.
+
+**Why this matters operationally:** if you back up your config, copy `mesh.yml` (and `peer.yml`). The drain state in `~/.maxim/util/` is per-machine and ephemeral — restoring it from a backup of a different machine isn't useful and could collide with that machine's own drain decisions.
+
+### Walkthrough: peer.yml-only install → drained mesh in 4 commands
+
+```bash
+# Starting state: you already ran `maxim peer connect <url>` so peer.yml exists.
+$ maxim peer list-nodes
+━━━ Mesh: 1 node(s), self=leader ━━━
+  ✓ leader  leader  https://maxim.yourdomain.com/v1 (self)
+      → reachable (stage2 HTTP 200) [392ms]
+
+# Step 1: convert peer.yml into a real mesh.yml so add-node + remove-node work
+$ maxim peer init-mesh
+✓ Synthesized ~/.config/maxim/mesh.yml from peer.yml
+  → 1 node (leader, https://maxim.yourdomain.com/v1)
+  → cluster_key copied from peer.yml::api_key
+  → self set to 'leader'
+  → peer.yml left in place (still used for role detection)
+
+# Step 2: add a second node
+$ maxim peer add-node tablet --url https://tablet.yourdomain.com/v1
+✓ Added node 'tablet' to ~/.config/maxim/mesh.yml
+  → peer, https://tablet.yourdomain.com/v1
+
+# Step 3: drain it (e.g., before a tablet restart)
+$ maxim peer --node tablet drain
+✓ Drained 'tablet'. Drain set: ['tablet']
+
+# Step 4: confirm the state is what you think it is
+$ maxim peer list-drained
+Drained nodes (1):
+  ⊝ tablet
+```
+
+To bring tablet back: `maxim peer --node tablet resume`. To remove it permanently: `maxim peer remove-node tablet` (this auto-clears the drain state with a visible warning, so you don't end up with an orphan).
+
+### Exit code contract
+
+All Plan 4 Stage C verbs use a consistent exit code shape:
+
+- **0** — success, including idempotent no-ops (e.g., draining an already-drained node prints "already drained" and exits 0)
+- **1** — environmental failure (file missing, network unreachable, can't write to `~/.maxim/util/`)
+- **2** — operator error (typo, missing required arg, refuse-without-force, attempting to drain self without `--force-self`, attempting to remove self)
+
+Scripts wrapping these verbs should distinguish 1 vs 2 — exit 1 means "fix the environment and retry," exit 2 means "fix the command line."
+
+---
+
 ## Common end-to-end gotchas
 
 **The leader's chat template leaks tokens** (e.g., output contains `<|im_start|>` / `<|im_end|>` fragments). Not fatal — the OpenAI SDK that Maxim uses in normal operation handles message structure correctly, so this only surfaces in `peer test`. If you want clean output anyway, tune the llama-cpp-server's `--chat_format` or stop-token list on the leader.

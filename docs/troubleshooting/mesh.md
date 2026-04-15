@@ -31,7 +31,7 @@ All seven modules were swept up during the task→size lane refactor and never r
 Three reasons, ordered by how much weight each carried:
 
 1. **Zero production imports.** Every deleted module was discoverable only by the parallel `mesh/__init__.py` re-exports. `grep -rn "from maxim.mesh" src/maxim/` showed only `bus`, `identity`, `message`, `naming` in live use.
-2. **Misleading to future work.** Plan 4 (`llm_path_operator_visibility.md`) will introduce a new mesh abstraction — `mesh.yml` config, `/v1/mesh/*` admin API, request-trace ring buffer. Having a parallel dead mesh tree under `mesh/` would confuse the executor about which one to build on.
+2. **Misleading to future work.** Plan 4 Stage C went on to introduce a new mesh abstraction — `mesh.yml` config + setup verbs (`init-mesh`, `add-node`, `remove-node`) + `drain`/`resume`/`list-drained` runtime state — shipped across PRs #112 (C1), #113 (C2), #118 (C3.1), and the C3.2 follow-up. Having a parallel dead mesh tree under `mesh/` would have confused the executor about which one to build on. The new surface lives in [`src/maxim/peer/mesh_setup.py`](../../src/maxim/peer/mesh_setup.py) and [`src/maxim/peer/mesh_config.py`](../../src/maxim/peer/mesh_config.py); operator runbook is [mesh_debug.md](mesh_debug.md).
 3. **Audit cleanup aligned with a motivating incident.** The 2026-04-12 Cloudflare User-Agent incident (commit `8b52cbd`) surfaced a second class of dead code — scattered urllib call sites that Plan 1 R1 went on to consolidate. Deleting both together made the LLM path refinement's first commit a net negative-LOC "cleanup + consolidation" move.
 
 ## Where current peer troubleshooting lives
@@ -44,15 +44,13 @@ Three reasons, ordered by how much weight each carried:
 - [leader_proxy_debug.md](leader_proxy_debug.md) — leader-side proxy runbook for admission control, request forwarding, GPU header injection. Replaces the "Admission Control" section that used to reference `mesh/admission.py`.
 - [remote_update.md](remote_update.md) — `maxim peer update` / `maxim peer restart` troubleshooting.
 
-**Not yet written:**
-
-- `mesh_debug.md` — will be the new operator runbook for the Plan 4 mesh (`mesh.yml` + admin API). Written when Plan 4 ships. Until then, the relevant runbook is whichever of the above matches your symptom.
+- [mesh_debug.md](mesh_debug.md) — **new in Plan 4 Stage C.** Operator runbook for the `mesh.yml` declarative config + `init-mesh` / `add-node` / `remove-node` setup verbs + `drain` / `resume` / `list-drained` runtime state. The first place to look for "I added a node and it isn't routing" or "I drained a peer and it didn't come back" symptoms.
 
 ## What the old mesh doc got right
 
 Not everything in the deleted mesh design was wrong — a few concepts survive and inform Plan 4:
 
-- **Trust levels** (`verified` / `discovered` / `remote` / `unknown`) were a reasonable shape for differentiating LAN peers from remote tunnel peers. Plan 4's `mesh.yml::cluster_key` collapses this to a binary (valid cluster key = trusted, invalid = rejected), which is simpler but gives up the per-peer gradation. If operators later need gradation, the trust-level table is a starting point.
+- **Trust levels** (`verified` / `discovered` / `remote` / `unknown`) were a reasonable shape for differentiating LAN peers from remote tunnel peers. Plan 4 Stage C's `mesh.yml::cluster_key` collapsed this to a binary (valid cluster key = trusted, invalid = rejected), which is simpler but gives up the per-peer gradation. If operators later need gradation, the trust-level table is a starting point.
 - **Per-peer rate limiting** (the `KeyedRateLimiter` in `admission.py`) was a solid primitive. It's been cherry-picked into `runtime/rate_limit.py` and Plan 4 will consume it for per-agent rate limiting at the router entry.
 - **Knowledge transfer with trust-scoped confidence discount** (imported CausalLinks starting at lower confidence) is a good default for cross-agent learning. The substrate plan's cross-agent transfer work will revisit this pattern.
 
@@ -75,7 +73,9 @@ You probably clicked through from one of:
 
 The current cluster abstraction is:
 
-- **Peer config:** `~/.config/maxim/peer.yml` (still used; will be superseded by `mesh.yml` in Plan 4)
+- **Peer credentials:** `~/.config/maxim/peer.yml` (per-host: leader URL + API key + role-detection signal — left in place by every Stage C verb because `runtime/role.py` reads its existence)
+- **Mesh topology:** `~/.config/maxim/mesh.yml` (declarative cluster topology — `cluster_key` + `self` + `nodes[]`; written only by `mesh_setup.py` via the strict CI grep allow-list)
+- **Mutable runtime state:** `~/.maxim/util/drained_nodes.{role}.txt` (list of drained node names; serialized via `filelock.FileLock`)
 - **Peer → leader routing:** `lane_backends.py::build_primary_router` + `models/language/router.py` (still the hot path)
 - **Admission control:** `LeaderProxy` in `runtime/leader_proxy.py` (still the hot path)
 - **Per-peer observability:** `mesh_trace.py` structured events, now emitted via `http.fetch_url` (Plan 1 R1)
