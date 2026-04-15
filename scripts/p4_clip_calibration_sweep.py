@@ -218,6 +218,21 @@ def _pick_headroom_band(
         candidates.sort(key=lambda t: abs(t[2] - mid))
         candidates = candidates[:target_n]
 
+    # Round 2 Exec-lens #5 fold: hard-assert that we found enough
+    # classes. Before the fold, a pathological sweep (e.g., all
+    # accuracies NaN or all zero) could silently return fewer than
+    # target_n classes and the fixture would be written with a short
+    # list. Downstream code assumes exactly target_n. Loud failure
+    # here means an operator caught the fixture regression at
+    # calibration time instead of at Stage 3.
+    assert len(candidates) >= target_n, (
+        f"headroom sweep could only find {len(candidates)} classes in "
+        f"[{low:.2f}, {high:.2f}] (relaxed from the initial band), "
+        f"target was {target_n}. Investigate sweep inputs — either the "
+        f"encoder is broken, the dataset is empty, or the fixture needs "
+        f"a class-count reduction."
+    )
+
     # Sort final choice by accuracy descending for readability.
     candidates.sort(key=lambda t: -t[2])
     return candidates
