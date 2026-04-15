@@ -1320,6 +1320,83 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         associated.sort(key=lambda pair: pair[1], reverse=True)
         return associated[:limit]
 
+    def retrieve_cross_modal(
+        self,
+        cue_node_id: str,
+        target_modality: SubstrateModality,
+        limit: int = 10,
+        *,
+        multi_hop: bool = True,
+    ) -> list[tuple[str, float]]:
+        """Cross-modal retrieval — return substrate nodes of
+        ``target_modality`` co-activated with the cue.
+
+        **P4 Stage 1 — the canonical cross-modal retrieval entry point.**
+        Mirror P3b's ``episode_membership_filter`` snapshot pattern
+        exactly: build a frozenset of node ids matching
+        ``target_modality`` under ``self._episode_lock`` at filter
+        construction time, release the lock, return a lock-free closure
+        that just checks set membership, then delegate to
+        ``retrieve_on_cue(cue, limit, multi_hop=multi_hop,
+        node_filter=closure)``.
+
+        **Lock-inversion safety.** ``DependencyGraph.spreading_activation``
+        invokes the ``node_filter`` callback while holding
+        ``binding_graph._lock``. If the closure re-acquired
+        ``self._episode_lock`` at call time, a concurrent
+        ``observe_episode_event`` (which holds ``_episode_lock`` then
+        eventually touches ``binding_graph._lock`` via Hebbian close)
+        would deadlock against it. The snapshot pattern kills the
+        inversion at the closure-build site: the closure does not
+        acquire any lock at call time. This mirrors the P3b regression
+        guard, see
+        ``tests/substrate/test_p3b_channel_integration.py
+        ::TestConcurrency::test_filter_closure_holds_no_lock_after_construction``.
+
+        **Defensive same-modality check.** If the cue's own modality
+        (looked up under the same ``_episode_lock`` snapshot) equals
+        ``target_modality``, raise ``ValueError`` with the cue id and
+        modality. The alternative would be silently returning zero
+        matches (since the snapshot excludes the cue's own modality
+        bucket) — which would mask the caller bug rather than surface
+        it. This is the same "push silent no-op into a TypeError /
+        ValueError" rule the executor-bootstrap unification applies.
+
+        **Cue not yet tagged is OK.** A cue whose modality is unknown
+        (the cue node id never appeared in any episode close before
+        this call, e.g. because the caller is pre-seeding a probe)
+        does NOT raise — the snapshot still returns the target-modality
+        nodes and retrieve_on_cue traverses normally. Same-modality
+        check applies only when the cue IS tagged.
+
+        Returns the same ``list[tuple[str, float]]`` shape as
+        ``retrieve_on_cue``.
+        """
+        with self._episode_lock:
+            cue_modality = self._node_modality.get(cue_node_id)
+            if cue_modality is not None and cue_modality == target_modality:
+                raise ValueError(
+                    f"retrieve_cross_modal: cue {cue_node_id!r} is already "
+                    f"tagged as modality {cue_modality!r}; cross-modal retrieval "
+                    f"requires target_modality to differ from the cue's modality. "
+                    f"Use retrieve_on_cue for same-modality retrieval."
+                )
+            allowed: frozenset[str] = frozenset(
+                node_id for node_id, mod in self._node_modality.items() if mod == target_modality
+            )
+
+        # Lock-free closure over the frozenset. Captures `allowed` by
+        # reference but `allowed` is immutable so there is no race.
+        def _modality_filter(node_id: str) -> bool:
+            return node_id in allowed
+
+        return self.retrieve_on_cue(
+            cue_node_id,
+            limit,
+            multi_hop=multi_hop,
+            node_filter=_modality_filter,
+        )
+
     def add_boundary_rule(self, rule: BoundaryRule) -> None:
         """Append a boundary rule to the episode detector.
 
