@@ -114,7 +114,7 @@ The doctor output groups same-category matches first (so a typo in `weapons/X` s
 
 #### Constraints (current)
 
-- `--embodiment` is currently **mutually exclusive with `--sim`**. Sim-mode SEM body wiring is tracked as Stage 2c of [docs/plans/sem_execution_hook.md](plans/sem_execution_hook.md). For DM-campaign YAMLs, set `component: <ref>` in the encounter spec instead — the DM runtime loads components per-scene via its own path.
+- `--embodiment` is currently **mutually exclusive with `--sim`**. Sim-mode SEM body wiring is tracked under [agent_factory_canonicalization.md](plans/agent_factory_canonicalization.md) Stage F1+ (the original Stage 2c of the now-archived [sem_execution_hook.md](plans/archive/sem_execution_hook.md) was structurally absorbed by [executor_bootstrap_unification.md](plans/executor_bootstrap_unification.md)). For DM-campaign YAMLs, set `component: <ref>` in the encounter spec instead — the DM runtime loads components per-scene via its own path.
 - Only one entity can be loaded via the flag. Multi-entity bodies (e.g., a full robot arm with child entities) are loaded the old way via `Embodiment(spec.root_entity)` in code — see step 2 above.
 - The bridge attaches to the unwrapped inner `Executor`. If you wrap the executor with `FearGatedExecutor` or similar, do it AFTER `build_executor` returns. This is structurally enforced by the `build_executor` signature contract — see [docs/plans/executor_bootstrap_unification.md](plans/executor_bootstrap_unification.md).
 
