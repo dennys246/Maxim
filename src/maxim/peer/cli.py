@@ -1159,59 +1159,62 @@ KNOWN_EXTRAS = {
 }
 
 
-def _cmd_install(argv: list[str]) -> int:
-    """Install optional extras on leader via /v1/admin/install.
+def _classify_install_tokens(
+    raw_tokens: list[str],
+) -> tuple[list[str], list[str]]:
+    """Split caller-supplied install tokens into KNOWN_EXTRAS + raw pip
+    packages.
 
-    Usage:
-        maxim peer install semantic
-        maxim peer install semantic,llm-torch
-        maxim peer install sentence-transformers   # raw pip package
+    Plan 4 C3.3: factored out of ``_cmd_install`` so the new
+    ``maxim peer --node <name> install <extras>`` verb produces the
+    same wire-level body shape from a different argv parser. Empty /
+    whitespace-only tokens are dropped silently — matches the
+    pre-C3.3 behavior asserted by ``test_peer_install.py``.
+    """
+    extras: list[str] = []
+    packages: list[str] = []
+    for token in raw_tokens:
+        token = token.strip()
+        if not token:
+            continue
+        if token in KNOWN_EXTRAS:
+            extras.append(token)
+        else:
+            packages.append(token)
+    return extras, packages
+
+
+def _install_on_target(
+    url: str,
+    key: str | None,
+    extras: list[str],
+    packages: list[str],
+) -> int:
+    """POST an install request to a target URL and poll if async.
+
+    Plan 4 C3.3: behavior-preserving lift of ``_cmd_install``'s HTTP
+    body. Two callers in this module:
+
+    - :func:`_cmd_install` — resolves URL from a positional ``http*``
+      arg or ``peer.yml``, then calls this core.
+    - :func:`maxim.peer.mesh_cli._run_node_install` — resolves URL +
+      key from ``mesh.yml::nodes`` by name, drains the node, calls
+      this core, then resumes (or leaves drained on failure with a
+      loud message).
+
+    ``url`` may include a trailing ``/v1`` — it gets stripped for the
+    endpoint composition but passed unmodified to
+    :func:`_clear_probe_cache` so the probe-cache key matches the one
+    other peer commands use.
+
+    The function makes no assumptions about whether the caller has
+    drained the target node first; that's the caller's responsibility.
     """
     from maxim.utils import http as _http
-
-    url: str | None = None
-    key: str | None = None
-    packages: list[str] = []
-
-    for arg in argv:
-        if arg.startswith("http"):
-            url = arg
-        elif arg.startswith("--"):
-            pass  # future flags
-        else:
-            # Could be comma-separated extras or raw package names
-            packages.extend(arg.split(","))
-
-    if not packages:
-        print("Usage: maxim peer install <extras_or_packages>", file=sys.stderr)
-        print("  extras: " + ", ".join(sorted(KNOWN_EXTRAS)), file=sys.stderr)
-        print("  Example: maxim peer install semantic", file=sys.stderr)
-        print("  Example: maxim peer install sentence-transformers", file=sys.stderr)
-        return 2
-
-    if url is None:
-        cfg = read_peer_config()
-        if cfg is None:
-            print("No peer config. Run: maxim peer connect <leader-url>", file=sys.stderr)
-            return 1
-        url = cfg.url
-        key = cfg.api_key
 
     base = url.rstrip("/")
     if base.endswith("/v1"):
         base = base[:-3]
-
-    # Classify: known extras → "pymaxim[extra]", unknown → raw pip package
-    extras: list[str] = []
-    raw_packages: list[str] = []
-    for pkg in packages:
-        pkg = pkg.strip()
-        if not pkg:
-            continue
-        if pkg in KNOWN_EXTRAS:
-            extras.append(pkg)
-        else:
-            raw_packages.append(pkg)
 
     endpoint = f"{base}/v1/admin/install"
     headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -1221,8 +1224,8 @@ def _cmd_install(argv: list[str]) -> int:
     desc_parts = []
     if extras:
         desc_parts.append(f"extras: {', '.join(extras)}")
-    if raw_packages:
-        desc_parts.append(f"packages: {', '.join(raw_packages)}")
+    if packages:
+        desc_parts.append(f"packages: {', '.join(packages)}")
     print(f"Installing on leader ({base}): {'; '.join(desc_parts)}...")
 
     try:
@@ -1230,7 +1233,7 @@ def _cmd_install(argv: list[str]) -> int:
             endpoint,
             method="POST",
             headers=headers,
-            json={"extras": extras, "packages": raw_packages},
+            json={"extras": extras, "packages": packages},
             timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=33.0),
         )
         data = resp.json()
@@ -1320,6 +1323,54 @@ def _cmd_install(argv: list[str]) -> int:
 
     print("\n  Timed out waiting for install (10 min). Check leader logs.", file=sys.stderr)
     return 1
+
+
+def _cmd_install(argv: list[str]) -> int:
+    """``maxim peer install <extras_or_packages> [url]`` — install on
+    the connected leader (or the URL passed positionally).
+
+    Usage:
+        maxim peer install semantic
+        maxim peer install semantic,llm-torch
+        maxim peer install sentence-transformers   # raw pip package
+        maxim peer install semantic https://other-leader.example.com/v1
+
+    Plan 4 C3.3: this verb is the no-mesh.yml fallback for the
+    positional-URL path. The mesh-aware form is
+    ``maxim peer --node <name> install <extras>``, which composes
+    drain → install → resume around the same
+    :func:`_install_on_target` core.
+    """
+    url: str | None = None
+    raw_tokens: list[str] = []
+
+    for arg in argv:
+        if arg.startswith("http"):
+            url = arg
+        elif arg.startswith("--"):
+            pass  # future flags
+        else:
+            # Could be comma-separated extras or raw package names
+            raw_tokens.extend(arg.split(","))
+
+    if not raw_tokens:
+        print("Usage: maxim peer install <extras_or_packages>", file=sys.stderr)
+        print("  extras: " + ", ".join(sorted(KNOWN_EXTRAS)), file=sys.stderr)
+        print("  Example: maxim peer install semantic", file=sys.stderr)
+        print("  Example: maxim peer install sentence-transformers", file=sys.stderr)
+        return 2
+
+    key: str | None = None
+    if url is None:
+        cfg = read_peer_config()
+        if cfg is None:
+            print("No peer config. Run: maxim peer connect <leader-url>", file=sys.stderr)
+            return 1
+        url = cfg.url
+        key = cfg.api_key
+
+    extras, packages = _classify_install_tokens(raw_tokens)
+    return _install_on_target(url, key, extras, packages)
 
 
 # ─── deps ────────────────────────────────────────────────────────────────
