@@ -361,6 +361,58 @@ def resume_node(name: str, known_node_names: set[str]) -> frozenset[str]:
         ) from e
 
 
+def _clear_drain_unconditional(name: str) -> bool:
+    """Unconditionally remove ``name`` from the drain set under lock.
+
+    **Module-private** (leading underscore) per C3.2 pre-merge review
+    A2 fold: this helper has exactly one sanctioned caller
+    (:func:`maxim.peer.mesh_setup.run_remove_node`) and a confusingly
+    similar name to :func:`resume_node`. Making it private signals
+    the narrow contract — public API would imply a broader use case
+    that doesn't exist.
+
+    Plan 4 C3.2. Used when an operator removes a node that's
+    currently drained — the drain entry would otherwise become an
+    orphan that surfaces as a warning in ``list-drained`` and
+    ``maxim doctor``.
+
+    Unlike :func:`resume_node` this does NOT validate ``name``
+    against the mesh node set, because the caller is in the middle
+    of removing the node and the validity check would race with its
+    own mutation. The caller is responsible for ensuring this is
+    only invoked as part of a ``remove-node`` flow, never as a
+    user-facing verb.
+
+    Returns
+    -------
+    bool
+        True if the entry was removed, False if it wasn't drained
+        in the first place. Caller uses this to render a visible
+        message ("also cleared from drain state") only when
+        something actually changed.
+
+    Raises
+    ------
+    DrainError
+        If the filelock timeout elapses.
+    """
+    state_path = drain_state_path()
+    try:
+        with _lock(state_path):
+            current = _load_names(state_path)
+            if name not in current:
+                return False
+            current.discard(name)
+            _write(state_path, current)
+            return True
+    except _FileLockTimeout as e:
+        raise DrainError(
+            f"drain state locked — another maxim process holds "
+            f"{_lock_path(state_path)} for more than 10s. Check with "
+            f"`lsof {_lock_path(state_path)}` and retry."
+        ) from e
+
+
 __all__ = [
     "DrainError",
     "DrainReadResult",

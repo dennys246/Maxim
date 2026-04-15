@@ -136,7 +136,7 @@ traffic.
 **Report:** [../experiments/results/llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md)
 **Rerun runbook:** [../experiments/protocols/bench_recovery_time_rerun.md](../experiments/protocols/bench_recovery_time_rerun.md)
 
-### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2 ✅ SHIPPED, C3.1 ✅ SHIPPED, rest of C3 DEFERRED)
+### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2 ✅ SHIPPED, C3.1 ✅ SHIPPED, C3.2 ✅ SHIPPED, rest of C3 DEFERRED)
 
 **Stage C1 — mesh.yml + CLI verb foundations — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c1-mesh-yml`). Delivered as a read-only-verbs slice of the original Stage C after pre-merge review folded drain state + `drain:` schema field to C2:
 
@@ -175,7 +175,7 @@ Live smoke (RTX 5080 leader via Cloudflare tunnel) validated list-nodes, `--json
 | Orphan validation | `DrainReadResult.orphans` + orphan warn in `doctor` + `list-drained` footer | `TestOrphanValidation::test_orphans_surfaced_on_read` + doctor equivalent |
 | Permission preservation | `atomic_write_text(preserve_mode=True)` | `TestPreserveMode::test_preserves_0600_on_rewrite` + setuid bits guard |
 
-**Deferred to C3:** `--node install` + VRAM precheck, `--node refresh`, `add-node`, `remove-node`, `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation. The `KeyedRateLimiter` dormant code from Plan 1 R0 lights up in C3.
+**Deferred to C3:** `--node install` + VRAM precheck, `--node refresh`, `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation. The `KeyedRateLimiter` dormant code from Plan 1 R0 lights up in C3. **`add-node` + `remove-node` shipped in C3.2** (see below).
 
 **Stage C3.1 — `init-mesh` verb — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c3.1-init-mesh`). The smallest C3 piece, separated to unblock drain/resume on `peer.yml`-only installs without waiting for the bigger C3 surface (admin API, rate limiting). Delivered:
 
@@ -198,7 +198,25 @@ Live smoke (RTX 5080 leader via Cloudflare tunnel) validated list-nodes, `--json
 
 **`peer.yml` is left in place by design.** `runtime/role.py` reads `peer.yml` existence as part of the role detection decision order (Plan 2 R2a). Deleting or moving it post-init-mesh would break role detection silently. The two files coexist: `peer.yml` is the role-detection signal + simple-single-leader config; `mesh.yml` is the multi-node topology surface that drain/resume + `list-nodes` consume.
 
-**Architectural note (write path):** `write_mesh_config` is the first caller of `atomic_write_secret` outside of the C2 fold. Validates the C2 invariant ("credential-bearing files use `atomic_write_secret`, not `atomic_write_text(preserve_mode=True)`") in production code. The `peer/config.py::write_peer_config` function currently uses plain `path.write_text` + explicit `os.chmod` — that's a latent inconsistency from before the C2 invariant landed, NOT in C3.1 scope. Filed as a follow-up; cleanup is one-liner replacement to `atomic_write_secret`.
+**Architectural note (write path):** `write_mesh_config` is the first caller of `atomic_write_secret` outside of the C2 fold. Validates the C2 invariant ("credential-bearing files use `atomic_write_secret`, not `atomic_write_text(preserve_mode=True)`") in production code. The `peer/config.py::write_peer_config` function was folded to use `atomic_write_secret` too in the C3.1 pre-merge review (A4 fold) — the cross-confirmed memo from the C3.1 architecture lens convinced the implementer that leaving the inconsistency was a future-reviewer footgun.
+
+**Stage C3.2 — `add-node` + `remove-node` verbs — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c3.2-add-remove-node`). Closes the gap C3.1 left open: operators can now grow/shrink `mesh.yml::nodes` from the CLI without hand-editing. Delivered:
+
+- **`src/maxim/peer/init_mesh.py` → `src/maxim/peer/mesh_setup.py`** — renamed because the file grew from one verb to three. The "operator-explicit one-shot setup verbs" category is now the right grouping. Tests file renamed in lockstep (`test_init_mesh.py` → `test_mesh_setup.py`).
+- **`maxim peer add-node <name> --url <url> [--role peer|leader] [--force]`** (~155 LOC) — append-or-replace a node. URL validation is **syntax-only** at add time, matching C1's "DNS deferred to probe time" rule (the operator runs `maxim peer --node <name> status` immediately after to verify reachability). `--force` replaces an existing node in place, preserving operator-typed node order. `MeshNode.__post_init__` validation rejects yaml-unsafe characters (newlines, whitespace+#) at construction time.
+- **`maxim peer remove-node <name>`** (~110 LOC) — drop a node from `mesh.yml::nodes`. **Side effect:** auto-clears any drain state for the node with a visible "also cleared from drain state" message (per the C3.2 design choice (c) — automatic clear with operator-visible warning). Refuses if `<name>` is `mesh.yml::self` (you can't delete the running daemon's identity); the error includes a 3-step workaround. Refuses if removing would leave an empty mesh (parser requires ≥1 node).
+- **`src/maxim/peer/drain_state.py::clear_drain_for_removed_node(name)`** — new helper that unconditionally removes a name from the drain set under lock. Distinct from `resume_node` because the caller is in the middle of removing the node, so the validation-against-mesh check would race with the caller's own mutation. Returns bool so the caller can render the visible message only when something actually changed.
+- **CI grep allow-list extended** — `mesh_setup.py` + `test_mesh_setup.py` (formerly `init_mesh.py` + `test_init_mesh.py`). The strict allow-list invariant from C3.1 still holds: only the setup verbs may call `write_mesh_config`. Per the memory note `feedback_strict_grep_caller_allowlist.md`, this is the "expected pattern" extension and the CLAUDE.md C2 invariant lesson was updated in the same commit.
+- **CLAUDE.md C2 invariant lesson updated** — names all three sanctioned writers (`init-mesh`, `add-node`, `remove-node`) and references the rename + the broader "future verbs go in `mesh_setup.py` too unless they're better expressed as runtime mutable state in `~/.maxim/util/`."
+- **25 new tests** in `test_mesh_setup.py` (`TestAddNode`, `TestRemoveNode`, `TestPeerYmlPreservation`) covering the full add/remove decision tree + drain-state-cleanup behavior + peer.yml preservation regression guard. Total `test_mesh_setup.py` count: 50.
+
+**Design choices locked in (operator confirmed before implementation):**
+
+1. **URL validation is syntax-only** in `add-node`, not probe-before-add. Matches C1's offline-friendly parser invariant. Operator runs `--node X status` after if they want to verify reachability.
+2. **`remove-node` auto-clears drain state with a visible warning** (option (c)). Not silent (option (a)) because the operator should see what happened. Not refuse-if-drained (option (b)) because two-step removal is friction for a UX where the operator already decided to delete the node.
+3. **`add-node --force` replaces by name in place**, preserving operator-typed node order (so `list-nodes` doesn't shuffle on a force-add).
+4. **`remove-node <self>` refuses always.** No `--force-self` because writing a `mesh.yml` that doesn't contain `self` produces a parser-rejecting file. The error documents the 3-step workaround (edit `mesh.yml::self` by hand, restart, then re-remove).
+5. **Module organization: rename `init_mesh.py` → `mesh_setup.py`** to group the 3 verbs together rather than fragment into `node_ops.py` + `node_cli.py`. The "operator-explicit setup verbs" category is the right grouping; future C3 verbs (cluster key rotation if it ends up writing `mesh.yml`) go here.
 
 **C3 remaining scope.** The original Plan 4 scope (R3.6-lite, ~300 LOC):
 

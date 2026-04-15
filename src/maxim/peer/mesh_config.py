@@ -179,6 +179,24 @@ class MeshConfig:
                 "MeshConfig.nodes must contain at least one MeshNode "
                 "(parser requires the same; round-trip would fail otherwise)"
             )
+        # A1 fold (C3.2 pre-merge review, cross-confirmed E9 + A1):
+        # parse_mesh_config validates `self_name in nodes` but the
+        # constructor did not. C3.2's add-node / remove-node verbs
+        # construct MeshConfig directly, bypassing the parser-side
+        # check. Today it's unreachable (remove-node refuses self,
+        # add-node preserves existing self_name), but the gap will
+        # bite the first C3.3 verb that touches self_name (rename-node,
+        # set-self, cluster-key rotation that changes node identity).
+        # Hoist the check now so write-side and read-side parity holds.
+        # Same E7 pattern from C3.1 applied to a different invariant.
+        node_names = {n.name for n in self.nodes}
+        if self.self_name not in node_names:
+            raise ValueError(
+                f"MeshConfig.self_name={self.self_name!r} does not match any node "
+                f"in nodes (known: {sorted(node_names)}). The parser requires "
+                f"self to match a node name; constructing a config that violates "
+                f"this would produce a mesh.yml that fails to parse on next read."
+            )
 
     def get_node(self, name: str) -> MeshNode | None:
         for n in self.nodes:
@@ -461,19 +479,22 @@ def write_mesh_config(cfg: MeshConfig, path: Path | None = None) -> Path:
     old file or the new file, never a half-written file. No reader-
     side lock is needed.
 
-    **Sanctioned caller (architecture A1 fold):** the only sanctioned
-    caller of this function is :func:`maxim.peer.init_mesh.run_init_mesh`
-    — the explicit operator-invoked one-shot setup verb. The C2
-    invariant ("mesh.yml is declarative; runtime code paths are
-    read-only") permits operator-explicit edits but forbids automatic
-    runtime / admin-API writes to ``mesh.yml``. A CI grep enforces
-    the allow-list in ``.github/workflows/test.yml``: any new caller
-    of ``write_mesh_config`` outside ``init_mesh.py`` will fail CI
+    **Sanctioned caller (architecture A1 fold from C3.1 + C3.2 reframe):**
+    the only sanctioned callers of this function live in
+    :mod:`maxim.peer.mesh_setup` — the operator-invoked one-shot
+    setup verbs (``init-mesh``, ``add-node``, ``remove-node`` as of
+    Plan 4 C3.2). The C2 invariant ("mesh.yml is declarative;
+    runtime code paths are read-only") permits operator-explicit
+    edits but forbids automatic runtime / admin-API writes to
+    ``mesh.yml``. A CI grep enforces the allow-list in
+    ``.github/workflows/test.yml``: any new caller of
+    ``write_mesh_config`` outside ``mesh_setup.py`` will fail CI
     with a hint pointing at this docstring. If you have a legitimate
-    new caller (e.g. C3 cluster-key rotation that mutates only the
-    secret field, leaving topology untouched), update both the
-    allow-list AND the C2 CLAUDE.md invariant in the same commit so
-    the rule remains coherent.
+    new caller (e.g. a future operator-invoked verb that grows
+    ``mesh_setup.py``), update both the allow-list AND the C2
+    CLAUDE.md invariant lesson in the same commit so the rule
+    remains coherent. **First ask whether the new write belongs in
+    `~/.maxim/util/` instead** — automatic mutations always do.
 
     **E4 fold (C3.1 pre-merge review):** chmod failure on first
     write is no longer silently swallowed — it surfaces via
