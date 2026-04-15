@@ -1142,8 +1142,9 @@ def _cmd_logs(argv: list[str]) -> int:
 # :mod:`maxim.peer.install_core` so both this verb and the mesh-aware
 # ``maxim peer --node <name> install`` verb can import from the same
 # leaf module without inverting the cli → mesh_cli coupling direction.
-# A CI grep in .github/workflows/test.yml locks ``/v1/admin/install``
-# to appear only in install_core.py + its test file.
+# A CI grep in ``.github/workflows/test.yml`` locks the admin-install
+# endpoint string to the core module — see install_core's module
+# docstring for the full allow-list rationale.
 from maxim.peer.install_core import (
     KNOWN_EXTRAS,
     _looks_like_url,

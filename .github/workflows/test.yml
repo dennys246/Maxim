@@ -152,20 +152,29 @@ jobs:
             exit 1
           fi
           # Plan 4 C3.3 install_core single-source-of-truth rule:
-          # install_on_target is the only function that POSTs to the
-          # leader's /v1/admin/install endpoint. Matches the precedent
-          # set by _MaximPeerBackend.complete_with_usage (Plan 3 R2.5)
-          # and write_mesh_config (Plan 4 C3.1): the shared HTTP core
-          # has a strict allow-list so future C3.5 (--node update /
-          # --node restart), C3.6 (--node llm), and admin API verbs
-          # cannot silently inline a copy.
+          # install_on_target is the only CLIENT-side function that
+          # POSTs to the leader's /v1/admin/install endpoint. Matches
+          # the precedent set by _MaximPeerBackend.complete_with_usage
+          # (Plan 3 R2.5) and write_mesh_config (Plan 4 C3.1): the
+          # shared HTTP core has a strict allow-list so future C3.5
+          # (--node update / --node restart), C3.6 (--node llm), and
+          # admin API verbs cannot silently inline a copy.
           #
-          # The rule: only install_core.py may reference the literal
-          # string "/v1/admin/install". Its test file is allow-listed
-          # for regression assertions.
+          # Allow-list rationale:
+          # - install_core.py: the canonical client (where the rule
+          #   points new callers).
+          # - test_peer_install.py: regression assertions against the
+          #   wire-level shape.
+          # - leader_proxy.py: the SERVER side. The leader's admin
+          #   endpoint handler must literally match the string to
+          #   dispatch POST requests. Not a client caller — it's the
+          #   receiver. A separate invariant would be needed to
+          #   guard the server side; keeping leader_proxy in the
+          #   allow-list keeps this grep scoped to "only one client."
           INSTALL_CORE_MATCHES=$(grep -rn --include="*.py" -F "/v1/admin/install" src/maxim/ tests/ \
             | grep -vE "^src/maxim/peer/install_core\.py:" \
             | grep -vE "^tests/unit/test_peer_install\.py:" \
+            | grep -vE "^src/maxim/runtime/leader_proxy\.py:" \
             || true)
           if [ -n "$INSTALL_CORE_MATCHES" ]; then
             echo "ERROR: new caller of /v1/admin/install detected (Plan 4 C3.3)"
