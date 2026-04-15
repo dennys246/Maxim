@@ -66,24 +66,23 @@ class PersistenceMixin:
             # Serialize associative graph edges
             graph_data = self._graph.to_dict()
 
-            # P3a Stage 1 reserved slot. EpisodeStore populates this when wired.
-            episodes_data: list[dict[str, Any]] = []
-            episode_store = getattr(self, "_episode_store", None)
-            if episode_store is not None:
-                episodes_data = episode_store.to_dict().get("episodes", [])
-
-            next_episode_ordinal = getattr(self, "_next_episode_ordinal", 0)
-
-            # P4 Stage 1 — snapshot the node-modality sidecar under the
-            # episode lock. Empty dict is the well-defined no-op state
-            # for instances that never received a modality-tagged event.
-            episode_lock = getattr(self, "_episode_lock", None)
-            node_modality_data: dict[str, str] = {}
-            if episode_lock is not None:
-                with episode_lock:
-                    node_modality_source = getattr(self, "_node_modality", None)
-                    if node_modality_source:
-                        node_modality_data = dict(node_modality_source)
+            # P4 Stage 1 — snapshot all episode-binding state (episodes,
+            # ordinal, modality sidecar) under a SINGLE _episode_lock
+            # acquisition. Previous implementation held _episode_lock only
+            # around the sidecar copy and touched _episode_store / the
+            # ordinal outside of it, which exposed a torn-read window to
+            # any concurrent observe_episode_event call. Round 2 fold
+            # (Arch-lens #1): close the window by widening the lock to
+            # cover every episode-subsystem read in dump(). Lock-
+            # acquisition order is _rwlock.read() → _episode_lock,
+            # verified deadlock-free by inspection (no _episode_lock
+            # holder ever acquires _rwlock).
+            with self._episode_lock:
+                episodes_data: list[dict[str, Any]] = self._episode_store.to_dict().get("episodes", [])
+                next_episode_ordinal = self._next_episode_ordinal
+                node_modality_data: dict[str, str] = (
+                    dict(self._node_modality) if self._node_modality is not None else {}
+                )
 
             return {
                 "saved_at": time.time(),
@@ -175,46 +174,51 @@ class PersistenceMixin:
             if graph_data:
                 self._restore_graph(graph_data)
 
-            # P3a Stage 1 — restore episodes into the EpisodeStore if wired,
-            # rebuild the binding graph from the loaded episodes, and
-            # restore the monotonic episode-id counter.
-            episode_store = getattr(self, "_episode_store", None)
-            if episode_store is not None:
-                episode_store.load_from_dict({"episodes": state.get("episodes", [])})
+            # P3a + P4 Stage 1 — restore all episode-binding state under
+            # a SINGLE _episode_lock acquisition. Pre-Round-2-fold this
+            # block held _rwlock.write() only for the episode_store /
+            # binding_graph / ordinal restore and acquired _episode_lock
+            # separately just for the sidecar, exposing a torn-read
+            # window to any concurrent observe_episode_event call that
+            # landed between the two.  The P4 sidecar made the torn-
+            # read observable via retrieve_cross_modal's
+            # sidecar-vs-binding-graph consistency dependency, so the
+            # Arch-lens Round 2 review mandated widening the lock.
+            # Lock-acquisition order _rwlock.write() → _episode_lock is
+            # verified deadlock-free by inspection — no _episode_lock
+            # holder ever acquires _rwlock.
+            with self._episode_lock:
+                self._episode_store.load_from_dict({"episodes": state.get("episodes", [])})
 
-                binding_graph = getattr(self, "_binding_graph", None)
-                cfg_episode = getattr(getattr(self, "config", None), "episode", None)
-                hebbian_cfg = getattr(cfg_episode, "hebbian", None) if cfg_episode is not None else None
-                if binding_graph is not None and hebbian_cfg is not None:
-                    # Reset and rebuild — the pre-load binding graph state
-                    # is authoritative only against the pre-load episodes.
-                    # Clear internal structures in place rather than
-                    # calling __init__ on a live instance.
-                    with binding_graph._lock:
-                        binding_graph._nodes.clear()
-                        binding_graph._outgoing.clear()
-                        binding_graph._incoming.clear()
+                # Rebuild the binding graph from the loaded episodes —
+                # the pre-load binding graph state is authoritative only
+                # against the pre-load episodes.
+                hebbian_cfg = self.config.episode.hebbian
+                with self._binding_graph._lock:
+                    self._binding_graph._nodes.clear()
+                    self._binding_graph._outgoing.clear()
+                    self._binding_graph._incoming.clear()
 
-                    from maxim.memory.episode import apply_hebbian_on_close
+                from maxim.memory.episode import apply_hebbian_on_close
 
-                    for ep in episode_store.all_episodes():
-                        apply_hebbian_on_close(
-                            binding_graph,
-                            ep,
-                            hebbian_init=hebbian_cfg.init,
-                            hebbian_delta=hebbian_cfg.delta,
-                            hebbian_max=hebbian_cfg.max_weight,
-                        )
+                for ep in self._episode_store.all_episodes():
+                    apply_hebbian_on_close(
+                        self._binding_graph,
+                        ep,
+                        hebbian_init=hebbian_cfg.init,
+                        hebbian_delta=hebbian_cfg.delta,
+                        hebbian_max=hebbian_cfg.max_weight,
+                    )
 
                 # Restore the monotonic ordinal. Prefer the dumped value;
-                # fall back to deriving from max episode id for corrupt-file
-                # recovery (episodes named ep_N).
+                # fall back to deriving from max episode id for corrupt-
+                # file recovery (episodes named ep_N).
                 dumped_ordinal = state.get("next_episode_ordinal")
                 if isinstance(dumped_ordinal, int) and dumped_ordinal >= 0:
                     self._next_episode_ordinal = dumped_ordinal
                 else:
                     max_ordinal = 0
-                    for ep in episode_store.all_episodes():
+                    for ep in self._episode_store.all_episodes():
                         if ep.id.startswith("ep_"):
                             try:
                                 max_ordinal = max(max_ordinal, int(ep.id.split("_", 1)[1]))
@@ -222,22 +226,18 @@ class PersistenceMixin:
                                 continue
                     self._next_episode_ordinal = max_ordinal
 
-            # P4 Stage 1 — replace the per-node modality sidecar
-            # wholesale (clear-then-load, NOT merge). Required for P3.5
-            # atomic-rollback semantics: a failed restore_into rolls
-            # back to the pre-mutation dump, and the rollback must
-            # scrub stale entries left behind by the failed attempt.
-            # If load_state merged instead of replacing, those stale
-            # entries would survive rollback and the cross-modal
-            # retrieval path would silently return ghost partners that
-            # no longer correspond to any episode in the store.
-            episode_lock = getattr(self, "_episode_lock", None)
-            if episode_lock is not None:
-                with episode_lock:
-                    sidecar = getattr(self, "_node_modality", None)
-                    if sidecar is not None:
-                        sidecar.clear()
-                        sidecar.update(temp_node_modality)
+                # P4 Stage 1 — replace the per-node modality sidecar
+                # wholesale (clear-then-load, NOT merge). Required for
+                # P3.5 atomic-rollback semantics: a failed restore_into
+                # rolls back to the pre-mutation dump, and the rollback
+                # must scrub stale entries left behind by the failed
+                # attempt. If load_state merged instead of replacing,
+                # those stale entries would survive rollback and the
+                # cross-modal retrieval path would silently return
+                # ghost partners that no longer correspond to any
+                # episode in the store.
+                self._node_modality.clear()
+                self._node_modality.update(temp_node_modality)
 
     def save(self, path: str | None = None) -> None:
         """Save hippocampus to JSON file.

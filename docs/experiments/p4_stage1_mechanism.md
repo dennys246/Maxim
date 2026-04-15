@@ -9,7 +9,7 @@
 
 Stage 1 lands the **cross-modal binding mechanism** end-to-end on synthetic embeddings: nodes of different modalities co-occurring in the same hippocampus episode now bind via the existing Hebbian close path AND can cue each other through the new modality-filtered retrieval entry point. **No CLIP, no real images, no head-to-head sweep** — Stage 1 ships the plumbing. Stage 2 plugs in real CLIP and Oxford Flowers-102; Stage 3 runs the 20-seed three-arm head-to-head against the OpenCLIP shared-space baseline (the 1.0 gate).
 
-25 mechanism + regression tests pass. 176 tests across the broader episode / persistence / hippocampus surface stay green. Zero regressions in P3a, P3b, or P3.5.
+34 mechanism + regression tests pass after the Round 2 pre-merge review fold. 185 tests across the broader episode / persistence / hippocampus surface stay green. Full fast suite (4702 tests) clean apart from two pre-existing worktree-environment failures in `tests/unit/test_leader_proxy.py::TestVersionInfo` (unrelated to P4 Stage 1 — `get_version_info` checks `os.path.isdir(repo_root + "/.git")` but git worktrees use a `.git` file). Zero regressions in P3a, P3b, or P3.5.
 
 ## What's wired
 
@@ -38,21 +38,25 @@ Stage 1 lands the **cross-modal binding mechanism** end-to-end on synthetic embe
 - `dump()` writes the sidecar under `"node_modality"`. Acquires `_episode_lock` inside the existing `_rwlock.read()` block — same nested-lock convention `episode_store.to_dict()` already uses. Acquisition order `_rwlock → _episode_lock` is verified deadlock-free by inspection (no `_episode_lock` holder ever acquires `_rwlock`).
 - `load_state()` parses + validates outside any lock (unknown modality literals raise `ValueError` BEFORE any mutation), then **clear-then-load** the sidecar inside the existing `_rwlock.write()` block. Wholesale replacement is required for P3.5 atomic rollback semantics: a failed `restore_into` rolls back to the pre-mutation dump, and the rollback must scrub stale entries left behind by the failed attempt.
 
-## Stage 1 test surface (25 tests)
+## Stage 1 test surface (34 tests after Round 2 fold)
 
-### `tests/substrate/test_p4_00_vacuous_pass_guard.py` (8 tests)
+### `tests/substrate/test_p4_00_vacuous_pass_guard.py` (13 tests)
 
-The run-first guard. The `00` prefix forces alphabetical pytest collection so this file runs before any other `test_p4_*` file. Asserts the cluster-aware fixture's mathematical property holds end-to-end against a real `EntorhinalCortex` instance. If this file fails, the rest of P4 Stage 1 is uninterpretable — random gaussians (no shared centroid) would produce GREEN binding tests on a stub mechanism because each sample would land in its own EC node.
+The run-first guard. The `00` prefix forces alphabetical pytest collection so this file runs before any other `test_p4_*` file.
 
-- `TestFixtureGeometry` (4): pure numpy validation of within-pair, cross-pair, and orthogonal-centroid invariants
-- `TestECClusteringVacuousPassGuard` (4): paired text/vision samples collapse to one EC node id within their modality bucket; cross-pair samples land in distinct ids; text+vision for one pair land in DIFFERENT ids (EC's modality bucket filter)
+- `TestFixtureGeometry` (9): within-pair / cross-pair / orthogonal-centroid invariants, plus a **dim-parametrized dim-invariance test across 64 / 128 / 384 / 512 / 768** pinning the Round 2 Arch-lens fold that rescaled `noise_scale → noise_scale / sqrt(dim)` so within-pair similarity doesn't depend on the embedding dimension.
+- `TestECClusteringVacuousPassGuard` (4): paired samples collapse to one EC node id; cross-pair samples land in distinct ids; text+vision for one pair land in DIFFERENT ids.
 
-### `tests/substrate/test_p4_cross_modal_mechanism.py` (17 tests)
+### `tests/substrate/test_p4_cross_modal_mechanism.py` (21 tests)
 
-- `TestAutoTagAtEpisodeClose` (4): episode close drains the buffer; legacy events do NOT populate sidecar; mixed-modality episodes tag each node with its event's modality
+- `TestAutoTagAtEpisodeClose` (3): episode close drains the buffer; legacy events do NOT populate sidecar; mixed-modality episodes tag each node with its event's modality
 - `TestRetrieveCrossModal` (6): forward / reverse retrieval; same-modality cue raises; untagged cue does not raise; no-cross-modal-episodes returns empty; multi-pair routing isolates partners
-- `TestSnapshotPatternFilter` (2): mock-spy on `retrieve_on_cue` confirms the closure has at least one frozenset cell; side-thread holds `_episode_lock` and the closure must still return — proves the closure is lock-free post-construction (mirror of the P3b regression guard)
-- `TestPersistence` (5): round-trip preserves sidecar; unknown modality literal rejected loudly; non-dict payload rejected; legacy snapshot (no `node_modality` key) loads cleanly; clear-then-load semantics replace wholesale; **atomic rollback regression guard** monkeypatches `nac_from_snapshot` to raise after the hippocampus has already been mutated, then asserts post-rollback `_node_modality` matches the pre-mutation state EXACTLY (no stale entries from the failed restore attempt)
+- `TestSnapshotPatternFilter` (2): closure has a frozenset cell AND the cell content equals `frozenset({"vision_mug"})` exactly (Round 2 Exec-lens fold — shape-only check let a regression writing `frozenset(_node_modality.keys())` slip through); side-thread holds `_episode_lock` and closure still returns
+- `TestPersistence` (5): round-trip; **unknown modality literal rejected WITH prior hippocampus state preserved** (Round 2 Exec-lens fold — previous version only asserted empty state was still empty after the raise); non-dict payload rejected; legacy snapshot loads cleanly; clear-then-load replaces wholesale; **atomic rollback regression guard** monkeypatches `nac_from_snapshot` to raise AFTER verifying hippocampus has been mutated to state C (Round 2 Exec-lens fold — guards against a future `SNAPSHOT_KINDS` reordering silently trivial-passing)
+- `TestCueExemptionWithInGraphUntaggedCue` (1): Round 2 Exec-lens fold. Pins the cue-exemption code path (`node_id == cue_node_id or node_id in allowed`) for a probe cue that IS in the binding graph but NOT tagged in `_node_modality` — directly exercises the exemption branch.
+- `TestLastWriteWinsOnDuplicateNodeIdWithinEpisode` (1): Round 2 Arch-lens fold. Pins the degenerate-case contract (same node id, two modalities in one episode) that the drain comment described but had no test for.
+- `TestStageThreeLimitation` (1): Round 2 Arch-lens fold. Pins the current single-hop-only cross-modal limitation as a regression guard. If a future refactor enables multi-hop traversal through same-modality intermediates (`text_cue → text_bridge → vision_target`), this test FAILS and forces an explicit decision. See the PR description for the Stage 2/3 design-decision note.
+- `TestConcurrencyCrossLockSmoke` (1): Round 2 Exec-lens fold. Spawns concurrent `dump()` + `observe_episode_event` workers for 0.5s and asserts both make forward progress. Guards against any future `_episode_lock → _rwlock` inversion that would deadlock against `dump()`'s `_rwlock → _episode_lock` order.
 
 ## What Stage 1 deliberately does NOT include
 
@@ -66,12 +70,31 @@ The run-first guard. The `00` prefix forces alphabetical pytest collection so th
 ## Pass gate (from substrate_p4_cross_modal_binding.md Stage 1)
 
 1. ✅ Stage 1.5 vacuous-pass guard passes — the cluster-aware fixture lands paired items in one EC node and unpaired items in distinct nodes
-2. ✅ All ~10 mechanism tests pass — actually 17, exceeding the plan's draft count
+2. ✅ All ~10 mechanism tests pass — actually 21 after Round 2 fold, exceeding the plan's draft count
 3. ✅ Lock-inversion regression guard passes — closure does not block when `_episode_lock` is held by another thread
-4. ✅ Atomic-rollback regression guard passes — clear-then-load semantics scrub stale entries on failed restore
-5. ✅ Substrate slice + bio-system slice green, 0 regressions (176 tests across P3a/P3b/P3.5/P4/hippocampus)
-6. ✅ `Hippocampus.dump()` / `load_state` round-trip preserves `_node_modality` exactly
-7. ✅ Ruff check + format clean
+4. ✅ Cross-lock concurrency smoke test passes — dump + observe make forward progress under contention
+5. ✅ Atomic-rollback regression guard passes — clear-then-load semantics scrub stale entries on failed restore; guarded against `SNAPSHOT_KINDS` reordering via mid-test assertion
+6. ✅ Substrate slice + bio-system slice green, 0 regressions (185 tests across P3a/P3b/P3.5/P4/hippocampus)
+7. ✅ Full fast suite clean (4702 passed, 1 skipped sentence-transformers path, 2 pre-existing worktree environmental failures in `TestVersionInfo` unrelated to P4)
+8. ✅ `Hippocampus.dump()` / `load_state` round-trip preserves `_node_modality` exactly
+9. ✅ Ruff check + format clean
+
+## Round 2 pre-merge review fold summary
+
+Two parallel reviewers (Executor lens + Architecture lens) each produced 10 findings. Cross-confirmed classes:
+
+- **Consistency windows** — Arch #1 (load_state split state across `_rwlock.write()` and `_episode_lock`) + Exec #6 (drain-before-add created an asymmetric "sidecar entries without graph nodes" failure window). Both fold directions folded: `load_state` now wraps the entire episode-binding restore block in a single `with _episode_lock:` inside the existing `_rwlock.write()`; `_close_pending_episode_locked` now drains the modality buffer LAST, after both `_episode_store.add` and `apply_hebbian_on_close` succeed, so the sidecar becomes essentially-infallible and any earlier-step failure leaves all three pieces of episode-binding state consistently unmutated.
+- **Cue handling** — Arch #3 (multi-hop traversal through same-modality intermediates silently blocked — Stage 3 landmine) + Exec #4 (cue-exemption code path untested for the in-graph-but-untagged case). The Stage 3 design decision is explicitly deferred — the current single-hop-only limitation is pinned in `TestStageThreeLimitation` as a regression guard so a future "fix" forces an explicit design decision rather than silent behavior change. The Exec #4 test gap is closed with a new test class that directly exercises the exemption branch.
+
+Other IMPORTANT folds: runtime validation of `target_modality` literal (Exec #8 — mirrors `load_state` validation), frozenset content assertion (Exec #1), load_state rejects-with-prior-state-preserved (Exec #3), mid-test assertion in the rollback test guarding against `SNAPSHOT_KINDS` reordering (Exec #2), concurrency cross-lock smoke test (Exec #5), last-write-wins regression guard (Arch #7).
+
+Other MINOR folds: dim-invariant `noise_scale` parameter (Arch #4) replacing the dim-coupled `noise_std`, cargo-cult `getattr` defenses dropped (Arch #8), `cosine_similarity` zero-norm guard removed (Exec #10 — let nan be loud), docstring updates for point-in-time read semantics (Arch #2).
+
+Deferred to PR note, not folded: Arch #5 (error-message PII — not applicable; node ids are internal validated identifiers matching the `BackendError.fix_hint` risk profile). Arch #6 (reset-path hygiene) downgraded to PR note — the audit came back empty; no existing reset paths touch episode state, so there is nothing to wire into today. Exec #9 (`_start_episode` redundant `last_tick` set) — cosmetic.
+
+## Open Stage 2/3 design decision
+
+**Should Stage 3 split `retrieve_on_cue`'s `node_filter` into `traversal_filter` (always True) and `result_filter` (target-modality only)?** The current single-hop-only behavior is structurally locked by passing one `node_filter` to `spreading_activation`, which applies to both traversal seeds and returned nodes. A future split would enable multi-hop cross-modal paths through same-modality intermediates — potentially relevant for the P4 mug test if real CLIP + real episodes produce rich Hebbian chains where direct text↔vision edges are rare. The Stage 1 fixture has no such chains so this limitation does not affect Stage 1 shipment. Decision needs to happen BEFORE Stage 3 runs the head-to-head so the metric definition is stable. `TestStageThreeLimitation` is the pin — if the decision is "fix it," update the test to assert the new behavior in the same PR.
 
 ## Critical methodological constraint preserved through Stage 1
 

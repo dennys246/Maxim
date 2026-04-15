@@ -44,7 +44,7 @@ class TestFixtureGeometry:
         """Paired text-text cosine similarity must clear EC's 0.40 with
         substantial headroom — the safety margin is what lets the
         EC-side guard test below produce a deterministic pass."""
-        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_std=0.05, seed=42)
+        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
         within = [
             cosine_similarity(p.text_samples[i], p.text_samples[j])
             for p in pairs
@@ -58,7 +58,7 @@ class TestFixtureGeometry:
 
     def test_within_pair_vision_vision_above_ec_threshold(self) -> None:
         """Same as text-text but for vision modality."""
-        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_std=0.05, seed=42)
+        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
         within = [
             cosine_similarity(p.vision_samples[i], p.vision_samples[j])
             for p in pairs
@@ -73,7 +73,7 @@ class TestFixtureGeometry:
         pairs accidentally share a centroid direction, two unrelated
         objects would silently merge into one cluster and the binding
         tests below would silently mis-attribute partners."""
-        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_std=0.05, seed=42)
+        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
         cross = [
             cosine_similarity(pairs[i].text_samples[0], pairs[j].text_samples[0])
             for i in range(len(pairs))
@@ -88,12 +88,41 @@ class TestFixtureGeometry:
         """QR-based centroid generation must produce mutually
         orthogonal unit vectors. Validates the fixture generator
         itself, not the surrounding noise."""
-        pairs = make_cluster_aware_pairs(5, dim=64, k_text=1, k_vision=1, noise_std=0.0, seed=42)
+        pairs = make_cluster_aware_pairs(5, dim=64, k_text=1, k_vision=1, noise_scale=0.0, seed=42)
         for i in range(len(pairs)):
             assert abs(float(np.linalg.norm(pairs[i].centroid)) - 1.0) < 1e-9
             for j in range(i + 1, len(pairs)):
                 inner = float(np.dot(pairs[i].centroid, pairs[j].centroid))
                 assert abs(inner) < 1e-9, f"centroids {i} and {j} not orthogonal: <c_i,c_j>={inner:.6f}"
+
+    @pytest.mark.parametrize("dim", [64, 128, 384, 512, 768])
+    def test_within_pair_similarity_is_dim_invariant(self, dim: int) -> None:
+        """Round 2 Arch-lens fold: with noise_scale (not bare noise_std),
+        within-pair expected cosine similarity depends ONLY on
+        noise_scale, not on dim. The default noise_scale=0.4 should
+        produce within-pair sim ≈ 1 / (1 + 0.16) ≈ 0.862 at every
+        reasonable embedding dim. This test verifies the dim-invariance
+        property explicitly so a future Stage 2 caller picking CLIP's
+        512-d space does not silently regress the fixture's EC-
+        clustering guarantee."""
+        pairs = make_cluster_aware_pairs(3, dim=dim, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
+        within = [
+            cosine_similarity(p.text_samples[i], p.text_samples[j])
+            for p in pairs
+            for i in range(len(p.text_samples))
+            for j in range(i + 1, len(p.text_samples))
+        ]
+        mean_within = float(np.mean(within))
+        # Expected ≈ 0.862; accept [0.75, 0.95] band to absorb finite-
+        # sample variance without letting a regression slip through.
+        assert 0.75 < mean_within < 0.95, (
+            f"dim={dim}: within-pair mean similarity {mean_within:.3f} "
+            f"outside the dim-invariant band [0.75, 0.95] — the 1/sqrt(dim) "
+            f"noise scaling may have regressed"
+        )
+        assert min(within) > 0.60, (
+            f"dim={dim}: within-pair min {min(within):.3f} ≤ 0.60 would cluster unsafely at EC's 0.40 threshold"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -114,7 +143,7 @@ class TestECClusteringVacuousPassGuard:
         Run the first sample through pattern_complete_or_separate (which
         will create a new node), register it, then run the remaining
         samples and assert each is_new=False with the same node_id."""
-        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_std=0.05, seed=42)
+        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
 
         for pair in pairs:
             first = ec.pattern_complete_or_separate(pair.text_samples[0].tolist(), modality="text")
@@ -136,7 +165,7 @@ class TestECClusteringVacuousPassGuard:
     def test_paired_vision_samples_collapse_to_one_node(self, ec: EntorhinalCortex) -> None:
         """Symmetric to the text test — all vision samples for one pair
         share one node id."""
-        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_std=0.05, seed=42)
+        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
 
         for pair in pairs:
             first = ec.pattern_complete_or_separate(pair.vision_samples[0].tolist(), modality="vision")
@@ -153,7 +182,7 @@ class TestECClusteringVacuousPassGuard:
         accidental cluster collisions). Register the first text sample
         of each pair, then re-query and assert each first sample maps
         to ITS own node, never another pair's."""
-        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_std=0.05, seed=42)
+        pairs = make_cluster_aware_pairs(5, dim=64, k_text=3, k_vision=3, noise_scale=0.4, seed=42)
 
         registered_ids: list[str] = []
         for pair in pairs:
@@ -180,7 +209,7 @@ class TestECClusteringVacuousPassGuard:
         modality bucket. This is the precondition for the cross-modal
         binding mechanism: two distinct nodes that co-activate in one
         episode and get bound via Hebbian close, NOT one merged node."""
-        pairs = make_cluster_aware_pairs(3, dim=64, k_text=2, k_vision=2, noise_std=0.05, seed=42)
+        pairs = make_cluster_aware_pairs(3, dim=64, k_text=2, k_vision=2, noise_scale=0.4, seed=42)
 
         for pair in pairs:
             text_result = ec.pattern_complete_or_separate(pair.text_samples[0].tolist(), modality="text")

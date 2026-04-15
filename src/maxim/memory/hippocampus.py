@@ -1369,9 +1369,54 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         nodes and retrieve_on_cue traverses normally. Same-modality
         check applies only when the cue IS tagged.
 
+        **Point-in-time read semantics.** The snapshot captures
+        ``_node_modality`` at filter-build time under ``_episode_lock``,
+        then releases the lock before delegating to
+        ``retrieve_on_cue``. A concurrent ``_close_pending_episode_locked``
+        running between release and the start of ``spreading_activation``
+        may add new edges to the binding graph whose endpoint nodes
+        carry modality tags NOT present in the frozenset — those new
+        tags are invisible to this call and surface on the NEXT call.
+        This mirrors P3b's ``episode_membership_filter`` contract;
+        callers that need fresh semantics must re-invoke. Holding
+        ``_episode_lock`` for the full ``spreading_activation`` duration
+        would prevent the torn read but violates the lock-inversion
+        rule the snapshot pattern is designed to kill.
+
+        **Stage 1 limitation: single-hop cross-modal only.** Multi-hop
+        paths that transit a same-modality intermediate node
+        (``text_cue → text_bridge → vision_target``) are silently
+        truncated because ``_modality_filter`` rejects the intermediate
+        at traversal time. The Stage 1 mug-test fixture has no such
+        chains — cross-modal partners are always direct neighbors in
+        one episode — so this limitation does not affect Stage 1 tests.
+        Whether Stage 2/3 needs chain traversal is an open design
+        question: see
+        ``test_p4_cross_modal_mechanism.py::TestStageThreeLimitation``
+        for the pin regression guard, and the PR description for the
+        Stage 2/3 design-decision note. If chain traversal is needed,
+        the fix is at the ``retrieve_on_cue`` layer — split the filter
+        into a ``traversal_filter`` (always True) and a
+        ``result_filter`` (target-modality only) — NOT a band-aid in
+        ``retrieve_cross_modal``.
+
+        **Runtime validation.** ``target_modality`` is a typed Literal
+        at the annotation layer but Python does not enforce Literal
+        values at runtime. A caller passing a typo (``"vison"``)
+        without mypy would produce an empty frozenset and silently
+        return ``[]`` — exactly the silent-no-op failure mode the
+        Literal was introduced to prevent. The explicit runtime check
+        below raises ``ValueError`` loudly on any unknown value,
+        mirroring ``load_state``'s validation of the same field.
+
         Returns the same ``list[tuple[str, float]]`` shape as
         ``retrieve_on_cue``.
         """
+        if target_modality not in ("text", "vision"):
+            raise ValueError(
+                f"retrieve_cross_modal: target_modality must be 'text' or 'vision', got {target_modality!r}"
+            )
+
         with self._episode_lock:
             cue_modality = self._node_modality.get(cue_node_id)
             if cue_modality is not None and cue_modality == target_modality:
@@ -1563,35 +1608,24 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         apply Hebbian updates to the binding graph. Caller must hold
         ``self._episode_lock``.
 
-        **P4 Stage 1 — modality drain.** Before any other close work
-        runs, drain the pending state's ``node_modality_buffer`` into
-        ``self._node_modality``. The buffer was populated by
-        ``_apply_event_to_pending`` in the same loop iteration that
-        appended each node id to ``activated_nodes``, so the structural
-        invariant "every node bound into an episode that carries
-        modality information has its modality recorded" holds end-to-end
-        from event ingestion through Hebbian close. The drain runs
-        BEFORE ``_episode_store.add(episode)`` and BEFORE
-        ``apply_hebbian_on_close`` so a partial failure in either of
-        those subsequent steps cannot leave nodes in the binding graph
-        without their modality entries on file.
+        **P4 Stage 1 — modality drain happens LAST.** After
+        ``_episode_store.add`` and ``apply_hebbian_on_close`` both
+        succeed, drain the pending state's ``node_modality_buffer``
+        into ``self._node_modality``. Drain-last is intentional per the
+        Round 2 pre-merge Executor-lens review: the drain is a pure
+        dict update (essentially infallible), so placing it last
+        means if either of the two earlier mutations raises, neither
+        the episode store nor the binding graph ends up with new
+        entries and the sidecar likewise stays consistent. The
+        symmetric "drain-first" choice introduced a window where the
+        sidecar could hold entries for nodes that never landed in the
+        binding graph; flipping the order closes that window without
+        introducing a new one.
         """
         assert self._pending_episode is not None, "caller must check before closing"
         pending = self._pending_episode
         episode = pending.finalize()
         self._pending_episode = None
-
-        # P4 Stage 1 — drain the per-node modality buffer into the
-        # sidecar BEFORE the episode_store and binding-graph mutations
-        # below. Last-write-wins on duplicate keys: if a node id
-        # appears in two events with different modalities (degenerate
-        # but legal — same node id activated by two events of opposing
-        # modality within one episode), the later event's modality
-        # overrides. Stage 1 mechanism tests do not exercise this
-        # case; the cluster-aware fixture generates disjoint id
-        # namespaces between modalities.
-        for node_id, modality in pending.node_modality_buffer.items():
-            self._node_modality[node_id] = modality
 
         # Add to store first (so the store has the episode before Hebbian
         # edges reference its nodes). EpisodeStore takes its own lock;
@@ -1628,6 +1662,21 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             hebbian_delta=hebbian_cfg.delta,
             hebbian_max=hebbian_cfg.max_weight,
         )
+
+        # P4 Stage 1 — drain the per-node modality buffer into the
+        # sidecar AFTER episode_store.add and apply_hebbian_on_close
+        # both succeed. Drain-last is intentional (Round 2 Exec-lens
+        # fold): the drain is a pure dict update, so placing it last
+        # means a partial failure in either earlier step leaves all
+        # three pieces of episode-binding state consistent (nothing
+        # added to store, nothing added to binding graph, nothing
+        # added to sidecar). Last-write-wins on duplicate keys within
+        # one pending episode's buffer — the degenerate "same node id,
+        # two different modalities in one episode" case is covered by
+        # the last-write-wins regression guard in
+        # test_p4_cross_modal_mechanism.py.
+        for node_id, modality in pending.node_modality_buffer.items():
+            self._node_modality[node_id] = modality
 
         return episode
 

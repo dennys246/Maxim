@@ -100,26 +100,40 @@ def make_cluster_aware_pairs(
     dim: int = 64,
     k_text: int = 2,
     k_vision: int = 2,
-    noise_std: float = 0.05,
+    noise_scale: float = 0.4,
     seed: int = 0,
 ) -> list[PairFixture]:
     """Build ``n_pairs`` cluster-aware paired fixtures.
 
-    Default parameters are tuned so that within-cluster cosine
-    similarity exceeds 0.80 and between-cluster cosine similarity
-    stays below 0.10 — both well-separated from EC's default
-    ``pattern_complete_threshold`` of 0.40.
+    ``noise_scale`` is **dim-invariant** — the per-sample noise
+    standard deviation is ``noise_scale / sqrt(dim)`` so the expected
+    within-pair cosine similarity
+    ``≈ 1 / (1 + noise_scale^2) ≈ 0.862`` at the default
+    ``noise_scale=0.4`` is INDEPENDENT of the embedding dimension.
+    This is the Round 2 Arch-lens fold: an earlier draft used a bare
+    ``noise_std`` parameter that scaled with ``dim`` — a Stage 2
+    caller picking CLIP's native 512-d space with the old default
+    would produce within-pair similarity near 0.44, right at EC's
+    0.40 threshold, silently breaking the cluster-aware guarantee.
+    The dim-invariant form lets any reasonable ``dim`` (64, 128, 384,
+    512, 768) produce the same within-pair similarity band so future
+    callers do not have to re-tune the parameter.
 
-    For ``dim=64, noise_std=0.05`` the expected within-pair similarity
-    is ``1 / (1 + noise_std^2 * dim) ≈ 0.86``; between-pair similarity
-    is ~0 because centroids are exactly orthogonal.
+    Between-pair similarity is ~0 at any dim because centroids are
+    exactly orthogonal via QR decomposition.
     """
     centroids = generate_orthogonal_centroids(n_pairs, dim, seed)
     rng = np.random.default_rng(seed + 1)
+    # Scale per-element noise so the total noise vector's squared norm
+    # is E[||noise||^2] = dim * (noise_scale^2 / dim) = noise_scale^2,
+    # independent of dim. Within-pair expected cosine similarity is
+    # ||centroid||^2 / (||centroid||^2 + noise_scale^2) =
+    # 1 / (1 + noise_scale^2).
+    per_element_std = noise_scale / float(np.sqrt(dim))
     pairs: list[PairFixture] = []
     for idx, centroid in enumerate(centroids):
-        text_samples = [centroid + noise_std * rng.standard_normal(dim) for _ in range(k_text)]
-        vision_samples = [centroid + noise_std * rng.standard_normal(dim) for _ in range(k_vision)]
+        text_samples = [centroid + per_element_std * rng.standard_normal(dim) for _ in range(k_text)]
+        vision_samples = [centroid + per_element_std * rng.standard_normal(dim) for _ in range(k_vision)]
         pairs.append(
             PairFixture(
                 pair_index=idx,
@@ -134,9 +148,12 @@ def make_cluster_aware_pairs(
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     """Plain cosine similarity. Helper for the Stage 1.5 vacuous-pass
     guard so the test does not depend on any production similarity
-    helper that might mask a fixture issue under the hood."""
-    a_norm = float(np.linalg.norm(a))
-    b_norm = float(np.linalg.norm(b))
-    if a_norm == 0.0 or b_norm == 0.0:
-        return 0.0
-    return float(np.dot(a, b) / (a_norm * b_norm))
+    helper that might mask a fixture issue under the hood.
+
+    Does NOT guard zero-norm inputs — numpy's ``0/0`` produces ``nan``
+    which surfaces as a loud test failure, which is what we want from
+    a fixture-debugging helper. Round 2 Exec-lens fold: the old
+    defensive ``return 0.0`` silently masked degenerate embedding
+    inputs.
+    """
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
