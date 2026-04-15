@@ -27,6 +27,12 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
+- [biosystem_unification.md](biosystem_unification.md) — **central tracking doc** (2026-04-14) for the bio-system structural-enforcement work that came out of `executor_bootstrap_unification.md`. Catalogs five bio-system unification plans (PainBus, ReactionBus, MemoryHub, DefaultNetwork, bio_stack umbrella) with logical chain + parallel-safety. Each gets a shell plan; full plans open as their wave activates. Holds the lessons-learned and general guidelines for any future structural-enforcement work.
+  - [pain_bus_unification.md](pain_bus_unification.md) — Wave 1, parallel-safe with reaction_bus. SHELL.
+  - [reaction_bus_unification.md](reaction_bus_unification.md) — Wave 1, parallel-safe with pain_bus. SHELL.
+  - [memory_hub_unification.md](memory_hub_unification.md) — Wave 2, parallel-safe with default_network. SHELL.
+  - [default_network_unification.md](default_network_unification.md) — Wave 2, parallel-safe with memory_hub. SHELL.
+  - [bio_stack_unification.md](bio_stack_unification.md) — Wave 3, single PR umbrella over all of the above. SHELL.
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
 - [node_security_simplification.md](node_security_simplification.md) — Phase 1 immediate security fixes (timing-safe auth comparison, rate-limiter bucket key, help-text corrections). Phase 2 config-surface unification deferred after Plan 4.
 - [llm_path_refinement.md](llm_path_refinement.md) — meta-plan for the LLM routing path refactor. Motivated by two 2026-04-12 peer-leader incidents + an audit that revealed `_OpenAIBackend` has a hidden ~52s retry loop. **Ships as the 0.4 stability version.** Plans 1, 2, 3, 3.5 fully shipped and archived; Plan 3.6 R5 (VRAM spillover detection) shipped; Plan 4 Stages A+B (agent_id observability + recovery-time bench) shipped; only Plan 4 Stage C (mesh.yml + admin API) remains in scope. Authoritative architecture reference at [../architecture/llm_routing.md](../architecture/llm_routing.md); stress test protocol at [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md).
