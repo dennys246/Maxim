@@ -1,6 +1,6 @@
 # Substrate P3.5 — Cross-session persistence + BioSystemSnapshot Protocol
 
-**Status:** Stage 1 in progress (2026-04-14, post-Round-1-review fold)
+**Status:** Stage 1 SHIPPED (PR #109). Stage 2 pre-merge review COMPLETE (2026-04-14) — Round 2 fold landed (1 critical + 9 important + minors across both lenses; cross-confirmed atomicity / aliasing / fixture-pattern findings all addressed). Ready for PR.
 **Scope:** ~500 LOC across 3 stages (Stage 1: ~250, Stage 2: ~150, Stage 3: ~100)
 **Target version:** 0.3-target
 **Gates:** Not directly version-gating, but load-bearing for P3a round-trip tests, P4 mug-test subprocess round-trip (1.0-GATING), and P5 stress persistence.
@@ -125,12 +125,14 @@ A user who wants SessionSnapshot state to land in Postgres writes a `SessionSnap
 
 ### Stage 2 — Non-empty PTB + migration tooling + subprocess round-trip harness
 
-**What's built:**
+**What's built (in feat/substrate-p3-5-stage2 worktree, 2026-04-14):**
 
-- **Non-empty `PerceptTraceBuffer` round-trip:** multi-agent tag filtering, ring-buffer head/tail invariants on reload, concurrent insertion during serialization.
-- `BioSystemSnapshot.migrate(old_state, from_v, to_v)` — pure forward migration, one envelope-version step per call, explicit "unknown version → raise" default.
-- Subprocess round-trip harness reusing `tests/substrate/persistence_harness.py` (S3): parent dumps `SessionSnapshot`, subprocess loads into fresh instances + runs a retrieval probe, asserts probe results match parent-side expectation.
-- (Optional, only if needed by migration test fixtures.) Synthetic legacy snapshot with `schema_version=0` envelope for migration testing.
+- **Non-empty `PerceptTraceBuffer` round-trip:** new test file [tests/unit/test_percept_trace_buffer_persistence.py](../../tests/unit/test_percept_trace_buffer_persistence.py) — 9 tests covering 100+ entries, 3-agent isolation, exact activation-strength restoration (no implicit re-record at 1.0), tick counter survival, ring-buffer head/tail invariant when dump-size > live max_entries, concurrent insertion under `dump()` (proves snapshot consistency with no torn reads), tuning-drift WARN.
+- **`migrate_session_envelope` + `migrate_subsystem_envelope` + decorator-style registries** in [src/maxim/memory/snapshot.py](../../src/maxim/memory/snapshot.py): `register_session_migration(from_version)` / `register_subsystem_migration(from_version)`. Pure forward migration; one envelope-version step per call; future-version refuse, unknown-source raise, broken-migration (no version progress) raise. `SessionSnapshot.from_dict` and `unwrap_envelope` both auto-walk their respective chains.
+- **Session-mode subprocess harness:** [tests/substrate/persistence_harness.py::run_session_round_trip](../../tests/substrate/persistence_harness.py) — captures all 6 systems via `SessionSnapshot.capture(strict=True)`, writes ONE envelope file, spawns a child that loads via `from_file().restore_into(strict=True)` against fresh default-wired instances, runs the same probe, compares pre/post. The existing `run_round_trip` and `persistence_child.py` were extended with a `mode` field (`"per_component"` legacy vs `"session_snapshot"` new) so both paths share infra.
+- **6-system probe:** [tests/substrate/probes.py::session_signature](../../tests/substrate/probes.py) returns deterministic counts/signatures for all six bio-systems.
+- **Subprocess round-trip test:** [tests/substrate/test_snapshot_subprocess_round_trip.py](../../tests/substrate/test_snapshot_subprocess_round_trip.py) — 4 tests: empty round-trip, populated round-trip (15 alice + 10 bob PTB entries + 5 cross-layer DERIVED_FROM edges + 7 PTB ticks), unknown-kind rejection, state_files field shape.
+- **Synthetic v0 legacy fixture for migration testing:** registered inline in `TestMigrationV0ToV1` via `register_session_migration(0)` decorator + an `_isolated_session_migrations` fixture that snapshots/restores the registry per test. 9 tests covering: v0→v1 single-step, auto-migrate via `from_dict`, unknown source raise, future-version refuse, broken migration raise, multi-step v0→v1→v2, duplicate registration raise, sub-system path independent, `unwrap_envelope` auto-runs the sub-system chain.
 
 **Pass gate (Stage 2):**
 
@@ -162,7 +164,20 @@ A user who wants SessionSnapshot state to land in Postgres writes a `SessionSnap
 
 Stage 1 unblocks P3a Stage 1's round-trip test. Stages 2 + 3 together close P3.5's contribution to 0.3-target. P4 (1.0-gating mug test) depends on Stage 2 + 3 being fully shipped — a subprocess round-trip with `CrossLayerGraph` carrying vision↔concept edges is literally the mug test's implementation substrate.
 
-## Load-bearing invariants (post-Round-2 fold)
+## Load-bearing invariants (post-Stage-2-Round-2 fold)
+
+**Stage 2 additions (review C1 + I1+M5 + I2+I3 Arch + I3 Exec folds):**
+
+- **`SessionSnapshot.restore_into` is all-or-nothing across sub-systems.** Two-phase: (1) snapshot every target via `target.dump()` into a rollback table BEFORE any mutation, (2) apply each adapter; on any failure, walk applied targets in reverse and `load_state` from rollback. Rollback failure is logged via `logger.exception` and the original exception re-raised. Required because P4 mug-test and P5 stress persistence both consume restore_into in hot loops where a torn restore would brick a multi-agent session. Regression guards: `TestRestoreIntoAtomicity` (3 tests).
+- **`migrate_session_envelope` / `migrate_subsystem_envelope` never alias the caller's envelope.** Deep-copy at entry so callers that mutate the result post-call cannot corrupt their input or any nested payload. Migration is process-boundary, not hot-path — `copy.deepcopy` cost is fine. Regression guards: `test_migrate_does_not_mutate_caller_envelope` + `test_migrate_no_op_path_returns_independent_dict`.
+- **`SessionSnapshot.dump()` returns a deep copy of the envelope.** Same reason — callers should not be able to mutate snapshot state by reference. Regression guard: `TestSessionSnapshotDumpAliasing`.
+- **`isolated_migrations()` is the public test-isolation context manager.** Snapshots both registries on entry, clears them, yields, restores on exit (even on test exceptions). Tests no longer reach into private `_SESSION_MIGRATIONS` / `_SUBSYSTEM_MIGRATIONS` globals. A future refactor that puts the registries inside a class only needs to update `isolated_migrations` — tests stay stable.
+- **Sub-system migration registry is kind-agnostic; `LATEST_SUBSYSTEM_SCHEMA_VERSION` bumps in lockstep across all six bio-systems.** When NAc's payload restructures and warrants a v2 sub-system envelope, `LATEST_SUBSYSTEM_SCHEMA_VERSION` bumps to 2 and EVERY sub-system's adapter functions must accept v2 (typically via no-op pass-through migrations for the systems that didn't change). The migration function can branch on `envelope["kind"]` for per-kind logic. Avoids the `(kind, version)` tuple registry at the cost of lockstep version bumps. Mother Maxim per-deployment overrides are deferred to post-1.0.
+- **Migration chain validates type at every step.** A migration that returns a non-dict, or whose output `schema_version` is not `int`, or whose output version doesn't equal `from_version + 1`, all raise `ValueError` with clear error messages. Prevents broken migrations from silently no-op'ing or returning corrupted shapes. Regression guards: `test_broken_migration_*` (3 tests).
+
+**Stage 1 invariants (carried forward, still in force):**
+
+
 
 - **`BioSystemSnapshot.load_state` is in-place instance-mutating, NOT a classmethod factory.** Preserves runtime wires (ATL.config + semantics callbacks, NAc._ec, Hippocampus config, SCN persistence_path, CrossLayerGraph._layers). Regression guards: `TestLoadPreservesRuntimeWires` (3 tests).
 - **Method name is `load_state`, NOT `load`.** Avoids colliding with the existing `load(path: str | None)` filesystem-I/O method on all four pre-existing bio-systems. The `load(path)` rename across 37+ call sites is out of scope for Stage 1.
@@ -192,7 +207,10 @@ Stage 1 unblocks P3a Stage 1's round-trip test. Stages 2 + 3 together close P3.5
 
 1. **Storage compression.** 10k-node snapshots may want a compressed-on-disk form. Deferred to P5.
 2. **Partial loads.** Loading just ATL without NAc/SCN. Useful for debugging; not needed for 0.3-target.
-3. **Vision encoder as 7th system.** If P4's `VisionEncoder` has enough state to warrant its own snapshot slot, P4 adds it. Otherwise vision nodes live inside ATL's snapshot.
+3. **Vision encoder as 7th system.** If P4's `VisionEncoder` has enough state to warrant its own snapshot slot, P4 adds it. Otherwise vision nodes live inside ATL's snapshot. **Stage 2 review I1 (Arch lens):** the current `_build_fresh_instance` + 6 explicit kwargs on `capture`/`restore_into` form a 6-7-site touch surface for adding a 7th system. P4's plan-of-record should pick "extra slot" or "inside ATL" before that touch surface bites. If "extra slot," consider also pivoting `capture`/`restore_into` to `**systems: BioSystemSnapshot` with validation against `SNAPSHOT_KINDS`; defer to P4's call.
+4. **Fleet compatibility windows for Mother Maxim.** Stage 2 review I4 (Arch lens) flagged that `migrate_*_envelope` future-version refusal (`is newer than this build's latest`) is wrong for a multi-version fleet — a v1 leader reading a v2 dump gets a hard `ValueError` with no compatibility window. Acceptable for 0.3 (Mother Maxim is post-1.0). When fleet semantics ship, this becomes a soft-warning + best-effort partial-load path. Filed here so it isn't re-discovered in the field.
+5. **Persistence harness graduation to `src/`.** Stage 2 review I5 (Arch lens) flagged that `tests/substrate/persistence_harness.py` + `persistence_child.py` have outgrown their S3 origin and are now load-bearing for P4/P5/P6/P8. They should move to `src/maxim/test_utils/` (or `src/maxim/bench/`) so they can be imported from non-test code (e.g., a future `maxim bench persistence-cycles` subcommand). Targeted move window: after P4 ships and the harness API stabilizes (any earlier and the move risks churn against Stage 3's real-data sweep).
+6. **Tuning drift WARN under P5 dump-reload-100x cadence.** Stage 2 review M3 (Arch lens) — the current `live tuning wins + log WARN` semantic is fine for one-off restore but produces a noise floor of 100 WARN logs / no alarm under P5's cadence. Revisit when P5 ships: either lift to a structured event the operator can track, or pivot to "raise on drift" per call site.
 
 ## Not in this plan
 

@@ -81,3 +81,49 @@ def combined_state_summary(state: dict[str, Any]) -> dict[str, Any]:
         "atl_nodes": atl_node_count(state),
         "percept_trace_entries": percept_trace_entry_count(state),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# P3.5 Stage 2 — six-system session snapshot probes
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def session_signature(state: dict[str, Any]) -> dict[str, Any]:
+    """Six-system probe used by ``run_session_round_trip`` tests.
+
+    Returns deterministic counts/signatures for every bio-system the
+    SessionSnapshot envelope carries. Any state divergence between the
+    parent and child interpreter shows up as a mismatch in this dict.
+    """
+    summary: dict[str, Any] = {}
+
+    h = state.get("hippocampus")
+    summary["hippocampus_len"] = len(h) if h is not None else 0
+
+    n = state.get("nac")
+    summary["nac_link_total"] = sum(len(v) for v in n._links.values()) if n is not None else 0
+
+    a = state.get("atl")
+    summary["atl_len"] = len(a) if (a is not None and hasattr(a, "__len__")) else 0
+
+    scn = state.get("scn")
+    if scn is not None:
+        summary["scn_signature_count"] = len(scn._signatures)
+    else:
+        summary["scn_signature_count"] = 0
+
+    ptb = state.get("percept_trace_buffer")
+    if ptb is not None:
+        summary["ptb_len"] = len(ptb)
+        summary["ptb_tick"] = ptb.current_tick
+    else:
+        summary["ptb_len"] = 0
+        summary["ptb_tick"] = 0
+
+    clg = state.get("cross_layer_graph")
+    if clg is not None:
+        summary["cross_layer_stats"] = clg.stats()
+    else:
+        summary["cross_layer_stats"] = {}
+
+    return summary

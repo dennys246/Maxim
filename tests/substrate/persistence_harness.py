@@ -3,24 +3,25 @@
 S3 of simulator_upgrades_plan. Tests that bio-stack state survives a
 real serialize → kill → fresh-interpreter → reload cycle.
 
-The harness:
-  1. Saves bio-stack state (Hippocampus, NAc, ATL, PerceptTraceBuffer) to temp files
-  2. Runs a probe function against the live state, capturing the result
-  3. Spawns a fresh Python subprocess that loads state and re-runs the probe
-  4. Compares pre-shutdown and post-reload probe results within tolerance
-  5. Fails explicitly if the child crashes or results diverge
+Two modes:
+
+- **per_component** (legacy S3 path): each bio-system is dumped to its
+  own JSON file via its native ``save(path)`` method; the child loads
+  each via the matching ``load(path)``. Used by tests that exercise a
+  single bio-system in isolation.
+- **session_snapshot** (P3.5 Stage 2): all six bio-systems are captured
+  into a single ``SessionSnapshot`` envelope via ``capture(strict=True)``
+  and written to one JSON file. The child loads the envelope via
+  ``SessionSnapshot.from_file`` and calls ``restore_into(strict=True)``
+  against freshly-constructed instances. This is the path P4's
+  cross-modal mug test will use.
+
+Both modes use the same ``persistence_child.py`` entry point; the config
+JSON carries a ``mode`` field that the child branches on.
 
 Probes are specified as "module.path:function_name" strings — NOT closures.
 A closure over module state would round-trip fine in-process and explode
 in a fresh interpreter, which is the exact bug this harness catches.
-
-Usage in test files:
-    def test_hippocampus_round_trip(persistence_round_trip):
-        result = persistence_round_trip(
-            state={"hippocampus": hippo_instance},
-            probe="tests.substrate.probes:count_episodes",
-        )
-        assert result.success
 """
 
 from __future__ import annotations
@@ -70,25 +71,15 @@ def _save_component(name: str, component: Any, tmp_dir: Path) -> str | None:
     path = tmp_dir / f"{name}.json"
 
     if name == "percept_trace_buffer":
-        # PerceptTraceBuffer has no save() — manually serialize snapshot
+        # Stage 2 review M4 fold — use the Stage 1 dump() contract so
+        # the legacy per-component PTB path round-trips activation
+        # strength faithfully (the pre-fix path serialized via
+        # snapshot() and lost τ-decay state, which the child then
+        # re-recorded at activation=1.0).
         try:
-            entries = component.snapshot()
-            data = {
-                "entries": [
-                    {
-                        "agent_id": e.agent_id,
-                        "percept_id": e.percept_id,
-                        "tick": e.tick,
-                        "activation_strength": e.activation_strength,
-                        "registered_at": e.registered_at,
-                    }
-                    for e in entries
-                ],
-                "tick_counter": component.current_tick,
-            }
             from maxim.utils.atomic_io import atomic_write_json
 
-            atomic_write_json(str(path), data)
+            atomic_write_json(str(path), component.dump())
             return str(path)
         except Exception as e:
             logger.warning("Failed to save %s: %s", name, e)
@@ -166,6 +157,7 @@ def run_round_trip(
         config_path = tmp_path / "config.json"
 
         config = {
+            "mode": "per_component",
             "state_files": state_files,
             "probe": probe,
             "result_path": str(post_result_path),
@@ -234,6 +226,170 @@ def run_round_trip(
             )
 
         # Step 6: Compare results
+        match = _compare_results(pre_shutdown, post_reload, tolerance)
+
+        return RoundTripResult(
+            success=match,
+            pre_shutdown=pre_shutdown,
+            post_reload=post_reload,
+            child_returncode=result.returncode,
+            child_stderr=result.stderr[-2000:] if result.stderr else "",
+            error="" if match else f"Results diverged: pre={pre_shutdown!r} post={post_reload!r}",
+            state_files=state_files,
+        )
+
+
+def run_session_round_trip(
+    *,
+    systems: dict[str, Any],
+    probe: str,
+    tolerance: float = 0.0,
+    timeout_s: float = 60.0,
+) -> RoundTripResult:
+    """P3.5 Stage 2 — round-trip a full SessionSnapshot through a subprocess.
+
+    Args:
+        systems: Mapping of bio-system kind → live instance. Keys must
+            be a subset of ``maxim.memory.snapshot.SNAPSHOT_KINDS``. ALL
+            provided systems are captured into a single envelope via
+            ``SessionSnapshot.capture(strict=True)``; the child constructs
+            fresh instances of each kind and calls ``restore_into``.
+        probe: ``module.path:function_name`` string. Same shape as
+            ``run_round_trip``. Receives ``state`` dict keyed by bio-system
+            name, returns a JSON-serializable result.
+        tolerance: Numeric tolerance for pre/post comparison.
+        timeout_s: Subprocess wall-clock budget.
+
+    Returns:
+        ``RoundTripResult`` — the ``state_files`` field contains a single
+        entry ``{"session": <path>}``.
+    """
+    from maxim.memory.snapshot import SNAPSHOT_KINDS, SessionSnapshot
+
+    unknown = set(systems.keys()) - set(SNAPSHOT_KINDS)
+    if unknown:
+        return RoundTripResult(
+            success=False,
+            error=f"unknown bio-system kinds in session round-trip: {sorted(unknown)}",
+        )
+
+    # Duck-type check at the harness boundary so a wrong-type instance
+    # (e.g., systems={"atl": object()}) gets a clean error instead of
+    # a confusing AttributeError deep inside SessionSnapshot.capture.
+    bad_types = [name for name, obj in systems.items() if not (hasattr(obj, "dump") and hasattr(obj, "load_state"))]
+    if bad_types:
+        return RoundTripResult(
+            success=False,
+            error=(
+                f"systems values must implement BioSystemSnapshot (dump + load_state); "
+                f"missing methods on: {sorted(bad_types)}"
+            ),
+        )
+
+    try:
+        probe_fn = _resolve_probe(probe)
+    except Exception as e:
+        return RoundTripResult(success=False, error=f"Probe resolution failed: {e}")
+
+    with tempfile.TemporaryDirectory(prefix="maxim_p3_5_s2_") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        snapshot_path = tmp_path / "session_snapshot.json"
+
+        # Step 1: capture full session and write single envelope file
+        try:
+            snapshot = SessionSnapshot.capture(strict=True, **systems)
+            snapshot.write(snapshot_path)
+        except Exception as e:
+            return RoundTripResult(
+                success=False,
+                error=f"SessionSnapshot.capture/write failed: {e}",
+            )
+
+        state_files = {"session": str(snapshot_path)}
+
+        # Step 2: probe live state in-process (state dict is what the
+        # probe will see in the child — so use the same shape here)
+        try:
+            pre_shutdown = probe_fn(systems)
+        except Exception as e:
+            return RoundTripResult(
+                success=False,
+                error=f"Pre-shutdown probe failed: {e}",
+                state_files=state_files,
+            )
+
+        pre_result_path = tmp_path / "pre_result.json"
+        post_result_path = tmp_path / "post_result.json"
+        config_path = tmp_path / "config.json"
+
+        config = {
+            "mode": "session_snapshot",
+            "session_path": str(snapshot_path),
+            "kinds": sorted(systems.keys()),
+            "probe": probe,
+            "result_path": str(post_result_path),
+        }
+
+        from maxim.utils.atomic_io import atomic_write_json
+
+        atomic_write_json(str(pre_result_path), pre_shutdown)
+        atomic_write_json(str(config_path), config)
+
+        child_cmd = [
+            sys.executable,
+            "-m",
+            "tests.substrate.persistence_child",
+            "--config",
+            str(config_path),
+        ]
+
+        try:
+            result = subprocess.run(
+                child_cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                cwd=str(Path(__file__).resolve().parents[2]),
+            )
+        except subprocess.TimeoutExpired:
+            return RoundTripResult(
+                success=False,
+                pre_shutdown=pre_shutdown,
+                error=f"Child subprocess timed out after {timeout_s}s",
+                state_files=state_files,
+            )
+
+        if result.returncode != 0:
+            return RoundTripResult(
+                success=False,
+                pre_shutdown=pre_shutdown,
+                child_returncode=result.returncode,
+                child_stderr=result.stderr[-2000:] if result.stderr else "",
+                error=f"Child subprocess exited with code {result.returncode}",
+                state_files=state_files,
+            )
+
+        if not post_result_path.exists():
+            return RoundTripResult(
+                success=False,
+                pre_shutdown=pre_shutdown,
+                child_returncode=result.returncode,
+                child_stderr=result.stderr[-2000:] if result.stderr else "",
+                error="Child did not write result file",
+                state_files=state_files,
+            )
+
+        try:
+            with open(post_result_path) as f:
+                post_reload = json.load(f)
+        except Exception as e:
+            return RoundTripResult(
+                success=False,
+                pre_shutdown=pre_shutdown,
+                error=f"Failed to read child result: {e}",
+                state_files=state_files,
+            )
+
         match = _compare_results(pre_shutdown, post_reload, tolerance)
 
         return RoundTripResult(
