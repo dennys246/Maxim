@@ -1,6 +1,6 @@
 # Substrate P4 — Cross-modal binding via hippocampus (1.0-GATING)
 
-> **Stage 2 v2 fold IN PROGRESS (2026-04-15)** on `fix/substrate-p4-stage2-fold`. The post-merge Round 2 review of Stage 2 v1 surfaced two cross-confirmed and several single-lens findings, most critically Arch #4: the Phase 2D v1 mug test was **tautological** under `VISION_EC_THRESHOLD=1.01` — every retrieval path was 1-hop because the fixture had no distractors or bridges, so the "100% direct → defer Option 2" decision rested on unfalsifiable evidence. The v2 fold rebuilds Phase 2D with Approach C (distractor noise + text-text bridge topology) and re-opens the Option 2 decision empirically. Progress tracked at the bottom of this file in the "Stage 2 v2 fold status" section.
+> **Stage 2 v2 fold IN PROGRESS (2026-04-15)** on `fix/substrate-p4-stage2-fold`. The post-merge Round 2 review of Stage 2 v1 surfaced two cross-confirmed and several single-lens findings, most critically Arch #4: the Phase 2D v1 mug test was **tautological** under `VISION_EC_THRESHOLD=1.01` — every retrieval path was 1-hop because the fixture had no distractors or bridges, so the "100% direct → defer Option 2" decision rested on unfalsifiable evidence. The v2 fold rebuilds Phase 2D with Approach C (distractor noise + text-text bridge topology) and re-opens the Option 2 decision empirically. **Sweep complete 2026-04-15: Option 2 lift is +96.0% at the operating point (noise_reps=1, bridges=shared_superclass, recall 0.980). Option 2 DECISION REVERSED from defer to SHIP — goes in a separate follow-up PR after this fold merges.** Fold is code-complete through step 11 (milestone report); steps 12-14 remaining (Round 2 review + fold findings + open PR). Progress tracked at the bottom of this file in the "Stage 2 v2 fold status" section + `docs/experiments/p4_stage2_v2_milestone.md`.
 
 **Status:** OPEN (2026-04-14). Round 1 plan-only review COMPLETE — 8 cross-confirmed criticals + importants folded; ready for Stage 1 implementation.
 **Scope:** ~500 LOC (mechanism + VisionEncoder + retrieval path) + ~100 LOC metric extractor.
@@ -373,22 +373,24 @@ Stage 2's deliverable includes the subprocess mug test on real CLIP + Oxford Flo
    - If Option 2 lift is zero at the chosen operating point → Option 2 stays deferred, `TestStageThreeLimitation` pin stays as-is, fold PR lands without touching the retrieval code
    - If Option 2 lift is non-zero → Option 2 ships in a **separate follow-up PR** (agreed with user 2026-04-15) that renames `node_filter → traversal_filter`, adds `result_filter`, provides P3b compat shim, re-validates P3a's 10-seed sweep, and flips `TestStageThreeLimitation`
 
-**Commit sequence (planned):**
+**Commit sequence (progress):**
 
-1. ✅ Plan amendment — torchvision-over-datasets decision + Stage 2 v2 fold status section (this commit)
-2. ⏳ Refactor `_build_and_bind` — parameterize encoder + threshold, move to `tests/substrate/p4_build_and_bind.py`, kill `scripts/` imports from tests (Arch #3, #5, Exec #4, #9)
-3. ⏳ Pin 102-class list in-repo + enforce `class_idx` drift guard in loader (Arch #2, #10)
-4. ⏳ Drop PyYAML fallback parser (Exec #1, #2)
-5. ⏳ Build Phase 2D v2 parameterized fixture builder supporting noise + bridges
-6. ⏳ Build Phase 2D v2 sweep runner (12 combinations)
-7. ⏳ Execute sweep + select operating point
-8. ⏳ Materialize new pinned fixture YAML + regenerate SHA
-9. ⏳ Update round-trip test against new fixture + add 0.70 retrieval gate (Arch #6)
-10. ⏳ Tactical fixes (Exec #3, #5, #6, #7, #10, Arch #7, #8)
-11. ⏳ Phase 2D v2 report writeup + Option 2 decision re-open
+1. ✅ Plan amendment — torchvision-over-datasets decision + Stage 2 v2 fold status section (commit `6de09c6`)
+2. ✅ Refactor `_build_and_bind` — parameterized + moved to `tests/substrate/p4_build_and_bind.py` + noise/bridge layers added (commit `82da6db`)
+3. ✅ Pin 102-class list + enforce `class_idx` drift guard (commit `8d0b92f`)
+4. ✅ Drop PyYAML fallback parser (commit `8d0b92f`)
+5. ✅ Phase 2D v2 parameterized fixture builder (merged into commit `82da6db`)
+6. ✅ Phase 2D v2 sweep runner — 12 combinations (commit `5d25556`)
+7. ✅ **Execute sweep + operating point selected: `noise_reps=1, bridges=shared_superclass` → 0.980 recall, +96.0% Option 2 lift** (commit `5d25556`)
+8. ✅ New fixture YAML v2 with canonical build params + SHA regenerated (commit `3c3c8d9`)
+9. ✅ Round-trip test updated + 0.70 retrieval gate added (commit `3c3c8d9`)
+10. ✅ Tactical fixes bundle (commit `f00fc0f`): probe sort, headroom assert, VRAM OOM, canonical mps, cosmetics, threshold tripwire
+11. ✅ Phase 2D v2 milestone report at `docs/experiments/p4_stage2_v2_milestone.md`
 12. ⏳ Round 2 pre-merge review (Executor + Architecture in parallel)
 13. ⏳ Fold review findings + open PR
-14. ⏳ (conditional) Option 2 ship PR if the sweep shows non-zero lift
+14. ⏳ **Option 2 ship PR — DECISION: SHIP** (separate follow-up PR after fold merges)
+
+**Phase 2D v2 sweep result headline:** Option 2 lift is **+96.0%** at the operating point, with 450/450 cross-class pairs reachable under multi-hop simulation vs 18/450 under Stage 1's single-hop filter. The "defer Option 2" decision from v1 is **REVERSED** — Option 2 SHIPS.
 
 **For successor sessions:** if context runs out mid-fold, read this section plus `git log --oneline fix/substrate-p4-stage2-fold` to see which commit sequence step is done. Each commit message names the step explicitly.
 
