@@ -103,6 +103,40 @@ class MeshConfig:
     def self_node(self) -> MeshNode | None:
         return self.get_node(self.self_name)
 
+    def to_yaml(self) -> str:
+        """Serialize to the FROZEN parser dialect.
+
+        Plan 4 C3.1: round-trips with :func:`parse_mesh_config`.
+        Mirrors :meth:`maxim.peer.config.PeerConfig.to_yaml` — same
+        sister-module pattern, same "no PyYAML dep" rationale, same
+        sorted-and-stable field order.
+
+        The output is intentionally minimal: no comments, no inline
+        annotations, no fancy formatting. Operators who hand-edit
+        ``mesh.yml`` and want comments should know that the
+        ``init-mesh`` verb (and any future C3 verb that rewrites the
+        file) will strip them — comments survive only as long as no
+        CLI verb touches the file. The FROZEN parser invariant
+        (no quoted strings, no anchors, no tab indent) constrains
+        the writer to a similarly minimal dialect.
+
+        Field order: ``cluster_key`` → ``self`` → ``protocol_version``
+        → ``nodes:`` (list, in declaration order). The order matters
+        because a future operator-readable diff between two
+        ``mesh.yml`` files should be stable across rewrites.
+        """
+        lines = [
+            f"cluster_key: {self.cluster_key}",
+            f"self: {self.self_name}",
+            f"protocol_version: {self.protocol_version}",
+            "nodes:",
+        ]
+        for node in self.nodes:
+            lines.append(f"  - name: {node.name}")
+            lines.append(f"    url: {node.url}")
+            lines.append(f"    role: {node.role}")
+        return "\n".join(lines) + "\n"
+
 
 def mesh_config_path() -> Path:
     """Return the platform-appropriate mesh config path (next to peer.yml)."""
@@ -313,6 +347,43 @@ def read_mesh_config(path: Path | None = None) -> MeshConfig | None:
     return parse_mesh_config(content)
 
 
+def write_mesh_config(cfg: MeshConfig, path: Path | None = None) -> Path:
+    """Persist ``cfg`` to disk via the FROZEN parser dialect.
+
+    Plan 4 C3.1. Mirrors :func:`maxim.peer.config.write_peer_config`
+    in shape, but routes the write through
+    :func:`maxim.utils.atomic_io.atomic_write_secret` because
+    ``mesh.yml::cluster_key`` is a secret per the C2 invariant
+    ("``mesh.yml`` is declarative; credential-bearing files use
+    ``atomic_write_secret``").
+
+    On first write (file did not exist), ``atomic_write_secret`` has
+    no pre-existing mode to preserve, so this function explicitly
+    chmods to ``0o600`` afterwards. On rewrites, the mode bits the
+    operator set are preserved and the explicit chmod is a no-op.
+    POSIX-only chmod; Windows skips the permission tighten the same
+    way ``write_peer_config`` does.
+    """
+    import os
+    import platform
+
+    from maxim.utils.atomic_io import atomic_write_secret
+
+    p = path or mesh_config_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    is_new = not p.is_file()
+    atomic_write_secret(str(p), cfg.to_yaml())
+    if is_new and platform.system() != "Windows":
+        try:
+            os.chmod(p, 0o600)
+        except OSError:
+            # Best-effort — atomic_write_secret already succeeded;
+            # losing the perm tighten on a brand-new file is a soft
+            # failure mode (operator can chmod manually if needed).
+            pass
+    return p
+
+
 def synthesize_from_peer_config() -> MeshConfig | None:
     """Build a one-node mesh from the legacy ``peer.yml`` (leader only).
 
@@ -351,4 +422,5 @@ __all__ = [
     "read_mesh_config",
     "read_or_synthesize_mesh_config",
     "synthesize_from_peer_config",
+    "write_mesh_config",
 ]

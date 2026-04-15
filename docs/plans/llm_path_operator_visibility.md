@@ -136,7 +136,7 @@ traffic.
 **Report:** [../experiments/results/llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md)
 **Rerun runbook:** [../experiments/protocols/bench_recovery_time_rerun.md](../experiments/protocols/bench_recovery_time_rerun.md)
 
-### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2 ✅ SHIPPED, C3 DEFERRED)
+### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2 ✅ SHIPPED, C3.1 ✅ SHIPPED, rest of C3 DEFERRED)
 
 **Stage C1 — mesh.yml + CLI verb foundations — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c1-mesh-yml`). Delivered as a read-only-verbs slice of the original Stage C after pre-merge review folded drain state + `drain:` schema field to C2:
 
@@ -175,7 +175,30 @@ Live smoke (RTX 5080 leader via Cloudflare tunnel) validated list-nodes, `--json
 | Orphan validation | `DrainReadResult.orphans` + orphan warn in `doctor` + `list-drained` footer | `TestOrphanValidation::test_orphans_surfaced_on_read` + doctor equivalent |
 | Permission preservation | `atomic_write_text(preserve_mode=True)` | `TestPreserveMode::test_preserves_0600_on_rewrite` + setuid bits guard |
 
-**Deferred to C3:** `--node install` + VRAM precheck, `--node refresh`, `add-node`, `remove-node`, `init-mesh` (one-shot converter that synthesizes `mesh.yml` from `peer.yml` so drain/resume work on peer.yml-only installs — currently those installs get an error pointing at the manual mesh.yml path), `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation. The `KeyedRateLimiter` dormant code from Plan 1 R0 lights up in C3.
+**Deferred to C3:** `--node install` + VRAM precheck, `--node refresh`, `add-node`, `remove-node`, `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation. The `KeyedRateLimiter` dormant code from Plan 1 R0 lights up in C3.
+
+**Stage C3.1 — `init-mesh` verb — ✅ SHIPPED 2026-04-14** (branch `feat/plan4-c3.1-init-mesh`). The smallest C3 piece, separated to unblock drain/resume on `peer.yml`-only installs without waiting for the bigger C3 surface (admin API, rate limiting). Delivered:
+
+- `src/maxim/peer/init_mesh.py` (NEW, ~190 LOC) — decision-tree driver for `maxim peer init-mesh [--force]`. Reads `peer.yml`, synthesizes a one-node `MeshConfig` via the existing C1 helper, writes `mesh.yml` via the new `write_mesh_config`. Backs up the existing `mesh.yml` to `mesh.yml.bak` (via `shutil.copy2`, preserves mtime + mode) when `--force` is passed.
+- `src/maxim/peer/mesh_config.py` — added `MeshConfig.to_yaml()` method (mirrors `peer/config.py::PeerConfig.to_yaml()` shape) + `write_mesh_config(cfg, path=None)` disk-I/O wrapper that routes through `atomic_write_secret` because `mesh.yml::cluster_key` is a secret per the C2 invariant. First write chmods to `0o600`; rewrites preserve existing mode bits.
+- `src/maxim/peer/cli.py` — dispatch the new `init-mesh` verb
+- `src/maxim/cli.py` — `peer_action` recognition list extended
+- `tests/unit/test_init_mesh.py` (NEW, 20 tests) — full decision-tree coverage including: nothing-to-convert exit 1, mesh-already-exists no-op exit 0, happy-path synthesize, `peer.yml` preservation regression guard (load-bearing for role detection), round-trip through parser, `0o600` perm assertion (POSIX), refuse-without-force exit 2, force overwrite + backup byte-equal, malformed peer.yml fails before touching mesh, backup-failure aborts before overwrite, end-to-end drain post-init integration test
+- `tests/unit/test_mesh_config.py` — added 11 round-trip + write_mesh_config tests (1-node + multi-node + format stability + no-PyYAML-syntax + protocol_version default + first-write-chmod + rewrite-preserves-mode)
+
+**Decision tree (locked from C2 pre-design review E7):**
+
+| `peer.yml` | `mesh.yml` | `--force` | Action | Exit |
+|---|---|---|---|---|
+| absent | absent | — | "nothing to convert" | 1 |
+| absent | present | — | "already exists, nothing to do" | 0 |
+| present | absent | — | synthesize from peer.yml | 0 |
+| present | present | no | refuse with `--force` hint | 2 |
+| present | present | yes | back up `mesh.yml` → `mesh.yml.bak`, then synthesize | 0 |
+
+**`peer.yml` is left in place by design.** `runtime/role.py` reads `peer.yml` existence as part of the role detection decision order (Plan 2 R2a). Deleting or moving it post-init-mesh would break role detection silently. The two files coexist: `peer.yml` is the role-detection signal + simple-single-leader config; `mesh.yml` is the multi-node topology surface that drain/resume + `list-nodes` consume.
+
+**Architectural note (write path):** `write_mesh_config` is the first caller of `atomic_write_secret` outside of the C2 fold. Validates the C2 invariant ("credential-bearing files use `atomic_write_secret`, not `atomic_write_text(preserve_mode=True)`") in production code. The `peer/config.py::write_peer_config` function currently uses plain `path.write_text` + explicit `os.chmod` — that's a latent inconsistency from before the C2 invariant landed, NOT in C3.1 scope. Filed as a follow-up; cleanup is one-liner replacement to `atomic_write_secret`.
 
 **C3 remaining scope.** The original Plan 4 scope (R3.6-lite, ~300 LOC):
 

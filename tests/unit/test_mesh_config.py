@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from maxim.peer.mesh_config import (
+    MeshConfig,
     MeshConfigError,
     MeshNode,
     parse_mesh_config,
     read_mesh_config,
     read_or_synthesize_mesh_config,
     synthesize_from_peer_config,
+    write_mesh_config,
 )
 from maxim.peer.probe_classify import ProbeClassification, classify_probe_outcome
 
@@ -293,6 +297,146 @@ class TestSynthesizeFromPeerConfig:
         cfg = read_or_synthesize_mesh_config()
         assert cfg is not None
         assert cfg.cluster_key == "sk-fallback"
+
+
+class TestMeshConfigToYaml:
+    """Plan 4 C3.1: round-trip serializer for the FROZEN dialect.
+
+    The serializer must produce output that ``parse_mesh_config``
+    can read back into an equal :class:`MeshConfig`. This is the
+    load-bearing invariant for ``init-mesh`` (which writes via
+    ``write_mesh_config`` → ``to_yaml``).
+    """
+
+    def test_round_trip_one_node(self):
+        cfg = MeshConfig(
+            cluster_key="sk-test",
+            self_name="leader",
+            nodes=(MeshNode(name="leader", url="https://x.example/v1", role="leader"),),
+            protocol_version=1,
+        )
+        parsed = parse_mesh_config(cfg.to_yaml())
+        assert parsed == cfg
+
+    def test_round_trip_multi_node(self):
+        cfg = MeshConfig(
+            cluster_key="sk-cluster-abc",
+            self_name="leader-desk",
+            nodes=(
+                MeshNode(name="leader-desk", url="http://192.168.1.10:8099/v1", role="leader"),
+                MeshNode(name="mac-studio", url="https://mac.example.com/v1", role="peer"),
+                MeshNode(name="tablet", url="http://10.0.0.5/v1", role="peer"),
+            ),
+            protocol_version=1,
+        )
+        parsed = parse_mesh_config(cfg.to_yaml())
+        assert parsed == cfg
+        # Node order MUST be preserved across round-trip
+        assert [n.name for n in parsed.nodes] == [n.name for n in cfg.nodes]
+
+    def test_serialized_format_is_stable(self):
+        """Two serializations of the same config produce byte-equal
+        output. Stable diffs across rewrites are operator-friendly."""
+        cfg = MeshConfig(
+            cluster_key="sk-test",
+            self_name="leader",
+            nodes=(MeshNode(name="leader", url="http://a/v1", role="leader"),),
+        )
+        assert cfg.to_yaml() == cfg.to_yaml()
+
+    def test_serialized_format_starts_with_cluster_key(self):
+        """Field order is documented as cluster_key → self → protocol_version → nodes."""
+        cfg = MeshConfig(
+            cluster_key="sk-test",
+            self_name="a",
+            nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+        )
+        lines = cfg.to_yaml().splitlines()
+        assert lines[0] == "cluster_key: sk-test"
+        assert lines[1] == "self: a"
+        assert lines[2] == "protocol_version: 1"
+        assert lines[3] == "nodes:"
+
+    def test_no_pyyaml_dep_in_output(self):
+        """The dialect is the FROZEN parser dialect — no quoted
+        strings, no anchors. The C1 invariant survives the writer."""
+        cfg = MeshConfig(
+            cluster_key="sk",
+            self_name="a",
+            nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+        )
+        yaml = cfg.to_yaml()
+        assert '"' not in yaml
+        assert "'" not in yaml
+        assert "&" not in yaml  # no YAML anchors
+        assert "*" not in yaml  # no YAML aliases
+
+    def test_round_trip_preserves_protocol_version_default(self):
+        cfg = MeshConfig(
+            cluster_key="sk",
+            self_name="a",
+            nodes=(MeshNode(name="a", url="http://a/v1", role="leader"),),
+            # protocol_version uses dataclass default = 1
+        )
+        parsed = parse_mesh_config(cfg.to_yaml())
+        assert parsed.protocol_version == 1
+
+
+class TestWriteMeshConfig:
+    """Disk-I/O wrapper around to_yaml(). Must use atomic_write_secret
+    because mesh.yml::cluster_key is a secret per the C2 invariant.
+    """
+
+    def test_write_then_read_round_trip(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        cfg = MeshConfig(
+            cluster_key="sk-test",
+            self_name="leader",
+            nodes=(MeshNode(name="leader", url="https://x/v1", role="leader"),),
+        )
+        path = write_mesh_config(cfg)
+        assert path.is_file()
+        loaded = read_mesh_config(path)
+        assert loaded == cfg
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only chmod")
+    def test_first_write_chmods_to_0600(self, tmp_path, monkeypatch):
+        import os
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        cfg = MeshConfig(
+            cluster_key="sk-secret",
+            self_name="leader",
+            nodes=(MeshNode(name="leader", url="https://x/v1", role="leader"),),
+        )
+        path = write_mesh_config(cfg)
+        mode = os.stat(path).st_mode & 0o777
+        assert mode == 0o600
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only chmod")
+    def test_rewrite_preserves_existing_mode(self, tmp_path, monkeypatch):
+        """Operator who chmods their mesh.yml to a custom mode (say
+        0o640 for shared-group access) shouldn't see it widened on
+        the next write."""
+        import os
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        cfg = MeshConfig(
+            cluster_key="sk",
+            self_name="leader",
+            nodes=(MeshNode(name="leader", url="https://x/v1", role="leader"),),
+        )
+        path = write_mesh_config(cfg)
+        os.chmod(path, 0o640)
+
+        cfg2 = MeshConfig(
+            cluster_key="sk-rotated",
+            self_name="leader",
+            nodes=(MeshNode(name="leader", url="https://x/v1", role="leader"),),
+        )
+        write_mesh_config(cfg2)
+        mode = os.stat(path).st_mode & 0o777
+        assert mode == 0o640
 
 
 class TestClassifyProbeOutcome:
