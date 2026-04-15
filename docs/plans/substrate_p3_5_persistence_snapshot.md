@@ -1,6 +1,6 @@
 # Substrate P3.5 — Cross-session persistence + BioSystemSnapshot Protocol
 
-**Status:** Stage 1 in progress (2026-04-14, post-Round-1-review fold)
+**Status:** Stage 1 SHIPPED (PR #109). Stage 2 IN PROGRESS (2026-04-14) — non-empty PTB round-trip + migration chain + subprocess round-trip harness all green locally; pre-merge review round next.
 **Scope:** ~500 LOC across 3 stages (Stage 1: ~250, Stage 2: ~150, Stage 3: ~100)
 **Target version:** 0.3-target
 **Gates:** Not directly version-gating, but load-bearing for P3a round-trip tests, P4 mug-test subprocess round-trip (1.0-GATING), and P5 stress persistence.
@@ -125,12 +125,14 @@ A user who wants SessionSnapshot state to land in Postgres writes a `SessionSnap
 
 ### Stage 2 — Non-empty PTB + migration tooling + subprocess round-trip harness
 
-**What's built:**
+**What's built (in feat/substrate-p3-5-stage2 worktree, 2026-04-14):**
 
-- **Non-empty `PerceptTraceBuffer` round-trip:** multi-agent tag filtering, ring-buffer head/tail invariants on reload, concurrent insertion during serialization.
-- `BioSystemSnapshot.migrate(old_state, from_v, to_v)` — pure forward migration, one envelope-version step per call, explicit "unknown version → raise" default.
-- Subprocess round-trip harness reusing `tests/substrate/persistence_harness.py` (S3): parent dumps `SessionSnapshot`, subprocess loads into fresh instances + runs a retrieval probe, asserts probe results match parent-side expectation.
-- (Optional, only if needed by migration test fixtures.) Synthetic legacy snapshot with `schema_version=0` envelope for migration testing.
+- **Non-empty `PerceptTraceBuffer` round-trip:** new test file [tests/unit/test_percept_trace_buffer_persistence.py](../../tests/unit/test_percept_trace_buffer_persistence.py) — 9 tests covering 100+ entries, 3-agent isolation, exact activation-strength restoration (no implicit re-record at 1.0), tick counter survival, ring-buffer head/tail invariant when dump-size > live max_entries, concurrent insertion under `dump()` (proves snapshot consistency with no torn reads), tuning-drift WARN.
+- **`migrate_session_envelope` + `migrate_subsystem_envelope` + decorator-style registries** in [src/maxim/memory/snapshot.py](../../src/maxim/memory/snapshot.py): `register_session_migration(from_version)` / `register_subsystem_migration(from_version)`. Pure forward migration; one envelope-version step per call; future-version refuse, unknown-source raise, broken-migration (no version progress) raise. `SessionSnapshot.from_dict` and `unwrap_envelope` both auto-walk their respective chains.
+- **Session-mode subprocess harness:** [tests/substrate/persistence_harness.py::run_session_round_trip](../../tests/substrate/persistence_harness.py) — captures all 6 systems via `SessionSnapshot.capture(strict=True)`, writes ONE envelope file, spawns a child that loads via `from_file().restore_into(strict=True)` against fresh default-wired instances, runs the same probe, compares pre/post. The existing `run_round_trip` and `persistence_child.py` were extended with a `mode` field (`"per_component"` legacy vs `"session_snapshot"` new) so both paths share infra.
+- **6-system probe:** [tests/substrate/probes.py::session_signature](../../tests/substrate/probes.py) returns deterministic counts/signatures for all six bio-systems.
+- **Subprocess round-trip test:** [tests/substrate/test_snapshot_subprocess_round_trip.py](../../tests/substrate/test_snapshot_subprocess_round_trip.py) — 4 tests: empty round-trip, populated round-trip (15 alice + 10 bob PTB entries + 5 cross-layer DERIVED_FROM edges + 7 PTB ticks), unknown-kind rejection, state_files field shape.
+- **Synthetic v0 legacy fixture for migration testing:** registered inline in `TestMigrationV0ToV1` via `register_session_migration(0)` decorator + an `_isolated_session_migrations` fixture that snapshots/restores the registry per test. 9 tests covering: v0→v1 single-step, auto-migrate via `from_dict`, unknown source raise, future-version refuse, broken migration raise, multi-step v0→v1→v2, duplicate registration raise, sub-system path independent, `unwrap_envelope` auto-runs the sub-system chain.
 
 **Pass gate (Stage 2):**
 

@@ -59,11 +59,19 @@ across 37+ call sites is out of scope for Stage 1. Both methods coexist:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from maxim.utils.atomic_io import atomic_write_json
+
+# Stage 2: latest envelope schema version. Bump in lockstep with a registered
+# migration in ``_SESSION_MIGRATIONS`` below. ``unwrap_envelope`` /
+# ``SessionSnapshot._validate_envelope`` accept any version ≤ this and run the
+# migration chain to upgrade in place.
+LATEST_SESSION_SCHEMA_VERSION: int = 1
+LATEST_SUBSYSTEM_SCHEMA_VERSION: int = 1
 
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
@@ -145,24 +153,136 @@ def wrap_envelope(kind: str, system: BioSystemSnapshot) -> dict[str, Any]:
 def unwrap_envelope(envelope: dict[str, Any], expected_kind: str) -> dict[str, Any]:
     """Verify envelope shape and return the payload dict.
 
-    Raises ``ValueError`` if ``kind`` or ``schema_version`` are wrong.
-    Stage 2+ migration tooling will hook here to upgrade payloads before
-    returning.
+    Raises ``ValueError`` if ``kind`` is wrong. Older sub-system envelopes
+    are upgraded to ``LATEST_SUBSYSTEM_SCHEMA_VERSION`` via the
+    ``_SUBSYSTEM_MIGRATIONS`` chain (Stage 2+).
     """
     kind = envelope.get("kind")
     if kind != expected_kind:
         raise ValueError(f"envelope kind mismatch: expected {expected_kind!r}, got {kind!r}")
 
-    version = envelope.get("schema_version")
-    if not isinstance(version, int):
-        raise ValueError(f"envelope schema_version must be int, got {type(version).__name__}: {version!r}")
-    if version != 1:
-        raise ValueError(f"envelope schema_version {version} not supported in Stage 1 (migration lands in Stage 2)")
+    upgraded = migrate_subsystem_envelope(envelope, target_version=LATEST_SUBSYSTEM_SCHEMA_VERSION)
 
-    payload = envelope.get("payload")
+    payload = upgraded.get("payload")
     if not isinstance(payload, dict):
         raise ValueError(f"envelope payload must be dict, got {type(payload).__name__}")
     return payload
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Migration registries (Stage 2)
+#
+# A migration is a pure function that takes an envelope at version N and
+# returns the equivalent envelope at version N+1. ``_run_migration_chain``
+# walks the registry one step at a time. Unknown source versions raise
+# ``ValueError`` — the registry is the single source of truth for what
+# the loader can read.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+MigrationFn = Callable[[dict[str, Any]], dict[str, Any]]
+
+# Session-level migrations. Keyed by the FROM version; each value
+# upgrades to FROM + 1. Empty in Stage 2 because LATEST_SESSION_SCHEMA_VERSION
+# is 1 and there is no v0-in-the-wild — but a synthetic legacy fixture is
+# registered below for the migration test harness.
+_SESSION_MIGRATIONS: dict[int, MigrationFn] = {}
+
+# Sub-system envelope migrations. Same shape as session-level.
+_SUBSYSTEM_MIGRATIONS: dict[int, MigrationFn] = {}
+
+
+def _run_migration_chain(
+    envelope: dict[str, Any],
+    *,
+    target_version: int,
+    registry: dict[int, MigrationFn],
+    label: str,
+) -> dict[str, Any]:
+    """Walk ``registry`` one step per call until envelope reaches target_version.
+
+    Raises ``ValueError`` on missing migration or unreachable target.
+    """
+    if not isinstance(envelope, dict):
+        raise ValueError(f"{label} migration input must be dict, got {type(envelope).__name__}")
+    version = envelope.get("schema_version")
+    if not isinstance(version, int):
+        raise ValueError(f"{label} envelope schema_version must be int, got {type(version).__name__}: {version!r}")
+    if version > target_version:
+        raise ValueError(
+            f"{label} envelope schema_version {version} is newer than this build's "
+            f"latest ({target_version}) — refusing to downgrade"
+        )
+
+    current = envelope
+    while True:
+        cur_version = current["schema_version"]
+        if cur_version == target_version:
+            return current
+        migration = registry.get(cur_version)
+        if migration is None:
+            raise ValueError(
+                f"{label} envelope schema_version {cur_version} has no migration to {cur_version + 1} "
+                f"(registry keys: {sorted(registry.keys())})"
+            )
+        upgraded = migration(current)
+        next_version = upgraded.get("schema_version")
+        if next_version != cur_version + 1:
+            raise ValueError(
+                f"{label} migration {cur_version}→{cur_version + 1} produced schema_version {next_version!r}"
+            )
+        current = upgraded
+
+
+def migrate_session_envelope(envelope: dict[str, Any], *, target_version: int | None = None) -> dict[str, Any]:
+    """Upgrade a session-level envelope through the migration chain.
+
+    Pure forward migration. Not in-place — returns a new dict at each step.
+    """
+    if target_version is None:
+        target_version = LATEST_SESSION_SCHEMA_VERSION
+    return _run_migration_chain(
+        envelope,
+        target_version=target_version,
+        registry=_SESSION_MIGRATIONS,
+        label="session",
+    )
+
+
+def migrate_subsystem_envelope(envelope: dict[str, Any], *, target_version: int | None = None) -> dict[str, Any]:
+    """Upgrade a sub-system envelope through the migration chain."""
+    if target_version is None:
+        target_version = LATEST_SUBSYSTEM_SCHEMA_VERSION
+    return _run_migration_chain(
+        envelope,
+        target_version=target_version,
+        registry=_SUBSYSTEM_MIGRATIONS,
+        label="subsystem",
+    )
+
+
+def register_session_migration(from_version: int) -> Callable[[MigrationFn], MigrationFn]:
+    """Decorator: register a session-envelope migration ``from_version → from_version+1``."""
+
+    def _decorator(fn: MigrationFn) -> MigrationFn:
+        if from_version in _SESSION_MIGRATIONS:
+            raise ValueError(f"session migration from version {from_version} already registered")
+        _SESSION_MIGRATIONS[from_version] = fn
+        return fn
+
+    return _decorator
+
+
+def register_subsystem_migration(from_version: int) -> Callable[[MigrationFn], MigrationFn]:
+    """Decorator: register a sub-system envelope migration ``from_version → from_version+1``."""
+
+    def _decorator(fn: MigrationFn) -> MigrationFn:
+        if from_version in _SUBSYSTEM_MIGRATIONS:
+            raise ValueError(f"subsystem migration from version {from_version} already registered")
+        _SUBSYSTEM_MIGRATIONS[from_version] = fn
+        return fn
+
+    return _decorator
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -379,7 +499,15 @@ class SessionSnapshot:
 
     @classmethod
     def from_dict(cls, envelope: dict[str, Any]) -> SessionSnapshot:
-        snapshot = cls(envelope=envelope)
+        # Stage 2: upgrade older session envelopes through the migration
+        # chain before validating. ``migrate_session_envelope`` is a no-op
+        # when the input is already at LATEST_SESSION_SCHEMA_VERSION.
+        if not isinstance(envelope, dict):
+            raise ValueError(f"envelope must be dict, got {type(envelope).__name__}")
+        if envelope.get("kind") != "session":
+            raise ValueError(f"envelope kind must be 'session', got {envelope.get('kind')!r}")
+        upgraded = migrate_session_envelope(envelope)
+        snapshot = cls(envelope=upgraded)
         snapshot._validate_envelope()
         return snapshot
 
@@ -397,9 +525,10 @@ class SessionSnapshot:
         version = self.envelope.get("schema_version")
         if not isinstance(version, int):
             raise ValueError(f"envelope schema_version must be int, got {type(version).__name__}: {version!r}")
-        if version != 1:
+        if version != LATEST_SESSION_SCHEMA_VERSION:
             raise ValueError(
-                f"SessionSnapshot schema_version {version} not supported in Stage 1 (migration lands in Stage 2)"
+                f"SessionSnapshot schema_version {version} != latest "
+                f"{LATEST_SESSION_SCHEMA_VERSION} — call SessionSnapshot.from_dict to auto-migrate"
             )
         systems = self.envelope.get("systems")
         if not isinstance(systems, dict):
@@ -407,6 +536,8 @@ class SessionSnapshot:
 
 
 __all__ = [
+    "LATEST_SESSION_SCHEMA_VERSION",
+    "LATEST_SUBSYSTEM_SCHEMA_VERSION",
     "BioSystemSnapshot",
     "SNAPSHOT_KINDS",
     "SessionSnapshot",
@@ -416,10 +547,14 @@ __all__ = [
     "cross_layer_graph_to_snapshot",
     "hippocampus_from_snapshot",
     "hippocampus_to_snapshot",
+    "migrate_session_envelope",
+    "migrate_subsystem_envelope",
     "nac_from_snapshot",
     "nac_to_snapshot",
     "ptb_from_snapshot",
     "ptb_to_snapshot",
+    "register_session_migration",
+    "register_subsystem_migration",
     "scn_from_snapshot",
     "scn_to_snapshot",
     "unwrap_envelope",

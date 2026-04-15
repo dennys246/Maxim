@@ -25,11 +25,19 @@ from maxim.memory.cross_layer import CrossLayerEdgeType, CrossLayerGraph
 from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 from maxim.memory.percept_trace_buffer import PerceptTraceBuffer
 from maxim.memory.snapshot import (
+    LATEST_SESSION_SCHEMA_VERSION,
+    LATEST_SUBSYSTEM_SCHEMA_VERSION,
     BioSystemSnapshot,
     SNAPSHOT_KINDS,
     SessionSnapshot,
+    _SESSION_MIGRATIONS,
+    _SUBSYSTEM_MIGRATIONS,
     atl_from_snapshot,
     atl_to_snapshot,
+    migrate_session_envelope,
+    migrate_subsystem_envelope,
+    register_session_migration,
+    register_subsystem_migration,
     unwrap_envelope,
     wrap_envelope,
 )
@@ -268,7 +276,7 @@ class TestEnvelopeShape:
 
     def test_unwrap_envelope_unknown_version_rejected(self):
         env = {"schema_version": 99, "kind": "atl", "payload": {}}
-        with pytest.raises(ValueError, match="schema_version 99 not supported"):
+        with pytest.raises(ValueError, match="schema_version 99 is newer than"):
             unwrap_envelope(env, "atl")
 
     def test_snapshot_kinds_match_expected_set(self):
@@ -321,7 +329,7 @@ class TestEnvelopeVersioningAuthoritative:
         atl = ATL(ATLConfig())
         env = atl_to_snapshot(atl)
         env["schema_version"] = 2
-        with pytest.raises(ValueError, match="schema_version 2 not supported"):
+        with pytest.raises(ValueError, match="schema_version 2 is newer than"):
             atl_from_snapshot(env, ATL(ATLConfig()))
 
 
@@ -510,7 +518,7 @@ class TestSessionSnapshotComposition:
 
     def test_session_snapshot_bad_schema_version_rejected(self):
         bad = {"schema_version": 2, "kind": "session", "systems": {}}
-        with pytest.raises(ValueError, match="schema_version 2 not supported"):
+        with pytest.raises(ValueError, match="schema_version 2 is newer than"):
             SessionSnapshot.from_dict(bad)
 
     def test_session_snapshot_non_int_schema_version_rejected(self):
@@ -577,3 +585,160 @@ class TestSessionSnapshotStrictMode:
             cross_layer_graph=clg2,
             strict=True,
         )  # must not raise
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# P3.5 Stage 2 — migration chain (synthetic v0 → v1 fixture)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def _isolated_session_migrations():
+    """Snapshot + restore the session migration registry around each test."""
+    saved = dict(_SESSION_MIGRATIONS)
+    try:
+        yield
+    finally:
+        _SESSION_MIGRATIONS.clear()
+        _SESSION_MIGRATIONS.update(saved)
+
+
+@pytest.fixture
+def _isolated_subsystem_migrations():
+    saved = dict(_SUBSYSTEM_MIGRATIONS)
+    try:
+        yield
+    finally:
+        _SUBSYSTEM_MIGRATIONS.clear()
+        _SUBSYSTEM_MIGRATIONS.update(saved)
+
+
+class TestMigrationV0ToV1:
+    """Stage 2 — synthetic legacy fixture proves the migration mechanism.
+
+    The current LATEST_SESSION_SCHEMA_VERSION is 1, so there is no
+    in-the-wild v0. These tests register a fake v0→v1 migration via
+    the public ``register_session_migration`` decorator (cleaned up
+    after each test by ``_isolated_session_migrations``).
+    """
+
+    def test_session_v0_to_v1_migration_produces_valid_envelope(self, _isolated_session_migrations):
+        @register_session_migration(0)
+        def _v0_to_v1(env):
+            # Pretend v0 had a top-level ``bio_systems`` key that v1
+            # renames to ``systems``. Migration normalizes shape.
+            new_env = dict(env)
+            new_env["systems"] = new_env.pop("bio_systems", {})
+            new_env["schema_version"] = 1
+            return new_env
+
+        legacy = {
+            "schema_version": 0,
+            "kind": "session",
+            "bio_systems": {},  # legacy key
+        }
+        upgraded = migrate_session_envelope(legacy)
+        assert upgraded["schema_version"] == 1
+        assert "systems" in upgraded
+        assert "bio_systems" not in upgraded
+
+    def test_session_from_dict_auto_migrates_v0(self, _isolated_session_migrations):
+        @register_session_migration(0)
+        def _v0_to_v1(env):
+            new_env = dict(env)
+            new_env["systems"] = new_env.pop("bio_systems", {})
+            new_env["schema_version"] = 1
+            return new_env
+
+        legacy = {
+            "schema_version": 0,
+            "kind": "session",
+            "bio_systems": {},
+        }
+        snapshot = SessionSnapshot.from_dict(legacy)
+        assert snapshot.envelope["schema_version"] == LATEST_SESSION_SCHEMA_VERSION
+        assert snapshot.envelope["kind"] == "session"
+
+    def test_unknown_source_version_raises(self, _isolated_session_migrations):
+        # No migration registered for v0 — chain has no path forward
+        legacy = {"schema_version": 0, "kind": "session", "systems": {}}
+        with pytest.raises(ValueError, match="schema_version 0 has no migration to 1"):
+            migrate_session_envelope(legacy)
+
+    def test_future_version_refused(self, _isolated_session_migrations):
+        future = {"schema_version": 999, "kind": "session", "systems": {}}
+        with pytest.raises(ValueError, match="newer than this build's latest"):
+            migrate_session_envelope(future)
+
+    def test_broken_migration_produces_wrong_version_raises(self, _isolated_session_migrations):
+        @register_session_migration(0)
+        def _broken(env):
+            # Returns the same version it received — no progress
+            return dict(env)
+
+        legacy = {"schema_version": 0, "kind": "session", "systems": {}}
+        with pytest.raises(ValueError, match="migration 0→1 produced schema_version 0"):
+            migrate_session_envelope(legacy)
+
+    def test_migration_chain_walks_multiple_steps(self, _isolated_session_migrations):
+        """Two-step migration: v0 → v1 → v2 (when LATEST is bumped to 2)."""
+
+        @register_session_migration(0)
+        def _v0_to_v1(env):
+            new = dict(env)
+            new["schema_version"] = 1
+            new["systems"] = new.pop("bio_systems", {})
+            return new
+
+        @register_session_migration(1)
+        def _v1_to_v2(env):
+            new = dict(env)
+            new["schema_version"] = 2
+            new["fingerprint"] = "v2"
+            return new
+
+        legacy = {"schema_version": 0, "kind": "session", "bio_systems": {"atl": {}}}
+        upgraded = migrate_session_envelope(legacy, target_version=2)
+        assert upgraded["schema_version"] == 2
+        assert upgraded["systems"] == {"atl": {}}
+        assert upgraded["fingerprint"] == "v2"
+
+    def test_register_duplicate_source_version_raises(self, _isolated_session_migrations):
+        @register_session_migration(0)
+        def _first(env):
+            return env
+
+        with pytest.raises(ValueError, match="already registered"):
+
+            @register_session_migration(0)
+            def _second(env):
+                return env
+
+    def test_subsystem_migration_path_works(self, _isolated_subsystem_migrations):
+        """The sub-system registry is independent from the session registry."""
+
+        @register_subsystem_migration(0)
+        def _v0_to_v1(env):
+            new = dict(env)
+            new["schema_version"] = 1
+            new["payload"] = {"renamed": "value"} if "old_payload" in new else new.get("payload", {})
+            return new
+
+        legacy = {"schema_version": 0, "kind": "atl", "old_payload": True, "payload": {}}
+        upgraded = migrate_subsystem_envelope(legacy)
+        assert upgraded["schema_version"] == LATEST_SUBSYSTEM_SCHEMA_VERSION
+        assert upgraded["payload"] == {"renamed": "value"}
+
+    def test_unwrap_envelope_runs_subsystem_migrations(self, _isolated_subsystem_migrations):
+        """``unwrap_envelope`` is the call site that benefits from migration."""
+
+        @register_subsystem_migration(0)
+        def _v0_to_v1(env):
+            new = dict(env)
+            new["schema_version"] = 1
+            new["payload"] = {"upgraded": True}
+            return new
+
+        legacy_atl_env = {"schema_version": 0, "kind": "atl", "payload": {}}
+        payload = unwrap_envelope(legacy_atl_env, "atl")
+        assert payload == {"upgraded": True}
