@@ -33,7 +33,8 @@ By that definition we are at roughly 40%. The skeleton is solid (mesh.yml schema
 | Routing fallback | Provider failover, typed `BackendError` dispatch, `dispatch_exhausted` aggregated WARN, recovery measured at 58.68s p99 | [router.py](../../src/maxim/models/language/router.py) | 3 + 3.5 + 4 A/B |
 | Topology (declarative) | `mesh.yml` schema, FROZEN parser, `MeshConfig` dataclass with `__post_init__` validation | [mesh_config.py](../../src/maxim/peer/mesh_config.py) | 4 C1 |
 | Topology (operator verbs) | `init-mesh`, `add-node`, `remove-node` — strict CI grep allow-list enforces single writer module | [mesh_setup.py](../../src/maxim/peer/mesh_setup.py) | 4 C3.1 + C3.2 |
-| State layer (drain) | `drain` / `resume` / `list-drained`, `filelock` RMW, role-scoped, `atomic_write_secret` pattern | [drain_state.py](../../src/maxim/peer/drain_state.py) | 4 C2 |
+| Mesh-aware install | `--node <name> install <extras>` composing drain → install → resume, shared `install_on_target` core, atomic `drain_node_if_absent` primitive, exit-code-3 post-install-resume-failure | [install_core.py](../../src/maxim/peer/install_core.py), [mesh_cli.py](../../src/maxim/peer/mesh_cli.py) | 4 C3.3 |
+| State layer (drain) | `drain` / `resume` / `list-drained` + atomic `drain_node_if_absent`, `filelock` RMW, role-scoped, `atomic_write_secret` pattern | [drain_state.py](../../src/maxim/peer/drain_state.py) | 4 C2 + C3.3 |
 | Probe + classification | `_MaximPeerBackend.health_check` + `for_url`, single shared `classify_probe_outcome` | [maxim_peer_backend.py](../../src/maxim/models/language/maxim_peer_backend.py), [probe_classify.py](../../src/maxim/peer/probe_classify.py) | 3 R2.5/R2.6 + 4 C1 |
 | Observability (doctor) | `check_mesh_nodes` (with drain awareness), `check_vram_pressure`, agent_id binding, per-node `status` / `health` | [doctor/checks.py](../../src/maxim/doctor/checks.py) | 3.6 R5 + 4 A + 4 C1 |
 | Observability (logs) | Structured JSONL via `MAXIM_LOG_FILE`, per-call `peer_backend_call` trace, `role_detected` event | [utils/http.py](../../src/maxim/utils/http.py) | 1 R1 + 2 R2a + 3 R2.5 |
@@ -60,12 +61,12 @@ Two more honest gaps worth flagging up front:
 
 These complete the manage-the-mesh-by-hand surface. Each is a small ship.
 
-- **C3.3 (in flight):** `maxim peer --node <name> install <extras>` — mesh-aware install with drain → install → resume composition. Lifts a shared `_install_on_target(url, key, extras, packages)` core out of `_cmd_install` so the existing positional-URL verb and the new mesh-aware verb both call it. Branch: `feat/plan4-c3.3-node-install`. **Status:** commit 1 (regression test) landed; commit 2 (lift) and commit 3 (new verb) pending.
-- **C3.4:** `/v1/debug/vram` admin endpoint. Plan 3.6 R5 explicitly deferred this. Unlocks remote VRAM observability for peer-mode doctor and any future admin dashboard. ~50 LOC + auth + tests.
-- **C3.5:** `maxim peer --node <name> update` and `--node restart` — mesh-aware versions of the existing positional-URL verbs, composing drain/op/resume. Same shape as C3.3, tiny diff each. Probably one PR for both.
+- **C3.3 ✅ SHIPPED (PR #128, 2026-04-15):** `maxim peer --node <name> install <extras>` — mesh-aware install composing drain → install → resume around the shared `install_on_target` core in [install_core.py](../../src/maxim/peer/install_core.py). Cross-confirmed pre-merge review found + folded 17 items including the probe-cache URL mismatch (CC1) and drain TOCTOU (CC2). New `drain_node_if_absent` atomic primitive closes the TOCTOU window. Exit code 3 introduced for post-install-resume-failure distinguishability.
+- **C3.4:** `/v1/debug/vram` admin endpoint. Plan 3.6 R5 explicitly deferred this. Unlocks remote VRAM observability for peer-mode doctor and any future admin dashboard. ~50 LOC + auth + tests. **Next up.**
+- **C3.5:** `maxim peer --node <name> update` and `--node restart` — mesh-aware versions of the existing positional-URL verbs, composing drain/op/resume. Same shape as C3.3; will reuse the `install_core.py` pattern (lift a shared `<op>_on_target` core, extend the CI grep allow-list). Probably one PR for both.
 - **C3.6:** `maxim peer --node <name> llm <model>` — per-node model swap. Today `maxim peer llm <model>` operates on the connected leader only.
 
-**Estimated effort:** C3.3 + C3.4 + C3.5 + C3.6 ≈ 4 small PRs over 4 sessions. Mostly composition over existing primitives, low review surface each.
+**Estimated effort:** C3.4 + C3.5 + C3.6 ≈ 3 small PRs over 3 sessions. Mostly composition over existing primitives, low review surface each.
 
 ### Stage C4: Wire the router to drain state — THE missing piece
 
@@ -158,17 +159,38 @@ Tracked in [node_security_simplification.md](node_security_simplification.md), `
 
 **Estimated effort:** small unless a real version skew incident forces it. Defer until needed.
 
+### Stage C9: Mesh doc transport
+
+Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The missing primitive for **peer-to-peer coordination** — today's cross-node channels are inference traffic (LLM prompts), admin verbs (one-shot side effects), and structured logs (read-only operator surface). None of them let agent A on node X deposit a structured doc that agent B on node Y can read later. Plan detail in [mesh_doc_transport.md](mesh_doc_transport.md).
+
+**The killer use case:** multi-agent coordination. When Maxim agents run on separate mesh nodes, they need a standardized channel for "share this context with your sibling." Doc-drop is the smallest useful unit. The immediate operator-facing win is multi-session Claude collaboration (parallel Claude sessions on the operator's leader + peer can exchange context via an inbox/outbox), but the long-term play is agent-to-agent coordination as the foundation for C4.5 auto-drain announcements, C7 cluster-key rotation broadcasts, and the Mother Maxim precursor.
+
+**v1 shape (minimal):**
+- Endpoint family: `PUT / GET / DELETE /v1/mesh/docs/<namespace>/<key>` + list endpoints
+- Storage: `~/.maxim/util/mesh_docs/<namespace>/<key>.{json,md}` per the C2 state-layer invariant
+- Shared core: `src/maxim/peer/mesh_doc_core.py` mirroring the C3.3 `install_core.py` pattern (single source of truth, CI grep allow-list)
+- CLI: `maxim peer --node <name> docs put|get|ls|rm`
+- 1 MB / doc cap, 100 MB / namespace cap, 24h default TTL with namespace overrides
+- Authorization: shared cluster key (v1 limitation — C7 per-peer identity layers on top later)
+- Delivery: pure pull (recipient polls); long-poll / webhook deferred to v2+
+
+**Orthogonal to C4/C5.** Ships on its own timeline — doesn't block reactivity work and isn't blocked by it. Pre-design review round answers 5 open questions (secret-bearing policy, role-scoping, delivery semantics, namespace creation, authorization). See [mesh_doc_transport.md](mesh_doc_transport.md) §"Open design questions."
+
+**Estimated effort:** ~3 sessions (design + implementation + review fold + docs). ~400-600 LOC + tests.
+
 ---
 
 ## 5. Mapping to versions
 
 | Version | Includes | Status |
 |---|---|---|
-| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface complete) + C3.4 VRAM endpoint | C3.3 paused mid-ship for pain-bus parallel work |
+| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface complete) + C3.4 VRAM endpoint | **C3.3 SHIPPED** (PR #128, 2026-04-15); C3.4/C3.5/C3.6 pending |
 | **0.5** | C4 router-drain coupling + C4.5 auto-drain (the actual reactive ship) + substrate P3a / P4 / B3-B5 | not started |
-| **0.6** | C5 capacity-aware routing + C6 admin API + dashboard | not started |
+| **0.6** | C5 capacity-aware routing + C6 admin API + dashboard + **C9 mesh doc transport** | not started |
 | **0.7+** | C7 security hardening + C8 cross-version compat | not started |
 | **1.0** | Cross-session learning demonstration (banner) — separate from mesh | not started |
+
+**Note on C9 placement:** C9 is orthogonal to the reactivity work (C4/C4.5/C5) and doesn't share file territory with any other stage — it can slip earlier (0.5) if multi-agent coordination becomes a user-visible blocker, or later (0.7) if it stays a nice-to-have. 0.6 is the default slot because it pairs naturally with C6's admin API work on the same endpoint surface.
 
 ---
 
@@ -208,10 +230,10 @@ These are the things a C4 plan doc has to answer. None of them are blockers for 
 
 Update this roadmap when:
 
-- **C3.3 ships** — mark C3.3 done, update the version table, drop the "in flight" marker.
 - **A new C3.x sub-stage is identified** — most likely from operator feedback during real mesh use.
 - **C4 plan doc is drafted** — link it from §4 Stage C4.
-- **Any C5 / C6 / C7 architectural decision conflicts with a load-bearing invariant** — flag it explicitly here, don't let the conflict accumulate silently.
+- **C9 plan doc activates** — when multi-agent coordination becomes a user-visible blocker OR when two C3.x+ features in a row would want the doc-transport primitive. See `mesh_doc_transport.md` §"Re-check triggers" for the activation criteria.
+- **Any C5 / C6 / C7 / C9 architectural decision conflicts with a load-bearing invariant** — flag it explicitly here, don't let the conflict accumulate silently.
 - **The "fully reactive" definition in §1 starts to feel wrong** — that's the load-bearing piece. If the definition shifts, every stage estimate shifts with it.
 - **Versions ship and the table in §5 needs to slip** — common, expected, no apology needed; just keep it honest.
 
@@ -225,4 +247,5 @@ Update this roadmap when:
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — the C5 skeleton.
 - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
 - [node_security_simplification.md](node_security_simplification.md) — feeds C7.
+- [mesh_doc_transport.md](mesh_doc_transport.md) — Stage C9 shell plan (mesh-to-mesh structured doc exchange).
 - [cross_platform_file_lock.md](cross_platform_file_lock.md) — shell plan to unify the two file-lock APIs (`utils/process_lock` and `filelock.FileLock`); blocks nothing, useful cleanup post-C4.
