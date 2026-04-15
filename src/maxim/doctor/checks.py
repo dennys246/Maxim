@@ -2103,13 +2103,12 @@ def check_embodiment_ref(ref: str) -> CheckResult:
     If the ref does not resolve, the fix hint includes a sorted list
     of available refs (slicing to the first 20 to keep the doctor
     output bounded; longer registries get a "...and N more" suffix).
+
+    The function is only called from `run_all_checks` when
+    `embodiment_ref` is truthy — there is no empty-ref branch.
+    Pre-merge review (A-arch-3) caught the original empty-ref `info`
+    return as dead code that lied in the function contract.
     """
-    if not ref:
-        return CheckResult(
-            name="Embodiment ref",
-            status="info",
-            message="No --embodiment specified",
-        )
     try:
         from maxim.embodiment.component_registry import ComponentRegistry
     except ImportError as e:
@@ -2142,8 +2141,12 @@ def check_embodiment_ref(ref: str) -> CheckResult:
         # rebuild the hint with a length cap. Prefer same-category
         # matches so a typo in `weapons/X` surfaces weapons options
         # first instead of alphabetically-first categories.
+        # Use the PUBLIC list_refs() API rather than reaching into
+        # `_index` — pre-merge review I5 cross-confirmed: the private
+        # attribute coupling silently fell back to "registry has no
+        # components" if `_index` was ever renamed.
         try:
-            available = sorted(getattr(registry, "_index", {}).keys())
+            available = sorted(registry.list_refs())
         except Exception:
             available = []
         if not available:

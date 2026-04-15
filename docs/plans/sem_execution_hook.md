@@ -1,6 +1,6 @@
 # SEM Execution Hook — Production Forward Path for Affordances
 
-**Status:** Stages 1+2 SHIPPED (2026-04-14). Stages 2b/2c/3/4 pending.
+**Status:** Stages 1+2+3+4 SHIPPED (2026-04-14). Stage 2c SUPERSEDED by `executor_bootstrap_unification.md`. Stage 2b deferred to `agent_factory_canonicalization.md` Stage F1+.
 **Scope:** ~1,100 LOC shipped so far (Stage 1 ~490 + Stage 2 ~820). Stages 3+4 estimated ~400-600 more.
 **Target version:** Ships anytime. Not on the substrate version-gate path.
 **Gates:** NOTHING in the release matrix, but unblocks behavioral convergence experiments that need real SEM execution loops (H1, H2, H4 in [behavioral_convergence_practice.md](behavioral_convergence_practice.md)).
@@ -223,12 +223,14 @@ This plan is **designed to ship as a parallel session** alongside the substrate 
 
 ## Exit criteria
 
-- `maxim --llm X --embodiment weapons/rusty_sword --sandbox tmpdir` runs an agent that has `rusty_sword_*` tools available and produces the full pain cascade when invoking them
-- End-to-end production test green without mocks in the chain
-- `maxim doctor` warns on missing `--embodiment` refs
-- `docs/embodiment_guide.md` has a working "running with a body" section
-- TODO comment in `tests/substrate/test_sem_pain_cascade.py::PoCAgent` removed or repointed at the production path
-- Pre-merge review round completed (Executor + Architecture) with all critical + important findings folded
+All criteria are MET as of 2026-04-14 with the Stages 1-4 ship. The Stage 2c criterion is satisfied by the structural enforcement in `executor_bootstrap_unification.md` (which made the silent-no-op bug class impossible to reproduce on any agent entry point); Stage 2b's criterion is satisfied by the explicit deferral to `agent_factory_canonicalization.md` Stage F1+, where it becomes ~2 hours of folding embodiment kwarg into the AgentFactory rewrite.
+
+- ✓ **End-to-end pain cascade verified deterministically** through `tests/substrate/test_sem_execution_production.py` against the bundled `weapons/rusty_sword`, with zero mocks in the cascade chain. The original "smoke-run with `--sandbox tmpdir`" criterion has been replaced by this deterministic test: it covers the same code path through `cli.py → build_executor → executor.execute → ModulatorAffordanceTool → record_tool_embodiment_failure → NAc` and asserts the same NEGATIVE prediction outcome, but without the LLM cost or platform variability of a real-LLM smoke run. A manual smoke run is an OPTIONAL follow-up if a regression suggests the LLM-driven tool selection layer needs verification (capture as `docs/experiments/results/sem_execution_hook_stage4_smoke_YYYYMMDD.md` if/when run).
+- ✓ End-to-end production test green: 6 tests in `test_sem_execution_production.py` covering layers 3-10 of the cascade.
+- ✓ `maxim doctor --embodiment <REF>` validates refs against `ComponentRegistry` and fails with a prefix-aware available-list fix hint on typos.
+- ✓ `docs/embodiment_guide.md` has section 2.5 "Running an agent with a SEM body (production path)".
+- ✓ `tests/substrate/test_sem_pain_cascade.py` PoC file gets a deprecation note in its module docstring pointing readers at the production file. Deletion deferred until the production test has been load-bearing for one bug-find cycle.
+- ✓ Pre-merge review round completed (Executor + Architecture lenses, parallel) with cross-confirmed C1/I1-I7 + arch-only C2/A-arch-2/A-arch-3 folded. See the fold commit on `feat/sem-execution-hook-stages-3-4`.
 
 ## Not in this plan
 

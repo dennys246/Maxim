@@ -249,49 +249,29 @@ class TestSEMProductionCascade:
             "produce an isolated bridge attached to that call's NAc."
         )
 
-    def test_policy_story_drop_weapon_after_learning_slash_is_painful(self):
-        """Layer 10 guard: the headline P2 PoC assertion through the
-        production path. After learning slash is painful, an
-        ``nac.predict`` query for slash returns NEGATIVE and a query
-        for the (untried) drop_weapon returns None — a downstream
-        policy that prefers neutral over NEGATIVE would pick
-        drop_weapon. This test exercises the prediction surface only;
-        the policy itself is downstream."""
-        world = _build_production_world(sword_durability=0.0)
-        world["executor"].execute(
-            {
-                "tool_name": "rusty_sword_slash",
-                "params": {"target": "training_dummy", "force": 0.9},
-            }
-        )
-        nac = world["nac"]
-
-        slash_pred = nac.predict(
-            event_type="tool",
-            event_signature="tool:rusty_sword_slash",
-        )
-        # rusty_sword_drop is not a registered affordance (we use
-        # rusty_sword_repair as the second action in the policy story
-        # since the rusty_sword YAML defines it). The principle holds
-        # regardless of which untried action we ask about.
-        repair_pred = nac.predict(
-            event_type="tool",
-            event_signature="tool:rusty_sword_repair",
-        )
-
-        assert slash_pred is not None
-        assert slash_pred.predicted_valence == Valence.NEGATIVE
-        assert repair_pred is None, (
-            "rusty_sword_repair has a prediction without ever being "
-            "executed — context-similarity attribution leaked across "
-            "tool names. This would be a serious regression in NAc."
-        )
+    # NOTE: The original Stage 3 file shipped a
+    # `test_policy_story_drop_weapon_after_learning_slash_is_painful`
+    # test, but the pre-merge review (I6 cross-confirmed) caught it
+    # asserting on a trivially-true premise: `rusty_sword_repair` is
+    # already a registered affordance, so `nac.predict(repair) is
+    # None` is true for ANY untried tool name and proves nothing
+    # about cross-tool contamination. The load-bearing NEGATIVE
+    # signal is already covered by `test_nac_records_negative_after_one_cascade`
+    # and the confidence-growth test. A real cross-tool policy story
+    # would need to record a POSITIVE outcome via nac.record_outcome
+    # AND a NEGATIVE one and assert the relative ordering; that's a
+    # different test (and more work) and not load-bearing for the
+    # Stage 3 cascade integrity claim. Trivially-green tests pollute
+    # bisects, so it was deleted entirely rather than left as a
+    # weakened guard.
 
     def test_executor_embodiment_field_is_declared_not_stash(self):
         """Layer 2 explicit guard: ``executor.embodiment`` is a real
         declared field on the Executor class, not an attribute stash.
         This is the executor_bootstrap_unification I1 cross-confirmed
         review finding — verify the fix has not regressed."""
+        import inspect
+
         from maxim.runtime.executor import Executor
 
         # The field must be declared in __init__ so it survives even
@@ -306,8 +286,17 @@ class TestSEMProductionCascade:
         assert executor.embodiment is None, (
             f"executor.embodiment should default to None when entity_ref was not passed; got {executor.embodiment!r}"
         )
-        # Sanity: it's a typed field on the class, not a per-instance
-        # attribute set via setattr.
-        assert "embodiment" in Executor.__init__.__code__.co_varnames, (
-            "Executor.__init__ no longer has `embodiment` as a parameter. The declared-field invariant is broken."
+        # Sanity: it's a real PARAMETER on Executor.__init__, not just
+        # a local variable inside the function body. The pre-merge
+        # review (I4 cross-confirmed) caught that `co_varnames`
+        # includes locals, so a future refactor to **kwargs +
+        # `kwargs.get("embodiment")` would have kept the old assertion
+        # green even though the parameter was gone. Use
+        # inspect.signature to check the actual parameter surface.
+        params = inspect.signature(Executor.__init__).parameters
+        assert "embodiment" in params, (
+            "Executor.__init__ no longer has `embodiment` as a declared "
+            "parameter. The declared-field invariant is broken — the "
+            "constructor must accept embodiment as a keyword argument, "
+            "not stash it post-construction via setattr."
         )

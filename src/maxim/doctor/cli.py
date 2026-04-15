@@ -102,18 +102,32 @@ def _parse_embodiment_flag(argv: list[str]) -> str | None:
     Mirrors the agent-side ``--embodiment`` flag in `cli_parser.py`.
     The doctor variant validates the ref against ComponentRegistry
     BEFORE the user spends time spinning up an agent.
+
+    On parse failure (missing value, value starts with ``-``), this
+    function exits with code 2 and a usage message — silent drop is
+    explicitly forbidden here per ``CLAUDE.md::doctor::Don't silently
+    drop failures``. A user who typed ``--embodiment`` and got back a
+    clean doctor report would walk away thinking everything is fine
+    when their request was actually swallowed (cross-confirmed
+    pre-merge review finding C1/I2).
     """
     try:
         idx = argv.index("--embodiment")
     except ValueError:
         return None
     if idx + 1 >= len(argv):
-        print("--embodiment requires a component ref (e.g. weapons/rusty_sword)", file=sys.stderr)
-        return None
+        print(
+            "error: --embodiment requires a component ref (e.g. weapons/rusty_sword)",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     ref = argv[idx + 1]
     if ref.startswith("-"):
-        print(f"--embodiment expected a ref, got flag {ref!r}", file=sys.stderr)
-        return None
+        print(
+            f"error: --embodiment expected a component ref, got flag {ref!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     return ref
 
 

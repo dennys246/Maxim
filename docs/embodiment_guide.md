@@ -91,14 +91,23 @@ $ maxim doctor --embodiment weapons/nonexistent_sword
 ━━━ Embodiment ━━━
   ✗ Embodiment ref: Component ref 'weapons/nonexistent_sword' not found
     → Components in 'weapons':
-    →   weapons/cyber_pistol
-    →   weapons/laser_carbine
+    →   weapons/combat_knife
+    →   weapons/enchanted_bow
+    →   weapons/longbow
+    →   weapons/magic_staff
+    →   weapons/neural_disruptor
+    →   weapons/plasma_rifle
+    →   weapons/poison_dagger
     →   weapons/rusty_sword
-    →   weapons/...
+    →   weapons/shock_baton
     →
     → Other available components:
     →   bodies/cybernetic_arm
-    →   ...
+    →   bodies/megarm_v3
+    →   bodies/reachy_mini
+    →   creatures/alien_xenomorph
+    →   creatures/cyberdog
+    →   ...and 35 more
 ```
 
 The doctor output groups same-category matches first (so a typo in `weapons/X` surfaces other weapons before unrelated categories) and caps the per-category preview at 20 entries.
