@@ -329,6 +329,75 @@ def drain_node(
         ) from e
 
 
+def drain_node_if_absent(
+    name: str,
+    known_node_names: set[str],
+    *,
+    self_name: str | None = None,
+    force_self: bool = False,
+) -> tuple[frozenset[str], bool]:
+    """Atomically drain ``name`` only if it isn't already drained.
+
+    Plan 4 C3.3 fold CC2 (cross-confirmed TOCTOU finding): the
+    ``--node <name> install`` verb needs to know whether it was the
+    caller who added the drain entry (so it can auto-resume on
+    success) or whether the operator had drained the node earlier
+    (in which case sticky operator intent means DON'T resume). The
+    naive check `was_drained = name in read_drained_nodes(...).active`
+    followed by :func:`drain_node` has a TOCTOU window: two
+    concurrent ``--node install`` calls can both see
+    ``was_drained=False``, both call :func:`drain_node` (idempotent,
+    OK), and then both resume — silently clobbering a concurrent
+    operator drain that landed in between.
+
+    This helper collapses the read-then-write into a single
+    filelocked critical section:
+
+    - If ``name`` is already in the drain set, return
+      ``(current_set, False)`` — caller will NOT auto-resume.
+    - If ``name`` is not drained, add it, return
+      ``(new_set, True)`` — caller WILL auto-resume on success.
+
+    Validates unknown-node and self-drain rules the same way
+    :func:`drain_node` does. Raises :class:`DrainError` on timeout,
+    unknown node, or self-drain without force_self.
+
+    Returns a tuple of ``(drain_set, we_added_it)``.
+    """
+    if name not in known_node_names:
+        raise DrainError(
+            f"unknown node {name!r}",
+            known_nodes=sorted(known_node_names),
+        )
+    if self_name is not None and name == self_name and not force_self:
+        raise DrainError(
+            f"refusing to drain self ({name!r}) — this strands in-flight "
+            "requests and is almost always a mistake. "
+            "Pass force_self=True (CLI: --force-self) to override.",
+            known_nodes=sorted(known_node_names),
+        )
+
+    state_path = drain_state_path()
+    try:
+        with _lock(state_path):
+            current = _load_names(state_path)
+            if name in current:
+                # Sticky operator intent: another actor (or an earlier
+                # operator invocation) already drained this node. Do
+                # NOT modify state; report we-did-nothing so the
+                # caller skips the auto-resume step.
+                return frozenset(current), False
+            current.add(name)
+            _write(state_path, current)
+            return frozenset(current), True
+    except _FileLockTimeout as e:
+        raise DrainError(
+            f"drain state locked — another maxim process holds "
+            f"{_lock_path(state_path)} for more than 10s. Check with "
+            f"`lsof {_lock_path(state_path)}` and retry."
+        ) from e
+
+
 def resume_node(name: str, known_node_names: set[str]) -> frozenset[str]:
     """Remove ``name`` from the drain set under lock. Returns the new set.
 
@@ -417,6 +486,7 @@ __all__ = [
     "DrainError",
     "DrainReadResult",
     "drain_node",
+    "drain_node_if_absent",
     "drain_state_path",
     "read_drained_nodes",
     "resume_node",

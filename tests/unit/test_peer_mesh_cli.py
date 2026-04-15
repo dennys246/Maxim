@@ -538,19 +538,31 @@ class TestParseNodeInstallTokens:
 
 class TestRunNodeInstall:
     """Plan 4 C3.3 — mesh-aware install verb composing
-    drain → _install_on_target → resume.
+    drain → install_on_target → resume.
 
-    Mocks `maxim.peer.cli._install_on_target` to avoid real HTTP
-    traffic. The regression test for the core's HTTP body shape lives
-    in test_peer_install.py (commit 1). This class exclusively covers
-    the composition layer: drain/resume bookkeeping, self-guard,
-    error propagation, and was-drained sticky semantics.
+    Mocks ``maxim.peer.mesh_cli.install_on_target`` to avoid real
+    HTTP traffic. The fold commit moved the shared install core from
+    ``peer/cli.py`` to ``peer/install_core.py``; ``mesh_cli.py``
+    imports ``install_on_target`` at module load, so the monkeypatch
+    has to target the ``mesh_cli`` namespace (where
+    ``_run_node_install`` looks the name up), not the
+    ``install_core`` definition site. The regression test for the
+    core's HTTP body shape lives in ``test_peer_install.py``
+    (commit 1). This class exclusively covers the composition layer:
+    drain/resume bookkeeping, self-guard, error propagation, and
+    was-drained sticky semantics.
     """
 
     def _install_stub(self, monkeypatch, return_code: int):
-        """Patch _install_on_target to return a fixed exit code and
-        record its call args for assertion. Returns a dict populated
-        on first call with ``url``, ``key``, ``extras``, ``packages``.
+        """Patch ``install_on_target`` on the mesh_cli module and
+        record its call args. Returns a dict populated on first call
+        with ``url``, ``key``, ``extras``, ``packages``.
+
+        Patches on ``mesh_cli`` (the consumer), not on ``install_core``
+        (the definition site), because ``mesh_cli`` binds the name at
+        module load via ``from maxim.peer.install_core import
+        install_on_target``. A patch on ``install_core`` would not
+        propagate to the consumer's already-bound reference.
         """
         captured: dict = {}
 
@@ -561,9 +573,7 @@ class TestRunNodeInstall:
             captured["packages"] = packages
             return return_code
 
-        import maxim.peer.cli as peer_cli
-
-        monkeypatch.setattr(peer_cli, "_install_on_target", fake_install)
+        monkeypatch.setattr(mesh_cli, "install_on_target", fake_install)
         return captured
 
     # ─── self-guard ────────────────────────────────────────────────
@@ -747,7 +757,7 @@ class TestRunNodeInstall:
             ["--node", "mac-studio", "install", "semantic"],
         )
         assert rc == 0
-        assert "url" in captured  # _install_on_target was called
+        assert "url" in captured  # install_on_target was called
 
     def test_dispatcher_unknown_verb_includes_install_in_hint(self, mesh_home, capsys):
         """The unknown-verb error message should list install as one
@@ -759,3 +769,326 @@ class TestRunNodeInstall:
         err = capsys.readouterr().err
         assert rc == 2
         assert "install" in err
+
+
+class TestRunNodeInstallFoldGuards:
+    """Regression guards for the C3.3 pre-merge review folds.
+
+    Separate class from ``TestRunNodeInstall`` so the fold-specific
+    assertions don't bloat the happy-path class. Each test maps to a
+    numbered fold finding; the mapping is in the test docstring.
+    """
+
+    def _install_stub(self, monkeypatch, return_code: int):
+        """Same shape as TestRunNodeInstall._install_stub — patches
+        ``mesh_cli.install_on_target``, returns a captured-args dict.
+        """
+        captured: dict = {}
+
+        def fake_install(url, key, extras, packages):
+            captured["url"] = url
+            captured["key"] = key
+            captured["extras"] = extras
+            captured["packages"] = packages
+            return return_code
+
+        monkeypatch.setattr(mesh_cli, "install_on_target", fake_install)
+        return captured
+
+    # ─── Fold I4: exit code 3 for resume-after-success failure ───
+
+    def test_resume_failure_after_successful_install_returns_exit_code_3(self, mesh_home, monkeypatch, capsys):
+        """Fold I4: install succeeded but post-install auto-resume
+        failed. Operators tailing exit codes must be able to tell
+        this case apart from exit code 1 (install itself failed).
+        """
+        self._install_stub(monkeypatch, return_code=0)
+
+        # Patch _resume_node on the mesh_cli module to raise DrainError
+        # (simulating a filelock timeout or similar).
+        from maxim.peer.drain_state import DrainError
+
+        def fake_resume(name, known):
+            raise DrainError("simulated filelock timeout during resume")
+
+        monkeypatch.setattr(mesh_cli, "_resume_node", fake_resume)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "semantic"],
+        )
+        captured = capsys.readouterr()
+        # Exit 3, NOT 1 — this is the whole point of fold I4.
+        assert rc == 3
+        assert "Install succeeded but resume failed" in captured.err
+        assert "maxim peer --node mac-studio resume" in captured.err
+
+    # ─── Fold I6: try/finally for stacked interruption ───────────
+
+    def test_keyboard_interrupt_mid_install_leaves_drained_with_hint(self, mesh_home, monkeypatch, capsys):
+        """Fold I6: any unexpected exception during install (including
+        KeyboardInterrupt) should still print the 'still drained'
+        hint to stderr before re-raising.
+        """
+
+        def fake_install_raises(url, key, extras, packages):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(mesh_cli, "install_on_target", fake_install_raises)
+
+        with pytest.raises(KeyboardInterrupt):
+            mesh_cli.run_node_subcommand(
+                ["--node", "mac-studio", "install", "semantic"],
+            )
+        err = capsys.readouterr().err
+        assert "Install interrupted" in err
+        assert "STILL DRAINED" in err
+        assert "maxim peer --node mac-studio resume" in err
+
+    def test_unexpected_exception_mid_install_prints_hint_and_reraises(self, mesh_home, monkeypatch, capsys):
+        """Even a plain ValueError from deep inside install_on_target
+        should trigger the still-drained hint."""
+
+        def fake_install_raises(url, key, extras, packages):
+            raise ValueError("programming bug in the install core")
+
+        monkeypatch.setattr(mesh_cli, "install_on_target", fake_install_raises)
+
+        with pytest.raises(ValueError, match="programming bug"):
+            mesh_cli.run_node_subcommand(
+                ["--node", "mac-studio", "install", "semantic"],
+            )
+        err = capsys.readouterr().err
+        assert "Install interrupted" in err
+        assert "STILL DRAINED" in err
+
+    def test_interrupt_when_operator_pre_drained_no_hint(self, mesh_home, monkeypatch, capsys):
+        """If operator pre-drained AND install is interrupted, we
+        should NOT print the STILL DRAINED banner because WE didn't
+        change drain state. The interrupted state is the pre-existing
+        operator intent, not something our verb created.
+        """
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+
+        def fake_install_raises(url, key, extras, packages):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(mesh_cli, "install_on_target", fake_install_raises)
+
+        with pytest.raises(KeyboardInterrupt):
+            mesh_cli.run_node_subcommand(
+                ["--node", "mac-studio", "install", "semantic"],
+            )
+        err = capsys.readouterr().err
+        # No "Install interrupted" banner since drained_here was False.
+        assert "Install interrupted" not in err
+        assert "STILL DRAINED" not in err
+
+    # ─── Fold I7: STILL DRAINED banner is the LAST line on stderr ──
+
+    def test_still_drained_banner_comes_after_install_error_output(self, mesh_home, monkeypatch, capsys):
+        """Fold I7: the install core prints its own error message
+        first (HTTP status, body snippet), then _run_node_install's
+        'STILL DRAINED' banner. Operator should see the actionable
+        recovery hint LAST so it's the visible line on their screen.
+        """
+
+        def fake_install_with_stderr(url, key, extras, packages):
+            import sys as _sys
+
+            print("INSTALL CORE: HTTP 500 upstream crash", file=_sys.stderr)
+            return 1
+
+        monkeypatch.setattr(mesh_cli, "install_on_target", fake_install_with_stderr)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "semantic"],
+        )
+        captured = capsys.readouterr()
+        assert rc == 1
+        # STILL DRAINED appears AFTER the install core's own stderr.
+        still_drained_pos = captured.err.rfind("STILL DRAINED")
+        core_error_pos = captured.err.find("HTTP 500 upstream crash")
+        assert still_drained_pos != -1
+        assert core_error_pos != -1
+        assert still_drained_pos > core_error_pos
+
+    # ─── Fold CC2: drain TOCTOU under concurrent operator drain ───
+
+    def test_concurrent_operator_drain_is_not_clobbered(self, mesh_home, monkeypatch, capsys):
+        """Fold CC2 (cross-confirmed BLOCKING): in the pre-fold code,
+        a concurrent operator drain between ``read_drained_nodes``
+        and ``drain_node`` could be silently clobbered when the
+        install verb auto-resumed on success. With
+        ``drain_node_if_absent``, the atomic check returns
+        ``we_added_it = False`` if anyone else (including an earlier
+        operator invocation whose state is already on disk) drained
+        the node, and the verb skips the auto-resume.
+
+        We simulate the race by pre-seeding the drain state file
+        BEFORE the verb runs (equivalent to the "another actor
+        drained between our read and our write" scenario from the
+        review finding).
+        """
+        # Operator drain already landed on disk before our verb runs.
+        from maxim.peer.drain_state import drain_node
+
+        drain_node("mac-studio", {"leader-desk", "mac-studio"})
+
+        # Our verb fires. The atomic check should see the existing
+        # drain and NOT auto-resume.
+        self._install_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "semantic"],
+        )
+        assert rc == 0
+
+        # Verify: the drain state file STILL has mac-studio drained
+        # after our verb completed, because was-drained-sticky skipped
+        # the auto-resume.
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" in read_drained_nodes(set()).active
+
+    # ─── Fold I3: httpx / http-client are not URLs ────────────────
+
+    def test_httpx_as_install_token_not_rejected_as_url(self, mesh_home, monkeypatch, capsys):
+        """Fold I3: ``arg.startswith("http")`` false-positived on
+        real PyPI packages. Fix uses ``"://"`` via
+        :func:`_looks_like_url`.
+        """
+        captured = self._install_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "httpx"],
+        )
+        assert rc == 0
+        assert captured["packages"] == ["httpx"]
+
+    def test_http_client_as_install_token_not_rejected_as_url(self, mesh_home, monkeypatch, capsys):
+        captured = self._install_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", "http-client"],
+        )
+        assert rc == 0
+        assert captured["packages"] == ["http-client"]
+
+    def test_real_positional_url_with_scheme_still_rejected(self, mesh_home, capsys):
+        """The I3 fix tightens URL detection but must NOT loosen the
+        positional-URL rejection for actual URLs with ``"://"``.
+        """
+        rc = mesh_cli.run_node_subcommand(
+            [
+                "--node",
+                "mac-studio",
+                "install",
+                "semantic",
+                "https://evil.example.com/v1",
+            ],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "positional URL" in err
+        # Fold M3: full URL should NOT appear verbatim in stderr,
+        # only the scheme-redacted form.
+        assert "https://evil.example.com/v1" not in err
+        assert "https://..." in err
+
+    # ─── Fold M3: URL redaction in error messages ─────────────────
+
+    def test_positional_url_error_redacts_secrets(self, mesh_home, capsys):
+        """Fold M3: URLs can contain secrets in the path. The error
+        message should redact to scheme-only.
+        """
+        rc = mesh_cli.run_node_subcommand(
+            [
+                "--node",
+                "mac-studio",
+                "install",
+                "semantic",
+                "https://host.example.com/sk-abc123-secret-token",
+            ],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        # The secret path must NOT appear.
+        assert "sk-abc123" not in err
+        # Redacted form IS present.
+        assert "https://..." in err
+
+    # ─── Fold M6: comma edge cases in mesh parser ─────────────────
+
+    def test_leading_trailing_commas_no_empty_entries_mesh_parser(self, mesh_home, monkeypatch):
+        """Fold M6: ``,semantic,`` via the mesh parser should drop
+        the empty leading/trailing entries without polluting the
+        classifier output.
+        """
+        captured = self._install_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", ",semantic,"],
+        )
+        assert rc == 0
+        assert captured["extras"] == ["semantic"]
+        assert captured["packages"] == []
+
+    def test_triple_commas_produce_empty_tokens_error(self, mesh_home, monkeypatch, capsys):
+        """``,,,`` classifies to nothing → empty-tokens error."""
+        self._install_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "install", ",,,"],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "No valid install tokens" in err
+
+
+class TestDrainNodeIfAbsent:
+    """Fold CC2: regression guards for the state-layer primitive that
+    closes the drain TOCTOU window.
+    """
+
+    def test_returns_true_on_fresh_drain(self, mesh_home):
+        from maxim.peer.drain_state import drain_node_if_absent
+
+        drain_set, we_added = drain_node_if_absent("mac-studio", {"leader-desk", "mac-studio"})
+        assert we_added is True
+        assert "mac-studio" in drain_set
+
+    def test_returns_false_on_already_drained(self, mesh_home):
+        from maxim.peer.drain_state import drain_node, drain_node_if_absent
+
+        # Pre-drain.
+        drain_node("mac-studio", {"leader-desk", "mac-studio"})
+
+        # Second call should report we_added=False, state unchanged.
+        drain_set, we_added = drain_node_if_absent("mac-studio", {"leader-desk", "mac-studio"})
+        assert we_added is False
+        assert "mac-studio" in drain_set
+
+    def test_rejects_unknown_node(self, mesh_home):
+        from maxim.peer.drain_state import DrainError, drain_node_if_absent
+
+        with pytest.raises(DrainError, match="unknown node"):
+            drain_node_if_absent("ghost", {"leader-desk", "mac-studio"})
+
+    def test_rejects_self_without_force(self, mesh_home):
+        from maxim.peer.drain_state import DrainError, drain_node_if_absent
+
+        with pytest.raises(DrainError, match="refusing to drain self"):
+            drain_node_if_absent(
+                "leader-desk",
+                {"leader-desk", "mac-studio"},
+                self_name="leader-desk",
+                force_self=False,
+            )
+
+    def test_allows_self_with_force(self, mesh_home):
+        from maxim.peer.drain_state import drain_node_if_absent
+
+        drain_set, we_added = drain_node_if_absent(
+            "leader-desk",
+            {"leader-desk", "mac-studio"},
+            self_name="leader-desk",
+            force_self=True,
+        )
+        assert we_added is True
+        assert "leader-desk" in drain_set

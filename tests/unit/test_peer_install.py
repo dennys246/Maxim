@@ -451,3 +451,274 @@ class TestInstallHttpFailures:
             rc = peer_cli._cmd_install(["semantic"])
         assert rc == 1
         assert "Install failed: leader confused" in capsys.readouterr().err
+
+
+# ─── C3.3 fold: regression guards for the cross-lens review findings ────
+
+
+class TestHttpPrefixSniffNotOverBroad:
+    """Fold I3: ``arg.startswith("http")`` was rejecting real PyPI
+    packages (``httpx``, ``http-client``, ``httpie``) as "positional
+    URLs" in the argv parser. Fix: require ``"://"`` via
+    :func:`install_core._looks_like_url`.
+
+    Regression guards for BOTH the ``_cmd_install`` argv parser
+    (this file) and the ``_parse_node_install_tokens`` parser
+    (covered in ``test_peer_mesh_cli.py``).
+    """
+
+    def test_httpx_is_a_legitimate_package_not_a_url(self, stub_peer_config, no_probe_clear):
+        from maxim.peer import cli as peer_cli
+        from maxim.utils import http as _http
+
+        captured: dict = {}
+
+        def fake_fetch(url, **kwargs):
+            captured["json"] = kwargs.get("json")
+            return _FakeResp({"status": "ok"})
+
+        with patch.object(_http, "fetch_url", side_effect=fake_fetch):
+            rc = peer_cli._cmd_install(["httpx"])
+        assert rc == 0
+        # httpx is not in KNOWN_EXTRAS → routed to packages, NOT
+        # consumed as a URL.
+        assert captured["json"]["packages"] == ["httpx"]
+        assert captured["json"]["extras"] == []
+
+    def test_http_client_is_a_legitimate_package_not_a_url(self, stub_peer_config, no_probe_clear):
+        from maxim.peer import cli as peer_cli
+        from maxim.utils import http as _http
+
+        captured: dict = {}
+
+        def fake_fetch(url, **kwargs):
+            captured["json"] = kwargs.get("json")
+            return _FakeResp({"status": "ok"})
+
+        with patch.object(_http, "fetch_url", side_effect=fake_fetch):
+            rc = peer_cli._cmd_install(["http-client"])
+        assert rc == 0
+        assert captured["json"]["packages"] == ["http-client"]
+
+    def test_httpie_is_a_legitimate_package_not_a_url(self, stub_peer_config, no_probe_clear):
+        from maxim.peer import cli as peer_cli
+        from maxim.utils import http as _http
+
+        captured: dict = {}
+
+        def fake_fetch(url, **kwargs):
+            captured["json"] = kwargs.get("json")
+            return _FakeResp({"status": "ok"})
+
+        with patch.object(_http, "fetch_url", side_effect=fake_fetch):
+            rc = peer_cli._cmd_install(["httpie"])
+        assert rc == 0
+        assert captured["json"]["packages"] == ["httpie"]
+
+    def test_real_url_with_scheme_still_captured_as_url(self, stub_peer_config, no_probe_clear):
+        from maxim.peer import cli as peer_cli
+        from maxim.utils import http as _http
+
+        captured: dict = {}
+
+        def fake_fetch(url, **kwargs):
+            captured["url"] = url
+            return _FakeResp({"status": "ok"})
+
+        with patch.object(_http, "fetch_url", side_effect=fake_fetch):
+            rc = peer_cli._cmd_install(
+                ["semantic", "https://other-leader.example.com/v1"],
+            )
+        assert rc == 0
+        # The URL (scheme://...) beat the peer.yml default.
+        assert captured["url"] == "https://other-leader.example.com/v1/admin/install"
+
+
+class TestKnownExtrasClassification:
+    """Fold M2: parametrized test locks the contract that every
+    element of :data:`KNOWN_EXTRAS` classifies into the ``extras``
+    list (not ``packages``). If a future pyproject.toml bump adds an
+    extra but forgets to update KNOWN_EXTRAS, this test fails and
+    forces the update.
+    """
+
+    def test_every_known_extra_classifies_as_extra(self):
+        from maxim.peer.install_core import KNOWN_EXTRAS, classify_install_tokens
+
+        for extra in KNOWN_EXTRAS:
+            extras, packages = classify_install_tokens([extra])
+            assert extras == [extra], f"{extra!r} did not classify as extra"
+            assert packages == [], f"{extra!r} unexpectedly classified into packages"
+
+    def test_unknown_token_classifies_as_package(self):
+        from maxim.peer.install_core import classify_install_tokens
+
+        extras, packages = classify_install_tokens(["not-a-known-extra"])
+        assert extras == []
+        assert packages == ["not-a-known-extra"]
+
+    def test_leading_and_trailing_commas_no_empty_entries(self):
+        """Fold M6: ``,semantic,`` shouldn't produce empty tokens."""
+        from maxim.peer.install_core import classify_install_tokens
+
+        # Caller has already comma-split into this flat list; the
+        # classifier's job is the whitespace+empty drop.
+        extras, packages = classify_install_tokens(["", "semantic", ""])
+        assert extras == ["semantic"]
+        assert packages == []
+
+
+class TestProbeCacheNormalizedLookup:
+    """Fold CC1 (cross-confirmed BLOCKING): the probe cache is keyed
+    by whatever ``lane_configs[name].remote_url`` happened to hold at
+    write time, no normalization. When a caller hands us a URL
+    resolved from a different source (``mesh.yml::nodes`` vs
+    ``peer.yml::url``), the shape may not match the cache key
+    byte-for-byte (trailing slash, trailing ``/v1``, etc.), and the
+    exact-match lookup silently became a no-op → next startup
+    trusted a stale entry. Fix: tolerant-match via
+    :func:`probe_cache._canonical_url` on both sides.
+    """
+
+    def test_clear_matches_trailing_slash_variant(self, tmp_path, monkeypatch):
+        from maxim.runtime import probe_cache
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+        from maxim.utils import paths
+
+        paths._reset_caches()
+
+        # Write cache with trailing slash shape.
+        cache = {
+            "https://mac.example.com/v1/": {
+                "outcome": "auth_rejected",
+                "detail": "",
+                "probed_at": 1.0,
+                "latency_ms": 42.0,
+            },
+        }
+        probe_cache.save_cache(cache)
+
+        # Clear using the no-trailing-slash shape — this is the key
+        # scenario the BLOCKING finding described.
+        probe_cache.clear_cache_for_url("https://mac.example.com/v1")
+
+        # Entry should be gone.
+        after = probe_cache.load_cache()
+        assert "https://mac.example.com/v1/" not in after
+        assert after == {}
+
+    def test_clear_matches_no_v1_suffix_variant(self, tmp_path, monkeypatch):
+        from maxim.runtime import probe_cache
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+        from maxim.utils import paths
+
+        paths._reset_caches()
+
+        cache = {
+            "https://mac.example.com": {
+                "outcome": "auth_rejected",
+                "detail": "",
+                "probed_at": 1.0,
+                "latency_ms": 42.0,
+            },
+        }
+        probe_cache.save_cache(cache)
+
+        # Caller hands us the /v1 form; cache has the bare form.
+        probe_cache.clear_cache_for_url("https://mac.example.com/v1")
+
+        after = probe_cache.load_cache()
+        assert after == {}
+
+    def test_clear_exact_match_still_works(self, tmp_path, monkeypatch):
+        """The canonical-form match should include the exact match —
+        regression guard against the fix inadvertently breaking the
+        original simple case.
+        """
+        from maxim.runtime import probe_cache
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+        from maxim.utils import paths
+
+        paths._reset_caches()
+
+        cache = {
+            "https://mac.example.com/v1": {
+                "outcome": "ok",
+                "detail": "",
+                "probed_at": 1.0,
+                "latency_ms": 42.0,
+            },
+        }
+        probe_cache.save_cache(cache)
+
+        probe_cache.clear_cache_for_url("https://mac.example.com/v1")
+
+        assert probe_cache.load_cache() == {}
+
+    def test_clear_leaves_unrelated_entries_alone(self, tmp_path, monkeypatch):
+        from maxim.runtime import probe_cache
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path / "home"))
+        from maxim.utils import paths
+
+        paths._reset_caches()
+
+        cache = {
+            "https://mac.example.com/v1": {
+                "outcome": "ok",
+                "detail": "",
+                "probed_at": 1.0,
+                "latency_ms": 42.0,
+            },
+            "https://unrelated.example.com/v1": {
+                "outcome": "ok",
+                "detail": "",
+                "probed_at": 1.0,
+                "latency_ms": 50.0,
+            },
+        }
+        probe_cache.save_cache(cache)
+
+        probe_cache.clear_cache_for_url("https://mac.example.com")
+
+        after = probe_cache.load_cache()
+        assert "https://mac.example.com/v1" not in after
+        assert "https://unrelated.example.com/v1" in after
+
+
+class TestMeshConfigRejectsEmptyClusterKey:
+    """Fold I9: ``MeshConfig.__post_init__`` now rejects empty
+    ``cluster_key`` so ``synthesize_from_peer_config`` + direct
+    construction paths can't produce a config that sends
+    ``Authorization: Bearer `` (empty token) to the leader.
+    """
+
+    def test_empty_cluster_key_raises_at_construction(self):
+        from maxim.peer.mesh_config import MeshConfig, MeshNode
+
+        with pytest.raises(ValueError, match="cluster_key must be non-empty"):
+            MeshConfig(
+                cluster_key="",
+                self_name="leader",
+                nodes=(MeshNode(name="leader", url="https://h/v1", role="leader"),),
+            )
+
+    def test_whitespace_cluster_key_accepted_yaml_safe_passes(self):
+        """Whitespace-only is not rejected by the empty-string check
+        (it's truthy); document the known limitation. If this becomes
+        a real problem, extend the check to ``cluster_key.strip()``.
+        """
+        from maxim.peer.mesh_config import MeshConfig, MeshNode
+
+        # ``  `` isn't forbidden per se but is almost certainly an
+        # operator typo. We don't raise today but the yaml-safe
+        # validator accepts it. Regression guard documents behavior.
+        cfg = MeshConfig(
+            cluster_key="   ",
+            self_name="leader",
+            nodes=(MeshNode(name="leader", url="https://h/v1", role="leader"),),
+        )
+        assert cfg.cluster_key == "   "

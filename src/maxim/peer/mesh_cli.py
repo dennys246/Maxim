@@ -48,8 +48,15 @@ from dataclasses import dataclass
 from maxim.peer.drain_state import (
     DrainError,
     drain_node as _drain_node,
+    drain_node_if_absent as _drain_node_if_absent,
     read_drained_nodes,
     resume_node as _resume_node,
+)
+from maxim.peer.install_core import (
+    KNOWN_EXTRAS,
+    _looks_like_url,
+    classify_install_tokens,
+    install_on_target,
 )
 from maxim.peer.mesh_config import (
     MeshConfig,
@@ -58,6 +65,14 @@ from maxim.peer.mesh_config import (
     read_or_synthesize_mesh_config,
 )
 from maxim.peer.probe_classify import classify_probe_outcome
+
+
+# Exit code 3 — install succeeded but the post-install auto-resume
+# failed. Distinguishable from exit code 1 (install itself failed)
+# so operators tailing exit codes can tell "node is upgraded but
+# stuck in drain" apart from "node failed to upgrade and is stuck
+# in drain." Fold I4 from the C3.3 pre-merge review.
+_EXIT_RESUME_FAILED_POST_INSTALL = 3
 
 
 MESH_USAGE_HEAD = """\
@@ -298,6 +313,22 @@ def _run_resume(mesh: MeshConfig, node: MeshNode) -> int:
     return 0
 
 
+def _redact_url_for_error(url: str) -> str:
+    """Redact a URL down to ``<scheme>://...`` for operator error messages.
+
+    Fold M3: ``f"positional URL {arg!r}"`` in error messages leaks
+    the operator's typed URL, which could contain secrets in the
+    path (e.g. ``https://host/sk-abc``). Redacting to scheme-only
+    matches how ``peer/cli.py::truncate_key`` handles similar cases.
+    Keep the scheme so the operator can confirm the parser saw a
+    URL, not some other syntax.
+    """
+    if "://" not in url:
+        return "<url>"
+    scheme = url.split("://", 1)[0]
+    return f"{scheme}://..."
+
+
 def _parse_node_install_tokens(verb_args: list[str]) -> list[str]:
     """Extract raw install tokens from the ``--node <name> install`` argv tail.
 
@@ -305,29 +336,34 @@ def _parse_node_install_tokens(verb_args: list[str]) -> list[str]:
     behavioral consistency across entry points:
 
     - Tokens starting with ``--`` are ignored (future flags).
-    - Tokens starting with ``http`` are **rejected** — unlike the
-      positional-URL path through ``maxim peer install``, this verb
-      resolves the target URL from ``mesh.yml::nodes`` by name. A
-      positional URL here would silently override the mesh lookup,
+    - Tokens that **look like URLs** (contain ``"://"`` per
+      :func:`install_core._looks_like_url`) are **rejected** — unlike
+      the positional-URL path through ``maxim peer install``, this
+      verb resolves the target URL from ``mesh.yml::nodes`` by name.
+      A positional URL here would silently override the mesh lookup,
       which is exactly the kind of dual-source-of-truth footgun the
-      Plan 4 C2 invariant warns against.
+      Plan 4 C2 invariant warns against. The URL detection uses
+      ``"://"`` rather than ``startswith("http")`` so real PyPI
+      packages like ``httpx``, ``http-client``, ``httpie`` are
+      accepted as legitimate install tokens (Fold I3).
     - Everything else is comma-split into raw install tokens, which
-      the caller passes to :func:`_classify_install_tokens` for the
+      the caller passes to :func:`classify_install_tokens` for the
       ``KNOWN_EXTRAS`` classification.
+
+    The ``ValueError`` message redacts the URL down to scheme-only
+    to avoid leaking secrets that operators typed into argv (Fold M3).
 
     Returns the flat list of raw tokens (no classification yet, no
     whitespace stripping — the classifier handles both).
     """
     raw_tokens: list[str] = []
     for arg in verb_args:
-        if arg.startswith("http"):
-            # Surfaced to the caller as an empty-tokens error path,
-            # which prints the usage. The caller is expected to detect
-            # this explicitly before classification.
+        if _looks_like_url(arg):
             raise ValueError(
-                f"positional URL {arg!r} is not allowed for the mesh-aware "
-                f"install verb — use `maxim peer install <extras> {arg}` "
-                f"for the no-mesh.yml positional-URL form instead."
+                f"positional URL {_redact_url_for_error(arg)} is not allowed "
+                f"for the mesh-aware install verb — use "
+                f"`maxim peer install <extras> <url>` for the no-mesh.yml "
+                f"positional-URL form instead."
             )
         if arg.startswith("--"):
             continue  # future flags
@@ -346,9 +382,11 @@ def _run_node_install(
     composition. Resolves the target URL + cluster key from
     ``mesh.yml::nodes`` by name (unlike the positional-URL
     ``maxim peer install`` verb, which uses ``peer.yml``), drains the
-    node via the :mod:`drain_state` state layer, delegates the HTTP
-    body to the shared :func:`maxim.peer.cli._install_on_target` core,
-    then resumes the node on success.
+    node via :func:`drain_state.drain_node_if_absent` (atomic
+    drain-if-absent — closes the CC2 TOCTOU finding from the C3.3
+    pre-merge review), delegates the HTTP body to
+    :func:`install_core.install_on_target`, then resumes the node on
+    success **only if this function was the one that drained it**.
 
     **Failure mode semantics (explicit design choice):** if drain
     succeeds but the install itself fails, the node is **left
@@ -361,30 +399,40 @@ def _run_node_install(
     when this verb started (operator drained it earlier for a
     different reason), we skip BOTH the drain step AND the
     auto-resume. The operator's prior drain intent is sticky — we
-    don't clobber it on our way out.
+    don't clobber it on our way out. The atomic check inside
+    :func:`drain_node_if_absent` closes the TOCTOU window that
+    existed in the pre-fold C3.3 code (``read_drained_nodes`` then
+    ``drain_node`` outside a shared lock).
+
+    **Stacked-failure safety:** the install call is wrapped in
+    ``try/except BaseException`` so ANY exception
+    (``KeyboardInterrupt``, a programming bug inside
+    :func:`install_on_target`, etc.) prints the "still drained" hint
+    to stderr before re-raising. Without this, an abrupt interruption
+    mid-install would leave the node drained with zero operator-
+    facing clue (Fold I6).
 
     **Self-guard:** refuses if ``node.name == mesh.self_name`` because
     remote-installing on yourself is a round-trip through your own
     admin endpoint when ``pip install pymaxim[<extras>]`` would do
     the same thing locally. Matches the ``remove-node`` self-guard
-    pattern from C3.2.
+    pattern from C3.2. The state-layer ``drain_node_if_absent`` ALSO
+    enforces the self-drain guard, so this step 1 check is defense-
+    in-depth. We keep both because the CLI-layer message is
+    operator-friendly (points at local pip) while the state-layer
+    message is generic — matches C2 A2 fold reasoning.
 
-    Returns the CLI exit code.
+    Returns the CLI exit code:
+
+    - ``0`` — install succeeded (and resume succeeded or was skipped)
+    - ``1`` — install failed (node left drained with loud hint)
+    - ``2`` — refused pre-install (self, unknown, bad tokens, drain fail)
+    - ``3`` — install succeeded but post-install auto-resume failed
+      (Fold I4 — distinguishable from ``1`` so operators can tell
+      "upgraded but stuck in drain" from "failed and stuck in drain")
     """
-    # Lazy import to avoid pulling peer/cli.py (which imports getpass
-    # and other heavy bits) when mesh_cli is loaded for a read-only
-    # verb like list-nodes. Matches the existing lazy-import pattern
-    # in _probe_node.
-    from maxim.peer.cli import (
-        KNOWN_EXTRAS,
-        _classify_install_tokens,
-        _install_on_target,
-    )
-
-    # 1. Self-guard — match C3.2 remove-node pattern. The error
-    # message points at the local pip install as the workaround
-    # rather than offering a --force flag, because self-install has
-    # an obvious non-networked path.
+    # 1. Self-guard — match C3.2 remove-node pattern. See docstring
+    # note on defense-in-depth with the state-layer self-drain guard.
     if node.name == mesh.self_name:
         print(
             f"✗ Refusing to install on self ({node.name!r}) — remote-installing\n"
@@ -418,7 +466,7 @@ def _run_node_install(
     # 4. Classify into extras + packages. The classifier drops
     # whitespace-only tokens; if every token was whitespace, surface
     # the same usage error rather than POSTing an empty body.
-    extras, packages = _classify_install_tokens(raw_tokens)
+    extras, packages = classify_install_tokens(raw_tokens)
     if not extras and not packages:
         print(
             "✗ No valid install tokens after stripping whitespace.",
@@ -426,46 +474,63 @@ def _run_node_install(
         )
         return 2
 
-    # 5. Was-drained check — sticky operator intent.
+    # 5. Atomic drain-if-absent. Returns (drain_set, we_added_it).
+    # If ``we_added_it`` is False, the node was already drained at
+    # the moment we held the lock — sticky operator intent, skip
+    # auto-resume. If True, we added the entry and are responsible
+    # for resuming on success. The TOCTOU window between
+    # ``read_drained_nodes`` and ``drain_node`` that existed in the
+    # pre-fold code is closed by collapsing both operations into a
+    # single filelock critical section inside the state layer
+    # (Fold CC2).
     known_names = {n.name for n in mesh.nodes}
-    was_drained = node.name in read_drained_nodes(known_names).active
-    drained_here = False
+    try:
+        _, drained_here = _drain_node_if_absent(
+            node.name,
+            known_names,
+            self_name=mesh.self_name,
+            force_self=False,
+        )
+    except DrainError as e:
+        print(f"✗ Failed to drain {node.name!r}: {e}", file=sys.stderr)
+        return 2
 
-    if was_drained:
-        print(f"ℹ {node.name!r} already drained by operator — skipping drain/resume bookkeeping.")
+    if drained_here:
+        print(f"✓ Drained {node.name!r} for install.")
     else:
-        # 6. Drain the node. The state-layer self-drain guard is
-        # redundant with our step 1 self-guard but defense-in-depth
-        # is cheap here (matches the C2 A2 fold rationale).
-        try:
-            _drain_node(
-                node.name,
-                known_names,
-                self_name=mesh.self_name,
-                force_self=False,
+        print(f"ℹ {node.name!r} already drained by operator — skipping drain/resume bookkeeping.")
+
+    # 6. Delegate to the shared install core, wrapped so any
+    # unexpected exception (KeyboardInterrupt, programming bug not
+    # caught by install_on_target's own try/except) still prints the
+    # "still drained" hint before re-raising (Fold I6). Install
+    # failure (install_rc != 0) is NOT raised — it's returned as an
+    # exit code and handled by the success/fail branches below.
+    try:
+        install_rc = install_on_target(
+            node.url,
+            mesh.cluster_key,
+            extras,
+            packages,
+        )
+    except BaseException:
+        # BaseException covers KeyboardInterrupt + SystemExit, not
+        # just Exception subclasses. Then re-raise so the caller
+        # sees the original failure mode.
+        if drained_here:
+            print(
+                f"\n⚠ Install interrupted. Node {node.name!r} is STILL DRAINED.\n"
+                f"  → After handling the interruption, run:\n"
+                f"      maxim peer --node {node.name} resume",
+                file=sys.stderr,
             )
-            drained_here = True
-            print(f"✓ Drained {node.name!r} for install.")
-        except DrainError as e:
-            print(f"✗ Failed to drain {node.name!r}: {e}", file=sys.stderr)
-            return 2
+        raise
 
-    # 7. Delegate to the shared install core. This makes exactly the
-    # same HTTP call shape as `maxim peer install <extras> <node.url>`
-    # would — all failure modes (401/403/404/500/generic) are handled
-    # inside _install_on_target with the same exit codes as the
-    # positional-URL verb.
-    install_rc = _install_on_target(
-        node.url,
-        mesh.cluster_key,
-        extras,
-        packages,
-    )
-
-    # 8. Success path — resume only if we drained it ourselves. If
+    # 7. Success path — resume only if we drained it ourselves. If
     # the resume itself fails (filelock timeout or similar), warn the
-    # operator but still report the install success as a non-zero
-    # exit because the mesh state is now inconsistent.
+    # operator and return exit code 3 so operators tailing return
+    # codes can distinguish "install succeeded but node is stuck in
+    # drain" from "install failed" (Fold I4).
     if install_rc == 0:
         if drained_here:
             try:
@@ -476,13 +541,17 @@ def _run_node_install(
                     f"⚠ Install succeeded but resume failed: {e}\n  → Run: maxim peer --node {node.name} resume",
                     file=sys.stderr,
                 )
-                return 1
+                return _EXIT_RESUME_FAILED_POST_INSTALL
         return 0
 
-    # 9. Failure path — leave drained with loud message. The operator
-    # is responsible for debugging and running resume after they've
-    # confirmed the node is healthy. This is the "fail loud, don't
-    # auto-recover from operator-explicit verbs" pattern from C2.
+    # 8. Failure path — leave drained with loud message. The
+    # operator is responsible for debugging and running resume after
+    # they've confirmed the node is healthy. This is the "fail loud,
+    # don't auto-recover from operator-explicit verbs" pattern from
+    # C2. The banner is the LAST thing on stderr — the core's own
+    # error output comes first, then this banner, so the operator
+    # sees the actionable recovery hint at the bottom of their
+    # terminal.
     if drained_here:
         print(
             f"\n✗ Install failed. Node {node.name!r} is STILL DRAINED.\n"

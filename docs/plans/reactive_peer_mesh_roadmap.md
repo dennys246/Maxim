@@ -99,6 +99,13 @@ Once C4 is wired, the next reactive primitive falls out: when a provider hits `_
 - Auto-undrain story (does a successful health probe auto-clear an auto-drain entry? what about a manually-set drain entry — those should be sticky.)
 - How does an auto-drain entry differ from a manual-drain entry in the state file? (Suggestion: separate file `auto_drained_nodes.{role}.txt`, or a typed entry like `mac-studio  # auto:2026-04-15T12:34:56` — the C2 inline-comment-stripping logic already supports the latter.)
 
+**C3.3 re-check trigger:** the C3.3 `--node install` verb currently writes plain drain entries via `drain_node_if_absent`. When C4.5 ships, a C3.3-triggered drain will be indistinguishable from a true operator drain OR from a C4.5 auto-drain. The three categories have different auto-resume semantics:
+- Operator drain → sticky, never auto-resumed
+- Install-triggered drain → auto-resumed on install success (today's behavior)
+- Auto-drain → auto-cleared on health probe success (C4.5 proposed behavior)
+
+C4.5's design should decide whether to tag drain entries with their origin (`# auto`, `# install`, `# operator`) and whether the C3.3 verb should switch to marking its drains as `# install:<timestamp>` so a crashed `--node install` run leaves a recoverable orphan that C4.5's cleanup path can sweep. **Not addressed in C3.3** — deferred to C4.5 with this explicit re-check note so it's not forgotten.
+
 May not need to be its own stage — could fold into C4 if the design is clean. Flag for revisit after C4 lands.
 
 ### Stage C5: Capacity-aware routing
@@ -133,6 +140,7 @@ A web TUI or terminal dashboard on top of these is a nice-to-have, **NOT** load-
 Tracked in [node_security_simplification.md](node_security_simplification.md), `feedback_strict_grep_caller_allowlist.md`, and the C2 invariants:
 
 - **Cluster key rotation** (`maxim peer rotate-cluster-key`) — the canonical test of whether the strict CI grep allow-list rule needs to relax. The right answer is probably option (c) from `feedback_strict_grep_caller_allowlist.md`: split the secret into `~/.maxim/util/cluster_key.{role}` and have `mesh.yml::cluster_key` become a fallback. This is the spec-vs-status split applied to the secret.
+- **Cluster-key consistency doctor check** (`check_cluster_key_consistency`) — **surfaced by C3.3 fold review (Blast Radius B2)**. Today `mesh.yml::cluster_key` and `peer.yml::api_key` can diverge silently if the operator rotates one without the other, because `init-mesh` copies once but the two files evolve independently after that. `maxim peer --node X install` uses `mesh.yml::cluster_key`; `maxim peer install` uses `peer.yml::api_key`. The symptom is "one install verb 401s, the other succeeds, against the same target." The doctor check should compare both values when both files are present and warn on mismatch. **Deferred from C3.3** (docs-only warning added to `cli-reference.md` + `mesh_debug.md`) because the full cluster-key rotation story should land before the consistency check so the check has a remediation path to point at.
 - **Per-agent rate limiting** — read from `~/.maxim/util/rate_limits.{role}.json`. Already mentioned as a future C3 deferred item in C2 invariants. The `KeyedRateLimiter` primitive from Plan R0 already lives in [runtime/rate_limit.py](../../src/maxim/runtime/rate_limit.py).
 - **Request trace ring buffer** — `~/.maxim/util/request_trace.{role}.jsonl` with size cap + rotation. Feeds C6's `/v1/debug/request-trace`.
 - **Per-peer identity** — currently every peer has the same bearer token (the cluster key). Real identity (per-peer keypair, per-peer ACL) is a bigger ship.

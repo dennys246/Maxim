@@ -1137,192 +1137,19 @@ def _cmd_logs(argv: list[str]) -> int:
 
 # ─── install ─────────────────────────────────────────────────────────────
 
-
-# Extras that map to pymaxim[extra_name] in pyproject.toml
-KNOWN_EXTRAS = {
-    "semantic",
-    "llm-llama",
-    "llm-server",
-    "llm-torch",
-    "llm-anthropic",
-    "llm-openai",
-    "vision",
-    "audio",
-    "reachy",
-    "comms",
-    "search",
-    "temporal",
-    "training",
-    "tts",
-    "yolo",
-    "database",
-}
-
-
-def _classify_install_tokens(
-    raw_tokens: list[str],
-) -> tuple[list[str], list[str]]:
-    """Split caller-supplied install tokens into KNOWN_EXTRAS + raw pip
-    packages.
-
-    Plan 4 C3.3: factored out of ``_cmd_install`` so the new
-    ``maxim peer --node <name> install <extras>`` verb produces the
-    same wire-level body shape from a different argv parser. Empty /
-    whitespace-only tokens are dropped silently — matches the
-    pre-C3.3 behavior asserted by ``test_peer_install.py``.
-    """
-    extras: list[str] = []
-    packages: list[str] = []
-    for token in raw_tokens:
-        token = token.strip()
-        if not token:
-            continue
-        if token in KNOWN_EXTRAS:
-            extras.append(token)
-        else:
-            packages.append(token)
-    return extras, packages
-
-
-def _install_on_target(
-    url: str,
-    key: str | None,
-    extras: list[str],
-    packages: list[str],
-) -> int:
-    """POST an install request to a target URL and poll if async.
-
-    Plan 4 C3.3: behavior-preserving lift of ``_cmd_install``'s HTTP
-    body. Two callers in this module:
-
-    - :func:`_cmd_install` — resolves URL from a positional ``http*``
-      arg or ``peer.yml``, then calls this core.
-    - :func:`maxim.peer.mesh_cli._run_node_install` — resolves URL +
-      key from ``mesh.yml::nodes`` by name, drains the node, calls
-      this core, then resumes (or leaves drained on failure with a
-      loud message).
-
-    ``url`` may include a trailing ``/v1`` — it gets stripped for the
-    endpoint composition but passed unmodified to
-    :func:`_clear_probe_cache` so the probe-cache key matches the one
-    other peer commands use.
-
-    The function makes no assumptions about whether the caller has
-    drained the target node first; that's the caller's responsibility.
-    """
-    from maxim.utils import http as _http
-
-    base = url.rstrip("/")
-    if base.endswith("/v1"):
-        base = base[:-3]
-
-    endpoint = f"{base}/v1/admin/install"
-    headers: dict[str, str] = {"Content-Type": "application/json"}
-    if key:
-        headers["Authorization"] = f"Bearer {key}"
-
-    desc_parts = []
-    if extras:
-        desc_parts.append(f"extras: {', '.join(extras)}")
-    if packages:
-        desc_parts.append(f"packages: {', '.join(packages)}")
-    print(f"Installing on leader ({base}): {'; '.join(desc_parts)}...")
-
-    try:
-        resp = _http.fetch_url(
-            endpoint,
-            method="POST",
-            headers=headers,
-            json={"extras": extras, "packages": packages},
-            timeout=_http.TimeoutPolicy(connect_s=3.0, read_s=30.0, total_s=33.0),
-        )
-        data = resp.json()
-    except _http.HTTPError as e:
-        body_text = ""
-        if e.response is not None:
-            body_text = e.response.text[:500]
-        if e.status == 403:
-            print(
-                "Install disabled on leader. Set MAXIM_ALLOW_REMOTE_UPDATE=1.",
-                file=sys.stderr,
-            )
-        elif e.status == 401:
-            print("Authentication failed. Check API key.", file=sys.stderr)
-        elif e.status == 404:
-            print(
-                "Leader does not support remote install (update leader first).",
-                file=sys.stderr,
-            )
-        else:
-            print(f"Install failed (HTTP {e.status}): {body_text}", file=sys.stderr)
-        return 1
-    except Exception as e:
-        print(f"Install failed: {e}", file=sys.stderr)
-        return 1
-
-    status = data.get("status", "unknown")
-    if status not in ("started", "ok"):
-        print(f"  Install failed: {data.get('error', 'unknown error')}", file=sys.stderr)
-        return 1
-
-    if status == "ok":
-        # Synchronous completion (leader responded before timeout)
-        print("  Installed successfully.")
-        _clear_probe_cache(url)
-        return 0
-
-    # status == "started" — async install. Poll for completion.
-    print("  Install started on leader. Waiting for completion...")
-    poll_endpoint = f"{base}/v1/debug/install-status"
-    poll_headers: dict[str, str] = {}
-    if key:
-        poll_headers["Authorization"] = f"Bearer {key}"
-
-    import time
-
-    deadline = time.time() + 600  # 10 min max wait
-    last_output_len = 0
-    while time.time() < deadline:
-        time.sleep(5)
-        try:
-            poll_resp = _http.fetch_url(
-                poll_endpoint,
-                method="GET",
-                headers=poll_headers,
-                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=10.0, total_s=12.0),
-            )
-            poll_data = poll_resp.json()
-        except Exception:
-            print("    (polling...)", end="\r")
-            continue
-
-        poll_status = poll_data.get("status", "unknown")
-
-        # Show new pip output lines as they appear
-        pip_out = poll_data.get("pip_output", "")
-        if len(pip_out) > last_output_len:
-            new_text = pip_out[last_output_len:]
-            for line in new_text.strip().splitlines()[-3:]:
-                line = line.strip()
-                if line:
-                    print(f"    {line}")
-            last_output_len = len(pip_out)
-
-        if poll_status == "ok":
-            installed = poll_data.get("installed", [])
-            print(f"  Installed successfully: {', '.join(installed)}")
-            _clear_probe_cache(url)
-            return 0
-
-        if poll_status == "error":
-            print(f"  Install failed: {poll_data.get('error', 'unknown')}", file=sys.stderr)
-            return 1
-
-        elapsed = int(time.time() - (deadline - 600))
-        print(f"    Installing... ({elapsed}s)", end="\r")
-
-    print("\n  Timed out waiting for install (10 min). Check leader logs.", file=sys.stderr)
-    return 1
+# Plan 4 C3.3 fold: the shared install core (KNOWN_EXTRAS,
+# classify_install_tokens, install_on_target) lives in
+# :mod:`maxim.peer.install_core` so both this verb and the mesh-aware
+# ``maxim peer --node <name> install`` verb can import from the same
+# leaf module without inverting the cli → mesh_cli coupling direction.
+# A CI grep in .github/workflows/test.yml locks ``/v1/admin/install``
+# to appear only in install_core.py + its test file.
+from maxim.peer.install_core import (
+    KNOWN_EXTRAS,
+    _looks_like_url,
+    classify_install_tokens,
+    install_on_target,
+)
 
 
 def _cmd_install(argv: list[str]) -> int:
@@ -1339,13 +1166,16 @@ def _cmd_install(argv: list[str]) -> int:
     positional-URL path. The mesh-aware form is
     ``maxim peer --node <name> install <extras>``, which composes
     drain → install → resume around the same
-    :func:`_install_on_target` core.
+    :func:`maxim.peer.install_core.install_on_target` core.
     """
     url: str | None = None
     raw_tokens: list[str] = []
 
     for arg in argv:
-        if arg.startswith("http"):
+        if _looks_like_url(arg):
+            # Fold I3: was ``arg.startswith("http")`` which
+            # false-positives on httpx / http-client / httpie.
+            # ``_looks_like_url`` requires ``"://"``.
             url = arg
         elif arg.startswith("--"):
             pass  # future flags
@@ -1369,8 +1199,8 @@ def _cmd_install(argv: list[str]) -> int:
         url = cfg.url
         key = cfg.api_key
 
-    extras, packages = _classify_install_tokens(raw_tokens)
-    return _install_on_target(url, key, extras, packages)
+    extras, packages = classify_install_tokens(raw_tokens)
+    return install_on_target(url, key, extras, packages)
 
 
 # ─── deps ────────────────────────────────────────────────────────────────

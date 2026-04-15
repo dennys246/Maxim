@@ -86,7 +86,25 @@ This is deliberate. Auto-resume-on-failure would mask install failures behind a 
 
 **Self-install is refused.** `maxim peer --node <self> install <extras>` exits 2 and points you at `pip install pymaxim[<extras>]` directly. Remote-installing on yourself is a round-trip through your own admin endpoint; there's no reason not to use the local pip invocation.
 
-**Positional URL is refused** in the `--node` form. If you want the no-mesh.yml fallback (e.g. you haven't run `init-mesh` yet and know the target's URL directly), use the positional verb: `maxim peer install <extras> https://target.example.com/v1`.
+**Positional URL is refused** in the `--node` form. If you want the no-mesh.yml fallback (e.g. you haven't run `init-mesh` yet and know the target's URL directly), use the positional verb: `maxim peer install <extras> https://target.example.com/v1`. The `--node` form's error message redacts the URL to `<scheme>://...` so a secret typo'd into argv doesn't echo to stderr.
+
+**Exit codes.** `0` = installed successfully (and resumed if the verb drained). `1` = install failed (node left drained with loud hint). `2` = refused pre-install (self, unknown node, bad tokens, drain lock timeout). **`3` = install succeeded but the post-install auto-resume failed** — the node IS upgraded but is stuck in the drain state; run `maxim peer --node <name> resume` manually to clear it. The distinct exit code lets scripts tail `$?` to tell `3` ("upgraded but stuck") apart from `1` ("failed and stuck").
+
+**Cluster-key divergence between `mesh.yml::cluster_key` and `peer.yml::api_key`.** `init-mesh` copies `peer.yml::api_key` into `mesh.yml::cluster_key` once. If you later rotate one without the other, the two files hold different secrets. Because the `--node <name> install` verb reads from `mesh.yml::cluster_key` and the positional-URL `maxim peer install` reads from `peer.yml::api_key`, one will 401 while the other succeeds. Symptom: "auth failed" from one install form but not the other against the same target node. Fix: keep the two files in sync by hand until cluster-key rotation lands as a first-class verb (tracked in the roadmap at `docs/plans/reactive_peer_mesh_roadmap.md` Stage C7). A future `maxim doctor check_cluster_key_consistency` check is deferred there.
+
+**Cross-platform quirk: `httpx` / `http-client` / `httpie` are valid install tokens.** Pre-C3.3's argv parser used `arg.startswith("http")` to detect URLs, which false-positived on these real PyPI package names. The C3.3 fold tightened the check to require `"://"` in the token, so `maxim peer --node mac-studio install httpx` now correctly routes to the raw-packages pip install path.
+
+### "I ran `--node install` and got exit code 3"
+
+Install succeeded (the new extra is installed on the leader) but the post-install `resume_node` call failed, most commonly because the drain state file's `filelock.FileLock` timed out. The node is upgraded but still in the drain set. Recovery:
+
+```bash
+maxim peer list-drained                     # confirm it's still drained
+maxim peer --node <name> resume             # clear the drain manually
+maxim peer --node <name> status             # verify the node is probing healthy
+```
+
+If `resume` also fails with a lock timeout, check `lsof ~/.maxim/util/drained_nodes.*.txt.lock` to find the process holding the lock — likely another `maxim peer` command in another terminal.
 
 ### "I ran `--node X install` and the node is still drained after"
 
