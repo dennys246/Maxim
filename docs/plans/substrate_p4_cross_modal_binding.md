@@ -1,5 +1,53 @@
 # Substrate P4 — Cross-modal binding via hippocampus (1.0-GATING)
 
+> **⚠️ Stage 2 Option 2 decision REOPENED (2026-04-15).** Stage 1 shipped
+> (PR #127). Stage 2 v1 shipped (PR #129) with a `defer Option 2` conclusion
+> that was caught by post-merge Round 2 Architecture-lens review as
+> **tautological**: the v1 mug test fixture had no distractors and no
+> cross-class reachability paths, so `retrieve_cross_modal` was mechanically
+> forced to return 1.000 recall regardless of whether the substrate's ranker
+> was doing anything.
+>
+> A Stage 2 v2 attempt on `fix/substrate-p4-stage2-fold` rebuilt the fixture
+> with noise + bridge topology + a 12-combination sweep and reported a
+> `+96.0%` Option 2 lift. Round 2 pre-merge review of the v2 fold **also
+> caught it as tautological** — in a different mechanical shape, the same
+> class of bug: the sweep's Option 2 lift metric was a graph-theoretic
+> property of the constructed topology (raw BFS reachability over edges
+> the fixture builder wrote), not a measurement of substrate behavior. Two
+> concrete mechanical bugs compounded the construction identity: the bridge
+> token EC-collapsed into a real Flowers-102 class name at threshold 0.60,
+> and at `noise_reps=1` the noise edge weight exactly equals the signal
+> weight, so the 0.98 recall is sort-stability luck rather than ranker
+> capability.
+>
+> **Authoritative reframe:** [../experiments/p4_stage2_v2_post_mortem.md](../experiments/p4_stage2_v2_post_mortem.md)
+>
+> **Current Option 2 status:** REOPENED. Neither v1 ("defer") nor v2
+> ("ship") produced honest data. The `TestStageThreeLimitation` regression
+> guard from Stage 1 remains the forcing function until a non-tautological
+> measurement lands. Option 2 as an architectural decision (rename
+> `node_filter` → `traversal_filter` + add `result_filter` + P3b compat
+> shim) remains committed as the long-term answer — but the timing is
+> reopened pending a measurement that (a) uses a topology the substrate
+> did not construct, (b) has a real signal-vs-noise weight margin, and
+> (c) measures substrate ranking behavior rather than fixture topology.
+> See the post-mortem's "What the next attempt needs" section for the
+> full methodology requirements.
+>
+> **Fold branch disposition:** `fix/substrate-p4-stage2-fold` will be
+> re-scoped in a separate follow-up PR. Infrastructure commits (Phase 2D
+> v2 build_and_bind orchestrator refactor, 102-class pin + drift guard,
+> YAML fallback drop, tactical fixes bundle) are preserved as real
+> improvements; the sweep + SHIP-decision commits are withdrawn.
+>
+> **Everything below this box is the Stage 1 shipped state + Stage 2 v1
+> plan-as-shipped + Stage 3 plan. Treat Stage 2's "defer Option 2"
+> conclusion and the fold branch's "ship Option 2" conclusion as BOTH
+> withdrawn.**
+
+---
+
 **Status:** OPEN (2026-04-14). Round 1 plan-only review COMPLETE — 8 cross-confirmed criticals + importants folded; ready for Stage 1 implementation.
 **Scope:** ~500 LOC (mechanism + VisionEncoder + retrieval path) + ~100 LOC metric extractor.
 **Target version:** 0.3-target. **THIS PHASE GATES 1.0** — losing the OpenCLIP head-to-head is plan-ending and re-opens the architecture's central commitment.
@@ -276,9 +324,9 @@ Two parallel reviewers (Executor lens + Architecture lens) ran against the post-
 
 All findings folded into "Architectural decisions" + "Stage X" + "Load-bearing invariants" sections above. Round 1 cross-confirmation pattern matches the project's `feedback_review_before_ship.md` rule that two-lens parallel review is non-optional and that Architecture-only criticals are real (P3.5 Stage 2 had the same pattern with the atomicity gap).
 
-## Stage 2/3 open design decision — `node_filter` split (COMMITTED to Option 2, DEFERRED execution)
+## Stage 2/3 open design decision — `node_filter` split (COMMITTED to Option 2, timing REOPENED)
 
-**Status (2026-04-15):** surfaced by Stage 1 Round 2 pre-merge Arch-lens review. User has committed to Option 2 as the long-term answer; execution deferred until Stage 2's real-CLIP mug test provides empirical data about whether chain traversal matters.
+**Status (2026-04-15):** surfaced by Stage 1 Round 2 pre-merge Arch-lens review. User has committed to Option 2 as the architectural long-term answer. Timing was "defer until Stage 2 real-CLIP data informs urgency"; Stage 2 v1 ran and concluded "defer as cleanup" on tautological evidence (see top-of-doc REOPENED banner and [p4_stage2_v2_post_mortem.md](../experiments/p4_stage2_v2_post_mortem.md)). Stage 2 v2 ran and concluded "ship with +96% lift" on different-shape tautological evidence. Both conclusions are withdrawn. The architectural commitment to Option 2 stands; the go/no-go timing decision is reopened pending a non-tautological Option 2 measurement.
 
 ### The underlying problem
 
