@@ -14,13 +14,29 @@ helpers, so they agree on what counts as painful — Layer 1 predicts
 it, Layer 2 confirms it. The two classes live in the same file so
 the ordering contract is obvious.
 
-Canonical executor stack (outermost first):
+Canonical executor stack (outermost first). The bridge is constructed
+INSIDE ``build_executor`` — never retrofitted onto an Executor after
+the fact. See ``docs/plans/executor_bootstrap_unification.md``.
 
-    executor = Executor(registry)
-    executor._tool_pain_bridge = bridge                       # NAc learning
+    from maxim.runtime.bootstrap import build_executor
+
+    executor = build_executor(                                # bridge attached here
+        registry,
+        pain_bus=pain_bus,                                    # required keyword
+        nac=nac,
+        hippocampus=hippocampus,
+    )
     executor = PainInterceptorExecutor(executor, ...)         # Layer 2 (after)
     executor = AnticipatoryPainExecutor(executor, assessor)   # Layer 1 (before)
     executor = FearGatedExecutor(executor, fear_agent)        # safety gate
+
+DO NOT do ``executor._tool_pain_bridge = bridge`` after construction.
+The bridge must live on the unwrapped inner ``Executor`` so the
+``tool.run`` path reads it correctly. Wrapping after manual assignment
+attaches the bridge to the wrapper, leaving the inner executor with
+``_tool_pain_bridge=None`` — silently restoring the Stage 1 no-op
+bug. ``build_executor`` enforces this structurally; the wrapping
+order shown above is the only correct shape.
 """
 
 from __future__ import annotations

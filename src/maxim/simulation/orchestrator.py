@@ -921,33 +921,46 @@ def start_simulation_mode(
         logger.debug("AUT DefaultNetwork creation failed: %s", e)
 
     # ── Executors ────────────────────────────────────────────────────────
+    # `build_executor` requires an explicit pain_bus= decision and
+    # constructs the ToolPainBridge internally. See
+    # docs/plans/executor_bootstrap_unification.md for the structural
+    # invariant + the C2 fold-in that gates bridge construction on
+    # `nac is not None` (independent of subscription source).
     from maxim.runtime.bootstrap import build_executor
 
-    aut_executor = build_executor(aut_registry)
-    orch_executor = build_executor(orch_registry)
+    # AUT executor: bridge is constructed for direct attribution
+    # (record_tool_complete / record_tool_embodiment_failure). NO
+    # subscription source — out-of-band pain → NAc is wired separately
+    # via `create_pain_nac_subscriber(aut_nac)` subscribed to
+    # `aut_pain_bus` at line ~622. Routing the bridge through the same
+    # bus would double-subscribe and cause duplicate NAc updates per
+    # pain signal. Pre-C2 fold this required passing a no-op
+    # `PainDetector()` to trick the bridge constructor; C2 made the
+    # bridge gate on `nac is not None` so the workaround is gone.
+    if aut_nac is not None:
+        aut_executor = build_executor(
+            aut_registry,
+            pain_bus=None,
+            nac=aut_nac,
+            hippocampus=aut_hippocampus,
+            scn=aut_memory_hub.scn if aut_memory_hub else None,
+        )
+        logger.info(
+            "AUT ToolPainBridge wired (direct attribution; out-of-band "
+            "pain→NAc via create_pain_nac_subscriber on aut_pain_bus)"
+        )
+    else:
+        aut_executor = build_executor(aut_registry, pain_bus=None)
 
-    # Wire NAc causal learning to tool outcomes BEFORE wrapping with
-    # FearGatedExecutor. The inner executor (runtime/executor.py)
-    # reads self._tool_pain_bridge on each execute() call, so the
-    # bridge MUST sit on the inner executor — not on a wrapper.
-    # Without this, NAc never sees event→outcome pairs and
-    # causal_links stays at 0. Mirrors production wiring in
-    # conscience/agentic_runtime.py.
-    try:
-        from maxim.bridges.tool_pain_bridge import ToolPainBridge
-
-        if aut_nac is not None:
-            aut_tool_pain_bridge = ToolPainBridge(
-                nac=aut_nac,
-                pain_detector=aut_pain_detector,
-                scn=aut_memory_hub.scn if aut_memory_hub else None,
-                hippocampus=aut_hippocampus,
-                tool_index=None,
-            )
-            aut_executor._tool_pain_bridge = aut_tool_pain_bridge
-            logger.info("AUT ToolPainBridge wired — NAc will learn tool outcomes")
-    except Exception as e:
-        logger.warning("Failed to wire ToolPainBridge for AUT: %s", e)
+    # Orchestrator executor: explicit nac=None opt-out (no bridge). The
+    # orchestrator agent is the puppeteer driving the simulation, NOT
+    # a learning subject. Routing its tool failures into aut_pain_bus
+    # would cross-contaminate the AUT's NAc with negative associations
+    # to actions the AUT never performed — breaking sim mode's
+    # isolation invariant. Whether the orchestrator should grow its
+    # own orch_nac is a question for
+    # docs/plans/agent_factory_canonicalization.md (Stage F3 design).
+    orch_executor = build_executor(orch_registry, pain_bus=None, nac=None)
 
     # Wrap with PainInterceptor (Layer 2 — consequence pain after execute)
     # and AnticipatoryPainExecutor (Layer 1 — perceived pain before execute).

@@ -1079,9 +1079,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         bus=agentic_agent._bus,
                     )
 
-                # Build MemoryHub with Hippocampus for episodic memory
+                # Build MemoryHub with Hippocampus for episodic memory.
+                # All bio-system handles initialized to None up-front so
+                # `build_executor` below sees defined names even if
+                # construction fails inside the try block (pre-existing
+                # latent UnboundLocalError surfaced in pre-merge review).
                 _cli_memory_hub = None
                 _cli_hippocampus = None
+                _cli_nac = None
+                _cli_scn = None
+                _cli_ec = None
                 try:
                     from maxim.integration.memory_hub import MemoryHub
                     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
@@ -1128,54 +1135,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                     operational_mode=_operational_mode,
                     prompt_handler=_prompt_handler,
                 )
-                executor = build_executor(registry)
 
-                # ── Stage 2: unconditional PainBus + ToolPainBridge ──
-                # Pre-Stage-2, this path constructed NEITHER a PainBus
-                # nor a ToolPainBridge for the non-sim agent run, so
-                # every regular `maxim --llm X` run silently skipped
-                # NAc tool-outcome learning AND the Stage 1
-                # embodiment-failure fix was a no-op here. We now
-                # construct both via the shared bootstrap helper to
-                # wire them against the inner Executor. When
-                # `--embodiment REF` is passed, the same call loads
-                # the SEM component, wraps it in
-                # Embodiment(pain_bus=...), and generates affordance
-                # tools into the registry. See
-                # docs/plans/sem_execution_hook.md Stage 2 and
-                # project_sem_execution_hook_stage2.md memory entry
-                # for the full writeup.
-                #
-                # SIM-PATH SCOPE NOTES (audited 2026-04-14):
-                #
-                # - `--sim <yaml>` (DM/fixture/scenario) exits via
-                #   sys.exit() earlier in this function (YAML branch
-                #   around line ~760) so execution never reaches here.
-                #
-                # - `--sim agent` with `sim_source` set still runs
-                #   through `run_agentic_loop` AFTER this block. Its
-                #   PainBus is wired downstream (line ~1320) but NO
-                #   `ToolPainBridge` is constructed for it. That's a
-                #   pre-existing gap PARALLEL to the one we're fixing
-                #   here; closing it requires wiring the helper into
-                #   that branch too. Deferred to Stage 2c (see plan).
-                #
-                # - `--sim interactive` calls `run_interactive_sim`
-                #   which has its OWN PainBus but also no
-                #   `ToolPainBridge`. Same Stage 2c deferral.
-                #
-                # For Stage 2 we close the most common path
-                # (`maxim --llm X` with no sim) and document the
-                # remaining sim-path gaps explicitly so the next
-                # stage has a concrete target.
+                # ── PainBus + Executor construction ──
+                # `build_executor` requires an explicit `pain_bus=`
+                # decision. Non-sim CLI agent runs construct a real
+                # PainBus + subscribe pain-memory capture; sim modes
+                # opt out (their own PainBus wiring lives downstream
+                # in `run_agentic_loop` / `run_interactive_sim` for
+                # now — the sim-path migration is tracked in
+                # `docs/plans/sem_execution_hook.md` Stage 2c, which
+                # collapses to a one-line build_executor call once
+                # this branch lands).
                 _cli_embodiment = None
                 _cli_pain_bus = None
                 _is_sim_mode = getattr(args, "sim", None) is not None
                 if _is_sim_mode and getattr(args, "embodiment", None):
                     # Hard error — "warn and ignore" was cross-confirmed
-                    # as the wrong UX in the pre-merge review. If the
-                    # user asked for a body, either give them one or
-                    # fail loudly with a pointer to what IS supported.
+                    # as the wrong UX in the Stage 2 pre-merge review.
                     print(
                         "error: --embodiment is not yet supported with --sim.\n"
                         "  For DM-campaign YAMLs, set `component: <ref>` in the\n"
@@ -1185,13 +1161,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                         file=sys.stderr,
                     )
                     sys.exit(2)
+
+                _embodiment_ref = None
+                _component_registry = None
                 if not _is_sim_mode:
                     from maxim.proprioception.pain_bus import (
                         PainBus as CliPainBus,
                         create_pain_memory_subscriber,
-                    )
-                    from maxim.runtime.embodiment_bootstrap import (
-                        bootstrap_embodiment_and_pain_bridge,
                     )
 
                     _cli_pain_bus = CliPainBus()
@@ -1200,53 +1176,44 @@ def main(argv: Sequence[str] | None = None) -> int:
                         logger.info("CLI PainBus wired to hippocampus for pain memory capture")
 
                     _embodiment_ref = getattr(args, "embodiment", None)
-                    _component_registry = None
                     if _embodiment_ref:
                         from maxim.embodiment.component_registry import ComponentRegistry
 
                         _component_registry = ComponentRegistry()
 
-                    # Narrow exception handling: user-facing errors
-                    # (ComponentNotFoundError, ValueError from the
-                    # helper's precondition checks) propagate as
-                    # sys.exit(2) with the error message intact.
-                    # Unexpected bootstrap failures (ImportError on an
-                    # optional dep, etc.) degrade to a warning and a
-                    # pre-Stage-2-behavior agent. Pre-merge review
-                    # cross-confirmed that a broad `except Exception`
-                    # here silently swallowed typos — exactly the
-                    # silent-no-op mode Stage 2 exists to eliminate.
-                    from maxim.exceptions import ComponentNotFoundError
+                # Narrow exception handling: user-facing errors
+                # (ComponentNotFoundError, ValueError from build_executor's
+                # precondition checks) propagate as sys.exit(2) with the
+                # error message intact. Pre-merge review on the Stage 2
+                # helper cross-confirmed that a broad `except Exception`
+                # here silently swallowed typos — exactly the silent-no-op
+                # mode bootstrap unification exists to eliminate.
+                from maxim.exceptions import ComponentNotFoundError
 
-                    try:
-                        _cli_embodiment, _ = bootstrap_embodiment_and_pain_bridge(
-                            nac=_cli_nac,
-                            hippocampus=_cli_hippocampus,
-                            scn=_cli_scn,
-                            executor=executor,
-                            pain_bus=_cli_pain_bus,
-                            entity_ref=_embodiment_ref,
-                            component_registry=_component_registry,
-                        )
-                    except ComponentNotFoundError as _cnf:
-                        print(f"error: --embodiment: {_cnf}", file=sys.stderr)
-                        sys.exit(2)
-                    except ValueError as _ve:
-                        print(f"error: --embodiment: {_ve}", file=sys.stderr)
-                        sys.exit(2)
-                    except Exception as _bootstrap_err:
-                        logger.warning(
-                            "Embodiment/ToolPainBridge bootstrap failed (non-fatal): %s",
-                            _bootstrap_err,
-                        )
-                        _cli_pain_bus = None
+                try:
+                    executor = build_executor(
+                        registry,
+                        pain_bus=_cli_pain_bus,
+                        nac=_cli_nac if _cli_pain_bus is not None else None,
+                        hippocampus=_cli_hippocampus if _cli_pain_bus is not None else None,
+                        scn=_cli_scn if _cli_pain_bus is not None else None,
+                        entity_ref=_embodiment_ref,
+                        component_registry=_component_registry,
+                    )
+                except ComponentNotFoundError as _cnf:
+                    print(f"error: --embodiment: {_cnf}", file=sys.stderr)
+                    sys.exit(2)
+                except ValueError as _ve:
+                    print(f"error: --embodiment: {_ve}", file=sys.stderr)
+                    sys.exit(2)
 
-                    if _cli_embodiment is not None:
-                        logger.info(
-                            "Embodiment loaded: %s (root entity=%r)",
-                            _embodiment_ref,
-                            _cli_embodiment.root.name,
-                        )
+                _cli_embodiment = getattr(executor, "_embodiment", None)
+                if _cli_embodiment is not None:
+                    logger.info(
+                        "Embodiment loaded: %s (root entity=%r)",
+                        _embodiment_ref,
+                        _cli_embodiment.root.name,
+                    )
 
                 # Wrap executor with FearAgent safety gating (independent of DefaultNetwork)
                 from maxim.agents.fear_agent import FearAgent

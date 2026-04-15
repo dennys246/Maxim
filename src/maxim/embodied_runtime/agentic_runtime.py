@@ -322,12 +322,11 @@ class AgenticRuntimeMixin:
             gateway=gateway,
             state_manager=self._state_manager,
         )
-        executor = build_executor(registry)
-        evaluators = build_evaluators()
-
         # --- Learned Tool Index ---
         # Keyword-weighted hashtable for tool relevance scoring in prompts.
-        # Created after registry so all tools can be registered.
+        # Constructed BEFORE build_executor so we can pass it as a
+        # constructor arg — `build_executor` forwards it to the
+        # ToolPainBridge for keyword-weight updates on tool outcomes.
         tool_index = None
         try:
             from maxim.tools.learned_index import LearnedToolIndex
@@ -345,35 +344,29 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("Failed to create LearnedToolIndex: %s", e, logger=self.log)
 
-        # --- ToolPainBridge (+ optional Embodiment) ---
-        # Wire NAc causal learning + keyword index to tool outcomes
-        # via the shared runtime/embodiment_bootstrap helper. Behavior-
-        # preserving refactor of the pre-Stage-2 manual wiring.
-        # `pain_detector` (legacy path) is still forwarded for this
-        # call site; no `pain_bus` / `entity_ref` here because the
-        # Reachy runtime currently doesn't load a SEM body through
-        # this path. (Stage 2b will revisit when/if it does.)
-        tool_pain_bridge = None
-        try:
-            from maxim.runtime.embodiment_bootstrap import (
-                bootstrap_embodiment_and_pain_bridge,
+        # --- Executor + ToolPainBridge ---
+        # `build_executor` requires an explicit pain_bus= decision and
+        # constructs the bridge internally. Reachy uses the legacy
+        # pain_detector subscription path (pre-PainBus); no entity_ref
+        # because the Reachy runtime doesn't load a SEM body through
+        # this path. See docs/plans/executor_bootstrap_unification.md.
+        pain_detector = getattr(self, "_pain_detector", None)
+        if nac is not None and pain_detector is not None:
+            executor = build_executor(
+                registry,
+                pain_bus=None,
+                pain_detector=pain_detector,
+                nac=nac,
+                hippocampus=memory_hub.hippocampus if memory_hub else None,
+                scn=memory_hub.scn if memory_hub else None,
+                tool_index=tool_index,
             )
-
-            pain_detector = getattr(self, "_pain_detector", None)
-            if nac is not None:
-                _, tool_pain_bridge = bootstrap_embodiment_and_pain_bridge(
-                    nac=nac,
-                    hippocampus=memory_hub.hippocampus if memory_hub else None,
-                    scn=memory_hub.scn if memory_hub else None,
-                    executor=executor,
-                    pain_bus=None,  # legacy: subscribes via pain_detector
-                    pain_detector=pain_detector,
-                    tool_index=tool_index,
-                )
-                self._tool_pain_bridge = tool_pain_bridge
-                self.log.debug("ToolPainBridge wired via bootstrap helper (with tool index)")
-        except Exception as e:
-            warn("Failed to create ToolPainBridge: %s", e, logger=self.log)
+            self._tool_pain_bridge = executor._tool_pain_bridge
+            self.log.debug("ToolPainBridge wired via build_executor (legacy pain_detector path)")
+        else:
+            executor = build_executor(registry, pain_bus=None)
+            self._tool_pain_bridge = None
+        evaluators = build_evaluators()
 
         # Register MathTool if NumericalWorkspace and AngularGyrus are available
         if numerical_workspace is not None and memory_hub is not None:

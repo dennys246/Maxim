@@ -37,8 +37,13 @@ if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
     from maxim.agents.bus import AgentBus
     from maxim.agents.fear_agent import FearAgent
+    from maxim.bridges.tool_pain_bridge import ToolPainBridge
     from maxim.decisions.nac import NAc
     from maxim.default_network import DefaultNetwork
+    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.proprioception.pain import PainDetector
+    from maxim.proprioception.pain_bus import PainBus
     from maxim.utils.internet_access import InternetAccessPolicy
     from maxim.utils.filesystem_policy import FilesystemPolicy
     from maxim.utils.sandbox_executor import SandboxExecutor
@@ -281,8 +286,196 @@ def build_tool_registry(
     return registry
 
 
-def build_executor(tool_registry: ToolRegistry) -> Executor:
-    return Executor(tool_registry)
+def build_executor(
+    tool_registry: ToolRegistry,
+    *,
+    pain_bus: "PainBus | None",
+    nac: "NAc | None" = None,
+    hippocampus: Any = None,
+    scn: Any = None,
+    pain_detector: "PainDetector | None" = None,
+    tool_index: Any = None,
+    entity_ref: str | None = None,
+    component_registry: "ComponentRegistry | None" = None,
+    cerebellum: Any = None,
+    permissions: Any = None,
+) -> Executor:
+    """Build an Executor with an explicit ToolPainBridge decision.
+
+    The canonical agent-construction site. Folds in the bridge wiring
+    that previously lived in ``runtime/embodiment_bootstrap.py``, and
+    enforces the bridge invariant at the constructor level: every
+    caller must make an explicit ``pain_bus=`` decision.
+
+    Three identical bug instances (sem_execution_hook Stages 1, 2, 2c)
+    showed that "remember to call the helper after build_executor" is
+    not a strong enough invariant — five of six call sites in
+    ``src/maxim/`` were either wrong, implicit, or relied on
+    helper-discipline. This signature makes the failure mode a
+    ``TypeError`` instead of a silent no-op. See
+    ``docs/plans/executor_bootstrap_unification.md``.
+
+    Args:
+        tool_registry: Registry of tools the executor can dispatch.
+        pain_bus: REQUIRED keyword (no default). Pass a live
+            ``PainBus`` to subscribe the bridge to bus-published
+            pain signals, or ``None`` to skip subscription. Note:
+            this controls SUBSCRIPTION only — bridge construction
+            is gated on ``nac`` (see below). The structural intent:
+            forgetting to make an explicit pain-bus decision at the
+            call site is a TypeError.
+        nac: NAc instance. **Constructing the bridge is gated on
+            this, not on `pain_bus`/`pain_detector`.** Pass a real
+            NAc to get a bridge wired for ``record_tool_complete`` /
+            ``record_tool_embodiment_failure`` direct attribution
+            (the Stage 1 primary path); pass ``None`` to skip the
+            bridge entirely (sandbox executors, headless tests).
+            Subscription via ``pain_bus``/``pain_detector`` is the
+            secondary out-of-band attribution path; both can be
+            ``None`` even when ``nac`` is set, in which case the
+            bridge exists for direct attribution only.
+        hippocampus: Optional ``Hippocampus`` for reflexion memory
+            storage. Forwarded to the bridge.
+        scn: Optional ``SCN`` for temporal signature registration.
+        pain_detector: Optional legacy subscription path for the
+            bridge. Pre-PainBus call sites (Reachy runtime) wire
+            tool-error signals through ``PainDetector.add_pain_callback``.
+            Mutually exclusive with ``pain_bus``.
+        tool_index: Optional ``LearnedToolIndex`` for keyword-weight
+            updates on tool outcomes.
+        entity_ref: Optional SEM component reference (e.g.,
+            ``"weapons/rusty_sword"``). When provided, loads the
+            entity, wraps it in ``Embodiment``, and registers
+            affordance tools into ``tool_registry``. Requires
+            ``component_registry`` AND ``pain_bus`` AND ``nac``.
+        component_registry: Required iff ``entity_ref`` is set.
+        cerebellum: Optional ``Cerebellum`` for forward-model training.
+        permissions: Optional ``AgentPermissions``.
+
+    Returns:
+        Unwrapped inner ``Executor`` with the bridge attached when
+        ``nac`` was set (otherwise no bridge). When ``entity_ref``
+        was provided, the loaded ``Embodiment`` is also stored on
+        ``Executor.embodiment`` as a declared field so callers can
+        reference it without re-instantiation.
+
+    Raises:
+        ValueError: ``pain_bus`` AND ``pain_detector`` are both set
+            (ambiguous subscription path); or ``entity_ref`` is set
+            but ``component_registry``, ``pain_bus``, or ``nac`` is
+            missing; or a subscription source is set but ``nac`` is
+            None.
+        ComponentNotFoundError: ``entity_ref`` does not resolve in
+            the registry.
+
+    Wrapping-order invariant: the returned ``executor`` is the
+    unwrapped inner ``Executor``. Wrapping layers (``FearGatedExecutor``,
+    ``PainInterceptorExecutor``, ``AnticipatoryPainExecutor``) MUST
+    be applied AFTER this call. Wrapping the result and then trying
+    to attach a bridge to the wrapper would silently restore the
+    Stage 1 no-op bug. The bridge lives on the inner Executor
+    because that is the object that runs ``tool.run`` and reads
+    ``self._tool_pain_bridge``.
+    """
+    # ── Fail-fast precondition checks (run BEFORE any construction) ──
+    if pain_bus is not None and pain_detector is not None:
+        raise ValueError(
+            "build_executor: pain_bus AND pain_detector were both provided. "
+            "ToolPainBridge.__init__ uses pain_bus if set and silently ignores "
+            "pain_detector — pick one."
+        )
+    if entity_ref is not None and component_registry is None:
+        raise ValueError(
+            f"build_executor: entity_ref={entity_ref!r} was provided but "
+            "component_registry is None. Pass a ComponentRegistry instance "
+            "or leave entity_ref as None."
+        )
+    if entity_ref is not None and pain_bus is None:
+        raise ValueError(
+            f"build_executor: entity_ref={entity_ref!r} was provided but "
+            "pain_bus is None. Embodiment._publish_pain emits through the "
+            "bus; pass a PainBus instance."
+        )
+    if entity_ref is not None and nac is None:
+        raise ValueError(
+            f"build_executor: entity_ref={entity_ref!r} was provided but "
+            "nac is None. Embodiment failures need a bridge for NAc "
+            "attribution — pass an NAc instance."
+        )
+    if (pain_bus is not None or pain_detector is not None) and nac is None:
+        raise ValueError(
+            "build_executor: pain_bus or pain_detector was provided but nac "
+            "is None. Subscribing the bridge without NAc has no effect — "
+            "pass an NAc instance or set both subscription sources to None."
+        )
+
+    # ── Bridge construction (gated on nac, not subscription) ─────────
+    # The bridge's PRIMARY value is direct attribution via
+    # `record_tool_complete` / `record_tool_embodiment_failure`
+    # (Stage 1 root-cause fix). Subscription via pain_bus/pain_detector
+    # is the SECONDARY out-of-band path. So the bridge is constructed
+    # whenever NAc is available; subscription is layered on top if the
+    # caller provided a source. Pre-fold the gating was inverted —
+    # callers wanting direct-attribution-only had to pass a no-op
+    # PainDetector to trick the constructor (cross-confirmed C2/C3
+    # finding from the pre-merge review round).
+    bridge: "ToolPainBridge | None" = None
+    if nac is not None:
+        # Local import — `bridges/tool_pain_bridge` pulls substrate
+        # components we don't want to pay for on opt-out call sites.
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        bridge = ToolPainBridge(
+            nac=nac,
+            pain_detector=pain_detector,
+            scn=scn,
+            hippocampus=hippocampus,
+            tool_index=tool_index,
+            pain_bus=pain_bus,
+        )
+
+    # ── Optional embodiment loading (BEFORE Executor construction) ──
+    # Loading the embodiment first lets us pass it to Executor.__init__
+    # as a declared field, avoiding a post-construction attribute stash.
+    embodiment: "Embodiment | None" = None
+    if entity_ref is not None:
+        # Imports here so non-embodiment call sites don't pay the cost.
+        from maxim.embodiment.body import Embodiment
+        from maxim.embodiment.tool_bridge import generate_tools_for_entity
+
+        # Resolver errors propagate to the caller with their original
+        # exception type + message — `ComponentNotFoundError` includes
+        # a sorted list of available refs so the user can spot a typo.
+        entity = component_registry.instantiate(entity_ref)  # type: ignore[union-attr]
+        embodiment = Embodiment(entity, pain_bus=pain_bus)
+
+        generated = generate_tools_for_entity(
+            entity,
+            tool_registry,
+            embodiment=embodiment,
+            cerebellum=cerebellum,
+        )
+        logger.info(
+            "build_executor: Embodiment loaded from %r — %d affordance tools registered",
+            entity_ref,
+            len(generated),
+        )
+
+    executor = Executor(
+        tool_registry=tool_registry,
+        pain_detector=pain_detector,
+        tool_pain_bridge=bridge,
+        permissions=permissions,
+        embodiment=embodiment,
+    )
+
+    if bridge is not None:
+        logger.info(
+            "build_executor: ToolPainBridge wired (entity_ref=%s)",
+            entity_ref or "<none>",
+        )
+
+    return executor
 
 
 def build_decision_engine(

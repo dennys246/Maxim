@@ -11,6 +11,7 @@ from maxim.tools.registry import ToolRegistry
 if TYPE_CHECKING:
     from maxim.agents.permissions import AgentPermissions
     from maxim.bridges.tool_pain_bridge import ToolPainBridge
+    from maxim.embodiment.body import Embodiment
     from maxim.proprioception.pain import PainDetector
 
 
@@ -74,11 +75,17 @@ class Executor:
         pain_detector: "PainDetector | None" = None,
         tool_pain_bridge: "ToolPainBridge | None" = None,
         permissions: "AgentPermissions | None" = None,
+        embodiment: "Embodiment | None" = None,
     ) -> None:
         self.registry = tool_registry
         self._pain_detector = pain_detector
         self._tool_pain_bridge = tool_pain_bridge
         self._permissions = permissions
+        # Optional SEM Embodiment reference. Set by build_executor when
+        # entity_ref is provided so callers can fetch the body without
+        # re-instantiating it. Read pre-wrap (FearGatedExecutor and
+        # other wrappers do not proxy this attribute).
+        self.embodiment: "Embodiment | None" = embodiment
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
         self._running: tuple[str, float, str] | None = None
