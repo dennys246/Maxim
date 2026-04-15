@@ -1168,15 +1168,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _embodiment_ref = None
                 _component_registry = None
                 if not _is_sim_mode:
-                    from maxim.proprioception.pain_bus import (
-                        PainBus as CliPainBus,
-                        create_pain_memory_subscriber,
-                    )
+                    # build_pain_bus is the canonical PainBus construction
+                    # door (Wave 1, biosystem_unification). Required
+                    # keyword-only hippocampus/nac means forgetting either
+                    # is a TypeError, not a silent no-op. Pre-Wave-1 this
+                    # block subscribed only create_pain_memory_subscriber
+                    # and silently skipped create_pain_nac_subscriber, so
+                    # out-of-band SEM pain reached hippocampus but never
+                    # NAc. See docs/plans/pain_bus_unification.md Gap A.
+                    from maxim.proprioception.pain_bus import build_pain_bus
 
-                    _cli_pain_bus = CliPainBus()
-                    if _cli_hippocampus is not None:
-                        _cli_pain_bus.subscribe(create_pain_memory_subscriber(_cli_hippocampus))
-                        logger.info("CLI PainBus wired to hippocampus for pain memory capture")
+                    _cli_pain_bus = build_pain_bus(
+                        hippocampus=_cli_hippocampus,
+                        nac=_cli_nac,
+                    )
+                    logger.info(
+                        "CLI PainBus wired (hippocampus=%s, nac=%s) for pain capture + causal learning",
+                        _cli_hippocampus is not None,
+                        _cli_nac is not None,
+                    )
 
                     _embodiment_ref = getattr(args, "embodiment", None)
                     if _embodiment_ref:
@@ -1365,14 +1375,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     and str(getattr(args, "sim", "")).strip().lower() == "interactive"
                 ):
                     from maxim.simulation.interactive import run_interactive_sim
-                    from maxim.proprioception.pain_bus import (
-                        PainBus as SimPainBus,
-                        create_pain_memory_subscriber,
-                    )
+                    from maxim.proprioception.pain_bus import build_pain_bus
 
-                    _sim_pain_bus = SimPainBus()
-                    if _cli_hippocampus is not None:
-                        _sim_pain_bus.subscribe(create_pain_memory_subscriber(_cli_hippocampus))
+                    # Same Gap A migration as the non-sim path above.
+                    _sim_pain_bus = build_pain_bus(
+                        hippocampus=_cli_hippocampus,
+                        nac=_cli_nac,
+                    )
 
                     try:
                         run_interactive_sim(
@@ -1404,15 +1413,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                 # In sim mode, create a PainBus for headless pain routing
                 # (DefaultNetwork may not exist, so we need our own)
                 if sim_source is not None:
-                    from maxim.proprioception.pain_bus import (
-                        PainBus as SimPainBus,
-                        create_pain_memory_subscriber,
-                    )
+                    from maxim.proprioception.pain_bus import build_pain_bus
 
-                    _sim_pain_bus = SimPainBus()
-                    if _cli_hippocampus is not None:
-                        _sim_pain_bus.subscribe(create_pain_memory_subscriber(_cli_hippocampus))
-                        logger.info("Sim PainBus wired to hippocampus for pain memory capture")
+                    # Same Gap A migration as the non-sim and interactive
+                    # paths above. Pre-Wave-1 this block subscribed only
+                    # the memory subscriber.
+                    _sim_pain_bus = build_pain_bus(
+                        hippocampus=_cli_hippocampus,
+                        nac=_cli_nac,
+                    )
+                    logger.info(
+                        "Sim PainBus wired (hippocampus=%s, nac=%s) for pain capture + causal learning",
+                        _cli_hippocampus is not None,
+                        _cli_nac is not None,
+                    )
 
                     args._sim_pain_bus = _sim_pain_bus
                     args._sim_hippo = _cli_hippocampus
