@@ -19,7 +19,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -1319,8 +1319,51 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         rules without reaching into ``self._episode_detector``
         directly. The rule is appended to the existing rule list and
         consulted on every subsequent ``observe_episode_event`` call.
+
+        **Boundary rules are NOT persisted** (Round 1 Exec important
+        #3 for P3b). After ``Hippocampus.load_state``, the reloaded
+        instance's ``_episode_detector`` contains only whatever rules
+        the new instance's ``__init__`` registered (the defaults).
+        Callers that added P3b channel rules via this method must
+        re-add them at construction time on every load.
         """
         self._episode_detector.add_rule(rule)
+
+    def channel_membership_filter(
+        self,
+        channel: str,
+        sender: str | None = None,
+        *,
+        membership_mode: Literal["any", "exclusive"] = "any",
+    ) -> Callable[[str], bool]:
+        """Convenience alias for ``EpisodeStore.episode_membership_filter``
+        with channel + optional sender criteria.
+
+        Forwards directly to ``self._episode_store.episode_membership_filter(
+        channel=channel, sender_ids=sender, membership_mode=membership_mode)``
+        when ``sender`` is provided, or just ``channel=channel`` otherwise.
+
+        The general filter lives on ``EpisodeStore`` (Round 1 Arch
+        important #3) — that's where the inverted index is. This
+        method exists for ergonomics on Hippocampus call sites; it
+        forwards without adding any logic of its own.
+
+        Returns a ``node_filter`` callable suitable for
+        ``Hippocampus.retrieve_on_cue(cue, node_filter=...)``.
+
+        ``membership_mode``:
+        - ``"any"`` (default, Stage 1): node retained if it appears
+          in ≥1 matching episode.
+        - ``"exclusive"`` (parameter shape committed for P4): node
+          retained ONLY if every episode containing it matches.
+        """
+        criteria: dict[str, Any] = {"channel": channel}
+        if sender is not None:
+            criteria["sender_ids"] = sender
+        return self._episode_store.episode_membership_filter(
+            membership_mode=membership_mode,
+            **criteria,
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # P3a Stage 1 — Episode binding (private helpers)

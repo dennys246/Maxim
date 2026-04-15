@@ -55,7 +55,7 @@ import itertools
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -206,6 +206,72 @@ def scn_tag_change_rule() -> BoundaryRule:
     return _rule
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# P3b Stage 1 — channel-aware boundary rules
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def channel_specific_rule(channel: str, inner: BoundaryRule) -> BoundaryRule:
+    """Wrap a boundary rule so it only fires when the INCOMING EVENT is
+    on the given channel.
+
+    Round 1 Exec important #2: the wrapper gates on ``event.channel``,
+    NOT ``pending.channel``. Gating on ``pending.channel`` only happens
+    to work when the default ``channel_change_rule`` is installed
+    (which guarantees the pending episode's channel matches every
+    incoming event's channel before any other rule evaluates).
+    Removing ``channel_change_rule`` (reasonable for cross-channel
+    threading) would silently disable every wrapped rule under the
+    pending-channel gating. Gating on ``event.channel`` stays correct
+    under any default-rule configuration.
+    """
+
+    def _rule(pending: PendingEpisodeState, event: CaptureEvent) -> bool:
+        if event.channel != channel:
+            return False
+        return inner(pending, event)
+
+    return _rule
+
+
+def sms_gap_rule(max_gap_ticks: int = 500) -> BoundaryRule:
+    """Channel-gated tick gap rule for SMS-style conversations.
+
+    SMS conversations have longer natural gaps (minutes to hours)
+    between messages than narrative episodes, so the default 500
+    ticks is much higher than the canonical
+    ``EpisodeConfig.boundary_tick_gap = 50``. Wrapped via
+    ``channel_specific_rule`` so a non-SMS event never triggers the
+    SMS-tuned gap.
+
+    Stage 2 sweep will refine the default tick value.
+    """
+    return channel_specific_rule("sms", tick_gap_rule(max_gap_ticks))
+
+
+def sms_sender_change_rule() -> BoundaryRule:
+    """Channel-gated rule that closes the pending SMS episode when a
+    new contact starts texting (sender_id not previously seen in
+    pending.sender_ids).
+
+    **Cold-start guard (Round 1 Exec critical #1):** returns ``False``
+    when ``pending.sender_ids`` is empty. Without this guard, a
+    pending episode opened by an event with ``sender_id=None`` (so
+    ``sender_ids`` stays empty) would close the moment any later
+    event arrived with a non-None sender — because ``"bob" not in
+    empty_set`` is trivially True. The guard preserves the intended
+    semantic ("a NEW contact joins an existing conversation") while
+    silently no-op-ing on cold start.
+    """
+
+    def _inner(pending: PendingEpisodeState, event: CaptureEvent) -> bool:
+        if event.sender_id is None or not pending.sender_ids:
+            return False
+        return event.sender_id not in pending.sender_ids
+
+    return channel_specific_rule("sms", _inner)
+
+
 class EpisodeBoundaryDetector:
     """Runs a list of boundary rules against each incoming event.
 
@@ -310,6 +376,86 @@ class EpisodeStore:
                 for node_id in ep.activated_nodes:
                     self._by_node.setdefault(node_id, set()).add(ep.id)
 
+    # ─────────────────────────────────────────────────────────────────
+    # P3b Stage 1 — channel-aware retrieval filter
+    # ─────────────────────────────────────────────────────────────────
+
+    def episode_membership_filter(
+        self,
+        *,
+        membership_mode: Literal["any", "exclusive"] = "any",
+        **criteria: Any,
+    ) -> Callable[[str], bool]:
+        """Build a ``node_filter`` callable for ``Hippocampus.retrieve_on_cue``.
+
+        Returns a predicate ``(node_id) -> bool`` that retains nodes
+        appearing in episodes matching the given ``criteria``. Designed
+        as the channel/sender filter for P3b channel integration AND
+        the modality filter seam P4 cross-modal will extend.
+
+        **Filter axes are introspected from `Episode` dataclass fields**
+        (Round 1 Arch important #4) — pass any combination as keyword
+        arguments:
+
+        - Scalar fields (``channel``, ``thread_id``, ``scn_tag``):
+          matched via equality (``episode.<field> == value``).
+        - Collection fields (``sender_ids``, which is a tuple):
+          matched via membership (``value in episode.<field>``).
+
+        Examples::
+
+            # SMS channel only
+            filt = store.episode_membership_filter(channel="sms")
+            results = h.retrieve_on_cue(cue, node_filter=filt)
+
+            # SMS + alice as sender
+            filt = store.episode_membership_filter(channel="sms", sender_ids="alice")
+
+            # P4 will add: vision modality only
+            filt = store.episode_membership_filter(modality="vision")
+
+        **Membership modes** (Round 1 Arch critical #1):
+
+        - ``"any"`` (default, Stage 1): node retained if it appears
+          in ≥1 matching episode.
+        - ``"exclusive"`` (parameter shape committed for P4): node
+          retained ONLY if every episode containing it matches all
+          criteria. Stage 1 implements ``"exclusive"`` per the spec
+          but P4 cross-modal will be the primary consumer (it needs
+          this mode to identify cross-modal bridge nodes).
+
+        **Empty inputs**: a node with zero containing episodes returns
+        ``False`` under both modes (no episodes to match against).
+        """
+        if membership_mode not in ("any", "exclusive"):
+            raise ValueError(f"membership_mode must be 'any' or 'exclusive', got {membership_mode!r}")
+
+        def _matches(episode: Episode) -> bool:
+            for key, value in criteria.items():
+                field_value = getattr(episode, key, None)
+                if field_value is None:
+                    return False
+                # Collection fields: membership match. Strings are NOT
+                # treated as collections — they're scalar identifiers.
+                if isinstance(field_value, (tuple, list, set, frozenset)):
+                    if value not in field_value:
+                        return False
+                else:
+                    if field_value != value:
+                        return False
+            return True
+
+        def _filter(node_id: str) -> bool:
+            episodes = self.episodes_containing(node_id)
+            if not episodes:
+                return False
+            if membership_mode == "any":
+                return any(_matches(ep) for ep in episodes)
+            # exclusive: every containing episode must match
+            return all(_matches(ep) for ep in episodes)
+
+        return _filter
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Hebbian on close
@@ -383,6 +529,9 @@ __all__ = [
     "PendingEpisodeState",
     "apply_hebbian_on_close",
     "channel_change_rule",
+    "channel_specific_rule",
     "scn_tag_change_rule",
+    "sms_gap_rule",
+    "sms_sender_change_rule",
     "tick_gap_rule",
 ]
