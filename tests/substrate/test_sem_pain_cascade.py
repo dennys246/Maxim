@@ -1,5 +1,23 @@
 """SEM pain cascade PoC — the full Percept→Reaction→Learning loop.
 
+.. note::
+   **Status (post sem_execution_hook Stage 3):** This PoC file proved
+   the cascade *mechanism* during P2 Stage 2. The production-path
+   superset lives in ``test_sem_execution_production.py``, which
+   exercises the same cascade through ``build_executor`` →
+   ``executor.execute`` → ``ToolPainBridge.record_tool_embodiment_failure``
+   without the ``PoCAgent`` harness. **For most regression-guard work,
+   prefer the production test file** — it covers the same shape
+   PLUS the executor / side_effects / direct-attribution layers that
+   this file bypasses.
+
+   This file is kept as a smaller-surface mechanism guard (no
+   executor, no side_effects routing) for tests that need to isolate
+   bugs in the bus / NAc / context-similarity layer specifically.
+   The Stage 1 retrospective flagged this file's PoC harness for
+   eventual deletion; the decision is deferred until the production
+   test has been load-bearing for at least one bug-find cycle.
+
 This is the P2 plan's Stage 2 deliverable: prove that a real bundled
 SEM component (the ``rusty_sword`` weapon) can drive the end-to-end
 cascade

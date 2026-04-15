@@ -85,6 +85,151 @@ class TestGpuCheck:
         assert result.status in ("ok", "warn")
 
 
+class TestCheckEmbodimentRef:
+    """sem_execution_hook Stage 4 — validate SEM component refs at
+    doctor time so a typo becomes a doctor-level fail with the
+    available list as a fix hint, not a runtime crash."""
+
+    def test_unknown_ref_fails_with_available_list(self):
+        from maxim.doctor.checks import check_embodiment_ref
+
+        result = check_embodiment_ref("weapons/nonexistent_sword")
+        assert result.status == "fail"
+        assert "nonexistent_sword" in result.message
+        assert result.fix is not None
+        # The fix hint should include at least one real available ref
+        # so the user can spot a typo by comparison.
+        assert "weapons/rusty_sword" in result.fix
+
+    def test_real_rusty_sword_ref_succeeds(self):
+        from maxim.doctor.checks import check_embodiment_ref
+
+        result = check_embodiment_ref("weapons/rusty_sword")
+        assert result.status == "ok"
+        assert "weapons/rusty_sword" in result.message
+
+    # NOTE: The original Stage 4 ship had a `test_empty_ref_returns_info`
+    # test asserting that `check_embodiment_ref("")` returned an `info`
+    # status. Pre-merge review (A-arch-3) caught the empty-ref branch
+    # as dead code: the function's only caller (`run_all_checks`) gates
+    # on `if embodiment_ref:` BEFORE calling, so the function never
+    # receives an empty string in practice. The branch was deleted and
+    # this test went with it — there is no contract for empty input.
+
+    @staticmethod
+    def _stub_heavy_doctor_checks():
+        """Return a contextlib.ExitStack with every heavy doctor check
+        patched to a trivial no-op. Used by section-visibility tests
+        that should NOT pay the platform-probing cost. Pre-merge review
+        I1 cross-confirmed: the original tests booted GPU detection,
+        llama-cpp-server probes, etc. for a one-line assertion.
+
+        Refactored from a 24-deep `with` stack (which hit Python's
+        20-nested-block limit) to ExitStack.enter_context().
+        """
+        import contextlib
+
+        from maxim.doctor import checks as checks_mod
+        from maxim.doctor.checks import CheckResult
+
+        def _stub(*args, **kwargs):
+            return CheckResult(name="stub", status="ok", message="stub")
+
+        stack = contextlib.ExitStack()
+        for fn_name in (
+            "check_gpu",
+            "check_tier_detection",
+            "check_tier_effectiveness",
+            "check_disk_space",
+            "check_ram_headroom",
+            "check_storage_footprint",
+            "check_llama_cpp_server_installed",
+            "check_server_reachable",
+            "check_llm_model_active",
+            "check_context_window",
+            "check_vram_pressure",
+            "check_inference_coherence",
+            "check_role",
+            "check_lan_access",
+            "check_cloudflared",
+            "check_tunnel_config",
+            "check_tunnel_config_sync",
+            "check_api_key",
+            "check_key_age",
+            "check_key_permissions",
+            "check_key_auth_smoke",
+        ):
+            stack.enter_context(patch.object(checks_mod, fn_name, _stub))
+        stack.enter_context(patch.object(checks_mod, "check_env_config", lambda *a, **k: []))
+        stack.enter_context(patch.object(checks_mod, "check_mesh_nodes", lambda: []))
+        stack.enter_context(patch.object(checks_mod, "_check_lane_metrics", lambda: []))
+        stack.enter_context(patch("maxim.doctor.checks._detect_doctor_role", return_value=("solo", None)))
+        return stack
+
+    def test_run_all_checks_skips_section_when_no_ref(self):
+        """The Embodiment section must NOT appear when no --embodiment
+        was passed (preserves existing doctor UX). Heavy checks stubbed
+        per I1 fold."""
+        from maxim.doctor import checks as checks_mod
+        from maxim.doctor.platform_detect import detect_platform
+
+        with self._stub_heavy_doctor_checks():
+            sections = checks_mod.run_all_checks(detect_platform(), embodiment_ref=None)
+
+        section_names = [name for name, _ in sections]
+        assert "Embodiment" not in section_names
+
+    def test_run_all_checks_includes_section_when_ref_set(self):
+        """Same gating logic with embodiment_ref set — section appears.
+        Heavy checks stubbed per I1 fold."""
+        from maxim.doctor import checks as checks_mod
+        from maxim.doctor.platform_detect import detect_platform
+
+        with self._stub_heavy_doctor_checks():
+            sections = checks_mod.run_all_checks(
+                detect_platform(),
+                embodiment_ref="weapons/rusty_sword",
+            )
+
+        section_names = [name for name, _ in sections]
+        assert "Embodiment" in section_names
+
+
+class TestDoctorCLIEmbodimentFlag:
+    """The CLI parser for ``--embodiment <REF>`` must extract the ref
+    cleanly and pass it through to run_all_checks."""
+
+    def test_embodiment_flag_parsed(self):
+        from maxim.doctor.cli import _parse_embodiment_flag
+
+        ref = _parse_embodiment_flag(["doctor", "--embodiment", "weapons/rusty_sword"])
+        assert ref == "weapons/rusty_sword"
+
+    def test_no_embodiment_flag_returns_none(self):
+        from maxim.doctor.cli import _parse_embodiment_flag
+
+        assert _parse_embodiment_flag(["doctor"]) is None
+        assert _parse_embodiment_flag(["doctor", "--retry"]) is None
+
+    def test_embodiment_flag_without_value_exits_loud(self):
+        """C1/I2/I3 cross-confirmed pre-merge review fold: a misuse of
+        ``--embodiment`` MUST fail loudly (sys.exit(2)), not silently
+        drop to None and run the doctor with no embodiment section.
+        Silent-drop was the original behavior; both reviewers caught it
+        as a CLAUDE.md "Don't silently drop failures" violation."""
+        from maxim.doctor.cli import _parse_embodiment_flag
+
+        # Trailing --embodiment with no value → loud exit
+        with pytest.raises(SystemExit) as exc_info:
+            _parse_embodiment_flag(["doctor", "--embodiment"])
+        assert exc_info.value.code == 2
+
+        # --embodiment followed by another flag (not a ref) → loud exit
+        with pytest.raises(SystemExit) as exc_info:
+            _parse_embodiment_flag(["doctor", "--embodiment", "--json"])
+        assert exc_info.value.code == 2
+
+
 class TestServerCheck:
     def test_reachable_returns_ok(self):
         from maxim.doctor.checks import check_server_reachable
