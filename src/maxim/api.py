@@ -433,7 +433,15 @@ def run(
         maxim=None,  # No live robot instance in headless mode
     )
     _inject_pending_tools(tool_registry)
-    executor = build_executor(tool_registry)
+    # TODO(agent_factory_canonicalization Stage F5): headless
+    # `maxim.create.agent` should construct a real PainBus +
+    # subscribers so pain signals flow correctly. Today it opts out
+    # explicitly — same shape as the pre-Stage-2 CLI gap, deferred to
+    # the AgentFactory canonicalization plan because fixing it
+    # properly involves a user-facing API decision (default-on vs
+    # default-off bio-learning for headless agents). See
+    # docs/plans/agent_factory_canonicalization.md open question #2.
+    executor = build_executor(tool_registry, pain_bus=None)
     evaluators = build_evaluators()
 
     autonomy = AutonomyController(
