@@ -27,7 +27,7 @@ Each topic has 5 core nodes:
 - 4 **chain** nodes (``<topic>.c1``, ``c2``, ``c3``, ``c4``) arranged
   linearly: c1 → c2 → c3 → c4
 
-Each topic has **17 episodes** (core reinforcement + peripheral noise):
+Each topic has **17 episodes** before the per-seed episode dropout:
 
 - **8 hub episodes** — each hub↔chain pair reinforced TWICE:
   ``{hub, c1}×2``, ``{hub, c2}×2``, ``{hub, c3}×2``, ``{hub, c4}×2``.
@@ -37,6 +37,24 @@ Each topic has **17 episodes** (core reinforcement + peripheral noise):
   ``{c1, c2}×2``, ``{c2, c3}×2``, ``{c3, c4}×2``. Same reinforcement.
 - **3 peripheral episodes** — ``{hub, peripheral_i}`` single-shot.
   Weight stays at ``hebbian_init = 0.3``.
+
+After the base episode list is built, the generator drops
+``episode_dropout_rate`` (default 0.10) of episodes per seed. Per-
+seed dropout is the Stage 2 variance source: different seeds drop
+different episodes, which means per-pair reinforcement counts vary
+across seeds (sometimes a pair is presented 2× → weight 0.4,
+sometimes 1× → 0.3, sometimes 0× → no edge), producing real
+``std_f1`` across the 10-seed sweep. Without dropout, all seeds
+would produce byte-identical metrics and the ``baseline_mean + 2σ``
+gate would collapse to ``baseline_mean`` — ceremonial. With 10%
+dropout, the gate performs real statistical work.
+
+The expected mean multi-hop F1 stays near 1.0 because hub+chain
+topology is robust to losing 10% of reinforcement episodes (at
+least one presentation of each core pair almost always survives).
+The one-hop and TF-IDF baselines see slightly larger variance
+because dropout affects their direct-edge and bag-of-words
+signals respectively.
 
 **Why double-reinforcement is load-bearing (not a band-aid).** Under
 single-shot core episodes, chain targets at 2-hop distance (e.g.,
@@ -169,21 +187,25 @@ def _ns(topic: str, node: str) -> str:
 def build_fixture(
     *,
     peripherals_per_topic: int = 3,
+    episode_dropout_rate: float = 0.10,
     seed: int = 0,
 ) -> dict[str, Any]:
     """Build the full fixture dict for one seed.
 
-    Each topic produces exactly **10 episodes**:
+    Each topic produces **17 base episodes**:
 
-    - 4 hub episodes: ``{hub, c_i}`` for i in 1..4
-    - 3 chain episodes: ``{c1, c2}``, ``{c2, c3}``, ``{c3, c4}``
-    - 3 peripheral episodes: ``{hub, peripheral_i}`` for 3 randomly-
-      selected peripherals (seeded)
+    - 8 hub episodes: 2× each hub↔chain pair
+    - 6 chain episodes: 2× each adjacency
+    - 3 peripheral episodes: 3 randomly-selected peripherals (seeded)
 
-    The ``seed`` controls which peripherals are drawn but never
-    changes the core topology, so every seed tests the same retrieval
-    task shape.
+    After the base list is built, ``episode_dropout_rate`` of episodes
+    are dropped per seed (seeded randomness). This is the variance
+    source — different seeds drop different episodes, producing real
+    ``std_f1 > 0`` across the 10-seed sweep. See module docstring.
     """
+    if not (0.0 <= episode_dropout_rate < 1.0):
+        raise ValueError(f"episode_dropout_rate must be in [0, 1), got {episode_dropout_rate}")
+
     rng = random.Random(seed)
     episodes: list[dict[str, Any]] = []
     reinforcement = 2  # each core episode reinforced twice → weight 0.3 → 0.4
@@ -220,8 +242,15 @@ def build_fixture(
 
         # 3 peripheral episodes: {hub, peripheral} — single-shot, no reinforcement
         pool = list(topic["peripherals"])
+        if peripherals_per_topic > len(pool):
+            raise ValueError(
+                f"{topic_name}: peripherals_per_topic={peripherals_per_topic} exceeds pool size {len(pool)}"
+            )
         rng.shuffle(pool)
         selected = pool[:peripherals_per_topic]
+        assert len(selected) == peripherals_per_topic, (
+            f"peripheral slice undercount for {topic_name}: got {len(selected)}, expected {peripherals_per_topic}"
+        )
         for i, p in enumerate(selected):
             episodes.append(
                 {
@@ -233,8 +262,24 @@ def build_fixture(
                 }
             )
 
+    base_episode_count = len(episodes)
+
+    # Per-seed episode dropout — the Stage 2 variance source.
+    # Uses a SECOND rng seeded from the same seed but with a tag, so
+    # peripheral selection and dropout are independent random streams
+    # (otherwise the two would share state and peripheral choices
+    # would flip whenever dropout count changed).
+    dropout_rng = random.Random(seed * 1_000_003 + 7)
+    n_drop = int(round(len(episodes) * episode_dropout_rate))
+    if n_drop > 0:
+        drop_indices = set(dropout_rng.sample(range(len(episodes)), n_drop))
+        episodes = [ep for i, ep in enumerate(episodes) if i not in drop_indices]
+
     # Probe specification: for each of the 5 core nodes in each topic,
-    # the ground-truth target set is the other 4 core nodes.
+    # the ground-truth target set is the other 4 core nodes. Probes
+    # are topology-only (do NOT depend on dropped episodes) so every
+    # seed runs the same 50 retrieval tasks; dropout affects what
+    # edges the retriever can build, not what it's asked to retrieve.
     probes: list[dict[str, Any]] = []
     for topic_name, topic in TOPICS.items():
         core_ids = [_ns(topic_name, topic["hub"])] + [_ns(topic_name, c) for c in topic["chain"]]
@@ -249,11 +294,15 @@ def build_fixture(
             )
 
     return {
-        "version": 2,  # Stage 2 hub+chain topology (v1 was the abandoned clique draft)
+        "version": 3,  # Stage 2 hub+chain + dropout (v2 was the no-dropout draft)
         "seed": seed,
         "n_topics": len(TOPICS),
-        "episodes_per_topic": 17,  # 8 hub (2× reinforced) + 6 chain (2× reinforced) + 3 peripheral
+        "base_episodes_per_topic": 17,  # 8 hub (2×) + 6 chain (2×) + 3 peripheral
+        "base_total_episodes": base_episode_count,
+        "episodes_per_topic_after_dropout": len(episodes) // len(TOPICS),  # approx
+        "total_episodes": len(episodes),
         "peripherals_per_topic": peripherals_per_topic,
+        "episode_dropout_rate": episode_dropout_rate,
         "episodes": episodes,
         "probes": probes,
     }
@@ -264,6 +313,7 @@ def write_fixture_yaml(
     *,
     seed: int = 0,
     peripherals_per_topic: int = 3,
+    episode_dropout_rate: float = 0.10,
 ) -> None:
     """Dump the fixture to a YAML file for reproducibility.
 
@@ -273,6 +323,7 @@ def write_fixture_yaml(
     fixture = build_fixture(
         seed=seed,
         peripherals_per_topic=peripherals_per_topic,
+        episode_dropout_rate=episode_dropout_rate,
     )
     lines: list[str] = [
         "# Substrate P3a Stage 2 — synthetic episodes fixture (hub+chain topology)",
@@ -280,7 +331,11 @@ def write_fixture_yaml(
         "# Do NOT hand-edit; re-run the generator to regenerate.",
         "#",
         "# Topology: 10 topics × (1 hub + 4 chain) = 50 core nodes.",
-        "# Episodes/topic: 4 hub + 3 chain-adjacency + 3 peripheral = 10.",
+        "# Base episodes/topic: 8 hub (2× reinforced) + 6 chain (2× reinforced)",
+        "#                     + 3 peripheral = 17. After per-seed episode",
+        "#                     dropout (10% of base, ~17 of 170) the total",
+        "#                     varies across seeds as the Stage 2 variance",
+        "#                     source.",
         "# Retrieval task: given any core node as cue, recover the other",
         "# 4 cores. Chain-node cues require multi-hop traversal to reach",
         "# their far-end chain neighbors — TF-IDF cannot; Hebbian",
@@ -289,8 +344,11 @@ def write_fixture_yaml(
         f"version: {fixture['version']}",
         f"seed: {fixture['seed']}",
         f"n_topics: {fixture['n_topics']}",
-        f"episodes_per_topic: {fixture['episodes_per_topic']}",
+        f"base_episodes_per_topic: {fixture['base_episodes_per_topic']}",
+        f"base_total_episodes: {fixture['base_total_episodes']}",
+        f"total_episodes: {fixture['total_episodes']}",
         f"peripherals_per_topic: {fixture['peripherals_per_topic']}",
+        f"episode_dropout_rate: {fixture['episode_dropout_rate']}",
         "",
         "episodes:",
     ]

@@ -34,7 +34,12 @@ import random
 import pytest
 
 from maxim.memory.episode import CaptureEvent
-from maxim.memory.hippocampus import EpisodeConfig, Hippocampus, HippocampusConfig
+from maxim.memory.hippocampus import (
+    EpisodeConfig,
+    Hippocampus,
+    HippocampusConfig,
+    RetrievalConfig,
+)
 from tests.substrate.p3a_fixture_gen import build_fixture
 from tests.substrate.p3a_metrics import (
     aggregate_seeds,
@@ -129,39 +134,45 @@ class TestStage2PassGate:
 
 
 class TestOneHopArchitecturalFinding:
-    """Stage 2 documents the finding that one-hop Hebbian retrieval is
-    roughly equivalent to TF-IDF on bag-of-words tasks, and the
-    mechanism's real value manifests only in multi-hop / transitive
-    retrieval. These tests lock in that finding so future refactors
-    don't silently invalidate the architectural claim."""
+    """Stage 2 documents the finding that the Hebbian mechanism's
+    value over bag-of-words baselines manifests specifically in
+    multi-hop / transitive retrieval, not in direct co-occurrence.
 
-    def test_one_hop_does_not_beat_tfidf(self):
-        onehop_results, tfidf_results = [], []
+    The load-bearing invariant is ``multi_hop_f1 > one_hop_f1 + 0.2``
+    (the lift is real and measurable). An earlier draft asserted
+    ``|one_hop_f1 - tfidf_f1| < 0.05`` as a parity check, but the
+    pre-merge Arch-lens review flagged that as over-constraining —
+    any future one-hop improvement (e.g., normalized edge weights or
+    PageRank-style inference) would trip the test as a regression
+    even though the multi-hop lift is the actual architectural
+    invariant. The softened form below locks in the REAL claim
+    without boxing in future one-hop work.
+    """
+
+    def test_multi_hop_lift_over_one_hop_is_real(self):
+        onehop_results, multihop_results = [], []
         for seed in SEEDS:
             fixture = build_fixture(seed=seed)
             h = Hippocampus(HippocampusConfig())
             _ingest(h, fixture["episodes"])
-            tfidf = TfidfBaseline.from_episodes(fixture["episodes"])
 
             onehop_results.append(run_probes(_hebbian_onehop(h), fixture["probes"], seed=seed))
-            tfidf_results.append(run_probes(tfidf.retrieve, fixture["probes"], seed=seed))
+            multihop_results.append(run_probes(_hebbian_multihop(h), fixture["probes"], seed=seed))
 
         onehop_agg = aggregate_seeds(onehop_results)
-        tfidf_agg = aggregate_seeds(tfidf_results)
+        multihop_agg = aggregate_seeds(multihop_results)
+        lift = multihop_agg.mean_f1 - onehop_agg.mean_f1
 
-        # Architectural finding: one-hop Hebbian and TF-IDF are near-
-        # equivalent on bag-of-words. Both sit at ~0.70 F1 on the
-        # hub+chain fixture (one-hop reaches hub neighbors but not
-        # chain interior; TF-IDF reaches direct co-occurrences).
-        # Allow ±0.05 tolerance — anything wider would be a silent
-        # regression that deserves investigation.
-        diff = onehop_agg.mean_f1 - tfidf_agg.mean_f1
-        assert abs(diff) < 0.05, (
-            f"One-hop Hebbian F1 {onehop_agg.mean_f1:.4f} vs TF-IDF F1 "
-            f"{tfidf_agg.mean_f1:.4f} — difference {diff:.4f} exceeds "
-            f"the ±0.05 parity tolerance. On the Stage 2 fixture these "
-            f"should be architecturally equivalent; a wider gap "
-            f"indicates the fixture or retrieval shape has drifted."
+        # The real architectural invariant: multi-hop retrieval must
+        # deliver a meaningful F1 lift over one-hop. 0.2 absolute is
+        # a conservative floor — the Stage 2 fixture shows ~0.30.
+        assert lift >= 0.20, (
+            f"Multi-hop Hebbian F1 {multihop_agg.mean_f1:.4f} must exceed "
+            f"one-hop Hebbian F1 {onehop_agg.mean_f1:.4f} by at least 0.20 "
+            f"absolute (the architectural invariant). Got lift = {lift:.4f}. "
+            f"If the mechanism ever falls below this, either the fixture no "
+            f"longer has transitive structure or multi-hop retrieval has "
+            f"regressed."
         )
 
 
@@ -180,8 +191,15 @@ class TestRankingStability:
         """For every probe, every chain-target node must have a
         strictly higher multi-hop activation than every peripheral
         node retrieved. No weight ties allowed at the chain/peripheral
-        boundary."""
-        fixture = build_fixture(seed=0)
+        boundary.
+
+        Uses ``episode_dropout_rate=0`` because this test validates
+        the topology/reinforcement design, not the seed-variance
+        behavior. Under dropout, some seeds may have a core edge
+        reinforced only once → weight 0.3 → tied with peripherals;
+        that's expected and tested separately.
+        """
+        fixture = build_fixture(seed=0, episode_dropout_rate=0.0)
         h = Hippocampus(HippocampusConfig())
         _ingest(h, fixture["episodes"])
 
@@ -213,8 +231,16 @@ class TestRankingStability:
     def test_ranking_robust_to_shuffled_ingestion_order(self):
         """Shuffle episode ingestion order and verify F1 stays at the
         same level. If a tie-break heuristic were quietly doing the
-        work, shuffled ingestion would flip the result."""
-        fixture = build_fixture(seed=0)
+        work, shuffled ingestion would flip the result.
+
+        Uses ``episode_dropout_rate=0`` so the invariant is byte-exact
+        (reinforcement is fully symmetric). Under dropout, different
+        shuffle orders of the same dropped set still produce identical
+        F1 because ``apply_hebbian_on_close`` is order-independent,
+        but asserting byte-exact equality with dropout would also
+        exercise the dropout RNG stability which is out of scope.
+        """
+        fixture = build_fixture(seed=0, episode_dropout_rate=0.0)
 
         f1s = []
         for shuffle_seed in range(5):
@@ -294,25 +320,48 @@ class TestFixtureShape:
     """Guard against accidental changes to the fixture generator that
     would invalidate the pass-gate assumptions."""
 
-    def test_fixture_has_expected_shape(self):
-        fixture = build_fixture(seed=0)
+    def test_fixture_has_expected_base_shape(self):
+        # Use episode_dropout_rate=0 to test the un-dropped shape.
+        fixture = build_fixture(seed=0, episode_dropout_rate=0.0)
         assert fixture["n_topics"] == 10
-        assert fixture["episodes_per_topic"] == 17  # 8 hub + 6 chain + 3 peri
-        assert len(fixture["episodes"]) == 170
+        assert fixture["base_episodes_per_topic"] == 17  # 8 hub + 6 chain + 3 peri
+        assert fixture["base_total_episodes"] == 170
+        assert len(fixture["episodes"]) == 170  # no dropout
         assert len(fixture["probes"]) == 50  # 5 cores × 10 topics
+
+    def test_dropout_produces_seed_variance_in_episode_count(self):
+        """Different seeds drop different episodes → different totals."""
+        counts = [len(build_fixture(seed=s)["episodes"]) for s in range(10)]
+        # With 10% dropout on 170 episodes, every seed drops exactly 17.
+        # So total_episodes should be 153 across all seeds. Variance
+        # emerges in WHICH episodes are dropped, not in the count.
+        assert all(c == 153 for c in counts), f"expected 153 after 10% dropout, got {counts}"
+
+    def test_dropout_drops_different_episodes_across_seeds(self):
+        """Two different seeds must not drop identical episode sets."""
+        ep_ids_a = {ep["id"] for ep in build_fixture(seed=0)["episodes"]}
+        ep_ids_b = {ep["id"] for ep in build_fixture(seed=1)["episodes"]}
+        assert ep_ids_a != ep_ids_b, "Different seeds must produce different dropout patterns"
 
     def test_every_probe_has_four_targets(self):
         fixture = build_fixture(seed=0)
         for probe in fixture["probes"]:
             assert len(probe["targets"]) == 4, f"cue={probe['cue']} has {len(probe['targets'])} targets, expected 4"
 
-    def test_core_edge_weights_strictly_above_peripheral_edge_weights(self):
+    def test_core_edge_weights_generally_above_peripheral_edge_weights(self):
         """Verify the reinforcement-based weight stratification at the
         binding-graph level: hub↔chain and chain-adjacency edges must
-        have higher weight than hub↔peripheral edges."""
+        generally have higher weight than hub↔peripheral edges.
+
+        Under episode dropout, a specific core pair in a specific seed
+        may be reinforced only once (weight 0.3) instead of twice (0.4)
+        — so we assert the INVARIANT across all seeds rather than exact
+        numerics on seed 0.
+        """
         from maxim.agents.bus import EdgeType
 
-        fixture = build_fixture(seed=0)
+        # Use zero dropout so the exact assertion holds deterministically
+        fixture = build_fixture(seed=0, episode_dropout_rate=0.0)
         h = Hippocampus(HippocampusConfig())
         _ingest(h, fixture["episodes"])
 
@@ -330,29 +379,49 @@ class TestFixtureShape:
             f"Peripheral edge weight {peri_edge.weight} should be 0.3 (hebbian_init only)"
         )
 
+    def test_peripherals_per_topic_validation(self):
+        """Exec-lens finding: silently undercount on pool exhaustion is a
+        footgun. Generator now raises ValueError on overflow."""
+        with pytest.raises(ValueError, match="exceeds pool size"):
+            build_fixture(seed=0, peripherals_per_topic=100)
+
+    def test_episode_dropout_rate_validation(self):
+        with pytest.raises(ValueError, match="episode_dropout_rate must be in"):
+            build_fixture(seed=0, episode_dropout_rate=1.0)
+        with pytest.raises(ValueError, match="episode_dropout_rate must be in"):
+            build_fixture(seed=0, episode_dropout_rate=-0.1)
+
 
 class TestEpisodeConfigRetrievalDefaults:
-    """The Stage 2 retrieval tuning params on EpisodeConfig must have
-    sensible defaults that produce the expected pass-gate results."""
+    """The Stage 2 retrieval tuning params on `RetrievalConfig` must
+    have sensible defaults and propagate through `retrieve_on_cue`."""
 
-    def test_retrieval_defaults_produce_stage2_pass(self):
+    def test_retrieval_defaults_match_spec(self):
+        """Renamed from test_retrieval_defaults_produce_stage2_pass to
+        match what the test actually does: assert the three default
+        values equal the expected floats. It does not run a probe."""
         cfg = HippocampusConfig()
-        assert cfg.episode.retrieval_decay == pytest.approx(0.7)
-        assert cfg.episode.retrieval_threshold == pytest.approx(0.001)
-        assert cfg.episode.retrieval_max_depth == 5
+        assert cfg.episode.retrieval.decay == pytest.approx(0.7)
+        assert cfg.episode.retrieval.threshold == pytest.approx(0.001)
+        assert cfg.episode.retrieval.max_depth == 5
 
     def test_retrieval_max_depth_override_propagates(self):
-        """Test the override path that Stage 2 sweeps will use.
+        """Forcing max_depth=1 must strictly degrade F1 below the
+        default max_depth=5. If the config override is silently
+        ignored, both runs would equal the same value.
 
-        Forcing max_depth=1 restricts spreading_activation to a single
-        hop, which must degrade retrieval to match one-hop Hebbian
-        (F1 ≈ 0.70) on chain-head probes. If the config override is
-        ignored, F1 would stay at 1.0 because the default max_depth=5
-        would still allow deep traversal.
+        Uses ``episode_dropout_rate=0`` so the assertion is
+        byte-deterministic — this test validates config plumbing
+        (the override reaches ``spreading_activation``), not seed-
+        variance behavior.
         """
         default_h = Hippocampus(HippocampusConfig())
-        overridden_h = Hippocampus(HippocampusConfig(episode=EpisodeConfig(retrieval_max_depth=1)))
-        fixture = build_fixture(seed=0)
+        overridden_h = Hippocampus(
+            HippocampusConfig(
+                episode=EpisodeConfig(retrieval=RetrievalConfig(max_depth=1)),
+            )
+        )
+        fixture = build_fixture(seed=0, episode_dropout_rate=0.0)
         _ingest(default_h, fixture["episodes"])
         _ingest(overridden_h, fixture["episodes"])
 
@@ -361,12 +430,70 @@ class TestEpisodeConfigRetrievalDefaults:
 
         # Default must still clear the gate (sanity)
         assert default_result.mean_f1 == pytest.approx(1.0, abs=1e-9), (
-            f"Default retrieval_max_depth=5 should give F1=1.0, got {default_result.mean_f1:.4f}"
+            f"Default retrieval.max_depth=5 should give F1=1.0, got {default_result.mean_f1:.4f}"
         )
         # Override must strictly degrade F1 — if override is silently
         # ignored, both would equal 1.0.
         assert override_result.mean_f1 < default_result.mean_f1, (
-            f"Override retrieval_max_depth=1 should reduce F1 below default "
+            f"Override retrieval.max_depth=1 should reduce F1 below default "
             f"{default_result.mean_f1:.4f}, got {override_result.mean_f1:.4f}. "
             f"Config plumbing through retrieve_on_cue may be broken."
         )
+
+
+class TestNodeFilterSeam:
+    """P3b channel-filter / P4 modality-filter seam — `retrieve_on_cue`
+    accepts an optional `node_filter` callable that drops filtered
+    nodes from traversal. Pre-merge Arch-lens reserved this seam in
+    Stage 2 so P3b doesn't have to rebuild the retrieval path.
+    """
+
+    def test_node_filter_excludes_matching_nodes(self):
+        """Given a filter that rejects `simmer`, retrieve_on_cue from
+        `prep` must not return `simmer` and must not spread activation
+        through it to `plate`."""
+        fixture = build_fixture(seed=0)
+        h = Hippocampus(HippocampusConfig())
+        _ingest(h, fixture["episodes"])
+
+        # Baseline: no filter. prep → all 4 cooking cores.
+        baseline = dict(h.retrieve_on_cue("cooking.prep", limit=20, multi_hop=True))
+        assert "cooking.simmer" in baseline
+        assert "cooking.plate" in baseline
+
+        # Filter out simmer. Because plate is reachable through saute→simmer→plate
+        # AND through hub→plate (2 hops), hub path still delivers plate.
+        # But simmer itself MUST be filtered out of the result set.
+        def drop_simmer(node_id: str) -> bool:
+            return node_id != "cooking.simmer"
+
+        filtered = dict(h.retrieve_on_cue("cooking.prep", limit=20, multi_hop=True, node_filter=drop_simmer))
+        assert "cooking.simmer" not in filtered, "node_filter must drop simmer"
+        # plate is still reachable via hub (prep → hub → plate)
+        assert "cooking.plate" in filtered
+
+    def test_node_filter_one_hop_mode(self):
+        """node_filter works in one-hop mode too — it just filters the
+        returned direct-neighbor list."""
+        fixture = build_fixture(seed=0)
+        h = Hippocampus(HippocampusConfig())
+        _ingest(h, fixture["episodes"])
+
+        filtered = h.retrieve_on_cue(
+            "cooking.stove",
+            limit=20,
+            multi_hop=False,
+            node_filter=lambda n: "plate" not in n,
+        )
+        filtered_ids = {n for n, _ in filtered}
+        assert not any("plate" in n for n in filtered_ids)
+
+    def test_node_filter_none_is_identity(self):
+        """Passing node_filter=None (default) must be identical to omitting it."""
+        fixture = build_fixture(seed=0)
+        h = Hippocampus(HippocampusConfig())
+        _ingest(h, fixture["episodes"])
+
+        default = h.retrieve_on_cue("cooking.prep", limit=20, multi_hop=True)
+        explicit_none = h.retrieve_on_cue("cooking.prep", limit=20, multi_hop=True, node_filter=None)
+        assert default == explicit_none

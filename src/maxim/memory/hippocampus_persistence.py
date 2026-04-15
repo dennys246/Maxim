@@ -148,7 +148,8 @@ class PersistenceMixin:
 
                 binding_graph = getattr(self, "_binding_graph", None)
                 cfg_episode = getattr(getattr(self, "config", None), "episode", None)
-                if binding_graph is not None and cfg_episode is not None:
+                hebbian_cfg = getattr(cfg_episode, "hebbian", None) if cfg_episode is not None else None
+                if binding_graph is not None and hebbian_cfg is not None:
                     # Reset and rebuild — the pre-load binding graph state
                     # is authoritative only against the pre-load episodes.
                     # Clear internal structures in place rather than
@@ -164,9 +165,9 @@ class PersistenceMixin:
                         apply_hebbian_on_close(
                             binding_graph,
                             ep,
-                            hebbian_init=cfg_episode.hebbian_init,
-                            hebbian_delta=cfg_episode.hebbian_delta,
-                            hebbian_max=cfg_episode.hebbian_max,
+                            hebbian_init=hebbian_cfg.init,
+                            hebbian_delta=hebbian_cfg.delta,
+                            hebbian_max=hebbian_cfg.max_weight,
                         )
 
                 # Restore the monotonic ordinal. Prefer the dumped value;

@@ -1280,8 +1280,18 @@ class DependencyGraph(Generic[T]):
         decay: float = 0.5,
         threshold: float = 0.1,
         max_depth: int = 3,
+        node_filter: Callable[[str], bool] | None = None,
     ) -> dict[str, float]:
-        """Spread activation from source nodes through association edges."""
+        """Spread activation from source nodes through association edges.
+
+        ``node_filter`` is an optional callable ``(node_id) -> bool``
+        applied to every source AND every target visited during
+        traversal. Nodes for which the filter returns ``False`` are
+        skipped — neither added to the result nor used as a hop. This
+        is the seam P3b uses for channel-filtered retrieval and P4
+        uses for modality-filtered cross-modal walks (substrate P3a
+        Stage 2). Pass ``None`` (default) to disable filtering.
+        """
         activations: dict[str, float] = {}
         visited_at_depth: dict[str, int] = {}
 
@@ -1289,6 +1299,8 @@ class DependencyGraph(Generic[T]):
         with self._lock:
             for source in source_ids:
                 if source in self._nodes:
+                    if node_filter is not None and not node_filter(source):
+                        continue
                     queue.append((source, initial_activation, 0))
                     activations[source] = initial_activation
                     visited_at_depth[source] = 0
@@ -1304,6 +1316,9 @@ class DependencyGraph(Generic[T]):
                     for e in self._outgoing.get(node_id, [])
                     if e.edge_type in (EdgeType.ASSOCIATES, EdgeType.CAUSES)
                 ]:
+                    if node_filter is not None and not node_filter(target):
+                        continue
+
                     new_activation = activation * decay * weight
 
                     if new_activation < threshold:

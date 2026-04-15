@@ -59,56 +59,93 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class EpisodeConfig:
-    """P3a Stage 1 + Stage 2 — configuration knobs for episode binding.
+class HebbianConfig:
+    """P3a Stage 1 — Hebbian edge update knobs for ``apply_hebbian_on_close``.
 
-    Fields override cleanly via ``HippocampusConfig(episode=
-    EpisodeConfig(hebbian_delta=0.2))``. No module-level constants, no
-    monkeypatching required — this is the home for the knobs that
-    Stage 2's fixture sweeps will move.
-
-    Defined ABOVE ``HippocampusConfig`` so the ``episode: EpisodeConfig``
-    field's type annotation resolves eagerly under ``get_type_hints()``
-    and dict-shaped YAML construction — Round 2 Arch-lens critical
-    finding #1.
+    Separated from retrieval tuning and boundary detection so each
+    concern has a focused home. Stage 2 Arch-lens finding #4: the
+    original flat ``EpisodeConfig`` was absorbing edge-update,
+    retrieval, and boundary knobs on one dataclass, heading toward
+    kitchen-sink as P3b (channel) / P4 (cross-modal) / P6 (extinction)
+    add their own tuning.
     """
-
-    # Episode boundary detector: close the pending episode when the next
-    # capture is more than this many ticks after the previous capture.
-    boundary_tick_gap: int = 50
 
     # Initial edge weight for a fresh Hebbian edge between two nodes
     # co-occurring in an episode for the first time.
-    hebbian_init: float = 0.3
+    init: float = 0.3
 
     # Per-close weight increment for an existing Hebbian edge whose
     # endpoints co-occur again in a newly-closed episode.
-    hebbian_delta: float = 0.1
+    delta: float = 0.1
 
     # Upper clamp on Hebbian edge weight — no single episode sequence
-    # can drive a weight above this.
-    hebbian_max: float = 1.0
+    # can drive a weight above this. Named ``max_weight`` rather than
+    # ``max`` to avoid shadowing the builtin.
+    max_weight: float = 1.0
 
-    # ─────────────────────────────────────────────────────────────────
-    # P3a Stage 2 — retrieval tuning (multi-hop spreading_activation)
-    # These knobs control ``Hippocampus.retrieve_on_cue(..., multi_hop=True)``.
-    # One-hop retrieval ignores them entirely.
-    # ─────────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class RetrievalConfig:
+    """P3a Stage 2 — multi-hop retrieval knobs for
+    ``Hippocampus.retrieve_on_cue(..., multi_hop=True)``.
+
+    These drive the ``DependencyGraph.spreading_activation`` traversal
+    on the binding graph. One-hop retrieval ignores them entirely.
+
+    **Default calibration** (hub+chain Stage 2 fixture):
+    ``decay=0.7 × max_core_weight=0.4 = 0.28`` per hop. With
+    ``threshold=0.001``, effective reach is
+    ``log(0.001 / 1.0) / log(0.28) ≈ 5.4`` hops, bounded by
+    ``max_depth=5``. If a future fixture has different weight
+    stratification (e.g., P3b real-text episodes averaging ~0.2 edge
+    weight), the threshold will prune earlier and multi-hop will not
+    reach deep targets. Re-tune when ``retrieve_on_cue`` recall drops
+    on real-text fixtures.
+    """
 
     # Per-hop activation decay for ``spreading_activation``. Values in
-    # ``[0, 1]``; higher = activation travels farther. Default 0.7
-    # gives ~3-hop effective reach on the Stage 2 hub+chain fixture
-    # before falling below ``retrieval_threshold``.
-    retrieval_decay: float = 0.7
+    # ``[0, 1]``; higher = activation travels farther.
+    decay: float = 0.7
 
     # Minimum activation to keep a node in the retrieved set. Nodes
     # whose multi-hop weight falls below this are pruned. Low values
     # reach deeper chains; very low values risk spreading to
     # cross-topic noise.
-    retrieval_threshold: float = 0.001
+    threshold: float = 0.001
 
     # Maximum hops from the cue. Hard cap on traversal depth.
-    retrieval_max_depth: int = 5
+    max_depth: int = 5
+
+
+@dataclass(frozen=True)
+class EpisodeConfig:
+    """P3a Stage 1 + Stage 2 — configuration knobs for episode binding.
+
+    Composes ``HebbianConfig`` (edge-update) and ``RetrievalConfig``
+    (edge-traversal) plus the boundary detector knob. Each concern is
+    in its own dataclass so P3b/P4/P6 can extend without ballooning
+    a single flat config.
+
+    Override patterns:
+
+    - ``HippocampusConfig(episode=EpisodeConfig(hebbian=HebbianConfig(delta=0.2)))``
+    - ``HippocampusConfig(episode=EpisodeConfig(retrieval=RetrievalConfig(decay=0.8)))``
+    - ``HippocampusConfig(episode=EpisodeConfig(boundary_tick_gap=100))``
+
+    Defined ABOVE ``HippocampusConfig`` so the ``episode: EpisodeConfig``
+    field's type annotation resolves eagerly under ``get_type_hints()``
+    and dict-shaped YAML construction — P3.5 Round 2 Arch critical #1.
+    """
+
+    # Episode boundary detector: close the pending episode when the
+    # next capture is more than this many ticks after the previous.
+    boundary_tick_gap: int = 50
+
+    # Nested edge-update knobs (Stage 1 Hebbian mechanism).
+    hebbian: HebbianConfig = field(default_factory=HebbianConfig)
+
+    # Nested multi-hop retrieval knobs (Stage 2).
+    retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
 
 
 @dataclass(frozen=True)
@@ -1194,52 +1231,66 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         cue_node_id: str,
         limit: int = 10,
         *,
-        multi_hop: bool = False,
+        multi_hop: bool = True,
+        node_filter: Callable[[str], bool] | None = None,
     ) -> list[tuple[str, float]]:
         """Return substrate nodes co-activated with the cue, ranked by binding weight.
 
         **Two retrieval modes:**
 
-        - ``multi_hop=False`` (default, Stage 1 behavior) — one-hop
-          retrieval via ``DependencyGraph.get_associated``. Returns
-          direct neighbors of the cue sorted by edge weight. Fast and
-          deterministic, but cannot follow transitive structure (e.g.,
-          a chain ``a → b → c`` queried from cue ``a`` returns only
-          ``b``).
-        - ``multi_hop=True`` (Stage 2 primary path) — walks the
-          binding graph via ``DependencyGraph.spreading_activation``
-          with decay ``self.config.episode.retrieval_decay``,
-          threshold ``self.config.episode.retrieval_threshold``, and
-          max depth ``self.config.episode.retrieval_max_depth``.
-          Recovers nodes reachable through intermediate edges,
-          including transitive structure that bag-of-words baselines
-          (e.g., TF-IDF) cannot represent. The Hebbian binding
-          mechanism's structural advantage over TF-IDF manifests here.
+        - ``multi_hop=True`` (default, Stage 2+ primary path) — walks
+          the binding graph via
+          ``DependencyGraph.spreading_activation`` with decay
+          ``self.config.episode.retrieval.decay``, threshold
+          ``self.config.episode.retrieval.threshold``, and max depth
+          ``self.config.episode.retrieval.max_depth``. Recovers nodes
+          reachable through intermediate edges, including transitive
+          structure that bag-of-words baselines (e.g., TF-IDF) cannot
+          represent. The Hebbian binding mechanism's structural
+          advantage over TF-IDF manifests here. Stage 2's
+          architectural finding: one-hop Hebbian ≈ TF-IDF on bag-of-
+          words; the value lives in multi-hop traversal.
+        - ``multi_hop=False`` (explicit opt-in) — one-hop retrieval
+          via ``DependencyGraph.get_associated``. Returns direct
+          neighbors of the cue sorted by edge weight. Used by Stage 1
+          mechanism tests that specifically exercise the one-hop
+          semantics. Production callers (P3b / P4 / P5 / P6) should
+          leave the default alone.
 
-        Default stays one-hop so Stage 1 tests + existing call sites
-        keep their pre-Stage-2 behavior. Stage 2 fixture-validation
-        tests pass ``multi_hop=True`` explicitly.
+        **Default flipped from one-hop to multi-hop in Stage 2** per
+        the Arch-lens review — the Stage 1 "backward compat" hedge
+        protected exactly one test suite while silently degrading every
+        future caller that forgets the kwarg. Stage 1 mechanism tests
+        explicitly opt into ``multi_hop=False``.
+
+        ``node_filter`` is an optional callable ``(node_id) -> bool``
+        applied to every intermediate and destination node visited
+        during traversal. Edges through nodes the filter rejects are
+        not followed (the multi-hop path drops them before the decay
+        step; the one-hop path drops them from the returned list).
+        This is the P3b channel-filter / P4 modality-filter seam —
+        reserved in Stage 2 so P3b doesn't have to reach into the
+        binding graph internals or rebuild this method.
 
         **Return shape is distinct from ``recall``/``recall_similar``**.
         Those methods return ``list[EpisodicMemory | CompressedMemory]``
         (memory records). This method returns
         ``list[tuple[node_id, weight]]`` where ``node_id`` is a
         SUBSTRATE node identifier (from ``LinguisticEncoder`` + EC),
-        NOT a memory record id. The two namespaces never overlap — a
-        cue node id passed to ``recall`` retrieves nothing, and a
-        memory id passed here retrieves nothing.
+        NOT a memory record id. The two namespaces never overlap.
 
         Queries ``self._binding_graph`` ONLY. Does NOT touch
         ``self._graph`` (memory-record associations).
         """
         if multi_hop:
-            cfg = self.config.episode
+            retrieval_cfg = self.config.episode.retrieval
             activations = self._binding_graph.spreading_activation(
                 source_ids=[cue_node_id],
                 initial_activation=1.0,
-                decay=cfg.retrieval_decay,
-                threshold=cfg.retrieval_threshold,
-                max_depth=cfg.retrieval_max_depth,
+                decay=retrieval_cfg.decay,
+                threshold=retrieval_cfg.threshold,
+                max_depth=retrieval_cfg.max_depth,
+                node_filter=node_filter,
             )
             # spreading_activation returns dict[str, float] including the
             # cue itself with activation 1.0; filter it out.
@@ -1255,6 +1306,8 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             edge_types={EdgeType.ASSOCIATES},
         )
         # get_associated returns list[(neighbor, weight)]; sort + cap
+        if node_filter is not None:
+            associated = [(n, w) for n, w in associated if node_filter(n)]
         associated.sort(key=lambda pair: pair[1], reverse=True)
         return associated[:limit]
 
@@ -1308,13 +1361,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         self._episode_store.add(episode)
 
         # Hebbian updates on the binding graph
-        cfg = self.config.episode
+        hebbian_cfg = self.config.episode.hebbian
         apply_hebbian_on_close(
             self._binding_graph,
             episode,
-            hebbian_init=cfg.hebbian_init,
-            hebbian_delta=cfg.hebbian_delta,
-            hebbian_max=cfg.hebbian_max,
+            hebbian_init=hebbian_cfg.init,
+            hebbian_delta=hebbian_cfg.delta,
+            hebbian_max=hebbian_cfg.max_weight,
         )
 
         return episode

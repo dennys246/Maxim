@@ -7,13 +7,15 @@
 
 ## TL;DR
 
-On a 10-topic × 17-episodes-per-topic hub+chain synthetic fixture, the Hebbian binding mechanism's **multi-hop retrieval (`spreading_activation`) clears the Stage 2 pass gate with F1 = 1.0 across all 10 seeds**, beating the TF-IDF bag-of-concepts baseline by **0.30 absolute F1**. One-hop Hebbian ties TF-IDF at F1 = 0.70. The architectural finding: **the mechanism's value over bag-of-words retrieval manifests specifically in transitive / multi-hop graph traversal — a capability TF-IDF structurally cannot replicate** because bag-of-words has no edges to walk.
+On a 10-topic × 17-base-episodes hub+chain synthetic fixture with 10% per-seed episode dropout as a variance source, the Hebbian binding mechanism's **multi-hop retrieval (`spreading_activation`) clears the Stage 2 pass gate with F1 ≈ 0.9955 ± 0.0055 across 10 seeds**, beating the TF-IDF bag-of-concepts baseline by **0.324 absolute F1**. One-hop Hebbian ties TF-IDF within ~0.03 F1 (both near 0.70). The architectural finding: **the mechanism's value over bag-of-words retrieval manifests specifically in transitive / multi-hop graph traversal — a capability TF-IDF structurally cannot replicate** because bag-of-words has no edges to walk.
 
 | Retriever | mean F1 | std F1 | Beats TF-IDF + 2σ? |
 |---|---|---|---|
-| **Hebbian multi-hop** | **1.0000** | **0.0000** | **✅ YES (margin 0.30)** |
-| Hebbian one-hop | 0.7000 | 0.0000 | ❌ (parity) |
-| TF-IDF baseline | 0.7000 | 0.0000 | — |
+| **Hebbian multi-hop** | **0.9955** | **0.0055** | **✅ YES (margin 0.324)** |
+| Hebbian one-hop | 0.6910 | 0.0074 | ≈ parity with TF-IDF |
+| TF-IDF baseline | 0.6600 | 0.0058 | — |
+
+**Multi-hop lift over one-hop: 0.3045** (architectural invariant ≥ 0.20 cleared).
 
 ## Pass gate (from substrate_p3a_episode_binding.md Stage 2)
 

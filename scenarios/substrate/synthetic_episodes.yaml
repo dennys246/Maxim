@@ -3,17 +3,24 @@
 # Do NOT hand-edit; re-run the generator to regenerate.
 #
 # Topology: 10 topics × (1 hub + 4 chain) = 50 core nodes.
-# Episodes/topic: 4 hub + 3 chain-adjacency + 3 peripheral = 10.
+# Base episodes/topic: 8 hub (2× reinforced) + 6 chain (2× reinforced)
+#                     + 3 peripheral = 17. After per-seed episode
+#                     dropout (10% of base, ~17 of 170) the total
+#                     varies across seeds as the Stage 2 variance
+#                     source.
 # Retrieval task: given any core node as cue, recover the other
 # 4 cores. Chain-node cues require multi-hop traversal to reach
 # their far-end chain neighbors — TF-IDF cannot; Hebbian
 # spreading_activation can.
 
-version: 2
+version: 3
 seed: 0
 n_topics: 10
-episodes_per_topic: 17
+base_episodes_per_topic: 17
+base_total_episodes: 170
+total_episodes: 153
 peripherals_per_topic: 3
+episode_dropout_rate: 0.1
 
 episodes:
   - id: cooking_hub_prep_r0
@@ -61,11 +68,6 @@ episodes:
     channel: text
     kind: chain
     activated_nodes: [cooking.prep, cooking.saute]
-  - id: cooking_chain_1_r0
-    topic: cooking
-    channel: text
-    kind: chain
-    activated_nodes: [cooking.saute, cooking.simmer]
   - id: cooking_chain_2_r0
     topic: cooking
     channel: text
@@ -76,21 +78,11 @@ episodes:
     channel: text
     kind: chain
     activated_nodes: [cooking.prep, cooking.saute]
-  - id: cooking_chain_1_r1
-    topic: cooking
-    channel: text
-    kind: chain
-    activated_nodes: [cooking.saute, cooking.simmer]
   - id: cooking_chain_2_r1
     topic: cooking
     channel: text
     kind: chain
     activated_nodes: [cooking.simmer, cooking.plate]
-  - id: cooking_peri_0
-    topic: cooking
-    channel: text
-    kind: peripheral
-    activated_nodes: [cooking.stove, cooking.garlic]
   - id: cooking_peri_1
     topic: cooking
     channel: text
@@ -106,11 +98,6 @@ episodes:
     channel: text
     kind: hub
     activated_nodes: [sports.field, sports.warmup]
-  - id: sports_hub_drill_r0
-    topic: sports
-    channel: text
-    kind: hub
-    activated_nodes: [sports.field, sports.drill]
   - id: sports_hub_scrimmage_r0
     topic: sports
     channel: text
@@ -126,21 +113,11 @@ episodes:
     channel: text
     kind: hub
     activated_nodes: [sports.field, sports.warmup]
-  - id: sports_hub_drill_r1
-    topic: sports
-    channel: text
-    kind: hub
-    activated_nodes: [sports.field, sports.drill]
   - id: sports_hub_scrimmage_r1
     topic: sports
     channel: text
     kind: hub
     activated_nodes: [sports.field, sports.scrimmage]
-  - id: sports_hub_cooldown_r1
-    topic: sports
-    channel: text
-    kind: hub
-    activated_nodes: [sports.field, sports.cooldown]
   - id: sports_chain_0_r0
     topic: sports
     channel: text
@@ -206,11 +183,6 @@ episodes:
     channel: text
     kind: hub
     activated_nodes: [music.stage, music.encore]
-  - id: music_hub_tuneup_r1
-    topic: music
-    channel: text
-    kind: hub
-    activated_nodes: [music.stage, music.tuneup]
   - id: music_hub_soundcheck_r1
     topic: music
     channel: text
@@ -286,11 +258,6 @@ episodes:
     channel: text
     kind: hub
     activated_nodes: [gardening.plot, gardening.water]
-  - id: gardening_hub_harvest_r0
-    topic: gardening
-    channel: text
-    kind: hub
-    activated_nodes: [gardening.plot, gardening.harvest]
   - id: gardening_hub_till_r1
     topic: gardening
     channel: text
@@ -426,11 +393,6 @@ episodes:
     channel: text
     kind: chain
     activated_nodes: [astronomy.capture, astronomy.catalog]
-  - id: astronomy_peri_0
-    topic: astronomy
-    channel: text
-    kind: peripheral
-    activated_nodes: [astronomy.observatory, astronomy.mount]
   - id: astronomy_peri_1
     topic: astronomy
     channel: text
@@ -481,11 +443,6 @@ episodes:
     channel: text
     kind: hub
     activated_nodes: [carpentry.workbench, carpentry.finish]
-  - id: carpentry_chain_0_r0
-    topic: carpentry
-    channel: text
-    kind: chain
-    activated_nodes: [carpentry.measure, carpentry.cut]
   - id: carpentry_chain_1_r0
     topic: carpentry
     channel: text
@@ -521,11 +478,6 @@ episodes:
     channel: text
     kind: peripheral
     activated_nodes: [carpentry.workbench, carpentry.plane]
-  - id: carpentry_peri_2
-    topic: carpentry
-    channel: text
-    kind: peripheral
-    activated_nodes: [carpentry.workbench, carpentry.stain]
   - id: medicine_hub_triage_r0
     topic: medicine
     channel: text
@@ -551,11 +503,6 @@ episodes:
     channel: text
     kind: hub
     activated_nodes: [medicine.ward, medicine.triage]
-  - id: medicine_hub_diagnose_r1
-    topic: medicine
-    channel: text
-    kind: hub
-    activated_nodes: [medicine.ward, medicine.diagnose]
   - id: medicine_hub_treat_r1
     topic: medicine
     channel: text
@@ -571,11 +518,6 @@ episodes:
     channel: text
     kind: chain
     activated_nodes: [medicine.triage, medicine.diagnose]
-  - id: medicine_chain_1_r0
-    topic: medicine
-    channel: text
-    kind: chain
-    activated_nodes: [medicine.diagnose, medicine.treat]
   - id: medicine_chain_2_r0
     topic: medicine
     channel: text
@@ -661,11 +603,6 @@ episodes:
     channel: text
     kind: chain
     activated_nodes: [sailing.hoist, sailing.tack]
-  - id: sailing_chain_2_r0
-    topic: sailing
-    channel: text
-    kind: chain
-    activated_nodes: [sailing.tack, sailing.moor]
   - id: sailing_chain_0_r1
     topic: sailing
     channel: text
@@ -701,11 +638,6 @@ episodes:
     channel: text
     kind: hub
     activated_nodes: [photography.studio, photography.setup]
-  - id: photography_hub_compose_r0
-    topic: photography
-    channel: text
-    kind: hub
-    activated_nodes: [photography.studio, photography.compose]
   - id: photography_hub_shoot_r0
     topic: photography
     channel: text
@@ -761,11 +693,6 @@ episodes:
     channel: text
     kind: chain
     activated_nodes: [photography.compose, photography.shoot]
-  - id: photography_chain_2_r1
-    topic: photography
-    channel: text
-    kind: chain
-    activated_nodes: [photography.shoot, photography.edit]
   - id: photography_peri_0
     topic: photography
     channel: text
@@ -846,11 +773,6 @@ episodes:
     channel: text
     kind: chain
     activated_nodes: [archaeology.excavate, archaeology.catalog]
-  - id: archaeology_chain_2_r1
-    topic: archaeology
-    channel: text
-    kind: chain
-    activated_nodes: [archaeology.catalog, archaeology.preserve]
   - id: archaeology_peri_0
     topic: archaeology
     channel: text
