@@ -1,5 +1,32 @@
 # Substrate P4 Stage 2 — Mug test sweep (real CLIP + paraphrase-mpnet)
 
+> **⚠️ v1 CONCLUSIONS WITHDRAWN (2026-04-15).** This report's "defer Option 2"
+> conclusion was caught by Round 2 Architecture-lens review as **tautological**:
+> the fixture had no distractors and no cross-class reachability paths, so
+> `retrieve_cross_modal` was mechanically forced to return 1.000 recall
+> regardless of whether the substrate was working. The Option 2 defer decision
+> rested on unfalsifiable evidence.
+>
+> A Stage 2 v2 attempt to rebuild the fixture (on branch `fix/substrate-p4-stage2-fold`)
+> **also failed Round 2 review** — for a different reason in the same bug class:
+> the v2 metric measured graph-theoretic properties of the constructed topology
+> rather than substrate behavior. Both v1 and v2 reports are preserved as
+> historical record.
+>
+> **Authoritative reframe:** [p4_stage2_v2_post_mortem.md](p4_stage2_v2_post_mortem.md)
+>
+> **Current Option 2 status:** REOPENED. Neither v1 ("defer") nor v2 ("ship")
+> produced honest data. The `TestStageThreeLimitation` regression guard from
+> Stage 1 remains the forcing function until a non-tautological measurement
+> lands. See the post-mortem's "What the next attempt needs" section for the
+> methodology requirements.
+>
+> **Everything below this box is the v1 report as-shipped. The numbers are
+> real but the interpretation is invalidated. DO NOT act on the "defer Option 2"
+> conclusion.**
+
+---
+
 **Wall clock:** 16.4s
 **Encoder arm:** Arm A (paraphrase-mpnet text + clip-ViT-B-32 vision + hippocampus)
 **Fixture:** scenarios/substrate/p4_mug_test.yaml (10 classes × 5 samples)
