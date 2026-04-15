@@ -1,0 +1,52 @@
+{
+  "total_wall_clock_s": 16.28,
+  "samples": [
+    {
+      "label": "baseline",
+      "wall_clock_s": 0.878,
+      "backend": "mps",
+      "allocated_mb": 0.0,
+      "reserved_mb": 0.0,
+      "smi_used_mb": null,
+      "smi_total_mb": null,
+      "notes": "before any P4 encoder load",
+      "extra": {}
+    },
+    {
+      "label": "after_clip_load",
+      "wall_clock_s": 10.614,
+      "backend": "mps",
+      "allocated_mb": 577.1,
+      "reserved_mb": 577.1,
+      "smi_used_mb": null,
+      "smi_total_mb": null,
+      "notes": "",
+      "extra": {}
+    },
+    {
+      "label": "after_mpnet_load",
+      "wall_clock_s": 14.688,
+      "backend": "mps",
+      "allocated_mb": 994.7,
+      "reserved_mb": 994.7,
+      "smi_used_mb": null,
+      "smi_total_mb": null,
+      "notes": "",
+      "extra": {}
+    },
+    {
+      "label": "after_mug_test_encode",
+      "wall_clock_s": 16.279,
+      "backend": "mps",
+      "allocated_mb": 994.7,
+      "reserved_mb": 994.7,
+      "smi_used_mb": null,
+      "smi_total_mb": null,
+      "notes": "",
+      "extra": {
+        "n_text_encoded": 10,
+        "n_image_encoded": 50
+      }
+    }
+  ]
+}
