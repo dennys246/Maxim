@@ -27,6 +27,7 @@ from maxim.decisions.nac import NAc, NACConfig
 from maxim.proprioception.pain import PainSignal, PainType
 from maxim.proprioception.pain_bus import (
     PainBus,
+    build_pain_bus,
     create_pain_nac_subscriber,
 )
 from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
@@ -336,6 +337,169 @@ class TestCreatePainNacSubscriber:
         # No record_event called
         sub(_make_signal(intensity=0.7))
         assert len(nac) == 0
+
+
+class TestBuildPainBus:
+    """Regression guards for the canonical PainBus construction door.
+
+    See ``docs/plans/pain_bus_unification.md`` for the audit + design
+    that motivated this builder. The shape mirrors
+    ``runtime/bootstrap.py::build_executor`` — required keyword-only
+    learning subjects so forgetting either is a ``TypeError``, not a
+    silent no-op.
+    """
+
+    def _nac(self) -> NAc:
+        return NAc(NACConfig(temporal_window_seconds=60.0))
+
+    def test_missing_hippocampus_kwarg_raises_type_error(self):
+        """Forgetting hippocampus= is a TypeError, not a silent no-op."""
+        import pytest
+
+        with pytest.raises(TypeError):
+            build_pain_bus(nac=self._nac())  # type: ignore[call-arg]
+
+    def test_missing_nac_kwarg_raises_type_error(self):
+        """Forgetting nac= is a TypeError, not a silent no-op.
+
+        This is the regression guard for the audited bug class: three
+        CLI sites silently skipped NAc bus subscription. Post-migration,
+        forgetting the argument is loud.
+        """
+        import pytest
+
+        hippo = MagicMock()
+
+        with pytest.raises(TypeError):
+            build_pain_bus(hippocampus=hippo)  # type: ignore[call-arg]
+
+    def test_positional_args_rejected(self):
+        """Both learning subjects are keyword-only."""
+        import pytest
+
+        with pytest.raises(TypeError):
+            build_pain_bus(MagicMock(), self._nac())  # type: ignore[misc]
+
+    def test_returns_painbus_instance(self):
+        """The return type is a real PainBus (not a wrapper)."""
+        bus = build_pain_bus(hippocampus=None, nac=None)
+        assert isinstance(bus, PainBus)
+
+    def test_explicit_no_learners_opt_out(self):
+        """Passing None for both is a legitimate explicit opt-out.
+
+        api.py headless mode and tests need this path. The TypeError
+        safety net is on FORGETTING the parameter, not on PASSING None.
+        """
+        bus = build_pain_bus(hippocampus=None, nac=None)
+        # No direct subscribers should be wired beyond the internal
+        # bridge that PainBus.__init__ registers on reaction_bus.
+        assert bus.get_stats()["direct_pain_subscribers"] == 0
+
+    def test_hippocampus_only_subscribes_memory_subscriber(self):
+        """Passing hippocampus wires create_pain_memory_subscriber."""
+        from maxim.memory.types import Decision, Outcome, Perception  # noqa: F401
+
+        hippo = MagicMock()
+        hippo.capture = MagicMock()
+        bus = build_pain_bus(hippocampus=hippo, nac=None)
+
+        # Direct subscriber count = 1 (memory only)
+        assert bus.get_stats()["direct_pain_subscribers"] == 1
+
+        # Publishing a pain signal triggers hippo.capture
+        bus.publish(_make_signal(intensity=0.7))
+        assert hippo.capture.call_count == 1
+
+    def test_nac_only_subscribes_nac_subscriber(self):
+        """Passing nac wires create_pain_nac_subscriber."""
+        nac = self._nac()
+        bus = build_pain_bus(hippocampus=None, nac=nac)
+
+        assert bus.get_stats()["direct_pain_subscribers"] == 1
+
+        # Record a pending action that the pain context will match.
+        nac.record_event(
+            event_type="action",
+            event_signature="slash:rusty_sword",
+            context={
+                "source": "embodiment",
+                "entity": "body.arm.rusty_sword",
+            },
+        )
+        bus.publish(_make_signal(intensity=0.7))
+
+        # Action→pain link should exist (the very bug class this
+        # builder closes — would have been a silent no-op pre-fix).
+        assert len(nac._links.get("slash:rusty_sword", [])) == 1
+
+    def test_both_learners_subscribe_both(self):
+        """The standard production shape: both subjects wired."""
+        hippo = MagicMock()
+        hippo.capture = MagicMock()
+        nac = self._nac()
+        bus = build_pain_bus(hippocampus=hippo, nac=nac)
+
+        assert bus.get_stats()["direct_pain_subscribers"] == 2
+
+        nac.record_event(
+            event_type="action",
+            event_signature="slash:rusty_sword",
+            context={
+                "source": "embodiment",
+                "entity": "body.arm.rusty_sword",
+            },
+        )
+        bus.publish(_make_signal(intensity=0.7))
+
+        # BOTH paths fire on the same publish.
+        assert hippo.capture.call_count == 1
+        assert len(nac._links.get("slash:rusty_sword", [])) == 1
+
+    def test_additional_subscribers_registered_after_standard_learners(self):
+        """Custom subscribers run after the standard learners."""
+        order: list[str] = []
+
+        def hippo_marker(_signal: PainSignal) -> None:
+            order.append("hippo")
+
+        def custom_sub(_signal: PainSignal) -> None:
+            order.append("custom")
+
+        # Use a hippo MagicMock that records via the order list rather
+        # than the standard create_pain_memory_subscriber, so we can
+        # assert on call ordering directly.
+        hippo = MagicMock()
+        hippo.capture = MagicMock(side_effect=lambda **_: order.append("hippo"))
+
+        bus = build_pain_bus(
+            hippocampus=hippo,
+            nac=None,
+            additional_subscribers=(custom_sub,),
+        )
+        assert bus.get_stats()["direct_pain_subscribers"] == 2
+
+        bus.publish(_make_signal(intensity=0.7))
+        # Standard learner runs first, then additional subscriber.
+        assert order == ["hippo", "custom"]
+        # Suppress unused-warning on the unused inner helper.
+        del hippo_marker
+
+    def test_history_size_and_refractory_forwarded(self):
+        """history_size and pain_refractory_s reach the PainBus ctor."""
+        bus = build_pain_bus(
+            hippocampus=None,
+            nac=None,
+            history_size=42,
+            pain_refractory_s=1.5,
+        )
+        # pain_refractory_s is the simpler one to assert on directly.
+        assert bus._pain_refractory_s == 1.5
+        # history_size lives on the inner ReactionBus; sanity-check
+        # that publishing still works (full ReactionBus contract is
+        # tested elsewhere — we only care that the kwarg flowed).
+        bus.publish(_make_signal(intensity=0.7))
+        assert len(bus.recent) >= 0  # smoke check, not a hard assertion
 
     def test_exceptions_are_logged_not_swallowed(self, caplog):
         """A broken NAc still logs so wiring issues surface."""

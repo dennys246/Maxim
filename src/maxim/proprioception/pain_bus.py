@@ -62,6 +62,7 @@ from maxim.reactions.bus import ReactionBus
 from maxim.reactions.compat import pain_signal_to_reaction
 
 if TYPE_CHECKING:
+    from maxim.decisions.nac import NAc
     from maxim.memory.hippocampus import Hippocampus
     from maxim.reactions.types import Reaction
 
@@ -386,3 +387,106 @@ def create_pain_nac_subscriber(
             logger.exception("pain→NAc outcome recording failed")
 
     return _on_pain
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Canonical PainBus construction site (Wave 1, biosystem_unification)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def build_pain_bus(
+    *,
+    hippocampus: "Hippocampus | None",
+    nac: "NAc | None",
+    additional_subscribers: tuple[Callable[[PainSignal], None], ...] = (),
+    history_size: int = 200,
+    pain_refractory_s: float | None = None,
+) -> PainBus:
+    """Construct a PainBus with explicit learning-subscriber decisions.
+
+    This is the canonical PainBus construction site for production
+    code. ``hippocampus`` and ``nac`` are REQUIRED keyword-only
+    arguments — forgetting either is a ``TypeError``, not a silent
+    no-op. The required-kwarg shape mirrors
+    ``runtime/bootstrap.py::build_executor`` and applies the same L1
+    structural-enforcement rule from
+    ``docs/architecture/structural_enforcement.md``: silent-failure
+    bug classes get pushed down into the constructor so the next call
+    site cannot reproduce them.
+
+    The motivating bug (audited in
+    ``docs/plans/pain_bus_unification.md``): three CLI entry points
+    constructed a ``PainBus()`` and subscribed
+    ``create_pain_memory_subscriber`` but never
+    ``create_pain_nac_subscriber``, even though ``_cli_nac`` was in
+    scope. Out-of-band SEM pain (autonomous body-sensor decay,
+    sandbox triggers, ``body.py::_publish_pain`` while no tool is in
+    flight) reached hippocampus on those paths but never reached NAc.
+    The bug was invisible to existing tests because tool-invoked pain
+    still reached NAc via the direct-attribution path through
+    ``ToolPainBridge.record_tool_embodiment_failure``. Three identical
+    instances across three entry points = the canonical L1
+    silent-failure-mode shape.
+
+    Args:
+        hippocampus: ``Hippocampus`` instance to subscribe via
+            ``create_pain_memory_subscriber``. Pass ``None`` to
+            explicitly opt out (sandbox / test / headless agents that
+            don't capture pain memories). Required keyword-only.
+        nac: ``NAc`` instance to subscribe via
+            ``create_pain_nac_subscriber``. Pass ``None`` to explicitly
+            opt out. Required keyword-only. Note: tool-invoked SEM pain
+            attributes to NAc directly via
+            ``ToolPainBridge.record_tool_embodiment_failure`` regardless
+            of this subscription — this kwarg controls the bus-fallback
+            path used for **out-of-band** pain (autonomous SEM ticks,
+            sandbox events, ambient body-sensor decay).
+        additional_subscribers: Optional extra ``PainSignal``
+            callbacks registered after the standard learners. Use
+            for adapter-shaped subscribers (telemetry, fear-gate, etc.)
+            that need the rich ``signal.context``. Keep additional
+            subscribers cheap — they run synchronously inside
+            ``PainBus.publish``.
+        history_size: Forwarded to the underlying ``ReactionBus``.
+        pain_refractory_s: Forwarded to ``PainBus.__init__``. Default
+            is ``PainBus.DEFAULT_PAIN_REFRACTORY_S``.
+
+    Returns:
+        A fully-constructed ``PainBus`` with the standard learners
+        already subscribed.
+
+    Examples:
+        Production CLI agent path (the post-migration shape)::
+
+            pain_bus = build_pain_bus(
+                hippocampus=cli_hippocampus,
+                nac=cli_nac,
+            )
+            executor = build_executor(
+                registry,
+                pain_bus=pain_bus,
+                nac=cli_nac,
+                hippocampus=cli_hippocampus,
+                ...,
+            )
+
+        Explicit no-learners opt-out (test / sandbox / headless)::
+
+            pain_bus = build_pain_bus(hippocampus=None, nac=None)
+
+    See also:
+        - ``docs/plans/pain_bus_unification.md`` for the audit + design
+        - ``docs/architecture/structural_enforcement.md`` for the rule
+        - ``runtime/bootstrap.py::build_executor`` for the precedent
+    """
+    bus = PainBus(
+        history_size=history_size,
+        pain_refractory_s=pain_refractory_s,
+    )
+    if hippocampus is not None:
+        bus.subscribe(create_pain_memory_subscriber(hippocampus))
+    if nac is not None:
+        bus.subscribe(create_pain_nac_subscriber(nac))
+    for sub in additional_subscribers:
+        bus.subscribe(sub)
+    return bus
