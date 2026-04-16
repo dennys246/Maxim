@@ -144,6 +144,10 @@ The two should eventually share a common noun-phrase extraction backend, but tha
 
 **Trigger condition:** P4 Stage 3 PASSES (Arm B beats Arm C by the margin criterion + bootstrap CI). If P4 fails, this plan is deferred indefinitely — the architecture has bigger problems.
 
+## Cross-references
+
+- **[substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md):** concept decomposition creates more nodes per episode (2–4 per sentence instead of 1). Without enriched episode boundaries (tool execution, semantic shift, salience spike), a long conversation episode could accumulate dozens of noun-phrase nodes with O(n^2) Hebbian edges. The two plans are complementary — decomposition makes nodes finer-grained, boundary enrichment keeps episodes bounded so the edge count stays manageable.
+
 ## Risks
 
 1. **spaCy model quality on short fragments.** Noun chunking on 2–3 word inputs may over-decompose (`"blue mug"` → `["blue", "mug"]` instead of keeping the phrase). Mitigation: test on the P4 fixture's bare class names and common agent-loop inputs; tune the minimum chunk length.
