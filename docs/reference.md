@@ -26,7 +26,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/modes/` | Operating mode definitions |
 | `src/maxim/proprioception/` | Movement tracking and pain detection |
 | `src/maxim/harm/` | Predictive harm detection (velocity, joint limits) |
-| `src/maxim/energy/` | Resource expenditure tracking (tokens, compute, movement) |
+| `src/maxim/energy/` | Resource expenditure tracking (tokens, compute, movement). Energy depletion fires interoceptive Reactions (hunger, fatigue, satiation) via the energy→Reaction bridge, feeding the SEM learning loop |
 | `src/maxim/bridges/` | Cross-system integration (pain, energy, memory) |
 | `src/maxim/embodiment/` | SEM protocol (Sensor-Entity-Modulator), Cerebellum, motor programs |
 | `src/maxim/mesh/` | Simulation-only: `bus`, `identity`, `message`, `naming` (R0 deleted the dead agent-mesh subsystem; see "Removed in R0" below) |

@@ -1,6 +1,6 @@
 # Behavioral Convergence Wiring — Close the Tier 2 Gaps
 
-**Status:** PLAN (2026-04-17). Three integration gaps to close before the agent's bio-system learning affects its LLM-driven decisions.
+**Status:** COMPLETE (2026-04-17). All 4 stages shipped. Experiment 2: 13/13 hypotheses confirmed.
 **Scope:** ~400-600 LOC across 4 stages.
 **Target version:** 0.3 (pre-publish). Unblocks Experiment 2 in [behavioral_convergence_practice.md](behavioral_convergence_practice.md).
 **Depends on:** SEM learning loop (SHIPPED), concept decomposition Stage 1 (SHIPPED).

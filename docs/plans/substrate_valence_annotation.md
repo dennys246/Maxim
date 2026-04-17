@@ -1,6 +1,6 @@
 # Substrate — Valence annotation via SEM reactions
 
-**Status:** SHELL (2026-04-16). Design only — surfaced by three-lens review of concept decomposition plan.
+**Status:** COMPLETE (2026-04-17). Stages 1-3 shipped. Stage 4 absorbed into sem_learning_loop.md (also shipped).
 **Scope:** ~300–500 LOC (two broken-link fixes + episode capture + edge annotation + sim PoC).
 **Target version:** post-concept-decomposition. Finer-grained concept nodes make valence targets more precise.
 **Parent:** None (standalone). Companion to [substrate_concept_decomposition.md](substrate_concept_decomposition.md).

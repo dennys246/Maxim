@@ -188,6 +188,9 @@ Future retrieval: retrieve_on_cue(include_valence=True)
 
     <h3 class="text-white font-semibold mt-6">Cerebellum Activation via BioStack</h3>
     <p class="text-slate-300 leading-relaxed">In production, the Cerebellum is wired through <code class="bg-slate-950 px-1 rounded text-xs">BioStack.cerebellum</code> and activated by <code class="bg-slate-950 px-1 rounded text-xs">build_executor</code>. This means every agent entry point that constructs a bio-stack gets Cerebellum forward models and the full SEM Learning Loop automatically &mdash; no per-caller wiring required.</p>
+
+    <h3 class="text-white font-semibold mt-6">Behavioral Convergence Wiring</h3>
+    <p class="text-slate-300 leading-relaxed">The SEM Learning Loop produces valence and reward bias in the substrate, but the LLM also needs to see this information. Behavioral convergence wiring (shipped 2026-04-17) closes four gaps: valence annotations in PromptAssembler so the LLM sees &ldquo;this entity is associated with negative experiences,&rdquo; <code class="bg-slate-950 px-1 rounded text-xs">observe_episode_event</code> in the agent loop for real-time episode capture, an energy&rarr;Reaction bridge that fires hunger/fatigue/satiation interoceptive reactions from energy depletion, and bundled food/water/poison SEM specs. Validated by two experiments: cross-session affective memory (11/11 PASS) and energy-driven consumable learning (13/13 PASS). See <a href="/maxim/experiments" class="text-indigo-400 hover:text-indigo-300 no-underline">Experiments &amp; Results</a> for details.</p>
   </section>
 
   <!-- Motor Programs -->

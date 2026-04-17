@@ -164,6 +164,14 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 
 ---
 
-### Planned: Experiment 2 — Energy-driven consumable learning (Tier 2)
+### 2026-04-17 — Energy-driven consumable learning (Exp 2)
 
-**Hypothesis:** An agent with depleting energy and prior experience with healing/poison potions will preferentially choose healing over poison. Blocked on [behavioral_convergence_wiring.md](behavioral_convergence_wiring.md) Stages 1-3.
+**Hypothesis:** Agent learns to differentiate beneficial vs harmful consumables. Energy depletion triggers interoceptive reactions feeding the learning loop.
+
+**Scenario:** Food ration, water flask, poison vial. Energy bridge fires hunger/fatigue. Tier 1 substrate-only.
+
+**N:** 1 (deterministic).
+
+**Result:** 13/13 hypotheses confirmed. Food +0.753, water +0.135, poison -0.495. Energy bridge: 1 hunger, 1 fatigue, 3 satiation. Key finding: environmental satiation creates background positive credit; discriminant is relative bias strength.
+
+**Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp2.py`

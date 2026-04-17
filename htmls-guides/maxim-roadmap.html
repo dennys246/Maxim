@@ -204,7 +204,12 @@
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">SEM Learning Loop</td>
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
-            <td class="py-3">Cerebellum activation via BioStack, distribute_reward (ReactionBus &rarr; NAc reward bias &rarr; EC threshold adjustment), CerebellumModulator success reactions (positive valence, negativity bias), pain spike episode boundaries (salience_spike_rule).</td>
+            <td class="py-3">Cerebellum activation via BioStack, distribute_reward (ReactionBus &rarr; NAc reward bias &rarr; EC threshold adjustment), CerebellumModulator success reactions (positive valence, negativity bias), pain spike episode boundaries (salience_spike_rule). PoC: 11/11 + 13/13.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Behavioral Convergence Wiring</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Valence in PromptAssembler, <code class="bg-slate-950 px-1 rounded text-xs">observe_episode_event</code> in agent loop, energy&rarr;Reaction bridge (hunger/fatigue/satiation), food/water/poison SEM specs. Experiment 2: 13/13 hypotheses confirmed.</td>
           </tr>
         </tbody>
       </table>
@@ -215,12 +220,16 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed">The most recent shipping wave (2026-04-17) delivered the <span class="text-indigo-400 font-semibold">SEM Learning Loop</span> and <span class="text-indigo-400 font-semibold">Valence Annotation</span> (Stages 1&ndash;3). The SEM Learning Loop wires CerebellumModulator success/failure reactions through ReactionBus to both hippocampus (episode valence annotation, Hebbian edge valence) and NAc (<code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> for per-node reward bias + EC threshold adjustment). The <code class="bg-slate-950 px-1 rounded text-xs">salience_spike_rule</code> closes episodes on high-intensity pain. <code class="bg-slate-950 px-1 rounded text-xs">spreading_activation(propagate_valence=True)</code> and <code class="bg-slate-950 px-1 rounded text-xs">retrieve_on_cue(include_valence=True)</code> carry affective memory through retrieval. Episode boundary enrichment Rules 1&ndash;2 deferred to pre-P5. Earlier: <span class="text-indigo-400 font-semibold">Substrate P2 Reward Modulation</span> shipped end-to-end (+56.0 pp target gain, 9-of-10 seeds). <span class="text-indigo-400 font-semibold">P3a Episode Binding Stage 2</span>: Hebbian multi-hop F1 = 1.0000 vs TF-IDF 0.7000. <span class="text-indigo-400 font-semibold">Bio-Stack Wave 3</span> merged (<code class="bg-slate-950 px-1 rounded text-xs">build_bio_stack</code> canonical). <span class="text-indigo-400 font-semibold">SEM Execution Hook</span> + <span class="text-indigo-400 font-semibold">Executor Bootstrap Unification</span> closed the silent-no-op bug class.</p>
+    <p class="text-slate-300 leading-relaxed">The most recent shipping wave (2026-04-17) delivered the <span class="text-indigo-400 font-semibold">SEM Learning Loop</span>, <span class="text-indigo-400 font-semibold">Valence Annotation</span> (Stages 1&ndash;3), and <span class="text-indigo-400 font-semibold">Behavioral Convergence Wiring</span> (4 stages). The SEM Learning Loop wires CerebellumModulator success/failure reactions through ReactionBus to both hippocampus (episode valence annotation, Hebbian edge valence) and NAc (<code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> for per-node reward bias + EC threshold adjustment). Behavioral convergence wiring closes the gap between substrate learning and LLM decisions: valence in PromptAssembler, <code class="bg-slate-950 px-1 rounded text-xs">observe_episode_event</code> in the agent loop, and an energy&rarr;Reaction bridge that fires hunger/fatigue/satiation interoceptive reactions. <strong>Two experiments confirmed the full pipeline:</strong> Experiment 1 (cross-session affective memory, 11/11 PASS) and Experiment 2 (energy-driven consumable learning, 13/13 PASS). Earlier: <span class="text-indigo-400 font-semibold">Substrate P2 Reward Modulation</span> shipped end-to-end (+56.0 pp target gain, 9-of-10 seeds). <span class="text-indigo-400 font-semibold">Bio-Stack Wave 3</span> merged (<code class="bg-slate-950 px-1 rounded text-xs">build_bio_stack</code> canonical).</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">SEM Learning Loop &amp; Valence Annotation</h3>
         <p class="text-slate-300 text-sm leading-relaxed">CerebellumModulator success/failure reactions &rarr; ReactionBus &rarr; hippocampus (Episode.valence, Edge.metadata["valence"]) + NAc (<code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> for reward bias + EC threshold adjustment). <code class="bg-slate-950 px-1 rounded text-xs">spreading_activation(propagate_valence=True)</code> + <code class="bg-slate-950 px-1 rounded text-xs">retrieve_on_cue(include_valence=True)</code>. Pain spike episode boundaries via <code class="bg-slate-950 px-1 rounded text-xs">salience_spike_rule</code>. Cerebellum activation through BioStack + build_executor.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Behavioral Convergence Wiring</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Closes the gap between substrate learning and LLM decisions. Valence in PromptAssembler, <code class="bg-slate-950 px-1 rounded text-xs">observe_episode_event</code> in agent loop, energy&rarr;Reaction bridge (hunger/fatigue/satiation from energy depletion), food/water/poison SEM specs. Experiment 2: 13/13 hypotheses confirmed &mdash; food +0.753, water +0.135, poison -0.495.</p>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">DM MVP</h3>
@@ -273,7 +282,7 @@
   <section class="space-y-4">
     <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
 
-    <p class="text-slate-300 leading-relaxed">The path to 1.0 still runs through the substrate plan. P1 recognition, P2 reward modulation, valence annotation, and the SEM Learning Loop are complete. Bio-Stack Wave 3 is merged. Next: concept decomposition Stage 2, episode boundary enrichment, the rest of the binding/persistence track, then 0.3 publish.</p>
+    <p class="text-slate-300 leading-relaxed">The path to 1.0 still runs through the substrate plan. P1 recognition, P2 reward modulation, valence annotation, the SEM Learning Loop, and behavioral convergence wiring are all complete. Two experiments confirm the full pipeline (11/11 + 13/13). Next: concept decomposition Stage 2, episode boundary enrichment Stages 1-2, the rest of the binding/persistence track, then 0.3 publish.</p>
 
     <div class="space-y-3">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">

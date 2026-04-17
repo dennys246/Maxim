@@ -326,6 +326,17 @@ CerebellumModulator emits `_emit_success_reaction` when confident enough to skip
 
 `BioStack.cerebellum` is now constructed by `build_bio_stack` and forwarded via `build_executor(cerebellum=...)` to `generate_tools_for_entity`, which creates `CerebellumModulator` instances with a wired `reaction_bus`. This means every SEM affordance tool now has a live Cerebellum backing it -- predictions, training, and reaction emission all happen automatically.
 
+### Behavioral convergence wiring (shipped 2026-04-17)
+
+The SEM learning loop produces valence and reward bias in the substrate, but prior to behavioral convergence wiring, the LLM never saw this information. Four stages close the gap:
+
+1. **Valence in PromptAssembler** -- `MemorySummary` includes valence annotations from `retrieve_on_cue(include_valence=True)`, so the LLM sees "this entity is associated with negative experiences."
+2. **`observe_episode_event` in agent loop** -- the production agent loop now calls `hippocampus.observe_episode_event` on each tick, keeping the episode capture pipeline fed with real-time events.
+3. **Energy→Reaction bridge** -- energy depletion fires interoceptive Reactions (hunger, fatigue, satiation) that enter the same learning loop as pain and success reactions.
+4. **Food/water/poison SEM specs** -- bundled consumable entity specs for testing and demonstration.
+
+Validated by Experiment 2 (13/13 hypotheses confirmed): food +0.753, water +0.135, poison -0.495.
+
 ## What's Next
 
 - **Phase 2**: Composable failure modes -- persistent failures with recovery conditions

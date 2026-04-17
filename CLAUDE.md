@@ -386,7 +386,13 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functi
 
 See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.2.1 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
 
-**Recently shipped (2026-04-11/12):**
+**Recently shipped (2026-04-17):**
+- Valence annotation Stages 1-3 — Episode.valence, Edge.metadata["valence"], spreading_activation(propagate_valence), retrieve_on_cue(include_valence). 26 tests.
+- SEM Learning Loop (5 stages) — Cerebellum activation in BioStack, distribute_reward wiring, success reactions, pain spike episode boundary. PoC: 11/11 + 13/13.
+- Behavioral convergence wiring (4 stages) — valence in PromptAssembler, observe_episode_event in agent loop, energy→Reaction bridge, food/water/poison SEM specs.
+- Experiment 1: Cross-session affective memory (11/11 PASS). Experiment 2: Energy-driven consumable learning (13/13 PASS).
+
+**Previously shipped (2026-04-11/12):**
 - Foundations wave F0.1–F0.8 — all landed. Archived.
 - Reaction abstraction Phases 1–4 — Percept/Reaction dual-surface architecture. Archived. Phase 5 folds into substrate P2.
 - Cleanup wave C1–C4, Peer/leader flexibility P1–P9 — all archived.

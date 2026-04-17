@@ -1,6 +1,6 @@
 # Substrate — Episode boundary enrichment
 
-**Status:** SHELL (2026-04-15). Design only — no implementation scheduled.
+**Status:** PARTIAL (2026-04-17). Stage 3 (pain/salience spike) SHIPPED via sem_learning_loop.md. observe_episode_event now wired into production agent loop via behavioral_convergence_wiring.md. Stages 1-2 (tool execution + semantic shift) remain — ship before P5.
 **Scope:** ~200–400 LOC (3 new boundary rules + CaptureEvent extensions + tests).
 **Target version:** post-0.3. Ships AFTER P4 Stage 3 proves the base substrate claim.
 **Parent:** None (standalone). Extends `memory/episode.py` boundary rule surface.

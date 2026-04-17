@@ -1,6 +1,6 @@
 # Cerebellum Backend Activation
 
-**Status:** SHELL (2026-04-17). Design only.
+**Status:** COMPLETE — absorbed into [sem_learning_loop.md](sem_learning_loop.md) Stage 1 (shipped 2026-04-17).
 **Scope:** ~150-200 LOC. Wire existing Cerebellum infrastructure into production entry points.
 **Parent:** None (standalone). Companion to [substrate_valence_annotation.md](substrate_valence_annotation.md) Stage 4.
 **Depends on:** `build_bio_stack` (Wave 3, SHIPPED).

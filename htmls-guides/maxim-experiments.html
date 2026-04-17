@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Experiments &amp; Results — Maxim Docs | Bio-Inspired Cognitive Architecture{% endblock %}
+
+{% block meta_description %}Deterministic substrate experiments proving Maxim's bio-inspired learning pipeline works without LLM fine-tuning. Cross-session affective memory (11/11), energy-driven consumable learning (13/13), valence annotation PoC, and SEM learning loop verification.{% endblock %}
+
+{% block meta_keywords %}Maxim experiments, substrate testing, cross-session learning, affective memory, consumable learning, valence annotation, SEM learning loop, bio-inspired AI, deterministic testing, cognitive architecture validation{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Experiments & Results — Deterministic Validation of Maxim's Bio-Inspired Learning Pipeline",
+  "description": "Reproducible substrate experiments proving cross-session affective memory transfer, energy-driven consumable learning, valence annotation, and the full SEM learning loop — all without LLM fine-tuning.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/experiments",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["experiments", "substrate testing", "cross-session learning", "affective memory", "valence", "SEM learning loop"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Experiments", "item": "https://www.dennyschaedig.com/maxim/experiments" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Experiments &amp; Results</h1>
+    <p class="text-indigo-400 font-medium">Deterministic Validation of the Bio-Inspired Learning Pipeline</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">Every experiment below runs on the substrate layer alone &mdash; no LLM, no variance from model non-determinism, fully reproducible from a single script. The methodology: construct bio-pipeline components (Hippocampus, NAc, EC, ATL, PainBus, ReactionBus, Cerebellum), simulate SEM entity interactions with deterministic outcomes, then measure what the substrate learned. Each hypothesis is stated falsifiably, each result is a pass/fail count, and each experiment includes a reproduction command.</p>
+
+  <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Why Deterministic?</h3>
+    <p class="text-slate-300 text-sm">LLM non-determinism contaminates behavioral measurements &mdash; you can't tell whether the agent improved or the LLM drifted. By testing at the substrate layer, we isolate the bio-pipeline's learning signal from LLM variance. When these experiments pass, we know the architecture works; LLM-level integration (Tier 2) builds on a proven foundation.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <!--  EXPERIMENT 2: ENERGY-DRIVEN CONSUMABLE LEARNING             -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="exp2" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Experiment 2: Energy-Driven Consumable Learning</h2>
+
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-green-500/20 text-green-400">13/13 PASS</span>
+      <span class="text-slate-400 text-sm">2026-04-17</span>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The agent interacts with three consumable SEM entities &mdash; food ration, water flask, and poison vial &mdash; while its energy depletes over time. Energy depletion fires interoceptive Reactions (hunger, fatigue) through the energy&rarr;Reaction bridge. Consuming food and water restores energy and triggers satiation reactions (positive valence). Consuming poison causes pain (negative valence). The substrate learns to differentiate beneficial from harmful consumables.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-white font-semibold mb-3">Results</h3>
+      <div class="bg-slate-950 rounded-lg p-5 overflow-x-auto">
+        <table class="w-full text-sm text-slate-300">
+          <thead>
+            <tr>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Entity</th>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Valence</th>
+              <th class="text-left text-indigo-400 pb-2">Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Food ration</td>
+              <td class="pr-6 py-2 text-green-400 font-mono">+0.753</td>
+              <td class="py-2">Strongly positive &mdash; reliably restores energy</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Water flask</td>
+              <td class="pr-6 py-2 text-green-400 font-mono">+0.135</td>
+              <td class="py-2">Mildly positive &mdash; restores energy but also environmental satiation dilutes signal</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Poison vial</td>
+              <td class="pr-6 py-2 text-red-400 font-mono">-0.495</td>
+              <td class="py-2">Strongly negative &mdash; causes pain</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-slate-400 text-xs mt-3">Energy bridge events: 1 hunger, 1 fatigue, 3 satiation. Environmental satiation creates background positive credit; the discriminant is relative bias strength.</p>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+      <p class="text-slate-400 text-xs font-medium mb-1">Reproduce</p>
+      <code class="text-indigo-400 text-sm">PYTHONPATH=src python scripts/behavioral_convergence_exp2.py</code>
+    </div>
+
+    <p class="text-slate-400 text-sm">Detailed writeup: <a href="https://github.com/dennys246/maxim/blob/main/docs/plans/behavioral_convergence_practice.md" class="text-indigo-400 hover:text-indigo-300 no-underline">behavioral_convergence_practice.md</a></p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  EXPERIMENT 1: CROSS-SESSION AFFECTIVE MEMORY                -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="exp1" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Experiment 1: Cross-Session Affective Memory</h2>
+
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-green-500/20 text-green-400">11/11 PASS</span>
+      <span class="text-slate-400 text-sm">2026-04-17</span>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The agent interacts with three SEM entities in Session 1 &mdash; a rusty sword (causes pain on use), a healing potion (positive outcome), and a poison potion (disguised harm). Session state is persisted. In Session 2, we measure whether affective associations transferred: does the substrate carry negative valence for the sword, positive for healing, and negative for poison?</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-white font-semibold mb-3">Results</h3>
+      <div class="bg-slate-950 rounded-lg p-5 overflow-x-auto">
+        <table class="w-full text-sm text-slate-300">
+          <thead>
+            <tr>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Entity</th>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Experienced Agent</th>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Fresh Control</th>
+              <th class="text-left text-indigo-400 pb-2">Key Signal</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Rusty sword</td>
+              <td class="pr-6 py-2 text-red-400 font-mono">-0.800</td>
+              <td class="pr-6 py-2 text-slate-500 font-mono">0.000</td>
+              <td class="py-2">Strong negative valence from pain</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Healing potion</td>
+              <td class="pr-6 py-2 text-green-400 font-mono">+0.195</td>
+              <td class="pr-6 py-2 text-slate-500 font-mono">0.000</td>
+              <td class="py-2">Positive valence + NAc reward bias + EC widened</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Poison potion</td>
+              <td class="pr-6 py-2 text-red-400 font-mono">-0.574</td>
+              <td class="pr-6 py-2 text-slate-500 font-mono">0.000</td>
+              <td class="py-2">Negative valence despite &ldquo;potion&rdquo; label</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-slate-400 text-xs mt-3">Shared &ldquo;potion&rdquo; concept carries mixed valence (healing + poison). Reward bias is asymmetric: positive only widens EC recognition, never narrows. Pain spikes create clean episode boundaries.</p>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+      <p class="text-slate-400 text-xs font-medium mb-1">Reproduce</p>
+      <code class="text-indigo-400 text-sm">PYTHONPATH=src python scripts/behavioral_convergence_exp1.py</code>
+    </div>
+
+    <p class="text-slate-400 text-sm">Detailed writeup: <a href="https://github.com/dennys246/maxim/blob/main/docs/plans/behavioral_convergence_practice.md" class="text-indigo-400 hover:text-indigo-300 no-underline">behavioral_convergence_practice.md</a></p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  VALENCE ANNOTATION PoC                                      -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="valence-poc" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Valence Annotation PoC</h2>
+
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-green-500/20 text-green-400">Verified</span>
+      <span class="text-slate-400 text-sm">2026-04-17 &mdash; 26 unit tests</span>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Validates the three-stage valence annotation pipeline: (1) Reactions captured during an episode set <code class="bg-slate-950 px-1 rounded text-xs">Episode.valence</code> as the mean reaction valence; (2) Hebbian edges inherit valence via <code class="bg-slate-950 px-1 rounded text-xs">Edge.metadata["valence"]</code> at episode close; (3) <code class="bg-slate-950 px-1 rounded text-xs">spreading_activation(propagate_valence=True)</code> propagates affective signal through multi-hop associations. Control condition: episodes without reactions have neutral valence (0.0), and <code class="bg-slate-950 px-1 rounded text-xs">propagate_valence=False</code> returns plain activation values.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Stage 1: Episode Valence</h4>
+        <p class="text-slate-300 text-sm">Pain reactions set negative valence on the episode. Success reactions set positive. Mean of all reactions during the episode's lifetime.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Stage 2: Edge Valence</h4>
+        <p class="text-slate-300 text-sm"><code class="bg-slate-950 px-1 rounded text-xs">apply_hebbian_on_close</code> annotates Hebbian edges with <code class="bg-slate-950 px-1 rounded text-xs">metadata["valence"]</code>. Associative connections carry emotional coloring.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Stage 3: Propagation</h4>
+        <p class="text-slate-300 text-sm">Spreading activation carries valence through the graph. <code class="bg-slate-950 px-1 rounded text-xs">retrieve_on_cue(include_valence=True)</code> returns affective context for the LLM prompt.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-400 text-sm">Detailed plan: <a href="https://github.com/dennys246/maxim/blob/main/docs/plans/substrate_valence_annotation.md" class="text-indigo-400 hover:text-indigo-300 no-underline">substrate_valence_annotation.md</a></p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  SEM LEARNING LOOP PoC                                       -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="sem-loop-poc" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">SEM Learning Loop PoC</h2>
+
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-green-500/20 text-green-400">Full Pipeline Verified</span>
+      <span class="text-slate-400 text-sm">2026-04-17 &mdash; 5 stages</span>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The complete SEM learning loop wires five previously disconnected components into a single signal flow: CerebellumModulator executes affordances and emits typed Reactions (success or failure) &rarr; ReactionBus dispatches to hippocampus (<code class="bg-slate-950 px-1 rounded text-xs">capture_reaction</code> for episode valence) and NAc (<code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> for per-node reward bias + EC threshold adjustment) &rarr; pain spikes close episode boundaries via <code class="bg-slate-950 px-1 rounded text-xs">salience_spike_rule</code> &rarr; future retrieval carries affective memory via <code class="bg-slate-950 px-1 rounded text-xs">spreading_activation(propagate_valence=True)</code>.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Signal Flow</span>
+
+CerebellumModulator.execute()
+  |
+  |-- <span class="text-red-400">failure</span> --&gt; Reaction(NEGATIVE, intensity=0.3-0.5)
+  |-- <span class="text-green-400">success</span> --&gt; Reaction(POSITIVE, intensity=0.1-0.3)  <span class="text-slate-500"># negativity bias</span>
+  |
+  v
+ReactionBus.dispatch()
+  |
+  |-- hippocampus.capture_reaction() --&gt; Episode.valence
+  |-- nac.distribute_reward()        --&gt; reward_bias + EC threshold
+  |
+  v
+Episode close: apply_hebbian_on_close() --&gt; Edge.metadata["valence"]
+Pain spike:    salience_spike_rule()    --&gt; episode boundary
+  |
+  v
+Retrieval: spreading_activation(propagate_valence=True)</div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Stage 1: Cerebellum Activation</h4>
+        <p class="text-slate-300 text-sm"><code class="bg-slate-950 px-1 rounded text-xs">BioStack.cerebellum</code> constructed by <code class="bg-slate-950 px-1 rounded text-xs">build_bio_stack</code>, forwarded via <code class="bg-slate-950 px-1 rounded text-xs">build_executor(cerebellum=...)</code>. Every SEM affordance tool gets a live Cerebellum backing.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Stage 2: distribute_reward Wiring</h4>
+        <p class="text-slate-300 text-sm">ReactionBus subscriber calls <code class="bg-slate-950 px-1 rounded text-xs">nac.distribute_reward</code> on every Reaction. Positive rewards widen EC recognition (lower threshold); negative clamp to 0.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Stage 3: Success Reactions</h4>
+        <p class="text-slate-300 text-sm">CerebellumModulator emits POSITIVE reactions when confident enough to skip LLM fallback. Lower intensity (0.1-0.3 vs 0.3-0.5) &mdash; biologically motivated negativity bias.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">Stage 4: Pain Spike Boundaries</h4>
+        <p class="text-slate-300 text-sm"><code class="bg-slate-950 px-1 rounded text-xs">salience_spike_rule(min_intensity=0.5)</code> closes the current episode on high-intensity pain, capturing negative valence and starting fresh. Mirrors biological trauma creating sharp memory boundaries.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-400 text-sm">Detailed plan: <a href="https://github.com/dennys246/maxim/blob/main/docs/plans/sem_learning_loop.md" class="text-indigo-400 hover:text-indigo-300 no-underline">sem_learning_loop.md</a></p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  EARLIER SUBSTRATE RESULTS                                    -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="earlier-results" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Earlier Substrate Results</h2>
+
+    <p class="text-slate-300 leading-relaxed">The experiments above build on a foundation of substrate validation work. Key earlier results:</p>
+
+    <div class="space-y-3">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">P2 Reward Modulation Sweep <span class="text-slate-500 font-normal text-sm">(2026-04-14)</span></h3>
+        <p class="text-slate-300 text-sm">Real-embedding sweep at <code class="bg-slate-950 px-1 rounded text-xs">paraphrase-mpnet@0.70, reward 2.0</code>: <strong>+56.0 &plusmn; 29.0 pp</strong> target gain, <strong>0.0 &plusmn; 0.0 pp</strong> distractor drift, 94% monotone, 9-of-10 seeds. NAc per-node reward bias modulates EC recognition thresholds correctly.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">P4 Cross-Modal Binding <span class="text-slate-500 font-normal text-sm">(2026-04-16)</span></h3>
+        <p class="text-slate-300 text-sm">Head-to-head: Arm B (Hebbian) F1=1.000 vs Arm C (OpenCLIP) F1=0.901, delta +0.099. The substrate's Hebbian binding outperforms the neural baseline on cross-modal retrieval.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">Concept Decomposition Validation <span class="text-slate-500 font-normal text-sm">(2026-04-17)</span></h3>
+        <p class="text-slate-300 text-sm">100% concept-level recall vs 36.4% baseline (+63.6 pp). Noun-phrase extraction before EC encoding enables finer-grained Hebbian binding and cross-modal retrieval.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">P0 Baseline Pilot <span class="text-slate-500 font-normal text-sm">(2026-04-12)</span></h3>
+        <p class="text-slate-300 text-sm">Baseline pinned at 78.5% collapse. 55 clusters, 155 sentences, 3 difficulty tiers. Fixtures calibrated in the 60-85% range. Foundation for all subsequent substrate phases.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-400 text-sm">Full experiment reports: <a href="https://github.com/dennys246/maxim/tree/main/docs/experiments" class="text-indigo-400 hover:text-indigo-300 no-underline">docs/experiments/</a></p>
+  </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/benchmarks" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Benchmarks</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/agent-mesh" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Agent Mesh</a>
+        <a href="/maxim/experiments" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Experiments</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

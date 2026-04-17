@@ -1,6 +1,6 @@
 # Complete the SEM Learning Loop
 
-**Status:** PLAN (2026-04-17).
+**Status:** COMPLETE (2026-04-17). All 5 stages shipped. PoC: 11/11 + 13/13 hypotheses confirmed.
 **Scope:** ~500-700 LOC across 5 stages. Consolidates 4 shell plans into one coherent deliverable.
 **Target version:** 0.3 (pre-publish).
 **Absorbs:**
