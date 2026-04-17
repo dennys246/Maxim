@@ -39,7 +39,7 @@ FIXTURE_YAML = _REPO_ROOT / "scenarios" / "substrate" / "p4_mug_test.yaml"
 #
 # Per docs/plans/substrate_p4_cross_modal_binding.md Stage 2, the
 # "no band-aid fixture tweaks" rule forbids silent edits.
-FIXTURE_SHA256 = "967e83ed18851e1dfcad418be57f3275cf04a961462e6dc4dd055b6b71c8920b"
+FIXTURE_SHA256 = "74a8201cf506500959bbef02e1be20d27a7f89090a63b645c6bac75f98e984c1"
 
 
 # **PINNED class-name list for torchvision.datasets.Flowers102.**
@@ -225,15 +225,6 @@ class FixtureDescriptor:
     samples_per_class: int
     total_pairs: int
     classes: tuple[FixtureClass, ...]
-    # Stage 2 v2 — canonical ship-shape BuildConfig parameters loaded
-    # from the fixture YAML. Present for fixture_version >= 2; the v1
-    # fixture had these hard-coded in scripts/p4_mug_test_sweep.py.
-    # See fixture_version 2 header comment in p4_mug_test.yaml for
-    # the rationale and operating point selection.
-    build_noise_reps: int = 0
-    build_bridges_enabled: bool = False
-    build_text_ec_threshold: float = 0.60
-    build_vision_ec_threshold: float = 1.01
 
 
 def compute_fixture_sha256() -> str:
@@ -277,10 +268,6 @@ def load_fixture_descriptor() -> FixtureDescriptor:
         split=str(data["split"]),
         samples_per_class=int(data["samples_per_class"]),
         total_pairs=int(data["total_pairs"]),
-        build_noise_reps=int(data.get("build_noise_reps", 0)),
-        build_bridges_enabled=bool(data.get("build_bridges_enabled", False)),
-        build_text_ec_threshold=float(data.get("build_text_ec_threshold", 0.60)),
-        build_vision_ec_threshold=float(data.get("build_vision_ec_threshold", 1.01)),
         classes=classes,
     )
 

@@ -42,10 +42,12 @@ def _build_full_session():
 
 
 def _build_canonical_config(descriptor):
-    """Construct the canonical ship-shape BuildConfig from the v2
-    fixture descriptor's build_* fields. Used by both the round-trip
-    test and the retrieval gate test so both exercise the same
-    config the rest of P4 ships against.
+    """Construct the canonical v1 BuildConfig for the mug test fixture.
+
+    Uses the Stage 2 v1 calibration values (TEXT_EC_THRESHOLD=0.60,
+    VISION_EC_THRESHOLD=1.01) with no noise and no bridges — matching
+    the v1 fixture shape. The v2 noise/bridge parameters were withdrawn
+    as tautological; see docs/experiments/p4_stage2_v2_post_mortem.md.
     """
     from .p4_build_and_bind import (
         BuildConfig,
@@ -58,10 +60,10 @@ def _build_canonical_config(descriptor):
     return BuildConfig(
         text_encoder=paraphrase_mpnet_text_encoder(),
         vision_encoder=clip_vision_encoder(),
-        text_ec_threshold=descriptor.build_text_ec_threshold,
-        vision_ec_threshold=descriptor.build_vision_ec_threshold,
-        noise=FixtureNoiseConfig(noise_reps=descriptor.build_noise_reps),
-        bridges=FixtureBridgeConfig(enabled=descriptor.build_bridges_enabled),
+        text_ec_threshold=0.60,
+        vision_ec_threshold=1.01,
+        noise=FixtureNoiseConfig(noise_reps=0),
+        bridges=FixtureBridgeConfig(enabled=False),
         seed=0,
     )
 
@@ -79,11 +81,6 @@ def _prepare_mug_test_hippocampus():
     2 v2 fold moved the helper out of the scripts/ layer (Exec #4 /
     Arch #9). The script still exists for v1 compat but no longer
     defines the orchestrator.
-
-    Stage 2 v2 update: build parameters (noise_reps, bridges_enabled,
-    EC thresholds) now come from the fixture descriptor's build_*
-    fields instead of hard-coded module constants. See Arch #5 fold
-    in the v2 plan status section.
     """
     from .p4_build_and_bind import build_and_bind
     from .p4_fixture_loader import load_fixture_descriptor, load_fixture_images
