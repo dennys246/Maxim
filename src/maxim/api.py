@@ -433,18 +433,16 @@ def run(
         maxim=None,  # No live robot instance in headless mode
     )
     _inject_pending_tools(tool_registry)
-    # Headless `maxim.create.agent` opts out of the PainBus.
-    # The structural side of this gap is resolved: the canonical
-    # construction door is now `proprioception.pain_bus.build_pain_bus`
-    # (Wave 1 of biosystem_unification). When this site eventually
-    # opts IN it will call build_pain_bus(hippocampus=..., nac=...).
-    # The remaining question is the user-facing API decision: should
-    # headless `maxim.create.agent` default to bio-learning ON or OFF?
-    # That is genuinely orthogonal to structural enforcement and
-    # belongs to docs/plans/agent_factory_canonicalization.md Stage F5
-    # (open question #2). Until F5 lands, this site stays explicitly
-    # opted-out — same Gap C shape documented in
-    # docs/plans/pain_bus_unification.md.
+    # Headless `maxim.create.agent` opts out of PainBus AND DefaultNetwork.
+    # The structural side of both gaps is resolved: the canonical doors
+    # are build_pain_bus (Wave 1) and build_default_network (Wave 2).
+    # When this site eventually opts IN it will call both. The remaining
+    # question is the user-facing API decision: should headless
+    # maxim.create.agent default to bio-learning ON or OFF? That belongs
+    # to agent_factory_canonicalization.md Stage F5 (open question #2).
+    # Until F5 lands, this site stays explicitly opted-out. See
+    # docs/plans/pain_bus_unification.md Gap C and
+    # docs/plans/default_network_unification.md Gaps D+E.
     executor = build_executor(tool_registry, pain_bus=None)
     evaluators = build_evaluators()
 
