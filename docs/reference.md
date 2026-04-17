@@ -34,7 +34,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/integration/` | MemoryHub cross-system coordinator (11 bio-systems) |
 | `src/maxim/decisions/` | NAc causal learning, adaptive planner |
 | `src/maxim/time/` | SCN temporal rhythm indexing |
-| `src/maxim/similarity/` | Entorhinal Cortex (pattern completion, centroid update) + LinguisticEncoder (P1) |
+| `src/maxim/similarity/` | Entorhinal Cortex (pattern completion, centroid update) + LinguisticEncoder (P1) + ConceptDecomposer (noun-phrase extraction before EC) |
 | `src/maxim/prompts/` | PromptAssembler (B1), MemorySummary, prompt profiles |
 | `src/maxim/math/` | Angular Gyrus mathematical cognition, IPS fast stats |
 | `src/maxim/default_network/` | Reactive behavior layer (thalamic gate, arbiter) |

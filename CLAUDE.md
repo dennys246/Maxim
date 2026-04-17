@@ -289,6 +289,7 @@ MAXIM_PROVENANCE_VERBOSITY=1     # 0=off, 1=compact, 2=verbose
 
 # Substrate path (P1). Enables LinguisticEncoder → EC → ATL dual-write.
 MAXIM_SUBSTRATE_PATH=1           # Enable substrate encoding path (Phase 1 dual-write)
+MAXIM_CONCEPT_DECOMPOSITION=1    # Enable concept decomposition (noun-phrase extraction before EC). Requires spaCy + en_core_web_sm. Opt-in.
 
 # HTTP client trace (Plan 1 R1)
 MAXIM_HTTP_TRACE=1               # Bumps http_request events from DEBUG to INFO (every outbound call logged)

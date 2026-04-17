@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}Concept Decomposition — Maxim Docs | Agentic Robotics Framework{% endblock %}
+
+{% block meta_description %}How Maxim breaks text into concept-level substrate nodes. Protocol-based noun-phrase extraction enables finer-grained Hebbian binding, cross-modal retrieval, and valence association for bio-inspired cognitive agents.{% endblock %}
+
+{% block meta_keywords %}concept decomposition, noun phrase extraction, substrate nodes, Hebbian binding, cross-modal retrieval, concept-level AI, spaCy NLP, bio-inspired memory, embodied cognition, agentic AI{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Concept Decomposition — How Maxim Breaks Text into Meaningful Substrate Nodes",
+  "description": "Protocol-based noun-phrase extraction breaks input text into concept-level chunks before substrate encoding. Each concept becomes its own node in the hippocampus binding graph, enabling finer-grained Hebbian learning and cross-modal retrieval.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/concept-decomposition",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["concept decomposition", "noun phrases", "substrate nodes", "Hebbian binding", "cross-modal", "spaCy"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Concept Decomposition", "item": "https://www.dennyschaedig.com/maxim/concept-decomposition" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Concept Decomposition</h1>
+    <p class="text-indigo-400 font-medium">Breaking Text into Meaningful Substrate Nodes</p>
+  </header>
+
+  <p class="text-slate-300 leading-relaxed">In biological brains, perception doesn't encode entire sentences as indivisible units. When you hear <em class="text-indigo-400 not-italic font-medium">"I see a blue mug on the table,"</em> your brain activates separate representations for <em class="text-blue-400 not-italic font-medium">mug</em>, <em class="text-blue-400 not-italic font-medium">table</em>, and <em class="text-blue-400 not-italic font-medium">blue</em>&mdash;each independently associable with memories, emotions, and motor programs. Maxim's concept decomposition mirrors this: a Protocol-based text pre-processor that extracts noun-phrase concepts before they enter the substrate encoding pipeline.</p>
+
+  <!-- ============================================================ -->
+  <!--  THE PROBLEM                                                  -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="problem" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Problem</h2>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-amber-400 mb-2">Without Decomposition</h3>
+      <p class="text-slate-300">The entire sentence <span class="font-mono text-xs text-amber-400">"I see a blue mug on the table"</span> becomes <strong>one</strong> opaque substrate node. This node won't pattern-complete against a bare <span class="font-mono text-xs text-blue-400">"mug"</span> from a previous session. The Hebbian edge from <span class="font-mono text-xs text-blue-400">"mug"</span> to <span class="font-mono text-xs text-purple-400">vision-mug</span> is unreachable from the sentence node&mdash;silently breaking cross-modal retrieval for naturalistic inputs.</p>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">With Decomposition</h3>
+      <p class="text-slate-300"><span class="font-mono text-xs text-emerald-400">"blue mug"</span> and <span class="font-mono text-xs text-emerald-400">"table"</span> each become their own substrate node. Each can independently bind to vision embeddings, accumulate Hebbian associations across episodes, and receive valence annotations from pain/pleasure reactions. The agent learns about <em>things</em>, not <em>sentences about things</em>.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  HOW IT WORKS                                                 -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="how-it-works" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">How It Works</h2>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Pipeline</span>
+
+Input: "I see a blue mug on the table next to the red plate"
+          &darr;
+  <span class="text-emerald-400">ConceptDecomposer</span>  <span class="text-slate-500"># spaCy noun chunker (pluggable)</span>
+          &darr;
+  ["blue mug", "table", "red plate"]
+          &darr;
+  <span class="text-blue-400">LinguisticEncoder</span>   <span class="text-slate-500"># embeds each chunk independently</span>
+          &darr;
+  <span class="text-indigo-400">EC</span>                  <span class="text-slate-500"># pattern_complete_or_separate per chunk</span>
+          &darr;
+  <span class="text-purple-400">Hippocampus</span>         <span class="text-slate-500"># all chunks land in same episode</span>
+                       <span class="text-slate-500"># Hebbian-bound together</span></div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">The key property: <strong>nothing below the decomposer changes.</strong> EC, Hippocampus, Hebbian binding, cross-modal retrieval, NAc reward modulation, persistence&mdash;all stay the same. Decomposition is purely additive pre-processing.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  EXTRACTION RULES                                             -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="extraction" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What Gets Extracted</h2>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Input</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Extracted Concepts</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs">"I see a blue mug on the table"</td>
+            <td class="py-2 px-3 font-mono text-xs text-emerald-400">["blue mug", "table"]</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs">"The red plate is next to the green cup"</td>
+            <td class="py-2 px-3 font-mono text-xs text-emerald-400">["red plate", "green cup"]</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs">"The rusty sword feels heavy"</td>
+            <td class="py-2 px-3 font-mono text-xs text-emerald-400">["rusty sword"]</td>
+          </tr>
+          <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+            <td class="py-2 px-3 font-mono text-xs">"lotus"</td>
+            <td class="py-2 px-3 font-mono text-xs text-slate-400">["lotus"] (identity&mdash;no decomposition needed)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      <div class="bg-slate-800 border border-emerald-500/30 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-emerald-400 mb-2">Extracted</h3>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li><strong>Noun phrases</strong>&mdash;"blue mug", "red plate", "rusty sword"</li>
+          <li><strong>Named entities</strong>&mdash;proper nouns captured by noun chunker</li>
+          <li><strong>Single nouns</strong>&mdash;"table", "lotus", "cat"</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-red-500/30 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-red-400 mb-2">Filtered Out</h3>
+        <ul class="text-sm text-slate-300 space-y-1">
+          <li><strong>Pronouns</strong>&mdash;"he", "it", "they" (near-meaningless embeddings)</li>
+          <li><strong>Determiners</strong>&mdash;"the", "a", "this" (function words)</li>
+          <li><strong>Bare verbs</strong>&mdash;"see", "go" (ambiguous without objects)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  PLUGGABLE STRATEGIES                                         -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="strategies" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Pluggable Strategies</h2>
+
+    <p class="text-slate-300 leading-relaxed">The decomposer uses a <span class="font-mono text-xs text-indigo-400">DecompositionStrategy</span> Protocol. Any class with an <span class="font-mono text-xs text-blue-400">extract(text) &rarr; list[ConceptChunk]</span> method can serve as a strategy&mdash;spaCy, LLM-based extraction, regex, or domain-specific parsers.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Custom Strategy Example</span>
+
+<span class="text-blue-400">class</span> <span class="text-emerald-400">MyDomainStrategy</span>:
+    <span class="text-slate-500">"""Extract domain-specific concepts."""</span>
+    <span class="text-blue-400">def</span> <span class="text-white">extract</span>(self, text: str) &rarr; list[ConceptChunk]:
+        <span class="text-slate-500"># Your domain logic here</span>
+        <span class="text-blue-400">return</span> [ConceptChunk(text=<span class="text-amber-400">"concept"</span>)]
+
+decomposer = ConceptDecomposer(strategy=MyDomainStrategy())</div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-blue-400 mb-1">SpaCyNounChunkStrategy</h3>
+        <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Default</p>
+        <p class="text-sm text-slate-300">Uses <span class="font-mono text-xs">en_core_web_sm</span> noun chunker. Thread-safe singleton. Strips determiners automatically.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-slate-400 mb-1">IdentityStrategy</h3>
+        <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Fallback</p>
+        <p class="text-sm text-slate-300">Returns input unchanged as a single chunk. Active when spaCy is not installed or decomposition is disabled.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-lg font-semibold text-purple-400 mb-1">Your Strategy</h3>
+        <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Custom</p>
+        <p class="text-sm text-slate-300">Implement <span class="font-mono text-xs text-indigo-400">DecompositionStrategy</span> Protocol. LLM-based, regex, domain-specific&mdash;plug it in.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  MODALITY GATE                                                -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="modality-gate" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Modality Gate</h2>
+
+    <p class="text-slate-300 leading-relaxed">Decomposition applies to <strong>text-modality percepts only.</strong> Visual percepts (CLIP embeddings), proprioceptive readings, and SEM affordance labels bypass decomposition automatically. This mirrors how the brain processes language in Wernicke's area but routes visual input through the ventral stream without linguistic decomposition.</p>
+
+    <div class="bg-slate-800 border-l-4 border-blue-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-blue-400 mb-2">Enforced at the Encoder Layer</h3>
+      <p class="text-slate-300 text-sm">The modality gate lives inside <span class="font-mono text-xs text-indigo-400">LinguisticEncoder.encode_decomposed()</span>. Callers don't need to check&mdash;non-text modalities are automatically handled as single nodes.</p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  CONFIGURATION                                                -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="config" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Configuration</h2>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-slate-700">
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Variable</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Default</th>
+            <th class="text-left py-2 px-3 text-slate-400 font-medium">Description</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300">
+          <tr class="border-b border-slate-800">
+            <td class="py-2 px-3 font-mono text-xs text-blue-400">MAXIM_SUBSTRATE_PATH</td>
+            <td class="py-2 px-3">off</td>
+            <td class="py-2 px-3">Prerequisite: enables the substrate encoding path</td>
+          </tr>
+          <tr class="border-b border-slate-800">
+            <td class="py-2 px-3 font-mono text-xs text-emerald-400">MAXIM_CONCEPT_DECOMPOSITION</td>
+            <td class="py-2 px-3">off</td>
+            <td class="py-2 px-3">Set to <span class="font-mono text-xs">1</span> to enable concept decomposition</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-emerald-400 overflow-x-auto whitespace-pre"><span class="text-slate-500"># Enable both substrate path and concept decomposition</span>
+MAXIM_SUBSTRATE_PATH=1 MAXIM_CONCEPT_DECOMPOSITION=1 maxim --llm mistral-7b</div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  CONNECTION TO VALENCE                                        -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="valence" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Connection to Valence Annotation</h2>
+
+    <p class="text-slate-300 leading-relaxed">Concept decomposition is the prerequisite for <strong>valence annotation</strong>&mdash;the mechanism by which the substrate learns that certain concepts are associated with pain or pleasure. When an agent interacts with a SEM entity (e.g., a rusty sword) and experiences pain, decomposition ensures <span class="font-mono text-xs text-amber-400">"rusty sword"</span> is its own substrate node. The valence annotation system can then mark Hebbian edges connected to that node with negative valence, so future encounters with similar concepts carry the affective signal through spreading activation.</p>
+
+    <p class="text-slate-300 leading-relaxed">Without decomposition, the valence would land on the entire sentence blob&mdash;less precise and harder to generalize across different contexts where the same concept appears.</p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  DATA TYPE                                                    -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="concept-chunk" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The ConceptChunk Data Type</h2>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">ConceptChunk</span>
+
+@dataclass(frozen=True)
+<span class="text-blue-400">class</span> <span class="text-emerald-400">ConceptChunk</span>:
+    text: str                            <span class="text-slate-500"># "blue mug"</span>
+    span: tuple[int, int] | None = None  <span class="text-slate-500"># (8, 16) char offsets</span>
+    confidence: float = 1.0              <span class="text-slate-500"># extraction confidence</span>
+    relation: str | None = None          <span class="text-slate-500"># Stage 2: "spatial"</span></div>
+
+    <p class="text-slate-300 leading-relaxed mt-3">The rich return type supports future extensions (role-tagged edges, confidence-weighted binding) without breaking the Stage 1 interface. Downstream code accesses <span class="font-mono text-xs text-blue-400">chunk.text</span> for encoding.</p>
+  </section>
+</div>
+{% endblock %}
