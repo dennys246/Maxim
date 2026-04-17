@@ -1,10 +1,11 @@
 # Substrate — Concept decomposition (noun-phrase extraction before EC)
 
-**Status:** SHELL (2026-04-15). Design only — no implementation scheduled.
-**Scope:** ~300–500 LOC (extractor + integration + tests). New optional dep: `spacy` (MIT license).
-**Target version:** post-0.3. Ships AFTER P4 Stage 3 proves the base cross-modal claim on bare class names.
+**Status:** SHELL (2026-04-15, updated 2026-04-16 with three-lens review fold). Design only — no implementation scheduled.
+**Scope:** ~400–600 LOC (protocol + spaCy strategy + encoder integration + tests). New optional dep: `spacy` (MIT license).
+**Target version:** post-0.3. Ships AFTER P4 Stage 3 proves the base cross-modal claim on bare class names. **P4 Stage 3 PASSED (2026-04-16) — trigger fired.**
 **Parent:** None (standalone). Extends `similarity/encoder.py` → `similarity/ec.py` capture path.
 **Blocks:** Nothing. Improves quality of all downstream substrate phases (P5 stress, P6 multi-session, P8 sleep-replay) by generating more meaningful nodes.
+**Companion:** [substrate_pain_concept_bridge.md](#companion-shell-pain-concept-bridge) (shell, below) — wires pain signals to substrate node reward bias.
 
 ## Motivation
 
@@ -16,25 +17,126 @@ Today, `LinguisticEncoder` encodes an entire input string — whether that's `"m
 
 3. **Hebbian edge explosion for multi-word inputs is avoided, not caused.** Without decomposition, long inputs create fewer but less useful nodes. With decomposition at the noun-phrase level (typically 2–4 chunks per sentence), the edge count stays manageable while each node represents a real concept.
 
+4. **Pain association granularity (discovered in review).** NAc's `_reward_bias` maps substrate node IDs to reward values, and `update_eligibility` fires when a percept completes to a node. But `distribute_reward` has zero external callers — pain signals never flow back to the substrate nodes that were active during painful episodes. When concepts are finer-grained ("rusty sword" as its own node vs a whole sentence), they become better targets for pain association — but the association mechanism itself needs wiring. See [companion shell](#companion-shell-pain-concept-bridge).
+
 ## Design
+
+### Protocol-based decomposition (three-lens review fold)
+
+The decomposer is defined as a **Protocol**, not a concrete class. This allows swapping spaCy for LLM-based extraction, regex-based domain parsers, or custom strategies without touching the pipeline.
+
+```python
+# similarity/decomposer.py
+
+@dataclass(frozen=True)
+class ConceptChunk:
+    """A single concept extracted from an input string."""
+    text: str
+    span: tuple[int, int] | None = None  # character offsets in the original
+    confidence: float = 1.0
+    relation: str | None = None  # Stage 2: "spatial", "possessive", etc.
+
+class DecompositionStrategy(Protocol):
+    """Protocol for concept extraction backends."""
+    def extract(self, text: str) -> list[ConceptChunk]: ...
+
+class SpaCyNounChunkStrategy:
+    """Default strategy using spaCy noun chunker."""
+    def extract(self, text: str) -> list[ConceptChunk]: ...
+
+class IdentityStrategy:
+    """Fallback: returns the input as a single chunk."""
+    def extract(self, text: str) -> list[ConceptChunk]:
+        return [ConceptChunk(text=text)]
+
+class ConceptDecomposer:
+    """Coordinator that delegates to a DecompositionStrategy."""
+    def __init__(self, strategy: DecompositionStrategy | None = None, enabled: bool = True):
+        if not enabled:
+            self._strategy = IdentityStrategy()
+        elif strategy is not None:
+            self._strategy = strategy
+        else:
+            # Auto-detect: spaCy if available, else identity
+            self._strategy = _auto_detect_strategy()
+
+    def extract(self, text: str) -> list[ConceptChunk]: ...
+```
+
+**Key design decisions from the review:**
+
+- **`ConceptChunk` from day one, not `str`.** Stage 2 role-tagged edges need span offsets and relation types. Defining the rich return type now avoids a breaking interface change later. Downstream uses `chunk.text` — zero behavior change for Stage 1.
+- **`enabled: bool` on config.** Operators who have spaCy as a transitive dep can disable decomposition without uninstalling it.
+- **Singleton spaCy model with `threading.Lock`.** Under `AgentPool` concurrency, two threads could race on `spacy.load()`. Use a lock (not bare module-level assignment).
 
 ### What gets extracted
 
 **Noun phrases** (the primary payload) via spaCy's noun chunker or a lightweight dependency parse. From `"I see a blue mug on the table next to the red plate"`:
 
 - `"blue mug"` → one substrate node
-- `"table"` → one substrate node  
+- `"table"` → one substrate node
 - `"red plate"` → one substrate node
 
 **Not extracted** (and why):
 
-- **Pronouns** (`"he"`, `"it"`, `"they"`): near-meaningless embeddings from sentence-transformers. Would create massively connected hub nodes that Hebbian-bind to everything. Noise that drowns signal.
-- **Determiners/prepositions** (`"the"`, `"on"`, `"next to"`): same problem — function words don't carry concept-level meaning.
-- **Bare verbs** (`"see"`, `"sat"`): ambiguous without their arguments. `"break"` alone doesn't distinguish breaking a mug from breaking a promise. The useful unit is the verb-object phrase, which the noun chunker already captures when the object is present.
+- **Pronouns** (`"he"`, `"it"`, `"they"`): near-meaningless embeddings. Would create massively connected hub nodes that Hebbian-bind to everything. Noise that drowns signal.
+- **Determiners/prepositions** (`"the"`, `"on"`, `"next to"`): function words don't carry concept-level meaning.
+- **Bare verbs** (`"see"`, `"sat"`): ambiguous without their arguments. The useful unit is the verb-object phrase, which the noun chunker captures when the object is present.
+
+### Modality gate (embodiment review fold)
+
+Decomposition applies to **text-modality percepts only.** Visual percepts carry CLIP labels (`"mug"`), proprioceptive/interoceptive percepts carry structured readings, and SEM affordance strings have domain-specific structure — none should be noun-chunked.
+
+The gate is enforced structurally at the encoder level:
+
+```python
+# In LinguisticEncoder.encode() or encode_decomposed():
+if modality != SubstrateModality.TEXT:
+    return [original_node_id]  # no decomposition
+chunks = self._decomposer.extract(text)
+```
+
+This is the same layer where `MAXIM_SUBSTRATE_PATH=1` is checked — decomposition adds zero cost when disabled or when the percept is non-textual.
+
+### Integration point (corrected per three-lens review)
+
+The plan originally placed decomposition in `_capture_episodic` in the agent loop. **All three review lenses flagged this as wrong:**
+
+- The actual substrate encoding path is `LinguisticEncoder.encode()` called from `memory_hub._on_new_memory()` (gated on `MAXIM_SUBSTRATE_PATH=1`)
+- Simulations and substrate fixtures create `CaptureEvent`s directly, bypassing the agent loop
+- Headless API, `AgentPool`, and embodied runtime each have separate integration paths
+
+**Corrected integration:** decomposition lives inside `LinguisticEncoder` as an optional pre-processing step. A new method `encode_decomposed(text, modality) -> list[str]` returns multiple node IDs when decomposition is active. All consumers that go through the encoder get decomposition for free.
+
+```
+Input string
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│  LinguisticEncoder.encode_decomposed()  │  MODIFIED: similarity/encoder.py
+│                                         │
+│  1. modality gate (text only)           │
+│  2. ConceptDecomposer.extract(text)     │
+│     → list[ConceptChunk]               │
+│  3. for each chunk:                     │
+│     embed(chunk.text) → embedding       │
+│     EC.pattern_complete_or_separate()   │
+│     → node_id                           │
+│  4. return list[node_id]                │
+└──────────────┬──────────────────────────┘
+               │  (all node IDs from one input
+               │   land in the same episode)
+               ▼
+┌─────────────────────────────────────────┐
+│  Hippocampus episode binding (Hebbian)  │  UNCHANGED
+└─────────────────────────────────────────┘
+```
+
+**Key property:** nothing below `encode_decomposed` changes. EC, Hippocampus, Hebbian binding, cross-modal retrieval, NAc reward modulation, persistence — all stay the same.
 
 ### Stage 2 extension: role-tagged edges
 
-Rather than building parallel graphs for different syntactic roles (verbs, subjects, objects), annotate the Hebbian edges between extracted concept nodes with a lightweight relation tag:
+Rather than building parallel graphs for different syntactic roles, annotate the Hebbian edges between extracted concept nodes with a lightweight relation tag:
 
 - `"blue mug"` ↔ `"table"` with `relation="spatial"` (from "on")
 - `"cat"` ↔ `"mat"` with `relation="spatial"` (from "on")
@@ -43,114 +145,138 @@ This stays in one graph, uses the same spreading activation, gets the same rewar
 
 **This is an extension, not a requirement for Stage 1.** Stage 1 ships concept decomposition with untagged edges. Stage 2 adds relation tags if there's demonstrated value.
 
-### Architecture
-
-```
-Input string
-    │
-    ▼
-┌─────────────────────────────┐
-│  ConceptDecomposer          │  NEW module: similarity/decomposer.py
-│  (spaCy noun-chunk extract) │
-│                             │
-│  "I see a blue mug on the   │
-│   table next to the red     │
-│   plate"                    │
-│       │                     │
-│       ▼                     │
-│  ["blue mug", "table",      │
-│   "red plate"]              │
-└─────────────┬───────────────┘
-              │  (one call per chunk)
-              ▼
-┌─────────────────────────────┐
-│  LinguisticEncoder          │  EXISTING: similarity/encoder.py
-│  (paraphrase-mpnet-base-v2) │  No changes — still encodes strings
-│                             │
-│  Returns 768-dim embedding  │
-│  per chunk                  │
-└─────────────┬───────────────┘
-              │
-              ▼
-┌─────────────────────────────┐
-│  EC pattern_complete_or_    │  EXISTING: similarity/ec.py
-│  separate()                 │  No changes — each chunk is a
-│                             │  separate call, may complete
-│  Node ID per chunk          │  against an existing concept
-└─────────────┬───────────────┘
-              │  (all node IDs from one input
-              │   land in the same episode)
-              ▼
-┌─────────────────────────────┐
-│  Hippocampus episode        │  EXISTING: memory/hippocampus.py
-│  binding (Hebbian)          │  No changes — nodes co-activate
-│                             │  in the same episode, get edges
-└─────────────────────────────┘
-```
-
-The key property: **nothing below `ConceptDecomposer` changes.** EC, Hippocampus, Hebbian binding, cross-modal retrieval, NAc reward modulation, persistence — all stay the same. The decomposer is a pre-processing step that turns one string into N concept strings before they enter the existing pipeline.
-
-### Integration point
-
-The decomposer slots into the agent loop's capture path, between the raw percept and the `LinguisticEncoder` call. Specifically:
-
-- `runtime/agent_loop.py::_capture_episodic()` currently passes the full transcript to the encoder
-- After this plan, it passes the transcript to `ConceptDecomposer.extract()` first, then passes each chunk to the encoder independently
-- All resulting node IDs are fed as `activated_nodes` in a single `CaptureEvent`, so they land in the same pending episode and get Hebbian-bound together
-
 ### Relationship to existing `ConceptExtractor`
 
 `memory/concept_extractor.py` does something superficially similar — it extracts concepts from episodic memories and registers them in ATL. But it operates **after** capture (as a callback), uses token-level heuristics (not NLP parsing), and targets the ATL semantic layer (not the substrate binding graph). This plan operates **before** capture and targets the substrate node layer.
 
-The two should eventually share a common noun-phrase extraction backend, but that unification is a post-ship cleanup, not a prerequisite. The decomposer should be a standalone module that `ConceptExtractor` can adopt later.
+Stage 3 of this plan converges the two: `ConceptExtractor` adopts `ConceptDecomposer` as its noun-phrase backend, retiring the `_is_structured_goal` 4-token heuristic.
+
+### NAc / pain path confirmation (embodiment review fold)
+
+Decomposition creates more substrate nodes but does **not** touch pain context dicts or `ToolPainBridge` direct attribution (`(tool_name, invocation_id)` lookup). These are parallel namespaces. The `_context_similarity` directional denominator (P2 fix) and the `_pending_tools` guard are unaffected. This was explicitly verified during the three-lens review given P2's history with that bug class.
+
+However, the review discovered a deeper gap: **pain signals never flow back to substrate nodes at all.** See [companion shell](#companion-shell-pain-concept-bridge) below.
 
 ### Dependency: spaCy
 
 - License: MIT (confirmed)
 - Size: `en_core_web_sm` model is ~12 MB (small pipeline, no word vectors — sufficient for noun chunking + dependency parse)
 - Add as a new optional extra: `nlp` or fold into the existing `semantic` extra
-- Lazy-load: `import spacy` only when `ConceptDecomposer` is first called, not at module import. Follows the project pattern for optional deps.
-- Fallback: when spaCy is not installed, `ConceptDecomposer.extract(text)` returns `[text]` (identity — the current behavior). No degradation in the base pipeline; decomposition is purely additive.
+- Lazy-load with `threading.Lock`: `import spacy` only when `ConceptDecomposer` is first called, not at module import. Follows the project pattern for optional deps. Log before loading: `logger.info("loading spaCy model...")`
+- Fallback: when spaCy is not installed OR `enabled=False` in config, `IdentityStrategy` returns `[ConceptChunk(text=text)]` (the current behavior). No degradation in the base pipeline; decomposition is purely additive.
 
 ## Stages
 
-### Stage 1 — Noun-phrase decomposition (core)
+### Stage 1 — Protocol + spaCy strategy + encoder integration (core)
 
-1. `similarity/decomposer.py` — `ConceptDecomposer` class with `extract(text: str) -> list[str]` using spaCy noun chunks
-2. Integration into `_capture_episodic` (or the substrate encoding path, depending on where production integration lands by then)
-3. Fallback when spaCy is not installed (return `[text]`)
-4. Unit tests: decomposition quality on 20+ sentence fixtures (English only for Stage 1)
-5. Regression test: P4 mug test still passes with decomposer enabled (bare class names like `"lotus"` should pass through as single-chunk identity)
-6. Sweep: re-run P2 reward modulation 10-seed sweep with decomposer enabled, compare target gain and distractor drift against the P2 baseline (+56 pp / 0.0 pp). The decomposer should be neutral-to-positive — if it degrades the metric, investigate before shipping.
+1. `similarity/decomposer.py` — `DecompositionStrategy` Protocol, `ConceptChunk` dataclass, `SpaCyNounChunkStrategy`, `IdentityStrategy`, `ConceptDecomposer` coordinator
+2. `similarity/encoder.py` — new `encode_decomposed(text, modality) -> list[str]` method with modality gate and `MAXIM_SUBSTRATE_PATH` guard
+3. `memory_hub._on_new_memory()` — call `encode_decomposed` instead of `encode` when decomposition is enabled
+4. Config: `enabled: bool` flag on decomposer config, accessible from `HippocampusConfig` or a new `SubstrateConfig`
+5. Unit tests: decomposition quality on 20+ sentence fixtures (English only), strategy swapping, identity fallback, modality gate, thread-safety
+6. **Decomposition-specific validation fixture** (NOT the P4 mug test — that bypasses the encoder path):
+   - 5 multi-word naturalistic sentences per "scene" (e.g., `"I see a blue mug on the table"`)
+   - Each sentence decomposes into 2-4 concept chunks
+   - Pair each concept with a synthetic vision embedding
+   - Measure: does `retrieve_cross_modal("blue mug", target_modality="vision")` find `vision_mug`?
+   - Compare with-decomposition vs without-decomposition recall
+   - This exercises the actual decomposition path end-to-end
+7. Regression: existing P4 mug test still passes (bare class names like `"lotus"` pass through the encoder unchanged — decomposition is a no-op on single noun phrases, confirmed by identity strategy fallback). Note: this confirms non-interference, NOT decomposition quality.
+8. P2 control run: re-run P2 reward modulation 10-seed sweep with decomposer enabled. Expected: no-op (P2 fixture uses short domain labels that spaCy returns as single chunks). Document as a control confirming decomposition is neutral on single-phrase inputs, not as a quality gate.
 
 ### Stage 2 — Role-tagged edges (extension, not blocking)
 
-1. Extract relation type from dependency parse (`spatial`, `possessive`, `temporal`, `action`) between noun chunks
+1. Extract relation type from dependency parse (`spatial`, `possessive`, `temporal`, `action`) between noun chunks — stored in `ConceptChunk.relation`
 2. Add optional `relation: str | None` metadata on Hebbian edges (additive field on `EdgeType.ASSOCIATES` data)
 3. `retrieve_on_cue` gains an optional `edge_filter` parameter (same pattern as `node_filter`)
 4. Demonstrate: "where was the mug?" retrieves `table` via `relation="spatial"` while filtering out non-spatial associations
 
 ### Stage 3 — ConceptExtractor convergence (cleanup)
 
-1. Migrate `ConceptExtractor` to use `ConceptDecomposer` as its noun-phrase backend
+1. Migrate `ConceptExtractor` to use `ConceptDecomposer` as its noun-phrase backend (pass `SpaCyNounChunkStrategy` or the active strategy)
 2. Retire the token-level heuristics in `_is_structured_goal` (the 4-token gate becomes unnecessary when real NLP parsing is available)
 3. Unify the ATL registration path so ATL concepts and substrate nodes share the same concept identities
 
+## Companion shell: pain-concept bridge
+
+**Status:** SHELL (2026-04-16). Design question surfaced by three-lens review — the wiring from pain signals to substrate node reward bias does not exist.
+
+### The gap
+
+NAc has two sub-systems that are structurally disconnected:
+
+1. **Pain recording** (`ToolPainBridge.record_tool_embodiment_failure` + `create_pain_nac_subscriber`) writes to NAc's `_links` using **action/tool event signatures** (e.g., `"tool:invocation_id"`). This is causal learning: "this action caused this outcome."
+
+2. **Reward bias** (`NAc._reward_bias` + `credit_node` + `distribute_reward`) maps **substrate node IDs** to reward values. EC's `pattern_complete_or_separate` reads this via `threshold_override` to widen/narrow recognition radius for rewarded/punished concepts.
+
+3. **Eligibility traces** (`NAc.update_eligibility`) ARE being built — `LinguisticEncoder.encode()` calls `nac.update_eligibility(agent_id, node_id)` when a percept completes to a node. So the substrate knows which nodes were recently active.
+
+4. **Missing bridge:** `NAc.distribute_reward` has **zero external callers.** When pain fires, the pain recording path writes a causal link, but never calls `distribute_reward` on the eligible substrate nodes. The eligibility traces accumulate but no reward signal ever arrives.
+
+### What this means
+
+If an agent encounters "rusty sword" (a substrate node via concept decomposition) and then experiences pain from interacting with it, the agent learns:
+- "using tool X on rusty sword caused pain" (NAc causal link) ✅
+- "rusty sword is associated with negative outcomes" (substrate reward bias) ❌ **missing**
+
+The causal link affects future tool selection but NOT future concept recognition. The agent won't recognize "rusty sword" more cautiously or avoid concepts associated with pain — the substrate is blind to valence.
+
+### Proposed wiring (shell — needs design pass)
+
+When a pain outcome is recorded (either via `ToolPainBridge` direct attribution or `PainBus` subscriber), call `NAc.distribute_reward(agent_id, reward=-intensity)` on the currently eligible substrate nodes. This converts the eligibility traces (which nodes were recently active) into reward bias adjustments.
+
+The eligibility trace already decays over time, so nodes that were active long before the pain event get weaker negative credit — this is standard TD learning, and the infrastructure exists. The missing piece is literally one call site: `distribute_reward` after pain recording.
+
+**Open design questions:**
+
+1. Should ALL eligible nodes get negative credit, or only nodes active within the same episode as the painful event?
+2. What's the right reward magnitude? Pain intensity maps to NAc's `[-1, 1]` reward range, but the scaling needs calibration.
+3. Should positive outcomes (successful tool use, goal achievement) also distribute reward to eligible substrate nodes? This would create "approach" associations alongside "avoidance."
+4. Does this create a feedback loop? If "rusty sword" gets negative bias → EC separates it more aggressively → the agent encounters similar-but-different swords as new nodes → each gets independently punished → concept fragmentation. The eligibility decay may naturally prevent this, but it needs a test.
+
+**Trigger:** implement alongside or after concept decomposition Stage 1. Finer-grained concept nodes make the reward bias more targeted ("rusty sword" vs the whole sentence), so decomposition is the natural prerequisite.
+
 ## When to execute
 
-**Not before P4 Stage 3 ships.** The base cross-modal claim must be proven on bare concept names first. If hippocampus can't beat OpenCLIP on `"mug" → vision-mug`, adding richer text decomposition won't save the architecture — it'll just add complexity to a failing mechanism.
+**P4 Stage 3 has PASSED (2026-04-16).** Trigger condition met. Concept decomposition is unblocked.
 
 **Ideal moment:** between P4 (cross-modal binding proven) and P5 (stress testing). P5's stress test fixture uses naturalistic multi-word inputs and would directly benefit from concept decomposition. If decomposition ships before P5, the stress test exercises the decomposed path from day one rather than requiring a retrofit.
-
-**Trigger condition:** P4 Stage 3 PASSES (Arm B beats Arm C by the margin criterion + bootstrap CI). If P4 fails, this plan is deferred indefinitely — the architecture has bigger problems.
 
 ## Cross-references
 
 - **[substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md):** concept decomposition creates more nodes per episode (2–4 per sentence instead of 1). Without enriched episode boundaries (tool execution, semantic shift, salience spike), a long conversation episode could accumulate dozens of noun-phrase nodes with O(n^2) Hebbian edges. The two plans are complementary — decomposition makes nodes finer-grained, boundary enrichment keeps episodes bounded so the edge count stays manageable.
+- **NAc `distribute_reward` / `update_eligibility`:** `src/maxim/decisions/nac.py` — the reward bias infrastructure exists but is unwired. `src/maxim/similarity/encoder.py` line 193 calls `update_eligibility`. See companion shell above.
 
 ## Risks
 
 1. **spaCy model quality on short fragments.** Noun chunking on 2–3 word inputs may over-decompose (`"blue mug"` → `["blue", "mug"]` instead of keeping the phrase). Mitigation: test on the P4 fixture's bare class names and common agent-loop inputs; tune the minimum chunk length.
 2. **EC threshold calibration.** Individual noun phrases have different cosine-similarity distributions than full sentences. The existing EC thresholds (calibrated for sentence-level mpnet embeddings) may need adjustment. Mitigation: Stage 1 includes a sweep comparing EC collapse rates with and without decomposition.
-3. **Hebbian edge inflation.** A 10-word sentence that decomposes into 4 noun phrases creates 6 pairwise edges instead of 0 (single node has no within-episode pairs). At scale this could slow spreading activation. Mitigation: 4 nodes × 6 edges is well within the binding graph's capacity; monitor during P5 stress test.
+3. **Hebbian edge inflation.** A 10-word sentence that decomposes into 4 noun phrases creates 6 pairwise edges instead of 0 (single node has no within-episode pairs). At scale this could slow spreading activation. Mitigation: 4 nodes x 6 edges is well within the binding graph's capacity; monitor during P5 stress test.
 4. **Non-English inputs.** spaCy `en_core_web_sm` is English-only. Multi-language support requires either a multilingual model (`xx_ent_wiki_sm`) or per-language model selection. Deferred to a future stage.
+5. **SEM affordance strings.** Modality gate (text-only) prevents decomposition of SEM strings, but if future work routes SEM text through the text modality, over-decomposition of structured affordance descriptions (e.g., `"the rusty sword feels heavy"` → `["rusty sword"]` + possibly `["heavy"]`) could occur. Document minimum-chunk-length floor as a tuning knob.
+
+## Three-lens review findings (folded 2026-04-16)
+
+**Architecture lens (2 CRITICAL, 3 IMPORTANT, 2 MINOR):**
+- C1: ConceptDecomposer must be a Protocol (DecompositionStrategy). **FOLDED** — protocol + strategy pattern designed above.
+- C2: Return type must be `ConceptChunk`, not `str`, from day one. **FOLDED** — dataclass with span, confidence, relation fields.
+- I1: Integration point wrong (agent loop → encoder). **FOLDED** — moved to `LinguisticEncoder.encode_decomposed()`.
+- I2: No `enabled` flag. **FOLDED** — `enabled: bool` on config.
+- I3: Stage 3 (ConceptExtractor convergence) should be prerequisite, not follow-up. **PARTIALLY FOLDED** — kept as Stage 3 but noted the risk of coexistence. Can revisit if the review finding strengthens.
+- M1: Singleton spaCy model needs `threading.Lock`. **FOLDED**.
+- M2: `SensoryTag` inheritance for decomposed chunks not specified. **FOLDED** — all chunks inherit parent percept's `scn_tag`.
+
+**Simulation lens (2 CRITICAL, 2 IMPORTANT, 1 MINOR):**
+- C1: Simulations bypass `_capture_episodic` — decomposition would be silently skipped. **FOLDED** — integration moved to encoder layer.
+- C2: P4 fixture regression test is vacuous (fixture bypasses agent loop). **FOLDED** — reframed as non-interference check, added real decomposition-specific fixture.
+- I1: P2 re-run is a no-op, not a validation. **FOLDED** — reframed as control run.
+- I2: `build_and_bind` needs a decomposer-aware encoding helper. **FOLDED** — `encode_decomposed` on the encoder serves this role.
+- M1: spaCy model load latency on first sim turn. **FOLDED** — log line before loading.
+
+**Embodiment lens (2 CRITICAL, 2 IMPORTANT, 2 MINOR):**
+- C1: Integration point wrong (same as arch C1). **FOLDED**.
+- C2: Modality gate missing — vision/proprioceptive/SEM percepts should not be decomposed. **FOLDED** — `if modality != TEXT` gate.
+- I1: SEM affordance strings need minimum-chunk-length floor. **FOLDED** — documented as tuning knob in Risks.
+- I2: NAc/pain path safe but should be documented + gap discovered. **FOLDED** — explicit confirmation + companion shell for the gap.
+- M1: Reachy sensor streams safe with modality gate. **FOLDED**.
+- M2: `CaptureEvent.activated_nodes` cardinality — `encode_decomposed` returns list. **FOLDED** — new method signature documented.
