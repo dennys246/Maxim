@@ -24,6 +24,7 @@ from maxim.runtime.bio_integration import (
     start_bio_session as _start_bio_session,
     end_bio_session as _end_bio_session,
 )
+import maxim.runtime.bio_integration as _bio_integration
 
 if TYPE_CHECKING:
     from maxim.agents.autonomy import AutonomyController
@@ -1061,6 +1062,12 @@ def run_agentic_loop(
                                             result=result,
                                             run_id=run_id or "",
                                         )
+                                        _bio_integration.observe_episode(
+                                            hippocampus=hippocampus,
+                                            channel="text",
+                                            activated_nodes=(),
+                                            salience_spike=_bio_integration.consume_pain_intensity(),
+                                        )
 
                                 except Exception as e:
                                     log_agentic(
@@ -1509,6 +1516,12 @@ def run_agentic_loop(
                             },
                             result=result,
                             run_id=run_id or "",
+                        )
+                        _bio_integration.observe_episode(
+                            hippocampus=hippocampus,
+                            channel="text",
+                            activated_nodes=(),
+                            salience_spike=_bio_integration.consume_pain_intensity(),
                         )
 
                     # Handle failure

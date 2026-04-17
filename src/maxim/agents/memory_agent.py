@@ -1074,12 +1074,14 @@ class MemoryAgent(Agent, AgentOutputMixin):
         fut_knowledge = pool.submit(self._build_knowledge_context)
         fut_concepts = pool.submit(self._build_concept_context, det_objects, det_people)
         fut_causal = pool.submit(self._build_causal_context)
+        fut_valence = pool.submit(self._build_valence_context)
 
         return {
             "relevant_memories": fut_memories.result(timeout=2.0),
             "knowledge_context": fut_knowledge.result(timeout=2.0),
             "concept_context": fut_concepts.result(timeout=2.0),
             "causal_context": fut_causal.result(timeout=2.0),
+            "valence_context": fut_valence.result(timeout=2.0),
         }
 
     def _enrich_with_embodiment(self, sync_fields: dict[str, Any]) -> None:
@@ -1366,6 +1368,46 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         # Sort by confidence descending, cap at 5
         entries.sort(key=lambda e: e["confidence"], reverse=True)
+        return entries[:5]
+
+    def _build_valence_context(self) -> list[dict]:
+        """Build valence context from substrate binding graph."""
+        if self._hippocampus is None:
+            return []
+        if not hasattr(self._hippocampus, "retrieve_on_cue"):
+            return []
+
+        entries: list[dict] = []
+        seen: set[str] = set()
+
+        recent_nodes: list[str] = []
+        for p in list(self._recent_percepts)[-5:]:
+            nid = getattr(p, "substrate_node_id", None)
+            if nid and nid not in seen:
+                recent_nodes.append(nid)
+                seen.add(nid)
+
+        for node_id in recent_nodes[:5]:
+            try:
+                results = self._hippocampus.retrieve_on_cue(
+                    node_id,
+                    limit=5,
+                    include_valence=True,
+                )
+                associations = [{"node": n, "valence": round(v, 3)} for n, _act, v in results if abs(v) > 0.05]
+                if associations:
+                    avg_valence = sum(a["valence"] for a in associations) / len(associations)
+                    entries.append(
+                        {
+                            "concept": node_id,
+                            "valence": round(avg_valence, 3),
+                            "associations": [a["node"] for a in associations[:3]],
+                        }
+                    )
+            except Exception:
+                pass
+
+        entries.sort(key=lambda e: abs(e["valence"]), reverse=True)
         return entries[:5]
 
     def _build_concept_context(

@@ -1106,6 +1106,28 @@ class PromptBuilder:
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
             )
 
+        if context.valence_context:
+            valence_lines = ["=== Learned Associations (from experience) ==="]
+            for entry in context.valence_context[:5]:
+                concept = entry.get("concept", "?")
+                valence = entry.get("valence", 0.0)
+                if valence < -0.1:
+                    sentiment = "negative (associated with pain/failure)"
+                elif valence > 0.1:
+                    sentiment = "positive (associated with success/benefit)"
+                else:
+                    sentiment = "neutral"
+                assoc = ", ".join(entry.get("associations", [])[:3])
+                valence_lines.append(f"- {concept}: {sentiment} (valence={valence:+.2f}, related: {assoc})")
+            budgeter.add(
+                "valence_context",
+                "\n".join(valence_lines),
+                SectionPriority.CRITICAL,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+            )
+
         if context.motor_programs:
             motor_lines = ["=== Available Motor Programs ==="]
             for prog in context.motor_programs[:8]:
