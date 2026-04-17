@@ -55,6 +55,22 @@ Each experiment gets a short section under `## Experiments`, structured as:
 
 Entries are append-only. If a finding is later invalidated, add a new entry that supersedes it and link both directions — do not edit the old one.
 
+## Testing tiers
+
+Behavioral convergence testing has three tiers, each building on the last:
+
+| Tier | Training | Test | What it proves | Status |
+|------|----------|------|----------------|--------|
+| **Tier 1** | Scripted reactions | Substrate retrieval | Bio-systems learn and persist | Exp 1+2 PASS |
+| **Tier 2** | Scripted episodes | LLM decisions | LLM acts on bio-system learning | Exp 3 scaffold ready |
+| **Tier 3** | LLM-driven sim | LLM decisions | Agent learns AND acts organically | Planned |
+
+**Tier 1** is deterministic and fast (~0.5s). Proves the substrate stores and retrieves affective associations across sessions.
+
+**Tier 2** uses scripted training (deterministic) but tests the LLM's actual decisions. The key question: does the LLM choose differently when it sees valence context? Uses masked entity names (e.g., "Vial A/B/C") to prevent language priors from confounding the measurement.
+
+**Tier 3** is the ultimate 1.0 proof — no scripted training, the agent lives through a sim, builds bio-system state organically, and behaves differently in later sessions. Requires Tier 2 to pass first.
+
 ## Initial seed hypotheses (to be tested as scenarios and substrate mature)
 
 These are candidates, not commitments. They become experiments when a scenario exists and the substrate has the mechanisms to be evaluated.

@@ -1,0 +1,29 @@
+component:
+  name: antidote_vial
+  tags: [item, consumable, medicinal, fantasy]
+  category: items
+
+entity:
+  name: antidote_vial
+  entity_type: item
+  sensors:
+    doses:
+      unit: count
+      range: [0, 3]
+      initial: 3
+    potency:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    usage:
+      affordances:
+        drink:
+          params: {}
+          description: "Drink the antidote to neutralize active poison effects"
+        examine:
+          params: {}
+          description: "Inspect the vial — clear amber liquid with herbal scent"
+  failure_modes:
+    - name: empty
+      trigger: {field: doses, op: "<=", value: 0, pain: 0.2}
