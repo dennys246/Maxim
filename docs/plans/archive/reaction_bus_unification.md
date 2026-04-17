@@ -1,6 +1,6 @@
 # ReactionBus Unification — `build_reaction_bus` with required producers/subscribers
 
-**Status:** SHELL ONLY. Audit + design pending.
+**Status:** **SHIPPED** (PR #134, merged 2026-04-16). `build_reaction_bus(*)` + cerebellum factory fix. Archived 2026-04-17.
 **Parent index:** [biosystem_unification.md](biosystem_unification.md)
 **Wave:** 1 of 4 (parallel-safe with `pain_bus_unification.md`)
 **Depends on:** none

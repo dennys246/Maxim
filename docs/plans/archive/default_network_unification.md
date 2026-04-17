@@ -1,6 +1,6 @@
 # DefaultNetwork Unification — required deps at construction
 
-**Status:** SHELL ONLY. Audit + design pending.
+**Status:** **SHIPPED** (PR #135, merged 2026-04-16). `build_default_network(*, nac)` + `pain_bus=` injection. Archived 2026-04-17.
 **Parent index:** [biosystem_unification.md](biosystem_unification.md)
 **Wave:** 2 of 4 (parallel-safe with `memory_hub_unification.md`)
 **Depends on:** [pain_bus_unification.md](pain_bus_unification.md) — DefaultNetwork consumes the bus.

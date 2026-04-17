@@ -78,13 +78,13 @@ Test scope per plan: tests for the **new** constructor only. Bulk test migration
 
 Ranked by silent-failure blast radius (highest first). Each row links to its shell plan (creating now as part of this commit) and lists dependencies.
 
-| # | System | Shell plan | Status | Silent-failure risk | Depends on | Parallel-safe with |
+| # | System | Plan | Status | Silent-failure risk | Depends on | Parallel-safe with |
 |---|---|---|---|---|---|---|
-| 0 | `ToolPainBridge` (the example) | [executor_bootstrap_unification.md](executor_bootstrap_unification.md) | **SHIPPED** (in review on `feat/exec-bootstrap-unify`) | Critical — 3 instances over 3 weeks | — | — |
-| 1 | PainBus subscribers | [pain_bus_unification.md](pain_bus_unification.md) | DRAFT shell | **Critical** — same shape as #0, currently scattered across 5+ entry points | None (independent) | #2 |
-| 2 | ReactionBus subscribers | [reaction_bus_unification.md](reaction_bus_unification.md) | DRAFT shell | High — typed isolation surface, same shape | None (independent) | #1 |
-| 3 | MemoryHub bridges | [memory_hub_unification.md](memory_hub_unification.md) | DRAFT shell | Medium — silent partial coordination, fewer call sites | #1, #2 (consumes both buses) | — |
-| 4 | DefaultNetwork | [default_network_unification.md](default_network_unification.md) | DRAFT shell | Medium — silent fear-gate skip | #1 (consumes PainBus) | #3 |
+| 0 | `ToolPainBridge` (the example) | [archive/executor_bootstrap_unification.md](archive/executor_bootstrap_unification.md) | **SHIPPED** (PR #114, 2026-04-14) | Critical — 3 instances over 3 weeks | — | — |
+| 1 | PainBus subscribers | [archive/pain_bus_unification.md](archive/pain_bus_unification.md) | **SHIPPED** (PR #125, 2026-04-15) | **Critical** — same shape as #0, 3 CLI sites | None (independent) | #2 |
+| 2 | ReactionBus subscribers | [archive/reaction_bus_unification.md](archive/reaction_bus_unification.md) | **SHIPPED** (PR #134, 2026-04-16) | High — typed isolation surface | None (independent) | #1 |
+| 3 | MemoryHub bridges | [archive/memory_hub_unification.md](archive/memory_hub_unification.md) | **SHIPPED** (PR #136, 2026-04-16) | Medium — silent partial coordination | #1, #2 (consumes both buses) | — |
+| 4 | DefaultNetwork | [archive/default_network_unification.md](archive/default_network_unification.md) | **SHIPPED** (PR #135, 2026-04-16) | Medium — silent fear-gate skip | #1 (consumes PainBus) | #3 |
 | 5 | Bio-stack umbrella | [bio_stack_unification.md](bio_stack_unification.md) | DRAFT shell | The umbrella that subsumes #1-#4 in a single builder | #1, #2, #3, #4 | — |
 | 6 | LearnedToolIndex registration | (notes only — separate shape) | NOTE | Low — different shape (registry coupling, not bus subscription) | — | any |
 
@@ -144,11 +144,11 @@ Total estimate to reach the structural ceiling: ~2-3 weeks of focused work, spre
 
 | Wave | Plan | Branch | PR | Status | Date |
 |---|---|---|---|---|---|
-| 0 | executor_bootstrap_unification | feat/exec-bootstrap-unify | #114 (merged) | **SHIPPED** | 2026-04-14 |
-| 1 | pain_bus_unification | feat/pain-bus-unification | (PR pending) | **Audit + builder + migration committed; pre-merge review next.** Closes Gap A (3 CLI sites silently skipping NAc bus subscription). Gap B (DefaultNetwork split ownership) deferred to memory_hub_unification.md per no-band-aid rule. Gap C (api.py headless) structural side resolved, user-facing API question stays at agent_factory_canonicalization.md F5. | 2026-04-14 |
-| 1 | reaction_bus_unification | feat/reaction-bus-unification | (PR pending) | **Audit + builder + factory fix committed; pre-merge review next.** Surface differs from PainBus (N=1 construction site). Builder exists for Wave 3 downstream sequencing (`build_bio_stack` requires `build_reaction_bus` BEFORE `build_pain_bus`). Gap A (CerebellumModulator factory silently dropping `reaction_bus=`) fixed preemptively — factory has zero production callers today but the parameter now flows correctly. | 2026-04-16 |
-| 2 | memory_hub_unification | feat/memory-hub-unification | (PR pending) | **Builder + migration committed; pre-merge review next.** `build_memory_hub` always calls `.connect()`, closing Gap A (CLI zero bridges) + Gap B (AgentFactory zero bridges) + Gap C (dead orchestrator hub). 4 gaps surfaced, all fixed. 21 new tests, 4834+24 passing. | 2026-04-16 |
-| 2 | default_network_unification | feat/default-network-unification | (PR pending) | **Layer 4→5 upgrade + Gap B closure + call site migrations committed; pre-merge review next.** `nac` required kwarg, `pain_bus=` injection inverts DN from bus constructor to consumer (closes the split-subscriber-ownership Gap B from pain_bus_unification). Sim orchestrator migrated (Gap C, `object()` stub removed). cli.py + api.py explicit opt-outs documented (Gaps D+E). | 2026-04-16 |
+| 0 | executor_bootstrap_unification | feat/exec-bootstrap-unify | #114 (merged) | **SHIPPED + ARCHIVED** | 2026-04-14 |
+| 1 | pain_bus_unification | feat/pain-bus-unification | #125 (merged) | **SHIPPED + ARCHIVED.** `build_pain_bus(*, hippocampus, nac)`. 3 CLI sites migrated. `bus=` param added in Wave 3. | 2026-04-15 |
+| 1 | reaction_bus_unification | feat/reaction-bus-unification | #134 (merged) | **SHIPPED + ARCHIVED.** `build_reaction_bus(*)`. Cerebellum factory fix. Zero production callers (Wave 3 sequencing door). | 2026-04-16 |
+| 2 | memory_hub_unification | feat/memory-hub-unification | #136 (merged) | **SHIPPED + ARCHIVED.** `build_memory_hub(*, hippocampus, scn, nac, ec)` always calls `.connect()`. 5 sites migrated. 21 new tests. | 2026-04-16 |
+| 2 | default_network_unification | feat/default-network-unification | #135 (merged) | **SHIPPED + ARCHIVED.** `build_default_network(*, nac)` + `pain_bus=` injection. Gap B closed. | 2026-04-16 |
 
 | 3 | bio_stack_unification | feat/bio-stack-unification | (PR pending) | **Builder + 4 site migrations committed; pre-merge review next.** `build_bio_stack(*, persistence_dir)` composes all four Wave 1+2 builders. Frozen `BioStack` dataclass. 4 sites migrated (CLI non-sim, sim AUT, orch NPC, Reachy). CLI sim modes stay as-is (just build_pain_bus). AgentFactory deferred to Wave 4 (conditional remembers/learns + auto_load doesn't fit umbrella). 27 new tests, 4902 passing. | 2026-04-17 |
 | 4 | agent_factory_canonicalization | — | — | Running doc — INHERITS Gap C from pain_bus_unification (api.py headless `pain_bus=None`). Stage F5 owns the user-facing default-on-vs-default-off bio-learning decision for headless `pymaxim` agents. The structural construction door already exists (`build_pain_bus`). | 2026-04-14 |
