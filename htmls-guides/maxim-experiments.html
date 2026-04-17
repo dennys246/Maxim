@@ -2,9 +2,9 @@
 
 {% block title %}Experiments &amp; Results — Maxim Docs | Bio-Inspired Cognitive Architecture{% endblock %}
 
-{% block meta_description %}Deterministic substrate experiments proving Maxim's bio-inspired learning pipeline works without LLM fine-tuning. Cross-session affective memory (11/11), energy-driven consumable learning (13/13), valence annotation PoC, and SEM learning loop verification.{% endblock %}
+{% block meta_description %}Experiments proving Maxim's bio-inspired learning pipeline works without LLM fine-tuning. 41/41 hypotheses across 3 tiers: substrate learning (Tier 1), LLM acts on learning (Tier 2), and organic LLM learning (Tier 3). Cross-session affective memory, energy-driven consumable learning, valence annotation, and SEM learning loop.{% endblock %}
 
-{% block meta_keywords %}Maxim experiments, substrate testing, cross-session learning, affective memory, consumable learning, valence annotation, SEM learning loop, bio-inspired AI, deterministic testing, cognitive architecture validation{% endblock %}
+{% block meta_keywords %}Maxim experiments, substrate testing, cross-session learning, affective memory, consumable learning, valence annotation, SEM learning loop, bio-inspired AI, organic learning, cognitive architecture validation, Tier 3 learning{% endblock %}
 
 {% block meta_author %}Maxim Project{% endblock %}
 {% block og_site_name %}Maxim{% endblock %}
@@ -46,12 +46,138 @@
     <p class="text-indigo-400 font-medium">Deterministic Validation of the Bio-Inspired Learning Pipeline</p>
   </header>
 
-  <p class="text-slate-300 leading-relaxed">Every experiment below runs on the substrate layer alone &mdash; no LLM, no variance from model non-determinism, fully reproducible from a single script. The methodology: construct bio-pipeline components (Hippocampus, NAc, EC, ATL, PainBus, ReactionBus, Cerebellum), simulate SEM entity interactions with deterministic outcomes, then measure what the substrate learned. Each hypothesis is stated falsifiably, each result is a pass/fail count, and each experiment includes a reproduction command.</p>
+  <p class="text-slate-300 leading-relaxed"><strong>41/41 hypotheses confirmed across 3 testing tiers.</strong> Tier 1 experiments run on the substrate layer alone (deterministic, no LLM). Tier 2 uses scripted training with real LLM decisions. Tier 3 is the ultimate proof: fully organic LLM-driven training and testing with no scripted reactions. Each hypothesis is stated falsifiably, each result is a pass/fail count, and each experiment includes a reproduction command.</p>
 
   <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
-    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Why Deterministic?</h3>
-    <p class="text-slate-300 text-sm">LLM non-determinism contaminates behavioral measurements &mdash; you can't tell whether the agent improved or the LLM drifted. By testing at the substrate layer, we isolate the bio-pipeline's learning signal from LLM variance. When these experiments pass, we know the architecture works; LLM-level integration (Tier 2) builds on a proven foundation.</p>
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Three Testing Tiers</h3>
+    <p class="text-slate-300 text-sm"><strong>Tier 1</strong> (deterministic, no LLM): isolates the bio-pipeline's learning signal from LLM variance. <strong>Tier 2</strong> (scripted training, LLM test): proves the LLM acts on bio-system learning with masked entity names to prevent language priors. <strong>Tier 3</strong> (organic LLM training + test): the ultimate proof &mdash; the agent learns from its own actions with no scripted reactions, and a fresh control agent fails the same scenario.</p>
   </div>
+
+  <!-- ============================================================ -->
+  <!--  EXPERIMENT 4: ORGANIC LLM LEARNING (TIER 3)                 -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="exp4" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Experiment 4: Organic LLM Learning <span class="text-indigo-400 text-lg">(Tier 3)</span></h2>
+
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-green-500/20 text-green-400">5/5 PASS</span>
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-indigo-500/20 text-indigo-400">Tier 3: Organic Learning</span>
+      <span class="text-slate-400 text-sm">2026-04-17</span>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The ultimate proof of the 1.0 claim. An agent running in a real sim learns from its own actions &mdash; no scripted training, no injected reactions. The agent chooses a vial, experiences the outcome through CerebellumModulator &rarr; ReactionBus &rarr; valence annotation, and makes different choices in subsequent sessions. A fresh control agent with no prior experience dies.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-white font-semibold mb-3">Results: Teal (Antidote) Selection Rate Across Sessions</h3>
+      <div class="bg-slate-950 rounded-lg p-5 overflow-x-auto">
+        <table class="w-full text-sm text-slate-300">
+          <thead>
+            <tr>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Session</th>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Teal Rate</th>
+              <th class="text-left text-indigo-400 pb-2">Interpretation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Session 1 (exploration)</td>
+              <td class="pr-6 py-2 text-slate-400 font-mono">0%</td>
+              <td class="py-2">No prior knowledge &mdash; agent explores randomly</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Session 2 (early learning)</td>
+              <td class="pr-6 py-2 text-yellow-400 font-mono">25%</td>
+              <td class="py-2">Agent begins shifting toward learned associations</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Session 3 (convergence)</td>
+              <td class="pr-6 py-2 text-green-400 font-mono font-bold">100%</td>
+              <td class="py-2">Full convergence &mdash; agent picks antidote every time</td>
+            </tr>
+            <tr class="border-t border-slate-700 bg-red-950/20">
+              <td class="pr-6 py-2 text-white font-medium">Fresh control</td>
+              <td class="pr-6 py-2 text-red-400 font-mono font-bold">DIED</td>
+              <td class="py-2">No learning signal &mdash; agent never picks antidote, dies from poison</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-slate-400 text-xs mt-3">The experienced agent escapes on turn 1 in Session 3. The fresh agent dies. Cross-session learning without fine-tuning, demonstrated with fully organic LLM-driven training.</p>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-2">Why This Matters</h3>
+      <p class="text-slate-300 text-sm">Tier 1 and 2 experiments proved the substrate learns and the LLM acts on it. But training was scripted &mdash; reactions were injected. Tier 3 closes the loop: the agent takes actions, experiences outcomes through CerebellumModulator, builds bio-system state organically, and uses that state to make better decisions in future sessions. No fine-tuning. No gradient updates. Just a bio-inspired memory architecture that the LLM reads at inference time.</p>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+      <p class="text-slate-400 text-xs font-medium mb-1">Reproduce</p>
+      <code class="text-indigo-400 text-sm">PYTHONPATH=src python scripts/behavioral_convergence_exp4_tier3.py --model qwen2.5-14b</code>
+    </div>
+
+    <p class="text-slate-400 text-sm">Detailed writeup: <a href="https://github.com/dennys246/maxim/blob/main/docs/plans/behavioral_convergence_practice.md" class="text-indigo-400 hover:text-indigo-300 no-underline">behavioral_convergence_practice.md</a></p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  EXPERIMENT 3: LLM ACTS ON BIO-SYSTEM LEARNING (TIER 2)     -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="exp3" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Experiment 3: LLM Acts on Bio-System Learning <span class="text-indigo-400 text-lg">(Tier 2)</span></h2>
+
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-green-500/20 text-green-400">12/12 PASS</span>
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-indigo-500/20 text-indigo-400">Tier 2: LLM Decisions</span>
+      <span class="text-slate-400 text-sm">2026-04-17</span>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">An LLM given valence context from the bio-system makes different tool-selection decisions than a fresh LLM. Three masked vials with arbitrary names (no semantic hints) ensure the LLM cannot use language priors. Scripted deterministic training, then real LLM test decisions. N=10 per condition.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-white font-semibold mb-3">Results: Vial Selection (N=10 per condition)</h3>
+      <div class="bg-slate-950 rounded-lg p-5 overflow-x-auto">
+        <table class="w-full text-sm text-slate-300">
+          <thead>
+            <tr>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Vial</th>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Experienced</th>
+              <th class="text-left text-indigo-400 pb-2 pr-6">Fresh</th>
+              <th class="text-left text-indigo-400 pb-2">Effect</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Teal Cylindrical Ceramic (antidote)</td>
+              <td class="pr-6 py-2 text-green-400 font-mono font-bold">10/10 (100%)</td>
+              <td class="pr-6 py-2 text-slate-400 font-mono">0/10 (0%)</td>
+              <td class="py-2">Perfect discrimination</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Purple Hexagonal Glass (heals HP)</td>
+              <td class="pr-6 py-2 text-slate-400 font-mono">0/10</td>
+              <td class="pr-6 py-2 text-slate-400 font-mono">7/10</td>
+              <td class="py-2">Fresh prefers purple (no poison knowledge)</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-6 py-2 text-white font-medium">Orange Triangular Crystal (more poison)</td>
+              <td class="pr-6 py-2 text-green-400 font-mono">0/10</td>
+              <td class="pr-6 py-2 text-red-400 font-mono">3/10</td>
+              <td class="py-2">Fresh picks harmful vial 30% of the time</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-slate-400 text-xs mt-3">Valence strength differentiation is critical &mdash; flat &ldquo;GOOD/BAD&rdquo; labels showed no effect. The &ldquo;VERY GOOD&rdquo; vs &ldquo;good&rdquo; distinction drives discrimination. Model: qwen2.5-14b, temperature 0.3.</p>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+      <p class="text-slate-400 text-xs font-medium mb-1">Reproduce</p>
+      <code class="text-indigo-400 text-sm">PYTHONPATH=src python scripts/behavioral_convergence_exp3_tier2.py --model qwen2.5-14b</code>
+    </div>
+
+    <p class="text-slate-400 text-sm">Detailed writeup: <a href="https://github.com/dennys246/maxim/blob/main/docs/plans/behavioral_convergence_practice.md" class="text-indigo-400 hover:text-indigo-300 no-underline">behavioral_convergence_practice.md</a></p>
+  </section>
 
   <!-- ============================================================ -->
   <!--  EXPERIMENT 2: ENERGY-DRIVEN CONSUMABLE LEARNING             -->

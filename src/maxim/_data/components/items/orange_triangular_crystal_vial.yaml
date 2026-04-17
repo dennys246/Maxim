@@ -1,0 +1,36 @@
+component:
+  name: orange_triangular_crystal_vial
+  tags: [item, consumable, unknown, fantasy]
+  category: items
+  genre: fantasy
+
+entity:
+  name: orange_triangular_crystal_vial
+  entity_type: item
+  sensors:
+    doses:
+      unit: count
+      range: [0, 3]
+      initial: 3
+    potency:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    viscosity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.5
+  modulators:
+    usage:
+      affordances:
+        drink:
+          params: {}
+          description: "Drink the orange liquid from the triangular crystal bottle"
+        examine:
+          params: {}
+          description: "Inspect the gritty orange liquid in its triangular crystal container"
+  failure_modes:
+    - name: empty
+      trigger: {field: doses, op: "<=", value: 0, pain: 0.2}
+    - name: toxic
+      trigger: {field: potency, op: ">=", value: 0.5, pain: 0.8}

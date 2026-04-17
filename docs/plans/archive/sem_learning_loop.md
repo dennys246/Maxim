@@ -1,12 +1,12 @@
 # Complete the SEM Learning Loop
 
-**Status:** COMPLETE (2026-04-17). All 5 stages shipped. PoC: 11/11 + 13/13 hypotheses confirmed.
+**Status:** COMPLETE (2026-04-17). All 5 stages shipped. PoC: 11/11 + 13/13 hypotheses confirmed. All 3 testing tiers demonstrated (Tier 1: Exp 1+2, Tier 2: Exp 3 12/12, Tier 3: Exp 4 5/5 organic LLM learning).
 **Scope:** ~500-700 LOC across 5 stages. Consolidates 4 shell plans into one coherent deliverable.
 **Target version:** 0.3 (pre-publish).
 **Absorbs:**
 - [cerebellum_activation.md](cerebellum_activation.md) — wire Cerebellum into production
 - [substrate_valence_annotation.md](substrate_valence_annotation.md) Stage 4 — positive valence + success reactions
-- [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) Stage 3 — pain/salience spike boundary (Stages 1-2 deferred)
+- [substrate_episode_boundary_enrichment.md](../substrate_episode_boundary_enrichment.md) Stage 3 — pain/salience spike boundary (Stages 1-2 deferred)
 - `distribute_reward` wiring gap (documented in valence annotation plan + concept decomposition companion)
 
 ## Motivation
@@ -91,7 +91,7 @@ Add `CerebellumModulator._emit_success_reaction()` for confident Cerebellum pred
 
 ### Stage 4 — Pain/salience spike episode boundary (~130 LOC)
 
-From [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) Rule 3. Tool execution (Rule 1) and semantic shift (Rule 2) are deferred — they need more calibration work and are less tightly coupled to the SEM loop.
+From [substrate_episode_boundary_enrichment.md](../substrate_episode_boundary_enrichment.md) Rule 3. Tool execution (Rule 1) and semantic shift (Rule 2) are deferred — they need more calibration work and are less tightly coupled to the SEM loop.
 
 1. Add `salience_spike: float | None = None` to `CaptureEvent`
 2. Implement `salience_spike_rule(min_intensity: float = 0.5)` in `episode.py`

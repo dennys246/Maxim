@@ -384,13 +384,16 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functi
 
 ## Active initiatives
 
-See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.2.1 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
+See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.3.0 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
 
 **Recently shipped (2026-04-17):**
 - Valence annotation Stages 1-3 — Episode.valence, Edge.metadata["valence"], spreading_activation(propagate_valence), retrieve_on_cue(include_valence). 26 tests.
 - SEM Learning Loop (5 stages) — Cerebellum activation in BioStack, distribute_reward wiring, success reactions, pain spike episode boundary. PoC: 11/11 + 13/13.
 - Behavioral convergence wiring (4 stages) — valence in PromptAssembler, observe_episode_event in agent loop, energy→Reaction bridge, food/water/poison SEM specs.
 - Experiment 1: Cross-session affective memory (11/11 PASS). Experiment 2: Energy-driven consumable learning (13/13 PASS).
+- Experiment 3: LLM acts on bio-system learning (12/12 PASS, Tier 2). 10/10 experienced vs 0/10 fresh.
+- Experiment 4: Organic LLM learning (5/5 PASS, Tier 3). Teal rate: 0% -> 25% -> 100%. Fresh control DIED. All 3 testing tiers PASS; 41/41 hypotheses confirmed.
+- **Version bump to 0.3.0.** Cross-session learning without fine-tuning demonstrated across all tiers.
 
 **Previously shipped (2026-04-11/12):**
 - Foundations wave F0.1–F0.8 — all landed. Archived.
@@ -401,7 +404,7 @@ See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current 
 **Gating 1.0** (three focused substrate plans, split from the master plan):
 - [substrate_p0_pilot.md](docs/plans/substrate_p0_pilot.md) — **COMPLETE** (2026-04-12). Baseline pinned at 78.5%. Results: [docs/experiments/p0_baseline_sweep.md](docs/experiments/p0_baseline_sweep.md).
 - [substrate_recognition.md](docs/plans/substrate_recognition.md) — **COMPLETE** (2026-04-14). B1+P1 shipped 2026-04-12 at 91.7% collapse (`paraphrase-mpnet@0.40` + centroid update). P2 Stages 1+2 shipped via PR #100 (SEM pain cascade end-to-end on real `rusty_sword` + NAc `_context_similarity` directional fix + PainBus dual-layer rewrite). P2 Stage 3 shipped via PR #102 — real-embedding sweep at `paraphrase-mpnet@0.70, reward 2.0` cleared with **+56.0 ± 29.0 pp target gain / 0.0 ± 0.0 pp distractor drift / 94% monotone / 9-of-10 seeds**, after three metric pivots (node-count → raw pair-collapse → plurality-ownership self-collapse) + a fixture pivot. Results: [docs/experiments/p1_recognition_sweep.md](docs/experiments/p1_recognition_sweep.md) + [docs/experiments/p2_reward_modulation_sweep.md](docs/experiments/p2_reward_modulation_sweep.md) + [docs/experiments/p2_sem_pain_cascade.md](docs/experiments/p2_sem_pain_cascade.md). Reproduction runbook: [docs/experiments/protocols/p2_reward_modulation_reproduction.md](docs/experiments/protocols/p2_reward_modulation_reproduction.md). 0.3-minimum gate CLOSED.
-- [substrate_binding_persistence.md](docs/plans/substrate_binding_persistence.md) — blocked on recognition P2. P3a–P8 + B3-B5. Includes 1.0-gating P4 cross-modal head-to-head. ~4,100 LOC. 0.3-target → 0.5.
+- [substrate_binding_persistence.md](docs/plans/archive/substrate_binding_persistence.md) — **SPLIT COMPLETE + ARCHIVED.** Now a pure index. All four 0.3-target phases CLOSED. Per-phase plan files created for 0.5 track.
 
 **Living practice docs (paired with substrate_plan):**
 - [behavioral_convergence_practice.md](docs/plans/behavioral_convergence_practice.md) — does the agent actually get better across sessions? Living doc, not a gate.

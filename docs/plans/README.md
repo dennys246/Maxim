@@ -1,19 +1,19 @@
 # Maxim Plans
 
-Current version: **0.2.1** (published on PyPI as `pymaxim`).
+Current version: **0.3.0** (published on PyPI as `pymaxim`).
 Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
 
 Foundations, reaction abstraction, simulator upgrades, P0 pilot, P1 recognition, P2 reward modulation, P3a episode binding, P3b channel integration, P3.5 persistence/snapshot, SEM execution hook, and **P4 cross-modal binding** are all complete. **All four 0.3-target substrate phases (P3a, P3b, P3.5, P4) are CLOSED. 0.3-target gate is CLOSED.**
 
-- [substrate_binding_persistence.md](substrate_binding_persistence.md) — **SPLIT COMPLETE** (2026-04-17). Now a pure index. **All four 0.3-target phases CLOSED.** Per-phase plan files created for 0.5 track:
+- [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) — **✅ SPLIT COMPLETE + ARCHIVED** (2026-04-17). Now a pure index. **All four 0.3-target phases CLOSED.** Per-phase plan files created for 0.5 track:
   - [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — Draft. 10k+ node persistence stress. Depends on P3.5 + P4.
   - [substrate_p6_extinction.md](substrate_p6_extinction.md) — Draft. Decay without reinforcement vs LRU. Depends on P3a.
   - [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) — Draft. Minimum-viable sleep replay. Depends on P3a + P6.
   - [prompt_b3_b5_track.md](prompt_b3_b5_track.md) — Draft. Acting Coach + embodiment/narrative separation.
   - [prompt_b4_replanning.md](prompt_b4_replanning.md) — Draft. **1.0-GATING.** Replanning with failure diagnosis.
-- [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) — **APPROVED + EXECUTED** (2026-04-17). The narrative that motivated the split.
+- [substrate_binding_split_proposal.md](archive/substrate_binding_split_proposal.md) — **✅ APPROVED + EXECUTED + ARCHIVED** (2026-04-17). The narrative that motivated the split.
 - [archive/substrate_p0_pilot.md](archive/substrate_p0_pilot.md) — **✅ COMPLETE + ARCHIVED** (2026-04-12). Baseline pinned at 78.5%. Results: [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md).
 - [archive/substrate_recognition.md](archive/substrate_recognition.md) — **✅ COMPLETE + ARCHIVED** (2026-04-14). P1+P2 all stages shipped. 0.3-minimum gate CLOSED.
 - [archive/substrate_p3a_episode_binding.md](archive/substrate_p3a_episode_binding.md) — **✅ COMPLETE + ARCHIVED** (2026-04-14). Hebbian multi-hop F1=0.9955 vs TF-IDF 0.6600.
@@ -29,18 +29,13 @@ The master reference for rationale, baselines, and statistical hygiene is archiv
 
 These accumulate evidence and refinement over time. They are not on the critical path to 1.0; they exist because the questions they address are scientific/ongoing, not engineering milestones.
 
-- [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — does the agent actually get better across sessions? **2 experiments logged** (Exp 1: cross-session affective memory 11/11, Exp 2: energy consumable learning 13/13). Pure living doc — no mechanism to ship, just hypotheses, scenarios, and results.
+- [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — does the agent actually get better across sessions? **4 experiments logged, all 3 tiers PASS** (Exp 1: cross-session affective memory 11/11, Exp 2: energy consumable learning 13/13, Exp 3: LLM acts on bio-system learning 12/12, Exp 4: organic LLM learning 5/5 — teal rate 0% -> 25% -> 100%). 41/41 hypotheses confirmed. Pure living doc — no mechanism to ship, just hypotheses, scenarios, and results.
 - [memory_consolidation_practice.md](memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism with alternative strategies, promotion rules, interference analysis. Kicks in when P8 ships in 0.5 — needs the mechanism to exist before the practice has anything to refine.
 
 ## Parallel (ship anytime, not gating 1.0)
 
-- [sem_learning_loop.md](sem_learning_loop.md) — **COMPLETE** (2026-04-17). All 5 stages shipped. PoC: 11/11 + 13/13 hypotheses confirmed. Complete SEM → bio-pipeline learning loop: cerebellum activation in BioStack, `distribute_reward` wiring, success reactions, pain spike episode boundary. Absorbs cerebellum_activation.md, valence annotation Stage 4, episode boundary enrichment Rule 3.
 - [substrate_concept_decomposition.md](substrate_concept_decomposition.md) — **Stage 1 COMPLETE + VALIDATED** (2026-04-17). Protocol-based noun-phrase extraction. 100% concept-level recall vs 36.4% baseline. Stage 2 (role-tagged edges) pending.
-- [substrate_valence_annotation.md](substrate_valence_annotation.md) — **COMPLETE** (2026-04-17). Stages 1-3 shipped. Stage 4 absorbed into sem_learning_loop.md (also shipped).
-- [archive/substrate_p4_option2_measurement.md](archive/substrate_p4_option2_measurement.md) — **✅ COMPLETE + ARCHIVED** (2026-04-16). Option 2 lift = 0.0000 ± 0.0000. Decision: defer. Results: [experiments/p4_option2_measurement.md](../experiments/p4_option2_measurement.md).
 - [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) — **PARTIAL** (2026-04-17). Stage 3 (pain/salience spike) SHIPPED via sem_learning_loop.md. `observe_episode_event` now wired into production agent loop via behavioral_convergence_wiring.md. Stages 1-2 (tool execution + semantic shift) remain — ship before P5.
-- [behavioral_convergence_wiring.md](behavioral_convergence_wiring.md) — **COMPLETE** (2026-04-17). All 4 stages shipped. Experiment 2: 13/13 hypotheses confirmed. Valence in PromptAssembler, `observe_episode_event` in agent loop, energy→Reaction bridge, food/water/poison SEM specs.
-- [cerebellum_activation.md](cerebellum_activation.md) — **COMPLETE — absorbed into sem_learning_loop.md** (shipped 2026-04-17).
 - [biosystem_unification.md](biosystem_unification.md) — **central tracking doc** (2026-04-14, updated 2026-04-17) for the bio-system structural-enforcement work. Waves 0-2 **ALL SHIPPED + ARCHIVED**. Wave 3 (bio_stack umbrella) committed on `feat/bio-stack-unification`, PR pending. Wave 4 (agent_factory_canonicalization) not scheduled.
   - [archive/executor_bootstrap_unification.md](archive/executor_bootstrap_unification.md) — ✅ Wave 0 SHIPPED (PR #114). `build_executor(*, pain_bus)`.
   - [archive/pain_bus_unification.md](archive/pain_bus_unification.md) — ✅ Wave 1 SHIPPED (PR #125). `build_pain_bus(*, hippocampus, nac)`.
@@ -88,7 +83,18 @@ Design work is preserved in [deferred/](deferred/). Each plan has an explicit "r
 
 Completed or superseded plans live in [archive/](archive/).
 
-Recently archived (biosystem unification Waves 0-2 shipped 2026-04-14/16):
+Recently archived (2026-04-17):
+- [archive/sem_learning_loop.md](archive/sem_learning_loop.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). All 5 stages shipped. Complete SEM → bio-pipeline learning loop.
+- [archive/behavioral_convergence_wiring.md](archive/behavioral_convergence_wiring.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). All 4 stages shipped. Valence in PromptAssembler, `observe_episode_event` in agent loop.
+- [archive/cerebellum_activation.md](archive/cerebellum_activation.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). Absorbed into sem_learning_loop.md.
+- [archive/substrate_valence_annotation.md](archive/substrate_valence_annotation.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). Stages 1-3 shipped. Stage 4 absorbed into sem_learning_loop.md.
+- [archive/substrate_binding_persistence.md](archive/substrate_binding_persistence.md) — **✅ SPLIT COMPLETE + ARCHIVED** (2026-04-17). Pure index. All four 0.3-target phases CLOSED.
+- [archive/substrate_binding_split_proposal.md](archive/substrate_binding_split_proposal.md) — **✅ APPROVED + EXECUTED + ARCHIVED** (2026-04-17). The narrative that motivated the split.
+- [archive/bio_stack_unification.md](archive/bio_stack_unification.md) — **✅ Wave 3 SHIPPED + ARCHIVED** (PR #140). `build_bio_stack(*, persistence_dir)`. 4 sites migrated.
+- [archive/router_drain_coupling.md](archive/router_drain_coupling.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). Router drain constraint wiring.
+- [archive/auto_drain_persistent_failure.md](archive/auto_drain_persistent_failure.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). Type-aware auto-drain thresholds.
+
+Previously archived (biosystem unification Waves 0-2 shipped 2026-04-14/16):
 - [archive/executor_bootstrap_unification.md](archive/executor_bootstrap_unification.md) — **Wave 0** (PR #114, 2026-04-14). `build_executor(*, pain_bus)` required keyword arg. The canonical structural-enforcement example.
 - [archive/pain_bus_unification.md](archive/pain_bus_unification.md) — **Wave 1** (PR #125, 2026-04-15). `build_pain_bus(*, hippocampus, nac)`. 3 CLI site migrations.
 - [archive/reaction_bus_unification.md](archive/reaction_bus_unification.md) — **Wave 1** (PR #134, 2026-04-16). `build_reaction_bus(*)`. Cerebellum factory fix.
@@ -112,29 +118,38 @@ Earlier archives (2026-04-11/12, S1–S4 shipped 2026-04-12):
 
 ## Version path to 1.0
 
-Two tracks run in parallel:
-- **Track A — Substrate:** the bio-inspired research claim. F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4 → P5 → P6 → P8.
-- **Track B — Prompt layer:** B1 → B3 → B4 → B5.
-- **Track C — Infrastructure (2026-04-12, mostly shipped 2026-04-12/14):** LLM path refinement. Plans 1, 2, 3, 3.5 shipped and archived; Plan 3.6 R5 + Plan 4 Stage A+B shipped; substrate P2 Stage 3 shipped (stress phase A). Plan 4 Stage C + stress phases B/C/E remain. Ships as 0.4 stability version.
+Three tracks run in parallel:
+- **Track A — Substrate:** the bio-inspired research claim. ~~F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4~~ ALL SHIPPED → P5 → P6 → P8.
+- **Track B — Prompt layer:** ~~B1~~ SHIPPED → B3 → B4 → B5.
+- **Track C — Infrastructure:** ~~LLM path Plans 1–3.5~~ SHIPPED → Reactive peer mesh (C3.5/C3.6/C4.6 remaining).
+- **Track D — Behavioral convergence (NEW):** ~~Tier 1 + Tier 2 + Tier 3~~ ALL PASS (41/41 hypotheses) → Scale validation (20+ seeds).
 
-Track C is a pause-insertion between Track A's 0.3 and Track B's 0.4 because the 2026-04-12 peer-leader incidents + `_OpenAIBackend` retry-loop discovery made it clear the substrate work cannot be reliably stress-tested on the current LLM path.
+| Version | What ships | What it proves | Status |
+|---|---|---|---|
+| ~~**0.2.x**~~ | Foundations, cleanup, peer flexibility | Friction removed, infrastructure stable | ✅ SHIPPED |
+| **0.3.0** | SEM learning loop, valence annotation, cerebellum activation, concept decomposition, behavioral convergence (Tier 1+2+3), reactive mesh (C4+C4.5) | **Cross-session learning without fine-tuning.** Agent learns from own actions, persists, behaves differently. 41/41 experiments. | ✅ **CURRENT** |
+| **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, peer mesh completion (C3.5/C3.6/C4.6) | Learning is robust under variance + load. Substrate persists at 10k+ nodes. Mesh fully operational. | **NEXT** |
+| **0.5** | P6 (extinction vs LRU), P8 (sleep replay), B3 (acting coach), B4 (replanning) | Agent forgets appropriately, consolidates offline, has coherent voice, recovers from failures. | Planned |
+| **1.0** | All phases passing, B4 gating, behavioral convergence at scale with statistical rigor | Cross-session learning at realistic scale, coherent voice, ongoing research program | Target |
 
-Each substrate phase is a falsifiable claim validated with mechanistic criteria where the phase tests a mechanism, and head-to-head gate baselines where the baseline attacks the same claim (P3a TF-IDF, P4 OpenCLIP, P6 LRU). Pass criteria use effect sizes across ≥10 seeds (≥20 for P4); no p-values, no Bonferroni corrections. Persistence round-trip smoke tests fire at every phase.
+### 0.4 roadmap (detailed)
 
-| Version | What ships | What it proves |
-|---|---|---|
-| **0.2.2** | Cleanup Wave | Friction removed from the surface B1+P1 will rewrite |
-| **0.3-pre** | foundations_plan, simulator_upgrades_plan, P0 pilot, B1+P1 combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
-| **0.3-minimum** | 0.3-pre plus P1, P2, P3.5 | Mechanism + reward modulation + persistence certification. Defensible version bump if P3a/b/P4 slip to 0.3.1. |
-| **0.3-target** | 0.3-minimum plus P3a, P3b, P4 (OpenCLIP head-to-head) | Full substrate proven with cross-modal binding across real process boundary |
-| **0.4 (Track C — stability)** | **LLM path refinement Plans 1–3.5 SHIPPED** (archived); Plan 3.6 R5 SHIPPED; Plan 4 Stage A+B SHIPPED; **substrate P2 Stage 3 SHIPPED** (real-embedding sweep PASS); Plan 4 Stage C + remaining stress phases (B/C/E) + `llama.cpp --parallel` batching PoC REMAINING | Infrastructure reliably supports multi-agent stress testing. `maxim peer restart` recovers in ~58s end-to-end on real hardware (peer-side overhead ≈ 0s, dominated by leader's 53s model reload). Per-agent observability via `agent_id` on every `peer_backend_call`/`peer_backend_failed` event. Rigorous recovery-time measurable via `maxim bench recovery-time`. Substrate P2 reward modulation validated on real embeddings at +56 pp target gain. See [llm_path_refinement.md](llm_path_refinement.md) + [substrate_recognition.md](substrate_recognition.md). |
-| **0.5 (formerly 0.4)** | P4 re-pass (production vision + email/Slack), B3, B4 (gates 1.0), B5 | Architecture generalizes; NPCs coherent; replanning recovers from failure |
-| **0.6 (formerly 0.5)** | P5 (stress persistence), P6 (extinction vs LRU), **P8 (minimum-viable sleep replay)** | Persists under load, forgets appropriately, actively strengthens rewarded associations offline |
-| **1.0** | Stress-test sim combining all phases; B4 passing; practice docs with experiments logged | Cross-session learning without fine-tuning at realistic scale, with coherent voice, with ongoing research program |
+| Track | What | Scope | Why |
+|---|---|---|---|
+| **D — Tier 3 at scale** | Run organic learning experiment with 20+ seeds, report mean ± std | ~1 session | 0.3 proves the mechanism with 1 run; 0.4 proves it's not a fluke |
+| **A — Episode boundaries** | Tool execution boundary + semantic shift detection (Rules 1-2) | ~200 LOC | Pre-P5 polish, observe_episode_event is now wired |
+| **A — P5 stress persistence** | 10k+ node persistence stress test | ~500 LOC | Validates substrate robustness under realistic load |
+| **C — Peer mesh completion** | C3.5 (`--node update/restart/llm`), C3.6, C4.6 (auto-undrain) | In progress | Complete the reactive mesh story |
 
-**0.3-minimum vs 0.3-target:** a partial 0.3 can ship as a version bump if the ambitious target slips. Normal re-planning, not failure.
+### What 0.3 proved
 
-**0.4 is a pure infrastructure version bump.** No new substrate phases. No new prompt-layer features. It exists because the 2026-04-12 incidents + architecture audit made stability work non-optional. Substrate work continues in 0.5 on top of the stabilized LLM path.
+The 0.3 release demonstrates the core 1.0 claim at prototype scale:
+
+1. **Tier 1 (substrate):** Bio-systems learn affective associations and persist them across sessions (Exp 1: 11/11, Exp 2: 13/13)
+2. **Tier 2 (LLM reads learning):** The LLM makes different decisions when it sees the agent's learned valence (Exp 3: 12/12, experienced 10/10 vs fresh 0/10)
+3. **Tier 3 (organic learning):** The agent learns from its own actions without scripted training (Exp 4: 5/5, teal rate 0% → 25% → 100%, fresh control DIED)
+
+All 41/41 hypotheses confirmed. No fine-tuning. No prompt engineering beyond surfacing the substrate's learned associations.
 
 **P2 validation was originally scoped to run INSIDE Plan 3's stress test** (Phase A). In practice the P2 Stage 3 sweep is CPU-only and ~27s wall clock, so it shipped standalone on 2026-04-14 via `TestP2ValidationSweep::test_sweep_10_seeds` without waiting on the combined stress run. The reproduction runbook lives at [../experiments/protocols/p2_reward_modulation_reproduction.md](../experiments/protocols/p2_reward_modulation_reproduction.md). Stress phases B (multi-agent fan-out), C (`llama.cpp --parallel`), and E (fault injection) remain and will run under the combined [llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md) protocol.
 
@@ -189,11 +204,11 @@ Timeline (rough, not calendar-committed). As of 2026-04-14, steps 1–3a, Plan 3
    - **Stage B: recovery-time bench harness.** New `maxim bench recovery-time` CLI subcommand at `src/maxim/bench/` (package named `bench` not `benchmark` to avoid shadowing the existing `maxim.api.benchmark` public verb). Fires chat completions in a tight loop against a peer URL, extracts a rigorous recovery-time number from the first `success → failure → success` transition. 21 new tests. Real hardware validation is the Phase D2 run above.
    - **Stage C (mesh.yml + admin API + per-agent rate limiting)** — **C1+C2+C3.1 SHIPPED, C3.2 in PR, C3 remainder DEFERRED.** See the C1/C2/C3.1/C3.2 sub-bullets above for the per-stage status. Full scope preserved in [llm_path_operator_visibility.md](llm_path_operator_visibility.md) under "Phases".
 
-7. **▶ NEXT (substrate track resumes):** Substrate P2 Stage 3 **COMPLETE (2026-04-14)** — `substrate_recognition.md` closed. Remaining stress-test phases B, C, E + Plan 4 Stage C can run in any order when their respective bottlenecks surface. Next substrate plan: [substrate_binding_persistence.md](substrate_binding_persistence.md) (P3a onward).
+7. **▶ NEXT (substrate track resumes):** Substrate P2 Stage 3 **COMPLETE (2026-04-14)** — `substrate_recognition.md` closed. Remaining stress-test phases B, C, E + Plan 4 Stage C can run in any order when their respective bottlenecks surface. Next substrate plan: [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) (P3a onward).
 
 8. **Release 0.4** with LLM path refinement complete + substrate P2 validated on real embeddings. Substrate P2 gate is CLOSED; 0.4 ships when the remaining stress phases (B, C, E) + Plan 4 Stage C are ready.
 
-9. **Back to substrate work:** P3a + P3b + P4 in 0.5, built on the stabilized LLM path. Plan doc: [substrate_binding_persistence.md](substrate_binding_persistence.md).
+9. **Back to substrate work:** P3a + P3b + P4 in 0.5, built on the stabilized LLM path. Plan doc: [substrate_binding_persistence.md](archive/substrate_binding_persistence.md).
 
 **Review pattern per plan (refined after R2):** each plan implements on a `feat/<plan>` branch. Before opening/merging the PR — **not after** — spawn two review Claudes (Executor lens + Architecture lens) in parallel read-only sessions against the branch tip. Findings get folded into the same branch via a follow-up commit, THEN the PR opens. One PR per plan, no `fix/<plan>-loose-ends` split.
 

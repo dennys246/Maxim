@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Status:** PASS
-**Plan:** [sem_learning_loop.md](../plans/sem_learning_loop.md) Stage 5
+**Plan:** [sem_learning_loop.md](../plans/archive/sem_learning_loop.md) Stage 5
 
 ## What this proves
 

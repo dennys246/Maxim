@@ -164,7 +164,7 @@ This proposal PR lands:
 1. **This proposal doc** (`substrate_binding_split_proposal.md`) — the narrative you're reading.
 2. **`sem_execution_hook.md`** — the companion plan for the production SEM forward path gap discovered during the audit. This is a FULL plan, not a proposal, because the gap is concrete and the scope is scoped.
 3. **Updates to [substrate_binding_persistence.md](substrate_binding_persistence.md)** — add a header pointer to this proposal, mark the monolithic plan as "splitting" until approval lands.
-4. **Updates to [docs/plans/README.md](README.md)** — add the proposal + sem_execution_hook to the Active section with correct status, keep substrate_binding_persistence as the index until the split completes.
+4. **Updates to [docs/plans/README.md](../README.md)** — add the proposal + sem_execution_hook to the Active section with correct status, keep substrate_binding_persistence as the index until the split completes.
 
 This PR does NOT yet create the 8 per-phase plan files. Those land in follow-up commits/PRs once you've approved the split narrative. The first one to land is `substrate_p3_5_persistence_snapshot.md` (minimal shell), followed by `substrate_p3a_episode_binding.md`. Both will be created at the kickoff of the new substrate session.
 

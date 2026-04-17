@@ -85,7 +85,7 @@ Ranked by silent-failure blast radius (highest first). Each row links to its she
 | 2 | ReactionBus subscribers | [archive/reaction_bus_unification.md](archive/reaction_bus_unification.md) | **SHIPPED** (PR #134, 2026-04-16) | High — typed isolation surface | None (independent) | #1 |
 | 3 | MemoryHub bridges | [archive/memory_hub_unification.md](archive/memory_hub_unification.md) | **SHIPPED** (PR #136, 2026-04-16) | Medium — silent partial coordination | #1, #2 (consumes both buses) | — |
 | 4 | DefaultNetwork | [archive/default_network_unification.md](archive/default_network_unification.md) | **SHIPPED** (PR #135, 2026-04-16) | Medium — silent fear-gate skip | #1 (consumes PainBus) | #3 |
-| 5 | Bio-stack umbrella | [bio_stack_unification.md](bio_stack_unification.md) | DRAFT shell | The umbrella that subsumes #1-#4 in a single builder | #1, #2, #3, #4 | — |
+| 5 | Bio-stack umbrella | [bio_stack_unification.md](archive/bio_stack_unification.md) | DRAFT shell | The umbrella that subsumes #1-#4 in a single builder | #1, #2, #3, #4 | — |
 | 6 | LearnedToolIndex registration | (notes only — separate shape) | NOTE | Low — different shape (registry coupling, not bus subscription) | — | any |
 
 ### Item 6 — LearnedToolIndex (different shape, not getting a shell yet)

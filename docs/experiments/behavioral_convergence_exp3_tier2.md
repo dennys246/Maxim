@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Status:** PASS (12/12 hypotheses — 10/10 Tier 1 + 2/2 Tier 2)
-**Plan:** [behavioral_convergence_wiring.md](../plans/behavioral_convergence_wiring.md)
+**Plan:** [behavioral_convergence_wiring.md](../plans/archive/behavioral_convergence_wiring.md)
 **Tier:** 2 (scripted training, LLM test)
 
 ## What this proves

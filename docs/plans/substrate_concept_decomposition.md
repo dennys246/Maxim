@@ -5,7 +5,7 @@
 **Target version:** post-0.3. Ships AFTER P4 Stage 3 proves the base cross-modal claim on bare class names. **P4 Stage 3 PASSED (2026-04-16) — trigger fired.**
 **Parent:** None (standalone). Extends `similarity/encoder.py` → `similarity/ec.py` capture path.
 **Blocks:** Nothing. Improves quality of all downstream substrate phases (P5 stress, P6 multi-session, P8 sleep-replay) by generating more meaningful nodes.
-**Companion:** [substrate_valence_annotation.md](substrate_valence_annotation.md) — SEM reactions annotate Hebbian edges with valence (pain/pleasure). Recommended after concept decomposition Stage 1.
+**Companion:** [substrate_valence_annotation.md](archive/substrate_valence_annotation.md) — SEM reactions annotate Hebbian edges with valence (pain/pleasure). Recommended after concept decomposition Stage 1.
 
 ## Motivation
 
@@ -155,7 +155,7 @@ Stage 3 of this plan converges the two: `ConceptExtractor` adopts `ConceptDecomp
 
 Decomposition creates more substrate nodes but does **not** touch pain context dicts or `ToolPainBridge` direct attribution (`(tool_name, invocation_id)` lookup). These are parallel namespaces. The `_context_similarity` directional denominator (P2 fix) and the `_pending_tools` guard are unaffected. This was explicitly verified during the three-lens review given P2's history with that bug class.
 
-However, the review discovered a deeper gap: **pain signals never flow back to substrate nodes at all.** The wiring from SEM reactions to substrate edge valence is the subject of the companion plan [substrate_valence_annotation.md](substrate_valence_annotation.md). Concept decomposition makes that plan more precise (finer-grained concept nodes = better valence targets).
+However, the review discovered a deeper gap: **pain signals never flow back to substrate nodes at all.** The wiring from SEM reactions to substrate edge valence is the subject of the companion plan [substrate_valence_annotation.md](archive/substrate_valence_annotation.md). Concept decomposition makes that plan more precise (finer-grained concept nodes = better valence targets).
 
 ### Dependency: spaCy
 

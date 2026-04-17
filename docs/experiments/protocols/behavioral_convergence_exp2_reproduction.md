@@ -1,7 +1,7 @@
 # Experiment 2 — Reproduction Protocol
 
 **Experiment:** [behavioral_convergence_exp2.md](../behavioral_convergence_exp2.md)
-**Plan:** [behavioral_convergence_wiring.md](../../plans/behavioral_convergence_wiring.md)
+**Plan:** [behavioral_convergence_wiring.md](../../plans/archive/behavioral_convergence_wiring.md)
 
 ## Quick verification (~0.5s, no LLM)
 

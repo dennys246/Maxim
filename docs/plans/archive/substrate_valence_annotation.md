@@ -3,7 +3,7 @@
 **Status:** COMPLETE (2026-04-17). Stages 1-3 shipped. Stage 4 absorbed into sem_learning_loop.md (also shipped).
 **Scope:** ~300–500 LOC (two broken-link fixes + episode capture + edge annotation + sim PoC).
 **Target version:** post-concept-decomposition. Finer-grained concept nodes make valence targets more precise.
-**Parent:** None (standalone). Companion to [substrate_concept_decomposition.md](substrate_concept_decomposition.md).
+**Parent:** None (standalone). Companion to [substrate_concept_decomposition.md](../substrate_concept_decomposition.md).
 **Depends on:** Concept decomposition Stage 1 (recommended but not hard-blocked — works on sentence-level nodes too, just less precise).
 
 ## Motivation

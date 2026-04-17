@@ -211,6 +211,11 @@
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
             <td class="py-3">Valence in PromptAssembler, <code class="bg-slate-950 px-1 rounded text-xs">observe_episode_event</code> in agent loop, energy&rarr;Reaction bridge (hunger/fatigue/satiation), food/water/poison SEM specs. Experiment 2: 13/13 hypotheses confirmed.</td>
           </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Behavioral Convergence Experiments (All 3 Tiers)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3"><strong>41/41 hypotheses, 4 experiments, all 3 tiers PASS.</strong> Tier 1: substrate learns (Exp 1+2). Tier 2: LLM acts on learning (Exp 3, 10/10 vs 0/10). Tier 3: organic LLM learning (Exp 4, teal rate 0%&rarr;25%&rarr;100%, fresh control DIED). <strong>v0.3.0.</strong></td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -220,7 +225,7 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed">The most recent shipping wave (2026-04-17) delivered the <span class="text-indigo-400 font-semibold">SEM Learning Loop</span>, <span class="text-indigo-400 font-semibold">Valence Annotation</span> (Stages 1&ndash;3), and <span class="text-indigo-400 font-semibold">Behavioral Convergence Wiring</span> (4 stages). The SEM Learning Loop wires CerebellumModulator success/failure reactions through ReactionBus to both hippocampus (episode valence annotation, Hebbian edge valence) and NAc (<code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> for per-node reward bias + EC threshold adjustment). Behavioral convergence wiring closes the gap between substrate learning and LLM decisions: valence in PromptAssembler, <code class="bg-slate-950 px-1 rounded text-xs">observe_episode_event</code> in the agent loop, and an energy&rarr;Reaction bridge that fires hunger/fatigue/satiation interoceptive reactions. <strong>Two experiments confirmed the full pipeline:</strong> Experiment 1 (cross-session affective memory, 11/11 PASS) and Experiment 2 (energy-driven consumable learning, 13/13 PASS). Earlier: <span class="text-indigo-400 font-semibold">Substrate P2 Reward Modulation</span> shipped end-to-end (+56.0 pp target gain, 9-of-10 seeds). <span class="text-indigo-400 font-semibold">Bio-Stack Wave 3</span> merged (<code class="bg-slate-950 px-1 rounded text-xs">build_bio_stack</code> canonical).</p>
+    <p class="text-slate-300 leading-relaxed"><strong>v0.3.0: Cross-session learning without fine-tuning &mdash; demonstrated across all 3 tiers.</strong> 41/41 hypotheses confirmed across 4 experiments. <span class="text-indigo-400 font-semibold">Experiment 4 (Tier 3)</span> is the headline: fully organic LLM learning with no scripted reactions. Teal vial selection rate: 0% &rarr; 25% &rarr; 100% across 3 sessions. Fresh control agent dies. <span class="text-indigo-400 font-semibold">Experiment 3 (Tier 2)</span>: 10/10 experienced vs 0/10 fresh on masked vials. Earlier: SEM Learning Loop, Valence Annotation, Behavioral Convergence Wiring, Bio-Stack Wave 3 (<code class="bg-slate-950 px-1 rounded text-xs">build_bio_stack</code> canonical), Substrate P2 (+56.0 pp target gain).</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
@@ -282,7 +287,7 @@
   <section class="space-y-4">
     <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
 
-    <p class="text-slate-300 leading-relaxed">The path to 1.0 still runs through the substrate plan. P1 recognition, P2 reward modulation, valence annotation, the SEM Learning Loop, and behavioral convergence wiring are all complete. Two experiments confirm the full pipeline (11/11 + 13/13). Next: concept decomposition Stage 2, episode boundary enrichment Stages 1-2, the rest of the binding/persistence track, then 0.3 publish.</p>
+    <p class="text-slate-300 leading-relaxed">The 1.0 research claim &mdash; cross-session learning without fine-tuning &mdash; is now demonstrated at every tier (41/41 hypotheses across 4 experiments). The path forward: concept decomposition Stage 2, episode boundary enrichment, the rest of the binding/persistence track (P5/P6/P8), and the prompt-layer B3/B4/B5 work. v0.3.0 published.</p>
 
     <div class="space-y-3">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">

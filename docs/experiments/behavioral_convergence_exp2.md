@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Status:** PASS (13/13 hypotheses)
-**Plan:** [behavioral_convergence_wiring.md](../plans/behavioral_convergence_wiring.md) Stage 4
+**Plan:** [behavioral_convergence_wiring.md](../plans/archive/behavioral_convergence_wiring.md) Stage 4
 
 ## Scenario
 
