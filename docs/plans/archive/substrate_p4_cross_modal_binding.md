@@ -1,18 +1,15 @@
 # Substrate P4 — Cross-modal binding via hippocampus (1.0-GATING)
 
-> **Option 2 timing RESOLVED: defer (2026-04-16).** Stage 2 v3 honest
-> measurement produced Option 2 lift = **0.0000 ± 0.0000** across 10 seeds
-> with all six post-mortem methodology requirements satisfied. Same-class
-> activation (0.490) dominates cross-class bridge activation (0.022) by
-> 22:1, so Option 2 cannot improve top-5 precision under current
-> `RetrievalConfig` parameters. Decision: **defer Option 2 as post-Stage-3
-> cleanup.** Ship Stage 3 on single-hop `retrieve_cross_modal`. The
-> `TestStageThreeLimitation` regression guard remains as the architectural
-> bookmark for when Option 2 ships.
+> **✅ P4 COMPLETE (2026-04-16).** All three stages shipped. Stage 3
+> head-to-head sweep: **PASS.** Arm B (CLIP+CLIP+hippo) F1 = 1.000 vs
+> Arm C (CLIP+CLIP+cosine) F1 = 0.901. Delta +0.099, both pass criteria
+> met (margin + bootstrap). The hippocampus substrate adds value over raw
+> CLIP cosine — Hebbian binding produces perfect retrieval while cosine
+> misorders semantically close classes (water lily/lotus at 0.814).
 >
-> Results: [p4_option2_measurement.md](../experiments/p4_option2_measurement.md).
-> Script: `scripts/p4_option2_measurement.py`. Post-mortem of v1+v2
-> tautological attempts: [p4_stage2_v2_post_mortem.md](../experiments/p4_stage2_v2_post_mortem.md).
+> Results: [p4_cross_modal_sweep.md](../experiments/p4_cross_modal_sweep.md).
+> Option 2 measurement: [p4_option2_measurement.md](../experiments/p4_option2_measurement.md) (decision: defer).
+> Reproduction: [protocols/p4_cross_modal_reproduction.md](../experiments/protocols/p4_cross_modal_reproduction.md).
 
 ---
 
