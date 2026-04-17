@@ -184,18 +184,21 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
 
     def __init__(
         self,
-        maxim: Any,  # Maxim instance for motor control
+        maxim: Any,  # Maxim instance for motor control (None = headless/sim)
         bus: "AgentBus | None" = None,
         behaviors: list[Behavior] | None = None,
         config: DefaultNetworkConfig | None = None,
         fear_agent: "FearAgent | None" = None,
         novelty_tracker: ThreadSafeNoveltyTracker | None = None,
         nac: "NAc | None" = None,
+        pain_bus: Any | None = None,
     ) -> None:
         """Initialize the Default Network.
 
         Args:
-            maxim: Maxim instance for executing movements.
+            maxim: Maxim instance for executing movements. ``None`` for
+                headless/sim mode — DN still provides pain detection and
+                novelty tracking, just no motor commands.
             bus: AgentBus for publishing messages.
             behaviors: List of behavior modules. If None, uses defaults.
             config: Network configuration.
@@ -203,6 +206,13 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 call gating, use FearGatedExecutor (independent of DN).
             novelty_tracker: Shared novelty tracker. If None, creates new one.
             nac: NAc instance for causal learning (used by pain detection).
+            pain_bus: Injected PainBus instance. When provided, DN uses
+                this bus instead of constructing its own internally.
+                The injected bus should already have hippocampus + NAc
+                subscribers wired via ``build_pain_bus``. When ``None``,
+                DN constructs its own PainBus internally (backward compat
+                for tests and callers that haven't migrated). See
+                ``docs/plans/default_network_unification.md`` Gap B.
         """
         # 1. Core state — config, callbacks, runtime flags, stats
         self._init_core_state(maxim, bus, behaviors, config, fear_agent, novelty_tracker)
@@ -233,7 +243,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         )
 
         # 7. Pain circuit + 8. Focus learner (both depend on nac)
-        self._init_pain_circuit(nac)
+        self._init_pain_circuit(nac, pain_bus=pain_bus)
         self._init_focus_learner(nac)
 
         # 9. Auto-subscribe to bus
@@ -344,20 +354,37 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         if self._config.scene_context_enabled:
             self._scene_context = SceneContextDetector(self._config.scene_context)
 
-    def _init_pain_circuit(self, nac: "NAc | None") -> None:
-        """PainBus + PainDetector + PainCircuitBridge wiring (skips if NAc absent or disabled)."""
+    def _init_pain_circuit(self, nac: "NAc | None", pain_bus: Any | None = None) -> None:
+        """PainBus + PainDetector + PainCircuitBridge wiring (skips if NAc absent or disabled).
+
+        When ``pain_bus`` is provided, DN uses the injected bus rather
+        than constructing its own. The injected bus should already have
+        hippocampus + NAc subscribers wired via ``build_pain_bus`` — DN
+        becomes a bus **consumer** (publishes pain signals, wires
+        PainDetector + PainCircuitBridge to it) rather than a bus
+        **constructor**. This closes the split-subscriber-ownership
+        Gap B from ``docs/plans/pain_bus_unification.md``.
+
+        When ``pain_bus`` is ``None``, DN constructs its own ``PainBus()``
+        internally (backward compat for tests and pre-migration callers).
+        """
         self._pain_bridge: PainCircuitBridge | None = None
         self._pain_bus = None
         if not (self._config.pain_detection_enabled and nac is not None):
             return
 
-        from maxim.proprioception.pain_bus import PainBus
+        # Use injected bus or construct our own (backward compat).
+        if pain_bus is not None:
+            self._pain_bus = pain_bus
+        else:
+            from maxim.proprioception.pain_bus import PainBus
+
+            self._pain_bus = PainBus()
 
         pain_config = PainConfig(
             angular_velocity_pain=self._config.pain_angular_velocity_threshold,
             translation_velocity_pain=self._config.pain_translation_velocity_threshold,
         )
-        self._pain_bus = PainBus()
         pain_detector = PainDetector(config=pain_config, pain_bus=self._pain_bus)
         self._pain_bridge = PainCircuitBridge(
             nac=nac,
@@ -370,7 +397,8 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         if self._bounds_learner is not None:
             self._pain_bridge.set_bounds_learner(self._bounds_learner)
         logger.info(
-            "PainCircuitBridge initialized with angular_velocity_threshold=%.1f",
+            "PainCircuitBridge initialized (pain_bus=%s, angular_velocity_threshold=%.1f)",
+            "injected" if pain_bus is not None else "internal",
             self._config.pain_angular_velocity_threshold,
         )
 
