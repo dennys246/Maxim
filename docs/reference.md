@@ -32,7 +32,8 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/mesh/` | Simulation-only: `bus`, `identity`, `message`, `naming` (R0 deleted the dead agent-mesh subsystem; see "Removed in R0" below) |
 | `src/maxim/simulation/` | Simulation modes, generative campaigns, research protocol, benchmarks |
 | `src/maxim/integration/` | MemoryHub cross-system coordinator (11 bio-systems) |
-| `src/maxim/decisions/` | NAc causal learning, adaptive planner |
+| `src/maxim/reactions/` | Reaction types, ReactionBus (per-kind dispatch), PerceptProducer/ReactionProducer protocols |
+| `src/maxim/decisions/` | NAc causal learning, adaptive planner, reward distribution |
 | `src/maxim/time/` | SCN temporal rhythm indexing |
 | `src/maxim/similarity/` | Entorhinal Cortex (pattern completion, centroid update) + LinguisticEncoder (P1) + ConceptDecomposer (noun-phrase extraction before EC) |
 | `src/maxim/prompts/` | PromptAssembler (B1), MemorySummary, prompt profiles |
@@ -122,13 +123,15 @@ Maxim uses neuroscience-inspired names. Here is the translation:
 |----------|--------------|--------|--------------|
 | Hippocampus | Episodic memory | `memory/` | Stores and recalls experiences (events, conversations) |
 | ATL | Semantic memory | `memory/` | Extracts concepts, categories, and generalizations |
-| NAc | Reward / causal learning | `decisions/` | Learns cause-and-effect relationships ("what leads to what") |
+| NAc | Reward / causal learning | `decisions/` | Learns cause-and-effect relationships ("what leads to what"). `distribute_reward` now wired via ReactionBus subscriber in `build_bio_stack` |
 | SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms |
 | EC | Memory indexing + substrate recognition | `similarity/` | Routes queries via similarity; pattern_complete_or_separate for substrate nodes (P1) |
 | Angular Gyrus | Cross-modal algebra | `math/` | Combines memories across different modalities |
-| Cerebellum | Motor prediction | `embodiment/` | Predicts outcomes of physical actions, learns motor programs |
+| Cerebellum | Motor prediction | `embodiment/` | Predicts outcomes of physical actions, learns motor programs. Now activated in production via `BioStack.cerebellum` and `build_executor(cerebellum=...)` |
 | Amygdala / Fear | Threat detection | `proprioception/` | Detects harm, triggers pain signals, gates risky actions |
 | Default Network | Reactive behavior | `default_network/` | Background processing, idle behaviors, spontaneous thoughts |
+| Valence | Affective edge signal | `memory/episode.py` | Affective signal on Hebbian edges (`Edge.metadata["valence"]`), computed from Reactions at episode close via `apply_hebbian_on_close`. Propagated by `spreading_activation(propagate_valence=True)` |
+| Episode Boundary Rules | Pluggable boundary detection | `memory/episode.py` | `BoundaryRule` callables on `EpisodeBoundaryDetector`. Defaults: tick gap, channel change, scn_tag change. New: `salience_spike_rule(min_intensity=0.5)` triggers boundary on pain/salience spikes via `CaptureEvent.salience_spike` |
 
 ---
 

@@ -68,7 +68,21 @@ class BioStack:
     memory_hub: MemoryHub
     pain_bus: PainBus
     reaction_bus: ReactionBus
+    cerebellum: Any  # Cerebellum | None — optional dep
     default_network: Any  # DefaultNetwork | None — optional dep
+
+    def save_cerebellum(self) -> None:
+        """Save cerebellum state to its persistence path, if configured.
+
+        Call at session end alongside hippocampus/NAc persistence.
+        Pre-merge Arch review critical #1: without this, learned
+        forward models are lost every session.
+        """
+        if self.cerebellum is not None:
+            config = getattr(self.cerebellum, "config", None)
+            path = getattr(config, "persistence_path", None)
+            if path:
+                self.cerebellum.save(path)
 
 
 def build_bio_stack(
@@ -230,6 +244,65 @@ def build_bio_stack(
     # callers that need typed Reaction semantics (cerebellum, etc.).
     reaction_bus = pain_bus.reaction_bus
 
+    # -- Step 4b: Wire hippocampus.capture_reaction to ReactionBus ---------
+    # Every Reaction published on the bus is appended to the pending
+    # episode's reactions list so that finalize() can compute net valence.
+    reaction_bus.subscribe_all(hippocampus.capture_reaction)
+
+    # -- Step 4c: Cerebellum (forward models + motor learning) -------------
+    # Pre-merge review fold: split ImportError (optional dep missing)
+    # from config/load errors (which should surface, not be swallowed).
+    cerebellum = None
+    if p is not None:
+        try:
+            from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
+        except ImportError:
+            logger.debug("Cerebellum not available (optional dep)")
+        else:
+            cerebellum = Cerebellum(config=CerebellumConfig())
+            _cerebellum_path = p / "cerebellum.json"
+            if _cerebellum_path.exists():
+                try:
+                    cerebellum.load(str(_cerebellum_path))
+                    logger.info("Loaded Cerebellum state from %s", _cerebellum_path)
+                except Exception as _ce:
+                    logger.warning("Failed to load Cerebellum state: %s", _ce)
+            if memory_hub is not None:
+                memory_hub.cerebellum = cerebellum
+            logger.info("Cerebellum initialized in bio-stack")
+
+    # -- Step 4d: distribute_reward subscriber -----------------------------
+    # Map Reaction valence/intensity to NAc.distribute_reward so that
+    # positive/negative reactions during an episode feed into causal
+    # learning even when there is no explicit tool outcome.
+    def _distribute_reward_from_reaction(reaction: Any) -> None:
+        val = getattr(reaction, "valence", None)
+        intensity = getattr(reaction, "intensity", 0.0)
+        if val is None:
+            return
+        v = val.value if hasattr(val, "value") else str(val)
+        if v == "negative":
+            reward = -intensity
+        elif v == "positive":
+            reward = intensity
+        else:
+            return
+        if reward != 0.0:
+            # Pre-merge Exec review critical #1: agent_id must come from
+            # reaction context to avoid cross-contamination in multi-agent
+            # sims.  Skip reward distribution when agent_id is unknown
+            # rather than polluting a phantom "default" bucket.
+            ctx = getattr(reaction, "context", None)
+            agent_id = getattr(ctx, "agent_id", None)
+            if agent_id is None:
+                return
+            try:
+                nac.distribute_reward(agent_id, reward)
+            except Exception as _dr:
+                logger.debug("distribute_reward failed: %s", _dr)
+
+    reaction_bus.subscribe_all(_distribute_reward_from_reaction)
+
     # -- Step 5: DefaultNetwork (optional) ---------------------------------
     default_network = None
     if with_default_network:
@@ -255,6 +328,7 @@ def build_bio_stack(
         memory_hub=memory_hub,
         pain_bus=pain_bus,
         reaction_bus=reaction_bus,
+        cerebellum=cerebellum,
         default_network=default_network,
     )
 

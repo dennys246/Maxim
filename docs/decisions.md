@@ -329,6 +329,14 @@ config = NACConfig(
 )
 ```
 
+### Reward Distribution (SEM Learning Loop)
+
+`NAc.distribute_reward(agent_id, reward)` distributes reward across eligible nodes via `credit_node()`. Eligibility traces are set by `update_eligibility()` when percepts complete to substrate nodes. The ReactionBus subscriber in `build_bio_stack` maps reactions to rewards:
+- `Valence.NEGATIVE` -- reward = -intensity (clamps to 0 in credit_node -- bias only widens)
+- `Valence.POSITIVE` -- reward = +intensity (widens EC recognition radius)
+
+`get_threshold_overrides(agent_id)` returns the per-node bias map for EC to use during `pattern_complete`.
+
 ---
 
 ## Biological Inspiration

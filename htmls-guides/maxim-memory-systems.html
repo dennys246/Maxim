@@ -873,6 +873,79 @@ PromotionCandidate:
     <p class="text-slate-300 leading-relaxed mt-3">Together, these channels give the LLM both broad knowledge ("the navigate tool is declining") and percept-specific concept context ("the mug I'm seeing has high success rate for grasping"), plus <a href="/maxim/semantic-memory#pattern-completion" class="text-indigo-400 hover:text-indigo-300">pattern completion predictions</a> for what's likely to happen next.</p>
   </section>
 
+  <!-- Episode Valence & Affective Memory -->
+  <section class="space-y-4">
+    <h2 id="episode-valence" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Episode Valence &amp; Affective Memory</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">Memories are not emotionally neutral. The amygdala tags hippocampal traces with affective valence during encoding, and this coloring persists through consolidation. When you recall a memory, you don't just remember <em>what</em> happened &mdash; you re-experience <em>how it felt</em>. This affective signal modulates future decisions: contexts associated with negative valence trigger avoidance, while positively valenced contexts attract approach behavior.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Maxim now annotates episodes, edges, and retrieval results with <em class="text-indigo-400 not-italic font-medium">valence</em> &mdash; a scalar measure of positive or negative affect derived from reactions that occurred during the episode.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Episode.valence</h3>
+    <p class="text-slate-300 leading-relaxed">Each <code class="bg-slate-950 px-1 rounded text-xs">Episode</code> carries a <code class="bg-slate-950 px-1 rounded text-xs">valence</code> field, computed at finalization as the mean of all reaction valences received during that episode's lifetime. Pain reactions contribute negative values; success reactions contribute positive values. An episode with no reactions has neutral valence (0.0).</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Valence Computation at Episode Close</span>
+
+Episode receives reactions during its lifetime:
+  reaction_1: valence = -0.7  (pain: sword shattered)
+  reaction_2: valence = -0.3  (pain: minor strain)
+
+At finalize():
+  Episode.valence = mean(-0.7, -0.3) = -0.5
+
+This episode is negatively valenced &mdash; future recall
+will carry the "this went badly" signal.</div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Valence on Hebbian Edges</h3>
+    <p class="text-slate-300 leading-relaxed">When episodes are linked by Hebbian edges in the associative graph, the edge inherits valence metadata via <code class="bg-slate-950 px-1 rounded text-xs">Edge.metadata["valence"]</code>. This means the associative connections between memories carry emotional coloring &mdash; not just structural similarity.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-blue-400 mb-2">Positive-Valence Edge</h4>
+        <p class="text-xs text-slate-300">"made coffee successfully" &larr;&rarr; "found mug in kitchen"</p>
+        <p class="text-xs text-slate-400 mt-1">Edge.metadata["valence"] = +0.6. The association carries a "good outcome" signal.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-sm font-semibold text-red-400 mb-2">Negative-Valence Edge</h4>
+        <p class="text-xs text-slate-300">"slashed with rusty sword" &larr;&rarr; "sword shattered"</p>
+        <p class="text-xs text-slate-400 mt-1">Edge.metadata["valence"] = -0.7. The association carries an aversive signal.</p>
+      </div>
+    </div>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Spreading Activation with Valence Propagation</h3>
+    <p class="text-slate-300 leading-relaxed">The <code class="bg-slate-950 px-1 rounded text-xs">spreading_activation(propagate_valence=True)</code> option propagates edge valence alongside activation strength during multi-hop recall. This means that when retrieving memories by association, the system can distinguish between positively and negatively valenced paths through the graph.</p>
+
+    <p class="text-slate-300 leading-relaxed">At retrieval time, <code class="bg-slate-950 px-1 rounded text-xs">retrieve_on_cue(include_valence=True)</code> returns results annotated with their accumulated valence. The agent's prompt context includes this affective coloring, enabling reasoning like "I've done something similar before and it went badly" without requiring explicit causal chain reconstruction.</p>
+
+    <h3 class="text-lg font-semibold text-white mt-6 mb-3">distribute_reward: Reactions to NAc Learning</h3>
+    <p class="text-slate-300 leading-relaxed">Reactions dispatched through the <code class="bg-slate-950 px-1 rounded text-xs">ReactionBus</code> reach the NAc via the <code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> subscriber. This adjusts per-node <code class="bg-slate-950 px-1 rounded text-xs">reward_bias</code> values in the Hebbian graph and modulates EC similarity thresholds: positive rewards tighten thresholds (the system becomes more selective), while negative rewards loosen them (the system becomes more sensitive to potential matches, casting a wider net to avoid repeating mistakes).</p>
+  </section>
+
+  <!-- Episode Boundaries -->
+  <section class="space-y-4">
+    <h2 id="episode-boundaries" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Episode Boundaries</h2>
+
+    <p class="text-slate-300 leading-relaxed">The Hippocampus must decide where one episode ends and the next begins. Rather than using a fixed timer, Maxim uses a set of <em class="text-indigo-400 not-italic font-medium">boundary rules</em> that trigger episode finalization based on contextual signals:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Episode Boundary Rules</span>
+
+CaptureEvent fields checked at each tick:
+  .tick_gap          &rarr; tick_gap rule: too much time between events
+  .channel_change    &rarr; channel_change rule: new input channel
+  .scn_tag_change    &rarr; scn_tag_change rule: SCN temporal phase shift
+  .salience_spike    &rarr; salience_spike rule: pain spike forces boundary</div>
+
+    <p class="text-slate-300 leading-relaxed">The existing rules (<code class="bg-slate-950 px-1 rounded text-xs">tick_gap</code>, <code class="bg-slate-950 px-1 rounded text-xs">channel_change</code>, <code class="bg-slate-950 px-1 rounded text-xs">scn_tag_change</code>) handle temporal and contextual discontinuities. The new <code class="bg-slate-950 px-1 rounded text-xs">salience_spike</code> rule adds <em class="text-indigo-400 not-italic font-medium">pain-driven episode boundaries</em>:</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h4 class="text-red-400 font-semibold mb-2">salience_spike_rule</h4>
+      <p class="text-slate-300 text-sm">When a pain signal with intensity &ge; 0.7 fires, the current episode is immediately finalized (with its accumulated negative valence) and a new episode begins. This mirrors how biological trauma creates sharp memory boundaries &mdash; you remember the moment before and after a painful event as distinct episodes, not a continuous stream. The <code class="bg-slate-950 px-1 rounded text-xs">CaptureEvent.salience_spike</code> field carries this signal from the PainBus into the episode capture pipeline.</p>
+    </div>
+  </section>
+
   <!-- Consolidation -->
   <section class="space-y-4">
     <h2 id="consolidation" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Memory Consolidation: Sleep</h2>

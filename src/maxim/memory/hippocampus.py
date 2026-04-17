@@ -19,7 +19,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Literal, overload
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -83,6 +83,10 @@ class HebbianConfig:
     # can drive a weight above this. Named ``max_weight`` rather than
     # ``max`` to avoid shadowing the builtin.
     max_weight: float = 1.0
+
+    # Decay factor applied to existing edge valence before adding a
+    # new episode's valence contribution.
+    valence_decay: float = 0.95
 
 
 @dataclass(frozen=True)
@@ -1235,6 +1239,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 return None
             return self._close_pending_episode_locked()
 
+    def capture_reaction(self, reaction: Any) -> None:
+        """Append a Reaction to the current pending episode's reactions list."""
+        with self._episode_lock:
+            if self._pending_episode is not None:
+                self._pending_episode.reactions.append(reaction)
+
+    @overload
     def retrieve_on_cue(
         self,
         cue_node_id: str,
@@ -1242,7 +1253,29 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         *,
         multi_hop: bool = True,
         node_filter: Callable[[str], bool] | None = None,
-    ) -> list[tuple[str, float]]:
+        include_valence: Literal[False] = False,
+    ) -> list[tuple[str, float]]: ...
+
+    @overload
+    def retrieve_on_cue(
+        self,
+        cue_node_id: str,
+        limit: int = 10,
+        *,
+        multi_hop: bool = True,
+        node_filter: Callable[[str], bool] | None = None,
+        include_valence: Literal[True] = ...,
+    ) -> list[tuple[str, float, float]]: ...
+
+    def retrieve_on_cue(
+        self,
+        cue_node_id: str,
+        limit: int = 10,
+        *,
+        multi_hop: bool = True,
+        node_filter: Callable[[str], bool] | None = None,
+        include_valence: bool = False,
+    ) -> list[tuple[str, float]] | list[tuple[str, float, float]]:
         """Return substrate nodes co-activated with the cue, ranked by binding weight.
 
         **Two retrieval modes:**
@@ -1293,6 +1326,23 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         """
         if multi_hop:
             retrieval_cfg = self.config.episode.retrieval
+            if include_valence:
+                activations_with_valence = self._binding_graph.spreading_activation(
+                    source_ids=[cue_node_id],
+                    initial_activation=1.0,
+                    decay=retrieval_cfg.decay,
+                    threshold=retrieval_cfg.threshold,
+                    max_depth=retrieval_cfg.max_depth,
+                    node_filter=node_filter,
+                    propagate_valence=True,
+                )
+                ranked_v = sorted(
+                    ((node, act, val) for node, (act, val) in activations_with_valence.items() if node != cue_node_id),
+                    key=lambda t: t[1],
+                    reverse=True,
+                )
+                return ranked_v[:limit]
+
             activations = self._binding_graph.spreading_activation(
                 source_ids=[cue_node_id],
                 initial_activation=1.0,
@@ -1318,6 +1368,15 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         if node_filter is not None:
             associated = [(n, w) for n, w in associated if node_filter(n)]
         associated.sort(key=lambda pair: pair[1], reverse=True)
+
+        if include_valence:
+            result_v: list[tuple[str, float, float]] = []
+            for n, w in associated[:limit]:
+                edge = self._binding_graph.find_edge(cue_node_id, n, EdgeType.ASSOCIATES)
+                val = edge.metadata.get("valence", 0.0) if edge is not None else 0.0
+                result_v.append((n, w, val))
+            return result_v
+
         return associated[:limit]
 
     def retrieve_cross_modal(
@@ -1661,6 +1720,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             hebbian_init=hebbian_cfg.init,
             hebbian_delta=hebbian_cfg.delta,
             hebbian_max=hebbian_cfg.max_weight,
+            valence_decay=hebbian_cfg.valence_decay,
         )
 
         # P4 Stage 1 — drain the per-node modality buffer into the

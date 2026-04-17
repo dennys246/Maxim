@@ -54,6 +54,7 @@
       <li><a href="#proprioception" class="text-indigo-400 hover:text-indigo-300 no-underline">Proprioception: Knowing Where You Are</a></li>
       <li><a href="#pain" class="text-indigo-400 hover:text-indigo-300 no-underline">Pain: Learning from Discomfort</a></li>
       <li><a href="#pain-learning" class="text-indigo-400 hover:text-indigo-300 no-underline">Pain &rarr; Learning</a></li>
+      <li><a href="#pain-reactions" class="text-indigo-400 hover:text-indigo-300 no-underline">Pain Reactions &amp; The SEM Learning Loop</a></li>
       <li><a href="#motor-learning" class="text-indigo-400 hover:text-indigo-300 no-underline">Motor Learning: The FocusLearner</a></li>
       <li><a href="#workspace-bounds" class="text-indigo-400 hover:text-indigo-300 no-underline">Workspace Bounds Learning</a></li>
       <li><a href="#integration" class="text-indigo-400 hover:text-indigo-300 no-underline">Integration: The Embodied Loop</a></li>
@@ -228,6 +229,38 @@ Future: Predict pain BEFORE action</pre>
     </div>
 
     <p class="text-slate-300 leading-relaxed">After experiencing pain from a specific action pattern, the NAc learns to predict it. Next time a similar action is proposed, the robot can refuse or modify the plan <em class="text-indigo-400 not-italic font-medium">before</em> experiencing pain again.</p>
+  </section>
+
+  <!-- Pain Reactions & The SEM Learning Loop -->
+  <section class="space-y-4">
+    <h2 id="pain-reactions" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Pain Reactions &amp; The SEM Learning Loop</h2>
+
+    <p class="text-slate-300 leading-relaxed">Pain signals don't stay on the PainBus alone. Every <code class="bg-slate-950 px-1 rounded text-xs">PainSignal</code> is also converted into a typed <em class="text-indigo-400 not-italic font-medium">Reaction</em> and dispatched through the <code class="bg-slate-950 px-1 rounded text-xs">ReactionBus</code>. This dual-bus architecture means pain reaches two audiences through two different contracts:</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">PainBus (Rich Context)</h4>
+        <p class="text-slate-300 text-sm">Carries the full <code class="bg-slate-950 px-1 rounded text-xs">PainSignal.context</code> dict &mdash; source, entity, entity_type, failure_mode, sensor_readings. Used by bio-pipeline-internal subscribers that need cause-description metadata for causal learning.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-2">ReactionBus (Typed Isolation)</h4>
+        <p class="text-slate-300 text-sm">Carries a converted <code class="bg-slate-950 px-1 rounded text-xs">Reaction</code> with typed <code class="bg-slate-950 px-1 rounded text-xs">ReactionContext</code> &mdash; enforcing isolation rules (no cross-agent intent, no private state). Subscribers include hippocampus (episode valence annotation) and NAc (<code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code>).</p>
+      </div>
+    </div>
+
+    <h3 class="text-white font-semibold mt-6">distribute_reward: Pain to NAc Reward Bias</h3>
+    <p class="text-slate-300 leading-relaxed">When a pain reaction reaches the NAc via <code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code>, it adjusts per-node <code class="bg-slate-950 px-1 rounded text-xs">reward_bias</code> values in the Hebbian graph. Negative valence from pain loosens EC similarity thresholds &mdash; the system casts a wider net to detect potentially dangerous situations, making it more sensitive to anything that resembles a past painful context.</p>
+
+    <h3 class="text-white font-semibold mt-6">Pain Spike Episode Boundaries</h3>
+    <p class="text-slate-300 leading-relaxed">High-intensity pain (&ge; 0.7) triggers the <code class="bg-slate-950 px-1 rounded text-xs">salience_spike_rule</code> in the episode capture pipeline. This forces the current episode to close immediately, capturing the accumulated negative valence, and starts a fresh episode. The effect mirrors how biological trauma creates sharp memory boundaries &mdash; the moment of pain becomes the dividing line between "before" and "after" in memory.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Pain Spike Boundary Example</span>
+Episode 1: [explore ... swing sword ... ]
+  Pain fires: shatter (intensity=0.8) &rarr; salience_spike=True
+  Episode 1 finalized: valence=-0.7
+
+Episode 2: [new episode starts with clean context]
+  Agent reasons about the negative experience from Episode 1</div>
   </section>
 
   <!-- Motor Learning -->

@@ -1183,6 +1183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         scn=_cli_bio.scn if _cli_bio is not None and _cli_pain_bus is not None else None,
                         entity_ref=_embodiment_ref,
                         component_registry=_component_registry,
+                        cerebellum=_cli_bio.cerebellum if _cli_bio is not None else None,
                     )
                 except ComponentNotFoundError as _cnf:
                     print(f"error: --embodiment: {_cnf}", file=sys.stderr)
