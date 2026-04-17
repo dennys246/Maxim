@@ -1,13 +1,17 @@
-"""Drain-state routing constraint for the LLM router (Plan 4 Stage C4).
+"""Drain-state routing bridge for the LLM router (Plan 4 Stages C4 + C4.5).
 
 Bridges the gap between the mesh drain-state layer (``peer/drain_state.py``,
 which operates on node names) and the LLM router (``models/language/router.py``,
-which operates on provider keys). The constraint is injected into the router
-as an optional ``drain_constraint`` callback — when absent, drain has zero
-effect on routing.
+which operates on provider keys).
 
-**Read-only.** This module never writes to drain state. Writing is the CLI's
-job (``peer drain``/``resume``) or the future admin API's job (C6).
+Two components:
+
+- :class:`DrainConstraint` (C4, read-only): injected as ``drain_constraint``
+  callback. Checks whether a provider maps to a drained mesh node.
+- :class:`AutoDrainWriter` (C4.5, write): injected as ``auto_drain_callback``.
+  Writes auto-drain entries when a provider crosses the failure threshold.
+  Entries are tagged ``# auto:<timestamp> reason:<type>`` so C4.6's
+  auto-undrain can distinguish them from sticky operator drains.
 
 The URL lookup table is built once at construction from ``mesh.yml`` topology.
 Topology changes require a router restart to take effect — consistent with the
@@ -21,6 +25,8 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+
+from maxim.utils.structured_logging import log_structured
 
 logger = logging.getLogger("maxim.drain_routing")
 
@@ -224,3 +230,177 @@ def build_drain_constraint(
         drain_path = drain_state_path()
 
     return DrainConstraint(url_to_node, provider_urls, drain_path)
+
+
+# ─── auto-drain thresholds (C4.5) ────────────────────────────────────────
+
+_PERMANENT_FAILURE_THRESHOLD = 1
+"""Auth and model-missing failures auto-drain after 1 occurrence."""
+
+_DEFAULT_TRANSIENT_THRESHOLD = 5
+"""Default threshold for transient failures (down, timeout, etc.)."""
+
+_MIN_TRANSIENT_THRESHOLD = 2
+_MAX_TRANSIENT_THRESHOLD = 20
+
+PERMANENT_FAILURE_TYPES = frozenset({"auth_failed", "model_missing"})
+"""Failure types that auto-drain after ``_PERMANENT_FAILURE_THRESHOLD``."""
+
+
+def _transient_threshold() -> int:
+    """Read ``MAXIM_AUTO_DRAIN_THRESHOLD`` env var, clamped [2, 20]."""
+    raw = os.environ.get("MAXIM_AUTO_DRAIN_THRESHOLD", "").strip()
+    if not raw:
+        return _DEFAULT_TRANSIENT_THRESHOLD
+    try:
+        val = int(raw)
+    except (ValueError, TypeError):
+        return _DEFAULT_TRANSIENT_THRESHOLD
+    return max(_MIN_TRANSIENT_THRESHOLD, min(_MAX_TRANSIENT_THRESHOLD, val))
+
+
+def auto_drain_threshold(failure_type: str) -> int:
+    """Return the auto-drain threshold for a given failure type."""
+    if failure_type in PERMANENT_FAILURE_TYPES:
+        return _PERMANENT_FAILURE_THRESHOLD
+    return _transient_threshold()
+
+
+# ─── tagged entry parsing ─────────────────────────────────────────────────
+
+
+def _load_tagged_entries(path: Path) -> dict[str, str | None]:
+    """Read drain file, returning ``{name: raw_tag_or_none}``.
+
+    For ``leader-desk  # auto:2026-04-17 reason:auth`` returns
+    ``{'leader-desk': 'auto:2026-04-17 reason:auth'}``.
+    For ``mac-studio`` (no tag) returns ``{'mac-studio': None}``.
+    """
+    try:
+        content = path.read_text()
+    except OSError:
+        return {}
+    entries: dict[str, str | None] = {}
+    for raw in content.splitlines():
+        if "#" in raw:
+            name_part, tag_part = raw.split("#", 1)
+            name = name_part.strip()
+            tag = tag_part.strip() or None
+        else:
+            name = raw.strip()
+            tag = None
+        if name:
+            entries[name] = tag
+    return entries
+
+
+# ─── AutoDrainWriter (C4.5) ──────────────────────────────────────────────
+
+
+class AutoDrainWriter:
+    """Writes auto-drain entries to the drain state file.
+
+    Injected into ``LLMRouter`` as ``auto_drain_callback``. Maps provider
+    keys to mesh node names (same URL table as :class:`DrainConstraint`)
+    and writes tagged entries.
+
+    **Idempotent:** if the node is already drained (operator or auto),
+    the write is a no-op.
+    """
+
+    def __init__(
+        self,
+        provider_to_node: dict[str, str],
+        drain_path: Path,
+    ) -> None:
+        self._provider_to_node = provider_to_node
+        self._drain_path = drain_path
+
+    def maybe_auto_drain(self, provider_key: str, reason: str) -> None:
+        """Write an auto-drain entry if the provider maps to a mesh node.
+
+        Parameters
+        ----------
+        provider_key
+            The router's provider key (e.g., ``"peer1"``).
+        reason
+            The failure type that triggered the drain (e.g., ``"auth_failed"``).
+        """
+        node = self._provider_to_node.get(provider_key)
+        if node is None:
+            return
+
+        # Read current drain state — skip if already drained.
+        from maxim.peer.drain_state import _load_names
+
+        self._drain_path.parent.mkdir(parents=True, exist_ok=True)
+        existing = _load_names(self._drain_path)
+        if node in existing:
+            return
+
+        # Append the tagged entry.
+        from datetime import datetime, timezone
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        tag = f"auto:{timestamp} reason:{reason}"
+        entry = f"{node}  # {tag}\n"
+
+        try:
+            from filelock import FileLock
+
+            lock = FileLock(str(self._drain_path) + ".lock", timeout=10)
+            with lock:
+                # Re-read under lock (TOCTOU safety).
+                current = _load_names(self._drain_path)
+                if node in current:
+                    return
+                # Read-modify-write via atomic_write_text (crash-safe).
+                # Raw open("a") would leave a partial line on crash.
+                from maxim.utils.atomic_io import atomic_write_text
+
+                existing_content = ""
+                try:
+                    existing_content = self._drain_path.read_text()
+                except FileNotFoundError:
+                    pass
+                if existing_content and not existing_content.endswith("\n"):
+                    existing_content += "\n"
+                atomic_write_text(self._drain_path, existing_content + entry)
+        except Exception:
+            logger.warning("auto-drain write failed for %s", node, exc_info=True)
+            return
+
+        logger.warning(
+            "auto-drained node %s (provider %s, reason: %s)",
+            node,
+            provider_key,
+            reason,
+        )
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="auto_drain",
+            data={
+                "node": node,
+                "provider": provider_key,
+                "reason": reason,
+                "tag": tag,
+            },
+        )
+
+
+def build_auto_drain_writer(
+    constraint: DrainConstraint,
+    drain_path: Path | None = None,
+) -> AutoDrainWriter:
+    """Build an :class:`AutoDrainWriter` from an existing constraint.
+
+    Reuses the constraint's ``_provider_to_node`` mapping so both the
+    read path and write path share the same URL→node resolution.
+    """
+    # Deliberate private-attr access — both classes live in the same module
+    # and the mapping is immutable after construction. dict() copies so the
+    # writer owns its own data.
+    if drain_path is None:
+        drain_path = constraint._drain_path
+    return AutoDrainWriter(dict(constraint._provider_to_node), drain_path)
