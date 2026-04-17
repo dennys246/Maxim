@@ -401,6 +401,7 @@ def build_pain_bus(
     additional_subscribers: tuple[Callable[[PainSignal], None], ...] = (),
     history_size: int = 200,
     pain_refractory_s: float | None = None,
+    bus: PainBus | None = None,
 ) -> PainBus:
     """Construct a PainBus with explicit learning-subscriber decisions.
 
@@ -448,8 +449,17 @@ def build_pain_bus(
             subscribers cheap — they run synchronously inside
             ``PainBus.publish``.
         history_size: Forwarded to the underlying ``ReactionBus``.
+            Ignored when ``bus`` is provided.
         pain_refractory_s: Forwarded to ``PainBus.__init__``. Default
-            is ``PainBus.DEFAULT_PAIN_REFRACTORY_S``.
+            is ``PainBus.DEFAULT_PAIN_REFRACTORY_S``.  Ignored when
+            ``bus`` is provided.
+        bus: Pre-constructed PainBus.  When provided, subscribers are
+            registered on this bus instead of constructing a new one.
+            Use for the sim AUT pattern where the sandbox needs a
+            PainBus before the rest of the bio-pipeline.  Added in
+            Wave 3 (``bio_stack_unification.md``) so that
+            ``build_bio_stack`` can route through this door even when
+            the bus exists before the bio-systems.
 
     Returns:
         A fully-constructed ``PainBus`` with the standard learners
@@ -479,10 +489,11 @@ def build_pain_bus(
         - ``docs/architecture/structural_enforcement.md`` for the rule
         - ``runtime/bootstrap.py::build_executor`` for the precedent
     """
-    bus = PainBus(
-        history_size=history_size,
-        pain_refractory_s=pain_refractory_s,
-    )
+    if bus is None:
+        bus = PainBus(
+            history_size=history_size,
+            pain_refractory_s=pain_refractory_s,
+        )
     if hippocampus is not None:
         bus.subscribe(create_pain_memory_subscriber(hippocampus))
     if nac is not None:

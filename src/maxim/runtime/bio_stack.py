@@ -150,6 +150,20 @@ def build_bio_stack(
 
     p = Path(persistence_dir) if persistence_dir is not None else None
 
+    # One-time migration: the CLI historically used "memories.json" for
+    # hippocampus persistence. Standardize on "hippocampus.json" (which
+    # the Reachy path already used). If the old file exists and the new
+    # one doesn't, rename it so existing users don't lose data.
+    if p is not None:
+        _old_hippo = p / "memories.json"
+        _new_hippo = p / "hippocampus.json"
+        if _old_hippo.exists() and not _new_hippo.exists():
+            try:
+                _old_hippo.rename(_new_hippo)
+                logger.info("Migrated hippocampus persistence: %s -> %s", _old_hippo, _new_hippo)
+            except OSError as e:
+                logger.warning("Failed to migrate hippocampus persistence: %s", e)
+
     hippocampus = Hippocampus(
         config=HippocampusConfig(
             persistence_path=str(p / "hippocampus.json") if p is not None else None,
@@ -197,28 +211,20 @@ def build_bio_stack(
     )
 
     # -- Step 4: PainBus ---------------------------------------------------
-    # Two paths:
-    #   (a) Caller passed a pre-built PainBus (sim AUT pattern) →
-    #       subscribe standard learners to it.
-    #   (b) No pre-built bus → call build_pain_bus to construct + subscribe.
-    if pain_bus is not None:
-        from maxim.proprioception.pain_bus import (
-            create_pain_memory_subscriber,
-            create_pain_nac_subscriber,
-        )
+    # Always route through build_pain_bus (the Wave 1 structural door)
+    # so that subscriber wiring is centralized. When a pre-built bus
+    # is provided (sim AUT pattern: sandbox needs the bus early), pass
+    # it via bus= so build_pain_bus subscribes to it instead of
+    # constructing a new one. This prevents the N-sites-drift bug class
+    # that Wave 1 was designed to eliminate.
+    from maxim.proprioception.pain_bus import build_pain_bus
 
-        pain_bus.subscribe(create_pain_memory_subscriber(hippocampus))
-        pain_bus.subscribe(create_pain_nac_subscriber(nac))
-        for sub in additional_pain_subscribers:
-            pain_bus.subscribe(sub)
-    else:
-        from maxim.proprioception.pain_bus import build_pain_bus
-
-        pain_bus = build_pain_bus(
-            hippocampus=hippocampus,
-            nac=nac,
-            additional_subscribers=additional_pain_subscribers,
-        )
+    pain_bus = build_pain_bus(
+        hippocampus=hippocampus,
+        nac=nac,
+        additional_subscribers=additional_pain_subscribers,
+        bus=pain_bus,
+    )
 
     # ReactionBus is owned by PainBus — expose it on the stack for
     # callers that need typed Reaction semantics (cerebellum, etc.).
