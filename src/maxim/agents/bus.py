@@ -548,6 +548,10 @@ class StructuredContext:
     #              "confidence": float, "context_match": float}
     causal_context: list[dict] = field(default_factory=list)
 
+    # Valence associations from substrate (SEM learning loop).
+    # Each entry: {"concept": str, "valence": float, "associations": list[str]}
+    valence_context: list[dict] = field(default_factory=list)
+
     # Motor programs from Cerebellum (Phase 1b)
     # Each entry: {"name": str, "goal": str, "confidence": float,
     #              "success_rate": float, "steps": list[str], "risks": list[str]}

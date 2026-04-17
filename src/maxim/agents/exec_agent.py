@@ -1125,6 +1125,15 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
                 )
             causal_str = "\n".join(causal_lines)
 
+        valence_str = ""
+        if ctx.valence_context:
+            valence_parts = []
+            for entry in ctx.valence_context[:5]:
+                v = entry.get("valence", 0.0)
+                sentiment = "negative" if v < -0.1 else ("positive" if v > 0.1 else "neutral")
+                valence_parts.append(f"{entry.get('concept', '?')}: {sentiment} ({v:+.2f})")
+            valence_str = "\n\nLEARNED ASSOCIATIONS: " + "; ".join(valence_parts)
+
         return f"""ROOT GOAL: {ctx.root_goal}
 
 CURRENT STATE:
@@ -1151,7 +1160,7 @@ RECENT OUTCOMES:
 {outcome_str}
 
 RELEVANT MEMORIES:
-{mem_str}{causal_str}{notes_str}{workspace_str}{stat_str}{dn_str}{budget_str}
+{mem_str}{causal_str}{valence_str}{notes_str}{workspace_str}{stat_str}{dn_str}{budget_str}
 
 Based on this context, what goal should be proposed?"""
 

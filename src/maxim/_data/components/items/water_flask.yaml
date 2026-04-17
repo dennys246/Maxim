@@ -1,0 +1,29 @@
+component:
+  name: water_flask
+  tags: [item, consumable, water, fantasy]
+  category: items
+
+entity:
+  name: water_flask
+  entity_type: item
+  sensors:
+    fill_level:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    purity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    usage:
+      affordances:
+        drink:
+          params: {}
+          description: "Drink water to restore hydration and reduce fatigue"
+        refill:
+          params: {source: str}
+          description: "Refill the flask from a water source"
+  failure_modes:
+    - name: empty
+      trigger: {field: fill_level, op: "<=", value: 0, pain: 0.1}

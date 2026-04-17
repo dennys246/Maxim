@@ -165,3 +165,55 @@ def end_bio_session(
             )
         except Exception as e:
             logger.debug("Failed to end MemoryHub session: %s", e)
+
+
+# ── Episode observation (P3a binding in production) ──────────────────
+
+_episode_tick: int = 0
+_latest_pain_intensity: float = 0.0
+
+
+def observe_episode(
+    *,
+    hippocampus: Any,
+    channel: str = "text",
+    sender_id: str | None = None,
+    activated_nodes: tuple[str, ...] = (),
+    salience_spike: float | None = None,
+) -> None:
+    """Feed an event into the episode boundary detector.
+
+    Called from the agent loop alongside capture_episodic_memory.
+    """
+    global _episode_tick
+    _episode_tick += 1
+
+    try:
+        from maxim.memory.episode import CaptureEvent
+
+        hippocampus.observe_episode_event(
+            CaptureEvent(
+                tick=_episode_tick,
+                channel=channel,
+                sender_id=sender_id,
+                activated_nodes=activated_nodes,
+                salience_spike=salience_spike,
+            )
+        )
+    except Exception as e:
+        logger.debug("Episode observation failed: %s", e)
+
+
+def record_pain_intensity(intensity: float) -> None:
+    """Record a pain intensity for the next episode event's salience_spike."""
+    global _latest_pain_intensity
+    if intensity > _latest_pain_intensity:
+        _latest_pain_intensity = intensity
+
+
+def consume_pain_intensity() -> float | None:
+    """Consume the recorded pain intensity (reset to 0)."""
+    global _latest_pain_intensity
+    val = _latest_pain_intensity
+    _latest_pain_intensity = 0.0
+    return val if val > 0.0 else None
