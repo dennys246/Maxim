@@ -1082,49 +1082,28 @@ def main(argv: Sequence[str] | None = None) -> int:
                         bus=agentic_agent._bus,
                     )
 
-                # Build MemoryHub with Hippocampus for episodic memory.
-                # All bio-system handles initialized to None up-front so
-                # `build_executor` below sees defined names even if
-                # construction fails inside the try block (pre-existing
+                # Build the full bio-pipeline via build_bio_stack (Wave 3,
+                # biosystem_unification). Single call replaces ~30 lines of
+                # Hippocampus/NAc/SCN/EC/MemoryHub/PainBus construction.
+                # All handles initialized to None up-front so build_executor
+                # sees defined names even if construction fails (pre-existing
                 # latent UnboundLocalError surfaced in pre-merge review).
+                _cli_bio = None
                 _cli_memory_hub = None
                 _cli_hippocampus = None
                 _cli_nac = None
-                _cli_scn = None
-                _cli_ec = None
                 try:
-                    from maxim.integration.memory_hub import build_memory_hub
-                    from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-                    from maxim.decisions.nac import NAc
-                    from maxim.similarity.ec import EntorhinalCortex
-                    from maxim.time.scn import SCN
+                    from maxim.runtime.bio_stack import build_bio_stack
 
-                    _cli_hippocampus = Hippocampus(
-                        config=HippocampusConfig(
-                            persistence_path=memory_path,
-                        )
-                    )
-                    _cli_nac = NAc()
-                    _cli_scn = SCN()
-                    _cli_ec = EntorhinalCortex()
-                    # build_memory_hub is the canonical MemoryHub construction
-                    # door (Wave 2, biosystem_unification). It always calls
-                    # .connect() internally, so PlanHistoryBridge,
-                    # EscalationLearningBridge, and FearCircuitBridge are alive.
-                    # Pre-Wave-2, this site used bare MemoryHub() and never
-                    # called .connect(), so all three bridges were dead — the
-                    # agent captured memories but never used bridge-level
-                    # adaptive behavior. See memory_hub_unification.md Gap A.
-                    _cli_memory_hub = build_memory_hub(
-                        hippocampus=_cli_hippocampus,
-                        scn=_cli_scn,
-                        nac=_cli_nac,
-                        ec=_cli_ec,
-                    )
+                    _mem_dir = str(Path(memory_path).parent) if memory_path else None
+                    _cli_bio = build_bio_stack(persistence_dir=_mem_dir)
+                    _cli_hippocampus = _cli_bio.hippocampus
+                    _cli_nac = _cli_bio.nac
+                    _cli_memory_hub = _cli_bio.memory_hub
                     agentic_agent.wire_memory_hub(_cli_memory_hub)
-                    logger.info("MemoryHub + Hippocampus + NAc + SCN + EC wired to MaximAgent")
+                    logger.info("BioStack wired to MaximAgent (hippocampus + NAc + SCN + EC + MemoryHub + PainBus)")
                 except Exception as e:
-                    logger.warning("Failed to create MemoryHub: %s", e)
+                    logger.warning("Failed to create BioStack: %s", e)
 
                 # Use active mode in simulation so agent can read/write in sandbox
                 _operational_mode = "active" if getattr(args, "sim", None) is not None else "passive"
@@ -1176,25 +1155,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _embodiment_ref = None
                 _component_registry = None
                 if not _is_sim_mode:
-                    # build_pain_bus is the canonical PainBus construction
-                    # door (Wave 1, biosystem_unification). Required
-                    # keyword-only hippocampus/nac means forgetting either
-                    # is a TypeError, not a silent no-op. Pre-Wave-1 this
-                    # block subscribed only create_pain_memory_subscriber
-                    # and silently skipped create_pain_nac_subscriber, so
-                    # out-of-band SEM pain reached hippocampus but never
-                    # NAc. See docs/plans/pain_bus_unification.md Gap A.
-                    from maxim.proprioception.pain_bus import build_pain_bus
-
-                    _cli_pain_bus = build_pain_bus(
-                        hippocampus=_cli_hippocampus,
-                        nac=_cli_nac,
-                    )
-                    logger.info(
-                        "CLI PainBus wired (hippocampus=%s, nac=%s) for pain capture + causal learning",
-                        _cli_hippocampus is not None,
-                        _cli_nac is not None,
-                    )
+                    # PainBus already constructed inside build_bio_stack
+                    # (Wave 3). Extract it for build_executor.
+                    _cli_pain_bus = _cli_bio.pain_bus if _cli_bio is not None else None
 
                     _embodiment_ref = getattr(args, "embodiment", None)
                     if _embodiment_ref:
@@ -1217,7 +1180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         pain_bus=_cli_pain_bus,
                         nac=_cli_nac if _cli_pain_bus is not None else None,
                         hippocampus=_cli_hippocampus if _cli_pain_bus is not None else None,
-                        scn=_cli_scn if _cli_pain_bus is not None else None,
+                        scn=_cli_bio.scn if _cli_bio is not None and _cli_pain_bus is not None else None,
                         entity_ref=_embodiment_ref,
                         component_registry=_component_registry,
                     )

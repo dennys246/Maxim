@@ -412,54 +412,22 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT energy tracking not available: %s", e)
 
-    # Build AUT's memory subsystems (enables inspect_aut tool for refinement)
+    # Build AUT's full bio-pipeline via build_bio_stack (Wave 3,
+    # biosystem_unification). The pre-built aut_pain_bus is passed in so the
+    # sandbox (which needs the bus early) keeps its reference, and the
+    # standard learners (hippocampus→memory, NAc→causal) are subscribed
+    # here instead of in a separate manual block downstream.
+    aut_bio = None
     aut_hippocampus = None
     aut_nac = None
     aut_memory_hub = None
     try:
-        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-        from maxim.decisions.nac import NAc
-        from maxim.integration.memory_hub import build_memory_hub
-        from maxim.time.scn import SCN
-        from maxim.similarity.ec import EntorhinalCortex
+        from maxim.runtime.bio_stack import build_bio_stack
 
-        aut_hippocampus = Hippocampus(config=HippocampusConfig())
-        aut_nac = NAc()
-        aut_scn = SCN()
-        aut_ec = EntorhinalCortex()
-
-        # Optional multi-layer memory (ATL + AngularGyrus)
-        aut_atl = None
-        aut_angular_gyrus = None
-        try:
-            from maxim.memory.atl import ATL, ATLConfig
-
-            aut_atl = ATL(config=ATLConfig())
-        except Exception:
-            logger.debug("ATL not available for AUT")
-        try:
-            from maxim.math.angular_gyrus import AngularGyrus, AngularGyrusConfig
-
-            aut_angular_gyrus = AngularGyrus(config=AngularGyrusConfig())
-        except Exception:
-            logger.debug("AngularGyrus not available for AUT")
-
-        # build_memory_hub always calls .connect() internally, so
-        # PlanHistoryBridge + EscalationLearningBridge + FearCircuitBridge
-        # are alive.  No spatial/salience/attention in sim context.
-        # fear_agent is constructed much later (line ~1005) but the
-        # FearCircuitBridge doesn't use it — it only needs the core
-        # bio-systems (hippocampus, nac, ec) which are already wired.
-        aut_memory_hub = build_memory_hub(
-            hippocampus=aut_hippocampus,
-            scn=aut_scn,
-            nac=aut_nac,
-            ec=aut_ec,
-            atl=aut_atl,
-            angular_gyrus=aut_angular_gyrus,
-        )
-        # Cerebellum is initialized later (after memory section); wire it lazily
-        # via _wire_cerebellum() call below
+        aut_bio = build_bio_stack(pain_bus=aut_pain_bus)
+        aut_hippocampus = aut_bio.hippocampus
+        aut_nac = aut_bio.nac
+        aut_memory_hub = aut_bio.memory_hub
         aut_agent.wire_memory_hub(aut_memory_hub)
 
         # Restore AUT state from previous session if resuming
@@ -484,11 +452,11 @@ def start_simulation_mode(
                     logger.debug("Failed to restore AUT NAc: %s", e)
 
         systems = ["hippocampus", "NAc", "SCN", "EC"]
-        if aut_atl is not None:
+        if aut_bio.atl is not None:
             systems.append("ATL")
-        if aut_angular_gyrus is not None:
+        if aut_bio.angular_gyrus is not None:
             systems.append("AngularGyrus")
-        logger.info("AUT memory wired (%s)", " + ".join(systems))
+        logger.info("AUT BioStack wired (%s)", " + ".join(systems))
 
         # Attach bio-system tracers based on --debug flags / env vars
         def _env_trace(var: str) -> bool:
@@ -616,19 +584,8 @@ def start_simulation_mode(
         if aut_registry.deregister(_rt):
             logger.debug("Deregistered robot tool from AUT: %s", _rt)
 
-    # Subscribe AUT PainBus to hippocampus (bus itself was created earlier
-    # so the sandbox could route pain percepts through it).
-    try:
-        from maxim.proprioception.pain_bus import create_pain_memory_subscriber, create_pain_nac_subscriber
-
-        if aut_pain_bus is not None and aut_hippocampus is not None:
-            aut_pain_bus.subscribe(create_pain_memory_subscriber(aut_hippocampus))
-            logger.info("AUT PainBus → Hippocampus wired")
-        if aut_pain_bus is not None and aut_nac is not None:
-            aut_pain_bus.subscribe(create_pain_nac_subscriber(aut_nac))
-            logger.info("AUT PainBus → NAc wired")
-    except Exception as e:
-        logger.debug("AUT PainBus subscription failed: %s", e)
+    # AUT PainBus subscriptions are now handled by build_bio_stack above
+    # (Wave 3: pre-built pain_bus= parameter subscribes standard learners).
 
     # Build AUT's LLM worker. When --aut-model is set, the AUT gets its
     # own LLMRouter so there's no inference contention and the experiment
@@ -685,37 +642,21 @@ def start_simulation_mode(
     orch_memory = build_memory()
     orch_decision_engine = build_decision_engine()
 
-    # Phase 3: Orchestrator memory (hippocampus + NAc) for cross-session learning
+    # Phase 3: Orchestrator memory (hippocampus + NAc) for cross-session learning.
+    # build_bio_stack (Wave 3, biosystem_unification) replaces ~20 lines of
+    # hand-rolled bio-system construction.
+    orch_bio = None
     orch_hippocampus = None
-    orch_memory_hub = None
     try:
-        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-        from maxim.decisions.nac import NAc
-        from maxim.integration.memory_hub import build_memory_hub
-        from maxim.similarity.ec import EntorhinalCortex
-        from maxim.time.scn import SCN
+        from maxim.runtime.bio_stack import build_bio_stack
 
-        orch_persistence = Path("data") / "sim_orchestrator" / "memories.json"
-        orch_persistence.parent.mkdir(parents=True, exist_ok=True)
-        orch_hippocampus = Hippocampus(
-            config=HippocampusConfig(
-                persistence_path=str(orch_persistence),
-            )
-        )
-        orch_nac = NAc()
-        # Pre-Wave-2 this was MemoryHub(hippocampus=..., nac=...) which
-        # silently failed with TypeError (missing required scn + ec
-        # dataclass fields, swallowed by except Exception at debug level).
-        # Gap C in memory_hub_unification.md audit.
-        orch_memory_hub = build_memory_hub(  # noqa: F841 — created for Phase 3 cross-session learning
-            hippocampus=orch_hippocampus,
-            scn=SCN(),
-            nac=orch_nac,
-            ec=EntorhinalCortex(),
-        )
-        logger.info("Orchestrator memory wired (hippocampus + NAc + SCN + EC)")
+        orch_persistence_dir = Path("data") / "sim_orchestrator"
+        orch_persistence_dir.mkdir(parents=True, exist_ok=True)
+        orch_bio = build_bio_stack(persistence_dir=orch_persistence_dir)
+        orch_hippocampus = orch_bio.hippocampus
+        logger.info("Orchestrator BioStack wired (hippocampus + NAc + SCN + EC + MemoryHub + PainBus)")
     except Exception as e:
-        logger.debug("Orchestrator memory not available: %s", e)
+        logger.debug("Orchestrator BioStack not available: %s", e)
     orch_agent = MaximAgent()
 
     # Build a MINIMAL tool registry with ONLY simulation tools.

@@ -1,6 +1,6 @@
 # Bio-Stack Unification — `build_bio_stack` umbrella
 
-**Status:** AUDIT COMPLETE. Wave 1 + Wave 2 all shipped. Ready for design + implementation.
+**Status:** Builder + 4 site migrations committed. Pre-merge review next.
 **Parent index:** [biosystem_unification.md](biosystem_unification.md)
 **Wave:** 3 of 4 (single PR, not parallel-safe with anything in the catalog).
 **Depends on:** ALL of [pain_bus_unification.md](pain_bus_unification.md), [reaction_bus_unification.md](reaction_bus_unification.md), [memory_hub_unification.md](memory_hub_unification.md), [default_network_unification.md](default_network_unification.md). Each must ship first; this plan composes them.
@@ -79,14 +79,14 @@ All eight umbrella sites already use the Wave 1/2 builders (`build_memory_hub`, 
 
 8. **`fear_agent` is needed at construction time** for MemoryHub.connect() + DefaultNetwork. It's a legitimate `build_bio_stack` parameter.
 
-### Open design questions (carry to implementation session)
+### Design questions (RESOLVED 2026-04-17)
 
-1. **Frozen vs mutable `BioStack`?** Lean frozen — mutable only invites post-construction patching.
-2. **Should `build_bio_stack` also call `agent.wire_memory_hub()`?** Lean no — the agent doesn't exist yet at bio_stack construction time. The caller does: `bio = build_bio_stack(...); agent.wire_memory_hub(bio.memory_hub)`.
-3. **How much of the Hippocampus config surface to expose?** Today each site passes different configs (embedding enabled/disabled, persistence paths). `build_bio_stack` either accepts a `HippocampusConfig` or a `BioStackConfig` dataclass that bundles them.
-4. **Should site #5 (orch NPC hub) use `build_bio_stack`?** It's partially dead code — needs audit of whether orch hippocampus is still useful before migrating.
+1. **Frozen vs mutable `BioStack`?** → **Frozen.** `@dataclass(frozen=True)`. Internal mutation on contained objects (e.g., `memory_hub.connect()`) is unaffected.
+2. **Should `build_bio_stack` call `agent.wire_memory_hub()`?** → **No.** Agent doesn't exist yet at construction time. Caller wires: `bio = build_bio_stack(...); agent.wire_memory_hub(bio.memory_hub)`.
+3. **How much config to expose?** → **Single `persistence_dir: Path | str | None`.** Sub-paths derived internally. Per-system config overrides are Wave 4 territory.
+4. **Should site #5 (orch NPC hub) use `build_bio_stack`?** → **Yes.** Alive and fits cleanly. Hippocampus saved at shutdown, orch_memory_hub used for Phase 3 cross-session learning.
 
-## Design sketch
+## Shipped design (2026-04-17)
 
 ```python
 @dataclass(frozen=True)
@@ -95,44 +95,38 @@ class BioStack:
     nac: NAc
     scn: SCN
     ec: EntorhinalCortex
-    atl: ATL
+    atl: ATL | None
+    angular_gyrus: AngularGyrus | None
     memory_hub: MemoryHub
     pain_bus: PainBus
     reaction_bus: ReactionBus
-    default_network: DefaultNetwork | None
-    # ...
+    default_network: Any  # DefaultNetwork | None — optional dep
 
 def build_bio_stack(
     *,
-    persistence_path: str,
-    enable_default_network: bool = True,
-    fear_agent: FearAgent | None = None,
+    persistence_dir: Path | str | None = None,
+    pain_bus: PainBus | None = None,     # pre-built bus (sim AUT)
+    with_default_network: bool = False,
+    dn_maxim: object | None = None,
+    dn_bus: Any | None = None,
+    dn_fear_agent: Any | None = None,
+    dn_config: DefaultNetworkConfig | None = None,
+    dn_frame_size: tuple[int, int] = (640, 480),
     additional_pain_subscribers: tuple[Callable, ...] = (),
-    additional_reaction_producers: tuple[ReactionProducer, ...] = (),
-    config_overrides: BioStackConfig | None = None,
 ) -> BioStack:
-    """Construct the full bio-pipeline as a coherent unit.
-
-    Order matters: ReactionBus first (PainBus depends on it), then
-    Hippocampus/NAc/SCN/EC/ATL, then MemoryHub (depends on
-    hippocampus/nac/scn/ec), then PainBus (depends on hippocampus,
-    nac, reaction_bus), then DefaultNetwork (depends on nac, pain_bus).
-    """
 ```
 
-**Open design questions (resolve at plan-open time):**
-- Should `BioStack` be frozen (immutable post-construction) or mutable for runtime extension?
-- Should `enable_default_network=False` produce `default_network=None` or a no-op stub?
-- Is `persistence_path: str` the right shape, or should it be `paths: BioStackPaths` to accommodate per-bio-system path overrides?
-- Should `fear_agent` be a constructor dep or a separate `.attach_fear_agent()` method (lifecycle question)?
-- How does `BioStack` interact with `MaximAgent.wire_memory_hub()` — does `build_bio_stack` call it, or does the caller?
+**Key design decisions:**
+- `ReactionBus` is NOT independently constructed — it's owned by PainBus. `BioStack.reaction_bus` is `pain_bus.reaction_bus`. The `build_reaction_bus` Wave 1 builder has zero production callers; it exists as the construction door for future refactoring if PainBus/ReactionBus coupling needs to be broken.
+- Pre-built `pain_bus=` routes through `build_pain_bus(bus=...)` (Wave 3 extension to the Wave 1 door) to avoid bypassing structural enforcement.
+- One-time `memories.json` → `hippocampus.json` migration handles the CLI persistence path standardization.
 
-## Migration call sites
+## Migration results
 
-Same six logical sites as `executor_bootstrap_unification.md`. After this plan ships, each entry point's bootstrap shrinks from ~30 lines to ~5:
+Four sites migrated, each shrinking from ~30 lines to ~5:
 
 ```python
-bio = build_bio_stack(persistence_path=memory_path, fear_agent=fear_agent)
+bio = build_bio_stack(persistence_dir=memory_dir)
 agent.wire_memory_hub(bio.memory_hub)
 executor = build_executor(registry, pain_bus=bio.pain_bus, nac=bio.nac, ...)
 ```
