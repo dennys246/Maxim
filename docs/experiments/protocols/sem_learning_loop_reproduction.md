@@ -1,6 +1,6 @@
 # SEM Learning Loop — Reproduction Protocol
 
-**Plan:** [sem_learning_loop.md](../../plans/sem_learning_loop.md)
+**Plan:** [sem_learning_loop.md](../../plans/archive/sem_learning_loop.md)
 **PoC results:** [sem_learning_loop_poc.md](../sem_learning_loop_poc.md)
 
 ## Quick verification (~0.5s, no deps beyond core)

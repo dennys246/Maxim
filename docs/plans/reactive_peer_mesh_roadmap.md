@@ -70,11 +70,11 @@ These complete the manage-the-mesh-by-hand surface. Each is a small ship.
 
 ### Stage C4: Wire the router to drain state ✅ SHIPPED (PR #148, 2026-04-17)
 
-`drain_constraint` callback injected into `LLMRouter`. `DrainConstraint` class in `peer/drain_routing.py` with mtime-cached drain file reads + URL→node mapping from `mesh.yml`. `dispatch_exhausted_all_drained` event when every candidate is drain-eliminated. Budget-blocked local fallback also respects drain. 2-lens review folded 5 findings. Plan doc: [router_drain_coupling.md](router_drain_coupling.md). 27 tests.
+`drain_constraint` callback injected into `LLMRouter`. `DrainConstraint` class in `peer/drain_routing.py` with mtime-cached drain file reads + URL→node mapping from `mesh.yml`. `dispatch_exhausted_all_drained` event when every candidate is drain-eliminated. Budget-blocked local fallback also respects drain. 2-lens review folded 5 findings. Plan doc: [router_drain_coupling.md](archive/router_drain_coupling.md). 27 tests.
 
 ### Stage C4.5: Auto-drain on persistent failure ✅ SHIPPED (PR #152, 2026-04-17)
 
-Type-aware thresholds: permanent failures (auth, model_missing) auto-drain after 1, transient failures after 5 (configurable `MAXIM_AUTO_DRAIN_THRESHOLD`). `AutoDrainWriter` writes tagged entries (`# auto:<timestamp> reason:<type>`) via `atomic_write_text` under filelock. Pending buffer flushed outside `_inference_lock`. `_load_tagged_entries()` parser ready for C4.6 auto-undrain. 2-lens review folded 2 findings. Plan doc: [auto_drain_persistent_failure.md](auto_drain_persistent_failure.md). 19 new tests (46 total).
+Type-aware thresholds: permanent failures (auth, model_missing) auto-drain after 1, transient failures after 5 (configurable `MAXIM_AUTO_DRAIN_THRESHOLD`). `AutoDrainWriter` writes tagged entries (`# auto:<timestamp> reason:<type>`) via `atomic_write_text` under filelock. Pending buffer flushed outside `_inference_lock`. `_load_tagged_entries()` parser ready for C4.6 auto-undrain. 2-lens review folded 2 findings. Plan doc: [auto_drain_persistent_failure.md](archive/auto_drain_persistent_failure.md). 19 new tests (46 total).
 
 **Auto-undrain deferred to C4.6** — operator resumes manually for now. The three-category drain semantics (operator/install/auto) are resolved: inline `# auto:` tags distinguish auto-drains from sticky operator drains. C3.3 install drains remain untagged (treated as operator = sticky = safe default).
 

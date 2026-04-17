@@ -2,7 +2,7 @@
 
 **Status:** Living document. Not a gated phase. Not on the critical path to 1.0.
 **Kin:** [tool_refinement_plan.md](tool_refinement_plan.md) (same pattern — an ongoing practice, not a one-shot plan).
-**Related:** [substrate_recognition.md](substrate_recognition.md), [substrate_binding_persistence.md](substrate_binding_persistence.md) (this doc consumes substrate mechanisms; it does not define them). Master reference: [archive/substrate_plan.md](archive/substrate_plan.md).
+**Related:** [substrate_recognition.md](substrate_recognition.md), [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) (this doc consumes substrate mechanisms; it does not define them). Master reference: [archive/substrate_plan.md](archive/substrate_plan.md).
 
 ## What this document is for
 
@@ -62,8 +62,8 @@ Behavioral convergence testing has three tiers, each building on the last:
 | Tier | Training | Test | What it proves | Status |
 |------|----------|------|----------------|--------|
 | **Tier 1** | Scripted reactions | Substrate retrieval | Bio-systems learn and persist | Exp 1+2 PASS |
-| **Tier 2** | Scripted episodes | LLM decisions | LLM acts on bio-system learning | Exp 3 scaffold ready |
-| **Tier 3** | LLM-driven sim | LLM decisions | Agent learns AND acts organically | Planned |
+| **Tier 2** | Scripted episodes | LLM decisions | LLM acts on bio-system learning | Exp 3 PASS |
+| **Tier 3** | LLM-driven sim | LLM decisions | Agent learns AND acts organically | Exp 4 PASS |
 
 **Tier 1** is deterministic and fast (~0.5s). Proves the substrate stores and retrieves affective associations across sessions.
 
@@ -176,7 +176,7 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 
 **Interpretation:** Affective memory transfers across sessions without fine-tuning. Shared "potion" concept carries mixed valence (healing+poison). Reward bias is asymmetric (positive only widens EC). Pain spikes create clean episode boundaries.
 
-**Decision:** Tier 1 confirmed. Next: Tier 2 (LLM decisions based on valence). Blocked on [behavioral_convergence_wiring.md](behavioral_convergence_wiring.md).
+**Decision:** Tier 1 confirmed. Next: Tier 2 (LLM decisions based on valence). Blocked on [behavioral_convergence_wiring.md](archive/behavioral_convergence_wiring.md).
 
 ---
 
@@ -221,21 +221,30 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 
 ---
 
-### Planned: Experiment 4 — Organic LLM learning (Tier 3)
+### 2026-04-17 — Organic LLM learning (Exp 4, Tier 3)
 
-**Hypothesis:** An agent running in a real sim with SEM entities will organically learn from its own actions — choosing a vial, experiencing the outcome via CerebellumModulator → ReactionBus → valence annotation, and making different choices in subsequent turns and sessions.
+**Hypothesis (H2 extension, Tier 3):** An agent running in a real sim with SEM entities will organically learn from its own actions — choosing a vial, experiencing the outcome via CerebellumModulator -> ReactionBus -> valence annotation, and making different choices in subsequent sessions. No scripted reactions. All learning comes from the agent's actual tool executions through the CerebellumModulator -> _emit_failure/success_reaction pathway.
 
-**What's needed:**
-1. **Sim scenario with SEM entities loaded** — three vials as SEM components with `attach_backends` wiring CerebellumModulator
-2. **Multi-turn sim** — agent gets poisoned, has 3-5 turns to try vials, experiences outcomes
-3. **Session persistence** — save after Session 1 training turns, load for Session 2 test turns
-4. **No scripted reactions** — all learning comes from the agent's actual tool executions through the CerebellumModulator → _emit_failure/success_reaction pathway
-5. **Masked vial names** — same arbitrary visual attributes as Tier 2
+**Scenario:** Agent is poisoned (damage per turn). Three masked vials: Purple Hexagonal Glass (heals HP), Teal Cylindrical Ceramic (stops poison), Orange Triangular Crystal (more poison). Multi-session organic training. Session 1: exploration. Session 2: early learning. Session 3: convergence. Fresh control comparison.
 
 **Tier:** 3 (organic LLM training + LLM test — the ultimate 1.0 proof)
 
-**Metric:** Vial selection rate across sessions. Session 1 (exploration): expect ~uniform. Session 3+ (post-learning): expect convergence toward teal (antidote).
+**Metric:** Teal vial selection rate across sessions + fresh control comparison.
 
-**Key challenge:** The agent needs to actually *try* each vial at least once to learn. In Session 1, the agent may avoid exploration if it finds something that works. May need a forced-exploration mechanism or multiple scenarios.
+**N:** 3 sessions (organic training) + 1 fresh control. Model: qwen2.5-14b, temperature 0.3.
 
-**Status:** Blocked on full sim integration with SEM entity loading. All substrate infrastructure is in place (CerebellumModulator, reaction capture, valence in prompt, observe_episode_event in loop). The gap is wiring the sim scenario to load SEM entities via `--embodiment` and route tool execution through the CerebellumModulator pathway.
+**Result:** 5/5 hypotheses confirmed.
+
+| Session | Teal Rate | Interpretation |
+|---|---|---|
+| **Session 1** (exploration) | **0%** | No prior knowledge, agent explores randomly |
+| **Session 2** (early learning) | **25%** | Agent begins shifting toward learned associations |
+| **Session 3** (convergence) | **100%** | Full convergence — agent picks antidote every time |
+| **Fresh control** | **DIED** | No learning signal — agent never picks antidote |
+
+**Interpretation:** The agent learns organically from its own actions. No scripted training, no injected reactions — the full CerebellumModulator -> ReactionBus -> hippocampus/NAc -> valence annotation -> PromptAssembler pipeline works end-to-end. The fresh control validates that learning is necessary — without bio-system state, the LLM has no reason to prefer any vial. The experienced agent escapes on turn 1 in Session 3; the fresh agent dies. This is the Tier 3 proof for the 1.0 claim: cross-session learning without fine-tuning, demonstrated with organic LLM-driven training.
+
+**Decision:** All three testing tiers now PASS. 41/41 hypotheses confirmed across 4 experiments. The 1.0 research claim — cross-session learning without fine-tuning — is demonstrated at every tier. Version bump to 0.3.0.
+
+**Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp4_tier3.py --model qwen2.5-14b`
+**Full protocol:** [experiments/protocols/behavioral_convergence_exp4_reproduction.md](../experiments/protocols/behavioral_convergence_exp4_reproduction.md)

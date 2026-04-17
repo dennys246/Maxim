@@ -35,8 +35,8 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Semantic Similarity](semantic_similarity_analysis.md) | Phase 4 neural embeddings, NeuralSemanticLSH |
-| Attention (archived) | Vision-centric spatial attention — being rebuilt as part of the [substrate plans](plans/README.md). Recognition substrate closed 2026-04-14; next is [substrate_binding_persistence](plans/substrate_binding_persistence.md). |
-| Salience (archived) | Vision-centric salience — being rebuilt as part of the [substrate plans](plans/README.md). Recognition substrate closed 2026-04-14; next is [substrate_binding_persistence](plans/substrate_binding_persistence.md). |
+| Attention (archived) | Vision-centric spatial attention — being rebuilt as part of the [substrate plans](plans/README.md). Recognition substrate closed 2026-04-14; next is [substrate_binding_persistence](plans/archive/substrate_binding_persistence.md). |
+| Salience (archived) | Vision-centric salience — being rebuilt as part of the [substrate plans](plans/README.md). Recognition substrate closed 2026-04-14; next is [substrate_binding_persistence](plans/archive/substrate_binding_persistence.md). |
 
 ### Safety & Learning
 

@@ -6,7 +6,7 @@
 **Gates:** null (not 1.0-gating)
 **Depends on:** P3a (episode binding — Hebbian link formation)
 **Blocks:** P8 (sleep replay needs decay mechanism)
-**Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
+**Parent:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md)
 **Related:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md)
 
 ## Goal

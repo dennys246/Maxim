@@ -6,7 +6,7 @@
 **Gates:** null (B4 gates 1.0, not B3/B5)
 **Depends on:** B1 (SHIPPED — prompt composition + PromptAssembler)
 **Blocks:** nothing directly (B4 is independent)
-**Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
+**Parent:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md)
 
 ## B3 — Acting Coach Layer
 

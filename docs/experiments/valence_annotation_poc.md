@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-17
 **Status:** PASS
-**Plan:** [substrate_valence_annotation.md](../plans/substrate_valence_annotation.md) Stage 3
+**Plan:** [substrate_valence_annotation.md](../plans/archive/substrate_valence_annotation.md) Stage 3
 
 ## Scenario
 

@@ -6,7 +6,7 @@
 **Gates:** null (not 1.0-gating, but validates the consolidation claim)
 **Depends on:** P3a (episode binding), P6 (decay mechanism)
 **Blocks:** nothing — but **activates** [memory_consolidation_practice.md](memory_consolidation_practice.md)
-**Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
+**Parent:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md)
 **Related:** [memory_consolidation_practice.md](memory_consolidation_practice.md) (living practice doc that refines strategies AFTER P8 ships)
 
 ## Goal

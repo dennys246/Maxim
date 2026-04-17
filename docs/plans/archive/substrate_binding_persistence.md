@@ -4,31 +4,31 @@
 
 ### 0.3-target (ALL CLOSED + ARCHIVED)
 
-- [archive/substrate_p3a_episode_binding.md](archive/substrate_p3a_episode_binding.md) — **✅ COMPLETE** (2026-04-14). F1 = 0.9955 vs TF-IDF 0.6600.
-- [archive/substrate_p3b_channel_integration.md](archive/substrate_p3b_channel_integration.md) — **✅ Stage 1 SHIPPED** (2026-04-14). Stages 2+3 deferred.
-- [archive/substrate_p3_5_persistence_snapshot.md](archive/substrate_p3_5_persistence_snapshot.md) — **✅ Stages 1+2 SHIPPED** (2026-04-14). Stage 3 deferred.
-- [archive/substrate_p4_cross_modal_binding.md](archive/substrate_p4_cross_modal_binding.md) — **✅ COMPLETE** (2026-04-16). Arm B F1=1.000 vs Arm C F1=0.901.
+- [substrate_p3a_episode_binding.md](substrate_p3a_episode_binding.md) — **✅ COMPLETE** (2026-04-14). F1 = 0.9955 vs TF-IDF 0.6600.
+- [substrate_p3b_channel_integration.md](substrate_p3b_channel_integration.md) — **✅ Stage 1 SHIPPED** (2026-04-14). Stages 2+3 deferred.
+- [substrate_p3_5_persistence_snapshot.md](substrate_p3_5_persistence_snapshot.md) — **✅ Stages 1+2 SHIPPED** (2026-04-14). Stage 3 deferred.
+- [substrate_p4_cross_modal_binding.md](substrate_p4_cross_modal_binding.md) — **✅ COMPLETE** (2026-04-16). Arm B F1=1.000 vs Arm C F1=0.901.
 
 ### 0.5 track (plan files created, not yet active)
 
-- [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — **Draft.** 10k+ node persistence stress.
-- [substrate_p6_extinction.md](substrate_p6_extinction.md) — **Draft.** Decay without reinforcement vs LRU.
-- [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) — **Draft.** Minimum-viable sleep replay.
+- [substrate_p5_stress_persistence.md](../substrate_p5_stress_persistence.md) — **Draft.** 10k+ node persistence stress.
+- [substrate_p6_extinction.md](../substrate_p6_extinction.md) — **Draft.** Decay without reinforcement vs LRU.
+- [substrate_p8_sleep_replay.md](../substrate_p8_sleep_replay.md) — **Draft.** Minimum-viable sleep replay.
 
 ### Prompt track (plan files created, not yet active)
 
-- [prompt_b3_b5_track.md](prompt_b3_b5_track.md) — **Draft.** Acting Coach + embodiment/narrative separation.
-- [prompt_b4_replanning.md](prompt_b4_replanning.md) — **Draft. 1.0-GATING.** Replanning with failure diagnosis.
+- [prompt_b3_b5_track.md](../prompt_b3_b5_track.md) — **Draft.** Acting Coach + embodiment/narrative separation.
+- [prompt_b4_replanning.md](../prompt_b4_replanning.md) — **Draft. 1.0-GATING.** Replanning with failure diagnosis.
 
 ### Cross-cutting (CLOSED)
 
-- [archive/sem_execution_hook.md](archive/sem_execution_hook.md) — **✅ COMPLETE** (2026-04-14). SEM affordance forward path.
+- [sem_execution_hook.md](sem_execution_hook.md) — **✅ COMPLETE** (2026-04-14). SEM affordance forward path.
 
 **substrate_recognition.md predecessor closed (2026-04-14) for 0.3-minimum** — P1+P2 Stages 1+2+3 all shipped. This plan is no longer blocked.
 
 **Scope:** ~4,100 LOC across 10 phases (7 substrate + 3 prompt)
 **Target version:** 0.3-target (P3a/P3b/P3.5/P4) through 0.5 (P5/P6/P8), with prompt track at 0.4
-**Master reference:** [archive/substrate_plan.md](archive/substrate_plan.md) for full rationale, baselines, statistical hygiene
+**Master reference:** [substrate_plan.md](substrate_plan.md) for full rationale, baselines, statistical hygiene
 
 ## Goal
 
@@ -211,4 +211,4 @@ Formalize SEM → embodiment, DM → narrative, PromptAssembler → composition.
 
 ## If things fail
 
-See [archive/substrate_plan.md](archive/substrate_plan.md) "If the whole thing fails" section for per-commitment fallbacks. The critical one: if P4 loses to OpenCLIP, commitment #3 (hippocampus-only cross-modal binding) is revisited — that's a plan-level finding, not a bug fix.
+See [substrate_plan.md](substrate_plan.md) "If the whole thing fails" section for per-commitment fallbacks. The critical one: if P4 loses to OpenCLIP, commitment #3 (hippocampus-only cross-modal binding) is revisited — that's a plan-level finding, not a bug fix.

@@ -6,7 +6,7 @@
 **Gates:** null (not 1.0-gating, but blocks P6 and P8)
 **Depends on:** P3.5 (persistence protocol), P4 (cross-modal binding)
 **Blocks:** P6 (extinction), P8 (sleep replay)
-**Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
+**Parent:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md)
 **Related:** [memory_consolidation_practice.md](memory_consolidation_practice.md)
 
 ## Goal

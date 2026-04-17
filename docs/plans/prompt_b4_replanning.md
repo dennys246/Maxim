@@ -6,7 +6,7 @@
 **Gates:** **1.0** — replanning is a core capability claim
 **Depends on:** B1 (SHIPPED — prompt composition), P3a (SHIPPED — episode retrieval of prior attempts)
 **Blocks:** 1.0 release
-**Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
+**Parent:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md)
 **Related:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md)
 
 ## Goal
