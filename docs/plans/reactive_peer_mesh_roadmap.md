@@ -68,44 +68,15 @@ These complete the manage-the-mesh-by-hand surface. Each is a small ship.
 
 **Estimated effort:** C3.4 + C3.5 + C3.6 ≈ 3 small PRs over 3 sessions. Mostly composition over existing primitives, low review surface each.
 
-### Stage C4: Wire the router to drain state — THE missing piece
+### Stage C4: Wire the router to drain state ✅ SHIPPED (PR #148, 2026-04-17)
 
-This is the biggest single missing wire and the biggest design problem on the list.
+`drain_constraint` callback injected into `LLMRouter`. `DrainConstraint` class in `peer/drain_routing.py` with mtime-cached drain file reads + URL→node mapping from `mesh.yml`. `dispatch_exhausted_all_drained` event when every candidate is drain-eliminated. Budget-blocked local fallback also respects drain. 2-lens review folded 5 findings. Plan doc: [router_drain_coupling.md](router_drain_coupling.md). 27 tests.
 
-The fix has architectural weight, not just LOC weight, because:
+### Stage C4.5: Auto-drain on persistent failure ✅ SHIPPED (PR #152, 2026-04-17)
 
-1. The router's provider list comes from `lane_backends.BACKEND_CLASSES` + profile config, **not** from `mesh.yml`. There's currently no concept of "this provider is also a mesh node."
-2. Drain state is role-scoped (`drained_nodes.{role}.txt`) but the router doesn't know its role. It would need to either (a) read the env var (set by Plan 2 R2a `detect_and_apply_role`) or (b) get drain state injected at construction.
-3. The drain state file is a POSIX text file with `filelock`-serialized RMW. Reading it on every dispatch is too expensive — needs an in-memory cache with a watcher (inotify? mtime poll? process-internal pub-sub?).
-4. The provider-name → mesh-node-name correspondence is currently implicit. Drain operates on node names from `mesh.yml`; the router talks about provider URLs. There is no canonical mapping function today.
+Type-aware thresholds: permanent failures (auth, model_missing) auto-drain after 1, transient failures after 5 (configurable `MAXIM_AUTO_DRAIN_THRESHOLD`). `AutoDrainWriter` writes tagged entries (`# auto:<timestamp> reason:<type>`) via `atomic_write_text` under filelock. Pending buffer flushed outside `_inference_lock`. `_load_tagged_entries()` parser ready for C4.6 auto-undrain. 2-lens review folded 2 findings. Plan doc: [auto_drain_persistent_failure.md](auto_drain_persistent_failure.md). 19 new tests (46 total).
 
-**Open architectural questions for the C4 plan doc:**
-
-- Is the right primitive a `MeshAwareRouter` decorator that wraps the existing router, or a `drain_constraint` callback registered with `LLMRouter._try_provider`?
-- Where does the in-memory cache live, and who invalidates it? (Options: mtime watcher in a daemon thread; explicit invalidation hook from `drain_node`/`resume_node`; inotify on Linux + polling fallback elsewhere.)
-- How does drain state survive a `maxim` restart? (Answer: it already does — the file is the source of truth. The cache is rebuilt from the file on startup.)
-- Does drain consultation need to happen at lane-binding time (once per worker) or per-dispatch (every call)? The latter is correct but the former is cheaper. Per-dispatch with a 1s mtime cache is probably the right trade.
-- What's the contract when a drained node is the only node? Today the router would fail with `dispatch_exhausted`; with drain consultation it would fail with `dispatch_exhausted_all_drained` — different bug shape, different operator response.
-
-**Estimated effort:** 1-2 sessions of design (with a pre-design review round, like C2) + 2-3 sessions of implementation + review fold. Real plan-doc-worthy ship.
-
-**Should land before:** C4.5, C5, and most of C6. Everything below C4 in this list assumes drain actually constrains routing.
-
-### Stage C4.5: Auto-drain on persistent failure
-
-Once C4 is wired, the next reactive primitive falls out: when a provider hits `_set_long_backoff` for the Nth consecutive time, the router can mark it drained automatically. Operator runs `maxim peer list-drained` → sees the auto-drain → can investigate.
-
-**Open design questions:**
-- Threshold (3 consecutive failures? exponential? time-windowed?)
-- Auto-undrain story (does a successful health probe auto-clear an auto-drain entry? what about a manually-set drain entry — those should be sticky.)
-- How does an auto-drain entry differ from a manual-drain entry in the state file? (Suggestion: separate file `auto_drained_nodes.{role}.txt`, or a typed entry like `mac-studio  # auto:2026-04-15T12:34:56` — the C2 inline-comment-stripping logic already supports the latter.)
-
-**C3.3 re-check trigger:** the C3.3 `--node install` verb currently writes plain drain entries via `drain_node_if_absent`. When C4.5 ships, a C3.3-triggered drain will be indistinguishable from a true operator drain OR from a C4.5 auto-drain. The three categories have different auto-resume semantics:
-- Operator drain → sticky, never auto-resumed
-- Install-triggered drain → auto-resumed on install success (today's behavior)
-- Auto-drain → auto-cleared on health probe success (C4.5 proposed behavior)
-
-C4.5's design should decide whether to tag drain entries with their origin (`# auto`, `# install`, `# operator`) and whether the C3.3 verb should switch to marking its drains as `# install:<timestamp>` so a crashed `--node install` run leaves a recoverable orphan that C4.5's cleanup path can sweep. **Not addressed in C3.3** — deferred to C4.5 with this explicit re-check note so it's not forgotten.
+**Auto-undrain deferred to C4.6** — operator resumes manually for now. The three-category drain semantics (operator/install/auto) are resolved: inline `# auto:` tags distinguish auto-drains from sticky operator drains. C3.3 install drains remain untagged (treated as operator = sticky = safe default).
 
 May not need to be its own stage — could fold into C4 if the design is clean. Flag for revisit after C4 lands.
 
@@ -184,8 +155,8 @@ Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The m
 
 | Version | Includes | Status |
 |---|---|---|
-| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface complete) + C3.4 VRAM endpoint | **C3.3 SHIPPED** (PR #128, 2026-04-15); **C3.4 SHIPPED** (PR #142, 2026-04-17); C3.5/C3.6 pending |
-| **0.5** | C4 router-drain coupling + C4.5 auto-drain (the actual reactive ship) + substrate P3a / P4 / B3-B5 | not started |
+| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface) + C3.4 VRAM + C4/C4.5 reactive drain | **C3.3-C3.4 SHIPPED**; **C4+C4.5 SHIPPED** (PRs #148, #152); C3.5/C3.6/C4.6 pending |
+| **0.5** | C4.6 auto-undrain + C5 capacity-aware routing + substrate P3a / P4 / B3-B5 | C4.6 design needed |
 | **0.6** | C5 capacity-aware routing + C6 admin API + dashboard + **C9 mesh doc transport** | not started |
 | **0.7+** | C7 security hardening + C8 cross-version compat | not started |
 | **1.0** | Cross-session learning demonstration (banner) — separate from mesh | not started |
