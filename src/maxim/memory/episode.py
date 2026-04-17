@@ -52,7 +52,11 @@ Regression-guarded by ``TestP3aMechanism::test_boundary_close_no_deadlock``.
 from __future__ import annotations
 
 import itertools
+import logging
 import threading
+
+log = logging.getLogger(__name__)
+
 from collections.abc import Callable
 import dataclasses
 from dataclasses import dataclass, field
@@ -81,6 +85,8 @@ class Episode:
     # (tick, reward_delta) per reward event during this episode
     reward_events: tuple[tuple[int, float], ...]
     scn_tag: str | None
+    # Net valence from reactions captured during this episode.
+    valence: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -93,6 +99,7 @@ class Episode:
             "activated_nodes": list(self.activated_nodes),
             "reward_events": [list(re) for re in self.reward_events],
             "scn_tag": self.scn_tag,
+            "valence": self.valence,
         }
 
     @classmethod
@@ -107,6 +114,7 @@ class Episode:
             activated_nodes=tuple(data.get("activated_nodes", [])),
             reward_events=tuple((int(t), float(r)) for t, r in data.get("reward_events", [])),
             scn_tag=data.get("scn_tag"),
+            valence=float(data.get("valence", 0.0)),
         )
 
 
@@ -147,6 +155,10 @@ class CaptureEvent:
     # non-None, every node in ``activated_nodes`` is tagged with this
     # modality in ``Hippocampus._node_modality`` at episode close.
     modality: SubstrateModality | None = None
+    # SEM learning loop Stage 4 — pain/salience spike intensity since
+    # the last capture event.  ``None`` = no spike.  Set by PainBus
+    # subscriber bridge, consumed by ``salience_spike_rule``.
+    salience_spike: float | None = None
 
 
 @dataclass
@@ -162,6 +174,10 @@ class PendingEpisodeState:
     activated_nodes: list[str] = field(default_factory=list)
     reward_events: list[tuple[int, float]] = field(default_factory=list)
     scn_tag: str | None = None
+    # Valence annotation — accumulated from Reaction objects captured
+    # by a ReactionBus subscriber during the episode.  Typed as list
+    # (not list[Reaction]) to avoid coupling episode.py to reactions/.
+    reactions: list = field(default_factory=list)
     # P4 Stage 1 — per-node modality buffer. Populated by
     # ``Hippocampus._apply_event_to_pending`` whenever an incoming
     # ``CaptureEvent`` carries a non-None ``modality`` field.
@@ -174,6 +190,25 @@ class PendingEpisodeState:
     node_modality_buffer: dict[str, SubstrateModality] = field(default_factory=dict)
 
     def finalize(self) -> Episode:
+        # Compute net valence from captured reactions.
+        net_valence = 0.0
+        for reaction in self.reactions:
+            val = getattr(reaction, "valence", None)
+            intensity = getattr(reaction, "intensity", 0.0)
+            if val is None:
+                log.warning(
+                    "Episode %s: reaction %r has no 'valence' attribute; treating as neutral",
+                    self.id,
+                    type(reaction).__name__,
+                )
+                continue
+            v = val.value if hasattr(val, "value") else str(val)
+            if v == "negative":
+                net_valence -= intensity
+            elif v == "positive":
+                net_valence += intensity
+        net_valence = max(-1.0, min(1.0, net_valence))
+
         return Episode(
             id=self.id,
             start_tick=self.start_tick,
@@ -181,10 +216,10 @@ class PendingEpisodeState:
             channel=self.channel,
             sender_ids=tuple(sorted(self.sender_ids)),
             thread_id=self.thread_id,
-            # Preserve activation order while keeping the collection unique:
             activated_nodes=tuple(dict.fromkeys(self.activated_nodes)),
             reward_events=tuple(self.reward_events),
             scn_tag=self.scn_tag,
+            valence=net_valence,
         )
 
 
@@ -589,6 +624,7 @@ def apply_hebbian_on_close(
     hebbian_init: float,
     hebbian_delta: float,
     hebbian_max: float,
+    valence_decay: float = 0.95,
 ) -> None:
     """Apply Hebbian updates to ``binding_graph`` for a closed episode.
 
@@ -639,6 +675,34 @@ def apply_hebbian_on_close(
             binding_graph.update_edge(a, b, EdgeType.ASSOCIATES, weight=new_weight)
             binding_graph.update_edge(b, a, EdgeType.ASSOCIATES, weight=new_weight)
 
+    # Valence annotation — use update_edge for lock safety.
+    if episode.valence != 0.0:
+        for a, b in itertools.combinations(nodes, 2):
+            for src, tgt in ((a, b), (b, a)):
+                edge = binding_graph.find_edge(src, tgt, EdgeType.ASSOCIATES)
+                if edge is not None:
+                    current = edge.metadata.get("valence", 0.0)
+                    updated = max(-1.0, min(1.0, current * valence_decay + episode.valence))
+                    binding_graph.update_edge(
+                        src,
+                        tgt,
+                        EdgeType.ASSOCIATES,
+                        metadata_updates={"valence": updated},
+                    )
+
+
+def salience_spike_rule(min_intensity: float = 0.5) -> BoundaryRule:
+    """Close the pending episode when the incoming event follows a
+    pain/salience spike above the given intensity threshold.
+
+    (SEM learning loop Stage 4)
+    """
+
+    def _rule(pending: PendingEpisodeState, event: CaptureEvent) -> bool:
+        return event.salience_spike is not None and event.salience_spike >= min_intensity
+
+    return _rule
+
 
 __all__ = [
     "BoundaryRule",
@@ -648,6 +712,7 @@ __all__ = [
     "EpisodeStore",
     "PendingEpisodeState",
     "apply_hebbian_on_close",
+    "salience_spike_rule",
     "channel_change_rule",
     "channel_gap_rule",
     "channel_specific_rule",

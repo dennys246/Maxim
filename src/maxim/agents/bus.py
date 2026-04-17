@@ -14,7 +14,7 @@ import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field, fields
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Generic, Literal, TypeVar, overload
 
 if TYPE_CHECKING:
     from maxim.agents.percept_context import Modality, PerceptContext
@@ -1273,6 +1273,7 @@ class DependencyGraph(Generic[T]):
 
             return result
 
+    @overload
     def spreading_activation(
         self,
         source_ids: list[str],
@@ -1281,7 +1282,31 @@ class DependencyGraph(Generic[T]):
         threshold: float = 0.1,
         max_depth: int = 3,
         node_filter: Callable[[str], bool] | None = None,
-    ) -> dict[str, float]:
+        propagate_valence: Literal[False] = False,
+    ) -> dict[str, float]: ...
+
+    @overload
+    def spreading_activation(
+        self,
+        source_ids: list[str],
+        initial_activation: float = 1.0,
+        decay: float = 0.5,
+        threshold: float = 0.1,
+        max_depth: int = 3,
+        node_filter: Callable[[str], bool] | None = None,
+        propagate_valence: Literal[True] = ...,
+    ) -> dict[str, tuple[float, float]]: ...
+
+    def spreading_activation(
+        self,
+        source_ids: list[str],
+        initial_activation: float = 1.0,
+        decay: float = 0.5,
+        threshold: float = 0.1,
+        max_depth: int = 3,
+        node_filter: Callable[[str], bool] | None = None,
+        propagate_valence: bool = False,
+    ) -> dict[str, float] | dict[str, tuple[float, float]]:
         """Spread activation from source nodes through association edges.
 
         ``node_filter`` is an optional callable ``(node_id) -> bool``
@@ -1291,7 +1316,17 @@ class DependencyGraph(Generic[T]):
         is the seam P3b uses for channel-filtered retrieval and P4
         uses for modality-filtered cross-modal walks (substrate P3a
         Stage 2). Pass ``None`` (default) to disable filtering.
+
+        When ``propagate_valence=True``, returns
+        ``dict[str, tuple[float, float]]`` where each value is
+        ``(activation, valence)``.  Valence propagates alongside
+        activation: ``parent_valence * decay + edge.metadata["valence"]``.
         """
+        if propagate_valence:
+            return self._spreading_activation_with_valence(
+                source_ids, initial_activation, decay, threshold, max_depth, node_filter
+            )
+
         activations: dict[str, float] = {}
         visited_at_depth: dict[str, int] = {}
 
@@ -1328,6 +1363,55 @@ class DependencyGraph(Generic[T]):
                         activations[target] = new_activation
                         visited_at_depth[target] = depth + 1
                         queue.append((target, new_activation, depth + 1))
+
+        return activations
+
+    def _spreading_activation_with_valence(
+        self,
+        source_ids: list[str],
+        initial_activation: float,
+        decay: float,
+        threshold: float,
+        max_depth: int,
+        node_filter: Callable[[str], bool] | None,
+    ) -> dict[str, tuple[float, float]]:
+        """Internal helper: spreading activation with valence tracking."""
+        activations: dict[str, tuple[float, float]] = {}
+
+        # (node_id, activation, valence, depth)
+        q: deque[tuple[str, float, float, int]] = deque()
+        with self._lock:
+            for source in source_ids:
+                if source in self._nodes:
+                    if node_filter is not None and not node_filter(source):
+                        continue
+                    q.append((source, initial_activation, 0.0, 0))
+                    activations[source] = (initial_activation, 0.0)
+
+            while q:
+                node_id, activation, valence, depth = q.popleft()
+
+                if depth >= max_depth:
+                    continue
+
+                for edge in self._outgoing.get(node_id, []):
+                    if edge.edge_type not in (EdgeType.ASSOCIATES, EdgeType.CAUSES):
+                        continue
+                    target = edge.target
+                    if node_filter is not None and not node_filter(target):
+                        continue
+
+                    new_activation = activation * decay * edge.weight
+                    if new_activation < threshold:
+                        continue
+
+                    edge_valence = edge.metadata.get("valence", 0.0)
+                    new_valence = valence * decay + edge_valence
+
+                    prev = activations.get(target)
+                    if prev is None or new_activation > prev[0]:
+                        activations[target] = (new_activation, new_valence)
+                        q.append((target, new_activation, new_valence, depth + 1))
 
         return activations
 

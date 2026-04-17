@@ -905,6 +905,7 @@ def start_simulation_mode(
             nac=aut_nac,
             hippocampus=aut_hippocampus,
             scn=aut_memory_hub.scn if aut_memory_hub else None,
+            cerebellum=aut_cerebellum,
         )
         logger.info(
             "AUT ToolPainBridge wired (direct attribution; out-of-band "

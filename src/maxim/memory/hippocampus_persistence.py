@@ -208,6 +208,7 @@ class PersistenceMixin:
                         hebbian_init=hebbian_cfg.init,
                         hebbian_delta=hebbian_cfg.delta,
                         hebbian_max=hebbian_cfg.max_weight,
+                        valence_decay=hebbian_cfg.valence_decay,
                     )
 
                 # Restore the monotonic ordinal. Prefer the dumped value;

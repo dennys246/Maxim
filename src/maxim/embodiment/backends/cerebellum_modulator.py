@@ -120,6 +120,7 @@ class CerebellumModulator:
         if predicted is not None:
             # Cerebellum is confident — use cached prediction
             self._apply_predictions(predicted)
+            self._emit_success_reaction(affordance, min(0.3, 0.1 + 0.05 * len(predicted)))
             return ModulatorResult(
                 success=True,
                 modulator_name=self._name,
@@ -214,6 +215,35 @@ class CerebellumModulator:
             self._reaction_bus.publish(reaction)
         except Exception as e:
             log.debug("CerebellumModulator: failed to emit reaction: %s", e)
+
+    def _emit_success_reaction(self, affordance: str, intensity: float) -> None:
+        """Emit a Reaction(kind="reward") when Cerebellum confidently predicts.
+
+        Mirrors ``_emit_failure_reaction`` but with positive valence.
+        Intensity is deliberately lower than failure intensity (negativity
+        bias: failures are more informative than routine successes).
+        """
+        if self._reaction_bus is None:
+            return
+        try:
+            import time
+
+            from maxim.decisions.causal_link import Valence
+            from maxim.reactions.types import Reaction, ReactionContext, TraceSnapshot
+
+            reaction = Reaction(
+                kind="reward",
+                intensity=intensity,
+                valence=Valence.POSITIVE,
+                timestamp=time.time(),
+                source=f"cerebellum:{self._entity.name}.{self._name}.{affordance}",
+                context=ReactionContext(
+                    bindings={"entity_path": TraceSnapshot(percept_id=self._entity.name)},
+                ),
+            )
+            self._reaction_bus.publish(reaction)
+        except Exception as e:
+            log.debug("CerebellumModulator: failed to emit success reaction: %s", e)
 
     def _apply_predictions(self, predicted: dict[str, float]) -> None:
         """Apply Cerebellum predictions to entity sensors/vital_metrics."""
