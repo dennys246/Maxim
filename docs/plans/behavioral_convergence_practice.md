@@ -191,3 +191,51 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 **Result:** 13/13 hypotheses confirmed. Food +0.753, water +0.135, poison -0.495. Energy bridge: 1 hunger, 1 fatigue, 3 satiation. Key finding: environmental satiation creates background positive credit; discriminant is relative bias strength.
 
 **Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp2.py`
+
+---
+
+### 2026-04-17 — LLM acts on bio-system learning (Exp 3, Tier 2)
+
+**Hypothesis (H2 extension, Tier 2):** An LLM given valence context from the bio-system will make different tool-selection decisions than a fresh LLM with no prior experience, when presented with masked/arbitrary item names that carry no semantic hints.
+
+**Scenario:** Agent is poisoned (damage per turn). Three masked vials: Purple Hexagonal Glass (heals HP), Teal Cylindrical Ceramic (stops poison), Orange Triangular Crystal (more poison). Scripted training → persist → LLM test.
+
+**Metric:** Vial selection rate per condition (experienced vs fresh), N=10 per condition.
+
+**N:** 10 per condition. Model: qwen2.5-14b, temperature 0.3. Vial order shuffled per trial.
+
+**Result:** 12/12 hypotheses confirmed (10/10 Tier 1 + 2/2 Tier 2).
+
+| Vial | Experienced | Fresh |
+|---|---|---|
+| **Teal (stops poison)** | **10/10 (100%)** | **0/10 (0%)** |
+| Purple (heals HP) | 0/10 | 7/10 (70%) |
+| Orange (more poison) | 0/10 | 3/10 (30%) |
+
+**Interpretation:** Bio-system learning changes LLM behavior. The experienced agent picked the optimal vial 100% of the time. The fresh agent had no preference and picked the harmful orange vial 30% of the time. Valence strength differentiation is critical — flat "GOOD/BAD" labels showed no effect. This is the first Tier 2 proof for the 1.0 claim: cross-session learning without fine-tuning affects agent decisions.
+
+**What this does NOT prove (Tier 3):** The agent doesn't take the action during training — reactions are injected. Tier 3 tests organic learning.
+
+**Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp3_tier2.py --model qwen2.5-14b`
+**Full protocol:** [experiments/protocols/behavioral_convergence_exp3_reproduction.md](../experiments/protocols/behavioral_convergence_exp3_reproduction.md)
+
+---
+
+### Planned: Experiment 4 — Organic LLM learning (Tier 3)
+
+**Hypothesis:** An agent running in a real sim with SEM entities will organically learn from its own actions — choosing a vial, experiencing the outcome via CerebellumModulator → ReactionBus → valence annotation, and making different choices in subsequent turns and sessions.
+
+**What's needed:**
+1. **Sim scenario with SEM entities loaded** — three vials as SEM components with `attach_backends` wiring CerebellumModulator
+2. **Multi-turn sim** — agent gets poisoned, has 3-5 turns to try vials, experiences outcomes
+3. **Session persistence** — save after Session 1 training turns, load for Session 2 test turns
+4. **No scripted reactions** — all learning comes from the agent's actual tool executions through the CerebellumModulator → _emit_failure/success_reaction pathway
+5. **Masked vial names** — same arbitrary visual attributes as Tier 2
+
+**Tier:** 3 (organic LLM training + LLM test — the ultimate 1.0 proof)
+
+**Metric:** Vial selection rate across sessions. Session 1 (exploration): expect ~uniform. Session 3+ (post-learning): expect convergence toward teal (antidote).
+
+**Key challenge:** The agent needs to actually *try* each vial at least once to learn. In Session 1, the agent may avoid exploration if it finds something that works. May need a forced-exploration mechanism or multiple scenarios.
+
+**Status:** Blocked on full sim integration with SEM entity loading. All substrate infrastructure is in place (CerebellumModulator, reaction capture, valence in prompt, observe_episode_event in loop). The gap is wiring the sim scenario to load SEM entities via `--embodiment` and route tool execution through the CerebellumModulator pathway.

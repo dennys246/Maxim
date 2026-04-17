@@ -399,15 +399,25 @@ def run_control() -> dict:
 def build_tier2_prompt(valence_context: list[dict], turn: int) -> str:
     """Build a prompt for the LLM test phase.
 
-    The agent is poisoned and must choose what to do.
+    Vial order is shuffled per turn to control for positional bias.
     """
+    import random
+
+    rng = random.Random(turn * 7 + 13)  # deterministic per turn
+    vial_descs = [
+        f"{c['display']} ({c['name']}) - {', '.join(w.replace('text_', '') for w in c['concepts'][2:])}"
+        for c in CONSUMABLES
+    ]
+    indices = list(range(len(vial_descs)))
+    rng.shuffle(indices)
+
+    vial_list = "\n".join(f"{i + 1}. {vial_descs[idx]}" for i, idx in enumerate(indices))
+    vial_names = ", ".join(CONSUMABLES[idx]["name"] for idx in indices)
+
     situation = (
         "You are an adventurer in a dark dungeon. You have been poisoned "
         "and are taking damage each turn. Your HP is dropping steadily.\n\n"
-        "You have three vials in your inventory:\n"
-        "1. purple_hexagonal_glass_vial - A purple liquid in a hexagonal glass bottle, thick consistency\n"
-        "2. teal_cylindrical_ceramic_vial - A teal liquid in a cylindrical ceramic flask, thin consistency\n"
-        "3. orange_triangular_crystal_vial - An orange liquid in a triangular crystal bottle, gritty consistency\n\n"
+        f"You have three vials in your inventory:\n{vial_list}\n\n"
     )
 
     if valence_context:
@@ -415,10 +425,14 @@ def build_tier2_prompt(valence_context: list[dict], turn: int) -> str:
         for entry in valence_context:
             concept = entry.get("concept", "?")
             valence = entry.get("valence", 0.0)
-            if valence < -0.1:
-                associations += f"- {concept}: BAD experience (pain/failure)\n"
+            if valence < -0.3:
+                associations += f"- {concept}: VERY BAD experience — caused severe harm (strength: {valence:+.1f})\n"
+            elif valence < -0.1:
+                associations += f"- {concept}: bad experience — caused some harm (strength: {valence:+.1f})\n"
+            elif valence > 0.6:
+                associations += f"- {concept}: VERY GOOD experience — extremely helpful, strong positive outcome (strength: {valence:+.1f})\n"
             elif valence > 0.1:
-                associations += f"- {concept}: GOOD experience (helpful/beneficial)\n"
+                associations += f"- {concept}: good experience — somewhat helpful (strength: {valence:+.1f})\n"
             else:
                 associations += f"- {concept}: neutral experience\n"
         associations += "\n"
@@ -430,7 +444,7 @@ def build_tier2_prompt(valence_context: list[dict], turn: int) -> str:
         f"{associations}"
         f"Turn {turn}: You are still poisoned and losing HP. "
         "Which vial do you use? Respond with ONLY the vial name "
-        "(purple_hexagonal_glass_vial, teal_cylindrical_ceramic_vial, or orange_triangular_crystal_vial)."
+        f"({vial_names})."
     )
     return prompt
 
@@ -476,7 +490,7 @@ def run_experiment(persist_dir: str | None = None, tier1_only: bool = True) -> d
     }
 
     if not tier1_only:
-        # Phase 3: Tier 2 LLM test would go here
+        # Phase 3: Tier 2 LLM test — call real LLM with valence context
         # Build valence context from the trained agent
         valence_ctx = []
         for c in CONSUMABLES:
@@ -493,12 +507,77 @@ def run_experiment(persist_dir: str | None = None, tier1_only: bool = True) -> d
                         }
                     )
 
-        # Save the prompt that would be sent to the LLM
+        results["tier2_valence_context"] = valence_ctx
         results["tier2_prompt_experienced"] = build_tier2_prompt(valence_ctx, turn=1)
         results["tier2_prompt_fresh"] = build_tier2_prompt([], turn=1)
-        results["tier2_valence_context"] = valence_ctx
+
+        # Run LLM trials
+        n_trials = 10
+        experienced_choices: list[str] = []
+        fresh_choices: list[str] = []
+
+        print(f"\n  Running {n_trials} LLM trials per condition...")
+        for trial in range(n_trials):
+            # Experienced agent
+            prompt_exp = build_tier2_prompt(valence_ctx, turn=trial + 1)
+            choice_exp = _call_llm(prompt_exp)
+            experienced_choices.append(choice_exp)
+            print(f"    Trial {trial + 1}: experienced={choice_exp}", end="")
+
+            # Fresh agent (no valence context)
+            prompt_fresh = build_tier2_prompt([], turn=trial + 1)
+            choice_fresh = _call_llm(prompt_fresh)
+            fresh_choices.append(choice_fresh)
+            print(f", fresh={choice_fresh}")
+
+        results["tier2_experienced_choices"] = experienced_choices
+        results["tier2_fresh_choices"] = fresh_choices
+
+        # Count selections per vial
+        vial_names = [c["name"] for c in CONSUMABLES]
+        for condition, choices in [
+            ("experienced", experienced_choices),
+            ("fresh", fresh_choices),
+        ]:
+            counts = {}
+            for c in CONSUMABLES:
+                name = c["name"]
+                counts[name] = sum(1 for ch in choices if name in ch.lower().replace(" ", "_"))
+            counts["other"] = n_trials - sum(counts.values())
+            results[f"tier2_{condition}_counts"] = counts
 
     return results
+
+
+def _call_llm(prompt: str) -> str:
+    """Call the leader LLM via peer backend."""
+    try:
+        from maxim.peer.config import read_peer_config
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        cfg = read_peer_config()
+        if cfg is None:
+            return "ERROR:no_peer_config"
+
+        backend = _MaximPeerBackend.for_url(
+            cfg.url,
+            api_key=cfg.api_key,
+            model=cfg.model or "qwen2.5-14b",
+        )
+        response = backend.complete_with_usage(
+            system="You are an adventurer making survival decisions. Respond with ONLY the item name, nothing else.",
+            user=prompt,
+            temperature=0.3,
+            max_tokens=50,
+        )
+        text = response.content.strip().lower().replace(" ", "_")
+        # Extract vial name from response
+        for c in CONSUMABLES:
+            if c["name"] in text or c["name"].replace("_", " ") in response.content.lower():
+                return c["name"]
+        return f"other:{text[:50]}"
+    except Exception as e:
+        return f"ERROR:{e}"
 
 
 def print_results(results: dict) -> bool:
@@ -622,16 +701,48 @@ def print_results(results: dict) -> bool:
     print()
     print(f"Results: {passed}/{total} passed")
 
-    # Show Tier 2 prompt if available
-    if "tier2_prompt_experienced" in results:
+    # Show Tier 2 LLM results if available
+    if "tier2_experienced_counts" in results:
+        print()
+        print("TIER 2 — LLM Decision Test")
+        print("-" * 40)
+        exp_c = results["tier2_experienced_counts"]
+        fresh_c = results["tier2_fresh_counts"]
+        n = len(results.get("tier2_experienced_choices", []))
+
+        print(f"  N = {n} trials per condition")
+        print()
+        print(f"  {'Vial':<40} {'Experienced':>12} {'Fresh':>12}")
+        print(f"  {'─' * 40} {'─' * 12} {'─' * 12}")
+        for c in CONSUMABLES:
+            name = c["name"]
+            display = c["display"]
+            e_count = exp_c.get(name, 0)
+            f_count = fresh_c.get(name, 0)
+            print(f"  {display:<40} {e_count:>12} {f_count:>12}")
+        print(f"  {'other/error':<40} {exp_c.get('other', 0):>12} {fresh_c.get('other', 0):>12}")
+        print()
+
+        # Tier 2 hypotheses
+        teal_name = VIAL_B["name"]
+        orange_name = VIAL_C["name"]
+        exp_teal = exp_c.get(teal_name, 0)
+        fresh_teal = fresh_c.get(teal_name, 0)
+        exp_orange = exp_c.get(orange_name, 0)
+
+        check(
+            f"T2-H1: Experienced agent prefers Vial B (teal) more than fresh ({exp_teal}/{n} vs {fresh_teal}/{n})",
+            exp_teal > fresh_teal,
+        )
+        check(
+            f"T2-H2: Experienced agent avoids Vial C (orange) ({exp_orange}/{n} = {exp_orange * 100 // max(n, 1)}%)",
+            exp_orange <= 1,  # at most 1 out of N trials
+        )
+    elif "tier2_prompt_experienced" in results:
         print()
         print("TIER 2 PROMPT (experienced agent):")
         print("-" * 40)
         print(results["tier2_prompt_experienced"][:500])
-        print()
-        print("TIER 2 PROMPT (fresh agent):")
-        print("-" * 40)
-        print(results["tier2_prompt_fresh"][:500])
 
     print()
     if passed == total:
