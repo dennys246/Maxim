@@ -616,13 +616,19 @@ class TestStageThreeLimitation:
     regression guard. If a future fix enables multi-hop traversal
     through same-modality intermediates (``text_cue → text_bridge →
     vision_target``), this test FAILS and forces an explicit decision
-    about whether the new behavior is desired. See the PR description
-    for the Stage 2/3 design-decision note.
+    about whether the new behavior is desired.
 
-    Round 2 Arch-lens fold: documenting the limitation in a test
-    makes the constraint reviewable and prevents a silent future
-    change from accidentally "fixing" it (which would in turn change
-    the meaning of Stage 3's head-to-head metric).
+    **Stage 2 v3 measurement (2026-04-16) confirmed this limitation
+    is empirically harmless:** Option 2 lift = 0.0000 ± 0.0000 across
+    10 seeds. Same-class activation (0.490) dominates cross-class
+    bridge activation (0.022) by 22:1, so Option 2 cannot improve
+    top-5 precision. Option 2 is deferred as post-Stage-3 cleanup.
+    See ``docs/experiments/p4_option2_measurement.md``.
+
+    This test remains as the architectural bookmark for when Option 2
+    eventually ships (the ``node_filter`` → ``traversal_filter`` +
+    ``result_filter`` split). When that happens, flip the assertion
+    and rename this class.
     """
 
     def test_multi_hop_through_same_modality_intermediate_is_blocked(self) -> None:
