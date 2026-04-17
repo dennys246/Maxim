@@ -1,0 +1,29 @@
+component:
+  name: poison_vial
+  tags: [item, consumable, dangerous, fantasy]
+  category: items
+
+entity:
+  name: poison_vial
+  entity_type: item
+  sensors:
+    doses:
+      unit: count
+      range: [0, 3]
+      initial: 3
+    toxicity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    usage:
+      affordances:
+        drink:
+          params: {}
+          description: "Drink the liquid — appears similar to a potion"
+        examine:
+          params: {}
+          description: "Closely examine the liquid's color and smell"
+  failure_modes:
+    - name: poisoned
+      trigger: {field: toxicity, op: ">=", value: 0.5, pain: 0.8}

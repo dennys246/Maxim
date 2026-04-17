@@ -1,0 +1,29 @@
+component:
+  name: food_ration
+  tags: [item, consumable, food, fantasy]
+  category: items
+
+entity:
+  name: food_ration
+  entity_type: item
+  sensors:
+    portions:
+      unit: count
+      range: [0, 5]
+      initial: 5
+    nutrition:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.7
+  modulators:
+    usage:
+      affordances:
+        eat:
+          params: {}
+          description: "Eat a portion to restore energy and reduce hunger"
+        examine:
+          params: {}
+          description: "Inspect the food for freshness"
+  failure_modes:
+    - name: empty
+      trigger: {field: portions, op: "<=", value: 0, pain: 0.1}
