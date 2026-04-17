@@ -137,3 +137,69 @@ class TestBuildDefaultNetworkImportFailure:
         with patch.dict("sys.modules", {"maxim.default_network": None}):
             dn = build_default_network(nac=MagicMock())
             assert dn is None
+
+
+class TestPainCircuitBridgeSubscriberTripwire:
+    """Tripwire for the latent PainCircuitBridge × NAc subscriber double-attribution risk.
+
+    Same shape as ``test_pain_bus.py::test_subscriber_does_not_link_pending_tool_event``
+    (the ToolPainBridge tripwire from Wave 1). With an injected PainBus from
+    ``build_pain_bus``, the bus has ``create_pain_nac_subscriber`` AND
+    ``PainCircuitBridge._on_pain`` both subscribed. The subscriber's
+    ``record_outcome_full`` walks ``_pending_events`` — if it finds the
+    bridge's pending movement event, it double-counts.
+
+    **Today** the pending movement event context is ``{"reason": ..., "angle": ...}``
+    (from ``movement.py::record_action_start``) while the pain signal context
+    is ``{"source": "embodiment", "entity": ..., ...}``. Zero key overlap →
+    ``_context_similarity = 0/N = 0.0 < 0.5 threshold``. No double-counting.
+
+    **If this test fails:** someone enriched ``record_action_start``'s context
+    to include keys that overlap with pain signal context. Open
+    ``docs/plans/pain_bus_bridge_subscriber_unification.md`` — the deeper
+    bridge-aware subscriber fix is now needed for BOTH the ToolPainBridge
+    and PainCircuitBridge paths.
+    """
+
+    def test_subscriber_does_not_link_pending_movement_event(self):
+        """create_pain_nac_subscriber does NOT link PainCircuitBridge's pending events."""
+        import time
+
+        from maxim.decisions.nac import NAc, NACConfig
+        from maxim.proprioception.pain import PainSignal, PainType
+        from maxim.proprioception.pain_bus import build_pain_bus
+
+        nac = NAc(NACConfig(temporal_window_seconds=60.0))
+
+        # Simulate PainCircuitBridge.record_action_start: pending movement
+        # event with the context shape from movement.py ({"reason", "angle"}).
+        nac.record_event(
+            event_type="movement",
+            event_signature="look_at:dy=90:dp=10",
+            context={"reason": "orienting_response", "angle": 90.0},
+        )
+        assert len(nac._pending_events) == 1
+
+        # Build a bus with NAc subscriber (the production shape post-Wave-2).
+        bus = build_pain_bus(hippocampus=None, nac=nac)
+
+        # Publish a rich-context pain signal (what body._publish_pain fires).
+        signal = PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.7,
+            timestamp=time.time(),
+            context={
+                "source": "embodiment",
+                "entity": "body.arm.rusty_sword",
+                "entity_type": "weapon",
+                "failure_mode": "shatter",
+                "composes": [],
+                "sensor_readings": {"durability": 0.05},
+            },
+        )
+        bus.publish(signal)
+
+        # NO link should form for the pending movement event because the
+        # context-similarity mismatch ({"reason","angle"} vs 7-key body
+        # context) yields 0/2 = 0.0 < 0.5 threshold.
+        assert "look_at:dy=90:dp=10" not in nac._links or len(nac._links.get("look_at:dy=90:dp=10", [])) == 0

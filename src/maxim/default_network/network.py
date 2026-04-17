@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from maxim.agents.bus import AgentBus, Percept
     from maxim.agents.fear_agent import FearAgent
     from maxim.decisions.nac import NAc
+    from maxim.proprioception.pain_bus import PainBus
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +192,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         fear_agent: "FearAgent | None" = None,
         novelty_tracker: ThreadSafeNoveltyTracker | None = None,
         nac: "NAc | None" = None,
-        pain_bus: Any | None = None,
+        pain_bus: "PainBus | None" = None,
     ) -> None:
         """Initialize the Default Network.
 
@@ -354,7 +355,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         if self._config.scene_context_enabled:
             self._scene_context = SceneContextDetector(self._config.scene_context)
 
-    def _init_pain_circuit(self, nac: "NAc | None", pain_bus: Any | None = None) -> None:
+    def _init_pain_circuit(self, nac: "NAc | None", pain_bus: "PainBus | None" = None) -> None:
         """PainBus + PainDetector + PainCircuitBridge wiring (skips if NAc absent or disabled).
 
         When ``pain_bus`` is provided, DN uses the injected bus rather
