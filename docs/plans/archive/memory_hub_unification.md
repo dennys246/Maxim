@@ -1,6 +1,6 @@
 # MemoryHub Unification — required bridge wiring at construction
 
-**Status:** AUDIT COMPLETE — awaiting approval before code.
+**Status:** **SHIPPED** (PR #136, merged 2026-04-16). `build_memory_hub(*, hippocampus, scn, nac, ec)` always calls `.connect()`. Archived 2026-04-17.
 **Parent index:** [biosystem_unification.md](biosystem_unification.md)
 **Wave:** 2 of 4 (parallel-safe with `default_network_unification.md`)
 **Depends on:** [pain_bus_unification.md](pain_bus_unification.md), [reaction_bus_unification.md](reaction_bus_unification.md) — MemoryHub consumes both buses, so the builders must exist first.

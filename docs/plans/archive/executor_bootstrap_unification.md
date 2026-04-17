@@ -1,6 +1,6 @@
 # Executor Bootstrap Unification — push the bridge invariant into `build_executor`
 
-**Status:** Implementation complete + pre-merge review folded. Awaiting PR.
+**Status:** **SHIPPED** (PR #114, merged 2026-04-14). Archived 2026-04-17.
 **Branch:** `feat/exec-bootstrap-unify`
 **Scope:** ~200-300 LOC in `src/maxim/`. Tests for new code only; bulk test migration deferred.
 **Target version:** 0.4 maintenance.

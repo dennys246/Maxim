@@ -1,6 +1,6 @@
 # PainBus Unification — `build_pain_bus` with required learning subscribers
 
-**Status:** SHELL ONLY. Audit + design pending. Open this when the executor bootstrap PR merges and a session has bandwidth.
+**Status:** **SHIPPED** (PR #125, merged 2026-04-15). `build_pain_bus(*, hippocampus, nac)` + 3 CLI site migrations. `bus=` parameter added in Wave 3. Archived 2026-04-17.
 **Parent index:** [biosystem_unification.md](biosystem_unification.md)
 **Wave:** 1 of 4 (parallel-safe with `reaction_bus_unification.md`)
 **Depends on:** none — `executor_bootstrap_unification.md` should land first to keep the migration audit clean, but technically independent.
