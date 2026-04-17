@@ -52,6 +52,12 @@ maxim peer llm qwen2.5-14b
 
 # Check what model is running:
 maxim peer llm --status
+
+# Mesh-aware versions (use node names from mesh.yml):
+maxim peer --node mac-studio update              # drain → update → resume
+maxim peer --node mac-studio update --dry-run    # preview only, no drain
+maxim peer --node mac-studio restart             # drain → restart → resume
+maxim peer --node mac-studio llm qwen2.5-14b     # drain → swap → resume
 ```
 
 ## Decision tree

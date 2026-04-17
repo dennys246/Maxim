@@ -194,4 +194,51 @@ jobs:
             echo "in the same commit so the rule stays coherent."
             exit 1
           fi
+          # Plan 4 C3.5 admin_core single-source-of-truth rules:
+          # update_on_target, restart_on_target, llm_swap_on_target are
+          # the only CLIENT-side functions that POST to the leader's
+          # admin endpoints. Same pattern as install_core (C3.3).
+          ADMIN_UPDATE_MATCHES=$(grep -rn --include="*.py" -F "/v1/admin/update" src/maxim/ tests/ \
+            | grep -vE "^src/maxim/peer/admin_core\.py:" \
+            | grep -vE "^tests/unit/test_admin_core\.py:" \
+            | grep -vE "^src/maxim/runtime/leader_proxy\.py:" \
+            || true)
+          if [ -n "$ADMIN_UPDATE_MATCHES" ]; then
+            echo "ERROR: new caller of /v1/admin/update detected (Plan 4 C3.5)"
+            echo "$ADMIN_UPDATE_MATCHES"
+            echo ""
+            echo "update_on_target in src/maxim/peer/admin_core.py is the"
+            echo "single source of truth for the /v1/admin/update wire shape."
+            echo "Import update_on_target from peer/admin_core instead."
+            exit 1
+          fi
+          ADMIN_RESTART_MATCHES=$(grep -rn --include="*.py" -F "/v1/admin/restart" src/maxim/ tests/ \
+            | grep -vE "^src/maxim/peer/admin_core\.py:" \
+            | grep -vE "^tests/unit/test_admin_core\.py:" \
+            | grep -vE "^src/maxim/runtime/leader_proxy\.py:" \
+            || true)
+          if [ -n "$ADMIN_RESTART_MATCHES" ]; then
+            echo "ERROR: new caller of /v1/admin/restart detected (Plan 4 C3.5)"
+            echo "$ADMIN_RESTART_MATCHES"
+            echo ""
+            echo "restart_on_target in src/maxim/peer/admin_core.py is the"
+            echo "single source of truth for the /v1/admin/restart wire shape."
+            echo "Import restart_on_target from peer/admin_core instead."
+            exit 1
+          fi
+          ADMIN_LLM_MATCHES=$(grep -rn --include="*.py" -F "/v1/admin/llm-swap" src/maxim/ tests/ \
+            | grep -vE "^src/maxim/peer/admin_core\.py:" \
+            | grep -vE "^tests/unit/test_admin_core\.py:" \
+            | grep -vE "^src/maxim/runtime/leader_proxy\.py:" \
+            | grep -vE "^src/maxim/runtime/lane_backends\.py:.*Called by LeaderProxy" \
+            || true)
+          if [ -n "$ADMIN_LLM_MATCHES" ]; then
+            echo "ERROR: new caller of /v1/admin/llm-swap detected (Plan 4 C3.6)"
+            echo "$ADMIN_LLM_MATCHES"
+            echo ""
+            echo "llm_swap_on_target in src/maxim/peer/admin_core.py is the"
+            echo "single source of truth for the /v1/admin/llm-swap wire shape."
+            echo "Import llm_swap_on_target from peer/admin_core instead."
+            exit 1
+          fi
           echo "CI grep invariants clean"

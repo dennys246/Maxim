@@ -228,6 +228,10 @@ maxim peer forget
 | `maxim peer init-mesh [--force]` | Synthesize `~/.config/maxim/mesh.yml` from the existing `peer.yml`. Use this when you already ran `peer connect` and want to start using the mesh management verbs above. `peer.yml` is left in place by design — `runtime/role.py` reads its existence as part of role detection. `--force` overwrites an existing `mesh.yml` after backing it up to `mesh.yml.bak`. Refuses if `.bak` already exists (prevents losing your original on a double `--force`). | C3.1 |
 | `maxim peer add-node <name> --url <url> [--role peer\|leader] [--force]` | Append a new node to `mesh.yml::nodes`. URL validation is **syntax-only** at add time — reachability is the next `list-nodes` / doctor probe's job. `--force` replaces an existing node in place, preserving operator-typed node order. | C3.2 |
 | `maxim peer remove-node <name>` | Drop a node from `mesh.yml::nodes`. **Side effect:** auto-clears any drain state for the node with a visible "also cleared from drain state" message. Refuses on `self` — you can't delete the running daemon's own identity (the error documents the 3-step workaround). | C3.2 |
+| `maxim peer --node <name> install <extras>` | Mesh-aware install. Composes drain → install → resume. Resolves URL + key from `mesh.yml::nodes`. Refuses self (use `pip install` locally). Exit code 3 = install ok but resume failed. | C3.3 |
+| `maxim peer --node <name> update [--dry-run] [--force] [--branch <b>]` | Mesh-aware update. Composes drain → update → resume. `--dry-run` previews without draining. Refuses self (use `maxim peer update` locally). Same exit codes as install. | C3.5 |
+| `maxim peer --node <name> restart` | Mesh-aware restart. Composes drain → restart → resume. Two-phase recovery poll (proxy up, then LLM ready). Refuses self. Same exit codes as install. | C3.5 |
+| `maxim peer --node <name> llm <model>` | Mesh-aware LLM swap. Composes drain → swap → resume. Enables per-node model assignment (prerequisite for C5 capacity-aware routing). Refuses self. Same exit codes as install. | C3.6 |
 
 ### The two config files: `peer.yml` vs `mesh.yml`
 

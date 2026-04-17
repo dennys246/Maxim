@@ -1,7 +1,7 @@
 # Mesh Debug — operator runbook for the Plan 4 Stage C surface
 
 **Audience:** operators running a Maxim mesh (one leader + N peers, or N peers without a single leader).
-**Scope:** the `mesh.yml` declarative config, the `init-mesh` / `add-node` / `remove-node` setup verbs, the `drain` / `resume` / `list-drained` runtime state surface shipped across PRs #112 (C1), #113 (C2), #118 (C3.1), C3.2 follow-up, `--node install` (C3.3, PR #128), and `GET /v1/debug/vram` VRAM observability endpoint (C3.4, PR #142).
+**Scope:** the `mesh.yml` declarative config, the `init-mesh` / `add-node` / `remove-node` setup verbs, the `drain` / `resume` / `list-drained` runtime state surface shipped across PRs #112 (C1), #113 (C2), #118 (C3.1), C3.2 follow-up, `--node install` (C3.3, PR #128), `GET /v1/debug/vram` VRAM observability endpoint (C3.4, PR #142), and `--node update` / `--node restart` (C3.5) + `--node llm` (C3.6).
 
 If you are debugging a network-layer problem (DNS, TCP, TLS, Cloudflare tunnel) start in [peer_leader_connectivity.md](peer_leader_connectivity.md) instead. This doc covers symptoms above the network layer — the cluster is reachable, but routing is doing the wrong thing.
 
@@ -111,6 +111,26 @@ If `resume` also fails with a lock timeout, check `lsof ~/.maxim/util/drained_no
 Expected if the install **failed**. Check the exit code (non-zero) and the stderr "STILL DRAINED" message. After you've debugged and fixed the underlying install failure, run `maxim peer --node <name> resume` by hand to clear the drain.
 
 If the install **succeeded** (exit 0, "Resumed 'X' after install" in stdout) but the node is still drained, check whether you pre-drained it before the install — the was-drained sticky rule means pre-drained nodes never get auto-resumed. Run `maxim peer --node <name> resume` to clear it.
+
+### Walkthrough: update, restart, or swap LLM on a named mesh node (Plan 4 C3.5 + C3.6)
+
+```bash
+maxim peer --node mac-studio update                    # drain → update → resume
+maxim peer --node mac-studio update --dry-run          # preview only, no drain
+maxim peer --node mac-studio update --branch dev       # target a specific branch
+maxim peer --node mac-studio restart                   # drain → restart → resume
+maxim peer --node mac-studio llm qwen2.5-14b           # drain → swap → resume
+```
+
+These three verbs follow **the same drain → op → resume composition pattern** as `--node install` (C3.3). The HTTP wire-level logic lives in shared core functions in [admin_core.py](../../src/maxim/peer/admin_core.py) (single source of truth, CI grep enforced). The mesh CLI wires the drain/resume bookkeeping around the core.
+
+All three verbs share the same invariants:
+- **Self-guard:** refuses operating on `mesh.yml::self` (use the direct `maxim peer update`/`restart`/`llm` verbs instead)
+- **Was-drained sticky semantics:** if the node was already drained, the verb skips drain/resume bookkeeping
+- **Failure leaves drained:** if the operation fails, the node stays drained with a loud hint
+- **Exit code 3:** operation succeeded but resume failed (same as install)
+
+**`--node update --dry-run`** is special: it skips the drain step entirely (preview is read-only). The self-guard still fires even for dry-run.
 
 ---
 
