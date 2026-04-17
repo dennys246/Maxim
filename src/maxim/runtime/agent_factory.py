@@ -347,7 +347,7 @@ class AgentFactory:
     ) -> Any:
         """Create a MemoryHub coordinating the agent's memory systems."""
         try:
-            from maxim.integration.memory_hub import MemoryHub
+            from maxim.integration.memory_hub import build_memory_hub
             from maxim.similarity.ec import EntorhinalCortex
             from maxim.time.scn import SCN
 
@@ -368,7 +368,12 @@ class AgentFactory:
                         scn.load(scn_path_str)
                     except Exception:
                         pass  # Start fresh if corrupt
-            return MemoryHub(
+            # build_memory_hub calls .connect() internally, so NPC agents
+            # now get PlanHistoryBridge + EscalationLearningBridge +
+            # FearCircuitBridge.  Pre-Wave-2 these were permanently dead
+            # (bare MemoryHub() with no .connect() call).  See
+            # memory_hub_unification.md Gap B.
+            return build_memory_hub(
                 hippocampus=hippocampus,
                 scn=scn,
                 nac=nac,

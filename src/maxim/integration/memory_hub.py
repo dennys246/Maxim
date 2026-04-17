@@ -1564,4 +1564,75 @@ class MemoryHub:
         return False
 
 
-__all__ = ["MemoryHub"]
+def build_memory_hub(
+    *,
+    hippocampus: "Hippocampus",
+    scn: "SCN",
+    nac: "NAc",
+    ec: "EntorhinalCortex",
+    # Optional bio-systems (explicit None = deliberate opt-out)
+    atl: "ATL | None" = None,
+    angular_gyrus: "AngularGyrus | None" = None,
+    worker_pool: "WorkerPool | None" = None,
+    cerebellum: Any | None = None,
+    embodiment: Any | None = None,
+    # Bridge deps — external systems wired via .connect()
+    spatial: "SpatialMap | None" = None,
+    attention: "AttentionNetwork | None" = None,
+    salience: "SalienceNetwork | None" = None,
+    fear_agent: "FearAgent | None" = None,
+    novelty_tracker: Any | None = None,
+) -> MemoryHub:
+    """Construct a MemoryHub with bridges ALWAYS wired.
+
+    This is the canonical MemoryHub construction site (Wave 2 of
+    biosystem_unification). Calling this function guarantees that
+    ``.connect()`` is invoked, so the three always-created bridges
+    (PlanHistoryBridge, EscalationLearningBridge, FearCircuitBridge)
+    are alive on the returned hub.  Callers that don't need
+    spatial / salience / attention simply omit those kwargs —
+    the corresponding bridges are ``None`` by design, not by accident.
+
+    Raw ``MemoryHub(...)`` construction is intentionally still allowed
+    for tests (same precedent as ``Executor()`` and ``PainBus()``).
+    The structural enforcement lives at the production door, not the
+    type.
+
+    Args:
+        hippocampus: Required.  Episodic memory store.
+        scn: Required.  Suprachiasmatic nucleus (temporal indexing).
+        nac: Required.  Nucleus accumbens (reward / causal learning).
+        ec: Required.  Entorhinal cortex (similarity / pattern separation).
+        atl: Anterior temporal lobe (semantic concepts).  None to opt out.
+        angular_gyrus: Numerical grounding.  None to opt out.
+        worker_pool: Background processing pool.  None to opt out.
+        cerebellum: Motor learning.  None to opt out.
+        embodiment: Body state access.  None to opt out.
+        spatial: SpatialMap for spatial memory bridge.
+        attention: AttentionNetwork (used with spatial).
+        salience: SalienceNetwork for salience memory bridge.
+        fear_agent: FearAgent reference (stored, not used by any bridge today).
+        novelty_tracker: NoveltyTracker for sensitization wiring.
+    """
+    hub = MemoryHub(
+        hippocampus=hippocampus,
+        scn=scn,
+        nac=nac,
+        ec=ec,
+        atl=atl,
+        angular_gyrus=angular_gyrus,
+        worker_pool=worker_pool,
+        cerebellum=cerebellum,
+        embodiment=embodiment,
+    )
+    hub.connect(
+        spatial=spatial,
+        attention=attention,
+        salience=salience,
+        fear_agent=fear_agent,
+        novelty_tracker=novelty_tracker,
+    )
+    return hub
+
+
+__all__ = ["MemoryHub", "build_memory_hub"]

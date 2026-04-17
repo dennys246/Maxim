@@ -419,7 +419,7 @@ def start_simulation_mode(
     try:
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
         from maxim.decisions.nac import NAc
-        from maxim.integration.memory_hub import MemoryHub
+        from maxim.integration.memory_hub import build_memory_hub
         from maxim.time.scn import SCN
         from maxim.similarity.ec import EntorhinalCortex
 
@@ -444,7 +444,13 @@ def start_simulation_mode(
         except Exception:
             logger.debug("AngularGyrus not available for AUT")
 
-        aut_memory_hub = MemoryHub(
+        # build_memory_hub always calls .connect() internally, so
+        # PlanHistoryBridge + EscalationLearningBridge + FearCircuitBridge
+        # are alive.  No spatial/salience/attention in sim context.
+        # fear_agent is constructed much later (line ~1005) but the
+        # FearCircuitBridge doesn't use it — it only needs the core
+        # bio-systems (hippocampus, nac, ec) which are already wired.
+        aut_memory_hub = build_memory_hub(
             hippocampus=aut_hippocampus,
             scn=aut_scn,
             nac=aut_nac,
@@ -685,7 +691,9 @@ def start_simulation_mode(
     try:
         from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
         from maxim.decisions.nac import NAc
-        from maxim.integration.memory_hub import MemoryHub
+        from maxim.integration.memory_hub import build_memory_hub
+        from maxim.similarity.ec import EntorhinalCortex
+        from maxim.time.scn import SCN
 
         orch_persistence = Path("data") / "sim_orchestrator" / "memories.json"
         orch_persistence.parent.mkdir(parents=True, exist_ok=True)
@@ -695,11 +703,17 @@ def start_simulation_mode(
             )
         )
         orch_nac = NAc()
-        orch_memory_hub = MemoryHub(  # noqa: F841 — created for Phase 3 cross-session learning
+        # Pre-Wave-2 this was MemoryHub(hippocampus=..., nac=...) which
+        # silently failed with TypeError (missing required scn + ec
+        # dataclass fields, swallowed by except Exception at debug level).
+        # Gap C in memory_hub_unification.md audit.
+        orch_memory_hub = build_memory_hub(  # noqa: F841 — created for Phase 3 cross-session learning
             hippocampus=orch_hippocampus,
+            scn=SCN(),
             nac=orch_nac,
+            ec=EntorhinalCortex(),
         )
-        logger.info("Orchestrator memory wired (hippocampus + NAc)")
+        logger.info("Orchestrator memory wired (hippocampus + NAc + SCN + EC)")
     except Exception as e:
         logger.debug("Orchestrator memory not available: %s", e)
     orch_agent = MaximAgent()
@@ -1008,14 +1022,12 @@ def start_simulation_mode(
     except Exception as e:
         logger.warning("Failed to wire FearGatedExecutor for AUT: %s", e)
 
-    # ── Wire MemoryHub bridges to external systems ────────────────────────
-    if aut_memory_hub is not None:
-        try:
-            _fear = locals().get("fear_agent")
-            aut_memory_hub.connect(fear_agent=_fear)
-            logger.info("AUT MemoryHub bridges connected")
-        except Exception as e:
-            logger.debug("Failed to connect MemoryHub bridges: %s", e)
+    # NOTE: Pre-Wave-2, aut_memory_hub.connect(fear_agent=...) was called
+    # here.  build_memory_hub now calls .connect() internally, so the
+    # three always-created bridges (PlanHistory, Escalation, Fear) are
+    # already alive.  fear_agent is stored by .connect() but never read
+    # by any bridge — the FearCircuitBridge uses nac/ec/hippocampus
+    # directly.  See memory_hub_unification.md audit.
 
     # ── Print simulation banner ──────────────────────────────────────────
     from maxim.simulation.sim_logger import display_status, display_summary
