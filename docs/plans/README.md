@@ -118,29 +118,38 @@ Earlier archives (2026-04-11/12, S1–S4 shipped 2026-04-12):
 
 ## Version path to 1.0
 
-Two tracks run in parallel:
-- **Track A — Substrate:** the bio-inspired research claim. F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4 → P5 → P6 → P8.
-- **Track B — Prompt layer:** B1 → B3 → B4 → B5.
-- **Track C — Infrastructure (2026-04-12, mostly shipped 2026-04-12/14):** LLM path refinement. Plans 1, 2, 3, 3.5 shipped and archived; Plan 3.6 R5 + Plan 4 Stage A+B shipped; substrate P2 Stage 3 shipped (stress phase A). Plan 4 Stage C + stress phases B/C/E remain. Ships as 0.4 stability version.
+Three tracks run in parallel:
+- **Track A — Substrate:** the bio-inspired research claim. ~~F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4~~ ALL SHIPPED → P5 → P6 → P8.
+- **Track B — Prompt layer:** ~~B1~~ SHIPPED → B3 → B4 → B5.
+- **Track C — Infrastructure:** ~~LLM path Plans 1–3.5~~ SHIPPED → Reactive peer mesh (C3.5/C3.6/C4.6 remaining).
+- **Track D — Behavioral convergence (NEW):** ~~Tier 1 + Tier 2 + Tier 3~~ ALL PASS (41/41 hypotheses) → Scale validation (20+ seeds).
 
-Track C is a pause-insertion between Track A's 0.3 and Track B's 0.4 because the 2026-04-12 peer-leader incidents + `_OpenAIBackend` retry-loop discovery made it clear the substrate work cannot be reliably stress-tested on the current LLM path.
+| Version | What ships | What it proves | Status |
+|---|---|---|---|
+| ~~**0.2.x**~~ | Foundations, cleanup, peer flexibility | Friction removed, infrastructure stable | ✅ SHIPPED |
+| **0.3.0** | SEM learning loop, valence annotation, cerebellum activation, concept decomposition, behavioral convergence (Tier 1+2+3), reactive mesh (C4+C4.5) | **Cross-session learning without fine-tuning.** Agent learns from own actions, persists, behaves differently. 41/41 experiments. | ✅ **CURRENT** |
+| **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, peer mesh completion (C3.5/C3.6/C4.6) | Learning is robust under variance + load. Substrate persists at 10k+ nodes. Mesh fully operational. | **NEXT** |
+| **0.5** | P6 (extinction vs LRU), P8 (sleep replay), B3 (acting coach), B4 (replanning) | Agent forgets appropriately, consolidates offline, has coherent voice, recovers from failures. | Planned |
+| **1.0** | All phases passing, B4 gating, behavioral convergence at scale with statistical rigor | Cross-session learning at realistic scale, coherent voice, ongoing research program | Target |
 
-Each substrate phase is a falsifiable claim validated with mechanistic criteria where the phase tests a mechanism, and head-to-head gate baselines where the baseline attacks the same claim (P3a TF-IDF, P4 OpenCLIP, P6 LRU). Pass criteria use effect sizes across ≥10 seeds (≥20 for P4); no p-values, no Bonferroni corrections. Persistence round-trip smoke tests fire at every phase.
+### 0.4 roadmap (detailed)
 
-| Version | What ships | What it proves |
-|---|---|---|
-| **0.2.2** | Cleanup Wave | Friction removed from the surface B1+P1 will rewrite |
-| **0.3-pre** | foundations_plan, simulator_upgrades_plan, P0 pilot, B1+P1 combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
-| **0.3-minimum** | 0.3-pre plus P1, P2, P3.5 | Mechanism + reward modulation + persistence certification. Defensible version bump if P3a/b/P4 slip to 0.3.1. |
-| **0.3-target** | 0.3-minimum plus P3a, P3b, P4 (OpenCLIP head-to-head) | Full substrate proven with cross-modal binding across real process boundary |
-| **0.4 (Track C — stability)** | **LLM path refinement Plans 1–3.5 SHIPPED** (archived); Plan 3.6 R5 SHIPPED; Plan 4 Stage A+B SHIPPED; **substrate P2 Stage 3 SHIPPED** (real-embedding sweep PASS); Plan 4 Stage C + remaining stress phases (B/C/E) + `llama.cpp --parallel` batching PoC REMAINING | Infrastructure reliably supports multi-agent stress testing. `maxim peer restart` recovers in ~58s end-to-end on real hardware (peer-side overhead ≈ 0s, dominated by leader's 53s model reload). Per-agent observability via `agent_id` on every `peer_backend_call`/`peer_backend_failed` event. Rigorous recovery-time measurable via `maxim bench recovery-time`. Substrate P2 reward modulation validated on real embeddings at +56 pp target gain. See [llm_path_refinement.md](llm_path_refinement.md) + [substrate_recognition.md](substrate_recognition.md). |
-| **0.5 (formerly 0.4)** | P4 re-pass (production vision + email/Slack), B3, B4 (gates 1.0), B5 | Architecture generalizes; NPCs coherent; replanning recovers from failure |
-| **0.6 (formerly 0.5)** | P5 (stress persistence), P6 (extinction vs LRU), **P8 (minimum-viable sleep replay)** | Persists under load, forgets appropriately, actively strengthens rewarded associations offline |
-| **1.0** | Stress-test sim combining all phases; B4 passing; practice docs with experiments logged | Cross-session learning without fine-tuning at realistic scale, with coherent voice, with ongoing research program |
+| Track | What | Scope | Why |
+|---|---|---|---|
+| **D — Tier 3 at scale** | Run organic learning experiment with 20+ seeds, report mean ± std | ~1 session | 0.3 proves the mechanism with 1 run; 0.4 proves it's not a fluke |
+| **A — Episode boundaries** | Tool execution boundary + semantic shift detection (Rules 1-2) | ~200 LOC | Pre-P5 polish, observe_episode_event is now wired |
+| **A — P5 stress persistence** | 10k+ node persistence stress test | ~500 LOC | Validates substrate robustness under realistic load |
+| **C — Peer mesh completion** | C3.5 (`--node update/restart/llm`), C3.6, C4.6 (auto-undrain) | In progress | Complete the reactive mesh story |
 
-**0.3-minimum vs 0.3-target:** a partial 0.3 can ship as a version bump if the ambitious target slips. Normal re-planning, not failure.
+### What 0.3 proved
 
-**0.4 is a pure infrastructure version bump.** No new substrate phases. No new prompt-layer features. It exists because the 2026-04-12 incidents + architecture audit made stability work non-optional. Substrate work continues in 0.5 on top of the stabilized LLM path.
+The 0.3 release demonstrates the core 1.0 claim at prototype scale:
+
+1. **Tier 1 (substrate):** Bio-systems learn affective associations and persist them across sessions (Exp 1: 11/11, Exp 2: 13/13)
+2. **Tier 2 (LLM reads learning):** The LLM makes different decisions when it sees the agent's learned valence (Exp 3: 12/12, experienced 10/10 vs fresh 0/10)
+3. **Tier 3 (organic learning):** The agent learns from its own actions without scripted training (Exp 4: 5/5, teal rate 0% → 25% → 100%, fresh control DIED)
+
+All 41/41 hypotheses confirmed. No fine-tuning. No prompt engineering beyond surfacing the substrate's learned associations.
 
 **P2 validation was originally scoped to run INSIDE Plan 3's stress test** (Phase A). In practice the P2 Stage 3 sweep is CPU-only and ~27s wall clock, so it shipped standalone on 2026-04-14 via `TestP2ValidationSweep::test_sweep_10_seeds` without waiting on the combined stress run. The reproduction runbook lives at [../experiments/protocols/p2_reward_modulation_reproduction.md](../experiments/protocols/p2_reward_modulation_reproduction.md). Stress phases B (multi-agent fan-out), C (`llama.cpp --parallel`), and E (fault injection) remain and will run under the combined [llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md) protocol.
 
