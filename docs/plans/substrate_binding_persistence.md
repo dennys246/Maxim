@@ -2,9 +2,9 @@
 
 **Status:** **SPLITTING IN PROGRESS** (2026-04-14, updated 2026-04-16). This monolithic plan is being broken into 8 focused per-phase plans following the P2 shipping pattern. See [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) for the narrative and [archive/sem_execution_hook.md](archive/sem_execution_hook.md) for the now-closed companion plan that closes a cross-cutting gap discovered during the split audit. Until all per-phase plan files land, this document remains the canonical reference for scope + pass criteria on phases that haven't been split out yet. **0.3-target status: ALL FOUR phases (P3a + P3b + P3.5 + P4) CLOSED. 0.3-target gate is CLOSED.**
 
-- [substrate_p3_5_persistence_snapshot.md](substrate_p3_5_persistence_snapshot.md) — **✅ Stages 1 + 2 SHIPPED** (PRs #109, #120; 2026-04-14). Stage 3 (real-data 1000-node sweep) deferred — not version-gating.
-- [substrate_p3a_episode_binding.md](substrate_p3a_episode_binding.md) — **✅ COMPLETE** (PRs #109 + #112, 2026-04-14). Final results: F1 = 0.9955 ± 0.0055 vs TF-IDF 0.6600 ± 0.0058 (margin 0.324).
-- [substrate_p3b_channel_integration.md](substrate_p3b_channel_integration.md) — **✅ Stage 1 SHIPPED** (PR #116, 2026-04-14). Stages 2+3 deferred — not version-gating. Stage 1 alone unblocks P4 via `episode_membership_filter(membership_mode="exclusive")`.
+- [archive/substrate_p3_5_persistence_snapshot.md](archive/substrate_p3_5_persistence_snapshot.md) — **✅ Stages 1 + 2 SHIPPED + ARCHIVED** (2026-04-14). Stage 3 deferred — not version-gating.
+- [archive/substrate_p3a_episode_binding.md](archive/substrate_p3a_episode_binding.md) — **✅ COMPLETE + ARCHIVED** (2026-04-14). F1 = 0.9955 vs TF-IDF 0.6600.
+- [archive/substrate_p3b_channel_integration.md](archive/substrate_p3b_channel_integration.md) — **✅ Stage 1 SHIPPED + ARCHIVED** (2026-04-14). Stages 2+3 deferred — not version-gating.
 - [substrate_p4_cross_modal_binding.md](archive/substrate_p4_cross_modal_binding.md) — **✅ COMPLETE** (2026-04-16). Stage 3 head-to-head PASS: Arm B F1=1.000 vs Arm C F1=0.901, delta +0.099. Results: [experiments/p4_cross_modal_sweep.md](../experiments/p4_cross_modal_sweep.md).
 - `substrate_p5_stress_persistence.md`, `substrate_p6_extinction.md`, `substrate_p8_sleep_replay.md` — 0.5 track. Per-phase plan files open after P4 lands.
 - `prompt_b3_b5_track.md` — Track B prompt layer.
