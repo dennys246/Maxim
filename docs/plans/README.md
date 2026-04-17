@@ -121,14 +121,14 @@ Earlier archives (2026-04-11/12, S1–S4 shipped 2026-04-12):
 Three tracks run in parallel:
 - **Track A — Substrate:** the bio-inspired research claim. ~~F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4~~ ALL SHIPPED → P5 → P6 → P8.
 - **Track B — Prompt layer:** ~~B1~~ SHIPPED → B3 → B4 → B5.
-- **Track C — Infrastructure:** ~~LLM path Plans 1–3.5~~ SHIPPED → Reactive peer mesh (C3.5/C3.6/C4.6 remaining).
+- **Track C — Infrastructure:** ~~LLM path Plans 1–3.5~~ SHIPPED → Reactive peer mesh (~~C3.5/C3.6~~ SHIPPED, C4.6 remaining).
 - **Track D — Behavioral convergence (NEW):** ~~Tier 1 + Tier 2 + Tier 3~~ ALL PASS (41/41 hypotheses) → Scale validation (20+ seeds).
 
 | Version | What ships | What it proves | Status |
 |---|---|---|---|
 | ~~**0.2.x**~~ | Foundations, cleanup, peer flexibility | Friction removed, infrastructure stable | ✅ SHIPPED |
 | **0.3.0** | SEM learning loop, valence annotation, cerebellum activation, concept decomposition, behavioral convergence (Tier 1+2+3), reactive mesh (C4+C4.5) | **Cross-session learning without fine-tuning.** Agent learns from own actions, persists, behaves differently. 41/41 experiments. | ✅ **CURRENT** |
-| **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, peer mesh completion (C3.5/C3.6/C4.6) | Learning is robust under variance + load. Substrate persists at 10k+ nodes. Mesh fully operational. | **NEXT** |
+| **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, peer mesh completion (~~C3.5/C3.6~~ SHIPPED, C4.6) | Learning is robust under variance + load. Substrate persists at 10k+ nodes. Mesh fully operational. | **NEXT** |
 | **0.5** | P6 (extinction vs LRU), P8 (sleep replay), B3 (acting coach), B4 (replanning) | Agent forgets appropriately, consolidates offline, has coherent voice, recovers from failures. | Planned |
 | **1.0** | All phases passing, B4 gating, behavioral convergence at scale with statistical rigor | Cross-session learning at realistic scale, coherent voice, ongoing research program | Target |
 
@@ -139,7 +139,7 @@ Three tracks run in parallel:
 | **D — Tier 3 at scale** | Run organic learning experiment with 20+ seeds, report mean ± std | ~1 session | 0.3 proves the mechanism with 1 run; 0.4 proves it's not a fluke |
 | **A — Episode boundaries** | Tool execution boundary + semantic shift detection (Rules 1-2) | ~200 LOC | Pre-P5 polish, observe_episode_event is now wired |
 | **A — P5 stress persistence** | 10k+ node persistence stress test | ~500 LOC | Validates substrate robustness under realistic load |
-| **C — Peer mesh completion** | C3.5 (`--node update/restart/llm`), C3.6, C4.6 (auto-undrain) | In progress | Complete the reactive mesh story |
+| **C — Peer mesh completion** | ~~C3.5 (`--node update/restart`)~~ SHIPPED, ~~C3.6 (`--node llm`)~~ SHIPPED, C4.6 (auto-undrain) | C4.6 remaining | Complete the reactive mesh story |
 
 ### What 0.3 proved
 

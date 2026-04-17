@@ -1092,3 +1092,349 @@ class TestDrainNodeIfAbsent:
         )
         assert we_added is True
         assert "leader-desk" in drain_set
+
+
+# ─── C3.5 update verb ─────────────────────────────────────────────────
+
+
+class TestRunNodeUpdate:
+    """Plan 4 C3.5 — mesh-aware update verb composing
+    drain → update_on_target → resume. Same structure as
+    TestRunNodeInstall.
+    """
+
+    def _update_stub(self, monkeypatch, return_code: int):
+        captured: dict = {}
+
+        def fake_update(url, key, *, branch="main", dry_run=False, force=False):
+            captured["url"] = url
+            captured["key"] = key
+            captured["branch"] = branch
+            captured["dry_run"] = dry_run
+            captured["force"] = force
+            return return_code
+
+        monkeypatch.setattr(mesh_cli, "update_on_target", fake_update)
+        return captured
+
+    def test_update_on_self_refused(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "leader-desk", "update"],
+        )
+        assert rc == 2
+        assert "Refusing to update self" in capsys.readouterr().err
+
+    def test_dry_run_on_self_also_refused(self, mesh_home, capsys):
+        """Review fold: both lenses cross-confirmed that dry-run must
+        NOT bypass the self-guard. Even a read-only preview against
+        self is a round-trip through your own admin endpoint."""
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "leader-desk", "update", "--dry-run"],
+        )
+        assert rc == 2
+        assert "Refusing to update self" in capsys.readouterr().err
+
+    def test_update_unknown_node_exit_2(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "nonexistent", "update"],
+        )
+        assert rc == 2
+        assert "Unknown node" in capsys.readouterr().err
+
+    def test_happy_path_drains_updates_resumes(self, mesh_home, monkeypatch, capsys):
+        captured = self._update_stub(monkeypatch, return_code=0)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "update"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert captured["url"] == "https://mac.example.com/v1"
+        assert captured["key"] == "sk-cluster-abc"
+        assert captured["branch"] == "main"
+        assert captured["dry_run"] is False
+        assert "Drained 'mac-studio' for update" in out
+        assert "Resumed 'mac-studio' after update" in out
+
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" not in read_drained_nodes(set()).active
+
+    def test_dry_run_skips_drain(self, mesh_home, monkeypatch, capsys):
+        captured = self._update_stub(monkeypatch, return_code=0)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "update", "--dry-run"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert captured["dry_run"] is True
+        # Dry-run should NOT drain.
+        assert "Drained" not in out
+
+    def test_custom_branch_and_force(self, mesh_home, monkeypatch, capsys):
+        captured = self._update_stub(monkeypatch, return_code=0)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "update", "--branch", "develop", "--force"],
+        )
+        assert rc == 0
+        assert captured["branch"] == "develop"
+        assert captured["force"] is True
+
+    def test_operator_prewalked_drain_is_sticky(self, mesh_home, monkeypatch, capsys):
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+
+        self._update_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "update"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert "already drained by operator" in out
+        assert "Resumed" not in out
+
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" in read_drained_nodes(set()).active
+
+    def test_failure_leaves_drained(self, mesh_home, monkeypatch, capsys):
+        self._update_stub(monkeypatch, return_code=1)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "update"],
+        )
+        err = capsys.readouterr().err
+
+        assert rc == 1
+        assert "STILL DRAINED" in err
+        assert "maxim peer --node mac-studio resume" in err
+
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" in read_drained_nodes(set()).active
+
+    def test_resume_failure_returns_exit_3(self, mesh_home, monkeypatch, capsys):
+        self._update_stub(monkeypatch, return_code=0)
+
+        from maxim.peer import drain_state
+
+        def failing_resume(name, known):
+            raise drain_state.DrainError("lock timeout")
+
+        # Patch on mesh_cli (the consumer's bound reference), not on
+        # drain_state (the definition site).
+        monkeypatch.setattr(mesh_cli, "_resume_node", failing_resume)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "update"],
+        )
+        assert rc == 3
+        assert "resume failed" in capsys.readouterr().err
+
+    def test_dispatcher_routes_update_verb(self, mesh_home, monkeypatch, capsys):
+        self._update_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "update"],
+        )
+        assert rc == 0
+
+
+# ─── C3.5 restart verb ────────────────────────────────────────────────
+
+
+class TestRunNodeRestart:
+    """Plan 4 C3.5 — mesh-aware restart verb composing
+    drain → restart_on_target → resume.
+    """
+
+    def _restart_stub(self, monkeypatch, return_code: int):
+        captured: dict = {}
+
+        def fake_restart(url, key):
+            captured["url"] = url
+            captured["key"] = key
+            return return_code
+
+        monkeypatch.setattr(mesh_cli, "restart_on_target", fake_restart)
+        return captured
+
+    def test_restart_on_self_refused(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "leader-desk", "restart"],
+        )
+        assert rc == 2
+        assert "Refusing to restart self" in capsys.readouterr().err
+
+    def test_happy_path_drains_restarts_resumes(self, mesh_home, monkeypatch, capsys):
+        captured = self._restart_stub(monkeypatch, return_code=0)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "restart"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert captured["url"] == "https://mac.example.com/v1"
+        assert captured["key"] == "sk-cluster-abc"
+        assert "Drained 'mac-studio' for restart" in out
+        assert "Resumed 'mac-studio' after restart" in out
+
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" not in read_drained_nodes(set()).active
+
+    def test_operator_prewalked_drain_is_sticky(self, mesh_home, monkeypatch, capsys):
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+
+        self._restart_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "restart"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert "already drained by operator" in out
+        assert "Resumed" not in out
+
+    def test_failure_leaves_drained(self, mesh_home, monkeypatch, capsys):
+        self._restart_stub(monkeypatch, return_code=1)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "restart"],
+        )
+        err = capsys.readouterr().err
+
+        assert rc == 1
+        assert "STILL DRAINED" in err
+
+    def test_resume_failure_returns_exit_3(self, mesh_home, monkeypatch, capsys):
+        self._restart_stub(monkeypatch, return_code=0)
+
+        from maxim.peer import drain_state
+
+        def failing_resume(name, known):
+            raise drain_state.DrainError("lock timeout")
+
+        # Patch on mesh_cli (the consumer's bound reference), not on
+        # drain_state (the definition site).
+        monkeypatch.setattr(mesh_cli, "_resume_node", failing_resume)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "restart"],
+        )
+        assert rc == 3
+
+
+# ─── C3.6 llm verb ────────────────────────────────────────────────────
+
+
+class TestRunNodeLlm:
+    """Plan 4 C3.6 — mesh-aware LLM swap verb composing
+    drain → llm_swap_on_target → resume.
+    """
+
+    def _llm_stub(self, monkeypatch, return_code: int):
+        captured: dict = {}
+
+        def fake_llm_swap(url, key, model):
+            captured["url"] = url
+            captured["key"] = key
+            captured["model"] = model
+            return return_code
+
+        monkeypatch.setattr(mesh_cli, "llm_swap_on_target", fake_llm_swap)
+        return captured
+
+    def test_llm_on_self_refused(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "leader-desk", "llm", "qwen2.5-14b"],
+        )
+        assert rc == 2
+        assert "Refusing to swap LLM on self" in capsys.readouterr().err
+
+    def test_llm_no_model_shows_usage(self, mesh_home, capsys):
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "llm"],
+        )
+        assert rc == 2
+        assert "Usage:" in capsys.readouterr().err
+
+    def test_happy_path_drains_swaps_resumes(self, mesh_home, monkeypatch, capsys):
+        captured = self._llm_stub(monkeypatch, return_code=0)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "llm", "qwen2.5-14b"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert captured["url"] == "https://mac.example.com/v1"
+        assert captured["key"] == "sk-cluster-abc"
+        assert captured["model"] == "qwen2.5-14b"
+        assert "Drained 'mac-studio' for LLM swap" in out
+        assert "Resumed 'mac-studio' after LLM swap" in out
+
+        from maxim.peer.drain_state import read_drained_nodes
+
+        assert "mac-studio" not in read_drained_nodes(set()).active
+
+    def test_operator_prewalked_drain_is_sticky(self, mesh_home, monkeypatch, capsys):
+        mesh_cli.run_node_subcommand(["--node", "mac-studio", "drain"])
+        capsys.readouterr()
+
+        self._llm_stub(monkeypatch, return_code=0)
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "llm", "mistral-7b"],
+        )
+        out = capsys.readouterr().out
+
+        assert rc == 0
+        assert "already drained by operator" in out
+        assert "Resumed" not in out
+
+    def test_failure_leaves_drained(self, mesh_home, monkeypatch, capsys):
+        self._llm_stub(monkeypatch, return_code=1)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "llm", "qwen2.5-14b"],
+        )
+        err = capsys.readouterr().err
+
+        assert rc == 1
+        assert "STILL DRAINED" in err
+
+    def test_resume_failure_returns_exit_3(self, mesh_home, monkeypatch, capsys):
+        self._llm_stub(monkeypatch, return_code=0)
+
+        from maxim.peer import drain_state
+
+        def failing_resume(name, known):
+            raise drain_state.DrainError("lock timeout")
+
+        # Patch on mesh_cli (the consumer's bound reference), not on
+        # drain_state (the definition site).
+        monkeypatch.setattr(mesh_cli, "_resume_node", failing_resume)
+
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "llm", "qwen2.5-14b"],
+        )
+        assert rc == 3
+
+    def test_dispatcher_includes_new_verbs_in_hint(self, mesh_home, capsys):
+        """The unknown-verb error message should list all verbs including
+        the new ones added in C3.5/C3.6.
+        """
+        rc = mesh_cli.run_node_subcommand(
+            ["--node", "mac-studio", "bogus"],
+        )
+        err = capsys.readouterr().err
+        assert rc == 2
+        assert "update" in err
+        assert "restart" in err
+        assert "llm" in err

@@ -1,11 +1,12 @@
 """CLI verbs for ``maxim peer list-nodes`` and ``maxim peer --node <name> ...``.
 
-Plan 4 Stage C1 + C2. Extends ``maxim peer`` with mesh topology verbs
-backed by :mod:`maxim.peer.mesh_config`. Node probes route through
+Plan 4 Stage C1 + C2 + C3.3 + C3.5 + C3.6. Extends ``maxim peer``
+with mesh topology verbs backed by :mod:`maxim.peer.mesh_config`.
+Node probes route through
 :meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.for_url`
 + ``health_check`` — the canonical probe entry point (Plan 3 R2.6).
 
-Verbs (C1 + C2 + C3.3):
+Verbs (C1 + C2 + C3.3 + C3.5 + C3.6):
 
 - ``maxim peer list-nodes [--json]`` — table/JSON of nodes + live status
   with drained nodes shown inline
@@ -14,10 +15,13 @@ Verbs (C1 + C2 + C3.3):
 - ``maxim peer --node <name> drain`` — add to drain state (C2)
 - ``maxim peer --node <name> resume`` — clear from drain state (C2)
 - ``maxim peer --node <name> install <extras>`` — mesh-aware install
-  with drain → install → resume composition (C3.3). Delegates the
-  HTTP body to :func:`maxim.peer.cli._install_on_target`, which is
-  also the core for the no-mesh.yml positional-URL
-  ``maxim peer install <extras> [url]`` verb.
+  with drain → install → resume composition (C3.3)
+- ``maxim peer --node <name> update`` — mesh-aware update with
+  drain → update → resume composition (C3.5)
+- ``maxim peer --node <name> restart`` — mesh-aware restart with
+  drain → restart → resume composition (C3.5)
+- ``maxim peer --node <name> llm <model>`` — mesh-aware LLM swap with
+  drain → swap → resume composition (C3.6)
 
 Drain state lives in ``~/.maxim/util/drained_nodes.{role}.txt`` via
 :mod:`maxim.peer.drain_state`. The split between ``mesh.yml``
@@ -29,13 +33,11 @@ Sibling module :mod:`maxim.peer.mesh_setup` houses the operator-
 invoked one-shot setup verbs that mutate ``mesh.yml`` itself
 (``init-mesh``, ``add-node``, ``remove-node``); this module
 (``mesh_cli``) handles the read-only-from-mesh.yml verbs
-(``list-nodes``, ``--node <status|health|drain|resume|install>``).
+(``list-nodes``, ``--node <status|health|...>``).
 
-Deferred to remaining Plan 4 C3 work: ``/v1/debug/vram`` endpoint
-(C3.4), ``--node update`` / ``--node restart`` (C3.5), ``--node llm``
-(C3.6), admin API endpoints, per-agent rate limiting, request-trace
-ring buffer, cluster key rotation. See
-:doc:`/docs/plans/reactive_peer_mesh_roadmap` for the full arc.
+Deferred to remaining Plan 4 work: admin API endpoints, per-agent
+rate limiting, request-trace ring buffer, cluster key rotation.
+See :doc:`/docs/plans/reactive_peer_mesh_roadmap` for the full arc.
 """
 
 from __future__ import annotations
@@ -51,6 +53,11 @@ from maxim.peer.drain_state import (
     drain_node_if_absent as _drain_node_if_absent,
     read_drained_nodes,
     resume_node as _resume_node,
+)
+from maxim.peer.admin_core import (
+    llm_swap_on_target,
+    restart_on_target,
+    update_on_target,
 )
 from maxim.peer.install_core import (
     KNOWN_EXTRAS,
@@ -72,19 +79,22 @@ from maxim.peer.probe_classify import classify_probe_outcome
 # so operators tailing exit codes can tell "node is upgraded but
 # stuck in drain" apart from "node failed to upgrade and is stuck
 # in drain." Fold I4 from the C3.3 pre-merge review.
-_EXIT_RESUME_FAILED_POST_INSTALL = 3
+_EXIT_RESUME_FAILED_POST_OP = 3
 
 
 MESH_USAGE_HEAD = """\
 Usage: maxim peer list-nodes [--json]
        maxim peer list-drained
-       maxim peer --node <name> <status|health|drain|resume|install>
+       maxim peer --node <name> <verb>
+
+Verbs: status, health, drain, resume, install, update, restart, llm
 
 Mesh topology verbs. Requires mesh.yml (or falls back to peer.yml as
 a synthesized one-node mesh). Node probes go through
 _MaximPeerBackend.health_check(). Drain state lives at
-~/.maxim/util/drained_nodes.{role}.txt. The install verb composes
-drain → install → resume around the shared _install_on_target core.
+~/.maxim/util/drained_nodes.{role}.txt. The install/update/restart/llm
+verbs compose drain → op → resume around shared cores in install_core
+and admin_core.
 """
 
 
@@ -176,7 +186,8 @@ def run_node_subcommand(argv: Sequence[str]) -> int:
     ``["--node", "<name>", "<verb>"]``).
 
     Plan 4 C1: ``status`` / ``health``. Plan 4 C2: ``drain`` /
-    ``resume``. Plan 4 C3.3: ``install``.
+    ``resume``. Plan 4 C3.3: ``install``. Plan 4 C3.5: ``update`` /
+    ``restart``. Plan 4 C3.6: ``llm``.
 
     Drain + resume reject unknown nodes with exit 2 and list the
     known names. Drain is idempotent for already-drained nodes (exit
@@ -197,7 +208,7 @@ def run_node_subcommand(argv: Sequence[str]) -> int:
     and leaves the node drained on install failure with a loud
     message pointing at the manual resume command.
     """
-    valid_verbs = "status|health|drain|resume|install"
+    valid_verbs = "status|health|drain|resume|install|update|restart|llm"
     if not argv or argv[0] != "--node":
         print(f"Usage: maxim peer --node <name> <{valid_verbs}>", file=sys.stderr)
         return 2
@@ -241,6 +252,12 @@ def run_node_subcommand(argv: Sequence[str]) -> int:
         return _run_resume(mesh, node)
     if verb == "install":
         return _run_node_install(mesh, node, verb_args)
+    if verb == "update":
+        return _run_node_update(mesh, node, verb_args)
+    if verb == "restart":
+        return _run_node_restart(mesh, node, verb_args)
+    if verb == "llm":
+        return _run_node_llm(mesh, node, verb_args)
     print(
         f"Unknown --node verb: {verb!r} (expected {valid_verbs})",
         file=sys.stderr,
@@ -541,7 +558,7 @@ def _run_node_install(
                     f"⚠ Install succeeded but resume failed: {e}\n  → Run: maxim peer --node {node.name} resume",
                     file=sys.stderr,
                 )
-                return _EXIT_RESUME_FAILED_POST_INSTALL
+                return _EXIT_RESUME_FAILED_POST_OP
         return 0
 
     # 8. Failure path — leave drained with loud message. The
@@ -560,6 +577,312 @@ def _run_node_install(
             file=sys.stderr,
         )
     return install_rc
+
+
+def _run_node_update(
+    mesh: MeshConfig,
+    node: MeshNode,
+    verb_args: list[str],
+) -> int:
+    """Execute ``--node <name> update [--dry-run] [--force] [--branch <b>]``.
+
+    Plan 4 C3.5. Mesh-aware update with drain → update → resume
+    composition. Same pattern as :func:`_run_node_install`.
+
+    ``--dry-run`` skips drain/resume (preview only, no mutation).
+    Self-guard refuses updating yourself (use ``maxim peer update``
+    directly on the leader).
+
+    Returns the CLI exit code:
+
+    - ``0`` — update succeeded (and resume succeeded or was skipped)
+    - ``1`` — update failed (node left drained with loud hint)
+    - ``2`` — refused pre-update (self, unknown, drain fail)
+    - ``3`` — update succeeded but post-update auto-resume failed
+    """
+    # Self-guard FIRST — before parsing flags. Even dry-run previews
+    # against self are a round-trip through your own admin endpoint.
+    # Review fold: both lenses cross-confirmed that the original
+    # ordering (dry-run before self-guard) silently bypassed the guard.
+    if node.name == mesh.self_name:
+        print(
+            f"✗ Refusing to update self ({node.name!r}) — remote-updating\n"
+            f"  yourself is a round-trip through your own admin endpoint.\n"
+            f"  → Use `maxim peer update` directly on this machine.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Parse verb args (after self-guard so flag parsing doesn't mask
+    # the self-check).
+    branch = "main"
+    dry_run = False
+    force = False
+    i = 0
+    while i < len(verb_args):
+        a = verb_args[i]
+        if a == "--branch" and i + 1 < len(verb_args):
+            branch = verb_args[i + 1]
+            i += 2
+            continue
+        if a in ("--dry-run", "--preview"):
+            dry_run = True
+        elif a in ("--force", "-f"):
+            force = True
+        i += 1
+
+    # Dry-run is read-only — no drain needed.
+    if dry_run:
+        return update_on_target(node.url, mesh.cluster_key, branch=branch, dry_run=True, force=False)
+
+    # Atomic drain-if-absent.
+    known_names = {n.name for n in mesh.nodes}
+    try:
+        _, drained_here = _drain_node_if_absent(
+            node.name,
+            known_names,
+            self_name=mesh.self_name,
+            force_self=False,
+        )
+    except DrainError as e:
+        print(f"✗ Failed to drain {node.name!r}: {e}", file=sys.stderr)
+        return 2
+
+    if drained_here:
+        print(f"✓ Drained {node.name!r} for update.")
+    else:
+        print(f"ℹ {node.name!r} already drained by operator — skipping drain/resume bookkeeping.")
+
+    # Delegate to the shared core.
+    try:
+        op_rc = update_on_target(node.url, mesh.cluster_key, branch=branch, dry_run=False, force=force)
+    except BaseException:
+        if drained_here:
+            print(
+                f"\n⚠ Update interrupted. Node {node.name!r} is STILL DRAINED.\n"
+                f"  → After handling the interruption, run:\n"
+                f"      maxim peer --node {node.name} resume",
+                file=sys.stderr,
+            )
+        raise
+
+    # Resume on success.
+    if op_rc == 0:
+        if drained_here:
+            try:
+                _resume_node(node.name, known_names)
+                print(f"✓ Resumed {node.name!r} after update.")
+            except DrainError as e:
+                print(
+                    f"⚠ Update succeeded but resume failed: {e}\n  → Run: maxim peer --node {node.name} resume",
+                    file=sys.stderr,
+                )
+                return _EXIT_RESUME_FAILED_POST_OP
+        return 0
+
+    # Failure path.
+    if drained_here:
+        print(
+            f"\n✗ Update failed. Node {node.name!r} is STILL DRAINED.\n"
+            f"  → Debug the failure above, then run:\n"
+            f"      maxim peer --node {node.name} resume",
+            file=sys.stderr,
+        )
+    return op_rc
+
+
+def _run_node_restart(
+    mesh: MeshConfig,
+    node: MeshNode,
+    verb_args: list[str],
+) -> int:
+    """Execute ``--node <name> restart``.
+
+    Plan 4 C3.5. Mesh-aware restart with drain → restart → resume
+    composition. Same pattern as :func:`_run_node_install`.
+
+    Self-guard refuses restarting yourself (use ``maxim peer restart``
+    directly on the leader).
+
+    Returns the CLI exit code:
+
+    - ``0`` — restart succeeded (and resume succeeded or was skipped)
+    - ``1`` — restart failed (node left drained with loud hint)
+    - ``2`` — refused pre-restart (self, unknown, drain fail)
+    - ``3`` — restart succeeded but post-restart auto-resume failed
+    """
+    del verb_args  # no options yet
+
+    # Self-guard.
+    if node.name == mesh.self_name:
+        print(
+            f"✗ Refusing to restart self ({node.name!r}) — remote-restarting\n"
+            f"  yourself is a round-trip through your own admin endpoint.\n"
+            f"  → Use `maxim peer restart` directly on this machine.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Atomic drain-if-absent.
+    known_names = {n.name for n in mesh.nodes}
+    try:
+        _, drained_here = _drain_node_if_absent(
+            node.name,
+            known_names,
+            self_name=mesh.self_name,
+            force_self=False,
+        )
+    except DrainError as e:
+        print(f"✗ Failed to drain {node.name!r}: {e}", file=sys.stderr)
+        return 2
+
+    if drained_here:
+        print(f"✓ Drained {node.name!r} for restart.")
+    else:
+        print(f"ℹ {node.name!r} already drained by operator — skipping drain/resume bookkeeping.")
+
+    # Delegate to the shared core.
+    try:
+        op_rc = restart_on_target(node.url, mesh.cluster_key)
+    except BaseException:
+        if drained_here:
+            print(
+                f"\n⚠ Restart interrupted. Node {node.name!r} is STILL DRAINED.\n"
+                f"  → After handling the interruption, run:\n"
+                f"      maxim peer --node {node.name} resume",
+                file=sys.stderr,
+            )
+        raise
+
+    # Resume on success.
+    if op_rc == 0:
+        if drained_here:
+            try:
+                _resume_node(node.name, known_names)
+                print(f"✓ Resumed {node.name!r} after restart.")
+            except DrainError as e:
+                print(
+                    f"⚠ Restart succeeded but resume failed: {e}\n  → Run: maxim peer --node {node.name} resume",
+                    file=sys.stderr,
+                )
+                return _EXIT_RESUME_FAILED_POST_OP
+        return 0
+
+    # Failure path.
+    if drained_here:
+        print(
+            f"\n✗ Restart failed. Node {node.name!r} is STILL DRAINED.\n"
+            f"  → Debug the failure above, then run:\n"
+            f"      maxim peer --node {node.name} resume",
+            file=sys.stderr,
+        )
+    return op_rc
+
+
+def _run_node_llm(
+    mesh: MeshConfig,
+    node: MeshNode,
+    verb_args: list[str],
+) -> int:
+    """Execute ``--node <name> llm <model>``.
+
+    Plan 4 C3.6. Mesh-aware LLM swap with drain → swap → resume
+    composition. Same pattern as :func:`_run_node_install`.
+
+    This is the key enabler for C5 capacity-aware routing — per-node
+    model assignment means the router can know which node runs which
+    model.
+
+    Self-guard refuses swapping yourself (use ``maxim peer llm``
+    directly on the leader).
+
+    Returns the CLI exit code:
+
+    - ``0`` — swap succeeded (and resume succeeded or was skipped)
+    - ``1`` — swap failed (node left drained with loud hint)
+    - ``2`` — refused pre-swap (self, unknown, no model, drain fail)
+    - ``3`` — swap succeeded but post-swap auto-resume failed
+    """
+    # Parse model from verb_args.
+    model: str | None = None
+    for arg in verb_args:
+        if arg.startswith("--"):
+            continue
+        model = arg
+        break
+
+    if not model:
+        print(
+            f"Usage: maxim peer --node {node.name} llm <model>",
+            file=sys.stderr,
+        )
+        print("  Example: maxim peer --node leader-desk llm qwen2.5-14b", file=sys.stderr)
+        return 2
+
+    # Self-guard.
+    if node.name == mesh.self_name:
+        print(
+            f"✗ Refusing to swap LLM on self ({node.name!r}) — remote-swapping\n"
+            f"  yourself is a round-trip through your own admin endpoint.\n"
+            f"  → Use `maxim peer llm {model}` directly on this machine.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # Atomic drain-if-absent.
+    known_names = {n.name for n in mesh.nodes}
+    try:
+        _, drained_here = _drain_node_if_absent(
+            node.name,
+            known_names,
+            self_name=mesh.self_name,
+            force_self=False,
+        )
+    except DrainError as e:
+        print(f"✗ Failed to drain {node.name!r}: {e}", file=sys.stderr)
+        return 2
+
+    if drained_here:
+        print(f"✓ Drained {node.name!r} for LLM swap.")
+    else:
+        print(f"ℹ {node.name!r} already drained by operator — skipping drain/resume bookkeeping.")
+
+    # Delegate to the shared core.
+    try:
+        op_rc = llm_swap_on_target(node.url, mesh.cluster_key, model)
+    except BaseException:
+        if drained_here:
+            print(
+                f"\n⚠ LLM swap interrupted. Node {node.name!r} is STILL DRAINED.\n"
+                f"  → After handling the interruption, run:\n"
+                f"      maxim peer --node {node.name} resume",
+                file=sys.stderr,
+            )
+        raise
+
+    # Resume on success.
+    if op_rc == 0:
+        if drained_here:
+            try:
+                _resume_node(node.name, known_names)
+                print(f"✓ Resumed {node.name!r} after LLM swap.")
+            except DrainError as e:
+                print(
+                    f"⚠ LLM swap succeeded but resume failed: {e}\n  → Run: maxim peer --node {node.name} resume",
+                    file=sys.stderr,
+                )
+                return _EXIT_RESUME_FAILED_POST_OP
+        return 0
+
+    # Failure path.
+    if drained_here:
+        print(
+            f"\n✗ LLM swap failed. Node {node.name!r} is STILL DRAINED.\n"
+            f"  → Debug the failure above, then run:\n"
+            f"      maxim peer --node {node.name} resume",
+            file=sys.stderr,
+        )
+    return op_rc
 
 
 # ─── internals ──────────────────────────────────────────────────────────
