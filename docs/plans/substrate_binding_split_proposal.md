@@ -1,6 +1,6 @@
 # Substrate Binding & Persistence — Plan Split Proposal
 
-**Status:** PROPOSAL — authored 2026-04-14, awaiting approval before new plan files land.
+**Status:** **APPROVED + EXECUTED** (2026-04-17). All per-phase plan files created. Monolith converted to index.
 **Parent plan:** [substrate_binding_persistence.md](substrate_binding_persistence.md) (currently monolithic across P3a → P8 + B3–B5)
 **Motivation:** The P2 session retrospective — a 2,200 LOC plan required three internal stages and a forced metric pivot mid-sweep to ship. The P3 → P8 arc is ~4,100 LOC across 10 phases and 3 version bumps. A single plan file at that scope becomes unreadable, unreviewable, and un-stageable.
 **Related:** [sem_execution_hook.md](sem_execution_hook.md) — NEW companion plan that closes a gap discovered during this audit.
