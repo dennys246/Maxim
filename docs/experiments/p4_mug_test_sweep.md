@@ -15,11 +15,11 @@
 >
 > **Authoritative reframe:** [p4_stage2_v2_post_mortem.md](p4_stage2_v2_post_mortem.md)
 >
-> **Current Option 2 status:** REOPENED. Neither v1 ("defer") nor v2 ("ship")
-> produced honest data. The `TestStageThreeLimitation` regression guard from
-> Stage 1 remains the forcing function until a non-tautological measurement
-> lands. See the post-mortem's "What the next attempt needs" section for the
-> methodology requirements.
+> **Current Option 2 status:** RESOLVED — **DEFER** (2026-04-16). Stage 2 v3
+> ran an honest measurement via organic shared-concept exposure and found
+> lift = 0.0000 across 10 seeds (same-class activation dominates 22:1).
+> Option 2 deferred as post-Stage-3 cleanup.
+> See [p4_option2_measurement.md](p4_option2_measurement.md).
 >
 > **Everything below this box is the v1 report as-shipped. The numbers are
 > real but the interpretation is invalidated. DO NOT act on the "defer Option 2"

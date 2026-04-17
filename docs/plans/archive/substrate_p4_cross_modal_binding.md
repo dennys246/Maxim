@@ -13,7 +13,7 @@
 
 ---
 
-**Status:** OPEN (2026-04-14). Round 1 plan-only review COMPLETE — 8 cross-confirmed criticals + importants folded; ready for Stage 1 implementation.
+**Status:** ✅ COMPLETE (2026-04-16). All stages shipped. See banner above for results. (Original plan-draft status was OPEN 2026-04-14; Round 1 review folded 8 findings.)
 **Scope:** ~500 LOC (mechanism + VisionEncoder + retrieval path) + ~100 LOC metric extractor.
 **Target version:** 0.3-target. **THIS PHASE GATES 1.0** — losing the OpenCLIP head-to-head is plan-ending and re-opens the architecture's central commitment.
 **Depends on:** `substrate_p3a_episode_binding.md` (Stages 1+2 SHIPPED) ✅, `substrate_p3b_channel_integration.md` (Stage 1 SHIPPED) ✅, `substrate_p3_5_persistence_snapshot.md` (Stages 1+2 SHIPPED) ✅

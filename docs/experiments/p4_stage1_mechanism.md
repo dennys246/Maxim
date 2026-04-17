@@ -1,6 +1,6 @@
 # Substrate P4 Stage 1 — Cross-modal binding mechanism
 
-**Plan:** [substrate_p4_cross_modal_binding.md](../plans/substrate_p4_cross_modal_binding.md) Stage 1
+**Plan:** [substrate_p4_cross_modal_binding.md](../plans/archive/substrate_p4_cross_modal_binding.md) Stage 1
 **Reproduction runbook:** [protocols/p4_stage1_reproduction.md](protocols/p4_stage1_reproduction.md)
 **Date:** 2026-04-15
 **Status:** SHIPPED on `feat/substrate-p4`

@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-15
 **Author:** Claude session (Maxim Mac peer)
-**Status:** Post-mortem. The Stage 2 v2 fold on branch `fix/substrate-p4-stage2-fold` has been **re-scoped from "Option 2 SHIP" to "infrastructure + diagnostic of v1 failure + documented construction-identity pattern."** The Option 2 decision is **REOPENED** with new methodology requirements, not shipped.
+**Status:** Post-mortem — **RESOLVED (2026-04-16).** Stage 2 v3 ran an honest measurement via organic shared-concept exposure: Option 2 lift = 0 across 10 seeds, decision is **DEFER** as post-Stage-3 cleanup. See [p4_option2_measurement.md](p4_option2_measurement.md). The v1+v2 failure analysis below is preserved as historical record.
 
 **Why this doc exists:** a successor session reading `docs/experiments/p4_mug_test_sweep_v2.md` or the fold branch's commit history will see a "+96.0% Option 2 lift → SHIP" conclusion. That conclusion is **withdrawn**. This doc is the authoritative record of why, what we learned, and what the next attempt needs to look like.
 
@@ -20,7 +20,7 @@ On top of that, Round 2 Executor-lens found **two concrete bugs** in the v2 meas
 1. The bridge token `"text_flower"` EC-collapses into an existing Flowers102 class name (likely `"sunflower"` or `"passion flower"`) at the default `text_ec_threshold=0.60`. There was never a distinct bridge node — the "bridge" was just extra cross-class edges written onto one of the real class text nodes.
 2. The signal/noise weight margin at the chosen operating point is **exactly zero** (both at Hebbian init=0.3). The 0.98 recall at `noise_reps=1` is sort-stability luck, not ranker capability.
 
-**Option 2 remains committed as the long-term architectural answer** (user signoff 2026-04-15 in the original [node_filter split design doc](../plans/substrate_p4_cross_modal_binding.md#stage-23-open-design-decision)). What's reopened is **the question of whether Option 2 ships BEFORE or AFTER Stage 3** — we no longer have empirical data either way, and the `TestStageThreeLimitation` regression guard from Stage 1 remains the forcing function until a non-tautological measurement lands.
+**Option 2 remains committed as the long-term architectural answer** (user signoff 2026-04-15 in the original [node_filter split design doc](../plans/archive/substrate_p4_cross_modal_binding.md#stage-23-open-design-decision)). What's reopened is **the question of whether Option 2 ships BEFORE or AFTER Stage 3** — we no longer have empirical data either way, and the `TestStageThreeLimitation` regression guard from Stage 1 remains the forcing function until a non-tautological measurement lands.
 
 ## The v1 tautology (Round 2 round #1 catch)
 
@@ -171,9 +171,9 @@ Before the sweep runs, the author of the methodology must be able to describe: *
 ## Status of Option 2 decision
 
 - **Option 2 remains committed as the long-term architectural answer** per user signoff 2026-04-15. This has not changed.
-- **The SHIP timing is REOPENED.** Neither v1 ("defer") nor v2 ("ship") produced honest data. We don't currently know whether Option 2 needs to ship before Stage 3 or can wait.
-- **`TestStageThreeLimitation` regression guard from Stage 1 remains the forcing function** until the next methodology lands. It pins the current single-hop-only behavior; any future refactor enabling chain traversal will fail the test and force an explicit decision.
-- **Stage 3 cannot start until the timing question is resolved.** The Stage 3 head-to-head metric depends on knowing whether Arm B (CLIP-text + hippocampus) is running with or without the split filter.
+- **The SHIP timing is RESOLVED — DEFER (2026-04-16).** Stage 2 v3 measurement found lift = 0.0000 across 10 seeds. Same-class activation dominates 22:1 under `RetrievalConfig` defaults. Option 2 deferred as post-Stage-3 cleanup. See [p4_option2_measurement.md](p4_option2_measurement.md).
+- **`TestStageThreeLimitation` regression guard remains** with updated docstring reflecting the honest rationale (activation decay kills multi-hop signal, not fixture design).
+- **Stage 3 shipped on single-hop `retrieve_cross_modal`** — Arm B F1 = 1.000 vs Arm C F1 = 0.901. See [p4_cross_modal_sweep.md](p4_cross_modal_sweep.md).
 
 ## Next steps
 

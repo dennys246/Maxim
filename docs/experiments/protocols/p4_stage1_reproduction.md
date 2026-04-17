@@ -1,6 +1,6 @@
 # P4 Stage 1 reproduction runbook
 
-**Plan:** [substrate_p4_cross_modal_binding.md](../../plans/substrate_p4_cross_modal_binding.md)
+**Plan:** [substrate_p4_cross_modal_binding.md](../../plans/archive/substrate_p4_cross_modal_binding.md)
 **Milestone summary:** [p4_stage1_mechanism.md](../p4_stage1_mechanism.md)
 
 This runbook reproduces the P4 Stage 1 cross-modal binding mechanism tests from scratch. Stage 1 is **mechanism unit tests** — there is no sweep, no LLM, no real images, no statistical sampling. A faithful re-run of every test produces byte-identical assertion outcomes (all green) on any machine running Python 3.12.
