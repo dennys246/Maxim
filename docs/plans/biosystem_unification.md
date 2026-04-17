@@ -146,7 +146,7 @@ Total estimate to reach the structural ceiling: ~2-3 weeks of focused work, spre
 |---|---|---|---|---|---|
 | 0 | executor_bootstrap_unification | feat/exec-bootstrap-unify | #114 (merged) | **SHIPPED** | 2026-04-14 |
 | 1 | pain_bus_unification | feat/pain-bus-unification | (PR pending) | **Audit + builder + migration committed; pre-merge review next.** Closes Gap A (3 CLI sites silently skipping NAc bus subscription). Gap B (DefaultNetwork split ownership) deferred to memory_hub_unification.md per no-band-aid rule. Gap C (api.py headless) structural side resolved, user-facing API question stays at agent_factory_canonicalization.md F5. | 2026-04-14 |
-| 1 | reaction_bus_unification | — | — | Shell only | — |
+| 1 | reaction_bus_unification | feat/reaction-bus-unification | (PR pending) | **Audit + builder + factory fix committed; pre-merge review next.** Surface differs from PainBus (N=1 construction site). Builder exists for Wave 3 downstream sequencing (`build_bio_stack` requires `build_reaction_bus` BEFORE `build_pain_bus`). Gap A (CerebellumModulator factory silently dropping `reaction_bus=`) fixed preemptively — factory has zero production callers today but the parameter now flows correctly. | 2026-04-16 |
 | 2 | memory_hub_unification | — | — | Shell only — INHERITS Gap B from pain_bus_unification (DefaultNetwork split subscriber ownership). Address by giving DefaultNetwork a `hippocampus=` kwarg or routing it through `build_pain_bus(...)` once MemoryHub is structurally enforced. | — |
 | 2 | default_network_unification | — | — | Shell only | — |
 | 3 | bio_stack_unification | — | — | Shell only | — |
