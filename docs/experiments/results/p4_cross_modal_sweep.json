@@ -1,0 +1,476 @@
+{
+  "timestamp": "2026-04-16 23:07",
+  "n_seeds": 20,
+  "arm_b_clip_text_threshold": 0.8343917322158814,
+  "seed_results": [
+    {
+      "seed": 0,
+      "ec_jitter": 0.0054784674928581726,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 1,
+      "ec_jitter": 0.0004728649880102687,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 2,
+      "ec_jitter": -0.009535514630027345,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 3,
+      "ec_jitter": -0.016574033314255027,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 4,
+      "ec_jitter": 0.017722244222894704,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 5,
+      "ec_jitter": 0.012200116949815208,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 6,
+      "ec_jitter": 0.0015265740588777277,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 7,
+      "ec_jitter": 0.005003818664186679,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 8,
+      "ec_jitter": -0.006921108935777571,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 9,
+      "ec_jitter": 0.014809968158803387,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 10,
+      "ec_jitter": 0.018240068385159014,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 11,
+      "ec_jitter": -0.014857191889232015,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 12,
+      "ec_jitter": -0.009967021675662156,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 13,
+      "ec_jitter": 0.01459190348066346,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 14,
+      "ec_jitter": 0.01323933275556446,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 15,
+      "ec_jitter": 0.007709734718606094,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 16,
+      "ec_jitter": 0.0026766735551746025,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 17,
+      "ec_jitter": 0.013802991711916061,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 18,
+      "ec_jitter": -0.00402776923129709,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    },
+    {
+      "seed": 19,
+      "ec_jitter": -0.0031848481708295663,
+      "arm_a": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_b": {
+        "forward_rate": 1.0,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.0,
+        "f1": 1.0
+      },
+      "arm_c": {
+        "forward_rate": 0.82,
+        "reverse_rate": 1.0,
+        "false_binding_rate": 0.18,
+        "f1": 0.9010989010989011
+      }
+    }
+  ],
+  "arm_a_mean": {
+    "forward_rate": 1.0,
+    "reverse_rate": 1.0,
+    "false_binding_rate": 0.0,
+    "f1": 1.0
+  },
+  "arm_b_mean": {
+    "forward_rate": 1.0,
+    "reverse_rate": 1.0,
+    "false_binding_rate": 0.0,
+    "f1": 1.0
+  },
+  "arm_c_mean": {
+    "forward_rate": 0.82,
+    "reverse_rate": 1.0,
+    "false_binding_rate": 0.18000000000000002,
+    "f1": 0.9010989010989011
+  },
+  "pass_result": {
+    "arm_b_mean_f1": 1.0,
+    "arm_c_mean_f1": 0.9010989010989011,
+    "arm_c_std_f1": 0.0,
+    "effective_margin": 0.04,
+    "margin_passes": true,
+    "bootstrap_ci_lo": 0.09890109890109891,
+    "bootstrap_ci_hi": 0.09890109890109891,
+    "bootstrap_passes": true,
+    "verdict": "PASS"
+  }
+}
