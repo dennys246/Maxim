@@ -101,11 +101,13 @@ class LinguisticEncoder:
         atl: Any,
         config: EncoderConfig | None = None,
         nac: Any | None = None,
+        decomposer: Any | None = None,
     ) -> None:
         self.ec = ec
         self.atl = atl
         self.config = config or EncoderConfig()
         self._nac = nac  # P2: for reward-bias threshold overrides
+        self._decomposer = decomposer  # Concept decomposition (optional)
         self._model: Any | None = None
         self._model_loaded = False
         self._using_fallback = False
@@ -133,6 +135,12 @@ class LinguisticEncoder:
         ``percept.content``, embeds it, routes through EC, and
         activates the ATL node.
 
+        When a decomposer is wired and the modality is ``"text"``,
+        breaks the input into concept-level chunks and encodes each
+        independently via ``encode_decomposed``. The first node ID
+        goes to ``percept.substrate_node_id``; embedding is from the
+        first chunk. Non-text modalities bypass decomposition.
+
         Mutates the percept in-place: sets ``percept.embedding`` and
         ``percept.substrate_node_id``.
 
@@ -148,11 +156,24 @@ class LinguisticEncoder:
 
         modality = substrate_modality(percept)
 
-        # Step 1: Embed
+        # Concept decomposition path: text modality + decomposer wired
+        if self._decomposer is not None and modality == "text":
+            agent_id = ""
+            if percept.context is not None and hasattr(percept.context, "agent_id"):
+                agent_id = percept.context.agent_id or ""
+            node_ids = self.encode_decomposed(text, modality, agent_id)
+            if node_ids:
+                percept.substrate_node_id = node_ids[0]
+                # Embedding from the first chunk's text (aligned with substrate_node_id)
+                chunks = self._decomposer.extract(text)
+                percept.embedding = self.embed(chunks[0].text)
+            return node_ids[0] if node_ids else None
+
+        # Standard single-node path (non-text or no decomposer)
         embedding = self.embed(text)
         percept.embedding = embedding
 
-        # Step 2: EC pattern complete or separate.
+        # EC pattern complete or separate.
         # Note: `is not None` — NAc defines __len__ over causal links, so
         # `if self._nac` is falsy for a fresh NAc with zero links even
         # though it's wired. P2 reward overrides must fire regardless of
@@ -164,11 +185,9 @@ class LinguisticEncoder:
             threshold_override=threshold_override,
         )
 
-        # Step 3: If new node, register embedding in EC
         if result.is_new:
             self.ec.register_substrate_node(result.node_id, embedding, modality)
 
-        # Step 4: Activate or create ATL node
         self.atl.activate_substrate_node(
             node_id=result.node_id,
             text=text,
@@ -178,13 +197,7 @@ class LinguisticEncoder:
 
         percept.substrate_node_id = result.node_id
 
-        # P2: Update eligibility trace — this node is now "active" and
-        # eligible for credit when a reward arrives. Fires on BOTH new-node
-        # creation and existing-node completion: a just-created target node
-        # must be creditable by a reward that arrives in the same tick,
-        # otherwise the reward-widens-recognition-radius story can't bootstrap.
-        # New nodes seed eligibility at 1.0 (perfect self-match); completions
-        # weight by the measured similarity.
+        # P2: Update eligibility trace
         if self._nac is not None:
             agent_id = ""
             if percept.context is not None and hasattr(percept.context, "agent_id"):
@@ -201,6 +214,74 @@ class LinguisticEncoder:
         )
 
         return result.node_id
+
+    def encode_decomposed(self, text: str, modality: str, agent_id: str = "") -> list[str]:
+        """Concept-decomposed encoding: text → chunks → embed each → EC → node IDs.
+
+        If a decomposer is wired and the modality is ``"text"``, breaks
+        the input into concept-level chunks (e.g., noun phrases) and
+        encodes each independently. Non-text modalities bypass
+        decomposition (vision, proprioceptive, SEM inputs should not
+        be noun-chunked).
+
+        All returned node IDs should land in the same
+        ``CaptureEvent.activated_nodes`` so they co-activate in one
+        episode and get Hebbian-bound together.
+
+        Returns:
+            List of substrate node IDs (at least one).
+        """
+        if not text or not text.strip():
+            return []
+
+        # Modality gate: decompose text only
+        if self._decomposer is not None and modality == "text":
+            chunks = self._decomposer.extract(text)
+        else:
+            from maxim.similarity.decomposer import ConceptChunk
+
+            chunks = [ConceptChunk(text=text, span=(0, len(text)))]
+
+        threshold_override = None
+        if self._nac is not None:
+            overrides = self._nac.get_threshold_overrides(agent_id)
+            threshold_override = overrides if overrides else None
+
+        node_ids: list[str] = []
+        for chunk in chunks:
+            embedding = self.embed(chunk.text)
+
+            result = self.ec.pattern_complete_or_separate(
+                embedding=embedding,
+                modality=modality,
+                threshold_override=threshold_override,
+            )
+
+            if result.is_new:
+                self.ec.register_substrate_node(result.node_id, embedding, modality)
+
+            self.atl.activate_substrate_node(
+                node_id=result.node_id,
+                text=chunk.text,
+                substrate_modality=modality,
+                embedding_text=chunk.text,
+            )
+
+            if self._nac is not None:
+                activation = 1.0 if result.is_new else result.similarity
+                self._nac.update_eligibility(agent_id, result.node_id, activation)
+
+            node_ids.append(result.node_id)
+
+            logger.debug(
+                "Decomposed chunk '%s' → node %s (sim=%.3f, new=%s)",
+                chunk.text[:30],
+                result.node_id[:8],
+                result.similarity,
+                result.is_new,
+            )
+
+        return node_ids
 
     def _get_reward_overrides(self, percept: Any) -> dict[str, float] | None:
         """P2: Get per-node threshold overrides from NAc reward bias.

@@ -202,6 +202,10 @@ class MemoryHub:
         Gated by MAXIM_SUBSTRATE_PATH=1 env var and requires ATL.
         During Phase 1 (dual-write), the encoder runs alongside the
         legacy transcript_chunk path — both write, only legacy reads.
+
+        Concept decomposition (post-P4): when spaCy is available and
+        decomposition is enabled, the encoder breaks text inputs into
+        concept-level chunks before encoding each independently.
         """
         import os
 
@@ -213,7 +217,18 @@ class MemoryHub:
 
         from maxim.similarity.encoder import LinguisticEncoder
 
-        self._encoder = LinguisticEncoder(ec=self.ec, atl=self.atl, nac=self.nac)
+        # Wire concept decomposer (optional — auto-detects spaCy).
+        # Opt-in via MAXIM_CONCEPT_DECOMPOSITION=1, consistent with
+        # MAXIM_SUBSTRATE_PATH. Without this, decomposition is off
+        # even if spaCy is installed as a transitive dep.
+        decomposer = None
+        if os.environ.get("MAXIM_CONCEPT_DECOMPOSITION") == "1":
+            from maxim.similarity.decomposer import ConceptDecomposer
+
+            decomposer = ConceptDecomposer()
+            logger.info("Concept decomposition enabled (strategy: %s)", decomposer.strategy_name)
+
+        self._encoder = LinguisticEncoder(ec=self.ec, atl=self.atl, nac=self.nac, decomposer=decomposer)
         self._substrate_enabled = True
         logger.info("Substrate path enabled (Phase 1 dual-write)")
 
@@ -224,6 +239,11 @@ class MemoryHub:
         Phase 1, this runs the encoder alongside the legacy path —
         the percept gets embedding + substrate_node_id populated, but
         the prompt builder continues to read from transcript_chunk.
+
+        When concept decomposition is active, ``encode_decomposed``
+        breaks text into concept-level chunks and encodes each
+        independently. The first node ID goes to
+        ``percept.substrate_node_id`` for backward compat.
 
         Safe to call even when substrate path is disabled (no-op).
         """

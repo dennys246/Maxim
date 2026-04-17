@@ -107,6 +107,24 @@ def _isolate_maxim_substrate_path_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_concept_decomposition_env():
+    """Scrub ``MAXIM_CONCEPT_DECOMPOSITION`` across every test.
+
+    ``MemoryHub._wire_substrate_encoder`` reads this env var to decide
+    whether to construct a ConceptDecomposer. Without isolation, tests
+    that set this var leak spaCy model loading into every later test
+    that constructs a MemoryHub with MAXIM_SUBSTRATE_PATH=1.
+    """
+    saved = os.environ.pop("MAXIM_CONCEPT_DECOMPOSITION", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_CONCEPT_DECOMPOSITION", None)
+        if saved is not None:
+            os.environ["MAXIM_CONCEPT_DECOMPOSITION"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_llm_call_timeout_env():
     """Scrub ``MAXIM_LLM_CALL_TIMEOUT_S`` across every test (Plan 3.5 R2).
 
