@@ -1,6 +1,6 @@
 # Bio-Stack Unification — `build_bio_stack` umbrella
 
-**Status:** SHELL ONLY. Awaits Wave 1 + Wave 2 plans.
+**Status:** AUDIT COMPLETE. Wave 1 + Wave 2 all shipped. Ready for design + implementation.
 **Parent index:** [biosystem_unification.md](biosystem_unification.md)
 **Wave:** 3 of 4 (single PR, not parallel-safe with anything in the catalog).
 **Depends on:** ALL of [pain_bus_unification.md](pain_bus_unification.md), [reaction_bus_unification.md](reaction_bus_unification.md), [memory_hub_unification.md](memory_hub_unification.md), [default_network_unification.md](default_network_unification.md). Each must ship first; this plan composes them.
@@ -31,6 +31,60 @@ agent.wire_memory_hub(memory_hub)
 ```
 
 After Waves 1 + 2 each individual builder is structurally enforced, but the **composition** is still hand-rolled at every entry point. Wave 3 collapses it.
+
+## Audit (2026-04-16)
+
+### Summary: 8 umbrella sites, 2 leaf factories, clear collapse pattern
+
+Ten production sites construct the bio-pipeline. Eight are umbrella callers that reproduce ~30 lines of bio-system construction and would collapse into `build_bio_stack(...)`. Two are leaf factories (`create.py`, `load.py`) that return individual systems and don't need the umbrella.
+
+All eight umbrella sites already use the Wave 1/2 builders (`build_memory_hub`, `build_pain_bus`, `build_default_network`) — the individual structural doors are in place. What remains is collapsing the per-site ~30-line construction blocks into a single call.
+
+### Construction sites
+
+| # | Site | File:lines | Bio-systems constructed | Builders used | Entry-point-specific wiring | Notes |
+|---|---|---|---|---|---|---|
+| 1 | CLI non-sim agent | cli.py:1095-1125 | Hippocampus, NAc, SCN, EC | `build_memory_hub`, `build_pain_bus` | DefaultNetwork: explicit headless opt-out. ATL/AngularGyrus: skipped. | PainBus constructed independently of DN. |
+| 2 | CLI `--sim interactive` | cli.py:1395-1407 | Reuses #1's MemoryHub | `build_pain_bus` | Separate PainBus for interactive context. | Shares bio-systems from non-sim path. |
+| 3 | CLI `--sim agent` | cli.py:1437-1453 | Reuses #1's MemoryHub | `build_pain_bus` | Same as #2. | Shares bio-systems from non-sim path. |
+| 4 | Sim orchestrator AUT | orchestrator.py:419-460 | Hippocampus, NAc, SCN, EC, ATL (opt), AngularGyrus (opt) | `build_memory_hub`, `build_pain_bus`, `build_default_network` | AUT pain bus built at line ~69 BEFORE executor. DN with injected pain_bus (Gap B closed). Optional HippocampusTracer/NacTracer. | **The most complete site** — closest to the target `build_bio_stack` shape. |
+| 5 | Sim orchestrator NPC hub | orchestrator.py:688-715 | Hippocampus, NAc, SCN, EC | `build_memory_hub` | Orchestrator is puppeteer, not learner. No PainBus, no DN. | Partially dead-code path (orch hippo disabled). |
+| 6 | Reachy embodied runtime | agentic_runtime.py:114-186 | Hippocampus, NAc, SCN, EC, ATL (opt), AngularGyrus (opt) | `build_memory_hub`, `build_pain_bus`, `build_default_network` | DN wired with injected PainBus. MemoryHub.connect() called twice (first at construction, second to wire DN spatial/salience). | **The production robot path.** Second `.connect()` is safe (stateless bridge overwrite). |
+| 7 | AgentFactory NPC agents | agent_factory.py:175-239 | Hippocampus, NAc, SCN, EC, ATL (opt) | `build_memory_hub` | PainBus NOT wired at factory level (deferred to per-agent runner). No DN (NPC agents are headless). | AngularGyrus not in factory. SCN persistence path bound at construction time (F0.5). |
+| 8 | simulation/tools.py sub-AUT | simulation/tools.py | Inherits parent's MemoryHub + PainBus | None (reuses parent) | Sub-AUT reuses parent orchestrator's bio-systems. | Not a candidate for `build_bio_stack` (it's a consumer, not a constructor). |
+| 9 | create.py factories | create.py:52-136 | Individual systems only | Direct construction | Pure factories, no wiring. | **Not a candidate** — leaf factory, callers compose. |
+| 10 | load.py factories | load.py:54-117 | Individual systems only | Direct construction + load | Load-then-deserialize, no wiring. | **Not a candidate** — leaf factory. |
+
+### Candidates for `build_bio_stack` migration
+
+**6 sites collapse:** #1 (CLI non-sim), #4 (sim AUT), #5 (sim orch NPC), #6 (Reachy), #7 (AgentFactory), and arguably #2/#3 (CLI sim modes that reuse #1's bio-systems).
+
+**2 sites NOT candidates:** #8 (consumer, not constructor), #9/#10 (leaf factories).
+
+### Key observations for the design
+
+1. **Construction order is consistent across all sites:** Hippocampus → NAc → SCN → EC → (optional ATL, AngularGyrus) → MemoryHub → PainBus → DefaultNetwork. `build_bio_stack` can enforce this internally.
+
+2. **ATL and AngularGyrus are optional everywhere.** Both are try/except at every site. `build_bio_stack` should accept them as optional kwargs.
+
+3. **DefaultNetwork is opt-in, not opt-out.** Only sites #4 and #6 construct DN. Sites #1, #5, #7 explicitly skip it. `enable_default_network: bool = False` with `maxim=` as the robot reference.
+
+4. **PainBus wiring varies by site.** CLI paths build PainBus independently. Sim/Reachy paths inject PainBus into DN. `build_bio_stack` should construct the PainBus and optionally inject it into DN when DN is enabled.
+
+5. **MemoryHub.connect() with DN subsystems** happens only at site #6 (Reachy). The builder should handle this when DN is enabled and MemoryHub exists.
+
+6. **cli.py sites #2/#3 reuse #1's bio-systems.** They don't construct their own — they only add a separate PainBus for sim context. These probably stay as-is (just `build_pain_bus(...)` calls) rather than calling `build_bio_stack` a second time.
+
+7. **`persistence_path` is the primary knob.** Every Hippocampus needs it for episodic memory. SCN may need it for temporal persistence. The builder needs a path parameter.
+
+8. **`fear_agent` is needed at construction time** for MemoryHub.connect() + DefaultNetwork. It's a legitimate `build_bio_stack` parameter.
+
+### Open design questions (carry to implementation session)
+
+1. **Frozen vs mutable `BioStack`?** Lean frozen — mutable only invites post-construction patching.
+2. **Should `build_bio_stack` also call `agent.wire_memory_hub()`?** Lean no — the agent doesn't exist yet at bio_stack construction time. The caller does: `bio = build_bio_stack(...); agent.wire_memory_hub(bio.memory_hub)`.
+3. **How much of the Hippocampus config surface to expose?** Today each site passes different configs (embedding enabled/disabled, persistence paths). `build_bio_stack` either accepts a `HippocampusConfig` or a `BioStackConfig` dataclass that bundles them.
+4. **Should site #5 (orch NPC hub) use `build_bio_stack`?** It's partially dead code — needs audit of whether orch hippocampus is still useful before migrating.
 
 ## Design sketch
 
