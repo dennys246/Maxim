@@ -155,3 +155,70 @@ class TestCerebellumModulatorReactionEmission:
         result = mod.execute("shock_strike", {})
         assert result.success is True
         assert len(received) == 0
+
+
+class TestCerebellumModulatorFactoryWiring:
+    """Regression guard for reaction_bus_unification.md Gap A.
+
+    Pre-audit: ``cerebellum_modulator_factory`` did NOT accept
+    ``reaction_bus=``. Every CerebellumModulator created by the factory
+    had ``self._reaction_bus = None`` and silently dropped all modulator
+    failure reactions via ``_emit_failure_reaction``'s early return.
+
+    Post-fix: the factory accepts ``reaction_bus=`` and forwards it to
+    each CerebellumModulator it creates. When wired, failure reactions
+    flow to the bus.
+    """
+
+    def test_factory_forwards_reaction_bus(self):
+        """Factory-created modulators emit failure reactions when bus is wired."""
+        from maxim.embodiment.backends.cerebellum_modulator import cerebellum_modulator_factory
+        from maxim.reactions.bus import ReactionBus
+
+        bus = ReactionBus()
+        received = []
+        bus.subscribe("pain", received.append)
+
+        cerebellum = MagicMock()
+        cerebellum.predict.return_value = None
+        cerebellum.record_llm_fallback = MagicMock()
+
+        factory = cerebellum_modulator_factory(
+            cerebellum=cerebellum,
+            reaction_bus=bus,
+        )
+
+        entity = MagicMock()
+        entity.name = "test_weapon"
+        entity.sensors = {}
+        spec_mod = MagicMock()
+        spec_mod.affordances = {"strike": MagicMock()}
+
+        mod = factory(entity, "striker", spec_mod)
+
+        # Execute an unknown affordance — should emit a failure reaction.
+        result = mod.execute("nonexistent", {})
+        assert result.success is False
+        assert len(received) == 1
+        assert received[0].kind == "pain"
+        assert "cerebellum:test_weapon.striker.nonexistent" == received[0].source
+
+    def test_factory_without_reaction_bus_silently_drops(self):
+        """Factory without reaction_bus= still works but drops reactions."""
+        from maxim.embodiment.backends.cerebellum_modulator import cerebellum_modulator_factory
+
+        cerebellum = MagicMock()
+        cerebellum.predict.return_value = None
+
+        factory = cerebellum_modulator_factory(cerebellum=cerebellum)
+
+        entity = MagicMock()
+        entity.name = "test_weapon"
+        entity.sensors = {}
+        spec_mod = MagicMock()
+        spec_mod.affordances = {"strike": MagicMock()}
+
+        mod = factory(entity, "striker", spec_mod)
+        # Should not raise, just silently drop.
+        result = mod.execute("nonexistent", {})
+        assert result.success is False
