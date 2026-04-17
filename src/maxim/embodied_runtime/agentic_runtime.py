@@ -111,78 +111,27 @@ class AgenticRuntimeMixin:
         # Extract AgentBus early (needed for comms stack and Default Network)
         agent_bus = getattr(agent, "_bus", None)
 
-        # Create NAc early (needed for comms stack and Default Network)
+        # Build the full bio-pipeline via build_bio_stack (Wave 3,
+        # biosystem_unification). Single call replaces ~50 lines of
+        # NAc + Hippocampus + SCN + EC + ATL + AngularGyrus + MemoryHub
+        # + PainBus construction. DefaultNetwork is constructed later
+        # (after FearAgent exists) using bio.pain_bus and bio.nac.
+        bio = None
         nac = None
-        try:
-            from maxim.decisions.nac import NAc
-
-            nac = NAc()
-            self._nac = nac
-            self.log.debug("NAc created for causal learning")
-        except Exception as e:
-            warn("Failed to create NAc: %s", e, logger=self.log)
-
-        # Create MemoryHub — central coordinator for bio-memory subsystems
         memory_hub = None
         try:
-            from maxim.integration.memory_hub import build_memory_hub
-            from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-            from maxim.memory.atl import ATL, ATLConfig
-            from maxim.math.angular_gyrus import AngularGyrus, AngularGyrusConfig
-            from maxim.similarity.ec import EntorhinalCortex
-            from maxim.time.scn import SCN
-
+            from maxim.runtime.bio_stack import build_bio_stack
             from maxim.utils.paths import user_memory
 
-            _mem_dir = user_memory()
-
-            hippocampus = Hippocampus(
-                HippocampusConfig(
-                    persistence_path=str(_mem_dir / "hippocampus.json"),
-                )
-            )
-            scn = SCN()
-            ec = EntorhinalCortex()
-            atl = ATL(
-                ATLConfig(
-                    persistence_path=str(_mem_dir / "atl.json"),
-                )
-            )
-            angular_gyrus = AngularGyrus(
-                AngularGyrusConfig(
-                    persistence_path=str(_mem_dir / "angular_gyrus.json"),
-                )
-            )
-
-            # Use the already-created nac if available; otherwise create one
-            # (NAc is re-imported here in case the earlier try block failed)
-            hub_nac = nac
-            if hub_nac is None:
-                from maxim.decisions.nac import NAc as _NAc
-
-                hub_nac = _NAc()
-
-            # build_memory_hub calls .connect() internally, creating
-            # PlanHistoryBridge + EscalationLearningBridge +
-            # FearCircuitBridge immediately.  Spatial/salience/attention
-            # bridges are wired later (line ~692) once DefaultNetwork is
-            # available — .connect() is safe to call twice (bridges are
-            # stateless at construction, the second call overwrites).
-            memory_hub = build_memory_hub(
-                hippocampus=hippocampus,
-                scn=scn,
-                nac=hub_nac,
-                ec=ec,
-                atl=atl,
-                angular_gyrus=angular_gyrus,
-            )
-
-            agent.wire_memory_hub(memory_hub)
+            bio = build_bio_stack(persistence_dir=user_memory())
+            nac = bio.nac
+            memory_hub = bio.memory_hub
+            self._nac = nac
             self._memory_hub = memory_hub
-            self.log.info("MemoryHub created and wired")
+            agent.wire_memory_hub(memory_hub)
+            self.log.info("BioStack created and wired (hippocampus + NAc + SCN + EC + ATL + MemoryHub + PainBus)")
         except Exception as e:
-            warn("Failed to create MemoryHub: %s", e, logger=self.log)
-            memory_hub = None
+            warn("Failed to create BioStack: %s", e, logger=self.log)
 
         self.log.info("Bootstrap: memory systems initialized (%.1fms)", (time.time() - _t_mem) * 1000)
 
@@ -669,35 +618,19 @@ class AgenticRuntimeMixin:
             warn("Failed to create FearAgent/FearGatedExecutor: %s", e, logger=self.log)
 
         # Build Default Network for reactive behaviors.
-        # Construct a PainBus via build_pain_bus FIRST, then inject into DN.
-        # This closes Gap B from docs/plans/pain_bus_unification.md — DN
-        # becomes a bus consumer rather than bus constructor. The bus arrives
-        # with hippocampus + NAc subscribers already wired, so the external
-        # hippocampus subscription at the old line 719 is no longer needed.
+        # PainBus is already constructed inside build_bio_stack (Wave 3) —
+        # use bio.pain_bus directly. This replaces the separate build_pain_bus
+        # call that existed pre-Wave-3 for Gap B closure.
         default_network = None
-        _dn_pain_bus = None
         has_robot = hasattr(self, "_capabilities") and self._capabilities.has_robot
         if not has_robot:
             self.log.info("Headless mode: DefaultNetwork builds without motor control")
-        if nac is not None:
-            try:
-                from maxim.proprioception.pain_bus import build_pain_bus
-
-                _hippo = memory_hub.hippocampus if memory_hub is not None else None
-                _dn_pain_bus = build_pain_bus(hippocampus=_hippo, nac=nac)
-                self.log.info(
-                    "DN PainBus constructed via build_pain_bus (hippocampus=%s, nac=%s)",
-                    _hippo is not None,
-                    nac is not None,
-                )
-            except Exception as e:
-                warn("Failed to build DN PainBus: %s", e, logger=self.log)
         try:
             default_network = build_default_network(
                 nac=nac,
                 maxim=self if has_robot else None,
                 bus=agent_bus,
-                pain_bus=_dn_pain_bus,
+                pain_bus=bio.pain_bus if bio is not None else None,
                 fear_agent=fear_agent,
                 frame_size=(640, 480),
             )
@@ -707,7 +640,7 @@ class AgenticRuntimeMixin:
                     "DefaultNetwork built (bus=%s, fear_agent=%s, pain_bus=%s)",
                     "connected" if agent_bus else "none",
                     "enabled" if fear_agent else "none",
-                    "injected" if _dn_pain_bus else "internal",
+                    "injected" if bio is not None else "none",
                 )
         except Exception as e:
             warn("Failed to build DefaultNetwork: %s", e, logger=self.log)
@@ -734,17 +667,9 @@ class AgenticRuntimeMixin:
             except Exception as e:
                 warn("Failed to connect MemoryHub core bridges: %s", e, logger=self.log)
 
-        # PainBus → Hippocampus wiring: REMOVED.
-        # Gap B closure (docs/plans/default_network_unification.md): the
-        # injected PainBus from build_pain_bus already has hippocampus +
-        # NAc subscribers wired. The external subscription that lived here
-        # pre-Wave-2 was the split-subscriber-ownership problem. With the
-        # injected bus, DN is a bus consumer — subscribers are centralized
-        # at the build_pain_bus call site above, not scattered across
-        # consumers. If _dn_pain_bus was None (build_pain_bus failed or
-        # nac was None), DN constructed its own internal bus with no
-        # hippocampus subscriber — same pre-Wave-2 behavior, which is
-        # acceptable as a degraded fallback.
+        # PainBus → Hippocampus wiring is handled by build_bio_stack
+        # (Wave 3). The bio stack's PainBus already has hippocampus + NAc
+        # subscribers wired. DN receives the injected bus as a consumer.
 
         # Start capture manager or fall back to vision event stream
         if capture_manager is not None:

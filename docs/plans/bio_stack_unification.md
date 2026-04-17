@@ -1,6 +1,6 @@
 # Bio-Stack Unification — `build_bio_stack` umbrella
 
-**Status:** AUDIT COMPLETE. Wave 1 + Wave 2 all shipped. Ready for design + implementation.
+**Status:** Builder + 4 site migrations committed. Pre-merge review next.
 **Parent index:** [biosystem_unification.md](biosystem_unification.md)
 **Wave:** 3 of 4 (single PR, not parallel-safe with anything in the catalog).
 **Depends on:** ALL of [pain_bus_unification.md](pain_bus_unification.md), [reaction_bus_unification.md](reaction_bus_unification.md), [memory_hub_unification.md](memory_hub_unification.md), [default_network_unification.md](default_network_unification.md). Each must ship first; this plan composes them.
