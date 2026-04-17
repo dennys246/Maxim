@@ -122,11 +122,14 @@ def build_reaction_bus(
     ``pain_bus = build_pain_bus(..., reaction_bus=reaction_bus)`` because
     PainBus depends on ReactionBus at construction time.
 
-    Today the builder has ONE production caller: ``PainBus.__init__``
-    (via ``build_pain_bus``). The thin wrapper is intentional — the
-    interface is the deliverable, not the call count. Establishing it
-    now when the surface is clean avoids a refactor during Wave 3 when
-    the surface is complex (bio_stack composing multiple systems).
+    Today the builder has ZERO production callers —
+    ``PainBus.__init__`` constructs ``ReactionBus()`` directly.
+    Wave 3's ``build_bio_stack`` will be the first production caller
+    when it constructs a standalone ``ReactionBus`` and passes it to
+    ``build_pain_bus(..., reaction_bus=rb)``. The thin wrapper is
+    intentional — the interface is the deliverable, not the call
+    count. Establishing it now when the surface is clean avoids a
+    refactor during Wave 3 when the surface is complex.
 
     The audited silent gap (``docs/plans/reaction_bus_unification.md``
     Gap A): ``cerebellum_modulator_factory`` never passes

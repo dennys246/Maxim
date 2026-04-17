@@ -66,7 +66,17 @@ The justification is NOT the structural-enforcement N-sites-drift pattern (N=1 t
 3. `memory_hub_unification.md` (Wave 2) lists both buses as dependencies.
 4. Establishing the door NOW when the surface is clean (one caller, simple) avoids a refactor during Wave 3 when the surface is complex (bio_stack composing multiple systems).
 
-The builder is thin today (one production caller: `PainBus.__init__` via `build_pain_bus`). But it establishes the contract that Wave 3 composes. Same principle as writing a Protocol before it has multiple implementors — the interface is the deliverable, not the call count.
+The builder has ZERO production callers today — `PainBus.__init__` constructs `ReactionBus()` directly. Wave 3's `build_bio_stack` will be the first production caller. Same principle as writing a Protocol before it has multiple implementors — the interface is the deliverable, not the call count.
+
+### Wave 3 migration notes (surfaced by pre-merge architecture review)
+
+When Wave 3 extracts ReactionBus from PainBus and passes it as a parameter:
+
+1. **`build_pain_bus` needs a `reaction_bus=` parameter.** Today it constructs PainBus which internally builds its own ReactionBus. Wave 3 will change this to: `build_reaction_bus(...)` → `build_pain_bus(..., reaction_bus=rb)`. This requires adding `reaction_bus=` to `build_pain_bus`'s signature and modifying `PainBus.__init__` to accept an external ReactionBus instead of constructing one.
+
+2. **PainBus's auto-registered subscribers need to relocate.** Today `PainBus.__init__` auto-registers `_sim_log_reaction` (subscribe_all) and `_bridge_reaction_to_pain_subs` (subscribe "pain") on its internal ReactionBus. When Wave 3 passes an externally-constructed ReactionBus, PainBus must either (a) register those on the externally-provided bus, or (b) Wave 3's `build_bio_stack` passes them via `build_reaction_bus(per_kind_subscribers={"pain": (bridge_cb,)}, all_subscribers=(sim_log,))` and PainBus stops auto-registering. The `per_kind_subscribers`/`all_subscribers` signature handles both shapes cleanly — this is a migration coordination question, not a design gap.
+
+Neither of these is in-scope for this PR. They're documented here so Wave 3 doesn't discover them mid-implementation.
 
 ## Design sketch
 
