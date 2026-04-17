@@ -408,3 +408,226 @@ class TestEnsureLogBuffer:
         buf = _ensure_log_buffer()
         maxim_logger = logging.getLogger("maxim")
         assert buf in maxim_logger.handlers
+
+
+# ── _current_llama_server_n_ctx ────────────────────────────────────────────
+
+
+class TestCurrentLlamaServerNCtx:
+    """Tests for _current_llama_server_n_ctx lifted from doctor/checks.py."""
+
+    def test_returns_context_length_from_models_endpoint(self):
+        """Happy path: /v1/models returns context_length."""
+        import json
+        from maxim.runtime.leader_proxy import _current_llama_server_n_ctx
+
+        models_resp = json.dumps({"data": [{"id": "test", "context_length": 8192}]})
+        http_resp = f"HTTP/1.0 200 OK\r\n\r\n{models_resp}".encode()
+
+        with patch("socket.create_connection") as mock_conn:
+            mock_sock = mock_conn.return_value.__enter__.return_value
+            mock_sock.recv.side_effect = [http_resp, b""]
+            result = _current_llama_server_n_ctx(8100)
+
+        assert result == 8192
+
+    def test_returns_none_when_connection_refused(self):
+        from maxim.runtime.leader_proxy import _current_llama_server_n_ctx
+
+        with patch("socket.create_connection", side_effect=ConnectionRefusedError):
+            result = _current_llama_server_n_ctx(8100)
+
+        assert result is None
+
+    def test_returns_none_for_empty_models_list(self):
+        import json
+        from maxim.runtime.leader_proxy import _current_llama_server_n_ctx
+
+        models_resp = json.dumps({"data": []})
+        http_resp = f"HTTP/1.0 200 OK\r\n\r\n{models_resp}".encode()
+
+        with patch("socket.create_connection") as mock_conn:
+            mock_sock = mock_conn.return_value.__enter__.return_value
+            mock_sock.recv.side_effect = [http_resp, b""]
+            result = _current_llama_server_n_ctx(8100)
+
+        assert result is None
+
+
+# ── /v1/debug/vram endpoint ────────────────────────────────────────────────
+
+
+class TestHandleDebugVram:
+    """Tests for _handle_debug_vram on _ProxyHandler.
+
+    Creates a minimal handler instance bypassing BaseHTTPRequestHandler.__init__
+    (which requires a live socket). Captures _send_json calls to verify the
+    response shape.
+    """
+
+    @pytest.fixture
+    def handler(self):
+        """Create a _ProxyHandler instance with a captured _send_json."""
+        from maxim.runtime.leader_proxy import _ProxyHandler
+
+        h = object.__new__(_ProxyHandler)
+        h.upstream_url = "http://127.0.0.1:8100"
+        h.api_key = None
+        h.start_time = time.time()
+        h._sent: list[tuple[int, dict]] = []
+        h._send_json = lambda code, body: h._sent.append((code, body))
+        return h
+
+    def test_nvidia_smi_unavailable_returns_503(self, handler):
+        with patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=None):
+            handler._handle_debug_vram()
+
+        assert len(handler._sent) == 1
+        code, body = handler._sent[0]
+        assert code == 503
+        assert "nvidia-smi unavailable" in body["error"]
+        assert "fix" in body
+
+    def test_gpu_available_no_model_returns_null_projection(self, handler):
+        gpu = {
+            "utilization_pct": 10.0,
+            "vram_used_gb": 0.42,
+            "vram_total_gb": 16.0,
+            "temperature_c": 35.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", None),
+        ):
+            handler._handle_debug_vram()
+
+        code, body = handler._sent[0]
+        assert code == 200
+        assert body["live"]["vram_used_gb"] == 0.42
+        assert body["live"]["vram_total_gb"] == 16.0
+        assert body["live"]["spillover"] is False
+        assert body["live"]["warning"] is False
+        assert body["projection"] is None
+        assert "spillover_ratio" in body["thresholds"]
+        assert "warn_ratio" in body["thresholds"]
+        assert "timestamp" in body
+
+    def test_gpu_with_model_returns_full_projection(self, handler):
+        gpu = {
+            "utilization_pct": 85.0,
+            "vram_used_gb": 14.0,
+            "vram_total_gb": 16.0,
+            "temperature_c": 68.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", "qwen2.5-14b-instruct"),
+            patch(
+                "maxim.runtime.leader_proxy._current_llama_server_n_ctx",
+                return_value=8192,
+            ),
+        ):
+            handler._handle_debug_vram()
+
+        code, body = handler._sent[0]
+        assert code == 200
+        proj = body["projection"]
+        assert proj is not None
+        assert proj["profile"] == "qwen2.5-14b-instruct"
+        assert proj["n_ctx"] == 8192
+        assert "weights_gb" in proj
+        assert "kv_cache_gb" in proj
+        assert "headroom_gb" in proj
+        assert "projected_total_gb" in proj
+        assert "spillover_risk" in proj
+        assert "recommended_n_ctx" in proj
+
+    def test_live_spillover_flag_at_96_percent(self, handler):
+        """ratio 0.96 > _SPILLOVER_RATIO (0.95) -> spillover=True."""
+        gpu = {
+            "utilization_pct": 98.0,
+            "vram_used_gb": 15.36,
+            "vram_total_gb": 16.0,
+            "temperature_c": 75.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", None),
+        ):
+            handler._handle_debug_vram()
+
+        code, body = handler._sent[0]
+        assert code == 200
+        assert body["live"]["spillover"] is True
+        assert body["live"]["warning"] is True
+
+    def test_warning_flag_at_90_percent(self, handler):
+        """ratio 0.90 > _SPILLOVER_WARN_RATIO (0.85) but < 0.95 -> warning only."""
+        gpu = {
+            "utilization_pct": 90.0,
+            "vram_used_gb": 14.4,
+            "vram_total_gb": 16.0,
+            "temperature_c": 70.0,
+        }
+        with (
+            patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu),
+            patch("maxim.runtime.llm_server._active_model", None),
+        ):
+            handler._handle_debug_vram()
+
+        code, body = handler._sent[0]
+        assert code == 200
+        assert body["live"]["spillover"] is False
+        assert body["live"]["warning"] is True
+
+    def test_zero_vram_total_no_division_error(self, handler):
+        """Edge case: nvidia-smi returns 0 total -- should not crash."""
+        gpu = {
+            "utilization_pct": 0.0,
+            "vram_used_gb": 0.0,
+            "vram_total_gb": 0.0,
+            "temperature_c": 0.0,
+        }
+        with patch("maxim.runtime.leader_proxy._query_nvidia_smi", return_value=gpu):
+            handler._handle_debug_vram()
+
+        code, body = handler._sent[0]
+        assert code == 200
+        assert body["live"]["ratio"] == 0.0
+
+    def test_vram_path_registered_in_is_debug_path(self):
+        """Verify /v1/debug/vram is recognized as a debug path."""
+        from maxim.runtime.leader_proxy import _ProxyHandler
+
+        h = object.__new__(_ProxyHandler)
+        assert h._is_debug_path("/v1/debug/vram")
+        assert h._is_debug_path("/v1/debug/vram/")  # trailing slash tolerance
+
+
+class TestDebugPathSync:
+    """Verify _is_debug_path and _route_debug stay in sync.
+
+    Pre-merge review found deps + install-status were in _route_debug but
+    NOT in _is_debug_path, bypassing the debug auth gate. This regression
+    test ensures all routed debug paths are also recognized as debug paths.
+    """
+
+    def test_all_routed_paths_in_is_debug_path(self):
+        from maxim.runtime.leader_proxy import _ProxyHandler
+
+        h = object.__new__(_ProxyHandler)
+        # Every path that _route_debug handles must be in _is_debug_path.
+        debug_paths = [
+            "/v1/debug/ping",
+            "/v1/debug/status",
+            "/v1/debug/heartbeat",
+            "/v1/debug/metrics",
+            "/v1/debug/version",
+            "/v1/debug/logs",
+            "/v1/debug/last-requests",
+            "/v1/debug/vram",
+            "/v1/debug/deps",
+            "/v1/debug/install-status",
+        ]
+        for path in debug_paths:
+            assert h._is_debug_path(path), f"{path} missing from _is_debug_path"
