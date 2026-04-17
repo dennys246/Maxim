@@ -62,7 +62,7 @@ Two more honest gaps worth flagging up front:
 These complete the manage-the-mesh-by-hand surface. Each is a small ship.
 
 - **C3.3 ✅ SHIPPED (PR #128, 2026-04-15):** `maxim peer --node <name> install <extras>` — mesh-aware install composing drain → install → resume around the shared `install_on_target` core in [install_core.py](../../src/maxim/peer/install_core.py). Cross-confirmed pre-merge review found + folded 17 items including the probe-cache URL mismatch (CC1) and drain TOCTOU (CC2). New `drain_node_if_absent` atomic primitive closes the TOCTOU window. Exit code 3 introduced for post-install-resume-failure distinguishability.
-- **C3.4:** `/v1/debug/vram` admin endpoint. Plan 3.6 R5 explicitly deferred this. Unlocks remote VRAM observability for peer-mode doctor and any future admin dashboard. ~50 LOC + auth + tests. **Next up.**
+- **C3.4 ✅ SHIPPED (PR #142, 2026-04-17):** `GET /v1/debug/vram` admin endpoint. Returns live nvidia-smi ratio + projected model footprint from `project_vram_usage()` as JSON. 503 when nvidia-smi unavailable. Auth via bearer or localhost. Also lifted `_current_llama_server_n_ctx` to `leader_proxy.py` as canonical probe location, and fixed pre-existing `_is_debug_path`/`_route_debug` desync (deps + install-status bypassed auth gate). 2-lens pre-merge review, 11 new tests.
 - **C3.5:** `maxim peer --node <name> update` and `--node restart` — mesh-aware versions of the existing positional-URL verbs, composing drain/op/resume. Same shape as C3.3; will reuse the `install_core.py` pattern (lift a shared `<op>_on_target` core, extend the CI grep allow-list). Probably one PR for both.
 - **C3.6:** `maxim peer --node <name> llm <model>` — per-node model swap. Today `maxim peer llm <model>` operates on the connected leader only.
 
@@ -184,7 +184,7 @@ Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The m
 
 | Version | Includes | Status |
 |---|---|---|
-| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface complete) + C3.4 VRAM endpoint | **C3.3 SHIPPED** (PR #128, 2026-04-15); C3.4/C3.5/C3.6 pending |
+| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface complete) + C3.4 VRAM endpoint | **C3.3 SHIPPED** (PR #128, 2026-04-15); **C3.4 SHIPPED** (PR #142, 2026-04-17); C3.5/C3.6 pending |
 | **0.5** | C4 router-drain coupling + C4.5 auto-drain (the actual reactive ship) + substrate P3a / P4 / B3-B5 | not started |
 | **0.6** | C5 capacity-aware routing + C6 admin API + dashboard + **C9 mesh doc transport** | not started |
 | **0.7+** | C7 security hardening + C8 cross-version compat | not started |

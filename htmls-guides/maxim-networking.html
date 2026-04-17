@@ -171,7 +171,7 @@
     </div>
 
     <h3 class="text-lg font-semibold text-white mt-4 mb-2">Debug Endpoints</h3>
-    <p class="text-slate-300 leading-relaxed mb-3">The proxy exposes four debug endpoints for operational visibility. All require the same Bearer token as inference requests.</p>
+    <p class="text-slate-300 leading-relaxed mb-3">The proxy exposes debug endpoints for operational visibility. All require the same Bearer token as inference requests (or localhost access).</p>
 
     <table class="w-full text-sm text-slate-300">
       <thead>
@@ -193,9 +193,25 @@
           <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/metrics</code></td>
           <td class="py-1.5">Request counts, latency percentiles, error rates</td>
         </tr>
-        <tr>
+        <tr class="border-b border-slate-800">
           <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/last-requests</code></td>
           <td class="py-1.5">Ring buffer of recent requests (peer ID, latency, status)</td>
+        </tr>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/vram</code></td>
+          <td class="py-1.5">Live VRAM usage (nvidia-smi ratio, spillover/warning flags) + projected model footprint. Returns 503 if no GPU. Prerequisite for capacity-aware routing.</td>
+        </tr>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/version</code></td>
+          <td class="py-1.5">Maxim version, git hash, Python version</td>
+        </tr>
+        <tr class="border-b border-slate-800">
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/logs</code></td>
+          <td class="py-1.5">Recent structured log entries from the ring buffer</td>
+        </tr>
+        <tr>
+          <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/v1/debug/deps</code></td>
+          <td class="py-1.5">Installed Python packages and optional extras</td>
         </tr>
       </tbody>
     </table>

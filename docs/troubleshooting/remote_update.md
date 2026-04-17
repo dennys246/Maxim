@@ -198,6 +198,9 @@ curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
      https://yourhost/v1/debug/version
 curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
      https://yourhost/v1/debug/logs?limit=50
+# Check VRAM pressure (returns live nvidia-smi + projected model footprint):
+curl -s -H "Authorization: Bearer $KEY" -H "User-Agent: maxim-peer/1.0" \
+     https://yourhost/v1/debug/vram
 ```
 
 The following **modifies leader state** — use only when explicitly asked:

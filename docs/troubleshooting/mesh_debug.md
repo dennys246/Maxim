@@ -1,7 +1,7 @@
 # Mesh Debug — operator runbook for the Plan 4 Stage C surface
 
 **Audience:** operators running a Maxim mesh (one leader + N peers, or N peers without a single leader).
-**Scope:** the `mesh.yml` declarative config, the `init-mesh` / `add-node` / `remove-node` setup verbs, and the `drain` / `resume` / `list-drained` runtime state surface shipped across PRs #112 (C1), #113 (C2), and #118 (C3.1) plus the C3.2 follow-up.
+**Scope:** the `mesh.yml` declarative config, the `init-mesh` / `add-node` / `remove-node` setup verbs, the `drain` / `resume` / `list-drained` runtime state surface shipped across PRs #112 (C1), #113 (C2), #118 (C3.1), C3.2 follow-up, `--node install` (C3.3, PR #128), and `GET /v1/debug/vram` VRAM observability endpoint (C3.4, PR #142).
 
 If you are debugging a network-layer problem (DNS, TCP, TLS, Cloudflare tunnel) start in [peer_leader_connectivity.md](peer_leader_connectivity.md) instead. This doc covers symptoms above the network layer — the cluster is reachable, but routing is doing the wrong thing.
 
