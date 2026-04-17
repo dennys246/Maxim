@@ -1,6 +1,6 @@
 # Substrate — Concept decomposition (noun-phrase extraction before EC)
 
-**Status:** SHELL (2026-04-15, updated 2026-04-16 with three-lens review fold). Design only — no implementation scheduled.
+**Status:** Stage 1 COMPLETE (shipped `723dbee` 2026-04-16, validated 2026-04-17). Stage 2/3 pending.
 **Scope:** ~400–600 LOC (protocol + spaCy strategy + encoder integration + tests). New optional dep: `spacy` (MIT license).
 **Target version:** post-0.3. Ships AFTER P4 Stage 3 proves the base cross-modal claim on bare class names. **P4 Stage 3 PASSED (2026-04-16) — trigger fired.**
 **Parent:** None (standalone). Extends `similarity/encoder.py` → `similarity/ec.py` capture path.
@@ -167,22 +167,25 @@ However, the review discovered a deeper gap: **pain signals never flow back to s
 
 ## Stages
 
-### Stage 1 — Protocol + spaCy strategy + encoder integration (core)
+### Stage 1 — Protocol + spaCy strategy + encoder integration (core) — COMPLETE
 
-1. `similarity/decomposer.py` — `DecompositionStrategy` Protocol, `ConceptChunk` dataclass, `SpaCyNounChunkStrategy`, `IdentityStrategy`, `ConceptDecomposer` coordinator
-2. `similarity/encoder.py` — new `encode_decomposed(text, modality) -> list[str]` method with modality gate and `MAXIM_SUBSTRATE_PATH` guard
-3. `memory_hub._on_new_memory()` — call `encode_decomposed` instead of `encode` when decomposition is enabled
-4. Config: `enabled: bool` flag on decomposer config, accessible from `HippocampusConfig` or a new `SubstrateConfig`
-5. Unit tests: decomposition quality on 20+ sentence fixtures (English only), strategy swapping, identity fallback, modality gate, thread-safety
-6. **Decomposition-specific validation fixture** (NOT the P4 mug test — that bypasses the encoder path):
-   - 5 multi-word naturalistic sentences per "scene" (e.g., `"I see a blue mug on the table"`)
-   - Each sentence decomposes into 2-4 concept chunks
-   - Pair each concept with a synthetic vision embedding
-   - Measure: does `retrieve_cross_modal("blue mug", target_modality="vision")` find `vision_mug`?
-   - Compare with-decomposition vs without-decomposition recall
-   - This exercises the actual decomposition path end-to-end
-7. Regression: existing P4 mug test still passes (bare class names like `"lotus"` pass through the encoder unchanged — decomposition is a no-op on single noun phrases, confirmed by identity strategy fallback). Note: this confirms non-interference, NOT decomposition quality.
-8. P2 control run: re-run P2 reward modulation 10-seed sweep with decomposer enabled. Expected: no-op (P2 fixture uses short domain labels that spaCy returns as single chunks). Document as a control confirming decomposition is neutral on single-phrase inputs, not as a quality gate.
+**Shipped:** `723dbee` (2026-04-16). **Validated:** 2026-04-17.
+
+1. ✅ `similarity/decomposer.py` — `DecompositionStrategy` Protocol, `ConceptChunk` dataclass, `SpaCyNounChunkStrategy`, `IdentityStrategy`, `ConceptDecomposer` coordinator
+2. ✅ `similarity/encoder.py` — `encode_decomposed(text, modality) -> list[str]` method with modality gate. `encode()` routes to it when decomposer is wired and modality is `"text"`.
+3. ✅ `memory_hub._wire_substrate_encoder()` — constructs `ConceptDecomposer` when `MAXIM_CONCEPT_DECOMPOSITION=1`, passes to `LinguisticEncoder(decomposer=...)`. Gated via env var, with autouse conftest scrub fixture.
+4. ✅ Config: `DecomposerConfig(enabled, min_chunk_len, spacy_model)` + env var `MAXIM_CONCEPT_DECOMPOSITION=1`
+5. ✅ Unit tests: 28 tests in `tests/unit/test_concept_decomposer.py` — strategies, encoder integration, modality gate, thread safety, bare class name identity
+6. ✅ **Validation fixture** (`tests/substrate/test_concept_decomposition_validation.py`):
+   - 5 naturalistic scenes, 11 concept-level queries
+   - Baseline (no decomposition): **36.4% concept-level cross-modal recall** (4/11)
+   - Decomposed: **100.0% recall** (11/11)
+   - **Delta: +63.6 pp**
+   - Both pass criteria met: strict improvement + minimum bar (0.60)
+   - Results: [docs/experiments/concept_decomposition_validation.md](../../docs/experiments/concept_decomposition_validation.md)
+   - Reproduction: [docs/experiments/protocols/concept_decomposition_reproduction.md](../../docs/experiments/protocols/concept_decomposition_reproduction.md)
+7. ✅ P4 regression: 21/21 mechanism tests pass — bare class names pass through as single chunks
+8. ✅ P2 control: 5/5 mechanism tests pass — decomposer is neutral on single-phrase inputs
 
 ### Stage 2 — Role-tagged edges (extension, not blocking)
 

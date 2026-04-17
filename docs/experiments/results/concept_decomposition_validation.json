@@ -1,0 +1,270 @@
+{
+  "test": "concept_decomposition_validation",
+  "baseline": {
+    "with_decomposition": false,
+    "aggregate_recall": 0.36363636363636365,
+    "total_hits": 4,
+    "total_queries": 11,
+    "scenes": [
+      {
+        "description": "I see a blue mug on the wooden table",
+        "recall": 0.5,
+        "hits": 1,
+        "total": 2,
+        "text_nodes_created": 1,
+        "per_concept": [
+          {
+            "concept": "blue mug",
+            "concept_node": "4320ca0c-d53",
+            "expected_vision_node": "f12535be-ed4",
+            "hit": true,
+            "n_results": 2
+          },
+          {
+            "concept": "wooden table",
+            "concept_node": "4d098276-64b",
+            "expected_vision_node": "7e103692-f92",
+            "hit": false,
+            "n_results": 0
+          }
+        ]
+      },
+      {
+        "description": "The rusty sword lies next to the leather shield",
+        "recall": 0.5,
+        "hits": 1,
+        "total": 2,
+        "text_nodes_created": 1,
+        "per_concept": [
+          {
+            "concept": "rusty sword",
+            "concept_node": "c6e6c436-da8",
+            "expected_vision_node": "988e65b1-fe8",
+            "hit": true,
+            "n_results": 2
+          },
+          {
+            "concept": "leather shield",
+            "concept_node": "a529de39-6f9",
+            "expected_vision_node": "f04b44a3-9c5",
+            "hit": false,
+            "n_results": 0
+          }
+        ]
+      },
+      {
+        "description": "A red ball sits in the cardboard box near the glass window",
+        "recall": 0.0,
+        "hits": 0,
+        "total": 3,
+        "text_nodes_created": 1,
+        "per_concept": [
+          {
+            "concept": "red ball",
+            "concept_node": "b8253c73-a44",
+            "expected_vision_node": "13e85b6d-e7e",
+            "hit": false,
+            "n_results": 0
+          },
+          {
+            "concept": "cardboard box",
+            "concept_node": "9024a2e4-af5",
+            "expected_vision_node": "9e9f3a92-94b",
+            "hit": false,
+            "n_results": 0
+          },
+          {
+            "concept": "glass window",
+            "concept_node": "881a4569-f8b",
+            "expected_vision_node": "3a6cb107-7d1",
+            "hit": false,
+            "n_results": 0
+          }
+        ]
+      },
+      {
+        "description": "The old book rests on the marble shelf",
+        "recall": 0.5,
+        "hits": 1,
+        "total": 2,
+        "text_nodes_created": 1,
+        "per_concept": [
+          {
+            "concept": "old book",
+            "concept_node": "edc5a0e3-69b",
+            "expected_vision_node": "daf60569-90f",
+            "hit": true,
+            "n_results": 2
+          },
+          {
+            "concept": "marble shelf",
+            "concept_node": "be51e808-40d",
+            "expected_vision_node": "2007bfcf-0d4",
+            "hit": false,
+            "n_results": 0
+          }
+        ]
+      },
+      {
+        "description": "A golden key hangs from the iron chain",
+        "recall": 0.5,
+        "hits": 1,
+        "total": 2,
+        "text_nodes_created": 1,
+        "per_concept": [
+          {
+            "concept": "golden key",
+            "concept_node": "708db473-437",
+            "expected_vision_node": "8d033a05-f3b",
+            "hit": true,
+            "n_results": 2
+          },
+          {
+            "concept": "iron chain",
+            "concept_node": "83b34a79-1fb",
+            "expected_vision_node": "d40d9f36-c04",
+            "hit": false,
+            "n_results": 0
+          }
+        ]
+      }
+    ],
+    "ec_substrate_nodes": 23
+  },
+  "decomposed": {
+    "with_decomposition": true,
+    "aggregate_recall": 1.0,
+    "total_hits": 11,
+    "total_queries": 11,
+    "scenes": [
+      {
+        "description": "I see a blue mug on the wooden table",
+        "recall": 1.0,
+        "hits": 2,
+        "total": 2,
+        "text_nodes_created": 2,
+        "per_concept": [
+          {
+            "concept": "blue mug",
+            "concept_node": "299b4103-f42",
+            "expected_vision_node": "da158db0-5ee",
+            "hit": true,
+            "n_results": 2
+          },
+          {
+            "concept": "wooden table",
+            "concept_node": "0b109e4a-722",
+            "expected_vision_node": "dee376d1-f41",
+            "hit": true,
+            "n_results": 2
+          }
+        ]
+      },
+      {
+        "description": "The rusty sword lies next to the leather shield",
+        "recall": 1.0,
+        "hits": 2,
+        "total": 2,
+        "text_nodes_created": 2,
+        "per_concept": [
+          {
+            "concept": "rusty sword",
+            "concept_node": "b5983b57-a1e",
+            "expected_vision_node": "b6bbf523-826",
+            "hit": true,
+            "n_results": 2
+          },
+          {
+            "concept": "leather shield",
+            "concept_node": "fb3a71aa-baa",
+            "expected_vision_node": "f7b49120-bcd",
+            "hit": true,
+            "n_results": 2
+          }
+        ]
+      },
+      {
+        "description": "A red ball sits in the cardboard box near the glass window",
+        "recall": 1.0,
+        "hits": 3,
+        "total": 3,
+        "text_nodes_created": 3,
+        "per_concept": [
+          {
+            "concept": "red ball",
+            "concept_node": "8fdf498b-424",
+            "expected_vision_node": "8babbbca-704",
+            "hit": true,
+            "n_results": 3
+          },
+          {
+            "concept": "cardboard box",
+            "concept_node": "53555ebf-9c7",
+            "expected_vision_node": "aeef28a9-d98",
+            "hit": true,
+            "n_results": 3
+          },
+          {
+            "concept": "glass window",
+            "concept_node": "9e18302e-6ec",
+            "expected_vision_node": "ef5f7a6f-333",
+            "hit": true,
+            "n_results": 3
+          }
+        ]
+      },
+      {
+        "description": "The old book rests on the marble shelf",
+        "recall": 1.0,
+        "hits": 2,
+        "total": 2,
+        "text_nodes_created": 2,
+        "per_concept": [
+          {
+            "concept": "old book",
+            "concept_node": "b738a5da-42f",
+            "expected_vision_node": "cb6fd5b7-779",
+            "hit": true,
+            "n_results": 2
+          },
+          {
+            "concept": "marble shelf",
+            "concept_node": "88cf2d67-fc1",
+            "expected_vision_node": "d6393c3c-c65",
+            "hit": true,
+            "n_results": 2
+          }
+        ]
+      },
+      {
+        "description": "A golden key hangs from the iron chain",
+        "recall": 1.0,
+        "hits": 2,
+        "total": 2,
+        "text_nodes_created": 2,
+        "per_concept": [
+          {
+            "concept": "golden key",
+            "concept_node": "0ac814d9-5e6",
+            "expected_vision_node": "d5c2199f-fa4",
+            "hit": true,
+            "n_results": 2
+          },
+          {
+            "concept": "iron chain",
+            "concept_node": "e03f26c4-3f9",
+            "expected_vision_node": "187c69b1-fcb",
+            "hit": true,
+            "n_results": 2
+          }
+        ]
+      }
+    ],
+    "ec_substrate_nodes": 22
+  },
+  "delta": 0.6363636363636364,
+  "pass_criteria": {
+    "strict_improvement": true,
+    "minimum_bar": true
+  }
+}
