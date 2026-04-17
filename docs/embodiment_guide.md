@@ -302,10 +302,34 @@ Executes motor programs step by step with:
 - **PainBus subscription** for mid-sequence interrupts
 - **Gate tightening** after painful executions (10% per failure)
 
+## SEM Learning Loop (Phase 2 -- Shipped)
+
+When a SEM entity interaction produces a reaction (pain on failure, satisfaction on confident prediction), the signal flows through the full bio-pipeline:
+
+1. **CerebellumModulator** executes affordance -- emits failure reaction (NEGATIVE) or success reaction (POSITIVE)
+2. **ReactionBus** dispatches to subscribers:
+   - `hippocampus.capture_reaction` -- episode valence annotation
+   - `nac.distribute_reward` -- EC threshold adjustment
+3. **Episode close** -- `apply_hebbian_on_close` annotates edges with `metadata["valence"]`
+4. **Pain spike** -- `salience_spike_rule` closes the episode boundary
+5. **Future retrieval** -- `spreading_activation(propagate_valence=True)` carries affective memory
+
+### Success reactions (negativity bias)
+
+CerebellumModulator emits `_emit_success_reaction` when confident enough to skip LLM fallback. Intensity is lower than failure (0.1-0.3 vs 0.3-0.5) -- biologically motivated negativity bias.
+
+### NAc reward distribution
+
+`distribute_reward` credits eligible substrate nodes proportionally to eligibility traces. Positive rewards widen EC recognition (lower threshold); negative rewards clamp to 0 (bias never narrows).
+
+### Cerebellum activation in production
+
+`BioStack.cerebellum` is now constructed by `build_bio_stack` and forwarded via `build_executor(cerebellum=...)` to `generate_tools_for_entity`, which creates `CerebellumModulator` instances with a wired `reaction_bus`. This means every SEM affordance tool now has a live Cerebellum backing it -- predictions, training, and reaction emission all happen automatically.
+
 ## What's Next
 
-- **Phase 2**: Composable failure modes — persistent failures with recovery conditions
-- **Phase 3**: Hardware adapter — wrap real robot SDKs as SEM backends
+- **Phase 2**: Composable failure modes -- persistent failures with recovery conditions
+- **Phase 3**: Hardware adapter -- wrap real robot SDKs as SEM backends
 
 See [embodiment_core_plan.md](plans/archive/embodiment_core_plan.md) (archived) for the historical roadmap.
 

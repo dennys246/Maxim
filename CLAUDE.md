@@ -115,6 +115,11 @@ Simulations call a live LLM for every turn and can burn cost + time quickly. Whe
 
 - **`runtime/bio_stack.py::build_bio_stack` is the canonical bio-pipeline construction site** (Wave 3 of biosystem_unification, 2026-04-17). Composes the four individual Wave 1+2 builders (`build_reaction_bus`, `build_pain_bus`, `build_memory_hub`, `build_default_network`) in the correct dependency order. Returns a frozen `BioStack` dataclass containing all wired bio-systems. `persistence_dir: Path | str | None` is the primary configuration — sub-paths (`hippocampus.json`, `atl.json`, `angular_gyrus.json`) are derived internally. `pain_bus=` parameter accepts a pre-built PainBus (sim AUT pattern where the sandbox needs the bus before the rest of the stack); standard learners are subscribed to the pre-existing bus. `with_default_network=True` constructs a DefaultNetwork (Reachy + sim AUT only). Four production callers: cli.py non-sim, simulation/orchestrator.py AUT + orch NPC, embodied_runtime/agentic_runtime.py Reachy. AgentFactory (site #7) deferred to `agent_factory_canonicalization.md` Wave 4 — conditional `remembers`/`learns` + auto_load doesn't fit the umbrella. CLI sim modes stay as-is (just `build_pain_bus`). See [docs/plans/bio_stack_unification.md](docs/plans/bio_stack_unification.md).
 
+- **`Episode.valence` defaults to 0.0 on old data.** Backward compatible. Old episode dicts without the valence field deserialize cleanly.
+- **`spreading_activation(propagate_valence=False)` returns `dict[str, float]` unchanged.** The `propagate_valence=True` path returns `dict[str, tuple[float, float]]`. Existing callers are unaffected.
+- **NAc `_reward_bias` clamps to [0, max_reward_bias].** Negative rewards (pain) produce 0.0 bias. Bias only widens EC recognition, never narrows. Pain avoidance is handled by valence annotation on edges, not by reward bias.
+- **`BioStack.save_cerebellum()` must be called at session end.** Without it, learned forward models are lost.
+
 ## `maxim doctor` — environment diagnostics
 
 Runs platform-aware checks + prints fix hints with the user's actual IPs filled in.
@@ -237,7 +242,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Tools | `tools/` (register in registry), `runtime/executor.py` (aliases) |
 | LLM routing | `models/language/router.py` (provider fallback, typed exception branches, `dispatch_exhausted` aggregated WARN), `models/language/maxim_peer_backend.py` (self-hosted peer backend — one HTTP call, typed failure, streaming with strict mid-stream fail, `health_check` + `for_url` factory), `runtime/lane_backends.py::BACKEND_CLASSES` (dispatch table), `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair) |
 | Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols), `memory/percept_trace_buffer.py` (τ-decay ring buffer) |
-| Causal learning | `decisions/nac.py` (reward bias, eligibility traces), `decisions/causal_link.py` (CausalLink, percept_refs) |
+| Causal learning | `decisions/nac.py` (reward bias, eligibility traces, distribute_reward), `decisions/causal_link.py` (CausalLink, percept_refs) |
 | Substrate encoding | `similarity/encoder.py` (LinguisticEncoder), `similarity/ec.py` (pattern_complete_or_separate, centroid update) |
 | Prompt composition | `prompts/assembler.py` (PromptAssembler, MemorySummary), `agents/prompt_builder.py` (legacy) |
 | Percept schema | `agents/percept_context.py` (PerceptContext), `agents/percept_factory.py` (factories), `agents/modality.py` (SensoryTag, SubstrateModality) |
@@ -250,7 +255,8 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | DM campaigns | `simulation/dm_schema.py`, `simulation/dm_runtime.py` |
 | Benchmarks | `simulation/benchmark.py`, `simulation/validation.py` |
 | Research | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |
-| Embodiment | `embodiment/sem.py`, `embodiment/body.py`, `embodiment/cerebellum.py`, `embodiment/motor.py` |
+| Valence | `memory/episode.py` (Episode.valence, apply_hebbian_on_close, salience_spike_rule), `agents/bus.py` (propagate_valence), `memory/hippocampus.py` (capture_reaction, include_valence) |
+| Embodiment | `embodiment/sem.py`, `embodiment/body.py`, `embodiment/cerebellum.py` (forward models), `embodiment/backends/cerebellum_modulator.py` (predict/fallback/train + success reactions), `embodiment/motor.py` |
 | Mesh | `mesh/identity.py`, `mesh/knowledge.py`, `mesh/task_delegation.py`, `mesh/clock.py` |
 | Lane tiers | `runtime/function_router.py`, `runtime/lane_models.py`, `runtime/lane_backends.py` |
 | Multi-agent | `runtime/agent_factory.py`, `runtime/agent_pool.py` |

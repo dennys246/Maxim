@@ -122,6 +122,74 @@
     <p class="text-slate-300 leading-relaxed">The LLM is a <strong class="text-white">teacher</strong>, not a per-tick oracle. After enough observations, the Cerebellum handles predictions deterministically. In testing, LLM calls drop from 100 to &le;40 over 100 actions.</p>
   </section>
 
+  <!-- SEM Learning Loop -->
+  <section class="space-y-4">
+    <h2 id="sem-learning-loop" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The SEM Learning Loop</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">In the brain, the cerebellum doesn't just predict &mdash; it emits signals when predictions fail <em>or</em> succeed. These signals propagate to the hippocampus (contextual memory) and nucleus accumbens (reward learning) simultaneously, closing the loop between motor execution and long-term behavioral adaptation. Success and failure are not symmetric: negative outcomes carry disproportionate weight, a phenomenon known as <em>negativity bias</em>.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">When the Cerebellum evaluates an affordance, the outcome flows through the bio-pipeline as a <em class="text-indigo-400 not-italic font-medium">reaction</em> &mdash; a typed evaluative signal that drives learning across multiple systems simultaneously. This is the SEM Learning Loop.</p>
+
+    <h3 class="text-white font-semibold mt-4">CerebellumModulator Outcomes</h3>
+    <p class="text-slate-300 leading-relaxed">The <code class="bg-slate-950 px-1 rounded text-xs">CerebellumModulator</code> classifies each affordance execution into one of three outcome paths:</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-emerald-400 font-semibold mb-2">Confident Prediction</h4>
+        <p class="text-slate-300 text-sm">Confidence &ge; 0.3 and low variance. The Cerebellum handles the prediction without LLM fallback. Emits a <strong class="text-white">success reaction</strong> with positive valence.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-amber-400 font-semibold mb-2">LLM Fallback</h4>
+        <p class="text-slate-300 text-sm">Confidence &lt; 0.3 or high variance. The LLM acts as teacher. The Cerebellum trains on the LLM's response via Rescorla-Wagner update. No reaction emitted &mdash; the system is still learning.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-red-400 font-semibold mb-2">Failure</h4>
+        <p class="text-slate-300 text-sm">Affordance execution triggers a failure mode (e.g., shatter, overheat). Emits a <strong class="text-white">pain reaction</strong> with negative valence via the PainBus.</p>
+      </div>
+    </div>
+
+    <h3 class="text-white font-semibold mt-6">Signal Flow</h3>
+    <p class="text-slate-300 leading-relaxed">Both success and pain reactions flow through the <code class="bg-slate-950 px-1 rounded text-xs">ReactionBus</code>, which dispatches to two subscribers in parallel:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">SEM Learning Loop Signal Flow</span>
+
+CerebellumModulator
+  |
+  |-- confident prediction --&rarr; _emit_success_reaction(valence=+0.3..+1.0)
+  |-- failure mode fired   --&rarr; PainBus.publish(PainSignal) --&rarr; pain_signal_to_reaction
+  |
+  &darr;
+ReactionBus.dispatch(reaction)
+  |
+  |-- Subscriber 1: Hippocampus
+  |     Episode captures the reaction context
+  |     Episode.valence set at finalize (mean of all reactions)
+  |     Hebbian edges annotated with Edge.metadata["valence"]
+  |
+  |-- Subscriber 2: NAc (via distribute_reward)
+  |     Adjusts per-node reward_bias in the Hebbian graph
+  |     EC similarity thresholds shift: positive &rarr; tighter, negative &rarr; looser
+  |
+  &darr;
+Episode boundary: salience_spike_rule
+  Pain spike (intensity &ge; 0.7) forces episode close
+  New episode starts with clean slate
+  |
+  &darr;
+Future retrieval: retrieve_on_cue(include_valence=True)
+  Spreading activation propagates edge valence
+  Recalled memories carry affective coloring</div>
+
+    <h3 class="text-white font-semibold mt-6">Negativity Bias</h3>
+    <p class="text-slate-300 leading-relaxed">Success reactions carry positive valence but at lower intensity than pain reactions &mdash; mirroring biological negativity bias. A single painful failure creates a stronger learning signal than several routine successes. This asymmetry means the agent develops caution around dangerous affordances faster than it develops confidence around safe ones, which is the correct survival trade-off for an embodied system.</p>
+
+    <h3 class="text-white font-semibold mt-6">Cerebellum Activation via BioStack</h3>
+    <p class="text-slate-300 leading-relaxed">In production, the Cerebellum is wired through <code class="bg-slate-950 px-1 rounded text-xs">BioStack.cerebellum</code> and activated by <code class="bg-slate-950 px-1 rounded text-xs">build_executor</code>. This means every agent entry point that constructs a bio-stack gets Cerebellum forward models and the full SEM Learning Loop automatically &mdash; no per-caller wiring required.</p>
+  </section>
+
   <!-- Motor Programs -->
   <section class="space-y-4">
     <h2 id="motor-programs" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Motor Programs</h2>

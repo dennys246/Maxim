@@ -134,3 +134,7 @@ node_ids = encoder.encode_decomposed(
 - **English only** (Stage 1). spaCy `en_core_web_sm` is English-only. Multi-language support requires a multilingual model (`xx_ent_wiki_sm`) or per-language model selection.
 - **Short fragments** may over-decompose. The `min_chunk_len` filter helps, but domain-specific inputs may need a custom strategy.
 - **No relation tagging yet** (Stage 2). Chunks are bound with untagged Hebbian edges. Role-tagged edges (`relation="spatial"`) are planned for a future stage.
+
+## Connection to Valence Annotation
+
+With concept decomposition enabled, valence annotation targets individual concept nodes ("rusty sword", "heavy", "sharp") rather than whole-sentence blobs. This means the agent learns "rusty sword is associated with pain" rather than "the entire sentence about picking up a rusty sword is painful." See [valence_annotation_poc.md](../experiments/valence_annotation_poc.md) for the demonstration.

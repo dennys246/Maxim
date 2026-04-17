@@ -188,8 +188,23 @@
           </tr>
           <tr class="border-t border-slate-700">
             <td class="pr-4 py-3 text-white font-medium">Substrate P2 Reward Modulation</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">In Progress</span></td>
-            <td class="py-3">NAc per-node reward bias, eligibility traces, EC threshold modulation, CausalLink.percept_refs. Core mechanism merged. Validation sweep + SEM pain cascade PoC remaining.</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">NAc per-node reward bias, eligibility traces, EC threshold modulation, CausalLink.percept_refs. Real-embedding sweep at <code class="bg-slate-950 px-1 rounded text-xs">paraphrase-mpnet@0.70, reward 2.0</code>: +56.0 pp target gain, 0.0 pp distractor drift, 94% monotone, 9-of-10 seeds. SEM pain cascade end-to-end verified.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Bio-Stack Unification (Waves 1&ndash;3)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3"><code class="bg-slate-950 px-1 rounded text-xs">build_bio_stack(*, persistence_dir)</code> canonical. Structural enforcement for PainBus, ReactionBus, MemoryHub, DefaultNetwork. Four production callers.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Valence Annotation (Stages 1&ndash;3)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Reactions &rarr; Episode.valence &rarr; Edge.metadata["valence"] &rarr; spreading_activation(propagate_valence=True). retrieve_on_cue(include_valence=True) for affective retrieval.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">SEM Learning Loop</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Cerebellum activation via BioStack, distribute_reward (ReactionBus &rarr; NAc reward bias &rarr; EC threshold adjustment), CerebellumModulator success reactions (positive valence, negativity bias), pain spike episode boundaries (salience_spike_rule).</td>
           </tr>
         </tbody>
       </table>
@@ -200,9 +215,13 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed">The most recent shipping wave (2026-04-14) closed the <span class="text-indigo-400 font-semibold">substrate recognition track for the 0.3-minimum gate</span>. <span class="text-indigo-400 font-semibold">Substrate P2 Reward Modulation</span> shipped end-to-end: real-embedding sweep at <code class="bg-slate-950 px-1 rounded text-xs">paraphrase-mpnet@0.70, reward 2.0</code> cleared with +56.0 ± 29.0 pp target gain, 0.0 pp distractor drift, 94% monotone, 9-of-10 seeds. <span class="text-indigo-400 font-semibold">Substrate P3a Episode Binding Stage 2</span> shipped: Hebbian multi-hop F1 = 1.0000 vs TF-IDF F1 = 0.7000 (margin 0.30 across 10 seeds). The same wave shipped the <span class="text-indigo-400 font-semibold">SEM Execution Hook</span> plan (Stages 1+2+3+4) which closed a class of silent-no-op bugs around tool-invoked embodiment pain attribution and added <code class="bg-slate-950 px-1 rounded text-xs">--embodiment</code> as a first-class CLI flag. The follow-up <span class="text-indigo-400 font-semibold">Executor Bootstrap Unification</span> made forgetting to wire the <code class="bg-slate-950 px-1 rounded text-xs">ToolPainBridge</code> a <code class="bg-slate-950 px-1 rounded text-xs">TypeError</code> instead of a silent no-op &mdash; structural enforcement at the constructor signature level. Earlier waves: <span class="text-indigo-400 font-semibold">P1 Recognition</span> (91.7% collapse), <span class="text-indigo-400 font-semibold">P0 Baseline</span> (78.5%), all prerequisite waves (F0.1&ndash;F0.8, Reaction Abstraction 1&ndash;4, Simulator Upgrades S1&ndash;S4).</p>
+    <p class="text-slate-300 leading-relaxed">The most recent shipping wave (2026-04-17) delivered the <span class="text-indigo-400 font-semibold">SEM Learning Loop</span> and <span class="text-indigo-400 font-semibold">Valence Annotation</span> (Stages 1&ndash;3). The SEM Learning Loop wires CerebellumModulator success/failure reactions through ReactionBus to both hippocampus (episode valence annotation, Hebbian edge valence) and NAc (<code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> for per-node reward bias + EC threshold adjustment). The <code class="bg-slate-950 px-1 rounded text-xs">salience_spike_rule</code> closes episodes on high-intensity pain. <code class="bg-slate-950 px-1 rounded text-xs">spreading_activation(propagate_valence=True)</code> and <code class="bg-slate-950 px-1 rounded text-xs">retrieve_on_cue(include_valence=True)</code> carry affective memory through retrieval. Episode boundary enrichment Rules 1&ndash;2 deferred to pre-P5. Earlier: <span class="text-indigo-400 font-semibold">Substrate P2 Reward Modulation</span> shipped end-to-end (+56.0 pp target gain, 9-of-10 seeds). <span class="text-indigo-400 font-semibold">P3a Episode Binding Stage 2</span>: Hebbian multi-hop F1 = 1.0000 vs TF-IDF 0.7000. <span class="text-indigo-400 font-semibold">Bio-Stack Wave 3</span> merged (<code class="bg-slate-950 px-1 rounded text-xs">build_bio_stack</code> canonical). <span class="text-indigo-400 font-semibold">SEM Execution Hook</span> + <span class="text-indigo-400 font-semibold">Executor Bootstrap Unification</span> closed the silent-no-op bug class.</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">SEM Learning Loop &amp; Valence Annotation</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">CerebellumModulator success/failure reactions &rarr; ReactionBus &rarr; hippocampus (Episode.valence, Edge.metadata["valence"]) + NAc (<code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> for reward bias + EC threshold adjustment). <code class="bg-slate-950 px-1 rounded text-xs">spreading_activation(propagate_valence=True)</code> + <code class="bg-slate-950 px-1 rounded text-xs">retrieve_on_cue(include_valence=True)</code>. Pain spike episode boundaries via <code class="bg-slate-950 px-1 rounded text-xs">salience_spike_rule</code>. Cerebellum activation through BioStack + build_executor.</p>
+      </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">DM MVP</h3>
         <p class="text-slate-300 text-sm leading-relaxed">Bundled SEM characters with cascade DAG for narrative branching. ChooseTool + alias system for encounter choices. Bio-system expectations checker validates campaign results. 4 campaigns: heist, poisoned_crown, arena, darkened_cavern. <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim scenarios/campaigns/heist_v1.yaml</code></p>
@@ -254,14 +273,14 @@
   <section class="space-y-4">
     <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
 
-    <p class="text-slate-300 leading-relaxed">The path to 1.0 still runs through the substrate plan. P1 recognition and P2 reward modulation are complete. P3a episode binding Stage 2 is shipped. Next: bio-system unification (a structural-enforcement wave triggered by the SEM execution hook session), then the rest of the binding/persistence track, then P4 cross-modal.</p>
+    <p class="text-slate-300 leading-relaxed">The path to 1.0 still runs through the substrate plan. P1 recognition, P2 reward modulation, valence annotation, and the SEM Learning Loop are complete. Bio-Stack Wave 3 is merged. Next: concept decomposition Stage 2, episode boundary enrichment, the rest of the binding/persistence track, then 0.3 publish.</p>
 
     <div class="space-y-3">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
-          <h3 class="text-white font-semibold">Bio-System Unification Wave 1 <span class="text-slate-500 font-normal text-sm">(~300 LOC, parallel-safe pair)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Apply the executor bootstrap unification pattern to <code class="bg-slate-950 px-1 rounded text-xs">PainBus</code> + <code class="bg-slate-950 px-1 rounded text-xs">ReactionBus</code>: push subscriber-wiring decisions into <code class="bg-slate-950 px-1 rounded text-xs">build_pain_bus(*, hippocampus, nac, ...)</code> and <code class="bg-slate-950 px-1 rounded text-xs">build_reaction_bus(*, producers, subscribers, ...)</code> as required keyword args. Closes the next instance of the same silent-no-op bug class that drove the executor unification. Two parallel-safe PRs after the executor unification merges. Then Wave 2 (MemoryHub + DefaultNetwork) and Wave 3 (bio_stack umbrella).</p>
+          <h3 class="text-white font-semibold">Concept Decomposition Stage 2 + Episode Boundary Enrichment</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Concept decomposition Stage 1 (protocol + spaCy + encoder integration) is shipped. Stage 2 builds on it. Episode boundary enrichment Rules 1&ndash;2 deferred to pre-P5. Recommended sequence: valence annotation (done) &rarr; concept decomposition Stage 2 &rarr; episode boundary enrichment &rarr; 0.3 publish.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
@@ -275,7 +294,7 @@
         <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
         <div>
           <h3 class="text-white font-semibold">AgentFactory Canonicalization <span class="text-slate-500 font-normal text-sm">(multi-PR, multi-session)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Make <code class="bg-slate-950 px-1 rounded text-xs">AgentFactory.create_agent</code> the only door for constructing a Maxim agent. Eight of nine current entry points hand-roll the bio pipeline; this plan converges them onto one factory. Subsumes the deferred SEM Stage 2b. Activates after bio-system unification ships (Wave 3 bio_stack umbrella becomes the consumed primitive).</p>
+          <p class="text-slate-300 text-sm leading-relaxed">Make <code class="bg-slate-950 px-1 rounded text-xs">AgentFactory.create_agent</code> the only door for constructing a Maxim agent. Eight of nine current entry points hand-roll the bio pipeline; this plan converges them onto one factory. Subsumes the deferred SEM Stage 2b. <code class="bg-slate-950 px-1 rounded text-xs">build_bio_stack</code> becomes the consumed primitive.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
