@@ -5,7 +5,7 @@
 **Target version:** post-0.3. Ships AFTER P4 Stage 3 proves the base cross-modal claim on bare class names. **P4 Stage 3 PASSED (2026-04-16) — trigger fired.**
 **Parent:** None (standalone). Extends `similarity/encoder.py` → `similarity/ec.py` capture path.
 **Blocks:** Nothing. Improves quality of all downstream substrate phases (P5 stress, P6 multi-session, P8 sleep-replay) by generating more meaningful nodes.
-**Companion:** [substrate_pain_concept_bridge.md](#companion-shell-pain-concept-bridge) (shell, below) — wires pain signals to substrate node reward bias.
+**Companion:** [substrate_valence_annotation.md](substrate_valence_annotation.md) — SEM reactions annotate Hebbian edges with valence (pain/pleasure). Recommended after concept decomposition Stage 1.
 
 ## Motivation
 
@@ -155,7 +155,7 @@ Stage 3 of this plan converges the two: `ConceptExtractor` adopts `ConceptDecomp
 
 Decomposition creates more substrate nodes but does **not** touch pain context dicts or `ToolPainBridge` direct attribution (`(tool_name, invocation_id)` lookup). These are parallel namespaces. The `_context_similarity` directional denominator (P2 fix) and the `_pending_tools` guard are unaffected. This was explicitly verified during the three-lens review given P2's history with that bug class.
 
-However, the review discovered a deeper gap: **pain signals never flow back to substrate nodes at all.** See [companion shell](#companion-shell-pain-concept-bridge) below.
+However, the review discovered a deeper gap: **pain signals never flow back to substrate nodes at all.** The wiring from SEM reactions to substrate edge valence is the subject of the companion plan [substrate_valence_annotation.md](substrate_valence_annotation.md). Concept decomposition makes that plan more precise (finer-grained concept nodes = better valence targets).
 
 ### Dependency: spaCy
 
@@ -196,45 +196,6 @@ However, the review discovered a deeper gap: **pain signals never flow back to s
 1. Migrate `ConceptExtractor` to use `ConceptDecomposer` as its noun-phrase backend (pass `SpaCyNounChunkStrategy` or the active strategy)
 2. Retire the token-level heuristics in `_is_structured_goal` (the 4-token gate becomes unnecessary when real NLP parsing is available)
 3. Unify the ATL registration path so ATL concepts and substrate nodes share the same concept identities
-
-## Companion shell: pain-concept bridge
-
-**Status:** SHELL (2026-04-16). Design question surfaced by three-lens review — the wiring from pain signals to substrate node reward bias does not exist.
-
-### The gap
-
-NAc has two sub-systems that are structurally disconnected:
-
-1. **Pain recording** (`ToolPainBridge.record_tool_embodiment_failure` + `create_pain_nac_subscriber`) writes to NAc's `_links` using **action/tool event signatures** (e.g., `"tool:invocation_id"`). This is causal learning: "this action caused this outcome."
-
-2. **Reward bias** (`NAc._reward_bias` + `credit_node` + `distribute_reward`) maps **substrate node IDs** to reward values. EC's `pattern_complete_or_separate` reads this via `threshold_override` to widen/narrow recognition radius for rewarded/punished concepts.
-
-3. **Eligibility traces** (`NAc.update_eligibility`) ARE being built — `LinguisticEncoder.encode()` calls `nac.update_eligibility(agent_id, node_id)` when a percept completes to a node. So the substrate knows which nodes were recently active.
-
-4. **Missing bridge:** `NAc.distribute_reward` has **zero external callers.** When pain fires, the pain recording path writes a causal link, but never calls `distribute_reward` on the eligible substrate nodes. The eligibility traces accumulate but no reward signal ever arrives.
-
-### What this means
-
-If an agent encounters "rusty sword" (a substrate node via concept decomposition) and then experiences pain from interacting with it, the agent learns:
-- "using tool X on rusty sword caused pain" (NAc causal link) ✅
-- "rusty sword is associated with negative outcomes" (substrate reward bias) ❌ **missing**
-
-The causal link affects future tool selection but NOT future concept recognition. The agent won't recognize "rusty sword" more cautiously or avoid concepts associated with pain — the substrate is blind to valence.
-
-### Proposed wiring (shell — needs design pass)
-
-When a pain outcome is recorded (either via `ToolPainBridge` direct attribution or `PainBus` subscriber), call `NAc.distribute_reward(agent_id, reward=-intensity)` on the currently eligible substrate nodes. This converts the eligibility traces (which nodes were recently active) into reward bias adjustments.
-
-The eligibility trace already decays over time, so nodes that were active long before the pain event get weaker negative credit — this is standard TD learning, and the infrastructure exists. The missing piece is literally one call site: `distribute_reward` after pain recording.
-
-**Open design questions:**
-
-1. Should ALL eligible nodes get negative credit, or only nodes active within the same episode as the painful event?
-2. What's the right reward magnitude? Pain intensity maps to NAc's `[-1, 1]` reward range, but the scaling needs calibration.
-3. Should positive outcomes (successful tool use, goal achievement) also distribute reward to eligible substrate nodes? This would create "approach" associations alongside "avoidance."
-4. Does this create a feedback loop? If "rusty sword" gets negative bias → EC separates it more aggressively → the agent encounters similar-but-different swords as new nodes → each gets independently punished → concept fragmentation. The eligibility decay may naturally prevent this, but it needs a test.
-
-**Trigger:** implement alongside or after concept decomposition Stage 1. Finer-grained concept nodes make the reward bias more targeted ("rusty sword" vs the whole sentence), so decomposition is the natural prerequisite.
 
 ## When to execute
 
