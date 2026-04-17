@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from dataclasses import replace
+from collections.abc import Callable
 from typing import Any
 
 from maxim.utils.logging import info, warn
@@ -107,7 +108,12 @@ class LLMRouter:
     # Sentinel value to distinguish "init failed" from "not yet initialized"
     _INIT_FAILED = object()
 
-    def __init__(self, cfg: LLMConfig | None = None) -> None:
+    def __init__(
+        self,
+        cfg: LLMConfig | None = None,
+        *,
+        drain_constraint: Callable[[str], bool] | None = None,
+    ) -> None:
         self.cfg = cfg or load_llm_config()
         self._backend: Any | None = None
         self._backends: dict[str, Any] = {}
@@ -115,6 +121,7 @@ class LLMRouter:
         self._inference_lock = threading.Lock()  # Serializes inference calls (llama-cpp not thread-safe)
         self._ready_event = threading.Event()  # Set when warmup completes
         self._warmup_failed = False
+        self._drain_constraint = drain_constraint
         self._providers = self._normalize_providers(self.cfg)
         self._provider_states: dict[str, ProviderState] = {key: ProviderState() for key in self._providers.keys()}
         self._routing_policy = self._load_routing_policy(self.cfg.routing)
@@ -137,6 +144,8 @@ class LLMRouter:
         # Safe as a plain list because ``_complete_text`` holds
         # ``_inference_lock`` for the full duration of a dispatch.
         self._dispatch_attempts: list[dict[str, Any]] = []
+        self._last_drained_keys: list[str] = []
+        self._last_total_provider_count: int = 0
         self._last_suggested_peer: str | None = None
         try:
             import atexit
@@ -472,8 +481,15 @@ class LLMRouter:
 
         providers = self._provider_order()
         filtered: list[str] = []
+        drained_keys: list[str] = []
         for key in providers:
             cfg = self._providers.get(key, {})
+            # Plan 4 C4: skip drained providers before any other filter.
+            # Drained providers are recorded separately (not in
+            # _dispatch_attempts) because they were never tried.
+            if self._drain_constraint is not None and self._drain_constraint(key):
+                drained_keys.append(key)
+                continue
             # Self-hosted openai-compatible servers (llama-cpp-server, Ollama,
             # vLLM on a private IP) opt out of the cloud gate by setting
             # allow_local_endpoints=True — the SSRF check in _OpenAIBackend
@@ -490,11 +506,16 @@ class LLMRouter:
                 if prompt_tokens + max_tokens > n_ctx:
                     continue
             filtered.append(key)
+        self._last_drained_keys = drained_keys
+        self._last_total_provider_count = len(providers)
 
         if budget_tier == "blocked":
             if policy.fallback_on_budget_exceeded == "local":
                 locals_only = []
                 for key in self._local_providers():
+                    # Plan 4 C4: drain filter applies to local fallback too.
+                    if self._drain_constraint is not None and self._drain_constraint(key):
+                        continue
                     cfg = self._providers.get(key, {})
                     if policy.context_window_routing:
                         n_ctx = self._provider_n_ctx(cfg)
@@ -679,6 +700,7 @@ class LLMRouter:
         *,
         request_context: dict[str, Any] | None,
         total_elapsed_ms: float,
+        drained_keys: list[str] | None = None,
     ) -> None:
         """Emit one ``dispatch_exhausted`` WARN per failed dispatch.
 
@@ -686,6 +708,9 @@ class LLMRouter:
         ``request_id``, ``lane``) and lists every per-provider attempt
         with its typed outcome. Grep-friendly via
         ``jq 'select(.e=="dispatch_exhausted")'``.
+
+        Plan 4 C4: ``drained_keys`` lists providers skipped due to drain
+        state. They are NOT in ``_dispatch_attempts`` (never tried).
 
         **R3 review fix:** delegates to
         :func:`maxim.agents.llm_worker._normalize_request_context` (the
@@ -703,17 +728,48 @@ class LLMRouter:
         from maxim.agents.llm_worker import _normalize_request_context
 
         ctx = _normalize_request_context(request_context)
+        data: dict[str, Any] = {
+            "request_id": ctx.request_id,
+            "agent_id": ctx.agent_id,
+            "session_id": ctx.session_id,
+            "lane": ctx.lane,
+            "total_elapsed_ms": round(total_elapsed_ms, 1),
+            "attempts": attempts,
+        }
+        if drained_keys:
+            data["drained_providers"] = sorted(drained_keys)
         log_structured(
             logger,
             logging.WARNING,
             event="dispatch_exhausted",
+            data=data,
+        )
+
+    def _emit_dispatch_exhausted_all_drained(
+        self,
+        *,
+        request_context: dict[str, Any] | None,
+        drained_keys: list[str],
+    ) -> None:
+        """All candidates were drained. Distinct event with fix hint.
+
+        Plan 4 C4: fires IFF all candidates were eliminated by drain
+        AND there were candidates before drain.
+        """
+        from maxim.agents.llm_worker import _normalize_request_context
+
+        ctx = _normalize_request_context(request_context)
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="dispatch_exhausted_all_drained",
             data={
                 "request_id": ctx.request_id,
                 "agent_id": ctx.agent_id,
                 "session_id": ctx.session_id,
                 "lane": ctx.lane,
-                "total_elapsed_ms": round(total_elapsed_ms, 1),
-                "attempts": attempts,
+                "drained_providers": sorted(drained_keys),
+                "fix": "all providers are drained -- run 'maxim peer list-drained'",
             },
         )
 
@@ -816,7 +872,16 @@ class LLMRouter:
             providers = [provider_hint] + [p for p in providers if p != provider_hint]
 
         if not providers:
-            warn("No eligible LLM providers for request")
+            # Plan 4 C4: distinguish "all drained" from "no providers".
+            # Only fire all_drained if EVERY provider was eliminated by
+            # drain (not by backoff, cloud gate, or context window).
+            if self._last_drained_keys and len(self._last_drained_keys) == self._last_total_provider_count:
+                self._emit_dispatch_exhausted_all_drained(
+                    request_context=request_context,
+                    drained_keys=self._last_drained_keys,
+                )
+            else:
+                warn("No eligible LLM providers for request")
             return "", None
 
         # Plan 3 R2.5: reset the per-dispatch attempt log at the top of
@@ -861,6 +926,7 @@ class LLMRouter:
         self._emit_dispatch_exhausted(
             request_context=request_context,
             total_elapsed_ms=total_elapsed_ms,
+            drained_keys=self._last_drained_keys or None,
         )
         return "", None
 

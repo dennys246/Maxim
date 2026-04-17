@@ -602,8 +602,27 @@ class LaneBackendManager:
         # Inject cloud fallback provider if configured via --cloud-fallback
         llm_config = self._maybe_inject_cloud_fallback(cfg, llm_config)
 
+        # Plan 4 C4: inject drain constraint so drained mesh nodes are
+        # skipped during dispatch. Returns None (no-op) for non-mesh
+        # installs or when no provider URL matches any mesh node.
+        drain_constraint = None
         try:
-            return LLMRouter(llm_config)
+            from maxim.peer.mesh_config import read_or_synthesize_mesh_config
+            from maxim.peer.drain_routing import build_drain_constraint
+
+            mesh_cfg = read_or_synthesize_mesh_config()
+            if mesh_cfg is not None:
+                providers = llm_config.providers if isinstance(llm_config.providers, dict) else {}
+                dc = build_drain_constraint(mesh_cfg, providers)
+                if dc is not None:
+                    drain_constraint = dc.is_drained
+        except ImportError:
+            logger.debug("drain constraint init skipped (optional deps)", exc_info=True)
+        except Exception:
+            logger.warning("drain constraint init failed", exc_info=True)
+
+        try:
+            return LLMRouter(llm_config, drain_constraint=drain_constraint)
         except Exception as e:
             logger.warning("Failed to create LLM router: %s", e)
             return None
