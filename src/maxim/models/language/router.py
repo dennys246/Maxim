@@ -113,6 +113,7 @@ class LLMRouter:
         cfg: LLMConfig | None = None,
         *,
         drain_constraint: Callable[[str], bool] | None = None,
+        auto_drain_callback: Callable[[str, str], None] | None = None,
     ) -> None:
         self.cfg = cfg or load_llm_config()
         self._backend: Any | None = None
@@ -122,6 +123,8 @@ class LLMRouter:
         self._ready_event = threading.Event()  # Set when warmup completes
         self._warmup_failed = False
         self._drain_constraint = drain_constraint
+        self._auto_drain_callback = auto_drain_callback
+        self._pending_auto_drains: list[tuple[str, str]] = []
         self._providers = self._normalize_providers(self.cfg)
         self._provider_states: dict[str, ProviderState] = {key: ProviderState() for key in self._providers.keys()}
         self._routing_policy = self._load_routing_policy(self.cfg.routing)
@@ -773,6 +776,24 @@ class LLMRouter:
             },
         )
 
+    def _maybe_schedule_auto_drain(self, provider_key: str, outcome: str) -> None:
+        """Schedule an auto-drain if consecutive errors cross the threshold.
+
+        Plan 4 C4.5: appends to ``_pending_auto_drains`` which is flushed
+        OUTSIDE ``_inference_lock`` by ``_complete_text``. The actual write
+        (filelock + disk I/O) never runs inside the inference critical section.
+        """
+        if self._auto_drain_callback is None:
+            return
+        state = self._provider_states.get(provider_key)
+        if state is None:
+            return
+        from maxim.peer.drain_routing import auto_drain_threshold
+
+        threshold = auto_drain_threshold(outcome)
+        if state.consecutive_errors >= threshold:
+            self._pending_auto_drains.append((provider_key, outcome))
+
     def _emit_cloud_audit(
         self,
         *,
@@ -838,7 +859,7 @@ class LLMRouter:
         # calls on the same model.  In simulation mode two LLMWorkers share
         # one router; without this lock the second call segfaults.
         with self._inference_lock:
-            return self._complete_text_locked(
+            result = self._complete_text_locked(
                 system,
                 user,
                 temperature=temperature,
@@ -849,6 +870,20 @@ class LLMRouter:
                 thinking=thinking,
                 stream=stream,
             )
+
+        # Plan 4 C4.5: flush pending auto-drains OUTSIDE _inference_lock.
+        # The threshold checks in _try_provider populated the buffer under
+        # the lock; the actual filelock + disk writes happen here.
+        if self._pending_auto_drains and self._auto_drain_callback is not None:
+            pending = list(self._pending_auto_drains)
+            self._pending_auto_drains.clear()
+            for key, reason in pending:
+                try:
+                    self._auto_drain_callback(key, reason)
+                except Exception:
+                    pass  # AutoDrainWriter logs internally
+
+        return result
 
     def _complete_text_locked(
         self,
@@ -1028,6 +1063,7 @@ class LLMRouter:
                 outcome="overloaded",
                 extra={"retry_after_s": getattr(e, "retry_after_s", 0.0)},
             )
+            self._maybe_schedule_auto_drain(provider_key, "overloaded")
             return "", None, "failed"
         except BackendAuthFailed:
             # 300s hard cooldown — rotating a cluster key doesn't
@@ -1042,6 +1078,7 @@ class LLMRouter:
                 state.last_error = "auth_failed"
             self._set_long_backoff(provider_key, 300.0)
             self._record_attempt_outcome(provider_key, outcome="auth_failed")
+            self._maybe_schedule_auto_drain(provider_key, "auth_failed")
             return "", None, "failed"
         except BackendModelMissing as e:
             # 60s cooldown — operator needs to install the model; don't
@@ -1059,6 +1096,7 @@ class LLMRouter:
                 outcome="model_missing",
                 extra={"requested_model": requested},
             )
+            self._maybe_schedule_auto_drain(provider_key, "model_missing")
             return "", None, "failed"
         except BackendInferenceBroken:
             # Stage-2 probe outcome — match the probe-cache TTL.
@@ -1067,6 +1105,7 @@ class LLMRouter:
                 state.last_error = "inference_broken"
             self._set_short_backoff(provider_key, INFERENCE_BROKEN_BACKOFF_S)
             self._record_attempt_outcome(provider_key, outcome="inference_broken")
+            self._maybe_schedule_auto_drain(provider_key, "inference_broken")
             return "", None, "failed"
         except BackendTimeout as e:
             elapsed = getattr(e, "elapsed_s", 0.0) or 0.0
@@ -1079,6 +1118,7 @@ class LLMRouter:
                 outcome="timeout",
                 extra={"elapsed_s": round(elapsed, 2)},
             )
+            self._maybe_schedule_auto_drain(provider_key, "timeout")
             return "", None, "failed"
         except BackendDown as e:
             http_status = getattr(e, "status", None)
@@ -1091,6 +1131,7 @@ class LLMRouter:
                 outcome="down",
                 extra={"http_status": http_status},
             )
+            self._maybe_schedule_auto_drain(provider_key, "down")
             return "", None, "failed"
         except BackendError as e:
             # Unmapped BackendError subclass or generic base. Records as
@@ -1099,6 +1140,7 @@ class LLMRouter:
             self._log_provider_error(provider_key, e)
             self._note_provider_failure(provider_key, "generic_backend_error")
             self._record_attempt_outcome(provider_key, outcome="generic_backend_error")
+            self._maybe_schedule_auto_drain(provider_key, "generic_backend_error")
             return "", None, "failed"
         except Exception as e:
             # Safety net for non-typed exceptions. Non-zero count of
@@ -1114,10 +1156,12 @@ class LLMRouter:
                 outcome="unclassified",
                 extra={"error": type(e).__name__},
             )
+            self._maybe_schedule_auto_drain(provider_key, "unclassified")
             return "", None, "failed"
 
         self._note_provider_failure(provider_key, "call_failed")
         self._record_attempt_outcome(provider_key, outcome="empty_response")
+        self._maybe_schedule_auto_drain(provider_key, "empty_response")
         return "", None, "failed"
 
     def _check_provider_budget(

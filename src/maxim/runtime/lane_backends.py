@@ -606,9 +606,10 @@ class LaneBackendManager:
         # skipped during dispatch. Returns None (no-op) for non-mesh
         # installs or when no provider URL matches any mesh node.
         drain_constraint = None
+        auto_drain_callback = None
         try:
             from maxim.peer.mesh_config import read_or_synthesize_mesh_config
-            from maxim.peer.drain_routing import build_drain_constraint
+            from maxim.peer.drain_routing import build_drain_constraint, build_auto_drain_writer
 
             mesh_cfg = read_or_synthesize_mesh_config()
             if mesh_cfg is not None:
@@ -616,13 +617,20 @@ class LaneBackendManager:
                 dc = build_drain_constraint(mesh_cfg, providers)
                 if dc is not None:
                     drain_constraint = dc.is_drained
+                    # C4.5: auto-drain writer shares the same URL→node mapping.
+                    writer = build_auto_drain_writer(dc)
+                    auto_drain_callback = writer.maybe_auto_drain
         except ImportError:
             logger.debug("drain constraint init skipped (optional deps)", exc_info=True)
         except Exception:
             logger.warning("drain constraint init failed", exc_info=True)
 
         try:
-            return LLMRouter(llm_config, drain_constraint=drain_constraint)
+            return LLMRouter(
+                llm_config,
+                drain_constraint=drain_constraint,
+                auto_drain_callback=auto_drain_callback,
+            )
         except Exception as e:
             logger.warning("Failed to create LLM router: %s", e)
             return None

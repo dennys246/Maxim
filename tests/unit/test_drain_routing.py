@@ -383,3 +383,235 @@ class TestRouterDrainIntegration:
         # Backoff state must be untouched by drain filtering
         assert router._provider_states["peer1"].consecutive_errors == 3
         assert router._provider_states["peer1"].last_error == "timeout"
+
+
+# ── Auto-drain thresholds ──────────────────────────────────────────────────
+
+
+class TestAutoDrainThreshold:
+    def test_permanent_failure_threshold_is_one(self):
+        from maxim.peer.drain_routing import auto_drain_threshold
+
+        assert auto_drain_threshold("auth_failed") == 1
+        assert auto_drain_threshold("model_missing") == 1
+
+    def test_transient_failure_threshold_is_five_by_default(self):
+        from maxim.peer.drain_routing import auto_drain_threshold
+
+        assert auto_drain_threshold("down") == 5
+        assert auto_drain_threshold("timeout") == 5
+        assert auto_drain_threshold("inference_broken") == 5
+
+    def test_env_override(self, monkeypatch):
+        from maxim.peer.drain_routing import auto_drain_threshold
+
+        monkeypatch.setenv("MAXIM_AUTO_DRAIN_THRESHOLD", "3")
+        assert auto_drain_threshold("down") == 3
+
+    def test_env_clamped_low(self, monkeypatch):
+        from maxim.peer.drain_routing import auto_drain_threshold
+
+        monkeypatch.setenv("MAXIM_AUTO_DRAIN_THRESHOLD", "1")
+        assert auto_drain_threshold("down") == 2  # min is 2
+
+    def test_env_clamped_high(self, monkeypatch):
+        from maxim.peer.drain_routing import auto_drain_threshold
+
+        monkeypatch.setenv("MAXIM_AUTO_DRAIN_THRESHOLD", "100")
+        assert auto_drain_threshold("down") == 20  # max is 20
+
+
+# ── Tagged entry parsing ──────────────────────────────────────────────────
+
+
+class TestLoadTaggedEntries:
+    def test_plain_name_has_none_tag(self, tmp_path: Path):
+        from maxim.peer.drain_routing import _load_tagged_entries
+
+        f = tmp_path / "d.txt"
+        f.write_text("leader-desk\n")
+        result = _load_tagged_entries(f)
+        assert result == {"leader-desk": None}
+
+    def test_tagged_name_has_tag(self, tmp_path: Path):
+        from maxim.peer.drain_routing import _load_tagged_entries
+
+        f = tmp_path / "d.txt"
+        f.write_text("leader-desk  # auto:2026-04-17 reason:auth_failed\n")
+        result = _load_tagged_entries(f)
+        assert result == {"leader-desk": "auto:2026-04-17 reason:auth_failed"}
+
+    def test_mixed_entries(self, tmp_path: Path):
+        from maxim.peer.drain_routing import _load_tagged_entries
+
+        f = tmp_path / "d.txt"
+        f.write_text("leader-desk  # auto:2026-04-17\nmac-studio\n")
+        result = _load_tagged_entries(f)
+        assert result == {"leader-desk": "auto:2026-04-17", "mac-studio": None}
+
+    def test_comment_only_line_skipped(self, tmp_path: Path):
+        from maxim.peer.drain_routing import _load_tagged_entries
+
+        f = tmp_path / "d.txt"
+        f.write_text("# just a comment\nleader-desk\n")
+        result = _load_tagged_entries(f)
+        assert result == {"leader-desk": None}
+
+    def test_missing_file_returns_empty(self, tmp_path: Path):
+        from maxim.peer.drain_routing import _load_tagged_entries
+
+        result = _load_tagged_entries(tmp_path / "nope.txt")
+        assert result == {}
+
+
+# ── AutoDrainWriter ───────────────────────────────────────────────────────
+
+
+class TestAutoDrainWriter:
+    @pytest.fixture
+    def drain_file(self, tmp_path: Path) -> Path:
+        p = tmp_path / "drained_nodes.leader.txt"
+        p.write_text("")
+        return p
+
+    @pytest.fixture
+    def writer(self, drain_file: Path):
+        from maxim.peer.drain_routing import AutoDrainWriter
+
+        return AutoDrainWriter(
+            provider_to_node={"peer1": "leader-desk", "peer2": "mac-studio"},
+            drain_path=drain_file,
+        )
+
+    def test_writes_tagged_entry(self, writer, drain_file: Path):
+        writer.maybe_auto_drain("peer1", "auth_failed")
+        content = drain_file.read_text()
+        assert "leader-desk" in content
+        assert "# auto:" in content
+        assert "reason:auth_failed" in content
+
+    def test_idempotent_on_existing_drain(self, writer, drain_file: Path):
+        drain_file.write_text("leader-desk\n")  # operator drain (no tag)
+        writer.maybe_auto_drain("peer1", "auth_failed")
+        content = drain_file.read_text()
+        # Should NOT have appended — node already drained
+        assert content.count("leader-desk") == 1
+
+    def test_unknown_provider_is_noop(self, writer, drain_file: Path):
+        writer.maybe_auto_drain("anthropic", "auth_failed")
+        assert drain_file.read_text() == ""
+
+    def test_tagged_entry_parseable_by_load_names(self, writer, drain_file: Path):
+        """Existing drain_state._load_names must see the auto-drained node."""
+        writer.maybe_auto_drain("peer1", "down")
+        from maxim.peer.drain_state import _load_names
+
+        names = _load_names(drain_file)
+        assert "leader-desk" in names
+
+    def test_tagged_entry_parseable_by_load_tagged(self, writer, drain_file: Path):
+        from maxim.peer.drain_routing import _load_tagged_entries
+
+        writer.maybe_auto_drain("peer1", "timeout")
+        entries = _load_tagged_entries(drain_file)
+        assert "leader-desk" in entries
+        tag = entries["leader-desk"]
+        assert tag is not None
+        assert tag.startswith("auto:")
+        assert "reason:timeout" in tag
+
+
+# ── Router auto-drain integration ─────────────────────────────────────────
+
+
+class TestRouterAutoDrainIntegration:
+    """Test that auto-drain callbacks fire at the right thresholds."""
+
+    @pytest.fixture
+    def router_with_auto_drain(self):
+        import dataclasses
+
+        from maxim.models.language.config import LLMConfig
+        from maxim.models.language.router import LLMRouter
+
+        auto_drained: list[tuple[str, str]] = []
+
+        def auto_drain_cb(key: str, reason: str) -> None:
+            auto_drained.append((key, reason))
+
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            enabled=True,
+            providers={
+                "peer1": {
+                    "type": "maxim_peer",
+                    "base_url": "http://192.168.1.10:8099/v1",
+                    "api_key_env": "FAKE_KEY",
+                    "model": "fake-model",
+                    "allow_local_endpoints": True,
+                    "pricing_required": False,
+                },
+            },
+        )
+        router = LLMRouter(cfg, auto_drain_callback=auto_drain_cb)
+        return router, auto_drained
+
+    def test_permanent_failure_triggers_after_one(self, router_with_auto_drain):
+        from maxim.models.language.types import ProviderState
+
+        router, auto_drained = router_with_auto_drain
+        # Simulate 1 auth failure (consecutive_errors=1 after _set_long_backoff)
+        router._provider_states["peer1"] = ProviderState(consecutive_errors=1, last_error="auth_failed")
+        router._maybe_schedule_auto_drain("peer1", "auth_failed")
+        # Flush outside lock
+        if router._pending_auto_drains:
+            for k, r in router._pending_auto_drains:
+                router._auto_drain_callback(k, r)
+            router._pending_auto_drains.clear()
+        assert len(auto_drained) == 1
+        assert auto_drained[0] == ("peer1", "auth_failed")
+
+    def test_transient_failure_does_not_trigger_below_threshold(self, router_with_auto_drain):
+        from maxim.models.language.types import ProviderState
+
+        router, auto_drained = router_with_auto_drain
+        # 4 consecutive errors — below default threshold of 5
+        router._provider_states["peer1"] = ProviderState(consecutive_errors=4, last_error="down")
+        router._maybe_schedule_auto_drain("peer1", "down")
+        assert len(router._pending_auto_drains) == 0
+        assert len(auto_drained) == 0
+
+    def test_transient_failure_triggers_at_threshold(self, router_with_auto_drain):
+        from maxim.models.language.types import ProviderState
+
+        router, auto_drained = router_with_auto_drain
+        # 5 consecutive errors — at default threshold
+        router._provider_states["peer1"] = ProviderState(consecutive_errors=5, last_error="down")
+        router._maybe_schedule_auto_drain("peer1", "down")
+        assert len(router._pending_auto_drains) == 1
+
+    def test_no_callback_is_noop(self):
+        import dataclasses
+
+        from maxim.models.language.config import LLMConfig
+        from maxim.models.language.router import LLMRouter
+        from maxim.models.language.types import ProviderState
+
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            enabled=True,
+            providers={
+                "peer1": {
+                    "type": "maxim_peer",
+                    "base_url": "http://192.168.1.10:8099/v1",
+                    "api_key_env": "FAKE_KEY",
+                    "model": "fake-model",
+                    "allow_local_endpoints": True,
+                    "pricing_required": False,
+                },
+            },
+        )
+        router = LLMRouter(cfg)  # No auto_drain_callback
+        router._provider_states["peer1"] = ProviderState(consecutive_errors=10)
+        router._maybe_schedule_auto_drain("peer1", "down")
+        assert len(router._pending_auto_drains) == 0
