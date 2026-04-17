@@ -1236,6 +1236,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                         _cli_embodiment.root.name,
                     )
 
+                # DefaultNetwork: explicit headless opt-out. The CLI non-sim
+                # path has no robot → no vision → no reactive behaviors.
+                # Pain detection + fear gating are handled via PainBus
+                # (build_pain_bus above) + FearGatedExecutor (below), not
+                # via DN's PainCircuitBridge. The user-facing question
+                # "should headless CLI agents get DN?" belongs to
+                # agent_factory_canonicalization.md Stage F5. See
+                # docs/plans/default_network_unification.md Gaps D+E.
+
                 # Wrap executor with FearAgent safety gating (independent of DefaultNetwork)
                 from maxim.agents.fear_agent import FearAgent
                 from maxim.runtime.fear_gate import FearGatedExecutor

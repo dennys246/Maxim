@@ -668,25 +668,46 @@ class AgenticRuntimeMixin:
         except Exception as e:
             warn("Failed to create FearAgent/FearGatedExecutor: %s", e, logger=self.log)
 
-        # Build Default Network for reactive behaviors (skip when headless)
+        # Build Default Network for reactive behaviors.
+        # Construct a PainBus via build_pain_bus FIRST, then inject into DN.
+        # This closes Gap B from docs/plans/pain_bus_unification.md — DN
+        # becomes a bus consumer rather than bus constructor. The bus arrives
+        # with hippocampus + NAc subscribers already wired, so the external
+        # hippocampus subscription at the old line 719 is no longer needed.
         default_network = None
+        _dn_pain_bus = None
         has_robot = hasattr(self, "_capabilities") and self._capabilities.has_robot
         if not has_robot:
-            self.log.info("Headless mode: skipping DefaultNetwork (no robot)")
+            self.log.info("Headless mode: DefaultNetwork builds without motor control")
+        if nac is not None:
+            try:
+                from maxim.proprioception.pain_bus import build_pain_bus
+
+                _hippo = memory_hub.hippocampus if memory_hub is not None else None
+                _dn_pain_bus = build_pain_bus(hippocampus=_hippo, nac=nac)
+                self.log.info(
+                    "DN PainBus constructed via build_pain_bus (hippocampus=%s, nac=%s)",
+                    _hippo is not None,
+                    nac is not None,
+                )
+            except Exception as e:
+                warn("Failed to build DN PainBus: %s", e, logger=self.log)
         try:
             default_network = build_default_network(
+                nac=nac,
                 maxim=self if has_robot else None,
                 bus=agent_bus,
+                pain_bus=_dn_pain_bus,
                 fear_agent=fear_agent,
-                nac=nac,
                 frame_size=(640, 480),
             )
             if default_network is not None:
                 self._default_network = default_network
                 self.log.info(
-                    "DefaultNetwork built (bus=%s, fear_agent=%s)",
+                    "DefaultNetwork built (bus=%s, fear_agent=%s, pain_bus=%s)",
                     "connected" if agent_bus else "none",
                     "enabled" if fear_agent else "none",
+                    "injected" if _dn_pain_bus else "internal",
                 )
         except Exception as e:
             warn("Failed to build DefaultNetwork: %s", e, logger=self.log)
@@ -713,17 +734,17 @@ class AgenticRuntimeMixin:
             except Exception as e:
                 warn("Failed to connect MemoryHub core bridges: %s", e, logger=self.log)
 
-        # Wire PainBus → Hippocampus for direct episodic pain memory capture
-        if (
-            default_network is not None
-            and getattr(default_network, "pain_bus", None) is not None
-            and memory_hub is not None
-            and memory_hub.hippocampus is not None
-        ):
-            from maxim.proprioception.pain_bus import create_pain_memory_subscriber
-
-            default_network.pain_bus.subscribe(create_pain_memory_subscriber(memory_hub.hippocampus))
-            self.log.info("PainBus → Hippocampus subscriber wired for pain memory capture")
+        # PainBus → Hippocampus wiring: REMOVED.
+        # Gap B closure (docs/plans/default_network_unification.md): the
+        # injected PainBus from build_pain_bus already has hippocampus +
+        # NAc subscribers wired. The external subscription that lived here
+        # pre-Wave-2 was the split-subscriber-ownership problem. With the
+        # injected bus, DN is a bus consumer — subscribers are centralized
+        # at the build_pain_bus call site above, not scattered across
+        # consumers. If _dn_pain_bus was None (build_pain_bus failed or
+        # nac was None), DN constructed its own internal bus with no
+        # hippocampus subscriber — same pre-Wave-2 behavior, which is
+        # acceptable as a degraded fallback.
 
         # Start capture manager or fall back to vision event stream
         if capture_manager is not None:

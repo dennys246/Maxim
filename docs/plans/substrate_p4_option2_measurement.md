@@ -1,9 +1,8 @@
 # Substrate P4 — Option 2 honest measurement (Stage 2 v3)
 
-**Status:** SHELL (2026-04-16). Round 1 two-lens review COMPLETE — 4 criticals + 4 importants + 2 minors folded. Ready for user signoff before implementation.
-**Scope:** ~200–300 LOC (measurement script + tests). Zero changes to production code.
-**Target:** resolve the Option 2 timing question (ship before Stage 3, or defer as cleanup).
-**Depends on:** P4 Stage 1 SHIPPED, fold cleanup PR merged, post-mortem documented.
+**Status:** COMPLETE (2026-04-16). **Decision: DEFER.** Option 2 lift = 0.0000 ± 0.0000 across 10 seeds. Same-class activation dominates cross-class by 22:1. Ship Stage 3 on single-hop.
+**Scope:** ~350 LOC measurement script. Zero changes to production code.
+**Results:** [../experiments/p4_option2_measurement.md](../experiments/p4_option2_measurement.md)
 **Parent:** [substrate_p4_cross_modal_binding.md](substrate_p4_cross_modal_binding.md), "Stage 2/3 open design decision" section.
 
 ## Context

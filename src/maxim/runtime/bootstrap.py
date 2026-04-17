@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from maxim.agents.fear_agent import FearAgent
     from maxim.bridges.tool_pain_bridge import ToolPainBridge
     from maxim.decisions.nac import NAc
-    from maxim.default_network import DefaultNetwork
+    from maxim.default_network import DefaultNetwork, DefaultNetworkConfig
     from maxim.embodiment.body import Embodiment
     from maxim.embodiment.component_registry import ComponentRegistry
     from maxim.proprioception.pain import PainDetector
@@ -609,33 +609,65 @@ def build_comms_stack(
 
 def build_default_network(
     *,
+    nac: "NAc | None",
     maxim: object | None = None,
     bus: "AgentBus | None" = None,
+    pain_bus: "PainBus | None" = None,
     fear_agent: "FearAgent | None" = None,
-    nac: "NAc | None" = None,
+    config: "DefaultNetworkConfig | None" = None,
     config_path: str | None = None,
     frame_size: tuple[int, int] = (640, 480),
 ) -> "DefaultNetwork | None":
     """Build the Default Network for reactive behaviors.
 
-    The Default Network provides biologically-inspired reactive behaviors
-    that operate without LLM involvement, enabling fast, naturalistic
-    movement responses.
+    This is the canonical DefaultNetwork construction site (Wave 2 of
+    biosystem_unification). ``nac`` is a REQUIRED keyword-only
+    argument — forgetting it is a ``TypeError``, not a silent no-op.
+    Pass ``None`` to explicitly opt out of pain detection + causal
+    learning (the core learning subsystem DN provides).
+
+    The Layer 4 → Layer 5 upgrade (see
+    ``docs/plans/default_network_unification.md`` Gap A): the previous
+    version had all-optional parameters and swallowed all exceptions
+    into ``None``. Post-upgrade, ``nac`` is required, and only import
+    failures produce a ``None`` return (optional dep not installed).
+    Config and type errors propagate to the caller.
+
+    ``pain_bus`` injection closes Gap B from
+    ``docs/plans/pain_bus_unification.md``: when provided, DN uses the
+    injected bus (which should already have hippocampus + NAc
+    subscribers from ``build_pain_bus``) instead of constructing its
+    own internally. This inverts DN from bus constructor to bus
+    consumer, closing the split-subscriber-ownership problem where
+    hippocampus was wired externally at ``agentic_runtime.py:719``.
+
+    ``maxim=None`` is the headless/sim opt-out — DN still provides
+    pain detection and novelty tracking without motor control. The
+    previous version returned ``None`` early on ``maxim=None``, which
+    was wrong for sim mode (sim needs DN for pain detection but not
+    motor). Post-upgrade, DN constructs normally with ``maxim=None``;
+    motor methods gracefully no-op.
 
     Args:
-        maxim: Maxim instance for motor control. Required for DN to function.
+        nac: NAc instance for causal learning. Required keyword-only.
+            Pass ``None`` for explicit opt-out. Drives pain detection
+            via PainCircuitBridge + focus learner.
+        maxim: Maxim instance for motor control. ``None`` = headless/sim.
         bus: AgentBus for publishing messages.
-        fear_agent: FearAgent for action gating (safety).
-        nac: NAc instance for causal learning (enables pain detection).
-        config_path: Path to YAML config file. Uses default if not specified.
+        pain_bus: Injected PainBus. When provided, DN uses this instead
+            of constructing its own. Should have hippocampus + NAc
+            subscribers already wired via ``build_pain_bus``.
+        fear_agent: FearAgent for movement gating within DN.
+        config: Pre-built DefaultNetworkConfig. When provided, takes
+            precedence over ``config_path``.
+        config_path: Path to YAML config file. Ignored if ``config``
+            is provided. Uses default if neither is specified.
         frame_size: Video frame dimensions for peripheral calculations.
 
     Returns:
-        DefaultNetwork instance, or None if maxim is not available.
+        DefaultNetwork instance, or ``None`` if the default_network
+        package is not installed (optional dep).
     """
-    if maxim is None:
-        return None
-
     try:
         from maxim.default_network import (
             DefaultNetwork,
@@ -645,11 +677,18 @@ def build_default_network(
         )
         from maxim.default_network.arbiter import ArbiterConfig
         from maxim.default_network.gate import GateConfig
+    except ImportError as e:
+        import logging
 
-        # Load configuration from YAML
+        logging.getLogger(__name__).warning(
+            "DefaultNetwork not available (optional dep): %s",
+            e,
+        )
+        return None
+
+    # Build config — explicit config takes precedence over config_path.
+    if config is None:
         dn_config = load_dn_config(config_path)
-
-        # Build DefaultNetworkConfig from loaded config
         network_config = DefaultNetworkConfig(
             enabled=dn_config.enabled,
             update_hz=dn_config.update_hz,
@@ -667,17 +706,22 @@ def build_default_network(
                 adaptive=dn_config.gate.adaptive,
             ),
         )
+    else:
+        network_config = config
+        dn_config = None  # no YAML loaded, skip behavior creation from config
 
-        # Create the network
-        dn = DefaultNetwork(
-            maxim=maxim,
-            bus=bus,
-            config=network_config,
-            fear_agent=fear_agent,
-            nac=nac,
-        )
+    # Create the network — maxim=None is valid (headless/sim mode).
+    dn = DefaultNetwork(
+        maxim=maxim,
+        bus=bus,
+        config=network_config,
+        fear_agent=fear_agent,
+        nac=nac,
+        pain_bus=pain_bus,
+    )
 
-        # Create behaviors from config and add them
+    # Create behaviors from config and add them (only when loaded from YAML).
+    if dn_config is not None:
         behaviors = create_behaviors_from_config(
             dn_config.behaviors,
             novelty_tracker=dn.novelty_tracker,
@@ -687,10 +731,4 @@ def build_default_network(
         for behavior in behaviors:
             dn._behaviors.append(behavior)
 
-        return dn
-
-    except Exception as e:
-        import logging
-
-        logging.getLogger(__name__).warning("Failed to build DefaultNetwork: %s", e)
-        return None
+    return dn

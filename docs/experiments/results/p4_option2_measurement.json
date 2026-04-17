@@ -1,0 +1,894 @@
+{
+  "timestamp": "2026-04-16 22:04",
+  "n_seeds": 10,
+  "n_classes": 10,
+  "n_vision_per_class": 5,
+  "bridge_concepts": [
+    "plant",
+    "garden",
+    "blossom"
+  ],
+  "class_weight": 0.7,
+  "bridge_weight": 0.3,
+  "ec_threshold_base": 0.6,
+  "seed_results": [
+    {
+      "seed": 0,
+      "ec_threshold": 0.6054784674928582,
+      "hebbian_init": 0.2907914685505548,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:95a04da4-8d12-4e26-827e-3a52a07f9713",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.13999999999999999,
+      "build_assertions_passed": true
+    },
+    {
+      "seed": 1,
+      "ec_threshold": 0.6004728649880102,
+      "hebbian_init": 0.3180185478530374,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:3ba14de3-0371-4876-add3-9e10eef84708",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.06000000000000001,
+      "build_assertions_passed": true
+    },
+    {
+      "seed": 2,
+      "ec_threshold": 0.5904644853699726,
+      "hebbian_init": 0.29193964573656495,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:4ef99157-1fe3-4043-a9d7-fafeaa6c639b",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.06000000000000001,
+      "build_assertions_passed": true
+    },
+    {
+      "seed": 3,
+      "ec_threshold": 0.583425966685745,
+      "hebbian_init": 0.28947242026384395,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:96799db1-283f-4410-be94-c3efa13203d0",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.1,
+      "build_assertions_passed": false
+    },
+    {
+      "seed": 4,
+      "ec_threshold": 0.6177222442228947,
+      "hebbian_init": 0.3004531021125745,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:e68d1b0e-7dd8-47b1-b4f1-772acee93145",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.13999999999999999,
+      "build_assertions_passed": true
+    },
+    {
+      "seed": 5,
+      "ec_threshold": 0.6122001169498151,
+      "hebbian_init": 0.31231763158945974,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:0577aa64-f400-458f-9ade-ffbabdb0a929",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.08,
+      "build_assertions_passed": true
+    },
+    {
+      "seed": 6,
+      "ec_threshold": 0.6015265740588777,
+      "hebbian_init": 0.29373083479253354,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:2e307f22-f310-48c1-b2ae-7c23bad330b0",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.04,
+      "build_assertions_passed": true
+    },
+    {
+      "seed": 7,
+      "ec_threshold": 0.6050038186641866,
+      "hebbian_init": 0.315888552038783,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:24ce76c8-8ef3-4f5b-ad6d-5a14296227d3",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.04,
+      "build_assertions_passed": true
+    },
+    {
+      "seed": 8,
+      "ec_threshold": 0.5930788910642224,
+      "hebbian_init": 0.31949107373351704,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:6b1da408-37a8-4845-8859-b502c654b261",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.16,
+      "build_assertions_passed": true
+    },
+    {
+      "seed": 9,
+      "ec_threshold": 0.6148099681588034,
+      "hebbian_init": 0.2914726883635022,
+      "bridge_ec_decisions": {
+        "plant": "separated",
+        "garden": "merged:755e0338-78c6-453e-826d-aa6b10bf3113",
+        "blossom": "separated"
+      },
+      "class_measurements": [
+        {
+          "class_name": "water lily",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "mexican petunia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "fritillary",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "orange dahlia",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "balloon flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "pincushion flower",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "lotus",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "azalea",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "oxeye daisy",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        },
+        {
+          "class_name": "morning glory",
+          "single_hop_recall": 1.0,
+          "multi_hop_recall": 1.0,
+          "lift": 0.0,
+          "cross_class_in_top5": 0
+        }
+      ],
+      "mean_single_hop_recall": 1.0,
+      "mean_multi_hop_recall": 1.0,
+      "mean_lift": 0.0,
+      "random_baseline_recall": 0.08,
+      "build_assertions_passed": true
+    }
+  ],
+  "mean_lift": 0.0,
+  "std_lift": 0.0,
+  "mean_single_hop": 1.0,
+  "mean_multi_hop": 1.0,
+  "mean_random_baseline": 0.09,
+  "seeds_with_ec_merge": 10,
+  "decision": "defer",
+  "decision_rationale": "Option 2 lift is negligible (0.0000 \u00b1 0.0000). Multi-hop paths exist but same-class activation (0.490) dominates cross-class activation at top-5 ranking. Defer Option 2 as cleanup. Ship Stage 3 on single-hop. EC merge observation: 10/10 seeds had at least one bridge concept merge (check per-seed EC decisions to distinguish bridge-bridge vs bridge-class merges)."
+}

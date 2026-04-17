@@ -912,25 +912,31 @@ def start_simulation_mode(
         logger.debug("AUT PainDetector creation failed: %s", e)
 
     # ── DefaultNetwork (Phase 0b — bio-stack activation) ──────────────
+    # Migrated to build_default_network per
+    # docs/plans/default_network_unification.md Gap C.
+    # maxim=None — sim has no robot, but DN still provides pain detection.
+    # pain_bus=aut_pain_bus — injected bus closes Gap B (split subscriber
+    # ownership). The bus already has hippocampus + NAc subscribers from
+    # build_pain_bus (line ~619/622 above).
     aut_default_network = None
     try:
-        from maxim.default_network.network import DefaultNetwork, DefaultNetworkConfig
+        from maxim.default_network import DefaultNetworkConfig
+        from maxim.runtime.bootstrap import build_default_network
 
-        # Sim mode has no physical Maxim instance, but DefaultNetwork
-        # only touches maxim via getattr (sync_head_position, yaw, pitch)
-        # which gracefully return None on a plain object stub.
-        _sim_maxim_stub = object()
-        aut_default_network = DefaultNetwork(
-            maxim=_sim_maxim_stub,
-            bus=None,
+        aut_default_network = build_default_network(
+            nac=aut_nac,
+            maxim=None,
+            pain_bus=aut_pain_bus,
             config=DefaultNetworkConfig(
                 enabled=True,
                 publish_actions=False,  # no bus in sim
                 fear_gate_enabled=False,  # FearAgent wired separately
             ),
-            nac=aut_nac,
         )
-        logger.info("AUT DefaultNetwork active in sim mode")
+        if aut_default_network is not None:
+            logger.info(
+                "AUT DefaultNetwork active in sim mode (pain_bus=%s)", "injected" if aut_pain_bus else "internal"
+            )
     except Exception as e:
         logger.debug("AUT DefaultNetwork creation failed: %s", e)
 
