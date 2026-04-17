@@ -8,7 +8,7 @@ import time
 from maxim.decisions.causal_link import Valence
 from maxim.proprioception.pain import PainSignal, PainType
 from maxim.proprioception.pain_bus import PainBus
-from maxim.reactions.bus import ReactionBus
+from maxim.reactions.bus import ReactionBus, build_reaction_bus
 from maxim.reactions.types import Reaction, ReactionContext
 
 
@@ -110,6 +110,94 @@ class TestReactionBus:
         bus.unsubscribe("pain", received.append)
         bus.publish(_make_pain_reaction())
         assert len(received) == 0
+
+
+class TestBuildReactionBus:
+    """Regression guards for the canonical ReactionBus construction door.
+
+    See ``docs/plans/reaction_bus_unification.md`` for the audit.
+    The builder exists for downstream Wave 3 sequencing
+    (``build_bio_stack`` constructs ReactionBus BEFORE PainBus).
+    """
+
+    def test_returns_reaction_bus_instance(self):
+        bus = build_reaction_bus()
+        assert isinstance(bus, ReactionBus)
+
+    def test_minimal_construction_no_subscribers(self):
+        """Empty construction is the test / standalone path."""
+        bus = build_reaction_bus()
+        stats = bus.get_stats()
+        assert stats["subscriber_count"] == 0
+        assert stats["total_published"] == 0
+
+    def test_per_kind_subscribers_registered(self):
+        received: list[Reaction] = []
+        bus = build_reaction_bus(
+            per_kind_subscribers={"pain": (received.append,)},
+        )
+        bus.publish(_make_pain_reaction())
+        assert len(received) == 1
+        assert received[0].kind == "pain"
+
+    def test_per_kind_multiple_kinds(self):
+        pain_received: list[Reaction] = []
+        fear_received: list[Reaction] = []
+        bus = build_reaction_bus(
+            per_kind_subscribers={
+                "pain": (pain_received.append,),
+                "fear": (fear_received.append,),
+            },
+        )
+        bus.publish(_make_pain_reaction())
+        assert len(pain_received) == 1
+        assert len(fear_received) == 0
+
+    def test_all_subscribers_registered(self):
+        received: list[Reaction] = []
+        bus = build_reaction_bus(
+            all_subscribers=(received.append,),
+        )
+        bus.publish(_make_pain_reaction())
+        assert len(received) == 1
+
+    def test_per_kind_and_all_both_fire(self):
+        """Both per-kind and subscribe_all callbacks fire on the same publish."""
+        per_kind: list[Reaction] = []
+        all_sub: list[Reaction] = []
+        bus = build_reaction_bus(
+            per_kind_subscribers={"pain": (per_kind.append,)},
+            all_subscribers=(all_sub.append,),
+        )
+        bus.publish(_make_pain_reaction())
+        assert len(per_kind) == 1
+        assert len(all_sub) == 1
+
+    def test_history_size_forwarded(self):
+        bus = build_reaction_bus(history_size=42)
+        assert bus._history.maxlen == 42
+
+    def test_refractory_overrides_forwarded(self):
+        received: list[Reaction] = []
+        bus = build_reaction_bus(
+            per_kind_subscribers={"pain": (received.append,)},
+            refractory_overrides={"pain": 0.5},
+        )
+        r = _make_pain_reaction(source="same:source")
+        bus.publish(r)
+        bus.publish(r)  # blocked by refractory
+        assert len(received) == 1
+
+    def test_multiple_callbacks_per_kind(self):
+        """Multiple callbacks for the same kind all register."""
+        a: list[Reaction] = []
+        b: list[Reaction] = []
+        bus = build_reaction_bus(
+            per_kind_subscribers={"pain": (a.append, b.append)},
+        )
+        bus.publish(_make_pain_reaction())
+        assert len(a) == 1
+        assert len(b) == 1
 
 
 class TestPainBusBackwardCompat:

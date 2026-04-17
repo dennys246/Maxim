@@ -99,3 +99,93 @@ class ReactionBus:
     def __len__(self) -> int:
         with self._lock:
             return len(self._history)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Canonical ReactionBus construction site (Wave 1, biosystem_unification)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def build_reaction_bus(
+    *,
+    per_kind_subscribers: dict[ReactionKind, tuple[Callable[[Reaction], None], ...]] | None = None,
+    all_subscribers: tuple[Callable[[Reaction], None], ...] = (),
+    history_size: int = 200,
+    refractory_overrides: dict[str, float] | None = None,
+) -> ReactionBus:
+    """Construct a ReactionBus with explicit subscriber decisions.
+
+    This is the canonical ReactionBus construction site for production
+    code. It exists to establish the construction door that Wave 3
+    (``docs/plans/bio_stack_unification.md``) requires: ``build_bio_stack``
+    will construct ``reaction_bus = build_reaction_bus(...)`` BEFORE
+    ``pain_bus = build_pain_bus(..., reaction_bus=reaction_bus)`` because
+    PainBus depends on ReactionBus at construction time.
+
+    Today the builder has ONE production caller: ``PainBus.__init__``
+    (via ``build_pain_bus``). The thin wrapper is intentional — the
+    interface is the deliverable, not the call count. Establishing it
+    now when the surface is clean avoids a refactor during Wave 3 when
+    the surface is complex (bio_stack composing multiple systems).
+
+    The audited silent gap (``docs/plans/reaction_bus_unification.md``
+    Gap A): ``cerebellum_modulator_factory`` never passes
+    ``reaction_bus=`` to ``CerebellumModulator``, so every SEM modulator
+    failure signal is silently dropped. That gap is fixed separately in
+    the factory wiring commit, not here — the builder's job is to
+    construct the bus, not to inject it into consumers.
+
+    Unlike ``build_pain_bus``, this builder does NOT have required
+    keyword-only learning-subject parameters (no equivalent to
+    ``hippocampus``/``nac``). ReactionBus is a generic typed pub/sub;
+    its subscribers are domain-specific and vary by caller. The
+    structural enforcement here is at the **construction door** level
+    (callers go through ``build_reaction_bus``, not raw
+    ``ReactionBus()``), not at the **parameter-must-not-be-forgotten**
+    level.
+
+    Args:
+        per_kind_subscribers: Optional dict mapping ``ReactionKind``
+            (e.g., ``"pain"``, ``"fear"``) to tuples of callbacks.
+            Each callback is registered via ``bus.subscribe(kind, cb)``.
+        all_subscribers: Optional tuple of callbacks registered via
+            ``bus.subscribe_all(cb)``. These fire for every published
+            Reaction regardless of kind.
+        history_size: Ring buffer size for ``bus.history()``. Forwarded
+            to ``ReactionBus.__init__``.
+        refractory_overrides: Per-kind refractory windows (seconds).
+            Forwarded to ``ReactionBus.__init__``.
+
+    Returns:
+        A fully-constructed ``ReactionBus`` with subscribers already
+        registered.
+
+    Examples:
+        Production path (inside ``build_pain_bus`` or ``build_bio_stack``)::
+
+            reaction_bus = build_reaction_bus(
+                per_kind_subscribers={"pain": (bridge_callback,)},
+                all_subscribers=(sim_log_callback,),
+                refractory_overrides={"pain": 0.5},
+            )
+
+        Minimal construction (test / standalone)::
+
+            reaction_bus = build_reaction_bus()
+
+    See also:
+        - ``docs/plans/reaction_bus_unification.md`` for the audit + design
+        - ``docs/plans/bio_stack_unification.md`` for the Wave 3 ordering
+        - ``proprioception/pain_bus.py::build_pain_bus`` for the sibling
+    """
+    bus = ReactionBus(
+        history_size=history_size,
+        refractory_overrides=refractory_overrides,
+    )
+    if per_kind_subscribers:
+        for kind, callbacks in per_kind_subscribers.items():
+            for cb in callbacks:
+                bus.subscribe(kind, cb)
+    for cb in all_subscribers:
+        bus.subscribe_all(cb)
+    return bus
