@@ -535,58 +535,14 @@ def check_context_window(port: int = 8100) -> CheckResult:
 def _current_llama_server_n_ctx(port: int) -> int | None:
     """Return the n_ctx the running llama-cpp-server is configured for, or None.
 
-    Reuses the detection strategy from :func:`check_context_window`: first
-    ``/v1/models`` metadata, then process command-line inspection. Kept as a
-    separate helper so :func:`check_vram_pressure` doesn't re-run the network
-    probe redundantly if the context window check already ran.
+    Delegates to the canonical implementation in ``leader_proxy`` -- both
+    this module and ``_handle_debug_vram`` share the same probe logic.
     """
-    import socket
+    from maxim.runtime.leader_proxy import (
+        _current_llama_server_n_ctx as _probe_n_ctx,
+    )
 
-    try:
-        req_bytes = (f"GET /v1/models HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n").encode()
-        with socket.create_connection(("127.0.0.1", port), timeout=2.0) as s:
-            s.sendall(req_bytes)
-            raw = b""
-            while True:
-                chunk = s.recv(4096)
-                if not chunk:
-                    break
-                raw += chunk
-        body = raw.split(b"\r\n\r\n", 1)[-1]
-        import json as _json
-
-        data = _json.loads(body)
-        for model in data.get("data", []):
-            ctx = model.get("context_length") or model.get("n_ctx") or model.get("max_context_length")
-            if ctx:
-                return int(ctx)
-    except Exception:
-        pass
-
-    # Process args fallback — best-effort, cross-platform
-    try:
-        import platform as _platform
-
-        system = _platform.system().lower()
-        if system == "linux":
-            import glob
-
-            for cmdline_path in glob.glob("/proc/*/cmdline"):
-                try:
-                    with open(cmdline_path, "rb") as f:
-                        args = f.read().split(b"\x00")
-                    args_str = [a.decode("utf-8", errors="ignore") for a in args]
-                    if any("llama" in a for a in args_str):
-                        for i, arg in enumerate(args_str):
-                            if arg in ("--ctx-size", "-c", "--n-ctx") and i + 1 < len(args_str):
-                                return int(args_str[i + 1])
-                            if arg.startswith("--ctx-size="):
-                                return int(arg.split("=", 1)[1])
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    return None
+    return _probe_n_ctx(port)
 
 
 def check_vram_pressure(port: int = 8100) -> CheckResult:

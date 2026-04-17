@@ -137,6 +137,61 @@ def _query_nvidia_smi() -> dict[str, Any] | None:
         return None
 
 
+def _current_llama_server_n_ctx(port: int) -> int | None:
+    """Return the n_ctx the running llama-cpp-server is configured for, or None.
+
+    Probes ``/v1/models`` on the upstream llama-cpp-server for
+    ``context_length``, falling back to process command-line inspection on
+    Linux. Shared by :func:`check_vram_pressure` in ``doctor/checks.py``
+    and :func:`_handle_debug_vram` in this module.
+    """
+    import socket
+
+    try:
+        req_bytes = (f"GET /v1/models HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n").encode()
+        with socket.create_connection(("127.0.0.1", port), timeout=2.0) as s:
+            s.sendall(req_bytes)
+            raw = b""
+            while True:
+                chunk = s.recv(4096)
+                if not chunk:
+                    break
+                raw += chunk
+        body = raw.split(b"\r\n\r\n", 1)[-1]
+        data = json.loads(body)
+        for model in data.get("data", []):
+            ctx = model.get("context_length") or model.get("n_ctx") or model.get("max_context_length")
+            if ctx:
+                return int(ctx)
+    except Exception:
+        pass
+
+    # Process args fallback — best-effort, cross-platform
+    try:
+        import platform as _platform
+
+        system = _platform.system().lower()
+        if system == "linux":
+            import glob
+
+            for cmdline_path in glob.glob("/proc/*/cmdline"):
+                try:
+                    with open(cmdline_path, "rb") as f:
+                        args = f.read().split(b"\x00")
+                    args_str = [a.decode("utf-8", errors="ignore") for a in args]
+                    if any("llama" in a for a in args_str):
+                        for i, arg in enumerate(args_str):
+                            if arg in ("--ctx-size", "-c", "--n-ctx") and i + 1 < len(args_str):
+                                return int(args_str[i + 1])
+                            if arg.startswith("--ctx-size="):
+                                return int(arg.split("=", 1)[1])
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return None
+
+
 # ─── log ring buffer ─────────────────────────────────────────────────────
 
 _MAX_LOG_LINES = 500
@@ -498,6 +553,103 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, self.request_log.snapshot())
 
+    def _handle_debug_vram(self) -> None:
+        """GET /v1/debug/vram — VRAM projection and live nvidia-smi metrics.
+
+        Returns the leader's current VRAM state as JSON. Calls
+        :func:`project_vram_usage` from ``runtime/lane_models.py`` (the
+        pure-data helper that both ``check_vram_pressure`` and
+        ``_check_vram_spillover_risk`` already delegate to) and formats
+        the ``VRAMProjection`` dataclass + live nvidia-smi ratio into a
+        JSON response.
+
+        503 if nvidia-smi is unavailable (not a GPU node).
+        """
+        gpu = _query_nvidia_smi()
+        if gpu is None:
+            self._send_json(
+                503,
+                {
+                    "error": "nvidia-smi unavailable",
+                    "fix": "This endpoint requires an NVIDIA GPU with nvidia-smi installed.",
+                },
+            )
+            return
+
+        # Import thresholds from the single source of truth in lane_models.
+        from maxim.runtime.lane_models import (
+            _SPILLOVER_RATIO,
+            _SPILLOVER_WARN_RATIO,
+            project_vram_usage,
+        )
+
+        vram_used_gb = float(gpu.get("vram_used_gb") or 0.0)
+        vram_total_gb = float(gpu.get("vram_total_gb") or 0.0)
+        ratio = round(vram_used_gb / vram_total_gb, 4) if vram_total_gb > 0 else 0.0
+
+        live = {
+            "vram_used_gb": vram_used_gb,
+            "vram_total_gb": vram_total_gb,
+            "vram_utilization_pct": gpu.get("utilization_pct"),
+            "temperature_c": gpu.get("temperature_c"),
+            "ratio": ratio,
+            "spillover": ratio > _SPILLOVER_RATIO,
+            "warning": ratio > _SPILLOVER_WARN_RATIO,
+        }
+
+        # Build projection from active model + running n_ctx.
+        projection = None
+        try:
+            import maxim.runtime.llm_server as _srv
+
+            active_profile = _srv._active_model
+            if active_profile:
+                # Extract port from upstream_url (always http://127.0.0.1:{port}).
+                try:
+                    from urllib.parse import urlparse
+
+                    upstream_port = urlparse(self.upstream_url).port or DEFAULT_UPSTREAM_PORT
+                except Exception:
+                    upstream_port = DEFAULT_UPSTREAM_PORT
+                running_n_ctx = _current_llama_server_n_ctx(upstream_port)
+                if running_n_ctx and running_n_ctx > 0:
+                    from maxim.models.language.config import _BUILTIN_PROFILES
+
+                    profile_meta = _BUILTIN_PROFILES.get(active_profile, {})
+                    vram_proj = project_vram_usage(
+                        active_profile,
+                        profile_meta,
+                        running_n_ctx,
+                        vram_total_gb,
+                    )
+                    if vram_proj is not None:
+                        projection = {
+                            "profile": vram_proj.profile,
+                            "n_ctx": vram_proj.n_ctx,
+                            "weights_gb": vram_proj.weights_gb,
+                            "kv_cache_gb": round(vram_proj.kv_cache_gb, 3),
+                            "headroom_gb": round(vram_proj.headroom_gb, 3),
+                            "projected_total_gb": round(vram_proj.projected_total_gb, 3),
+                            "physical_vram_gb": vram_proj.physical_vram_gb,
+                            "spillover_risk": vram_proj.spillover_risk,
+                            "recommended_n_ctx": vram_proj.recommended_n_ctx,
+                        }
+        except Exception:
+            logger.debug("vram endpoint: projection unavailable", exc_info=True)
+
+        self._send_json(
+            200,
+            {
+                "live": live,
+                "projection": projection,
+                "thresholds": {
+                    "spillover_ratio": _SPILLOVER_RATIO,
+                    "warn_ratio": _SPILLOVER_WARN_RATIO,
+                },
+                "timestamp": time.time(),
+            },
+        )
+
     def _is_debug_path(self, path: str) -> bool:
         stripped = path.rstrip("/").split("?")[0]
         return stripped in (
@@ -508,6 +660,9 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             "/v1/debug/version",
             "/v1/debug/logs",
             "/v1/debug/last-requests",
+            "/v1/debug/vram",
+            "/v1/debug/deps",
+            "/v1/debug/install-status",
         )
 
     def _route_debug(self, path: str) -> None:
@@ -526,6 +681,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self._handle_debug_logs()
         elif stripped == "/v1/debug/last-requests":
             self._handle_debug_last_requests()
+        elif stripped == "/v1/debug/vram":
+            self._handle_debug_vram()
         elif stripped == "/v1/debug/deps":
             self._handle_debug_deps()
         elif stripped == "/v1/debug/install-status":
