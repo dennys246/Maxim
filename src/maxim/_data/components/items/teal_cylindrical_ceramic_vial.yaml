@@ -1,0 +1,34 @@
+component:
+  name: teal_cylindrical_ceramic_vial
+  tags: [item, consumable, unknown, fantasy]
+  category: items
+  genre: fantasy
+
+entity:
+  name: teal_cylindrical_ceramic_vial
+  entity_type: item
+  sensors:
+    doses:
+      unit: count
+      range: [0, 3]
+      initial: 3
+    potency:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+    viscosity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+  modulators:
+    usage:
+      affordances:
+        drink:
+          params: {}
+          description: "Drink the teal liquid from the cylindrical ceramic flask"
+        examine:
+          params: {}
+          description: "Inspect the thin teal liquid in its cylindrical ceramic container"
+  failure_modes:
+    - name: empty
+      trigger: {field: doses, op: "<=", value: 0, pain: 0.2}
