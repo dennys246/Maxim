@@ -247,3 +247,30 @@ class TestBuildMemoryHub:
 
         assert hub.fear is not None
         assert hub.fear.is_healthy
+
+    # ── Double .connect() guard (review fold I1) ─────────────────────────
+
+    def test_double_connect_preserves_bridge_identity(self, core_systems):
+        """Calling .connect() twice does NOT recreate the three always-created
+        bridges — the guard prevents silent double-construction.
+
+        This is the Reachy agentic_runtime.py pattern: build_memory_hub
+        calls .connect() once, then the late spatial/salience wiring calls
+        .connect() again.
+        """
+        from maxim.integration.memory_hub import build_memory_hub
+
+        hub = build_memory_hub(**core_systems)
+
+        # Capture bridge identity from builder
+        plan_id = id(hub._plan_bridge)
+        escalation_id = id(hub._escalation_bridge)
+        fear_id = id(hub._fear_bridge)
+
+        # Second .connect() — simulates the Reachy late-wiring pattern
+        hub.connect()
+
+        # Same objects, not recreated
+        assert id(hub._plan_bridge) == plan_id
+        assert id(hub._escalation_bridge) == escalation_id
+        assert id(hub._fear_bridge) == fear_id

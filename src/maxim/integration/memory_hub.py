@@ -430,29 +430,35 @@ class MemoryHub:
             )
             logger.info("Connected SalienceMemoryBridge")
 
-        # Always create planning bridge (uses NAc)
-        self._plan_bridge = PlanHistoryBridge(
-            hippocampus=self.hippocampus,
-            nac=self.nac,
-            ec=self.ec,
-        )
-        logger.info("Connected PlanHistoryBridge")
+        # Create planning bridge (uses NAc) — guard so a second .connect()
+        # call (e.g., build_memory_hub then late spatial/salience wiring in
+        # agentic_runtime.py) doesn't silently recreate bridges that might
+        # gain constructor side effects in future.
+        if self._plan_bridge is None:
+            self._plan_bridge = PlanHistoryBridge(
+                hippocampus=self.hippocampus,
+                nac=self.nac,
+                ec=self.ec,
+            )
+            logger.info("Connected PlanHistoryBridge")
 
-        # Always create escalation bridge (uses SCN + NAc)
-        self._escalation_bridge = EscalationLearningBridge(
-            hippocampus=self.hippocampus,
-            scn=self.scn,
-            nac=self.nac,
-        )
-        logger.info("Connected EscalationLearningBridge")
+        # Create escalation bridge (uses SCN + NAc)
+        if self._escalation_bridge is None:
+            self._escalation_bridge = EscalationLearningBridge(
+                hippocampus=self.hippocampus,
+                scn=self.scn,
+                nac=self.nac,
+            )
+            logger.info("Connected EscalationLearningBridge")
 
-        # Always create fear circuit bridge (uses NAc for risk learning)
-        self._fear_bridge = FearCircuitBridge(
-            hippocampus=self.hippocampus,
-            nac=self.nac,
-            ec=self.ec,
-        )
-        logger.info("Connected FearCircuitBridge")
+        # Create fear circuit bridge (uses NAc for risk learning)
+        if self._fear_bridge is None:
+            self._fear_bridge = FearCircuitBridge(
+                hippocampus=self.hippocampus,
+                nac=self.nac,
+                ec=self.ec,
+            )
+            logger.info("Connected FearCircuitBridge")
 
         # Wire sensitization modulation if both salience bridge and tracker available
         if self._salience_bridge and novelty_tracker is not None:
