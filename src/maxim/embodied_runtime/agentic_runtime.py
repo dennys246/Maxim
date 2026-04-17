@@ -125,7 +125,7 @@ class AgenticRuntimeMixin:
         # Create MemoryHub — central coordinator for bio-memory subsystems
         memory_hub = None
         try:
-            from maxim.integration.memory_hub import MemoryHub
+            from maxim.integration.memory_hub import build_memory_hub
             from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
             from maxim.memory.atl import ATL, ATLConfig
             from maxim.math.angular_gyrus import AngularGyrus, AngularGyrusConfig
@@ -162,7 +162,13 @@ class AgenticRuntimeMixin:
 
                 hub_nac = _NAc()
 
-            memory_hub = MemoryHub(
+            # build_memory_hub calls .connect() internally, creating
+            # PlanHistoryBridge + EscalationLearningBridge +
+            # FearCircuitBridge immediately.  Spatial/salience/attention
+            # bridges are wired later (line ~692) once DefaultNetwork is
+            # available — .connect() is safe to call twice (bridges are
+            # stateless at construction, the second call overwrites).
+            memory_hub = build_memory_hub(
                 hippocampus=hippocampus,
                 scn=scn,
                 nac=hub_nac,

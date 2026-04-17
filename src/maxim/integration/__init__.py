@@ -6,6 +6,6 @@ for all memory-subsystem bridges.
 
 from __future__ import annotations
 
-from maxim.integration.memory_hub import MemoryHub
+from maxim.integration.memory_hub import MemoryHub, build_memory_hub
 
-__all__ = ["MemoryHub"]
+__all__ = ["MemoryHub", "build_memory_hub"]

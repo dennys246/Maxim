@@ -1093,7 +1093,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _cli_scn = None
                 _cli_ec = None
                 try:
-                    from maxim.integration.memory_hub import MemoryHub
+                    from maxim.integration.memory_hub import build_memory_hub
                     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
                     from maxim.decisions.nac import NAc
                     from maxim.similarity.ec import EntorhinalCortex
@@ -1107,7 +1107,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                     _cli_nac = NAc()
                     _cli_scn = SCN()
                     _cli_ec = EntorhinalCortex()
-                    _cli_memory_hub = MemoryHub(
+                    # build_memory_hub is the canonical MemoryHub construction
+                    # door (Wave 2, biosystem_unification). It always calls
+                    # .connect() internally, so PlanHistoryBridge,
+                    # EscalationLearningBridge, and FearCircuitBridge are alive.
+                    # Pre-Wave-2, this site used bare MemoryHub() and never
+                    # called .connect(), so all three bridges were dead — the
+                    # agent captured memories but never used bridge-level
+                    # adaptive behavior. See memory_hub_unification.md Gap A.
+                    _cli_memory_hub = build_memory_hub(
                         hippocampus=_cli_hippocampus,
                         scn=_cli_scn,
                         nac=_cli_nac,
