@@ -251,3 +251,4 @@ data/util/active_llm_model.txt
 # Leaked test fixtures from mock objects
 data/agents/MagicMock*
 dist/
+.worktrees/
