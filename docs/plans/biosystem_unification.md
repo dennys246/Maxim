@@ -150,7 +150,7 @@ Total estimate to reach the structural ceiling: ~2-3 weeks of focused work, spre
 | 2 | memory_hub_unification | feat/memory-hub-unification | (PR pending) | **Builder + migration committed; pre-merge review next.** `build_memory_hub` always calls `.connect()`, closing Gap A (CLI zero bridges) + Gap B (AgentFactory zero bridges) + Gap C (dead orchestrator hub). 4 gaps surfaced, all fixed. 21 new tests, 4834+24 passing. | 2026-04-16 |
 | 2 | default_network_unification | feat/default-network-unification | (PR pending) | **Layer 4→5 upgrade + Gap B closure + call site migrations committed; pre-merge review next.** `nac` required kwarg, `pain_bus=` injection inverts DN from bus constructor to consumer (closes the split-subscriber-ownership Gap B from pain_bus_unification). Sim orchestrator migrated (Gap C, `object()` stub removed). cli.py + api.py explicit opt-outs documented (Gaps D+E). | 2026-04-16 |
 
-| 3 | bio_stack_unification | — | — | Shell only | — |
+| 3 | bio_stack_unification | feat/bio-stack-unification | — | **AUDIT COMPLETE.** 8 umbrella sites, 6 migration candidates, 2 leaf factories (not candidates). Construction order consistent across all sites. DN opt-in (not opt-out). ATL/AngularGyrus optional everywhere. 4 open design questions carried to implementation session. | 2026-04-16 |
 | 4 | agent_factory_canonicalization | — | — | Running doc — INHERITS Gap C from pain_bus_unification (api.py headless `pain_bus=None`). Stage F5 owns the user-facing default-on-vs-default-off bio-learning decision for headless `pymaxim` agents. The structural construction door already exists (`build_pain_bus`). | 2026-04-14 |
 
 ## Cross-references
