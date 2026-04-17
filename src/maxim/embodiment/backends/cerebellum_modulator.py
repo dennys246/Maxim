@@ -241,6 +241,7 @@ class CerebellumModulator:
 def cerebellum_modulator_factory(
     cerebellum: Cerebellum,
     fallback_factory: Any = None,
+    reaction_bus: Any = None,
 ) -> Any:
     """Create a factory function for ``attach_backends()``.
 
@@ -248,7 +249,11 @@ def cerebellum_modulator_factory(
 
         from maxim.embodiment.spec import attach_backends
 
-        factory = cerebellum_modulator_factory(cerebellum, fallback_factory=llm_mod_factory)
+        factory = cerebellum_modulator_factory(
+            cerebellum,
+            fallback_factory=llm_mod_factory,
+            reaction_bus=pain_bus.reaction_bus,
+        )
         attach_backends(root, modulator_factory=factory)
 
     Parameters
@@ -258,6 +263,17 @@ def cerebellum_modulator_factory(
     fallback_factory : callable, optional
         ``(entity, mod_name, spec_mod) -> Modulator`` for fallback.
         If None, CerebellumModulator runs without fallback.
+    reaction_bus : ReactionBus or None, optional
+        ``ReactionBus`` for modulator failure reactions. When
+        ``None``, ``CerebellumModulator._emit_failure_reaction``
+        silently no-ops — every modulator failure signal is dropped.
+        Pre-audit (``docs/plans/reaction_bus_unification.md`` Gap A)
+        this parameter did not exist on the factory and was ALWAYS
+        ``None`` in production. Pass ``pain_bus.reaction_bus`` (or
+        the standalone ReactionBus from ``build_reaction_bus``) to
+        close the gap. See
+        ``docs/plans/reaction_bus_unification.md`` for the full
+        audit.
 
     Returns
     -------
@@ -284,6 +300,7 @@ def cerebellum_modulator_factory(
             cerebellum=cerebellum,
             fallback=fallback,
             sensor_ranges=sensor_ranges,
+            reaction_bus=reaction_bus,
         )
 
     return factory
