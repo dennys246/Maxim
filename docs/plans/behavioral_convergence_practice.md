@@ -140,4 +140,30 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 
 ## Experiments
 
-*(No experiments yet. The first entry will land when P1 is green and the first hypothesis scenario is runnable.)*
+### 2026-04-17 — Cross-session affective memory transfer (Exp 1)
+
+**Hypothesis (H2 variant):** An agent that experienced pain, benefit, and disguised harm in Session 1 will show measurable affective differentiation in Session 2.
+
+**Scenario:** Three SEM entities (rusty sword, healing potion, poison potion). Deterministic, no LLM. Tier 1 substrate-only.
+
+**Metric:** Average retrieval valence per entity, NAc reward bias, EC threshold overrides. Experienced agent vs fresh control.
+
+**N:** 1 (deterministic). Reproducible via `PYTHONPATH=src python scripts/behavioral_convergence_exp1.py`.
+
+**Result:** 11/11 hypotheses confirmed.
+
+| Entity | Experienced Agent | Fresh Control |
+|---|---|---|
+| Rusty sword | valence **-0.800** | 0.000 |
+| Healing potion | valence **+0.195**, NAc bias **True**, EC widened | 0.000 |
+| Poison potion | valence **-0.574** | 0.000 |
+
+**Interpretation:** Affective memory transfers across sessions without fine-tuning. Shared "potion" concept carries mixed valence (healing+poison). Reward bias is asymmetric (positive only widens EC). Pain spikes create clean episode boundaries.
+
+**Decision:** Tier 1 confirmed. Next: Tier 2 (LLM decisions based on valence). Blocked on [behavioral_convergence_wiring.md](behavioral_convergence_wiring.md).
+
+---
+
+### Planned: Experiment 2 — Energy-driven consumable learning (Tier 2)
+
+**Hypothesis:** An agent with depleting energy and prior experience with healing/poison potions will preferentially choose healing over poison. Blocked on [behavioral_convergence_wiring.md](behavioral_convergence_wiring.md) Stages 1-3.
