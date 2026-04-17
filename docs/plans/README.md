@@ -7,8 +7,13 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 Foundations, reaction abstraction, simulator upgrades, P0 pilot, P1 recognition, P2 reward modulation, P3a episode binding, P3b channel integration, P3.5 persistence/snapshot, SEM execution hook, and **P4 cross-modal binding** are all complete. **All four 0.3-target substrate phases (P3a, P3b, P3.5, P4) are CLOSED. 0.3-target gate is CLOSED.**
 
-- [substrate_binding_persistence.md](substrate_binding_persistence.md) — **SPLITTING IN PROGRESS** (2026-04-14, updated 2026-04-16). P3a → P8 + B3-B5 monolith. **All four 0.3-target phases CLOSED** (P3a, P3b Stage 1, P3.5 Stages 1+2, P4). Per-phase plan files for P5/P6/P8/B3-B5 can now open.
-- [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) — **PROPOSAL** (2026-04-14). Narrative proposing the 8-file split of substrate_binding_persistence.md. Read before creating any of the remaining per-phase plan files (P5/P6/P8).
+- [substrate_binding_persistence.md](substrate_binding_persistence.md) — **SPLIT COMPLETE** (2026-04-17). Now a pure index. **All four 0.3-target phases CLOSED.** Per-phase plan files created for 0.5 track:
+  - [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — Draft. 10k+ node persistence stress. Depends on P3.5 + P4.
+  - [substrate_p6_extinction.md](substrate_p6_extinction.md) — Draft. Decay without reinforcement vs LRU. Depends on P3a.
+  - [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) — Draft. Minimum-viable sleep replay. Depends on P3a + P6.
+  - [prompt_b3_b5_track.md](prompt_b3_b5_track.md) — Draft. Acting Coach + embodiment/narrative separation.
+  - [prompt_b4_replanning.md](prompt_b4_replanning.md) — Draft. **1.0-GATING.** Replanning with failure diagnosis.
+- [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) — **APPROVED + EXECUTED** (2026-04-17). The narrative that motivated the split.
 - [archive/substrate_p0_pilot.md](archive/substrate_p0_pilot.md) — **✅ COMPLETE + ARCHIVED** (2026-04-12). Baseline pinned at 78.5%. Results: [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md).
 - [archive/substrate_recognition.md](archive/substrate_recognition.md) — **✅ COMPLETE + ARCHIVED** (2026-04-14). P1+P2 all stages shipped. 0.3-minimum gate CLOSED.
 - [archive/substrate_p3a_episode_binding.md](archive/substrate_p3a_episode_binding.md) — **✅ COMPLETE + ARCHIVED** (2026-04-14). Hebbian multi-hop F1=0.9955 vs TF-IDF 0.6600.
