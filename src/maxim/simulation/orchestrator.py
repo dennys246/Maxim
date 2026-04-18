@@ -978,7 +978,7 @@ def start_simulation_mode(
     # directly.  See memory_hub_unification.md audit.
 
     # ── Print simulation banner ──────────────────────────────────────────
-    from maxim.simulation.sim_logger import display_status, display_summary
+    from maxim.simulation.sim_logger import _emit, display_status, display_summary, get_active_display
 
     display_status(f"SIMULATION MODE — {persona.upper()} persona")
     display_status(f"Goal: {goal}")
@@ -1124,6 +1124,10 @@ def start_simulation_mode(
         )
 
     # ── Start stdin reader thread ────────────────────────────────────────
+    from maxim.simulation.sim_logger import get_interactive_mode, InteractiveMode
+
+    _is_interactive = get_interactive_mode() == InteractiveMode.ON
+
     def _stdin_reader() -> None:
         while not stop_event.is_set():
             try:
@@ -1179,15 +1183,32 @@ def start_simulation_mode(
                 )
                 display_status("Report requested...")
             else:
-                # Free text → guidance for orchestrator
-                orchestrator_source.inject_cli(
-                    f"USER GUIDANCE: {line}",
-                    salience=0.7,
-                    novelty=0.6,
-                )
+                # When interactive mode is on, free text goes directly
+                # to the AUT as a user percept (conversational input).
+                # Otherwise, it's guidance for the orchestrator.
+                if _is_interactive:
+                    bridge.percept_source.inject_cli(
+                        line,
+                        salience=0.9,
+                        novelty=0.8,
+                    )
+                    _emit(f"  You: {line}", "scene")
+                else:
+                    orchestrator_source.inject_cli(
+                        f"USER GUIDANCE: {line}",
+                        salience=0.7,
+                        novelty=0.6,
+                    )
 
     stdin_thread = threading.Thread(target=_stdin_reader, name="sim.stdin", daemon=True)
     stdin_thread.start()
+
+    # Show input hint when interactive mode is on
+    if _is_interactive:
+        display = get_active_display()
+        if display is not None:
+            display.set_prompt("Type to talk to the agent (Enter to send) | /cancel to stop")
+        _emit("Interactive mode: type to talk to the agent directly", "turn")
 
     # ── Stall detector: nudges orchestrator when it idles or ping-pongs ──
     # Two independent triggers:
@@ -1317,16 +1338,14 @@ def start_simulation_mode(
             _nudge_count[0] += 1
             stall_duration = int(time.time() - _last_activity_time[0])
 
-            import sys
-
             trigger_label = "ping-pong" if ping_pong else "idle"
-            sys.stderr.write(
-                f"\r\033[K  ⚠ Stall detected (#{_nudge_count[0]}, "
+            stall_msg = (
+                f"⚠ Stall detected (#{_nudge_count[0]}, "
                 f"{trigger_label}, {stall_duration}s, "
                 f"{orch_actions_since_turn} orch actions since last turn) "
-                f"— nudging orchestrator\n"
+                f"— nudging orchestrator"
             )
-            sys.stderr.flush()
+            _emit(stall_msg, "turn")
 
             # Build diagnostic context
             all_actions = bridge.get_all_actions()

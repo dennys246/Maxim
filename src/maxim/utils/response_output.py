@@ -28,6 +28,29 @@ if TYPE_CHECKING:
 _SENTENCE_END_PATTERN = re.compile(r"[.!?]+[\s\n]+|[.!?]+$")
 
 
+def _print_agent_response(text: str) -> None:
+    """Route agent response text through the active display or raw print.
+
+    When a MaximDisplay is active, uses ``display_response`` so the text
+    appears in the log panel instead of corrupting the rich Live layout.
+    When no display is active, prints with the original ``[Maxim]: ...``
+    formatting and re-shows the ``maxim>`` prompt hint.
+    """
+    try:
+        from maxim.simulation.sim_logger import get_active_display
+
+        if get_active_display() is not None:
+            from maxim.simulation.sim_logger import display_response
+
+            display_response(text)
+            return
+    except ImportError:
+        pass
+    print(f"\n{text}\n", flush=True)
+    sys.stdout.write("maxim> ")
+    sys.stdout.flush()
+
+
 def _truncate_at_sentence(text: str, max_length: int) -> str:
     """Truncate text at the nearest sentence boundary before max_length.
 
@@ -180,12 +203,7 @@ class ResponseOutput:
 
     def _output_to_cli(self, text: str) -> None:
         """Print response to CLI with formatting."""
-        # Print with visual distinction
-        print(f"\n[Maxim]: {text}\n", flush=True)
-
-        # Re-display prompt hint
-        sys.stdout.write("maxim> ")
-        sys.stdout.flush()
+        _print_agent_response(f"[Maxim]: {text}")
 
     def _output_to_file(self, text: str, response_type: str) -> str:
         """Save complex output to sandbox and notify user.
@@ -212,9 +230,7 @@ class ResponseOutput:
         except ValueError:
             relative_path = output_path
 
-        print(f"\n[Maxim]: Response saved to: {relative_path}\n", flush=True)
-        sys.stdout.write("maxim> ")
-        sys.stdout.flush()
+        _print_agent_response(f"[Maxim]: Response saved to: {relative_path}")
 
         self.logger.debug("Saved response to %s", output_path)
         return str(output_path)
@@ -308,6 +324,4 @@ class ResponseOutput:
 # Convenience function for quick CLI output
 def print_response(text: str) -> None:
     """Print a simple response to CLI without ResponseOutput instance."""
-    print(f"\n[Maxim]: {text}\n", flush=True)
-    sys.stdout.write("maxim> ")
-    sys.stdout.flush()
+    _print_agent_response(f"[Maxim]: {text}")
