@@ -217,12 +217,15 @@ class MaximDisplay:
             border_style="dim",
         )
 
-        # Input panel
+        # Input panel — dynamically sized to fit the prompt content
         prompt_display = self._prompt_text or "> _"
+        # +2 for panel border top/bottom, +1 for breathing room
+        prompt_lines = prompt_display.count("\n") + 1
+        input_height = max(4, prompt_lines + 3)
         input_panel = Panel(
             Text(prompt_display),
             border_style="green" if self._prompt_text else "dim",
-            height=4,
+            height=input_height,
         )
 
         # Extension panels (side column if any)
@@ -241,7 +244,7 @@ class MaximDisplay:
                 layout.split_column(
                     Layout(status_panel, size=3),
                     Layout(name="body"),
-                    Layout(input_panel, size=4),
+                    Layout(input_panel, size=input_height),
                 )
                 layout["body"].split_row(
                     Layout(log_panel, ratio=2),
@@ -254,7 +257,7 @@ class MaximDisplay:
         layout.split_column(
             Layout(status_panel, size=3),
             Layout(log_panel),
-            Layout(input_panel, size=4),
+            Layout(input_panel, size=input_height),
         )
         return layout
 

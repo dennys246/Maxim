@@ -1367,9 +1367,10 @@ def start_simulation_mode(
                 stop_event.set()
                 break
 
-            # Skip stall detection while paused — the user intentionally
-            # stopped the orchestrator, so nudging would fight the pause.
-            if _paused[0]:
+            # Skip stall detection while paused or waiting for user input —
+            # nudging would fight the pause / interrupt the prompt.
+            _prompt_pending = _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt
+            if _paused[0] or _prompt_pending:
                 _last_activity_time[0] = time.time()
                 continue
 
