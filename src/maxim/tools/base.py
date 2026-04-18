@@ -78,6 +78,15 @@ class Tool(ABC):
         if not isinstance(schema, dict):
             return
 
+        # JSON Schema format: {"type": "object", "properties": {...}, "required": [...]}
+        if "type" in schema and "properties" in schema:
+            required = set(schema.get("required", []))
+            for key in required:
+                if key not in kwargs:
+                    raise ValueError(f"Missing required input: {key}")
+            return
+
+        # Flat format: {"param_name": spec, ...}
         for key, spec in schema.items():
             optional = isinstance(spec, tuple) and len(spec) >= 2
             if key not in kwargs and not optional:
