@@ -34,6 +34,51 @@ import time
 
 _BRANCH_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]*$")
 
+# PEP 440 subset: 1.2.3, 1.2.3rc1, 1.2.3.post1, 1.2.3.dev0 etc.
+# Rejects shell metacharacters; all pip commands use list args (no shell).
+_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.]+)?$")
+
+# ── Extras / import mapping (shared by _handle_debug_deps + pip upgrade) ────
+
+# Maps pymaxim extras to the import name used for detection.
+# Keys MUST be a subset of _ALLOWED_EXTRAS below.
+_EXTRA_IMPORT_MAP: dict[str, str] = {
+    "semantic": "sentence_transformers",
+    "llm-llama": "llama_cpp",
+    "llm-torch": "torch",
+    "llm-anthropic": "anthropic",
+    "llm-openai": "openai",
+    "vision": "cv2",
+    "audio": "sounddevice",
+    "search": "duckduckgo_search",
+    "tts": "piper",
+    "yolo": "ultralytics",
+}
+
+# Canonical allowlist — authoritative for both /v1/admin/install and pip
+# upgrade. Duplicated from _handle_admin_install() so the upgrade path can
+# filter without reaching into a method body. Keep these in sync.
+_ALLOWED_EXTRAS: frozenset[str] = frozenset(
+    {
+        "semantic",
+        "llm-llama",
+        "llm-server",
+        "llm-torch",
+        "llm-anthropic",
+        "llm-openai",
+        "vision",
+        "audio",
+        "reachy",
+        "comms",
+        "search",
+        "temporal",
+        "training",
+        "tts",
+        "yolo",
+        "database",
+    }
+)
+
 # Shared state for async install — written by the install thread, read by
 # the /v1/debug/install-status endpoint. Dict (not dataclass) so the
 # background thread can mutate in place without import gymnastics.
@@ -83,6 +128,66 @@ def _sanitize_git_output(text: str | None, max_len: int = 300) -> str:
     # Replace absolute paths that could leak system info
     text = re.sub(r"/[\w./-]{5,}", "<path>", text)
     return text[-max_len:] if len(text) > max_len else text
+
+
+import shutil
+import tempfile
+
+
+def _detect_install_mode() -> str:
+    """Return ``'dev'`` if running from a git checkout, ``'pip'`` otherwise."""
+    repo_root = Path(__file__).resolve().parents[3]
+    if (repo_root / ".git").is_dir():
+        return "dev"
+    return "pip"
+
+
+def _try_import(module_name: str) -> bool:
+    """Return True if *module_name* is importable."""
+    try:
+        __import__(module_name)
+        return True
+    except ImportError:
+        return False
+
+
+def _detect_installed_extras() -> list[str]:
+    """Return pymaxim extras that are importable AND in the allowlist."""
+    detected = [name for name, mod in _EXTRA_IMPORT_MAP.items() if _try_import(mod)]
+    return [e for e in detected if e in _ALLOWED_EXTRAS]
+
+
+def _get_current_version() -> str:
+    """Return the installed pymaxim version, or ``'unknown'``."""
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        return _pkg_version("pymaxim")
+    except Exception:
+        return "unknown"
+
+
+def _get_latest_pypi_version() -> str | None:
+    """Query PyPI for the latest pymaxim version. Returns None on any failure.
+
+    Uses ``pip index versions`` (pip >= 21.2) with a 15s timeout.
+    Gracefully returns None if pip is too old or PyPI is unreachable.
+    """
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "index", "versions", "pymaxim"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0 and result.stdout:
+            # Output: "pymaxim (0.3.1)\n  ..."  — version in first parens.
+            m = re.search(r"\(([0-9][0-9a-zA-Z.]+)\)", result.stdout)
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return None
 
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -923,11 +1028,20 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     # ─── admin endpoints ──────────────────────────────────────────────
 
     def _handle_admin_update(self) -> None:
-        """POST /v1/admin/update — git pull + pip install on the leader.
+        """POST /v1/admin/update — update the leader via git or pip.
 
         Requires MAXIM_ALLOW_REMOTE_UPDATE=1 on the leader process.
-        Accepts JSON body: {"branch": "main", "dry_run": true/false}
-        dry_run=true (default) previews pending commits without applying.
+        Accepts JSON body::
+
+            {"mode": "auto", "branch": "main", "dry_run": true,
+             "force": false, "version": null}
+
+        Mode resolution:
+        - ``"auto"`` — detect install mode (git checkout → dev, else pip)
+        - ``"pip"``  — force pip upgrade path
+        - ``"dev"``  — force git pull path (409 if no ``.git`` dir)
+
+        dry_run defaults to True (safe-by-default).
         """
         if not _remote_update_allowed():
             self._send_json(
@@ -936,21 +1050,45 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             )
             return
 
-        params = self._parse_admin_update_body()
-        if params is None:
+        body = self._parse_admin_update_body()
+        if body is None:
             return  # error response already sent
-        branch, dry_run, force = params
+
+        branch = body["branch"]
+        dry_run = body["dry_run"]
+        force = body["force"]
+        mode = body["mode"]
+
+        # ── Mode resolution ──────────────────────────────────────────────
+        resolved_mode = mode if mode != "auto" else _detect_install_mode()
 
         repo_root = str(Path(__file__).resolve().parents[3])
+
+        if resolved_mode == "dev" and not (Path(repo_root) / ".git").is_dir():
+            self._send_json(
+                409,
+                {
+                    "error": "No git repository found on leader.",
+                    "fix": "Clone the repo to use --dev mode, or omit --dev to update via pip.",
+                },
+            )
+            return
+
         logger.info(
-            "admin/update: peer=%s branch=%s dry_run=%s force=%s repo=%s",
+            "admin/update: peer=%s mode=%s (resolved=%s) branch=%s dry_run=%s force=%s",
             self.client_address[0],
+            mode,
+            resolved_mode,
             branch,
             dry_run,
             force,
-            repo_root,
         )
 
+        if resolved_mode == "pip":
+            self._handle_pip_update(body)
+            return
+
+        # ── Dev (git) path — unchanged from pre-plan behavior ────────────
         # 1. Stash dirty tree if --force; bail with 409 otherwise
         stashed = self._stash_if_dirty(repo_root, force)
         if stashed is None:
@@ -967,6 +1105,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 200,
                 {
                     "status": "up_to_date",
+                    "install_mode": "dev",
                     "message": f"Already up to date with origin/{branch}.",
                     "commits": [],
                 },
@@ -977,6 +1116,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 200,
                 {
                     "status": "preview",
+                    "install_mode": "dev",
                     "branch": branch,
                     "pending_commits": pending,
                     "message": f"{len(pending)} commit(s) pending. Send dry_run=false to apply.",
@@ -1018,6 +1158,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             200,
             {
                 "status": "updated",
+                "install_mode": "dev",
                 "branch": branch,
                 "commits_applied": pending,
                 "pip_output": pip_output,
@@ -1025,11 +1166,19 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             },
         )
 
-    def _parse_admin_update_body(self) -> tuple[str, bool, bool] | None:
-        """Parse the JSON body and validate the branch name.
+    def _parse_admin_update_body(self) -> dict[str, Any] | None:
+        """Parse the JSON body for ``/v1/admin/update``.
 
-        Returns ``(branch, dry_run, force)`` or ``None`` if a 400 has
-        already been sent.
+        Returns the full parsed dict (with validated/defaulted fields) or
+        ``None`` if an error response has already been sent.
+
+        Parsed fields::
+
+            branch   (str)  — validated git branch name, default ``"main"``
+            dry_run  (bool) — default ``True`` (safe-by-default)
+            force    (bool) — default ``False``
+            mode     (str)  — ``"auto"`` | ``"pip"`` | ``"dev"``, default ``"auto"``
+            version  (str|None) — pinned PyPI version, default ``None``
         """
         raw = self._read_body(max_size=4096)
         body: dict[str, Any] = {}
@@ -1045,7 +1194,33 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         except ValueError as e:
             self._send_json(400, {"error": f"Invalid branch: {e}"})
             return None
-        return branch, bool(body.get("dry_run", True)), bool(body.get("force", False))
+
+        # Mode validation
+        mode = body.get("mode", "auto")
+        if mode not in ("auto", "pip", "dev"):
+            self._send_json(400, {"error": f"Invalid mode: {mode!r}. Must be auto, pip, or dev."})
+            return None
+
+        # Version validation (pip mode only)
+        version = body.get("version") or None
+        if version is not None:
+            version = str(version).strip()
+            if not _VERSION_RE.match(version):
+                self._send_json(
+                    400,
+                    {
+                        "error": f"Invalid version: {version!r}. Expected format: X.Y.Z or X.Y.Zsuffix.",
+                    },
+                )
+                return None
+
+        return {
+            "branch": branch,
+            "dry_run": bool(body.get("dry_run", True)),
+            "force": bool(body.get("force", False)),
+            "mode": mode,
+            "version": version,
+        }
 
     def _stash_if_dirty(self, repo_root: str, force: bool) -> bool | None:
         """Stash dirty working tree under ``--force``; bail with 409 otherwise.
@@ -1210,6 +1385,219 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         )
         return None
 
+    # ── Pip update path (peer_update_pip_mode plan) ────────────────────────
+
+    def _handle_pip_update(self, body: dict[str, Any]) -> None:
+        """Orchestrate a PyPI-based update. Called from _handle_admin_update
+        when resolved mode is ``"pip"``.
+        """
+        version = body.get("version")
+        dry_run = body.get("dry_run", True)
+
+        old_version = _get_current_version()
+        extras = _detect_installed_extras()
+
+        if dry_run:
+            latest = _get_latest_pypi_version()
+            if latest is not None and latest == old_version:
+                self._send_json(
+                    200,
+                    {
+                        "status": "up_to_date",
+                        "install_mode": "pip",
+                        "current_version": old_version,
+                        "message": "Already at latest version.",
+                    },
+                )
+            else:
+                display_latest = latest or "?"
+                self._send_json(
+                    200,
+                    {
+                        "status": "preview",
+                        "install_mode": "pip",
+                        "current_version": old_version,
+                        "latest_version": latest,
+                        "extras_detected": extras,
+                        # Synthetic entry so old clients that read pending_commits
+                        # display something informative instead of "0 pending".
+                        "pending_commits": [f"{old_version} \u2192 {display_latest}"],
+                        "message": f"{old_version} \u2192 {display_latest} available. Send dry_run=false to apply.",
+                    },
+                )
+            return
+
+        pip_output = self._run_pip_upgrade(version, extras)
+        if pip_output is None:
+            return  # error response already sent
+
+        new_version = _get_current_version()
+        if new_version == old_version:
+            self._send_json(
+                200,
+                {
+                    "status": "up_to_date",
+                    "install_mode": "pip",
+                    "current_version": old_version,
+                    "message": "Already at latest version.",
+                },
+            )
+        else:
+            if self.request_log is not None:
+                self.request_log.record(
+                    {
+                        "type": "admin_update",
+                        "install_mode": "pip",
+                        "peer_ip": self.client_address[0],
+                        "from_version": old_version,
+                        "to_version": new_version,
+                        "timestamp": time.time(),
+                    }
+                )
+            logger.info(
+                "admin/update(pip): SUCCESS — %s → %s, extras=%s",
+                old_version,
+                new_version,
+                extras,
+            )
+            self._send_json(
+                200,
+                {
+                    "status": "updated",
+                    "install_mode": "pip",
+                    "from_version": old_version,
+                    "to_version": new_version,
+                    "extras_preserved": extras,
+                    "message": f"Updated {old_version} \u2192 {new_version}. Restart maxim to load new code.",
+                },
+            )
+
+    def _run_pip_upgrade(self, version: str | None, extras: list[str]) -> str | None:
+        """Run ``pip install --upgrade pymaxim[...]`` with rollback on failure.
+
+        Returns the (truncated) pip stdout on success, or ``None`` if an
+        error response has already been sent.
+        """
+        old_version = _get_current_version()
+
+        # ── Pre-flight: disk space check ─────────────────────────────────
+        has_heavy = bool({"llm-torch", "vision", "yolo"} & set(extras))
+        min_gb = 6.0 if has_heavy else 1.0
+        try:
+            usage = shutil.disk_usage(sys.prefix)
+            free_gb = usage.free / (1 << 30)
+            if free_gb < min_gb:
+                self._send_json(
+                    507,
+                    {
+                        "error": f"Insufficient disk space: {free_gb:.1f} GB free, need ~{min_gb:.0f} GB.",
+                        "fix": "Free space or remove unused models with: maxim --delete-model <name>",
+                    },
+                )
+                return None
+        except OSError:
+            pass  # non-fatal — proceed without space check
+
+        # ── Pre-flight: cache old version for network-independent rollback
+        rollback_dir = Path(tempfile.mkdtemp(prefix="maxim-rollback-"))
+        rollback_spec = f"pymaxim=={old_version}"
+        if extras:
+            rollback_spec += f"[{','.join(extras)}]"
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "download",
+                    rollback_spec,
+                    "-d",
+                    str(rollback_dir),
+                    "--index-url",
+                    "https://pypi.org/simple/",
+                ],
+                capture_output=True,
+                timeout=120,
+            )
+        except Exception:
+            logger.debug("admin/update(pip): rollback pre-cache failed (non-fatal)")
+
+        # ── Upgrade ──────────────────────────────────────────────────────
+        spec = "pymaxim"
+        if extras:
+            spec += f"[{','.join(extras)}]"
+        if version:
+            spec += f"=={version}"
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "--index-url",
+            "https://pypi.org/simple/",
+            spec,
+        ]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        except subprocess.TimeoutExpired:
+            logger.error("admin/update(pip): pip upgrade timed out (600s)")
+            self._send_json(
+                500,
+                {
+                    "error": "pip upgrade timed out (600s). Environment may be inconsistent.",
+                    "fix": "Check `pip show pymaxim` on the leader and restart if needed.",
+                },
+            )
+            shutil.rmtree(rollback_dir, ignore_errors=True)
+            return None
+        except Exception as e:
+            logger.exception("admin/update(pip): pip upgrade failed: %s", e)
+            self._send_json(500, {"error": f"pip upgrade failed: {e}"})
+            shutil.rmtree(rollback_dir, ignore_errors=True)
+            return None
+
+        pip_output = result.stdout[-500:] if result.stdout else ""
+        if result.returncode == 0:
+            shutil.rmtree(rollback_dir, ignore_errors=True)
+            return pip_output
+
+        # ── Rollback from local cache (network-independent) ──────────────
+        logger.warning("admin/update(pip): upgrade failed (rc=%d), rolling back to %s", result.returncode, old_version)
+        try:
+            rollback = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "install",
+                    "--no-index",
+                    "--find-links",
+                    str(rollback_dir),
+                    rollback_spec,
+                ],
+                capture_output=True,
+                timeout=120,
+            )
+            rollback_ok = rollback.returncode == 0
+        except Exception:
+            rollback_ok = False
+
+        shutil.rmtree(rollback_dir, ignore_errors=True)
+        rollback_status = "complete" if rollback_ok else "INCOMPLETE"
+        if not rollback_ok:
+            logger.error("admin/update(pip): ROLLBACK INCOMPLETE — old version %s", old_version)
+        self._send_json(
+            500,
+            {
+                "error": f"pip upgrade failed, rollback {rollback_status}",
+                "stderr": (result.stderr or "")[-500:],
+            },
+        )
+        return None
+
     def _handle_admin_install(self) -> None:
         """POST /v1/admin/install — install packages on the leader.
 
@@ -1240,24 +1628,7 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             return
 
         # ── Input validation — allowlist-only to prevent command injection ──
-        _ALLOWED_EXTRAS = {
-            "semantic",
-            "llm-llama",
-            "llm-server",
-            "llm-torch",
-            "llm-anthropic",
-            "llm-openai",
-            "vision",
-            "audio",
-            "reachy",
-            "comms",
-            "search",
-            "temporal",
-            "training",
-            "tts",
-            "yolo",
-            "database",
-        }
+        # Uses module-level _ALLOWED_EXTRAS (single source of truth).
         # Strict pattern: alphanumeric, hyphens, dots, underscores only.
         # Rejects shell metacharacters, paths, URLs, version specifiers.
         _SAFE_PKG_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$")
@@ -1354,27 +1725,10 @@ class _ProxyHandler(BaseHTTPRequestHandler):
 
     def _handle_debug_deps(self) -> None:
         """GET /v1/debug/deps — show installed packages relevant to maxim."""
-        # Check which optional extras are importable
-        extra_checks = {
-            "semantic": "sentence_transformers",
-            "llm-llama": "llama_cpp",
-            "llm-torch": "torch",
-            "llm-anthropic": "anthropic",
-            "llm-openai": "openai",
-            "vision": "cv2",
-            "audio": "sounddevice",
-            "search": "duckduckgo_search",
-            "tts": "piper",
-            "yolo": "ultralytics",
-        }
-
+        # Check which optional extras are importable (uses shared map).
         extras: dict[str, bool] = {}
-        for extra_name, import_name in extra_checks.items():
-            try:
-                __import__(import_name)
-                extras[extra_name] = True
-            except ImportError:
-                extras[extra_name] = False
+        for extra_name, import_name in _EXTRA_IMPORT_MAP.items():
+            extras[extra_name] = _try_import(import_name)
 
         # Key packages with versions
         key_packages = [

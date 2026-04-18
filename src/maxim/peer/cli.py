@@ -506,11 +506,20 @@ def _run_peer_test(url: str, key: str) -> int:
 
 
 def _cmd_update(argv: list[str]) -> int:
-    """Trigger git pull + pip install on the leader.
+    """Update the leader via pip (default) or git (--dev).
 
-    Plan 4 C3.5: HTTP wire-level logic moved to
-    :func:`maxim.peer.admin_core.update_on_target`. This function
+    Plan 4 C3.5 + peer_update_pip_mode plan: HTTP wire-level logic lives
+    in :func:`maxim.peer.admin_core.update_on_target`. This function
     handles arg parsing and URL/key resolution only.
+
+    Usage::
+
+        maxim peer update                     # auto-detect (pip or git)
+        maxim peer update --dry-run           # preview only
+        maxim peer update --version 0.3.1     # pin PyPI version
+        maxim peer update --dev               # force git mode (origin/main)
+        maxim peer update --dev feat/foo      # force git mode (origin/feat/foo)
+        maxim peer update --dev --force       # stash dirty tree first
     """
     from maxim.peer.admin_core import update_on_target
 
@@ -519,6 +528,8 @@ def _cmd_update(argv: list[str]) -> int:
     branch = "main"
     dry_run = False
     force = False
+    mode = "auto"
+    version: str | None = None
 
     i = 0
     while i < len(argv):
@@ -526,6 +537,15 @@ def _cmd_update(argv: list[str]) -> int:
         if a == "--branch":
             i += 1
             branch = argv[i] if i < len(argv) else "main"
+        elif a == "--dev":
+            mode = "dev"
+            # Next non-flag arg is the branch
+            if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+                i += 1
+                branch = argv[i]
+        elif a == "--version":
+            i += 1
+            version = argv[i] if i < len(argv) else None
         elif a in ("--dry-run", "--preview"):
             dry_run = True
         elif a in ("--force", "-f"):
@@ -533,6 +553,12 @@ def _cmd_update(argv: list[str]) -> int:
         elif a.startswith("http"):
             url = a
         i += 1
+
+    # ── Client-side validation ───────────────────────────────────────
+    if version and mode == "dev":
+        print("--version and --dev are mutually exclusive.", file=sys.stderr)
+        print("  Use --version for pip updates, --dev <branch> for git.", file=sys.stderr)
+        return 1
 
     if url is None:
         cfg = read_peer_config()
@@ -542,7 +568,15 @@ def _cmd_update(argv: list[str]) -> int:
         url = cfg.url
         key = cfg.api_key
 
-    return update_on_target(url, key, branch=branch, dry_run=dry_run, force=force)
+    return update_on_target(
+        url,
+        key,
+        branch=branch,
+        dry_run=dry_run,
+        force=force,
+        mode=mode,
+        version=version,
+    )
 
 
 def _cmd_restart(argv: list[str]) -> int:

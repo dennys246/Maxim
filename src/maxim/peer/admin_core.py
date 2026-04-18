@@ -39,6 +39,8 @@ def update_on_target(
     branch: str = "main",
     dry_run: bool = False,
     force: bool = False,
+    mode: str = "auto",
+    version: str | None = None,
 ) -> int:
     """POST an update request to a target URL and report results.
 
@@ -47,6 +49,10 @@ def update_on_target(
 
     ``url`` may include a trailing ``/v1`` — it gets stripped for the
     endpoint composition.
+
+    ``mode`` can be ``"auto"`` (server detects), ``"pip"`` (force PyPI
+    upgrade), or ``"dev"`` (force git pull). ``version`` pins a specific
+    PyPI version when mode resolves to pip.
 
     Exit code contract:
 
@@ -75,17 +81,43 @@ def update_on_target(
     if not dry_run:
         _clear_probe_cache(url)
 
-    print(f"{'Previewing' if dry_run else 'Updating'} leader ({base})...")
-    print(f"  branch: {branch}")
+    # ── Display what we're about to do ───────────────────────────────
+    if mode == "dev":
+        print(f"{'Previewing' if dry_run else 'Updating'} leader ({base}) [dev mode]...")
+        print(f"  branch: {branch}")
+    elif mode == "pip" or version:
+        target = f"=={version}" if version else " (latest)"
+        print(f"{'Previewing' if dry_run else 'Updating'} leader ({base}) [pip mode]...")
+        print(f"  target: pymaxim{target}")
+    else:
+        print(f"{'Previewing' if dry_run else 'Updating'} leader ({base})...")
+        print(f"  branch: {branch}")
     print()
+
+    # ── Build request body ───────────────────────────────────────────
+    body: dict[str, object] = {
+        "branch": branch,
+        "dry_run": dry_run,
+        "force": force,
+        "mode": mode,
+    }
+    if version:
+        body["version"] = version
+
+    # Pip upgrades (especially with torch) can take much longer than git pulls.
+    read_timeout = 620.0 if mode == "pip" or version else 180.0
 
     try:
         resp = _http.fetch_url(
             endpoint,
             method="POST",
             headers=headers,
-            json={"branch": branch, "dry_run": dry_run, "force": force},
-            timeout=_http.TimeoutPolicy(connect_s=5.0, read_s=180.0, total_s=185.0),
+            json=body,
+            timeout=_http.TimeoutPolicy(
+                connect_s=5.0,
+                read_s=read_timeout,
+                total_s=read_timeout + 5.0,
+            ),
         )
         data = resp.json()
     except _http.HTTPError as e:
@@ -104,12 +136,20 @@ def update_on_target(
             _print_404_diagnosis(base, key)
             return 1
         if e.status == 409:
-            print("Leader has dirty working tree:", file=sys.stderr)
-            for f in data.get("dirty_files", []):
-                print(f"  {f}", file=sys.stderr)
-            hint = data.get("hint")
-            if hint:
-                print(f"\n  {hint}", file=sys.stderr)
+            # Could be dirty tree (dev mode) or no git repo (dev mode on pip leader)
+            error_msg = data.get("error", "")
+            if "git repository" in error_msg.lower():
+                print("Leader has no git repository.", file=sys.stderr)
+                fix = data.get("fix", "")
+                if fix:
+                    print(f"  {fix}", file=sys.stderr)
+            else:
+                print("Leader has dirty working tree:", file=sys.stderr)
+                for f in data.get("dirty_files", []):
+                    print(f"  {f}", file=sys.stderr)
+                hint = data.get("hint")
+                if hint:
+                    print(f"\n  {hint}", file=sys.stderr)
             return 1
         if e.status == 401:
             print("Authentication failed.", file=sys.stderr)
@@ -117,6 +157,12 @@ def update_on_target(
                 "  Check API key matches leader. Run: maxim tunnel key show (on leader)",
                 file=sys.stderr,
             )
+            return 1
+        if e.status == 507:
+            print("Insufficient disk space on leader.", file=sys.stderr)
+            fix = data.get("fix", "")
+            if fix:
+                print(f"  {fix}", file=sys.stderr)
             return 1
         print(f"Update failed ({e.status}): {data.get('error', e.fix_hint)}", file=sys.stderr)
         if data.get("stderr"):
@@ -129,26 +175,64 @@ def update_on_target(
         return 1
 
     status = data.get("status", "unknown")
+    install_mode = data.get("install_mode")
 
+    # ── Old-leader detection ─────────────────────────────────────────
+    # If the client explicitly asked for pip or dev mode but the response
+    # has no install_mode field, the leader is too old to support dual-mode.
+    if install_mode is None and mode != "auto":
+        print(
+            f"Leader does not support {mode} update mode (requires 0.3.1+).",
+            file=sys.stderr,
+        )
+        print("  Upgrade the leader first: pip install --upgrade pymaxim", file=sys.stderr)
+        # Don't return 1 — the update may have succeeded via the old git path.
+        # Fall through to display whatever the server returned.
+
+    # ── --branch warning in pip mode ─────────────────────────────────
+    if install_mode == "pip" and branch != "main" and mode != "dev":
+        print("Note: --branch is ignored in pip mode. Use --dev <branch> for git updates.")
+
+    # ── Display results ──────────────────────────────────────────────
     if status == "up_to_date":
-        print("Already up to date.")
+        if install_mode == "pip":
+            v = data.get("current_version", "")
+            print(f"Already at latest version ({v}).")
+        else:
+            print("Already up to date.")
         return 0
 
     if status == "preview":
-        commits = data.get("pending_commits", [])
-        print(f"{len(commits)} pending commit(s):")
-        for c in commits:
-            print(f"  {c}")
+        if install_mode == "pip":
+            cur = data.get("current_version", "?")
+            latest = data.get("latest_version") or "?"
+            extras = data.get("extras_detected", [])
+            print(f"{cur} \u2192 {latest} available.")
+            if extras:
+                print(f"  Detected extras: {', '.join(extras)}")
+        else:
+            commits = data.get("pending_commits", [])
+            print(f"{len(commits)} pending commit(s):")
+            for c in commits:
+                print(f"  {c}")
         print()
         print("Run without --dry-run to apply:")
         print("  maxim peer update")
         return 0
 
     if status == "updated":
-        commits = data.get("commits_applied", [])
-        print(f"Updated! {len(commits)} commit(s) applied:")
-        for c in commits:
-            print(f"  {c}")
+        if install_mode == "pip":
+            old_v = data.get("from_version", "?")
+            new_v = data.get("to_version", "?")
+            extras = data.get("extras_preserved", [])
+            print(f"Updated! {old_v} \u2192 {new_v}")
+            if extras:
+                print(f"  Extras preserved: {', '.join(extras)}")
+        else:
+            commits = data.get("commits_applied", [])
+            print(f"Updated! {len(commits)} commit(s) applied:")
+            for c in commits:
+                print(f"  {c}")
         print()
         print("Restart maxim on the leader to load new code:")
         print("  maxim peer restart")

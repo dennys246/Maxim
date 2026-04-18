@@ -5,20 +5,37 @@
 
 ## How remote update works
 
+The update endpoint auto-detects the leader's install mode:
+
+**Pip mode** (leader installed via `pip install pymaxim`):
 ```
 Peer runs: maxim peer update
   │
   ├── Reads URL + API key from ~/.config/maxim/peer.yml
-  ├── POST /v1/admin/update to leader via Cloudflare tunnel
-  │     (with User-Agent: maxim-peer/1.0 to avoid Bot Fight Mode)
+  ├── POST /v1/admin/update {"mode": "auto"} to leader
   │
-  ▼ Leader's LeaderProxy (:8099) handles the request:
-  ├── Checks MAXIM_ALLOW_REMOTE_UPDATE=1 (auto-enabled in leader mode)
+  ▼ Leader detects no .git directory → pip mode:
+  ├── Checks MAXIM_ALLOW_REMOTE_UPDATE=1
+  ├── Checks disk space (6GB for torch extras, 1GB otherwise)
+  ├── Pre-caches current version locally (for network-independent rollback)
+  ├── pip install --upgrade --index-url https://pypi.org/simple/ pymaxim[detected-extras]
+  ├── Compares version before/after to distinguish "updated" from "already current"
+  └── Returns result (with from_version, to_version, extras_preserved)
+```
+
+**Dev mode** (leader running from git checkout):
+```
+Peer runs: maxim peer update --dev
+  │
+  ├── POST /v1/admin/update {"mode": "dev"} to leader
+  │
+  ▼ Leader detects .git directory → dev mode:
+  ├── Checks MAXIM_ALLOW_REMOTE_UPDATE=1
   ├── Checks working tree is clean (git status --porcelain)
   ├── git fetch origin main
   ├── git -c pull.rebase=true pull origin main
   ├── pip install -e .
-  └── Returns result to peer
+  └── Returns result (with commits_applied)
 ```
 
 After a successful update, run `maxim peer restart` to soft-restart the leader process and load the new code. The restart uses `os.execv` to replace the process in-place (same PID, clean Python import cycle).
@@ -26,23 +43,38 @@ After a successful update, run `maxim peer restart` to soft-restart the leader p
 ## Quick commands
 
 ```bash
-# Preview pending commits (no changes applied):
+# ── Pip-installed leaders (default for PyPI installs) ──────────────
+
+# Preview available version (no changes applied):
 maxim peer update --dry-run
 
-# Pull + install:
+# Upgrade to latest PyPI release:
 maxim peer update
+
+# Pin to a specific version:
+maxim peer update --version 0.3.1
+
+# ── Git-checkout leaders (for development) ─────────────────────────
+
+# Preview pending commits:
+maxim peer update --dev --dry-run
+
+# Pull latest from origin/main:
+maxim peer update --dev
+
+# Pull from a specific branch:
+maxim peer update --dev feat/my-feature
+
+# Force-update when leader has dirty tree (stashes + restores):
+maxim peer update --dev --force
+
+# ── Common to both modes ──────────────────────────────────────────
 
 # Soft-restart leader to load new code:
 maxim peer restart
 
-# Full update + restart workflow:
-git push origin main && maxim peer update && maxim peer restart
-
-# Target a specific branch:
-maxim peer update --branch dev
-
-# Force-update when leader has dirty tree (stashes + restores):
-maxim peer update --force
+# Full update + restart workflow (dev mode):
+git push origin main && maxim peer update --dev && maxim peer restart
 
 # Provide URL explicitly (instead of peer.yml):
 maxim peer update https://maxim.yourdomain.com/v1
@@ -54,10 +86,12 @@ maxim peer llm qwen2.5-14b
 maxim peer llm --status
 
 # Mesh-aware versions (use node names from mesh.yml):
-maxim peer --node mac-studio update              # drain → update → resume
-maxim peer --node mac-studio update --dry-run    # preview only, no drain
-maxim peer --node mac-studio restart             # drain → restart → resume
-maxim peer --node mac-studio llm qwen2.5-14b     # drain → swap → resume
+maxim peer --node mac-studio update                  # drain → update → resume (auto-detect mode)
+maxim peer --node mac-studio update --version 0.3.1  # drain → pip update → resume
+maxim peer --node mac-studio update --dev feat/foo   # drain → git update → resume
+maxim peer --node mac-studio update --dry-run        # preview only, no drain
+maxim peer --node mac-studio restart                 # drain → restart → resume
+maxim peer --node mac-studio llm qwen2.5-14b         # drain → swap → resume
 ```
 
 ## Decision tree
@@ -67,12 +101,25 @@ maxim peer update
 │
 ├── "Connection failed" ──────────── Tunnel/network issue. Run: maxim peer test <url>
 ├── "Remote update is disabled" ──── Leader not in leader mode, or MAXIM_ALLOW_REMOTE_UPDATE=0
-├── "Leader has dirty working tree" ─ Untracked/modified files on leader. Commit or stash them.
-├── "git pull failed" ────────────── Divergent branches. Run on leader: git pull --rebase origin main
-├── "pip install failed, rolled back" ── Dependency issue. Check stderr output for details.
-├── "Already up to date" ────────── Nothing to pull. Leader has latest code.
-├── "Updated! N commit(s) applied" ── Success! Run: maxim peer restart
-└── HTTP 404 ─────────────────────── LeaderProxy not running, or tunnel pointing at port 8100
+├── HTTP 404 ─────────────────────── LeaderProxy not running, or tunnel pointing at port 8100
+│
+├─── Pip mode (auto-detected or --version):
+│    ├── "Already at latest version" ── Nothing to upgrade
+│    ├── "0.3.0 → 0.3.1 available" ─── Dry-run preview. Run without --dry-run to apply
+│    ├── "Updated! 0.3.0 → 0.3.1" ──── Success! Run: maxim peer restart
+│    ├── "Insufficient disk space" ──── Free space on leader (need ~6GB for torch extras)
+│    ├── "pip upgrade timed out" ────── Slow network. Check: pip show pymaxim on leader
+│    └── "pip upgrade failed, rollback" ── Dependency issue. Check stderr for details
+│
+├─── Dev mode (auto-detected or --dev):
+│    ├── "Leader has dirty working tree" ── Commit/stash files, or use --force
+│    ├── "No git repository found" ──── Leader is pip-installed. Drop --dev flag
+│    ├── "Already up to date" ────────── Nothing to pull
+│    ├── "N commit(s) pending" ──────── Dry-run preview. Run without --dry-run to apply
+│    ├── "Updated! N commit(s) applied" ── Success! Run: maxim peer restart
+│    └── "git pull failed" ────────────── Divergent branches. Fix on leader: git pull --rebase
+│
+└─── "Leader does not support pip update mode" ── Leader is running < 0.3.1. Upgrade manually first
 
 maxim peer restart
 │
@@ -112,6 +159,51 @@ maxim peer restart
 - Leader may not be detected as leader. Check: `maxim doctor` → Role section
 - Need either `MAXIM_ROLE=leader` env var or `/etc/cloudflared/config.yml` present
 - Explicitly: `MAXIM_ALLOW_REMOTE_UPDATE=1 maxim`
+
+### HTTP 409 — No git repository (dev mode on pip leader)
+
+**Symptom:** `Leader has no git repository.`
+
+**Cause:** You used `--dev` but the leader was installed via `pip install pymaxim`, not from a git checkout.
+
+**Fix:** Drop the `--dev` flag — the leader will auto-detect pip mode:
+```bash
+maxim peer update           # auto-detects pip mode
+maxim peer update --version 0.3.1  # pin specific version
+```
+
+### HTTP 507 — Insufficient disk space
+
+**Symptom:** `Insufficient disk space: X.Y GB free, need ~N GB.`
+
+**Cause:** The leader doesn't have enough disk space for the upgrade. Torch extras need ~6GB; basic pymaxim needs ~1GB.
+
+**Fix:**
+```bash
+# Free space by removing unused models:
+maxim --delete-model <model-name>
+
+# Or check disk usage on the leader:
+ssh leader df -h /
+```
+
+### Pip upgrade timed out (600s)
+
+**Symptom:** `pip upgrade timed out (600s). Environment may be inconsistent.`
+
+**Cause:** Slow network during a large download (torch can be 2GB+). The leader's environment may be partially upgraded.
+
+**Fix:**
+```bash
+# Check the current state on the leader:
+pip show pymaxim
+
+# If the version is wrong, manually fix:
+pip install pymaxim==<correct-version>
+
+# Then restart:
+maxim peer restart
+```
 
 ### HTTP 409 — Dirty working tree
 
@@ -218,3 +310,39 @@ maxim peer update
 # Soft-restart leader (reloads code):
 maxim peer restart
 ```
+
+## Switching between pip and git install modes
+
+The update command auto-detects the leader's current install mode and preserves it. To **switch** between modes, run the following directly on the leader (SSH or local terminal). These are one-time setup steps, not something toggled via `maxim peer update`.
+
+### Git checkout → pip releases
+
+Use this when you want the leader to track stable PyPI releases instead of a git branch.
+
+```bash
+# On the leader:
+pip install pymaxim[semantic,llm-llama]   # adjust extras to match your setup
+maxim peer restart                         # picks up the pip-installed version
+
+# The git checkout stays on disk but is no longer the active install.
+# Future `maxim peer update` from a peer will auto-detect pip mode.
+```
+
+### Pip releases → git checkout
+
+Use this when you want the leader to track a development branch.
+
+```bash
+# On the leader:
+git clone https://github.com/dennys246/Maxim.git ~/Maxim
+cd ~/Maxim
+pip install -e .[semantic,llm-llama]      # editable install from checkout
+maxim peer restart                         # picks up the git version
+
+# Future `maxim peer update` from a peer will auto-detect dev mode.
+# Use `maxim peer update --dev feat/foo` to pull a specific branch.
+```
+
+### How auto-detection works
+
+The leader checks for a `.git` directory at its install root. If present, it's dev mode (git pull + pip install -e). If absent, it's pip mode (pip install --upgrade pymaxim). The detection runs on every update request — there's no stored preference to reset.

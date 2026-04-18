@@ -298,9 +298,7 @@ class TestEncodeDecomposed:
 
     def test_pattern_completion_merges_identical_chunks(self) -> None:
         """Two identical concept texts should pattern-complete to the same node."""
-        encoder, ec, atl = self._make_encoder_with_decomposer(
-            SplitOnCommaStrategy(), pattern_complete_threshold=0.40
-        )
+        encoder, ec, atl = self._make_encoder_with_decomposer(SplitOnCommaStrategy(), pattern_complete_threshold=0.40)
         ids1 = encoder.encode_decomposed("cat, cat", "text")
         # The second "cat" should pattern-complete to the first
         assert len(ids1) == 2

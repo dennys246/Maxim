@@ -1106,12 +1106,14 @@ class TestRunNodeUpdate:
     def _update_stub(self, monkeypatch, return_code: int):
         captured: dict = {}
 
-        def fake_update(url, key, *, branch="main", dry_run=False, force=False):
+        def fake_update(url, key, *, branch="main", dry_run=False, force=False, mode="auto", version=None):
             captured["url"] = url
             captured["key"] = key
             captured["branch"] = branch
             captured["dry_run"] = dry_run
             captured["force"] = force
+            captured["mode"] = mode
+            captured["version"] = version
             return return_code
 
         monkeypatch.setattr(mesh_cli, "update_on_target", fake_update)

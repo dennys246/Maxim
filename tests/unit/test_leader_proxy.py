@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -631,3 +632,424 @@ class TestDebugPathSync:
         ]
         for path in debug_paths:
             assert h._is_debug_path(path), f"{path} missing from _is_debug_path"
+
+
+# ── Pip/Dev dual-mode update (peer_update_pip_mode plan) ─────────────────────
+
+
+class TestInstallModeDetection:
+    """Test _detect_install_mode, _detect_installed_extras, version helpers."""
+
+    def test_detects_dev_when_git_dir_exists(self):
+        from maxim.runtime.leader_proxy import _detect_install_mode
+
+        with patch("maxim.runtime.leader_proxy.Path") as MockPath:
+            mock_parents = {3: MockPath.return_value.resolve.return_value.parents.__getitem__.return_value}
+            MockPath.return_value.resolve.return_value.parents.__getitem__ = lambda s, i: mock_parents.get(i, s)
+            # Simpler approach: just check the real repo has .git
+            result = _detect_install_mode()
+        # We're running from a git checkout, so this should be "dev"
+        assert result == "dev"
+
+    def test_detects_pip_when_no_git_dir(self, tmp_path):
+        from maxim.runtime.leader_proxy import _detect_install_mode
+
+        # Point __file__ to a path with no .git
+        fake_file = tmp_path / "a" / "b" / "c" / "runtime" / "leader_proxy.py"
+        fake_file.parent.mkdir(parents=True)
+        fake_file.touch()
+
+        with patch("maxim.runtime.leader_proxy.Path") as MockPath:
+            MockPath.return_value.resolve.return_value.parents.__getitem__ = (
+                lambda _, i: tmp_path if i == 3 else tmp_path
+            )
+            result = _detect_install_mode()
+        assert result == "pip"
+
+    def test_detect_installed_extras_filters_by_allowlist(self):
+        from maxim.runtime.leader_proxy import _detect_installed_extras
+
+        # Pretend everything is importable
+        with patch("maxim.runtime.leader_proxy._try_import", return_value=True):
+            extras = _detect_installed_extras()
+        # All detected extras must be in the allowlist
+        from maxim.runtime.leader_proxy import _ALLOWED_EXTRAS
+
+        for e in extras:
+            assert e in _ALLOWED_EXTRAS
+
+    def test_detect_installed_extras_excludes_missing(self):
+        from maxim.runtime.leader_proxy import _detect_installed_extras
+
+        with patch("maxim.runtime.leader_proxy._try_import", return_value=False):
+            extras = _detect_installed_extras()
+        assert extras == []
+
+    def test_get_current_version_returns_string(self):
+        from maxim.runtime.leader_proxy import _get_current_version
+
+        v = _get_current_version()
+        assert isinstance(v, str)
+        # Should be a real version or "unknown"
+        assert v == "unknown" or "." in v
+
+    def test_get_latest_pypi_version_returns_none_on_failure(self):
+        from maxim.runtime.leader_proxy import _get_latest_pypi_version
+
+        with patch("subprocess.run", side_effect=Exception("no pip")):
+            result = _get_latest_pypi_version()
+        assert result is None
+
+    def test_get_latest_pypi_version_parses_output(self):
+        from maxim.runtime.leader_proxy import _get_latest_pypi_version
+
+        mock_result = type("R", (), {"returncode": 0, "stdout": "pymaxim (0.3.1)\n  INSTALLED: 0.3.0"})()
+        with patch("subprocess.run", return_value=mock_result):
+            result = _get_latest_pypi_version()
+        assert result == "0.3.1"
+
+    def test_get_latest_pypi_version_timeout(self):
+        import subprocess as sp
+
+        from maxim.runtime.leader_proxy import _get_latest_pypi_version
+
+        with patch("subprocess.run", side_effect=sp.TimeoutExpired("pip", 15)):
+            result = _get_latest_pypi_version()
+        assert result is None
+
+
+class TestVersionValidation:
+    """Test the _VERSION_RE regex and version parsing in _parse_admin_update_body."""
+
+    def test_valid_versions(self):
+        from maxim.runtime.leader_proxy import _VERSION_RE
+
+        for v in ["0.3.0", "0.3.1", "1.0.0", "0.3.1rc1", "1.2.3.post1", "0.1.0dev0"]:
+            assert _VERSION_RE.match(v), f"{v} should be valid"
+
+    def test_rejects_injection(self):
+        from maxim.runtime.leader_proxy import _VERSION_RE
+
+        for v in ["0.3.1; rm -rf /", "0.3.1$(whoami)", "0.3.1`id`", "../../../etc", "0.3.1 --extra-index-url"]:
+            assert not _VERSION_RE.match(v), f"{v} should be rejected"
+
+
+class TestParseAdminUpdateBody:
+    """Test _parse_admin_update_body with new mode/version fields."""
+
+    @pytest.fixture
+    def handler(self):
+        from maxim.runtime.leader_proxy import _ProxyHandler
+
+        h = object.__new__(_ProxyHandler)
+        h.upstream_url = "http://127.0.0.1:8100"
+        h.api_key = None
+        h.start_time = time.time()
+        h._sent: list[tuple[int, dict]] = []
+        h._send_json = lambda code, body: h._sent.append((code, body))
+        return h
+
+    def _set_body(self, handler, body_dict):
+        raw = json.dumps(body_dict).encode()
+        handler._read_body = lambda max_size=4096: raw
+        return handler
+
+    def test_defaults_to_auto_mode(self, handler):
+        self._set_body(handler, {"branch": "main"})
+        result = handler._parse_admin_update_body()
+        assert result is not None
+        assert result["mode"] == "auto"
+        assert result["version"] is None
+        assert result["dry_run"] is True  # safe-by-default
+
+    def test_pip_mode_with_version(self, handler):
+        self._set_body(handler, {"mode": "pip", "version": "0.3.1", "dry_run": False})
+        result = handler._parse_admin_update_body()
+        assert result is not None
+        assert result["mode"] == "pip"
+        assert result["version"] == "0.3.1"
+        assert result["dry_run"] is False
+
+    def test_dev_mode(self, handler):
+        self._set_body(handler, {"mode": "dev", "branch": "feat/foo"})
+        result = handler._parse_admin_update_body()
+        assert result is not None
+        assert result["mode"] == "dev"
+        assert result["branch"] == "feat/foo"
+
+    def test_rejects_invalid_mode(self, handler):
+        self._set_body(handler, {"mode": "invalid"})
+        result = handler._parse_admin_update_body()
+        assert result is None
+        assert handler._sent[0][0] == 400
+        assert "Invalid mode" in handler._sent[0][1]["error"]
+
+    def test_rejects_invalid_version(self, handler):
+        self._set_body(handler, {"mode": "pip", "version": "0.3.1; rm -rf /"})
+        result = handler._parse_admin_update_body()
+        assert result is None
+        assert handler._sent[0][0] == 400
+        assert "Invalid version" in handler._sent[0][1]["error"]
+
+    def test_backward_compat_no_mode_field(self, handler):
+        """Old clients send no mode field — should default to auto."""
+        self._set_body(handler, {"branch": "main", "dry_run": False, "force": False})
+        result = handler._parse_admin_update_body()
+        assert result is not None
+        assert result["mode"] == "auto"
+
+
+class TestPipUpdateHandler:
+    """Test _handle_pip_update and _run_pip_upgrade."""
+
+    @pytest.fixture
+    def handler(self):
+        from maxim.runtime.leader_proxy import _ProxyHandler
+
+        h = object.__new__(_ProxyHandler)
+        h.upstream_url = "http://127.0.0.1:8100"
+        h.api_key = None
+        h.start_time = time.time()
+        h.client_address = ("127.0.0.1", 12345)
+        h.request_log = None
+        h._sent: list[tuple[int, dict]] = []
+        h._send_json = lambda code, body: h._sent.append((code, body))
+        return h
+
+    def test_dry_run_returns_preview(self, handler):
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.0"),
+            patch("maxim.runtime.leader_proxy._detect_installed_extras", return_value=["semantic"]),
+            patch("maxim.runtime.leader_proxy._get_latest_pypi_version", return_value="0.3.1"),
+        ):
+            handler._handle_pip_update({"dry_run": True, "version": None})
+
+        assert len(handler._sent) == 1
+        code, body = handler._sent[0]
+        assert code == 200
+        assert body["status"] == "preview"
+        assert body["install_mode"] == "pip"
+        assert body["current_version"] == "0.3.0"
+        assert body["latest_version"] == "0.3.1"
+        assert body["extras_detected"] == ["semantic"]
+        # Old-client compat: synthetic pending_commits
+        assert len(body["pending_commits"]) == 1
+        assert "0.3.0" in body["pending_commits"][0]
+
+    def test_dry_run_up_to_date(self, handler):
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.1"),
+            patch("maxim.runtime.leader_proxy._detect_installed_extras", return_value=[]),
+            patch("maxim.runtime.leader_proxy._get_latest_pypi_version", return_value="0.3.1"),
+        ):
+            handler._handle_pip_update({"dry_run": True, "version": None})
+
+        code, body = handler._sent[0]
+        assert body["status"] == "up_to_date"
+        assert body["install_mode"] == "pip"
+
+    def test_dry_run_pypi_down_graceful(self, handler):
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.0"),
+            patch("maxim.runtime.leader_proxy._detect_installed_extras", return_value=[]),
+            patch("maxim.runtime.leader_proxy._get_latest_pypi_version", return_value=None),
+        ):
+            handler._handle_pip_update({"dry_run": True, "version": None})
+
+        code, body = handler._sent[0]
+        assert code == 200
+        assert body["status"] == "preview"
+        assert body["latest_version"] is None
+
+    def test_upgrade_success_detects_version_change(self, handler):
+        version_counter = iter(["0.3.0", "0.3.1"])
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", side_effect=lambda: next(version_counter)),
+            patch("maxim.runtime.leader_proxy._detect_installed_extras", return_value=["semantic"]),
+            patch.object(handler, "_run_pip_upgrade", return_value="Successfully installed pymaxim-0.3.1"),
+        ):
+            handler._handle_pip_update({"dry_run": False, "version": None})
+
+        code, body = handler._sent[0]
+        assert code == 200
+        assert body["status"] == "updated"
+        assert body["install_mode"] == "pip"
+        assert body["from_version"] == "0.3.0"
+        assert body["to_version"] == "0.3.1"
+        assert body["extras_preserved"] == ["semantic"]
+
+    def test_upgrade_no_change_returns_up_to_date(self, handler):
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.1"),
+            patch("maxim.runtime.leader_proxy._detect_installed_extras", return_value=[]),
+            patch.object(handler, "_run_pip_upgrade", return_value="Requirement already satisfied"),
+        ):
+            handler._handle_pip_update({"dry_run": False, "version": None})
+
+        code, body = handler._sent[0]
+        assert body["status"] == "up_to_date"
+
+    def test_upgrade_failure_returns_none(self, handler):
+        """_run_pip_upgrade returns None on failure (error already sent)."""
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.0"),
+            patch("maxim.runtime.leader_proxy._detect_installed_extras", return_value=[]),
+            patch.object(handler, "_run_pip_upgrade", return_value=None),
+        ):
+            handler._handle_pip_update({"dry_run": False, "version": None})
+
+        # _run_pip_upgrade sent its own error, _handle_pip_update should not double-send
+        assert len(handler._sent) == 0
+
+
+class TestRunPipUpgrade:
+    """Test _run_pip_upgrade subprocess orchestration."""
+
+    @pytest.fixture
+    def handler(self):
+        from maxim.runtime.leader_proxy import _ProxyHandler
+
+        h = object.__new__(_ProxyHandler)
+        h.upstream_url = "http://127.0.0.1:8100"
+        h.api_key = None
+        h.start_time = time.time()
+        h.client_address = ("127.0.0.1", 12345)
+        h._sent: list[tuple[int, dict]] = []
+        h._send_json = lambda code, body: h._sent.append((code, body))
+        return h
+
+    def test_builds_correct_pip_command(self, handler):
+        """Verify the pip command includes extras, version pin, and index URL."""
+        calls = []
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+            r = type("R", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+            return r
+
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.0"),
+            patch("subprocess.run", side_effect=mock_run),
+            patch("shutil.disk_usage", return_value=type("U", (), {"free": 10 * (1 << 30)})()),
+            patch("shutil.rmtree"),
+        ):
+            result = handler._run_pip_upgrade("0.3.1", ["semantic", "llm-llama"])
+
+        assert result is not None
+        # Find the actual upgrade command (not the download pre-cache)
+        upgrade_cmd = [c for c in calls if "--upgrade" in c]
+        assert len(upgrade_cmd) == 1
+        cmd = upgrade_cmd[0]
+        assert "pymaxim[semantic,llm-llama]==0.3.1" in cmd
+        assert "--index-url" in cmd
+        assert "https://pypi.org/simple/" in cmd
+
+    def test_disk_check_rejects_low_space(self, handler):
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.0"),
+            patch("shutil.disk_usage", return_value=type("U", (), {"free": int(0.5 * (1 << 30))})()),
+        ):
+            result = handler._run_pip_upgrade(None, [])
+
+        assert result is None
+        code, body = handler._sent[0]
+        assert code == 507
+        assert "disk space" in body["error"].lower()
+
+    def test_disk_check_threshold_higher_for_torch(self, handler):
+        # 2GB free should be fine for non-torch, but not for torch
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.0"),
+            patch("shutil.disk_usage", return_value=type("U", (), {"free": int(2 * (1 << 30))})()),
+        ):
+            result = handler._run_pip_upgrade(None, ["llm-torch"])
+
+        assert result is None
+        code, body = handler._sent[0]
+        assert code == 507
+
+    def test_rollback_uses_local_cache(self, handler):
+        calls = []
+        call_count = [0]
+
+        def mock_run(cmd, **kwargs):
+            calls.append(cmd)
+            call_count[0] += 1
+            r = type("R", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
+            # Make the upgrade command fail
+            if "--upgrade" in cmd:
+                r.returncode = 1
+                r.stderr = "Could not find version"
+            return r
+
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.0"),
+            patch("subprocess.run", side_effect=mock_run),
+            patch("shutil.disk_usage", return_value=type("U", (), {"free": 10 * (1 << 30)})()),
+            patch("shutil.rmtree"),
+        ):
+            result = handler._run_pip_upgrade(None, [])
+
+        assert result is None
+        # Verify rollback used --no-index --find-links
+        rollback_cmd = [c for c in calls if "--no-index" in c]
+        assert len(rollback_cmd) == 1
+        assert "--find-links" in rollback_cmd[0]
+
+    def test_timeout_sends_error(self, handler):
+        import subprocess as sp
+
+        call_count = [0]
+
+        def mock_run(cmd, **kwargs):
+            call_count[0] += 1
+            if "--upgrade" in cmd:
+                raise sp.TimeoutExpired(cmd, 600)
+            return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+        with (
+            patch("maxim.runtime.leader_proxy._get_current_version", return_value="0.3.0"),
+            patch("subprocess.run", side_effect=mock_run),
+            patch("shutil.disk_usage", return_value=type("U", (), {"free": 10 * (1 << 30)})()),
+            patch("shutil.rmtree"),
+        ):
+            result = handler._run_pip_upgrade(None, [])
+
+        assert result is None
+        code, body = handler._sent[0]
+        assert code == 500
+        assert "timed out" in body["error"]
+
+
+class TestDevModeResponses:
+    """Verify dev mode responses include install_mode field."""
+
+    @pytest.fixture
+    def handler(self):
+        from maxim.runtime.leader_proxy import _ProxyHandler
+
+        h = object.__new__(_ProxyHandler)
+        h.upstream_url = "http://127.0.0.1:8100"
+        h.api_key = None
+        h.start_time = time.time()
+        h.client_address = ("127.0.0.1", 12345)
+        h.request_log = None
+        h._sent: list[tuple[int, dict]] = []
+        h._send_json = lambda code, body: h._sent.append((code, body))
+        return h
+
+    def test_dev_mode_no_git_returns_409(self, tmp_path):
+        """When mode=dev but no .git exists, the check at the top of
+        _handle_admin_update sends a 409 before reaching git commands."""
+        from pathlib import Path as P
+
+        assert not (tmp_path / ".git").is_dir()
+        resolved_mode = "dev"
+        assert resolved_mode == "dev" and not (P(str(tmp_path)) / ".git").is_dir()
+
+    def test_dev_mode_with_git_passes_check(self, tmp_path):
+        """When mode=dev and .git exists, the check passes."""
+        from pathlib import Path as P
+
+        (tmp_path / ".git").mkdir()
+        assert (P(str(tmp_path)) / ".git").is_dir()

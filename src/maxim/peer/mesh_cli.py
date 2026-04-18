@@ -618,6 +618,8 @@ def _run_node_update(
     branch = "main"
     dry_run = False
     force = False
+    mode = "auto"
+    version: str | None = None
     i = 0
     while i < len(verb_args):
         a = verb_args[i]
@@ -625,15 +627,36 @@ def _run_node_update(
             branch = verb_args[i + 1]
             i += 2
             continue
-        if a in ("--dry-run", "--preview"):
+        if a == "--dev":
+            mode = "dev"
+            if i + 1 < len(verb_args) and not verb_args[i + 1].startswith("-"):
+                i += 1
+                branch = verb_args[i]
+        elif a == "--version" and i + 1 < len(verb_args):
+            version = verb_args[i + 1]
+            i += 2
+            continue
+        elif a in ("--dry-run", "--preview"):
             dry_run = True
         elif a in ("--force", "-f"):
             force = True
         i += 1
 
+    if version and mode == "dev":
+        print("--version and --dev are mutually exclusive.", file=sys.stderr)
+        return 2
+
     # Dry-run is read-only — no drain needed.
     if dry_run:
-        return update_on_target(node.url, mesh.cluster_key, branch=branch, dry_run=True, force=False)
+        return update_on_target(
+            node.url,
+            mesh.cluster_key,
+            branch=branch,
+            dry_run=True,
+            force=False,
+            mode=mode,
+            version=version,
+        )
 
     # Atomic drain-if-absent.
     known_names = {n.name for n in mesh.nodes}
@@ -655,7 +678,15 @@ def _run_node_update(
 
     # Delegate to the shared core.
     try:
-        op_rc = update_on_target(node.url, mesh.cluster_key, branch=branch, dry_run=False, force=force)
+        op_rc = update_on_target(
+            node.url,
+            mesh.cluster_key,
+            branch=branch,
+            dry_run=False,
+            force=force,
+            mode=mode,
+            version=version,
+        )
     except BaseException:
         if drained_here:
             print(

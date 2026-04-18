@@ -183,7 +183,10 @@ maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42  # fixture
 maxim doctor                                 # environment check
 maxim doctor --retry                         # interactive fix loop
 maxim tunnel setup                           # Cloudflare tunnel
-maxim peer update && maxim peer restart      # remote update
+maxim peer update && maxim peer restart      # remote update (auto-detects pip/git mode)
+maxim peer update --version 0.3.1            # pin specific PyPI version
+maxim peer update --dev                      # force git mode (origin/main)
+maxim peer update --dev feat/foo             # force git mode (specific branch)
 maxim peer install semantic                  # install optional extra on leader
 maxim peer deps                              # show leader's installed packages
 
@@ -196,10 +199,14 @@ Full CLI reference: [docs/user/cli-reference.md](docs/user/cli-reference.md)
 ## Remote Update Workflow
 
 ```bash
-git push origin main && maxim peer update && maxim peer restart
+# Pip-installed leaders (auto-detected):
+maxim peer update && maxim peer restart
+
+# Git-checkout leaders (dev workflow):
+git push origin main && maxim peer update --dev && maxim peer restart
 ```
 
-Use `--dry-run` first if unsure. Use `--force` if the leader has untracked runtime files blocking the pull. Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md).
+Use `--dry-run` first if unsure. The update command auto-detects whether the leader is pip-installed or a git checkout. Use `--dev` to force git mode, `--version X.Y.Z` to pin a specific PyPI version. Use `--force` (dev mode only) if the leader has untracked files blocking the pull. Troubleshooting: [docs/troubleshooting/remote_update.md](docs/troubleshooting/remote_update.md).
 
 **Important for Claude agents:** `maxim peer update --dry-run`, `maxim peer version`, `maxim peer logs`, `maxim peer llm --status`, and `maxim peer deps` are safe and read-only. `maxim peer update`, `maxim peer restart`, `maxim peer llm <model>`, and `maxim peer install <extras>` modify leader state — only run when explicitly asked by the user.
 

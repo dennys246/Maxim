@@ -473,7 +473,7 @@ maxim peer test https://maxim.yourdomain.com/v1</pre>
 
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-lg font-semibold text-indigo-400 mb-2">Remote Self-Update &amp; Soft Restart</h3>
-        <p class="text-slate-300 leading-relaxed"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer update</code> pulls code + installs remotely. <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer restart</code> soft-restarts the leader via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">os.execv</code> (same PID, clean import cycle). Use <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--force</code> to stash dirty working tree automatically.</p>
+        <p class="text-slate-300 leading-relaxed"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer update</code> auto-detects the leader's install mode. <strong>Pip-installed leaders</strong> upgrade via PyPI (<code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--version 0.3.1</code> to pin). <strong>Git-checkout leaders</strong> pull + reinstall (<code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--dev [branch]</code> to force git mode). Installed extras are auto-detected and preserved during pip upgrades. <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim peer restart</code> soft-restarts the leader via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">os.execv</code> (same PID, clean import cycle).</p>
       </div>
 
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
