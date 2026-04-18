@@ -125,6 +125,21 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
     else:
         lines.append("Processing state: AWAKE")
 
+    # When interactive mode is on, tell the LLM a user is present
+    try:
+        from maxim.simulation.sim_logger import get_interactive_mode, InteractiveMode
+
+        if get_interactive_mode() == InteractiveMode.ON:
+            lines.append("")
+            lines.append(
+                "INTERACTIVE MODE: A human user is present and watching. "
+                "You can and should ask them questions using request_interaction "
+                "when you want their input, need clarification, or want to offer choices. "
+                "Engage conversationally — you are talking to a real person."
+            )
+    except ImportError:
+        pass
+
     return "\n".join(lines)
 
 
