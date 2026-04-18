@@ -332,13 +332,25 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("Failed to create ResponseOutput for AUT: %s", e)
 
-    # PromptHandler: routes `request_interaction` tool calls to the
-    # console when --interactive is on. The tool itself gates on
-    # sim_logger.should_prompt, so it's safe to pass unconditionally.
+    # PromptHandler: routes `request_interaction` tool calls to the user.
+    # When --interactive is on, use SimPromptHandler so the stdin reader
+    # coordinates input (avoids two threads fighting over stdin).
+    # The tool itself gates on sim_logger.should_prompt, so it's safe
+    # to pass unconditionally.
+    _sim_prompt_handler = None
     try:
-        from maxim.interactive.prompts import create_handler
+        from maxim.simulation.sim_logger import get_interactive_mode as _get_im
+        from maxim.simulation.sim_logger import InteractiveMode as _IM
 
-        aut_prompt_handler = create_handler("auto")
+        if _get_im() == _IM.ON:
+            from maxim.interactive.prompts import SimPromptHandler
+
+            _sim_prompt_handler = SimPromptHandler(stop_event=stop_event)
+            aut_prompt_handler = _sim_prompt_handler
+        else:
+            from maxim.interactive.prompts import create_handler
+
+            aut_prompt_handler = create_handler("auto")
     except Exception as _ph_exc:
         logger.debug("PromptHandler unavailable for AUT: %s", _ph_exc)
         aut_prompt_handler = None
@@ -394,6 +406,9 @@ def start_simulation_mode(
                 "concept_query",
                 "similarity_search",
                 "system_stats",
+                # Interactive tools (gated by should_prompt())
+                "request_interaction",
+                "display_mode",
             },
             forbidden_tools=set(),
             min_confidence_autonomous=0.3,
@@ -978,7 +993,7 @@ def start_simulation_mode(
     # directly.  See memory_hub_unification.md audit.
 
     # ── Print simulation banner ──────────────────────────────────────────
-    from maxim.simulation.sim_logger import display_status, display_summary
+    from maxim.simulation.sim_logger import _emit, display_status, display_summary, get_active_display
 
     display_status(f"SIMULATION MODE — {persona.upper()} persona")
     display_status(f"Goal: {goal}")
@@ -1124,6 +1139,12 @@ def start_simulation_mode(
         )
 
     # ── Start stdin reader thread ────────────────────────────────────────
+    from maxim.simulation.sim_logger import get_interactive_mode, InteractiveMode
+
+    _is_interactive = get_interactive_mode() == InteractiveMode.ON
+
+    _paused = [False]  # Mutable container for closure
+
     def _stdin_reader() -> None:
         while not stop_event.is_set():
             try:
@@ -1141,10 +1162,41 @@ def start_simulation_mode(
             if not line:
                 continue
 
+            # Slash commands always take priority, even during a pending prompt.
+            # Without this, /cancel typed during request_interaction would be
+            # swallowed as the prompt response instead of cancelling the sim.
             if line.lower() in ("/cancel", "/stop", "/quit"):
                 display_summary(["Simulation cancelled by user."])
                 stop_event.set()
                 break
+            elif line.lower() == "/pause":
+                if not _paused[0]:
+                    _paused[0] = True
+                    orchestrator_source.inject_cli(
+                        "SYSTEM: User paused the simulation. STOP all probing. "
+                        "Do NOT call send_message or any other tool. "
+                        "Wait silently until the user resumes.",
+                        salience=1.0,
+                        novelty=1.0,
+                    )
+                    display = get_active_display()
+                    if display is not None:
+                        display.set_status(status="PAUSED")
+                        display.set_prompt("Paused — type to the agent, /resume to continue")
+                    _emit("Simulation paused — type to talk to the agent, /resume to continue", "turn")
+            elif line.lower() == "/resume":
+                if _paused[0]:
+                    _paused[0] = False
+                    orchestrator_source.inject_cli(
+                        "SYSTEM: User resumed the simulation. Continue probing.",
+                        salience=1.0,
+                        novelty=0.8,
+                    )
+                    display = get_active_display()
+                    if display is not None:
+                        display.set_status(status="")
+                        display.set_prompt("Type to talk to the agent (Enter to send) | /cancel to stop")
+                    _emit("Simulation resumed", "turn")
             elif line.lower().startswith("/new "):
                 new_goal = line[5:].strip()
                 if new_goal:
@@ -1179,15 +1231,36 @@ def start_simulation_mode(
                 )
                 display_status("Report requested...")
             else:
-                # Free text → guidance for orchestrator
-                orchestrator_source.inject_cli(
-                    f"USER GUIDANCE: {line}",
-                    salience=0.7,
-                    novelty=0.6,
-                )
+                # If the agent is waiting for user input via request_interaction,
+                # forward non-command text to the prompt handler.
+                if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
+                    _sim_prompt_handler.deliver_response(line)
+                    _emit(f"  You: {line}", "scene")
+                # When interactive or paused, free text goes directly
+                # to the AUT as a user percept (conversational input).
+                elif _is_interactive or _paused[0]:
+                    bridge.percept_source.inject_cli(
+                        line,
+                        salience=0.9,
+                        novelty=0.8,
+                    )
+                    _emit(f"  You: {line}", "scene")
+                else:
+                    orchestrator_source.inject_cli(
+                        f"USER GUIDANCE: {line}",
+                        salience=0.7,
+                        novelty=0.6,
+                    )
 
     stdin_thread = threading.Thread(target=_stdin_reader, name="sim.stdin", daemon=True)
     stdin_thread.start()
+
+    # Show input hint when interactive mode is on
+    if _is_interactive:
+        display = get_active_display()
+        if display is not None:
+            display.set_prompt("Type to talk to the agent (Enter to send) | /cancel to stop")
+        _emit("Interactive mode: type to talk to the agent directly", "turn")
 
     # ── Stall detector: nudges orchestrator when it idles or ping-pongs ──
     # Two independent triggers:
@@ -1294,6 +1367,12 @@ def start_simulation_mode(
                 stop_event.set()
                 break
 
+            # Skip stall detection while paused — the user intentionally
+            # stopped the orchestrator, so nudging would fight the pause.
+            if _paused[0]:
+                _last_activity_time[0] = time.time()
+                continue
+
             current_turns = bridge.turn_count
             current_actions = _orch_action_count()
 
@@ -1317,16 +1396,14 @@ def start_simulation_mode(
             _nudge_count[0] += 1
             stall_duration = int(time.time() - _last_activity_time[0])
 
-            import sys
-
             trigger_label = "ping-pong" if ping_pong else "idle"
-            sys.stderr.write(
-                f"\r\033[K  ⚠ Stall detected (#{_nudge_count[0]}, "
+            stall_msg = (
+                f"⚠ Stall detected (#{_nudge_count[0]}, "
                 f"{trigger_label}, {stall_duration}s, "
                 f"{orch_actions_since_turn} orch actions since last turn) "
-                f"— nudging orchestrator\n"
+                f"— nudging orchestrator"
             )
-            sys.stderr.flush()
+            _emit(stall_msg, "turn")
 
             # Build diagnostic context
             all_actions = bridge.get_all_actions()

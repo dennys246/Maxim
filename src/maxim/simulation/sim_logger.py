@@ -375,17 +375,77 @@ atexit.register(_cleanup_log_file)
 
 _active_display: Any = None  # MaximDisplay | None
 _display_lock = threading.Lock()
+_display_log_handler: logging.Handler | None = None
+
+
+class _DisplayLoggingHandler(logging.Handler):
+    """Routes Python logging WARNING+ through MaximDisplay when active.
+
+    Prevents standard logging output (CostTracker, role_divergence, etc.)
+    from writing raw text to stderr and corrupting the Rich Live panel.
+    """
+
+    def __init__(self, display: Any) -> None:
+        super().__init__(level=logging.WARNING)
+        self._display = display
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            self._display.log("info", msg)
+        except Exception:
+            pass
 
 
 def set_active_display(display: Any) -> None:
     """Set the active MaximDisplay for terminal output routing.
 
     When set, ``_emit()`` routes through ``display.log()`` instead of
-    ``print()``. Pass ``None`` to revert to direct ANSI printing.
+    ``print()``. A logging handler is installed to intercept WARNING+
+    messages that would otherwise corrupt the Rich Live panel.
+    Pass ``None`` to revert to direct ANSI printing.
     """
-    global _active_display
+    global _active_display, _display_log_handler
     with _display_lock:
+        root = logging.getLogger()
+        # Remove previous display handler if any
+        if _display_log_handler is not None:
+            root.removeHandler(_display_log_handler)
+            _display_log_handler = None
         _active_display = display
+        if display is not None:
+            # Install handler that routes warnings through the display
+            # and suppresses them from the stderr StreamHandler.
+            handler = _DisplayLoggingHandler(display)
+            handler.setFormatter(logging.Formatter(fmt="%(asctime)s | %(levelname)s | %(message)s", datefmt="%H:%M:%S"))
+            root.addHandler(handler)
+            # Suppress WARNING+ from stderr StreamHandlers while display is active.
+            # Remove any existing display filters first to prevent accumulation
+            # on repeated set_active_display() calls.
+            for h in root.handlers:
+                if isinstance(h, logging.StreamHandler) and not isinstance(
+                    h, (logging.FileHandler, _DisplayLoggingHandler)
+                ):
+                    for f in list(h.filters):
+                        if isinstance(f, _DisplayStreamFilter):
+                            h.removeFilter(f)
+                    h.addFilter(_DisplayStreamFilter())
+            _display_log_handler = handler
+        else:
+            # Remove suppression filters from StreamHandlers
+            for h in root.handlers:
+                for f in list(h.filters):
+                    if isinstance(f, _DisplayStreamFilter):
+                        h.removeFilter(f)
+
+
+class _DisplayStreamFilter(logging.Filter):
+    """Suppresses WARNING+ from stderr while the display is active."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.levelno >= logging.WARNING and get_active_display() is not None:
+            return False
+        return True
 
 
 def get_active_display() -> Any:

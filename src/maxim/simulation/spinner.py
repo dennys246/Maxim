@@ -1,13 +1,27 @@
-"""Simple terminal spinner for simulation progress feedback."""
+"""Simple terminal spinner for simulation progress feedback.
+
+When a ``MaximDisplay`` is active, the spinner routes status through
+``display.set_status()`` instead of raw ANSI cursor writes to stderr.
+Turn-summary lines route through ``sim_logger._emit()`` so the display
+can render them in its log panel.
+"""
 
 from __future__ import annotations
 
 import sys
 import threading
 import time
+from typing import Any
 
 
 _FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+
+def _get_display() -> Any | None:
+    """Return the active MaximDisplay, or None. Import deferred to avoid cycles."""
+    from maxim.simulation.sim_logger import get_active_display
+
+    return get_active_display()
 
 
 class Spinner:
@@ -63,12 +77,22 @@ class Spinner:
         if self._thread:
             self._thread.join(timeout=1.0)
             self._thread = None
-        # Clear the spinner line
-        sys.stderr.write("\r\033[K")
-        sys.stderr.flush()
-        if final_message:
-            sys.stderr.write(f"  {self._prefix}{final_message}\n")
+
+        display = _get_display()
+        if display is not None:
+            # Clear status and route the summary through the display log
+            display.set_status(status="")
+            if final_message:
+                from maxim.simulation.sim_logger import _emit
+
+                _emit(f"  {self._prefix}{final_message}", "summary")
+        else:
+            # Raw terminal — clear the spinner line
+            sys.stderr.write("\r\033[K")
             sys.stderr.flush()
+            if final_message:
+                sys.stderr.write(f"  {self._prefix}{final_message}\n")
+                sys.stderr.flush()
 
     def _spin(self) -> None:
         idx = 0
@@ -85,9 +109,13 @@ class Spinner:
             elapsed = int(time.time() - start)
             # Only redraw when seconds tick up or message changes
             if elapsed > last_elapsed or msg != last_msg:
-                frame = _FRAMES[idx % len(_FRAMES)]
-                sys.stderr.write(f"\r\033[K  {self._prefix}{frame} {msg} ({elapsed}s)")
-                sys.stderr.flush()
+                display = _get_display()
+                if display is not None:
+                    display.set_status(status=f"{msg} ({elapsed}s)")
+                else:
+                    frame = _FRAMES[idx % len(_FRAMES)]
+                    sys.stderr.write(f"\r\033[K  {self._prefix}{frame} {msg} ({elapsed}s)")
+                    sys.stderr.flush()
                 last_elapsed = elapsed
                 last_msg = msg
                 idx += 1

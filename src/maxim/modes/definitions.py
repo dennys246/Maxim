@@ -847,6 +847,36 @@ SAFETY: Some dangerous commands are blocked. If a command fails, check the error
         "example": {"tool_name": "system_stats", "params": {}},
         "followup_type": None,
     },
+    "request_interaction": {
+        "description": (
+            "Ask the user a question and wait for their response. "
+            "Use when you need human input — clarification, choices, confirmation, or open-ended feedback. "
+            "The user sees your question and options (if any) and types a response."
+        ),
+        "params": {
+            "question": "The question to present to the user",
+            "options": "(optional) List of choices for the user to pick from",
+            "reason": "(optional) Brief explanation of why input is needed",
+            "critical": "(optional, default false) If true, prompt even in non-interactive mode",
+        },
+        "example": {
+            "tool_name": "request_interaction",
+            "params": {
+                "question": "Which approach would you prefer?",
+                "options": ["option A: fast but risky", "option B: slow but safe"],
+            },
+        },
+        "followup_type": "process",
+    },
+    "display_mode": {
+        "description": (
+            "Adjust display verbosity. Use 'bio' to show memory and learning activity, "
+            "'clean' for narrative only, or 'debug' for detailed subsystem traces."
+        ),
+        "params": {"level": "Display tier: clean, bio, or debug"},
+        "example": {"tool_name": "display_mode", "params": {"level": "bio"}},
+        "followup_type": None,
+    },
 }
 
 
