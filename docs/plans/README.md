@@ -34,7 +34,7 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
-- [interactive_experience_031.md](interactive_experience_031.md) — **Draft** (2026-04-18, reviewed). Interactive UX fixes for 0.3.1: `RequestInteractionTool` honest reporting, narrator fallback immersion, handler logging, story context truncation, `MaximDisplay` → `sim_logger` wiring (rich panel UI for `--interactive`), light prompt cleanup. ~300-400 LOC across 7 stages. 4-round review (3-lens + simplification + user).
+- [interactive_experience_031.md](interactive_experience_031.md) — **✅ SHIPPED** (2026-04-18, PR #156). Interactive UX fixes for 0.3.1: `RequestInteractionTool` honest reporting, narrator fallback immersion, handler logging, story context truncation, `MaximDisplay` → `sim_logger` wiring, prompt cleanup, 4 introspection tools. 8 stages, ~700 LOC. Known issue: display `print()` corruption → [docs/bugs/display_print_corruption.md](../bugs/display_print_corruption.md) for 0.3.2.
 - [substrate_concept_decomposition.md](substrate_concept_decomposition.md) — **Stage 1 COMPLETE + VALIDATED** (2026-04-17). Protocol-based noun-phrase extraction. 100% concept-level recall vs 36.4% baseline. Stage 2 (role-tagged edges) pending.
 - [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) — **PARTIAL** (2026-04-17). Stage 3 (pain/salience spike) SHIPPED via sem_learning_loop.md. `observe_episode_event` now wired into production agent loop via behavioral_convergence_wiring.md. Stages 1-2 (tool execution + semantic shift) remain — ship before P5.
 - [biosystem_unification.md](biosystem_unification.md) — **central tracking doc** (2026-04-14, updated 2026-04-17). Waves 0-3 **ALL SHIPPED + ARCHIVED**. Wave 4 (agent_factory_canonicalization) not scheduled.
@@ -112,11 +112,12 @@ Five tracks run in parallel:
 | Version | What ships | What it proves | Status |
 |---|---|---|---|
 | ~~**0.2.x**~~ | Foundations, cleanup, peer flexibility | Friction removed, infrastructure stable | ✅ SHIPPED |
-| **0.3.0** | SEM learning loop, valence annotation, cerebellum activation, concept decomposition, behavioral convergence (Tier 1+2+3), reactive mesh (C4+C4.5) | **Cross-session learning without fine-tuning.** Agent learns from own actions, persists, behaves differently. 41/41 experiments. | ✅ **SHIPPED** |
-| **0.3.1** | Interactive UX fixes (RequestInteractionTool honesty, narrator fallback, MaximDisplay wiring, prompt cleanup), agent introspection tools (nac_stats, memory_pressure, loop_stats, pain_triggers_active) | Agent can distinguish real user input from defaults. Rich panel UI for `--interactive`. Agent can introspect its own learning + pain state. | **IN PROGRESS** |
-| **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, concept decomposition S2-3 | Learning is robust under variance + load. Substrate persists at 10k+ nodes. | **NEXT** |
-| **0.5** | AgentFactory canonicalization (F+G waves), B3 (acting coach), P6 (extinction), P8 (sleep replay) | One door for every agent. NPCs learn from actions via game engine. Agent has coherent voice. Memory consolidates offline. | Planned |
-| **1.0** | B4 (replanning — **GATES 1.0**), behavioral convergence at scale with statistical rigor | Agent recovers from failures, cross-session learning at realistic scale | Target |
+| **0.3.0** | SEM learning loop, valence annotation, cerebellum activation, concept decomposition, behavioral convergence (Tier 1+2+3), reactive mesh (C4+C4.5) | **Cross-session learning without fine-tuning.** Agent learns from own actions, persists, behaves differently. 41/41 experiments. | ✅ SHIPPED |
+| **0.3.1** | Interactive UX fixes (RequestInteractionTool honesty, narrator fallback, MaximDisplay wiring, prompt cleanup), agent introspection tools (nac_stats, memory_pressure, loop_stats, pain_triggers_active), bare `--interactive` flag | Agent can distinguish real user input from defaults. Rich panel UI for `--interactive`. Agent can introspect its own learning + pain state. | ✅ **SHIPPED** (PR #156) |
+| **0.3.2** | Fix display `print()` corruption ([docs/bugs/display_print_corruption.md](../bugs/display_print_corruption.md)) — route orchestrator spinner, agent responses, turn summaries through MaximDisplay | Rich panel UI works without visual corruption from stray `print()` calls | **NEXT** (quick patch) |
+| **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, concept decomposition S2-3 | Learning is robust under variance + load. Substrate persists at 10k+ nodes. Not a fluke. | Planned |
+| **0.5** | AgentFactory canonicalization (F+G waves), B3 (acting coach), B4 (replanning — **GATES 1.0**), P6 (extinction), P8 (sleep replay) | One door for every agent. NPCs learn from actions. Agent has coherent voice. Agent recovers from failures. Memory consolidates offline. | Planned |
+| **1.0** | All exit criteria passing, behavioral convergence at scale with statistical rigor | Cross-session learning at realistic scale, coherent voice, failure recovery, one construction door | Target |
 
 ### 0.3.1 roadmap (detailed)
 
@@ -145,6 +146,23 @@ Five tracks run in parallel:
 | **A — Concept decomposition** | Stages 2-3 (role-tagged edges + ConceptExtractor convergence) | ~250 LOC | Already validated at +63.6 pp, polish pass |
 | **A — P5 stress persistence** | 10k+ node persistence stress test | ~500 LOC | Validates substrate robustness under realistic load |
 | **C — Peer mesh completion** | ~~C3.5 (`--node update/restart`)~~ SHIPPED, ~~C3.6 (`--node llm`)~~ SHIPPED, ~~C4.6 (auto-undrain)~~ SHIPPED | ✅ COMPLETE | Self-healing reactive mesh |
+
+### 0.5 roadmap (detailed)
+
+Three parallel tracks. B4 replanning is the **1.0 gate** — everything else is supporting work.
+
+| Track | What | Plan | Scope | Why |
+|---|---|---|---|---|
+| **B — Acting Coach** | B3 — personality scaffolds, speech register, DisplayExtension panels | [prompt_b3_b5_track.md](prompt_b3_b5_track.md) | ~450 LOC | NPCs get coherent, consistent voice |
+| **B — Replanning** | B4 — failure diagnosis + prior attempt retrieval (**1.0 GATE**) | [prompt_b4_replanning.md](prompt_b4_replanning.md) | ~400 LOC | Agent recovers from failures instead of repeating them |
+| **E — Factory F1** | Design pass: Z1/Z2/Z3 Executor lifetime decision | [agent_factory_canonicalization.md](agent_factory_canonicalization.md) | ~200 LOC | Central design question for all downstream factory work |
+| **E — Factory F2-F5** | CLI/sim/Reachy/API migrations through factory | agent_factory_canonicalization.md | ~1500 LOC | 8 hand-rolled entry points → 1 factory door |
+| **E — Factory F6** | Hard test enforcement (CI grep, cascade tests) | agent_factory_canonicalization.md | ~1000 LOC tests | Next bridge-wiring bug is a TypeError, not silent no-op |
+| **E — Game NPC G1-G5** | Executor in run_turn, HostContext, emotional readout, async dispatch, memory backend | agent_factory_canonicalization.md Wave G | ~940 LOC | External hosts can use Maxim NPCs with full learning |
+| **A — Extinction** | P6 — decay without reinforcement vs LRU | [substrate_p6_extinction.md](substrate_p6_extinction.md) | ~400 LOC | Agent forgets appropriately |
+| **A — Sleep replay** | P8 — minimum-viable offline consolidation | [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) | ~500 LOC | Memory consolidates between sessions |
+
+**0.5 sequencing:** B3 and factory F1 can start immediately (no dependencies). B4 depends only on B1+P3a (both shipped). Factory F2-F5 depends on F1. G-wave depends on F1. P6 and P8 are independent substrate work. **B4 is the critical path to 1.0** — if it slips, 1.0 slips. The factory refactor (F+G) is engineering hygiene that could defer to post-1.0 if needed without blocking the research claim.
 
 ### What 0.3 proved
 

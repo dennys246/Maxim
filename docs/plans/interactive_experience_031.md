@@ -1,6 +1,6 @@
 # Interactive experience fixes — 0.3.1
 
-**Status:** Draft (reviewed 2026-04-18, 3-lens + simplification + risk reviews folded, MaximDisplay wiring reinstated, introspection tools folded in as Stage 8)
+**Status:** ✅ SHIPPED (2026-04-18, PR #156). Reviewed: 3-lens + simplification + risk, MaximDisplay wiring reinstated, introspection tools folded in as Stage 8. Known issue: display `print()` corruption tracked in [docs/bugs/display_print_corruption.md](../bugs/display_print_corruption.md) for 0.3.2.
 **Scope:** ~700-800 LOC across 8 stages (fixes + wiring + cleanup + introspection tools).
 **Target version:** 0.3.1 (patch release).
 **Gates:** Nothing. Quality-of-life fixes for interactive/simulation user experience.
