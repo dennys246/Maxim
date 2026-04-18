@@ -13,7 +13,9 @@ replay from JSONL, and non-interactive defaults.
 from __future__ import annotations
 
 import logging
+import queue
 import sys
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -322,6 +324,120 @@ class NonInteractiveHandler(PromptHandler):
         elif request.prompt_type == PromptType.CONFIRM:
             value = request.default or "no"
         return PromptResponse(value=value, was_default=True)
+
+
+class SimPromptHandler(PromptHandler):
+    """Prompt handler that coordinates with the sim stdin reader thread.
+
+    Instead of reading stdin directly (which would fight with the
+    ``sim.stdin`` reader thread), this handler posts a pending prompt
+    and blocks until the stdin reader forwards the user's response.
+
+    The stdin reader checks ``has_pending_prompt`` each iteration.
+    When a prompt is pending, the next line of user input is forwarded
+    via ``deliver_response()`` instead of being processed as a command.
+    """
+
+    def __init__(self, stop_event: threading.Event | None = None) -> None:
+        self._pending: PromptRequest | None = None
+        self._response_queue: queue.Queue[str] = queue.Queue()
+        self._lock = threading.Lock()
+        self._stop_event = stop_event
+
+    @property
+    def has_pending_prompt(self) -> bool:
+        """True when a tool is waiting for user input."""
+        with self._lock:
+            return self._pending is not None
+
+    @property
+    def pending_display_text(self) -> str:
+        """The prompt text to show in the display/terminal."""
+        with self._lock:
+            if self._pending is None:
+                return ""
+            lines = [self._pending.question]
+            if self._pending.options:
+                for i, opt in enumerate(self._pending.options, 1):
+                    lines.append(f"  [{i}] {opt}")
+            return "\n".join(lines)
+
+    def deliver_response(self, text: str) -> None:
+        """Called by the stdin reader to forward user input to the blocked tool."""
+        self._response_queue.put(text)
+
+    def prompt(self, request: PromptRequest) -> PromptResponse:
+        """Post the prompt and block until the stdin reader delivers a response."""
+        start = time.time()
+
+        # Show the prompt in the display
+        try:
+            from maxim.simulation.sim_logger import _emit, get_active_display
+
+            display = get_active_display()
+            prompt_text = request.question
+            if request.options:
+                prompt_text += "\n" + "\n".join(f"  [{i}] {opt}" for i, opt in enumerate(request.options, 1))
+            if display is not None:
+                display.set_prompt(prompt_text)
+            _emit(f"  Agent asks: {request.question}", "choice")
+            if request.options:
+                for i, opt in enumerate(request.options, 1):
+                    _emit(f"    [{i}] {opt}", "choice")
+        except Exception:
+            pass
+
+        # Post the pending prompt (stdin reader will see this)
+        with self._lock:
+            self._pending = request
+
+        try:
+            # Poll with short timeouts so we can check stop_event.
+            # Without this, the AUT thread blocks for up to timeout_sec
+            # after the sim is cancelled, preventing clean shutdown.
+            deadline = time.time() + request.timeout_sec
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    # Timed out
+                    elapsed = time.time() - start
+                    return PromptResponse(
+                        value=request.default or "",
+                        timed_out=True,
+                        was_default=True,
+                        elapsed_s=elapsed,
+                    )
+                if self._stop_event is not None and self._stop_event.is_set():
+                    elapsed = time.time() - start
+                    return PromptResponse(
+                        value=request.default or "",
+                        timed_out=True,
+                        was_default=True,
+                        elapsed_s=elapsed,
+                    )
+                try:
+                    response = self._response_queue.get(timeout=min(remaining, 0.5))
+                except queue.Empty:
+                    continue
+
+                elapsed = time.time() - start
+
+                # Resolve numbered choice to option text
+                if request.options and response.isdigit():
+                    idx = int(response) - 1
+                    if 0 <= idx < len(request.options):
+                        response = request.options[idx]
+
+                return PromptResponse(value=response, elapsed_s=elapsed)
+        finally:
+            with self._lock:
+                self._pending = None
+            try:
+                display = get_active_display()
+                if display is not None:
+                    display.clear_prompt()
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------

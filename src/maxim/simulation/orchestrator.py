@@ -332,13 +332,25 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("Failed to create ResponseOutput for AUT: %s", e)
 
-    # PromptHandler: routes `request_interaction` tool calls to the
-    # console when --interactive is on. The tool itself gates on
-    # sim_logger.should_prompt, so it's safe to pass unconditionally.
+    # PromptHandler: routes `request_interaction` tool calls to the user.
+    # When --interactive is on, use SimPromptHandler so the stdin reader
+    # coordinates input (avoids two threads fighting over stdin).
+    # The tool itself gates on sim_logger.should_prompt, so it's safe
+    # to pass unconditionally.
+    _sim_prompt_handler = None
     try:
-        from maxim.interactive.prompts import create_handler
+        from maxim.simulation.sim_logger import get_interactive_mode as _get_im
+        from maxim.simulation.sim_logger import InteractiveMode as _IM
 
-        aut_prompt_handler = create_handler("auto")
+        if _get_im() == _IM.ON:
+            from maxim.interactive.prompts import SimPromptHandler
+
+            _sim_prompt_handler = SimPromptHandler(stop_event=stop_event)
+            aut_prompt_handler = _sim_prompt_handler
+        else:
+            from maxim.interactive.prompts import create_handler
+
+            aut_prompt_handler = create_handler("auto")
     except Exception as _ph_exc:
         logger.debug("PromptHandler unavailable for AUT: %s", _ph_exc)
         aut_prompt_handler = None
@@ -394,6 +406,9 @@ def start_simulation_mode(
                 "concept_query",
                 "similarity_search",
                 "system_stats",
+                # Interactive tools (gated by should_prompt())
+                "request_interaction",
+                "display_mode",
             },
             forbidden_tools=set(),
             min_confidence_autonomous=0.3,
@@ -1128,6 +1143,8 @@ def start_simulation_mode(
 
     _is_interactive = get_interactive_mode() == InteractiveMode.ON
 
+    _paused = [False]  # Mutable container for closure
+
     def _stdin_reader() -> None:
         while not stop_event.is_set():
             try:
@@ -1145,10 +1162,41 @@ def start_simulation_mode(
             if not line:
                 continue
 
+            # Slash commands always take priority, even during a pending prompt.
+            # Without this, /cancel typed during request_interaction would be
+            # swallowed as the prompt response instead of cancelling the sim.
             if line.lower() in ("/cancel", "/stop", "/quit"):
                 display_summary(["Simulation cancelled by user."])
                 stop_event.set()
                 break
+            elif line.lower() == "/pause":
+                if not _paused[0]:
+                    _paused[0] = True
+                    orchestrator_source.inject_cli(
+                        "SYSTEM: User paused the simulation. STOP all probing. "
+                        "Do NOT call send_message or any other tool. "
+                        "Wait silently until the user resumes.",
+                        salience=1.0,
+                        novelty=1.0,
+                    )
+                    display = get_active_display()
+                    if display is not None:
+                        display.set_status(status="PAUSED")
+                        display.set_prompt("Paused — type to the agent, /resume to continue")
+                    _emit("Simulation paused — type to talk to the agent, /resume to continue", "turn")
+            elif line.lower() == "/resume":
+                if _paused[0]:
+                    _paused[0] = False
+                    orchestrator_source.inject_cli(
+                        "SYSTEM: User resumed the simulation. Continue probing.",
+                        salience=1.0,
+                        novelty=0.8,
+                    )
+                    display = get_active_display()
+                    if display is not None:
+                        display.set_status(status="")
+                        display.set_prompt("Type to talk to the agent (Enter to send) | /cancel to stop")
+                    _emit("Simulation resumed", "turn")
             elif line.lower().startswith("/new "):
                 new_goal = line[5:].strip()
                 if new_goal:
@@ -1183,10 +1231,14 @@ def start_simulation_mode(
                 )
                 display_status("Report requested...")
             else:
-                # When interactive mode is on, free text goes directly
+                # If the agent is waiting for user input via request_interaction,
+                # forward non-command text to the prompt handler.
+                if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
+                    _sim_prompt_handler.deliver_response(line)
+                    _emit(f"  You: {line}", "scene")
+                # When interactive or paused, free text goes directly
                 # to the AUT as a user percept (conversational input).
-                # Otherwise, it's guidance for the orchestrator.
-                if _is_interactive:
+                elif _is_interactive or _paused[0]:
                     bridge.percept_source.inject_cli(
                         line,
                         salience=0.9,
@@ -1314,6 +1366,12 @@ def start_simulation_mode(
                     logger.debug("bridge.finish failed: %s", e)
                 stop_event.set()
                 break
+
+            # Skip stall detection while paused — the user intentionally
+            # stopped the orchestrator, so nudging would fight the pause.
+            if _paused[0]:
+                _last_activity_time[0] = time.time()
+                continue
 
             current_turns = bridge.turn_count
             current_actions = _orch_action_count()

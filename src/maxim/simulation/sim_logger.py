@@ -396,11 +396,6 @@ class _DisplayLoggingHandler(logging.Handler):
         except Exception:
             pass
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        # Suppress this record from other handlers (StreamHandler)
-        # by marking it so StreamHandlers can skip it.
-        return True
-
 
 def set_active_display(display: Any) -> None:
     """Set the active MaximDisplay for terminal output routing.
@@ -424,11 +419,16 @@ def set_active_display(display: Any) -> None:
             handler = _DisplayLoggingHandler(display)
             handler.setFormatter(logging.Formatter(fmt="%(asctime)s | %(levelname)s | %(message)s", datefmt="%H:%M:%S"))
             root.addHandler(handler)
-            # Suppress WARNING+ from stderr StreamHandlers while display is active
+            # Suppress WARNING+ from stderr StreamHandlers while display is active.
+            # Remove any existing display filters first to prevent accumulation
+            # on repeated set_active_display() calls.
             for h in root.handlers:
                 if isinstance(h, logging.StreamHandler) and not isinstance(
                     h, (logging.FileHandler, _DisplayLoggingHandler)
                 ):
+                    for f in list(h.filters):
+                        if isinstance(f, _DisplayStreamFilter):
+                            h.removeFilter(f)
                     h.addFilter(_DisplayStreamFilter())
             _display_log_handler = handler
         else:
