@@ -311,6 +311,11 @@ MAXIM_HEARTBEAT_STALL_S=30       # Warn after this many seconds with no LLM call
 MAXIM_LANE_TRACE=1               # Per-request LLM trace logs (also enables heartbeat)
 MAXIM_PEER_LOG_REQUESTS=1        # JSON log per outbound peer call
 
+# Drain routing (Plan 4 C4+C4.5+C4.6)
+MAXIM_DRAIN_CACHE_TTL_S=1.0              # DrainConstraint mtime cache freshness (clamped 0-60)
+MAXIM_AUTO_DRAIN_THRESHOLD=5             # Transient failure count before auto-drain (clamped 2-20; permanent=1)
+MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S=90   # Auto-undrain probe cycle interval (clamped 30-600)
+
 # Leader proxy admission control
 MAXIM_PROXY_MAX_CONCURRENT=4     # Max in-flight requests to upstream (0=unlimited)
 MAXIM_PROXY_RATE_LIMIT_RPM=0     # Per-peer requests/minute (0=unlimited)

@@ -145,6 +145,24 @@ def _isolate_maxim_llm_call_timeout_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_auto_undrain_probe_interval_env():
+    """Scrub ``MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S`` across every test (Plan 4 C4.6).
+
+    ``AutoUndrainProber`` reads this env var at construction. A test that
+    sets a fast interval for unit testing would leak into later tests that
+    construct the runtime, spawning real background threads with unexpected
+    intervals. Same pattern as ``_isolate_maxim_auto_download_env``.
+    """
+    saved = os.environ.pop("MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S", None)
+        if saved is not None:
+            os.environ["MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_cancellation_contextvar():
     """Scrub the cancellation ``ContextVar`` between tests (Plan 3.5 R4).
 

@@ -1,7 +1,7 @@
 # Mesh Debug — operator runbook for the Plan 4 Stage C surface
 
 **Audience:** operators running a Maxim mesh (one leader + N peers, or N peers without a single leader).
-**Scope:** the `mesh.yml` declarative config, the `init-mesh` / `add-node` / `remove-node` setup verbs, the `drain` / `resume` / `list-drained` runtime state surface shipped across PRs #112 (C1), #113 (C2), #118 (C3.1), C3.2 follow-up, `--node install` (C3.3, PR #128), `GET /v1/debug/vram` VRAM observability endpoint (C3.4, PR #142), and `--node update` / `--node restart` (C3.5) + `--node llm` (C3.6).
+**Scope:** the `mesh.yml` declarative config, the `init-mesh` / `add-node` / `remove-node` setup verbs, the `drain` / `resume` / `list-drained` runtime state surface shipped across PRs #112 (C1), #113 (C2), #118 (C3.1), C3.2 follow-up, `--node install` (C3.3, PR #128), `GET /v1/debug/vram` VRAM observability endpoint (C3.4, PR #142), `--node update` / `--node restart` (C3.5) + `--node llm` (C3.6), router-drain coupling (C4), auto-drain on persistent failure (C4.5), and auto-undrain via periodic health probe (C4.6).
 
 If you are debugging a network-layer problem (DNS, TCP, TLS, Cloudflare tunnel) start in [peer_leader_connectivity.md](peer_leader_connectivity.md) instead. This doc covers symptoms above the network layer — the cluster is reachable, but routing is doing the wrong thing.
 
@@ -131,6 +131,23 @@ All three verbs share the same invariants:
 - **Exit code 3:** operation succeeded but resume failed (same as install)
 
 **`--node update --dry-run`** is special: it skips the drain step entirely (preview is read-only). The self-guard still fires even for dry-run.
+
+### Auto-drain and auto-undrain: the self-healing loop (Plan 4 C4.5 + C4.6)
+
+The router auto-drains nodes after persistent failure (C4.5) and auto-undrains them when a health probe passes (C4.6). This completes the self-healing loop — no operator intervention needed for transient failures.
+
+**How it works:**
+1. Router detects N consecutive failures for a provider → `AutoDrainWriter` writes `node  # auto:<timestamp> reason:<type>` to the drain file
+2. Background `AutoUndrainProber` thread probes auto-drained nodes every 90s via `_MaximPeerBackend.health_check()`
+3. On healthy probe → entry is cleared under filelock. On failed probe → stays drained, retry next interval
+
+**Thresholds:** permanent failures (auth, model_missing) auto-drain after 1 failure. Transient failures (down, timeout, etc.) auto-drain after 5 (configurable `MAXIM_AUTO_DRAIN_THRESHOLD`, clamped [2, 20]).
+
+**Critical invariant: operator drains are NEVER auto-cleared.** Only entries tagged with `# auto:` in the drain file are candidates. If you manually ran `maxim peer --node <name> drain`, that entry has no tag and is permanently sticky until you run `resume`.
+
+**Tuning:** `MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S` (default 90, clamped [30, 600]) controls how often the prober checks. Lower values = faster recovery but more probe traffic.
+
+**Debugging:** Set `MAXIM_LOG_FILE=/tmp/maxim.jsonl` to see `auto_drain` and `auto_undrain` structured log events. The prober logs at WARNING when a probe cycle fails entirely, and at INFO when a node is successfully undraned.
 
 ---
 

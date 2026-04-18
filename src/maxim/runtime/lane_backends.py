@@ -609,7 +609,11 @@ class LaneBackendManager:
         auto_drain_callback = None
         try:
             from maxim.peer.mesh_config import read_or_synthesize_mesh_config
-            from maxim.peer.drain_routing import build_drain_constraint, build_auto_drain_writer
+            from maxim.peer.drain_routing import (
+                build_auto_drain_writer,
+                build_auto_undrain_prober,
+                build_drain_constraint,
+            )
 
             mesh_cfg = read_or_synthesize_mesh_config()
             if mesh_cfg is not None:
@@ -620,6 +624,10 @@ class LaneBackendManager:
                     # C4.5: auto-drain writer shares the same URL→node mapping.
                     writer = build_auto_drain_writer(dc)
                     auto_drain_callback = writer.maybe_auto_drain
+                    # C4.6: auto-undrain prober — background thread that
+                    # probes auto-drained nodes and clears them when healthy.
+                    prober = build_auto_undrain_prober(mesh_cfg, mesh_cfg.cluster_key)
+                    prober.start()
         except ImportError:
             logger.debug("drain constraint init skipped (optional deps)", exc_info=True)
         except Exception:
