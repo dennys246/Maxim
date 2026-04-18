@@ -136,37 +136,59 @@ class RequestInteractionTool(Tool):
         if not should_prompt(context):
             return ToolOutput(
                 success=True,
-                output="Interaction disabled — make your best judgment.",
+                output=(
+                    "Interaction disabled — make your best judgment. "
+                    "You are operating autonomously; no user was consulted."
+                ),
+                metadata={"was_prompted": False, "reason": "interactive_mode_off"},
             )
 
-        # Use PromptHandler if available
-        if self._handler is not None:
-            from maxim.interactive.prompts import PromptRequest, PromptType
+        # Show question in MaximDisplay input panel (if active)
+        from maxim.simulation.sim_logger import get_active_display
 
-            prompt_type = PromptType.SINGLE_CHOICE if options else PromptType.FREEFORM
-            request = PromptRequest(
-                prompt_type=prompt_type,
-                question=question,
-                options=tuple(options) if options else None,
-            )
-            try:
-                response = self._handler.prompt(request)
-                return ToolOutput(
-                    success=True,
-                    output=f"User responded: {response.value}",
-                )
-            except Exception as e:
-                logger.warning("Prompt handler failed: %s — falling back to default", e)
-
-        # Fallback: print to console
-        from maxim.simulation.sim_logger import display_scene
-
-        display_scene(f"\n  Agent asks: {question}")
+        display = get_active_display()
+        prompt_text = question
         if options:
-            for i, opt in enumerate(options, 1):
-                display_scene(f"    [{i}] {opt}")
+            prompt_text += "\n" + "\n".join(f"  [{i}] {opt}" for i, opt in enumerate(options, 1))
+        if display is not None:
+            display.set_prompt(prompt_text)
 
-        return ToolOutput(
-            success=True,
-            output="Question displayed to user. Response will come on next turn.",
-        )
+        try:
+            # Use PromptHandler if available
+            if self._handler is not None:
+                from maxim.interactive.prompts import PromptRequest, PromptType
+
+                prompt_type = PromptType.SINGLE_CHOICE if options else PromptType.FREEFORM
+                request = PromptRequest(
+                    prompt_type=prompt_type,
+                    question=question,
+                    options=tuple(options) if options else None,
+                )
+                try:
+                    response = self._handler.prompt(request)
+                    return ToolOutput(
+                        success=True,
+                        output=f"User responded: {response.value}",
+                        metadata={"was_prompted": True},
+                    )
+                except Exception as e:
+                    logger.warning("Prompt handler failed: %s — falling back to default", e)
+
+            # Fallback: print to console but cannot collect response
+            from maxim.simulation.sim_logger import display_scene
+
+            display_scene(f"\n  Agent asks: {question}")
+            if options:
+                for i, opt in enumerate(options, 1):
+                    display_scene(f"    [{i}] {opt}")
+
+            return ToolOutput(
+                success=True,
+                output=(
+                    "Question displayed to user but response could not be collected. Proceed with your best judgment."
+                ),
+                metadata={"was_prompted": False, "reason": "no_handler"},
+            )
+        finally:
+            if display is not None:
+                display.clear_prompt()

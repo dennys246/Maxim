@@ -18,6 +18,39 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Fallback scenes — immersive alternatives when LLM generation fails.
+# Phase names are free-form strings (not an enum), so we match on
+# substrings with a robust default for unrecognized phases.
+# ---------------------------------------------------------------------------
+
+_FALLBACK_SCENES: dict[str, str] = {
+    "intro": "A new scene begins to unfold before you...",
+    "establish": "The world around you takes shape, details sharpening...",
+    "seed": "Something stirs in the world around you, hinting at what's to come...",
+    "conflict": "Tension hangs thick in the air...",
+    "escalat": "The stakes rise around you...",
+    "boundary": "You feel the weight of an important moment pressing in...",
+    "trust": "A sense of quiet understanding settles between you and those nearby...",
+    "reflect": "A quiet moment settles, inviting contemplation...",
+    "recall": "Something stirs in the back of your mind...",
+    "practice": "The path ahead demands careful attention...",
+    "transfer": "What you've learned begins to take on new meaning...",
+    "reinforc": "The familiar rhythm returns, stronger now...",
+    "interfere": "An unexpected disruption cuts through the calm...",
+}
+_FALLBACK_DEFAULT = "The story continues to unfold around you..."
+
+
+def _fallback_for_phase(phase: str) -> str:
+    """Return immersive fallback text for a given phase name."""
+    phase_lower = phase.lower()
+    for key, text in _FALLBACK_SCENES.items():
+        if key in phase_lower:
+            return text
+    return _FALLBACK_DEFAULT
+
+
+# ---------------------------------------------------------------------------
 # System prompts
 # ---------------------------------------------------------------------------
 
@@ -185,7 +218,7 @@ class Narrator:
                     self._done = True
                 return decision
         except Exception as e:
-            log.debug("Decision call failed, using defaults: %s", e)
+            log.warning("Narrator decision call failed, using defaults: %s", e)
 
         # Fallback: advance through phases mechanically
         return {
@@ -227,12 +260,12 @@ class Narrator:
                 self._update_story_context(text, last_aut_response)
                 return text.strip()
         except Exception as e:
-            log.debug("Generation call failed: %s", e)
+            log.warning("Narrator generation failed (phase=%s): %s", phase, e)
 
-        # Fallback: minimal scene
+        # Fallback: immersive phase-aware text (no brackets, no meta-commentary)
         self._turns_in_phase += 1
         self._total_turns += 1
-        return f"The journey continues. [Phase: {phase}]"
+        return _fallback_for_phase(phase)
 
     # -- single-call approach (Option B) ------------------------------------
 
@@ -283,12 +316,12 @@ class Narrator:
                 self._decisions.append(decision)
                 return (narrative, decision)
         except Exception as e:
-            log.debug("Single-call failed: %s", e)
+            log.warning("Narrator single-call failed (phase=%s): %s", self.current_phase, e)
 
-        # Fallback
+        # Fallback: immersive phase-aware text (no brackets, no meta-commentary)
         self._turns_in_phase += 1
         self._total_turns += 1
-        return (f"The journey continues. [Phase: {self.current_phase}]", {"phase": self.current_phase, "done": False})
+        return (_fallback_for_phase(self.current_phase), {"phase": self.current_phase, "done": False})
 
     # -- internal -----------------------------------------------------------
 
@@ -315,8 +348,18 @@ class Narrator:
 
         return "\n".join(parts)
 
+    def _count_words(self, text: str) -> int:
+        """Count words, using LLM tokenizer if available, else split()."""
+        if hasattr(self._llm, "get_token_counter"):
+            try:
+                counter = self._llm.get_token_counter()
+                return int(counter.count_tokens(text))
+            except Exception:
+                pass
+        return len(text.split())
+
     def _update_story_context(self, narrative: str, aut_response: str) -> None:
-        """Maintain compressed story context (~200 tokens)."""
+        """Maintain compressed story context (~200 tokens / ~150 words)."""
         entry = f"[Turn {self._total_turns}] {narrative[:100]}"
         if aut_response:
             entry += f" AUT: {aut_response[:50]}"
@@ -326,10 +369,12 @@ class Narrator:
         else:
             self._story_context = entry
 
-        # Cap at ~800 chars (~200 tokens)
-        if len(self._story_context) > 800:
+        # Cap at ~150 words (≈ 200 tokens). Word count tracks token count
+        # within ~20% for English text, vs char count which diverges by
+        # 2-4x on code/unicode.
+        if self._count_words(self._story_context) > 150:
             lines = self._story_context.split("\n")
-            while len("\n".join(lines)) > 800 and len(lines) > 2:
+            while self._count_words("\n".join(lines)) > 150 and len(lines) > 2:
                 lines.pop(0)
             self._story_context = "\n".join(lines)
 

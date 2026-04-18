@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 from abc import ABC, abstractmethod
 from collections import deque
 from typing import Any, Callable
@@ -85,6 +86,10 @@ class MaximDisplay:
         | > What do you do? [fight / negotiate / flee]            |
         | > _                                                     |
         +--------------------------------------------------------+
+
+    Thread-safe: all mutations acquire ``_lock``. The orchestrator runs
+    3+ concurrent threads (sim.aut, sim.stdin, sim.stall + main) that
+    all emit ``sim_log()`` events routed through ``log()``.
     """
 
     def __init__(self, title: str = "Maxim", max_log_lines: int = 200) -> None:
@@ -95,6 +100,7 @@ class MaximDisplay:
         self._extensions: list[DisplayExtension] = []
         self._live: Any = None  # rich.live.Live when active
         self._console: Any = None
+        self._lock = threading.RLock()
 
         if _RICH_AVAILABLE:
             self._console = Console()
@@ -129,10 +135,11 @@ class MaximDisplay:
             self._live = None
 
     def log(self, subsystem: str, message: str, level: str = "info") -> None:
-        """Add a line to the scrolling log panel."""
+        """Add a line to the scrolling log panel (thread-safe)."""
         # Color map for subsystems
         colors = {
             "hippo": "cyan",
+            "hippocampus": "cyan",
             "nac": "magenta",
             "fear": "red",
             "pain": "red",
@@ -141,34 +148,47 @@ class MaximDisplay:
             "scene": "yellow",
             "npc": "yellow",
             "choice": "bold white",
+            "result": "bold green",
+            "blocked": "bold red",
+            "cerebellum": "bold blue",
+            "atl": "bold magenta",
+            "sensory": "bold cyan",
+            "body": "bold white",
+            "percept": "cyan",
+            "reaction": "magenta",
         }
-        color = colors.get(subsystem.lower(), "white")
-        tag = f"[{color}][{subsystem:>6}][/{color}]"
-        self._log_lines.append(f"{tag} {message}")
-        self._refresh()
+        with self._lock:
+            color = colors.get(subsystem.lower(), "white")
+            tag = f"[{color}][{subsystem:>6}][/{color}]"
+            self._log_lines.append(f"{tag} {message}")
+            self._refresh()
 
     def set_status(self, **fields: str) -> None:
-        """Update status bar fields."""
-        self._status.update(fields)
-        self._refresh()
+        """Update status bar fields (thread-safe)."""
+        with self._lock:
+            self._status.update(fields)
+            self._refresh()
 
     def set_prompt(self, text: str) -> None:
-        """Set the current prompt text in the input panel."""
-        self._prompt_text = text
-        self._refresh()
+        """Set the current prompt text in the input panel (thread-safe)."""
+        with self._lock:
+            self._prompt_text = text
+            self._refresh()
 
     def clear_prompt(self) -> None:
-        """Clear the input panel."""
-        self._prompt_text = ""
-        self._refresh()
+        """Clear the input panel (thread-safe)."""
+        with self._lock:
+            self._prompt_text = ""
+            self._refresh()
 
     def add_extension(self, ext: DisplayExtension) -> None:
-        """Register a display extension (adds panels)."""
-        self._extensions.append(ext)
-        self._refresh()
+        """Register a display extension (adds panels, thread-safe)."""
+        with self._lock:
+            self._extensions.append(ext)
+            self._refresh()
 
     def _refresh(self) -> None:
-        """Rebuild and update the live display."""
+        """Rebuild and update the live display. Caller must hold _lock."""
         if self._live is not None:
             try:
                 self._live.update(self._build_layout())

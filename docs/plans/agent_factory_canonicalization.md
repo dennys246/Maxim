@@ -140,11 +140,60 @@ This is a running doc, not a scheduled plan. Open it when one of these hits:
 6. **Reachy's `pain_detector` legacy** — keep it, or migrate Reachy to PainBus and drop the legacy path?
 7. **Cross-cutting: does this plan supersede `sem_execution_hook.md` Stage 2b?** Probably yes — Stage 2b becomes a sub-stage of this plan. Confirm at plan-open time.
 
+## Wave G — Game / External Host integration (folded from game_npc_integration.md, 2026-04-18)
+
+**Trigger #4 activated:** game NPC use case = multi-agent NPC scenarios as a real workload. The execution + architecture review (2026-04-18) found that `AgentPool.run_turn()` skips the entire bio-pipeline — no Executor, no PainBus, no ToolPainBridge. An NPC that only speaks can't learn from its actions. The gap is structural: `create_npc_agent()` wires Hippocampus/NAc/ATL/MemoryHub but never creates an Executor ([agent_factory.py:83](../../src/maxim/runtime/agent_factory.py#L83) — `executor` stays `None`).
+
+The G-wave extends the factory (after F-wave collapses the 8 hand-rolled entry points) to produce agents with full execution capability for external hosts (game engines, web apps, virtual worlds).
+
+### Stage G1 — Wire Executor + bio-pipeline into NPC agents
+
+`create_npc_agent()` gains `executor_enabled: bool = False`. When `True`:
+- Calls `build_bio_stack()` + `build_executor(pain_bus=bio.pain_bus, nac=bio.nac)` via canonical builders.
+- `run_turn()` checks for executor, parses LLM response for tool calls, executes them with ToolPainBridge attribution.
+- `AgentPool` gains `start_session()` / `end_session()` for game load/save boundaries.
+- `executor_enabled=False` default preserves backward compatibility for DM NPC parties.
+
+Depends on F1 (Z1/Z2/Z3 Executor lifetime decision). ~250 LOC.
+
+### Stage G2 — HostContext protocol
+
+Thin protocol abstracting the environment agents run in:
+```python
+class HostContext(Protocol):
+    percept_source: PerceptSource
+    action_sink: ActionSink
+```
+Three implementations: `TerminalHost`, `SimulationHost`, `GameHost`. `PerceptSource` / `ActionSink` protocols already exist — this formalizes them as the host boundary. ~180 LOC.
+
+### Stage G3 — Emotional state readout
+
+`TurnResult` gains `emotional_state: dict[str, float] | None` — populated from NAc `_reward_bias`, PainBus intensity, FearAgent threat level, SEM sensor values. Game engines use this for facial animation, behavior trees, dialogue tone. Read-only — evolves through bio-pipeline, not set directly. ~110 LOC.
+
+### Stage G4 — Async tool dispatch
+
+Tools can return `ToolOutput(deferred=True)`. Game engine calls `AgentPool.resolve_deferred(agent_id, tool_call_id, result)` when animation/physics completes. ToolPainBridge links deferred result to pending NAc event by `(tool_name, invocation_id)`. Configurable timeout fires PainBus signal on unresolved deferrals. ~220 LOC.
+
+### Stage G5 — Memory backend protocol
+
+Extract save/load into `MemoryBackend` protocol with `FileMemoryBackend` (current) + `InMemoryBackend` (games managing their own saves). `AgentFactory` accepts optional `memory_backend`. ~180 LOC.
+
+### Relationship to F-wave
+
+F-wave collapses 8 hand-rolled entry points into one factory. G-wave extends that factory for external hosts. Same architectural arc, one design pass, no conflicting Executor lifetime decisions. If F1 ships first, G1 is simpler (just add `executor_enabled` to the canonical factory). G-wave adds ~940 LOC to the total scope.
+
+### What G-wave does NOT include
+
+- Game engine SDK/bindings (Unity/Unreal/Godot) — builds on top of this.
+- Multi-agent shared memory (Mother Maxim concept, post-1.0).
+- Real-time continuous perception (needs DefaultNetwork reactive path, embodied runtime).
+- Interactive/display layer (orthogonal — see [interactive_experience_031.md](interactive_experience_031.md)).
+
 ## Notes
 
 This doc is intentionally light on implementation detail because the design questions matter more than the LOC estimate at this stage. When this plan opens for real, Stage F1 produces a written design rationale that turns the open questions into decisions, and the rest of the stages get sharpened from there.
 
-**Estimated total scope** (rough, pre-design-pass): ~1500-2500 LOC across `src/maxim/` + ~1000 LOC of new tests in Stage F6. Multi-PR (one per stage). Multi-session.
+**Estimated total scope** (rough, pre-design-pass): ~2500-3500 LOC across `src/maxim/` (F-wave ~1500-2500 + G-wave ~940) + ~1000 LOC of new tests in Stage F6. Multi-PR (one per stage). Multi-session.
 
 **Doc + memory refinement scope** (mirrors the bootstrap unification plan):
 - `CLAUDE.md` invariant line: "AgentFactory.create_agent is the canonical agent constructor; no entry point hand-rolls a MaximAgent."

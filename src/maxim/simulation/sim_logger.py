@@ -20,6 +20,7 @@ from __future__ import annotations
 import enum
 import logging
 import sys
+import threading
 import time
 from typing import Any
 
@@ -61,7 +62,6 @@ class InteractiveMode(enum.Enum):
 _display_tier: DisplayTier = DisplayTier.CLEAN
 _interactive_mode: InteractiveMode = InteractiveMode.AUTO
 _display_floor: DisplayTier = DisplayTier.CLEAN  # User's --display setting (agent can't go below)
-_display_revert_turn: int | None = None  # Turn number to revert agent escalation
 
 
 def set_display_tier(tier: DisplayTier | str) -> None:
@@ -91,16 +91,15 @@ def get_interactive_mode() -> InteractiveMode:
     return _interactive_mode
 
 
-def agent_escalate_display(tier: DisplayTier, revert_after_turns: int = 3) -> bool:
+def agent_escalate_display(tier: DisplayTier) -> bool:
     """Allow the agent to temporarily escalate display tier.
 
     Returns True if escalation was applied, False if tier is below floor.
     """
-    global _display_tier, _display_revert_turn
+    global _display_tier
     if tier < _display_floor:
         return False  # Agent can't suppress below user's floor
     _display_tier = tier
-    # revert_after_turns is tracked by the caller (dm_runtime / orchestrator)
     return True
 
 
@@ -169,7 +168,18 @@ _DISPLAY_COLORS = {
 
 
 def _emit(text: str, color_key: str | None = None) -> None:
-    """Print a line to stdout with optional ANSI color."""
+    """Emit a line to the active display or stdout.
+
+    When a ``MaximDisplay`` is active, routes through ``display.log()``
+    to avoid corrupting the rich ``Live`` panel with raw ANSI output.
+    Falls back to ``print()`` when no display is active.
+    """
+    display = get_active_display()
+    if display is not None:
+        # Route through the display's log panel. Use color_key as
+        # subsystem label so the display can apply its own styling.
+        display.log(color_key or "info", text)
+        return
     if color_key and _use_color:
         c = _DISPLAY_COLORS.get(color_key, "")
         print(f"{c}{text}{_RESET}", flush=True)
@@ -209,7 +219,11 @@ def display_entity_state(name: str, sensors: dict[str, Any]) -> None:
 def display_turn(n: int) -> None:
     """Show turn marker (CLEAN tier)."""
     if _display_tier >= DisplayTier.CLEAN:
-        _emit(f"\n{'─' * 2} Turn {n} {'─' * 40}", "turn")
+        display = get_active_display()
+        if display is not None:
+            display.set_status(turn=str(n))
+        else:
+            _emit(f"\n{'─' * 2} Turn {n} {'─' * 40}", "turn")
 
 
 def display_summary(lines: list[str]) -> None:
@@ -354,6 +368,45 @@ import atexit
 atexit.register(_cleanup_log_file)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Active display — when set, terminal output routes through MaximDisplay
+# instead of raw print(). JSONL file writes are unchanged (always persist).
+# ─────────────────────────────────────────────────────────────────────────────
+
+_active_display: Any = None  # MaximDisplay | None
+_display_lock = threading.Lock()
+
+
+def set_active_display(display: Any) -> None:
+    """Set the active MaximDisplay for terminal output routing.
+
+    When set, ``_emit()`` routes through ``display.log()`` instead of
+    ``print()``. Pass ``None`` to revert to direct ANSI printing.
+    """
+    global _active_display
+    with _display_lock:
+        _active_display = display
+
+
+def get_active_display() -> Any:
+    """Return the active MaximDisplay, or None."""
+    with _display_lock:
+        return _active_display
+
+
+def _cleanup_display() -> None:
+    """atexit handler — stop active display if still running."""
+    display = get_active_display()
+    if display is not None:
+        try:
+            display.stop()
+        except Exception:
+            pass
+
+
+atexit.register(_cleanup_display)
+
+
 def enable_sim_logging(
     use_color: bool = True,
     log_path: str | None = None,
@@ -482,6 +535,7 @@ def sim_log(
     if _show_channels is not None and subsystem not in _show_channels:
         return
 
+    # Build the display line
     if _use_color:
         color = _COLORS.get(subsystem, "")
         label = f"{color}[{subsystem:12s}]{_RESET}"
@@ -496,7 +550,18 @@ def sim_log(
         if details:
             line += f"  ({details})"
 
-    print(line, flush=True)
+    # Route terminal output through active display or direct print
+    display = get_active_display()
+    if display is not None:
+        # Strip ANSI codes — the display applies its own styling
+        plain_msg = f"{timestamp} [{subsystem}] {message}"
+        if data:
+            details = ", ".join(f"{k}={v}" for k, v in data.items() if v is not None)
+            if details:
+                plain_msg += f"  ({details})"
+        display.log(subsystem.lower(), plain_msg)
+    else:
+        print(line, flush=True)
 
 
 def sim_percept(source: str, summary: str, **kwargs: Any) -> None:

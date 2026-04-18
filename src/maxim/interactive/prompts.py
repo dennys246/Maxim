@@ -18,7 +18,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable
+from typing import Callable
 
 log = logging.getLogger(__name__)
 
@@ -29,29 +29,25 @@ log = logging.getLogger(__name__)
 
 
 class PromptType(Enum):
-    """Universal prompt types covering every interactive use case."""
+    """Prompt types for interactive use cases.
+
+    Only types with production callers are included. Add new types
+    WITH a production caller in the same commit — don't add types
+    without callers (0.3.1 cleanup removed SHORT_TEXT, LONG_TEXT,
+    NUMERIC, RATING for this reason).
+    """
 
     SINGLE_CHOICE = "single_choice"  # Pick one from a list
     MULTI_CHOICE = "multi_choice"  # Pick N from a list
     CONFIRM = "confirm"  # Yes/No
-    SHORT_TEXT = "short_text"  # One-line freeform (name, keyword)
-    LONG_TEXT = "long_text"  # Multi-line freeform (backstory, notes)
     FREEFORM = "freeform"  # Unprompted user input (agent chat)
-    NUMERIC = "numeric"  # Number input with range validation
-    RATING = "rating"  # 1-5 or 1-10 scale
-
-
-def freeze_context(**kwargs: Any) -> tuple[tuple[str, Any], ...]:
-    """Helper to create frozen context for PromptRequest."""
-    return tuple(kwargs.items())
 
 
 @dataclass(frozen=True)
 class PromptRequest:
     """What the system wants from the user.
 
-    Frozen for hashability/safety.  Use :func:`freeze_context` to build
-    the ``context`` field from keyword arguments.
+    Frozen for hashability/safety.
     """
 
     prompt_type: PromptType
@@ -59,10 +55,6 @@ class PromptRequest:
     options: tuple[str, ...] | None = None
     default: str | None = None
     timeout_sec: float = 300.0
-    min_selections: int = 1
-    max_selections: int | None = None
-    value_range: tuple[float, float] | None = None
-    context: tuple[tuple[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -90,14 +82,6 @@ class PromptHandler(ABC):
     def prompt(self, request: PromptRequest) -> PromptResponse:
         """Present prompt to user and collect response."""
 
-    def supports_freeform(self) -> bool:
-        """Whether this handler supports unprompted user input."""
-        return False
-
-    def poll_freeform(self) -> str | None:
-        """Check for unprompted user input (non-blocking)."""
-        return None
-
 
 # ---------------------------------------------------------------------------
 # Built-in handlers
@@ -124,11 +108,6 @@ class PlainPromptHandler(PromptHandler):
         ):
             for i, opt in enumerate(request.options, 1):
                 print(f"    {i}. {opt}")
-
-        # Display range for numeric
-        if request.value_range and request.prompt_type == PromptType.NUMERIC:
-            lo, hi = request.value_range
-            print(f"    (range: {lo} - {hi})")
 
         # Display default and timeout
         parts = []
@@ -350,6 +329,9 @@ class NonInteractiveHandler(PromptHandler):
 # ---------------------------------------------------------------------------
 
 
+_VALID_MODES = frozenset({"auto", "rich", "plain", "non-interactive", "callback"})
+
+
 def create_handler(
     mode: str = "auto",
     callback: Callable | None = None,
@@ -362,16 +344,26 @@ def create_handler(
 
     Returns:
         A PromptHandler instance.
+
+    Raises:
+        ValueError: If *mode* is not one of the recognised values.
     """
+    if mode not in _VALID_MODES:
+        raise ValueError(f"Unknown prompt handler mode {mode!r}. Valid modes: {', '.join(sorted(_VALID_MODES))}")
+
     if mode == "callback":
         if callback is None:
             raise ValueError("callback mode requires a callback function")
-        return CallbackPromptHandler(callback)
+        handler = CallbackPromptHandler(callback)
+        log.info("PromptHandler: CallbackPromptHandler (mode=callback)")
+        return handler
 
     if mode == "non-interactive":
+        log.info("PromptHandler: NonInteractiveHandler (mode=non-interactive)")
         return NonInteractiveHandler()
 
     if mode == "plain":
+        log.info("PromptHandler: PlainPromptHandler (mode=plain)")
         return PlainPromptHandler()
 
     if mode == "rich":
@@ -379,17 +371,19 @@ def create_handler(
         if not handler._rich_available:
             log.warning("Rich not available, falling back to plain prompt handler")
             return PlainPromptHandler()
+        log.info("PromptHandler: RichPromptHandler (mode=rich)")
         return handler
 
     # Auto mode: rich if available + TTY, else plain
-    if mode == "auto":
-        if sys.stdout.isatty():
-            try:
-                handler = RichPromptHandler()
-                if handler._rich_available:
-                    return handler
-            except Exception:
-                pass
-        return PlainPromptHandler()
+    is_tty = sys.stdout.isatty()
+    if is_tty:
+        try:
+            handler = RichPromptHandler()
+            if handler._rich_available:
+                log.info("PromptHandler: RichPromptHandler (mode=auto, tty=True)")
+                return handler
+        except Exception:
+            pass
 
+    log.info("PromptHandler: PlainPromptHandler (mode=auto, tty=%s)", is_tty)
     return PlainPromptHandler()

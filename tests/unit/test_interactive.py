@@ -14,7 +14,6 @@ from maxim.interactive.prompts import (
     PromptType,
     RichPromptHandler,
     create_handler,
-    freeze_context,
 )
 
 
@@ -25,15 +24,18 @@ from maxim.interactive.prompts import (
 
 class TestPromptTypes:
     def test_all_types_exist(self):
-        assert len(PromptType) == 8
+        assert len(PromptType) == 4
         assert PromptType.SINGLE_CHOICE.value == "single_choice"
         assert PromptType.MULTI_CHOICE.value == "multi_choice"
         assert PromptType.CONFIRM.value == "confirm"
-        assert PromptType.SHORT_TEXT.value == "short_text"
-        assert PromptType.LONG_TEXT.value == "long_text"
         assert PromptType.FREEFORM.value == "freeform"
-        assert PromptType.NUMERIC.value == "numeric"
-        assert PromptType.RATING.value == "rating"
+
+    def test_removed_types_absent(self):
+        """0.3.1 cleanup removed unused types — verify they stay gone."""
+        assert not hasattr(PromptType, "SHORT_TEXT")
+        assert not hasattr(PromptType, "LONG_TEXT")
+        assert not hasattr(PromptType, "NUMERIC")
+        assert not hasattr(PromptType, "RATING")
 
 
 class TestPromptRequest:
@@ -47,25 +49,10 @@ class TestPromptRequest:
             req.question = "modified"  # type: ignore[misc]
 
     def test_default_values(self):
-        req = PromptRequest(prompt_type=PromptType.SHORT_TEXT, question="Name?")
+        req = PromptRequest(prompt_type=PromptType.FREEFORM, question="Name?")
         assert req.options is None
         assert req.default is None
         assert req.timeout_sec == 300.0
-        assert req.context == ()
-
-    def test_freeze_context_helper(self):
-        ctx = freeze_context(category="creation", step=1)
-        assert isinstance(ctx, tuple)
-        assert ("category", "creation") in ctx
-        assert ("step", 1) in ctx
-
-    def test_with_context(self):
-        req = PromptRequest(
-            prompt_type=PromptType.SHORT_TEXT,
-            question="Name?",
-            context=freeze_context(phase="character_creation"),
-        )
-        assert dict(req.context)["phase"] == "character_creation"
 
 
 class TestPromptResponse:
@@ -96,7 +83,7 @@ class TestNonInteractiveHandler:
     def test_returns_default(self):
         handler = NonInteractiveHandler()
         req = PromptRequest(
-            prompt_type=PromptType.SHORT_TEXT,
+            prompt_type=PromptType.FREEFORM,
             question="Name?",
             default="DefaultName",
         )
@@ -138,14 +125,14 @@ class TestCallbackHandler:
             return f"answered: {req.question}"
 
         handler = CallbackPromptHandler(my_cb)
-        req = PromptRequest(prompt_type=PromptType.SHORT_TEXT, question="Name?")
+        req = PromptRequest(prompt_type=PromptType.FREEFORM, question="Name?")
         resp = handler.prompt(req)
         assert resp.value == "answered: Name?"
 
     def test_callback_returns_none_uses_default(self):
         handler = CallbackPromptHandler(lambda r: None)
         req = PromptRequest(
-            prompt_type=PromptType.SHORT_TEXT,
+            prompt_type=PromptType.FREEFORM,
             question="Name?",
             default="FallbackName",
         )
@@ -158,7 +145,7 @@ class TestCallbackHandler:
 
         handler = CallbackPromptHandler(failing_cb)
         req = PromptRequest(
-            prompt_type=PromptType.SHORT_TEXT,
+            prompt_type=PromptType.FREEFORM,
             question="Name?",
             default="Safe",
         )
@@ -215,6 +202,14 @@ class TestCreateHandler:
         h = create_handler("auto")
         assert isinstance(h, PromptHandler)
 
+    def test_unknown_mode_raises(self):
+        with pytest.raises(ValueError, match="Unknown prompt handler mode"):
+            create_handler("invalid_mode")
+
+    def test_unknown_mode_lists_valid(self):
+        with pytest.raises(ValueError, match="auto"):
+            create_handler("garbage")
+
 
 # ---------------------------------------------------------------------------
 # Display (basic instantiation — can't test live rendering in CI)
@@ -258,6 +253,212 @@ class TestDisplay:
         assert "fight" in d._prompt_text
         d.clear_prompt()
         assert d._prompt_text == ""
+
+
+# ---------------------------------------------------------------------------
+# Display routing through sim_logger (Stage 5)
+# ---------------------------------------------------------------------------
+
+
+class TestDisplayRouting:
+    """Verify sim_logger routes through MaximDisplay when active."""
+
+    def setup_method(self):
+        from maxim.simulation.sim_logger import set_active_display
+
+        set_active_display(None)
+
+    def teardown_method(self):
+        from maxim.simulation.sim_logger import set_active_display
+
+        set_active_display(None)
+
+    def test_sim_log_routes_to_display_when_active(self):
+        from maxim.interactive.display import MaximDisplay
+        from maxim.simulation.sim_logger import (
+            DisplayTier,
+            enable_sim_logging,
+            disable_sim_logging,
+            set_active_display,
+            set_display_tier,
+            sim_log,
+        )
+
+        d = MaximDisplay()
+        set_active_display(d)
+        enable_sim_logging(use_color=False)
+        set_display_tier(DisplayTier.BIO)
+        sim_log("HIPPOCAMPUS", "test capture")
+        disable_sim_logging()
+        set_display_tier(DisplayTier.CLEAN)
+
+        assert len(d._log_lines) >= 1
+        assert "test capture" in d._log_lines[-1]
+
+    def test_sim_log_falls_back_when_no_display(self, capsys):
+        from maxim.simulation.sim_logger import (
+            DisplayTier,
+            enable_sim_logging,
+            disable_sim_logging,
+            set_display_tier,
+            sim_log,
+        )
+
+        enable_sim_logging(use_color=False)
+        set_display_tier(DisplayTier.BIO)
+        sim_log("HIPPOCAMPUS", "direct print")
+        disable_sim_logging()
+        set_display_tier(DisplayTier.CLEAN)
+
+        captured = capsys.readouterr()
+        assert "direct print" in captured.out
+
+    def test_display_scene_routes_through_display(self):
+        from maxim.interactive.display import MaximDisplay
+        from maxim.simulation.sim_logger import (
+            set_active_display,
+            display_scene,
+        )
+
+        d = MaximDisplay()
+        set_active_display(d)
+        display_scene("The tavern door opens.")
+
+        assert len(d._log_lines) >= 1
+        assert "tavern" in d._log_lines[-1].lower()
+
+    def test_display_turn_updates_status(self):
+        from maxim.interactive.display import MaximDisplay
+        from maxim.simulation.sim_logger import (
+            set_active_display,
+            display_turn,
+        )
+
+        d = MaximDisplay()
+        set_active_display(d)
+        display_turn(5)
+
+        assert d._status.get("turn") == "5"
+
+    def test_display_concurrent_log_no_corruption(self):
+        import threading
+
+        from maxim.interactive.display import MaximDisplay
+        from maxim.simulation.sim_logger import (
+            DisplayTier,
+            enable_sim_logging,
+            disable_sim_logging,
+            set_active_display,
+            set_display_tier,
+            sim_log,
+        )
+
+        d = MaximDisplay()
+        set_active_display(d)
+        enable_sim_logging(use_color=False)
+        set_display_tier(DisplayTier.BIO)
+
+        errors: list[Exception] = []
+
+        def worker(thread_id: int):
+            try:
+                for i in range(50):
+                    sim_log("HIPPOCAMPUS", f"thread-{thread_id}-event-{i}")
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker, args=(t,)) for t in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        disable_sim_logging()
+        set_display_tier(DisplayTier.CLEAN)
+
+        assert not errors, f"Concurrent log errors: {errors}"
+        # All 400 events should be present (deque maxlen=200, so last 200)
+        assert len(d._log_lines) > 0
+
+    def test_display_atexit_stops_live(self):
+        from maxim.simulation.sim_logger import (
+            _cleanup_display,
+            set_active_display,
+        )
+        from maxim.interactive.display import MaximDisplay
+
+        d = MaximDisplay()
+        set_active_display(d)
+        # Don't start Live — just verify atexit handler doesn't crash
+        _cleanup_display()
+        # Display should still be set (stop() doesn't unset the reference)
+
+
+# ---------------------------------------------------------------------------
+# Integration smoke tests (Stage 7)
+# ---------------------------------------------------------------------------
+
+
+class TestInteractionToolEndToEnd:
+    """End-to-end RequestInteractionTool round trips."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_interactive_mode(self):
+        from maxim.simulation.sim_logger import (
+            get_interactive_mode,
+            set_interactive_mode,
+        )
+
+        prior = get_interactive_mode()
+        yield
+        set_interactive_mode(prior)
+
+    def test_end_to_end_with_handler(self):
+        from maxim.simulation.sim_logger import InteractiveMode, set_interactive_mode
+        from maxim.tools.display import RequestInteractionTool
+        from maxim.interactive.prompts import PromptHandler, PromptResponse
+
+        class _TestHandler(PromptHandler):
+            def prompt(self, request):
+                return PromptResponse(value="option B")
+
+        set_interactive_mode(InteractiveMode.ON)
+        tool = RequestInteractionTool(prompt_handler=_TestHandler())
+        out = tool.execute(question="Pick one", options=["option A", "option B"])
+
+        assert out.success is True
+        assert "User responded: option B" in out.output
+        assert out.metadata["was_prompted"] is True
+
+    def test_end_to_end_disabled(self):
+        from maxim.simulation.sim_logger import InteractiveMode, set_interactive_mode
+        from maxim.tools.display import RequestInteractionTool
+        from maxim.interactive.prompts import PromptHandler
+
+        class _TestHandler(PromptHandler):
+            def prompt(self, request):
+                raise AssertionError("Should not be called")
+
+        set_interactive_mode(InteractiveMode.OFF)
+        tool = RequestInteractionTool(prompt_handler=_TestHandler())
+        out = tool.execute(question="Continue?")
+
+        assert out.success is True
+        assert "autonomously" in out.output.lower()
+        assert out.metadata["was_prompted"] is False
+
+    def test_end_to_end_no_handler(self):
+        from maxim.simulation.sim_logger import InteractiveMode, set_interactive_mode
+        from maxim.tools.display import RequestInteractionTool
+
+        set_interactive_mode(InteractiveMode.ON)
+        tool = RequestInteractionTool(prompt_handler=None)
+        out = tool.execute(question="Pick", options=["x", "y"])
+
+        assert out.success is True
+        assert "could not be collected" in out.output.lower()
+        assert out.metadata["was_prompted"] is False
+        assert out.metadata["reason"] == "no_handler"
 
 
 # ---------------------------------------------------------------------------

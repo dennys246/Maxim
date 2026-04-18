@@ -62,6 +62,8 @@ def test_request_interaction_uses_handler_when_interactive_on():
 
     assert out.success is True
     assert "proceed" in (out.output or "")
+    assert out.output.startswith("User responded:")
+    assert out.metadata["was_prompted"] is True
     assert len(handler.requests) == 1
     assert handler.requests[0].question == "Continue?"
 
@@ -75,7 +77,9 @@ def test_request_interaction_disabled_when_interactive_off():
     out = tool.execute(question="Anything?")
 
     assert out.success is True
-    assert "disabled" in (out.output or "").lower()
+    assert "autonomously" in (out.output or "").lower()
+    assert out.metadata["was_prompted"] is False
+    assert out.metadata["reason"] == "interactive_mode_off"
     assert handler.requests == []
 
 
@@ -100,5 +104,7 @@ def test_request_interaction_falls_back_without_handler(capsys: Any):
     out = tool.execute(question="Pick one", options=["a", "b"])
 
     assert out.success is True
-    # Falls back to display_scene printing the question
-    assert "next turn" in (out.output or "").lower()
+    # Falls back to display_scene printing the question but cannot collect response
+    assert "could not be collected" in (out.output or "").lower()
+    assert out.metadata["was_prompted"] is False
+    assert out.metadata["reason"] == "no_handler"
