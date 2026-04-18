@@ -24,9 +24,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     core.add_argument(
         "--interactive",
-        type=str,
+        nargs="?",
+        const="true",
         default=None,
-        help="Enable interactive terminal input (True/False). When unset, "
+        help="Enable interactive terminal input. Use bare --interactive "
+        "to enable, or --interactive false to disable. When unset, "
         "auto-enables for DM campaigns and disables for generative sims.",
     )
     core.add_argument(
