@@ -783,6 +783,8 @@ class TestForUrlFactory:
         import os
 
         os.environ.pop("MAXIM_PEER_PROBE_KEY", None)
+        os.environ.pop("MAXIM_LANE_LARGE_REMOTE_API_KEY", None)
+        os.environ.pop("MAXIM_PEER_API_KEY", None)
         backend = _MaximPeerBackend.for_url("http://127.0.0.1:9996/v1", api_key=None)
         # _api_key_override is None, so _get_api_key falls through to
         # the env path with the empty api_key_env fallback
