@@ -54,6 +54,16 @@ Formalize the boundary between SEM (embodiment layer) and DM (narrative layer). 
 - No SEM tokens in narrative output
 - No narrative tokens in embodiment output
 
+## DisplayExtension implementations (wired by 0.3.1, built here)
+
+The [interactive_experience_031.md](interactive_experience_031.md) plan (0.3.1) wired `MaximDisplay` into `sim_logger` with thread-safe routing, atexit cleanup, and the `DisplayExtension` protocol ready. `RequestInteractionTool` now uses `set_prompt()` / `clear_prompt()` for the input panel. **B3 is where `DisplayExtension` implementations live:**
+
+- **`CampaignDisplay`** — DM campaign panels: character sheet, inventory, encounter info, NPC relationships. Auto-created when `DMRuntime` starts. Designed in [foundational_buildout_plan.md:1020-1047](archive/foundational_buildout_plan.md#L1020). ~150 LOC.
+- **`AgentStateDisplay`** — Acting Coach panel: current role values, speech register, active failure mode, continuity state. Shows the "acting coach" metadata alongside the agent log. ~80 LOC.
+- **`BioStateDisplay`** — condensed bio-system readout panel: NAc top links, hippocampus tier counts, active pain triggers. Surfaces the same data as the Stage 8 introspection tools but as a persistent side panel. ~100 LOC.
+
+These extensions register via `display.add_extension(ext)` and render in the right column of the two-column layout (`MaximDisplay._build_layout()` already handles the extension layout path).
+
 ## Deferred follow-ups
 
 - Per-NPC voice tuning (practice doc territory — behavioral_convergence_practice)

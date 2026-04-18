@@ -34,11 +34,12 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
+- [interactive_experience_031.md](interactive_experience_031.md) — **Draft** (2026-04-18, reviewed). Interactive UX fixes for 0.3.1: `RequestInteractionTool` honest reporting, narrator fallback immersion, handler logging, story context truncation, `MaximDisplay` → `sim_logger` wiring (rich panel UI for `--interactive`), light prompt cleanup. ~300-400 LOC across 7 stages. 4-round review (3-lens + simplification + user).
 - [substrate_concept_decomposition.md](substrate_concept_decomposition.md) — **Stage 1 COMPLETE + VALIDATED** (2026-04-17). Protocol-based noun-phrase extraction. 100% concept-level recall vs 36.4% baseline. Stage 2 (role-tagged edges) pending.
 - [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) — **PARTIAL** (2026-04-17). Stage 3 (pain/salience spike) SHIPPED via sem_learning_loop.md. `observe_episode_event` now wired into production agent loop via behavioral_convergence_wiring.md. Stages 1-2 (tool execution + semantic shift) remain — ship before P5.
 - [biosystem_unification.md](biosystem_unification.md) — **central tracking doc** (2026-04-14, updated 2026-04-17). Waves 0-3 **ALL SHIPPED + ARCHIVED**. Wave 4 (agent_factory_canonicalization) not scheduled.
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
-- [agent_factory_canonicalization.md](agent_factory_canonicalization.md) — **RUNNING DOC, not scheduled** (2026-04-14). The Option D follow-up to `executor_bootstrap_unification.md` — make `AgentFactory.create_agent` the only door for constructing an agent in Maxim. Becomes a downhill rewrite once Wave 3 `build_bio_stack` merges. Subsumes `sem_execution_hook.md` Stage 2b. Trigger conditions documented inline.
+- [agent_factory_canonicalization.md](agent_factory_canonicalization.md) — **RUNNING DOC, trigger #4 activated** (2026-04-18). The Option D follow-up to `executor_bootstrap_unification.md` — make `AgentFactory.create_agent` the only door for constructing an agent in Maxim. **Wave G (Game/External Host) folded in** from game_npc_integration.md: wire Executor + bio-pipeline into `AgentPool.run_turn()`, HostContext protocol, async tool dispatch, emotional state readout, memory backend. F-wave ~1500-2500 LOC + G-wave ~940 LOC. Target: 0.5.
 - [node_security_simplification.md](node_security_simplification.md) — Phase 1 ✅ SHIPPED. Phase 2 config-surface unification deferred.
 - [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — living roadmap for the full reactive peer mesh arc (C3→C9). C3-C4.6 COMPLETE. C5+ remain.
 - [cross_platform_file_lock.md](cross_platform_file_lock.md) — shell plan to unify `utils/process_lock` and `filelock.FileLock`. Blocks nothing.
@@ -101,19 +102,39 @@ Earlier archives (2026-04-11/12, S1–S4 shipped 2026-04-12):
 
 ## Version path to 1.0
 
-Three tracks run in parallel:
+Five tracks run in parallel:
 - **Track A — Substrate:** the bio-inspired research claim. ~~F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4~~ ALL SHIPPED → P5 → P6 → P8.
 - **Track B — Prompt layer:** ~~B1~~ SHIPPED → B3 → B4 → B5.
 - **Track C — Infrastructure:** ~~LLM path Plans 1–3.5~~ SHIPPED → ~~Reactive peer mesh (C3.5/C3.6/C4.6)~~ ALL SHIPPED. Self-healing loop complete.
-- **Track D — Behavioral convergence (NEW):** ~~Tier 1 + Tier 2 + Tier 3~~ ALL PASS (41/41 hypotheses) → Scale validation (20+ seeds).
+- **Track D — Behavioral convergence:** ~~Tier 1 + Tier 2 + Tier 3~~ ALL PASS (41/41 hypotheses) → Scale validation (20+ seeds).
+- **Track E — Agent control surface (NEW):** Interactive UX fixes → AgentFactory canonicalization (F-wave) + Game/External Host (G-wave).
 
 | Version | What ships | What it proves | Status |
 |---|---|---|---|
 | ~~**0.2.x**~~ | Foundations, cleanup, peer flexibility | Friction removed, infrastructure stable | ✅ SHIPPED |
-| **0.3.0** | SEM learning loop, valence annotation, cerebellum activation, concept decomposition, behavioral convergence (Tier 1+2+3), reactive mesh (C4+C4.5) | **Cross-session learning without fine-tuning.** Agent learns from own actions, persists, behaves differently. 41/41 experiments. | ✅ **CURRENT** |
-| **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, ~~peer mesh (C3.5/C3.6/C4.6)~~ COMPLETE | Learning is robust under variance + load. Substrate persists at 10k+ nodes. Mesh fully operational. | **NEXT** |
-| **0.5** | P6 (extinction vs LRU), P8 (sleep replay), B3 (acting coach), B4 (replanning) | Agent forgets appropriately, consolidates offline, has coherent voice, recovers from failures. | Planned |
-| **1.0** | All phases passing, B4 gating, behavioral convergence at scale with statistical rigor | Cross-session learning at realistic scale, coherent voice, ongoing research program | Target |
+| **0.3.0** | SEM learning loop, valence annotation, cerebellum activation, concept decomposition, behavioral convergence (Tier 1+2+3), reactive mesh (C4+C4.5) | **Cross-session learning without fine-tuning.** Agent learns from own actions, persists, behaves differently. 41/41 experiments. | ✅ **SHIPPED** |
+| **0.3.1** | Interactive UX fixes (RequestInteractionTool honesty, narrator fallback, MaximDisplay wiring, prompt cleanup), agent introspection tools (nac_stats, memory_pressure, loop_stats, pain_triggers_active) | Agent can distinguish real user input from defaults. Rich panel UI for `--interactive`. Agent can introspect its own learning + pain state. | **IN PROGRESS** |
+| **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, concept decomposition S2-3 | Learning is robust under variance + load. Substrate persists at 10k+ nodes. | **NEXT** |
+| **0.5** | AgentFactory canonicalization (F+G waves), B3 (acting coach), P6 (extinction), P8 (sleep replay) | One door for every agent. NPCs learn from actions via game engine. Agent has coherent voice. Memory consolidates offline. | Planned |
+| **1.0** | B4 (replanning — **GATES 1.0**), behavioral convergence at scale with statistical rigor | Agent recovers from failures, cross-session learning at realistic scale | Target |
+
+### 0.3.1 roadmap (detailed)
+
+| Track | What | Plan | Scope | Why |
+|---|---|---|---|---|
+| **E — Interactive UX** | RequestInteractionTool honest reporting | [interactive_experience_031.md](interactive_experience_031.md) Stage 1 | ~60 LOC | Agent lies to itself about user input; critical fix |
+| **E — Interactive UX** | Narrator fallback immersion | Stage 2 | ~70 LOC | Bracket tags break immersion |
+| **E — Interactive UX** | Handler selection logging + unknown-mode error | Stage 3 | ~50 LOC | Silent misconfiguration |
+| **E — Interactive UX** | Story context word-count truncation | Stage 4 | ~50 LOC | Char-count proxy breaks on unicode |
+| **E — Interactive UX** | Wire MaximDisplay into sim_logger (thread-safe + atexit) | Stage 5 | ~180 LOC | Rich panel UI for `--interactive`, designed but never wired |
+| **E — Interactive UX** | Light prompt cleanup (remove dead PromptTypes, freeze_context, poll_freeform) | Stage 6 | ~-60 LOC | Dead code with zero production callers |
+| **E — Interactive UX** | Integration smoke test | Stage 7 | ~50 LOC | End-to-end validation |
+| **Agent introspection** | `nac_stats` — total observations, top-rewarded tools, RPE | [tool_refinement_plan.md](tool_refinement_plan.md) | ~100 LOC | Agent can reason about what it's learned |
+| **Agent introspection** | `memory_pressure` — per-tier counts, promotion rate | tool_refinement_plan.md | ~100 LOC | Agent can assess its own memory health |
+| **Agent introspection** | `loop_stats` — Hz, cycle time, steps since boot | tool_refinement_plan.md | ~100 LOC | Agent can diagnose its own performance |
+| **Agent introspection** | `pain_triggers_active` — current pain triggers + intensity | tool_refinement_plan.md | ~100 LOC | Agent can reason about its own discomfort |
+
+**Why introspection tools in 0.3.1:** These are the cheapest high-value additions (~100 LOC each, no prerequisites). They give the agent self-awareness about its own learning state — which directly supports the 0.3 research claim ("the agent learns from its own actions"). The agent currently *has* causal learning, but can't *see* it. `nac_stats` and `memory_pressure` close that loop. They also provide immediate value for game NPC integration (Stage G3 emotional readout builds on the same data sources).
 
 ### 0.4 roadmap (detailed)
 
@@ -121,6 +142,7 @@ Three tracks run in parallel:
 |---|---|---|---|
 | **D — Tier 3 at scale** | Run organic learning experiment with 20+ seeds, report mean ± std | ~1 session | 0.3 proves the mechanism with 1 run; 0.4 proves it's not a fluke |
 | **A — Episode boundaries** | Tool execution boundary + semantic shift detection (Rules 1-2) | ~200 LOC | Pre-P5 polish, observe_episode_event is now wired |
+| **A — Concept decomposition** | Stages 2-3 (role-tagged edges + ConceptExtractor convergence) | ~250 LOC | Already validated at +63.6 pp, polish pass |
 | **A — P5 stress persistence** | 10k+ node persistence stress test | ~500 LOC | Validates substrate robustness under realistic load |
 | **C — Peer mesh completion** | ~~C3.5 (`--node update/restart`)~~ SHIPPED, ~~C3.6 (`--node llm`)~~ SHIPPED, ~~C4.6 (auto-undrain)~~ SHIPPED | ✅ COMPLETE | Self-healing reactive mesh |
 

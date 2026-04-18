@@ -1115,8 +1115,29 @@ def main(argv: Sequence[str] | None = None) -> int:
 
                     _prompt_handler = create_handler("auto")
                 except Exception as _ph_exc:
-                    logger.debug("PromptHandler unavailable: %s", _ph_exc)
+                    logger.warning("PromptHandler unavailable: %s", _ph_exc)
                     _prompt_handler = None
+
+                # MaximDisplay — rich panel UI when interactive mode is on.
+                # Routes sim_log output through structured panels instead
+                # of raw ANSI print. Gracefully degrades to None (no-op)
+                # when rich is unavailable or stdout is not a TTY.
+                try:
+                    from maxim.interactive.display import create_display
+                    from maxim.simulation.sim_logger import (
+                        get_interactive_mode,
+                        set_active_display,
+                    )
+
+                    _interactive_on = get_interactive_mode().value == "on"
+                    if _interactive_on:
+                        _maxim_display = create_display("auto")
+                        if _maxim_display is not None:
+                            _maxim_display.start()
+                            set_active_display(_maxim_display)
+                            logger.info("MaximDisplay started (interactive mode)")
+                except Exception as _disp_exc:
+                    logger.warning("MaximDisplay unavailable: %s", _disp_exc)
 
                 registry = build_tool_registry(
                     response_output=response_output,

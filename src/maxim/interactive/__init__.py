@@ -23,7 +23,6 @@ from maxim.interactive.prompts import (
     PromptRequest,
     PromptResponse,
     PromptHandler,
-    freeze_context,
 )
 
 __all__ = [
@@ -31,5 +30,4 @@ __all__ = [
     "PromptRequest",
     "PromptResponse",
     "PromptHandler",
-    "freeze_context",
 ]
