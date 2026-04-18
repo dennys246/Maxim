@@ -615,3 +615,307 @@ class TestRouterAutoDrainIntegration:
         router._provider_states["peer1"] = ProviderState(consecutive_errors=10)
         router._maybe_schedule_auto_drain("peer1", "down")
         assert len(router._pending_auto_drains) == 0
+
+
+# ── AutoUndrainProber (C4.6) ─────────────────────────────────────────────
+
+
+class TestProbeInterval:
+    """Unit tests for the ``_probe_interval()`` env var parser."""
+
+    def test_default_is_90(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S", raising=False)
+        from maxim.peer.drain_routing import _probe_interval
+
+        assert _probe_interval() == 90.0
+
+    def test_custom_value(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S", "120")
+        from maxim.peer.drain_routing import _probe_interval
+
+        assert _probe_interval() == 120.0
+
+    def test_clamped_low(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S", "5")
+        from maxim.peer.drain_routing import _probe_interval
+
+        assert _probe_interval() == 30.0
+
+    def test_clamped_high(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S", "9999")
+        from maxim.peer.drain_routing import _probe_interval
+
+        assert _probe_interval() == 600.0
+
+    def test_invalid_value_returns_default(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S", "abc")
+        from maxim.peer.drain_routing import _probe_interval
+
+        assert _probe_interval() == 90.0
+
+
+class TestAutoUndrainProber:
+    """Unit tests for AutoUndrainProber._probe_cycle (no real threads)."""
+
+    @pytest.fixture
+    def drain_file(self, tmp_path: Path) -> Path:
+        p = tmp_path / "drained_nodes.leader.txt"
+        p.write_text("")
+        return p
+
+    @pytest.fixture
+    def prober(self, drain_file: Path):
+        from maxim.peer.drain_routing import AutoUndrainProber
+
+        return AutoUndrainProber(
+            node_to_url={
+                "leader-desk": "http://192.168.1.10:8099/v1",
+                "mac-studio": "https://mac.example.com/v1",
+            },
+            cluster_key="sk-cluster-abc",
+            drain_path=drain_file,
+            interval_s=1.0,  # fast for testing
+        )
+
+    def test_no_auto_drained_noop(self, prober, drain_file: Path):
+        """No auto-drained entries → probe cycle does nothing."""
+        drain_file.write_text("mac-studio\n")  # operator drain, no tag
+        prober._probe_cycle()
+        # Operator drain untouched
+        assert "mac-studio" in drain_file.read_text()
+
+    def test_operator_drain_never_touched(self, prober, drain_file: Path, monkeypatch):
+        """Operator drains (no # auto: tag) are NEVER cleared,
+        even if the node probes healthy."""
+        drain_file.write_text("mac-studio\n")
+
+        # Mock probe to return healthy
+        _mock_healthy_probe(monkeypatch)
+        prober._probe_cycle()
+
+        # Operator drain is still there
+        assert "mac-studio" in drain_file.read_text()
+
+    def test_auto_drain_cleared_on_healthy_probe(self, prober, drain_file: Path, monkeypatch):
+        """Auto-drain entry is cleared when the node probes healthy."""
+        drain_file.write_text("mac-studio  # auto:2026-04-17T10:00:00Z reason:down\n")
+
+        _mock_healthy_probe(monkeypatch)
+        prober._probe_cycle()
+
+        content = drain_file.read_text()
+        assert "mac-studio" not in content
+
+    def test_auto_drain_stays_on_failed_probe(self, prober, drain_file: Path, monkeypatch):
+        """Auto-drain entry stays when the node still fails."""
+        drain_file.write_text("mac-studio  # auto:2026-04-17T10:00:00Z reason:timeout\n")
+
+        _mock_failed_probe(monkeypatch)
+        prober._probe_cycle()
+
+        content = drain_file.read_text()
+        assert "mac-studio" in content
+        assert "auto:" in content
+
+    def test_mixed_drains_only_auto_probed(self, prober, drain_file: Path, monkeypatch):
+        """Operator + auto drains coexist. Only auto drains are probed/cleared."""
+        drain_file.write_text(
+            "leader-desk\n"  # operator drain
+            "mac-studio  # auto:2026-04-17T10:00:00Z reason:auth_failed\n"
+        )
+
+        _mock_healthy_probe(monkeypatch)
+        prober._probe_cycle()
+
+        content = drain_file.read_text()
+        # Operator drain preserved
+        assert "leader-desk" in content
+        # Auto drain cleared
+        assert "mac-studio" not in content
+
+    def test_orphan_auto_drain_skipped(self, prober, drain_file: Path, monkeypatch):
+        """Auto-drained node not in mesh.yml is skipped (no URL to probe)."""
+        drain_file.write_text("unknown-node  # auto:2026-04-17T10:00:00Z reason:down\n")
+
+        # Should NOT try to probe — no URL for unknown-node.
+        # If it tried to probe, mock would not be called.
+        prober._probe_cycle()
+
+        # Entry stays (can't probe, can't clear)
+        assert "unknown-node" in drain_file.read_text()
+
+    def test_toctou_safety_operator_re_drained(self, prober, drain_file: Path, monkeypatch):
+        """If operator re-drains between probe and write, don't clear."""
+        # Start with auto-drained entry
+        drain_file.write_text("mac-studio  # auto:2026-04-17T10:00:00Z reason:down\n")
+
+        # Mock healthy probe but replace the file before _clear runs.
+        # This simulates an operator removing the auto-drain and adding
+        # a fresh operator drain between probe and filelock acquisition.
+        original_clear = prober._clear_auto_drain
+
+        def intercepted_clear(name: str) -> None:
+            # Operator re-drained (no tag) between probe and write
+            drain_file.write_text("mac-studio\n")
+            original_clear(name)
+
+        monkeypatch.setattr(prober, "_clear_auto_drain", intercepted_clear)
+        _mock_healthy_probe(monkeypatch)
+        prober._probe_cycle()
+
+        # Operator drain must survive — _clear_auto_drain re-reads under
+        # lock and sees no auto: tag.
+        assert "mac-studio" in drain_file.read_text()
+
+    def test_preserves_drain_file_header(self, prober, drain_file: Path, monkeypatch):
+        """Clearing an auto-drain preserves the file header + other entries."""
+        drain_file.write_text(
+            "# Maxim drain state (Plan 4 C2). Role-scoped.\n"
+            "leader-desk\n"
+            "mac-studio  # auto:2026-04-17T10:00:00Z reason:down\n"
+        )
+
+        _mock_healthy_probe(monkeypatch)
+        prober._probe_cycle()
+
+        content = drain_file.read_text()
+        assert "# Maxim drain state" in content
+        assert "leader-desk" in content
+        assert "mac-studio" not in content
+
+
+class TestAutoUndrainProberLifecycle:
+    """Thread start/stop tests."""
+
+    def test_start_stop(self, tmp_path: Path):
+        from maxim.peer.drain_routing import AutoUndrainProber
+
+        drain_file = tmp_path / "drain.txt"
+        drain_file.write_text("")
+        prober = AutoUndrainProber(
+            node_to_url={},
+            cluster_key="sk-test",
+            drain_path=drain_file,
+            interval_s=0.1,
+        )
+        prober.start()
+        assert prober._thread is not None
+        assert prober._thread.is_alive()
+        prober.stop()
+        assert prober._thread is None
+
+    def test_start_is_idempotent(self, tmp_path: Path):
+        from maxim.peer.drain_routing import AutoUndrainProber
+
+        drain_file = tmp_path / "drain.txt"
+        drain_file.write_text("")
+        prober = AutoUndrainProber(
+            node_to_url={},
+            cluster_key="sk-test",
+            drain_path=drain_file,
+            interval_s=0.1,
+        )
+        prober.start()
+        thread1 = prober._thread
+        prober.start()  # second call is a no-op
+        assert prober._thread is thread1
+        prober.stop()
+
+
+class TestBuildAutoUndrainProber:
+    """Factory tests."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_singleton(self, monkeypatch):
+        """Reset the module-level singleton so factory tests don't leak."""
+        import maxim.peer.drain_routing as _mod
+
+        monkeypatch.setattr(_mod, "_active_prober", None)
+
+    def test_builds_from_mesh_cfg(self, tmp_path: Path, monkeypatch):
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+
+        from maxim.peer.drain_routing import build_auto_undrain_prober
+        from maxim.peer.mesh_config import MeshConfig, MeshNode
+
+        mesh = MeshConfig(
+            cluster_key="sk-cluster-abc",
+            self_name="leader-desk",
+            nodes=(
+                MeshNode(name="leader-desk", url="http://192.168.1.10:8099/v1", role="leader"),
+                MeshNode(name="mac-studio", url="https://mac.example.com/v1", role="peer"),
+            ),
+        )
+        drain_path = tmp_path / "drain.txt"
+        drain_path.write_text("")
+        prober = build_auto_undrain_prober(mesh, "sk-cluster-abc", drain_path=drain_path, interval_s=60.0)
+        assert prober._node_to_url["leader-desk"] == "http://192.168.1.10:8099/v1"
+        assert prober._node_to_url["mac-studio"] == "https://mac.example.com/v1"
+        assert prober._cluster_key == "sk-cluster-abc"
+        assert prober._interval_s == 60.0
+
+    def test_singleton_returns_same_prober(self, tmp_path: Path, monkeypatch):
+        """Review fold: second call returns the same instance if alive."""
+        monkeypatch.setenv("MAXIM_ROLE", "leader")
+
+        from maxim.peer.drain_routing import build_auto_undrain_prober
+        from maxim.peer.mesh_config import MeshConfig, MeshNode
+
+        mesh = MeshConfig(
+            cluster_key="sk-cluster-abc",
+            self_name="leader-desk",
+            nodes=(MeshNode(name="leader-desk", url="http://192.168.1.10:8099/v1", role="leader"),),
+        )
+        drain_path = tmp_path / "drain.txt"
+        drain_path.write_text("")
+        p1 = build_auto_undrain_prober(mesh, "sk-cluster-abc", drain_path=drain_path, interval_s=0.1)
+        p1.start()
+        p2 = build_auto_undrain_prober(mesh, "sk-cluster-abc", drain_path=drain_path, interval_s=0.1)
+        assert p1 is p2
+        p1.stop()
+
+
+# ── probe helpers ────────────────────────────────────────────────────────
+
+
+class _FakeProbeResult:
+    def __init__(self, outcome: str):
+        self.outcome = outcome
+
+
+def _mock_healthy_probe(monkeypatch):
+    """Patch _MaximPeerBackend to return a healthy probe result."""
+
+    class _FakeBackend:
+        def __init__(self, url, *, api_key=None, model=None):
+            pass
+
+        @classmethod
+        def for_url(cls, url, *, api_key=None, model=None):
+            return cls(url, api_key=api_key)
+
+        def health_check(self, *, enable_stage2=False):
+            return _FakeProbeResult("ok")
+
+    import maxim.models.language.maxim_peer_backend as mpb
+
+    monkeypatch.setattr(mpb, "_MaximPeerBackend", _FakeBackend)
+
+
+def _mock_failed_probe(monkeypatch):
+    """Patch _MaximPeerBackend to return a failed probe result."""
+
+    class _FakeBackend:
+        def __init__(self, url, *, api_key=None, model=None):
+            pass
+
+        @classmethod
+        def for_url(cls, url, *, api_key=None, model=None):
+            return cls(url, api_key=api_key)
+
+        def health_check(self, *, enable_stage2=False):
+            return _FakeProbeResult("network_down")
+
+    import maxim.models.language.maxim_peer_backend as mpb
+
+    monkeypatch.setattr(mpb, "_MaximPeerBackend", _FakeBackend)

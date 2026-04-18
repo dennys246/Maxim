@@ -1,17 +1,21 @@
-"""Drain-state routing bridge for the LLM router (Plan 4 Stages C4 + C4.5).
+"""Drain-state routing bridge for the LLM router (Plan 4 Stages C4 + C4.5 + C4.6).
 
 Bridges the gap between the mesh drain-state layer (``peer/drain_state.py``,
 which operates on node names) and the LLM router (``models/language/router.py``,
 which operates on provider keys).
 
-Two components:
+Three components:
 
 - :class:`DrainConstraint` (C4, read-only): injected as ``drain_constraint``
   callback. Checks whether a provider maps to a drained mesh node.
 - :class:`AutoDrainWriter` (C4.5, write): injected as ``auto_drain_callback``.
   Writes auto-drain entries when a provider crosses the failure threshold.
-  Entries are tagged ``# auto:<timestamp> reason:<type>`` so C4.6's
-  auto-undrain can distinguish them from sticky operator drains.
+  Entries are tagged ``# auto:<timestamp> reason:<type>`` so the prober can
+  distinguish them from sticky operator drains.
+- :class:`AutoUndrainProber` (C4.6, background): daemon thread that
+  periodically probes auto-drained nodes and clears their drain entries
+  when healthy. **NEVER touches operator drains** (entries without
+  ``# auto:`` tag are sticky by design).
 
 The URL lookup table is built once at construction from ``mesh.yml`` topology.
 Topology changes require a router restart to take effect — consistent with the
@@ -20,8 +24,10 @@ router's static provider list.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -404,3 +410,276 @@ def build_auto_drain_writer(
     if drain_path is None:
         drain_path = constraint._drain_path
     return AutoDrainWriter(dict(constraint._provider_to_node), drain_path)
+
+
+# ─── auto-undrain probe interval (C4.6) ──────────────────────────────────
+
+_DEFAULT_PROBE_INTERVAL_S = 90.0
+_MIN_PROBE_INTERVAL_S = 30.0
+_MAX_PROBE_INTERVAL_S = 600.0
+
+
+def _probe_interval() -> float:
+    """Read ``MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S``, clamped [30, 600]."""
+    raw = os.environ.get("MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S", "").strip()
+    if not raw:
+        return _DEFAULT_PROBE_INTERVAL_S
+    try:
+        val = float(raw)
+    except (ValueError, TypeError):
+        return _DEFAULT_PROBE_INTERVAL_S
+    return max(_MIN_PROBE_INTERVAL_S, min(_MAX_PROBE_INTERVAL_S, val))
+
+
+# ─── AutoUndrainProber (C4.6) ────────────────────────────────────────────
+
+
+class AutoUndrainProber:
+    """Background daemon that probes auto-drained nodes and restores them.
+
+    Plan 4 C4.6. Completes the self-healing loop started by
+    :class:`AutoDrainWriter` (C4.5): the writer auto-drains nodes after
+    persistent failure, and this prober auto-undrains them when a health
+    check passes.
+
+    **Critical invariant:** NEVER clears operator drains. Only entries
+    tagged with ``# auto:`` in the drain state file are candidates.
+    Entries without a tag (operator drains, C3.3 install drains) are
+    sticky and untouched.
+
+    Lifecycle:
+
+    - Constructed by :func:`build_auto_undrain_prober` at router
+      construction time in ``lane_backends.py``.
+    - ``start()`` spawns a daemon thread that runs until the process
+      exits (``atexit`` handler calls ``stop()``).
+    - The thread sleeps for ``interval_s`` between probe cycles.
+    - Each cycle reads the drain file, filters for ``# auto:`` entries,
+      probes each via ``_MaximPeerBackend.for_url(...).health_check()``,
+      and clears successful entries under filelock.
+    """
+
+    def __init__(
+        self,
+        node_to_url: dict[str, str],
+        cluster_key: str,
+        drain_path: Path,
+        *,
+        interval_s: float | None = None,
+    ) -> None:
+        self._node_to_url = node_to_url
+        self._cluster_key = cluster_key
+        self._drain_path = drain_path
+        self._interval_s = interval_s if interval_s is not None else _probe_interval()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._atexit_registered = False
+
+    def start(self) -> None:
+        """Start the background probe thread.
+
+        Idempotent — calling ``start()`` when already running is a no-op.
+        Review fold: ``atexit.register`` guarded by ``_atexit_registered``
+        so start/stop/restart cycles don't accumulate handlers.
+        """
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._run_loop,
+            name="auto-undrain-prober",
+            daemon=True,
+        )
+        self._thread.start()
+        if not self._atexit_registered:
+            atexit.register(self.stop)
+            self._atexit_registered = True
+        logger.debug("auto-undrain prober started (interval=%.0fs)", self._interval_s)
+
+    def stop(self) -> None:
+        """Signal the probe thread to stop and wait for it to exit."""
+        self._stop_event.set()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=5.0)
+        self._thread = None
+
+    def _run_loop(self) -> None:
+        """Main loop: sleep → probe auto-drained nodes → repeat."""
+        while not self._stop_event.is_set():
+            # Sleep first so the prober doesn't fire immediately at startup
+            # (the node was just auto-drained, give it time to recover).
+            if self._stop_event.wait(timeout=self._interval_s):
+                break  # stop requested during sleep
+            try:
+                self._probe_cycle()
+            except Exception:
+                # Review fold: WARNING not DEBUG — a persistent cycle
+                # failure silently kills the self-healing loop and
+                # operators need to see it.
+                logger.warning("auto-undrain probe cycle failed", exc_info=True)
+
+    def _probe_cycle(self) -> None:
+        """One probe cycle: read auto-drained nodes, probe each, clear healthy ones."""
+        entries = _load_tagged_entries(self._drain_path)
+        auto_drained = {name: tag for name, tag in entries.items() if tag is not None and tag.startswith("auto:")}
+
+        if not auto_drained:
+            return  # no auto-drained nodes — nothing to do
+
+        for name in list(auto_drained):
+            url = self._node_to_url.get(name)
+            if url is None:
+                # Node not in mesh.yml — orphan auto-drain entry.
+                # Don't probe (no URL to probe), don't clear (operator
+                # can clean up with `resume`). Log once per cycle.
+                logger.debug(
+                    "auto-undrain: skipping orphan %r (not in mesh.yml)",
+                    name,
+                )
+                continue
+
+            if self._probe_node(name, url):
+                self._clear_auto_drain(name)
+
+    def _probe_node(self, name: str, url: str) -> bool:
+        """Probe a single node. Returns True if healthy."""
+        try:
+            from maxim.models.language.maxim_peer_backend import (
+                _MaximPeerBackend,
+            )
+        except ImportError:
+            logger.debug(
+                "auto-undrain: backend import failed, skipping probe for %s",
+                name,
+            )
+            return False
+
+        try:
+            backend = _MaximPeerBackend.for_url(url, api_key=self._cluster_key)
+            result = backend.health_check(enable_stage2=False)
+            outcome = getattr(result, "outcome", "other")
+            if outcome == "ok":
+                logger.info(
+                    "auto-undrain: node %s is healthy, clearing auto-drain",
+                    name,
+                )
+                return True
+            logger.debug(
+                "auto-undrain: node %s probe returned %s, staying drained",
+                name,
+                outcome,
+            )
+            return False
+        except Exception:
+            logger.debug("auto-undrain: probe failed for %s", name, exc_info=True)
+            return False
+
+    def _clear_auto_drain(self, name: str) -> None:
+        """Remove an auto-drain entry from the drain file under filelock.
+
+        Only removes the entry if it still has the ``# auto:`` tag at
+        the time we hold the lock (TOCTOU safety: an operator may have
+        manually resumed and re-drained the node between our probe and
+        this write — if the new entry has no auto tag, it's an operator
+        drain and we must not touch it).
+        """
+        try:
+            from filelock import FileLock
+
+            from maxim.utils.atomic_io import atomic_write_text
+
+            lock = FileLock(str(self._drain_path) + ".lock", timeout=10)
+            with lock:
+                # Re-read under lock.
+                entries = _load_tagged_entries(self._drain_path)
+                tag = entries.get(name)
+                if tag is None or not tag.startswith("auto:"):
+                    # Not auto-drained anymore (operator resumed and
+                    # possibly re-drained, or already cleared by another
+                    # cycle). No-op.
+                    return
+
+                # Rebuild the file without this entry.
+                try:
+                    content = self._drain_path.read_text()
+                except FileNotFoundError:
+                    return
+                lines = content.splitlines(keepends=True)
+                new_lines = []
+                for line in lines:
+                    # Match: the line's name portion (before #) matches.
+                    stripped_name = line.split("#", 1)[0].strip()
+                    if stripped_name == name:
+                        continue  # drop this entry
+                    new_lines.append(line)
+                atomic_write_text(self._drain_path, "".join(new_lines))
+
+        except Exception:
+            logger.warning(
+                "auto-undrain: failed to clear drain for %s",
+                name,
+                exc_info=True,
+            )
+            return
+
+        log_structured(
+            logger,
+            logging.INFO,
+            event="auto_undrain",
+            data={"node": name},
+        )
+
+
+_active_prober: AutoUndrainProber | None = None
+"""Module-level singleton. Review fold (cross-confirmed BLOCKING):
+``_build_local_backend`` runs once per lane (large/medium/small), so
+without a singleton, three probers would spawn three threads all probing
+the same drain file. The singleton ensures exactly one prober per process.
+"""
+
+
+def build_auto_undrain_prober(
+    mesh_cfg: Any,
+    cluster_key: str,
+    drain_path: Path | None = None,
+    *,
+    interval_s: float | None = None,
+) -> AutoUndrainProber:
+    """Build or return the singleton :class:`AutoUndrainProber`.
+
+    Review fold: returns the existing prober if one is already alive,
+    preventing duplicate threads when called from multiple lanes.
+
+    Parameters
+    ----------
+    mesh_cfg
+        A ``MeshConfig`` instance. Provides node names + URLs.
+    cluster_key
+        The cluster key for authenticating health-check probes.
+    drain_path
+        Override for the drain state file path. Defaults to
+        ``drain_state.drain_state_path()`` (role-scoped).
+    interval_s
+        Override probe interval. Defaults to
+        ``MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S`` or 90s.
+    """
+    global _active_prober  # noqa: PLW0603
+    if _active_prober is not None and _active_prober._thread is not None and _active_prober._thread.is_alive():
+        return _active_prober
+
+    node_to_url: dict[str, str] = {}
+    for node in mesh_cfg.nodes:
+        node_to_url[node.name] = node.url
+
+    if drain_path is None:
+        from maxim.peer.drain_state import drain_state_path
+
+        drain_path = drain_state_path()
+
+    _active_prober = AutoUndrainProber(
+        node_to_url,
+        cluster_key,
+        drain_path,
+        interval_s=interval_s,
+    )
+    return _active_prober

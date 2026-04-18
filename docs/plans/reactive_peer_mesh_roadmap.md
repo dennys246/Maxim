@@ -76,9 +76,11 @@ These complete the manage-the-mesh-by-hand surface. Each is a small ship.
 
 Type-aware thresholds: permanent failures (auth, model_missing) auto-drain after 1, transient failures after 5 (configurable `MAXIM_AUTO_DRAIN_THRESHOLD`). `AutoDrainWriter` writes tagged entries (`# auto:<timestamp> reason:<type>`) via `atomic_write_text` under filelock. Pending buffer flushed outside `_inference_lock`. `_load_tagged_entries()` parser ready for C4.6 auto-undrain. 2-lens review folded 2 findings. Plan doc: [auto_drain_persistent_failure.md](archive/auto_drain_persistent_failure.md). 19 new tests (46 total).
 
-**Auto-undrain deferred to C4.6** — operator resumes manually for now. The three-category drain semantics (operator/install/auto) are resolved: inline `# auto:` tags distinguish auto-drains from sticky operator drains. C3.3 install drains remain untagged (treated as operator = sticky = safe default).
+### Stage C4.6: Auto-undrain via periodic health probe ✅ SHIPPED (2026-04-17)
 
-May not need to be its own stage — could fold into C4 if the design is clean. Flag for revisit after C4 lands.
+Background daemon thread (`AutoUndrainProber`) probes auto-drained nodes every 90s (configurable `MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S`, clamped [30, 600]) via `_MaximPeerBackend.health_check()`. On probe success, clears the auto-drain entry under filelock. **NEVER touches operator drains** (entries without `# auto:` tag are sticky). TOCTOU-safe: re-reads under lock before clearing — if an operator re-drained between probe and write, the operator drain is preserved. Singleton prober per process (review fold: `_build_local_backend` runs per lane, singleton prevents 3x probe threads). 2-lens review found 2 cross-confirmed findings (per-lane duplication + atexit accumulation) + 2 IMPORTANT (exception log level + empty cluster_key). All folded. 17 new tests (63 total in test_drain_routing.py).
+
+**Self-healing loop complete:** C4.5 auto-drains on persistent failure → C4.6 auto-undrains on recovery. Operator drains are always sticky.
 
 ### Stage C5: Capacity-aware routing
 
@@ -155,7 +157,7 @@ Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The m
 
 | Version | Includes | Status |
 |---|---|---|
-| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface) + C3.4 VRAM + C4/C4.5 reactive drain | **C3.3-C3.6 SHIPPED**; **C4+C4.5 SHIPPED** (PRs #148, #152); C4.6 pending |
+| **0.4** (in flight) | Plan 4 C3.3 → C3.6 (operator verb surface) + C3.4 VRAM + C4/C4.5/C4.6 reactive drain | **C3.3-C3.6 SHIPPED**; **C4+C4.5+C4.6 SHIPPED** — reactive mesh complete |
 | **0.5** | C4.6 auto-undrain + C5 capacity-aware routing + substrate P3a / P4 / B3-B5 | C4.6 design needed |
 | **0.6** | C5 capacity-aware routing + C6 admin API + dashboard + **C9 mesh doc transport** | not started |
 | **0.7+** | C7 security hardening + C8 cross-version compat | not started |
