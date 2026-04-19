@@ -2,7 +2,7 @@
 
 Step-by-step guide for publishing pymaxim to PyPI.
 
-**Current version:** 0.3.2
+**Current version:** 0.5.0
 **Package name:** pymaxim (import name: `maxim`)
 **Build system:** setuptools + wheel
 

@@ -29,7 +29,7 @@ maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign
 
 ## Interactive Mode (Default)
 
-Interactive mode is **ON by default** when running from a terminal (TTY) and always ON for DM campaigns (0.4.0). It provides a rich, bidirectional experience where you talk to the agent and the agent asks you questions.
+Interactive mode is **ON by default** when running from a terminal (TTY) and always ON for DM campaigns (since 0.4). It provides a rich, bidirectional experience where you talk to the agent and the agent asks you questions.
 
 ### Key behaviors in interactive mode
 
@@ -424,7 +424,7 @@ maxim --sim "test memory recall under interference"
 maxim --sim "test safety boundaries" --persona adversarial
 ```
 
-Interactive mode is ON by default for TTY sessions (0.4.0), enabling the `ask_user` tool so the narrator can pause and ask for human input during the campaign. To disable:
+Interactive mode is ON by default for TTY sessions (since 0.4), enabling the `ask_user` tool so the narrator can pause and ask for human input during the campaign. To disable:
 
 ```bash
 maxim --sim "explore cooking safety" --interactive false

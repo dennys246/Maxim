@@ -5,6 +5,72 @@ All notable changes to pymaxim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-04-19
+
+### Added
+
+- **B4 Replanning — all 3 stages shipped (1.0 gate closed).** Failure diagnosis with prior-attempt retrieval via hippocampus episodes, Jaccard distance metric for structural novelty, anti-repetition prompt constraint. Blind A/B validation: treatment (replanning) 100% vs control (no replanning) 0%, mean Jaccard 0.894. 48 tests across 3 test files.
+- **P6 Extinction.** `DependencyGraph.decay_edges()` — multiplicative Hebbian decay with pruning. Beats LRU baseline across 10 seeds. 9 tests.
+- **P8 Sleep Replay.** `memory/sleep_replay.py` — offline memory consolidation. Episode ranking by NAc reward_bias + valence. Replay re-fires `apply_hebbian_on_close` with consolidation multiplier. F1 improves vs no-replay control across 10 seeds. 13 tests.
+- **F2 AgentFactory CLI migration.** `AgentFactory.create_full_agent()` composes `build_bio_stack` + `build_executor` + `FearGatedExecutor`. CLI non-sim bootstrap (~100 lines) replaced with one factory call. `AgentConfig` extended with `with_bio_stack`, `with_executor`, `with_pain_bridge`, `with_fear_gate`, `embodiment_ref`. `AgentInstance` extended with `bio_stack`, `pain_bus`, `embodiment`. 10 new tests.
+- **`planning/structural_diff.py`** — Jaccard distance on action sequences for plan comparison. Pure utility, no agent/memory/runtime imports.
+- **`AgentInstance.shutdown()` saves cerebellum** — learned forward models no longer lost on session end.
+- **Experiment results:** `b4_replanning_results.md`, `p6_extinction_results.md`, `p8_sleep_replay_results.md`.
+
+### Fixed
+
+- `executor.embodiment` attribute lookup was using `_embodiment` (wrong name) — always returned None. Fixed in both factory and CLI.
+- Sim path was building a second PainBus on the same hippocampus/nac, causing double-subscription of learning callbacks. Fixed to reuse bio-stack's bus.
+- Bio-stack construction failure now propagates instead of silently degrading to a partial agent.
+
+## [0.4.0] - 2026-04-19
+
+### Added
+
+- **Input standardization.** Unified input handling across all simulation modes (generative, DM, interactive, fixture). `PerceptSource` protocol with 4 implementations.
+- **DM interactive mode.** Free-text roleplay between choices. Campaign runs on thread so stdin reader accepts input.
+- **Rich menu system.** `maxim` (no args) launches interactive menu with campaigns, chat, doctor, help.
+- **NAc suppression in interactive mode.** Tool-outcome learning gated on `get_interactive_mode()` to prevent human-directed actions from corrupting causal models.
+- **Scale validation.** 20/20 seeds, p = 3.87e-6. Cross-session learning is not a fluke.
+
+### Fixed
+
+- Display/interactive globals now reset between menu sims (`reset_sim_display_state()`).
+- DM campaign thread ordering: campaign runs AFTER stdin reader starts.
+- Stall detector disabled in interactive mode (nudge prompts contained adversarial probes).
+
+## [0.3.2] - 2026-04-18
+
+### Added
+
+- **Bidirectional interactive mode.** Raw terminal input with in-panel rendering, `request_interaction` agent-to-user prompting, `set_scene` dynamic scene header, `/pause` `/resume` `/display` commands, scrollable log with bio trace dimming, end-of-sim review prompt.
+
+### Fixed
+
+- Display corruption from `print()` calls during Rich Live panels.
+- Stdin contention between display thread and input reader.
+- Tool schema validation for JSON schema vs flat tool formats.
+- LLM prompt context truncation for long conversations.
+
+## [0.3.1] - 2026-04-18
+
+### Added
+
+- **Interactive UX fixes.** `RequestInteractionTool` honest reporting, narrator fallback immersion, handler logging, story context truncation, `MaximDisplay` → `sim_logger` wiring, prompt cleanup.
+- **4 introspection tools.** `nac_stats`, `memory_pressure`, `loop_stats`, `pain_triggers_active` — agent can reason about its own learning state.
+
+## [0.3.0] - 2026-04-17
+
+### Added
+
+- **Cross-session learning without fine-tuning — demonstrated across all 3 tiers.** 41/41 hypotheses confirmed across 4 experiments.
+- **SEM Learning Loop (5 stages).** Cerebellum activation in BioStack, distribute_reward wiring, success reactions, pain spike episode boundary.
+- **Valence Annotation (Stages 1-3).** Episode.valence, Edge.metadata["valence"], spreading_activation(propagate_valence), retrieve_on_cue(include_valence).
+- **Behavioral Convergence Wiring (4 stages).** Valence in PromptAssembler, observe_episode_event in agent loop, energy→Reaction bridge, food/water/poison SEM specs.
+- **Bio-Stack Unification (Waves 0-3).** `build_bio_stack`, `build_pain_bus`, `build_memory_hub`, `build_default_network`, `build_executor` — all canonical construction sites with structural enforcement.
+- **Substrate P0-P4 complete.** Recognition, reward modulation, episode binding, channel integration, persistence/snapshot, cross-modal binding — all shipped.
+- **LLM Path Refinement (Plans 1-4).** Typed errors, fast failover, `_MaximPeerBackend`, reactive peer mesh with auto-drain.
+
 ## [0.2.1] - 2026-04-10
 
 ### Changed

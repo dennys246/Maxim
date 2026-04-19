@@ -46,7 +46,7 @@
     <p class="text-indigo-400 font-medium">Deterministic Validation of the Bio-Inspired Learning Pipeline</p>
   </header>
 
-  <p class="text-slate-300 leading-relaxed"><strong>41/41 hypotheses confirmed across 3 testing tiers.</strong> Tier 1 experiments run on the substrate layer alone (deterministic, no LLM). Tier 2 uses scripted training with real LLM decisions. Tier 3 is the ultimate proof: fully organic LLM-driven training and testing with no scripted reactions. Each hypothesis is stated falsifiably, each result is a pass/fail count, and each experiment includes a reproduction command.</p>
+  <p class="text-slate-300 leading-relaxed"><strong>41/41 hypotheses confirmed across 3 testing tiers, plus 3 additional validation experiments (B4 replanning, P6 extinction, P8 sleep replay) shipped in v0.5.0.</strong> Tier 1 experiments run on the substrate layer alone (deterministic, no LLM). Tier 2 uses scripted training with real LLM decisions. Tier 3 is the ultimate proof: fully organic LLM-driven training and testing with no scripted reactions. B4 replanning closes the last 1.0 gate besides embodiment. Each hypothesis is stated falsifiably, each result is a pass/fail count, and each experiment includes a reproduction command.</p>
 
   <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
     <h3 class="text-lg font-semibold text-indigo-400 mb-2">Three Testing Tiers</h3>
@@ -379,6 +379,34 @@ Retrieval: spreading_activation(propagate_valence=True)</div>
     </div>
 
     <p class="text-slate-400 text-sm">Detailed plan: <a href="https://github.com/dennys246/maxim/blob/main/docs/plans/sem_learning_loop.md" class="text-indigo-400 hover:text-indigo-300 no-underline">sem_learning_loop.md</a></p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!--  v0.5.0 EXPERIMENTS (2026-04-19)                              -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="v050-experiments" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">v0.5.0 Experiments <span class="text-slate-500 font-normal text-sm">(2026-04-19)</span></h2>
+
+    <p class="text-slate-300 leading-relaxed">Three new experiment results shipped in v0.5.0. B4 replanning closes the last 1.0 gate besides embodiment. P6 and P8 validate memory lifecycle mechanisms.</p>
+
+    <div class="space-y-3">
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">B4 Replanning &mdash; Blind A/B Validation <span class="text-indigo-400 font-normal text-sm">(1.0 GATE CLOSED)</span></h3>
+        <p class="text-slate-300 text-sm">5 seeded failure scenarios. Treatment (B4 replanning with prior-attempt retrieval) vs control (no replanning, retries same approach). <strong>Treatment: 100% recovery (5/5). Control: 0% (0/5).</strong> Mean Jaccard distance 0.894 (minimum 0.600, threshold 0.3). Structural quality judge passes all 10 alternative plans. 12 tests.</p>
+        <p class="text-slate-400 text-xs mt-2">Report: <a href="https://github.com/dennys246/maxim/blob/main/docs/experiments/b4_replanning_results.md" class="text-indigo-400 hover:text-indigo-300 no-underline">b4_replanning_results.md</a></p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">P6 Extinction &mdash; Hebbian Decay vs LRU <span class="text-slate-500 font-normal text-sm">(2026-04-19)</span></h3>
+        <p class="text-slate-300 text-sm">Multiplicative Hebbian decay (<code class="bg-slate-950 px-1 rounded text-xs">DependencyGraph.decay_edges()</code>) vs LRU baseline. Two-group fixture: Group A (reinforced) stays above 80%, Group B (unreinforced) drops below 20% after 30 ticks at factor 0.85. <strong>Hebbian decay beats LRU across all 10 seeds.</strong></p>
+        <p class="text-slate-400 text-xs mt-2">Report: <a href="https://github.com/dennys246/maxim/blob/main/docs/experiments/p6_extinction_results.md" class="text-indigo-400 hover:text-indigo-300 no-underline">p6_extinction_results.md</a></p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-1">P8 Sleep Replay &mdash; Offline Consolidation <span class="text-slate-500 font-normal text-sm">(2026-04-19)</span></h3>
+        <p class="text-slate-300 text-sm">Episode ranking by NAc <code class="bg-slate-950 px-1 rounded text-xs">reward_bias</code> + valence. Replay re-fires <code class="bg-slate-950 px-1 rounded text-xs">apply_hebbian_on_close</code> with 1.5&times; consolidation multiplier. <strong>F1 score improves on replayed probes vs no-replay control across all 10 seeds.</strong> Activates <code class="bg-slate-950 px-1 rounded text-xs">memory_consolidation_practice.md</code> living doc.</p>
+        <p class="text-slate-400 text-xs mt-2">Report: <a href="https://github.com/dennys246/maxim/blob/main/docs/experiments/p8_sleep_replay_results.md" class="text-indigo-400 hover:text-indigo-300 no-underline">p8_sleep_replay_results.md</a></p>
+      </div>
+    </div>
   </section>
 
   <!-- ============================================================ -->

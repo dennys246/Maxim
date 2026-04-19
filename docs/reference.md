@@ -61,6 +61,11 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/memory/semantic_promoter.py` | Promotion of recurring patterns to semantic concepts |
 | `src/maxim/memory/cross_layer.py` | CrossLayerGraph: associative edges between memory systems |
 | `src/maxim/memory/consolidation.py` | ConsolidationOrchestrator: wave-based sleep consolidation |
+| `src/maxim/memory/sleep_replay.py` | P8 sleep replay: episode ranking by NAc reward_bias + valence, re-fire Hebbian with consolidation multiplier (0.5) |
+| `src/maxim/planning/structural_diff.py` | B4 Jaccard distance on action sequences for plan comparison. Pure utility, no agent/memory/runtime imports (0.5) |
+| `src/maxim/planning/adaptive_planner.py` | ADaPT-style lazy planner with deep memory integration. B4 anti-repetition constraint in decomposition prompts (0.5) |
+| `src/maxim/runtime/agent_factory.py` | F2 `AgentFactory.create_full_agent()` — canonical agent construction composing `build_bio_stack` + `build_executor` + `FearGatedExecutor` (0.5) |
+| `src/maxim/runtime/bio_stack.py` | Wave 3 canonical bio-pipeline construction: `build_bio_stack` returns frozen `BioStack` (0.3) |
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md) for detailed design rules.
 

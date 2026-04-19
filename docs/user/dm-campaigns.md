@@ -12,7 +12,7 @@ maxim
 maxim --sim scenarios/campaigns/heist_v1.yaml
 ```
 
-**Interactive mode is ON by default for DM campaigns** (0.4.0). When running interactively, the human picks choices via numbered prompts and can type free-text roleplay between choices. The campaign runs: scene delivery → human choice (or AUT choice if `--interactive false`) → branch resolution → next encounter → repeat until `__END__`.
+**Interactive mode is ON by default for DM campaigns** (since 0.4). When running interactively, the human picks choices via numbered prompts and can type free-text roleplay between choices. The campaign runs: scene delivery → human choice (or AUT choice if `--interactive false`) → branch resolution → next encounter → repeat until `__END__`.
 
 ### Human choice picker
 
