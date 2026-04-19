@@ -198,6 +198,11 @@ class MaximDisplay:
             # Bio messages in grey (readable but visually recessive)
             line = f"{tag} {message}" if not is_bio else f"{tag} [bright_black]{message}[/bright_black]"
             self._log_lines.append(line)
+            # Keep absolute scroll position stable: when scrolled up,
+            # each new line pushes the bottom further away, so bump
+            # the offset to compensate.
+            if self._scroll_offset > 0:
+                self._scroll_offset += 1
             self._refresh()
 
     def set_status(self, **fields: str) -> None:
