@@ -451,6 +451,15 @@ class SimPromptHandler(PromptHandler):
         finally:
             with self._lock:
                 self._pending = None
+            # Reset the display prompt back to the normal input indicator
+            try:
+                from maxim.simulation.sim_logger import get_active_display
+
+                display = get_active_display()
+                if display is not None:
+                    display.set_prompt("> ")
+            except Exception:
+                pass
 
 
 # ---------------------------------------------------------------------------

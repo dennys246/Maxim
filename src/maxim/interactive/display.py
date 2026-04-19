@@ -198,9 +198,6 @@ class MaximDisplay:
             # Bio messages in grey (readable but visually recessive)
             line = f"{tag} {message}" if not is_bio else f"{tag} [bright_black]{message}[/bright_black]"
             self._log_lines.append(line)
-            # Auto-scroll to bottom when new content arrives (unless user scrolled up)
-            if self._scroll_offset == 0:
-                pass  # Already at bottom
             self._refresh()
 
     def set_status(self, **fields: str) -> None:

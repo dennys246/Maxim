@@ -1353,6 +1353,9 @@ def start_simulation_mode(
                                     display.scroll(3)
                                 elif seq == "[B":
                                     display.scroll(-3)
+                                elif seq == "[C":
+                                    # Right arrow — jump to bottom
+                                    display.scroll(-999999)
                     except Exception:
                         pass
                 elif ch == "\x03":
