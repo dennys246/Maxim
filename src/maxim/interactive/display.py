@@ -125,7 +125,6 @@ class MaximDisplay:
         self._console: Any = None
         self._lock = threading.RLock()
         self._scroll_offset: int = 0  # 0 = bottom (newest), positive = scrolled up
-        self._visible_lines: int = 20  # lines shown in log panel
 
         if _RICH_AVAILABLE:
             self._console = Console()
@@ -161,9 +160,10 @@ class MaximDisplay:
 
     def log(self, subsystem: str, message: str, level: str = "info") -> None:
         """Add a line to the scrolling log panel (thread-safe)."""
-        # Bio subsystems get dim styling; scene/dialogue stays bright
-        colors = {
-            # Scene/dialogue — bold and bright
+        # Scene/dialogue: bold + bright color for tag, white message
+        # Bio subsystems: colored tag, grey message (readable but subdued)
+        tag_colors = {
+            # Scene/dialogue — bold tags
             "scene": "bold yellow",
             "npc": "bold yellow",
             "choice": "bold white",
@@ -174,28 +174,29 @@ class MaximDisplay:
             "response": "bold green",
             "action": "bold cyan",
             "info": "white",
-            # Bio subsystems — dim
-            "hippo": "dim cyan",
-            "hippocampus": "dim cyan",
-            "nac": "dim magenta",
-            "fear": "dim red",
-            "pain": "dim red",
-            "exec": "dim green",
-            "motor": "dim blue",
-            "cerebellum": "dim blue",
-            "atl": "dim magenta",
-            "sensory": "dim cyan",
-            "body": "dim white",
-            "percept": "dim cyan",
-            "reaction": "dim magenta",
-            "scn": "dim yellow",
+            # Bio subsystems — colored tags (not dim)
+            "hippo": "cyan",
+            "hippocampus": "cyan",
+            "nac": "magenta",
+            "fear": "red",
+            "pain": "red",
+            "exec": "green",
+            "motor": "blue",
+            "cerebellum": "blue",
+            "atl": "magenta",
+            "sensory": "cyan",
+            "body": "white",
+            "percept": "cyan",
+            "reaction": "magenta",
+            "scn": "yellow",
         }
         sub_lower = subsystem.lower()
         is_bio = sub_lower in self._BIO_SUBSYSTEMS
         with self._lock:
-            color = colors.get(sub_lower, "dim white" if is_bio else "white")
+            color = tag_colors.get(sub_lower, "white")
             tag = f"[{color}][{subsystem:>6}][/{color}]"
-            line = f"{tag} {message}" if not is_bio else f"[dim]{tag} {message}[/dim]"
+            # Bio messages in grey (readable but visually recessive)
+            line = f"{tag} {message}" if not is_bio else f"{tag} [bright_black]{message}[/bright_black]"
             self._log_lines.append(line)
             # Auto-scroll to bottom when new content arrives (unless user scrolled up)
             if self._scroll_offset == 0:
@@ -224,7 +225,9 @@ class MaximDisplay:
         """Scroll the log panel. Positive = up (older), negative = down (newer)."""
         with self._lock:
             total = len(self._log_lines)
-            max_offset = max(0, total - self._visible_lines)
+            # Approximate visible lines (exact is computed in _build_layout)
+            approx_visible = max(5, (self._console.height if self._console else 40) - 10)
+            max_offset = max(0, total - approx_visible)
             self._scroll_offset = max(0, min(max_offset, self._scroll_offset + delta))
             self._refresh()
 
@@ -256,16 +259,26 @@ class MaximDisplay:
             height=3,
         )
 
+        # Compute how many log lines fit: terminal height minus status (3)
+        # minus input panel (dynamic) minus borders/padding (~4).
+        try:
+            term_height = self._console.height if self._console else 40
+        except Exception:
+            term_height = 40
+        prompt_lines = self._prompt_text.count("\n") + 1 if self._prompt_text else 1
+        input_height = max(4, prompt_lines + 3)
+        visible_lines = max(5, term_height - 3 - input_height - 4)
+
         # Log panel with scroll support
         all_lines = list(self._log_lines)
         total = len(all_lines)
         if self._scroll_offset > 0:
             end = total - self._scroll_offset
-            start = max(0, end - self._visible_lines)
+            start = max(0, end - visible_lines)
             visible = all_lines[start:end]
             scroll_indicator = f" [{start + 1}-{end}/{total}]"
         else:
-            visible = all_lines[-self._visible_lines :]
+            visible = all_lines[-visible_lines:]
             scroll_indicator = ""
         log_text = "\n".join(visible) or "(no log entries)"
         log_title = f"Agent Log{scroll_indicator}"

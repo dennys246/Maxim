@@ -1301,6 +1301,13 @@ def start_simulation_mode(
 
             _update_prompt()
 
+            import os as _os_mod
+
+            def _read_char() -> str:
+                """Read a single byte from stdin using raw OS read (not buffered IO)."""
+                b = _os_mod.read(fd, 1)
+                return b.decode("utf-8", errors="replace") if b else ""
+
             while not stop_event.is_set():
                 try:
                     ready, _, _ = select.select([stdin], [], [], 0.1)
@@ -1309,7 +1316,7 @@ def start_simulation_mode(
                 if not ready:
                     continue
                 try:
-                    ch = stdin.read(1)
+                    ch = _read_char()
                 except Exception:
                     continue
                 if not ch:
@@ -1332,23 +1339,20 @@ def start_simulation_mode(
                     buf.clear()
                     _update_prompt()
                 elif ch == "\x1b":
-                    # Escape sequence — read next 2 bytes for arrow keys
+                    # Escape sequence — read remaining bytes in one shot.
+                    # Arrow keys send \x1b[A/B/C/D (3 bytes total).
+                    # Use os.read to grab the remaining bytes without
+                    # Python's buffered IO interfering.
                     try:
-                        ready2, _, _ = select.select([stdin], [], [], 0.05)
-                        if ready2:
-                            ch2 = stdin.read(1)
-                            if ch2 == "[":
-                                ready3, _, _ = select.select([stdin], [], [], 0.05)
-                                if ready3:
-                                    ch3 = stdin.read(1)
-                                    display = get_active_display()
-                                    if display is not None:
-                                        if ch3 == "A":
-                                            # Up arrow — scroll log up
-                                            display.scroll(3)
-                                        elif ch3 == "B":
-                                            # Down arrow — scroll log down
-                                            display.scroll(-3)
+                        rest = _os_mod.read(fd, 2)
+                        if len(rest) == 2:
+                            seq = rest.decode("ascii", errors="replace")
+                            display = get_active_display()
+                            if display is not None:
+                                if seq == "[A":
+                                    display.scroll(3)
+                                elif seq == "[B":
+                                    display.scroll(-3)
                     except Exception:
                         pass
                 elif ch == "\x03":
