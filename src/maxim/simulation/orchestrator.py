@@ -1408,10 +1408,13 @@ def start_simulation_mode(
             check_interval_s = float(_os.environ.get("MAXIM_SIM_STALL_CHECK_INTERVAL_S", "3.0"))
         except ValueError:
             check_interval_s = 3.0
+        # Interactive mode: orchestrator legitimately does more actions between
+        # probes (observe, analyze, check, inspect) while the user interacts.
+        _default_pp = "12" if _is_interactive else "6"
         try:
-            ping_pong_budget = int(_os.environ.get("MAXIM_SIM_PING_PONG_BUDGET", "6"))
+            ping_pong_budget = int(_os.environ.get("MAXIM_SIM_PING_PONG_BUDGET", _default_pp))
         except ValueError:
-            ping_pong_budget = 6
+            ping_pong_budget = int(_default_pp)
         # Clamp to sane bounds so a typo can't wedge the detector.
         stall_threshold_s = max(5.0, stall_threshold_s)
         check_interval_s = max(0.5, min(check_interval_s, stall_threshold_s))
