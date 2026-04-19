@@ -367,86 +367,82 @@ class SimPromptHandler(PromptHandler):
         self._response_queue.put(text)
 
     def prompt(self, request: PromptRequest) -> PromptResponse:
-        """Post the prompt and block until the stdin reader delivers a response."""
+        """Pause the Live display, collect input directly, then resume.
+
+        Rich Live and ``input()`` can't coexist — Live owns the terminal
+        cursor, so keystrokes echo below the panel instead of inside it.
+        The fix: stop Live while the user is typing (the AUT and
+        orchestrator are both blocked anyway, so nothing updates), then
+        restart it after.
+        """
         start = time.time()
 
-        # Show the prompt in the display
-        try:
-            from maxim.simulation.sim_logger import _emit, get_active_display
+        from maxim.simulation.sim_logger import get_active_display
 
-            display = get_active_display()
-            prompt_text = request.question
-            if request.options:
-                prompt_text += "\n" + "\n".join(f"  [{i}] {opt}" for i, opt in enumerate(request.options, 1))
-            prompt_text += "\n\n> Type your answer and press Enter:"
-            if display is not None:
-                display.set_prompt(prompt_text)
-            _emit(f"  Agent asks: {request.question}", "choice")
-            if request.options:
-                for i, opt in enumerate(request.options, 1):
-                    _emit(f"    [{i}] {opt}", "choice")
-        except Exception:
-            pass
+        display = get_active_display()
+        was_active = display is not None and display.is_active
 
-        # Post the pending prompt (stdin reader will see this)
+        # Stop Live so the terminal is clean for input
+        if was_active:
+            display.stop()
+
+        # Mark prompt as pending (stall detector / bridge gate check this)
         with self._lock:
             self._pending = request
 
+        response = request.default or ""
         try:
-            # Poll with short timeouts so we can check stop_event.
-            # Without this, the AUT thread blocks for up to timeout_sec
-            # after the sim is cancelled, preventing clean shutdown.
-            deadline = time.time() + request.timeout_sec
-            while True:
-                remaining = deadline - time.time()
-                if remaining <= 0:
-                    # Timed out
-                    elapsed = time.time() - start
-                    return PromptResponse(
-                        value=request.default or "",
-                        timed_out=True,
-                        was_default=True,
-                        elapsed_s=elapsed,
-                    )
-                if self._stop_event is not None and self._stop_event.is_set():
-                    elapsed = time.time() - start
-                    return PromptResponse(
-                        value=request.default or "",
-                        timed_out=True,
-                        was_default=True,
-                        elapsed_s=elapsed,
-                    )
+            # Show the question with Rich styling (panel is stopped, so
+            # print goes to a clean terminal)
+            print(f"\n  {request.question}")
+            if request.options:
+                for i, opt in enumerate(request.options, 1):
+                    print(f"    [{i}] {opt}")
+            if request.default:
+                print(f"  [default: {request.default}]")
+            print()
+
+            # Read input directly — no cursor fighting, clean terminal
+            try:
+                import select
+
+                print("  > ", end="", flush=True)
+                ready, _, _ = select.select([sys.stdin], [], [], request.timeout_sec)
+                if ready:
+                    response = sys.stdin.readline().strip()
+                else:
+                    response = request.default or ""
+                    print("(timed out)")
+            except (ImportError, OSError):
                 try:
-                    response = self._response_queue.get(timeout=min(remaining, 0.5))
-                except queue.Empty:
-                    continue
+                    response = input("  > ")
+                except EOFError:
+                    response = request.default or ""
 
-                elapsed = time.time() - start
+            if not response:
+                response = request.default or ""
 
-                # Resolve numbered choice to option text
-                if request.options and response.isdigit():
-                    idx = int(response) - 1
-                    if 0 <= idx < len(request.options):
-                        response = request.options[idx]
+            elapsed = time.time() - start
 
-                # Log the response in the display before clearing the prompt
+            # Resolve numbered choice to option text
+            if request.options and response.isdigit():
+                idx = int(response) - 1
+                if 0 <= idx < len(request.options):
+                    response = request.options[idx]
+
+            return PromptResponse(value=response, elapsed_s=elapsed)
+        finally:
+            with self._lock:
+                self._pending = None
+            # Restart Live — display resumes with the response logged
+            if was_active and display is not None:
+                display.start()
                 try:
                     from maxim.simulation.sim_logger import _emit
 
                     _emit(f"  You answered: {response}", "scene")
                 except Exception:
                     pass
-
-                return PromptResponse(value=response, elapsed_s=elapsed)
-        finally:
-            with self._lock:
-                self._pending = None
-            try:
-                display = get_active_display()
-                if display is not None:
-                    display.clear_prompt()
-            except Exception:
-                pass
 
 
 # ---------------------------------------------------------------------------
