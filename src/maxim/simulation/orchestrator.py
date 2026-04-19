@@ -1716,7 +1716,7 @@ def start_simulation_mode(
 
         if display is not None:
             display._prompt_urgent = False
-            display.stop()
+            display.set_prompt("> Shutting down...")
 
     # ── Suppress noisy log output during shutdown ─────────────────────
     # LLM responses may still be in-flight from background threads.
@@ -1912,30 +1912,92 @@ def start_simulation_mode(
     elif llm_router is not None:
         display_status("Skipping LLM roundup (session cost ceiling reached)")
 
-    # Print human-readable report
-    print_report(report)
-
-    # ── Interactive: ask if user wants to continue ────────────────────
-    # After the report, offer to start a new simulation with the same
-    # agent (preserving memory and causal links from this run).
     if _is_interactive:
-        try:
-            print("\n  Type a new goal to continue (memory carries over), or press Enter to finish:")
-            print("  > ", end="", flush=True)
-            new_goal = input().strip()
-            if new_goal and new_goal.lower() not in ("/cancel", "quit", "exit", ""):
-                # Recursive call with the new goal — AUT memory persists
-                # because hippocampus/nac are saved to disk by this point.
-                return start_simulation_mode(
-                    goal=new_goal,
-                    persona=persona,
-                    max_turns=max_turns,
-                    response_timeout=response_timeout,
-                    no_sim_env=no_sim_env,
-                    debug=debug,
-                )
-        except (EOFError, KeyboardInterrupt):
-            pass
+        # Show the report IN the Live panel so the user can scroll it
+        print_report(report)
+
+        display = get_active_display()
+        if display is not None:
+            display.set_prompt("Type a new goal to continue (memory carries over), or press Enter to finish.\n\n> ")
+            display._prompt_urgent = True
+
+        # Wait for user input: a goal (continue) or Enter (finish).
+        # Live is still running — arrow keys scroll the report.
+        _new_goal = ""
+        _stdin = __import__("sys").stdin
+        _can_raw = _stdin is not None and hasattr(_stdin, "isatty") and _stdin.isatty()
+        if _can_raw:
+            try:
+                import os as _os3
+                import select as _sel3
+                import termios as _term3
+                import tty as _tty3
+
+                _fd3 = _stdin.fileno()
+                _old3 = _term3.tcgetattr(_fd3)
+                _buf3: list[str] = []
+                try:
+                    _tty3.setcbreak(_fd3)
+                    _new3 = _term3.tcgetattr(_fd3)
+                    _new3[3] &= ~_term3.ECHO
+                    _term3.tcsetattr(_fd3, _term3.TCSADRAIN, _new3)
+
+                    while True:
+                        ready, _, _ = _sel3.select([_stdin], [], [], 0.1)
+                        if not ready:
+                            continue
+                        ch = _os3.read(_fd3, 1).decode("utf-8", errors="replace")
+                        if ch in ("\n", "\r"):
+                            _new_goal = "".join(_buf3).strip()
+                            break
+                        elif ch == "\x7f" or ch == "\x08":
+                            if _buf3:
+                                _buf3.pop()
+                        elif ch == "\x15":
+                            _buf3.clear()
+                        elif ch == "\x1b":
+                            rest = _os3.read(_fd3, 2)
+                            if len(rest) == 2 and display is not None:
+                                seq = rest.decode("ascii", errors="replace")
+                                if seq == "[A":
+                                    display.scroll(3)
+                                elif seq == "[B":
+                                    display.scroll(-3)
+                                elif seq == "[C":
+                                    display.scroll(-999999)
+                                elif seq == "[D":
+                                    approx = max(10, (display._console.height if display._console else 40) - 10)
+                                    display.scroll(approx)
+                        elif ch == "\x03":
+                            break
+                        elif ch >= " ":
+                            _buf3.append(ch)
+
+                        # Update prompt with typed text
+                        if display is not None:
+                            typed = "".join(_buf3)
+                            display.set_prompt(f"Type a new goal to continue, or press Enter to finish.\n\n> {typed}")
+                finally:
+                    _term3.tcsetattr(_fd3, _term3.TCSADRAIN, _old3)
+            except Exception:
+                pass
+
+        if display is not None:
+            display._prompt_urgent = False
+            display.stop()
+
+        if _new_goal and _new_goal.lower() not in ("/cancel", "quit", "exit"):
+            return start_simulation_mode(
+                goal=_new_goal,
+                persona=persona,
+                max_turns=max_turns,
+                response_timeout=response_timeout,
+                no_sim_env=no_sim_env,
+                debug=debug,
+            )
+    else:
+        # Non-interactive: just print the report
+        print_report(report)
 
     # ── Capture detailed data for programmatic access ──────────────────
     # Tool usage stats from the inner executor (before wrappers)
