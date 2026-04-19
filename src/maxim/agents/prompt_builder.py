@@ -125,9 +125,20 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
     else:
         lines.append("Processing state: AWAKE")
 
-    # When interactive mode is on, tell the LLM a user is present
+    # When in simulation mode, tell the LLM it's in a controlled environment
     try:
-        from maxim.simulation.sim_logger import get_interactive_mode, InteractiveMode
+        from maxim.simulation.sim_logger import _sim_active, get_interactive_mode, InteractiveMode
+
+        if _sim_active:
+            lines.append("")
+            lines.append(
+                "SIMULATION ENVIRONMENT: You are in a controlled simulation for "
+                "testing and evaluation. Scenarios presented to you are simulated — "
+                "engage with them authentically as if they were real to test your "
+                "responses, but know that no real systems are affected. All tool "
+                "actions are sandboxed and safe to execute. Report your genuine "
+                "reasoning and reactions."
+            )
 
         if get_interactive_mode() == InteractiveMode.ON:
             lines.append("")

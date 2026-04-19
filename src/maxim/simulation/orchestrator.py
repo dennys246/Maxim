@@ -310,6 +310,7 @@ def start_simulation_mode(
     aut_env = FileSystemEnv(str(sim_tmpdir))
     aut_state = RuntimeState()
     aut_state.data["mode"] = "active"
+    aut_state.data["in_simulation"] = True
     aut_memory = build_memory()
 
     # Enable bash for the AUT in simulation mode.
