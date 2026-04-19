@@ -613,7 +613,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         _is_dm_yaml_early = isinstance(_probe, dict) and "campaign" in _probe and "encounters" in _probe
                     except Exception:
                         _is_dm_yaml_early = False
-                _set_interactive_mode_early("on" if (_wants_dm_early or _is_dm_yaml_early) else "off")
+                # CLI with TTY → interactive ON (human at a terminal).
+                # API, CI, piped → interactive OFF (no TTY).
+                _is_tty = sys.stdout.isatty()
+                _set_interactive_mode_early("on" if (_wants_dm_early or _is_dm_yaml_early or _is_tty) else "off")
             _show_channels_early = getattr(args, "show_channels", None)
             if _show_channels_early:
                 _set_show_channels_early(_show_channels_early)
