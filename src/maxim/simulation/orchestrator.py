@@ -1866,7 +1866,7 @@ def start_simulation_mode(
             # Scroll up to show the start of the report
             if report_lines > 0:
                 display.scroll(report_lines)
-            display.set_prompt("Type a new goal to continue (memory carries over), or press Enter to finish.\n\n> ")
+            display.set_prompt("Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> ")
             display._prompt_urgent = True
 
         # Wait for user input: a goal (continue) or Enter (finish).
@@ -1924,7 +1924,7 @@ def start_simulation_mode(
                         # Update prompt with typed text
                         if display is not None:
                             typed = "".join(_buf3)
-                            display.set_prompt(f"Type a new goal to continue, or press Enter to finish.\n\n> {typed}")
+                            display.set_prompt(f"Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> {typed}")
                 finally:
                     _term3.tcsetattr(_fd3, _term3.TCSADRAIN, _old3)
             except Exception:
