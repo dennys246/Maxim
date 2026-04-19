@@ -1857,6 +1857,28 @@ def start_simulation_mode(
     # Print human-readable report
     print_report(report)
 
+    # ── Interactive: ask if user wants to continue ────────────────────
+    # After the report, offer to start a new simulation with the same
+    # agent (preserving memory and causal links from this run).
+    if _is_interactive:
+        try:
+            print("\n  Type a new goal to continue (memory carries over), or press Enter to finish:")
+            print("  > ", end="", flush=True)
+            new_goal = input().strip()
+            if new_goal and new_goal.lower() not in ("/cancel", "quit", "exit", ""):
+                # Recursive call with the new goal — AUT memory persists
+                # because hippocampus/nac are saved to disk by this point.
+                return start_simulation_mode(
+                    goal=new_goal,
+                    persona=persona,
+                    max_turns=max_turns,
+                    response_timeout=response_timeout,
+                    no_sim_env=no_sim_env,
+                    debug=debug,
+                )
+        except (EOFError, KeyboardInterrupt):
+            pass
+
     # ── Capture detailed data for programmatic access ──────────────────
     # Tool usage stats from the inner executor (before wrappers)
     _tool_stats: dict[str, Any] = {}
