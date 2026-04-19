@@ -367,13 +367,16 @@ class SimPromptHandler(PromptHandler):
         self._response_queue.put(text)
 
     def prompt(self, request: PromptRequest) -> PromptResponse:
-        """Pause the Live display, collect input directly, then resume.
+        """Pause Live, let the stdin reader forward the response, resume Live.
 
-        Rich Live and ``input()`` can't coexist — Live owns the terminal
-        cursor, so keystrokes echo below the panel instead of inside it.
-        The fix: stop Live while the user is typing (the AUT and
-        orchestrator are both blocked anyway, so nothing updates), then
-        restart it after.
+        Two constraints drive this design:
+        1. Rich Live and ``input()`` can't coexist (Live owns the cursor)
+        2. Only ONE thread can read stdin (the sim.stdin reader)
+
+        So we: stop Live (clean terminal), print the question, post
+        ``_pending`` so the stdin reader forwards the next line via
+        ``deliver_response()``, and wait on the queue. The stdin reader
+        is the sole stdin consumer — no double-Enter, no contention.
         """
         start = time.time()
 
@@ -386,51 +389,60 @@ class SimPromptHandler(PromptHandler):
         if was_active:
             display.stop()
 
-        # Mark prompt as pending (stall detector / bridge gate check this)
+        # Print the question on the clean terminal
+        print(f"\n  {request.question}")
+        if request.options:
+            for i, opt in enumerate(request.options, 1):
+                print(f"    [{i}] {opt}")
+        if request.default:
+            print(f"  [default: {request.default}]")
+        print()
+        print("  > ", end="", flush=True)
+
+        # Mark prompt as pending — the stdin reader will see this and
+        # forward the next line via deliver_response() instead of
+        # processing it as a command.
         with self._lock:
             self._pending = request
 
         response = request.default or ""
         try:
-            # Show the question with Rich styling (panel is stopped, so
-            # print goes to a clean terminal)
-            print(f"\n  {request.question}")
-            if request.options:
-                for i, opt in enumerate(request.options, 1):
-                    print(f"    [{i}] {opt}")
-            if request.default:
-                print(f"  [default: {request.default}]")
-            print()
-
-            # Read input directly — no cursor fighting, clean terminal
-            try:
-                import select
-
-                print("  > ", end="", flush=True)
-                ready, _, _ = select.select([sys.stdin], [], [], request.timeout_sec)
-                if ready:
-                    response = sys.stdin.readline().strip()
-                else:
-                    response = request.default or ""
+            # Wait for the stdin reader to forward the user's response.
+            # Poll with short timeouts to check stop_event.
+            deadline = time.time() + request.timeout_sec
+            while True:
+                remaining = deadline - time.time()
+                if remaining <= 0:
                     print("(timed out)")
-            except (ImportError, OSError):
+                    elapsed = time.time() - start
+                    return PromptResponse(
+                        value=request.default or "",
+                        timed_out=True,
+                        was_default=True,
+                        elapsed_s=elapsed,
+                    )
+                if self._stop_event is not None and self._stop_event.is_set():
+                    elapsed = time.time() - start
+                    return PromptResponse(
+                        value=request.default or "",
+                        timed_out=True,
+                        was_default=True,
+                        elapsed_s=elapsed,
+                    )
                 try:
-                    response = input("  > ")
-                except EOFError:
-                    response = request.default or ""
+                    response = self._response_queue.get(timeout=min(remaining, 0.5))
+                except queue.Empty:
+                    continue
 
-            if not response:
-                response = request.default or ""
+                elapsed = time.time() - start
 
-            elapsed = time.time() - start
+                # Resolve numbered choice to option text
+                if request.options and response.isdigit():
+                    idx = int(response) - 1
+                    if 0 <= idx < len(request.options):
+                        response = request.options[idx]
 
-            # Resolve numbered choice to option text
-            if request.options and response.isdigit():
-                idx = int(response) - 1
-                if 0 <= idx < len(request.options):
-                    response = request.options[idx]
-
-            return PromptResponse(value=response, elapsed_s=elapsed)
+                return PromptResponse(value=response, elapsed_s=elapsed)
         finally:
             with self._lock:
                 self._pending = None
