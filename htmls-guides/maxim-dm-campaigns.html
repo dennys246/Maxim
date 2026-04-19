@@ -86,9 +86,13 @@
   <section class="space-y-4">
     <h2 id="quick-start" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Quick Start</h2>
 
-    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim scenarios/campaigns/heist_v1.yaml</div>
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"><span class="text-slate-500"># Interactive mode is ON by default — human picks choices + free-text roleplay</span>
+maxim --sim scenarios/campaigns/heist_v1.yaml
 
-    <p class="text-slate-300 leading-relaxed">When you pass a campaign YAML path to <code class="bg-slate-950 px-1 rounded text-xs">--sim</code>, Maxim detects the <code class="bg-slate-950 px-1 rounded text-xs">campaign:</code> block and launches the DM runtime instead of the generative narrator. Here is what happens:</p>
+<span class="text-slate-500"># Non-interactive (AUT decides autonomously)</span>
+maxim --sim scenarios/campaigns/heist_v1.yaml --interactive false</div>
+
+    <p class="text-slate-300 leading-relaxed">When you pass a campaign YAML path to <code class="bg-slate-950 px-1 rounded text-xs">--sim</code>, Maxim detects the <code class="bg-slate-950 px-1 rounded text-xs">campaign:</code> block and launches the DM runtime instead of the generative narrator. <strong class="text-white">Interactive mode is ON by default</strong> for DM campaigns &mdash; a Rich split-panel display shows the scene narrative while the human picks from available choices and types free-text roleplay. Here is what happens:</p>
 
     <ol class="space-y-2 text-slate-300 list-decimal pl-5">
       <li>Campaign YAML is parsed and validated (reachability, termination, dangling refs)</li>
@@ -238,10 +242,15 @@ expectations:
   <section class="space-y-4">
     <h2 id="choice-classification" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Choice Classification</h2>
 
-    <p class="text-slate-300 leading-relaxed">When an encounter offers choices (e.g., <code class="bg-slate-950 px-1 rounded text-xs">accept_job</code>, <code class="bg-slate-950 px-1 rounded text-xs">decline</code>, <code class="bg-slate-950 px-1 rounded text-xs">negotiate_pay</code>), the DM needs to figure out which one the AUT picked. There are three classification layers, tried in order:</p>
+    <p class="text-slate-300 leading-relaxed">When an encounter offers choices (e.g., <code class="bg-slate-950 px-1 rounded text-xs">accept_job</code>, <code class="bg-slate-950 px-1 rounded text-xs">decline</code>, <code class="bg-slate-950 px-1 rounded text-xs">negotiate_pay</code>), the DM needs to figure out which one was picked. There are four classification layers, tried in order:</p>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6 mb-3">
+      <h3 class="text-lg font-semibold text-indigo-400 mb-2">Human Choice via SimPromptHandler (Interactive Mode)</h3>
+      <p class="text-slate-300">When interactive mode is active, the DM presents the available choices to the human via a <code class="bg-slate-950 px-1 rounded text-xs">SimPromptHandler</code> prompt. The human picks directly from numbered options or types free-text roleplay. Free-text input is classified against the encounter choices using keyword matching and LLM fallback. This path bypasses the ChooseTool and alias layers entirely.</p>
+    </div>
 
     <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
-      <h3 class="text-lg font-semibold text-emerald-400 mb-2">ChooseTool (Preferred)</h3>
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">ChooseTool (Preferred, Non-Interactive)</h3>
       <p class="text-slate-300">A dynamic tool (<code class="bg-slate-950 px-1 rounded text-xs">tools_dm.py</code>) that updates its valid options per encounter. When the AUT calls <code class="bg-slate-950 px-1 rounded text-xs">choose(option="accept_job")</code>, the choice is unambiguous. Supports exact match, underscore/space normalization, and partial keyword matching.</p>
     </div>
 
@@ -288,6 +297,11 @@ expectations:
     </div>
 
     <p class="text-slate-300 leading-relaxed">Results appear in the campaign report as pass/fail per check, with expected vs actual values. This makes campaigns function as <strong class="text-white">regression tests for bio-system integration</strong>.</p>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-5 mt-3">
+      <h4 class="text-amber-400 font-semibold mb-1">Expectations in Interactive Mode</h4>
+      <p class="text-slate-300 text-sm">Bio-system expectations are <strong class="text-white">skipped</strong> when interactive mode is active. Human choices are unpredictable &mdash; the expectations are calibrated for autonomous AUT behavior and would produce false failures under human-driven branching. NAc learning is also suppressed during interactive mode to prevent human decision noise from polluting the causal link store. Run with <code class="bg-slate-950 px-1 rounded text-xs">--interactive false</code> for expectation-checked regression testing.</p>
+    </div>
   </section>
 
   <!-- Writing Your Own Campaigns -->
@@ -315,6 +329,9 @@ dice:
 
     <h3 class="text-white font-semibold mt-4">Dialogue Hints</h3>
     <p class="text-slate-300 leading-relaxed">Per-encounter <code class="bg-slate-950 px-1 rounded text-xs">dialogue_hints:</code> map flags to NPC lines. A <code class="bg-slate-950 px-1 rounded text-xs">default:</code> hint is used when no flags match. This lets NPC dialogue react to the player's earlier choices without LLM improvisation.</p>
+
+    <h3 class="text-white font-semibold mt-4">Free-Text Roleplay (Interactive Mode)</h3>
+    <p class="text-slate-300 leading-relaxed">When interactive mode is active, the human is not limited to picking from the encounter's listed choices. Free-text input is accepted and classified against the available choices using keyword matching and LLM fallback. This lets the human roleplay naturally &mdash; typing <em class="text-indigo-400 not-italic">"I lean across the table and whisper that I'll take the job"</em> classifies as <code class="bg-slate-950 px-1 rounded text-xs">accept_job</code>. If the text does not match any choice, the DM uses an LLM classification prompt to find the closest match.</p>
 
     <h3 class="text-white font-semibold mt-4">Flags and Effects</h3>
     <p class="text-slate-300 leading-relaxed">The <code class="bg-slate-950 px-1 rounded text-xs">on_choice:</code> block lets you set flags when a choice is made. Flags persist across encounters and can influence dialogue hints, branch conditions, and reveal conditions. Flags are case-insensitive.</p>

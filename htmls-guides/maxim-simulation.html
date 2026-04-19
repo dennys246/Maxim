@@ -138,7 +138,19 @@
   <section class="space-y-4">
     <h2 id="interactive" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Interactive Mode</h2>
 
-    <p class="text-slate-300">Run <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">maxim --sim</code> with no arguments to launch an interactive REPL. The pipeline boots once, waits for the LLM to load, then drops you into a conversational prompt:</p>
+    <p class="text-slate-300">Interactive mode is <strong class="text-white">ON by default</strong> when running from a TTY. In generative and DM campaigns, a Rich split-panel display shows the narrative in the main panel and a scrollable log below. The human can type responses, make choices, and roleplay directly into the simulation.</p>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-5 mb-4">
+      <h4 class="text-amber-400 font-semibold mb-1">NAc Learning Suppressed</h4>
+      <p class="text-slate-300 text-sm">When interactive mode is active, NAc causal learning is suppressed. Human choices are unpredictable from the agent's perspective &mdash; recording causal links from human-driven decisions would pollute the learned associations with noise the agent cannot reproduce autonomously.</p>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5 mb-4">
+      <h4 class="text-indigo-400 font-semibold mb-1">--sim interactive Redirect</h4>
+      <p class="text-slate-300 text-sm"><code class="bg-slate-950 px-1 rounded text-xs">maxim --sim interactive</code> now redirects to the full generative simulation with interactive mode enabled, rather than the old standalone REPL. This provides the same conversational experience but with the narrator, arc system, and Rich display.</p>
+    </div>
+
+    <p class="text-slate-300">The old standalone REPL is still available via <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">maxim --sim</code> with no arguments when no TTY is attached. With a TTY, running <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">maxim --sim</code> launches the interactive prompt:</p>
 
     <div class="bg-slate-900 border border-slate-700 rounded-xl overflow-hidden">
       <div class="trace-line"><span class="text-slate-500">Loading LLM...</span></div>
@@ -349,10 +361,14 @@ maxim --sim "test cooperative behavior" --interactive</div>
   <section class="space-y-4">
     <h2 id="dm-campaigns" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">DM Campaigns &amp; Genre Gating</h2>
 
-    <p class="text-slate-300">For deterministic, reproducible tests, write campaign YAML files with encounters, NPCs, choices, and branches. The DM runtime drives the AUT through the story and measures how the bio-stack responds:</p>
+    <p class="text-slate-300">For deterministic, reproducible tests, write campaign YAML files with encounters, NPCs, choices, and branches. The DM runtime drives the AUT through the story and measures how the bio-stack responds. <strong class="text-white">Interactive mode is ON by default</strong> for DM campaigns &mdash; the human picks choices from the encounter options and can type free-text roleplay that gets woven into the scene.</p>
 
     <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"><span class="text-slate-500"># Run a DM campaign (auto-detected from YAML structure)</span>
+<span class="text-slate-500"># Interactive mode ON by default — human picks choices</span>
 maxim --sim scenarios/campaigns/heist_v1.yaml
+
+<span class="text-slate-500"># Non-interactive (AUT decides autonomously, for CI/benchmarks)</span>
+maxim --sim scenarios/campaigns/heist_v1.yaml --interactive false
 
 <span class="text-slate-500"># Cyberpunk stress test with SEM component swaps</span>
 maxim --sim scenarios/campaigns/neon_gauntlet_v1.yaml</div>

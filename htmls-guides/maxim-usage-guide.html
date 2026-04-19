@@ -347,8 +347,8 @@ MAXIM_HEARTBEAT=1 maxim                # System health every 10s</div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       <a href="/maxim/operating-modes#exploration" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
         <div class="text-2xl mb-2">&#x1F52D;</div>
-        <h4 class="text-indigo-400 font-semibold mb-1">Exploration</h4>
-        <p class="text-sm text-slate-400 mb-2">Active + explore strategy. Curiosity-driven discovery with budget tracking and novelty gating.</p>
+        <h4 class="text-indigo-400 font-semibold mb-1">Menu / Exploration</h4>
+        <p class="text-sm text-slate-400 mb-2">Running <code class="bg-slate-950 px-1 rounded text-xs text-slate-300">maxim</code> with no arguments opens a Rich interactive menu with campaign discovery, recent sessions, and quick-start options. Select a campaign or mode to launch directly.</p>
         <code class="bg-slate-950 px-2 py-0.5 rounded text-xs text-slate-300">maxim</code>
       </a>
       <a href="/maxim/operating-modes#live-mode" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition no-underline">
@@ -440,7 +440,10 @@ maxim [OPTIONS]
 --epochs INT                 Stop after N cycles (0 = unlimited)
 --audio true|false           Enable audio recording (default: true)
 --audio_len FLOAT            Transcription chunk duration (default: 5.0s)
---interactive true|false     Enable keyboard input (default: true)
+--interactive true|false     Enable interactive mode (default: true for TTY + DM campaigns)
+                             Human picks choices, types roleplay, sees Rich display
+                             Use --interactive false for CI, scripts, or autonomous runs
+                             NAc learning is suppressed while interactive mode is active
 
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Agentic mode</span>
 
@@ -571,8 +574,10 @@ maxim [OPTIONS]
 
     <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
       <h3 class="text-lg font-semibold text-emerald-400 mb-2">First Run (No Robot)</h3>
-      <p class="text-slate-300 mb-2">Test the system without hardware using simulation:</p>
-      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300">maxim --mode exploration</div>
+      <p class="text-slate-300 mb-2">Run <code class="bg-slate-950 px-1 rounded text-xs">maxim</code> with no arguments to open the Rich interactive menu. Browse available campaigns, pick a recent session, or jump into a mode:</p>
+      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300">maxim</div>
+      <p class="text-slate-300 text-sm mt-2">Or launch exploration mode directly:</p>
+      <div class="bg-slate-950 rounded-lg px-4 py-2 font-mono text-sm text-slate-300 mt-1">maxim --mode exploration</div>
     </div>
 
     <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">

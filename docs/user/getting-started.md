@@ -73,9 +73,25 @@ This starts the full agent loop without attempting a robot connection. Useful fo
 
 ### Simulation Mode
 
+The easiest way to start is to run `maxim` with no arguments:
+
 ```bash
-# Interactive REPL -- type scenarios, get bio-subsystem traces
-maxim --sim
+maxim
+```
+
+This launches a Rich interactive menu that discovers available campaigns, shows recent sessions, and offers quick-start options. Pick a campaign or type a goal to begin. Ctrl+C during a simulation returns to the menu.
+
+You can also launch specific simulation modes directly:
+
+```bash
+# Interactive generative sim
+maxim --sim interactive
+
+# Goal-driven generative campaign
+maxim --sim "test memory recall under interference"
+
+# Run a DM campaign (interactive by default)
+maxim --sim scenarios/campaigns/heist_v1.yaml
 
 # Run a specific YAML scenario
 maxim --sim scenarios/malware_with_pain.yaml

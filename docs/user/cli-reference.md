@@ -8,6 +8,8 @@ Complete reference for all command-line flags accepted by the `maxim` CLI.
 maxim [OPTIONS]
 ```
 
+Running `maxim` with no arguments launches a Rich interactive menu with campaign discovery. The menu lists available campaigns from `scenarios/campaigns/`, recent sessions, and quick-start options. Select a campaign or goal to begin, or press Ctrl+C to exit. During a simulation, Ctrl+C returns to the menu instead of terminating.
+
 ---
 
 ## Core Runtime
@@ -24,7 +26,7 @@ maxim [OPTIONS]
 | `--display` | str | `bio` | Output detail: `bio` (DEFAULT, narrative + memory/learning annotations), `clean` (narrative only), `debug` (+ full system traces). |
 | `--log-level` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug). Alias `--verbosity` is deprecated and will be removed before 1.0. |
 | `--home-dir` | str | `data` | Directory for outputs and state |
-| `--interactive` | bool | auto | Bidirectional interactive mode with rich terminal display. **ON by default for CLI with TTY** (0.3.2). OFF for API, CI, and piped stdin. Pass `--interactive false` to disable. When on: user types messages directly to the agent, agent asks questions via `request_interaction`, scene header updates via `set_scene`, log is scrollable with arrow keys, `/pause` `/resume` `/display` commands available. See [Simulation Guide: Interactive Mode](simulation.md#interactive-mode-default-for-cli). |
+| `--interactive` | bool | auto | Bidirectional interactive mode with rich terminal display. **ON by default for CLI with TTY and DM campaigns** (0.4.0). OFF for API, CI, and piped stdin. Pass `--interactive false` to disable. When on: user types messages directly to the agent, agent asks questions via `request_interaction`, scene header updates via `set_scene`, log is scrollable with arrow keys, `/pause` `/resume` `/display` commands available, persistent warnings panel shows active alerts, and the orchestrator uses observe-only mode (no probing). **NAc learning is suppressed during interactive mode** to prevent human-guided exploration from polluting causal links. DM campaigns present numbered choices via SimPromptHandler; typing free text that does not match a choice is sent to the AUT as a roleplay percept and the choices re-prompt. See [Simulation Guide: Interactive Mode](simulation.md#interactive-mode-default-for-cli). |
 | `--epochs` | int | `0` (infinite) | Stop after N cycles |
 | `--list-models` | flag | | List all available models with download/key status and exit |
 | `--delete-model` | str | None | Delete a downloaded local model to free disk space |
@@ -77,7 +79,7 @@ maxim [OPTIONS]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect). No argument: interactive REPL. |
+| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect), `interactive` (redirects to generative sim with full interactive stack). No argument with bare `maxim`: Rich menu with campaign discovery. |
 | `--sim-goal`, `--goal` | str | None | Simulation goal (alternative to passing goal as `--sim` value) |
 | `--sim-persona`, `--persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement` |
 | `--dm` | flag | | DM campaign mode. With `--sim <goal>`: generate. With `--sim <path.yaml>`: auto-detected. |
@@ -201,6 +203,14 @@ directly rather than running a full scenario.
 
 ## Examples
 
+### Launch the interactive menu
+
+```bash
+maxim
+```
+
+Displays a Rich menu with campaign discovery, recent sessions, and quick-start options. Ctrl+C during a simulation returns to this menu.
+
 ### Minimal CPU setup
 
 ```bash
@@ -245,11 +255,13 @@ maxim --sim "hippocampal recall" --research \
 maxim --benchmark all --models mistral-7b,qwen2.5-14b
 ```
 
-### Interactive simulation (REPL)
+### Interactive simulation
 
 ```bash
-maxim --sim
+maxim --sim interactive
 ```
+
+Redirects to the generative sim with the full interactive stack (rich display, bidirectional input, SimPromptHandler).
 
 ### Run a YAML scenario (direct injection)
 

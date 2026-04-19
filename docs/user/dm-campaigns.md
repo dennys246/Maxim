@@ -5,11 +5,36 @@ Run D&D-style narrative campaigns that stress-test Maxim's biologically-inspired
 ## Quick Start
 
 ```bash
-# Run a campaign (auto-detected from YAML structure)
+# Launch the interactive menu and pick a campaign
+maxim
+
+# Or run a campaign directly (auto-detected from YAML structure)
 maxim --sim scenarios/campaigns/heist_v1.yaml
 ```
 
-The campaign runs end-to-end: scene delivery → AUT response → choice classification → branch resolution → next encounter → repeat until `__END__`.
+**Interactive mode is ON by default for DM campaigns** (0.4.0). When running interactively, the human picks choices via numbered prompts and can type free-text roleplay between choices. The campaign runs: scene delivery → human choice (or AUT choice if `--interactive false`) → branch resolution → next encounter → repeat until `__END__`.
+
+### Human choice picker
+
+In interactive mode, each encounter presents numbered choices via SimPromptHandler:
+
+```
+The merchant offers you three paths forward.
+  1) thank_merchant
+  2) ask_for_more
+  3) leave
+> _
+```
+
+Type the number to pick a choice. Type anything else (e.g., "I examine the merchant's wares closely") and it is sent to the AUT as a roleplay percept -- the AUT processes it, and the choice prompt re-appears.
+
+### NAc suppression
+
+NAc learning is suppressed during interactive DM sessions. Human-guided exploration should not pollute the agent's causal links -- the human controls the path, so reward attribution would be meaningless. Episodic memory (hippocampus) still captures normally.
+
+### Expectations in interactive mode
+
+Bio-system expectations are **skipped** when running interactively, since the human controls the campaign path and the AUT's choices are not autonomous.
 
 ## Available Campaigns
 
@@ -296,7 +321,7 @@ Flags are case-normalized (lowered) at load time.
 
 ## How Choice Classification Works
 
-When the AUT responds to a scene, the DM runtime needs to determine which choice they picked. Three layers:
+When running **non-interactively** (`--interactive false`), the AUT responds to a scene and the DM runtime determines which choice was picked. Four layers:
 
 1. **ChooseTool** — A `choose` tool is available. The AUT can call `choose(option="fight")` directly. This is unambiguous.
 
@@ -307,6 +332,8 @@ When the AUT responds to a scene, the DM runtime needs to determine which choice
 4. **Default** — If all else fails, defaults to the first choice.
 
 **Tip:** Stronger models (Claude, Qwen-14b) use `choose` more reliably than small models (Mistral-7b). Small models tend to hallucinate tool names or use `think`/`respond` without picking a choice.
+
+When running **interactively** (default for DM campaigns), the human picks choices directly via numbered prompts. The classification layers above are bypassed entirely. Free-text input that does not match a choice number is sent to the AUT as a roleplay percept -- the AUT processes it and generates a response, then the choice prompt re-appears.
 
 ## Bio-System Expectations
 

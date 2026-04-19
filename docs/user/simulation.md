@@ -7,22 +7,36 @@ Percept simulation lets you test Maxim's full agentic pipeline without any hardw
 - **Reproduce specific scenarios** -- pain signals, malware requests, multi-phase coding tasks.
 - **Regression-test pipeline changes** -- confirm that expectations still pass after refactors.
 
-## Interactive Mode (Default)
+## Entry Points
 
-Run `--sim` with no arguments to launch an interactive REPL:
+The simplest way to start is to run `maxim` with no arguments:
 
 ```bash
-maxim --sim
+maxim
 ```
 
-On startup, Maxim boots the full agentic pipeline and waits for the LLM to be ready (`LLMRouter.wait_ready()`). Once loaded, you are dropped into a conversational prompt:
+This launches a Rich interactive menu that discovers campaigns from `scenarios/campaigns/`, shows recent sessions, and offers quick-start options. Select a campaign or type a goal to begin. During a simulation, **Ctrl+C returns to the menu** instead of terminating the process.
 
-```
-Simulated, what happens next?
-> user picks up a knife near the robot
+You can also jump directly into a simulation:
+
+```bash
+maxim --sim interactive    # Generative sim with full interactive stack
+maxim --sim "test safety"  # Goal-driven generative campaign
+maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign
 ```
 
-The LLM generates percepts from your description, which run through the full pipeline. Bio-subsystem traces appear in real time. You can then type follow-up turns with contextual continuation -- the conversation builds on previous turns.
+`maxim --sim interactive` redirects to the generative sim with the full interactive stack (rich display, bidirectional input, SimPromptHandler).
+
+## Interactive Mode (Default)
+
+Interactive mode is **ON by default** when running from a terminal (TTY) and always ON for DM campaigns (0.4.0). It provides a rich, bidirectional experience where you talk to the agent and the agent asks you questions.
+
+### Key behaviors in interactive mode
+
+- **NAc learning is suppressed** — human-guided exploration should not pollute causal links. The agent still forms episodic memories (hippocampus) but does not update reward predictions.
+- **Orchestrator uses observe-only mode** — the orchestrator watches the agent but does not inject probing percepts, leaving the human in full control of the conversation.
+- **Persistent warnings panel** — active alerts (e.g., model loading, sandbox issues) display in a dedicated panel below the status bar.
+- **DM campaigns present numbered choices** via SimPromptHandler. Typing free text that does not match a choice is sent to the AUT as a roleplay percept and the choices re-prompt.
 
 ### Interactive Commands
 
@@ -31,6 +45,9 @@ The LLM generates percepts from your description, which run through the full pip
 | `/new` | Start a new scenario (clears context) |
 | `/save` | Save the current session |
 | `/status` | Show pipeline and memory state |
+| `/pause` | Pause orchestrator probing |
+| `/resume` | Resume orchestrator probing |
+| `/display clean\|bio\|debug` | Switch display verbosity |
 | `quit` | End session and trigger consolidation |
 
 Session consolidation (memory promotion, hippocampus compaction) is deferred to conversation end -- it runs when you type `quit` or `/new`, not after every turn.
@@ -407,10 +424,10 @@ maxim --sim "test memory recall under interference"
 maxim --sim "test safety boundaries" --persona adversarial
 ```
 
-Use `--interactive` to enable the `ask_user` tool, which lets the narrator pause and ask for human input during the campaign.
+Interactive mode is ON by default for TTY sessions (0.4.0), enabling the `ask_user` tool so the narrator can pause and ask for human input during the campaign. To disable:
 
 ```bash
-maxim --sim "explore cooking safety" --interactive
+maxim --sim "explore cooking safety" --interactive false
 ```
 
 For full details on arc authoring, narrator mechanics, and plan-to-arc bridging, see [docs/generative_campaigns_guide.md](../generative_campaigns_guide.md).
@@ -428,7 +445,9 @@ maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml
 
 DM campaigns define characters as bundled SEM entities with cascade DAGs for narrative branching. Encounters present choices to the AUT via `ChooseTool`, and bio-system expectations validate campaign results (memory formation, causal learning, pain responses).
 
-The `--dm` flag is reserved for a future generative DM mode. Today, all 4 shipped campaigns run through the auto-detect path.
+**Interactive mode is ON by default for DM campaigns.** When interactive, the human picks choices via numbered prompts (SimPromptHandler) and can type free-text roleplay between choices. Free text that does not match a choice number is sent to the AUT as a percept, and the choice prompt re-appears. NAc learning is suppressed during interactive DM sessions. Expectations are skipped in interactive mode since the human controls the path.
+
+The `--dm` flag is reserved for a future generative DM mode. Today, all 11 shipped campaigns run through the auto-detect path.
 
 ### Party Mode
 

@@ -166,6 +166,9 @@ Remaining doctor enhancements are tracked inline as TODO comments in [src/maxim/
 ## Key Commands
 
 ```bash
+# Quick start — interactive menu (no args needed)
+maxim                                        # Rich menu: campaigns, chat, doctor, help
+
 # Agent runtime
 maxim --llm mistral-7b                       # local LLM
 maxim --llm claude-sonnet                    # Claude (needs ANTHROPIC_API_KEY)
@@ -174,14 +177,16 @@ maxim --llm claude-sonnet                    # Claude (needs ANTHROPIC_API_KEY)
 maxim --list-models                          # show models + download status
 maxim --delete-model llama-2-13b-chat        # free disk space
 
-# Simulation (interactive mode is ON by default in CLI with TTY)
+# Simulation (interactive mode ON by default for CLI with TTY)
 maxim --sim "test memory recall"             # generative campaign (interactive)
-maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign (interactive)
+maxim --sim interactive                      # interactive chat (full generative sim stack)
+maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign (human picks choices + free-text roleplay)
 maxim --sim "test safety" --persona adversarial --research  # with research report
 maxim --sim benchmark --models mistral-7b,qwen2.5-14b      # benchmark
 maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42  # fixture-driven (S1+S4)
 # In-sim commands: /cancel /pause /resume /status /report /display clean|bio|debug
 # /new <goal> /persona <name> — arrow keys scroll the log
+# DM campaigns: type choice number/name, or free-text to roleplay before choosing
 
 # Non-interactive (for Claude Code, CI, scripting, or debugging)
 maxim --sim "test memory recall" --interactive false  # raw output, no Rich panel
