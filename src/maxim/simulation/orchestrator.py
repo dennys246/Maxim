@@ -1217,6 +1217,15 @@ def start_simulation_mode(
                 novelty=0.5,
             )
             display_status("Report requested...")
+        elif line.lower().startswith("/display "):
+            tier_name = line[9:].strip().lower()
+            if tier_name in ("clean", "bio", "debug"):
+                from maxim.simulation.sim_logger import set_display_tier
+
+                set_display_tier(tier_name)
+                _emit(f"Display switched to: {tier_name}", "turn")
+            else:
+                _emit("Usage: /display clean|bio|debug", "turn")
         else:
             # If the agent is waiting for user input via request_interaction,
             # forward non-command text to the prompt handler.
