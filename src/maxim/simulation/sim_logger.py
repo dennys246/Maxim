@@ -109,6 +109,19 @@ def revert_display_to_floor() -> None:
     _display_tier = _display_floor
 
 
+def reset_sim_display_state() -> None:
+    """Reset all display/interactive globals to their defaults.
+
+    Call after a sim ends to prevent state leaking into the next sim
+    (e.g., in the menu loop where ``start_simulation_mode`` is called
+    repeatedly in the same process).
+    """
+    global _display_tier, _display_floor, _interactive_mode
+    _display_tier = DisplayTier.CLEAN
+    _display_floor = DisplayTier.CLEAN
+    _interactive_mode = InteractiveMode.AUTO
+
+
 _CRITICAL_CONTEXTS = frozenset(
     {
         "plan_approval",
@@ -383,15 +396,34 @@ class _DisplayLoggingHandler(logging.Handler):
 
     Prevents standard logging output (CostTracker, role_divergence, etc.)
     from writing raw text to stderr and corrupting the Rich Live panel.
+
+    Repetitive messages (same text within a short window) are suppressed
+    to prevent log floods from sources like CostTracker.
     """
+
+    # Messages containing these substrings are shown at most once per
+    # dedup window to prevent flooding the display.
+    _DEDUP_SUBSTRINGS = ("CostTracker.record failed", "Missing pricing for model")
+    _DEDUP_WINDOW_S = 30.0
 
     def __init__(self, display: Any) -> None:
         super().__init__(level=logging.WARNING)
         self._display = display
+        self._seen: dict[str, float] = {}  # message_key → last_shown_time
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
+
+            # Route noisy repeated messages to the persistent warnings
+            # panel instead of the scrolling log.
+            for substr in self._DEDUP_SUBSTRINGS:
+                if substr in msg:
+                    if hasattr(self._display, "warn"):
+                        # Show a concise version in the fixed warnings panel
+                        self._display.warn(record.getMessage())
+                    return
+
             self._display.log("info", msg)
         except Exception:
             pass

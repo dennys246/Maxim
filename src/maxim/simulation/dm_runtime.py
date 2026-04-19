@@ -321,40 +321,66 @@ class DMRuntime:
     def _prompt_human_choice(self, encounter: EncounterDef) -> str:
         """Prompt the human player for a choice via SimPromptHandler.
 
+        If the user types free text that doesn't match any choice, it's
+        sent to the AUT as a percept so the agent can respond in character.
+        The choice prompt then repeats, letting the user roleplay or ask
+        questions before committing to an actual choice.
+
         Returns the choice string (lowercased to match encounter keys).
         On timeout, defaults to the first choice.
         """
         from maxim.interactive.prompts import PromptRequest, PromptType
 
-        # Format choice labels for display (replace underscores with spaces)
         display_choices = [c.replace("_", " ").title() for c in encounter.choices]
 
-        request = PromptRequest(
-            prompt_type=PromptType.SINGLE_CHOICE,
-            question="What do you do?",
-            options=tuple(display_choices),
-            default=display_choices[0] if display_choices else None,
-            timeout_sec=600.0,  # 10 minutes — humans think slower than LLMs
-        )
-        response = self._prompt_handler.prompt(request)
+        while True:
+            request = PromptRequest(
+                prompt_type=PromptType.SINGLE_CHOICE,
+                question="What do you do?",
+                options=tuple(display_choices),
+                default=display_choices[0] if display_choices else None,
+                timeout_sec=600.0,
+            )
+            response = self._prompt_handler.prompt(request)
 
-        if response.timed_out:
-            log.info("DM: Player timed out — defaulting to '%s'", encounter.choices[0])
-            return encounter.choices[0]
+            if response.timed_out:
+                log.info("DM: Player timed out — defaulting to '%s'", encounter.choices[0])
+                return encounter.choices[0]
 
-        # Map display label back to encounter key (lowercase, underscored)
-        value = response.value.strip()
-        value_lower = value.lower().replace(" ", "_")
-        # Try exact match first
-        for c in encounter.choices:
-            if c.lower() == value_lower:
-                return c
-        # Fuzzy: check if the display label matches
-        for i, dc in enumerate(display_choices):
-            if dc.lower() == value.lower():
-                return encounter.choices[i]
-        # Fallback: return as-is (best effort)
-        return value_lower
+            value = response.value.strip()
+            if not value:
+                continue
+
+            value_lower = value.lower().replace(" ", "_")
+
+            # Try exact match against encounter choices
+            for c in encounter.choices:
+                if c.lower() == value_lower:
+                    return c
+            # Fuzzy: check if the display label matches
+            for i, dc in enumerate(display_choices):
+                if dc.lower() == value.lower():
+                    return encounter.choices[i]
+
+            # Not a recognized choice — treat as free-text roleplay.
+            # Send to the AUT as a percept so the agent can respond,
+            # then re-prompt for the actual choice.
+            log.info("DM: Free-text input from player: %s", value[:80])
+            try:
+                from maxim.simulation.sim_logger import display_scene
+
+                display_scene(f"  You: {value}")
+            except Exception:
+                pass
+
+            try:
+                self._bridge.send_and_wait(
+                    f"[Player says: {value}]",
+                    salience=0.8,
+                    novelty=0.7,
+                )
+            except Exception:
+                pass
 
     def _compose_stimulus(self, encounter: EncounterDef) -> str:
         """Build the narrative text for an encounter.
