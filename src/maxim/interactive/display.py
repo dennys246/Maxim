@@ -128,6 +128,7 @@ class MaximDisplay:
         self._prompt_urgent: bool = False  # Gold border when agent is asking a question
         self._scene_title: str = "Constructing Simulation"
         self._scene_description: str = ""
+        self._status_style: str = "normal"  # "normal" (gold), "error" (red), "stalled" (grey)
 
         if _RICH_AVAILABLE:
             self._console = Console()
@@ -262,7 +263,7 @@ class MaximDisplay:
         if not _RICH_AVAILABLE:
             return ""
 
-        # Title bar (gold) — always shows "Maxim" with scene in body
+        # Title bar (dark purple) — always shows "Maxim" with scene in body
         scene_parts = []
         if self._scene_title and self._scene_title != self._title:
             scene_parts.append(f"[bold]{self._scene_title}[/bold]")
@@ -272,16 +273,22 @@ class MaximDisplay:
         title_height = 3 if not scene_content else 4
         title_panel = Panel(
             Text.from_markup(scene_content) if scene_content else Text(""),
-            title=f"[bold dark_goldenrod]{self._title}[/bold dark_goldenrod]",
-            border_style="dark_goldenrod",
+            title=f"[bold dark_violet]{self._title}[/bold dark_violet]",
+            border_style="dark_violet",
             height=title_height,
         )
 
-        # Status bar (dark purple)
+        # Status bar (dynamic color: gold=normal, red=error, grey=stalled)
+        _status_colors = {
+            "normal": "dark_goldenrod",
+            "error": "red",
+            "stalled": "grey50",
+        }
+        status_border = _status_colors.get(self._status_style, "dark_goldenrod")
         status_text = "  ".join(f"{k}: {v}" for k, v in self._status.items())
         status_panel = Panel(
             Text(status_text or "Ready", style="bold"),
-            border_style="dark_violet",
+            border_style=status_border,
             height=3,
         )
 

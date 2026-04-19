@@ -1547,6 +1547,10 @@ def start_simulation_mode(
                 _last_activity_time[0] = time.time()
                 _last_orch_action_count[0] = current_actions
                 _nudge_count[0] = 0
+                # Restore normal status color on progress
+                display = get_active_display()
+                if display is not None:
+                    display._status_style = "normal"
                 continue
 
             # ── Ping-pong trigger: too many orch actions without a turn ──
@@ -1569,6 +1573,9 @@ def start_simulation_mode(
                 f"— nudging orchestrator"
             )
             _emit(stall_msg, "turn")
+            display = get_active_display()
+            if display is not None:
+                display._status_style = "stalled"
 
             # Build diagnostic context
             all_actions = bridge.get_all_actions()
@@ -1866,7 +1873,9 @@ def start_simulation_mode(
             # Scroll up to show the start of the report
             if report_lines > 0:
                 display.scroll(report_lines)
-            display.set_prompt("Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> ")
+            display.set_prompt(
+                "Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> "
+            )
             display._prompt_urgent = True
 
         # Wait for user input: a goal (continue) or Enter (finish).
@@ -1924,7 +1933,9 @@ def start_simulation_mode(
                         # Update prompt with typed text
                         if display is not None:
                             typed = "".join(_buf3)
-                            display.set_prompt(f"Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> {typed}")
+                            display.set_prompt(
+                                f"Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> {typed}"
+                            )
                 finally:
                     _term3.tcsetattr(_fd3, _term3.TCSADRAIN, _old3)
             except Exception:
