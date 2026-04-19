@@ -1373,7 +1373,10 @@ def start_simulation_mode(
             # nudging would fight the pause / interrupt the prompt.
             _prompt_pending = _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt
             if _paused[0] or _prompt_pending:
+                # Reset both counters so stale state doesn't trigger
+                # a ping-pong or idle nudge immediately after resume.
                 _last_activity_time[0] = time.time()
+                _last_orch_action_count[0] = _orch_action_count()
                 continue
 
             current_turns = bridge.turn_count

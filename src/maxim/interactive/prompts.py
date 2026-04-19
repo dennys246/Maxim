@@ -428,6 +428,14 @@ class SimPromptHandler(PromptHandler):
                     if 0 <= idx < len(request.options):
                         response = request.options[idx]
 
+                # Log the response in the display before clearing the prompt
+                try:
+                    from maxim.simulation.sim_logger import _emit
+
+                    _emit(f"  You answered: {response}", "scene")
+                except Exception:
+                    pass
+
                 return PromptResponse(value=response, elapsed_s=elapsed)
         finally:
             with self._lock:
