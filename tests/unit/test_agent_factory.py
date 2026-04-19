@@ -156,6 +156,118 @@ class TestAgentInstance:
 
 
 # ---------------------------------------------------------------------------
+# F2: create_full_agent
+# ---------------------------------------------------------------------------
+
+
+class TestCreateFullAgent:
+    """Tests for create_full_agent — the F2 canonical agent construction."""
+
+    def test_full_agent_with_bio_stack(self, factory):
+        """Bio-stack is constructed when with_bio_stack=True."""
+        cfg = AgentConfig(
+            agent_id="full_bio",
+            with_bio_stack=True,
+        )
+        instance = factory.create_full_agent(cfg)
+        assert instance.bio_stack is not None
+        assert instance.pain_bus is not None
+        assert instance.hippocampus is not None
+        assert instance.nac is not None
+        assert instance.memory_hub is not None
+
+    def test_full_agent_without_bio_stack(self, factory):
+        """Bio-stack is NOT constructed when with_bio_stack=False."""
+        cfg = AgentConfig(agent_id="no_bio")
+        instance = factory.create_full_agent(cfg)
+        assert instance.bio_stack is None
+        assert instance.pain_bus is None
+
+    def test_full_agent_with_executor(self, factory):
+        """Executor is constructed when with_executor=True + tool_registry provided."""
+        from maxim.tools.registry import ToolRegistry
+
+        cfg = AgentConfig(
+            agent_id="full_exec",
+            with_bio_stack=True,
+            with_executor=True,
+        )
+        registry = ToolRegistry()
+        instance = factory.create_full_agent(cfg, tool_registry=registry)
+        assert instance.executor is not None
+        assert instance.tool_registry is registry
+
+    def test_full_agent_executor_requires_registry(self, factory):
+        """create_full_agent raises ValueError without tool_registry."""
+        cfg = AgentConfig(
+            agent_id="no_reg",
+            with_executor=True,
+        )
+        with pytest.raises(ValueError, match="tool_registry"):
+            factory.create_full_agent(cfg)
+
+    def test_full_agent_with_fear_gate(self, factory):
+        """FearGatedExecutor wraps the executor when with_fear_gate=True."""
+        from maxim.tools.registry import ToolRegistry
+
+        cfg = AgentConfig(
+            agent_id="full_fear",
+            with_bio_stack=True,
+            with_executor=True,
+            with_fear_gate=True,
+        )
+        registry = ToolRegistry()
+        instance = factory.create_full_agent(cfg, tool_registry=registry)
+        assert instance.executor is not None
+        # FearGatedExecutor wraps the inner executor
+        from maxim.runtime.fear_gate import FearGatedExecutor
+
+        assert isinstance(instance.executor, FearGatedExecutor)
+
+    def test_full_agent_memory_upgraded_from_bio_stack(self, factory):
+        """Memory subsystems are upgraded to bio-stack versions."""
+        cfg = AgentConfig(
+            agent_id="upgraded",
+            with_bio_stack=True,
+        )
+        instance = factory.create_full_agent(cfg)
+        # hippocampus/nac/memory_hub should come from bio-stack
+        assert instance.hippocampus is instance.bio_stack.hippocampus
+        assert instance.nac is instance.bio_stack.nac
+        assert instance.memory_hub is instance.bio_stack.memory_hub
+
+    def test_full_agent_pre_built_pain_bus(self, factory):
+        """Pre-built PainBus is passed through to build_bio_stack."""
+        from maxim.proprioception.pain_bus import PainBus
+
+        pre_bus = PainBus()
+        cfg = AgentConfig(
+            agent_id="pre_bus",
+            with_bio_stack=True,
+        )
+        instance = factory.create_full_agent(cfg, pain_bus=pre_bus)
+        assert instance.pain_bus is pre_bus
+
+    def test_full_agent_separate_persistence(self, factory, tmp_path):
+        """Two full agents get separate persistence directories."""
+        cfg_a = AgentConfig(agent_id="agent_a", with_bio_stack=True)
+        cfg_b = AgentConfig(agent_id="agent_b", with_bio_stack=True)
+        a = factory.create_full_agent(cfg_a)
+        b = factory.create_full_agent(cfg_b)
+        # Separate hippocampus instances
+        assert a.hippocampus is not b.hippocampus
+        assert a.nac is not b.nac
+
+    def test_full_agent_backward_compat(self, factory):
+        """create_full_agent with no F2 flags behaves like create_agent."""
+        cfg = AgentConfig(agent_id="compat")
+        instance = factory.create_full_agent(cfg)
+        assert instance.bio_stack is None
+        assert instance.executor is None
+        assert instance.hippocampus is not None  # from create_agent
+
+
+# ---------------------------------------------------------------------------
 # AgentPool
 # ---------------------------------------------------------------------------
 

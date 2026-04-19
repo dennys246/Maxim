@@ -1099,6 +1099,60 @@ class DependencyGraph(Generic[T]):
                     return True
         return False
 
+    def decay_edges(
+        self,
+        factor: float,
+        *,
+        edge_types: set[EdgeType] | None = None,
+        floor: float = 0.01,
+        prune: bool = True,
+    ) -> int:
+        """Decay all matching edge weights by a multiplicative factor.
+
+        P6 extinction mechanism: edges that are not reinforced decay
+        toward zero over time. Edges below ``floor`` are pruned if
+        ``prune=True``.
+
+        Args:
+            factor: Multiplicative decay (0 < factor < 1). Applied as
+                    ``edge.weight *= factor``.
+            edge_types: Only decay edges of these types. Default:
+                        {ASSOCIATES} (Hebbian binding edges).
+            floor: Minimum weight. Edges at or below this are pruned.
+            prune: If True, remove edges below the floor.
+
+        Returns:
+            Number of edges pruned.
+        """
+        if not (0.0 < factor < 1.0):
+            raise ValueError(f"decay factor must be in (0, 1), got {factor}")
+        if edge_types is None:
+            edge_types = {EdgeType.ASSOCIATES}
+
+        pruned = 0
+        with self._lock:
+            for source_id in list(self._outgoing.keys()):
+                surviving: list[Edge] = []
+                for edge in self._outgoing[source_id]:
+                    if edge.edge_type not in edge_types:
+                        surviving.append(edge)
+                        continue
+                    edge.weight *= factor
+                    if prune and edge.weight <= floor:
+                        # Remove from incoming list too (must match source+target+type)
+                        self._incoming[edge.target] = [
+                            e
+                            for e in self._incoming[edge.target]
+                            if not (
+                                e.source == edge.source and e.target == edge.target and e.edge_type == edge.edge_type
+                            )
+                        ]
+                        pruned += 1
+                    else:
+                        surviving.append(edge)
+                self._outgoing[source_id] = surviving
+        return pruned
+
     def find_edge(
         self,
         source: str,

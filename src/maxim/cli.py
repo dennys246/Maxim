@@ -1319,7 +1319,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 from maxim.environment import ReachyEnv
                 from maxim.runtime import (
                     build_decision_engine,
-                    build_executor,
                     build_evaluators,
                     build_memory,
                     build_state,
@@ -1416,34 +1415,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                         bus=agentic_agent._bus,
                     )
 
-                # Build the full bio-pipeline via build_bio_stack (Wave 3,
-                # biosystem_unification). Single call replaces ~30 lines of
-                # Hippocampus/NAc/SCN/EC/MemoryHub/PainBus construction.
-                # All handles initialized to None up-front so build_executor
-                # sees defined names even if construction fails (pre-existing
-                # latent UnboundLocalError surfaced in pre-merge review).
-                _cli_bio = None
-                _cli_memory_hub = None
-                _cli_hippocampus = None
-                _cli_nac = None
-                try:
-                    from maxim.runtime.bio_stack import build_bio_stack
+                # ── Tool registry (CLI-specific: depends on response_output,
+                # internet_policy, gateway, prompt_handler) ──
+                _is_sim_mode = getattr(args, "sim", None) is not None
 
-                    _mem_dir = str(Path(memory_path).parent) if memory_path else None
-                    _cli_bio = build_bio_stack(persistence_dir=_mem_dir)
-                    _cli_hippocampus = _cli_bio.hippocampus
-                    _cli_nac = _cli_bio.nac
-                    _cli_memory_hub = _cli_bio.memory_hub
-                    agentic_agent.wire_memory_hub(_cli_memory_hub)
-                    logger.info("BioStack wired to MaximAgent (hippocampus + NAc + SCN + EC + MemoryHub + PainBus)")
-                except Exception as e:
-                    logger.warning("Failed to create BioStack: %s", e)
+                if _is_sim_mode and getattr(args, "embodiment", None):
+                    # Hard error — "warn and ignore" was cross-confirmed
+                    # as the wrong UX in the Stage 2 pre-merge review.
+                    print(
+                        "error: --embodiment is not yet supported with --sim.\n"
+                        "  For DM-campaign YAMLs, set `component: <ref>` in the\n"
+                        "  encounter spec instead. The standalone --embodiment\n"
+                        "  flag for sim modes is tracked in\n"
+                        "  docs/plans/sem_execution_hook.md Stage 2c.",
+                        file=sys.stderr,
+                    )
+                    sys.exit(2)
 
-                # Use active mode in simulation so agent can read/write in sandbox
-                _operational_mode = "active" if getattr(args, "sim", None) is not None else "passive"
-                # PromptHandler for RequestInteractionTool — console prompts
-                # when --interactive is on, respects the global interactive
-                # mode gate inside the tool itself otherwise.
+                _operational_mode = "active" if _is_sim_mode else "passive"
                 try:
                     from maxim.interactive.prompts import create_handler
 
@@ -1460,64 +1449,42 @@ def main(argv: Sequence[str] | None = None) -> int:
                     prompt_handler=_prompt_handler,
                 )
 
-                # ── PainBus + Executor construction ──
-                # `build_executor` requires an explicit `pain_bus=`
-                # decision. Non-sim CLI agent runs construct a real
-                # PainBus + subscribe pain-memory capture; sim modes
-                # opt out (their own PainBus wiring lives downstream
-                # in `run_agentic_loop` / `run_interactive_sim` for
-                # now — the sim-path migration is tracked in
-                # `docs/plans/sem_execution_hook.md` Stage 2c, which
-                # collapses to a one-line build_executor call once
-                # this branch lands).
-                _cli_embodiment = None
-                _cli_pain_bus = None
-                _is_sim_mode = getattr(args, "sim", None) is not None
-                if _is_sim_mode and getattr(args, "embodiment", None):
-                    # Hard error — "warn and ignore" was cross-confirmed
-                    # as the wrong UX in the Stage 2 pre-merge review.
-                    print(
-                        "error: --embodiment is not yet supported with --sim.\n"
-                        "  For DM-campaign YAMLs, set `component: <ref>` in the\n"
-                        "  encounter spec instead. The standalone --embodiment\n"
-                        "  flag for sim modes is tracked in\n"
-                        "  docs/plans/sem_execution_hook.md Stage 2c.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(2)
+                # ── F2: Full agent construction via AgentFactory ──
+                # Replaces ~100 lines of hand-rolled bio-stack + executor
+                # + FearGatedExecutor construction. The factory composes
+                # build_bio_stack + build_executor + fear gating into a
+                # single create_full_agent call (Z1 per-instance Executor).
+                from maxim.runtime.agent_factory import AgentConfig, AgentFactory
 
-                _embodiment_ref = None
+                _mem_dir = str(Path(memory_path).parent) if memory_path else None
+                _embodiment_ref = getattr(args, "embodiment", None) if not _is_sim_mode else None
                 _component_registry = None
-                if not _is_sim_mode:
-                    # PainBus already constructed inside build_bio_stack
-                    # (Wave 3). Extract it for build_executor.
-                    _cli_pain_bus = _cli_bio.pain_bus if _cli_bio is not None else None
+                if _embodiment_ref:
+                    from maxim.embodiment.component_registry import ComponentRegistry
 
-                    _embodiment_ref = getattr(args, "embodiment", None)
-                    if _embodiment_ref:
-                        from maxim.embodiment.component_registry import ComponentRegistry
+                    _component_registry = ComponentRegistry()
 
-                        _component_registry = ComponentRegistry()
+                _agent_config = AgentConfig(
+                    agent_id="cli_agent",
+                    role="pc",
+                    persistence_dir=_mem_dir,
+                    with_bio_stack=True,
+                    with_executor=True,
+                    with_pain_bridge=not _is_sim_mode,
+                    with_fear_gate=not _is_sim_mode,
+                    embodiment_ref=_embodiment_ref,
+                )
+                _factory = AgentFactory(
+                    component_registry=_component_registry,
+                    base_data_dir=_mem_dir,
+                )
 
-                # Narrow exception handling: user-facing errors
-                # (ComponentNotFoundError, ValueError from build_executor's
-                # precondition checks) propagate as sys.exit(2) with the
-                # error message intact. Pre-merge review on the Stage 2
-                # helper cross-confirmed that a broad `except Exception`
-                # here silently swallowed typos — exactly the silent-no-op
-                # mode bootstrap unification exists to eliminate.
                 from maxim.exceptions import ComponentNotFoundError
 
                 try:
-                    executor = build_executor(
-                        registry,
-                        pain_bus=_cli_pain_bus,
-                        nac=_cli_nac if _cli_pain_bus is not None else None,
-                        hippocampus=_cli_hippocampus if _cli_pain_bus is not None else None,
-                        scn=_cli_bio.scn if _cli_bio is not None and _cli_pain_bus is not None else None,
-                        entity_ref=_embodiment_ref,
-                        component_registry=_component_registry,
-                        cerebellum=_cli_bio.cerebellum if _cli_bio is not None else None,
+                    _cli_instance = _factory.create_full_agent(
+                        _agent_config,
+                        tool_registry=registry,
                     )
                 except ComponentNotFoundError as _cnf:
                     print(f"error: --embodiment: {_cnf}", file=sys.stderr)
@@ -1526,32 +1493,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print(f"error: --embodiment: {_ve}", file=sys.stderr)
                     sys.exit(2)
 
-                _cli_embodiment = getattr(executor, "_embodiment", None)
+                # Extract components for the agent loop
+                _cli_bio = _cli_instance.bio_stack
+                _cli_memory_hub = _cli_instance.memory_hub
+                _cli_hippocampus = _cli_instance.hippocampus
+                _cli_nac = _cli_instance.nac
+                _cli_pain_bus = _cli_instance.pain_bus
+                _cli_embodiment = _cli_instance.embodiment
+                executor = _cli_instance.executor
+
+                if _cli_memory_hub is not None:
+                    agentic_agent.wire_memory_hub(_cli_memory_hub)
+                    logger.info("AgentFactory: bio-stack + executor wired (F2 migration)")
+
                 if _cli_embodiment is not None:
                     logger.info(
                         "Embodiment loaded: %s (root entity=%r)",
                         _embodiment_ref,
                         _cli_embodiment.root.name,
                     )
-
-                # DefaultNetwork: explicit headless opt-out. The CLI non-sim
-                # path has no robot → no vision → no reactive behaviors.
-                # Pain detection + fear gating are handled via PainBus
-                # (build_pain_bus above) + FearGatedExecutor (below), not
-                # via DN's PainCircuitBridge. The user-facing question
-                # "should headless CLI agents get DN?" belongs to
-                # agent_factory_canonicalization.md Stage F5. See
-                # docs/plans/default_network_unification.md Gaps D+E.
-
-                # Wrap executor with FearAgent safety gating (independent of DefaultNetwork)
-                from maxim.agents.fear_agent import FearAgent
-                from maxim.runtime.fear_gate import FearGatedExecutor
-
-                fear_agent = FearAgent(
-                    llm=agentic_agent._llm if hasattr(agentic_agent, "_llm") else None,
-                )
-                executor = FearGatedExecutor(executor, fear_agent)
-                logger.info("FearGatedExecutor active — all tool calls reviewed by FearAgent")
 
                 decision_engine = build_decision_engine()
                 env = ReachyEnv(data_dir=args.home_dir)
@@ -1712,20 +1672,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sim_source = getattr(args, "_sim_source", None)
                 sim_sink = getattr(args, "_sim_sink", None)
 
-                # In sim mode, create a PainBus for headless pain routing
-                # (DefaultNetwork may not exist, so we need our own)
+                # In sim mode, reuse the bio-stack's PainBus for headless
+                # pain routing.  Pre-F2 this built a SECOND PainBus on
+                # the same hippocampus/nac — review fix (Arch #1) caught
+                # the double-subscription.  The bio-stack already has
+                # hippocampus + nac subscribers wired.
                 if sim_source is not None:
-                    from maxim.proprioception.pain_bus import build_pain_bus
-
-                    # Same Gap A migration as the non-sim and interactive
-                    # paths above. Pre-Wave-1 this block subscribed only
-                    # the memory subscriber.
-                    _sim_pain_bus = build_pain_bus(
-                        hippocampus=_cli_hippocampus,
-                        nac=_cli_nac,
-                    )
+                    _sim_pain_bus = _cli_pain_bus
                     logger.info(
-                        "Sim PainBus wired (hippocampus=%s, nac=%s) for pain capture + causal learning",
+                        "Sim reusing bio-stack PainBus (hippocampus=%s, nac=%s)",
                         _cli_hippocampus is not None,
                         _cli_nac is not None,
                     )

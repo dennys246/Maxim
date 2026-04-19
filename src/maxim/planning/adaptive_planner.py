@@ -595,6 +595,18 @@ def _build_decomposition_prompt(
                 f"(confidence={out.confidence:.2f}, delay={out.predicted_delay:.1f}s)"
             )
 
+    # B4: If prior attempts exist, include structural novelty constraint
+    if replan_ctx is not None and hasattr(replan_ctx, "prior_attempt_actions"):
+        prior = replan_ctx.prior_attempt_actions
+        if prior:
+            parts.append(f"\n## Anti-repetition constraint ({len(prior)} prior failed attempts)")
+            parts.append(
+                "Your new plan MUST be structurally different from ALL prior attempts.\n"
+                "Do not merely reorder the same steps — change the strategy itself.\n"
+                "Use different tools, different decomposition granularity, or a fundamentally\n"
+                "different approach to the goal."
+            )
+
     parts.append(
         "\nReturn a JSON array of objects with 'tool_name' and 'params' keys. "
         "Order sub-tasks by dependency (prerequisites first)."

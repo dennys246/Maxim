@@ -1,6 +1,6 @@
 # Prompt B4 — Replanning with Failure Diagnosis (1.0-GATING)
 
-**Status:** Draft — opens after B1 (SHIPPED) + P3a (SHIPPED).
+**Status:** COMPLETE (2026-04-19). All 3 stages shipped. Results: [b4_replanning_results.md](../experiments/b4_replanning_results.md)
 **Scope:** ~400 LOC
 **Target version:** 0.5 (formerly 0.4)
 **Gates:** **1.0** — replanning is a core capability claim
@@ -52,14 +52,16 @@ Given an induced failure, the agent's second plan differs structurally from its 
 
 **Pass gate:** Agent recovers within 3 replan attempts. Each attempt structurally different. Mean across 5 seeds.
 
-### Stage 3 — blind A/B + pre-merge review
+### Stage 3 — blind A/B + pre-merge review (SHIPPED 2026-04-19)
 
 **What's built:**
-- Blind A/B: replanning agent vs no-replanning agent on same failure scenarios
-- LLM judge rates plan quality and novelty
+- Blind A/B: replanning agent vs no-replanning agent on 5 seeded failure scenarios
+- Structural quality judge rates plan diversity, failure awareness, and goal coverage
+- 12 tests in `tests/substrate/test_b4_replanning_ab.py`
 - Pre-merge two-lens review
 
-**Pass gate:** Replanning agent succeeds more often than no-replanning baseline. Plans are structurally novel.
+**Results:** Treatment 100% (5/5) vs control 0% (0/5). Mean Jaccard 0.894, min 0.600. All plans pass quality judge.
+**Pass gate:** CLEARED — replanning agent succeeds on all seeds, control on none. Plans structurally novel.
 **Reviewers:** Executor + Architecture lenses
 
 ## Pass criteria (maps to 1.0 gate)
@@ -75,4 +77,10 @@ Given an induced failure, the agent's second plan differs structurally from its 
 - Replanning budget (cap replan attempts to prevent infinite loops)
 - Collaborative replanning (multi-agent failure recovery)
 
-## Load-bearing invariants (filled in AFTER shipping)
+## Load-bearing invariants
+
+- **`ReplanContext.prior_attempt_actions` carries prior plan action sequences** — populated from `replan_history` (PlanManager path) or `hippocampus.recall(goal=...)` (agent loop path). Default empty list for backward compatibility.
+- **`_build_replan_context` in loop_state.py returns a stub Phase, not a raw string** — pre-existing type bug fixed in this session. `to_llm_prompt_section()` accesses `failed_phase.description`.
+- **Jaccard distance metric is in `planning/structural_diff.py`** — operates on `list[dict]` action sequences, no imports from agents/memory/runtime. Pure utility.
+- **Anti-repetition constraint is a prompt enhancement, not a structural filter** — the LLM receives the constraint and prior attempts; structural difference is MEASURED (Jaccard > 0.3) but not ENFORCED at the code level. The measurement is for validation, not gating.
+- **B4 Stage 3 SHIPPED (2026-04-19)** — blind A/B validation across 5 seeds. Treatment (replanning) 100% vs control (no replanning) 0%. Mean Jaccard 0.894, all pairwise > 0.3. Quality judge passes on all plans. Results: [b4_replanning_results.md](../experiments/b4_replanning_results.md). Tests: `tests/substrate/test_b4_replanning_ab.py` (12 tests).

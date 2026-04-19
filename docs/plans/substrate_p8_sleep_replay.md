@@ -1,6 +1,6 @@
 # Substrate P8 — Minimum-Viable Sleep Replay and Consolidation
 
-**Status:** Draft — opens after P3a (CLOSED) + P6 (extinction mechanism).
+**Status:** SHIPPED (2026-04-19). All 3 stages PASS. P6 dependency satisfied same session.
 **Scope:** ~350 LOC + ~100 metric extractor
 **Target version:** 0.5
 **Gates:** null (not 1.0-gating, but validates the consolidation claim)
@@ -86,4 +86,10 @@ During a sleep phase, replaying the top-N rewarded episodes with Hebbian link we
 
 All deferred items go to [memory_consolidation_practice.md](memory_consolidation_practice.md) when P8 ships.
 
-## Load-bearing invariants (filled in AFTER shipping)
+## Load-bearing invariants
+
+- **`replay_top_episodes` is NOT called automatically** — the agent loop or session manager must invoke it during the SLEEP processing state. There is no implicit trigger.
+- **Episode ranking uses NAc `_reward_bias` + episode valence** — not episode recency. If NAc is None, falls back to valence-only ranking.
+- **Consolidation multiplier amplifies `hebbian_delta`, not `hebbian_init`** — new edges during replay get standard init weight; only reinforcement of existing edges is amplified.
+- **`_binding_graph` access uses getattr guard** — returns early if hippocampus is missing binding graph or config.
+- **Depends on P6** — without decay, all edges are at max weight and replay produces no measurable improvement.
