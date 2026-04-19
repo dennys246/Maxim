@@ -21,6 +21,7 @@ python -m pytest tests/integration/test_memory_hub.py -q
 ```
 
 Additional guardrails:
+- **Test interactive changes with logging.** When touching interactive mode (display, prompts, stdin reader, orchestrator sim loop), capture a session with `MAXIM_LOG_FILE=/tmp/maxim.jsonl maxim --sim "test basic recall" --interactive --sim-max-turns 3` and read the JSONL to verify percepts, tool calls, and followups flow correctly. Check for `ACTION_FOLLOWUP` entries to confirm user responses reach the LLM. Use `MAXIM_BACKEND_TRACE=1` for per-call token/latency data.
 - **No band-aid fixes.** If you spot a bug while working on a task, determine whether the fix addresses the root cause or merely hides the symptom. If it's the latter — a special case, a swallowed exception, a flag that toggles around broken behavior, a fix that would need to be repeated elsewhere — stop, describe the root cause and the scope of the proper fix, and ask the user how to proceed. Never silently choose the smaller fix because it's easier.
 - Prefer editing existing modules over creating new ones — this codebase favors many small files already
 - Don't rename bio-system classes (Hippocampus, ATL, NAc, SCN, EC, AngularGyrus) — names are load-bearing for the mental model
