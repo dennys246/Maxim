@@ -24,7 +24,7 @@ maxim [OPTIONS]
 | `--display` | str | `bio` | Output detail: `bio` (DEFAULT, narrative + memory/learning annotations), `clean` (narrative only), `debug` (+ full system traces). |
 | `--log-level` | int | `1` | Logging level: 0 (quiet), 1 (info), 2 (debug). Alias `--verbosity` is deprecated and will be removed before 1.0. |
 | `--home-dir` | str | `data` | Directory for outputs and state |
-| `--interactive` | bool | auto | Enable bidirectional interactive mode with rich terminal display. When on: user can type messages directly to the agent, agent can ask user questions via `request_interaction`, scene header shows dynamic context via `set_scene`, log is scrollable with arrow keys, `/pause` and `/display` commands available. Auto-enables for DM campaigns, disabled for generative sims unless explicitly passed. See [Simulation Guide: Interactive Mode](simulation.md#interactive-mode---interactive). |
+| `--interactive` | bool | auto | Bidirectional interactive mode with rich terminal display. **ON by default for CLI with TTY** (0.3.2). OFF for API, CI, and piped stdin. Pass `--interactive false` to disable. When on: user types messages directly to the agent, agent asks questions via `request_interaction`, scene header updates via `set_scene`, log is scrollable with arrow keys, `/pause` `/resume` `/display` commands available. See [Simulation Guide: Interactive Mode](simulation.md#interactive-mode-default-for-cli). |
 | `--epochs` | int | `0` (infinite) | Stop after N cycles |
 | `--list-models` | flag | | List all available models with download/key status and exit |
 | `--delete-model` | str | None | Delete a downloaded local model to free disk space |

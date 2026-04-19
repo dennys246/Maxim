@@ -109,23 +109,26 @@ Pain signals route through PainBus → hippocampus → NAc causal learning. Over
 | free text | When `--interactive`: sent directly to the agent as a percept |
 | free text | Without `--interactive`: guidance to the orchestrator |
 
-### Interactive Mode (`--interactive`)
+### Interactive Mode (default for CLI)
 
-Add `--interactive` to enable bidirectional interaction with the agent during simulation:
+Interactive mode is **ON by default** when running simulations from a terminal (TTY). It provides a rich, bidirectional experience where you can talk to the agent and the agent can ask you questions.
+
+To disable interactive mode (for scripting, CI, or Claude Code):
 
 ```bash
-maxim --sim "test basic recall" --interactive --sim-max-turns 5
+maxim --sim "test basic recall" --interactive false --sim-max-turns 5
 ```
 
-**What it enables:**
+**What interactive mode provides:**
 
-- **Rich terminal display** — split-panel UI with a gold scene header (set by the agent via `set_scene`), purple status bar, scrollable agent log, and input panel at the bottom.
+- **Rich terminal display** — split-panel UI with a gold title header (with scene context set by the agent via `set_scene`), dark purple status bar, scrollable agent log, and input panel at the bottom.
 - **Talk to the agent directly** — type free text and press Enter. Your message goes directly to the agent as a percept, not to the orchestrator.
 - **Agent asks you questions** — the agent can call `request_interaction` to present choices or ask for clarification. Type your answer and press Enter.
 - **Scene context** — the agent calls `set_scene` to describe the current situation (location, objective). The gold header at the top updates dynamically.
 - **Live display switching** — type `/display clean`, `/display bio`, or `/display debug` to change verbosity on the fly.
 - **Scroll the log** — arrow up/down (3 lines), left (page up), right (jump to bottom). Scroll position holds when scrolled up.
 - **Pause/resume** — `/pause` stops the orchestrator from sending probes. You can talk to the agent freely while paused. `/resume` continues.
+- **Post-sim review** — when the simulation finishes, the report appears in the scrollable log. You can scroll through it, then type a new goal to continue (memory carries over) or press Enter to finish.
 - **End-of-sim review** — when the simulation finishes, the display waits for you to press Enter before showing the report. Scroll the logs at your own pace.
 
 **Display layout:**

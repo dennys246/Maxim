@@ -81,6 +81,7 @@ Additional guardrails:
 
 Simulations call a live LLM for every turn and can burn cost + time quickly. When running sims from this CLI (for diagnostics, verification, or debugging):
 
+- **IMPORTANT: Use `--interactive false` when running sims from Claude Code or scripts.** Interactive mode is ON by default in CLI with a TTY (0.3.2). The raw terminal reader conflicts with non-human stdin. Always pass `--interactive false` for automated/scripted sim runs.
 - **Set a narrow goal.** `--goal "test X specifically"` beats `--goal "test safety"` — specific goals converge faster.
 - **Cap duration.** Hit Ctrl+C after 30–90 seconds when you've seen what you need. Sims report partial results on cancel.
 - **Prefer --sandbox tmpdir for debugging** unless you're specifically testing Docker — tmpdir has no pull/startup cost.
@@ -173,17 +174,17 @@ maxim --llm claude-sonnet                    # Claude (needs ANTHROPIC_API_KEY)
 maxim --list-models                          # show models + download status
 maxim --delete-model llama-2-13b-chat        # free disk space
 
-# Simulation
-maxim --sim "test memory recall"             # generative campaign
-maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign
+# Simulation (interactive mode is ON by default in CLI with TTY)
+maxim --sim "test memory recall"             # generative campaign (interactive)
+maxim --sim scenarios/campaigns/heist_v1.yaml  # DM campaign (interactive)
 maxim --sim "test safety" --persona adversarial --research  # with research report
 maxim --sim benchmark --models mistral-7b,qwen2.5-14b      # benchmark
 maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42  # fixture-driven (S1+S4)
-
-# Interactive simulation (0.3.2) — bidirectional user<->agent interaction
-maxim --sim "test basic recall" --interactive --sim-max-turns 5
 # In-sim commands: /cancel /pause /resume /status /report /display clean|bio|debug
 # /new <goal> /persona <name> — arrow keys scroll the log
+
+# Non-interactive (for Claude Code, CI, scripting, or debugging)
+maxim --sim "test memory recall" --interactive false  # raw output, no Rich panel
 
 # Diagnostics + networking
 maxim doctor                                 # environment check
