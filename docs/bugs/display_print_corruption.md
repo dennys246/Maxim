@@ -1,9 +1,10 @@
 # Bug: Raw print() calls corrupt MaximDisplay panel
 
-**Status:** Open (discovered 2026-04-18 during 0.3.1 interactive testing)
+**Status:** Fixed (0.3.2, 2026-04-18)
 **Severity:** Medium — display activates but visual output is corrupted
 **Affects:** `maxim --sim "..." --interactive` (generative + DM campaigns)
 **Does NOT affect:** `--sim interactive` (REPL mode), headless, non-interactive, tests
+**Resolution:** Replaced `input()` with raw terminal reader (`termios`/`tty` + `os.read`). Keystrokes render inside the Live panel via `display.set_prompt()`. Spinner, stall warnings, responses, and Python logging all route through the display. See `project_032_interactive_mode.md` memory for full details.
 
 ## Symptoms
 

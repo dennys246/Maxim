@@ -96,12 +96,79 @@ Pain signals route through PainBus → hippocampus → NAc causal learning. Over
 
 | Command | Effect |
 |---------|--------|
-| `/cancel` | End simulation, return to normal |
-| `/new <goal>` | New simulation with different goal (keeps memory) |
-| `/persona <name>` | Switch persona mid-simulation |
-| `/status` | Show current progress |
-| `/report` | Generate interim report |
-| free text | Additional guidance to the orchestrator |
+| `/cancel` | End simulation immediately |
+| `/pause` | Pause orchestrator probing — talk to the agent freely |
+| `/resume` | Resume orchestrator probing after a pause |
+| `/new <goal>` | Switch to a different testing goal (keeps memory) |
+| `/persona <name>` | Switch orchestrator persona mid-simulation |
+| `/status` | Show turn count, action count, blocked actions |
+| `/report` | Request interim analysis from the orchestrator |
+| `/display clean` | Switch to narrative-only display (no bio traces) |
+| `/display bio` | Switch to bio-system display (default — shows memory, learning, pain) |
+| `/display debug` | Switch to full debug display (all subsystem traces) |
+| free text | When `--interactive`: sent directly to the agent as a percept |
+| free text | Without `--interactive`: guidance to the orchestrator |
+
+### Interactive Mode (`--interactive`)
+
+Add `--interactive` to enable bidirectional interaction with the agent during simulation:
+
+```bash
+maxim --sim "test basic recall" --interactive --sim-max-turns 5
+```
+
+**What it enables:**
+
+- **Rich terminal display** — split-panel UI with a gold scene header (set by the agent via `set_scene`), purple status bar, scrollable agent log, and input panel at the bottom.
+- **Talk to the agent directly** — type free text and press Enter. Your message goes directly to the agent as a percept, not to the orchestrator.
+- **Agent asks you questions** — the agent can call `request_interaction` to present choices or ask for clarification. Type your answer and press Enter.
+- **Scene context** — the agent calls `set_scene` to describe the current situation (location, objective). The gold header at the top updates dynamically.
+- **Live display switching** — type `/display clean`, `/display bio`, or `/display debug` to change verbosity on the fly.
+- **Scroll the log** — arrow up/down (3 lines), left (page up), right (jump to bottom). Scroll position holds when scrolled up.
+- **Pause/resume** — `/pause` stops the orchestrator from sending probes. You can talk to the agent freely while paused. `/resume` continues.
+- **End-of-sim review** — when the simulation finishes, the display waits for you to press Enter before showing the report. Scroll the logs at your own pace.
+
+**Display layout:**
+
+```
+╭─── Scene Title (gold) ──────────────────╮
+│ Current situation description            │
+╰──────────────────────────────────────────╯
+╭──────────────────────────────────────────╮  ← purple
+│ status: Turn 3: Waiting for AUT...       │
+╰──────────────────────────────────────────╯
+╭─── Agent Log ────────────────────────────╮
+│ [scene] Agent: Hello! How can I help?    │  ← bold (dialogue)
+│ [hippo] Captured: greeting (sal=0.50)    │  ← dim (bio trace)
+│ [  nac] Link: respond -> positive        │  ← dim (bio trace)
+╰──────────────────────────────────────────╯
+╭──────────────────────────────────────────╮
+│ > your input here                        │
+╰──────────────────────────────────────────╯
+```
+
+**Bio trace styling:** Bio-system activity (hippocampus, NAc, fear, pain, exec) renders in subdued colors so dialogue and scene content stands out. Switch to `/display clean` to hide bio traces entirely.
+
+**Arrow key controls:**
+
+| Key | Action |
+|-----|--------|
+| Up | Scroll log up 3 lines |
+| Down | Scroll log down 3 lines |
+| Left | Page up (full panel height) |
+| Right | Jump to bottom (latest) |
+
+### Agent Tools in Interactive Mode
+
+When `--interactive` is on, the agent has access to additional tools:
+
+| Tool | Purpose |
+|------|---------|
+| `request_interaction` | Ask the user a question with optional choices. Waits for response. |
+| `set_scene` | Set the scene header (title + description) to describe the current situation. |
+| `display_mode` | Switch display verbosity tier (clean/bio/debug). |
+
+These tools are also available without `--interactive` but behave differently — `request_interaction` returns "make your best judgment" and `set_scene`/`display_mode` are no-ops without an active display.
 
 ### Resuming a Previous Session
 

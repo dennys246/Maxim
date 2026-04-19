@@ -180,6 +180,11 @@ maxim --sim "test safety" --persona adversarial --research  # with research repo
 maxim --sim benchmark --models mistral-7b,qwen2.5-14b      # benchmark
 maxim --sim scenarios/substrate/P0_paraphrase_collapse.yaml --seed 42  # fixture-driven (S1+S4)
 
+# Interactive simulation (0.3.2) — bidirectional user<->agent interaction
+maxim --sim "test basic recall" --interactive --sim-max-turns 5
+# In-sim commands: /cancel /pause /resume /status /report /display clean|bio|debug
+# /new <goal> /persona <name> — arrow keys scroll the log
+
 # Diagnostics + networking
 maxim doctor                                 # environment check
 maxim doctor --retry                         # interactive fix loop
