@@ -187,12 +187,15 @@ class MemoryHub:
                 self.hippocampus.register_deletion_callback(self.ec._embedding_store.remove)
             logger.info("Semantic embedding enabled")
 
+        # Wire substrate path (P1) when ATL is available and flag is set.
+        # Must run BEFORE _wire_multi_layer because _wire_concept_extractor
+        # (called from _wire_multi_layer) needs self._decomposer to be set.
+        self._decomposer = None  # explicit init for type clarity
+        self._wire_substrate_encoder()
+
         # Wire multi-layer memory (ATL, CrossLayerGraph, SemanticPromoter)
         if self.atl is not None:
             self._wire_multi_layer()
-
-        # Wire substrate path (P1) when ATL is available and flag is set
-        self._wire_substrate_encoder()
 
         logger.info("MemoryHub initialized with core systems")
 
@@ -229,6 +232,7 @@ class MemoryHub:
             logger.info("Concept decomposition enabled (strategy: %s)", decomposer.strategy_name)
 
         self._encoder = LinguisticEncoder(ec=self.ec, atl=self.atl, nac=self.nac, decomposer=decomposer)
+        self._decomposer = decomposer  # Stage 3: shared with ConceptExtractor
         self._substrate_enabled = True
         logger.info("Substrate path enabled (Phase 1 dual-write)")
 
@@ -344,6 +348,7 @@ class MemoryHub:
             cross_layer=self._cross_layer,
             scn=self.scn,
             worker_pool=self.worker_pool,
+            decomposer=self._decomposer,
         )
         # Hook into hippocampus capture/delete/compress lifecycle
         self.hippocampus.register_capture_callback(self._concept_extractor.on_memory_captured)

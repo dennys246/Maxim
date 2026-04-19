@@ -568,3 +568,194 @@ class TestP3aBoundaryRuleSeam:
         # Two episodes: the first was closed by the custom rule firing
         # when event2 arrived; the second was closed by finalize.
         assert len(episodes) == 2, f"got {closed_ids}"
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Episode boundary enrichment Stage 1 — tool execution boundary
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestToolExecutionBoundary:
+    """Episode boundary enrichment Stage 1: tool execution creates a clean
+    episodic break between pre-tool and post-tool contexts."""
+
+    def test_tool_execution_closes_pending_episode(self):
+        """[text, text, TOOL, text, text] → 2 episodes."""
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        # Pre-tool events
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a",)))
+        h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",)))
+        # Post-tool event (after_tool_execution=True closes the pending episode)
+        h.observe_episode_event(CaptureEvent(tick=2, channel="text", activated_nodes=("c",), after_tool_execution=True))
+        h.observe_episode_event(CaptureEvent(tick=3, channel="text", activated_nodes=("d",)))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 2
+        assert set(episodes[0].activated_nodes) == {"a", "b"}
+        assert set(episodes[1].activated_nodes) == {"c", "d"}
+
+    def test_no_tool_execution_stays_single_episode(self):
+        """Without after_tool_execution, events stay in one episode."""
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a",)))
+        h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",)))
+        h.observe_episode_event(CaptureEvent(tick=2, channel="text", activated_nodes=("c",)))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 1
+        assert set(episodes[0].activated_nodes) == {"a", "b", "c"}
+
+    def test_tool_execution_on_first_event_no_empty_episode(self):
+        """Tool execution on the very first event should not create an
+        empty pre-tool episode — there's nothing to close."""
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a",), after_tool_execution=True))
+        h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",)))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 1
+        assert set(episodes[0].activated_nodes) == {"a", "b"}
+
+    def test_consecutive_tool_executions(self):
+        """Two consecutive tool executions create separate episodes."""
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("pre",)))
+        h.observe_episode_event(
+            CaptureEvent(tick=1, channel="text", activated_nodes=("tool1",), after_tool_execution=True)
+        )
+        h.observe_episode_event(
+            CaptureEvent(tick=2, channel="text", activated_nodes=("tool2",), after_tool_execution=True)
+        )
+        h.observe_episode_event(CaptureEvent(tick=3, channel="text", activated_nodes=("post",)))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 3
+        assert set(episodes[0].activated_nodes) == {"pre"}
+        assert set(episodes[1].activated_nodes) == {"tool1"}
+        assert set(episodes[2].activated_nodes) == {"tool2", "post"}
+
+    def test_tool_execution_with_hebbian(self):
+        """Hebbian edges should form within each episode, not across
+        the tool execution boundary."""
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        # Episode 1: a + b co-activate
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a", "b")))
+        # Episode 2: c + d co-activate (tool boundary separates them)
+        h.observe_episode_event(
+            CaptureEvent(tick=1, channel="text", activated_nodes=("c", "d"), after_tool_execution=True)
+        )
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 2
+
+        # Retrieve: "a" should find "b" but NOT "c" or "d"
+        results = h.retrieve_on_cue("a")
+        result_ids = {nid for nid, _ in results}
+        assert "b" in result_ids
+        assert "c" not in result_ids
+        assert "d" not in result_ids
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Concept decomposition Stage 2 — role-tagged Hebbian edges
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestRoleTaggedEdges:
+    """Concept decomposition Stage 2: relation metadata from the
+    dependency parse annotates Hebbian edges between co-activated
+    concept nodes."""
+
+    def test_relation_metadata_on_edge(self):
+        """When node_relations is provided, edges get a 'relation' metadata field."""
+        from maxim.agents.bus import EdgeType
+
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h.observe_episode_event(
+            CaptureEvent(
+                tick=0,
+                channel="text",
+                activated_nodes=("mug", "table"),
+                node_relations={frozenset({"mug", "table"}): "spatial"},
+            )
+        )
+        h.finalize_pending_episode()
+
+        edge = h._binding_graph.find_edge("mug", "table", EdgeType.ASSOCIATES)
+        assert edge is not None
+        assert edge.metadata.get("relation") == "spatial"
+
+    def test_no_relation_leaves_edge_clean(self):
+        """Without node_relations, edges have no 'relation' metadata."""
+        from maxim.agents.bus import EdgeType
+
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a", "b")))
+        h.finalize_pending_episode()
+
+        edge = h._binding_graph.find_edge("a", "b", EdgeType.ASSOCIATES)
+        assert edge is not None
+        assert "relation" not in edge.metadata
+
+    def test_relation_first_write_wins(self):
+        """If two episodes provide different relations for the same pair,
+        the first one is kept."""
+        from maxim.agents.bus import EdgeType
+
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        # Episode 1: spatial
+        h.observe_episode_event(
+            CaptureEvent(
+                tick=0,
+                channel="text",
+                activated_nodes=("mug", "table"),
+                node_relations={frozenset({"mug", "table"}): "spatial"},
+            )
+        )
+        h.finalize_pending_episode()
+        # Episode 2: possessive (should not overwrite)
+        h.observe_episode_event(
+            CaptureEvent(
+                tick=100,
+                channel="text",
+                activated_nodes=("mug", "table"),
+                node_relations={frozenset({"mug", "table"}): "possessive"},
+            )
+        )
+        h.finalize_pending_episode()
+
+        edge = h._binding_graph.find_edge("mug", "table", EdgeType.ASSOCIATES)
+        assert edge is not None
+        assert edge.metadata.get("relation") == "spatial"
+
+    def test_mixed_relations_in_one_episode(self):
+        """Multiple node pairs in one episode can each have their own relation."""
+        from maxim.agents.bus import EdgeType
+
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h.observe_episode_event(
+            CaptureEvent(
+                tick=0,
+                channel="text",
+                activated_nodes=("cat", "mat", "box"),
+                node_relations={
+                    frozenset({"cat", "mat"}): "spatial",
+                    frozenset({"cat", "box"}): "possessive",
+                },
+            )
+        )
+        h.finalize_pending_episode()
+
+        edge_cm = h._binding_graph.find_edge("cat", "mat", EdgeType.ASSOCIATES)
+        edge_cb = h._binding_graph.find_edge("cat", "box", EdgeType.ASSOCIATES)
+        edge_mb = h._binding_graph.find_edge("mat", "box", EdgeType.ASSOCIATES)
+
+        assert edge_cm.metadata.get("relation") == "spatial"
+        assert edge_cb.metadata.get("relation") == "possessive"
+        # mat-box pair has no explicit relation
+        assert "relation" not in edge_mb.metadata

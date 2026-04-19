@@ -228,9 +228,16 @@ class LinguisticEncoder:
         ``CaptureEvent.activated_nodes`` so they co-activate in one
         episode and get Hebbian-bound together.
 
+        After this call, ``self.last_node_relations`` contains a mapping
+        from ``frozenset({node_a, node_b})`` → relation type for any
+        pairs whose chunks carried relation metadata (Stage 2). Callers
+        can pass this to ``CaptureEvent.node_relations``.
+
         Returns:
             List of substrate node IDs (at least one).
         """
+        self.last_node_relations: dict[frozenset[str], str] = {}
+
         if not text or not text.strip():
             return []
 
@@ -248,6 +255,7 @@ class LinguisticEncoder:
             threshold_override = overrides if overrides else None
 
         node_ids: list[str] = []
+        chunk_node_map: list[tuple[Any, str]] = []  # (chunk, node_id) pairs
         for chunk in chunks:
             embedding = self.embed(chunk.text)
 
@@ -272,14 +280,32 @@ class LinguisticEncoder:
                 self._nac.update_eligibility(agent_id, result.node_id, activation)
 
             node_ids.append(result.node_id)
+            chunk_node_map.append((chunk, result.node_id))
 
             logger.debug(
-                "Decomposed chunk '%s' → node %s (sim=%.3f, new=%s)",
+                "Decomposed chunk '%s' → node %s (sim=%.3f, new=%s, rel=%s)",
                 chunk.text[:30],
                 result.node_id[:8],
                 result.similarity,
                 result.is_new,
+                chunk.relation,
             )
+
+        # Stage 2: build relation mapping between node pairs.
+        # For each pair of chunks that both have relations, the relation
+        # on the "dependent" chunk (the one whose relation describes its
+        # connection to the head) annotates the edge.
+        if len(chunk_node_map) >= 2:
+            import itertools
+
+            for (c1, nid1), (c2, nid2) in itertools.combinations(chunk_node_map, 2):
+                if nid1 == nid2:
+                    continue
+                # Use the relation from whichever chunk has one.
+                # First non-None wins (c1 preferred by iteration order).
+                rel = c1.relation or c2.relation
+                if rel is not None:
+                    self.last_node_relations[frozenset({nid1, nid2})] = rel
 
         return node_ids
 

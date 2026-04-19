@@ -73,6 +73,12 @@ class ConceptExtractor:
 
     Also forms inline categorical relationships between concepts found in
     the same episode — no batch sleep job needed.
+
+    Stage 3 convergence: when a ``decomposer`` is provided, goal text is
+    extracted using the NLP-backed decomposer instead of the legacy
+    ``_is_structured_goal`` + ``normalize_tokens`` pipeline. This unifies
+    the noun-phrase extraction used by the substrate encoding path
+    (``LinguisticEncoder.encode_decomposed``) and the ATL concept path.
     """
 
     # Max relationships formed per episode to prevent noise
@@ -85,11 +91,13 @@ class ConceptExtractor:
         scn: SCN | None = None,
         queue_size: int = 200,
         worker_pool: WorkerPool | None = None,
+        decomposer: Any | None = None,
     ) -> None:
         self._atl = atl
         self._cross_layer = cross_layer
         self._scn = scn
         self._pool = worker_pool
+        self._decomposer = decomposer
 
         # Provenance collector (wired by MaximAgent.wire_provenance)
         self._collector: Any = None
@@ -159,23 +167,24 @@ class ConceptExtractor:
         if isinstance(location, str) and location:
             concepts_found.append((location.lower(), "location"))
 
-        # Goal: tokenize into individual words so "navigate_to_kitchen"
-        # becomes concepts "navigate" (action) and "kitchen" (goal_token).
+        # Goal concept extraction — two paths:
         #
-        # Only tokenize STRUCTURED goals — compound identifiers or short
-        # phrases. Free-form natural-language goals (long sentences from
-        # scripted scenarios or LLM self-reflection) explode into dozens of
-        # low-signal per-word concepts that bloat the ATL store and drown
-        # real concepts in noise. A 12-word sentence produced 12 concepts
-        # per capture before this gate — classic concept pollution.
+        # Stage 3 (decomposer available): use NLP-backed noun-phrase
+        # extraction. Handles both structured ("navigate_to_kitchen")
+        # and natural-language goals ("find the red cup on the table")
+        # cleanly — noun chunks extract real concepts, not every word.
         #
-        # Heuristic: a goal is "structured" if it contains an underscore
-        # (compound identifier) OR is <= 4 whitespace-separated tokens
-        # (short phrase). Anything longer is treated as opaque context.
+        # Legacy (no decomposer): use the _is_structured_goal 4-token
+        # heuristic + normalize_tokens. Only tokenizes structured goals
+        # (compound identifiers, short phrases) to avoid concept noise.
         goal_text = record.context.active_goal
-        if goal_text and _is_structured_goal(goal_text):
-            for token in normalize_tokens(goal_text):
-                concepts_found.append((token, "goal"))
+        if goal_text:
+            if self._decomposer is not None:
+                for chunk in self._decomposer.extract(goal_text):
+                    concepts_found.append((chunk.text.lower(), "goal"))
+            elif _is_structured_goal(goal_text):
+                for token in normalize_tokens(goal_text):
+                    concepts_found.append((token, "goal"))
 
         # Action/tool
         if record.action.tool_name:

@@ -39,6 +39,7 @@ from maxim.memory.episode import (
     channel_change_rule,
     scn_tag_change_rule,
     tick_gap_rule,
+    tool_execution_rule,
 )
 from maxim.memory.hippocampus_consolidation import ConsolidationMixin
 from maxim.memory.hippocampus_persistence import PersistenceMixin
@@ -412,13 +413,14 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         # detector decides to close.
         self._pending_episode: PendingEpisodeState | None = None
 
-        # Episode boundary detector with three default rules.
+        # Episode boundary detector with four default rules.
         # P3b will append per-channel rules via detector.add_rule().
         self._episode_detector = EpisodeBoundaryDetector(
             rules=[
                 tick_gap_rule(self.config.episode.boundary_tick_gap),
                 channel_change_rule(),
                 scn_tag_change_rule(),
+                tool_execution_rule(),
             ]
         )
 
@@ -1661,6 +1663,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 # _close_pending_episode_locked drains the buffer into
                 # Hippocampus._node_modality before Hebbian close.
                 pending.node_modality_buffer[node_id] = event.modality
+        # Concept decomposition Stage 2 — accumulate relation metadata.
+        # First-write wins: if a later event provides a different relation
+        # for the same pair, the first one is kept.
+        if event.node_relations is not None:
+            for pair, relation in event.node_relations.items():
+                if pair not in pending.node_relations:
+                    pending.node_relations[pair] = relation
 
     def _close_pending_episode_locked(self) -> Episode:
         """Finalize ``self._pending_episode``, add it to the store, and
@@ -1721,6 +1730,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             hebbian_delta=hebbian_cfg.delta,
             hebbian_max=hebbian_cfg.max_weight,
             valence_decay=hebbian_cfg.valence_decay,
+            node_relations=pending.node_relations or None,
         )
 
         # P4 Stage 1 — drain the per-node modality buffer into the

@@ -180,6 +180,7 @@ def observe_episode(
     sender_id: str | None = None,
     activated_nodes: tuple[str, ...] = (),
     salience_spike: float | None = None,
+    after_tool_execution: bool = False,
 ) -> None:
     """Feed an event into the episode boundary detector.
 
@@ -197,6 +198,7 @@ def observe_episode(
                 channel=channel,
                 sender_id=sender_id,
                 activated_nodes=activated_nodes,
+                after_tool_execution=after_tool_execution,
                 salience_spike=salience_spike,
             )
         )

@@ -1066,6 +1066,7 @@ def run_agentic_loop(
                                             hippocampus=hippocampus,
                                             channel="text",
                                             activated_nodes=(),
+                                            after_tool_execution=True,
                                             salience_spike=_bio_integration.consume_pain_intensity(),
                                         )
 
@@ -1521,6 +1522,7 @@ def run_agentic_loop(
                             hippocampus=hippocampus,
                             channel="text",
                             activated_nodes=(),
+                            after_tool_execution=True,
                             salience_spike=_bio_integration.consume_pain_intensity(),
                         )
 

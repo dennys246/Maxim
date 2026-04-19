@@ -1,6 +1,6 @@
 # Substrate P5 — Robust Cross-Session Persistence Under Stress
 
-**Status:** Draft — opens after P4 (CLOSED) + concept decomposition land.
+**Status:** Stages 1+2 SHIPPED in 0.4. Stage 3 (10-seed sweep) marked `@pytest.mark.slow`.
 **Scope:** ~400 LOC + ~100 metric extractor
 **Target version:** 0.5
 **Gates:** null (not 1.0-gating, but blocks P6 and P8)

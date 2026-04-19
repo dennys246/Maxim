@@ -227,6 +227,45 @@ class TestSpaCyNounChunkStrategy:
             t.join()
         assert not errors, f"Thread errors: {errors}"
 
+    # ── Stage 2: relation extraction ──────────────────────────────────
+
+    def test_spatial_relation(self) -> None:
+        """Spatial prepositions (on, in, at) should produce spatial relations."""
+        s = self._make_strategy()
+        chunks = s.extract("I see a blue mug on the table")
+        relations = [c.relation for c in chunks if c.relation is not None]
+        # "table" is the pobj of "on" → spatial
+        assert "spatial" in relations
+
+    def test_action_relation(self) -> None:
+        """Subject/object of a verb should produce action relations."""
+        s = self._make_strategy()
+        chunks = s.extract("The cat chased the mouse")
+        relations = [c.relation for c in chunks if c.relation is not None]
+        assert "action" in relations
+
+    def test_possessive_relation(self) -> None:
+        """Possessive modifiers produce possessive relations."""
+        s = self._make_strategy()
+        chunks = s.extract("The color of the sky is beautiful")
+        relations = [c.relation for c in chunks if c.relation is not None]
+        assert "possessive" in relations
+
+    def test_bare_class_name_no_relation(self) -> None:
+        """Bare class names should have no relation (single chunk)."""
+        s = self._make_strategy()
+        chunks = s.extract("mug")
+        assert len(chunks) == 1
+        assert chunks[0].relation is None
+
+    def test_relation_preserved_in_chunk(self) -> None:
+        """Relation is stored on the ConceptChunk itself."""
+        s = self._make_strategy()
+        chunks = s.extract("A sword on the stone")
+        for c in chunks:
+            if "stone" in c.text.lower():
+                assert c.relation == "spatial", f"Expected 'spatial', got {c.relation!r}"
+
 
 # ─────────────────────────────────────────────────────────────────────────
 # Encoder integration (encode_decomposed)

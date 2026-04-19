@@ -127,11 +127,17 @@ class SpaCyNounChunkStrategy:
             if len(clean_text) < self._min_chunk_len:
                 continue
 
+            # Stage 2: extract relation from dependency parse.
+            # The root token of each noun chunk has a dependency label
+            # that reveals its syntactic role in the sentence.
+            relation = _classify_relation(nc.root)
+
             chunks.append(
                 ConceptChunk(
                     text=clean_text,
                     span=(doc[token_start].idx, nc.end_char),
                     confidence=1.0,
+                    relation=relation,
                 )
             )
 
@@ -141,6 +147,71 @@ class SpaCyNounChunkStrategy:
             return [ConceptChunk(text=text.strip(), span=(0, len(text)))]
 
         return chunks
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Stage 2 — relation classification from dependency parse
+# ─────────────────────────────────────────────────────────────────────────
+
+# Dependency labels → relation type mapping.
+# spaCy dep labels: https://spacy.io/api/annotation#dependency-parsing
+_DEP_TO_RELATION: dict[str, str] = {
+    # Spatial: prepositional attachment indicating location
+    "pobj": "spatial",  # "mug on the table" — table is pobj of "on"
+    # Possessive: possessive modifier
+    "poss": "possessive",  # "the cat's paw"
+    # Temporal: temporal modifiers
+    "npadvmod": "temporal",  # "last Tuesday"
+    # Subject/object (action relation to the verb)
+    "nsubj": "action",  # "the cat sat"
+    "nsubjpass": "action",
+    "dobj": "action",  # "I see a mug"
+    # Appositive: identity / descriptive
+    "appos": "descriptive",  # "Bob, the engineer"
+    # Attribute: predicate nominal
+    "attr": "descriptive",  # "this is a mug"
+}
+
+# Preposition text → relation type for pobj refinement.
+_PREP_SPATIAL = {
+    "on",
+    "in",
+    "at",
+    "near",
+    "beside",
+    "above",
+    "below",
+    "under",
+    "behind",
+    "between",
+    "inside",
+    "outside",
+    "next",
+}
+_PREP_TEMPORAL = {"before", "after", "during", "since", "until", "by"}
+_PREP_POSSESSIVE = {"of", "with"}
+
+
+def _classify_relation(root_token: Any) -> str | None:
+    """Classify the syntactic relation of a noun chunk's root token.
+
+    Returns a coarse relation label (spatial, possessive, temporal,
+    action, descriptive) or None if the relation is unclassifiable.
+    """
+    dep = root_token.dep_
+
+    # For prepositional objects, refine by the actual preposition.
+    if dep == "pobj" and root_token.head.pos_ == "ADP":
+        prep_text = root_token.head.text.lower()
+        if prep_text in _PREP_SPATIAL:
+            return "spatial"
+        if prep_text in _PREP_TEMPORAL:
+            return "temporal"
+        if prep_text in _PREP_POSSESSIVE:
+            return "possessive"
+        return None  # unknown preposition — leave edge untagged
+
+    return _DEP_TO_RELATION.get(dep)
 
 
 # ─────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 # Substrate — Concept decomposition (noun-phrase extraction before EC)
 
-**Status:** Stage 1 COMPLETE (shipped `723dbee` 2026-04-16, validated 2026-04-17). Stage 2/3 pending.
+**Status:** Stage 1 COMPLETE (shipped `723dbee` 2026-04-16, validated 2026-04-17). Stages 2+3 SHIPPED in 0.4.
 **Scope:** ~400–600 LOC (protocol + spaCy strategy + encoder integration + tests). New optional dep: `spacy` (MIT license).
 **Target version:** post-0.3. Ships AFTER P4 Stage 3 proves the base cross-modal claim on bare class names. **P4 Stage 3 PASSED (2026-04-16) — trigger fired.**
 **Parent:** None (standalone). Extends `similarity/encoder.py` → `similarity/ec.py` capture path.

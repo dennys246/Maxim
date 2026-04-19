@@ -155,10 +155,19 @@ class CaptureEvent:
     # non-None, every node in ``activated_nodes`` is tagged with this
     # modality in ``Hippocampus._node_modality`` at episode close.
     modality: SubstrateModality | None = None
+    # Episode boundary enrichment Stage 1 — tool execution boundary.
+    # Set to True when this event immediately follows a tool execution.
+    # Consumed by ``tool_execution_rule``.
+    after_tool_execution: bool = False
     # SEM learning loop Stage 4 — pain/salience spike intensity since
     # the last capture event.  ``None`` = no spike.  Set by PainBus
     # subscriber bridge, consumed by ``salience_spike_rule``.
     salience_spike: float | None = None
+    # Concept decomposition Stage 2 — relation metadata between node pairs.
+    # Maps frozenset({node_a, node_b}) → relation type ("spatial", etc.).
+    # Populated by LinguisticEncoder.encode_decomposed when chunks carry
+    # relation types. Consumed by apply_hebbian_on_close to annotate edges.
+    node_relations: dict[frozenset[str], str] | None = None
 
 
 @dataclass
@@ -188,6 +197,12 @@ class PendingEpisodeState:
     # with its own modality — there is no single per-episode modality
     # scalar by design (Round 1 Arch M2 fold).
     node_modality_buffer: dict[str, SubstrateModality] = field(default_factory=dict)
+    # Concept decomposition Stage 2 — accumulated relation metadata
+    # from CaptureEvent.node_relations across all events in this episode.
+    # Maps frozenset({node_a, node_b}) → relation type. First-write wins
+    # (if two events provide different relations for the same pair, the
+    # first one is kept).
+    node_relations: dict[frozenset[str], str] = field(default_factory=dict)
 
     def finalize(self) -> Episode:
         # Compute net valence from captured reactions.
@@ -625,6 +640,7 @@ def apply_hebbian_on_close(
     hebbian_delta: float,
     hebbian_max: float,
     valence_decay: float = 0.95,
+    node_relations: dict[frozenset[str], str] | None = None,
 ) -> None:
     """Apply Hebbian updates to ``binding_graph`` for a closed episode.
 
@@ -675,6 +691,24 @@ def apply_hebbian_on_close(
             binding_graph.update_edge(a, b, EdgeType.ASSOCIATES, weight=new_weight)
             binding_graph.update_edge(b, a, EdgeType.ASSOCIATES, weight=new_weight)
 
+    # Concept decomposition Stage 2 — annotate edges with relation metadata.
+    # Relation is set once (first write wins) and not overwritten by later
+    # episodes. This preserves the original syntactic relationship.
+    if node_relations:
+        for a, b in itertools.combinations(nodes, 2):
+            pair = frozenset({a, b})
+            relation = node_relations.get(pair)
+            if relation is not None:
+                for src, tgt in ((a, b), (b, a)):
+                    edge = binding_graph.find_edge(src, tgt, EdgeType.ASSOCIATES)
+                    if edge is not None and "relation" not in edge.metadata:
+                        binding_graph.update_edge(
+                            src,
+                            tgt,
+                            EdgeType.ASSOCIATES,
+                            metadata_updates={"relation": relation},
+                        )
+
     # Valence annotation — use update_edge for lock safety.
     if episode.valence != 0.0:
         for a, b in itertools.combinations(nodes, 2):
@@ -689,6 +723,24 @@ def apply_hebbian_on_close(
                         EdgeType.ASSOCIATES,
                         metadata_updates={"valence": updated},
                     )
+
+
+def tool_execution_rule() -> BoundaryRule:
+    """Close the pending episode when the incoming event was preceded
+    by a tool execution.
+
+    (Episode boundary enrichment Stage 1)
+
+    Tool execution fundamentally changes episodic context — "about to
+    search for X" and "search returned Y results" are different episodes.
+    Breaking at tool boundaries creates cleaner Hebbian structure by
+    separating pre-tool conversation from post-tool results.
+    """
+
+    def _rule(pending: PendingEpisodeState, event: CaptureEvent) -> bool:
+        return event.after_tool_execution is True
+
+    return _rule
 
 
 def salience_spike_rule(min_intensity: float = 0.5) -> BoundaryRule:
@@ -713,6 +765,7 @@ __all__ = [
     "PendingEpisodeState",
     "apply_hebbian_on_close",
     "salience_spike_rule",
+    "tool_execution_rule",
     "channel_change_rule",
     "channel_gap_rule",
     "channel_specific_rule",
