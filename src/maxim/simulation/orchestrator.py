@@ -1098,6 +1098,9 @@ def start_simulation_mode(
     dm_rollup: dict[str, Any] = {}
     _dm_thread: threading.Thread | None = None
     _dm_error: list[Exception] = []
+    # True when a human drives the conversation (no specific goal).
+    # Stall detector and probing are disabled in this mode.
+    _is_observe_only = _get_im() == _IM.ON and goal.strip().lower() in ("interactive", "interactive mode", "")
     if dm_campaign is not None:
         from maxim.simulation.campaign_runner import run_dm_campaign as _run_dm
 
@@ -1184,12 +1187,7 @@ def start_simulation_mode(
                 novelty=1.0,
             )
     else:
-        # In interactive mode the human drives the conversation — the
-        # orchestrator should observe and only intervene if the user
-        # goes idle for a long time. Without this, the orchestrator
-        # sends probes immediately and the AUT responds to the
-        # orchestrator instead of waiting for the human.
-        if _get_im() == _IM.ON:
+        if _is_observe_only:
             _orch_instruction = (
                 "A human user is present and typing directly to the agent. "
                 "Do NOT send messages to the agent — the human will do that. "
@@ -1202,7 +1200,11 @@ def start_simulation_mode(
         elif "CAMPAIGN PROTOCOL" in goal:
             _orch_instruction = "Start now: send the FIRST campaign turn verbatim via send_message."
         else:
-            _orch_instruction = "Start now: call send_message with your first probe."
+            _orch_instruction = (
+                "IMPORTANT: Your FIRST action MUST be send_message. Do NOT call "
+                "observe_actions or analyze_results first — there is nothing to "
+                "observe yet. Call send_message NOW with a probe related to the goal."
+            )
 
         orchestrator_source.inject_cli(
             f"SIMULATION GOAL: {goal}\n\n"
@@ -1543,6 +1545,8 @@ def start_simulation_mode(
     # advance. Drives the action-count ping-pong trigger.
     _last_orch_action_count = [0]
     _nudge_count = [0]
+    _last_nudge_time = [0.0]
+    _NUDGE_COOLDOWN_S = 15.0
     _max_turn_warned = [False]
 
     def _stall_detector() -> None:
@@ -1629,13 +1633,16 @@ def start_simulation_mode(
                 stop_event.set()
                 break
 
-            # Skip stall detection while paused, waiting for user input,
-            # or in interactive mode.  In interactive mode the human
-            # drives the pace — nudging the orchestrator causes it to
-            # send adversarial probes (e.g., "delete all files in /tmp")
-            # which the AUT may execute.
+            # Skip stall detection while paused or waiting for user input.
+            # In pure interactive mode (no goal — human drives pace),
+            # also skip: nudging the orchestrator would send adversarial
+            # probes that the AUT may execute unsupervised.
+            # When a goal IS provided (e.g. --sim "dragon attack" at a
+            # TTY), keep the stall detector active — the orchestrator
+            # should be probing the AUT, not endlessly observing.
             _prompt_pending = _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt
-            if _paused[0] or _prompt_pending or _is_interactive:
+            _skip_stall = _paused[0] or _prompt_pending or _is_observe_only
+            if _skip_stall:
                 # Reset both counters so stale state doesn't trigger
                 # a ping-pong or idle nudge immediately after resume.
                 _last_activity_time[0] = time.time()
@@ -1663,6 +1670,10 @@ def start_simulation_mode(
             time_stalled = time.time() - _last_activity_time[0] > stall_threshold_s
 
             if not (ping_pong or time_stalled):
+                continue
+
+            # Nudge cooldown: don't flood the orchestrator with nudges.
+            if time.time() - _last_nudge_time[0] < _NUDGE_COOLDOWN_S:
                 continue
 
             # Fire a nudge (shared path for both triggers).
@@ -1715,6 +1726,7 @@ def start_simulation_mode(
                 )
 
             orchestrator_source.inject_cli(nudge, salience=1.0, novelty=1.0)
+            _last_nudge_time[0] = time.time()
             # Reset both trackers so we don't re-nudge on the same stall.
             _last_activity_time[0] = time.time()
             _last_orch_action_count[0] = current_actions

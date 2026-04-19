@@ -891,26 +891,18 @@ class LLMWorker:
                 proposals.append(completed.result)
         return proposals
 
-    def _process_request(self, request: LLMRequest) -> LLMProposal:
+    def _process_request(self, request: LLMRequest) -> LLMProposal | None:
         """Process a single LLM request."""
         start_time = time.time()
 
         try:
             prompt = self._build_prompt(request)
 
-            # Skip LLM call if no meaningful prompt (idle observation)
+            # Skip LLM call if no meaningful prompt (idle observation).
+            # Return None — callers already handle None from get_latest_proposal.
             if not prompt or not prompt.strip():
-                return LLMProposal(
-                    request_id=request.request_id,
-                    action=None,
-                    reasoning="No user input to respond to",
-                    strategy_used=None,
-                    confidence=0.0,
-                    mode_goal_achieved=False,
-                    citations=[],
-                    latency_ms=0.0,
-                    triggering_input=request.triggering_input,
-                )
+                logger.debug("Empty prompt for request %s — skipping LLM call", request.request_id)
+                return None
 
             # Check if this is a pre-built JSON response (simple answer)
             # These don't need LLM - just parse and return

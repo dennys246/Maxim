@@ -47,6 +47,7 @@ class SimulationBridge:
         response_policy: ResponsePolicy | None = None,
         spinner_prefix: str = "",
         prompt_gate: Any = None,
+        max_actions_per_turn: int = 10,
     ) -> None:
         self.percept_source = ConversationalSource()
         self.action_sink = RecordingSink()
@@ -55,6 +56,7 @@ class SimulationBridge:
         self._settle_s = settle_s
         self._stop_event = stop_event
         self._prompt_gate = prompt_gate  # SimPromptHandler — block percepts while prompting
+        self._max_actions_per_turn = max(1, max_actions_per_turn)
         self._turn_count = 0
         self._last_observed_action_idx = 0
         self._spinner = Spinner(prefix=spinner_prefix)
@@ -150,6 +152,14 @@ class SimulationBridge:
                     f"Turn {self._turn_count}: AUT responded ({new_count} action{'s' if new_count != 1 else ''}), settling..."
                 )
                 last_action_count = current_count
+                # Action cap: break immediately if AUT has generated too many actions
+                if new_count >= self._max_actions_per_turn:
+                    logger.warning(
+                        "Action cap reached (%d actions in turn %d) — breaking settle loop",
+                        new_count,
+                        self._turn_count,
+                    )
+                    break
                 settle_deadline = time.time() + settle_timeout
             elif settle_deadline and time.time() >= settle_deadline:
                 break

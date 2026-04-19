@@ -444,19 +444,16 @@ def run_agentic_loop(
     ctrl.prefetcher = prefetcher
     ctrl.result_cache = result_cache
 
-    # Aliases for backward compat — loop body still references these directly.
-    # As more sections migrate into controller methods, these will shrink.
-    pending_proposal = ctrl.pending_proposal
+    # Mutable-container aliases — safe because in-place mutation is shared.
+    # State variables (pending_proposal, pending_action_followup, etc.) use
+    # ctrl.X directly to prevent local/controller divergence.
     pending_next_actions = ctrl.pending_next_actions
-    pending_action_followup = ctrl.pending_action_followup
-    pending_plan_proposal = ctrl.pending_plan_proposal
     processed_cli_inputs = ctrl.processed_cli_inputs
     recent_outcomes = ctrl.recent_outcomes
     max_recent_outcomes = ctrl.max_recent_outcomes
     agent_states = ctrl.agent_states
     last_surfaced_tools = ctrl.last_surfaced_tools
     pending_prefetch = ctrl.pending_prefetch
-    last_llm_submit_time = ctrl.last_llm_submit_time
     llm_submit_interval = ctrl.llm_submit_interval
 
     # Consecutive same-tool cap — prevents respond loops (refinement plan 1.5e)
@@ -508,8 +505,8 @@ def run_agentic_loop(
                 _last_heartbeat_time[0] = loop_start
             elif loop_start - _last_heartbeat_time[0] >= 10.0:
                 _hb_state = (
-                    f"pending_proposal={'yes' if pending_proposal else 'no'} "
-                    f"pending_plan={'yes' if pending_plan_proposal else 'no'} "
+                    f"ctrl.pending_proposal={'yes' if ctrl.pending_proposal else 'no'} "
+                    f"pending_plan={'yes' if ctrl.pending_plan_proposal else 'no'} "
                     f"autonomy={autonomy_controller.current_level.value} "
                     f"paused={autonomy_controller.is_paused}"
                 )
@@ -550,7 +547,7 @@ def run_agentic_loop(
             continue
 
         # 0.5 CHECK PERCEPT SOURCE EXHAUSTION (simulation mode)
-        if sim.check_exhaustion(pending_proposal):
+        if sim.check_exhaustion(ctrl.pending_proposal):
             break
 
         # ─────────────────────────────────────────────────────────────────
@@ -571,7 +568,7 @@ def run_agentic_loop(
         #   - First iteration (startup — run initial cycle once)
         _has_pending_input = bool(state.data.get("pending_cli_input") or state.data.get("pending_voice_input"))
         _has_pending_work = bool(
-            pending_proposal or pending_action_followup or pending_next_actions or pending_plan_proposal
+            ctrl.pending_proposal or ctrl.pending_action_followup or pending_next_actions or ctrl.pending_plan_proposal
         )
         _has_sim_percept = (
             sim.is_sim_mode and percept_source is not None and getattr(percept_source, "has_pending", lambda: True)()
@@ -580,7 +577,9 @@ def run_agentic_loop(
         # If we submitted to the LLM recently, we're awaiting a proposal —
         # don't idle-gate or we'll never pick up the result.
         _awaiting_llm = (
-            llm_worker is not None and pending_proposal is None and (time.time() - last_llm_submit_time) < 120.0
+            llm_worker is not None
+            and ctrl.pending_proposal is None
+            and (time.time() - ctrl.last_llm_submit_time) < 120.0
         )
 
         if not (_has_pending_input or _has_pending_work or _has_sim_percept or _is_first_step or _awaiting_llm):
@@ -648,22 +647,22 @@ def run_agentic_loop(
             # loop, we must cancel the pending followup so the new input
             # gets submitted to the LLM instead.
             if not cli_text.startswith("[ACTION_FOLLOWUP"):
-                if pending_action_followup:
-                    _preempted_tool = pending_action_followup.tool
-                    pending_action_followup = None
+                if ctrl.pending_action_followup:
+                    _preempted_tool = ctrl.pending_action_followup.tool
+                    ctrl.pending_action_followup = None
                     logger.info(
                         "Preempted followup chain (%s) for new input: %s",
                         _preempted_tool,
                         cli_text[:60],
                     )
                     sim.log("PIPELINE", f"Preempted {_preempted_tool} followup for new CLI input")
-                if pending_proposal and getattr(pending_proposal, "strategy_used", None) in (
+                if ctrl.pending_proposal and getattr(ctrl.pending_proposal, "strategy_used", None) in (
                     "multi_step",
                     "fallback",
                 ):
                     _preempted_tool = (
-                        pending_proposal.action.get("tool_name", "?")
-                        if isinstance(pending_proposal.action, dict)
+                        ctrl.pending_proposal.action.get("tool_name", "?")
+                        if isinstance(ctrl.pending_proposal.action, dict)
                         else "?"
                     )
                     logger.info(
@@ -672,14 +671,12 @@ def run_agentic_loop(
                         cli_text[:60],
                     )
                     sim.log("PIPELINE", f"Preempted pending {_preempted_tool} proposal for new CLI input")
-                    pending_proposal = None
+                    ctrl.pending_proposal = None
 
             # ───────────────────────────────────────────────────────────────
             # CONFIRMATION / TIMEOUT / PLAN APPROVAL — delegated to controller
             # ───────────────────────────────────────────────────────────────
             if ctrl.handle_confirmation(cli_text):
-                pending_proposal = ctrl.pending_proposal
-                pending_action_followup = ctrl.pending_action_followup
                 cli_input = None
                 continue
 
@@ -696,9 +693,7 @@ def run_agentic_loop(
 
             # Planning mode: check if this input is approval/rejection/modify
             if ctrl.handle_plan_approval(cli_text):
-                pending_proposal = ctrl.pending_proposal
-                pending_plan_proposal = ctrl.pending_plan_proposal
-                if pending_proposal is None and pending_plan_proposal is None:
+                if ctrl.pending_proposal is None and ctrl.pending_plan_proposal is None:
                     # Plan was rejected — don't send to LLM
                     cli_input = None
 
@@ -783,9 +778,12 @@ def run_agentic_loop(
                     f"Proposal received: tool={new_proposal.action.get('tool_name') if isinstance(new_proposal.action, dict) else None}",
                 )
 
-                # Staleness guard: discard proposals older than LLM timeout + margin
+                # Staleness guard: discard proposals that sat in the result
+                # queue too long. The worker's _stale_threshold (default 5s)
+                # governs request freshness; this guards completed proposals.
+                _STALE_PROPOSAL_AGE_S = 35.0
                 proposal_age = time.time() - new_proposal.timestamp
-                if proposal_age > 35.0:
+                if proposal_age > _STALE_PROPOSAL_AGE_S:
                     logger.warning(
                         "Skipping stale LLM proposal (age=%.1fs, request_id=%s)",
                         proposal_age,
@@ -859,7 +857,7 @@ def run_agentic_loop(
                             "requires_approval": getattr(new_proposal, "requires_approval", False),
                         },
                     )
-                    pending_proposal = new_proposal
+                    ctrl.pending_proposal = new_proposal
                     # Record surfaced-but-unused signal for learned tool index
                     _bridge = getattr(executor, "_tool_pain_bridge", None)
                     _tidx = getattr(_bridge, "_tool_index", None) if _bridge else None
@@ -894,9 +892,9 @@ def run_agentic_loop(
                     )
 
         # Check for queued next_actions if no pending proposal
-        if pending_proposal is None and pending_next_actions:
+        if ctrl.pending_proposal is None and pending_next_actions:
             next_action = pending_next_actions.pop(0)
-            pending_proposal = LLMProposal(
+            ctrl.pending_proposal = LLMProposal(
                 request_id=f"next-{time.time_ns()}",
                 action=next_action,
                 reasoning="multi_step_continuation",
@@ -938,7 +936,7 @@ def run_agentic_loop(
             if agent.goal.check_hold():
                 continue  # Still in tonic hold — skip this cycle
 
-        if pending_proposal is None and not has_pending_llm_input:
+        if ctrl.pending_proposal is None and not has_pending_llm_input:
             try:
                 if hasattr(agent, "propose_intent"):
                     intent = agent.propose_intent(state, memory)
@@ -1093,8 +1091,8 @@ def run_agentic_loop(
                                         success=False,
                                         result_summary=None,
                                         error=str(e),
-                                        reasoning=getattr(pending_proposal, "reasoning", "")
-                                        if pending_proposal
+                                        reasoning=getattr(ctrl.pending_proposal, "reasoning", "")
+                                        if ctrl.pending_proposal
                                         else "",
                                         recent_outcomes=recent_outcomes,
                                         max_recent=max_recent_outcomes,
@@ -1128,9 +1126,9 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         # 4. EXECUTE PENDING LLM ACTION (if autonomy allows)
         # ─────────────────────────────────────────────────────────────────
-        if pending_proposal and pending_proposal.action:
-            action = pending_proposal.action
-            confidence = pending_proposal.confidence
+        if ctrl.pending_proposal and ctrl.pending_proposal.action:
+            action = ctrl.pending_proposal.action
+            confidence = ctrl.pending_proposal.confidence
 
             # ── Consecutive same-tool cap (respond loop prevention) ──────
             _this_tool = action.get("tool_name", "") if isinstance(action, dict) else ""
@@ -1150,7 +1148,7 @@ def run_agentic_loop(
                     "EXEC",
                     f"CAPPED: {_this_tool} repeated {_consecutive_same_tool_count}x — breaking respond loop",
                 )
-                pending_proposal = None
+                ctrl.pending_proposal = None
                 _consecutive_same_tool_count = 0
                 _consecutive_same_tool = ""
                 continue
@@ -1158,15 +1156,15 @@ def run_agentic_loop(
             # ───────────────────────────────────────────────────────────────
             # PARALLEL ACTIONS: Execute all together for efficient batching
             # ───────────────────────────────────────────────────────────────
-            parallel_actions = getattr(pending_proposal, "parallel_actions", [])
+            parallel_actions = getattr(ctrl.pending_proposal, "parallel_actions", [])
             if parallel_actions:
-                all_parallel_actions = pending_proposal.get_parallel_actions()
+                all_parallel_actions = ctrl.pending_proposal.get_parallel_actions()
                 _par_results, combined_results = _execute_parallel(
                     actions=all_parallel_actions,
                     executor=executor,
                     autonomy_controller=autonomy_controller,
                     confidence=confidence,
-                    reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                    reasoning=getattr(ctrl.pending_proposal, "reasoning", "") if ctrl.pending_proposal else "",
                     recent_outcomes=recent_outcomes,
                     max_recent=max_recent_outcomes,
                     llm_worker=llm_worker,
@@ -1175,10 +1173,10 @@ def run_agentic_loop(
                 )
 
                 # Queue as a followup for the next LLM call
-                pending_action_followup = ActionFollowup(
+                ctrl.pending_action_followup = ActionFollowup(
                     tool="batched_exploration",
                     result=combined_results,
-                    original_query=pending_proposal.triggering_input,
+                    original_query=ctrl.pending_proposal.triggering_input,
                     followup_type="process",
                     mode=state.data.get("mode", "exploration"),
                     timestamp=time.time(),
@@ -1186,15 +1184,15 @@ def run_agentic_loop(
                 logger.info("Batched exploration complete, queuing followup for LLM")
 
                 # Clear proposal - will be handled via followup
-                pending_proposal = None
+                ctrl.pending_proposal = None
                 continue  # Skip normal execution flow
 
             # ───────────────────────────────────────────────────────────────
             # PLANNING MODE: Check if this proposal requires user approval
             # ───────────────────────────────────────────────────────────────
-            if getattr(pending_proposal, "requires_approval", False) and pending_proposal.plan_text:
+            if getattr(ctrl.pending_proposal, "requires_approval", False) and ctrl.pending_proposal.plan_text:
                 # In sim mode, auto-resolve plan approval via response policy
-                sim_plan_response = sim.resolve_plan_approval(pending_proposal.plan_text)
+                sim_plan_response = sim.resolve_plan_approval(ctrl.pending_proposal.plan_text)
                 if sim_plan_response is not None:
                     sim.log("PIPELINE", f"Auto-resolved plan approval: {sim_plan_response}")
                     if sim_plan_response.lower() in ("yes", "y"):
@@ -1203,7 +1201,7 @@ def run_agentic_loop(
                     else:
                         # Auto-rejected
                         logger.info("Sim mode: plan auto-rejected")
-                        pending_proposal = None
+                        ctrl.pending_proposal = None
                         continue
                 else:
                     # Production mode: store and wait for real user
@@ -1213,15 +1211,17 @@ def run_agentic_loop(
                         "plan_awaiting_approval",
                         {
                             "tool": action.get("tool_name"),
-                            "plan_preview": pending_proposal.plan_text[:100] if pending_proposal.plan_text else None,
+                            "plan_preview": ctrl.pending_proposal.plan_text[:100]
+                            if ctrl.pending_proposal.plan_text
+                            else None,
                         },
                     )
 
-                    state.data["pending_plan_text"] = pending_proposal.plan_text
+                    state.data["pending_plan_text"] = ctrl.pending_proposal.plan_text
                     state.data["pending_plan_tool"] = action.get("tool_name")
 
-                    pending_plan_proposal = pending_proposal
-                    pending_proposal = None
+                    ctrl.pending_plan_proposal = ctrl.pending_proposal
+                    ctrl.pending_proposal = None
                     continue
 
             logger.info("Executing LLM proposal: tool=%s, confidence=%.2f", action.get("tool_name"), confidence)
@@ -1233,7 +1233,7 @@ def run_agentic_loop(
                 {
                     "tool": action.get("tool_name"),
                     "confidence": confidence,
-                    "reasoning": pending_proposal.reasoning[:100] if pending_proposal.reasoning else None,
+                    "reasoning": ctrl.pending_proposal.reasoning[:100] if ctrl.pending_proposal.reasoning else None,
                     "source": "llm_worker",
                 },
             )
@@ -1257,7 +1257,7 @@ def run_agentic_loop(
             if can_execute:
                 # Capture pre-execution snapshot for preemption reversal
                 if hasattr(agent, "_execution_tracker") and agent._execution_tracker:
-                    goal_desc = pending_proposal.reasoning or ""
+                    goal_desc = ctrl.pending_proposal.reasoning or ""
                     robot_handle = getattr(agent, "goal", None)
                     robot_handle = getattr(robot_handle, "robot", None) if robot_handle else None
                     agent._execution_tracker.capture_before(
@@ -1377,10 +1377,10 @@ def run_agentic_loop(
                     autonomy_controller.log_action(
                         action_type="executed",
                         action=action,
-                        reasoning=pending_proposal.reasoning,
+                        reasoning=ctrl.pending_proposal.reasoning,
                         mode=state.data.get("mode", "unknown"),
                         confidence=confidence,
-                        citations=pending_proposal.citations,
+                        citations=ctrl.pending_proposal.citations,
                         outcome="success" if success else "failure",
                         error=getattr(result, "error", None),
                     )
@@ -1432,7 +1432,7 @@ def run_agentic_loop(
                         success=success,
                         result_summary=result_str,
                         error=getattr(result, "error", None),
-                        reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                        reasoning=getattr(ctrl.pending_proposal, "reasoning", "") if ctrl.pending_proposal else "",
                         recent_outcomes=recent_outcomes,
                         max_recent=max_recent_outcomes,
                         llm_worker=llm_worker,
@@ -1444,7 +1444,7 @@ def run_agentic_loop(
                     if memory_hub_enabled and memory_hub is not None:
                         _record_plan_outcome(
                             memory_hub=memory_hub,
-                            goal=pending_proposal.reasoning or "",
+                            goal=ctrl.pending_proposal.reasoning or "",
                             tool_name=tool_name,
                             success=success,
                         )
@@ -1461,8 +1461,8 @@ def run_agentic_loop(
                     # Note: Use 'is not None' to handle empty lists [] which are falsy but still valid output
                     should_followup = followup_type and ((success and output is not None) or followup_type == "process")
                     if should_followup:
-                        triggering_input = getattr(pending_proposal, "triggering_input", "")
-                        pending_action_followup = ActionFollowup(
+                        triggering_input = getattr(ctrl.pending_proposal, "triggering_input", "")
+                        ctrl.pending_action_followup = ActionFollowup(
                             tool=tool_name,
                             result=result_str,
                             original_query=triggering_input,
@@ -1480,7 +1480,7 @@ def run_agentic_loop(
                         raw_params = action.get("params")
                         params = raw_params if isinstance(raw_params, dict) else {}
                         response_message = params.get("message") or params.get("text", "")
-                        triggering_input = getattr(pending_proposal, "triggering_input", "")
+                        triggering_input = getattr(ctrl.pending_proposal, "triggering_input", "")
                         if response_message and triggering_input:
                             context_pool.add_conversation_turn(
                                 user_input=triggering_input,
@@ -1501,7 +1501,7 @@ def run_agentic_loop(
                         memory.store_raw(
                             content={
                                 "action": action,
-                                "reasoning": pending_proposal.reasoning,
+                                "reasoning": ctrl.pending_proposal.reasoning,
                                 "result": getattr(result, "output", None),
                                 "success": getattr(result, "success", True),
                             },
@@ -1517,7 +1517,7 @@ def run_agentic_loop(
                             executor=executor,
                             observation=observation,
                             state=state,
-                            intent={"goal": pending_proposal.reasoning, "source": "llm_worker"},
+                            intent={"goal": ctrl.pending_proposal.reasoning, "source": "llm_worker"},
                             action={
                                 "tool_name": action.get("tool_name"),
                                 "params": action.get("params", {}),
@@ -1555,7 +1555,7 @@ def run_agentic_loop(
                     autonomy_controller.log_action(
                         action_type="executed",
                         action=action,
-                        reasoning=pending_proposal.reasoning,
+                        reasoning=ctrl.pending_proposal.reasoning,
                         mode=state.data.get("mode", "unknown"),
                         confidence=confidence,
                         outcome="error",
@@ -1568,7 +1568,7 @@ def run_agentic_loop(
                         success=False,
                         result_summary=None,
                         error=str(e),
-                        reasoning=getattr(pending_proposal, "reasoning", "") if pending_proposal else "",
+                        reasoning=getattr(ctrl.pending_proposal, "reasoning", "") if ctrl.pending_proposal else "",
                         recent_outcomes=recent_outcomes,
                         max_recent=max_recent_outcomes,
                         llm_worker=llm_worker,
@@ -1582,23 +1582,23 @@ def run_agentic_loop(
                     except Exception as mf_err:
                         log_swallowed_exception(mf_err, operation="state.mark_failure_exc")
 
-                pending_proposal = None
+                ctrl.pending_proposal = None
 
             elif autonomy_controller.current_level == AutonomyLevel.PLANNING:
                 # Queue for human approval
                 proposal = Proposal(
-                    id=pending_proposal.request_id,
+                    id=ctrl.pending_proposal.request_id,
                     action=action,
-                    reasoning=pending_proposal.reasoning,
+                    reasoning=ctrl.pending_proposal.reasoning,
                     confidence=confidence,
-                    strategy_used=pending_proposal.strategy_used,
-                    citations=pending_proposal.citations,
+                    strategy_used=ctrl.pending_proposal.strategy_used,
+                    citations=ctrl.pending_proposal.citations,
                 )
                 autonomy_controller.proposal_queue.submit(proposal)
                 autonomy_controller.log_action(
                     action_type="proposed",
                     action=action,
-                    reasoning=pending_proposal.reasoning,
+                    reasoning=ctrl.pending_proposal.reasoning,
                     mode=state.data.get("mode", "unknown"),
                     confidence=confidence,
                 )
@@ -1612,7 +1612,7 @@ def run_agentic_loop(
                     autonomy_controller.proposal_queue.approve(proposal.id, approved_by="auto:non-interactive")
                     sim.log("PIPELINE", f"Auto-approved (non-interactive PLANNING): {action.get('tool_name')}")
 
-                pending_proposal = None
+                ctrl.pending_proposal = None
 
             else:
                 # Check if this is a confirmation request (not a hard rejection)
@@ -1623,7 +1623,7 @@ def run_agentic_loop(
 
                     confirmation_data = {
                         "action": action,
-                        "reasoning": pending_proposal.reasoning,
+                        "reasoning": ctrl.pending_proposal.reasoning,
                         "confidence": confidence,
                         "tool_name": tool_name,
                     }
@@ -1647,8 +1647,8 @@ def run_agentic_loop(
                                 param_lines.append(f"    {key}: {dv}")
                             if param_lines:
                                 display_scene("\n".join(param_lines))
-                            if pending_proposal.reasoning:
-                                display_scene(f"  Reasoning: {pending_proposal.reasoning}")
+                            if ctrl.pending_proposal.reasoning:
+                                display_scene(f"  Reasoning: {ctrl.pending_proposal.reasoning}")
                             display_scene("  Type 'yes' or 'no' to confirm/reject:")
                         else:
                             # Non-interactive: auto-approve via supervision policy
@@ -1656,7 +1656,7 @@ def run_agentic_loop(
                             sim.log("PIPELINE", f"Auto-approved (non-interactive): {tool_name}")
 
                         state.data["pending_confirmation"] = confirmation_data
-                    # Don't clear pending_proposal yet - we need to wait for response
+                    # Don't clear ctrl.pending_proposal yet - we need to wait for response
                 else:
                     # Hard rejection - tool not allowed
                     autonomy_controller.log_action(
@@ -1673,7 +1673,7 @@ def run_agentic_loop(
                         success=False,
                         result_summary=None,
                         error=rejection_msg,
-                        reasoning=pending_proposal.reasoning or "",
+                        reasoning=ctrl.pending_proposal.reasoning or "",
                         recent_outcomes=recent_outcomes,
                         max_recent=max_recent_outcomes,
                         llm_worker=llm_worker,
@@ -1681,7 +1681,7 @@ def run_agentic_loop(
                         nac=_loop_nac,
                     )
                     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
-                pending_proposal = None
+                ctrl.pending_proposal = None
 
         # ─────────────────────────────────────────────────────────────────
         # 5. CHECK FOR APPROVED PROPOSALS (PLANNING mode)
@@ -1730,7 +1730,7 @@ def run_agentic_loop(
                             (success and output is not None) or followup_type == "process"
                         )
                         if should_followup:
-                            pending_action_followup = ActionFollowup(
+                            ctrl.pending_action_followup = ActionFollowup(
                                 tool=tool_name,
                                 result=result_str,
                                 original_query="",
@@ -1760,14 +1760,18 @@ def run_agentic_loop(
         # Only trigger LLM when there's something meaningful to respond to
         # ─────────────────────────────────────────────────────────────────
         # Diagnostic: trace why LLM submission is skipped
-        if llm_worker and pending_proposal is not None and cli_input and sim.is_sim_mode:
+        if llm_worker and ctrl.pending_proposal is not None and cli_input and sim.is_sim_mode:
             _pp_tool = (
-                pending_proposal.action.get("tool_name", "?") if isinstance(pending_proposal.action, dict) else "?"
+                ctrl.pending_proposal.action.get("tool_name", "?")
+                if isinstance(ctrl.pending_proposal.action, dict)
+                else "?"
             )
-            sim.log("PIPELINE", f"LLM gate BLOCKED: pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}")
-        if llm_worker and pending_proposal is None:
+            sim.log(
+                "PIPELINE", f"LLM gate BLOCKED: ctrl.pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}"
+            )
+        if llm_worker and ctrl.pending_proposal is None:
             now = time.time()
-            if now - last_llm_submit_time > llm_submit_interval:
+            if now - ctrl.last_llm_submit_time > llm_submit_interval:
                 # Cache tool registry snapshot for this submission (avoids 3 redundant traversals)
                 _all_tools = _get_all_tools()
 
@@ -1781,7 +1785,7 @@ def run_agentic_loop(
                     # create a minimal context to ensure the followup gets processed.
                     # This fixes the bug where search results were returned but not
                     # processed because memory.build_context() returned None.
-                    if pending_action_followup and context is None:
+                    if ctrl.pending_action_followup and context is None:
                         from maxim.agents.bus import StructuredContext
 
                         context = StructuredContext(
@@ -1903,14 +1907,14 @@ def run_agentic_loop(
                             has_meaningful_input = True
 
                         # Check for pending action followup (tools that need LLM processing)
-                        if pending_action_followup:
+                        if ctrl.pending_action_followup:
                             has_meaningful_input = True
                             # Inject the action result into CLI inputs so LLM can process
-                            followup_query = pending_action_followup.original_query
-                            followup_result = pending_action_followup.result or ""
-                            followup_tool = pending_action_followup.tool
-                            followup_type = pending_action_followup.followup_type
-                            followup_mode = pending_action_followup.mode
+                            followup_query = ctrl.pending_action_followup.original_query
+                            followup_result = ctrl.pending_action_followup.result or ""
+                            followup_tool = ctrl.pending_action_followup.tool
+                            followup_type = ctrl.pending_action_followup.followup_type
+                            followup_mode = ctrl.pending_action_followup.mode
 
                             # Preserve original query for conversation history tracking
                             # This ensures followup responses are saved with the original user question
@@ -1933,7 +1937,7 @@ def run_agentic_loop(
                                 len(followup_result),
                             )
                             # Clear the followup after processing
-                            pending_action_followup = None
+                            ctrl.pending_action_followup = None
 
                     # Skip LLM if nothing to react to
                     if not has_meaningful_input:
@@ -2091,7 +2095,7 @@ def run_agentic_loop(
                             is_sleeping=is_sleeping,
                             protocol_context=_protocol_context,
                         )
-                        last_llm_submit_time = now
+                        ctrl.last_llm_submit_time = now
                         # Log submission for both user input and followups
                         if submitted:
                             # Check if this is a followup submission
@@ -2138,7 +2142,7 @@ def run_agentic_loop(
                         "state": state,
                         "memory": memory,
                         "autonomy_level": autonomy_controller.current_level.value,
-                        "pending_proposal": pending_proposal is not None,
+                        "ctrl.pending_proposal": ctrl.pending_proposal is not None,
                     }
                 )
         except Exception:

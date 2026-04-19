@@ -1,8 +1,8 @@
 # Agent Loop State Repair — fix sim stall and flow issues
 
-**Status:** Plan written (2026-04-19). Not started.
-**Scope:** ~200-400 LOC across 4 files
-**Priority:** HIGH — sims are stalling in production
+**Status:** COMPLETE (2026-04-19). All 5 stages shipped + review fold.
+**Scope:** +116/-103 across 5 files (agent_loop.py, bridge.py, llm_worker.py, orchestrator.py, cli.py)
+**Priority:** HIGH — sims were stalling in production
 **Blocks:** Any sim-dependent work (0.6 embodiment PoC, behavioral convergence experiments)
 
 ## Problem
