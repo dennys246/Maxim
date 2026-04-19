@@ -378,6 +378,7 @@ class SimPromptHandler(PromptHandler):
             prompt_text = request.question
             if request.options:
                 prompt_text += "\n" + "\n".join(f"  [{i}] {opt}" for i, opt in enumerate(request.options, 1))
+            prompt_text += "\n\n> Type your answer and press Enter:"
             if display is not None:
                 display.set_prompt(prompt_text)
             _emit(f"  Agent asks: {request.question}", "choice")

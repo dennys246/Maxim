@@ -137,6 +137,12 @@ class SimulationBridge:
         while time.time() < deadline:
             if self._stop_event and self._stop_event.is_set():
                 break
+            # Extend deadline while the AUT is waiting for user input —
+            # don't count prompt time against the response timeout.
+            if self._prompt_gate is not None and getattr(self._prompt_gate, "has_pending_prompt", False):
+                deadline = max(deadline, time.time() + timeout_s)
+                time.sleep(0.3)
+                continue
             current_count = len(self.action_sink.actions)
             if current_count > last_action_count:
                 new_count = current_count - action_count_before
