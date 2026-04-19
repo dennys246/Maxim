@@ -1913,11 +1913,22 @@ def start_simulation_mode(
         display_status("Skipping LLM roundup (session cost ceiling reached)")
 
     if _is_interactive:
-        # Show the report IN the Live panel so the user can scroll it
-        print_report(report)
-
+        # Show the report IN the Live panel so the user can scroll it.
+        # Reset scroll to bottom first so the report appears at the end,
+        # then scroll up to show the start of the report.
         display = get_active_display()
         if display is not None:
+            display.scroll(-999999)  # Jump to bottom before report
+
+        log_count_before = len(display._log_lines) if display is not None else 0
+        print_report(report)
+        log_count_after = len(display._log_lines) if display is not None else 0
+        report_lines = log_count_after - log_count_before
+
+        if display is not None:
+            # Scroll up to show the start of the report
+            if report_lines > 0:
+                display.scroll(report_lines)
             display.set_prompt("Type a new goal to continue (memory carries over), or press Enter to finish.\n\n> ")
             display._prompt_urgent = True
 
