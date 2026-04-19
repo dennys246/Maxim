@@ -1637,26 +1637,28 @@ def start_simulation_mode(
 
     # ── Interactive end-of-sim prompt: let user scroll before shutdown ───
     # When --interactive is on, don't rush to shutdown. Let the user
-    # scroll the logs at their own pace. The raw stdin reader is still
-    # alive (daemon thread), so we use the prompt handler to wait.
-    if _is_interactive and _sim_prompt_handler is not None:
+    # scroll the logs at their own pace.
+    # The raw stdin reader has already exited (stop_event is set), so
+    # we stop Live and use direct input() — terminal is clean.
+    if _is_interactive:
         display = get_active_display()
         if display is not None:
             display.set_scene(title="Simulation Complete")
+            display.set_prompt("Scroll the logs with arrow keys. Press Enter to view the report.")
             display._prompt_urgent = True
 
-        from maxim.interactive.prompts import PromptRequest, PromptType
-
-        _sim_prompt_handler.prompt(
-            PromptRequest(
-                prompt_type=PromptType.FREEFORM,
-                question="Simulation finished. Press Enter to view the report.",
-                timeout_sec=600.0,
-            )
-        )
-
-        if display is not None:
-            display._prompt_urgent = False
+        # Restore terminal to normal mode (raw reader's finally block
+        # already ran), then block on input().
+        try:
+            if display is not None:
+                display.stop()
+            print("\n  Simulation complete. Press Enter to view the report...")
+            input()
+            if display is not None:
+                display._prompt_urgent = False
+                display.start()
+        except (EOFError, KeyboardInterrupt):
+            pass
 
     # ── Suppress noisy log output during shutdown ─────────────────────
     # LLM responses may still be in-flight from background threads.

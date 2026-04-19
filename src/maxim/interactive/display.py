@@ -262,22 +262,26 @@ class MaximDisplay:
         if not _RICH_AVAILABLE:
             return ""
 
-        # Scene header (gold, always visible) — LLM updates via set_scene
-        scene_content = self._scene_description or ""
-        scene_title = self._scene_title or self._title
-        scene_height = 3 if not scene_content else 4
-        scene_panel = Panel(
-            Text(scene_content, style="italic") if scene_content else Text(""),
-            title=f"[bold dark_goldenrod]{scene_title}[/bold dark_goldenrod]",
+        # Title bar (gold) — always shows "Maxim" with scene in body
+        scene_parts = []
+        if self._scene_title and self._scene_title != self._title:
+            scene_parts.append(f"[bold]{self._scene_title}[/bold]")
+        if self._scene_description:
+            scene_parts.append(f"[italic]{self._scene_description}[/italic]")
+        scene_content = " — ".join(scene_parts) if scene_parts else ""
+        title_height = 3 if not scene_content else 4
+        title_panel = Panel(
+            Text.from_markup(scene_content) if scene_content else Text(""),
+            title=f"[bold dark_goldenrod]{self._title}[/bold dark_goldenrod]",
             border_style="dark_goldenrod",
-            height=scene_height,
+            height=title_height,
         )
 
-        # Status bar (purple)
+        # Status bar (dark purple)
         status_text = "  ".join(f"{k}: {v}" for k, v in self._status.items())
         status_panel = Panel(
             Text(status_text or "Ready", style="bold"),
-            border_style="purple",
+            border_style="dark_violet",
             height=3,
         )
 
@@ -289,7 +293,7 @@ class MaximDisplay:
             term_height = 40
         prompt_lines = self._prompt_text.count("\n") + 1 if self._prompt_text else 1
         input_height = max(4, prompt_lines + 3)
-        visible_lines = max(5, term_height - scene_height - 3 - input_height - 4)
+        visible_lines = max(5, term_height - title_height - 3 - input_height - 4)
 
         # Log panel with scroll support
         all_lines = list(self._log_lines)
@@ -341,7 +345,7 @@ class MaximDisplay:
                 # Two-column layout: log left, extensions right
                 layout = Layout()
                 layout.split_column(
-                    Layout(scene_panel, size=scene_height),
+                    Layout(title_panel, size=title_height),
                     Layout(status_panel, size=3),
                     Layout(name="body"),
                     Layout(input_panel, size=input_height),
@@ -355,7 +359,7 @@ class MaximDisplay:
         # Layout: scene (gold) + status (purple) + log + input
         layout = Layout()
         layout.split_column(
-            Layout(scene_panel, size=scene_height),
+            Layout(title_panel, size=title_height),
             Layout(status_panel, size=3),
             Layout(log_panel),
             Layout(input_panel, size=input_height),
