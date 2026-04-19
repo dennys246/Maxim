@@ -1640,7 +1640,7 @@ def start_simulation_mode(
             percept_source=orchestrator_source,
         )
     except KeyboardInterrupt:
-        display_summary(["Simulation interrupted (Ctrl+C)"])
+        display_summary(["Simulation stopped by user"])
     except Exception as e:
         orch_error.append(e)
         logger.error("Orchestrator loop failed: %s", e)
