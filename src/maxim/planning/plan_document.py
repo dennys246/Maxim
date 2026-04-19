@@ -261,6 +261,10 @@ class ReplanContext:
     # Coding-specific failure context
     coding_context: CodingReplanContext | None = None
 
+    # B4: Prior plan attempts for this goal (action sequences from earlier replans)
+    prior_attempt_actions: list[list[dict]] = field(default_factory=list)
+    prior_attempt_summaries: list[str] = field(default_factory=list)
+
     def to_llm_prompt_section(self) -> str:
         """Format as a structured prompt section for the LLM."""
         sections: list[str] = []
@@ -340,6 +344,18 @@ class ReplanContext:
                 for fm in cc.files_modified:
                     sections.append(f"  - {fm}")
 
+        if self.prior_attempt_actions:
+            sections.append(f"\n### Prior Plan Attempts ({len(self.prior_attempt_actions)} total — ALL FAILED):")
+            for i, (actions, summary) in enumerate(zip(self.prior_attempt_actions, self.prior_attempt_summaries), 1):
+                sections.append(f"\n  Attempt {i}: {summary}")
+                for a in actions[:10]:
+                    tool = a.get("tool_name", "unknown")
+                    sections.append(f"    - {tool}")
+            sections.append(
+                "\n  CRITICAL: Your new plan MUST use a structurally different approach.\n"
+                "  Do NOT rearrange the same steps — change the strategy itself."
+            )
+
         sections.append(
             "\n### Instructions:\n"
             "Re-decompose the FAILED phase using a DIFFERENT approach.\n"
@@ -372,6 +388,8 @@ class ReplanContext:
             "tool_success_rates": self.tool_success_rates,
             "pattern_warnings": self.pattern_warnings,
             "coding_context": (self.coding_context.to_dict() if self.coding_context else None),
+            "prior_attempt_actions": self.prior_attempt_actions,
+            "prior_attempt_summaries": self.prior_attempt_summaries,
         }
 
     @classmethod
@@ -405,6 +423,8 @@ class ReplanContext:
             coding_context=(
                 CodingReplanContext.from_dict(data["coding_context"]) if data.get("coding_context") else None
             ),
+            prior_attempt_actions=data.get("prior_attempt_actions", []),
+            prior_attempt_summaries=data.get("prior_attempt_summaries", []),
         )
 
 

@@ -1,6 +1,6 @@
 # Substrate P6 — Extinction Without Reinforcement
 
-**Status:** Draft — opens after P3a (CLOSED).
+**Status:** SHIPPED (2026-04-19). All 3 stages PASS.
 **Scope:** ~300 LOC + ~100 metric extractor
 **Target version:** 0.5
 **Gates:** null (not 1.0-gating)
@@ -74,4 +74,10 @@ Two groups of nodes: Group A (reinforced across episodes) and Group B (not reinf
 - Adaptive decay rates (context-dependent half-life) — practice doc territory
 - Partial extinction (some links decay faster than others within an episode)
 
-## Load-bearing invariants (filled in AFTER shipping)
+## Load-bearing invariants
+
+- **`DependencyGraph.decay_edges(factor)` requires `0 < factor < 1`** — raises `ValueError` otherwise. This prevents accidental weight growth (factor >= 1) or instant zeroing (factor <= 0).
+- **Pruning removes from BOTH `_outgoing` and `_incoming`** — the incoming-list filter matches `(source, target, edge_type)` to avoid removing unrelated edges. Pre-merge review caught a bug where `target` was missing from the predicate.
+- **Default edge_types = {ASSOCIATES}** — only Hebbian binding edges decay. CAUSES and REQUIRES edges are untouched.
+- **Default floor = 0.01, prune = True** — edges below floor are pruned automatically. Pass `prune=False` to keep decayed edges for analysis.
+- **decay_edges is NOT called automatically** — it must be invoked by the caller (hippocampus consolidation loop, sleep replay, or SCN tick handler). There is no background thread.

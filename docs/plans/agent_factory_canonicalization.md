@@ -1,6 +1,6 @@
 # AgentFactory Canonicalization — one door for every agent (running doc)
 
-**Status:** Living doc. Not scheduled. Activates on trigger.
+**Status:** Living doc. F1 DECIDED (Z1, 2026-04-19). F2 CLI non-sim migration SHIPPED (2026-04-19).
 **Type:** Multi-session architectural plan.
 **Parent:** [executor_bootstrap_unification.md](executor_bootstrap_unification.md) (must ship first).
 **Related:** [sem_execution_hook.md](sem_execution_hook.md) (Stage 2b deferral lives here too).
@@ -69,7 +69,21 @@ The bootstrap unification plan does NOT solve this — it only ensures that what
 - **Pro:** Executor is per-turn (matches current shape), bridge is per-instance (correct semantics for `_pending_tools` continuity).
 - **Con:** `build_executor` needs a way to accept a *pre-built* bridge instead of constructing one. New parameter.
 
-**Decision needs to be made when this plan opens.** My current lean is **Z3** — it preserves the current per-turn Executor shape while making the bridge lifecycle correct. But this needs a re-read of `AgentPool.run_turn` to confirm the per-turn Executor isn't load-bearing for some other reason.
+### Decision: Z1 — Per-instance Executor (decided 2026-04-19, 0.5 F1 design pass)
+
+**Rationale:** The original Z3 lean was based on the assumption that `AgentPool.run_turn` constructs an Executor per-turn. Audit (0.5 session) found this is **false** — `run_turn` never uses `instance.executor` at all. It does a lightweight `store_observation → _generate_npc_response → NAc.observe` flow. The `executor` field on `AgentInstance` is dead (always `None`, never populated by `AgentFactory.create_agent`).
+
+This eliminates Z2's rationale ("matches current AgentPool shape") and Z3's rationale ("bridge lifecycle needs to span turns"). There IS no per-turn Executor shape to preserve — it doesn't exist. Z1 is the cleanest option:
+
+1. `AgentFactory.create_agent` calls `build_executor(registry, pain_bus=instance.pain_bus)` once.
+2. `AgentInstance.executor` becomes a live field instead of dead.
+3. When G1 ships (`executor_enabled=True`), `AgentPool.run_turn` checks `instance.executor is not None` and routes tool calls through it.
+4. `ToolPainBridge` lives on the Executor (per `build_executor` contract) — one bridge per agent, isolated.
+5. No `_pending_tools` continuity issue because the bridge's lifecycle matches the agent's lifecycle, not the turn's.
+
+**What changes:** `AgentConfig` gains optional bio-config fields (for F2+). `AgentInstance.executor` gets populated by the factory. `AgentPool.run_turn` gains a conditional Executor path (G1). No changes to `build_executor` — Z1 uses it exactly as designed.
+
+**Risk re-evaluated during 0.5:** if future work adds per-turn tool restrictions (allowed_tools, supervision policy), those would need to be set on the executor each turn rather than at construction. This is a `set_allowed_tools(turn_tools)` call, not a reason to rebuild the executor. Flagged for G1 implementation.
 
 ## Migration plan (multi-PR, multi-session)
 

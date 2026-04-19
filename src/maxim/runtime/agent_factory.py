@@ -54,6 +54,13 @@ class AgentConfig:
     remembers: bool = True  # Enable hippocampus
     learns: bool = True  # Enable NAc
 
+    # F2: Full agent construction config (used by create_full_agent)
+    with_bio_stack: bool = False  # Construct BioStack (pain_bus + reaction_bus etc.)
+    with_executor: bool = False  # Construct Executor via build_executor
+    with_pain_bridge: bool = True  # Wire PainBus to executor (False for sim — sim has its own)
+    with_fear_gate: bool = False  # Wrap executor with FearGatedExecutor
+    embodiment_ref: str | None = None  # SEM component ref for embodiment (non-sim only)
+
 
 # ---------------------------------------------------------------------------
 # Agent Instance
@@ -78,12 +85,17 @@ class AgentInstance:
     atl: Any | None = None
     memory_hub: Any | None = None
 
+    # Bio-pipeline (F2: populated by create_full_agent)
+    bio_stack: Any | None = None  # BioStack from build_bio_stack
+    pain_bus: Any | None = None  # PainBus (shortcut to bio_stack.pain_bus)
+
     # Execution
     tool_registry: Any | None = None
     executor: Any | None = None
 
     # Embodiment
     entity: Any | None = None
+    embodiment: Any | None = None  # Embodiment wrapper (from build_executor)
 
     # Personality (injected into LLM system prompt)
     personality: str | None = None
@@ -143,6 +155,14 @@ class AgentInstance:
                     self.nac.save(nac_path)
             except Exception as e:
                 log.warning("Agent %s: NAc save failed: %s", self.agent_id, e)
+
+        # Review fix (Arch #2): save cerebellum forward models on shutdown.
+        # Without this, learned forward models are lost every session.
+        if self.bio_stack is not None:
+            try:
+                self.bio_stack.save_cerebellum()
+            except Exception as e:
+                log.warning("Agent %s: cerebellum save failed: %s", self.agent_id, e)
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +286,126 @@ class AgentFactory:
             learns=learns,
         )
         return self.create_agent(config)
+
+    def create_full_agent(
+        self,
+        config: AgentConfig,
+        *,
+        tool_registry: Any = None,
+        pain_bus: Any = None,
+        auto_load: bool = False,
+    ) -> AgentInstance:
+        """Create a fully wired agent with bio-stack, executor, and fear gating.
+
+        This is the F2 canonical agent construction entry point.  It
+        composes ``create_agent`` (memory subsystems) with
+        ``build_bio_stack`` (bio-pipeline) and ``build_executor``
+        (tool execution).  The Z1 design decision means the Executor
+        is built ONCE per agent and reused across turns.
+
+        Args:
+            config: Agent configuration.  ``with_bio_stack``,
+                ``with_executor``, and ``with_fear_gate`` control
+                which layers are constructed.
+            tool_registry: Pre-built ToolRegistry.  Required when
+                ``config.with_executor`` is True.  CLI builds this
+                via ``build_tool_registry()`` before calling the factory.
+            pain_bus: Pre-built PainBus (sim AUT pattern — sandbox needs
+                the bus before the rest of the stack).  When provided,
+                ``build_bio_stack`` subscribes standard learners to this
+                bus instead of constructing a new one.
+            auto_load: Restore persisted state from the agent's
+                persistence directory.
+
+        Returns:
+            A fully wired AgentInstance.
+
+        Raises:
+            ValueError: ``with_executor`` is True but ``tool_registry``
+                was not provided.
+        """
+        if config.with_executor and tool_registry is None:
+            raise ValueError("create_full_agent requires tool_registry when config.with_executor=True")
+
+        # Step 1: Memory subsystems (hippocampus, NAc, ATL, MemoryHub)
+        instance = self.create_agent(config, auto_load=auto_load)
+        instance.tool_registry = tool_registry or instance.tool_registry
+
+        # Step 2: Bio-stack (PainBus, ReactionBus, cerebellum, etc.)
+        # Bio-stack failure propagates — with_bio_stack=True is an intent,
+        # not a preference.  Pre-merge review (Exec #3, Arch #3) flagged
+        # the silent-degradation risk of catching here.
+        if config.with_bio_stack:
+            from maxim.runtime.bio_stack import build_bio_stack
+
+            agent_dir = self._resolve_persistence_dir(config)
+            bio = build_bio_stack(
+                persistence_dir=str(agent_dir),
+                pain_bus=pain_bus,
+            )
+            instance.bio_stack = bio
+            instance.pain_bus = bio.pain_bus
+            # Upgrade memory subsystems from bio-stack (they have
+            # persistence wiring that create_agent's versions may lack).
+            # The create_agent versions are immediately discarded — this
+            # wastes construction (review #4/#7) but is correct.  A
+            # _create_agent_skeleton optimization is deferred.
+            instance.hippocampus = bio.hippocampus
+            instance.nac = bio.nac
+            instance.memory_hub = bio.memory_hub
+
+        # Step 3: Executor (tool execution with ToolPainBridge)
+        if config.with_executor and instance.tool_registry is not None:
+            if config.with_executor and not config.with_bio_stack:
+                log.warning(
+                    "Agent %s: executor without bio-stack produces a learning-disabled agent",
+                    config.agent_id,
+                )
+            from maxim.runtime.bootstrap import build_executor
+
+            bio = instance.bio_stack
+            # with_pain_bridge=False for sim mode — sim builds its own
+            # PainBus + executor downstream in the orchestrator.
+            _exec_pain_bus = instance.pain_bus if config.with_pain_bridge else None
+            executor = build_executor(
+                instance.tool_registry,
+                pain_bus=_exec_pain_bus,
+                nac=instance.nac if _exec_pain_bus is not None else None,
+                hippocampus=instance.hippocampus if _exec_pain_bus is not None else None,
+                scn=bio.scn if bio is not None and _exec_pain_bus is not None else None,
+                entity_ref=config.embodiment_ref,
+                component_registry=self._component_registry,
+                cerebellum=bio.cerebellum if bio is not None else None,
+            )
+            # Review fix (Exec #1): attribute is `embodiment`, not `_embodiment`.
+            # The old CLI code had the identical bug — always returned None.
+            instance.embodiment = getattr(executor, "embodiment", None)
+            instance.executor = executor
+
+        # Step 4: Fear gating (wraps executor with FearGatedExecutor)
+        if config.with_fear_gate and instance.executor is not None:
+            try:
+                from maxim.agents.fear_agent import FearAgent
+                from maxim.runtime.fear_gate import FearGatedExecutor
+
+                # Review note (Exec #2, Arch #5): FearAgent gets llm=None
+                # (pattern-matching only).  The CLI previously passed the
+                # agent's LLM, but the factory doesn't own an LLM router.
+                # Full LLM-powered safety review requires the caller to
+                # pass an LLM via a future `fear_llm` parameter.
+                fear_agent = FearAgent(llm=None)
+                instance.executor = FearGatedExecutor(instance.executor, fear_agent)
+            except Exception as e:
+                log.warning("Agent %s: FearGatedExecutor failed: %s", config.agent_id, e)
+
+        log.info(
+            "Created full agent '%s' (bio_stack=%s, executor=%s, fear_gate=%s)",
+            config.agent_id,
+            instance.bio_stack is not None,
+            instance.executor is not None,
+            config.with_fear_gate and instance.executor is not None,
+        )
+        return instance
 
     # -- private subsystem creation -----------------------------------------
 

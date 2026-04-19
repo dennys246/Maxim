@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **0.3.2** (published on PyPI as `pymaxim`).
+Current version: **0.5.0** (published on PyPI as `pymaxim`).
 Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
@@ -9,10 +9,10 @@ Foundations, reaction abstraction, simulator upgrades, P0 pilot, P1 recognition,
 
 - [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) — **✅ SPLIT COMPLETE + ARCHIVED** (2026-04-17). Now a pure index. **All four 0.3-target phases CLOSED.** Per-phase plan files created for 0.5 track:
   - [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — Draft. 10k+ node persistence stress. Depends on P3.5 + P4.
-  - [substrate_p6_extinction.md](substrate_p6_extinction.md) — Draft. Decay without reinforcement vs LRU. Depends on P3a.
-  - [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) — Draft. Minimum-viable sleep replay. Depends on P3a + P6.
+  - [substrate_p6_extinction.md](substrate_p6_extinction.md) — **✅ SHIPPED** (2026-04-19). Hebbian decay beats LRU across 10 seeds. Results: [experiments/p6_extinction_results.md](../experiments/p6_extinction_results.md).
+  - [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) — **✅ SHIPPED** (2026-04-19). Sleep replay F1 improves vs no-replay control, 10-seed sweep. Results: [experiments/p8_sleep_replay_results.md](../experiments/p8_sleep_replay_results.md). Activates [memory_consolidation_practice.md](memory_consolidation_practice.md).
   - [prompt_b3_b5_track.md](prompt_b3_b5_track.md) — Draft. Acting Coach + embodiment/narrative separation.
-  - [prompt_b4_replanning.md](prompt_b4_replanning.md) — Draft. **1.0-GATING.** Replanning with failure diagnosis.
+  - [prompt_b4_replanning.md](prompt_b4_replanning.md) — **✅ COMPLETE** (2026-04-19). **1.0 GATE CLOSED.** All 3 stages shipped. Stage 3 blind A/B: treatment 100% vs control 0%, mean Jaccard 0.894. Results: [experiments/b4_replanning_results.md](../experiments/b4_replanning_results.md). 12 tests in `tests/substrate/test_b4_replanning_ab.py`.
 - [substrate_binding_split_proposal.md](archive/substrate_binding_split_proposal.md) — **✅ APPROVED + EXECUTED + ARCHIVED** (2026-04-17). The narrative that motivated the split.
 - [archive/substrate_p0_pilot.md](archive/substrate_p0_pilot.md) — **✅ COMPLETE + ARCHIVED** (2026-04-12). Baseline pinned at 78.5%. Results: [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md).
 - [archive/substrate_recognition.md](archive/substrate_recognition.md) — **✅ COMPLETE + ARCHIVED** (2026-04-14). P1+P2 all stages shipped. 0.3-minimum gate CLOSED.
@@ -30,7 +30,7 @@ The master reference for rationale, baselines, and statistical hygiene is archiv
 These accumulate evidence and refinement over time. They are not on the critical path to 1.0; they exist because the questions they address are scientific/ongoing, not engineering milestones.
 
 - [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — does the agent actually get better across sessions? **4 experiments logged, all 3 tiers PASS** (Exp 1: cross-session affective memory 11/11, Exp 2: energy consumable learning 13/13, Exp 3: LLM acts on bio-system learning 12/12, Exp 4: organic LLM learning 5/5 — teal rate 0% -> 25% -> 100%). 41/41 hypotheses confirmed. Pure living doc — no mechanism to ship, just hypotheses, scenarios, and results.
-- [memory_consolidation_practice.md](memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism with alternative strategies, promotion rules, interference analysis. Kicks in when P8 ships in 0.5 — needs the mechanism to exist before the practice has anything to refine.
+- [memory_consolidation_practice.md](memory_consolidation_practice.md) — refines the P8 sleep-replay mechanism with alternative strategies, promotion rules, interference analysis. **ACTIVATED** (P8 shipped 2026-04-19). Next steps: alternative replay strategies, interference analysis.
 
 ## Parallel (ship anytime, not gating 1.0)
 
@@ -105,7 +105,7 @@ Earlier archives (2026-04-11/12, S1–S4 shipped 2026-04-12):
 
 Five tracks run in parallel:
 - **Track A — Substrate:** the bio-inspired research claim. ~~F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4~~ ALL SHIPPED → P5 → P6 → P8.
-- **Track B — Prompt layer:** ~~B1~~ SHIPPED → B3 → B4 → B5.
+- **Track B — Prompt layer:** ~~B1~~ SHIPPED → B3 → ~~B4~~ **COMPLETE (1.0 GATE CLOSED)** → B5.
 - **Track C — Infrastructure:** ~~LLM path Plans 1–3.5~~ SHIPPED → ~~Reactive peer mesh (C3.5/C3.6/C4.6)~~ ALL SHIPPED. Self-healing loop complete.
 - **Track D — Behavioral convergence:** ~~Tier 1 + Tier 2 + Tier 3~~ ALL PASS (41/41 hypotheses) → Scale validation (20+ seeds).
 - **Track E — Agent control surface (NEW):** Interactive UX fixes → AgentFactory canonicalization (F-wave) + Game/External Host (G-wave).
@@ -117,7 +117,7 @@ Five tracks run in parallel:
 | **0.3.1** | Interactive UX fixes (RequestInteractionTool honesty, narrator fallback, MaximDisplay wiring, prompt cleanup), agent introspection tools (nac_stats, memory_pressure, loop_stats, pain_triggers_active), bare `--interactive` flag | Agent can distinguish real user input from defaults. Rich panel UI for `--interactive`. Agent can introspect its own learning + pain state. | ✅ **SHIPPED** (PR #156) |
 | **0.3.2** | Bidirectional interactive mode: raw terminal input (in-panel rendering), `request_interaction` agent→user prompting, `set_scene` dynamic scene header, `/pause` `/resume` `/display` commands, scrollable log with bio trace dimming, end-of-sim review prompt. Fixed display corruption, stdin contention, tool schema validation, LLM prompt context. | Full interactive simulation experience. User talks to agent, agent asks user questions, scene context updates dynamically. No display corruption, no double-Enter, no flickering. | ✅ **SHIPPED** |
 | **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, concept decomposition S2-3 | Learning is robust under variance + load. Substrate persists at 10k+ nodes. Not a fluke. | Planned |
-| **0.5** | AgentFactory canonicalization (F+G waves), B3 (acting coach), B4 (replanning — **GATES 1.0**), P6 (extinction), P8 (sleep replay) | One door for every agent. NPCs learn from actions. Agent has coherent voice. Agent recovers from failures. Memory consolidates offline. | Planned |
+| **0.5** | AgentFactory canonicalization (F+G waves), B3 (acting coach), ~~B4 (replanning)~~ **✅ COMPLETE**, ~~P6 (extinction)~~ **✅ COMPLETE**, ~~P8 (sleep replay)~~ **✅ COMPLETE** | One door for every agent. NPCs learn from actions. Agent has coherent voice. **Agent recovers from failures (1.0 GATE CLOSED).** Memory consolidates offline. | In progress |
 | **0.6** | **Generalizable embodiment** — Asset Foundry (promoted from deferred), SEM affordance tools in simulation, entity_ref wiring for sim AUT, component generation pipeline | Sim path and robot path use identical tool injection. Agent can interact with SEM entities in simulation with full pain-cascade learning. No code path divergence between sim and live. | Planned |
 | **1.0** | All exit criteria passing, behavioral convergence at scale with statistical rigor, generalizable embodiment | Cross-session learning at realistic scale, coherent voice, failure recovery, one construction door, **unified sim/robot embodiment** | Target |
 
@@ -156,9 +156,9 @@ Three parallel tracks. B4 replanning is the **1.0 gate** — everything else is 
 | Track | What | Plan | Scope | Why |
 |---|---|---|---|---|
 | **B — Acting Coach** | B3 — personality scaffolds, speech register, DisplayExtension panels | [prompt_b3_b5_track.md](prompt_b3_b5_track.md) | ~450 LOC | NPCs get coherent, consistent voice |
-| **B — Replanning** | B4 — failure diagnosis + prior attempt retrieval (**1.0 GATE**) | [prompt_b4_replanning.md](prompt_b4_replanning.md) | ~400 LOC | Agent recovers from failures instead of repeating them |
-| **E — Factory F1** | Design pass: Z1/Z2/Z3 Executor lifetime decision | [agent_factory_canonicalization.md](agent_factory_canonicalization.md) | ~200 LOC | Central design question for all downstream factory work |
-| **E — Factory F2-F5** | CLI/sim/Reachy/API migrations through factory | agent_factory_canonicalization.md | ~1500 LOC | 8 hand-rolled entry points → 1 factory door |
+| **B — Replanning** | ~~B4 — failure diagnosis + prior attempt retrieval~~ **✅ COMPLETE** | [prompt_b4_replanning.md](prompt_b4_replanning.md) | ~400 LOC | **1.0 GATE CLOSED.** Treatment 100% vs control 0%, Jaccard 0.894 |
+| **E — Factory F1** | ~~Design pass: Z1 Executor lifetime decision~~ **✅ DECIDED** | [agent_factory_canonicalization.md](agent_factory_canonicalization.md) | ~200 LOC | Z1: per-instance Executor, built once in factory |
+| **E — Factory F2** | ~~CLI non-sim migration~~ **✅ SHIPPED** + sim/Reachy/API remaining | agent_factory_canonicalization.md | ~1500 LOC | `create_full_agent` composes bio-stack + executor + fear gate |
 | **E — Factory F6** | Hard test enforcement (CI grep, cascade tests) | agent_factory_canonicalization.md | ~1000 LOC tests | Next bridge-wiring bug is a TypeError, not silent no-op |
 | **E — Game NPC G1-G5** | Executor in run_turn, HostContext, emotional readout, async dispatch, memory backend | agent_factory_canonicalization.md Wave G | ~940 LOC | External hosts can use Maxim NPCs with full learning |
 | **A — Extinction** | P6 — decay without reinforcement vs LRU | [substrate_p6_extinction.md](substrate_p6_extinction.md) | ~400 LOC | Agent forgets appropriately |

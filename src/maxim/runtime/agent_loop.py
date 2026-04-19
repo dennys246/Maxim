@@ -259,7 +259,15 @@ def run_agent_loop(
                 planner = decision_engine.planner
                 if hasattr(planner, "decompose"):
                     current_depth = _get_plan_depth(decision)
-                    replan_ctx = _build_replan_context(intent, action, result, state)
+                    # Pass hippocampus for B4 prior-attempt retrieval if available
+                    _hippo = memory if hasattr(memory, "recall") else None
+                    replan_ctx = _build_replan_context(
+                        intent,
+                        action,
+                        result,
+                        state,
+                        hippocampus=_hippo,
+                    )
                     try:
                         redecomposed = planner.decompose(
                             failed_goal={"description": str(goal), "tool_name": action.get("tool_name")},

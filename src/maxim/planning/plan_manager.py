@@ -516,6 +516,22 @@ class PlanManager:
         # Extract coding-specific context if available
         coding_context = _extract_coding_context(phase)
 
+        # B4: Collect prior attempt action sequences from replan_history
+        prior_attempt_actions: list[list[dict]] = []
+        prior_attempt_summaries: list[str] = []
+        for record in plan.replan_history:
+            if record.failed_phase_id == phase.id:
+                actions = [
+                    {"tool_name": sg.get("tool_name", ""), "params": sg.get("tool_params", {})}
+                    for sg in record.original_sub_goals
+                    if sg.get("tool_name")
+                ]
+                if actions:
+                    prior_attempt_actions.append(actions)
+                    prior_attempt_summaries.append(
+                        f"Failed at phase '{phase.description}': {record.failure_reason[:80]}"
+                    )
+
         return ReplanContext(
             failed_phase=phase,
             failure_reason=error,
@@ -549,6 +565,8 @@ class PlanManager:
             tool_success_rates=tool_success_rates,
             pattern_warnings=[],
             coding_context=coding_context,
+            prior_attempt_actions=prior_attempt_actions,
+            prior_attempt_summaries=prior_attempt_summaries,
         )
 
     # ── Session Lifecycle ────────────────────────────────────────────────

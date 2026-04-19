@@ -76,7 +76,11 @@ class TestBuildReplanContext:
             result=FakeResult(),
             state=None,
         )
-        assert ctx.failed_phase == "pick up cup"
+        # B4 fix: failed_phase is now a Phase stub (was raw string — pre-existing type bug)
+        from maxim.planning.plan_document import Phase
+
+        assert isinstance(ctx.failed_phase, Phase)
+        assert ctx.failed_phase.description == "pick up cup"
         assert ctx.failure_reason == "timeout"
         assert "grab" in ctx.attempted_tools
 
