@@ -143,16 +143,6 @@ class RequestInteractionTool(Tool):
                 metadata={"was_prompted": False, "reason": "interactive_mode_off"},
             )
 
-        # Show question in MaximDisplay input panel (if active)
-        from maxim.simulation.sim_logger import get_active_display
-
-        display = get_active_display()
-        prompt_text = question
-        if options:
-            prompt_text += "\n" + "\n".join(f"  [{i}] {opt}" for i, opt in enumerate(options, 1))
-        if display is not None:
-            display.set_prompt(prompt_text)
-
         try:
             # Use PromptHandler if available
             if self._handler is not None:
@@ -190,5 +180,4 @@ class RequestInteractionTool(Tool):
                 metadata={"was_prompted": False, "reason": "no_handler"},
             )
         finally:
-            if display is not None:
-                display.clear_prompt()
+            pass
