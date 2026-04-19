@@ -126,7 +126,7 @@ class MaximDisplay:
         self._lock = threading.RLock()
         self._scroll_offset: int = 0  # 0 = bottom (newest), positive = scrolled up
         self._prompt_urgent: bool = False  # Gold border when agent is asking a question
-        self._scene_title: str = ""
+        self._scene_title: str = "Constructing Simulation"
         self._scene_description: str = ""
 
         if _RICH_AVAILABLE:
@@ -262,30 +262,24 @@ class MaximDisplay:
         if not _RICH_AVAILABLE:
             return ""
 
-        # Status bar
+        # Scene header (gold, always visible) — LLM updates via set_scene
+        scene_content = self._scene_description or ""
+        scene_title = self._scene_title or self._title
+        scene_height = 3 if not scene_content else 4
+        scene_panel = Panel(
+            Text(scene_content, style="italic") if scene_content else Text(""),
+            title=f"[bold dark_goldenrod]{scene_title}[/bold dark_goldenrod]",
+            border_style="dark_goldenrod",
+            height=scene_height,
+        )
+
+        # Status bar (purple)
         status_text = "  ".join(f"{k}: {v}" for k, v in self._status.items())
         status_panel = Panel(
             Text(status_text or "Ready", style="bold"),
-            title=f"[bold dark_goldenrod]{self._title}[/bold dark_goldenrod]",
-            border_style="dark_goldenrod",
+            border_style="purple",
             height=3,
         )
-
-        # Scene header (only shown when set by the LLM via set_scene tool)
-        scene_panel = None
-        scene_height = 0
-        if self._scene_title or self._scene_description:
-            scene_lines = []
-            if self._scene_description:
-                scene_lines.append(self._scene_description)
-            scene_content = "\n".join(scene_lines) if scene_lines else ""
-            scene_height = len(scene_lines) + 2  # +2 for borders
-            scene_panel = Panel(
-                Text(scene_content, style="italic"),
-                title=f"[bold dark_goldenrod]{self._scene_title}[/bold dark_goldenrod]",
-                border_style="dark_goldenrod",
-                height=scene_height,
-            )
 
         # Compute how many log lines fit: terminal height minus status (3)
         # minus input panel (dynamic) minus borders/padding (~4).
@@ -295,7 +289,7 @@ class MaximDisplay:
             term_height = 40
         prompt_lines = self._prompt_text.count("\n") + 1 if self._prompt_text else 1
         input_height = max(4, prompt_lines + 3)
-        visible_lines = max(5, term_height - 3 - scene_height - input_height - 4)
+        visible_lines = max(5, term_height - scene_height - 3 - input_height - 4)
 
         # Log panel with scroll support
         all_lines = list(self._log_lines)
@@ -347,6 +341,7 @@ class MaximDisplay:
                 # Two-column layout: log left, extensions right
                 layout = Layout()
                 layout.split_column(
+                    Layout(scene_panel, size=scene_height),
                     Layout(status_panel, size=3),
                     Layout(name="body"),
                     Layout(input_panel, size=input_height),
@@ -357,14 +352,14 @@ class MaximDisplay:
                 )
                 return layout
 
-        # Simple layout: status + [scene] + log + input
+        # Layout: scene (gold) + status (purple) + log + input
         layout = Layout()
-        panels = [Layout(status_panel, size=3)]
-        if scene_panel is not None:
-            panels.append(Layout(scene_panel, size=scene_height))
-        panels.append(Layout(log_panel))
-        panels.append(Layout(input_panel, size=input_height))
-        layout.split_column(*panels)
+        layout.split_column(
+            Layout(scene_panel, size=scene_height),
+            Layout(status_panel, size=3),
+            Layout(log_panel),
+            Layout(input_panel, size=input_height),
+        )
         return layout
 
 

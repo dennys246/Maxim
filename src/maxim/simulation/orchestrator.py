@@ -1635,22 +1635,28 @@ def start_simulation_mode(
         # Always clean up, even on interrupt
         bridge._spinner.stop()
 
-    # ── Interactive end-of-sim prompt: continue or finish? ──────────────
-    # When --interactive is on and the sim ended naturally (not /cancel),
-    # ask the user before shutting down. This lets them scroll the logs
-    # without being rushed, and optionally continue with a new arc.
-    if _is_interactive and not stop_event.is_set():
+    # ── Interactive end-of-sim prompt: let user scroll before shutdown ───
+    # When --interactive is on, don't rush to shutdown. Let the user
+    # scroll the logs at their own pace. The raw stdin reader is still
+    # alive (daemon thread), so we use the prompt handler to wait.
+    if _is_interactive and _sim_prompt_handler is not None:
         display = get_active_display()
         if display is not None:
-            display.set_prompt("Simulation complete. Type a new goal to continue, or /cancel to finish.\n\n> ")
+            display.set_scene(title="Simulation Complete")
             display._prompt_urgent = True
-        _emit("Simulation complete — type a new goal to continue, or /cancel to finish.", "turn")
-        # Wait for user input via the still-running stdin reader
-        stop_event.wait()  # Blocks until /cancel sets it or the stdin reader exits
+
+        from maxim.interactive.prompts import PromptRequest, PromptType
+
+        _sim_prompt_handler.prompt(
+            PromptRequest(
+                prompt_type=PromptType.FREEFORM,
+                question="Simulation finished. Press Enter to view the report.",
+                timeout_sec=600.0,
+            )
+        )
 
         if display is not None:
             display._prompt_urgent = False
-            display.set_prompt("> ")
 
     # ── Suppress noisy log output during shutdown ─────────────────────
     # LLM responses may still be in-flight from background threads.
