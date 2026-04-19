@@ -1356,6 +1356,10 @@ def start_simulation_mode(
                                 elif seq == "[C":
                                     # Right arrow — jump to bottom
                                     display.scroll(-999999)
+                                elif seq == "[D":
+                                    # Left arrow — page up (full panel height)
+                                    approx_page = max(10, (display._console.height if display._console else 40) - 10)
+                                    display.scroll(approx_page)
                     except Exception:
                         pass
                 elif ch == "\x03":
