@@ -1091,11 +1091,17 @@ def start_simulation_mode(
         stop_event.set()
 
     # ── DM Campaign mode — DM runtime drives encounters ────────────────────
+    # In interactive mode, the DM campaign runs on its own thread so the
+    # main thread can start the stdin reader first.  Without this, the
+    # DM's SimPromptHandler.prompt() blocks waiting for deliver_response()
+    # from a stdin reader that hasn't started yet.
     dm_rollup: dict[str, Any] = {}
+    _dm_thread: threading.Thread | None = None
+    _dm_error: list[Exception] = []
     if dm_campaign is not None:
         from maxim.simulation.campaign_runner import run_dm_campaign as _run_dm
 
-        dm_rollup = _run_dm(
+        _dm_kwargs = dict(
             dm_campaign=dm_campaign,
             bridge=bridge,
             llm_router=llm_router,
@@ -1108,7 +1114,24 @@ def start_simulation_mode(
             prompt_handler=_sim_prompt_handler,
             interactive=_sim_prompt_handler is not None,
         )
-        stop_event.set()
+
+        if _sim_prompt_handler is not None:
+            # Interactive: run on thread so stdin reader starts first
+            def _dm_worker() -> None:
+                try:
+                    nonlocal dm_rollup
+                    dm_rollup = _run_dm(**_dm_kwargs)
+                except Exception as e:
+                    _dm_error.append(e)
+                finally:
+                    stop_event.set()
+
+            _dm_thread = threading.Thread(target=_dm_worker, name="sim.dm", daemon=True)
+            # Thread started AFTER stdin reader — see below
+        else:
+            # Non-interactive: run synchronously (original behavior)
+            dm_rollup = _run_dm(**_dm_kwargs)
+            stop_event.set()
 
     # ── Pre-campaign turn delivery ────────────────────────────────────────
     campaign_analysis: dict[str, Any] = {}
@@ -1486,6 +1509,11 @@ def start_simulation_mode(
     stdin_thread = threading.Thread(target=_stdin_target, name="sim.stdin", daemon=True)
     stdin_thread.start()
 
+    # Start the DM campaign thread AFTER the stdin reader is running
+    # so SimPromptHandler.prompt() can receive deliver_response() calls.
+    if _dm_thread is not None:
+        _dm_thread.start()
+
     # Show input hint when interactive mode is on
     if _is_interactive:
         display = get_active_display()
@@ -1770,6 +1798,15 @@ def start_simulation_mode(
             display_status("AUT thread did not stop in time (continuing anyway)")
     except Exception as e:
         logger.warning("Error joining AUT thread during shutdown: %s", e, exc_info=True)
+
+    # Wait for DM campaign thread if it was started
+    if _dm_thread is not None and _dm_thread.is_alive():
+        try:
+            _dm_thread.join(timeout=5.0)
+        except Exception:
+            pass
+    if _dm_error:
+        logger.error("DM campaign thread failed: %s", _dm_error[0])
 
     display_status("Stopping LLM workers...")
     for worker in (aut_llm_worker, orch_llm_worker):
