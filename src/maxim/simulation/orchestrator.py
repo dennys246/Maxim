@@ -1601,10 +1601,13 @@ def start_simulation_mode(
                 stop_event.set()
                 break
 
-            # Skip stall detection while paused or waiting for user input —
-            # nudging would fight the pause / interrupt the prompt.
+            # Skip stall detection while paused, waiting for user input,
+            # or in interactive mode.  In interactive mode the human
+            # drives the pace — nudging the orchestrator causes it to
+            # send adversarial probes (e.g., "delete all files in /tmp")
+            # which the AUT may execute.
             _prompt_pending = _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt
-            if _paused[0] or _prompt_pending:
+            if _paused[0] or _prompt_pending or _is_interactive:
                 # Reset both counters so stale state doesn't trigger
                 # a ping-pong or idle nudge immediately after resume.
                 _last_activity_time[0] = time.time()
