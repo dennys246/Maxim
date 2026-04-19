@@ -152,7 +152,7 @@ def _bare_maxim_menu() -> int:
     """Interactive menu for bare ``maxim`` invocation (no args).
 
     Discovers available campaigns from scenarios/campaigns/*.yaml,
-    presents a numbered menu, and dispatches to the appropriate mode.
+    presents a Rich-styled menu, and dispatches to the appropriate mode.
     Ctrl+C during a sim returns to the menu instead of exiting.
     """
     from pathlib import Path
@@ -161,8 +161,18 @@ def _bare_maxim_menu() -> int:
 
     version = get_version_info().get("version", "dev")
 
+    # Try to use Rich for styled output; fall back to plain text.
+    _rich = False
+    try:
+        from rich.console import Console
+
+        console = Console()
+        _rich = True
+    except ImportError:
+        console = None  # type: ignore[assignment]
+
     # ── Discover campaigns (once) ─────────────────────────────────────
-    campaigns: list[tuple[str, Path]] = []  # (display_name, path)
+    campaigns: list[tuple[str, Path]] = []
     try:
         import yaml
 
@@ -205,34 +215,18 @@ def _bare_maxim_menu() -> int:
 
     # ── Menu loop — Ctrl+C returns here ───────────────────────────────
     while True:
-        print(f"\n  Maxim v{version} — bio-inspired cognitive architecture\n")
-
-        idx = 1
-        if campaigns:
-            print("  Start a session:")
-            print(f"    {idx}. {options[0][0]}")
-            idx += 1
-            print(f"    {idx}. {options[1][0]}")
-            idx += 1
-            print("\n  Run a campaign:")
-            for name, _path in campaigns:
-                print(f"    {idx}. {name}")
-                idx += 1
-            print("\n  Utilities:")
+        if _rich:
+            _render_rich_menu(console, version, options, campaigns)
         else:
-            print("  Start a session:")
-            print(f"    {idx}. {options[0][0]}")
-            idx += 1
-            print(f"    {idx}. {options[1][0]}")
-            idx += 1
-            print("\n  Utilities:")
-        for i in range(len(campaigns) + 2, len(options)):
-            print(f"    {idx}. {options[i][0]}")
-            idx += 1
+            _render_plain_menu(version, options, campaigns)
 
-        print()
         try:
-            raw_choice = input(f"  Choose [1-{len(options)}]: ").strip()
+            if _rich:
+                raw_choice = console.input(
+                    f"  [bold dark_goldenrod]Choose [1-{len(options)}]:[/bold dark_goldenrod] "
+                ).strip()
+            else:
+                raw_choice = input(f"  Choose [1-{len(options)}]: ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
@@ -243,24 +237,24 @@ def _bare_maxim_menu() -> int:
         try:
             choice_idx = int(raw_choice) - 1
         except ValueError:
-            print(f"  Invalid choice: {raw_choice}")
+            if _rich:
+                console.print(f"  [red]Invalid choice: {raw_choice}[/red]")
+            else:
+                print(f"  Invalid choice: {raw_choice}")
             continue
 
         if choice_idx < 0 or choice_idx >= len(options):
-            print(f"  Invalid choice: {raw_choice}")
+            if _rich:
+                console.print(f"  [red]Invalid choice: {raw_choice}[/red]")
+            else:
+                print(f"  Invalid choice: {raw_choice}")
             continue
 
         _label, action = options[choice_idx]
 
         # ── Dispatch ──────────────────────────────────────────────────
         if action == "help":
-            print("\n  Usage: maxim [OPTIONS]\n")
-            print('  maxim --sim "test the agent\'s memory"   Run a generative simulation')
-            print("  maxim --sim scenarios/my_test.yaml       Run a YAML scenario")
-            print("  maxim --sim interactive                  Interactive chat session")
-            print("  maxim doctor                             Check your environment")
-            print("  maxim --list-models                      See available LLM models")
-            print("  maxim --help                             Full option reference")
+            _show_help(console if _rich else None)
             continue
 
         if action == "doctor":
@@ -269,15 +263,98 @@ def _bare_maxim_menu() -> int:
             run_doctor_subcommand([])
             continue
 
-        # All sim paths need display + interactive mode setup.
         try:
             _run_menu_sim(action)
         except KeyboardInterrupt:
-            # Ctrl+C during sim → back to menu
             print("\n")
             continue
 
     return 0
+
+
+def _render_rich_menu(console, version, options, campaigns) -> None:
+    """Render the menu using Rich panels matching the Maxim display style."""
+    from rich.panel import Panel
+    from rich.text import Text
+
+    # Title panel (matches MaximDisplay dark_violet style)
+    console.print(
+        Panel(
+            Text(f"v{version} — bio-inspired cognitive architecture", style="italic"),
+            title="[bold dark_violet]Maxim[/bold dark_violet]",
+            border_style="dark_violet",
+        )
+    )
+
+    # Build menu content
+    lines = Text()
+    idx = 1
+
+    lines.append("\n  Start a session\n", style="bold dark_goldenrod")
+    lines.append(f"    {idx}. ", style="dim")
+    lines.append(f"{options[0][0]}\n", style="bold white")
+    idx += 1
+    lines.append(f"    {idx}. ", style="dim")
+    lines.append(f"{options[1][0]}\n", style="bold white")
+    idx += 1
+
+    if campaigns:
+        lines.append("\n  Run a campaign\n", style="bold dark_goldenrod")
+        for name, _path in campaigns:
+            lines.append(f"    {idx}. ", style="dim")
+            lines.append(f"{name}\n", style="white")
+            idx += 1
+
+    lines.append("\n  Utilities\n", style="bold dark_goldenrod")
+    for i in range(len(campaigns) + 2, len(options)):
+        lines.append(f"    {idx}. ", style="dim")
+        lines.append(f"{options[i][0]}\n", style="white")
+        idx += 1
+
+    console.print(Panel(lines, border_style="dim"))
+
+
+def _render_plain_menu(version, options, campaigns) -> None:
+    """Plain-text fallback menu (no Rich)."""
+    print(f"\n  Maxim v{version} — bio-inspired cognitive architecture\n")
+    idx = 1
+    print("  Start a session:")
+    print(f"    {idx}. {options[0][0]}")
+    idx += 1
+    print(f"    {idx}. {options[1][0]}")
+    idx += 1
+    if campaigns:
+        print("\n  Run a campaign:")
+        for name, _path in campaigns:
+            print(f"    {idx}. {name}")
+            idx += 1
+    print("\n  Utilities:")
+    for i in range(len(campaigns) + 2, len(options)):
+        print(f"    {idx}. {options[i][0]}")
+        idx += 1
+    print()
+
+
+def _show_help(console) -> None:
+    """Show help text, styled if Rich is available."""
+    lines = [
+        'maxim --sim "test memory"        Run a generative simulation',
+        "maxim --sim heist_v1.yaml        Run a YAML campaign",
+        "maxim --sim interactive           Interactive chat session",
+        "maxim doctor                      Check your environment",
+        "maxim --list-models               See available LLM models",
+        "maxim --help                      Full option reference",
+    ]
+    if console is not None:
+        from rich.panel import Panel
+
+        content = "\n".join(f"  {ln}" for ln in lines)
+        console.print(Panel(content, title="[bold]Usage[/bold]", border_style="dim"))
+    else:
+        print("\n  Usage: maxim [OPTIONS]\n")
+        for ln in lines:
+            print(f"  {ln}")
+        print()
 
 
 def _setup_interactive_display() -> None:
