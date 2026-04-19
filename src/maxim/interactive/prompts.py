@@ -403,6 +403,7 @@ class SimPromptHandler(PromptHandler):
             if display is not None:
                 prompt_text = self.pending_display_text + "\n\n> "
                 display.set_prompt(prompt_text)
+                display._prompt_urgent = True
         except Exception:
             pass
 
@@ -458,6 +459,7 @@ class SimPromptHandler(PromptHandler):
                 display = get_active_display()
                 if display is not None:
                     display.set_prompt("> ")
+                    display._prompt_urgent = False
             except Exception:
                 pass
 

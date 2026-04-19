@@ -125,6 +125,7 @@ class MaximDisplay:
         self._console: Any = None
         self._lock = threading.RLock()
         self._scroll_offset: int = 0  # 0 = bottom (newest), positive = scrolled up
+        self._prompt_urgent: bool = False  # Gold border when agent is asking a question
 
         if _RICH_AVAILABLE:
             self._console = Console()
@@ -256,8 +257,8 @@ class MaximDisplay:
         status_text = "  ".join(f"{k}: {v}" for k, v in self._status.items())
         status_panel = Panel(
             Text(status_text or "Ready", style="bold"),
-            title=f"[bold blue]{self._title}[/bold blue]",
-            border_style="blue",
+            title=f"[bold dark_goldenrod]{self._title}[/bold dark_goldenrod]",
+            border_style="dark_goldenrod",
             height=3,
         )
 
@@ -295,9 +296,15 @@ class MaximDisplay:
         # +2 for panel border top/bottom, +1 for breathing room
         prompt_lines = prompt_display.count("\n") + 1
         input_height = max(4, prompt_lines + 3)
+        if self._prompt_urgent:
+            input_border = "dark_goldenrod"
+        elif self._prompt_text:
+            input_border = "green"
+        else:
+            input_border = "dim"
         input_panel = Panel(
             Text(prompt_display),
-            border_style="green" if self._prompt_text else "dim",
+            border_style=input_border,
             height=input_height,
         )
 
