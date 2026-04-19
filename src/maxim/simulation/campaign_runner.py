@@ -71,10 +71,19 @@ def run_dm_campaign(
     aut_nac: Any | None,
     aut_memory_hub: Any | None,
     aut_pain_bus: Any | None,
+    prompt_handler: Any = None,
+    interactive: bool = False,
 ) -> dict[str, Any]:
     """Run a DM campaign — DM runtime drives encounters.
 
     Returns the DM rollup dict (campaign results + bio-system expectations).
+
+    Args:
+        prompt_handler: SimPromptHandler for interactive mode. When set,
+            human picks choices via the display panel instead of the AUT.
+        interactive: When True, ChooseTool is not registered (no tool
+            conflict with human choices) and bio-system expectations
+            are skipped (human-directed play invalidates AUT-centric checks).
     """
     from maxim.simulation.sim_logger import display_status, display_summary
 
@@ -89,9 +98,13 @@ def run_dm_campaign(
         from maxim.simulation.dm_runtime import DMRuntime
         from maxim.simulation.tools_dm import ChooseTool
 
-        # Register ChooseTool for the AUT
-        dm_choose_tool = ChooseTool()
-        aut_registry.register(dm_choose_tool)
+        # In interactive mode, don't register ChooseTool — human picks
+        # choices via the prompt handler, so the AUT calling choose()
+        # would conflict (choice inversion bug).
+        dm_choose_tool: ChooseTool | None = None
+        if not interactive:
+            dm_choose_tool = ChooseTool()
+            aut_registry.register(dm_choose_tool)
 
         dm = DMRuntime(
             campaign=dm_campaign,
@@ -99,6 +112,7 @@ def run_dm_campaign(
             llm_router=llm_router,
             choose_tool=dm_choose_tool,
             executor=aut_executor,
+            prompt_handler=prompt_handler if interactive else None,
         )
 
         # ── Instantiate SEM entities from campaign specs ─────────────
@@ -153,13 +167,21 @@ def run_dm_campaign(
             ]
         )
 
-        # Check bio-system expectations
-        exp_results = dm.check_expectations(
-            hippocampus=aut_hippocampus,
-            nac=aut_nac,
-            scn=getattr(aut_memory_hub, "scn", None) if aut_memory_hub else None,
-            pain_bus=aut_pain_bus,
-        )
+        # Check bio-system expectations (skipped in interactive mode —
+        # human-directed choices invalidate AUT-centric expectations).
+        if interactive:
+            exp_results: dict[str, Any] = {
+                "all_pass": True,
+                "checks": {},
+                "note": "skipped (interactive mode — human directed choices)",
+            }
+        else:
+            exp_results = dm.check_expectations(
+                hippocampus=aut_hippocampus,
+                nac=aut_nac,
+                scn=getattr(aut_memory_hub, "scn", None) if aut_memory_hub else None,
+                pain_bus=aut_pain_bus,
+            )
         dm_rollup["bio_systems"] = exp_results
         if exp_results.get("checks"):
             passed = sum(1 for c in exp_results["checks"].values() if c.get("pass"))

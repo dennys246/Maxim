@@ -124,6 +124,7 @@ class DMRuntime:
         rng: random.Random | None = None,
         choose_tool: Any = None,
         executor: Any = None,
+        prompt_handler: Any = None,
     ) -> None:
         self._campaign = campaign
         self._bridge = bridge
@@ -131,6 +132,7 @@ class DMRuntime:
         self._rng = rng or random.Random(campaign.seed)
         self._choose_tool = choose_tool
         self._executor = executor
+        self._prompt_handler = prompt_handler
         self._registered_aliases: list[str] = []
         self._scene: SceneState | None = None
         self._entity_registry: dict[str, Any] = {}
@@ -194,11 +196,26 @@ class DMRuntime:
 
             # Compose and deliver stimulus
             stimulus = self._compose_stimulus(encounter)
-            response = self._deliver_and_wait(stimulus)
+            _interactive_choice = self._prompt_handler is not None and bool(encounter.choices)
 
-            # Classify choice — prefer ChooseTool result, fall back to text classification
+            if _interactive_choice:
+                # Interactive mode: display narrative to the human, prompt
+                # for their choice, then inform the AUT what happened.
+                from maxim.simulation.sim_logger import display_scene
+
+                display_scene(stimulus)
+                choice = self._prompt_human_choice(encounter)
+                log.info("DM: Player chose '%s'", choice)
+                # Tell the AUT the narrative + choice outcome so it can
+                # generate flavour text / maintain conversational context.
+                self._deliver_and_wait(f"{stimulus}\n\n[Player chose: {choice}]")
+            else:
+                # Automated mode: AUT decides via ChooseTool or text classification
+                response = self._deliver_and_wait(stimulus)
+
             if encounter.choices:
-                choice = self._get_choice(response, encounter)
+                if not _interactive_choice:
+                    choice = self._get_choice(response, encounter)
                 log.info("DM: AUT chose '%s'", choice)
 
                 # Record choice
@@ -300,6 +317,44 @@ class DMRuntime:
 
         # Fall back to text/LLM classification
         return self._classify_choice(response, encounter)
+
+    def _prompt_human_choice(self, encounter: EncounterDef) -> str:
+        """Prompt the human player for a choice via SimPromptHandler.
+
+        Returns the choice string (lowercased to match encounter keys).
+        On timeout, defaults to the first choice.
+        """
+        from maxim.interactive.prompts import PromptRequest, PromptType
+
+        # Format choice labels for display (replace underscores with spaces)
+        display_choices = [c.replace("_", " ").title() for c in encounter.choices]
+
+        request = PromptRequest(
+            prompt_type=PromptType.SINGLE_CHOICE,
+            question="What do you do?",
+            options=tuple(display_choices),
+            default=display_choices[0] if display_choices else None,
+            timeout_sec=600.0,  # 10 minutes — humans think slower than LLMs
+        )
+        response = self._prompt_handler.prompt(request)
+
+        if response.timed_out:
+            log.info("DM: Player timed out — defaulting to '%s'", encounter.choices[0])
+            return encounter.choices[0]
+
+        # Map display label back to encounter key (lowercase, underscored)
+        value = response.value.strip()
+        value_lower = value.lower().replace(" ", "_")
+        # Try exact match first
+        for c in encounter.choices:
+            if c.lower() == value_lower:
+                return c
+        # Fuzzy: check if the display label matches
+        for i, dc in enumerate(display_choices):
+            if dc.lower() == value.lower():
+                return encounter.choices[i]
+        # Fallback: return as-is (best effort)
+        return value_lower
 
     def _compose_stimulus(self, encounter: EncounterDef) -> str:
         """Build the narrative text for an encounter.
@@ -513,6 +568,16 @@ class DMRuntime:
 
         # Deliver dice result as narrative
         outcome_text = f"[Dice roll: {roll_spec} = {result} vs DC {dc} → {'SUCCESS' if success else 'FAILURE'}]"
+
+        # In interactive mode, show dice results to the human player.
+        if self._prompt_handler is not None:
+            try:
+                from maxim.simulation.sim_logger import display_scene
+
+                display_scene(outcome_text)
+            except Exception:
+                pass
+
         try:
             self._bridge.send_and_wait(outcome_text, salience=0.6, novelty=0.3)
         except Exception:
