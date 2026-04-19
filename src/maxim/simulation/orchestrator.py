@@ -1161,6 +1161,26 @@ def start_simulation_mode(
                 novelty=1.0,
             )
     else:
+        # In interactive mode the human drives the conversation — the
+        # orchestrator should observe and only intervene if the user
+        # goes idle for a long time. Without this, the orchestrator
+        # sends probes immediately and the AUT responds to the
+        # orchestrator instead of waiting for the human.
+        if _get_im() == _IM.ON:
+            _orch_instruction = (
+                "A human user is present and typing directly to the agent. "
+                "Do NOT send messages to the agent — the human will do that. "
+                "Your role is to OBSERVE ONLY. Use observe_actions and "
+                "check_completion to monitor progress. Only use send_message "
+                "if the human has been idle for over 60 seconds AND the agent "
+                "is also idle. Call finish_simulation when the human stops "
+                "the session."
+            )
+        elif "CAMPAIGN PROTOCOL" in goal:
+            _orch_instruction = "Start now: send the FIRST campaign turn verbatim via send_message."
+        else:
+            _orch_instruction = "Start now: call send_message with your first probe."
+
         orchestrator_source.inject_cli(
             f"SIMULATION GOAL: {goal}\n\n"
             f"You are a simulation orchestrator testing an AI agent. "
@@ -1176,7 +1196,7 @@ def start_simulation_mode(
             f"  - extend_simulation: Add a new goal to the current sim\n\n"
             f"Do NOT use respond, internet_search, bash, or any other tool. "
             f"They do not exist and will fail.\n\n"
-            f"{'Start now: send the FIRST campaign turn verbatim via send_message.' if 'CAMPAIGN PROTOCOL' in goal else 'Start now: call send_message with your first probe.'}",
+            f"{_orch_instruction}",
             salience=1.0,
             novelty=1.0,
         )

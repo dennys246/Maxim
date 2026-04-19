@@ -153,20 +153,19 @@ def _bare_maxim_menu() -> int:
 
     Discovers available campaigns from scenarios/campaigns/*.yaml,
     presents a numbered menu, and dispatches to the appropriate mode.
+    Ctrl+C during a sim returns to the menu instead of exiting.
     """
     from pathlib import Path
 
     from maxim import get_version_info
 
     version = get_version_info().get("version", "dev")
-    print(f"\n  Maxim v{version} — bio-inspired cognitive architecture\n")
 
-    # ── Discover campaigns ────────────────────────────────────────────
+    # ── Discover campaigns (once) ─────────────────────────────────────
     campaigns: list[tuple[str, Path]] = []  # (display_name, path)
     try:
         import yaml
 
-        # Check both bundled and CWD-relative campaign dirs
         search_dirs = []
         bundled = Path(__file__).parent / "_data" / "campaigns"
         if bundled.is_dir():
@@ -193,113 +192,152 @@ def _bare_maxim_menu() -> int:
                 except Exception:
                     pass
     except ImportError:
-        pass  # No yaml — skip campaign discovery
+        pass
 
-    # ── Build menu ────────────────────────────────────────────────────
-    options: list[tuple[str, str]] = []  # (label, action_key)
+    # ── Build options list (once) ─────────────────────────────────────
+    options: list[tuple[str, str]] = []
     options.append(("Interactive chat", "interactive"))
     options.append(("Generative simulation (enter a goal)", "generative"))
-
     for name, _path in campaigns:
         options.append((name, f"campaign:{_path}"))
-
     options.append(("Run diagnostics (maxim doctor)", "doctor"))
     options.append(("Show help", "help"))
 
-    # ── Print menu ────────────────────────────────────────────────────
-    idx = 1
-    if campaigns:
-        print("  Start a session:")
-        print(f"    {idx}. {options[0][0]}")
-        idx += 1
-        print(f"    {idx}. {options[1][0]}")
-        idx += 1
-        print("\n  Run a campaign:")
-        for name, _path in campaigns:
-            print(f"    {idx}. {name}")
+    # ── Menu loop — Ctrl+C returns here ───────────────────────────────
+    while True:
+        print(f"\n  Maxim v{version} — bio-inspired cognitive architecture\n")
+
+        idx = 1
+        if campaigns:
+            print("  Start a session:")
+            print(f"    {idx}. {options[0][0]}")
             idx += 1
-        print("\n  Utilities:")
-    else:
-        print("  Start a session:")
-        print(f"    {idx}. {options[0][0]}")
-        idx += 1
-        print(f"    {idx}. {options[1][0]}")
-        idx += 1
-        print("\n  Utilities:")
+            print(f"    {idx}. {options[1][0]}")
+            idx += 1
+            print("\n  Run a campaign:")
+            for name, _path in campaigns:
+                print(f"    {idx}. {name}")
+                idx += 1
+            print("\n  Utilities:")
+        else:
+            print("  Start a session:")
+            print(f"    {idx}. {options[0][0]}")
+            idx += 1
+            print(f"    {idx}. {options[1][0]}")
+            idx += 1
+            print("\n  Utilities:")
+        for i in range(len(campaigns) + 2, len(options)):
+            print(f"    {idx}. {options[i][0]}")
+            idx += 1
 
-    # Print utility options
-    for i in range(len(campaigns) + 2, len(options)):
-        print(f"    {idx}. {options[i][0]}")
-        idx += 1
-
-    # ── Get user choice ───────────────────────────────────────────────
-    print()
-    try:
-        raw = input(f"  Choose [1-{len(options)}]: ").strip()
-    except (EOFError, KeyboardInterrupt):
         print()
-        return 0
+        try:
+            raw_choice = input(f"  Choose [1-{len(options)}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
 
-    if not raw:
-        return 0
+        if not raw_choice:
+            return 0
 
+        try:
+            choice_idx = int(raw_choice) - 1
+        except ValueError:
+            print(f"  Invalid choice: {raw_choice}")
+            continue
+
+        if choice_idx < 0 or choice_idx >= len(options):
+            print(f"  Invalid choice: {raw_choice}")
+            continue
+
+        _label, action = options[choice_idx]
+
+        # ── Dispatch ──────────────────────────────────────────────────
+        if action == "help":
+            print("\n  Usage: maxim [OPTIONS]\n")
+            print('  maxim --sim "test the agent\'s memory"   Run a generative simulation')
+            print("  maxim --sim scenarios/my_test.yaml       Run a YAML scenario")
+            print("  maxim --sim interactive                  Interactive chat session")
+            print("  maxim doctor                             Check your environment")
+            print("  maxim --list-models                      See available LLM models")
+            print("  maxim --help                             Full option reference")
+            continue
+
+        if action == "doctor":
+            from maxim.doctor.cli import run_doctor_subcommand
+
+            run_doctor_subcommand([])
+            continue
+
+        # All sim paths need display + interactive mode setup.
+        try:
+            _run_menu_sim(action)
+        except KeyboardInterrupt:
+            # Ctrl+C during sim → back to menu
+            print("\n")
+            continue
+
+    return 0
+
+
+def _setup_interactive_display() -> None:
+    """Set up MaximDisplay for interactive mode (shared by menu + CLI paths)."""
     try:
-        choice_idx = int(raw) - 1
-    except ValueError:
-        print(f"  Invalid choice: {raw}")
-        return 1
-
-    if choice_idx < 0 or choice_idx >= len(options):
-        print(f"  Invalid choice: {raw}")
-        return 1
-
-    _label, action = options[choice_idx]
-
-    # ── Dispatch ──────────────────────────────────────────────────────
-    if action == "interactive":
-        from maxim.simulation.sim_logger import set_interactive_mode
+        from maxim.interactive.display import create_display
+        from maxim.simulation.sim_logger import set_active_display, set_interactive_mode
 
         set_interactive_mode("on")
-        from maxim.simulation.orchestrator import start_simulation_mode
+        display = create_display("auto")
+        if display is not None:
+            display.start()
+            set_active_display(display)
+    except Exception:
+        pass
 
-        result = start_simulation_mode(
-            goal="open interactive session — respond to user input naturally",
-            persona="campaign",
-            max_turns=200,
-        )
-        return 0 if result.success else 1
 
-    elif action == "generative":
+def _run_menu_sim(action: str) -> None:
+    """Run a sim from the menu. Raises KeyboardInterrupt to return to menu."""
+    from pathlib import Path
+
+    # For generative sims, get the goal BEFORE starting the display
+    # (Rich Live + input() conflict).
+    goal = None
+    if action == "generative":
         try:
             goal = input("  Enter simulation goal: ").strip()
         except (EOFError, KeyboardInterrupt):
             print()
-            return 0
+            return
         if not goal:
             print("  No goal entered.")
-            return 0
-        from maxim.simulation.sim_logger import set_interactive_mode
+            return
 
-        set_interactive_mode("on")
+    _setup_interactive_display()
+
+    if action == "interactive":
         from maxim.simulation.orchestrator import start_simulation_mode
 
-        result = start_simulation_mode(
+        start_simulation_mode(
+            goal="open interactive session — respond to user input naturally",
+            persona="campaign",
+            max_turns=200,
+        )
+
+    elif action == "generative":
+        from maxim.simulation.orchestrator import start_simulation_mode
+
+        start_simulation_mode(
             goal=goal,
             persona="campaign",
             max_turns=200,
         )
-        return 0 if result.success else 1
 
     elif action.startswith("campaign:"):
         campaign_path = Path(action.split(":", 1)[1])
         try:
-            import yaml
-
             from maxim.simulation.dm_schema import load_campaign, validate_campaign
             from maxim.embodiment.component_registry import ComponentRegistry
-            from maxim.simulation.sim_logger import set_interactive_mode
 
-            set_interactive_mode("on")
             registry = ComponentRegistry(campaign_dir=str(campaign_path.parent))
             dm_campaign = load_campaign(campaign_path, registry=registry)
             errors = validate_campaign(dm_campaign)
@@ -307,38 +345,31 @@ def _bare_maxim_menu() -> int:
                 print(f"  Campaign validation failed ({len(errors)} errors):")
                 for e in errors:
                     print(f"    - {e}")
-                return 1
+                return
 
             from maxim.simulation.orchestrator import start_simulation_mode
 
-            result = start_simulation_mode(
+            start_simulation_mode(
                 goal=f"dm:{dm_campaign.name}",
                 persona="dungeon_master",
                 dm_campaign=dm_campaign,
                 max_turns=100,
             )
-            return 0 if result.finish_reason != "error" else 1
+        except KeyboardInterrupt:
+            raise
         except Exception as e:
             print(f"  Failed to load campaign: {e}")
-            return 1
 
-    elif action == "doctor":
-        from maxim.doctor.cli import run_doctor_subcommand
+    # Clean up display after sim ends
+    try:
+        from maxim.simulation.sim_logger import get_active_display, set_active_display
 
-        return run_doctor_subcommand([])
-
-    elif action == "help":
-        print("  Usage: maxim [OPTIONS]")
-        print()
-        print('  maxim --sim "test the agent\'s memory"   Run a generative simulation')
-        print("  maxim --sim scenarios/my_test.yaml       Run a YAML scenario")
-        print("  maxim --sim interactive                  Interactive chat session")
-        print("  maxim doctor                             Check your environment")
-        print("  maxim --list-models                      See available LLM models")
-        print("  maxim --help                             Full option reference")
-        return 0
-
-    return 0
+        display = get_active_display()
+        if display is not None:
+            display.stop()
+            set_active_display(None)
+    except Exception:
+        pass
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1575,7 +1606,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             response_timeout=120.0,
                             debug=_sim_debug,
                         )
-                        sys.exit(0 if result.success else 1)
+                        sys.exit(0 if result.finish_reason != "error" else 1)
                     finally:
                         if llm_worker:
                             llm_worker.stop()
