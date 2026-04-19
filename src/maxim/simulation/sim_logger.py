@@ -383,15 +383,37 @@ class _DisplayLoggingHandler(logging.Handler):
 
     Prevents standard logging output (CostTracker, role_divergence, etc.)
     from writing raw text to stderr and corrupting the Rich Live panel.
+
+    Repetitive messages (same text within a short window) are suppressed
+    to prevent log floods from sources like CostTracker.
     """
+
+    # Messages containing these substrings are shown at most once per
+    # dedup window to prevent flooding the display.
+    _DEDUP_SUBSTRINGS = ("CostTracker.record failed", "Missing pricing for model")
+    _DEDUP_WINDOW_S = 30.0
 
     def __init__(self, display: Any) -> None:
         super().__init__(level=logging.WARNING)
         self._display = display
+        self._seen: dict[str, float] = {}  # message_key → last_shown_time
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
             msg = self.format(record)
+
+            # Deduplicate noisy repeated messages
+            for substr in self._DEDUP_SUBSTRINGS:
+                if substr in msg:
+                    import time as _time
+
+                    now = _time.monotonic()
+                    last = self._seen.get(substr, 0.0)
+                    if now - last < self._DEDUP_WINDOW_S:
+                        return  # Suppress duplicate
+                    self._seen[substr] = now
+                    break
+
             self._display.log("info", msg)
         except Exception:
             pass

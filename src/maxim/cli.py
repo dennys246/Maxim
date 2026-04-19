@@ -284,9 +284,23 @@ def _setup_interactive_display() -> None:
     """Set up MaximDisplay for interactive mode (shared by menu + CLI paths)."""
     try:
         from maxim.interactive.display import create_display
-        from maxim.simulation.sim_logger import set_active_display, set_interactive_mode
+        from maxim.simulation.sim_logger import (
+            set_active_display,
+            set_interactive_mode,
+        )
 
         set_interactive_mode("on")
+
+        # Set display tier to "bio" so bio-system events (hippocampus,
+        # NAc, pain, etc.) are visible.  Without this the default CLEAN
+        # tier filters them out.
+        try:
+            from maxim.simulation.sim_logger import set_display_tier
+
+            set_display_tier("bio")
+        except Exception:
+            pass
+
         display = create_display("auto")
         if display is not None:
             display.start()
