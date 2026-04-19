@@ -1322,6 +1322,26 @@ def start_simulation_mode(
                     # Ctrl+U — clear line
                     buf.clear()
                     _update_prompt()
+                elif ch == "\x1b":
+                    # Escape sequence — read next 2 bytes for arrow keys
+                    try:
+                        ready2, _, _ = select.select([stdin], [], [], 0.05)
+                        if ready2:
+                            ch2 = stdin.read(1)
+                            if ch2 == "[":
+                                ready3, _, _ = select.select([stdin], [], [], 0.05)
+                                if ready3:
+                                    ch3 = stdin.read(1)
+                                    display = get_active_display()
+                                    if display is not None:
+                                        if ch3 == "A":
+                                            # Up arrow — scroll log up
+                                            display.scroll(3)
+                                        elif ch3 == "B":
+                                            # Down arrow — scroll log down
+                                            display.scroll(-3)
+                    except Exception:
+                        pass
                 elif ch == "\x03":
                     # Ctrl+C
                     stop_event.set()

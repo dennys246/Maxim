@@ -92,7 +92,30 @@ class MaximDisplay:
     all emit ``sim_log()`` events routed through ``log()``.
     """
 
-    def __init__(self, title: str = "Maxim", max_log_lines: int = 200) -> None:
+    # Bio subsystems get dim styling; scene/dialogue stays bright
+    _BIO_SUBSYSTEMS = frozenset(
+        {
+            "hippo",
+            "hippocampus",
+            "nac",
+            "fear",
+            "pain",
+            "exec",
+            "motor",
+            "cerebellum",
+            "atl",
+            "sensory",
+            "body",
+            "percept",
+            "reaction",
+            "scn",
+            "ec",
+            "pipeline",
+            "salience",
+        }
+    )
+
+    def __init__(self, title: str = "Maxim", max_log_lines: int = 500) -> None:
         self._title = title
         self._log_lines: deque[str] = deque(maxlen=max_log_lines)
         self._status: dict[str, str] = {}
@@ -101,6 +124,8 @@ class MaximDisplay:
         self._live: Any = None  # rich.live.Live when active
         self._console: Any = None
         self._lock = threading.RLock()
+        self._scroll_offset: int = 0  # 0 = bottom (newest), positive = scrolled up
+        self._visible_lines: int = 20  # lines shown in log panel
 
         if _RICH_AVAILABLE:
             self._console = Console()
@@ -136,31 +161,45 @@ class MaximDisplay:
 
     def log(self, subsystem: str, message: str, level: str = "info") -> None:
         """Add a line to the scrolling log panel (thread-safe)."""
-        # Color map for subsystems
+        # Bio subsystems get dim styling; scene/dialogue stays bright
         colors = {
-            "hippo": "cyan",
-            "hippocampus": "cyan",
-            "nac": "magenta",
-            "fear": "red",
-            "pain": "red",
-            "exec": "green",
-            "motor": "blue",
-            "scene": "yellow",
-            "npc": "yellow",
+            # Scene/dialogue — bold and bright
+            "scene": "bold yellow",
+            "npc": "bold yellow",
             "choice": "bold white",
             "result": "bold green",
             "blocked": "bold red",
-            "cerebellum": "bold blue",
-            "atl": "bold magenta",
-            "sensory": "bold cyan",
-            "body": "bold white",
-            "percept": "cyan",
-            "reaction": "magenta",
+            "turn": "bold blue",
+            "summary": "bold white",
+            "response": "bold green",
+            "action": "bold cyan",
+            "info": "white",
+            # Bio subsystems — dim
+            "hippo": "dim cyan",
+            "hippocampus": "dim cyan",
+            "nac": "dim magenta",
+            "fear": "dim red",
+            "pain": "dim red",
+            "exec": "dim green",
+            "motor": "dim blue",
+            "cerebellum": "dim blue",
+            "atl": "dim magenta",
+            "sensory": "dim cyan",
+            "body": "dim white",
+            "percept": "dim cyan",
+            "reaction": "dim magenta",
+            "scn": "dim yellow",
         }
+        sub_lower = subsystem.lower()
+        is_bio = sub_lower in self._BIO_SUBSYSTEMS
         with self._lock:
-            color = colors.get(subsystem.lower(), "white")
+            color = colors.get(sub_lower, "dim white" if is_bio else "white")
             tag = f"[{color}][{subsystem:>6}][/{color}]"
-            self._log_lines.append(f"{tag} {message}")
+            line = f"{tag} {message}" if not is_bio else f"[dim]{tag} {message}[/dim]"
+            self._log_lines.append(line)
+            # Auto-scroll to bottom when new content arrives (unless user scrolled up)
+            if self._scroll_offset == 0:
+                pass  # Already at bottom
             self._refresh()
 
     def set_status(self, **fields: str) -> None:
@@ -179,6 +218,14 @@ class MaximDisplay:
         """Clear the input panel (thread-safe)."""
         with self._lock:
             self._prompt_text = ""
+            self._refresh()
+
+    def scroll(self, delta: int) -> None:
+        """Scroll the log panel. Positive = up (older), negative = down (newer)."""
+        with self._lock:
+            total = len(self._log_lines)
+            max_offset = max(0, total - self._visible_lines)
+            self._scroll_offset = max(0, min(max_offset, self._scroll_offset + delta))
             self._refresh()
 
     def add_extension(self, ext: DisplayExtension) -> None:
@@ -209,11 +256,22 @@ class MaximDisplay:
             height=3,
         )
 
-        # Log panel
-        log_text = "\n".join(list(self._log_lines)[-20:]) or "(no log entries)"
+        # Log panel with scroll support
+        all_lines = list(self._log_lines)
+        total = len(all_lines)
+        if self._scroll_offset > 0:
+            end = total - self._scroll_offset
+            start = max(0, end - self._visible_lines)
+            visible = all_lines[start:end]
+            scroll_indicator = f" [{start + 1}-{end}/{total}]"
+        else:
+            visible = all_lines[-self._visible_lines :]
+            scroll_indicator = ""
+        log_text = "\n".join(visible) or "(no log entries)"
+        log_title = f"Agent Log{scroll_indicator}"
         log_panel = Panel(
             Text.from_markup(log_text),
-            title="Agent Log",
+            title=log_title,
             border_style="dim",
         )
 
