@@ -370,6 +370,17 @@ def create_pain_nac_subscriber(
         if signal.intensity < intensity_threshold:
             return
 
+        # Suppress NAc causal learning during interactive mode — human-
+        # directed actions would corrupt the causal model. See
+        # plans/README.md "Interactive NAc attribution".
+        try:
+            from maxim.simulation.sim_logger import get_interactive_mode, InteractiveMode
+
+            if get_interactive_mode() == InteractiveMode.ON:
+                return
+        except Exception:
+            pass
+
         context = dict(signal.context or {})
         source = context.get("source", "unknown")
         entity = context.get("entity") or context.get("entity_path") or "unknown"

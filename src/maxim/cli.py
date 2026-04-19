@@ -148,6 +148,199 @@ def _handle_clear_memory(scope: str, home_dir: str) -> int:
     return 0
 
 
+def _bare_maxim_menu() -> int:
+    """Interactive menu for bare ``maxim`` invocation (no args).
+
+    Discovers available campaigns from scenarios/campaigns/*.yaml,
+    presents a numbered menu, and dispatches to the appropriate mode.
+    """
+    from pathlib import Path
+
+    from maxim import get_version_info
+
+    version = get_version_info().get("version", "dev")
+    print(f"\n  Maxim v{version} — bio-inspired cognitive architecture\n")
+
+    # ── Discover campaigns ────────────────────────────────────────────
+    campaigns: list[tuple[str, Path]] = []  # (display_name, path)
+    try:
+        import yaml
+
+        # Check both bundled and CWD-relative campaign dirs
+        search_dirs = []
+        bundled = Path(__file__).parent / "_data" / "campaigns"
+        if bundled.is_dir():
+            search_dirs.append(bundled)
+        cwd_campaigns = Path("scenarios/campaigns")
+        if cwd_campaigns.is_dir():
+            search_dirs.append(cwd_campaigns)
+
+        seen: set[str] = set()
+        for d in search_dirs:
+            for p in sorted(d.glob("*.yaml")):
+                try:
+                    with open(p) as f:
+                        raw = yaml.safe_load(f)
+                    if isinstance(raw, dict) and "campaign" in raw and "encounters" in raw:
+                        name = (
+                            raw.get("campaign", {}).get("name", p.stem)
+                            if isinstance(raw.get("campaign"), dict)
+                            else p.stem
+                        )
+                        if p.stem not in seen:
+                            campaigns.append((name, p))
+                            seen.add(p.stem)
+                except Exception:
+                    pass
+    except ImportError:
+        pass  # No yaml — skip campaign discovery
+
+    # ── Build menu ────────────────────────────────────────────────────
+    options: list[tuple[str, str]] = []  # (label, action_key)
+    options.append(("Interactive chat", "interactive"))
+    options.append(("Generative simulation (enter a goal)", "generative"))
+
+    for name, _path in campaigns:
+        options.append((name, f"campaign:{_path}"))
+
+    options.append(("Run diagnostics (maxim doctor)", "doctor"))
+    options.append(("Show help", "help"))
+
+    # ── Print menu ────────────────────────────────────────────────────
+    idx = 1
+    if campaigns:
+        print("  Start a session:")
+        print(f"    {idx}. {options[0][0]}")
+        idx += 1
+        print(f"    {idx}. {options[1][0]}")
+        idx += 1
+        print("\n  Run a campaign:")
+        for name, _path in campaigns:
+            print(f"    {idx}. {name}")
+            idx += 1
+        print("\n  Utilities:")
+    else:
+        print("  Start a session:")
+        print(f"    {idx}. {options[0][0]}")
+        idx += 1
+        print(f"    {idx}. {options[1][0]}")
+        idx += 1
+        print("\n  Utilities:")
+
+    # Print utility options
+    for i in range(len(campaigns) + 2, len(options)):
+        print(f"    {idx}. {options[i][0]}")
+        idx += 1
+
+    # ── Get user choice ───────────────────────────────────────────────
+    print()
+    try:
+        raw = input(f"  Choose [1-{len(options)}]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return 0
+
+    if not raw:
+        return 0
+
+    try:
+        choice_idx = int(raw) - 1
+    except ValueError:
+        print(f"  Invalid choice: {raw}")
+        return 1
+
+    if choice_idx < 0 or choice_idx >= len(options):
+        print(f"  Invalid choice: {raw}")
+        return 1
+
+    _label, action = options[choice_idx]
+
+    # ── Dispatch ──────────────────────────────────────────────────────
+    if action == "interactive":
+        from maxim.simulation.sim_logger import set_interactive_mode
+
+        set_interactive_mode("on")
+        from maxim.simulation.orchestrator import start_simulation_mode
+
+        result = start_simulation_mode(
+            goal="open interactive session — respond to user input naturally",
+            persona="campaign",
+            max_turns=200,
+        )
+        return 0 if result.success else 1
+
+    elif action == "generative":
+        try:
+            goal = input("  Enter simulation goal: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if not goal:
+            print("  No goal entered.")
+            return 0
+        from maxim.simulation.sim_logger import set_interactive_mode
+
+        set_interactive_mode("on")
+        from maxim.simulation.orchestrator import start_simulation_mode
+
+        result = start_simulation_mode(
+            goal=goal,
+            persona="campaign",
+            max_turns=200,
+        )
+        return 0 if result.success else 1
+
+    elif action.startswith("campaign:"):
+        campaign_path = Path(action.split(":", 1)[1])
+        try:
+            import yaml
+
+            from maxim.simulation.dm_schema import load_campaign, validate_campaign
+            from maxim.embodiment.component_registry import ComponentRegistry
+            from maxim.simulation.sim_logger import set_interactive_mode
+
+            set_interactive_mode("on")
+            registry = ComponentRegistry(campaign_dir=str(campaign_path.parent))
+            dm_campaign = load_campaign(campaign_path, registry=registry)
+            errors = validate_campaign(dm_campaign)
+            if errors:
+                print(f"  Campaign validation failed ({len(errors)} errors):")
+                for e in errors:
+                    print(f"    - {e}")
+                return 1
+
+            from maxim.simulation.orchestrator import start_simulation_mode
+
+            result = start_simulation_mode(
+                goal=f"dm:{dm_campaign.name}",
+                persona="dungeon_master",
+                dm_campaign=dm_campaign,
+                max_turns=100,
+            )
+            return 0 if result.finish_reason != "error" else 1
+        except Exception as e:
+            print(f"  Failed to load campaign: {e}")
+            return 1
+
+    elif action == "doctor":
+        from maxim.doctor.cli import run_doctor_subcommand
+
+        return run_doctor_subcommand([])
+
+    elif action == "help":
+        print("  Usage: maxim [OPTIONS]")
+        print()
+        print('  maxim --sim "test the agent\'s memory"   Run a generative simulation')
+        print("  maxim --sim scenarios/my_test.yaml       Run a YAML scenario")
+        print("  maxim --sim interactive                  Interactive chat session")
+        print("  maxim doctor                             Check your environment")
+        print("  maxim --list-models                      See available LLM models")
+        print("  maxim --help                             Full option reference")
+        return 0
+
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
     # imports.  This was previously at module-import time; moved here so that
@@ -947,18 +1140,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _has_action = _has_sim or _has_mode_override or _has_robot or _has_llm_cli
 
     if not (_has_action or _is_leader or _has_llm):
-        print("Maxim — bio-inspired cognitive architecture\n")
-        print("Quick start:")
-        print('  maxim --sim "test the agent\'s memory"   Run a generative simulation')
-        print("  maxim --sim scenarios/my_test.yaml       Run a YAML scenario")
-        print("  maxim doctor                             Check your environment")
-        print("  maxim --list-models                      See available LLM models")
-        print("  maxim --help                             Full option reference\n")
-        print("Python API:")
-        print("  import maxim")
-        print("  maxim.diagnose()                         Check environment from Python")
-        print("  maxim.list_models()                      List available models\n")
-        return 0
+        return _bare_maxim_menu()
 
     # Leader/LLM-enabled without explicit action → server mode.
     # Start the LLM server for peer inference, then block idle.
@@ -1374,47 +1556,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                     gateway is not None,
                 )
 
-                # Check for interactive simulation REPL
+                # Check for interactive simulation REPL — redirect to the
+                # full generative sim with interactive mode ON.  This gives
+                # the user raw terminal input, MaximDisplay, slash commands,
+                # and /new goal continuations — the same stack as --sim "goal".
                 if (
                     getattr(args, "sim", None) is not None
                     and str(getattr(args, "sim", "")).strip().lower() == "interactive"
                 ):
-                    from maxim.simulation.interactive import run_interactive_sim
-                    from maxim.proprioception.pain_bus import build_pain_bus
+                    from maxim.simulation.orchestrator import start_simulation_mode
 
-                    # Same Gap A migration as the non-sim path above.
-                    _sim_pain_bus = build_pain_bus(
-                        hippocampus=_cli_hippocampus,
-                        nac=_cli_nac,
-                    )
-                    logger.info(
-                        "Interactive sim PainBus wired (hippocampus=%s, nac=%s) for pain capture + causal learning",
-                        _cli_hippocampus is not None,
-                        _cli_nac is not None,
-                    )
-
+                    _sim_debug = bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False))
                     try:
-                        run_interactive_sim(
-                            agentic_agent,
-                            env,
-                            state,
-                            memory,
-                            decision_engine,
-                            executor,
-                            autonomy_controller=autonomy_controller,
-                            llm_worker=llm_worker,
-                            hippocampus=_cli_hippocampus,
-                            memory_hub=_cli_memory_hub,
-                            evaluators=evaluators,
-                            pain_bus=_sim_pain_bus,
-                            llm_profile=llm_profile,
-                            sim_workspace=Path(getattr(args, "home_dir", "data")) / "sim_sandbox",
-                            debug=bool(getattr(args, "debug", False) or getattr(args, "sim_debug", False)),
+                        result = start_simulation_mode(
+                            goal="open interactive session — respond to user input naturally",
+                            persona="campaign",
+                            max_turns=200,
+                            response_timeout=120.0,
+                            debug=_sim_debug,
                         )
+                        sys.exit(0 if result.success else 1)
                     finally:
                         if llm_worker:
                             llm_worker.stop()
-                    return 0
 
                 # Check for simulation mode — wire percept_source and action_sink
                 sim_source = getattr(args, "_sim_source", None)

@@ -12,13 +12,42 @@ provides the thread-safe communication channel.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
+import signal
 import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any
+
+# Module-level storage for terminal restore on ungraceful exit.
+# Set by _stdin_reader_raw; read by the atexit/SIGTERM handler.
+_termios_restore: tuple[int, list] | None = None
+
+
+def _restore_terminal() -> None:
+    """Restore terminal settings if raw mode was enabled. atexit + SIGTERM safe."""
+    global _termios_restore
+    if _termios_restore is not None:
+        fd, old_settings = _termios_restore
+        _termios_restore = None
+        try:
+            import termios
+
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        except Exception:
+            pass
+
+
+def _sigterm_handler(signum: int, frame: Any) -> None:
+    """Restore terminal on SIGTERM, then exit."""
+    _restore_terminal()
+    raise SystemExit(128 + signum)
+
+
+atexit.register(_restore_terminal)
 
 logger = logging.getLogger(__name__)
 
@@ -1076,6 +1105,8 @@ def start_simulation_mode(
             aut_nac=aut_nac,
             aut_memory_hub=aut_memory_hub,
             aut_pain_bus=aut_pain_bus,
+            prompt_handler=_sim_prompt_handler,
+            interactive=_sim_prompt_handler is not None,
         )
         stop_event.set()
 
@@ -1290,6 +1321,15 @@ def start_simulation_mode(
             _stdin_reader_line()
             return
 
+        # Store for atexit/SIGTERM restoration in case of ungraceful exit.
+        global _termios_restore
+        _termios_restore = (fd, old_settings)
+        # Install SIGTERM handler (SIGINT is handled by Ctrl+C in raw mode).
+        try:
+            signal.signal(signal.SIGTERM, _sigterm_handler)
+        except (OSError, ValueError):
+            pass  # Not main thread or unsupported platform
+
         buf: list[str] = []
 
         def _update_prompt() -> None:
@@ -1373,7 +1413,7 @@ def start_simulation_mode(
                                     display.scroll(-999999)
                                 elif seq == "[D":
                                     # Left arrow — page up (full panel height)
-                                    approx_page = max(10, (display._console.height if display._console else 40) - 10)
+                                    approx_page = display.page_height
                                     display.scroll(approx_page)
                     except Exception:
                         pass
@@ -1393,6 +1433,7 @@ def start_simulation_mode(
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
             except Exception:
                 pass
+            _termios_restore = None  # Restored — no atexit needed
             display = get_active_display()
             if display is not None:
                 display.clear_prompt()
@@ -1400,6 +1441,17 @@ def start_simulation_mode(
     def _stdin_reader_line() -> None:
         """Fallback line-based stdin reader for non-TTY environments."""
         while not stop_event.is_set():
+            # Mirror the raw reader's prompt handler check: if an agent
+            # tool is waiting for user input via SimPromptHandler, route
+            # the next line to deliver_response() instead of _process_line().
+            if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
+                try:
+                    line = input()
+                except (EOFError, KeyboardInterrupt):
+                    stop_event.set()
+                    return
+                _sim_prompt_handler.deliver_response(line.strip())
+                continue
             try:
                 line = input()
             except EOFError:
@@ -1551,7 +1603,7 @@ def start_simulation_mode(
                 # Restore normal status color on progress
                 display = get_active_display()
                 if display is not None:
-                    display._status_style = "normal"
+                    display.set_status_style("normal")
                 continue
 
             # ── Ping-pong trigger: too many orch actions without a turn ──
@@ -1576,7 +1628,7 @@ def start_simulation_mode(
             _emit(stall_msg, "turn")
             display = get_active_display()
             if display is not None:
-                display._status_style = "stalled"
+                display.set_status_style("stalled")
 
             # Build diagnostic context
             all_actions = bridge.get_all_actions()
@@ -1865,9 +1917,9 @@ def start_simulation_mode(
         if display is not None:
             display.scroll(-999999)  # Jump to bottom before report
 
-        log_count_before = len(display._log_lines) if display is not None else 0
+        log_count_before = display.log_count if display is not None else 0
         print_report(report)
-        log_count_after = len(display._log_lines) if display is not None else 0
+        log_count_after = display.log_count if display is not None else 0
         report_lines = log_count_after - log_count_before
 
         if display is not None:
@@ -1877,7 +1929,7 @@ def start_simulation_mode(
             display.set_prompt(
                 "Tell me a new simulation to imagine (memory carries over), or press Enter to finish.\n\n> "
             )
-            display._prompt_urgent = True
+            display.set_urgent(True)
 
         # Wait for user input: a goal (continue) or Enter (finish).
         # Live is still running — arrow keys scroll the report.
@@ -1924,7 +1976,7 @@ def start_simulation_mode(
                                 elif seq == "[C":
                                     display.scroll(-999999)
                                 elif seq == "[D":
-                                    approx = max(10, (display._console.height if display._console else 40) - 10)
+                                    approx = display.page_height
                                     display.scroll(approx)
                         elif ch == "\x03":
                             break
@@ -1943,10 +1995,22 @@ def start_simulation_mode(
                 pass
 
         if display is not None:
-            display._prompt_urgent = False
+            display.set_urgent(False)
             display.stop()
 
         if _new_goal and _new_goal.lower() not in ("/cancel", "quit", "exit"):
+            # Consolidate memory before restarting with a new goal.
+            # Without this, in-session learning (NAc decay, hippocampus
+            # consolidation, semantic embeddings) is lost on /new.
+            if aut_memory_hub is not None:
+                try:
+                    aut_memory_hub.on_session_end()
+                except Exception as _mhe:
+                    logger.warning("Memory consolidation before /new failed: %s", _mhe)
+            # NOTE: This recurses. Depth is bounded by human interaction
+            # (each level requires typing a new goal + running a full sim).
+            # RecursionError after ~50-100 is theoretically possible but
+            # extremely unlikely in practice.
             return start_simulation_mode(
                 goal=_new_goal,
                 persona=persona,

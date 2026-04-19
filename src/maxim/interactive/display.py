@@ -227,6 +227,30 @@ class MaximDisplay:
             self._prompt_text = ""
             self._refresh()
 
+    @property
+    def log_count(self) -> int:
+        """Number of lines in the log panel. Thread-safe."""
+        with self._lock:
+            return len(self._log_lines)
+
+    @property
+    def page_height(self) -> int:
+        """Approximate visible log lines for page-up scrolling. Thread-safe."""
+        with self._lock:
+            return max(10, (self._console.height if self._console else 40) - 10)
+
+    def set_urgent(self, urgent: bool) -> None:
+        """Set prompt urgency (gold border when agent is asking a question). Thread-safe."""
+        with self._lock:
+            self._prompt_urgent = urgent
+            self._refresh()
+
+    def set_status_style(self, style: str) -> None:
+        """Set status bar style: 'normal' (gold), 'error' (red), 'stalled' (grey). Thread-safe."""
+        with self._lock:
+            self._status_style = style
+            self._refresh()
+
     def set_scene(self, title: str = "", description: str = "") -> None:
         """Set the scene header panel (thread-safe)."""
         with self._lock:

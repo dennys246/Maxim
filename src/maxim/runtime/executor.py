@@ -176,7 +176,19 @@ class Executor:
         with self._lock:
             self._running = (tool_name, time.time(), invocation_id)
 
-        if self._tool_pain_bridge is not None:
+        # Suppress NAc causal learning during interactive mode — human-directed
+        # tool calls would corrupt the causal model with patterns that depend
+        # on human presence rather than environmental facts. See plans/README.md
+        # "Interactive NAc attribution" for the longer-term fix.
+        _suppress_nac = False
+        try:
+            from maxim.simulation.sim_logger import get_interactive_mode, InteractiveMode
+
+            _suppress_nac = get_interactive_mode() == InteractiveMode.ON
+        except Exception:
+            pass
+
+        if self._tool_pain_bridge is not None and not _suppress_nac:
             self._tool_pain_bridge.record_tool_start(tool_name, invocation_id, context={"params": params})
 
         try:
@@ -219,7 +231,7 @@ class Executor:
         if result.success:
             self._tools_succeeded.append(tool_name)
             self._consecutive_failures = 0
-            if self._tool_pain_bridge is not None:
+            if self._tool_pain_bridge is not None and not _suppress_nac:
                 # Embodiment-failure side channel: the tool ran, but
                 # the body produced SEM failures (e.g., rusty_sword
                 # shattered on slash). Route to direct-attribution
