@@ -877,6 +877,27 @@ SAFETY: Some dangerous commands are blocked. If a command fails, check the error
         "example": {"tool_name": "display_mode", "params": {"level": "bio"}},
         "followup_type": None,
     },
+    "set_scene": {
+        "description": (
+            "Set the scene header to describe the current situation. "
+            "Call this whenever the location, objective, or context changes meaningfully. "
+            "The title and description appear at the top of the display, giving the user "
+            "narrative context at a glance. Keep the title short (location or encounter name) "
+            "and the description to one line (current objective or atmosphere)."
+        ),
+        "params": {
+            "title": "Short scene title (e.g. 'Neon District, Level 2' or 'Morning Briefing')",
+            "description": "(optional) One-line situation summary or current objective",
+        },
+        "example": {
+            "tool_name": "set_scene",
+            "params": {
+                "title": "Server Room B",
+                "description": "Investigating the corrupted backup drives. Security alert level: elevated.",
+            },
+        },
+        "followup_type": None,
+    },
 }
 
 

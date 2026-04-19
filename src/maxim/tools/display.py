@@ -181,3 +181,44 @@ class RequestInteractionTool(Tool):
             )
         finally:
             pass
+
+
+class SetSceneTool(Tool):
+    """Set the scene header in the interactive display.
+
+    The agent calls this to describe the current situation — location,
+    objective, atmosphere. The header appears between the status bar
+    and the agent log, giving the user narrative context at a glance.
+
+    Update the scene whenever the situation changes meaningfully:
+    new location, new objective, shift in tone, new encounter.
+    """
+
+    name = "set_scene"
+    description = (
+        "Set the scene header to describe the current situation. Update when location, objective, or context changes."
+    )
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Short scene title (location, encounter name, etc.)",
+            },
+            "description": {
+                "type": "string",
+                "description": "One-line description of the current situation or objective",
+            },
+        },
+        "required": ["title"],
+    }
+
+    def execute(self, title: str = "", description: str = "", **kwargs: Any) -> ToolOutput:
+        from maxim.simulation.sim_logger import get_active_display
+
+        display = get_active_display()
+        if display is not None:
+            display.set_scene(title=title, description=description)
+            return ToolOutput(success=True, output=f"Scene set: {title}")
+
+        return ToolOutput(success=True, output="Scene set (no display active)")

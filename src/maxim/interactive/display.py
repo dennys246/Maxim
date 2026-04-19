@@ -126,6 +126,8 @@ class MaximDisplay:
         self._lock = threading.RLock()
         self._scroll_offset: int = 0  # 0 = bottom (newest), positive = scrolled up
         self._prompt_urgent: bool = False  # Gold border when agent is asking a question
+        self._scene_title: str = ""
+        self._scene_description: str = ""
 
         if _RICH_AVAILABLE:
             self._console = Console()
@@ -224,6 +226,13 @@ class MaximDisplay:
             self._prompt_text = ""
             self._refresh()
 
+    def set_scene(self, title: str = "", description: str = "") -> None:
+        """Set the scene header panel (thread-safe)."""
+        with self._lock:
+            self._scene_title = title
+            self._scene_description = description
+            self._refresh()
+
     def scroll(self, delta: int) -> None:
         """Scroll the log panel. Positive = up (older), negative = down (newer)."""
         with self._lock:
@@ -262,6 +271,22 @@ class MaximDisplay:
             height=3,
         )
 
+        # Scene header (only shown when set by the LLM via set_scene tool)
+        scene_panel = None
+        scene_height = 0
+        if self._scene_title or self._scene_description:
+            scene_lines = []
+            if self._scene_description:
+                scene_lines.append(self._scene_description)
+            scene_content = "\n".join(scene_lines) if scene_lines else ""
+            scene_height = len(scene_lines) + 2  # +2 for borders
+            scene_panel = Panel(
+                Text(scene_content, style="italic"),
+                title=f"[bold dark_goldenrod]{self._scene_title}[/bold dark_goldenrod]",
+                border_style="dark_goldenrod",
+                height=scene_height,
+            )
+
         # Compute how many log lines fit: terminal height minus status (3)
         # minus input panel (dynamic) minus borders/padding (~4).
         try:
@@ -270,7 +295,7 @@ class MaximDisplay:
             term_height = 40
         prompt_lines = self._prompt_text.count("\n") + 1 if self._prompt_text else 1
         input_height = max(4, prompt_lines + 3)
-        visible_lines = max(5, term_height - 3 - input_height - 4)
+        visible_lines = max(5, term_height - 3 - scene_height - input_height - 4)
 
         # Log panel with scroll support
         all_lines = list(self._log_lines)
@@ -332,13 +357,14 @@ class MaximDisplay:
                 )
                 return layout
 
-        # Simple layout: status + log + input
+        # Simple layout: status + [scene] + log + input
         layout = Layout()
-        layout.split_column(
-            Layout(status_panel, size=3),
-            Layout(log_panel),
-            Layout(input_panel, size=input_height),
-        )
+        panels = [Layout(status_panel, size=3)]
+        if scene_panel is not None:
+            panels.append(Layout(scene_panel, size=scene_height))
+        panels.append(Layout(log_panel))
+        panels.append(Layout(input_panel, size=input_height))
+        layout.split_column(*panels)
         return layout
 
 

@@ -137,10 +137,11 @@ def build_tool_registry(
     # interactive mode via sim_logger.should_prompt, so registering them
     # unconditionally is safe — when interactive is off, the tool returns
     # a "disabled" message without touching the handler.
-    from maxim.tools.display import DisplayModeTool, RequestInteractionTool
+    from maxim.tools.display import DisplayModeTool, RequestInteractionTool, SetSceneTool
 
     registry.register(DisplayModeTool())
     registry.register(RequestInteractionTool(prompt_handler=prompt_handler))
+    registry.register(SetSceneTool())
 
     # Register Reachy robot tools
     if maxim is not None:

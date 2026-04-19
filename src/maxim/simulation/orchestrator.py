@@ -411,6 +411,7 @@ def start_simulation_mode(
                 # Interactive tools (gated by should_prompt())
                 "request_interaction",
                 "display_mode",
+                "set_scene",
             },
             forbidden_tools=set(),
             min_confidence_autonomous=0.3,
@@ -1633,6 +1634,23 @@ def start_simulation_mode(
     finally:
         # Always clean up, even on interrupt
         bridge._spinner.stop()
+
+    # ── Interactive end-of-sim prompt: continue or finish? ──────────────
+    # When --interactive is on and the sim ended naturally (not /cancel),
+    # ask the user before shutting down. This lets them scroll the logs
+    # without being rushed, and optionally continue with a new arc.
+    if _is_interactive and not stop_event.is_set():
+        display = get_active_display()
+        if display is not None:
+            display.set_prompt("Simulation complete. Type a new goal to continue, or /cancel to finish.\n\n> ")
+            display._prompt_urgent = True
+        _emit("Simulation complete — type a new goal to continue, or /cancel to finish.", "turn")
+        # Wait for user input via the still-running stdin reader
+        stop_event.wait()  # Blocks until /cancel sets it or the stdin reader exits
+
+        if display is not None:
+            display._prompt_urgent = False
+            display.set_prompt("> ")
 
     # ── Suppress noisy log output during shutdown ─────────────────────
     # LLM responses may still be in-flight from background threads.
