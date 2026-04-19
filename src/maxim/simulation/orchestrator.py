@@ -1147,114 +1147,216 @@ def start_simulation_mode(
 
     _paused = [False]  # Mutable container for closure
 
-    def _stdin_reader() -> None:
+    def _process_line(line: str) -> bool:
+        """Process a completed line of user input. Returns True to break the loop."""
+        line = line.strip()
+        if not line:
+            return False
+
+        # Slash commands always take priority, even during a pending prompt.
+        if line.lower() in ("/cancel", "/stop", "/quit"):
+            display_summary(["Simulation cancelled by user."])
+            stop_event.set()
+            return True
+        elif line.lower() == "/pause":
+            if not _paused[0]:
+                _paused[0] = True
+                orchestrator_source.inject_cli(
+                    "SYSTEM: User paused the simulation. STOP all probing. "
+                    "Do NOT call send_message or any other tool. "
+                    "Wait silently until the user resumes.",
+                    salience=1.0,
+                    novelty=1.0,
+                )
+                display = get_active_display()
+                if display is not None:
+                    display.set_status(status="PAUSED")
+                _emit("Simulation paused — type to talk to the agent, /resume to continue", "turn")
+        elif line.lower() == "/resume":
+            if _paused[0]:
+                _paused[0] = False
+                orchestrator_source.inject_cli(
+                    "SYSTEM: User resumed the simulation. Continue probing.",
+                    salience=1.0,
+                    novelty=0.8,
+                )
+                display = get_active_display()
+                if display is not None:
+                    display.set_status(status="")
+                _emit("Simulation resumed", "turn")
+        elif line.lower().startswith("/new "):
+            new_goal = line[5:].strip()
+            if new_goal:
+                orchestrator_source.inject_cli(
+                    f"NEW SIMULATION GOAL: {new_goal}\n"
+                    f"Switch to testing this new objective. "
+                    f"Previous findings are still in your context.",
+                    salience=1.0,
+                    novelty=1.0,
+                )
+                display_status(f"New goal: {new_goal}")
+        elif line.lower().startswith("/persona "):
+            new_persona = line[9:].strip()
+            orchestrator_source.inject_cli(
+                f"PERSONA SWITCH: Change your approach to '{new_persona}'. "
+                f"Adopt this testing style for subsequent probes.",
+                salience=0.9,
+                novelty=0.8,
+            )
+            display_status(f"Persona switched to: {new_persona}")
+        elif line.lower() == "/status":
+            display_status(f"Turns: {bridge.turn_count}")
+            display_status(f"Actions: {len(bridge.get_all_actions())}")
+            blocked = [a for a in bridge.get_all_actions() if a.blocked]
+            display_status(f"Blocked: {len(blocked)}")
+        elif line.lower() == "/report":
+            orchestrator_source.inject_cli(
+                "Generate an interim report of your findings so far "
+                "using analyze_results, then present it with respond.",
+                salience=0.9,
+                novelty=0.5,
+            )
+            display_status("Report requested...")
+        else:
+            # If the agent is waiting for user input via request_interaction,
+            # forward non-command text to the prompt handler.
+            if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
+                _sim_prompt_handler.deliver_response(line)
+                _emit(f"  You: {line}", "scene")
+            # When interactive or paused, free text goes directly
+            # to the AUT as a user percept (conversational input).
+            elif _is_interactive or _paused[0]:
+                bridge.percept_source.inject_cli(
+                    line,
+                    salience=0.9,
+                    novelty=0.8,
+                )
+                _emit(f"  You: {line}", "scene")
+            else:
+                orchestrator_source.inject_cli(
+                    f"USER GUIDANCE: {line}",
+                    salience=0.7,
+                    novelty=0.6,
+                )
+        return False
+
+    def _stdin_reader_raw() -> None:
+        """Character-level stdin reader using raw terminal mode.
+
+        Disables echo so keystrokes don't appear at the raw cursor
+        (below the Rich Live panel). Instead, typed characters are
+        rendered inside the display's input panel via set_prompt().
+        On Enter, the buffered line is processed normally.
+        """
+        import sys
+
+        stdin = sys.stdin
+        if stdin is None or not hasattr(stdin, "isatty") or not stdin.isatty():
+            # Non-TTY — fall back to line-based reader
+            _stdin_reader_line()
+            return
+
+        try:
+            import select
+            import termios
+            import tty
+        except ImportError:
+            _stdin_reader_line()
+            return
+
+        try:
+            fd = stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+        except Exception:
+            _stdin_reader_line()
+            return
+
+        buf: list[str] = []
+
+        def _update_prompt() -> None:
+            display = get_active_display()
+            if display is not None:
+                text = "".join(buf)
+                if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
+                    # Show the agent's question + user's typing
+                    prompt_text = _sim_prompt_handler.pending_display_text
+                    display.set_prompt(f"{prompt_text}\n\n> {text}")
+                else:
+                    display.set_prompt(f"> {text}")
+
+        try:
+            tty.setcbreak(fd)
+            new_settings = termios.tcgetattr(fd)
+            new_settings[3] &= ~termios.ECHO
+            termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)
+
+            _update_prompt()
+
+            while not stop_event.is_set():
+                try:
+                    ready, _, _ = select.select([stdin], [], [], 0.1)
+                except Exception:
+                    continue
+                if not ready:
+                    continue
+                try:
+                    ch = stdin.read(1)
+                except Exception:
+                    continue
+                if not ch:
+                    continue
+
+                if ch in ("\n", "\r"):
+                    # Process the buffered line
+                    line = "".join(buf)
+                    buf.clear()
+                    _update_prompt()
+                    if _process_line(line):
+                        break
+                elif ch == "\x7f" or ch == "\x08":
+                    # Backspace
+                    if buf:
+                        buf.pop()
+                    _update_prompt()
+                elif ch == "\x15":
+                    # Ctrl+U — clear line
+                    buf.clear()
+                    _update_prompt()
+                elif ch == "\x03":
+                    # Ctrl+C
+                    stop_event.set()
+                    break
+                elif ch == "\x04":
+                    # Ctrl+D (EOF)
+                    return
+                elif ch >= " " or ch == "\t":
+                    # Printable character
+                    buf.append(ch)
+                    _update_prompt()
+        finally:
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            except Exception:
+                pass
+            display = get_active_display()
+            if display is not None:
+                display.clear_prompt()
+
+    def _stdin_reader_line() -> None:
+        """Fallback line-based stdin reader for non-TTY environments."""
         while not stop_event.is_set():
             try:
                 line = input()
             except EOFError:
-                # Non-interactive mode (piped stdin, CI, Claude Code).
-                # Don't cancel — let the sim run until max_turns or
-                # FinishSimulationTool fires.
                 return
             except KeyboardInterrupt:
                 stop_event.set()
                 break
-
-            line = line.strip()
-            if not line:
-                continue
-
-            # Slash commands always take priority, even during a pending prompt.
-            # Without this, /cancel typed during request_interaction would be
-            # swallowed as the prompt response instead of cancelling the sim.
-            if line.lower() in ("/cancel", "/stop", "/quit"):
-                display_summary(["Simulation cancelled by user."])
-                stop_event.set()
+            if _process_line(line):
                 break
-            elif line.lower() == "/pause":
-                if not _paused[0]:
-                    _paused[0] = True
-                    orchestrator_source.inject_cli(
-                        "SYSTEM: User paused the simulation. STOP all probing. "
-                        "Do NOT call send_message or any other tool. "
-                        "Wait silently until the user resumes.",
-                        salience=1.0,
-                        novelty=1.0,
-                    )
-                    display = get_active_display()
-                    if display is not None:
-                        display.set_status(status="PAUSED")
-                        display.set_prompt("Paused — type to the agent, /resume to continue")
-                    _emit("Simulation paused — type to talk to the agent, /resume to continue", "turn")
-            elif line.lower() == "/resume":
-                if _paused[0]:
-                    _paused[0] = False
-                    orchestrator_source.inject_cli(
-                        "SYSTEM: User resumed the simulation. Continue probing.",
-                        salience=1.0,
-                        novelty=0.8,
-                    )
-                    display = get_active_display()
-                    if display is not None:
-                        display.set_status(status="")
-                        display.set_prompt("Type to talk to the agent (Enter to send) | /cancel to stop")
-                    _emit("Simulation resumed", "turn")
-            elif line.lower().startswith("/new "):
-                new_goal = line[5:].strip()
-                if new_goal:
-                    orchestrator_source.inject_cli(
-                        f"NEW SIMULATION GOAL: {new_goal}\n"
-                        f"Switch to testing this new objective. "
-                        f"Previous findings are still in your context.",
-                        salience=1.0,
-                        novelty=1.0,
-                    )
-                    display_status(f"New goal: {new_goal}")
-            elif line.lower().startswith("/persona "):
-                new_persona = line[9:].strip()
-                orchestrator_source.inject_cli(
-                    f"PERSONA SWITCH: Change your approach to '{new_persona}'. "
-                    f"Adopt this testing style for subsequent probes.",
-                    salience=0.9,
-                    novelty=0.8,
-                )
-                display_status(f"Persona switched to: {new_persona}")
-            elif line.lower() == "/status":
-                display_status(f"Turns: {bridge.turn_count}")
-                display_status(f"Actions: {len(bridge.get_all_actions())}")
-                blocked = [a for a in bridge.get_all_actions() if a.blocked]
-                display_status(f"Blocked: {len(blocked)}")
-            elif line.lower() == "/report":
-                orchestrator_source.inject_cli(
-                    "Generate an interim report of your findings so far "
-                    "using analyze_results, then present it with respond.",
-                    salience=0.9,
-                    novelty=0.5,
-                )
-                display_status("Report requested...")
-            else:
-                # If the agent is waiting for user input via request_interaction,
-                # forward non-command text to the prompt handler.
-                if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
-                    _sim_prompt_handler.deliver_response(line)
-                    _emit(f"  You: {line}", "scene")
-                # When interactive or paused, free text goes directly
-                # to the AUT as a user percept (conversational input).
-                elif _is_interactive or _paused[0]:
-                    bridge.percept_source.inject_cli(
-                        line,
-                        salience=0.9,
-                        novelty=0.8,
-                    )
-                    _emit(f"  You: {line}", "scene")
-                else:
-                    orchestrator_source.inject_cli(
-                        f"USER GUIDANCE: {line}",
-                        salience=0.7,
-                        novelty=0.6,
-                    )
 
-    stdin_thread = threading.Thread(target=_stdin_reader, name="sim.stdin", daemon=True)
+    _stdin_target = _stdin_reader_raw if _is_interactive else _stdin_reader_line
+    stdin_thread = threading.Thread(target=_stdin_target, name="sim.stdin", daemon=True)
     stdin_thread.start()
 
     # Show input hint when interactive mode is on

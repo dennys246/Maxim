@@ -367,53 +367,52 @@ class SimPromptHandler(PromptHandler):
         self._response_queue.put(text)
 
     def prompt(self, request: PromptRequest) -> PromptResponse:
-        """Pause Live, let the stdin reader forward the response, resume Live.
+        """Post the prompt and wait for the raw stdin reader to deliver a response.
 
-        Two constraints drive this design:
-        1. Rich Live and ``input()`` can't coexist (Live owns the cursor)
-        2. Only ONE thread can read stdin (the sim.stdin reader)
-
-        So we: stop Live (clean terminal), print the question, post
-        ``_pending`` so the stdin reader forwards the next line via
-        ``deliver_response()``, and wait on the queue. The stdin reader
-        is the sole stdin consumer — no double-Enter, no contention.
+        The raw terminal stdin reader (``_stdin_reader_raw`` in orchestrator.py)
+        renders the question + typed characters inside the Live panel via
+        ``display.set_prompt()``. No Live pause needed — the reader handles
+        echo suppression via termios and renders in-panel. This method just
+        posts ``_pending`` so the reader knows to show the question and
+        forward the next Enter-delimited line via ``deliver_response()``.
         """
         start = time.time()
 
-        from maxim.simulation.sim_logger import get_active_display
+        # Log the question in the agent log panel
+        try:
+            from maxim.simulation.sim_logger import _emit
 
-        display = get_active_display()
-        was_active = display is not None and display.is_active
+            _emit(f"  Agent asks: {request.question}", "choice")
+            if request.options:
+                for i, opt in enumerate(request.options, 1):
+                    _emit(f"    [{i}] {opt}", "choice")
+        except Exception:
+            pass
 
-        # Stop Live so the terminal is clean for input
-        if was_active:
-            display.stop()
-
-        # Print the question on the clean terminal
-        print(f"\n  {request.question}")
-        if request.options:
-            for i, opt in enumerate(request.options, 1):
-                print(f"    [{i}] {opt}")
-        if request.default:
-            print(f"  [default: {request.default}]")
-        print()
-        print("  > ", end="", flush=True)
-
-        # Mark prompt as pending — the stdin reader will see this and
-        # forward the next line via deliver_response() instead of
-        # processing it as a command.
+        # Mark prompt as pending — the raw stdin reader will see this,
+        # show the question in the display's input panel, and forward
+        # the user's typed response via deliver_response().
         with self._lock:
             self._pending = request
 
+        # Trigger an immediate display update so the question appears
+        try:
+            from maxim.simulation.sim_logger import get_active_display
+
+            display = get_active_display()
+            if display is not None:
+                prompt_text = self.pending_display_text + "\n\n> "
+                display.set_prompt(prompt_text)
+        except Exception:
+            pass
+
         response = request.default or ""
         try:
-            # Wait for the stdin reader to forward the user's response.
-            # Poll with short timeouts to check stop_event.
+            # Wait for the raw stdin reader to forward the user's response.
             deadline = time.time() + request.timeout_sec
             while True:
                 remaining = deadline - time.time()
                 if remaining <= 0:
-                    print("(timed out)")
                     elapsed = time.time() - start
                     return PromptResponse(
                         value=request.default or "",
@@ -442,19 +441,16 @@ class SimPromptHandler(PromptHandler):
                     if 0 <= idx < len(request.options):
                         response = request.options[idx]
 
+                # Log the response
+                try:
+                    _emit(f"  You answered: {response}", "scene")
+                except Exception:
+                    pass
+
                 return PromptResponse(value=response, elapsed_s=elapsed)
         finally:
             with self._lock:
                 self._pending = None
-            # Restart Live — display resumes with the response logged
-            if was_active and display is not None:
-                display.start()
-                try:
-                    from maxim.simulation.sim_logger import _emit
-
-                    _emit(f"  You answered: {response}", "scene")
-                except Exception:
-                    pass
 
 
 # ---------------------------------------------------------------------------
