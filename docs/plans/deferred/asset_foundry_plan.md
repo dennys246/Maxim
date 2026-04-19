@@ -1,8 +1,16 @@
 # Asset Foundry Plan
 
-> **Status:** DEFERRED (post-1.0). Design complete, not started.
+> **Status:** PROMOTED to pre-1.0 (0.6 target). Design complete, not started.
 >
-> **Revive when:** Manual SEM component authoring becomes a demonstrable bottleneck — i.e., someone is waiting on new components to unblock a sim or experiment. Current library (54 components across 7 categories) is sufficient for 1.0 demonstration scenarios. Do not build this preemptively.
+> **Why promoted (2026-04-18):** The 0.3.2 prompt system review revealed that SEM affordance tools are NOT generated in simulation mode — `entity_ref` is not passed to `build_executor()` for the AUT, so the sim path and robot path have fundamentally different tool surfaces. An agent in simulation cannot interact with SEM entities (no sword to swing, no item to pick up). This means DM campaigns with entity interactions, embodiment experiments, and the "only difference is where percepts come from" contract are all broken in sim. Generalizable embodiment — making `entity_ref` work in sim with full pain-cascade learning — is a 1.0 prerequisite, not a post-1.0 nice-to-have. The Asset Foundry (automated component generation) builds on this foundation.
+>
+> **Prerequisite work (0.6 Stage 0):** Before the full foundry pipeline, fix the sim affordance gap:
+> 1. Wire `entity_ref` through simulation orchestrator → `build_executor(entity_ref=..., component_registry=...)`
+> 2. Generate affordance tools for the AUT in sim mode (same path as Reachy robot mode)
+> 3. Verify pain-cascade learning works for sim entities (SEM → PainBus → NAc → causal links)
+> 4. Test with existing components (e.g., `weapons/rusty_sword` in a DM campaign)
+>
+> **Original revive trigger (now superseded):** Manual SEM component authoring becomes a demonstrable bottleneck.
 
 **Goal:** An autonomous pipeline that generates, validates, tests, and curates SEM components — expanding the component library without manual YAML authoring while stress-testing the bio-stack against novel entity designs.
 

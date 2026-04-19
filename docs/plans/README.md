@@ -60,7 +60,7 @@ Design work is preserved in [deferred/](deferred/). Each plan has an explicit "r
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — **needs heavy refinement.** Two-agent stimulus pattern: Baby Maxim is the AUT with frozen LLM and evolving substrate; Mother NPC is a separate agent with her own LLM that produces realistic, varied percepts Baby learns from. Interaction is percepts only, zero information leak beyond that surface. Gives behavioral convergence experiments scalable stimulus variety without breaking the "no fine-tuning" research claim. Revive when [behavioral_convergence_practice.md](behavioral_convergence_practice.md) has ≥2 successful experiments + 1 blocked-on-variety. Isolation leak vector list in the plan is a starting point, not a contract — heavy refinement needed at revive time.
 - [deferred/pecking_order_graph_plan.md](deferred/pecking_order_graph_plan.md) — unified hierarchy DAG
 - [deferred/mother_maxim_plan.md](deferred/mother_maxim_plan.md) — persistent collective memory
-- [deferred/asset_foundry_plan.md](deferred/asset_foundry_plan.md) — automated SEM component generation
+- ~~[deferred/asset_foundry_plan.md](deferred/asset_foundry_plan.md)~~ — **PROMOTED to 0.6** (pre-1.0). Sim path currently lacks SEM affordance tools — the AUT can't interact with entities in simulation. Generalizable embodiment is a 1.0 prerequisite. See 0.6 in the version table.
 - [deferred/dungeon_master_extensions.md](deferred/dungeon_master_extensions.md) — DM post-MVP features
 
 ## Archive
@@ -117,7 +117,8 @@ Five tracks run in parallel:
 | **0.3.2** | Bidirectional interactive mode: raw terminal input (in-panel rendering), `request_interaction` agent→user prompting, `set_scene` dynamic scene header, `/pause` `/resume` `/display` commands, scrollable log with bio trace dimming, end-of-sim review prompt. Fixed display corruption, stdin contention, tool schema validation, LLM prompt context. | Full interactive simulation experience. User talks to agent, agent asks user questions, scene context updates dynamically. No display corruption, no double-Enter, no flickering. | ✅ **SHIPPED** |
 | **0.4** | Tier 3 at scale (20+ seeds), episode boundary enrichment, P5 stress persistence, concept decomposition S2-3 | Learning is robust under variance + load. Substrate persists at 10k+ nodes. Not a fluke. | Planned |
 | **0.5** | AgentFactory canonicalization (F+G waves), B3 (acting coach), B4 (replanning — **GATES 1.0**), P6 (extinction), P8 (sleep replay) | One door for every agent. NPCs learn from actions. Agent has coherent voice. Agent recovers from failures. Memory consolidates offline. | Planned |
-| **1.0** | All exit criteria passing, behavioral convergence at scale with statistical rigor | Cross-session learning at realistic scale, coherent voice, failure recovery, one construction door | Target |
+| **0.6** | **Generalizable embodiment** — Asset Foundry (promoted from deferred), SEM affordance tools in simulation, entity_ref wiring for sim AUT, component generation pipeline | Sim path and robot path use identical tool injection. Agent can interact with SEM entities in simulation with full pain-cascade learning. No code path divergence between sim and live. | Planned |
+| **1.0** | All exit criteria passing, behavioral convergence at scale with statistical rigor, generalizable embodiment | Cross-session learning at realistic scale, coherent voice, failure recovery, one construction door, **unified sim/robot embodiment** | Target |
 
 ### 0.3.1 roadmap (detailed)
 
@@ -163,6 +164,20 @@ Three parallel tracks. B4 replanning is the **1.0 gate** — everything else is 
 | **A — Sleep replay** | P8 — minimum-viable offline consolidation | [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) | ~500 LOC | Memory consolidates between sessions |
 
 **0.5 sequencing:** B3 and factory F1 can start immediately (no dependencies). B4 depends only on B1+P3a (both shipped). Factory F2-F5 depends on F1. G-wave depends on F1. P6 and P8 are independent substrate work. **B4 is the critical path to 1.0** — if it slips, 1.0 slips. The factory refactor (F+G) is engineering hygiene that could defer to post-1.0 if needed without blocking the research claim.
+
+### 0.6 roadmap (detailed) — Generalizable Embodiment
+
+**Why this gates 1.0:** The sim path and robot path currently have different tool surfaces. The AUT in simulation cannot interact with SEM entities (no affordance tools generated). This means DM campaigns with entity interactions, embodiment experiments, and the architectural contract ("only difference is where percepts come from") are all broken in sim. Fixing this is a prerequisite for 1.0.
+
+| Stage | What | Scope | What it proves |
+|---|---|---|---|
+| **E0 — Sim affordance gap** | Wire `entity_ref` through sim orchestrator → `build_executor()`. Generate affordance tools for AUT in sim. Verify pain-cascade learning for sim entities. | ~200 LOC | Agent can swing a sword in simulation and learn from the pain cascade |
+| **E1 — Asset Foundry core** | LLM-driven component generation + schema validation + SEM protocol tests | ~800 LOC | Components generated without manual YAML authoring |
+| **E2 — Gauntlet testing** | 3-encounter campaign per candidate, fresh MemoryHub, measure affordance usage + cognitive behavior | ~600 LOC | Generated components produce interesting cognitive behavior (not just valid YAML) |
+| **E3 — Score + curate** | 4-dimension rubric (complexity, distinctiveness, pedagogical, narrative), promote/review/reject pipeline | ~400 LOC | Quality gate ensures only useful components enter the library |
+| **PoC — Embodiment stress test** | Run 10+ generated entities through a DM campaign gauntlet (interactive mode). Measure: affordance_usage_count > 0, pain events captured, NAc causal links formed, cross-session memory persistence. Pass criteria: 8/10 entities produce measurable learning. | ~300 LOC test harness | Generalizable embodiment works at scale — not just for `rusty_sword` |
+
+**0.6 sequencing:** E0 is the prerequisite for everything — without sim affordance tools, nothing else works. E1-E3 are the Asset Foundry pipeline (sequential). The PoC runs after E0+E1 land and stress-tests with generated + existing components. **E0 is the critical path** — it's ~200 LOC and unblocks the rest.
 
 ### What 0.3 proved
 
