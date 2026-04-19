@@ -1643,80 +1643,12 @@ def start_simulation_mode(
         # Always clean up, even on interrupt
         bridge._spinner.stop()
 
-    # ── Interactive end-of-sim prompt: let user scroll before shutdown ───
-    # Keep Live running so the user can scroll the logs with arrow keys.
-    # Use raw terminal mode to wait for Enter (same pattern as the sim
-    # stdin reader) — this avoids echoing escape sequences.
+    # ── Interactive: update scene header for post-sim phase ──────────────
     if _is_interactive:
         display = get_active_display()
         if display is not None:
             display.set_scene(title="Simulation Complete")
-            display.set_prompt("Scroll the logs with arrow keys. Press Enter to view the report.")
-            display._prompt_urgent = True
-
-        import sys as _sys
-
-        _stdin = _sys.stdin
-        _can_raw = _stdin is not None and hasattr(_stdin, "isatty") and _stdin.isatty()
-        if _can_raw:
-            try:
-                import os as _os2
-                import select as _sel2
-                import termios as _term2
-                import tty as _tty2
-
-                _fd2 = _stdin.fileno()
-                _old2 = _term2.tcgetattr(_fd2)
-                try:
-                    _tty2.setcbreak(_fd2)
-                    _new2 = _term2.tcgetattr(_fd2)
-                    _new2[3] &= ~_term2.ECHO
-                    _term2.tcsetattr(_fd2, _term2.TCSADRAIN, _new2)
-
-                    while True:
-                        ready, _, _ = _sel2.select([_stdin], [], [], 0.1)
-                        if not ready:
-                            continue
-                        ch = _os2.read(_fd2, 1).decode("utf-8", errors="replace")
-                        if ch in ("\n", "\r"):
-                            break
-                        elif ch == "\x1b":
-                            rest = _os2.read(_fd2, 2)
-                            if len(rest) == 2:
-                                seq = rest.decode("ascii", errors="replace")
-                                if display is not None:
-                                    if seq == "[A":
-                                        display.scroll(3)
-                                    elif seq == "[B":
-                                        display.scroll(-3)
-                                    elif seq == "[C":
-                                        display.scroll(-999999)
-                                    elif seq == "[D":
-                                        approx_page = max(
-                                            10, (display._console.height if display._console else 40) - 10
-                                        )
-                                        display.scroll(approx_page)
-                        elif ch == "\x03":
-                            break
-                finally:
-                    _term2.tcsetattr(_fd2, _term2.TCSADRAIN, _old2)
-            except Exception:
-                # Fallback: plain input()
-                if display is not None:
-                    display.stop()
-                input()
-        else:
-            if display is not None:
-                display.stop()
-            print("\n  Press Enter to view the report...")
-            try:
-                input()
-            except (EOFError, KeyboardInterrupt):
-                pass
-
-        if display is not None:
-            display._prompt_urgent = False
-            display.set_prompt("> Shutting down...")
+            display.set_prompt("> Generating report...")
 
     # ── Suppress noisy log output during shutdown ─────────────────────
     # LLM responses may still be in-flight from background threads.
