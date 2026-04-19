@@ -347,6 +347,8 @@ def start_simulation_mode(
 
             _sim_prompt_handler = SimPromptHandler(stop_event=stop_event)
             aut_prompt_handler = _sim_prompt_handler
+            # Gate the bridge so orchestrator waits for user to answer prompts
+            bridge._prompt_gate = _sim_prompt_handler
         else:
             from maxim.interactive.prompts import create_handler
 

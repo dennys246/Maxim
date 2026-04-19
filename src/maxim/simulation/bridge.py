@@ -46,6 +46,7 @@ class SimulationBridge:
         stop_event: threading.Event | None = None,
         response_policy: ResponsePolicy | None = None,
         spinner_prefix: str = "",
+        prompt_gate: Any = None,
     ) -> None:
         self.percept_source = ConversationalSource()
         self.action_sink = RecordingSink()
@@ -53,6 +54,7 @@ class SimulationBridge:
         self._response_timeout = response_timeout
         self._settle_s = settle_s
         self._stop_event = stop_event
+        self._prompt_gate = prompt_gate  # SimPromptHandler — block percepts while prompting
         self._turn_count = 0
         self._last_observed_action_idx = 0
         self._spinner = Spinner(prefix=spinner_prefix)
@@ -103,6 +105,17 @@ class SimulationBridge:
         except Exception:
             pass
         self._spinner.start(f'Turn {self._turn_count + 1}: Sending to AUT — "{short_text}"')
+
+        # Wait for any pending user prompt to resolve before injecting.
+        # Without this, the orchestrator's next probe preempts the
+        # request_interaction followup in the agent loop, so the user's
+        # response never reaches the LLM.
+        if self._prompt_gate is not None:
+            while getattr(self._prompt_gate, "has_pending_prompt", False):
+                if self._stop_event and self._stop_event.is_set():
+                    break
+                time.sleep(0.3)
+
         # Fire percept-level anxiety (Layer 1b) BEFORE the percept reaches
         # the AUT, so the anticipation signal is already in the AUT's
         # memory when it reasons about the message.
