@@ -402,17 +402,14 @@ class _DisplayLoggingHandler(logging.Handler):
         try:
             msg = self.format(record)
 
-            # Deduplicate noisy repeated messages
+            # Route noisy repeated messages to the persistent warnings
+            # panel instead of the scrolling log.
             for substr in self._DEDUP_SUBSTRINGS:
                 if substr in msg:
-                    import time as _time
-
-                    now = _time.monotonic()
-                    last = self._seen.get(substr, 0.0)
-                    if now - last < self._DEDUP_WINDOW_S:
-                        return  # Suppress duplicate
-                    self._seen[substr] = now
-                    break
+                    if hasattr(self._display, "warn"):
+                        # Show a concise version in the fixed warnings panel
+                        self._display.warn(record.getMessage())
+                    return
 
             self._display.log("info", msg)
         except Exception:

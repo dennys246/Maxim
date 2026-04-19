@@ -129,6 +129,7 @@ class MaximDisplay:
         self._scene_title: str = "Constructing Simulation"
         self._scene_description: str = ""
         self._status_style: str = "normal"  # "normal" (gold), "error" (red), "stalled" (grey)
+        self._warnings: list[str] = []  # Persistent warnings shown below status bar
 
         if _RICH_AVAILABLE:
             self._console = Console()
@@ -251,6 +252,23 @@ class MaximDisplay:
             self._status_style = style
             self._refresh()
 
+    def warn(self, message: str) -> None:
+        """Add a persistent warning shown in a fixed panel below the status bar.
+
+        Warnings stay visible (not scrolled away like log entries).
+        Duplicate messages are ignored.  Thread-safe.
+        """
+        with self._lock:
+            if message not in self._warnings:
+                self._warnings.append(message)
+                self._refresh()
+
+    def clear_warnings(self) -> None:
+        """Remove all persistent warnings. Thread-safe."""
+        with self._lock:
+            self._warnings.clear()
+            self._refresh()
+
     def set_scene(self, title: str = "", description: str = "") -> None:
         """Set the scene header panel (thread-safe)."""
         with self._lock:
@@ -316,15 +334,26 @@ class MaximDisplay:
             height=3,
         )
 
-        # Compute how many log lines fit: terminal height minus status (3)
-        # minus input panel (dynamic) minus borders/padding (~4).
+        # Warnings panel (fixed, between status and log)
+        warnings_panel = None
+        warnings_height = 0
+        if self._warnings:
+            warnings_text = "\n".join(f"[yellow]⚠ {w}[/yellow]" for w in self._warnings)
+            warnings_height = len(self._warnings) + 2  # +2 for panel border
+            warnings_panel = Panel(
+                Text.from_markup(warnings_text),
+                border_style="yellow",
+                height=warnings_height,
+            )
+
+        # Compute how many log lines fit: terminal height minus fixed panels.
         try:
             term_height = self._console.height if self._console else 40
         except Exception:
             term_height = 40
         prompt_lines = self._prompt_text.count("\n") + 1 if self._prompt_text else 1
         input_height = max(4, prompt_lines + 3)
-        visible_lines = max(5, term_height - title_height - 3 - input_height - 4)
+        visible_lines = max(5, term_height - title_height - 3 - warnings_height - input_height - 4)
 
         # Log panel with scroll support
         all_lines = list(self._log_lines)
@@ -375,9 +404,14 @@ class MaximDisplay:
             if ext_renderables:
                 # Two-column layout: log left, extensions right
                 layout = Layout()
-                layout.split_column(
+                ext_panels = [
                     Layout(title_panel, size=title_height),
                     Layout(status_panel, size=3),
+                ]
+                if warnings_panel is not None:
+                    ext_panels.append(Layout(warnings_panel, size=warnings_height))
+                layout.split_column(
+                    *ext_panels,
                     Layout(name="body"),
                     Layout(input_panel, size=input_height),
                 )
@@ -387,14 +421,17 @@ class MaximDisplay:
                 )
                 return layout
 
-        # Layout: scene (gold) + status (purple) + log + input
+        # Layout: scene + status + [warnings] + log + input
         layout = Layout()
-        layout.split_column(
+        panels = [
             Layout(title_panel, size=title_height),
             Layout(status_panel, size=3),
-            Layout(log_panel),
-            Layout(input_panel, size=input_height),
-        )
+        ]
+        if warnings_panel is not None:
+            panels.append(Layout(warnings_panel, size=warnings_height))
+        panels.append(Layout(log_panel))
+        panels.append(Layout(input_panel, size=input_height))
+        layout.split_column(*panels)
         return layout
 
 
