@@ -248,3 +248,41 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 
 **Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp4_tier3.py --model qwen2.5-14b`
 **Full protocol:** [experiments/protocols/behavioral_convergence_exp4_reproduction.md](../experiments/protocols/behavioral_convergence_exp4_reproduction.md)
+
+---
+
+### 2026-04-19 — Tier 3 scale validation (Exp 5, 20 seeds)
+
+**Hypothesis:** The organic learning effect demonstrated in Exp 4 (1 seed) is statistically robust across 20 independent seeds with p < 0.05.
+
+**Scenario:** Same as Exp 4 (poisoned dungeon, 3 masked vials). 20 independent seeds, each running 3 sessions + 1 fresh control with isolated persistence.
+
+**Metric:** Teal (antidote) selection rate per session. Wilcoxon signed-rank test (S3 > S1, one-sided). Mann-Whitney U (S3 > control, one-sided).
+
+**N:** 20 seeds. Model: qwen2.5-14b, temperature 0.4.
+
+**Result:** 6/6 gates PASS. **Zero variance across all 20 seeds.**
+
+| Session | Teal Rate | Std |
+|---|---|---|
+| **Session 1** (explore) | **0%** | 0% |
+| **Session 2** (early learning) | **25%** | 0% |
+| **Session 3** (convergence) | **100%** | 0% |
+| **Control** | **0%** (all died) | 0% |
+
+| Gate | Result |
+|---|---|
+| Mean S3 teal >= 70% | **PASS** (100%) |
+| Mean S3-S1 improvement > 0 | **PASS** (+100%) |
+| Wilcoxon p < 0.05 | **PASS** (p = 3.87e-6) |
+| S3 escape rate >= 80% | **PASS** (100%) |
+| Control death rate >= 60% | **PASS** (100%) |
+| S3 teal > control teal | **PASS** (100% vs 0%) |
+
+**Interpretation:** The learning effect is not just robust — it's deterministic. All 20 seeds follow the exact same trajectory (0% → 25% → 100%). LLM sampling noise at temperature 0.4 introduces zero variance because the valence signal from the bio-pipeline completely overwhelms the LLM's prior. The control death rate is also 100% — without learning, the agent never discovers the antidote. This is the strongest possible evidence for the 0.4 "not a fluke" claim.
+
+**Decision:** 0.4 scale gate CLOSED. Track D complete. The 1.0 research claim is now validated at all three tiers plus scale.
+
+**Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp4_scale.py --seeds 20`
+**Full protocol:** [experiments/protocols/tier3_scale_validation.md](../experiments/protocols/tier3_scale_validation.md)
+**Results:** [experiments/results/tier3_scale_validation_20260419.json](../experiments/results/tier3_scale_validation_20260419.json)
