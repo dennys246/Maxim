@@ -1353,6 +1353,11 @@ def start_simulation_mode(
                     # Use os.read to grab the remaining bytes without
                     # Python's buffered IO interfering.
                     try:
+                        # Guard with select to avoid blocking on lone Escape.
+                        # Arrow sequences arrive in microseconds; 50ms is ample.
+                        _esc_ready, _, _ = select.select([stdin], [], [], 0.05)
+                        if not _esc_ready:
+                            continue  # Lone Escape — discard
                         rest = _os_mod.read(fd, 2)
                         if len(rest) == 2:
                             seq = rest.decode("ascii", errors="replace")

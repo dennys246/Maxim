@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **0.3.0** (published on PyPI as `pymaxim`).
+Current version: **0.3.2** (published on PyPI as `pymaxim`).
 Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
