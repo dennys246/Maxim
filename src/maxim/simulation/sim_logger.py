@@ -109,6 +109,19 @@ def revert_display_to_floor() -> None:
     _display_tier = _display_floor
 
 
+def reset_sim_display_state() -> None:
+    """Reset all display/interactive globals to their defaults.
+
+    Call after a sim ends to prevent state leaking into the next sim
+    (e.g., in the menu loop where ``start_simulation_mode`` is called
+    repeatedly in the same process).
+    """
+    global _display_tier, _display_floor, _interactive_mode
+    _display_tier = DisplayTier.CLEAN
+    _display_floor = DisplayTier.CLEAN
+    _interactive_mode = InteractiveMode.AUTO
+
+
 _CRITICAL_CONTEXTS = frozenset(
     {
         "plan_approval",

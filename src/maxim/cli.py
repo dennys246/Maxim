@@ -451,14 +451,20 @@ def _run_menu_sim(action: str) -> None:
         except Exception as e:
             print(f"  Failed to load campaign: {e}")
 
-    # Clean up display after sim ends
+    # Clean up display + reset all sim globals so state doesn't leak
+    # into the next sim if the user returns to the menu.
     try:
-        from maxim.simulation.sim_logger import get_active_display, set_active_display
+        from maxim.simulation.sim_logger import (
+            get_active_display,
+            reset_sim_display_state,
+            set_active_display,
+        )
 
         display = get_active_display()
         if display is not None:
             display.stop()
             set_active_display(None)
+        reset_sim_display_state()
     except Exception:
         pass
 
