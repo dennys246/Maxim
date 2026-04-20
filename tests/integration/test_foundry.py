@@ -1,15 +1,18 @@
-"""Integration tests for the Asset Foundry (E1).
+"""Integration tests for the Asset Foundry (E1 + E2).
 
 Tests the full pipeline: generate → validate → SEM protocol → gauntlet → score.
 Uses fallback generation (no LLM) so tests run offline.
+E2 tests add mocked LLM router and entity context section coverage.
 
 Read alongside:
 - simulation/foundry.py — the foundry implementation
+- agents/prompt_builder.py — build_entity_context_section
 - docs/plans/deferred/asset_foundry_plan.md — design doc
 """
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
 
 from maxim.simulation.foundry import (
     CandidateSpec,
@@ -354,3 +357,216 @@ class TestFoundryRunner:
             assert (run_dir / "candidates").is_dir()
         finally:
             _reset_caches()
+
+
+# ---------------------------------------------------------------------------
+# E2: LLM-driven generation (mocked router)
+# ---------------------------------------------------------------------------
+
+# Realistic entity spec JSON that a real LLM would return
+_MOCK_LLM_ENTITY = {
+    "name": "plasma_lance",
+    "entity_type": "weapon",
+    "metadata": {"genre": "cyberpunk", "foundry_theme": "cyberpunk weapons"},
+    "synonyms": ["energy spear", "ion lance", "plasma pike", "shock javelin", "charged spear"],
+    "sensors": {
+        "charge": {"unit": "ratio", "range": [0, 1], "initial": 0.8},
+        "durability": {"unit": "ratio", "range": [0, 1], "initial": 0.9},
+        "heat": {"unit": "degrees", "range": [0, 500], "initial": 20},
+    },
+    "modulators": {
+        "combat": {
+            "affordances": {
+                "plasma_thrust": {
+                    "params": {"target": "str", "force": "float"},
+                    "description": "High damage thrust, drains charge quickly",
+                },
+                "sweep_strike": {
+                    "params": {"target": "str"},
+                    "description": "Wide area attack, moderate charge drain",
+                },
+                "heat_vent": {
+                    "params": {},
+                    "description": "Release built-up heat, brief vulnerability window",
+                },
+            }
+        }
+    },
+    "failure_modes": [
+        {
+            "name": "overheated",
+            "trigger": {"field": "heat", "op": ">=", "value": 450, "pain": 0.6},
+        },
+        {
+            "name": "charge_depleted",
+            "trigger": {"field": "charge", "op": "<", "value": 0.05, "pain": 0.3},
+        },
+    ],
+}
+
+
+def _make_mock_router(spec: dict = _MOCK_LLM_ENTITY) -> MagicMock:
+    """Build a mock LLM router that returns a realistic entity spec."""
+    router = MagicMock()
+    router.generate_json.return_value = dict(spec)
+    return router
+
+
+class TestLLMGeneration:
+    """E2: foundry generation with a mocked LLM router."""
+
+    def test_generate_with_llm_router(self):
+        """LLM router produces candidates with source='llm'."""
+        router = _make_mock_router()
+        candidates = generate_candidates(
+            theme="cyberpunk weapons",
+            count=2,
+            genre="cyberpunk",
+            category="weapons",
+            llm_router=router,
+        )
+        assert len(candidates) == 2
+        for c in candidates:
+            assert c.source == "llm"
+            assert "sensors" in c.spec
+            assert "modulators" in c.spec
+
+    def test_llm_generated_includes_synonyms(self):
+        """LLM-generated specs include the synonyms field."""
+        router = _make_mock_router()
+        candidates = generate_candidates(
+            theme="test",
+            count=1,
+            genre="cyberpunk",
+            category="weapons",
+            llm_router=router,
+        )
+        assert len(candidates) == 1
+        assert "synonyms" in candidates[0].spec
+        assert len(candidates[0].spec["synonyms"]) >= 3
+
+    def test_llm_generated_validates(self):
+        """LLM-generated specs pass validation."""
+        router = _make_mock_router()
+        candidates = generate_candidates(
+            theme="test",
+            count=1,
+            genre="cyberpunk",
+            category="weapons",
+            llm_router=router,
+        )
+        result = validate_candidate(candidates[0].spec)
+        assert result.valid, f"Validation errors: {result.errors}"
+
+    def test_llm_generated_passes_sem_protocol(self):
+        """LLM-generated specs pass SEM protocol tests."""
+        router = _make_mock_router()
+        candidates = generate_candidates(
+            theme="test",
+            count=1,
+            genre="cyberpunk",
+            category="weapons",
+            llm_router=router,
+        )
+        result = run_sem_protocol_tests(candidates[0].spec)
+        assert result.valid, f"SEM protocol errors: {result.errors}"
+
+    def test_llm_full_pipeline(self, tmp_path, monkeypatch):
+        """Full foundry pipeline with mocked LLM completes generate → score."""
+        from maxim.utils.paths import _reset_caches
+
+        monkeypatch.setenv("MAXIM_DATA_HOME", str(tmp_path))
+        _reset_caches()
+
+        try:
+            router = _make_mock_router()
+            runner = FoundryRunner(
+                theme="cyberpunk weapons",
+                genre="cyberpunk",
+                category="weapons",
+                llm_router=router,
+            )
+            result = runner.run(count=2)
+
+            assert result.generated == 2
+            assert result.validated > 0
+            assert result.tested > 0
+            # LLM-generated weapons with multiple affordances should score well
+            all_scores = result.promoted + result.review + result.rejected
+            assert len(all_scores) > 0, "Expected at least one scored candidate"
+        finally:
+            _reset_caches()
+
+    def test_llm_failure_falls_back(self):
+        """When LLM raises, generation falls back to template."""
+        router = MagicMock()
+        router.generate_json.side_effect = RuntimeError("LLM unavailable")
+        candidates = generate_candidates(
+            theme="test",
+            count=1,
+            genre="fantasy",
+            category="weapons",
+            llm_router=router,
+        )
+        assert len(candidates) == 1
+        # Spec is still valid (came from template fallback inside design())
+        result = validate_candidate(candidates[0].spec)
+        assert result.valid, f"Fallback spec should be valid: {result.errors}"
+
+
+# ---------------------------------------------------------------------------
+# E2: Entity context section (prompt_builder)
+# ---------------------------------------------------------------------------
+
+
+class TestEntityContextSection:
+    """Tests for build_entity_context_section in prompt_builder."""
+
+    def test_builds_from_full_spec(self):
+        """Produces strategy text from a complete entity spec."""
+        from maxim.agents.prompt_builder import build_entity_context_section
+
+        text = build_entity_context_section(_MOCK_LLM_ENTITY)
+        assert "=== Entity: plasma_lance (weapon) ===" in text
+        assert "plasma_thrust" in text
+        assert "heat_vent" in text
+        assert "Failure risk:" in text
+        assert "heat >= 450" in text
+        assert "charge < 0.05" in text
+
+    def test_empty_for_sparse_spec(self):
+        """Returns empty string for spec with no sensors or modulators."""
+        from maxim.agents.prompt_builder import build_entity_context_section
+
+        text = build_entity_context_section({"name": "empty"})
+        assert text == ""
+
+    def test_params_included(self):
+        """Affordance params appear in the output."""
+        from maxim.agents.prompt_builder import build_entity_context_section
+
+        text = build_entity_context_section(_MOCK_LLM_ENTITY)
+        assert "target: str" in text
+
+    def test_no_failure_modes_ok(self):
+        """Spec with modulators but no failure modes still produces output."""
+        from maxim.agents.prompt_builder import build_entity_context_section
+
+        spec = {
+            "name": "simple",
+            "entity_type": "item",
+            "sensors": {"charge": {"unit": "ratio", "range": [0, 1], "initial": 1.0}},
+            "modulators": {"use": {"affordances": {"activate": {"description": "Turn on"}}}},
+        }
+        text = build_entity_context_section(spec)
+        assert "activate: Turn on" in text
+        assert "Failure risk" not in text
+
+    def test_entity_spec_field_on_llm_request(self):
+        """LLMRequest dataclass accepts entity_spec field."""
+        import dataclasses
+
+        from maxim.agents.llm_types import LLMRequest
+
+        fields = {f.name for f in dataclasses.fields(LLMRequest)}
+        assert "entity_spec" in fields, "LLMRequest must have an entity_spec field"

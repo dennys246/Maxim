@@ -720,10 +720,37 @@ def main(argv: Sequence[str] | None = None) -> int:
     if _foundry_theme:
         from maxim.simulation.foundry import FoundryRunner
 
+        # Build a lightweight LLM router for generation when --llm is set.
+        # The foundry dispatches before the full agent stack, so it creates
+        # its own router from the profile name (same pattern as ExecAgent).
+        _foundry_llm = None
+        _foundry_profile = str(getattr(args, "language_model", "") or "").strip()
+        if _foundry_profile:
+            try:
+                from maxim.models.language.config import load_llm_config
+                from maxim.models.language.router import LLMRouter
+
+                _foundry_cfg = load_llm_config(profile_override=_foundry_profile)
+                _foundry_llm = LLMRouter(_foundry_cfg)
+                if hasattr(_foundry_llm, "warmup"):
+                    _foundry_llm.warmup()
+                if hasattr(_foundry_llm, "wait_ready"):
+                    print(f"  Waiting for LLM ({_foundry_profile}) to load...")
+                    if not _foundry_llm.wait_ready(timeout=120.0):
+                        print("  WARNING: LLM failed to load — foundry will use template fallback.")
+                        if hasattr(_foundry_llm, "shutdown"):
+                            _foundry_llm.shutdown()
+                        _foundry_llm = None
+                    else:
+                        print(f"  LLM ready: {_foundry_profile}")
+            except Exception as e:
+                print(f"  WARNING: LLM init failed ({e}) — using template fallback.")
+
         runner = FoundryRunner(
             theme=_foundry_theme,
             genre=getattr(args, "foundry_genre", "fantasy"),
             category=getattr(args, "foundry_category", None),
+            llm_router=_foundry_llm,
             dry_run=bool(getattr(args, "foundry_dry_run", False)),
         )
         result = runner.run(count=int(getattr(args, "foundry_count", 10) or 10))
@@ -1651,6 +1678,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         from maxim.prompts.acting_coach import ActingCoachConfig
 
                         llm_worker.acting_coach = ActingCoachConfig()
+
+                        # E2: Inject entity context (sensors, affordances, failure
+                        # triggers) into the AUT prompt so the agent knows what
+                        # physical capabilities it has.
+                        if _component_registry is not None:
+                            try:
+                                _entity_raw = _component_registry.get(_embodiment_ref)
+                                llm_worker.entity_spec = _entity_raw.get("entity", _entity_raw)
+                            except Exception as _e:
+                                logger.debug("Entity context injection failed: %s", _e)
 
                 # Store internet access in state (uses internet_enabled from above)
                 state.data["internet_access"] = internet_enabled

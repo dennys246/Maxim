@@ -156,11 +156,12 @@ Fixes that must land before the main tracks, discovered by the parallel review.
 
 #### Stages
 
-**E2 — Real LLM integration (~300 LOC)**
-- Wire `llm_router` from CLI → `FoundryRunner` (review confirmed: `llm_router` already threads through to `EntityDesigner` in foundry.py:215-217 — wiring is simpler than expected)
-- Entity context injection into AUT prompt via existing `prompt_builder.py` (strategy layer: sensor names + affordance descriptions + failure trigger conditions, auto-composed from spec)
-- Use loop over `EntityDesigner.design()` for generation (review found `design_batch()` does not exist — defer batch optimization to 0.8)
-- Integration test: foundry run with mocked LLM router returning realistic JSON
+**E2 — Real LLM integration SHIPPED (2026-04-20, ~300 LOC)**
+- Wired `llm_router` from CLI → `FoundryRunner` via lightweight router construction at foundry dispatch (same `load_llm_config` + `LLMRouter` pattern as ExecAgent). Usage: `maxim --foundry "cyberpunk weapons" --llm claude-sonnet`
+- Entity context injection into AUT prompt: `build_entity_context_section()` in `prompt_builder.py` auto-composes strategy text (affordance descriptions + failure trigger conditions) from the SEM entity spec. Injected at IMPORTANT priority between Acting Coach and tool guidance. Complementary to `body_state` (dynamic sensor readings) — `entity_context` provides static capability reference.
+- Synonym generation added to `EntityDesigner._SEM_SCHEMA_PROMPT`: LLM now returns a `"synonyms"` list of 5-10 alternative names per entity, consumed by ComponentIndex (E2.5) when it lands.
+- `entity_spec` field added to `LLMRequest` + `LLMWorker`, wired in CLI non-sim path and simulation orchestrator AUT path.
+- 13 new tests (6 LLM generation + 5 entity context + 2 integration). 32 total foundry tests, all passing. Full suite: 5293 passed.
 
 **E2.5 — ComponentIndex: semantic discovery layer (~250 LOC)**
 

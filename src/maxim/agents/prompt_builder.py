@@ -403,6 +403,66 @@ def build_tool_guidance_extended(mode_name: str = "passive") -> str:
     return "\n".join(lines)
 
 
+def build_entity_context_section(entity_spec: dict[str, Any]) -> str:
+    """Build a strategy summary from an SEM entity spec.
+
+    Auto-composes sensor names, affordance descriptions, and failure
+    trigger conditions into a compact reference block the AUT can use
+    to reason about its physical capabilities.
+
+    Args:
+        entity_spec: A valid SEM entity spec dict (sensors, modulators,
+            failure_modes).
+
+    Returns:
+        Formatted string or empty string if the spec is too sparse to
+        be useful.
+    """
+    name = entity_spec.get("name", "entity")
+    etype = entity_spec.get("entity_type", "")
+    sensors = entity_spec.get("sensors", {})
+    modulators = entity_spec.get("modulators", {})
+    failure_modes = entity_spec.get("failure_modes", [])
+
+    if not sensors and not modulators:
+        return ""
+
+    lines = [f"=== Entity: {name} ({etype}) ===" if etype else f"=== Entity: {name} ==="]
+
+    # Affordance summary — grouped by modulator
+    for _mod_name, mod_spec in modulators.items():
+        if not isinstance(mod_spec, dict):
+            continue
+        for aff_name, aff_spec in mod_spec.get("affordances", {}).items():
+            if not isinstance(aff_spec, dict):
+                continue
+            desc = aff_spec.get("description", "")
+            params = aff_spec.get("params", {})
+            param_str = ", ".join(f"{k}: {v}" for k, v in params.items()) if params else ""
+            entry = f"{aff_name}: {desc}" if desc else aff_name
+            if param_str:
+                entry += f" (params: {param_str})"
+            lines.append(entry)
+
+    # Failure risk summary
+    if failure_modes:
+        risk_parts: list[str] = []
+        for fm in failure_modes:
+            if not isinstance(fm, dict):
+                continue
+            fm_name = fm.get("name", "unknown")
+            trigger = fm.get("trigger", {})
+            if isinstance(trigger, dict):
+                field = trigger.get("field", "?")
+                op = trigger.get("op", "?")
+                value = trigger.get("value", "?")
+                risk_parts.append(f"{field} {op} {value} triggers {fm_name}")
+        if risk_parts:
+            lines.append("Failure risk: " + "; ".join(risk_parts) + ".")
+
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
 def build_observation_section(percept: Any) -> str:
     """Build the current observation section."""
     lines = ["=== Current Observation ==="]
@@ -753,6 +813,7 @@ class PromptBuilder:
         self._add_mandatory_sections(budgeter, request, question_text)
         self._add_critical_sections(budgeter, request, question_text, date_str, time_str, effective_cwd, is_rt)
         self._add_acting_coach_section(budgeter, request)
+        self._add_entity_context_section(budgeter, request)
         self._add_guidance_sections(budgeter, request, date_str, time_str)
         self._add_context_sections(budgeter, request, question_text)
         self._add_perception_sections(budgeter, request)
@@ -914,6 +975,30 @@ class PromptBuilder:
             budgeter.add(
                 "acting_coach",
                 coach_text,
+                SectionPriority.IMPORTANT,
+            )
+
+    @staticmethod
+    def _add_entity_context_section(
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+    ) -> None:
+        """Entity context: auto-composed strategy from the SEM entity spec.
+
+        Summarises sensors, affordance descriptions, and failure trigger
+        conditions so the AUT knows what physical capabilities it has and
+        when they might fail — without requiring the agent to discover
+        everything through trial and error.
+        """
+        entity_spec = getattr(request, "entity_spec", None)
+        if entity_spec is None:
+            return
+
+        text = build_entity_context_section(entity_spec)
+        if text:
+            budgeter.add(
+                "entity_context",
+                text,
                 SectionPriority.IMPORTANT,
             )
 

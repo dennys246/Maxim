@@ -321,6 +321,10 @@ class LLMWorker:
         # affordance exploration meta-prompting into LLMRequests.
         self.acting_coach: Any | None = None
 
+        # Entity spec (E2): set after construction to inject entity context
+        # (sensors, affordances, failure triggers) into AUT prompts.
+        self.entity_spec: dict[str, Any] | None = None
+
         # PromptBuilder for prompt construction
         self._prompt_builder = PromptBuilder(
             llm=self._llm,
@@ -826,6 +830,7 @@ class LLMWorker:
             is_sleeping=is_sleeping,
             protocol_context=protocol_context,
             acting_coach=self.acting_coach,
+            entity_spec=self.entity_spec,
         )
 
         if self._pool is not None:
