@@ -3,6 +3,7 @@ component:
   tags: [npc, humanoid, military, authority]
   category: npcs
   extends: npcs/base_humanoid
+  synonyms: [town guard, sentry, watchman, soldier, patrol guard, gate keeper, armed guard]
 
 entity:
   name: guard

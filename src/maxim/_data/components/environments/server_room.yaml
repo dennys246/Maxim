@@ -1,6 +1,7 @@
 component:
   name: server_room
   tags: [environment, indoor, tech, hazardous, cyberpunk]
+  synonyms: [data center, server farm, network closet, computer room, machine room, rack room, data vault]
   category: environments
 
 entity:

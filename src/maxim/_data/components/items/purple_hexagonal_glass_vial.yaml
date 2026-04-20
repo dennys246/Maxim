@@ -1,6 +1,7 @@
 component:
   name: purple_hexagonal_glass_vial
   tags: [item, consumable, unknown, fantasy]
+  synonyms: [purple potion, hexagonal bottle, violet vial, glass vial, purple elixir, mysterious purple liquid, strange glass flask]
   category: items
   genre: fantasy
 

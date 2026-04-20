@@ -1,6 +1,7 @@
 component:
   name: base_humanoid
   tags: [npc, humanoid, character]
+  synonyms: [person, human, humanoid, npc, character, individual, civilian]
   category: npcs
 
 entity:

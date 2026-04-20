@@ -57,6 +57,7 @@ class ComponentInfo:
     tags: tuple[str, ...]
     extends: str | None  # Parent ref or None
     source_path: str  # Absolute path to the YAML file
+    synonyms: tuple[str, ...] = ()  # Alternative names for discovery
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +125,7 @@ def _read_component_header(path: Path) -> dict[str, Any] | None:
             "category": category,
             "tags": [],
             "extends": None,
+            "synonyms": [],
             "_legacy": True,
         }
 
@@ -287,6 +289,14 @@ class ComponentRegistry:
         """Check if a ref exists without loading the full spec."""
         return ref in self._index
 
+    def get_info(self, ref: str) -> ComponentInfo | None:
+        """Return the :class:`ComponentInfo` for a ref, or None if not found.
+
+        Public accessor — avoids direct access to ``_index`` from
+        external modules (e.g., :class:`ComponentIndex`).
+        """
+        return self._index.get(ref)
+
     def register(self, ref: str, spec: dict, source_path: str = "<inline>") -> None:
         """Manually register a component spec (e.g., from campaign YAML)."""
         header = spec.get("component", {})
@@ -297,6 +307,7 @@ class ComponentRegistry:
             tags=tuple(header.get("tags", ())),
             extends=header.get("extends"),
             source_path=source_path,
+            synonyms=tuple(header.get("synonyms", ())),
         )
         with self._lock:
             self._index[ref] = info
@@ -369,6 +380,7 @@ class ComponentRegistry:
                 ref = f"{category}/{name}"
                 tags = tuple(header.get("tags", ()))
                 extends = header.get("extends")
+                synonyms = tuple(header.get("synonyms", ()))
 
                 info = ComponentInfo(
                     ref=ref,
@@ -377,6 +389,7 @@ class ComponentRegistry:
                     tags=tags,
                     extends=extends,
                     source_path=str(yaml_path.resolve()),
+                    synonyms=synonyms,
                 )
                 self._index[ref] = info
                 self._file_map[ref] = yaml_path

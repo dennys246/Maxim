@@ -1,6 +1,7 @@
 component:
   name: wolf
   tags: [creature, animal, predator, hostile]
+  synonyms: [wild dog, timber wolf, grey wolf, beast, predator, dire wolf, wild canine, lupine]
   category: creatures
 
 entity:

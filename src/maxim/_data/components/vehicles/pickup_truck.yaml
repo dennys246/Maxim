@@ -1,6 +1,7 @@
 component:
   name: pickup_truck
   tags: [vehicle, ground, modern]
+  synonyms: [truck, pickup, utility vehicle, work truck, hauler, flatbed truck, four wheeler]
   category: vehicles
 
 entity:

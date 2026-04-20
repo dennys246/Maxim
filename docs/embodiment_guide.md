@@ -206,6 +206,49 @@ reachy = registry.instantiate("bodies/reachy_mini", name="my_reachy")
 
 The SEM template is **independent of the hardware connection** — you can run an agent against the SEM model in pure simulation, or wire it through to the actual `ReachyMiniController` for live hardware. Use the same shape as a starting point when modeling your own robot (Atlas, Spot, custom drone). See [Adding a New Robot](user/robot-setup.md#adding-a-new-robot) for the 3-step plugin pattern.
 
+### ComponentIndex — Semantic Discovery
+
+The `ComponentIndex` (`embodiment/component_index.py`) bridges natural language queries to the exact-ref lookup required by `ComponentRegistry`. It enables discovery like `"old iron door"` → `environments/rusty_gate` without requiring exact naming.
+
+**Two-layer architecture:**
+
+| Layer | Mechanism | Latency | Example |
+|-------|-----------|---------|---------|
+| 1 — Alias table | O(1) hash lookup from `component.synonyms` | <1µs | `"healing draught"` → `items/healing_potion` |
+| 2 — Semantic embedding | Cosine similarity (sentence-transformers) | ~5ms | `"sharp blade for combat"` → `weapons/combat_knife` (0.64) |
+
+```python
+from maxim.embodiment.component_registry import ComponentRegistry
+from maxim.embodiment.component_index import ComponentIndex
+
+registry = ComponentRegistry()
+index = ComponentIndex(registry)
+
+# Alias lookup (Layer 1)
+match = index.find("old sword")  # → weapons/rusty_sword, score=1.0
+
+# Semantic lookup (Layer 2)
+match = index.find("sharp blade for combat")  # → weapons/combat_knife, score=0.64
+
+# Top-k exploration
+results = index.find_similar("hostile creature", k=5)
+
+# Near-duplicate detection (for auto-curation)
+dup = index.dedup_check(candidate_spec, threshold=0.80)
+```
+
+**Adding synonyms to components:** Add a `synonyms:` field to the `component:` header:
+
+```yaml
+component:
+  name: rusty_gate
+  tags: [environment, obstacle]
+  synonyms: [iron gate, old gate, rusty door, decrepit entrance, old iron door]
+  category: environments
+```
+
+All 62 bundled seed components include hand-authored synonyms. Foundry-generated components get synonyms automatically via the EntityDesigner prompt.
+
 ## Concepts
 
 ### Failure Modes

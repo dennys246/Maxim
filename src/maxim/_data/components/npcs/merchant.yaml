@@ -3,6 +3,7 @@ component:
   tags: [npc, humanoid, trade, social]
   category: npcs
   extends: npcs/base_humanoid
+  synonyms: [trader, shopkeeper, vendor, peddler, salesman, dealer, store owner]
 
 entity:
   name: merchant

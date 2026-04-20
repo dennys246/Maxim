@@ -1,6 +1,7 @@
 component:
   name: combat_knife
   tags: [weapon, melee, modern]
+  synonyms: [fighting knife, tactical knife, military knife, hunting knife, bowie knife, blade, survival knife]
   category: weapons
 
 entity:

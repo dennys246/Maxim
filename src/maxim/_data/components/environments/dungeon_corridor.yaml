@@ -1,6 +1,7 @@
 component:
   name: dungeon_corridor
   tags: [environment, indoor, dangerous, fantasy]
+  synonyms: [dungeon hallway, underground passage, stone corridor, crypt passage, dark tunnel, catacomb hall, dungeon passageway]
   category: environments
 
 entity:

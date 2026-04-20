@@ -1,6 +1,7 @@
 component:
   name: poison_vial
   tags: [item, consumable, dangerous, fantasy]
+  synonyms: [vial of poison, toxic potion, deadly liquid, poison bottle, toxin vial, noxious draught, venomous fluid]
   category: items
 
 entity:

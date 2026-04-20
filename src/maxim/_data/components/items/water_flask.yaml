@@ -1,6 +1,7 @@
 component:
   name: water_flask
   tags: [item, consumable, water, fantasy]
+  synonyms: [canteen, water bottle, waterskin, drinking flask, water container, flask of water, hydration flask]
   category: items
 
 entity:

@@ -1,6 +1,7 @@
 component:
   name: enchanted_bow
   tags: [weapon, ranged, magical, degradable, fantasy]
+  synonyms: [magic bow, arcane bow, glowing bow, elven bow, mystic bow, spellbound bow, runed bow]
   category: weapons
 
 entity:

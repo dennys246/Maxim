@@ -1,6 +1,7 @@
 component:
   name: healing_potion
   tags: [item, consumable, magical, fantasy]
+  synonyms: [health potion, healing draught, restorative elixir, cure potion, red potion, mending potion, recovery potion]
   category: items
 
 entity:

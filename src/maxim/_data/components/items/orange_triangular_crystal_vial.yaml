@@ -1,6 +1,7 @@
 component:
   name: orange_triangular_crystal_vial
   tags: [item, consumable, unknown, fantasy]
+  synonyms: [orange potion, crystal vial, triangular bottle, amber vial, orange elixir, strange crystal flask, mysterious orange liquid]
   category: items
   genre: fantasy
 

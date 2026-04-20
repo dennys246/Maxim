@@ -1,6 +1,7 @@
 component:
   name: reachy_mini
   tags: [robot, body, embodied, hardware, humanoid_head, foundational]
+  synonyms: [reachy robot, robot head, desktop robot, pollen robot, humanoid head, animatronic head, robotic head]
   category: bodies
   description: |
     SEM template for the Reachy Mini robot — the desktop humanoid head from Pollen

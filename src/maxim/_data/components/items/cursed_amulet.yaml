@@ -1,6 +1,7 @@
 component:
   name: cursed_amulet
   tags: [item, magical, dangerous, horror, fantasy]
+  synonyms: [dark amulet, evil necklace, cursed pendant, hexed charm, blighted talisman, accursed necklace, fell amulet]
   category: items
 
 entity:

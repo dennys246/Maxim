@@ -1,6 +1,7 @@
 component:
   name: dragon
   tags: [creature, predator, hostile, flying, fantasy]
+  synonyms: [wyrm, drake, fire breather, winged serpent, flying lizard, great beast, wyvern]
   category: creatures
 
 entity:
