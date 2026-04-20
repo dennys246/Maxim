@@ -104,6 +104,7 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--foundry-genre` | str | `fantasy` | Genre tag for generated components. |
 | `--foundry-category` | str | auto | Category: `weapons`, `creatures`, `npcs`, `items`, `environments`, `vehicles`, `bodies`. If omitted, distributes across categories. |
 | `--foundry-dry-run` | flag | off | Generate + validate only, skip gauntlet testing. |
+| `--llm` (with `--foundry`) | str | None | LLM profile for creative generation. Without `--llm`, foundry uses template fallback. E.g., `maxim --foundry "sci-fi creatures" --llm mistral-7b`. |
 
 See [Asset Foundry Guide](asset-foundry.md) for the full pipeline description and usage examples.
 

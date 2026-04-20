@@ -147,6 +147,9 @@ class LLMRequest:
     # Acting Coach config for affordance exploration meta-prompting (B3)
     acting_coach: Any | None = field(default=None, compare=False)
 
+    # SEM entity spec dict for entity context injection (E2)
+    entity_spec: dict[str, Any] | None = field(default=None, compare=False)
+
     def __post_init__(self):
         # Sort by negative priority (higher priority first), then by timestamp
         self.sort_index = (-self.priority, self.timestamp)

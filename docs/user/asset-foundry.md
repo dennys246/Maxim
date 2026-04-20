@@ -103,6 +103,26 @@ Each run produces:
 | `--foundry-category` | str | auto | Category (weapons, creatures, npcs, items, environments, vehicles, bodies) |
 | `--foundry-dry-run` | flag | off | Generate + validate only |
 
+## Entity Context in Prompts
+
+When running with `--embodiment`, the agent's prompt automatically includes an **entity context section** summarizing the entity's capabilities:
+
+```
+=== Entity: plasma_lance (weapon) ===
+plasma_thrust: High damage thrust, drains charge quickly (params: target: str, force: float)
+sweep_strike: Wide area attack, moderate charge drain (params: target: str)
+heat_vent: Release built-up heat, brief vulnerability window
+Failure risk: heat >= 450 triggers overheated; charge < 0.05 triggers charge_depleted.
+```
+
+This is auto-composed from the SEM entity spec and injected at IMPORTANT priority — after the identity section but before tool guidance. It complements `body_state` (which shows current sensor readings like "charge: 0.3") by giving the agent a static capability reference.
+
+The entity context section is wired in both the CLI non-sim path and the simulation orchestrator AUT path.
+
+## Synonym Generation
+
+LLM-generated entities now include a `synonyms` field — a list of 5-10 alternative names a user might use to refer to the entity. This enables the ComponentIndex (semantic discovery layer) to resolve natural language queries like "old iron door" to `environments/rusty_gate`.
+
 ## Using Promoted Components
 
 Promoted components are saved to `~/.maxim/foundry/{run_id}/promoted/`. To use one:

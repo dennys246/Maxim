@@ -76,6 +76,8 @@ RULES:
 - pain values: 0.0 = none, 0.5 = moderate, 1.0 = severe
 - For NPCs: always include hp, and at least one social sensor (trust, mood, etc.)
 - For weapons: always include durability
+- Include a "synonyms" list of 5-10 alternative names or short phrases a user
+  might use to refer to this entity (e.g. "rusty blade", "old sword", "dull knife")
 - Return ONLY the JSON object, no markdown, no explanation
 """
 

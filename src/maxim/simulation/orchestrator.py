@@ -723,6 +723,14 @@ def start_simulation_mode(
 
             aut_llm_worker.acting_coach = ActingCoachConfig()
 
+            # E2: Inject entity context into AUT prompt
+            if aut_component_registry is not None:
+                try:
+                    _entity_raw = aut_component_registry.get(entity_ref)
+                    aut_llm_worker.entity_spec = _entity_raw.get("entity", _entity_raw)
+                except Exception as _e:
+                    log.debug("Entity context injection failed: %s", _e)
+
     # ── Build orchestrator pipeline ──────────────────────────────────────
     orch_env = FileSystemEnv(str(sim_tmpdir))
     orch_state = RuntimeState()
