@@ -648,10 +648,14 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("Failed to register AUT narrative tools: %s", e)
 
-    # --- Deregister robot-only tools in sim mode ---
-    # These tools return "No live robot connected" which confuses the LLM
-    # and wastes actions.  The AUT should use narrative tools instead.
-    _robot_tools = [
+    # --- Deregister irrelevant tools in sim mode ---
+    # Robot tools return "No live robot connected"; dev tools (bash, git,
+    # filesystem editing) are noise that dilutes the LLM's attention away
+    # from sim-relevant tools (affordances, narrative, introspection,
+    # interaction).  Audit (2026-04-20) found 35+ tools on the AUT — the
+    # LLM defaults to safe tools instead of exploring affordances.
+    _irrelevant_tools = [
+        # Robot-only (no hardware in sim)
         "focus_interests",
         "track_target",
         "move",
@@ -659,10 +663,22 @@ def start_simulation_mode(
         "maxim_command",
         "autonomy_level",
         "mode_switch",
+        # Dev tools (sim agents don't write code)
+        "bash",
+        "git_commit",
+        "git_diff",
+        "edit_file",
+        "execute_file",
+        "run_tests",
+        "search_code",
+        "request_directory_change",
+        "glob",
+        "read_file",
+        "write_file",
     ]
-    for _rt in _robot_tools:
+    for _rt in _irrelevant_tools:
         if aut_registry.deregister(_rt):
-            logger.debug("Deregistered robot tool from AUT: %s", _rt)
+            logger.debug("Deregistered irrelevant tool from AUT: %s", _rt)
 
     # AUT PainBus subscriptions are now handled by build_bio_stack above
     # (Wave 3: pre-built pain_bus= parameter subscribes standard learners).
