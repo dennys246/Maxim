@@ -21,10 +21,10 @@ Foundations, reaction abstraction, simulator upgrades, P0-P4, P6, P8, B4, SEM ex
 
 - [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) — **✅ SPLIT COMPLETE + ARCHIVED** (2026-04-17). Now a pure index. **All four 0.3-target phases CLOSED.** Per-phase plan files created for 0.5 track:
   - [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — Draft. 10k+ node persistence stress. Depends on P3.5 + P4.
-  - [substrate_p6_extinction.md](substrate_p6_extinction.md) — **✅ SHIPPED** (2026-04-19). Hebbian decay beats LRU across 10 seeds. Results: [experiments/p6_extinction_results.md](../experiments/p6_extinction_results.md).
-  - [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) — **✅ SHIPPED** (2026-04-19). Sleep replay F1 improves vs no-replay control, 10-seed sweep. Results: [experiments/p8_sleep_replay_results.md](../experiments/p8_sleep_replay_results.md). Activates [memory_consolidation_practice.md](memory_consolidation_practice.md).
+  - [substrate_p6_extinction.md](archive/substrate_p6_extinction.md) — **✅ SHIPPED** (2026-04-19). Hebbian decay beats LRU across 10 seeds. Results: [experiments/p6_extinction_results.md](../experiments/p6_extinction_results.md).
+  - [substrate_p8_sleep_replay.md](archive/substrate_p8_sleep_replay.md) — **✅ SHIPPED** (2026-04-19). Sleep replay F1 improves vs no-replay control, 10-seed sweep. Results: [experiments/p8_sleep_replay_results.md](../experiments/p8_sleep_replay_results.md). Activates [memory_consolidation_practice.md](memory_consolidation_practice.md).
   - [prompt_b3_b5_track.md](prompt_b3_b5_track.md) — Draft. Acting Coach + embodiment/narrative separation.
-  - [prompt_b4_replanning.md](prompt_b4_replanning.md) — **✅ COMPLETE** (2026-04-19). **1.0 GATE CLOSED.** All 3 stages shipped. Stage 3 blind A/B: treatment 100% vs control 0%, mean Jaccard 0.894. Results: [experiments/b4_replanning_results.md](../experiments/b4_replanning_results.md). 12 tests in `tests/substrate/test_b4_replanning_ab.py`.
+  - [prompt_b4_replanning.md](archive/prompt_b4_replanning.md) — **✅ COMPLETE** (2026-04-19). **1.0 GATE CLOSED.** All 3 stages shipped. Stage 3 blind A/B: treatment 100% vs control 0%, mean Jaccard 0.894. Results: [experiments/b4_replanning_results.md](../experiments/b4_replanning_results.md). 12 tests in `tests/substrate/test_b4_replanning_ab.py`.
 - [substrate_binding_split_proposal.md](archive/substrate_binding_split_proposal.md) — **✅ APPROVED + EXECUTED + ARCHIVED** (2026-04-17). The narrative that motivated the split.
 - [archive/substrate_p0_pilot.md](archive/substrate_p0_pilot.md) — **✅ COMPLETE + ARCHIVED** (2026-04-12). Baseline pinned at 78.5%. Results: [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md).
 - [archive/substrate_recognition.md](archive/substrate_recognition.md) — **✅ COMPLETE + ARCHIVED** (2026-04-14). P1+P2 all stages shipped. 0.3-minimum gate CLOSED.
@@ -46,20 +46,20 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
-- [interactive_experience_031.md](interactive_experience_031.md) — **✅ SHIPPED** (2026-04-18, PR #156). Interactive UX fixes for 0.3.1: `RequestInteractionTool` honest reporting, narrator fallback immersion, handler logging, story context truncation, `MaximDisplay` → `sim_logger` wiring, prompt cleanup, 4 introspection tools. 8 stages, ~700 LOC. Known issue: display `print()` corruption → [docs/bugs/display_print_corruption.md](../bugs/display_print_corruption.md) for 0.3.2.
-- [substrate_concept_decomposition.md](substrate_concept_decomposition.md) — **Stage 1 COMPLETE + VALIDATED** (2026-04-17). Protocol-based noun-phrase extraction. 100% concept-level recall vs 36.4% baseline. Stage 2 (role-tagged edges) pending.
+- [archive/interactive_experience_031.md](archive/interactive_experience_031.md) — **✅ SHIPPED** (2026-04-18, PR #156). 8 stages, ~700 LOC.
+- [archive/substrate_concept_decomposition.md](archive/substrate_concept_decomposition.md) — **✅ SHIPPED** (2026-04-17). 100% concept-level recall vs 36.4% baseline.
 - [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) — **PARTIAL** (2026-04-17). Stage 3 (pain/salience spike) SHIPPED via sem_learning_loop.md. `observe_episode_event` now wired into production agent loop via behavioral_convergence_wiring.md. Stages 1-2 (tool execution + semantic shift) remain — ship before P5.
 - [biosystem_unification.md](biosystem_unification.md) — **central tracking doc** (2026-04-14, updated 2026-04-17). Waves 0-3 **ALL SHIPPED + ARCHIVED**. Wave 4 (agent_factory_canonicalization) not scheduled.
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
 - [agent_factory_canonicalization.md](agent_factory_canonicalization.md) — **RUNNING DOC, trigger #4 activated** (2026-04-18). The Option D follow-up to `executor_bootstrap_unification.md` — make `AgentFactory.create_agent` the only door for constructing an agent in Maxim. **Wave G (Game/External Host) folded in** from game_npc_integration.md: wire Executor + bio-pipeline into `AgentPool.run_turn()`, HostContext protocol, async tool dispatch, emotional state readout, memory backend. F-wave ~1500-2500 LOC + G-wave ~940 LOC. Target: 0.5.
-- [node_security_simplification.md](node_security_simplification.md) — Phase 1 ✅ SHIPPED. Phase 2 config-surface unification deferred.
+- [deferred/node_security_simplification.md](deferred/node_security_simplification.md) — Phase 1 ✅ SHIPPED. Phase 2 config-surface unification deferred.
 - [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — living roadmap for the full reactive peer mesh arc (C3→C9). C3-C4.6 COMPLETE. C5+ remain.
-- [cross_platform_file_lock.md](cross_platform_file_lock.md) — shell plan to unify `utils/process_lock` and `filelock.FileLock`. Blocks nothing.
-- [mesh_doc_transport.md](mesh_doc_transport.md) — shell plan for mesh-to-mesh structured doc exchange (C9). Not started.
-- [pain_bus_bridge_subscriber_unification.md](pain_bus_bridge_subscriber_unification.md) — shell plan for bridge×subscriber attribution-asymmetry fix. Not started.
+- [deferred/cross_platform_file_lock.md](deferred/cross_platform_file_lock.md) — shell plan to unify `utils/process_lock` and `filelock.FileLock`. Blocks nothing.
+- [deferred/mesh_doc_transport.md](deferred/mesh_doc_transport.md) — shell plan for mesh-to-mesh structured doc exchange (C9). Not started.
+- [deferred/pain_bus_bridge_subscriber_unification.md](deferred/pain_bus_bridge_subscriber_unification.md) — shell plan for bridge×subscriber attribution-asymmetry fix. Not started.
 - **Interactive NAc attribution** (future concern, no plan file yet) — NAc tool-outcome learning is suppressed during interactive mode (0.4.0) because human-directed tool calls would corrupt the causal model with patterns that depend on human presence. The interim fix gates `record_tool_start`/`record_tool_complete` and the PainBus NAc subscriber on `get_interactive_mode() == ON`. Proper fix: add `human_influenced: bool` metadata to NAc links, or implement separate interactive vs autonomous learning modes so the agent can learn from interactive sessions without conflating human-directed causality with environmental causality. Revive when behavioral convergence experiments show drift between interactive-trained and autonomous-trained agents.
 - [llm_path_refinement.md](llm_path_refinement.md) — meta-plan for the LLM routing path refactor. Plans 1-3.5 archived; Plan 3.6 R5 shipped; **Plan 4 Stages A+B + C1-C3.6 + C4+C4.5+C4.6 ALL SHIPPED.** Reactive mesh self-healing loop complete. Only stress phases B/C/E remain in scope. Architecture ref: [../architecture/llm_routing.md](../architecture/llm_routing.md).
-  - [llm_path_peer_failover.md](llm_path_peer_failover.md) — Plan 3.6 R5 (VRAM spillover) ✅ SHIPPED. R1-R4 (multi-leader) remain draft, on hold until second GPU.
+  - [llm_path_peer_failover.md](archive/llm_path_peer_failover.md) — Plan 3.6 R5 (VRAM spillover) ✅ SHIPPED. R1-R4 (multi-leader) remain draft, on hold until second GPU.
   - [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — Plan 4. **Core stages ALL SHIPPED** (A, B, C1-C3.6, C4, C4.5, C4.6). Remaining deferred scope (admin API, rate limiting, key rotation) tracked in [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) as C6/C7.
   - Deferred: [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md), [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md), [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md), [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md)
 
@@ -80,7 +80,18 @@ Design work is preserved in [deferred/](deferred/). Each plan has an explicit "r
 
 Completed or superseded plans live in [archive/](archive/).
 
-Recently archived (2026-04-17):
+Recently archived (2026-04-19):
+- [archive/prompt_b4_replanning.md](archive/prompt_b4_replanning.md) — **✅ COMPLETE + ARCHIVED**. 1.0 gate closed. Blind A/B: treatment 100% vs control 0%.
+- [archive/substrate_p6_extinction.md](archive/substrate_p6_extinction.md) — **✅ SHIPPED + ARCHIVED**. Hebbian decay beats LRU, 10 seeds.
+- [archive/substrate_p8_sleep_replay.md](archive/substrate_p8_sleep_replay.md) — **✅ SHIPPED + ARCHIVED**. Sleep replay F1 improves, 10 seeds.
+- [archive/agent_loop_state_repair.md](archive/agent_loop_state_repair.md) — **✅ COMPLETE + ARCHIVED**. State desync + observe-only + weak prompt fixed.
+- [archive/interactive_experience_031.md](archive/interactive_experience_031.md) — **✅ SHIPPED + ARCHIVED** (PR #156). 8 stages.
+- [archive/peer_update_pip_mode.md](archive/peer_update_pip_mode.md) — **✅ SHIPPED + ARCHIVED**. All 3 stages.
+- [archive/substrate_concept_decomposition.md](archive/substrate_concept_decomposition.md) — **✅ SHIPPED + ARCHIVED**. 100% vs 36.4% baseline.
+- [archive/game_npc_integration.md](archive/game_npc_integration.md) — **FOLDED** into agent_factory_canonicalization.md Wave G.
+- [archive/llm_path_peer_failover.md](archive/llm_path_peer_failover.md) — **R5 SHIPPED + ARCHIVED**. R1-R4 on hold until second GPU.
+
+Previously archived (2026-04-17):
 - [archive/sem_learning_loop.md](archive/sem_learning_loop.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). All 5 stages shipped. Complete SEM → bio-pipeline learning loop.
 - [archive/behavioral_convergence_wiring.md](archive/behavioral_convergence_wiring.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). All 4 stages shipped. Valence in PromptAssembler, `observe_episode_event` in agent loop.
 - [archive/cerebellum_activation.md](archive/cerebellum_activation.md) — **✅ COMPLETE + ARCHIVED** (2026-04-17). Absorbed into sem_learning_loop.md.
