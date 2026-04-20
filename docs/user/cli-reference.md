@@ -95,6 +95,18 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--no-sim-env` | flag | | Skip simulated filesystem with pain-triggering files |
 | `--sim-report` | str | None | Write structured results to a JSON file (requires `--sim`) |
 
+## Asset Foundry
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--foundry` | str | None | Theme prompt for component generation (e.g., `"cyberpunk weapons"`). Runs the full pipeline: generate, validate, SEM protocol tests, gauntlet, score, curate. Output to `~/.maxim/foundry/{run_id}/`. |
+| `--foundry-count` / `--count` | int | 10 | Number of components to generate. |
+| `--foundry-genre` | str | `fantasy` | Genre tag for generated components. |
+| `--foundry-category` | str | auto | Category: `weapons`, `creatures`, `npcs`, `items`, `environments`, `vehicles`, `bodies`. If omitted, distributes across categories. |
+| `--foundry-dry-run` | flag | off | Generate + validate only, skip gauntlet testing. |
+
+See [Asset Foundry Guide](asset-foundry.md) for the full pipeline description and usage examples.
+
 ## Debug and Tracing
 
 | Flag | Type | Default | Description |

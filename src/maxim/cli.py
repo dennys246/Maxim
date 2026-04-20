@@ -715,6 +715,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     if clear_memory is not None:
         return _handle_clear_memory(clear_memory, args.home_dir)
 
+    # ── Asset Foundry dispatch ──────────────────────────────────────────
+    _foundry_theme = getattr(args, "foundry", None)
+    if _foundry_theme:
+        from maxim.simulation.foundry import FoundryRunner
+
+        runner = FoundryRunner(
+            theme=_foundry_theme,
+            genre=getattr(args, "foundry_genre", "fantasy"),
+            category=getattr(args, "foundry_category", None),
+            dry_run=bool(getattr(args, "foundry_dry_run", False)),
+        )
+        result = runner.run(count=int(getattr(args, "foundry_count", 10) or 10))
+
+        print(f"\nFoundry complete: {result.output_dir}")
+        print(f"Generated: {result.generated} | Validated: {result.validated} | Tested: {result.tested}")
+        print(f"Promoted: {len(result.promoted)} | Review: {len(result.review)} | Rejected: {len(result.rejected)}")
+        if result.promoted:
+            print("\nPromoted components:")
+            for s in result.promoted:
+                print(f"  {s.candidate_name} ({s.total_score:.2f})")
+
+        return 0
+
     # ── Cross-flag validation ───────────────────────────────────────────
     if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
         print("Error: --sim-report requires --sim.", file=sys.stderr)

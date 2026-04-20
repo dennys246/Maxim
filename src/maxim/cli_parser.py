@@ -85,7 +85,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="SEM component reference for the agent's body (e.g. "
         "'weapons/rusty_sword'). Loads the component, auto-generates "
         "affordance tools, and wires the pain cascade through NAc. "
-        "Not yet supported with --sim.",
+        "Works with --sim across all modes (since 0.6).",
     )
     core.add_argument(
         "--epochs",
@@ -392,6 +392,46 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Global deterministic seed. Sets PYTHONHASHSEED, random, numpy, "
         "and torch seeds for reproducible fixture runs. Byte-identical "
         "determinism requires fixture-driven mode (no live LLM).",
+    )
+
+    # ── Asset Foundry ─────────────────────────────────────────────────
+    foundry = parser.add_argument_group("foundry", "Asset Foundry — LLM-driven SEM component generation")
+    foundry.add_argument(
+        "--foundry",
+        type=str,
+        default=None,
+        metavar="THEME",
+        help="Run the Asset Foundry pipeline. Generates SEM components "
+        "from a theme prompt, validates, tests, and scores them. "
+        "Example: maxim --foundry 'cyberpunk weapons' --count 10",
+    )
+    foundry.add_argument(
+        "--foundry-count",
+        "--count",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Number of components to generate (default: 10).",
+    )
+    foundry.add_argument(
+        "--foundry-genre",
+        type=str,
+        default="fantasy",
+        metavar="GENRE",
+        help="Genre tag for generated components (default: fantasy).",
+    )
+    foundry.add_argument(
+        "--foundry-category",
+        type=str,
+        default=None,
+        metavar="CATEGORY",
+        help="Specific category (weapons, creatures, npcs, items, etc.). If omitted, distributes across categories.",
+    )
+    foundry.add_argument(
+        "--foundry-dry-run",
+        action="store_true",
+        default=False,
+        help="Generate + validate only, skip gauntlet testing.",
     )
 
     # ── Debug/Trace ────────────────────────────────────────────────────
