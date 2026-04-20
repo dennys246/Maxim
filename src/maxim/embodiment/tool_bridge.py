@@ -220,6 +220,7 @@ def generate_tools_for_entity(
     registry: ToolRegistry,
     embodiment: Any = None,
     cerebellum: Any = None,
+    entity_map: Any = None,
 ) -> list[Tool]:
     """Generate all tools for an entity tree and register them.
 
@@ -230,18 +231,27 @@ def generate_tools_for_entity(
     failure evaluation after execution (no 1Hz poll delay). When *cerebellum*
     is provided, they feed actual sensor deltas for forward model training.
 
+    When *entity_map* is provided (an ``EntityMap`` instance), the entity
+    tree is registered in it for name-based resolution by
+    ``UniversalSenseTool`` and ``DiscoverToolsTool``.
+
     Parameters
     ----------
     entity : Entity
         Root of the entity tree (walks descendants).
     registry : ToolRegistry
         Tools are registered here as they are created.
+    entity_map : EntityMap, optional
+        If provided, entity tree is registered for name-based lookup.
 
     Returns
     -------
     list[Tool]
         All generated tools (also registered in *registry*).
     """
+    # Populate EntityMap if provided
+    if entity_map is not None:
+        entity_map.register(entity)
     existing: set[str] = set(registry.list_all())
     tools: list[Tool] = []
 

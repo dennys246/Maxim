@@ -300,6 +300,7 @@ def build_executor(
     component_registry: "ComponentRegistry | None" = None,
     cerebellum: Any = None,
     permissions: Any = None,
+    entity_map: Any = None,
 ) -> Executor:
     """Build an Executor with an explicit ToolPainBridge decision.
 
@@ -455,6 +456,7 @@ def build_executor(
             tool_registry,
             embodiment=embodiment,
             cerebellum=cerebellum,
+            entity_map=entity_map,
         )
         logger.info(
             "build_executor: Embodiment loaded from %r — %d affordance tools registered",
