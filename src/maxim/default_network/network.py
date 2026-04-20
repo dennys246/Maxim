@@ -511,6 +511,29 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         """Whether DN output is currently suppressed."""
         return self._inhibited
 
+    def imagination_allowed(self) -> bool:
+        """Whether the imagination system may fire right now.
+
+        Returns True only during low-arousal states — you don't daydream
+        while fighting. Checks:
+        1. DN is not inhibited (deliberative layer hasn't suppressed us).
+        2. Enough idle time has elapsed since last interesting event
+           (proxy for "no active reactive behavior" — behaviors update
+           ``_last_interesting_time`` when they fire).
+
+        When DN is not running (e.g., sim mode without a robot), returns
+        True — imagination is allowed by default when there's no arousal
+        signal to gate on.
+        """
+        if not self._running:
+            return True
+        if self._inhibited:
+            return False
+        # Low arousal = sufficient idle time since last interesting event
+        idle_duration = time.time() - self._last_interesting_time
+        min_idle = self._config.idle_exploration_min_seconds
+        return idle_duration >= min_idle
+
     def start(self) -> None:
         """Start the default network processing loop."""
         if self._running:

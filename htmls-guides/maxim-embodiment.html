@@ -410,10 +410,75 @@ YAML Spec ──&rarr; Entity Tree ──&rarr; Auto-Generated Tools ──&rarr
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/llm_backend.py</td><td>LLM + Narrative sensor/modulator backends</td></tr>
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/percepts.py</td><td>EmbodimentPerceptSource (1Hz polling, demand mode)</td></tr>
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/atl_integration.py</td><td>Auto-register ATL body_part concepts</td></tr>
-          <tr><td class="py-1 pr-4 text-slate-300">embodiment/component_registry.py</td><td>Component discovery, genre filtering, instantiation, inheritance (thread-safe query)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/component_registry.py</td><td>Component discovery, genre filtering, instantiation, inheritance, ephemeral overlay (thread-safe)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/component_index.py</td><td>Semantic discovery: alias hash table (O(1)) + embedding index (cosine similarity)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">imagination/trigger.py</td><td>Entity noun-phrase extraction, ComponentIndex lookup, design dispatch</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">imagination/designer.py</td><td>ImaginationDesigner: wraps EntityDesigner for real-time entity generation</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">imagination/cache.py</td><td>Session-scoped ImaginationCache, thread-safe, shared AUT + orchestrator</td></tr>
           <tr><td class="py-1 pr-4 text-slate-300">prompts/acting_coach.py</td><td>B3 Acting Coach: bio-modulated exploration meta-prompt (NAc valence, pain anticipation, cerebellum predictions)</td></tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- Imagination (I1 + I2) -->
+  <section class="space-y-4">
+    <h2 id="imagination" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Imagination <span class="text-xs font-mono text-indigo-400 ml-2">I1+I2 &mdash; 0.7</span></h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">Imagination fires during low-arousal idle states &mdash; the same way you don't daydream while fighting. When the brain encounters something unfamiliar, it constructs a mental model from prior experience to reason about the novel entity before physically interacting with it. The Default Network, which activates during rest and mind-wandering, gates this process.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">When the agent encounters a <strong class="text-white">novel entity</strong> mentioned in percept text that has no existing SEM component, the imagination system designs one in real-time:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Imagination Pipeline</span>
+
+Percept Text ──&rarr; Entity Extraction ──&rarr; ComponentIndex Lookup
+                                              │
+                                    ┌─── Match found ───&rarr; Skip (already known)
+                                    │
+                                    └─── No match ──&rarr; DN Arousal Gate
+                                                          │
+                                                    Energy Budget ──&rarr; EntityDesigner (LLM)
+                                                                          │
+                                                                    Quick Validation
+                                                                          │
+                                                              register_ephemeral + Index.add
+                                                                          │
+                                                              Scene-scoped Tool Registration</div>
+
+    <h3 class="text-white font-semibold mt-4">Entity Extraction</h3>
+    <p class="text-slate-300 leading-relaxed">Lightweight NLP heuristics extract entity-like noun phrases from narration text &mdash; physical objects, creatures, weapons, environmental features, items, vehicles, and NPCs. Abstract concepts, body parts, and clothing are filtered out. Two strategies: sentence-level intro patterns (<code class="bg-slate-950 px-1 rounded text-xs">"You see a rusty gate"</code>) and head-noun scanning against a curated indicator vocabulary.</p>
+
+    <h3 class="text-white font-semibold mt-4">ComponentIndex: Two-Layer Lookup</h3>
+    <p class="text-slate-300 leading-relaxed">Before imagining, each candidate phrase is checked against the <code class="bg-slate-950 px-1 rounded text-xs">ComponentIndex</code>:</p>
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Layer 1: Alias table (O(1))</strong> &mdash; exact match against component names and synonyms</li>
+      <li><strong class="text-white">Layer 2: Embedding similarity</strong> &mdash; cosine similarity against all component signatures (threshold 0.65)</li>
+    </ul>
+    <p class="text-slate-300 leading-relaxed">This means <code class="bg-slate-950 px-1 rounded text-xs">"old iron door"</code> finds <code class="bg-slate-950 px-1 rounded text-xs">environments/rusty_gate</code> and skips imagination.</p>
+
+    <h3 class="text-white font-semibold mt-4">Ephemeral Registration</h3>
+    <p class="text-slate-300 leading-relaxed">Imagined entities are registered in a <strong class="text-white">separate overlay</strong> (<code class="bg-slate-950 px-1 rounded text-xs">_ephemeral_index</code>) from the persistent component index. They're visible to <code class="bg-slate-950 px-1 rounded text-xs">get()</code>, <code class="bg-slate-950 px-1 rounded text-xs">has()</code>, and <code class="bg-slate-950 px-1 rounded text-xs">query()</code> during the session, but cleared at session end via <code class="bg-slate-950 px-1 rounded text-xs">clear_ephemeral()</code>.</p>
+
+    <h3 class="text-white font-semibold mt-4">Provenance Tagging</h3>
+    <p class="text-slate-300 leading-relaxed">Episodes and CausalLinks from imagined entity interactions carry <code class="bg-slate-950 px-1 rounded text-xs">imagined=True</code>. On entity discard (session end), imagined causal links get 50% confidence decay &mdash; partial learning is useful, but reduced confidence reflects simulated origin.</p>
+
+    <h3 class="text-white font-semibold mt-4">Gates</h3>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Mention Threshold</h4>
+        <p class="text-slate-300 text-sm">Default 2 mentions before triggering. Prevents one-off noise from spawning entities.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">DN Arousal</h4>
+        <p class="text-slate-300 text-sm">Only fires during low-arousal idle states. Blocked when DN is inhibited or recent interesting events occurred.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Energy Budget</h4>
+        <p class="text-slate-300 text-sm">Skipped when LLM energy is critical (&lt;10%). Falls back gracefully to verbal-only interaction.</p>
+      </div>
     </div>
   </section>
 

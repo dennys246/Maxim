@@ -332,6 +332,7 @@ def run_agentic_loop(
     percept_source: Any | None = None,  # PerceptSource for simulation
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
+    imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -591,6 +592,27 @@ def run_agentic_loop(
         # ─────────────────────────────────────────────────────────────────
         observation = sim.next_observation(environment, default_network)
         state.update(observation)
+
+        # ─────────────────────────────────────────────────────────────────
+        # 1.1 IMAGINATION — extract novel entities from percept text
+        # ─────────────────────────────────────────────────────────────────
+        # Post-state.update hook: scan percept text for novel entity
+        # phrases, check ComponentIndex for existing matches, and if truly
+        # novel, dispatch to ImaginationDesigner for real-time SEM entity
+        # generation. Gates: DN arousal + energy budget (checked inside trigger).
+        if imagination_trigger is not None:
+            try:
+                percept_text = ""
+                if hasattr(observation, "get"):
+                    percept_text = str(observation.get("transcript") or observation.get("raw_transcript_text") or "")
+                elif hasattr(observation, "transcript"):
+                    percept_text = str(getattr(observation, "transcript", "") or "")
+                if percept_text:
+                    scene_id = state.data.get("current_scene_id") if hasattr(state, "data") else None
+                    scene_ctx = state.data.get("scene_context") if hasattr(state, "data") else None
+                    imagination_trigger.process_percept(percept_text, scene_context=scene_ctx, scene_id=scene_id)
+            except Exception as e:
+                log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
 
         # Ensure maxim_runtime contains mode from state.data for MemoryAgent
         # This propagates mode set in CLI to PerceptionAgent -> MemoryAgent -> ExecAgent
