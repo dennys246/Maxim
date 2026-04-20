@@ -133,15 +133,57 @@ LLM-generated entities now include a `synonyms` field — a list of 5-10 alterna
 
 See the [Embodiment Guide — ComponentIndex](../embodiment_guide.md#componentindex--semantic-discovery) for the full API and architecture.
 
+## Auto-Curation (Pre-Sim)
+
+Auto-curation runs the foundry **before a sim starts** to fill genre/category coverage gaps automatically:
+
+```bash
+# Auto-curate before a sim — fills any fantasy categories below 5 components
+maxim --sim "test sword combat" --embodiment weapons/rusty_sword --auto-curate
+
+# Custom threshold — ensure at least 8 per category
+maxim --sim "explore dungeon" --embodiment environments/dungeon_corridor \
+  --auto-curate --curate-threshold 8
+
+# With LLM for higher-quality generation
+maxim --sim "cyberpunk heist" --embodiment weapons/plasma_lance \
+  --auto-curate --foundry-genre cyberpunk --llm mistral-7b
+
+# Explicit opt-out
+maxim --sim "quick test" --embodiment weapons/rusty_sword --no-curate
+```
+
+**How it works:**
+1. Checks `ComponentRegistry` for per-category coverage in the target genre
+2. For each category below `--curate-threshold` (default: 5), runs a foundry batch
+3. High-scoring candidates (>= 0.7) are promoted to `~/.maxim/components/`
+4. Near-duplicates are skipped via `ComponentIndex.dedup_check(threshold=0.80)`
+5. Promoted components are registered immediately — available for the current sim
+
+**Requirements:** `--auto-curate` requires `--embodiment` to provide genre context. Without it, a note is printed and curation is skipped.
+
+**API:**
+```python
+import maxim
+maxim.imagine("explore dungeon", auto_curate=True, curate_genre="fantasy")
+maxim.run(auto_curate=True, curate_genre="cyberpunk")
+```
+
+| CLI Flag | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--auto-curate` | flag | off | Enable pre-sim curation |
+| `--curate-threshold` | int | 5 | Min components per genre/category |
+| `--no-curate` | flag | off | Explicit opt-out (overrides `--auto-curate`) |
+
 ## Using Promoted Components
 
-Promoted components are saved to `~/.maxim/foundry/{run_id}/promoted/`. To use one:
+Promoted components from `--auto-curate` are automatically written to `~/.maxim/components/` and available immediately. For manual foundry runs, promoted components are saved to `~/.maxim/foundry/{run_id}/promoted/`:
 
 ```bash
 # Run a sim with a promoted component
 maxim --sim "test the plasma cutter" --embodiment weapons/plasma_cutter
 
-# Copy to user components directory for permanent availability
+# Copy to user components directory for permanent availability (manual foundry only)
 cp ~/.maxim/foundry/20260419_180000/promoted/plasma_cutter.yaml ~/.maxim/components/weapons/
 ```
 

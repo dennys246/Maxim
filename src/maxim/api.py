@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -358,6 +359,8 @@ def run(
     home_dir: str | None = None,
     verbosity: int = 1,
     learning: bool = True,
+    auto_curate: bool = False,
+    curate_genre: str = "fantasy",
 ) -> None:
     """Run Maxim's agentic cycle.
 
@@ -381,6 +384,9 @@ def run(
         learning: Enable bio-learning (episodic memory, causal learning,
             pain attribution).  Default ``True``.  Pass ``False`` to run
             without persistent learning.
+        auto_curate: If True, run auto-curation before startup to fill
+            genre/category coverage gaps via the Asset Foundry.
+        curate_genre: Genre for auto-curation (default ``"fantasy"``).
 
     Raises:
         maxim.exceptions.ConfigurationError: If the requested model
@@ -407,6 +413,16 @@ def run(
     from maxim.runtime.lane_backends import build_primary_router
 
     configure(verbosity=verbosity)
+
+    # Pre-startup auto-curation
+    if auto_curate:
+        try:
+            from maxim.simulation.foundry import auto_curate as _auto_curate
+
+            _auto_curate(genre=curate_genre)
+        except Exception as e:
+            logger.warning("Auto-curation failed: %s", e)
+            print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
 
     effective_home = os.path.expanduser(home_dir or "~/.maxim")
     os.makedirs(effective_home, exist_ok=True)
@@ -541,6 +557,8 @@ def imagine(
     max_turns: int = 50,
     verbosity: int = 1,
     resume: str | None = None,
+    auto_curate: bool = False,
+    curate_genre: str = "fantasy",
 ) -> "Session":
     """Run a Maxim simulation.
 
@@ -559,6 +577,9 @@ def imagine(
         max_turns: Maximum simulation turns before auto-finish.
         verbosity: Logging verbosity (0-3).
         resume: Session ID to resume (loads prior memories).
+        auto_curate: If True, run auto-curation before the sim to fill
+            genre/category coverage gaps via the Asset Foundry.
+        curate_genre: Genre for auto-curation (default ``"fantasy"``).
 
     Returns:
         Session wrapping the SimulationResult with session identity,
@@ -572,6 +593,16 @@ def imagine(
 
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
     os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
+
+    # Pre-sim auto-curation
+    if auto_curate:
+        try:
+            from maxim.simulation.foundry import auto_curate as _auto_curate
+
+            _auto_curate(genre=curate_genre)
+        except Exception as e:
+            logger.warning("Auto-curation failed: %s", e)
+            print(f"  WARNING: Auto-curation failed ({e})", file=sys.stderr)
 
     # Load pre-campaign turns from YAML scenario if provided
     pre_campaign_turns = None

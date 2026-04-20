@@ -16,7 +16,6 @@ See docs/plans/deferred/asset_foundry_plan.md for the full design.
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -114,6 +113,23 @@ class FoundryResult:
     generation_failures: int = 0
     infra_errors: int = 0
     output_dir: str = ""
+    dedup_skipped: list[tuple[str, str, float]] = field(default_factory=list)
+    """(candidate_name, existing_ref, cosine_score) for near-duplicates."""
+    promoted_paths: list[str] = field(default_factory=list)
+    """Absolute paths of files promoted to ~/.maxim/components/."""
+
+
+@dataclass
+class CurationReport:
+    """Summary of an auto-curation run before a sim."""
+
+    genre: str
+    categories_checked: int = 0
+    categories_below_threshold: int = 0
+    foundry_results: list[FoundryResult] = field(default_factory=list)
+    total_promoted: int = 0
+    total_skipped_dedup: int = 0
+    total_generated: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -790,6 +806,15 @@ def generate_report(result: FoundryResult) -> str:
             lines.append(f"| {s.candidate_name} | {s.total_score:.2f} | {reason} |")
         lines.append("")
 
+    if result.dedup_skipped:
+        lines.append("## Skipped (Near-Duplicates)")
+        lines.append("")
+        lines.append("| Candidate | Similar To | Cosine |")
+        lines.append("|-----------|-----------|--------|")
+        for name, existing, score in result.dedup_skipped:
+            lines.append(f"| {name} | {existing} | {score:.2f} |")
+        lines.append("")
+
     if result.generation_failures > 0:
         lines.append(f"**Generation failures:** {result.generation_failures}")
     if result.infra_errors > 0:
@@ -868,16 +893,48 @@ def _promote_candidate(candidate: CandidateSpec, output_dir: Path) -> Path:
     promoted_dir.mkdir(parents=True, exist_ok=True)
 
     path = promoted_dir / f"{candidate.name}.yaml"
-    content = {
-        "component": {
-            "name": candidate.name,
-            "tags": [candidate.genre, candidate.category],
-            "category": candidate.category,
-        },
-        "entity": candidate.spec,
-    }
+    content = _candidate_to_component_dict(candidate)
     atomic_write_text(str(path), yaml.dump(content, default_flow_style=False, sort_keys=False))
     return path
+
+
+def _candidate_to_component_dict(candidate: CandidateSpec) -> dict:
+    """Build the standard component YAML dict from a CandidateSpec."""
+    synonyms = candidate.spec.get("metadata", {}).get("synonyms", [])
+    component_header: dict[str, Any] = {
+        "name": candidate.name,
+        "tags": [candidate.genre, candidate.category],
+        "category": candidate.category,
+    }
+    if synonyms:
+        component_header["synonyms"] = synonyms
+    return {
+        "component": component_header,
+        "entity": candidate.spec,
+    }
+
+
+def _promote_to_user_components(candidate: CandidateSpec) -> Path | None:
+    """Promote a candidate to ~/.maxim/components/ for cross-session persistence.
+
+    INVARIANT: Never writes to bundled _data/components/.
+    Writes to ``data_home() / "components" / category / name.yaml``.
+    """
+    try:
+        from maxim.utils.atomic_io import atomic_write_text
+        from maxim.utils.paths import data_home
+
+        user_dir = data_home() / "components" / candidate.category
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        path = user_dir / f"{candidate.name}.yaml"
+        content = _candidate_to_component_dict(candidate)
+        atomic_write_text(str(path), yaml.dump(content, default_flow_style=False, sort_keys=False))
+        log.info("Promoted to user components: %s", path)
+        return path
+    except Exception as e:
+        log.warning("Failed to promote %s to user components: %s", candidate.name, e)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -896,6 +953,13 @@ class FoundryRunner:
             category="weapons",
         )
         result = runner.run(count=10)
+
+    With ComponentIndex for dedup::
+
+        from maxim.embodiment.component_index import ComponentIndex
+        runner = FoundryRunner(..., component_index=index)
+        # Candidates are checked against the index before promotion.
+        # Near-duplicates (cosine >= 0.80) are skipped.
     """
 
     def __init__(
@@ -906,6 +970,8 @@ class FoundryRunner:
         llm_router: Any | None = None,
         scoring_config: ScoringConfig | None = None,
         dry_run: bool = False,
+        component_index: Any | None = None,
+        promote_to_user_dir: bool = False,
     ) -> None:
         self.theme = theme
         self.genre = genre
@@ -913,6 +979,8 @@ class FoundryRunner:
         self._llm = llm_router
         self._scoring = scoring_config or ScoringConfig()
         self._dry_run = dry_run
+        self._component_index = component_index
+        self._promote_to_user_dir = promote_to_user_dir
         self.run_id = time.strftime("%Y%m%d_%H%M%S")
 
     def run(self, count: int = 10) -> FoundryResult:
@@ -1024,8 +1092,36 @@ class FoundryRunner:
             _save_result_json(score, gr, output_dir)
 
             if score.bucket == "promote":
+                # Dedup check: skip near-duplicates of existing components
+                if self._component_index is not None:
+                    match = self._component_index.dedup_check(c.spec, threshold=0.80)
+                    if match is not None:
+                        result.dedup_skipped.append((c.name, match.ref, match.score))
+                        log.info(
+                            "  SKIP (dedup): %s — similar to existing %s (cosine %.2f)",
+                            c.name,
+                            match.ref,
+                            match.score,
+                        )
+                        score.bucket = "review"
+                        result.review.append(score)
+                        continue
+
                 result.promoted.append(score)
                 _promote_candidate(c, output_dir)
+
+                # Promote to ~/.maxim/components/ for persistence across sessions
+                if self._promote_to_user_dir:
+                    path = _promote_to_user_components(c)
+                    if path is not None:
+                        result.promoted_paths.append(str(path))
+
+                # Add to index so future dedup checks see this entity
+                if self._component_index is not None:
+                    ref = f"{c.category}/{c.name}"
+                    synonyms = c.spec.get("metadata", {}).get("synonyms", [])
+                    self._component_index.add(ref, c.spec, synonyms=synonyms)
+
                 log.info("  PROMOTE: %s (%.2f)", c.name, score.total_score)
             elif score.bucket == "review":
                 result.review.append(score)
@@ -1068,10 +1164,162 @@ class FoundryRunner:
 
         log.info("=== Foundry complete: %s ===", output_dir)
         log.info(
-            "Promoted: %d | Review: %d | Rejected: %d",
+            "Promoted: %d | Review: %d | Rejected: %d | Dedup-skipped: %d",
             len(result.promoted),
             len(result.review),
             len(result.rejected),
+            len(result.dedup_skipped),
         )
 
         return result
+
+
+# ---------------------------------------------------------------------------
+# Auto-Curation — pre-sim coverage gap analysis + foundry fill
+# ---------------------------------------------------------------------------
+
+# Categories that make sense for auto-curation gap filling.
+_CURATION_CATEGORIES = ("weapons", "creatures", "npcs", "items", "environments")
+
+
+def analyze_coverage(
+    genre: str,
+    threshold: int = 5,
+    registry: Any | None = None,
+) -> dict[str, int]:
+    """Check per-category component coverage for a genre.
+
+    Returns a dict of ``{category: count}`` for categories that are
+    **below** *threshold*. Empty dict means full coverage.
+    """
+    if registry is None:
+        from maxim.embodiment.component_registry import ComponentRegistry
+
+        registry = ComponentRegistry()
+
+    gaps: dict[str, int] = {}
+    for cat in _CURATION_CATEGORIES:
+        components = registry.query(genre=genre, category=cat)
+        if len(components) < threshold:
+            gaps[cat] = len(components)
+    return gaps
+
+
+def auto_curate(
+    genre: str,
+    *,
+    threshold: int = 5,
+    registry: Any | None = None,
+    component_index: Any | None = None,
+    llm_router: Any | None = None,
+    dry_run: bool = False,
+) -> CurationReport:
+    """Run auto-curation: analyze coverage gaps and fill them via foundry.
+
+    For each category below *threshold*, runs a FoundryRunner to generate
+    enough components to fill the gap. Promoted candidates are written to
+    ``~/.maxim/components/`` and registered in the ComponentIndex.
+
+    Args:
+        genre: Target genre (e.g., ``"fantasy"``, ``"cyberpunk"``).
+        threshold: Minimum components per category (default: 5).
+        registry: ComponentRegistry to check. Built if None.
+        component_index: ComponentIndex for dedup. Skips dedup if None.
+        llm_router: LLM router for generation. None = template fallback.
+        dry_run: If True, generate + validate only (no gauntlet/promotion).
+
+    Returns:
+        CurationReport summarizing what was generated/promoted/skipped.
+    """
+    if registry is None:
+        from maxim.embodiment.component_registry import ComponentRegistry
+
+        registry = ComponentRegistry()
+
+    report = CurationReport(genre=genre)
+    gaps = analyze_coverage(genre, threshold=threshold, registry=registry)
+    report.categories_checked = len(_CURATION_CATEGORIES)
+    report.categories_below_threshold = len(gaps)
+
+    if not gaps:
+        log.info("Auto-curation: genre '%s' has full coverage (>= %d per category)", genre, threshold)
+        return report
+
+    log.info(
+        "Auto-curation: genre '%s' has %d under-covered categor%s: %s",
+        genre,
+        len(gaps),
+        "y" if len(gaps) == 1 else "ies",
+        ", ".join(f"{cat}={count}" for cat, count in gaps.items()),
+    )
+
+    for cat, existing_count in gaps.items():
+        needed = threshold - existing_count
+        theme = f"{genre} {cat}"
+
+        runner = FoundryRunner(
+            theme=theme,
+            genre=genre,
+            category=cat,
+            llm_router=llm_router,
+            dry_run=dry_run,
+            component_index=component_index,
+            promote_to_user_dir=True,
+        )
+        result = runner.run(count=needed)
+
+        report.foundry_results.append(result)
+        report.total_promoted += len(result.promoted)
+        report.total_skipped_dedup += len(result.dedup_skipped)
+        report.total_generated += result.generated
+
+        # Register promoted candidates in the registry so they're
+        # available for the current session immediately.
+        for promoted_path in result.promoted_paths:
+            try:
+                with open(promoted_path) as f:
+                    spec = yaml.safe_load(f)
+                if spec:
+                    header = spec.get("component", {})
+                    ref = f"{header.get('category', cat)}/{header.get('name', 'unknown')}"
+                    registry.register(ref, spec, source_path=promoted_path)
+                    log.info("Registered promoted component: %s", ref)
+            except Exception as e:
+                log.warning("Failed to register promoted component %s: %s", promoted_path, e)
+
+    log.info(
+        "Auto-curation complete: generated=%d promoted=%d dedup_skipped=%d",
+        report.total_generated,
+        report.total_promoted,
+        report.total_skipped_dedup,
+    )
+    return report
+
+
+def generate_curation_report_section(report: CurationReport) -> str:
+    """Generate a markdown section for a curation report (appended to sim report)."""
+    lines = [
+        "",
+        "## Auto-Curation Summary",
+        "",
+        f"**Genre:** {report.genre}",
+        f"**Categories checked:** {report.categories_checked} "
+        f"| **Below threshold:** {report.categories_below_threshold}",
+        f"**Generated:** {report.total_generated} "
+        f"| **Promoted:** {report.total_promoted} "
+        f"| **Dedup-skipped:** {report.total_skipped_dedup}",
+        "",
+    ]
+
+    for fr in report.foundry_results:
+        lines.append(f"### {fr.theme}")
+        lines.append(f"Generated: {fr.generated} | Validated: {fr.validated} | Tested: {fr.tested}")
+        if fr.promoted:
+            for s in fr.promoted:
+                lines.append(f"  - PROMOTED: {s.candidate_name} ({s.total_score:.2f})")
+        if fr.dedup_skipped:
+            for name, existing, score in fr.dedup_skipped:
+                lines.append(f"  - SKIPPED (dedup): {name} — similar to {existing} ({score:.2f})")
+        lines.append("")
+
+    return "\n".join(lines)

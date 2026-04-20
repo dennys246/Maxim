@@ -108,6 +108,35 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 
 See [Asset Foundry Guide](asset-foundry.md) for the full pipeline description and usage examples.
 
+### Auto-Curation
+
+Pre-sim auto-curation checks genre/category coverage and fills gaps via the foundry.
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--auto-curate` | flag | off | Before sim, check genre/category coverage and run foundry to fill gaps. Requires `--embodiment`. Promoted components go to `~/.maxim/components/`. |
+| `--curate-threshold` | int | 5 | Minimum components per genre/category before auto-curation triggers. |
+| `--no-curate` | flag | off | Explicit opt-out of auto-curation (overrides `--auto-curate`). |
+
+**Example:**
+```bash
+# Auto-curate fantasy components before a sword combat sim
+maxim --sim "test sword combat" --embodiment weapons/rusty_sword --auto-curate
+
+# Auto-curate with higher threshold and LLM generation
+maxim --sim "explore dungeon" --embodiment environments/dungeon_corridor \
+  --auto-curate --curate-threshold 8 --llm mistral-7b --foundry-genre fantasy
+```
+
+**Dedup:** Near-duplicate candidates (cosine similarity >= 0.80 via ComponentIndex) are skipped during promotion, preventing library bloat.
+
+**API equivalent:**
+```python
+import maxim
+maxim.imagine("explore dungeon", auto_curate=True, curate_genre="fantasy")
+maxim.run(auto_curate=True, curate_genre="cyberpunk")
+```
+
 ## Debug and Tracing
 
 | Flag | Type | Default | Description |
