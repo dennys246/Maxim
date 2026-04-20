@@ -578,7 +578,7 @@ class ImaginationTrigger:
                 from maxim.embodiment.spec import _parse_entity
 
                 entity = _parse_entity(spec.get("entity", spec))
-                tools = generate_tools_for_entity(entity)
+                tools = generate_tools_for_entity(entity, self._tool_registry)
                 if tools:
                     self._tool_registry.register_scene_tools(tools, scene_id)
                     log.info(
