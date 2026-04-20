@@ -87,9 +87,11 @@ class Episode:
     scn_tag: str | None
     # Net valence from reactions captured during this episode.
     valence: float = 0.0
+    # Provenance: True when this episode involved imagined (session-scoped) entities.
+    imagined: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "id": self.id,
             "start_tick": self.start_tick,
             "end_tick": self.end_tick,
@@ -101,6 +103,9 @@ class Episode:
             "scn_tag": self.scn_tag,
             "valence": self.valence,
         }
+        if self.imagined:
+            d["imagined"] = True
+        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Episode:
@@ -115,6 +120,7 @@ class Episode:
             reward_events=tuple((int(t), float(r)) for t, r in data.get("reward_events", [])),
             scn_tag=data.get("scn_tag"),
             valence=float(data.get("valence", 0.0)),
+            imagined=bool(data.get("imagined", False)),
         )
 
 
@@ -203,6 +209,8 @@ class PendingEpisodeState:
     # (if two events provide different relations for the same pair, the
     # first one is kept).
     node_relations: dict[frozenset[str], str] = field(default_factory=dict)
+    # Provenance: set to True when this episode involves imagined entities.
+    imagined: bool = False
 
     def finalize(self) -> Episode:
         # Compute net valence from captured reactions.
@@ -235,6 +243,7 @@ class PendingEpisodeState:
             reward_events=tuple(self.reward_events),
             scn_tag=self.scn_tag,
             valence=net_valence,
+            imagined=self.imagined,
         )
 
 

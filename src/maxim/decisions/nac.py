@@ -847,6 +847,27 @@ class NAc:
             for link in links:
                 link.decay(factor)
 
+    def decay_imagined_links(self, factor: float = 0.5) -> int:
+        """Decay confidence of all links with ``imagined=True`` provenance.
+
+        Called at session end when ephemeral (imagined) entities are
+        discarded. Reduces confidence by *factor* (default 50%) rather
+        than deleting — partial learning from imagined experiences is
+        useful at reduced confidence.
+
+        Returns the number of links decayed.
+        """
+        count = 0
+        with self._lock:
+            for links in self._links.values():
+                for link in links:
+                    if link.imagined:
+                        link.decay(factor)
+                        count += 1
+        if count:
+            logger.debug("NAc: decayed %d imagined links by factor %.2f", count, factor)
+        return count
+
     # ─────────────────────────────────────────────────────────────────────────
     # P2: Reward Bias — per-node recognition modulation
     # ─────────────────────────────────────────────────────────────────────────

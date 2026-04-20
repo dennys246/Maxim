@@ -901,9 +901,12 @@ Actions recorded: 3
      +------ <span class="text-white">PerceptSource protocol</span> ------+
     |
     v
-<span class="text-white">run_agentic_loop(percept_source=source, action_sink=sink)</span>
+<span class="text-white">run_agentic_loop(percept_source=source, action_sink=sink,
+                  imagination_trigger=trigger)</span>
     |
     +---> <span class="text-purple-400">Percept</span> --> MemoryAgent --> Hippocampus
+    |         |
+    |         +---> <span class="text-amber-400">ImaginationTrigger</span> --> ComponentIndex --> EntityDesigner
     |                              |
     |     (if proprioception) -----+---> <span class="text-red-400">PainBus</span> --> NAc + Hippocampus
     |

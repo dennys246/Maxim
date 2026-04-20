@@ -154,6 +154,9 @@ class ComponentRegistry:
         self._index: dict[str, ComponentInfo] = {}  # ref -> info
         self._file_map: dict[str, Path] = {}  # ref -> YAML path
         self._spec_cache: dict[str, dict] = {}  # ref -> resolved spec
+        # Session-scoped ephemeral overlay (imagined entities)
+        self._ephemeral_index: dict[str, ComponentInfo] = {}
+        self._ephemeral_specs: dict[str, dict] = {}
         self._lock = threading.Lock()
 
         if search_paths and not include_defaults:
@@ -182,6 +185,11 @@ class ComponentRegistry:
         ComponentNotFoundError
             If *ref* is not found in any search path.
         """
+        # Check ephemeral overlay first (session-scoped imagined entities)
+        with self._lock:
+            if ref in self._ephemeral_specs:
+                return copy.deepcopy(self._ephemeral_specs[ref])
+
         if ref not in self._index:
             from maxim.exceptions import ComponentNotFoundError
 
@@ -241,7 +249,7 @@ class ComponentRegistry:
 
         results = []
         with self._lock:
-            snapshot = list(self._index.values())
+            snapshot = list(self._index.values()) + list(self._ephemeral_index.values())
         for info in snapshot:
             if category and info.category != category:
                 continue
@@ -275,27 +283,32 @@ class ComponentRegistry:
         return sorted(results, key=lambda i: i.ref)
 
     def list_categories(self) -> list[str]:
-        """Return sorted list of available categories."""
+        """Return sorted list of available categories (persistent + ephemeral)."""
         with self._lock:
-            return sorted({info.category for info in self._index.values()})
+            all_infos = list(self._index.values()) + list(self._ephemeral_index.values())
+            return sorted({info.category for info in all_infos})
 
     def list_refs(self, category: str | None = None) -> list[str]:
-        """Return all known refs, optionally filtered by category."""
+        """Return all known refs, optionally filtered by category (persistent + ephemeral)."""
         with self._lock:
-            refs = [info.ref for info in self._index.values() if category is None or info.category == category]
+            all_infos = list(self._index.values()) + list(self._ephemeral_index.values())
+            refs = [info.ref for info in all_infos if category is None or info.category == category]
         return sorted(refs)
 
     def has(self, ref: str) -> bool:
-        """Check if a ref exists without loading the full spec."""
-        return ref in self._index
+        """Check if a ref exists (persistent or ephemeral)."""
+        with self._lock:
+            return ref in self._index or ref in self._ephemeral_index
 
     def get_info(self, ref: str) -> ComponentInfo | None:
         """Return the :class:`ComponentInfo` for a ref, or None if not found.
 
+        Checks ephemeral overlay first (session-scoped entities win).
         Public accessor — avoids direct access to ``_index`` from
         external modules (e.g., :class:`ComponentIndex`).
         """
-        return self._index.get(ref)
+        with self._lock:
+            return self._ephemeral_index.get(ref) or self._index.get(ref)
 
     def register(self, ref: str, spec: dict, source_path: str = "<inline>") -> None:
         """Manually register a component spec (e.g., from campaign YAML)."""
@@ -313,6 +326,63 @@ class ComponentRegistry:
             self._index[ref] = info
             self._spec_cache[ref] = spec
             self._file_map[ref] = Path(source_path)
+
+    # -- ephemeral (session-scoped) registration ----------------------------
+
+    def register_ephemeral(
+        self,
+        ref: str,
+        spec: dict,
+        provenance: str = "imagined",
+    ) -> None:
+        """Register a session-scoped component (e.g., imagined entity).
+
+        Stored in a SEPARATE overlay (``_ephemeral_index``) from the
+        persistent ``_index``.  :meth:`get`, :meth:`has`, and
+        :meth:`get_info` check both layers (ephemeral wins on conflict).
+        Cleared by :meth:`clear_ephemeral` at session end.
+
+        Args:
+            ref: Component ref (e.g., ``"creatures/shadow_spider"``).
+            spec: Full entity spec dict.
+            provenance: Tag for how this component was created.
+        """
+        header = spec.get("component", {})
+        info = ComponentInfo(
+            ref=ref,
+            name=header.get("name", ref.rsplit("/", 1)[-1]),
+            category=header.get("category", ref.rsplit("/", 1)[0] if "/" in ref else "misc"),
+            tags=tuple(header.get("tags", ())),
+            extends=header.get("extends"),
+            source_path=f"<{provenance}>",
+            synonyms=tuple(header.get("synonyms", ())),
+        )
+        with self._lock:
+            self._ephemeral_index[ref] = info
+            self._ephemeral_specs[ref] = spec
+        log.debug("ComponentRegistry: registered ephemeral '%s' (provenance=%s)", ref, provenance)
+
+    def clear_ephemeral(self) -> list[str]:
+        """Clear all session-scoped ephemeral components.
+
+        Returns the list of refs that were cleared (for provenance
+        decay in NAc).
+        """
+        with self._lock:
+            refs = list(self._ephemeral_index.keys())
+            self._ephemeral_index.clear()
+            self._ephemeral_specs.clear()
+            # Also clear any spec_cache entries for ephemeral refs
+            for ref in refs:
+                self._spec_cache.pop(ref, None)
+        if refs:
+            log.debug("ComponentRegistry: cleared %d ephemeral components", len(refs))
+        return refs
+
+    def is_ephemeral(self, ref: str) -> bool:
+        """Check if a ref is an ephemeral (session-scoped) component."""
+        with self._lock:
+            return ref in self._ephemeral_index
 
     # -- private ------------------------------------------------------------
 

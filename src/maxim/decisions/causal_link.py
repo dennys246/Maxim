@@ -166,6 +166,10 @@ class CausalLink:
     # observed. Enables reward attribution back to specific substrate nodes.
     percept_refs: tuple[Any, ...] = ()  # tuple[TraceSnapshot, ...]
 
+    # Provenance: True when this link was learned from imagined (session-scoped) entities.
+    # On entity discard, imagined links get 0.5x confidence decay (partial learning).
+    imagined: bool = False
+
     # Thread safety for concurrent record_observation calls
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
@@ -317,6 +321,7 @@ class CausalLink:
             "context_factors": self.context_factors,
             "last_rpe": self.last_rpe,
             "percept_refs": [r.to_dict() if hasattr(r, "to_dict") else r for r in self.percept_refs],
+            "imagined": self.imagined,
         }
 
     @classmethod
@@ -350,6 +355,7 @@ class CausalLink:
             context_factors=data.get("context_factors", {}),
             last_rpe=data.get("last_rpe"),
             percept_refs=percept_refs,
+            imagined=bool(data.get("imagined", False)),
         )
 
 

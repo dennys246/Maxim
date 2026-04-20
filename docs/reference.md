@@ -28,7 +28,8 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/harm/` | Predictive harm detection (velocity, joint limits) |
 | `src/maxim/energy/` | Resource expenditure tracking (tokens, compute, movement). Energy depletion fires interoceptive Reactions (hunger, fatigue, satiation) via the energy→Reaction bridge, feeding the SEM learning loop |
 | `src/maxim/bridges/` | Cross-system integration (pain, energy, memory) |
-| `src/maxim/embodiment/` | SEM protocol (Sensor-Entity-Modulator), Cerebellum, motor programs |
+| `src/maxim/embodiment/` | SEM protocol (Sensor-Entity-Modulator), Cerebellum, motor programs, ComponentIndex semantic discovery, ComponentRegistry ephemeral overlay |
+| `src/maxim/imagination/` | Real-time entity design from novel percept mentions: entity extraction, ComponentIndex lookup, LLM-driven design, session-scoped registration, DN arousal gating |
 | `src/maxim/mesh/` | Simulation-only: `bus`, `identity`, `message`, `naming` (R0 deleted the dead agent-mesh subsystem; see "Removed in R0" below) |
 | `src/maxim/simulation/` | Simulation modes, generative campaigns, research protocol, benchmarks |
 | `src/maxim/integration/` | MemoryHub cross-system coordinator (11 bio-systems) |
@@ -207,6 +208,7 @@ Observe state -> Agents propose intents -> Planners propose plans
 | Generative Campaigns | LLM-driven narrative arcs, bridge-and-compress for long campaigns |
 | Research Protocol | Multi-agent research: Researcher + Writer + Reviewer agents, dual-LLM, experiment tracking |
 | Embodiment | SEM protocol (Sensor-Entity-Modulator) for body definition, Cerebellum forward models, motor programs with engrams, ComponentIndex semantic discovery |
+| Imagination | Real-time entity design from novel percept mentions: entity extraction → ComponentIndex lookup → LLM design → ephemeral registration. DN arousal-gated, energy-budgeted. Imagined entities carry provenance tags on Episodes and CausalLinks |
 | Agent Mesh | Cooperative peer-to-peer network: knowledge sharing, task delegation, distributed planning, SCN clock sync |
 | Multi-LLM Scaling | Local + remote + cloud LLM backends, Cloudflare tunnel, per-tier model routing, hot-swap |
 | Benchmarks | Multi-model comparative testing with bio-system expectations and scenario suites |
