@@ -198,6 +198,21 @@ class Executor:
         if self._tool_pain_bridge is not None and not _suppress_nac:
             self._tool_pain_bridge.record_tool_start(tool_name, invocation_id, context={"params": params})
 
+        # Gate on active status — deactivated scene tools must not execute
+        # even if the LLM hallucinates a remembered name from a prior scene.
+        # Only check for tools that ARE registered but inactive (scene tools).
+        # Non-existent tools fall through to the KeyError path below.
+        scene = self.registry.get_tool_scene(tool_name)
+        if scene is not None and not self.registry.is_tool_active(tool_name):
+            with self._lock:
+                self._running = None
+            self._consecutive_failures += 1
+            error_msg = f"Tool {tool_name!r} is not active (belongs to scene {scene!r})."
+            error_msg += f" Available tools: {', '.join(sorted(self.registry.list()))}."
+            result = ToolOutput(success=False, error=error_msg)
+            self._report_failure(tool_name, invocation_id, result, params)
+            return result
+
         try:
             tool = self.registry.get(tool_name)
         except KeyError:

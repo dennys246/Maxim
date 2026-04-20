@@ -239,6 +239,20 @@ Emit a complete campaign YAML file from the architect's accumulated design state
 
 ---
 
+## Scene-Scoped Tool Window (0.7+)
+
+In long campaigns with multiple entities, additive-only tool registration can overflow the prompt (10 entities × 3-5 affordances = 30-50 tools). The **scene-scoped tool window** solves this:
+
+- **Scene registration:** `registry.register_scene_tools(tools, scene_id="dungeon_entrance")` groups tools by scene.
+- **Deactivation:** `registry.deactivate_scene("dungeon_entrance")` hides scene tools from the LLM prompt without deleting them.
+- **Re-activation:** `registry.activate_scene("dungeon_entrance")` brings tools back when the agent returns to a prior scene.
+- **Active tool cap:** Default 20 scene tools (core tools like `respond`, `think`, `say` are exempt). When registering a new scene would exceed the cap, the oldest scene's tools auto-deactivate with a log message.
+- **Execution gate:** Deactivated tools cannot execute even if the LLM hallucinates a remembered tool name. The executor returns a descriptive error with the available tool list.
+
+`list()` returns only active tools; `list_all()` returns everything (including deactivated). The prompt builder automatically respects this via the existing `LoopController.get_all_tools()` → `request.available_tools` chain.
+
+---
+
 ## Learned Tool Index
 
 With 20+ tools registered, the full tool registry wastes hundreds of prompt tokens on irrelevant tool schemas. The **LearnedToolIndex** is a keyword-weighted hashtable that learns which tools match which goals:
