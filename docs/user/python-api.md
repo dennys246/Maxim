@@ -41,7 +41,7 @@ Top-level functions for common operations. All heavy imports are deferred.
 | Verb | Purpose | Returns |
 |------|---------|---------|
 | `configure(verbosity, log_file, debug, show)` | Set logging + tracing | None |
-| `run(model, goal, headless)` | Run the agentic cycle | None (blocks) |
+| `run(model, goal, headless, learning)` | Run the agentic cycle | None (blocks) |
 | `imagine(goal, persona, scenario, model, resume)` | Run a simulation | `Session` |
 | `connect(robot_type, name, config)` | Connect to a robot | `RobotController` |
 | `diagnose(peer, api_key)` | Environment diagnostics | `DiagnosticReport` |

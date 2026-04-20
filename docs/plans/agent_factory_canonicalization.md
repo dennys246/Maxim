@@ -1,6 +1,6 @@
 # AgentFactory Canonicalization — one door for every agent (running doc)
 
-**Status:** Living doc. F1 DECIDED (Z1, 2026-04-19). F2 CLI non-sim migration SHIPPED (2026-04-19).
+**Status:** Living doc. F1 DECIDED (Z1, 2026-04-19). F2 CLI non-sim SHIPPED (2026-04-19). F3 sim orchestrator SHIPPED, F4 Reachy pain_bus SHIPPED, F5 headless API SHIPPED (2026-04-20).
 **Type:** Multi-session architectural plan.
 **Parent:** [executor_bootstrap_unification.md](executor_bootstrap_unification.md) (must ship first).
 **Related:** [sem_execution_hook.md](sem_execution_hook.md) (Stage 2b deferral lives here too).

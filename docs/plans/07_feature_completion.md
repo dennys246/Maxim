@@ -122,22 +122,24 @@ Fixes that must land before the main tracks, discovered by the parallel review.
 
 #### Stages
 
-**F3 — Sim Orchestrator migration (~200 LOC)**
-- AUT: `create_full_agent(with_bio_stack=True, with_executor=True, with_pain_bridge=True)`
-- Orch: `create_full_agent(with_bio_stack=True, with_executor=True, with_pain_bridge=True)` — own isolated nac for future adaptive orchestration
+**F3 — Sim Orchestrator migration SHIPPED (2026-04-20)**
+- AUT: `create_full_agent(with_bio_stack=True, with_executor=True, with_pain_bridge=entity_ref is not None, with_fear_gate=False)` — fear gate False because sim wraps pain layers before fear gate (ordering constraint)
+- Orch: `create_full_agent(with_bio_stack=True, with_executor=True, with_pain_bridge=False)` — own isolated nac for future adaptive orchestration
 - Both agents get clean factory construction, no hand-rolled wiring
 - Orch persistence path resolves to `~/.maxim/orchestrator/` (not CWD-relative — agent longevity review found fragmentation risk)
+- Factory fix: `nac` always passed to `build_executor` (decoupled from `with_pain_bridge`) so bridge exists for direct attribution even when `pain_bus=None`
+- Added `fear_llm` parameter to `create_full_agent` for LLM-powered FearAgent (sim passes `llm_router`)
 
-**F4 — Reachy migration (~100 LOC)**
-- Replace legacy `pain_detector` path with canonical `build_bio_stack` + `pain_bus`
-- `agentic_runtime.py` uses factory instead of hand-rolled construction
+**F4 — Reachy migration SHIPPED (2026-04-20)**
+- Executor switched from legacy `pain_detector` subscription to canonical `pain_bus` from `build_bio_stack`
+- Full factory migration deferred to G2 (HostContext protocol)
 
-**F5 — Headless API migration (~200 LOC)**
-- `api.py` headless path gets full bio-stack by default
+**F5 — Headless API migration SHIPPED (2026-04-20)**
+- `api.py` headless path gets full bio-stack by default via `create_full_agent`
 - `maxim.run(..., learning=False)` explicit opt-out
 - First-persist INFO log for discoverability
-- Confirm `run_agentic_loop` → `_end_bio_session` → `on_session_end()` path fires for headless (agent longevity review flagged this)
-- `mypy` pass on public API files after change
+- `AgentInstance.shutdown()` called in finally block (saves hippocampus + NAc + cerebellum)
+- `mypy` pass on public API files: clean
 
 **F6 — CI enforcement + test audit (~400 LOC)**
 - AST-based CI gate: no `Executor()` constructor outside `runtime/bootstrap.py` + `tests/`

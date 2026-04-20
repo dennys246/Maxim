@@ -300,24 +300,23 @@ class AgenticRuntimeMixin:
             warn("Failed to create LearnedToolIndex: %s", e, logger=self.log)
 
         # --- Executor + ToolPainBridge ---
-        # `build_executor` requires an explicit pain_bus= decision and
-        # constructs the bridge internally. Reachy uses the legacy
-        # pain_detector subscription path (pre-PainBus); no entity_ref
-        # because the Reachy runtime doesn't load a SEM body through
-        # this path. See docs/plans/executor_bootstrap_unification.md.
-        pain_detector = getattr(self, "_pain_detector", None)
-        if nac is not None and pain_detector is not None:
+        # F4 migration: switched from legacy pain_detector subscription
+        # to canonical pain_bus path. bio.pain_bus is constructed by
+        # build_bio_stack (Wave 3) with hippocampus + NAc subscribers
+        # already wired. No entity_ref because the Reachy runtime
+        # doesn't load a SEM body through this path.
+        _pain_bus = bio.pain_bus if bio is not None else None
+        if nac is not None:
             executor = build_executor(
                 registry,
-                pain_bus=None,
-                pain_detector=pain_detector,
+                pain_bus=_pain_bus,
                 nac=nac,
                 hippocampus=memory_hub.hippocampus if memory_hub else None,
                 scn=memory_hub.scn if memory_hub else None,
                 tool_index=tool_index,
             )
             self._tool_pain_bridge = executor._tool_pain_bridge
-            self.log.debug("ToolPainBridge wired via build_executor (legacy pain_detector path)")
+            self.log.debug("ToolPainBridge wired via build_executor (pain_bus=%s)", _pain_bus is not None)
         else:
             executor = build_executor(registry, pain_bus=None)
             self._tool_pain_bridge = None
