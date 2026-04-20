@@ -195,6 +195,11 @@ maxim --sim interactive --embodiment bodies/reachy_mini            # interactive
 # Non-interactive (for Claude Code, CI, scripting, or debugging)
 maxim --sim "test memory recall" --interactive false  # raw output, no Rich panel
 
+# Asset Foundry (0.6+) — LLM-driven SEM component generation
+maxim --foundry "cyberpunk weapons" --foundry-genre cyberpunk  # generate + test + score
+maxim --foundry "fantasy creatures" --foundry-count 20         # larger batch
+maxim --foundry "test" --foundry-dry-run                       # generate + validate only
+
 # Diagnostics + networking
 maxim doctor                                 # environment check
 maxim doctor --retry                         # interactive fix loop
@@ -254,7 +259,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
   - **Isolation hygiene**: PerceptContext and ReactionContext must NOT carry cross-agent intent, private state, scenario oracles, or learned-policy hints. Rules documented in module docstrings of `percept_context.py` and `reactions/types.py`.
 - **Lane tier system**: Functions route to capability tiers (large/medium/small) via `FunctionRouter` in `runtime/function_router.py`. `detect_tiers()` in `lane_models.py` auto-detects from hardware.
 - **Data paths**: Bundled seed data in `src/maxim/_data/` (components, encounters, prompts, templates). User data at `~/.maxim/` (memory, sessions, benchmarks, config). Resolution via `utils/paths.py`.
-- **SEM Component Registry**: `embodiment/component_registry.py` discovers SEM entity templates from campaign-local, `~/.maxim/components/`, and `_data/components/`. 54 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops.
+- **SEM Component Registry**: `embodiment/component_registry.py` discovers SEM entity templates from campaign-local, `~/.maxim/components/`, and `_data/components/`. 65 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops. **Asset Foundry** (`simulation/foundry.py`) generates new components via LLM + template fallback, validates, tests (8 SEM protocol tests + 3-encounter gauntlet), and scores on 4 bio-system engagement dimensions.
 - **Thread model**: Main loop at 2-30Hz + WorkerPool (tier-based lanes: large/medium/small, owned by LLMWorker) + Hippocampus capture thread (owned + shut down by MemoryHub.on_session_end)
 
 ## Quick reference — where to look
@@ -276,6 +281,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Substrate test infra | `models/language/backend_protocol.py` (S2), `utils/seeding.py` (S4), `tests/substrate/` (S2+S3+P1 metrics) |
 | Generative campaigns | `simulation/arcs.py`, `simulation/narrator.py`, `simulation/generative_runner.py` |
 | DM campaigns | `simulation/dm_schema.py`, `simulation/dm_runtime.py` |
+| Asset Foundry | `simulation/foundry.py` (FoundryRunner, generate, validate, gauntlet, score) |
 | Benchmarks | `simulation/benchmark.py`, `simulation/validation.py` |
 | Research | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |
 | Valence | `memory/episode.py` (Episode.valence, apply_hebbian_on_close, salience_spike_rule), `agents/bus.py` (propagate_valence), `memory/hippocampus.py` (capture_reaction, include_valence) |
