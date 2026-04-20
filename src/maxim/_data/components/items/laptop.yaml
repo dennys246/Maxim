@@ -1,6 +1,7 @@
 component:
   name: laptop
   tags: [item, tech, tool, modern]
+  synonyms: [notebook computer, portable computer, computer, pc, personal computer, workstation, portable terminal]
   category: items
 
 entity:

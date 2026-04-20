@@ -1,6 +1,7 @@
 component:
   name: shock_baton
   tags: [weapon, melee, electric, degradable, cyberpunk]
+  synonyms: [stun baton, electric club, taser stick, zap stick, electro baton, cattle prod, stun stick]
   category: weapons
 
 entity:

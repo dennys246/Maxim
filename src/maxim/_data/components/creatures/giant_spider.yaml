@@ -1,6 +1,7 @@
 component:
   name: giant_spider
   tags: [creature, predator, hostile, fantasy, horror]
+  synonyms: [huge spider, monstrous spider, cave spider, web spinner, arachnid, large spider, venomous spider]
   category: creatures
 
 entity:

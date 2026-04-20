@@ -1,6 +1,7 @@
 component:
   name: spellbook
   tags: [item, magical, knowledge, fantasy]
+  synonyms: [tome, grimoire, arcane book, magic book, book of spells, wizard tome, enchanted book]
   category: items
 
 entity:

@@ -1,6 +1,7 @@
 component:
   name: teal_cylindrical_ceramic_vial
   tags: [item, consumable, unknown, fantasy]
+  synonyms: [teal potion, ceramic vial, cylindrical bottle, turquoise vial, teal elixir, mysterious teal liquid, strange ceramic flask]
   category: items
   genre: fantasy
 

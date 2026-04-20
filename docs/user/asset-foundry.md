@@ -119,9 +119,19 @@ This is auto-composed from the SEM entity spec and injected at IMPORTANT priorit
 
 The entity context section is wired in both the CLI non-sim path and the simulation orchestrator AUT path.
 
-## Synonym Generation
+## Synonym Generation + ComponentIndex
 
-LLM-generated entities now include a `synonyms` field — a list of 5-10 alternative names a user might use to refer to the entity. This enables the ComponentIndex (semantic discovery layer) to resolve natural language queries like "old iron door" to `environments/rusty_gate`.
+LLM-generated entities now include a `synonyms` field — a list of 5-10 alternative names a user might use to refer to the entity. This feeds the **ComponentIndex** semantic discovery layer.
+
+**How it works in the foundry pipeline:**
+1. `EntityDesigner.design()` generates synonyms as part of the spec
+2. Promoted components carry synonyms into `~/.maxim/components/`
+3. On next startup, `ComponentIndex` indexes those synonyms into Layer 1 (alias table)
+4. Natural language queries resolve instantly: `"old iron door"` → `environments/rusty_gate`
+
+**Dedup via ComponentIndex:** Before promoting a candidate, the foundry calls `index.dedup_check(spec, threshold=0.80)`. If a near-duplicate exists (cosine similarity ≥ 0.80 against an existing component), the candidate is skipped with a log message: "Skipped {name} — similar to existing {match.ref} (cosine {score:.2f})".
+
+See the [Embodiment Guide — ComponentIndex](../embodiment_guide.md#componentindex--semantic-discovery) for the full API and architecture.
 
 ## Using Promoted Components
 

@@ -3,6 +3,7 @@ component:
   tags: [npc, humanoid, authority, modern]
   category: npcs
   extends: npcs/base_humanoid
+  synonyms: [investigator, private eye, sleuth, inspector, gumshoe, private detective, cop]
 
 entity:
   name: detective

@@ -206,7 +206,7 @@ Observe state -> Agents propose intents -> Planners propose plans
 | SMS/Voice Comms | Send and receive texts/calls via Twilio |
 | Generative Campaigns | LLM-driven narrative arcs, bridge-and-compress for long campaigns |
 | Research Protocol | Multi-agent research: Researcher + Writer + Reviewer agents, dual-LLM, experiment tracking |
-| Embodiment | SEM protocol (Sensor-Entity-Modulator) for body definition, Cerebellum forward models, motor programs with engrams |
+| Embodiment | SEM protocol (Sensor-Entity-Modulator) for body definition, Cerebellum forward models, motor programs with engrams, ComponentIndex semantic discovery |
 | Agent Mesh | Cooperative peer-to-peer network: knowledge sharing, task delegation, distributed planning, SCN clock sync |
 | Multi-LLM Scaling | Local + remote + cloud LLM backends, Cloudflare tunnel, per-tier model routing, hot-swap |
 | Benchmarks | Multi-model comparative testing with bio-system expectations and scenario suites |

@@ -3,6 +3,7 @@ component:
   tags: [npc, humanoid, magical, fantasy]
   category: npcs
   extends: npcs/base_humanoid
+  synonyms: [mage, sorcerer, spellcaster, archmage, enchanter, magic user, warlock]
 
 entity:
   name: wizard

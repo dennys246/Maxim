@@ -3,6 +3,7 @@ component:
   tags: [npc, humanoid, military, historical]
   category: npcs
   extends: npcs/base_humanoid
+  synonyms: [roman soldier, legionnaire, centurion, roman warrior, imperial soldier, roman infantry, legion soldier]
 
 entity:
   name: roman_legionary

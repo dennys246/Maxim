@@ -1,6 +1,7 @@
 component:
   name: enchanted_grove
   tags: [environment, outdoor, magical, fantasy]
+  synonyms: [fairy grove, magic forest, mystical woods, fey glade, sacred grove, glowing forest, arcane woodland]
   category: environments
 
 entity:

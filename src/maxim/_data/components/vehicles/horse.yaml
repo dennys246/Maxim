@@ -1,6 +1,7 @@
 component:
   name: horse
   tags: [vehicle, mount, animal, fantasy, historical]
+  synonyms: [steed, mount, warhorse, riding horse, stallion, mare, charger]
   category: vehicles
 
 entity:

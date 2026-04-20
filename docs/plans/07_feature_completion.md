@@ -163,7 +163,7 @@ Fixes that must land before the main tracks, discovered by the parallel review.
 - `entity_spec` field added to `LLMRequest` + `LLMWorker`, wired in CLI non-sim path and simulation orchestrator AUT path.
 - 13 new tests (6 LLM generation + 5 entity context + 2 integration). 32 total foundry tests, all passing. Full suite: 5293 passed.
 
-**E2.5 — ComponentIndex: semantic discovery layer (~250 LOC)**
+**E2.5 — ComponentIndex: semantic discovery layer SHIPPED (2026-04-20, ~300 LOC)**
 
 The bridge between natural language and exact-ref lookup. Two-layer architecture:
 

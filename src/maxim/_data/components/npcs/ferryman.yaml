@@ -3,6 +3,7 @@ component:
   tags: [npc, humanoid, transport, social]
   category: npcs
   extends: npcs/base_humanoid
+  synonyms: [boatman, river guide, boat operator, gondolier, bargeman, river crosser, water taxi]
 
 entity:
   name: ferryman

@@ -1,6 +1,7 @@
 component:
   name: space_station_bridge
   tags: [environment, indoor, tech, scifi]
+  synonyms: [command bridge, ship bridge, control room, command deck, flight deck, ops center, starship bridge]
   category: environments
 
 entity:

@@ -1,6 +1,7 @@
 component:
   name: roman_forum
   tags: [environment, outdoor, social, historical]
+  synonyms: [roman plaza, forum, public square, ancient marketplace, senate plaza, roman agora, city center]
   category: environments
 
 entity:

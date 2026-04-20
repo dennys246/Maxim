@@ -3,6 +3,7 @@ component:
   tags: [npc, humanoid, tech, devops, modern]
   category: npcs
   extends: npcs/base_humanoid
+  synonyms: [system administrator, it admin, server admin, tech support, network admin, it guy, ops engineer]
 
 entity:
   name: sysadmin

@@ -1,6 +1,7 @@
 component:
   name: tavern_interior
   tags: [environment, indoor, social, rest]
+  synonyms: [inn, pub, bar, ale house, drinking hall, taproom, watering hole]
   category: environments
 
 entity:

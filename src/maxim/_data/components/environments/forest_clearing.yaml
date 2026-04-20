@@ -1,6 +1,7 @@
 component:
   name: forest_clearing
   tags: [environment, outdoor, nature, ambush]
+  synonyms: [woodland glade, forest glade, open woods, clearing in the woods, tree gap, wooded meadow]
   category: environments
 
 entity:

@@ -1,6 +1,7 @@
 component:
   name: magic_staff
   tags: [weapon, ranged, magical, degradable, fantasy]
+  synonyms: [wizard staff, arcane staff, enchanted staff, mage staff, spell staff, sorcerer rod, magical rod]
   category: weapons
 
 entity:

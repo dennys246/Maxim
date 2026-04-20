@@ -3,6 +3,7 @@ component:
   tags: [npc, humanoid, social, broker, neutral, cyberpunk]
   category: npcs
   extends: npcs/base_humanoid
+  synonyms: [fixer, middleman, broker, job dealer, contact, go-between, street dealer, connector]
 
 entity:
   name: street_fixer
