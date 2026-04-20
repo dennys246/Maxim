@@ -1,11 +1,23 @@
 # Maxim Plans
 
-Current version: **0.5.0** (published on PyPI as `pymaxim`).
+Current version: **0.5.0** (published on PyPI as `pymaxim`). Next publish: **0.6.0**.
 Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
+
+## Version Roadmap
+
+| Version | Theme | Status |
+|---------|-------|--------|
+| **0.6** | **Generalizable embodiment** — E0 sim wiring + E1 Asset Foundry | Ready to publish |
+| **0.7** | **Feature completion** — E2-E3 (foundry with real LLM + curation), B3 (Acting Coach), F3-F5 (Agent Factory canonicalization) | Next |
+| **1.0** | **Validation + polish** — P5 stress persistence (the gate), API/CLI surface review for edge cases, final docs | Target |
+
+**Discipline:** 0.7 is the last feature version. 1.0 is validation + polish only — no new features, just proving what's built holds up at scale and the API/CLI surfaces are complete for power users.
 
 ## Active (gating 1.0)
 
-Foundations, reaction abstraction, simulator upgrades, P0 pilot, P1 recognition, P2 reward modulation, P3a episode binding, P3b channel integration, P3.5 persistence/snapshot, SEM execution hook, and **P4 cross-modal binding** are all complete. **All four 0.3-target substrate phases (P3a, P3b, P3.5, P4) are CLOSED. 0.3-target gate is CLOSED.**
+**All original 1.0 gates are CLOSED** (2026-04-19). The remaining 1.0 gate is **P5 stress persistence** (10k+ nodes).
+
+Foundations, reaction abstraction, simulator upgrades, P0-P4, P6, P8, B4, SEM execution hook, E0 generalizable embodiment — all complete.
 
 - [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) — **✅ SPLIT COMPLETE + ARCHIVED** (2026-04-17). Now a pure index. **All four 0.3-target phases CLOSED.** Per-phase plan files created for 0.5 track:
   - [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — Draft. 10k+ node persistence stress. Depends on P3.5 + P4.
@@ -103,13 +115,6 @@ Earlier archives (2026-04-11/12, S1–S4 shipped 2026-04-12):
 
 ## Version path to 1.0
 
-Five tracks run in parallel:
-- **Track A — Substrate:** the bio-inspired research claim. ~~F0 → P0 → P1 → P2 → P3a → P3b → P3.5 → P4~~ ALL SHIPPED → P5 → P6 → P8.
-- **Track B — Prompt layer:** ~~B1~~ SHIPPED → B3 → ~~B4~~ **COMPLETE (1.0 GATE CLOSED)** → B5.
-- **Track C — Infrastructure:** ~~LLM path Plans 1–3.5~~ SHIPPED → ~~Reactive peer mesh (C3.5/C3.6/C4.6)~~ ALL SHIPPED. Self-healing loop complete.
-- **Track D — Behavioral convergence:** ~~Tier 1 + Tier 2 + Tier 3~~ ALL PASS (41/41 hypotheses) → Scale validation (20+ seeds).
-- **Track E — Agent control surface (NEW):** Interactive UX fixes → AgentFactory canonicalization (F-wave) + Game/External Host (G-wave).
-
 | Version | What ships | What it proves | Status |
 |---|---|---|---|
 | ~~**0.2.x**~~ | Foundations, cleanup, peer flexibility | Friction removed, infrastructure stable | ✅ SHIPPED |
@@ -121,64 +126,39 @@ Five tracks run in parallel:
 | **0.6** | **Generalizable embodiment** — Asset Foundry (promoted from deferred), SEM affordance tools in simulation, entity_ref wiring for sim AUT, component generation pipeline | Sim path and robot path use identical tool injection. Agent can interact with SEM entities in simulation with full pain-cascade learning. No code path divergence between sim and live. | Planned |
 | **1.0** | All exit criteria passing, behavioral convergence at scale with statistical rigor, generalizable embodiment | Cross-session learning at realistic scale, coherent voice, failure recovery, one construction door, **unified sim/robot embodiment** | Target |
 
-### 0.3.1 roadmap (detailed)
+### 0.6 — Generalizable Embodiment (ready to publish)
+
+| Stage | What | Status |
+|---|---|---|
+| **E0** | Wire `entity_ref` through sim orchestrator. `--embodiment` works with `--sim`. | ✅ SHIPPED |
+| **E1** | Asset Foundry: generate → validate → SEM protocol tests → gauntlet → score → curate | ✅ SHIPPED |
+
+Also includes: sim stall fix (dd6c29a), B4 replanning (1.0 gate closed), P6 extinction, P8 sleep replay, F2 factory migration.
+
+### 0.7 — Feature Completion (next)
+
+The last feature version before 1.0. Three parallel tracks:
 
 | Track | What | Plan | Scope | Why |
 |---|---|---|---|---|
-| **E — Interactive UX** | RequestInteractionTool honest reporting | [interactive_experience_031.md](interactive_experience_031.md) Stage 1 | ~60 LOC | Agent lies to itself about user input; critical fix |
-| **E — Interactive UX** | Narrator fallback immersion | Stage 2 | ~70 LOC | Bracket tags break immersion |
-| **E — Interactive UX** | Handler selection logging + unknown-mode error | Stage 3 | ~50 LOC | Silent misconfiguration |
-| **E — Interactive UX** | Story context word-count truncation | Stage 4 | ~50 LOC | Char-count proxy breaks on unicode |
-| **E — Interactive UX** | Wire MaximDisplay into sim_logger (thread-safe + atexit) | Stage 5 | ~180 LOC | Rich panel UI for `--interactive`, designed but never wired |
-| **E — Interactive UX** | Light prompt cleanup (remove dead PromptTypes, freeze_context, poll_freeform) | Stage 6 | ~-60 LOC | Dead code with zero production callers |
-| **E — Interactive UX** | Integration smoke test | Stage 7 | ~50 LOC | End-to-end validation |
-| **Agent introspection** | `nac_stats` — total observations, top-rewarded tools, RPE | [tool_refinement_plan.md](tool_refinement_plan.md) | ~100 LOC | Agent can reason about what it's learned |
-| **Agent introspection** | `memory_pressure` — per-tier counts, promotion rate | tool_refinement_plan.md | ~100 LOC | Agent can assess its own memory health |
-| **Agent introspection** | `loop_stats` — Hz, cycle time, steps since boot | tool_refinement_plan.md | ~100 LOC | Agent can diagnose its own performance |
-| **Agent introspection** | `pain_triggers_active` — current pain triggers + intensity | tool_refinement_plan.md | ~100 LOC | Agent can reason about its own discomfort |
+| **E2-E3 — Foundry with real LLM** | Run foundry with actual LLM, curate promoted components into seed library | [asset_foundry_plan.md](deferred/asset_foundry_plan.md) | ~600 LOC + curation | Prove the foundry generates useful entities, not just valid YAML |
+| **B3 — Acting Coach** | Personality scaffolds, speech register, embodiment tool guidance | [prompt_b3_b5_track.md](prompt_b3_b5_track.md) | ~450 LOC | Agent uses affordance tools effectively; NPCs have consistent voice |
+| **F3-F5 — Agent Factory** | Make `AgentFactory.create_agent` the single construction door, sim/Reachy/API migration | [agent_factory_canonicalization.md](agent_factory_canonicalization.md) | ~1500 LOC | Eliminate dual-construction paths. One door for every agent. |
 
-**Why introspection tools in 0.3.1:** These are the cheapest high-value additions (~100 LOC each, no prerequisites). They give the agent self-awareness about its own learning state — which directly supports the 0.3 research claim ("the agent learns from its own actions"). The agent currently *has* causal learning, but can't *see* it. `nac_stats` and `memory_pressure` close that loop. They also provide immediate value for game NPC integration (Stage G3 emotional readout builds on the same data sources).
+**0.7 sequencing:** B3 and E2-E3 are independent. F3-F5 depends on F2 (shipped in 0.5). All three tracks can run in parallel.
 
-### 0.4 roadmap (detailed)
+### 1.0 — Validation + Polish (target)
 
-| Track | What | Scope | Why |
-|---|---|---|---|
-| **D — Tier 3 at scale** | Run organic learning experiment with 20+ seeds, report mean ± std | ~1 session | 0.3 proves the mechanism with 1 run; 0.4 proves it's not a fluke |
-| **A — Episode boundaries** | Tool execution boundary + semantic shift detection (Rules 1-2) | ~200 LOC | Pre-P5 polish, observe_episode_event is now wired |
-| **A — Concept decomposition** | Stages 2-3 (role-tagged edges + ConceptExtractor convergence) | ~250 LOC | Already validated at +63.6 pp, polish pass |
-| **A — P5 stress persistence** | 10k+ node persistence stress test | ~500 LOC | Validates substrate robustness under realistic load |
-| **C — Peer mesh completion** | ~~C3.5 (`--node update/restart`)~~ SHIPPED, ~~C3.6 (`--node llm`)~~ SHIPPED, ~~C4.6 (auto-undrain)~~ SHIPPED | ✅ COMPLETE | Self-healing reactive mesh |
+No new features. Proving what's built holds up at scale and the API/CLI surfaces are complete for power users.
 
-### 0.5 roadmap (detailed)
+| What | Plan | Why |
+|---|---|---|
+| **P5 stress persistence** (the gate) | [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) | 10k+ node persistence validates substrate at realistic scale |
+| **API/CLI surface review** | Sweep for edge cases and missed opportunities in the public API (`api.py`, `__init__.py`) and CLI (`cli.py`, `cli_parser.py`). The API was designed before much of the current infrastructure — ensure all new capabilities (foundry, embodiment, bio-stack, factory) are properly accessible to power users. | Pre-1.0 accessibility |
+| **Agent memory transfer docs** | Universal onboarding document set that allows any agent (Claude, human, or future AI) to quickly understand the repo's architecture, invariants, and conventions without reading every memory file. Refine `.claude/` memory, consolidate into a transferable format. | Knowledge continuity |
+| **Final docs pass** | Publication guide, user docs, architecture docs | Ship-ready documentation |
 
-Three parallel tracks. B4 replanning is the **1.0 gate** — everything else is supporting work.
-
-| Track | What | Plan | Scope | Why |
-|---|---|---|---|---|
-| **B — Acting Coach** | B3 — personality scaffolds, speech register, DisplayExtension panels | [prompt_b3_b5_track.md](prompt_b3_b5_track.md) | ~450 LOC | NPCs get coherent, consistent voice |
-| **B — Replanning** | ~~B4 — failure diagnosis + prior attempt retrieval~~ **✅ COMPLETE** | [prompt_b4_replanning.md](prompt_b4_replanning.md) | ~400 LOC | **1.0 GATE CLOSED.** Treatment 100% vs control 0%, Jaccard 0.894 |
-| **E — Factory F1** | ~~Design pass: Z1 Executor lifetime decision~~ **✅ DECIDED** | [agent_factory_canonicalization.md](agent_factory_canonicalization.md) | ~200 LOC | Z1: per-instance Executor, built once in factory |
-| **E — Factory F2** | ~~CLI non-sim migration~~ **✅ SHIPPED** + sim/Reachy/API remaining | agent_factory_canonicalization.md | ~1500 LOC | `create_full_agent` composes bio-stack + executor + fear gate |
-| **E — Factory F6** | Hard test enforcement (CI grep, cascade tests) | agent_factory_canonicalization.md | ~1000 LOC tests | Next bridge-wiring bug is a TypeError, not silent no-op |
-| **E — Game NPC G1-G5** | Executor in run_turn, HostContext, emotional readout, async dispatch, memory backend | agent_factory_canonicalization.md Wave G | ~940 LOC | External hosts can use Maxim NPCs with full learning |
-| **A — Extinction** | P6 — decay without reinforcement vs LRU | [substrate_p6_extinction.md](substrate_p6_extinction.md) | ~400 LOC | Agent forgets appropriately |
-| **A — Sleep replay** | P8 — minimum-viable offline consolidation | [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) | ~500 LOC | Memory consolidates between sessions |
-
-**0.5 sequencing:** B3 and factory F1 can start immediately (no dependencies). B4 depends only on B1+P3a (both shipped). Factory F2-F5 depends on F1. G-wave depends on F1. P6 and P8 are independent substrate work. **B4 is the critical path to 1.0** — if it slips, 1.0 slips. The factory refactor (F+G) is engineering hygiene that could defer to post-1.0 if needed without blocking the research claim.
-
-### 0.6 roadmap (detailed) — Generalizable Embodiment
-
-**Why this gates 1.0:** The sim path and robot path currently have different tool surfaces. The AUT in simulation cannot interact with SEM entities (no affordance tools generated). This means DM campaigns with entity interactions, embodiment experiments, and the architectural contract ("only difference is where percepts come from") are all broken in sim. Fixing this is a prerequisite for 1.0.
-
-| Stage | What | Scope | What it proves |
-|---|---|---|---|
-| **E0 — Sim affordance gap** | Wire `entity_ref` through sim orchestrator → `build_executor()`. Generate affordance tools for AUT in sim. Verify pain-cascade learning for sim entities. | ~200 LOC | Agent can swing a sword in simulation and learn from the pain cascade |
-| **E1 — Asset Foundry core** | LLM-driven component generation + schema validation + SEM protocol tests | ~800 LOC | Components generated without manual YAML authoring |
-| **E2 — Gauntlet testing** | 3-encounter campaign per candidate, fresh MemoryHub, measure affordance usage + cognitive behavior | ~600 LOC | Generated components produce interesting cognitive behavior (not just valid YAML) |
-| **E3 — Score + curate** | 4-dimension rubric (complexity, distinctiveness, pedagogical, narrative), promote/review/reject pipeline | ~400 LOC | Quality gate ensures only useful components enter the library |
-| **PoC — Embodiment stress test** | Run 10+ generated entities through a DM campaign gauntlet (interactive mode). Measure: affordance_usage_count > 0, pain events captured, NAc causal links formed, cross-session memory persistence. Pass criteria: 8/10 entities produce measurable learning. | ~300 LOC test harness | Generalizable embodiment works at scale — not just for `rusty_sword` |
-
-**0.6 sequencing:** E0 is the prerequisite for everything — without sim affordance tools, nothing else works. E1-E3 are the Asset Foundry pipeline (sequential). The PoC runs after E0+E1 land and stress-tests with generated + existing components. **E0 is the critical path** — it's ~200 LOC and unblocks the rest.
+**Discipline:** if it's not P5, a missing API/CLI surface, or the memory transfer docs, it doesn't go in 1.0.
 
 ### What 0.3 proved
 
@@ -194,83 +174,23 @@ All 41/41 hypotheses confirmed. No fine-tuning. No prompt engineering beyond sur
 
 Channels (SMS, email, Slack, narrative speech) are **TEXT modality with context metadata**, not separate modalities. Channel rollout: SMS + narrative in 0.3, email + Slack in 0.5. See [substrate_plan.md](archive/substrate_plan.md) for phase definitions.
 
-## How LLM path refinement interleaves with substrate P2
+**Review pattern (refined after R2, validated through R3 + E0 + E1):** each plan implements on a `feat/<plan>` branch. Before opening/merging the PR — **not after** — spawn two review Claudes (Executor lens + Architecture lens). Findings get folded into the same branch, THEN the PR opens. See [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md) for evidence + templates.
 
-Timeline (rough, not calendar-committed). As of 2026-04-14, steps 1–3a, Plan 3.6 R5, Plan 4 Stage A+B, and substrate P2 Stage 3 are done. Only Plan 4 Stage C and stress phases B/C/E remain.
-
-1. **✅ SHIPPED (2026-04-12):** Plan 1 R0 + R1 + R1 loose ends.
-   - R0: dead mesh deleted (commit `e811787`)
-   - R1 core: 9-step urllib migration + `maxim/utils/http.py` (PRs #88, #90)
-   - R1 cleanup: dual-format logging + docs/memory/audit pass (commits `c8a07e9`, `845af61`)
-   - R1 loose ends: CI grep wired, `internal=False` default, `make_http_response` helper (PR #91, commit `3a579de`)
-   - Fast suite: 4004 passed on main. Leader updated + restarted cleanly. Pre-Plan-3 restart baseline: ~63s.
-
-2. **✅ SHIPPED (2026-04-12):** Plan 2 (Typed Errors + Role Detection).
-   - R2a: `runtime/role.py::detect_and_apply_role` called at the top of `cli.py::main()` BEFORE subcommand dispatch
-   - R2b: `BackendError` hierarchy in `types.py` mirroring `HTTPError` shape + `_normalize_request_context` canonical shim in `agents/llm_worker.py` + `INFERENCE_BROKEN_BACKOFF_S = 15.0` single source of truth
-   - R2c: two-stage probe with `enable_stage2=True` + per-outcome cache TTL table in `probe_cache.py` + corruption log promotion
-   - R2d: SSRF check moved to `utils/net.py::validate_base_url` (shared helper)
-   - PRs #92 + #93 (pre-merge review round caught 11 items, 2 real behavior bugs). 4073 tests passing post-R2.
-
-3. **✅ SHIPPED (2026-04-12):** Plan 3 (Fast Failover) — `_MaximPeerBackend`, the 52s fail-slow is dead.
-   - R2.5: `_MaximPeerBackend` purpose-built single-HTTP-call backend + typed router dispatch + `BACKEND_CLASSES` + `dispatch_exhausted` + safety-net counter + `stream_post` primitive (commit `824d737`, +2198 lines)
-   - R2.6: probe consolidation through `health_check` + `for_url` factory + compat shims retained with CI allow-list (commit `d09b74d`, +313/-193)
-   - Pre-merge review fix: 12 findings folded including 2 critical (`for_url` env-var race + `_emit_dispatch_exhausted` shim bypass) and a rewrite of `BACKEND_CLASSES` from dead identity map to real lazy-import dispatch (commit `b26ef4b`, +565/-120)
-   - PR #94, merged as `ce5f034`. 4142 fast-suite tests passing, 3 CI grep invariants clean.
-   - **Programmatic gate:** < 5s p99 against mocked-dead-peer. Real leader-restart re-measurement runs in stress protocol Phase D.
-
-3a. **✅ POST-PLAN-3 HOTFIXES + IMPROVEMENTS (2026-04-13, main branch):**
-   - **Stress test hotfixes (commit `6181329`):** (A) `_INFERENCE_PROXY_TIMEOUT_S` raised to 300s + `min(total,120)` cap removed — 60s was too short for 14B models. (B) `warmup()` calls `_ensure_endpoint_registered()` to pre-flight DNS at startup. (C) `reset_session_cost()` also resets `_provider_states` — stale backoffs no longer bleed across sim runs.
-   - **Streaming proxy (Cloudflare 524 fix):** `leader_proxy._proxy_request()` now uses HTTP/1.1 chunked encoding via `raw_proxy_forward_streaming()` so the first byte reaches Cloudflare before the 125s edge timeout. `raw_proxy_forward_streaming()` added to `utils/http.py`.
-   - **sim_roundup dispatch_exhausted fix:** `simulation/orchestrator.py` calls `reset_shutdown()` before `analyze_simulation()` — the LLM shutdown signal was causing every sim summary to hit `dispatch_exhausted` at 0.1ms.
-   - **Empty-choices silent failure fixed:** `_MaximPeerBackend._parse_llm_response()` now raises `BackendInferenceBroken` (instead of returning empty content) when `choices` is empty. `complete_with_usage()` wraps the parse call to emit `peer_backend_failed` JSONL before re-raising.
-   - **Structured `provider_silenced` event:** `LLMRouter._set_long_backoff()` / `_set_short_backoff()` now emit a WARNING-level `provider_silenced` structured log event with `provider`, `backoff_s`, `reason`, `consecutive_errors`.
-   - **Doctor improvements:** `check_env_config()` (env var audit for MAXIM_ROLE, MAXIM_LLM_ENABLED, MAXIM_LLM_PROFILE, MAXIM_LLM_N_CTX, MAXIM_SKIP_REMOTE_PROBE, MAXIM_PEER_PROBE_KEY), `check_context_window()` (context window size detection), `check_role()` now surfaces divergence between `leader_mode.detect_role()` and `role.detect_role()` as a `role_divergence` warn. +11 new tests (4153 total).
-   - **Security fixes (node_security_simplification.md Phase 1):** `secrets.compare_digest()` for auth comparison, rate-limiter buckets by source IP (not auth token), corrected peer help text in `tunnel/cli.py`.
-
-4. **Stress test (one combined run):**
-   - **Phase A: ✅ SHIPPED (2026-04-14)** as substrate P2 Stage 3. Ran standalone outside the combined stress test because the sweep is fast (~27s wall clock on CPU) and the substrate work didn't need to wait on multi-agent fan-out. Results: [experiments/p2_reward_modulation_sweep.md](../experiments/p2_reward_modulation_sweep.md). Mean target gain **+56.0 ± 29.0 pp**, distractor drift **0.0 ± 0.0 pp**, monotone **94%**, 9/10 seeds individually.
-   - Phase B: multi-agent fan-out (exercises AgentPool under the new LLM path) — REMAINING
-   - Phase C: `llama.cpp --parallel` batching PoC — REMAINING
-   - **Phase D: ✅ SHIPPED (2026-04-13)** — [llm_path_stress_20260413.md](../experiments/results/llm_path_stress_20260413.md). All designed-for gates PASS: fast-fail, no stacked timeouts, no provider pollution, sim resumes. Recovery-time gate was inconclusive under sim workload (sim-cadence artifact), addressed in Phase D2 below.
-   - **Phase D2: ✅ SHIPPED (2026-04-14)** — [llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md). Uses the new `maxim bench recovery-time` tight-loop harness (Plan 4 Stage B) instead of sim workload. **58.68s recovery window** on real RTX 5080, matching leader self-reported 53s reload + ~5s proxy gap. Peer-side overhead ≈ 0s. 750/750 `agent_id` coverage (validates Plan 4 Stage A end-to-end). 199/199 failures typed as `BackendDown`.
-   - Phase E: fault injection — REMAINING
-
-5. **✅ SHIPPED (2026-04-14):** **Plan 3.6 R5 — VRAM spillover detection.** PR #99, commit `2884e58`. Doctor `check_vram_pressure` + spawn-time `_check_vram_spillover_risk` + shared `project_vram_usage` math in `lane_models.py`. Dynamic headroom `max(1.5, 0.55 × weights_gb)` calibrated to the 2026-04-13 incident. Plus fix for a pre-existing silent bug in `check_llm_model_active` (mutable-global import-by-name anti-pattern). 17 new tests. R1–R4 (multi-leader `peer.yml`) remain draft pending user's second-GPU bring-up.
-
-6. **✅ SHIPPED (2026-04-14):** **Plan 4 Stage A + Stage B.** Commit `71f7c24` on `feat/llm-path-operator-visibility`, PR in pre-merge review.
-   - **Stage A: agent_id observability fix.** Router capability-flag kwarg forwarding in `_invoke_backend` + `set_context` boundary binding in `LLMWorker._call_llm_with_timeout` (alongside existing `set_cancel_event`, before `copy_context()`) + contextvar fallback in `_normalize_request_context`. Closes the Phase D "agent_id=null in peer_backend_call" observability gap. 11 new regression tests.
-   - **Stage B: recovery-time bench harness.** New `maxim bench recovery-time` CLI subcommand at `src/maxim/bench/` (package named `bench` not `benchmark` to avoid shadowing the existing `maxim.api.benchmark` public verb). Fires chat completions in a tight loop against a peer URL, extracts a rigorous recovery-time number from the first `success → failure → success` transition. 21 new tests. Real hardware validation is the Phase D2 run above.
-   - **Stage C (mesh.yml + admin API + per-agent rate limiting)** — **C1+C2+C3.1 SHIPPED, C3.2 in PR, C3 remainder DEFERRED.** See the C1/C2/C3.1/C3.2 sub-bullets above for the per-stage status. Full scope preserved in [llm_path_operator_visibility.md](llm_path_operator_visibility.md) under "Phases".
-
-7. **▶ NEXT (substrate track resumes):** Substrate P2 Stage 3 **COMPLETE (2026-04-14)** — `substrate_recognition.md` closed. Remaining stress-test phases B, C, E + Plan 4 Stage C can run in any order when their respective bottlenecks surface. Next substrate plan: [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) (P3a onward).
-
-8. **Release 0.4** with LLM path refinement complete + substrate P2 validated on real embeddings. Substrate P2 gate is CLOSED; 0.4 ships when the remaining stress phases (B, C, E) + Plan 4 Stage C are ready.
-
-9. **Back to substrate work:** P3a + P3b + P4 in 0.5, built on the stabilized LLM path. Plan doc: [substrate_binding_persistence.md](archive/substrate_binding_persistence.md).
-
-**Review pattern per plan (refined after R2):** each plan implements on a `feat/<plan>` branch. Before opening/merging the PR — **not after** — spawn two review Claudes (Executor lens + Architecture lens) in parallel read-only sessions against the branch tip. Findings get folded into the same branch via a follow-up commit, THEN the PR opens. One PR per plan, no `fix/<plan>-loose-ends` split.
-
-R1 used the old "ship then review" timing → required PR #91 follow-up for CI grep gap + `HTTPEndpoint.internal` unsafe default + `make_http_response` helper + doc drift. R2 refined to "review before merge" → 11 findings (2 real behavior bugs: stage-2 probe mis-classification + argv scan subcommand gap) all folded into the same PR before it merged. Save the extra commit; catch the bugs earlier in the review loop.
-
-**Every plan without a pre-merge review round is gambling.** Tests catch known failure modes; reviews catch unknown ones. Both R1 and R2 had bugs that passed 4000+ unit tests and would have shipped silently. See [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md) for the full evidence trail and the review prompt templates.
-
-**Why this order was load-bearing (decided 2026-04-12):**
-- At 2026-04-12 the LLM infrastructure was **too broken to use for P2 testing at all.** The 52s retry loop + probe fragility + lack of per-agent observability would have made P2 validation data unreliable and un-attributable ("substrate bug vs. LLM flakiness?"). Running P2 first was considered and rejected.
-- Substrate P2 needs a stable LLM path to validate correctly (for multi-agent stress runs — the 2026-04-14 Stage 3 sweep is single-process and CPU-only, so it didn't need the full LLM path; the multi-agent cross-session-learning 1.0 gate will).
-- Multi-agent P2 runs need per-agent observability (which Plans 1-2 provide via `RequestContext`, and Plan 4 Stage A closed the last gap)
-- Stress test needs typed exceptions to classify failures properly (Plan 2)
-- Plan 4's admin API is where you'd inspect per-agent P2 reward modulation under load
-- Shipping Plans 1-3 alone without Plan 4 means you can't debug concurrent-agent P2 validation effectively
-
-**What actually happened (2026-04-14 retrospective):** the LLM path stabilization + substrate P2 ran in parallel after Plan 3.5 shipped. The single-process P2 sweep didn't need to wait on the combined stress test — it's fast and CPU-only. Multi-agent behavioral convergence (1.0 gate) still needs the full stable LLM path.
+**Historical LLM path interleave timeline** (Plans 1-4, stress phases A-E, 2026-04-12 through 2026-04-14) is preserved in git history. All shipped. Only stress phases B (multi-agent fan-out), C (`llama.cpp --parallel`), and E (fault injection) remain — not version-gating.
 
 ## 1.0 exit criteria
 
-- **Prerequisite waves shipped:** Cleanup Wave (0.2.2), foundations_plan (F0.1–F0.8), simulator_upgrades_plan (S1–S4), P0 fixture-difficulty pilot (fixtures calibrated).
-- **Substrate P1 through P8:** P1 and P2 pass mechanistic criteria. P3a and P3b pass (P3a head-to-head vs TF-IDF gate baseline, P3b with metadata-grep regression check). P3.5 certifies round-trip at scale. P4 passes in 0.3 with minimal real vision and in 0.4 with production vision, beating the OpenCLIP head-to-head gate baseline. P5 passes stress persistence. P6 passes extinction vs LRU head-to-head. **P8 passes minimum-viable sleep replay** — retrieval F1 improves on replayed probes without new input. Every phase passes both unit-sim and system-sim tiers and clears the persistence round-trip contract. Report mean + std across ≥10 seeds (≥20 for P4).
-- **Track B B4 (gates 1.0):** Replanning recovers from induced failures instead of regenerating identical plans; NPCs exhibit distinct, consistent voices in blind A/B sim runs.
-- **Living-doc discipline satisfied:** both [behavioral_convergence_practice.md](behavioral_convergence_practice.md) and [memory_consolidation_practice.md](memory_consolidation_practice.md) have logged at least one experiment entry each by the 1.0 tag. Soft discipline, not a hard gate — but the 1.0 release is the one version where you do enforce it on yourself.
+All originally defined gates are **CLOSED** (2026-04-19). Remaining criteria for 1.0:
+
+- ✅ **Substrate P1 through P4, P6, P8:** All pass. P5 (stress persistence) remains — the final substrate gate.
+- ✅ **B4 replanning:** Treatment 100% vs control 0%, Jaccard 0.894.
+- ✅ **Behavioral convergence:** 41/41 hypotheses, all 3 tiers.
+- ✅ **Generalizable embodiment (E0):** `--embodiment` works with `--sim` across all modes.
+- ✅ **Living-doc discipline:** Both practice docs have experiment entries.
+- **P5 stress persistence:** 10k+ node persistence stress test. The final hard gate.
+- **API/CLI surface review:** Sweep the public API and CLI for edge cases and missed opportunities. Not a hard gate — a quality bar.
+- **Agent memory transfer docs:** Universal onboarding document set for knowledge continuity across agents.
+- **0.7 feature completion:** E2-E3 (foundry with real LLM), B3 (Acting Coach), F3-F5 (Agent Factory).
 
 ## Rules for this directory
 
