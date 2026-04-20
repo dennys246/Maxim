@@ -349,12 +349,16 @@ The **ComponentIndex** is the critical decision point. It prevents unnecessary i
 - Wire into agent loop: post-state-update hook → entity extraction → trigger check → design if needed
   - Review found no clean perception hook exists. Use post-`state.update()` processing of `state.data` rather than intercepting perception output (cleaner than coupling to `SimulationAdapter`).
 
-**I3 — Scene-scoped tool window + hot-reload (~250 LOC)**
-- `ToolRegistry.register_scene_tools(entity_ref, tools)` — registers tools with scene scope tag
+**I3 — Scene-scoped tool window + hot-reload (SHIPPED, ~250 LOC)**
+- `ToolRegistry.register_scene_tools(tools, scene_id)` — registers tools with scene scope tag, auto-evicts oldest scene if cap exceeded
 - `ToolRegistry.deactivate_scene(scene_id)` — deactivates (not removes) tools from a prior scene
-- Active tool cap: ~15-20 tools. When cap is reached, oldest scene's tools deactivate first.
-- `build_tools_section` respects active/inactive status — only active tools appear in prompt
+- `ToolRegistry.activate_scene(scene_id)` — re-activates a prior scene's tools, enforces cap
+- Active tool cap: 20 scene tools (core tools exempt). When cap is reached, oldest scene's tools deactivate first.
+- `list()` returns only active tools; `list_all()` for full inventory. Prompt builder automatically respects this via `LoopController.get_all_tools()` → `request.available_tools`.
+- `Executor.execute()` gates on `is_tool_active()` — deactivated scene tools return a descriptive error.
+- `register_entity_tools` and `deregister_entity_tools` use `list_all()` for name collision detection and cleanup across all tools.
 - **Invariant:** Tools are deactivated by scene transition, never deleted mid-session. Deactivated tools can be re-activated if the agent returns to a scene.
+- 33 tests across 8 test classes.
 
 #### Deferred to 0.8
 
@@ -453,7 +457,7 @@ Track 3: Imagination (0.7 scope) ───────────────�
 ### I1-I3
 - **Imagination trigger uses `ComponentIndex.find()`, not raw `ComponentRegistry.has()`.** Alias hits and embedding matches (cosine >= 0.65) prevent unnecessary imagination. This is the primary throttle that makes imagination cheaper as the library grows.
 - Imagined entities are ephemeral (session-scoped overlay, separate from persistent `_index`). On registration, `ComponentIndex.add()` is called so the entity is discoverable within the same session.
-- Scene-scoped tool window: ~15-20 active tools max, deactivation by scene transition (not deletion)
+- **Scene-scoped tool window (I3 SHIPPED):** `ToolRegistry` now tracks per-tool scene metadata (`_SceneMeta`: scene_id, registered_at, active). `list()` returns only active tools (backwards compatible — core tools are always active). `list_all()` for full inventory. Active tool cap (default 20, scene tools only — core tools exempt) auto-deactivates oldest scene on overflow. `activate_scene()` enforces the cap symmetrically. `Executor.execute()` gates on `is_tool_active()` — deactivated scene tools return a descriptive error, not a silent dispatch. `deregister_entity_tools` uses `list_all()` so deactivated tools can be found. `register_entity_tools` uses `list_all()` for name collision detection across all tools (active + deactivated). 33 tests across 8 test classes (registration, deactivation, reactivation with cap enforcement, cap eviction, executor gate, thread safety, prompt builder integration, full lifecycle).
 - Imagination is energy-gated AND DN arousal-gated
 - Quick validation only for real-time; gauntlet is 0.8 opt-in
 - Episodes + causal links carry `imagined=True` provenance; decayed 50% on entity discard

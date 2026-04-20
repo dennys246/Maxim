@@ -221,7 +221,13 @@ Narrative tools                say, think, examine (sim-only)
         |
 Robot tools DEREGISTERED       focus_interests, track_target, move (no live robot)
         |
+Scene-scoped activation (0.7+) register_scene_tools / deactivate_scene / activate_scene
+        |                       Cap: 20 active scene tools (core tools exempt)
+        |                       Auto-evicts oldest scene on overflow
+        |
 Mode filtering                 active mode: all tools visible (no filter)
+        |
+registry.list()                Returns ACTIVE tools only (deactivated scene tools excluded)
         |
 Prompt builder                 TOOL_DESCRIPTIONS dict OR dynamic Tool.description
         |
@@ -333,6 +339,7 @@ Tool.execute()                 Runs the tool, returns ToolOutput
     <li>Add to <code>TOOL_DESCRIPTIONS</code> (<code>modes/definitions.py</code>) with description, params, example, and followup_type</li>
     <li>Add to the AUT's <code>allowed_tools</code> whitelist (<code>simulation/orchestrator.py</code>) if it should be usable in simulation</li>
     <li>If it uses JSON Schema <code>input_schema</code>, verify <code>_validate_input()</code> handles it (tools/base.py detects both formats)</li>
+    <li><strong>(0.7+) Scene-scoped tools:</strong> For tools tied to an entity/scene, use <code>registry.register_scene_tools(tools, scene_id="...")</code> instead of <code>register()</code>. Scene tools are deactivated on scene transition (not deleted) and can be re-activated. The executor gates on active status &mdash; deactivated tools return a descriptive error.</li>
 </ol>
 
 <div class="warning">

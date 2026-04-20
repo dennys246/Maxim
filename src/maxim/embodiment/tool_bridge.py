@@ -242,7 +242,7 @@ def generate_tools_for_entity(
     list[Tool]
         All generated tools (also registered in *registry*).
     """
-    existing: set[str] = set(registry.list())
+    existing: set[str] = set(registry.list_all())
     tools: list[Tool] = []
 
     for ent in entity.walk():
@@ -304,7 +304,7 @@ def deregister_entity_tools(
     Returns the number of tools removed.
     """
     count = 0
-    known = set(registry.list())
+    known = set(registry.list_all())
     for ent in entity.walk():
         prefixes = [
             f"sense_{ent.name}",

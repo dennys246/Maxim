@@ -116,6 +116,16 @@ The doctor output groups same-category matches first (so a typo in `weapons/X` s
 
 `--embodiment` works with `--sim` (all modes: generative, DM, agent, interactive). The sim orchestrator threads `entity_ref` to the AUT's `build_executor`, which instantiates the entity, creates an `Embodiment`, and registers affordance tools. The full pain cascade (SEM affordance → embodiment_failures → ToolPainBridge → NAc) operates in sim mode. For DM-campaign YAMLs, you can also set `component: <ref>` in the encounter spec — the DM runtime loads components per-scene via its own path.
 
+#### Scene-scoped tool management (0.7+)
+
+In long campaigns where multiple entities appear and disappear, affordance tools are managed via **scene-scoped activation**. When the agent transitions to a new scene, the previous scene's tools are deactivated (hidden from the LLM prompt) but not deleted — if the agent returns to that scene, the tools are re-activated instantly. An active tool cap (default: 20 scene tools, core tools exempt) auto-evicts the oldest scene's tools when the prompt would overflow.
+
+- Scene tools are registered via `registry.register_scene_tools(tools, scene_id="arena")`.
+- Deactivated tools remain in the registry and can be re-activated with `registry.activate_scene("arena")`.
+- The executor gates on active status — deactivated tools cannot execute, even if the LLM remembers them.
+
+See [docs/user/tools.md](user/tools.md) for the full API.
+
 #### Constraints
 
 - Only one entity can be loaded via the flag. Multi-entity bodies (e.g., a full robot arm with child entities) are loaded the old way via `Embodiment(spec.root_entity)` in code — see step 2 above.
