@@ -425,22 +425,27 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functi
 
 ## Active initiatives
 
-See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.3.0 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
+See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.7.0 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
 
-**Recently shipped (2026-04-17):**
-- Valence annotation Stages 1-3 — Episode.valence, Edge.metadata["valence"], spreading_activation(propagate_valence), retrieve_on_cue(include_valence). 26 tests.
-- SEM Learning Loop (5 stages) — Cerebellum activation in BioStack, distribute_reward wiring, success reactions, pain spike episode boundary. PoC: 11/11 + 13/13.
-- Behavioral convergence wiring (4 stages) — valence in PromptAssembler, observe_episode_event in agent loop, energy→Reaction bridge, food/water/poison SEM specs.
-- Experiment 1: Cross-session affective memory (11/11 PASS). Experiment 2: Energy-driven consumable learning (13/13 PASS).
-- Experiment 3: LLM acts on bio-system learning (12/12 PASS, Tier 2). 10/10 experienced vs 0/10 fresh.
-- Experiment 4: Organic LLM learning (5/5 PASS, Tier 3). Teal rate: 0% -> 25% -> 100%. Fresh control DIED. All 3 testing tiers PASS; 41/41 hypotheses confirmed.
-- **Version bump to 0.3.0.** Cross-session learning without fine-tuning demonstrated across all tiers.
+**Recently shipped (2026-04-20):**
+- **0.7 Feature Completion** — Self-generating simulations. All tracks landed:
+  - R0 Prerequisites: ComponentRegistry thread safety, sim-mode consolidation, TOOL_ALIASES lock
+  - B3.1 Acting Coach: config + prompt section with bio-system modulation (NAc caution, pain anticipation, cerebellum predictions)
+  - F3-F5 Agent Factory: sim orchestrator + Reachy + headless API migrated to `create_full_agent`
+  - E2 Real LLM: foundry wired to real LLM with entity context injection + synonym generation
+  - E2.5 ComponentIndex: two-layer semantic discovery (alias hash O(1) + embedding cosine similarity)
+  - E3 Auto-Curation: `--auto-curate` CLI for pre-sim coverage gap filling via foundry
+  - I1 Imagination Trigger: entity extraction → ComponentIndex lookup → DN arousal gate → design dispatch
+  - I2 Real-time Design: ImaginationDesigner with quick validation + synonym generation
+  - I3 Scene-scoped Tools: tool window with cap (20 scene tools), deactivation, executor gate
+  - Integration wiring: ImaginationTrigger constructed in orchestrator AUT path, session-end cleanup (imagined link decay + ephemeral entity clearing)
+- **Version bump to 0.7.0.** Experiment: [docs/experiments/07_imagination_wiring.md](docs/experiments/07_imagination_wiring.md).
+
+**Previously shipped (2026-04-17):**
+- Valence annotation, SEM Learning Loop, Behavioral convergence wiring, Experiments 1-4 (41/41 hypotheses confirmed). Version 0.3.0.
 
 **Previously shipped (2026-04-11/12):**
-- Foundations wave F0.1–F0.8 — all landed. Archived.
-- Reaction abstraction Phases 1–4 — Percept/Reaction dual-surface architecture. Archived. Phase 5 folds into substrate P2.
-- Cleanup wave C1–C4, Peer/leader flexibility P1–P9 — all archived.
-- Simulator upgrades S1–S4 **SHIPPED** (2026-04-12). Archived.
+- Foundations wave F0.1–F0.8, Reaction abstraction Phases 1–4, Cleanup wave C1–C4, Peer/leader flexibility P1–P9, Simulator upgrades S1–S4. All archived.
 
 **Gating 1.0** (three focused substrate plans, split from the master plan):
 - [substrate_p0_pilot.md](docs/plans/substrate_p0_pilot.md) — **COMPLETE** (2026-04-12). Baseline pinned at 78.5%. Results: [docs/experiments/p0_baseline_sweep.md](docs/experiments/p0_baseline_sweep.md).

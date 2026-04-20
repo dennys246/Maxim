@@ -414,6 +414,9 @@ class ImaginationTrigger:
         # same phrase when AUT + orchestrator process simultaneously.
         self._designing: set[str] = set()
 
+        # Track imagined entity refs for provenance tagging at session end
+        self._imagined_refs: set[str] = set()
+
         # Stats
         self._phrases_extracted = 0
         self._cache_hits = 0
@@ -432,6 +435,16 @@ class ImaginationTrigger:
     @property
     def cache(self) -> ImaginationCache:
         return self._cache
+
+    @property
+    def imagined_refs(self) -> frozenset[str]:
+        """Return the set of imagined entity refs created this session.
+
+        Used at session end to retroactively tag CausalLinks and Episodes
+        involving these entities with ``imagined=True`` provenance.
+        """
+        with self._lock:
+            return frozenset(self._imagined_refs)
 
     def process_percept(
         self,
@@ -588,6 +601,7 @@ class ImaginationTrigger:
 
         with self._lock:
             self._designs_succeeded += 1
+            self._imagined_refs.add(ref)
 
         log.info("Imagination: designed new entity '%s' from phrase '%s'", ref, phrase)
         return result
