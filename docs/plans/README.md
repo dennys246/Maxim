@@ -61,7 +61,7 @@ Design work is preserved in [deferred/](deferred/). Each plan has an explicit "r
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — **needs heavy refinement.** Two-agent stimulus pattern: Baby Maxim is the AUT with frozen LLM and evolving substrate; Mother NPC is a separate agent with her own LLM that produces realistic, varied percepts Baby learns from. Interaction is percepts only, zero information leak beyond that surface. Gives behavioral convergence experiments scalable stimulus variety without breaking the "no fine-tuning" research claim. Revive when [behavioral_convergence_practice.md](behavioral_convergence_practice.md) has ≥2 successful experiments + 1 blocked-on-variety. Isolation leak vector list in the plan is a starting point, not a contract — heavy refinement needed at revive time.
 - [deferred/pecking_order_graph_plan.md](deferred/pecking_order_graph_plan.md) — unified hierarchy DAG
 - [deferred/mother_maxim_plan.md](deferred/mother_maxim_plan.md) — persistent collective memory
-- ~~[deferred/asset_foundry_plan.md](deferred/asset_foundry_plan.md)~~ — **PROMOTED to 0.6** (pre-1.0). Sim path currently lacks SEM affordance tools — the AUT can't interact with entities in simulation. Generalizable embodiment is a 1.0 prerequisite. See 0.6 in the version table.
+- ~~[deferred/asset_foundry_plan.md](deferred/asset_foundry_plan.md)~~ — **PROMOTED to 0.6** (pre-1.0). **Stage 0 (sim affordance gap) ✅ SHIPPED** (2026-04-19). `--embodiment` now works with `--sim` across all modes. Stages E1-E3 (LLM-driven component generation + gauntlet + curation) remain.
 - [deferred/dungeon_master_extensions.md](deferred/dungeon_master_extensions.md) — DM post-MVP features
 
 ## Archive

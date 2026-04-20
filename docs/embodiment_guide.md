@@ -112,9 +112,12 @@ $ maxim doctor --embodiment weapons/nonexistent_sword
 
 The doctor output groups same-category matches first (so a typo in `weapons/X` surfaces other weapons before unrelated categories) and caps the per-category preview at 20 entries.
 
-#### Constraints (current)
+#### Sim mode support (0.6+)
 
-- `--embodiment` is currently **mutually exclusive with `--sim`**. Sim-mode SEM body wiring is tracked under [agent_factory_canonicalization.md](plans/agent_factory_canonicalization.md) Stage F1+ (the original Stage 2c of the now-archived [sem_execution_hook.md](plans/archive/sem_execution_hook.md) was structurally absorbed by [executor_bootstrap_unification.md](plans/executor_bootstrap_unification.md)). For DM-campaign YAMLs, set `component: <ref>` in the encounter spec instead — the DM runtime loads components per-scene via its own path.
+`--embodiment` works with `--sim` (all modes: generative, DM, agent, interactive). The sim orchestrator threads `entity_ref` to the AUT's `build_executor`, which instantiates the entity, creates an `Embodiment`, and registers affordance tools. The full pain cascade (SEM affordance → embodiment_failures → ToolPainBridge → NAc) operates in sim mode. For DM-campaign YAMLs, you can also set `component: <ref>` in the encounter spec — the DM runtime loads components per-scene via its own path.
+
+#### Constraints
+
 - Only one entity can be loaded via the flag. Multi-entity bodies (e.g., a full robot arm with child entities) are loaded the old way via `Embodiment(spec.root_entity)` in code — see step 2 above.
 - The bridge attaches to the unwrapped inner `Executor`. If you wrap the executor with `FearGatedExecutor` or similar, do it AFTER `build_executor` returns. This is structurally enforced by the `build_executor` signature contract — see [docs/plans/executor_bootstrap_unification.md](plans/executor_bootstrap_unification.md).
 
