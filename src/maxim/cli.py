@@ -1802,7 +1802,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             max_turns=200,
                             response_timeout=120.0,
                             debug=_sim_debug,
-                            entity_ref=getattr(args, "embodiment", None),
+                            entity_ref=_sim_entity_ref,
                         )
                         sys.exit(0 if result.finish_reason != "error" else 1)
                     finally:

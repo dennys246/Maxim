@@ -62,6 +62,13 @@ class SimToolRegistry:
         """Scene-scoped API compat — all orchestrator tools are always active."""
         return tool_name in self._tools
 
+    def find_similar(self, name: str, limit: int = 3) -> list[str]:
+        """Executor error-recovery compat — suggest similar tool names."""
+        # Simple substring match (SimToolRegistry.get never raises KeyError,
+        # so this path is unreachable in practice, but robustness matters).
+        matches = [t for t in self._tools if name.lower() in t.lower() or t.lower() in name.lower()]
+        return matches[:limit]
+
 
 class _FallbackRedirectTool(Tool):
     """Returned for any unknown tool name — rejects with available tool list."""
