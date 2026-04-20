@@ -50,6 +50,18 @@ class SimToolRegistry:
     def list(self) -> list[str]:
         return list(self._tools.keys())
 
+    def list_all(self) -> list[str]:
+        """Scene-scoped API compat — SimToolRegistry has no deactivated tools."""
+        return self.list()
+
+    def get_tool_scene(self, tool_name: str) -> str | None:
+        """Scene-scoped API compat — orchestrator tools have no scene."""
+        return None
+
+    def is_tool_active(self, tool_name: str) -> bool:
+        """Scene-scoped API compat — all orchestrator tools are always active."""
+        return tool_name in self._tools
+
 
 class _FallbackRedirectTool(Tool):
     """Returned for any unknown tool name — rejects with available tool list."""
