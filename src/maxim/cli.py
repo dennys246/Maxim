@@ -965,6 +965,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         except Exception as _disp_exc:
             logging.getLogger("maxim").warning("MaximDisplay unavailable: %s", _disp_exc)
 
+        # ── E0: extract entity_ref for sim embodiment ──────────────────
+        # No _is_sim_mode gate — all sim paths (generative, DM, agent,
+        # interactive) support entity_ref. The enclosing `if sim_path`
+        # block already gates non-sim paths. Pre-merge review cross-
+        # confirmed that the _is_sim_mode gate silently dropped
+        # --embodiment for the primary (generative/DM) use cases.
+        _sim_entity_ref = getattr(args, "embodiment", None)
+
         # ── Generative campaign mode (new default for goal strings) ──
         if _is_goal_string and not _is_legacy_agent:
             goal = _explicit_goal or _sim_val
@@ -1005,6 +1013,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     sandbox_network=getattr(args, "sandbox_network", "none"),
                     aut_model=getattr(args, "aut_model", None),
                     max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+                    entity_ref=_sim_entity_ref,
                 )
                 sys.exit(0 if result.finish_reason != "error" else 1)
 
@@ -1030,6 +1039,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sandbox_network=getattr(args, "sandbox_network", "none"),
                 aut_model=getattr(args, "aut_model", None),
                 max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+                entity_ref=_sim_entity_ref,
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 
@@ -1141,6 +1151,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             sandbox_backend=getattr(args, "sandbox_backend", "auto"),
                             dm_campaign=dm_campaign,
                             max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+                            entity_ref=_sim_entity_ref,
                         )
                         sys.exit(0 if result.finish_reason != "error" else 1)
                 except Exception:
@@ -1160,6 +1171,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 generative=True,  # Use generative campaign runner
                 arc_yaml=getattr(args, "arc", None),
                 max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
+                entity_ref=_sim_entity_ref,
             )
             sys.exit(0 if result.finish_reason != "error" else 1)
 
@@ -1419,19 +1431,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 # internet_policy, gateway, prompt_handler) ──
                 _is_sim_mode = getattr(args, "sim", None) is not None
 
-                if _is_sim_mode and getattr(args, "embodiment", None):
-                    # Hard error — "warn and ignore" was cross-confirmed
-                    # as the wrong UX in the Stage 2 pre-merge review.
-                    print(
-                        "error: --embodiment is not yet supported with --sim.\n"
-                        "  For DM-campaign YAMLs, set `component: <ref>` in the\n"
-                        "  encounter spec instead. The standalone --embodiment\n"
-                        "  flag for sim modes is tracked in\n"
-                        "  docs/plans/sem_execution_hook.md Stage 2c.",
-                        file=sys.stderr,
-                    )
-                    sys.exit(2)
-
                 _operational_mode = "active" if _is_sim_mode else "passive"
                 try:
                     from maxim.interactive.prompts import create_handler
@@ -1662,6 +1661,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                             max_turns=200,
                             response_timeout=120.0,
                             debug=_sim_debug,
+                            entity_ref=getattr(args, "embodiment", None),
                         )
                         sys.exit(0 if result.finish_reason != "error" else 1)
                     finally:

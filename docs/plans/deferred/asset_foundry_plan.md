@@ -1,14 +1,15 @@
 # Asset Foundry Plan
 
-> **Status:** PROMOTED to pre-1.0 (0.6 target). Design complete, not started.
+> **Status:** PROMOTED to pre-1.0 (0.6 target). Stage 0 (sim affordance gap) SHIPPED.
 >
-> **Why promoted (2026-04-18):** The 0.3.2 prompt system review revealed that SEM affordance tools are NOT generated in simulation mode — `entity_ref` is not passed to `build_executor()` for the AUT, so the sim path and robot path have fundamentally different tool surfaces. An agent in simulation cannot interact with SEM entities (no sword to swing, no item to pick up). This means DM campaigns with entity interactions, embodiment experiments, and the "only difference is where percepts come from" contract are all broken in sim. Generalizable embodiment — making `entity_ref` work in sim with full pain-cascade learning — is a 1.0 prerequisite, not a post-1.0 nice-to-have. The Asset Foundry (automated component generation) builds on this foundation.
+> **Why promoted (2026-04-18):** The 0.3.2 prompt system review revealed that SEM affordance tools were NOT generated in simulation mode. Generalizable embodiment is a 1.0 prerequisite.
 >
-> **Prerequisite work (0.6 Stage 0):** Before the full foundry pipeline, fix the sim affordance gap:
-> 1. Wire `entity_ref` through simulation orchestrator → `build_executor(entity_ref=..., component_registry=...)`
-> 2. Generate affordance tools for the AUT in sim mode (same path as Reachy robot mode)
-> 3. Verify pain-cascade learning works for sim entities (SEM → PainBus → NAc → causal links)
-> 4. Test with existing components (e.g., `weapons/rusty_sword` in a DM campaign)
+> **Prerequisite work (0.6 Stage 0) — ✅ SHIPPED (2026-04-19):**
+> 1. ✅ Wire `entity_ref` through simulation orchestrator → `build_executor(entity_ref=..., component_registry=...)`
+> 2. ✅ Generate affordance tools for the AUT in sim mode (same path as CLI non-sim mode)
+> 3. ✅ Verify pain-cascade learning works for sim entities (SEM → PainBus → NAc → causal links)
+> 4. ✅ Test with existing components (`weapons/rusty_sword`). 10 integration tests in `tests/integration/test_sim_embodiment.py`.
+> 5. ✅ PoC simulation: `maxim --sim "test sword combat" --embodiment weapons/rusty_sword --interactive false`. Results: [experiments/e0_sim_embodiment_poc.md](../../experiments/e0_sim_embodiment_poc.md).
 >
 > **Original revive trigger (now superseded):** Manual SEM component authoring becomes a demonstrable bottleneck.
 

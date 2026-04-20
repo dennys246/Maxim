@@ -14,7 +14,7 @@
 - **Stage 1 ✅ SHIPPED** — PR #107, commit `6070241`. Direct-attribution for tool-invoked embodiment pain via the new `ToolOutput.side_effects` typed channel + `ToolPainBridge.record_tool_embodiment_failure` API + `_on_embodiment_pain` guard. See [project_sem_execution_hook_stage1.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_sem_execution_hook_stage1.md).
 - **Stage 2 ✅ SHIPPED** — PR #110, commit `99057a1` (merged as `efd0a38`). `runtime/embodiment_bootstrap.bootstrap_embodiment_and_pain_bridge` shared helper + `--embodiment <REF>` CLI flag + Reachy refactor. **Also closed a pre-existing production bug** where `maxim --llm X` had NEVER constructed a `ToolPainBridge` (silent no-op on the most common agent entry point). See [project_sem_execution_hook_stage2.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_sem_execution_hook_stage2.md).
 - **Stage 2b 🚧 DEFERRED** — `AgentFactory` / `AgentPool` / `maxim.create.agent()` embodiment wiring. See the "Stage 2b" section below.
-- **Stage 2c 🚧 DEFERRED** — sim orchestrator + `run_interactive_sim` migration to the helper. See the "Stage 2c" section below. Currently `--embodiment` + `--sim` is a hard `sys.exit(2)` error until this lands.
+- **Stage 2c ✅ SHIPPED** (0.6 E0, 2026-04-19) — sim orchestrator wires `entity_ref` to `build_executor` for the AUT. `--embodiment` + `--sim` works across all sim modes (generative, DM, agent, interactive). Hard error removed. 10 integration tests in `tests/integration/test_sim_embodiment.py`.
 - **Stage 3 ⏳ PENDING** — end-to-end production test on real `weapons/rusty_sword` via the `AgentFactory` path (not the PoC harness). Needs Stage 2b to construct the executor-per-turn wiring first, OR can use the CLI path directly.
 - **Stage 4 ⏳ PENDING** — `maxim doctor` check for missing `--embodiment` refs + CLI help text + `docs/embodiment_guide.md` section + smoke-run log verification.
 
@@ -121,17 +121,15 @@ def bootstrap_embodiment_and_pain_bridge(
 - **`AgentFactory.create_agent` / `maxim.create.agent()` / `maxim.load.agent()` / `AgentPool` embodiment wiring.** These use `AgentInstance.entity` without ever constructing an `Executor` in the factory — the executor lifetime is per-turn in `AgentPool`, not per-session. Wiring the helper here requires rethinking the executor lifecycle and is deferred to **Stage 2b**. The Stage 2 helper is designed so Stage 2b can call it from inside `AgentPool.run_turn` (or wherever the per-turn executor is constructed) without modification.
 - **Sim-mode `ToolPainBridge` wiring.** The Stage 2 pre-merge review surfaced that both `--sim agent` (via `run_agentic_loop`) and `--sim interactive` (via `run_interactive_sim`) construct a `PainBus` but NO `ToolPainBridge`. This is a parallel pre-existing gap that matches the non-sim CLI gap this stage closes. Deferred to **Stage 2c** — migrate `simulation/orchestrator.py` + `simulation/interactive.py` to call the helper, then `--embodiment` can work under `--sim` too. Until then, `--embodiment` + `--sim` is a hard error (`sys.exit(2)`).
 
-### Stage 2c — Sim orchestrator + interactive migration — **SUPERSEDED by `executor_bootstrap_unification.md`**
+### Stage 2c — Sim orchestrator entity_ref wiring — **✅ SHIPPED (0.6 E0, 2026-04-19)**
 
-The original Stage 2c plan was to call the `runtime/embodiment_bootstrap` helper from three more sim paths. Mid-session audit found this was the THIRD instance of the same "forgot to wire the bridge" bug shape — three-times-is-structural per [feedback_structural_enforcement_over_helper_discipline.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_structural_enforcement_over_helper_discipline.md). The fix moved DOWN a layer: `build_executor` now requires an explicit `pain_bus=` keyword arg, the `embodiment_bootstrap` helper is DELETED, and forgetting the bridge is a `TypeError` instead of a silent no-op.
+Shipped as part of 0.6 E0 (generalizable embodiment). The original Stage 2c plan was superseded by `executor_bootstrap_unification.md` which pushed the bridge invariant down into `build_executor`. E0 completed the remaining work:
 
-After [executor_bootstrap_unification.md](executor_bootstrap_unification.md) ships, the original Stage 2c work collapses to:
-- `simulation/orchestrator.py` already migrated as part of the unification PR (`aut_executor` passes `pain_detector=`, `orch_executor` passes `pain_bus=None` explicitly for AUT-isolation reasons documented inline).
-- `simulation/interactive.py` and the `--sim agent` path (which share cli.py's executor) currently pass `pain_bus=None` because they are sim-mode. **The remaining work for true Stage 2c is to give those paths a real PainBus** so `--embodiment` + `--sim` can work end-to-end.
-- Drop the hard error in `cli.py` when `--embodiment` + `--sim` is passed.
-- Regression test: end-to-end sim run with a bundled weapon component.
-
-**Trigger for opening the new (smaller) Stage 2c:** any sim-mode campaign that needs SEM body wiring at the CLI surface, OR a behavioral experiment that needs NAc tool-outcome learning under `--sim agent`. Until then, sim mode runs without a bridge by explicit `pain_bus=None` opt-out at the constructor.
+- `simulation/orchestrator.py` now accepts `entity_ref` parameter and creates a `ComponentRegistry` when set. Passes `entity_ref`, `component_registry`, and `pain_bus=aut_pain_bus` to `build_executor` for the AUT.
+- Hard error in `cli.py` removed; `--embodiment` threaded to all `start_simulation_mode` call sites.
+- When `entity_ref` is set but `aut_nac` is None (bio-stack failed), raises `RuntimeError` instead of silently degrading.
+- 10 integration tests in `tests/integration/test_sim_embodiment.py` covering wiring, preconditions, and pain cascade.
+- Pre-merge two-lens review caught and fixed: `_is_sim_mode` gate that would have silently dropped `--embodiment` for generative/DM paths.
 
 ### Stage 2b — `AgentFactory` / `AgentPool` embodiment wiring — **DEFERRED**
 

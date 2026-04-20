@@ -183,6 +183,7 @@ def start_simulation_mode(
     arc_yaml: str | None = None,
     experiment_log: Any = None,
     fixture_path: str | None = None,
+    entity_ref: str | None = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -197,6 +198,11 @@ def start_simulation_mode(
             heartbeats, lane activity).
         sim_debug: Deprecated alias for ``debug``. Kept so older scripts
             still work — prefer ``debug`` in new code.
+        entity_ref: SEM component reference (e.g., ``"weapons/rusty_sword"``).
+            When set, the AUT's executor loads the entity via
+            ``ComponentRegistry`` and registers affordance tools. Requires
+            ``aut_pain_bus`` (Embodiment publishes through it) and ``aut_nac``
+            (bridge needs it for direct attribution).
 
     Returns:
         SimulationResult with session summary
@@ -929,6 +935,18 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT DefaultNetwork creation failed: %s", e)
 
+    # ── Embodiment (E0 — entity_ref support in sim mode) ───────────────
+    # When entity_ref is set, load a ComponentRegistry so build_executor
+    # can instantiate the entity and register affordance tools. The
+    # pain_bus precondition in build_executor requires a live bus when
+    # entity_ref is set (Embodiment._publish_pain emits through it).
+    aut_component_registry = None
+    if entity_ref is not None:
+        from maxim.embodiment.component_registry import ComponentRegistry
+
+        aut_component_registry = ComponentRegistry()
+        logger.info("AUT ComponentRegistry created for entity_ref=%r", entity_ref)
+
     # ── Executors ────────────────────────────────────────────────────────
     # `build_executor` requires an explicit pain_bus= decision and
     # constructs the ToolPainBridge internally. See
@@ -938,28 +956,49 @@ def start_simulation_mode(
     from maxim.runtime.bootstrap import build_executor
 
     # AUT executor: bridge is constructed for direct attribution
-    # (record_tool_complete / record_tool_embodiment_failure). NO
-    # subscription source — out-of-band pain → NAc is wired separately
-    # via `create_pain_nac_subscriber(aut_nac)` subscribed to
-    # `aut_pain_bus` at line ~622. Routing the bridge through the same
-    # bus would double-subscribe and cause duplicate NAc updates per
-    # pain signal. Pre-C2 fold this required passing a no-op
-    # `PainDetector()` to trick the bridge constructor; C2 made the
-    # bridge gate on `nac is not None` so the workaround is gone.
+    # (record_tool_complete / record_tool_embodiment_failure).
+    #
+    # pain_bus decision:
+    # - entity_ref is None (default): pain_bus=None. Out-of-band
+    #   pain → NAc is handled by create_pain_nac_subscriber on
+    #   aut_pain_bus. No bridge subscription avoids double-recording.
+    # - entity_ref is set: pain_bus=aut_pain_bus. build_executor
+    #   precondition requires a live bus for Embodiment._publish_pain.
+    #   The bridge also subscribes, creating the same latent
+    #   bridge×subscriber double-recording risk documented in
+    #   pain_bus_bridge_subscriber_unification.md — accepted here
+    #   (same risk as CLI non-sim path; correctness is load-bearing
+    #   on the context-similarity mismatch, not on any guard).
+    _aut_executor_pain_bus = aut_pain_bus if entity_ref is not None else None
     if aut_nac is not None:
         aut_executor = build_executor(
             aut_registry,
-            pain_bus=None,
+            pain_bus=_aut_executor_pain_bus,
             nac=aut_nac,
             hippocampus=aut_hippocampus,
             scn=aut_memory_hub.scn if aut_memory_hub else None,
             cerebellum=aut_cerebellum,
+            entity_ref=entity_ref,
+            component_registry=aut_component_registry,
         )
-        logger.info(
-            "AUT ToolPainBridge wired (direct attribution; out-of-band "
-            "pain→NAc via create_pain_nac_subscriber on aut_pain_bus)"
-        )
+        if entity_ref is not None:
+            logger.info(
+                "AUT Embodiment loaded: entity_ref=%r, pain_bus=injected, affordance tools registered",
+                entity_ref,
+            )
+        else:
+            logger.info(
+                "AUT ToolPainBridge wired (direct attribution; out-of-band "
+                "pain→NAc via create_pain_nac_subscriber on aut_pain_bus)"
+            )
     else:
+        if entity_ref is not None:
+            raise RuntimeError(
+                f"entity_ref={entity_ref!r} was requested but the bio-stack "
+                "failed to build (aut_nac is None). Embodiment requires NAc "
+                "for pain attribution. Check earlier log messages for the "
+                "bio-stack construction error."
+            )
         aut_executor = build_executor(aut_registry, pain_bus=None)
 
     # Orchestrator executor: explicit nac=None opt-out (no bridge). The
