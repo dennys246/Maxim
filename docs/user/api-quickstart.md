@@ -89,7 +89,11 @@ state = maxim.introspect("causal")
 
 ```python
 # Blocks until Ctrl+C or goal is completed
+# Bio-learning is ON by default — memories persist to ~/.maxim/sessions/
 maxim.run(model="mistral-7b", goal="explore the environment")
+
+# Disable bio-learning (no persistent memory or causal learning)
+maxim.run(model="mistral-7b", goal="quick test", learning=False)
 ```
 
 ## Error Handling

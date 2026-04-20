@@ -357,12 +357,17 @@ def run(
     robot: str | None = None,
     home_dir: str | None = None,
     verbosity: int = 1,
+    learning: bool = True,
 ) -> None:
     """Run Maxim's agentic cycle.
 
     Bootstraps the full agent pipeline (LLM router, memory systems,
     planning, tools, safety) and enters the main loop.  Blocks until
     the user interrupts (Ctrl+C) or the goal is completed.
+
+    Bio-learning (episodic memory, causal learning, pain attribution)
+    is **enabled by default**.  Memories persist to ``~/.maxim/sessions/``
+    across sessions.  Pass ``learning=False`` to disable.
 
     Args:
         model: LLM profile name (e.g. ``"mistral-7b"``, ``"claude-sonnet"``).
@@ -373,6 +378,9 @@ def run(
             the corresponding package to be installed.
         home_dir: Data/persistence directory (default ``~/.maxim``).
         verbosity: Logging verbosity (0-3).
+        learning: Enable bio-learning (episodic memory, causal learning,
+            pain attribution).  Default ``True``.  Pass ``False`` to run
+            without persistent learning.
 
     Raises:
         maxim.exceptions.ConfigurationError: If the requested model
@@ -433,17 +441,44 @@ def run(
         maxim=None,  # No live robot instance in headless mode
     )
     _inject_pending_tools(tool_registry)
-    # Headless `maxim.create.agent` opts out of PainBus AND DefaultNetwork.
-    # The structural side of both gaps is resolved: the canonical doors
-    # are build_pain_bus (Wave 1) and build_default_network (Wave 2).
-    # When this site eventually opts IN it will call both. The remaining
-    # question is the user-facing API decision: should headless
-    # maxim.create.agent default to bio-learning ON or OFF? That belongs
-    # to agent_factory_canonicalization.md Stage F5 (open question #2).
-    # Until F5 lands, this site stays explicitly opted-out. See
-    # docs/plans/pain_bus_unification.md Gap C and
-    # docs/plans/default_network_unification.md Gaps D+E.
-    executor = build_executor(tool_registry, pain_bus=None)
+
+    # F5: Headless bio-learning via AgentFactory. Bio-learning ON by
+    # default — learning is Maxim's identity. learning=False opts out.
+    _api_instance = None
+    _headless_hippocampus = None
+    _headless_memory_hub = None
+    _headless_pain_bus = None
+    if learning:
+        from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+
+        _api_config = AgentConfig(
+            agent_id="api_agent",
+            role="pc",
+            persistence_dir=os.path.join(effective_home, "sessions"),
+            with_bio_stack=True,
+            with_executor=True,
+            with_pain_bridge=True,
+        )
+        _api_factory = AgentFactory(
+            base_data_dir=os.path.join(effective_home, "sessions"),
+        )
+        _api_instance = _api_factory.create_full_agent(
+            _api_config,
+            tool_registry=tool_registry,
+        )
+        executor = _api_instance.executor
+        _headless_hippocampus = _api_instance.hippocampus
+        _headless_memory_hub = _api_instance.memory_hub
+        _headless_pain_bus = _api_instance.pain_bus
+        if _headless_memory_hub is not None:
+            agent.wire_memory_hub(_headless_memory_hub)
+        logger.info(
+            "Bio-learning enabled — memories persist to %s. Disable with learning=False.",
+            os.path.join(effective_home, "sessions"),
+        )
+    else:
+        executor = build_executor(tool_registry, pain_bus=None)
+
     evaluators = build_evaluators()
 
     autonomy = AutonomyController(
@@ -471,12 +506,24 @@ def run(
             llm_worker=llm_worker,
             evaluators=evaluators,
             stop_event=stop_event,
+            hippocampus=_headless_hippocampus,
+            memory_hub=_headless_memory_hub,
+            pain_bus=_headless_pain_bus,
         )
     except KeyboardInterrupt:
         logger.info("Agent loop interrupted by user.")
     finally:
         stop_event.set()
         llm_worker.stop()
+        # Persist bio-system state on shutdown. shutdown() calls
+        # on_session_end() (consolidation) + hippocampus.save() +
+        # nac.save() + bio_stack.save_cerebellum(). Without save(),
+        # learned memories and causal links are lost on exit.
+        if _api_instance is not None:
+            try:
+                _api_instance.shutdown()
+            except Exception as e:
+                logger.debug("Agent instance shutdown failed: %s", e)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

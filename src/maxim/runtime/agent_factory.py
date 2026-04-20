@@ -57,7 +57,13 @@ class AgentConfig:
     # F2: Full agent construction config (used by create_full_agent)
     with_bio_stack: bool = False  # Construct BioStack (pain_bus + reaction_bus etc.)
     with_executor: bool = False  # Construct Executor via build_executor
-    with_pain_bridge: bool = True  # Wire PainBus to executor (False for sim — sim has its own)
+    with_pain_bridge: bool = True  # Subscribe ToolPainBridge to PainBus for out-of-band pain.
+    # NOTE: bridge CONSTRUCTION is always gated on nac (not pain_bus).
+    # with_pain_bridge only controls SUBSCRIPTION. When True + with_bio_stack=True,
+    # both the bridge and create_pain_nac_subscriber are subscribed to the same
+    # PainBus — correctness is load-bearing on the context-similarity mismatch
+    # (see pain_bus_bridge_subscriber_unification.md). Set False when the agent's
+    # tools don't produce SEM embodiment pain (e.g., orchestrator sim tools).
     with_fear_gate: bool = False  # Wrap executor with FearGatedExecutor
     embodiment_ref: str | None = None  # SEM component ref for embodiment (non-sim only)
 
@@ -293,6 +299,7 @@ class AgentFactory:
         *,
         tool_registry: Any = None,
         pain_bus: Any = None,
+        fear_llm: Any = None,
         auto_load: bool = False,
     ) -> AgentInstance:
         """Create a fully wired agent with bio-stack, executor, and fear gating.
@@ -314,6 +321,10 @@ class AgentFactory:
                 the bus before the rest of the stack).  When provided,
                 ``build_bio_stack`` subscribes standard learners to this
                 bus instead of constructing a new one.
+            fear_llm: LLM router for FearAgent code analysis.  When
+                ``None`` (default), FearAgent uses pattern-matching only.
+                Pass the agent's LLM router for full LLM-powered safety
+                review (sim mode uses this).
             auto_load: Restore persisted state from the agent's
                 persistence directory.
 
@@ -352,6 +363,7 @@ class AgentFactory:
             # _create_agent_skeleton optimization is deferred.
             instance.hippocampus = bio.hippocampus
             instance.nac = bio.nac
+            instance.atl = bio.atl
             instance.memory_hub = bio.memory_hub
 
         # Step 3: Executor (tool execution with ToolPainBridge)
@@ -364,15 +376,19 @@ class AgentFactory:
             from maxim.runtime.bootstrap import build_executor
 
             bio = instance.bio_stack
-            # with_pain_bridge=False for sim mode — sim builds its own
-            # PainBus + executor downstream in the orchestrator.
+            # with_pain_bridge controls whether the ToolPainBridge
+            # subscribes to the PainBus for out-of-band pain signals.
+            # Bridge CONSTRUCTION is always gated on nac (see
+            # build_executor docstring): pass nac even when pain_bus
+            # is None so the bridge exists for direct attribution
+            # (record_tool_complete / record_tool_embodiment_failure).
             _exec_pain_bus = instance.pain_bus if config.with_pain_bridge else None
             executor = build_executor(
                 instance.tool_registry,
                 pain_bus=_exec_pain_bus,
-                nac=instance.nac if _exec_pain_bus is not None else None,
-                hippocampus=instance.hippocampus if _exec_pain_bus is not None else None,
-                scn=bio.scn if bio is not None and _exec_pain_bus is not None else None,
+                nac=instance.nac,
+                hippocampus=instance.hippocampus,
+                scn=bio.scn if bio is not None else None,
                 entity_ref=config.embodiment_ref,
                 component_registry=self._component_registry,
                 cerebellum=bio.cerebellum if bio is not None else None,
@@ -388,12 +404,10 @@ class AgentFactory:
                 from maxim.agents.fear_agent import FearAgent
                 from maxim.runtime.fear_gate import FearGatedExecutor
 
-                # Review note (Exec #2, Arch #5): FearAgent gets llm=None
-                # (pattern-matching only).  The CLI previously passed the
-                # agent's LLM, but the factory doesn't own an LLM router.
-                # Full LLM-powered safety review requires the caller to
-                # pass an LLM via a future `fear_llm` parameter.
-                fear_agent = FearAgent(llm=None)
+                # FearAgent gets the caller's LLM router for code analysis
+                # when fear_llm is provided (sim mode).  Otherwise falls
+                # back to pattern-matching only (headless, NPC).
+                fear_agent = FearAgent(llm=fear_llm)
                 instance.executor = FearGatedExecutor(instance.executor, fear_agent)
             except Exception as e:
                 log.warning("Agent %s: FearGatedExecutor failed: %s", config.agent_id, e)

@@ -466,95 +466,121 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT energy tracking not available: %s", e)
 
-    # Build AUT's full bio-pipeline via build_bio_stack (Wave 3,
-    # biosystem_unification). The pre-built aut_pain_bus is passed in so the
-    # sandbox (which needs the bus early) keeps its reference, and the
-    # standard learners (hippocampus→memory, NAc→causal) are subscribed
-    # here instead of in a separate manual block downstream.
-    aut_bio = None
-    aut_hippocampus = None
-    aut_nac = None
-    aut_memory_hub = None
-    try:
-        from maxim.runtime.bio_stack import build_bio_stack
+    # ── AUT agent construction via AgentFactory (F3 migration) ─────────
+    # Replaces ~90 lines of hand-rolled bio-stack + cerebellum construction.
+    # The factory composes build_bio_stack (bio-pipeline) + build_executor
+    # (tool execution + ToolPainBridge) + optional FearGatedExecutor into a
+    # single create_full_agent call. Sim-specific wiring (pain layers,
+    # DefaultNetwork, tracers, introspection tools) stays below.
+    #
+    # ComponentRegistry must be created before the factory call so
+    # build_executor can instantiate the entity and register affordance tools.
+    aut_component_registry = None
+    if entity_ref is not None:
+        from maxim.embodiment.component_registry import ComponentRegistry
 
-        aut_bio = build_bio_stack(pain_bus=aut_pain_bus)
-        aut_hippocampus = aut_bio.hippocampus
-        aut_nac = aut_bio.nac
-        aut_memory_hub = aut_bio.memory_hub
+        aut_component_registry = ComponentRegistry()
+        logger.info("AUT ComponentRegistry created for entity_ref=%r", entity_ref)
+
+    from maxim.runtime.agent_factory import AgentConfig, AgentFactory
+
+    # pain_bus decision for executor subscription:
+    # - entity_ref is None: with_pain_bridge=False → pain_bus not passed to
+    #   executor. Out-of-band pain→NAc is handled by create_pain_nac_subscriber
+    #   on aut_pain_bus. Bridge still constructed for direct attribution
+    #   (record_tool_complete / record_tool_embodiment_failure).
+    # - entity_ref is set: with_pain_bridge=True → pain_bus passed to executor.
+    #   build_executor precondition requires a live bus for Embodiment._publish_pain.
+    # with_fear_gate=False — sim wraps FearGatedExecutor AFTER pain
+    # layers (PainInterceptor + AnticipatoryPain) so the fear gate is
+    # outermost. The factory wraps fear gate directly on the executor
+    # which would put it under the pain layers (wrong order).
+    _aut_config = AgentConfig(
+        agent_id="sim_aut",
+        role="pc",
+        persistence_dir=str(sim_tmpdir),
+        with_bio_stack=True,
+        with_executor=True,
+        with_pain_bridge=entity_ref is not None,
+        with_fear_gate=False,
+        embodiment_ref=entity_ref,
+    )
+    _aut_factory = AgentFactory(
+        component_registry=aut_component_registry,
+        base_data_dir=sim_tmpdir,
+    )
+    _aut_instance = _aut_factory.create_full_agent(
+        _aut_config,
+        tool_registry=aut_registry,
+        pain_bus=aut_pain_bus,
+        fear_llm=llm_router,
+    )
+
+    # Extract bio-system references for downstream sim-specific wiring.
+    aut_hippocampus = _aut_instance.hippocampus
+    aut_nac = _aut_instance.nac
+    aut_memory_hub = _aut_instance.memory_hub
+    aut_executor = _aut_instance.executor
+
+    if aut_memory_hub is not None:
         aut_agent.wire_memory_hub(aut_memory_hub)
 
-        # Restore AUT state from previous session if resuming
-        if resume_session:
-            from maxim.utils.paths import sim_reports as _sim_reports_dir
+    if entity_ref is not None and _aut_instance.embodiment is not None:
+        logger.info(
+            "AUT Embodiment loaded: entity_ref=%r, pain_bus=injected, affordance tools registered",
+            entity_ref,
+        )
 
-            prev_dir = _sim_reports_dir() / resume_session
-            hippo_path = prev_dir / "aut_hippocampus.json"
-            nac_path = prev_dir / "aut_nac.json"
-            if hippo_path.exists():
-                try:
-                    aut_hippocampus.load(str(hippo_path))
-                    logger.info("Restored AUT hippocampus from %s (%d memories)", hippo_path, len(aut_hippocampus))
-                except Exception as e:
-                    logger.debug("Failed to restore AUT hippocampus: %s", e)
-            if nac_path.exists():
-                try:
-                    aut_nac.load(str(nac_path))
-                    nac_links = sum(len(v) for v in aut_nac._links.values())
-                    logger.info("Restored AUT NAc from %s (%d links)", nac_path, nac_links)
-                except Exception as e:
-                    logger.debug("Failed to restore AUT NAc: %s", e)
+    # Restore AUT state from previous session if resuming
+    if resume_session and (aut_hippocampus is not None or aut_nac is not None):
+        from maxim.utils.paths import sim_reports as _sim_reports_dir
 
-        systems = ["hippocampus", "NAc", "SCN", "EC"]
-        if aut_bio.atl is not None:
-            systems.append("ATL")
-        if aut_bio.angular_gyrus is not None:
-            systems.append("AngularGyrus")
-        logger.info("AUT BioStack wired (%s)", " + ".join(systems))
-
-        # Attach bio-system tracers based on --debug flags / env vars
-        def _env_trace(var: str) -> bool:
-            return os.environ.get(var, "").strip().lower() in ("1", "true", "t", "yes", "y", "on")
-
-        if _env_trace("MAXIM_HIPPO_TRACE") or debug:
+        prev_dir = _sim_reports_dir() / resume_session
+        hippo_path = prev_dir / "aut_hippocampus.json"
+        nac_path = prev_dir / "aut_nac.json"
+        if aut_hippocampus is not None and hippo_path.exists():
             try:
-                from maxim.memory.hippo_tracer import HippocampusTracer
-
-                HippocampusTracer(aut_hippocampus)
+                aut_hippocampus.load(str(hippo_path))
+                logger.info("Restored AUT hippocampus from %s (%d memories)", hippo_path, len(aut_hippocampus))
             except Exception as e:
-                logger.debug("Hippo tracer not available: %s", e)
-
-        if _env_trace("MAXIM_NAC_TRACE") or debug:
+                logger.debug("Failed to restore AUT hippocampus: %s", e)
+        if aut_nac is not None and nac_path.exists():
             try:
-                from maxim.decisions.nac_tracer import NacTracer
-
-                NacTracer(aut_nac)
+                aut_nac.load(str(nac_path))
+                nac_links = sum(len(v) for v in aut_nac._links.values())
+                logger.info("Restored AUT NAc from %s (%d links)", nac_path, nac_links)
             except Exception as e:
-                logger.debug("NAc tracer not available: %s", e)
+                logger.debug("Failed to restore AUT NAc: %s", e)
 
-        if _env_trace("MAXIM_ATL_TRACE") or debug:
-            try:
-                from maxim.memory.atl_tracer import ATLTracer
+    # Attach bio-system tracers based on --debug flags / env vars
+    def _env_trace(var: str) -> bool:
+        return os.environ.get(var, "").strip().lower() in ("1", "true", "t", "yes", "y", "on")
 
-                atl = getattr(aut_memory_hub, "_atl", None) or getattr(aut_memory_hub, "atl", None)
-                if atl is not None:
-                    ATLTracer(atl)
-            except Exception as e:
-                logger.debug("ATL tracer not available: %s", e)
-    except Exception as e:
-        logger.debug("AUT memory not available: %s", e)
+    if aut_hippocampus is not None and (_env_trace("MAXIM_HIPPO_TRACE") or debug):
+        try:
+            from maxim.memory.hippo_tracer import HippocampusTracer
 
-    # ── Cerebellum (forward models + motor learning) ────────────────────
-    aut_cerebellum = None
-    try:
-        from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
+            HippocampusTracer(aut_hippocampus)
+        except Exception as e:
+            logger.debug("Hippo tracer not available: %s", e)
 
-        aut_cerebellum = Cerebellum(config=CerebellumConfig())
-        if aut_memory_hub is not None:
-            aut_memory_hub.cerebellum = aut_cerebellum
-        logger.info("AUT Cerebellum initialized (forward models + motor programs)")
-    except Exception as e:
-        logger.debug("AUT Cerebellum not available: %s", e)
+    if aut_nac is not None and (_env_trace("MAXIM_NAC_TRACE") or debug):
+        try:
+            from maxim.decisions.nac_tracer import NacTracer
+
+            NacTracer(aut_nac)
+        except Exception as e:
+            logger.debug("NAc tracer not available: %s", e)
+
+    if aut_memory_hub is not None and (_env_trace("MAXIM_ATL_TRACE") or debug):
+        try:
+            from maxim.memory.atl_tracer import ATLTracer
+
+            atl = getattr(aut_memory_hub, "_atl", None) or getattr(aut_memory_hub, "atl", None)
+            if atl is not None:
+                ATLTracer(atl)
+        except Exception as e:
+            logger.debug("ATL tracer not available: %s", e)
 
     # --- AUT introspection tools ---
     # Give the AUT access to its own cognitive subsystems so it can
@@ -705,21 +731,8 @@ def start_simulation_mode(
     orch_memory = build_memory()
     orch_decision_engine = build_decision_engine()
 
-    # Phase 3: Orchestrator memory (hippocampus + NAc) for cross-session learning.
-    # build_bio_stack (Wave 3, biosystem_unification) replaces ~20 lines of
-    # hand-rolled bio-system construction.
-    orch_bio = None
-    orch_hippocampus = None
-    try:
-        from maxim.runtime.bio_stack import build_bio_stack
-
-        orch_persistence_dir = Path("data") / "sim_orchestrator"
-        orch_persistence_dir.mkdir(parents=True, exist_ok=True)
-        orch_bio = build_bio_stack(persistence_dir=orch_persistence_dir)
-        orch_hippocampus = orch_bio.hippocampus
-        logger.info("Orchestrator BioStack wired (hippocampus + NAc + SCN + EC + MemoryHub + PainBus)")
-    except Exception as e:
-        logger.debug("Orchestrator BioStack not available: %s", e)
+    # Orchestrator bio-stack + executor constructed below via AgentFactory
+    # after the orch tool registry is built (the factory needs it).
     orch_agent = MaximAgent()
 
     # Build a MINIMAL tool registry with ONLY simulation tools.
@@ -944,81 +957,30 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("AUT DefaultNetwork creation failed: %s", e)
 
-    # ── Embodiment (E0 — entity_ref support in sim mode) ───────────────
-    # When entity_ref is set, load a ComponentRegistry so build_executor
-    # can instantiate the entity and register affordance tools. The
-    # pain_bus precondition in build_executor requires a live bus when
-    # entity_ref is set (Embodiment._publish_pain emits through it).
-    aut_component_registry = None
-    if entity_ref is not None:
-        from maxim.embodiment.component_registry import ComponentRegistry
+    # ── Orchestrator executor via AgentFactory (F3 migration) ───────────
+    # The orch gets its own isolated bio-stack with a separate NAc for
+    # future adaptive orchestration. Persistence at ~/.maxim/orchestrator/
+    # (not CWD-relative — agent longevity review found fragmentation risk).
+    # with_pain_bridge=False: orch sim tools (send_message, observe_actions,
+    # etc.) never produce SEM embodiment pain. Bridge is still constructed
+    # for direct attribution (gated on nac), just not subscribed to pain_bus.
+    from maxim.utils.paths import data_home as _data_home
 
-        aut_component_registry = ComponentRegistry()
-        logger.info("AUT ComponentRegistry created for entity_ref=%r", entity_ref)
-
-    # ── Executors ────────────────────────────────────────────────────────
-    # `build_executor` requires an explicit pain_bus= decision and
-    # constructs the ToolPainBridge internally. See
-    # docs/plans/executor_bootstrap_unification.md for the structural
-    # invariant + the C2 fold-in that gates bridge construction on
-    # `nac is not None` (independent of subscription source).
-    from maxim.runtime.bootstrap import build_executor
-
-    # AUT executor: bridge is constructed for direct attribution
-    # (record_tool_complete / record_tool_embodiment_failure).
-    #
-    # pain_bus decision:
-    # - entity_ref is None (default): pain_bus=None. Out-of-band
-    #   pain → NAc is handled by create_pain_nac_subscriber on
-    #   aut_pain_bus. No bridge subscription avoids double-recording.
-    # - entity_ref is set: pain_bus=aut_pain_bus. build_executor
-    #   precondition requires a live bus for Embodiment._publish_pain.
-    #   The bridge also subscribes, creating the same latent
-    #   bridge×subscriber double-recording risk documented in
-    #   pain_bus_bridge_subscriber_unification.md — accepted here
-    #   (same risk as CLI non-sim path; correctness is load-bearing
-    #   on the context-similarity mismatch, not on any guard).
-    _aut_executor_pain_bus = aut_pain_bus if entity_ref is not None else None
-    if aut_nac is not None:
-        aut_executor = build_executor(
-            aut_registry,
-            pain_bus=_aut_executor_pain_bus,
-            nac=aut_nac,
-            hippocampus=aut_hippocampus,
-            scn=aut_memory_hub.scn if aut_memory_hub else None,
-            cerebellum=aut_cerebellum,
-            entity_ref=entity_ref,
-            component_registry=aut_component_registry,
-        )
-        if entity_ref is not None:
-            logger.info(
-                "AUT Embodiment loaded: entity_ref=%r, pain_bus=injected, affordance tools registered",
-                entity_ref,
-            )
-        else:
-            logger.info(
-                "AUT ToolPainBridge wired (direct attribution; out-of-band "
-                "pain→NAc via create_pain_nac_subscriber on aut_pain_bus)"
-            )
-    else:
-        if entity_ref is not None:
-            raise RuntimeError(
-                f"entity_ref={entity_ref!r} was requested but the bio-stack "
-                "failed to build (aut_nac is None). Embodiment requires NAc "
-                "for pain attribution. Check earlier log messages for the "
-                "bio-stack construction error."
-            )
-        aut_executor = build_executor(aut_registry, pain_bus=None)
-
-    # Orchestrator executor: explicit nac=None opt-out (no bridge). The
-    # orchestrator agent is the puppeteer driving the simulation, NOT
-    # a learning subject. Routing its tool failures into aut_pain_bus
-    # would cross-contaminate the AUT's NAc with negative associations
-    # to actions the AUT never performed — breaking sim mode's
-    # isolation invariant. Whether the orchestrator should grow its
-    # own orch_nac is a question for
-    # docs/plans/agent_factory_canonicalization.md (Stage F3 design).
-    orch_executor = build_executor(orch_registry, pain_bus=None, nac=None)
+    _orch_config = AgentConfig(
+        agent_id="sim_orchestrator",
+        role="npc",
+        persistence_dir=str(_data_home() / "orchestrator"),
+        with_bio_stack=True,
+        with_executor=True,
+        with_pain_bridge=False,
+        with_fear_gate=False,
+    )
+    _orch_factory = AgentFactory(base_data_dir=_data_home() / "orchestrator")
+    _orch_instance = _orch_factory.create_full_agent(
+        _orch_config,
+        tool_registry=orch_registry,
+    )
+    orch_executor = _orch_instance.executor
 
     # Wrap with PainInterceptor (Layer 2 — consequence pain after execute)
     # and AnticipatoryPainExecutor (Layer 1 — perceived pain before execute).
@@ -1876,14 +1838,12 @@ def start_simulation_mode(
             except Exception as e:
                 logger.warning("Error stopping LLM worker during shutdown: %s", e, exc_info=True)
 
-    # Persist orchestrator memory (Phase 3: cross-session learning)
-    if orch_hippocampus is not None:
-        try:
-            mem_count = len(orch_hippocampus)
-            display_status(f"Saving orchestrator memory ({mem_count} memories)...")
-            orch_hippocampus.save()
-        except Exception as e:
-            logger.debug("Failed to save orchestrator hippocampus: %s", e)
+    # Persist orchestrator memory (Phase 3: cross-session learning).
+    # shutdown() calls on_session_end() + saves hippocampus/NAc/cerebellum.
+    try:
+        _orch_instance.shutdown()
+    except Exception as e:
+        logger.debug("Failed to shutdown orchestrator instance: %s", e)
 
     # Clean up sandbox
     if sim_sandbox:
