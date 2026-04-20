@@ -1,0 +1,442 @@
+{% extends "base.html" %}
+
+{% block title %}Imagination — Maxim Docs | Real-Time Entity Design from Novel Percepts{% endblock %}
+
+{% block meta_description %}How Maxim's imagination system designs SEM entities in real-time when the agent encounters novel objects, creatures, or NPCs mentioned in narration. DN arousal gating, ComponentIndex lookup, EntityDesigner, ephemeral registration, and provenance tagging.{% endblock %}
+
+{% block meta_keywords %}Maxim imagination, entity design, novel percepts, Default Network, arousal gating, ComponentIndex, EntityDesigner, ephemeral registration, SEM components, cognitive architecture{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Imagination — Real-Time Entity Design from Novel Percepts",
+  "description": "How Maxim's imagination system designs SEM entities in real-time when the agent encounters novel objects, creatures, or NPCs mentioned in narration.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/imagination",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["imagination", "entity design", "Default Network", "arousal gating", "SEM components"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Imagination", "item": "https://www.dennyschaedig.com/maxim/imagination" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Imagination</h1>
+    <p class="text-indigo-400 font-medium">Real-Time Entity Design from Novel Percepts</p>
+    <p class="text-slate-400 text-sm">Shipped in v0.7.0 &mdash; I1 + I2</p>
+  </header>
+
+  <!-- Core Concept -->
+  <section class="space-y-4">
+    <h2 id="concept" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Concept</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Biological Inspiration</h3>
+      <p class="text-slate-300">Imagination fires during low-arousal idle states &mdash; the same way you don't daydream while fighting. When the brain encounters something unfamiliar, it constructs a mental model from prior experience to reason about the novel entity before physically interacting with it. The Default Network, which activates during rest and mind-wandering, gates this process.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">When the agent encounters a <strong class="text-white">novel entity</strong> mentioned in percept text that has no existing SEM component, the imagination system designs one in real-time. The result is a fully functional entity with sensors, affordances, and failure modes &mdash; registered ephemerally for the session and available for interaction through auto-generated tools.</p>
+
+    <div class="bg-indigo-900/30 border border-indigo-500/50 rounded-xl p-5">
+      <h4 class="text-indigo-400 font-semibold mb-1">Why This Matters</h4>
+      <p class="text-slate-300 text-sm">Without imagination, the agent can only interact with entities that were pre-authored as YAML components. Narration that mentions a "rusted padlock" or "crystal chandelier" would have no tools, no sensors, no failure modes &mdash; the agent could only talk about them, never touch them. Imagination closes this gap by designing components on-the-fly.</p>
+    </div>
+  </section>
+
+  <!-- Pipeline -->
+  <section class="space-y-4">
+    <h2 id="pipeline" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Pipeline</h2>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Imagination Pipeline</span>
+
+Percept Text
+  &darr;
+Entity Extraction (NLP heuristics)
+  &darr;
+ImaginationCache check (already imagined this session?)
+  &darr;
+ComponentIndex Two-Layer Lookup
+  &darr;
+  ├── Match found &rarr; Skip (already known)
+  &darr;
+  └── No match &rarr; Mention Counter
+                      &darr;
+                Count &ge; threshold (default 2)?
+                      &darr;
+                DN Arousal Gate (low arousal only)
+                      &darr;
+                Energy Budget Check (&ge;10% remaining)
+                      &darr;
+                EntityDesigner LLM Call
+                      &darr;
+                Quick Validation (SEM protocol)
+                      &darr;
+                register_ephemeral() + ComponentIndex.add()
+                      &darr;
+                Scene-Scoped Tool Registration</div>
+
+    <p class="text-slate-300 leading-relaxed mt-4">Each stage is a gate. If any gate fails, the pipeline short-circuits gracefully &mdash; the agent falls back to verbal-only interaction with the entity.</p>
+  </section>
+
+  <!-- Entity Extraction -->
+  <section class="space-y-4">
+    <h2 id="extraction" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Entity Extraction</h2>
+
+    <p class="text-slate-300 leading-relaxed">Lightweight NLP heuristics extract entity-like noun phrases from narration text. No external model required &mdash; this runs on pure string processing.</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Extracted</h3>
+        <p class="text-slate-300 text-sm">Physical objects, creatures, weapons, environmental features, items, vehicles, NPCs</p>
+        <p class="text-slate-500 text-xs mt-2">Examples: "rusty padlock", "crystal chandelier", "ancient tome", "iron golem"</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Filtered Out</h3>
+        <p class="text-slate-300 text-sm">Abstract concepts, body parts, clothing, emotions, time references, generic pronouns</p>
+        <p class="text-slate-500 text-xs mt-2">Examples: "courage", "left arm", "leather boots", "dread", "morning"</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed mt-4">Two strategies work in parallel:</p>
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong class="text-white">Sentence-level intro patterns</strong> &mdash; catches "You see a rusty gate", "A massive golem blocks the path", "There is a glowing orb"</li>
+      <li><strong class="text-white">Head-noun scanning</strong> &mdash; matches against a curated indicator vocabulary of entity-like words (weapon, creature, door, chest, etc.)</li>
+    </ul>
+  </section>
+
+  <!-- ComponentIndex Lookup -->
+  <section class="space-y-4">
+    <h2 id="component-index" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">ComponentIndex: Two-Layer Lookup</h2>
+
+    <p class="text-slate-300 leading-relaxed">Before imagining anything, each candidate phrase is checked against the <code class="bg-slate-950 px-1 rounded text-xs">ComponentIndex</code> to see if an existing component already covers it:</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-indigo-400 font-semibold mb-2">Layer 1: Alias Table (O(1))</h3>
+        <p class="text-slate-300 text-sm">Exact match against component names and declared synonyms from the <code class="bg-slate-950 px-1 rounded text-xs">component.synonyms</code> YAML field.</p>
+        <p class="text-slate-500 text-xs mt-2">"sword" &rarr; weapons/rusty_sword</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-indigo-400 font-semibold mb-2">Layer 2: Embedding Similarity</h3>
+        <p class="text-slate-300 text-sm">Cosine similarity against all component signature embeddings. Threshold: 0.65. Uses the shared <code class="bg-slate-950 px-1 rounded text-xs">similarity.encoder</code> singleton.</p>
+        <p class="text-slate-500 text-xs mt-2">"old iron door" &rarr; environments/rusty_gate (0.72)</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed mt-4">If either layer finds a match, imagination is skipped for that phrase. This prevents the system from creating duplicate components under different names.</p>
+
+    <div class="bg-indigo-900/30 border border-indigo-500/50 rounded-xl p-5 mt-4">
+      <h4 class="text-indigo-400 font-semibold mb-1">Thread Safety</h4>
+      <p class="text-slate-300 text-sm">The ComponentIndex is protected by an RLock. Multiple threads (AUT + orchestrator) can query it concurrently. Persistence uses <code class="bg-slate-950 px-1 rounded text-xs">.npy</code> + <code class="bg-slate-950 px-1 rounded text-xs">.json</code> sidecar &mdash; no pickle, ever.</p>
+    </div>
+  </section>
+
+  <!-- Gates -->
+  <section class="space-y-4">
+    <h2 id="gates" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Gates</h2>
+
+    <p class="text-slate-300 leading-relaxed">Three gates prevent imagination from firing at inappropriate times:</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition">
+        <div class="text-3xl mb-2">&#x1F522;</div>
+        <h4 class="text-indigo-400 font-semibold mb-2">Mention Threshold</h4>
+        <p class="text-slate-300 text-sm">Default 2 mentions before triggering. A one-off phrase ("you notice a crack in the wall") won't spawn an entity. Repeated mentions signal narrative importance.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition">
+        <div class="text-3xl mb-2">&#x1F4A4;</div>
+        <h4 class="text-indigo-400 font-semibold mb-2">DN Arousal Gate</h4>
+        <p class="text-slate-300 text-sm">Only fires during low-arousal idle states. Blocked when the Default Network is inhibited or recent interesting events occurred. You don't daydream while fighting.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10 hover:border-indigo-500/50 transition">
+        <div class="text-3xl mb-2">&#x1F50B;</div>
+        <h4 class="text-indigo-400 font-semibold mb-2">Energy Budget</h4>
+        <p class="text-slate-300 text-sm">Skipped when LLM energy is critical (&lt;10% remaining). Falls back gracefully to verbal-only interaction with the entity.</p>
+      </div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-5 mt-4">
+      <h4 class="text-amber-400 font-semibold mb-1">Per-Phrase Design Guard</h4>
+      <p class="text-slate-300 text-sm">A per-phrase lock prevents concurrent LLM calls for the same entity phrase. In multi-thread setups (AUT + orchestrator), only one thread designs a given entity; the other waits for the result. Thread-safe throughout via RLock.</p>
+    </div>
+  </section>
+
+  <!-- EntityDesigner -->
+  <section class="space-y-4">
+    <h2 id="designer" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">EntityDesigner</h2>
+
+    <p class="text-slate-300 leading-relaxed">When all gates pass, the <code class="bg-slate-950 px-1 rounded text-xs">ImaginationDesigner</code> wraps the <code class="bg-slate-950 px-1 rounded text-xs">EntityDesigner</code> and makes a single LLM call to generate a complete SEM component specification from the entity phrase and surrounding narrative context.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">LLM Input</span>
+Entity phrase: "crystal chandelier"
+Narrative context: "A massive crystal chandelier hangs from the
+  vaulted ceiling, its facets catching the torchlight."
+Genre: fantasy
+Existing components in scope: [rusty_sword, base_humanoid, ...]
+
+<span class="text-indigo-400 text-xs uppercase tracking-wider">LLM Output (validated SEM spec)</span>
+entity:
+  name: crystal_chandelier
+  entity_type: environmental_feature
+  sensors:
+    stability: {unit: ratio, range: [0, 1], initial: 0.9}
+    illumination: {unit: ratio, range: [0, 1], initial: 0.7}
+    crystal_count: {unit: count, range: [0, 50], initial: 42}
+  modulators:
+    swing: {params: {force: float}, timeout: 3}
+    shatter_crystal: {params: {target: string}, timeout: 2}
+    cut_chain: {params: {}, timeout: 5}
+  failure_modes:
+    collapse: {trigger: {field: stability, op: "<", value: 0.1},
+               pain_intensity: 0.9}
+    darkness: {trigger: {field: crystal_count, op: "<", value: 5},
+               pain_intensity: 0.2}</div>
+
+    <h3 class="text-white font-semibold mt-4">Quick Validation</h3>
+    <p class="text-slate-300 leading-relaxed">After generation, the spec is validated against the SEM protocol: required fields present, sensor ranges valid, modulator params typed, failure triggers well-formed. Invalid specs are discarded &mdash; the agent falls back to verbal interaction.</p>
+  </section>
+
+  <!-- Ephemeral Registration -->
+  <section class="space-y-4">
+    <h2 id="ephemeral" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Ephemeral Registration</h2>
+
+    <p class="text-slate-300 leading-relaxed">Imagined entities live in a <strong class="text-white">separate overlay</strong> (<code class="bg-slate-950 px-1 rounded text-xs">_ephemeral_index</code>) from the persistent component registry. This separation is architectural:</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">During Session</h3>
+        <ul class="text-slate-300 text-sm space-y-1 list-disc pl-5">
+          <li>Visible to <code class="bg-slate-950 px-1 rounded text-xs">get()</code>, <code class="bg-slate-950 px-1 rounded text-xs">has()</code>, <code class="bg-slate-950 px-1 rounded text-xs">query()</code></li>
+          <li>Tools registered in current scene scope</li>
+          <li>Added to ComponentIndex for dedup</li>
+          <li>Full SEM interaction (sensors, affordances, failures)</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">At Session End</h3>
+        <ul class="text-slate-300 text-sm space-y-1 list-disc pl-5">
+          <li>Cleared via <code class="bg-slate-950 px-1 rounded text-xs">clear_ephemeral()</code></li>
+          <li>Tools deregistered</li>
+          <li>Episodes persist (with provenance)</li>
+          <li>Causal links get 50% confidence decay</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed mt-4">This means the agent <em class="text-indigo-400 not-italic">learns</em> from imagined interactions (pain avoidance, reward prediction) but with reduced confidence, reflecting the simulated origin.</p>
+  </section>
+
+  <!-- Provenance -->
+  <section class="space-y-4">
+    <h2 id="provenance" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Provenance Tagging</h2>
+
+    <p class="text-slate-300 leading-relaxed">All learning from imagined entities carries <code class="bg-slate-950 px-1 rounded text-xs">imagined=True</code> provenance:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Provenance Flow</span>
+
+Episode from imagined entity interaction:
+  episode.metadata["imagined"] = True
+  episode.metadata["imagined_entity"] = "crystal_chandelier"
+
+CausalLink from imagined entity outcome:
+  link.metadata["imagined"] = True
+
+On session end (entity discard):
+  NAc.decay_imagined_links(factor=0.5)
+  &rarr; All links with imagined=True get confidence *= 0.5</div>
+
+    <p class="text-slate-300 leading-relaxed mt-4">The 50% decay means the agent retains partial learning ("chandeliers can collapse") but with appropriately reduced confidence compared to verified real-world interactions. If the agent encounters the same entity type again and the interaction confirms the learned pattern, confidence rebuilds naturally through standard Rescorla-Wagner updates.</p>
+  </section>
+
+  <!-- Scene-Scoped Tools -->
+  <section class="space-y-4">
+    <h2 id="scene-tools" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Scene-Scoped Tool Registration</h2>
+
+    <p class="text-slate-300 leading-relaxed">Imagined entities get their tools registered into the current <strong class="text-white">scene scope</strong> (I3). This means:</p>
+
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li>Tools activate when the entity enters the scene and deactivate when it leaves</li>
+      <li>An <strong class="text-white">active tool cap</strong> prevents prompt overflow from many imagined entities</li>
+      <li>The <strong class="text-white">executor gate</strong> rejects calls to deactivated tools with informative errors</li>
+      <li>Least-recently-used tools are deactivated first when the cap is reached</li>
+    </ul>
+
+    <p class="text-slate-300 leading-relaxed mt-3">This integrates naturally with the <a href="/maxim/tools#scene-scoped" class="text-indigo-400 hover:text-indigo-300 no-underline">scene-scoped tool system</a> &mdash; imagined entities follow the same lifecycle as pre-authored ones.</p>
+  </section>
+
+  <!-- ImaginationCache -->
+  <section class="space-y-4">
+    <h2 id="cache" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">ImaginationCache</h2>
+
+    <p class="text-slate-300 leading-relaxed">A session-scoped cache prevents redundant design attempts:</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <ul class="text-slate-300 text-sm space-y-2 list-disc pl-5">
+        <li><strong class="text-white">Shared across AUT + orchestrator</strong> &mdash; if the orchestrator's narration mentions "crystal chandelier" and the AUT's perception also extracts it, only one design call fires</li>
+        <li><strong class="text-white">Stores both successes and failures</strong> &mdash; a failed validation for "vague smoke" won't retry every turn</li>
+        <li><strong class="text-white">Thread-safe</strong> via RLock</li>
+        <li><strong class="text-white">Cleared at session end</strong> alongside the ephemeral registry</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Integration with Bio-Systems -->
+  <section class="space-y-4">
+    <h2 id="bio-integration" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Integration with Bio-Systems</h2>
+
+    <p class="text-slate-300 leading-relaxed">Imagined entities participate in the full bio-pipeline, just like pre-authored ones:</p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-2xl mb-2">&#x1F9E0;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Hippocampus</h4>
+        <p class="text-sm text-slate-400">Episodes from imagined interactions are captured with <code class="bg-slate-950 px-1 rounded text-xs">imagined=True</code> metadata.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-2xl mb-2">&#x1F3AF;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">NAc</h4>
+        <p class="text-sm text-slate-400">Causal links form from affordance outcomes. 50% confidence decay at session end.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-2xl mb-2">&#x26A1;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">PainBus</h4>
+        <p class="text-sm text-slate-400">Failure modes fire pain signals through the same cascade as real entities.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-2xl mb-2">&#x1F9E9;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Cerebellum</h4>
+        <p class="text-sm text-slate-400">Forward models train on imagined affordance outcomes via Rescorla-Wagner.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-2xl mb-2">&#x1F4DA;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">ATL</h4>
+        <p class="text-sm text-slate-400">Semantic concepts form from imagined entity interactions (modality-tagged).</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-2xl mb-2">&#x1F3AD;</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Acting Coach</h4>
+        <p class="text-sm text-slate-400">Exploration directives include imagined entity affordances in the meta-prompt.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section class="space-y-4">
+    <h2 id="architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Architecture</h2>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-xs text-slate-400 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2 pr-4">Module</th><th class="pb-2">Purpose</th>
+        </tr></thead>
+        <tbody>
+          <tr><td class="py-1 pr-4 text-slate-300">imagination/trigger.py</td><td>Entity noun-phrase extraction, ComponentIndex lookup, design dispatch</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">imagination/designer.py</td><td>ImaginationDesigner: wraps EntityDesigner for real-time entity generation</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">imagination/cache.py</td><td>Session-scoped ImaginationCache, thread-safe, shared AUT + orchestrator</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/component_registry.py</td><td>register_ephemeral(), clear_ephemeral(), ephemeral overlay</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/component_index.py</td><td>Two-layer semantic discovery (alias hash + embedding cosine)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">tools/registry.py</td><td>Scene-scoped activation, active tool cap, executor gate</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">runtime/agent_loop.py</td><td>imagination_trigger parameter on run_agentic_loop</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="text-white font-semibold mt-4">Wiring</h3>
+    <p class="text-slate-300 leading-relaxed">The imagination trigger is passed as a parameter to <code class="bg-slate-950 px-1 rounded text-xs">run_agentic_loop</code> and fires post-<code class="bg-slate-950 px-1 rounded text-xs">state.update()</code> on every turn. This placement means the agent has already processed the percept and updated its state before imagination considers whether to design a new entity.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Agent Loop Integration</span>
+
+while running:
+    percept = await percept_source.next()
+    state.update(percept)
+
+    <span class="text-indigo-400"># Imagination fires here &mdash; after state update, before decision</span>
+    if imagination_trigger:
+        imagination_trigger.process(percept.text, scene_context)
+
+    decision = await exec_agent.decide(state)
+    result = await executor.execute(decision)</div>
+  </section>
+
+  <!-- Related -->
+  <section class="space-y-4">
+    <h2 id="related" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Related Systems</h2>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <a href="/maxim/embodiment" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline">
+        <h3 class="text-indigo-400 font-semibold mb-1">Embodiment (SEM Protocol)</h3>
+        <p class="text-slate-400 text-sm">The entity format imagination generates. Sensors, modulators, failure modes.</p>
+      </a>
+      <a href="/maxim/component-library" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline">
+        <h3 class="text-indigo-400 font-semibold mb-1">Component Library</h3>
+        <p class="text-slate-400 text-sm">65+ pre-authored entities. ComponentIndex searches these before imagining.</p>
+      </a>
+      <a href="/maxim/embodiment#asset-foundry" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline">
+        <h3 class="text-indigo-400 font-semibold mb-1">Asset Foundry</h3>
+        <p class="text-slate-400 text-sm">Batch entity generation with gauntlet testing. Imagination is the real-time equivalent.</p>
+      </a>
+      <a href="/maxim/tools#scene-scoped" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline">
+        <h3 class="text-indigo-400 font-semibold mb-1">Scene-Scoped Tools</h3>
+        <p class="text-slate-400 text-sm">How imagined entity tools activate/deactivate with scene changes.</p>
+      </a>
+    </div>
+  </section>
+
+  <!-- Navigation -->
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/embodiment" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Embodiment</span>
+      </a>
+      <a href="/maxim/component-library" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Component Library</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math Cognition</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/imagination" class="text-xs text-indigo-400 font-medium transition px-2 py-1 rounded bg-slate-800 no-underline">Imagination</a>
+        <a href="/maxim/component-library" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Component Library</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/benchmarks" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Benchmarks</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

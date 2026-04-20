@@ -237,9 +237,24 @@
             <td class="py-3">Bidirectional interactive, raw terminal, request_interaction, NAc suppression, unified input handling. Scale: 20/20 seeds, p = 3.87e-6. <strong>v0.3.1&ndash;0.4.0.</strong></td>
           </tr>
           <tr class="border-t border-slate-700">
-            <td class="pr-4 py-3 text-white font-medium">Generalizable Embodiment</td>
-            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">Next</span></td>
-            <td class="py-3">E0: sim affordance tools. E1&ndash;E3: Asset Foundry. <strong>Only remaining 1.0 gate.</strong> Target: v0.6.</td>
+            <td class="pr-4 py-3 text-white font-medium">Generalizable Embodiment (E0&ndash;E3)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">E0: sim affordance tools. E1: Asset Foundry (generate + validate + gauntlet + score). E2: foundry --llm wiring + entity context. E2.5: ComponentIndex two-layer discovery. E3: Auto-Curation CLI. <strong>v0.6&ndash;0.7.</strong></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Imagination System (I1&ndash;I3)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">I1+I2: Entity extraction, ComponentIndex lookup, DN arousal gate, EntityDesigner LLM, ephemeral registration, provenance tagging. I3: Scene-scoped tools with active cap + executor gate. <strong>v0.7.0.</strong></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Acting Coach (B3.1)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Meta-prompt scaffolding: NAc caution annotations, pain anticipation, cerebellum forward-model predictions. Bio-modulated exploration directive. <strong>v0.7.0.</strong></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Agent Factory (F3&ndash;F5)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Sim orchestrator, Reachy embodied runtime, and headless API all migrated to <code class="bg-slate-950 px-1 rounded text-xs">AgentFactory.create_full_agent()</code>. <strong>v0.7.0.</strong></td>
           </tr>
         </tbody>
       </table>
@@ -250,9 +265,25 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed"><strong>v0.5.0: B4 replanning complete (1.0 gate closed), P6 extinction, P8 sleep replay, F2 factory migration.</strong> The replanning gate &mdash; agent recovers from failures instead of repeating them &mdash; is the last 1.0-gating item besides generalizable embodiment (0.6). B4 blind A/B: treatment 100% vs control 0%, mean Jaccard 0.894. P6: Hebbian decay beats LRU across 10 seeds. P8: sleep replay F1 improves vs no-replay control. F2: <code class="bg-slate-950 px-1 rounded text-xs">AgentFactory.create_full_agent()</code> replaces ~100 lines of CLI hand-rolled bootstrap. Earlier: 41/41 behavioral convergence hypotheses (v0.3.0), interactive mode + input standardization (v0.4.0).</p>
+    <p class="text-slate-300 leading-relaxed"><strong>v0.7.0: Imagination system, default embodiment, Acting Coach, scene-scoped tools, Asset Foundry + Auto-Curation, ComponentIndex, AgentFactory F3&ndash;F5.</strong> The agent now has a body by default, imagines novel entities in real-time from narration text, and tools activate/deactivate per-scene. All 1.0 gates are closed. Earlier: generalizable embodiment + Asset Foundry (v0.6), B4 replanning (v0.5), behavioral convergence (v0.3).</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Imagination System (I1+I2+I3) <span class="text-xs text-indigo-400">(v0.7)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Entity noun-phrase extraction from percepts, ComponentIndex two-layer lookup (alias + embedding), DN arousal gate, EntityDesigner LLM-driven design, ephemeral registration with provenance tagging (<code class="bg-slate-950 px-1 rounded text-xs">imagined=True</code>), 50% confidence decay at session end. I3: scene-scoped tool activation with active cap + executor gate.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Acting Coach + Factory F3&ndash;F5 <span class="text-xs text-indigo-400">(v0.7)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed">B3.1 Acting Coach: meta-prompt scaffolding with NAc caution, pain anticipation, cerebellum predictions. F3&ndash;F5: sim orchestrator, Reachy, and headless API all migrated to <code class="bg-slate-950 px-1 rounded text-xs">AgentFactory.create_full_agent()</code>.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Asset Foundry + Auto-Curation (E1&ndash;E3) <span class="text-xs text-indigo-400">(v0.6&ndash;0.7)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed">E1: LLM-driven entity generation + validation + 3-encounter gauntlet + 4-dimension scoring. E2: foundry <code class="bg-slate-950 px-1 rounded text-xs">--llm</code> wiring + entity context in AUT prompt. E2.5: ComponentIndex (alias hash + embedding cosine). E3: <code class="bg-slate-950 px-1 rounded text-xs">--auto-curate</code> pre-sim coverage gap filling with dedup.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Default Sim Embodiment (E0) <span class="text-xs text-indigo-400">(v0.6)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed"><code class="bg-slate-950 px-1 rounded text-xs">bodies/base_humanoid</code> loads by default in sim mode &mdash; 5 sensors, 8 affordances, 3 failure modes. <code class="bg-slate-950 px-1 rounded text-xs">--embodiment</code> works with <code class="bg-slate-950 px-1 rounded text-xs">--sim</code>. 10 integration tests.</p>
+      </div>
       <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">B4 Replanning <span class="text-xs text-indigo-400">(v0.5 &mdash; 1.0 GATE CLOSED)</span></h3>
         <p class="text-slate-300 text-sm leading-relaxed">Failure diagnosis with prior-attempt retrieval via hippocampus episodes. Jaccard distance metric for structural novelty. Anti-repetition prompt constraint. Blind A/B validation: treatment (replanning) 100% vs control (no replanning) 0%, mean Jaccard 0.894. 48 tests. <strong>The replanning 1.0 gate is closed.</strong></p>
@@ -328,28 +359,28 @@
   <section class="space-y-4">
     <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
 
-    <p class="text-slate-300 leading-relaxed"><strong>Only one 1.0 gate remains: generalizable embodiment (0.6).</strong> B4 replanning is complete. The path forward: B3 acting coach, factory F3&ndash;F5 migrations, P5 stress persistence, then 0.6 (Asset Foundry + sim affordance tools). v0.5.0 published.</p>
+    <p class="text-slate-300 leading-relaxed"><strong>All 1.0 gates are closed.</strong> v0.7.0 published. The path forward: B3.2&ndash;B3.3 Acting Coach extensions, I4&ndash;I5 imagination depth (deferred to 0.8), P5 stress persistence, and 1.0 packaging.</p>
 
     <div class="space-y-3">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
-          <h3 class="text-white font-semibold">0.6 &mdash; Generalizable Embodiment <span class="text-red-400 text-xs font-medium">(GATES 1.0)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">The sim path and robot path currently have different tool surfaces. E0 (~200 LOC): wire <code class="bg-slate-950 px-1 rounded text-xs">entity_ref</code> through sim orchestrator &rarr; <code class="bg-slate-950 px-1 rounded text-xs">build_executor()</code>. E1&ndash;E3: Asset Foundry (LLM-driven component generation + gauntlet testing + score/curate pipeline). PoC: 10+ generated entities through a DM campaign gauntlet.</p>
+          <h3 class="text-white font-semibold">B3.2&ndash;B3.3 Acting Coach Extensions</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">B3.2: personality scaffolds, speech register, NPC voice consistency. B3.3: DisplayExtension panels for Acting Coach bio-state. Builds on B3.1 meta-prompt infrastructure shipped in 0.7.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
         <div>
-          <h3 class="text-white font-semibold">B3 Acting Coach + Factory F3&ndash;F5</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">B3: personality scaffolds, speech register, DisplayExtension panels &mdash; NPCs get coherent, consistent voice. F3&ndash;F5: migrate sim orchestrator, Reachy, and public API bootstraps through <code class="bg-slate-950 px-1 rounded text-xs">AgentFactory.create_full_agent()</code>. CLI non-sim (F2) already shipped.</p>
+          <h3 class="text-white font-semibold">P5 Stress Persistence + Concept Decomposition S2</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">P5: 10k+ node persistence stress test validates substrate robustness. Concept decomposition Stage 2: role-tagged edges + ConceptExtractor convergence. Both are substrate polish before 1.0.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
         <div>
-          <h3 class="text-white font-semibold">P5 Stress Persistence + Concept Decomposition S2</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">P5: 10k+ node persistence stress test validates substrate robustness. Concept decomposition Stage 2: role-tagged edges + ConceptExtractor convergence. Both are substrate polish before 1.0.</p>
+          <h3 class="text-white font-semibold">v1.0 Packaging</h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Cross-session learning + unified embodiment demonstrated. All gates closed. Final packaging: docs, CLI polish, publication on PyPI as <code class="bg-slate-950 px-1 rounded text-xs">pymaxim</code> 1.0.</p>
         </div>
       </div>
     </div>
@@ -389,30 +420,30 @@
   <section class="space-y-4">
     <h2 id="dependency-graph" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Dependency Graph</h2>
 
-    <p class="text-slate-300 leading-relaxed">One 1.0 gate remains: generalizable embodiment (0.6). Everything else is engineering hygiene or post-1.0.</p>
+    <p class="text-slate-300 leading-relaxed">All 1.0 gates are closed. Remaining work is polish and packaging.</p>
 
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
       <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Path to 1.0</span>
 
-<span class="text-green-400">v0.5.0 SHIPPED</span>
-  B4 replanning (1.0 GATE CLOSED)
-  P6 extinction, P8 sleep replay
-  F2 CLI factory migration
-  41/41 behavioral convergence (v0.3)
+<span class="text-green-400">v0.3.0</span> — 41/41 behavioral convergence (cross-session learning)
+<span class="text-green-400">v0.5.0</span> — B4 replanning (1.0 GATE CLOSED), P6+P8, F2
+<span class="text-green-400">v0.6.0</span> — E0-E3 generalizable embodiment (1.0 GATE CLOSED)
+<span class="text-green-400">v0.7.0 SHIPPED</span>
+  I1+I2: Imagination system
+  I3: Scene-scoped tools
+  B3.1: Acting Coach
+  F3-F5: AgentFactory migration
+  E2.5: ComponentIndex
+  E3: Auto-Curation
   │
-  ├──&gt; <span class="text-yellow-400">v0.6 — Generalizable Embodiment</span>  ◀── <span class="text-red-400">GATES 1.0</span>
-  │      E0: sim affordance tools (~200 LOC, critical path)
-  │      E1-E3: Asset Foundry pipeline
-  │      PoC: 10+ generated entities through gauntlet
+  ├──&gt; B3.2-B3.3 Acting Coach extensions
+  ├──&gt; P5 Stress Persistence
+  ├──&gt; I4-I5 Imagination depth (deferred to 0.8)
   │
-  ├──&gt; B3 Acting Coach (parallel, not gating)
-  ├──&gt; Factory F3-F5 (parallel, not gating)
-  ├──&gt; P5 Stress Persistence (parallel, not gating)
-  │
-  └──&gt; <span class="text-green-400">v1.0</span> — Cross-session learning + unified embodiment</div>
+  └──&gt; <span class="text-green-400">v1.0</span> — All gates closed. Package + publish.</div>
     </div>
 
-    <p class="text-slate-300 leading-relaxed"><span class="text-indigo-400 font-semibold">v0.6 E0</span> is the critical path &mdash; ~200 LOC to wire <code class="bg-slate-950 px-1 rounded text-xs">entity_ref</code> through the sim orchestrator so the AUT can interact with SEM entities in simulation. Without it, sim and robot paths have different tool surfaces, which breaks the architectural contract. B3, F3-F5, and P5 can run in parallel.</p>
+    <p class="text-slate-300 leading-relaxed">All architectural gates have been closed. The remaining work (B3.2&ndash;B3.3, P5, I4&ndash;I5) is enhancement, not gating. 1.0 is a packaging milestone.</p>
   </section>
 
   <!-- 6. Contributing -->

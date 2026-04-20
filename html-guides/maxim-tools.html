@@ -60,6 +60,7 @@
       <li><a href="#semantic" class="text-indigo-400 hover:text-indigo-300 no-underline">Semantic: Concepts &amp; Relationships</a></li>
       <li><a href="#scene-energy" class="text-indigo-400 hover:text-indigo-300 no-underline">Scene &amp; Energy: Perception and Budget</a></li>
       <li><a href="#simulation-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Simulation Orchestrator Tools</a></li>
+      <li><a href="#scene-scoped" class="text-indigo-400 hover:text-indigo-300 no-underline">Scene-Scoped Tools</a></li>
       <li><a href="#learned-index" class="text-indigo-400 hover:text-indigo-300 no-underline">Learned Tool Index</a></li>
       <li><a href="#tool-safety" class="text-indigo-400 hover:text-indigo-300 no-underline">Tool Safety</a></li>
     </ol>
@@ -306,6 +307,39 @@
       <h4 class="text-indigo-400 font-semibold">Tool Alias Map</h4>
       <p class="text-sm text-slate-300">Small models (7B-14B) hallucinate tool names from their training data. A <strong class="text-white">TOOL_ALIASES</strong> map in the executor silently redirects common hallucinations: <code class="text-indigo-300">remember</code>&rarr;<code class="text-indigo-300">memory_recall</code>, <code class="text-indigo-300">speech</code>&rarr;<code class="text-indigo-300">say</code>, <code class="text-indigo-300">reflection</code>&rarr;<code class="text-indigo-300">think</code>, <code class="text-indigo-300">look</code>&rarr;<code class="text-indigo-300">examine</code>, etc. After 2+ consecutive hallucinations, the error message includes the full available tool list to break the loop.</p>
     </div>
+  </section>
+
+  <!-- ── Scene-Scoped Tools ──────────────────────────────── -->
+  <section id="scene-scoped" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Scene-Scoped Tools <span class="text-xs font-mono text-indigo-400 ml-2">I3 &mdash; 0.7</span></h2>
+    <p class="text-slate-300 leading-relaxed">Not all tools should be available at all times. Scene-scoped tool activation (I3) adds a <strong class="text-white">tool window</strong> that activates and deactivates entity tools based on the current scene context. When the agent enters a forge, the anvil tools activate. When they leave, those tools deactivate and stop consuming prompt space.</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Active Tool Cap</h4>
+        <p class="text-slate-300 text-sm">Configurable maximum number of simultaneously active entity tools. Prevents prompt overflow when many entities are in scope. Least-recently-used tools are deactivated first.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Executor Gate</h4>
+        <p class="text-slate-300 text-sm">The executor rejects calls to deactivated tools with an informative error, preventing the LLM from using tools that are no longer contextually relevant.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Imagination Integration</h4>
+        <p class="text-slate-300 text-sm">When the <a href="/maxim/imagination" class="text-indigo-400 hover:text-indigo-300 no-underline">Imagination system</a> designs a new entity, its tools are registered into the current scene scope and subject to the same cap.</p>
+      </div>
+    </div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Tool Window Lifecycle</span>
+
+Scene change detected
+  &darr;
+ToolRegistry.activate(new_entity_tools)
+  &darr;
+Active count &gt; cap? &rarr; Deactivate LRU tools
+  &darr;
+Prompt includes only active tool schemas
+  &darr;
+Executor gate rejects calls to inactive tools</div>
   </section>
 
   <!-- ── Learned Tool Index ──────────────────────────────── -->
