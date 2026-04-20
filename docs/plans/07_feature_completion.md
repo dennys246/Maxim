@@ -44,22 +44,20 @@ The 5-lens review validated the architecture but found hidden work and invalid a
 
 Removed hardcoded "Delete all files in /tmp" from orchestrator tool examples, stall nudges, and adversarial persona. Commit `38903f3`.
 
-### Track R0: Review-Discovered Prerequisites (~150 LOC)
+### Track R0: Review-Discovered Prerequisites (SHIPPED)
 
 Fixes that must land before the main tracks, discovered by the parallel review.
 
-**R0.1 — ComponentRegistry.query() thread safety (~10 LOC)**
-- Acquire `_lock` in `query()` before iterating `_index.values()`
-- Latent race condition today; becomes real with imagination's concurrent `register_ephemeral()` calls
+**R0.1 — ComponentRegistry.query() thread safety (SHIPPED)**
+- Acquired `_lock` in `query()`, `list_categories()`, `list_refs()` — snapshot before iteration
 
-**R0.2 — Sim-mode lightweight consolidation (~50 LOC)**
-- `is_sim_mode=True` currently skips `on_session_end()` entirely — hippocampal episodes from sim sessions (including future imagined entity interactions) never get sleep-replayed
-- Add a lightweight consolidation pass: top-N episodes by salience, skip full replay
-- Gated on `is_sim_mode` — full consolidation remains for non-sim
+**R0.2 — Sim-mode lightweight consolidation (SHIPPED)**
+- Added `MemoryHub.on_session_end_lightweight()` — NAc decay + persistence saves, skips expensive `hippocampus.sleep()` replay
+- Includes `_concept_extractor.flush()` to prevent daemon thread accumulation (pre-merge review finding)
+- `end_bio_session(is_sim_mode=True)` now calls lightweight path instead of doing nothing
 
-**R0.3 — TOOL_ALIASES lock (~10 LOC)**
-- `register_aliases()` mutates module-level dict without lock
-- Add RLock guard (same pattern as ToolRegistry)
+**R0.3 — TOOL_ALIASES lock (SHIPPED)**
+- Added module-level `_TOOL_ALIASES_LOCK = threading.RLock()` guarding `register_aliases()` and `remove_aliases()`
 
 ---
 
@@ -71,15 +69,16 @@ Fixes that must land before the main tracks, discovered by the parallel review.
 
 #### Stages
 
-**B3.1 — ActingCoachConfig + prompt section (~200 LOC)**
-- `prompts/acting_coach.py`: `ActingCoachConfig` dataclass + `compose_acting_coach_section()`
+**B3.1 — ActingCoachConfig + prompt section (SHIPPED, ~200 LOC)**
+- `prompts/acting_coach.py`: `ActingCoachConfig` frozen dataclass + `compose_acting_coach_section()`
   - Role values (what the character cares about — survival, curiosity, duty)
   - Speech register (formal/casual/archaic/terse)
   - Failure modes (stress responses — defensive, aggressive, creative)
   - Continuity contract (what the character remembers between turns)
+  - `exploration_intensity` (0.0-1.0) — lower values produce more cautious guidance
   - **Embodiment guidance** (when entity tools are available: "You have physical capabilities. Explore them. Try different parameters. Observe the results. Don't ask for permission — act.")
-- **Integration:** Wire into existing `prompt_builder.py` as a string injection into the system prompt (review found `PromptAssembler` has no section priority API — proper assembler integration deferred to post-0.7)
-- `AgentConfig.acting_coach: ActingCoachConfig | None` field
+- **Integration:** Wired into `prompt_builder.py::_add_acting_coach_section()` at IMPORTANT priority. Activated via `LLMWorker.acting_coach` in orchestrator and CLI when entity_ref is set.
+- 27 unit tests across 6 test classes
 - **Bio-system modulation of Acting Coach (not hard suppression):**
   The Acting Coach is a "default policy" that the bio-systems continuously modulate, not override. Three bio-system signals shape the coach's output:
 
@@ -422,15 +421,17 @@ Track 3: Imagination (0.7 scope) ───────────────�
 
 ## Invariants (filled in AFTER shipping each track)
 
-### R0
-- `ComponentRegistry.query()` holds `_lock` during iteration
-- Sim-mode runs lightweight consolidation (top-N by salience)
-- `TOOL_ALIASES` guarded by RLock
+### R0 (SHIPPED)
+- `ComponentRegistry.query()`, `list_categories()`, `list_refs()` hold `_lock` during iteration (snapshot-before-iterate)
+- Sim-mode runs `on_session_end_lightweight()` — NAc decay + persistence saves + concept_extractor flush, skips expensive `hippocampus.sleep()`
+- `TOOL_ALIASES` guarded by `_TOOL_ALIASES_LOCK` (RLock). Reads unguarded (CPython GIL atomic).
 
-### B3
+### B3 (B3.1 SHIPPED)
 - Acting Coach is a "default policy" that bio-systems MODULATE, never suppress. NAc valence, pain anticipation, and cerebellum predictions add caution annotations to exploration directives — the agent always *can* explore, the bio-systems inform *how cautiously*.
 - Composition order: base coach directive → NAc caution → pain anticipation → cerebellum predictions. Each layer adds information; none removes the base directive.
-- (remaining filled after shipping)
+- Section priority is IMPORTANT (not CRITICAL) to avoid token budget contention with body_state.
+- Wiring goes through `LLMWorker.acting_coach`, NOT `AgentConfig` (factory doesn't consume it).
+- (B3.2 and B3.3 remaining)
 
 ### F3-F5
 - `AgentFactory.create_full_agent` is the only production door (CI-enforced AST gate)

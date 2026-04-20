@@ -410,9 +410,27 @@ YAML Spec ──&rarr; Entity Tree ──&rarr; Auto-Generated Tools ──&rarr
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/llm_backend.py</td><td>LLM + Narrative sensor/modulator backends</td></tr>
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/percepts.py</td><td>EmbodimentPerceptSource (1Hz polling, demand mode)</td></tr>
           <tr><td class="py-1 pr-4 text-slate-300">embodiment/atl_integration.py</td><td>Auto-register ATL body_part concepts</td></tr>
-          <tr><td class="py-1 pr-4 text-slate-300">embodiment/component_registry.py</td><td>Component discovery, genre filtering, instantiation, inheritance</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">embodiment/component_registry.py</td><td>Component discovery, genre filtering, instantiation, inheritance (thread-safe query)</td></tr>
+          <tr><td class="py-1 pr-4 text-slate-300">prompts/acting_coach.py</td><td>B3 Acting Coach: bio-modulated exploration meta-prompt (NAc valence, pain anticipation, cerebellum predictions)</td></tr>
         </tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- Acting Coach (B3) -->
+  <section class="space-y-4">
+    <h2 class="text-xl font-semibold text-white">Acting Coach <span class="text-xs font-mono text-indigo-400 ml-2">B3 &mdash; 0.7</span></h2>
+    <p class="text-slate-300 leading-relaxed">The <strong class="text-white">Acting Coach</strong> is a meta-prompt system that prevents the agent from entering respond loops when embodied. Instead of asking "what should I do?", the agent explores its physical affordances proactively.</p>
+
+    <div class="bg-slate-900/50 border border-slate-700 rounded-xl p-5 space-y-3">
+      <h3 class="text-white font-medium text-sm">Bio-System Modulation (not suppression)</h3>
+      <p class="text-slate-300 text-sm leading-relaxed">The coach is a <em class="text-indigo-400 not-italic">default policy</em> that three bio-systems continuously modulate:</p>
+      <ol class="list-decimal list-inside text-slate-300 text-sm space-y-1.5">
+        <li><strong class="text-white">NAc valence</strong> &mdash; learned caution or preference annotations on specific affordances ("sword_slash has caused damage before")</li>
+        <li><strong class="text-white">Pain anticipation</strong> &mdash; anticipatory anxiety from hippocampal pattern-matching against past pain episodes</li>
+        <li><strong class="text-white">Cerebellum predictions</strong> &mdash; forward model outcome forecasts ("predicted low success, risks: jammed")</li>
+      </ol>
+      <p class="text-slate-400 text-xs">Composition order: base directive &rarr; NAc caution &rarr; pain anticipation &rarr; cerebellum predictions. Each layer <em>adds</em> information; none removes the base exploration directive.</p>
     </div>
   </section>
 

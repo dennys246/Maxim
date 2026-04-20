@@ -317,6 +317,10 @@ class LLMWorker:
         self._requests_dropped = 0
         self._avg_latency_ms = 0.0
 
+        # Acting Coach config (B3): set after construction to inject
+        # affordance exploration meta-prompting into LLMRequests.
+        self.acting_coach: Any | None = None
+
         # PromptBuilder for prompt construction
         self._prompt_builder = PromptBuilder(
             llm=self._llm,
@@ -821,6 +825,7 @@ class LLMWorker:
             skip_exploration=skip_exploration,
             is_sleeping=is_sleeping,
             protocol_context=protocol_context,
+            acting_coach=self.acting_coach,
         )
 
         if self._pool is not None:

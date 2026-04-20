@@ -205,7 +205,8 @@ class TestEndBioSession:
         )
         hub.on_session_end.assert_called_once()
 
-    def test_skips_hub_in_sim_mode(self):
+    def test_lightweight_consolidation_in_sim_mode(self):
+        """Sim mode calls lightweight consolidation, not full on_session_end."""
         hub = MagicMock()
         end_bio_session(
             memory_hub=hub,
@@ -214,6 +215,7 @@ class TestEndBioSession:
             is_sim_mode=True,
         )
         hub.on_session_end.assert_not_called()
+        hub.on_session_end_lightweight.assert_called_once()
 
     def test_skips_hub_when_not_enabled(self):
         hub = MagicMock()

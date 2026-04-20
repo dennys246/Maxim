@@ -1646,6 +1646,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                         ),
                     )
                     llm_worker.start()
+                    # B3: Enable Acting Coach when embodiment tools are available
+                    if _embodiment_ref is not None:
+                        from maxim.prompts.acting_coach import ActingCoachConfig
+
+                        llm_worker.acting_coach = ActingCoachConfig()
 
                 # Store internet access in state (uses internet_enabled from above)
                 state.data["internet_access"] = internet_enabled

@@ -67,6 +67,11 @@ TOOL_ALIASES: dict[str, str] = {
     "investigate": "examine",
 }
 
+# Guard mutations of TOOL_ALIASES for thread safety. Single-key reads
+# (dict.get) are atomic under CPython's GIL, but multi-key mutations
+# (update, pop in a loop) need serialization against concurrent readers.
+_TOOL_ALIASES_LOCK = threading.RLock()
+
 
 class Executor:
     def __init__(
@@ -103,12 +108,14 @@ class Executor:
         Used by DM runtime to map encounter choice names to the choose tool.
         E.g., {"accept_job": "choose", "decline": "choose", "fight": "choose"}
         """
-        TOOL_ALIASES.update(aliases)
+        with _TOOL_ALIASES_LOCK:
+            TOOL_ALIASES.update(aliases)
 
     def remove_aliases(self, names: list[str]) -> None:
         """Remove previously registered runtime aliases."""
-        for name in names:
-            TOOL_ALIASES.pop(name.lower(), None)
+        with _TOOL_ALIASES_LOCK:
+            for name in names:
+                TOOL_ALIASES.pop(name.lower(), None)
 
     def execute(self, action: dict[str, Any]) -> ToolOutput:
         """Execute a tool action, returning raw ToolOutput.
