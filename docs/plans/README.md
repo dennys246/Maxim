@@ -1,17 +1,22 @@
 # Maxim Plans
 
-Current version: **0.5.0** (published on PyPI as `pymaxim`). Next publish: **0.6.0**.
+Current version: **0.6.0** (published on PyPI as `pymaxim`).
 Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Version Roadmap
 
 | Version | Theme | Status |
 |---------|-------|--------|
-| **0.6** | **Generalizable embodiment** — E0 sim wiring + E1 Asset Foundry | Ready to publish |
-| **0.7** | **Feature completion** — E2-E3 (foundry with real LLM + curation), B3 (Acting Coach), F3-F5 (Agent Factory canonicalization) | Next |
-| **1.0** | **Validation + polish** — P5 stress persistence (the gate), API/CLI surface review for edge cases, final docs | Target |
+| **0.6** | **Generalizable embodiment** — E0 sim wiring + E1 Asset Foundry | **Published** |
+| **0.7** | **Self-generating simulations** — Imagination process (on-demand SEM entity generation), B3 Acting Coach, E2-E3 (foundry with real LLM + auto-curation), F3-F5 (Agent Factory canonicalization) | Planning (post-review) |
+| **0.8** | **Imagination maturity** — I4-I5 (post-session scoring, orchestrator imagination), narrator entity awareness, library GC, design_batch, EC-driven templates | Scoped |
+| **1.0** | **Validation + polish** — P5 stress persistence (the gate), API/CLI surface review, final docs | Target |
 
-**Discipline:** 0.7 is the last feature version. 1.0 is validation + polish only — no new features, just proving what's built holds up at scale and the API/CLI surfaces are complete for power users.
+**Discipline:** 0.7 is the last major feature version. 0.8 matures imagination (deferred I4-I5 + review-surfaced longevity work). 1.0 is validation + polish only — no new features, just proving what's built holds up at scale.
+
+## 0.7 — Self-Generating Simulations
+
+- [07_feature_completion.md](07_feature_completion.md) — **PLANNING** (2026-04-19, post-5-lens-review). 4 tracks: R0 prerequisites → B3 Acting Coach → E2-E3 Foundry with real LLM → I1-I3 Imagination process. F3-F5 Factory runs in parallel. ~3470 LOC. I4-I5 deferred to 0.8.
 
 ## Active (gating 1.0)
 
