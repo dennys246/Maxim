@@ -1023,6 +1023,73 @@ def main(argv: Sequence[str] | None = None) -> int:
         # --embodiment for the primary (generative/DM) use cases.
         _sim_entity_ref = getattr(args, "embodiment", None)
 
+        # ── E3: Pre-sim auto-curation ─────────────────────────────────
+        _auto_curate = bool(getattr(args, "auto_curate", False))
+        _no_curate = bool(getattr(args, "no_curate", False))
+        if _auto_curate and not _no_curate and _sim_entity_ref:
+            _curate_threshold = int(getattr(args, "curate_threshold", 5) or 5)
+            # Infer genre from entity_ref or --foundry-genre flag
+            _curate_genre = getattr(args, "foundry_genre", "fantasy") or "fantasy"
+
+            try:
+                from maxim.embodiment.component_registry import ComponentRegistry
+                from maxim.simulation.foundry import auto_curate
+
+                _curate_registry = ComponentRegistry()
+
+                # Build ComponentIndex for dedup (optional — degrades gracefully)
+                _curate_index = None
+                try:
+                    from maxim.embodiment.component_index import ComponentIndex
+
+                    _curate_index = ComponentIndex(_curate_registry)
+                except Exception as _idx_err:
+                    logging.getLogger("maxim").debug("ComponentIndex unavailable for dedup: %s", _idx_err)
+
+                # Reuse the LLM router from --llm if available
+                _curate_llm = None
+                _curate_profile = str(getattr(args, "language_model", "") or "").strip()
+                if _curate_profile:
+                    try:
+                        from maxim.models.language.config import load_llm_config
+                        from maxim.models.language.router import LLMRouter
+
+                        _curate_cfg = load_llm_config(profile_override=_curate_profile)
+                        _curate_llm = LLMRouter(_curate_cfg)
+                        if hasattr(_curate_llm, "warmup"):
+                            _curate_llm.warmup()
+                    except Exception as _llm_err:
+                        logging.getLogger("maxim").debug("LLM init for curation failed: %s", _llm_err)
+
+                print(f"Auto-curating {_curate_genre} components (threshold={_curate_threshold})...")
+                _curate_report = auto_curate(
+                    genre=_curate_genre,
+                    threshold=_curate_threshold,
+                    registry=_curate_registry,
+                    component_index=_curate_index,
+                    llm_router=_curate_llm,
+                )
+                if _curate_report.total_promoted > 0:
+                    print(
+                        f"  Curated: {_curate_report.total_promoted} promoted, "
+                        f"{_curate_report.total_skipped_dedup} dedup-skipped"
+                    )
+                elif _curate_report.categories_below_threshold == 0:
+                    print("  Coverage OK — no curation needed")
+                else:
+                    print(
+                        f"  Generated {_curate_report.total_generated} candidates, "
+                        f"none promoted (below score threshold)"
+                    )
+            except Exception as _cur_err:
+                logging.getLogger("maxim").warning("Auto-curation failed: %s", _cur_err)
+                print(f"  WARNING: Auto-curation failed ({_cur_err})", file=sys.stderr)
+        elif _auto_curate and not _no_curate and not _sim_entity_ref:
+            print(
+                "  NOTE: --auto-curate requires --embodiment to determine genre context; skipping curation.",
+                file=sys.stderr,
+            )
+
         # ── Generative campaign mode (new default for goal strings) ──
         if _is_goal_string and not _is_legacy_agent:
             goal = _explicit_goal or _sim_val

@@ -200,6 +200,11 @@ maxim --foundry "cyberpunk weapons" --foundry-genre cyberpunk  # generate + test
 maxim --foundry "fantasy creatures" --foundry-count 20         # larger batch
 maxim --foundry "test" --foundry-dry-run                       # generate + validate only
 
+# Auto-Curation (0.7+) — pre-sim coverage gap filling
+maxim --sim "test combat" --embodiment weapons/rusty_sword --auto-curate  # fill gaps
+maxim --sim "explore" --embodiment X --auto-curate --curate-threshold 8   # higher bar
+maxim --sim "test" --embodiment X --no-curate                             # explicit opt-out
+
 # Diagnostics + networking
 maxim doctor                                 # environment check
 maxim doctor --retry                         # interactive fix loop
@@ -260,6 +265,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 - **Lane tier system**: Functions route to capability tiers (large/medium/small) via `FunctionRouter` in `runtime/function_router.py`. `detect_tiers()` in `lane_models.py` auto-detects from hardware.
 - **Data paths**: Bundled seed data in `src/maxim/_data/` (components, encounters, prompts, templates). User data at `~/.maxim/` (memory, sessions, benchmarks, config). Resolution via `utils/paths.py`.
 - **SEM Component Registry**: `embodiment/component_registry.py` discovers SEM entity templates from campaign-local, `~/.maxim/components/`, and `_data/components/`. 65 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops. **Asset Foundry** (`simulation/foundry.py`) generates new components via LLM + template fallback, validates, tests (8 SEM protocol tests + 3-encounter gauntlet), and scores on 4 bio-system engagement dimensions. **ComponentIndex** (`embodiment/component_index.py`) provides two-layer semantic discovery: alias hash table (from `component.synonyms` YAML field, O(1)) + embedding cosine similarity (sentence-transformers, threshold 0.65). Reuses `similarity.encoder._get_encoder` singleton — no duplicate model. Thread-safe via RLock. Persistence via `.npy` + `.json` sidecar (no pickle). Used by imagination trigger (I1) and auto-curation dedup (E3).
+- **Imagination system** (`imagination/`): Real-time entity design from novel percept mentions. Pipeline: entity noun-phrase extraction → ImaginationCache check → ComponentIndex two-layer lookup → DN arousal gate → energy budget check → EntityDesigner LLM call → quick validation → `register_ephemeral()` + `ComponentIndex.add()` → scene-scoped tool registration. Session-scoped ephemeral overlay on ComponentRegistry (`_ephemeral_index`, separate from persistent `_index`). Episodes and CausalLinks from imagined entities carry `imagined=True` provenance; on session end, `NAc.decay_imagined_links(0.5)` reduces confidence by 50%. Wired into agent loop post-`state.update()` via `imagination_trigger` parameter on `run_agentic_loop`. Per-phrase design guard prevents concurrent LLM calls for the same phrase (AUT + orchestrator race). Thread-safe throughout via RLock.
 - **Thread model**: Main loop at 2-30Hz + WorkerPool (tier-based lanes: large/medium/small, owned by LLMWorker) + Hippocampus capture thread (owned + shut down by MemoryHub.on_session_end)
 
 ## Quick reference — where to look
@@ -286,6 +292,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Research | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |
 | Valence | `memory/episode.py` (Episode.valence, apply_hebbian_on_close, salience_spike_rule), `agents/bus.py` (propagate_valence), `memory/hippocampus.py` (capture_reaction, include_valence) |
 | Embodiment | `embodiment/sem.py`, `embodiment/body.py`, `embodiment/cerebellum.py` (forward models), `embodiment/backends/cerebellum_modulator.py` (predict/fallback/train + success reactions), `embodiment/motor.py` |
+| Imagination | `imagination/trigger.py` (entity extraction + ComponentIndex lookup + design dispatch), `imagination/designer.py` (ImaginationDesigner wrapping EntityDesigner), `imagination/cache.py` (session-scoped ImaginationCache) |
 | Mesh | `mesh/identity.py`, `mesh/knowledge.py`, `mesh/task_delegation.py`, `mesh/clock.py` |
 | Lane tiers | `runtime/function_router.py`, `runtime/lane_models.py`, `runtime/lane_backends.py` |
 | Multi-agent | `runtime/agent_factory.py`, `runtime/agent_pool.py` |

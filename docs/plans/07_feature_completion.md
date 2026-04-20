@@ -253,17 +253,20 @@ component:
 
 **Thread safety:** `ComponentIndex` uses an RLock (same pattern as `ComponentRegistry`). `add()` acquires lock, appends to both alias table and embedding list. `find()` acquires lock for the iteration. The embedding computation itself happens outside the lock (it's the slow part — ~5ms per embed call).
 
-**E3 — Auto-Curation CLI (~400 LOC)**
+**E3 — Auto-Curation CLI (~350 LOC) — SHIPPED**
 - `--auto-curate` flag: pre-sim foundry run when genre coverage is below threshold
   - Checks ComponentRegistry for genre/category coverage
   - If < N components for the target genre, runs foundry to fill gaps
   - Promotes high-scorers (>= 0.7) automatically to `~/.maxim/components/`
   - Available for the current session immediately
 - `--curate-threshold N` (default: 5 per genre/category)
-- `--no-curate` explicit opt-out
-- API: `maxim.imagine(..., auto_curate=True)` / `maxim.run(..., auto_curate=True)`
-- Post-sim quality report: what was generated, what was promoted, scores
-- **Semantic dedup via ComponentIndex:** Before promotion, call `index.dedup_check(candidate_spec, threshold=0.80)`. If a near-duplicate exists, skip promotion and log: "Skipped {name} — similar to existing {match.ref} (cosine {score:.2f})". Replaces the ad-hoc EC similarity check from the previous plan revision with the canonical index.
+- `--no-curate` explicit opt-out (overrides `--auto-curate`)
+- `--auto-curate` requires `--embodiment` — warns if missing
+- API: `maxim.imagine(..., auto_curate=True, curate_genre="fantasy")`
+- API: `maxim.run(..., auto_curate=True, curate_genre="cyberpunk")`
+- **Semantic dedup via ComponentIndex:** `dedup_check(spec, threshold=0.80)`. Near-duplicates skipped + logged. Dedup-demoted candidates get `score.bucket="review"` (not "promote").
+- Pre-merge review folded: hardcoded genre → `curate_genre` param; API stderr on failure; score.bucket consistency; missing-embodiment warning.
+- 25 unit tests. 5454 total suite PASS.
 
 ---
 
@@ -330,7 +333,7 @@ The **ComponentIndex** is the critical decision point. It prevents unnecessary i
 
 #### Stages (0.7 scope)
 
-**I1 — Imagination trigger + infrastructure (~300 LOC)**
+**I1 — Imagination trigger + infrastructure (~300 LOC) — SHIPPED**
 - Entity noun-phrase extraction from percepts (~150 LOC) — review found this pipeline does not exist. Uses existing concept extraction from `memory/concept_extractor.py` as a starting point, extended to identify entity-like nouns (physical objects, creatures, environmental features).
 - **ComponentIndex integration:** Trigger uses `component_index.find(entity_phrase)` instead of raw `ComponentRegistry.has(ref)`. This is the key improvement — "old iron door" fuzzy-matches "rusty_gate" via embedding similarity and skips imagination. Only truly novel entities (no alias hit, no embedding match above 0.65) proceed to the design stage.
 - `ComponentRegistry.register_ephemeral(spec, provenance="imagined")` — session-scoped registration with provenance tag. Separate overlay dict from persistent `_index` (architecture review: don't mix ephemeral and persistent entries). On registration, also calls `component_index.add(ref, spec, synonyms)` to make the new entity discoverable to future extraction passes within the same session.
@@ -339,7 +342,7 @@ The **ComponentIndex** is the critical decision point. It prevents unnecessary i
 - DN arousal gate integration (~50 LOC) — wire into existing DN idle behavior at `default_network/network.py`. Imagination fires during `ReturnToCenter` and idle states only.
 - Configurable: `imagination=True/False`, `imagination_threshold=2` (mentions before triggering)
 
-**I2 — Real-time entity design (~200 LOC)**
+**I2 — Real-time entity design (~200 LOC) — SHIPPED**
 - `imagination/designer.py`: Wraps EntityDesigner for real-time use
   - Takes scene context + entity description → SEM spec
   - Quick validation (schema + sensor sanity, no gauntlet)

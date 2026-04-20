@@ -434,6 +434,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Generate + validate only, skip gauntlet testing.",
     )
 
+    # ── Auto-Curation ─────────────────────────────────────────────────
+    curation = parser.add_argument_group("curation", "Pre-sim auto-curation of SEM components")
+    curation.add_argument(
+        "--auto-curate",
+        action="store_true",
+        default=False,
+        help="Before sim, check genre/category coverage and run foundry "
+        "to fill gaps. Promoted components go to ~/.maxim/components/.",
+    )
+    curation.add_argument(
+        "--curate-threshold",
+        type=int,
+        default=5,
+        metavar="N",
+        help="Min components per genre/category before auto-curate triggers (default: 5).",
+    )
+    curation.add_argument(
+        "--no-curate",
+        action="store_true",
+        default=False,
+        help="Explicit opt-out of auto-curation (overrides config defaults).",
+    )
+
     # ── Debug/Trace ────────────────────────────────────────────────────
     dbg = parser.add_argument_group("debug", "Debug tracing and output filtering")
     dbg.add_argument(
