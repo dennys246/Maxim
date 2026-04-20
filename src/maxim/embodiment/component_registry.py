@@ -238,7 +238,9 @@ class ComponentRegistry:
         _GENRE_TAGS = {"fantasy", "cyberpunk", "scifi", "modern", "devops", "horror", "historical"}
 
         results = []
-        for info in self._index.values():
+        with self._lock:
+            snapshot = list(self._index.values())
+        for info in snapshot:
             if category and info.category != category:
                 continue
             if tags and not all(t in info.tags for t in tags):
@@ -272,11 +274,13 @@ class ComponentRegistry:
 
     def list_categories(self) -> list[str]:
         """Return sorted list of available categories."""
-        return sorted({info.category for info in self._index.values()})
+        with self._lock:
+            return sorted({info.category for info in self._index.values()})
 
     def list_refs(self, category: str | None = None) -> list[str]:
         """Return all known refs, optionally filtered by category."""
-        refs = [info.ref for info in self._index.values() if category is None or info.category == category]
+        with self._lock:
+            refs = [info.ref for info in self._index.values() if category is None or info.category == category]
         return sorted(refs)
 
     def has(self, ref: str) -> bool:

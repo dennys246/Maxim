@@ -687,6 +687,15 @@ def start_simulation_mode(
             session_id=session_id,
         )
         aut_llm_worker.start()
+        # B3: Enable Acting Coach when embodiment tools are available.
+        # The coach encourages the agent to explore affordances instead of
+        # entering respond loops. Bio-system modulation (NAc valence, pain
+        # anticipation, cerebellum predictions) annotates the base directive
+        # via existing StructuredContext fields at prompt-build time.
+        if entity_ref is not None:
+            from maxim.prompts.acting_coach import ActingCoachConfig
+
+            aut_llm_worker.acting_coach = ActingCoachConfig()
 
     # ── Build orchestrator pipeline ──────────────────────────────────────
     orch_env = FileSystemEnv(str(sim_tmpdir))

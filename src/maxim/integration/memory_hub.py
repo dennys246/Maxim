@@ -768,6 +768,93 @@ class MemoryHub:
         logger.info("Session ended after %.1fs: %s", session_duration, results)
         return results
 
+    def on_session_end_lightweight(self) -> dict[str, Any]:
+        """Lightweight session end for sim mode — persist state without full replay.
+
+        Skips the expensive hippocampus.sleep() consolidation (full replay,
+        compression, removal) which can block for seconds on large episode sets.
+        Runs NAc decay, flushes the concept extractor (prevents thread leak and
+        ensures ATL concept extraction completes), and saves all persistence-backed
+        subsystems so learning from sim sessions is not silently lost.
+        """
+        if not self._session_active:
+            return {}
+
+        results: dict[str, Any] = {"lightweight": True}
+
+        # Decay NAc confidence (same as full path)
+        try:
+            self.nac.decay_all(factor=0.95)
+            results["nac_decayed"] = True
+        except Exception as e:
+            logger.debug("NAc decay failed: %s", e)
+
+        # Save semantic embeddings
+        if self.ec.semantic_enabled and self.ec._embedding_store is not None:
+            try:
+                import os
+
+                os.makedirs(os.path.dirname(self.embedding_persist_path), exist_ok=True)
+                self.ec._embedding_store.save(self.embedding_persist_path)
+                results["semantic_embeddings_saved"] = len(self.ec._embedding_store)
+            except Exception as e:
+                logger.warning("Failed to save semantic embeddings: %s", e)
+
+        # Save SCN state
+        if self.scn is not None:
+            scn_path = getattr(self.scn, "persistence_path", None) or getattr(self.scn, "_persistence_path", None)
+            if scn_path:
+                try:
+                    self.scn.save(scn_path)
+                except Exception as e:
+                    logger.warning("Failed to save SCN state: %s", e)
+
+        # Save NAc state
+        if self.nac is not None:
+            nac_path = getattr(getattr(self.nac, "config", None), "persistence_path", None)
+            if nac_path:
+                try:
+                    self.nac.save(nac_path)
+                except Exception as e:
+                    logger.warning("Failed to save NAc state: %s", e)
+
+        # Flush ConceptExtractor before saving ATL — pending background
+        # extractions write to ATL, so flush ensures ATL state is complete.
+        # Also prevents daemon thread accumulation in long sim loops.
+        if self._concept_extractor is not None:
+            try:
+                self._concept_extractor.flush(timeout=5.0)
+            except Exception as e:
+                logger.warning("ConceptExtractor flush failed: %s", e)
+
+        # Save ATL state
+        if self.atl is not None:
+            try:
+                self.atl.save()
+            except Exception as e:
+                logger.warning("Failed to save ATL state: %s", e)
+
+        # Save Angular Gyrus state
+        if self.angular_gyrus is not None:
+            try:
+                self.angular_gyrus.save()
+            except Exception as e:
+                logger.warning("Failed to save AG state: %s", e)
+
+        # Save cross-layer graph
+        if self._cross_layer is not None:
+            try:
+                self._cross_layer.save()
+            except Exception as e:
+                logger.warning("Failed to save cross-layer graph: %s", e)
+
+        self._session_active = False
+        session_duration = time.time() - self._session_start_time
+        results["session_duration_seconds"] = session_duration
+
+        logger.info("Session ended (lightweight) after %.1fs: %s", session_duration, results)
+        return results
+
     def sleep(self) -> dict[str, int]:
         """Consolidate learning across all bridges.
 

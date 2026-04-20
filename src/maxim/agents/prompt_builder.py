@@ -752,6 +752,7 @@ class PromptBuilder:
         # so this orchestrator stays a flat sequence — easy to read and reorder.
         self._add_mandatory_sections(budgeter, request, question_text)
         self._add_critical_sections(budgeter, request, question_text, date_str, time_str, effective_cwd, is_rt)
+        self._add_acting_coach_section(budgeter, request)
         self._add_guidance_sections(budgeter, request, date_str, time_str)
         self._add_context_sections(budgeter, request, question_text)
         self._add_perception_sections(budgeter, request)
@@ -885,6 +886,36 @@ class PromptBuilder:
             else:
                 hint += "Use 'internet_search' tool directly."
             budgeter.add("realtime_hint", hint, SectionPriority.CRITICAL)
+
+    @staticmethod
+    def _add_acting_coach_section(
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+    ) -> None:
+        """Acting Coach: meta-prompt for affordance exploration (B3).
+
+        Composes the acting coach section from config + bio-system signals
+        already present on the request context (causal_context, body_state,
+        motor_programs). Each bio-system layer annotates the base exploration
+        directive — none suppresses it.
+        """
+        if request.acting_coach is None:
+            return
+        from maxim.prompts.acting_coach import compose_acting_coach_section
+
+        coach_text = compose_acting_coach_section(
+            request.acting_coach,
+            available_tools=request.available_tools,
+            causal_context=request.context.causal_context,
+            body_state=request.context.body_state,
+            motor_programs=request.context.motor_programs,
+        )
+        if coach_text:
+            budgeter.add(
+                "acting_coach",
+                coach_text,
+                SectionPriority.IMPORTANT,
+            )
 
     def _add_guidance_sections(
         self,

@@ -36,7 +36,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/decisions/` | NAc causal learning, adaptive planner, reward distribution |
 | `src/maxim/time/` | SCN temporal rhythm indexing |
 | `src/maxim/similarity/` | Entorhinal Cortex (pattern completion, centroid update) + LinguisticEncoder (P1) + ConceptDecomposer (noun-phrase extraction before EC) |
-| `src/maxim/prompts/` | PromptAssembler (B1), MemorySummary, prompt profiles |
+| `src/maxim/prompts/` | PromptAssembler (B1), MemorySummary, prompt profiles, **Acting Coach (B3)** — meta-prompt scaffolding for affordance exploration with bio-system modulation (NAc valence, pain anticipation, cerebellum predictions) |
 | `src/maxim/math/` | Angular Gyrus mathematical cognition, IPS fast stats |
 | `src/maxim/default_network/` | Reactive behavior layer (thalamic gate, arbiter) |
 | `src/maxim/salience/` | Novelty tracking, interest matching |
@@ -64,7 +64,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/memory/sleep_replay.py` | P8 sleep replay: episode ranking by NAc reward_bias + valence, re-fire Hebbian with consolidation multiplier (0.5) |
 | `src/maxim/planning/structural_diff.py` | B4 Jaccard distance on action sequences for plan comparison. Pure utility, no agent/memory/runtime imports (0.5) |
 | `src/maxim/planning/adaptive_planner.py` | ADaPT-style lazy planner with deep memory integration. B4 anti-repetition constraint in decomposition prompts (0.5) |
-| `src/maxim/runtime/agent_factory.py` | F2 `AgentFactory.create_full_agent()` — canonical agent construction composing `build_bio_stack` + `build_executor` + `FearGatedExecutor` (0.5) |
+| `src/maxim/runtime/agent_factory.py` | F3-F5 `AgentFactory.create_full_agent()` — canonical agent construction composing `build_bio_stack` + `build_executor` + `FearGatedExecutor`. Used by CLI, sim orchestrator (AUT + orch), and headless API (0.7) |
 | `src/maxim/runtime/bio_stack.py` | Wave 3 canonical bio-pipeline construction: `build_bio_stack` returns frozen `BioStack` (0.3) |
 
 See [ARCHITECTURE.md](../ARCHITECTURE.md) for detailed design rules.

@@ -9,6 +9,7 @@ LLMs (especially small ones like Mistral-7B) hallucinate tool names from their t
 ## Where it lives
 
 - **Alias map:** `src/maxim/runtime/executor.py` — `TOOL_ALIASES` dict at module level
+- **Thread safety:** `_TOOL_ALIASES_LOCK` (RLock) guards mutations (`register_aliases`, `remove_aliases`). Single-key reads in `execute()` are atomic under CPython's GIL.
 - **Resolution logic:** `Executor.execute()` — checks aliases before falling through to "did you mean?" errors
 - **Tracking:** `executor.alias_redirects` — list of `(original_name, target_name)` tuples for experiment analysis
 

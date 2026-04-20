@@ -272,7 +272,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols), `memory/percept_trace_buffer.py` (τ-decay ring buffer) |
 | Causal learning | `decisions/nac.py` (reward bias, eligibility traces, distribute_reward), `decisions/causal_link.py` (CausalLink, percept_refs) |
 | Substrate encoding | `similarity/encoder.py` (LinguisticEncoder), `similarity/ec.py` (pattern_complete_or_separate, centroid update) |
-| Prompt composition | `prompts/assembler.py` (PromptAssembler, MemorySummary), `agents/prompt_builder.py` (legacy) |
+| Prompt composition | `prompts/assembler.py` (PromptAssembler, MemorySummary), `agents/prompt_builder.py` (legacy), `prompts/acting_coach.py` (B3: Acting Coach — bio-modulated affordance exploration meta-prompt) |
 | Percept schema | `agents/percept_context.py` (PerceptContext), `agents/percept_factory.py` (factories), `agents/modality.py` (SensoryTag, SubstrateModality) |
 | Reactions | `reactions/types.py` (Reaction, ReactionContext, TraceSnapshot), `reactions/bus.py` (ReactionBus), `reactions/protocols.py` (PerceptProducer, ReactionProducer) |
 | Cross-layer wiring | `integration/memory_hub.py` (single coordinator) |

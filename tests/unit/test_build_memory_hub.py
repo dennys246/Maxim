@@ -274,3 +274,56 @@ class TestBuildMemoryHub:
         assert id(hub._plan_bridge) == plan_id
         assert id(hub._escalation_bridge) == escalation_id
         assert id(hub._fear_bridge) == fear_id
+
+
+class TestOnSessionEndLightweight:
+    """Tests for MemoryHub.on_session_end_lightweight (R0.2)."""
+
+    def test_nac_decay_fires(self, core_systems):
+        from maxim.integration.memory_hub import MemoryHub
+
+        hub = MemoryHub(**core_systems)
+        hub._session_active = True
+        hub._session_start_time = 0.0
+        results = hub.on_session_end_lightweight()
+        assert results.get("nac_decayed") is True
+
+    def test_session_active_resets(self, core_systems):
+        from maxim.integration.memory_hub import MemoryHub
+
+        hub = MemoryHub(**core_systems)
+        hub._session_active = True
+        hub._session_start_time = 0.0
+        hub.on_session_end_lightweight()
+        assert hub._session_active is False
+
+    def test_idempotent_double_call(self, core_systems):
+        from maxim.integration.memory_hub import MemoryHub
+
+        hub = MemoryHub(**core_systems)
+        hub._session_active = True
+        hub._session_start_time = 0.0
+        hub.on_session_end_lightweight()
+        # Second call returns empty (not active)
+        assert hub.on_session_end_lightweight() == {}
+
+    def test_lightweight_flag_in_results(self, core_systems):
+        from maxim.integration.memory_hub import MemoryHub
+
+        hub = MemoryHub(**core_systems)
+        hub._session_active = True
+        hub._session_start_time = 0.0
+        results = hub.on_session_end_lightweight()
+        assert results.get("lightweight") is True
+
+    def test_returns_session_duration(self, core_systems):
+        import time
+
+        from maxim.integration.memory_hub import MemoryHub
+
+        hub = MemoryHub(**core_systems)
+        hub._session_active = True
+        hub._session_start_time = time.time()
+        results = hub.on_session_end_lightweight()
+        assert "session_duration_seconds" in results
+        assert results["session_duration_seconds"] >= 0.0

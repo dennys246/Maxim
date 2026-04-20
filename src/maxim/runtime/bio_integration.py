@@ -151,12 +151,15 @@ def end_bio_session(
         except Exception as e:
             logger.debug("Failed to save hippocampus: %s", e)
 
-    # End MemoryHub session (runs sleep consolidation and bridge cleanup)
-    # Skip session_end in simulation mode — it runs consolidation which
-    # can block for a long time and we'll start a new turn immediately
-    if memory_hub_enabled and memory_hub is not None and not is_sim_mode:
+    # End MemoryHub session — full consolidation for non-sim, lightweight for sim.
+    # Sim mode skips hippocampus.sleep() (expensive replay) but still persists
+    # NAc decay, semantic embeddings, and subsystem state so learning is not lost.
+    if memory_hub_enabled and memory_hub is not None:
         try:
-            session_stats = memory_hub.on_session_end()
+            if is_sim_mode:
+                session_stats = memory_hub.on_session_end_lightweight()
+            else:
+                session_stats = memory_hub.on_session_end()
             log_agentic(
                 "memory_hub",
                 "session_end",
