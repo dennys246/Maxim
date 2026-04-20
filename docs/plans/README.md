@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **0.6.0** (published on PyPI as `pymaxim`).
+Current version: **0.7.0** (published on PyPI as `pymaxim`).
 Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Version Roadmap
@@ -8,7 +8,7 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 | Version | Theme | Status |
 |---------|-------|--------|
 | **0.6** | **Generalizable embodiment** — E0 sim wiring + E1 Asset Foundry | **Published** |
-| **0.7** | **Self-generating simulations** — Imagination process (on-demand SEM entity generation), B3 Acting Coach, E2-E3 (foundry with real LLM + auto-curation), F3-F5 (Agent Factory canonicalization) | Planning (post-review) |
+| **0.7** | **Self-generating simulations** — Imagination process (on-demand SEM entity generation), B3 Acting Coach, E2-E3 (foundry with real LLM + auto-curation), F3-F5 (Agent Factory canonicalization) | **SHIPPED** (2026-04-20) |
 | **0.8** | **Imagination maturity** — I4-I5 (post-session scoring, orchestrator imagination), narrator entity awareness, library GC, design_batch, EC-driven templates | Scoped |
 | **1.0** | **Validation + polish** — P5 stress persistence (the gate), API/CLI surface review, final docs | Target |
 
@@ -16,7 +16,7 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## 0.7 — Self-Generating Simulations
 
-- [07_feature_completion.md](07_feature_completion.md) — **PLANNING** (2026-04-19, post-5-lens-review). 4 tracks: R0 prerequisites → B3 Acting Coach → E2-E3 Foundry with real LLM → I1-I3 Imagination process. F3-F5 Factory runs in parallel. ~3470 LOC. I4-I5 deferred to 0.8.
+- [07_feature_completion.md](07_feature_completion.md) — **SHIPPED** (2026-04-20). All tracks landed: R0 prerequisites, B3.1 Acting Coach, F3-F5 Factory, E2-E2.5-E3 Foundry+Index+Curation, I1-I3 Imagination. Integration wiring complete. ~3620 LOC. I4-I5 deferred to 0.8. Experiment: [07_imagination_wiring.md](../experiments/07_imagination_wiring.md).
 
 ## Active (gating 1.0)
 
@@ -151,17 +151,24 @@ Earlier archives (2026-04-11/12, S1–S4 shipped 2026-04-12):
 
 Also includes: sim stall fix (dd6c29a), B4 replanning (1.0 gate closed), P6 extinction, P8 sleep replay, F2 factory migration.
 
-### 0.7 — Feature Completion (next)
+### 0.7 — Feature Completion (SHIPPED 2026-04-20)
 
-The last feature version before 1.0. Three parallel tracks:
+The last feature version before 1.0. All tracks landed:
 
-| Track | What | Plan | Scope | Why |
-|---|---|---|---|---|
-| **E2-E3 — Foundry with real LLM** | Run foundry with actual LLM, curate promoted components into seed library | [asset_foundry_plan.md](deferred/asset_foundry_plan.md) | ~600 LOC + curation | Prove the foundry generates useful entities, not just valid YAML |
-| **B3 — Acting Coach** | Personality scaffolds, speech register, embodiment tool guidance | [prompt_b3_b5_track.md](prompt_b3_b5_track.md) | ~450 LOC | Agent uses affordance tools effectively; NPCs have consistent voice |
-| **F3-F5 — Agent Factory** | Make `AgentFactory.create_agent` the single construction door, sim/Reachy/API migration | [agent_factory_canonicalization.md](agent_factory_canonicalization.md) | ~1500 LOC | Eliminate dual-construction paths. One door for every agent. |
+| Track | What | Status |
+|---|---|---|
+| **R0 Prerequisites** | ComponentRegistry thread safety, sim-mode consolidation, TOOL_ALIASES lock | SHIPPED |
+| **B3.1 Acting Coach** | Config + prompt section with bio-system modulation | SHIPPED |
+| **F3-F5 Agent Factory** | Sim orchestrator + Reachy + headless API migrated to `create_full_agent` | SHIPPED |
+| **E2 Real LLM** | Foundry wired to real LLM with entity context injection + synonyms | SHIPPED |
+| **E2.5 ComponentIndex** | Two-layer semantic discovery (alias hash + embedding cosine) | SHIPPED |
+| **E3 Auto-Curation** | Pre-sim coverage gap filling via `--auto-curate` | SHIPPED |
+| **I1 Imagination Trigger** | Entity extraction + ComponentIndex lookup + DN arousal gate | SHIPPED |
+| **I2 Real-time Design** | ImaginationDesigner with quick validation + synonym generation | SHIPPED |
+| **I3 Scene-scoped Tools** | Tool window with cap, deactivation, executor gate | SHIPPED |
+| **Integration** | ImaginationTrigger wired into orchestrator AUT + session cleanup | SHIPPED |
 
-**0.7 sequencing:** B3 and E2-E3 are independent. F3-F5 depends on F2 (shipped in 0.5). All three tracks can run in parallel.
+**Remaining for 0.7:** B3.2 orchestrator probe improvement, B3.3 display extensions. F6 CI enforcement deferred to 0.8.
 
 ### 1.0 — Validation + Polish (target)
 
@@ -206,7 +213,7 @@ All originally defined gates are **CLOSED** (2026-04-19). Remaining criteria for
 - **P5 stress persistence:** 10k+ node persistence stress test. The final hard gate.
 - **API/CLI surface review:** Sweep the public API and CLI for edge cases and missed opportunities. Not a hard gate — a quality bar.
 - **Agent memory transfer docs:** Universal onboarding document set for knowledge continuity across agents.
-- **0.7 feature completion:** E2-E3 (foundry with real LLM), B3 (Acting Coach), F3-F5 (Agent Factory).
+- ~~**0.7 feature completion:** E2-E3, B3, F3-F5, I1-I3~~ **SHIPPED** (2026-04-20).
 
 ## Rules for this directory
 

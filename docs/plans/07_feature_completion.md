@@ -1,11 +1,12 @@
 # 0.7 Feature Completion Plan
 
-**Status:** Draft (post-review revision) — planning session 2026-04-19
-**Current version:** 0.6.0 (ready to publish on PyPI)
+**Status:** SHIPPED — all tracks landed + integration wiring complete (2026-04-20)
+**Current version:** 0.7.0 (ready to publish on PyPI)
 **Target:** 0.7 is the last feature version before 1.0
 **1.0 gate remaining:** P5 stress persistence (10k+ nodes)
-**Tests:** 5251 passing
-**Review:** 5-lens parallel review completed (execution, architecture, simulation longevity, agent longevity, bio-system integrity). Findings integrated below.
+**Tests:** 5469+ passing (17 new integration tests for imagination wiring)
+**Review:** 5-lens pre-plan review + 2-lens pre-merge integration review. Findings integrated below.
+**Experiment:** [07_imagination_wiring.md](../experiments/07_imagination_wiring.md) — integration PoC results
 
 ---
 
@@ -466,6 +467,13 @@ Track 3: Imagination (0.7 scope) ───────────────�
 - Episodes + causal links carry `imagined=True` provenance; decayed 50% on entity discard
 - Session-scoped ImaginationCache prevents duplicate imagination between AUT and orchestrator. Keyed by normalized entity phrase. Stores both "found via index" and "imagined" results.
 - Imagination disabled by default in headless API (`imagination=False`), enabled in sim and Reachy
+
+### Integration wiring (SHIPPED 2026-04-20)
+- **ImaginationTrigger constructed in orchestrator ONLY when `aut_component_registry is not None`** (i.e., when `--embodiment` is passed). No entity_ref → no ComponentRegistry → no trigger. The trigger is NOT constructed in AgentFactory — it requires orchestrator-scope objects (ComponentIndex, EntityDesigner with LLM router, DefaultNetwork).
+- **ImaginationTrigger passed to `run_agentic_loop` via `imagination_trigger=` parameter.** Only the AUT call site passes it; orchestrator, CLI non-sim, api.py headless, interactive, sub-AUT, and Reachy do NOT.
+- **Session-end cleanup in orchestrator:** `aut_nac.decay_imagined_links(0.5)` + `aut_component_registry.clear_ephemeral()`. Ordering: decay links BEFORE clearing entities (links reference entity names, not objects).
+- **ComponentIndex is a SEPARATE instance per session.** Auto-curation in CLI builds its own index; the orchestrator builds another. No shared state between pre-sim curation and in-sim imagination. Both discover from disk (ComponentRegistry re-scans paths).
+- **Reachy runtime deferred:** Has ComponentRegistry but imagination wiring requires DN interaction testing with real hardware. Deferred to 0.8.
 
 ---
 

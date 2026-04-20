@@ -86,6 +86,7 @@ class TestInstantiation:
         "npc",
         "creature",
         "weapon",
+        "body",
         "body_part",
         "environment",
         "character",

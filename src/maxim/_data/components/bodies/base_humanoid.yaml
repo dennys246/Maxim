@@ -1,0 +1,74 @@
+component:
+  name: base_humanoid
+  tags: [body, humanoid, generic, foundational, default]
+  synonyms: [humanoid body, human body, adventurer, person, character, protagonist, hero, agent body]
+  category: bodies
+  description: |
+    Generic humanoid body for simulation agents. Provides a minimal but
+    functional set of sensors and affordances that let the agent physically
+    interact with its environment. This is the default embodiment for sim mode.
+
+entity:
+  name: base_humanoid
+  entity_type: body
+  sensors:
+    health:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    stamina:
+      unit: ratio
+      range: [0, 1]
+      initial: 1.0
+    hunger:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+    visibility:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+    carrying_weight:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+  modulators:
+    locomotion:
+      affordances:
+        move:
+          params: {direction: str, speed: str}
+          description: "Move in a direction (north/south/east/west) at a speed (walk/run/sneak)"
+        rest:
+          params: {duration: str}
+          description: "Rest to recover stamina and health (brief/moderate/long)"
+    perception:
+      affordances:
+        look:
+          params: {target: str}
+          description: "Observe surroundings or examine a specific object"
+        listen:
+          params: {}
+          description: "Listen carefully to nearby sounds"
+    manipulation:
+      affordances:
+        pick_up:
+          params: {object: str}
+          description: "Pick up an object from the environment"
+        drop:
+          params: {object: str}
+          description: "Drop a carried object"
+        use:
+          params: {object: str, action: str}
+          description: "Use a held or nearby object (open, drink, pull, push, read, activate)"
+    communication:
+      affordances:
+        speak:
+          params: {message: str}
+          description: "Say something out loud to nearby entities"
+  failure_modes:
+    - name: exhaustion
+      trigger: {field: stamina, op: "<", value: 0.1, pain: 0.4}
+    - name: injury
+      trigger: {field: health, op: "<", value: 0.2, pain: 0.7}
+    - name: overburdened
+      trigger: {field: carrying_weight, op: ">", value: 0.8, pain: 0.2}

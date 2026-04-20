@@ -847,6 +847,36 @@ class NAc:
             for link in links:
                 link.decay(factor)
 
+    def tag_imagined_links(self, entity_refs: frozenset[str]) -> int:
+        """Retroactively tag causal links involving imagined entities.
+
+        Called at session end with the set of imagined entity refs.
+        Matches links whose ``event_signature`` contains any of the
+        entity ref basenames (e.g., ``"crystal_dragon"`` matches
+        ``"crystal_dragon_bite"``).
+
+        Returns the number of links tagged.
+        """
+        if not entity_refs:
+            return 0
+
+        # Extract basenames from refs: "imagined/crystal_dragon" → "crystal_dragon"
+        basenames = {ref.rsplit("/", 1)[-1] for ref in entity_refs}
+
+        count = 0
+        with self._lock:
+            for links in self._links.values():
+                for link in links:
+                    if link.imagined:
+                        continue  # Already tagged
+                    sig = link.event_signature
+                    if any(base in sig for base in basenames):
+                        link.imagined = True
+                        count += 1
+        if count:
+            logger.info("NAc: tagged %d links as imagined (from %d entity refs)", count, len(entity_refs))
+        return count
+
     def decay_imagined_links(self, factor: float = 0.5) -> int:
         """Decay confidence of all links with ``imagined=True`` provenance.
 

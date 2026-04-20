@@ -1043,6 +1043,40 @@ def start_simulation_mode(
     # by any bridge — the FearCircuitBridge uses nac/ec/hippocampus
     # directly.  See memory_hub_unification.md audit.
 
+    # ── Imagination trigger (I1+I2 wiring) ──────────────────────────────
+    # When an entity_ref is present, the AUT has a ComponentRegistry.
+    # Build a ComponentIndex + ImaginationTrigger so the AUT can imagine
+    # novel entities it encounters during the simulation.
+    aut_imagination_trigger: Any = None
+    if aut_component_registry is not None:
+        try:
+            from maxim.embodiment.component_index import ComponentIndex
+            from maxim.imagination.cache import ImaginationCache
+            from maxim.imagination.designer import ImaginationDesigner
+            from maxim.imagination.trigger import ImaginationTrigger
+            from maxim.simulation.entity_designer import EntityDesigner
+
+            _aut_component_index = ComponentIndex(aut_component_registry)
+            _aut_entity_designer = EntityDesigner(
+                component_registry=aut_component_registry,
+                llm_router=llm_router,
+            )
+            _aut_imagination_designer = ImaginationDesigner(
+                _aut_entity_designer,
+                component_index=_aut_component_index,
+            )
+            aut_imagination_trigger = ImaginationTrigger(
+                component_index=_aut_component_index,
+                component_registry=aut_component_registry,
+                designer=_aut_imagination_designer,
+                cache=ImaginationCache(),
+                tool_registry=aut_registry,
+                default_network=aut_default_network,
+            )
+            logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
+        except Exception as e:
+            logger.debug("ImaginationTrigger construction failed (optional): %s", e)
+
     # ── Print simulation banner ──────────────────────────────────────────
     from maxim.simulation.sim_logger import _emit, display_status, display_summary, get_active_display
 
@@ -1084,6 +1118,7 @@ def start_simulation_mode(
                 percept_source=bridge.percept_source,
                 action_sink=bridge.action_sink,
                 pain_bus=aut_pain_bus,
+                imagination_trigger=aut_imagination_trigger,
             )
         except Exception as e:
             aut_error.append(e)
@@ -1862,6 +1897,36 @@ def start_simulation_mode(
             sim_sandbox.cleanup()
         except Exception as e:
             logger.warning("Sandbox cleanup failed: %s", e, exc_info=True)
+
+    # Imagination session-end cleanup:
+    # 1. Retroactively tag causal links involving imagined entities
+    # 2. Decay tagged links by 50%
+    # 3. Clear ephemeral registry entries
+    if aut_imagination_trigger is not None:
+        try:
+            stats = aut_imagination_trigger.stats()
+            if stats.get("designs_succeeded", 0) > 0:
+                display_status(
+                    f"Imagination: {stats['designs_succeeded']} entities imagined, "
+                    f"{stats['phrases_extracted']} phrases extracted"
+                )
+            # Tag + decay causal links from imagined entities
+            if aut_nac is not None:
+                imagined_refs = aut_imagination_trigger.imagined_refs
+                if imagined_refs:
+                    tagged = aut_nac.tag_imagined_links(imagined_refs)
+                    if tagged > 0:
+                        logger.info("Tagged %d causal links as imagined", tagged)
+                decayed = aut_nac.decay_imagined_links(0.5)
+                if decayed > 0:
+                    logger.info("Decayed %d imagined causal links (factor=0.5)", decayed)
+            # Clear ephemeral registry entries (session-scoped)
+            if aut_component_registry is not None:
+                cleared = aut_component_registry.clear_ephemeral()
+                if cleared:
+                    logger.info("Cleared %d ephemeral entities from registry", len(cleared))
+        except Exception as e:
+            logger.debug("Imagination cleanup failed: %s", e)
 
     # Disable sim logging
     try:
