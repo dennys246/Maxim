@@ -1,8 +1,9 @@
 # SEM Tool Discovery Plan
 
-**Status:** Ready (2026-04-20, revised after dual-lens review)
+**Status:** Ready (2026-04-20, revised after dual-lens review + design resolution)
 **Scope:** 0.7 — Simulation Scalability
 **Depends on:** I3 (scene-scoped tools), E2.5 (ComponentIndex), SEM protocol, B3.1 (Acting Coach)
+**Companion plan:** [concept_exploration.md](concept_exploration.md) — handles vague goals / unknown concepts (Layer C)
 
 ---
 
@@ -97,7 +98,8 @@ Discovered tools that haven't been *called* in N turns (default 5) are auto-deac
 ### S1 — Universal sense tool + discover_tools + hybrid prompt mode (~300 LOC)
 
 **New files:**
-- `tools/discovery.py` — `DiscoverToolsTool`, `UniversalSenseTool`, `EntityMap`
+- `tools/discovery.py` — `DiscoverToolsTool` and `UniversalSenseTool`
+- `embodiment/entity_map.py` — `EntityMap` (standalone, decoupled from ToolRegistry)
 
 **Modified files:**
 - `simulation/orchestrator.py` — hybrid prompt mode wiring
@@ -107,31 +109,41 @@ Discovered tools that haven't been *called* in N turns (default 5) are auto-deac
 
 There is currently no entity-name-to-live-Entity registry. `tool_bridge.py` generates tools that hold `self._entity` references, but there's no global lookup. `UniversalSenseTool` and `DiscoverToolsTool` both need to resolve entity names to live `Entity` objects.
 
+**EntityMap is a standalone object in `embodiment/entity_map.py`**, not on ToolRegistry. Rationale: putting it on ToolRegistry couples entity awareness to the tools layer. Future consumers (prompt builder for entity context, memory for "what entities exist?", Reachy's embodied runtime) would need a ToolRegistry reference just to look up entities — a layering violation. Standalone with its own RLock keeps entity resolution available to any layer.
+
 ```python
 class EntityMap:
     """Maps entity names/paths to live Entity objects.
 
-    Populated by generate_tools_for_entity. Supports name lookup
-    with full_path disambiguation on collision.
+    Standalone object — not coupled to ToolRegistry. Passed to
+    whatever needs entity resolution: tools, prompt builder, memory.
+    Thread-safe via RLock.
+
+    Populated by generate_tools_for_entity and ImaginationTrigger.
     """
+    _lock: threading.RLock
     _entities: dict[str, Entity]  # name → Entity (or full_path → Entity on collision)
 
     def register(self, entity: Entity) -> None:
         """Register an entity tree. Walks descendants."""
-        for ent in entity.walk():
-            if ent.name in self._entities:
-                # Collision — store both under full_path
-                existing = self._entities.pop(ent.name)
-                self._entities[existing.full_path] = existing
-                self._entities[ent.full_path] = ent
-            else:
-                self._entities[ent.name] = ent
+        with self._lock:
+            for ent in entity.walk():
+                if ent.name in self._entities:
+                    # Collision — store both under full_path
+                    existing = self._entities.pop(ent.name)
+                    self._entities[existing.full_path] = existing
+                    self._entities[ent.full_path] = ent
+                else:
+                    self._entities[ent.name] = ent
 
     def resolve(self, name: str) -> Entity | None:
         """Resolve by name, then full_path. Returns None if not found."""
+
+    def list_names(self) -> list[str]:
+        """Return all known entity names (for error messages)."""
 ```
 
-`generate_tools_for_entity` populates the `EntityMap` as a side effect (passed as optional parameter, no signature break for existing callers).
+`generate_tools_for_entity` populates the `EntityMap` as a side effect (passed as optional parameter, no signature break for existing callers). The orchestrator creates the `EntityMap` and passes it to both `generate_tools_for_entity` (population) and the tools (reads). `ImaginationTrigger` also receives it at construction for populating on entity design.
 
 #### DiscoverToolsTool
 
@@ -213,10 +225,40 @@ def _select_goal_relevant_tools(goal: str, entity_map: EntityMap, registry: Tool
         if overlap > 0:
             scores.append((tool_name, overlap))
     scores.sort(key=lambda x: x[1], reverse=True)
-    return [name for name, _ in scores[:5]]  # top 5
+    top_k = [name for name, _ in scores[:5]]
+
+    # Vague goal fallback: if top-k returned < 3 tools, add one affordance
+    # per entity (first affordance of the modulator with the most affordances).
+    # Ensures physical tools are visible even for "explore freely" or "survive".
+    if len(top_k) < 3:
+        for entity in entity_map.list_entities():
+            best_mod = max(entity.modulators.values(), key=lambda m: len(m.affordances), default=None)
+            if best_mod is not None:
+                first_aff = next(iter(best_mod.affordances))
+                candidate = f"{entity.name}_{first_aff}"
+                if candidate not in top_k and registry.is_tool_active(candidate):
+                    top_k.append(candidate)
+    return top_k
 ```
 
 Tools not in the top-k are scene-deactivated (still registered, discoverable).
+
+**Vague-query graceful degradation in discover_tools:**
+
+When discover_tools receives a vague query ("what can I do", "explore") that matches no specific modulator/affordance, instead of returning zero results it returns a **modulator category summary** across all entities:
+
+```
+"Your capabilities by category:
+- Combat (rusty_sword): slash, parry, throw
+- Locomotion (base_humanoid): move, rest
+- Manipulation (base_humanoid): pick_up, drop, use
+- Maintenance (rusty_sword): sharpen, repair
+Try a more specific query like 'attack with sword' to activate those tools."
+```
+
+This uses the same entity/modulator walk as the main discovery algorithm — the vague-query path just returns the top level instead of activating specific affordances. No additional machinery needed. The summary gives the agent enough orientation to compose a targeted follow-up query.
+
+**Concept exploration beyond this scope:** Deeply vague goals ("explore freely", "understand this world") need more than keyword matching — they need concept grounding that connects abstract intent to concrete directions. This is tracked in the companion plan [concept_exploration.md](concept_exploration.md) and will be implemented after SEM tool discovery provides the baseline to measure against.
 
 ### S2 — NAc-informed ranking + Acting Coach integration + LRU eviction (~120 LOC)
 
@@ -241,19 +283,35 @@ The tool accepts an optional `nac` reference (wired at construction). On discove
 
 Without eviction, repeated `discover_tools` calls across turns monotonically grow the active tool list back toward 30+. Solution: discovered affordance tools that haven't been *called* in N turns are auto-deactivated.
 
-```python
-# In ToolRegistry or as a thin wrapper in discovery.py:
-_tool_last_used: dict[str, int] = {}  # tool_name → turn number of last call
-DISCOVERY_LRU_TURNS = 5  # deactivate after 5 turns of non-use
+**Per-tool deactivation (new ToolRegistry method):**
+I3's `deactivate_scene` is per-scene — it flips all tools in a scene. LRU needs per-tool granularity: if the agent discovers 3 combat tools and only uses `slash`, `parry` and `throw` should be evicted while `slash` stays. Add `deactivate_tool(name)` to ToolRegistry (~5 lines: flip `_scene_meta[name].active = False`). This is a small, clean extension of I3 — scenes remain the unit of *bulk* activation, individual deactivation is the new capability.
 
-def evict_stale_discoveries(current_turn: int) -> list[str]:
-    """Deactivate discovered tools not called in DISCOVERY_LRU_TURNS. Called at prompt build time."""
+```python
+# In ToolRegistry:
+def deactivate_tool(self, name: str) -> bool:
+    """Deactivate a single tool (set active=False). Returns True if found."""
+    with self._lock:
+        meta = self._scene_meta.get(name)
+        if meta is not None and meta.active:
+            meta.active = False
+            return True
+        return False
+
+# In tools/discovery.py — eviction logic:
+_tool_last_used: dict[str, int] = {}  # tool_name → turn number of last call
+_goal_selected: set[str] = set()  # exempt from LRU eviction
+DISCOVERY_LRU_TURNS = 5
+
+def evict_stale_discoveries(current_turn: int, registry: ToolRegistry) -> list[str]:
+    """Deactivate individual discovered tools not called in DISCOVERY_LRU_TURNS."""
     evicted = []
     for tool_name, last_turn in list(_tool_last_used.items()):
+        if tool_name in _goal_selected:
+            continue  # top-k goal-selected tools are exempt
         if current_turn - last_turn > DISCOVERY_LRU_TURNS:
-            if registry.get_tool_scene(tool_name) is not None:  # only scene tools
-                registry.deactivate_scene(...)  # deactivate tool's scene
+            if registry.deactivate_tool(tool_name):
                 evicted.append(tool_name)
+                del _tool_last_used[tool_name]
     return evicted
 ```
 
@@ -296,23 +354,24 @@ Two parallel review agents (edge-case lens + LLM behavioral lens) identified 9 f
 ## Invariants
 
 - **`discover_tools` and `sense` are core tools, not scene tools.** Always available. Deregistering either breaks the discovery/sensing flow.
-- **Discovery activates tools via I3's `activate_scene`.** No new registry states. I3's cap enforcement applies to discovered tools.
+- **Discovery activates tools via I3's `activate_scene`.** I3's cap enforcement applies to discovered tools. LRU eviction uses the new per-tool `deactivate_tool` method (S2).
 - **Universal `sense` always reflects live entity state.** Reads from `entity.vital_metrics` / `entity.read_all_sensors()` — same data path as the per-sensor tools it replaces.
 - **Discovery does not suppress tools.** Negative-valence tools get caution annotations, not removal. The agent always *can* use any discovered tool.
 - **Top-k goal-selected tools are exempt from LRU eviction.** They stay visible for the session regardless of use frequency.
-- **EntityMap is the single source of truth for name → live Entity.** `UniversalSenseTool` and `DiscoverToolsTool` both resolve through it. Collision disambiguation uses `entity.full_path`.
+- **EntityMap is standalone in `embodiment/entity_map.py`**, not on ToolRegistry. Single source of truth for name → live Entity. Decoupled so future consumers (prompt builder, memory, Reachy runtime) can resolve entities without a ToolRegistry reference. Thread-safe via RLock. Collision disambiguation uses `entity.full_path`.
 - **Imagination entities are discoverable but not visible until discovered.** Tools are scene-registered as inactive. ComponentIndex + EntityMap make them findable.
-- **Zero-result discovery returns actionable guidance**, not empty output.
+- **Zero-result discovery returns a modulator category summary**, not empty output. Gives the agent enough orientation to compose a targeted follow-up query.
+- **Per-tool deactivation is the LRU mechanism.** `ToolRegistry.deactivate_tool(name)` flips a single tool's `active` flag. Scenes remain the unit of *bulk* activation; individual deactivation is the new per-tool capability.
 
 ## LOC Estimate
 
 | Stage | LOC | Notes |
 |-------|-----|-------|
 | S0 | 1 | Bug fix (done) |
-| S1 | ~300 | DiscoverToolsTool + UniversalSenseTool + EntityMap + hybrid wiring |
-| S2 | ~120 | NAc ranking + Acting Coach update + LRU eviction |
+| S1 | ~320 | DiscoverToolsTool + UniversalSenseTool + EntityMap + hybrid wiring + vague-goal fallback |
+| S2 | ~130 | NAc ranking + Acting Coach update + LRU per-tool eviction + `deactivate_tool` |
 | S3 | ~50 | Imagination deferred registration |
-| **Total** | **~470** | |
+| **Total** | **~500** | |
 
 ## Open Questions (Resolved)
 
@@ -321,6 +380,9 @@ Two parallel review agents (edge-case lens + LLM behavioral lens) identified 9 f
 - ~~Should discovery add a "hidden" registry state?~~ **No.** Uses I3's existing scene deactivation.
 - ~~Should imagination inject "use discover_tools" hints?~~ **No.** Acting Coach + body_state + curiosity drive discovery naturally.
 - ~~Pure slim prompt or hybrid?~~ **Hybrid.** Top-k goal-relevant affordances visible from turn 1, discover_tools for expansion. Cross-confirmed cold start regression on local models killed the pure-slim approach.
+- ~~Where does EntityMap live?~~ **Standalone in `embodiment/entity_map.py`**, not on ToolRegistry. Avoids coupling entity awareness to the tools layer. Future consumers (prompt builder, memory, Reachy) can use it without a ToolRegistry reference.
+- ~~LRU eviction granularity?~~ **Per-tool.** New `ToolRegistry.deactivate_tool(name)` method (~5 lines). Scenes remain the unit of bulk activation; individual deactivation is the new capability for LRU.
+- ~~What about vague goals?~~ **Three-layer answer.** Layer A: top-k fallback (one affordance per entity if < 3 goal matches). Layer B: discover_tools returns modulator category summary on vague queries. Layer C (future): concept exploration plan for deep conceptual grounding — see [concept_exploration.md](concept_exploration.md).
 - Should the orchestrator also get discover_tools? **No** — orch has a fixed, small tool set.
 - Should discovery work outside sim mode? **Yes** — for Reachy, camera percepts → "what tools work on this object?" Same mechanism.
 - Latency budget: 20-50ms per discovery call. Agent loop at 2Hz = 500ms/tick. 10% is acceptable, and discovery only fires when the LLM explicitly calls it.
