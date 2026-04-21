@@ -1,8 +1,8 @@
 # Deliberative Thinking + Bio-Enrichment Pipeline
 
-**Status:** Ready (2026-04-20)
+**Status:** L0+L1+L2 SHIPPED (2026-04-20). L3 (NoveltyScorer extraction) deferred/optional.
 **Scope:** 0.7 — Simulation Scalability
-**Depends on:** SEM Tool Discovery (shipped), MemoryHub (Wave 2), Gating Abstraction G0+G1 (prerequisite)
+**Depends on:** SEM Tool Discovery (shipped), MemoryHub (Wave 2), Gating Abstraction G0+G1 (shipped)
 **Prerequisite plan:** [gating_abstraction.md](gating_abstraction.md) — G0 (extract runtime/gating.py) + G1 (TextSalienceScorer)
 **Replaces:** Concept Exploration Plan (shell, superseded by this broader design)
 
@@ -101,7 +101,7 @@ This avoids duplicating the gating logic and ensures both systems evolve togethe
 
 ## Stages
 
-### L0 — BioEnrichmentPipeline core (~100 LOC)
+### L0 — BioEnrichmentPipeline core (~100 LOC) — SHIPPED (2026-04-20)
 
 **New file:** `integration/bio_enrichment.py`
 
@@ -161,7 +161,7 @@ class ConceptLink:
     activation: float     # spreading activation strength
 ```
 
-### L1 — Passive enrichment: ThinkTool + percepts (~80 LOC)
+### L1 — Passive enrichment: ThinkTool + percepts (~80 LOC) — SHIPPED (2026-04-20)
 
 **Modified files:**
 - `tools/narrative.py` — ThinkTool.execute calls BioEnrichmentPipeline, returns enriched ToolOutput
@@ -200,7 +200,7 @@ Your experience suggests:
 - If result is not None, add to `StructuredContext.bio_associations` (new field)
 - PromptBuilder renders bio_associations as a context section at GUIDANCE priority
 
-### L2 — Active deliberation: iterative think loop (~150 LOC)
+### L2 — Active deliberation: iterative think loop (~150 LOC) — SHIPPED (2026-04-20)
 
 **Mechanism:** Uses the existing `ActionFollowup` system. No new loop architecture.
 
@@ -225,7 +225,7 @@ Your experience suggests:
 - This naturally reduces the "reward" of further thinking, biasing the agent toward action
 - The NAc signal doesn't hard-block thinking — it just makes action tools relatively more attractive in the next proposal
 
-### L3 — Refactor NoveltyScorer from ThalamicGate (optional, ~60 LOC)
+### L3 — Refactor NoveltyScorer from ThalamicGate (optional, ~60 LOC) — DEFERRED
 
 **Extract reusable gating logic:**
 ```python

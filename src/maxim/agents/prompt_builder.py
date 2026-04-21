@@ -1154,6 +1154,17 @@ class PromptBuilder:
         if context.body_state:
             budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL)
 
+        # Bio-enrichment (L1): focused bio-system associations for current percept
+        if context.bio_enrichment_context:
+            budgeter.add(
+                "bio_enrichment",
+                f"=== What your experience tells you about this situation ===\n{context.bio_enrichment_context}",
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+            )
+
     @staticmethod
     def _add_memory_sections(
         budgeter: PromptBudgeter,

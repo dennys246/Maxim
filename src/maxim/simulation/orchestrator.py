@@ -638,11 +638,32 @@ def start_simulation_mode(
 
     # --- AUT narrative tools (sim-only) ---
     # Let the AUT speak in-world, reason explicitly, and examine scene details.
+    # ThinkTool gets the BioEnrichmentPipeline for L1 enrichment.
+    aut_bio_enrichment_pipeline = None
+    try:
+        from maxim.integration.bio_enrichment import BioEnrichmentPipeline
+        from maxim.runtime.gating import TextSalienceScorer
+
+        _aut_atl = getattr(aut_memory_hub, "atl", None) if aut_memory_hub else None
+        _aut_ec = getattr(aut_memory_hub, "ec", None) if aut_memory_hub else None
+
+        _aut_text_scorer = TextSalienceScorer(ec=_aut_ec, nac=aut_nac)
+        aut_bio_enrichment_pipeline = BioEnrichmentPipeline(
+            scorer=_aut_text_scorer,
+            hippocampus=aut_hippocampus,
+            nac=aut_nac,
+            atl=_aut_atl,
+            ec=_aut_ec,
+        )
+        logger.info("AUT BioEnrichmentPipeline constructed (L1)")
+    except Exception as e:
+        logger.debug("BioEnrichmentPipeline construction failed (optional): %s", e)
+
     try:
         from maxim.tools.narrative import ExamineTool, SayTool, ThinkTool
 
         aut_registry.register(SayTool())
-        aut_registry.register(ThinkTool())
+        aut_registry.register(ThinkTool(pipeline=aut_bio_enrichment_pipeline))
         aut_registry.register(ExamineTool(bridge=bridge, hippocampus=aut_hippocampus))
         logger.info("AUT narrative tools registered (say, think, examine)")
     except Exception as e:
@@ -1173,6 +1194,10 @@ def start_simulation_mode(
             if _aut_entity_map is not None:
                 aut_imagination_trigger._entity_map = _aut_entity_map
 
+            # Wire ComponentIndex into BioEnrichmentPipeline for affordance queries
+            if aut_bio_enrichment_pipeline is not None:
+                aut_bio_enrichment_pipeline._component_index = _aut_component_index
+
             logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
         except Exception as e:
             logger.debug("ImaginationTrigger construction failed (optional): %s", e)
@@ -1219,6 +1244,7 @@ def start_simulation_mode(
                 action_sink=bridge.action_sink,
                 pain_bus=aut_pain_bus,
                 imagination_trigger=aut_imagination_trigger,
+                bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
             )
         except Exception as e:
             aut_error.append(e)

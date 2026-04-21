@@ -16,10 +16,10 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## 0.7 — Self-Generating Simulations
 
-- [07_feature_completion.md](07_feature_completion.md) — **SHIPPED** (2026-04-20). All tracks landed: R0 prerequisites, B3.1 Acting Coach, F3-F5 Factory, E2-E2.5-E3 Foundry+Index+Curation, I1-I3 Imagination. Integration wiring complete. ~3620 LOC. I4-I5 deferred to 0.8. Experiment: [07_imagination_wiring.md](../experiments/07_imagination_wiring.md).
-- [sem_tool_discovery.md](sem_tool_discovery.md) — **SHIPPED** (2026-04-20). Hybrid prompt mode (top-k + discover_tools), universal sense, EntityMap, NAc ranking, LRU eviction, imagination deferred registration. ~500 LOC. 32 tests. PoC: [sem_tool_discovery_s1.md](../experiments/sem_tool_discovery_s1.md).
-- [gating_abstraction.md](gating_abstraction.md) — **Ready**. Extract shared gating protocol from ThalamicGate: SalienceScorer protocol, AdaptiveThresholdController, TextSalienceScorer. Prerequisite for deliberative thinking. ~270 LOC.
-- [concept_exploration.md](concept_exploration.md) — **Ready** (Deliberative Thinking + Bio-Enrichment Pipeline). Source-agnostic text enrichment via bio-systems. Passive think enrichment + percept enrichment + active deliberation loop. Depends on gating G0+G1. ~390 LOC.
+- [archive/07_feature_completion.md](archive/07_feature_completion.md) — **✅ SHIPPED + ARCHIVED** (2026-04-20). All tracks landed: R0 prerequisites, B3.1 Acting Coach, F3-F5 Factory, E2-E2.5-E3 Foundry+Index+Curation, I1-I3 Imagination. Integration wiring complete. ~3620 LOC. I4-I5 deferred to 0.8. Experiment: [07_imagination_wiring.md](../experiments/07_imagination_wiring.md).
+- [archive/sem_tool_discovery.md](archive/sem_tool_discovery.md) — **✅ SHIPPED + ARCHIVED** (2026-04-20). Hybrid prompt mode (top-k + discover_tools), universal sense, EntityMap, NAc ranking, LRU eviction, imagination deferred registration. ~500 LOC. 32 tests. PoC: [sem_tool_discovery_s1.md](../experiments/sem_tool_discovery_s1.md).
+- [gating_abstraction.md](gating_abstraction.md) — **G0+G1 SHIPPED** (2026-04-20). SalienceScorer protocol, AdaptiveThresholdController, TextSalienceScorer. G2 (ImaginationTrigger wiring) + G3 (ThalamicGate cleanup) remain.
+- [concept_exploration.md](concept_exploration.md) — **L0+L1+L2 SHIPPED** (2026-04-20). BioEnrichmentPipeline, ThinkTool enrichment, percept enrichment, active deliberation (convergence + hard cap + NAc gating). L3 (NoveltyScorer extraction) optional. Experiment: [08_deliberation_system.md](../experiments/08_deliberation_system.md).
 
 ## Active (gating 1.0)
 
@@ -171,7 +171,18 @@ The last feature version before 1.0. All tracks landed:
 | **I3 Scene-scoped Tools** | Tool window with cap, deactivation, executor gate | SHIPPED |
 | **Integration** | ImaginationTrigger wired into orchestrator AUT + session cleanup | SHIPPED |
 
-**Remaining for 0.7:** B3.2 orchestrator probe improvement, B3.3 display extensions. F6 CI enforcement deferred to 0.8.
+**Remaining for 0.7:**
+- **SEM Tool Discovery** — SHIPPED. Hybrid prompt mode, discover_tools, universal sense.
+- **Gating Abstraction G0+G1** — SHIPPED. TextSalienceScorer, AdaptiveThresholdController.
+- **Bio-Enrichment L0** — SHIPPED. BioEnrichmentPipeline core.
+- **Deliberative Thinking L1+L2** — SHIPPED. ThinkTool enrichment, percept enrichment, active deliberation (convergence + hard cap + NAc gating). Experiment: [08_deliberation_system.md](../experiments/08_deliberation_system.md).
+- B3.2 orchestrator probe improvement, B3.3 display extensions. F6 CI enforcement deferred to 0.8.
+- **L1+L2 follow-ups** (non-blocking cleanup, ship anytime):
+  - Extract `_extract_percept_text(observation)` helper to DRY the imagination+enrichment sites in agent_loop.py
+  - Consider structured `bio_enrichment_context: list[dict]` if downstream consumers need per-source filtering
+  - Pass `recent_thoughts` to percept EnrichmentContext for "thought priming" (boosts salience on topics recently deliberated)
+  - G2: Wire ImaginationTrigger to TextSalienceScorer (can ship in parallel with L2)
+  - G3: ThalamicGate cleanup (extract NoveltyScorer, share with BioEnrichmentPipeline)
 
 ### 1.0 — Validation + Polish (target)
 
@@ -213,10 +224,10 @@ All originally defined gates are **CLOSED** (2026-04-19). Remaining criteria for
 - ✅ **Behavioral convergence:** 41/41 hypotheses, all 3 tiers.
 - ✅ **Generalizable embodiment (E0):** `--embodiment` works with `--sim` across all modes.
 - ✅ **Living-doc discipline:** Both practice docs have experiment entries.
+- ✅ **0.7 feature completion:** E2-E3, B3, F3-F5, I1-I3, SEM discovery, gating, deliberative thinking — **ALL SHIPPED** (2026-04-20).
 - **P5 stress persistence:** 10k+ node persistence stress test. The final hard gate.
 - **API/CLI surface review:** Sweep the public API and CLI for edge cases and missed opportunities. Not a hard gate — a quality bar.
 - **Agent memory transfer docs:** Universal onboarding document set for knowledge continuity across agents.
-- ~~**0.7 feature completion:** E2-E3, B3, F3-F5, I1-I3~~ **SHIPPED** (2026-04-20).
 
 ## Rules for this directory
 

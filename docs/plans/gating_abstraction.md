@@ -1,9 +1,9 @@
 # Gating Abstraction Plan
 
-**Status:** Ready (2026-04-20)
+**Status:** G0+G1 SHIPPED (2026-04-20). G2+G3 remain as follow-ups.
 **Scope:** 0.7 — Simulation Scalability (prerequisite for Deliberative Thinking)
 **Depends on:** Default Network (existing), Reactions/ReactionBus (existing)
-**Blocks:** Deliberative Thinking L0 (BioEnrichmentPipeline needs TextSalienceScorer)
+**Blocks:** Deliberative Thinking L0 (BioEnrichmentPipeline needs TextSalienceScorer) — UNBLOCKED
 
 ---
 
@@ -112,7 +112,7 @@ The controller's `record_outcome()` method is the hook. When NAc records positiv
 
 ## Stages
 
-### G0 — Extract `runtime/gating.py` (~80 LOC)
+### G0 — Extract `runtime/gating.py` (~80 LOC) — SHIPPED (2026-04-20)
 
 **New file:** `runtime/gating.py`
 
@@ -126,7 +126,7 @@ Extract from `default_network/gate.py`:
 
 **Validation:** All existing DN tests pass unchanged. The gate works identically — it just imports from a different module.
 
-### G1 — TextSalienceScorer (~60 LOC)
+### G1 — TextSalienceScorer (~60 LOC) — SHIPPED (2026-04-20)
 
 **New:** `TextSalienceScorer` class in `runtime/gating.py` (or `integration/text_scorer.py` if it needs bio-system imports)
 
@@ -158,7 +158,7 @@ class TextSalienceScorer:
 
 **Used by:** BioEnrichmentPipeline (L0 of deliberative thinking plan) as the novelty gate.
 
-### G2 — Wire ImaginationTrigger (~30 LOC)
+### G2 — Wire ImaginationTrigger (~30 LOC) — REMAINING
 
 **Modified:** `imagination/trigger.py`
 
@@ -170,7 +170,7 @@ Replace the ad-hoc gating:
 
 **Result:** ImaginationTrigger no longer depends on the full DefaultNetwork for its gating decision. It uses the same scoring protocol as BioEnrichmentPipeline. DN dependency becomes optional (only needed for motor control in Reachy mode).
 
-### G3 — ThalamicGate cleanup (~100 LOC)
+### G3 — ThalamicGate cleanup (~100 LOC) — REMAINING
 
 **Modified:** `default_network/gate.py`
 
