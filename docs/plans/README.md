@@ -17,6 +17,9 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 ## 0.7 — Self-Generating Simulations
 
 - [07_feature_completion.md](07_feature_completion.md) — **SHIPPED** (2026-04-20). All tracks landed: R0 prerequisites, B3.1 Acting Coach, F3-F5 Factory, E2-E2.5-E3 Foundry+Index+Curation, I1-I3 Imagination. Integration wiring complete. ~3620 LOC. I4-I5 deferred to 0.8. Experiment: [07_imagination_wiring.md](../experiments/07_imagination_wiring.md).
+- [sem_tool_discovery.md](sem_tool_discovery.md) — **SHIPPED** (2026-04-20). Hybrid prompt mode (top-k + discover_tools), universal sense, EntityMap, NAc ranking, LRU eviction, imagination deferred registration. ~500 LOC. 32 tests. PoC: [sem_tool_discovery_s1.md](../experiments/sem_tool_discovery_s1.md).
+- [gating_abstraction.md](gating_abstraction.md) — **Ready**. Extract shared gating protocol from ThalamicGate: SalienceScorer protocol, AdaptiveThresholdController, TextSalienceScorer. Prerequisite for deliberative thinking. ~270 LOC.
+- [concept_exploration.md](concept_exploration.md) — **Ready** (Deliberative Thinking + Bio-Enrichment Pipeline). Source-agnostic text enrichment via bio-systems. Passive think enrichment + percept enrichment + active deliberation loop. Depends on gating G0+G1. ~390 LOC.
 
 ## Active (gating 1.0)
 

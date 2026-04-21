@@ -2,7 +2,8 @@
 
 **Status:** Ready (2026-04-20)
 **Scope:** 0.7 — Simulation Scalability
-**Depends on:** SEM Tool Discovery (shipped), MemoryHub (Wave 2), ThalamicGate (Default Network)
+**Depends on:** SEM Tool Discovery (shipped), MemoryHub (Wave 2), Gating Abstraction G0+G1 (prerequisite)
+**Prerequisite plan:** [gating_abstraction.md](gating_abstraction.md) — G0 (extract runtime/gating.py) + G1 (TextSalienceScorer)
 **Replaces:** Concept Exploration Plan (shell, superseded by this broader design)
 
 ---
@@ -109,6 +110,7 @@ class BioEnrichmentPipeline:
     def __init__(
         self,
         *,
+        scorer: TextSalienceScorer,          # from runtime/gating.py (G1)
         hippocampus: Hippocampus | None = None,
         nac: NAc | None = None,
         atl: ATL | None = None,
@@ -118,7 +120,13 @@ class BioEnrichmentPipeline:
     ): ...
 
     def enrich(self, text: str, *, context: EnrichmentContext) -> EnrichmentResult | None:
-        """Core pipeline. Returns None if below novelty threshold."""
+        """Core pipeline. Uses TextSalienceScorer (G1) for novelty gate.
+        Returns None if below novelty threshold."""
+
+    def _gate(self, text: str, context: EnrichmentContext) -> bool:
+        """Novelty gate via TextSalienceScorer from gating_abstraction G1."""
+        score = self._scorer.score(text, context.to_gating_context())
+        return score.novelty >= self._novelty_threshold
 
     def _extract_keywords(self, text: str) -> list[str]: ...
     def _query_hippocampus(self, node_ids: list[str]) -> list[EpisodicSummary]: ...
@@ -126,7 +134,6 @@ class BioEnrichmentPipeline:
     def _query_atl(self, concept_ids: list[str]) -> list[ConceptLink]: ...
     def _query_component_index(self, text: str) -> list[str]: ...
     def _compute_valence(self, memories, predictions) -> float: ...
-    def _is_novel(self, text: str) -> bool: ...
 ```
 
 **EnrichmentContext:** Carries current goal, recent thoughts (for convergence detection), active entity names — so the pipeline can prioritize relevant associations.
