@@ -163,8 +163,16 @@ class MaximDisplay:
                 pass
             self._live = None
 
-    def log(self, subsystem: str, message: str, level: str = "info") -> None:
-        """Add a line to the scrolling log panel (thread-safe)."""
+    def log(self, subsystem: str, message: str, level: str = "info", *, agent: str | None = None) -> None:
+        """Add a line to the scrolling log panel (thread-safe).
+
+        Args:
+            subsystem: Subsystem tag (e.g. "hippocampus", "scene").
+            message: Human-readable log content.
+            level: Severity level (unused currently, reserved).
+            agent: Optional agent nickname — rendered as a colored prefix
+                before the subsystem tag so multi-agent logs are legible.
+        """
         # Scene/dialogue: bold + bright color for tag, white message
         # Bio subsystems: colored tag, grey message (readable but subdued)
         tag_colors = {
@@ -200,8 +208,14 @@ class MaximDisplay:
         with self._lock:
             color = tag_colors.get(sub_lower, "white")
             tag = f"[{color}][{subsystem:>6}][/{color}]"
+            # Agent nickname prefix — bright_cyan so it stands out without
+            # clashing with subsystem colors
+            agent_prefix = f"[bright_cyan][{agent:>8}][/bright_cyan] " if agent else ""
             # Bio messages in grey (readable but visually recessive)
-            line = f"{tag} {message}" if not is_bio else f"{tag} [bright_black]{message}[/bright_black]"
+            if is_bio:
+                line = f"{agent_prefix}{tag} [bright_black]{message}[/bright_black]"
+            else:
+                line = f"{agent_prefix}{tag} {message}"
             self._log_lines.append(line)
             # Keep absolute scroll position stable: when scrolled up,
             # each new line pushes the bottom further away, so bump

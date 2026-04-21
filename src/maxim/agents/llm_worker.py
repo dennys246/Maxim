@@ -1130,7 +1130,7 @@ class LLMWorker:
             try:
                 from maxim.simulation.sim_logger import sim_log
 
-                sim_log("EXEC", f"LLMProposal EXCEPTION: {type(e).__name__}: {str(e)[:100]}")
+                sim_log("EXEC", f"LLMProposal EXCEPTION: {type(e).__name__}: {str(e)[:200]}")
             except Exception:
                 pass
             latency_ms = (time.time() - start_time) * 1000

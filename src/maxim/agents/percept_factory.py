@@ -26,7 +26,7 @@ def _log_percept(source: str, content: str | None, modality: str) -> None:
     try:
         from maxim.simulation.sim_logger import sim_percept
 
-        sim_percept(source, (content or "")[:80], modality=modality)
+        sim_percept(source, (content or "")[:200], modality=modality)
     except Exception:
         pass
 
