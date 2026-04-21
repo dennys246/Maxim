@@ -638,11 +638,32 @@ def start_simulation_mode(
 
     # --- AUT narrative tools (sim-only) ---
     # Let the AUT speak in-world, reason explicitly, and examine scene details.
+    # ThinkTool gets the BioEnrichmentPipeline for L1 enrichment.
+    aut_bio_enrichment_pipeline = None
+    try:
+        from maxim.integration.bio_enrichment import BioEnrichmentPipeline
+        from maxim.runtime.gating import TextSalienceScorer
+
+        _aut_atl = getattr(aut_memory_hub, "atl", None) if aut_memory_hub else None
+        _aut_ec = getattr(aut_memory_hub, "ec", None) if aut_memory_hub else None
+
+        _aut_text_scorer = TextSalienceScorer(ec=_aut_ec, nac=aut_nac)
+        aut_bio_enrichment_pipeline = BioEnrichmentPipeline(
+            scorer=_aut_text_scorer,
+            hippocampus=aut_hippocampus,
+            nac=aut_nac,
+            atl=_aut_atl,
+            ec=_aut_ec,
+        )
+        logger.info("AUT BioEnrichmentPipeline constructed (L1)")
+    except Exception as e:
+        logger.debug("BioEnrichmentPipeline construction failed (optional): %s", e)
+
     try:
         from maxim.tools.narrative import ExamineTool, SayTool, ThinkTool
 
         aut_registry.register(SayTool())
-        aut_registry.register(ThinkTool())
+        aut_registry.register(ThinkTool(pipeline=aut_bio_enrichment_pipeline))
         aut_registry.register(ExamineTool(bridge=bridge, hippocampus=aut_hippocampus))
         logger.info("AUT narrative tools registered (say, think, examine)")
     except Exception as e:
@@ -679,6 +700,79 @@ def start_simulation_mode(
     for _rt in _irrelevant_tools:
         if aut_registry.deregister(_rt):
             logger.debug("Deregistered irrelevant tool from AUT: %s", _rt)
+
+    # --- SEM Tool Discovery: hybrid prompt mode ---
+    # Replace per-entity sensor tools with universal sense + discover_tools.
+    # Keep top-k goal-relevant affordance tools visible, deactivate the rest.
+    _aut_entity_map = None
+    if entity_ref is not None and _aut_instance.embodiment is not None:
+        from maxim.embodiment.entity_map import EntityMap
+        from maxim.tools.discovery import (
+            DiscoverToolsTool,
+            UniversalSenseTool,
+            select_goal_relevant_tools,
+        )
+
+        _aut_entity_map = EntityMap()
+        _aut_entity_map.register(_aut_instance.embodiment.root)
+
+        # Deregister per-entity sensor tools (replaced by universal sense)
+        _sensor_tools_removed = 0
+        for _tname in list(aut_registry.list_all()):
+            if _tname.startswith("sense_") or _tname.startswith("read_"):
+                if aut_registry.deregister(_tname):
+                    _sensor_tools_removed += 1
+        logger.debug("SEM discovery: removed %d per-entity sensor tools", _sensor_tools_removed)
+
+        # Register universal sense + discover_tools as core tools
+        aut_registry.register(UniversalSenseTool(entity_map=_aut_entity_map))
+        aut_registry.register(
+            DiscoverToolsTool(
+                entity_map=_aut_entity_map,
+                tool_registry=aut_registry,
+                component_index=None,  # wired later if imagination is available
+            )
+        )
+
+        # Goal-based top-k: keep relevant affordances active, deactivate rest.
+        # generate_tools_for_entity registers tools as core (no scene metadata).
+        # We need to add scene metadata so deactivate_tool works. Re-register
+        # affordance tools as scene-scoped, then deactivate non-top-k ones.
+        from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+        from maxim.tools.discovery import mark_goal_selected
+
+        _keep_active = set(select_goal_relevant_tools(goal, _aut_entity_map, aut_registry))
+        mark_goal_selected(list(_keep_active))
+
+        # Collect affordance tools and re-register as scene-scoped
+        _affordance_tools = []
+        for _tname in list(aut_registry.list_all()):
+            try:
+                _tool = aut_registry.get(_tname)
+                if isinstance(_tool, ModulatorAffordanceTool):
+                    _affordance_tools.append(_tool)
+            except KeyError:
+                pass
+
+        if _affordance_tools:
+            aut_registry.register_scene_tools(_affordance_tools, "aut_affordances")
+
+        # Deactivate non-top-k affordance tools individually
+        _deactivated_count = 0
+        for _tool in _affordance_tools:
+            if _tool.name not in _keep_active:
+                if aut_registry.deactivate_tool(_tool.name):
+                    _deactivated_count += 1
+
+        _active_count = len(aut_registry.list())
+        logger.info(
+            "SEM discovery: hybrid prompt mode — %d active tools "
+            "(%d goal-selected, %d affordance tools deactivated, "
+            "sense + discover_tools registered)",
+            _active_count,
+            len(_keep_active),
+            _deactivated_count,
+        )
 
     # AUT PainBus subscriptions are now handled by build_bio_stack above
     # (Wave 3: pre-built pain_bus= parameter subscribes standard learners).
@@ -1089,6 +1183,21 @@ def start_simulation_mode(
                 tool_registry=aut_registry,
                 default_network=aut_default_network,
             )
+            # Wire ComponentIndex into DiscoverToolsTool for semantic matching
+            try:
+                _discover_tool = aut_registry.get("discover_tools")
+                _discover_tool._component_index = _aut_component_index
+            except KeyError:
+                pass  # discover_tools not registered (no embodiment)
+
+            # Pass entity_map to ImaginationTrigger for populating on design
+            if _aut_entity_map is not None:
+                aut_imagination_trigger._entity_map = _aut_entity_map
+
+            # Wire ComponentIndex into BioEnrichmentPipeline for affordance queries
+            if aut_bio_enrichment_pipeline is not None:
+                aut_bio_enrichment_pipeline._component_index = _aut_component_index
+
             logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
         except Exception as e:
             logger.debug("ImaginationTrigger construction failed (optional): %s", e)
@@ -1135,6 +1244,7 @@ def start_simulation_mode(
                 action_sink=bridge.action_sink,
                 pain_bus=aut_pain_bus,
                 imagination_trigger=aut_imagination_trigger,
+                bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
             )
         except Exception as e:
             aut_error.append(e)

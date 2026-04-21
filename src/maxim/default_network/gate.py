@@ -10,14 +10,10 @@ before it reaches the cortex.
 
 from __future__ import annotations
 
-import json
 import logging
-import os
 import threading
-import time
 from collections import deque
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from maxim.default_network.messages import EscalationResult, FilteredPercept
@@ -26,9 +22,6 @@ if TYPE_CHECKING:
     from maxim.agents.bus import Percept
 
 logger = logging.getLogger(__name__)
-
-# Default persistence path
-DEFAULT_THRESHOLD_PERSIST_PATH = ""  # resolved via __post_init__
 
 # COCO class names for goal matching (subset for common objects)
 COCO_CLASSES: dict[int, str] = {
@@ -61,282 +54,27 @@ COCO_CLASSES: dict[int, str] = {
 }
 
 
-@dataclass
-class AdaptiveThresholdConfig:
-    """Configuration for adaptive threshold adjustment."""
+from maxim.runtime.gating import (  # noqa: E402  — extracted in G0
+    AdaptiveThresholdConfig as _BaseAdaptiveThresholdConfig,
+    AdaptiveThresholdController,
+)
 
-    base_novelty_threshold: float = 0.7
-    base_salience_threshold: float = 0.6
-    min_threshold: float = 0.3
-    max_threshold: float = 0.95
-    adaptation_rate: float = 0.1
-    escalation_rate_target: float = 0.05  # Target 5% escalation rate
-    window_seconds: float = 60.0
-    adaptation_interval: float = 5.0  # How often to adapt
-    # Persistence
-    persist_path: str = ""  # resolved via maxim.utils.paths at runtime
-    auto_save_interval: float = 60.0  # Save every 60 seconds
+
+@dataclass
+class AdaptiveThresholdConfig(_BaseAdaptiveThresholdConfig):
+    """DN-specific adaptive threshold config with auto-resolved persist path.
+
+    Extends the shared ``AdaptiveThresholdConfig`` from ``runtime/gating.py``
+    with a ``__post_init__`` that auto-resolves the persistence path via
+    ``maxim.utils.paths``.  The shared base class leaves ``persist_path``
+    empty by default (ephemeral).
+    """
 
     def __post_init__(self) -> None:
         if not self.persist_path:
             from maxim.utils.paths import resolve_user_state
 
             self.persist_path = str(resolve_user_state("util/adaptive_thresholds.json"))
-
-
-class AdaptiveThresholdController:
-    """Dynamically adjusts escalation thresholds based on feedback.
-
-    Tracks escalation history and outcomes to tune thresholds:
-    - Too many escalations -> raise threshold
-    - Too few escalations -> lower threshold
-    - Escalations leading to actions -> good, maintain
-    - Escalations being ignored -> bad, raise threshold
-    """
-
-    def __init__(self, config: AdaptiveThresholdConfig | None = None) -> None:
-        self.config = config or AdaptiveThresholdConfig()
-        self._novelty_threshold = self.config.base_novelty_threshold
-        self._salience_threshold = self.config.base_salience_threshold
-
-        # History tracking
-        self._escalation_history: deque[tuple[float, bool]] = deque(maxlen=1000)
-        self._outcome_history: deque[tuple[float, str]] = deque(maxlen=100)
-        self._last_adaptation = time.time()
-        self._last_save_time = time.time()
-        self._lock = threading.Lock()
-
-        # Auto-load on init if path exists
-        if self.config.persist_path and os.path.exists(self.config.persist_path):
-            self.load(self.config.persist_path)
-
-    @property
-    def novelty_threshold(self) -> float:
-        """Current novelty threshold."""
-        return self._novelty_threshold
-
-    @property
-    def salience_threshold(self) -> float:
-        """Current salience threshold."""
-        return self._salience_threshold
-
-    @property
-    def combined_threshold(self) -> float:
-        """Combined novelty * salience threshold for escalation."""
-        return self._novelty_threshold * self._salience_threshold
-
-    def record_escalation(self, escalated: bool) -> None:
-        """Record whether a percept was escalated."""
-        with self._lock:
-            self._escalation_history.append((time.time(), escalated))
-
-    def record_outcome(self, outcome: str) -> None:
-        """Record outcome of an escalation.
-
-        Args:
-            outcome: One of 'action_taken', 'ignored', 'goal_created'.
-        """
-        with self._lock:
-            self._outcome_history.append((time.time(), outcome))
-
-    def maybe_adapt(
-        self,
-        llm_queue_depth: int = 0,
-        fear_risk: float = 0.0,
-    ) -> bool:
-        """Adjust thresholds if enough time has passed.
-
-        Args:
-            llm_queue_depth: Number of items in LLM queue (0 = idle).
-            fear_risk: Current fear/risk level from FearAgent (0-1).
-
-        Returns:
-            True if adaptation was performed.
-        """
-        now = time.time()
-        if now - self._last_adaptation < self.config.adaptation_interval:
-            return False
-
-        with self._lock:
-            self._last_adaptation = now
-            self._adapt(llm_queue_depth, fear_risk)
-
-        # Auto-save periodically
-        self._maybe_auto_save()
-        return True
-
-    def _adapt(self, llm_queue_depth: int, fear_risk: float) -> None:
-        """Internal adaptation logic (called with lock held)."""
-        now = time.time()
-        window_start = now - self.config.window_seconds
-
-        # Calculate recent escalation rate
-        recent = [(t, e) for t, e in self._escalation_history if t > window_start]
-        if len(recent) < 10:
-            return  # Not enough data
-
-        escalation_count = sum(1 for _, e in recent if e)
-        escalation_rate = escalation_count / len(recent)
-
-        # Calculate outcome quality (what % of escalations led to actions)
-        recent_outcomes = [o for t, o in self._outcome_history if t > window_start]
-        if recent_outcomes:
-            useful_outcomes = sum(1 for o in recent_outcomes if o in ("action_taken", "goal_created"))
-            outcome_quality = useful_outcomes / len(recent_outcomes)
-        else:
-            outcome_quality = 0.5  # Neutral if no data
-
-        # Determine adjustment direction
-        target_rate = self.config.escalation_rate_target
-        rate_error = escalation_rate - target_rate
-
-        # Adjust for context
-        adjustment = 0.0
-
-        # Rate too high -> raise threshold
-        if rate_error > 0.02:
-            adjustment += self.config.adaptation_rate * rate_error * 2
-
-        # Rate too low -> lower threshold
-        elif rate_error < -0.02:
-            adjustment += self.config.adaptation_rate * rate_error * 2
-
-        # Outcomes being ignored -> raise threshold
-        if outcome_quality < 0.3 and recent_outcomes:
-            adjustment += self.config.adaptation_rate * 0.5
-
-        # LLM queue busy -> raise threshold
-        if llm_queue_depth > 3:
-            adjustment += self.config.adaptation_rate * 0.3
-
-        # High fear/risk -> lower threshold (be more cautious)
-        if fear_risk > 0.5:
-            adjustment -= self.config.adaptation_rate * fear_risk * 0.5
-
-        # Apply adjustment to both thresholds
-        self._novelty_threshold = max(
-            self.config.min_threshold, min(self.config.max_threshold, self._novelty_threshold + adjustment)
-        )
-        self._salience_threshold = max(
-            self.config.min_threshold, min(self.config.max_threshold, self._salience_threshold + adjustment)
-        )
-
-        logger.debug(
-            "Adapted thresholds: novelty=%.3f, salience=%.3f (rate=%.3f, quality=%.3f)",
-            self._novelty_threshold,
-            self._salience_threshold,
-            escalation_rate,
-            outcome_quality,
-        )
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Persistence
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def save(self, path: str | None = None) -> bool:
-        """Save learned thresholds to disk.
-
-        Args:
-            path: Path to save to. Uses config.persist_path if None.
-
-        Returns:
-            True if save succeeded.
-        """
-        save_path = path or self.config.persist_path
-        if not save_path:
-            return False
-
-        try:
-            # Ensure directory exists
-            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-
-            with self._lock:
-                # Serialize history (keep recent 200 entries each)
-                escalation_data = list(self._escalation_history)[-200:]
-                outcome_data = list(self._outcome_history)[-100:]
-
-                data = {
-                    "version": 1,
-                    "saved_at": time.time(),
-                    "thresholds": {
-                        "novelty": self._novelty_threshold,
-                        "salience": self._salience_threshold,
-                    },
-                    "escalation_history": escalation_data,
-                    "outcome_history": outcome_data,
-                    "config": {
-                        "base_novelty_threshold": self.config.base_novelty_threshold,
-                        "base_salience_threshold": self.config.base_salience_threshold,
-                    },
-                }
-
-            with open(save_path, "w") as f:
-                json.dump(data, f, indent=2)
-
-            self._last_save_time = time.time()
-            logger.debug("AdaptiveThresholdController saved to %s", save_path)
-            return True
-
-        except Exception as e:
-            logger.warning("Failed to save AdaptiveThresholdController: %s", e)
-            return False
-
-    def load(self, path: str | None = None) -> bool:
-        """Load learned thresholds from disk.
-
-        Args:
-            path: Path to load from. Uses config.persist_path if None.
-
-        Returns:
-            True if load succeeded.
-        """
-        load_path = path or self.config.persist_path
-        if not load_path or not os.path.exists(load_path):
-            return False
-
-        try:
-            with open(load_path) as f:
-                data = json.load(f)
-
-            with self._lock:
-                # Load thresholds
-                thresholds = data.get("thresholds", {})
-                self._novelty_threshold = thresholds.get("novelty", self.config.base_novelty_threshold)
-                self._salience_threshold = thresholds.get("salience", self.config.base_salience_threshold)
-
-                # Load history
-                for ts, escalated in data.get("escalation_history", []):
-                    self._escalation_history.append((ts, escalated))
-                for ts, outcome in data.get("outcome_history", []):
-                    self._outcome_history.append((ts, outcome))
-
-            logger.info(
-                "Loaded adaptive thresholds (novelty=%.3f, salience=%.3f) from %s",
-                self._novelty_threshold,
-                self._salience_threshold,
-                load_path,
-            )
-            return True
-
-        except Exception as e:
-            logger.warning("Failed to load AdaptiveThresholdController: %s", e)
-            return False
-
-    def _maybe_auto_save(self) -> None:
-        """Auto-save if enough time has passed."""
-        if not self.config.persist_path:
-            return
-        now = time.time()
-        if now - self._last_save_time >= self.config.auto_save_interval:
-            self.save()
-
-    def reset(self) -> None:
-        """Reset thresholds to base values."""
-        with self._lock:
-            self._novelty_threshold = self.config.base_novelty_threshold
-            self._salience_threshold = self.config.base_salience_threshold
-            self._escalation_history.clear()
-            self._outcome_history.clear()
 
 
 @dataclass
@@ -615,7 +353,7 @@ class ThalamicGate:
     ) -> None:
         """Trigger threshold adaptation if conditions are met."""
         if self._adaptive:
-            self._adaptive.maybe_adapt(llm_queue_depth, fear_risk)
+            self._adaptive.maybe_adapt(processing_load=llm_queue_depth, urgency=fear_risk)
 
     def set_active_goal(self, goal: str | None) -> None:
         """Set current goal for relevance matching.

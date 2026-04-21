@@ -1,6 +1,6 @@
 # SEM Tool Discovery Plan
 
-**Status:** Ready (2026-04-20, revised after dual-lens review + design resolution)
+**Status:** SHIPPED (2026-04-20)
 **Scope:** 0.7 — Simulation Scalability
 **Depends on:** I3 (scene-scoped tools), E2.5 (ComponentIndex), SEM protocol, B3.1 (Acting Coach)
 **Companion plan:** [concept_exploration.md](concept_exploration.md) — handles vague goals / unknown concepts (Layer C)
@@ -91,7 +91,7 @@ Discovered tools that haven't been *called* in N turns (default 5) are auto-deac
 
 ## Stages
 
-### S0 ��� Fix imagination tool registration bug (DONE)
+### S0 — Fix imagination tool registration bug (DONE)
 
 **Bug:** `imagination/trigger.py:581` called `generate_tools_for_entity(entity)` without the required `registry: ToolRegistry` parameter. `TypeError` caught by `except Exception`, logged as warning. Imagined entities never got their affordance tools registered. **Fixed:** pass `self._tool_registry`.
 

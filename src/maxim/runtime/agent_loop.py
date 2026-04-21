@@ -56,6 +56,21 @@ from maxim.runtime.loop_state import (
 )
 
 
+def _reset_deliberation(executor: Any) -> None:
+    """Reset ThinkTool deliberation state when a non-think action fires (L2).
+
+    Single call site for both dispatch paths — prevents drift.
+    """
+    try:
+        _registry = getattr(executor, "registry", None)
+        if _registry is not None:
+            _think_tool = _registry.get("think")
+            if hasattr(_think_tool, "reset_deliberation"):
+                _think_tool.reset_deliberation()
+    except (KeyError, Exception):
+        pass  # think tool not registered or not a ThinkTool
+
+
 def _idle_sleep(idle_sleep_s: float) -> None:
     """Sleep for ``idle_sleep_s`` seconds, logging any failure at warning.
 
@@ -333,6 +348,7 @@ def run_agentic_loop(
     action_sink: Any | None = None,  # ActionSink for recording tool outputs
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
+    bio_enrichment_pipeline: Any | None = None,  # BioEnrichmentPipeline for percept enrichment (L1)
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -613,6 +629,33 @@ def run_agentic_loop(
                     imagination_trigger.process_percept(percept_text, scene_context=scene_ctx, scene_id=scene_id)
             except Exception as e:
                 log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
+
+        # ─────────────────────────────────────────────────────────────────
+        # 1.2 BIO-ENRICHMENT — enrich novel percept text via bio-systems
+        # ─────────────────────────────────────────────────────────────────
+        # Gates on novelty (TextSalienceScorer). If the percept passes,
+        # enrichment result is injected into StructuredContext for the LLM.
+        _percept_enrichment_text = ""
+        if bio_enrichment_pipeline is not None:
+            try:
+                _enrich_input = ""
+                if hasattr(observation, "get"):
+                    _enrich_input = str(observation.get("transcript") or observation.get("raw_transcript_text") or "")
+                elif hasattr(observation, "transcript"):
+                    _enrich_input = str(getattr(observation, "transcript", "") or "")
+                if _enrich_input:
+                    from maxim.integration.bio_enrichment import EnrichmentContext
+
+                    _enrich_ctx = EnrichmentContext(
+                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                    )
+                    _enrich_result = bio_enrichment_pipeline.enrich(_enrich_input, context=_enrich_ctx)
+                    if _enrich_result is not None:
+                        _percept_enrichment_text = bio_enrichment_pipeline.format_thought_response(_enrich_result)
+                        if _percept_enrichment_text:
+                            logger.debug("Bio-enrichment produced %d chars for percept", len(_percept_enrichment_text))
+            except Exception as e:
+                log_swallowed_exception(e, operation="bio_enrichment_percept", context={"step": step_num})
 
         # Ensure maxim_runtime contains mode from state.data for MemoryAgent
         # This propagates mode set in CLI to PerceptionAgent -> MemoryAgent -> ExecAgent
@@ -1412,6 +1455,10 @@ def run_agentic_loop(
                     tool_name = action.get("tool_name", "")
                     current_mode = state.data.get("mode", "live")
 
+                    # L2: Reset deliberation state when a non-think action fires.
+                    if tool_name != "think":
+                        _reset_deliberation(executor)
+
                     from maxim.modes.definitions import get_tool_followup_type
 
                     followup_type = get_tool_followup_type(tool_name, current_mode)
@@ -1743,6 +1790,10 @@ def run_agentic_loop(
                             nac=_loop_nac,
                         )
 
+                        # L2: Reset deliberation state on non-think tool execution
+                        if tool_name != "think":
+                            _reset_deliberation(executor)
+
                         # Queue follow-up so LLM can continue
                         from maxim.modes.definitions import get_tool_followup_type
 
@@ -1817,6 +1868,10 @@ def run_agentic_loop(
                             internet_access=state.data.get("internet_access", True),
                         )
                         logger.info("Created minimal context for pending action followup")
+
+                    # Inject bio-enrichment context if percept passed novelty gate
+                    if context is not None and _percept_enrichment_text:
+                        context.bio_enrichment_context = _percept_enrichment_text
 
                     # Check if there's something meaningful to react to
                     # Only submit to LLM if we have:

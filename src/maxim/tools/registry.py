@@ -134,6 +134,22 @@ class ToolRegistry:
         with self._lock:
             return self._deactivate_scene_locked(scene_id)
 
+    def deactivate_tool(self, name: str) -> bool:
+        """Deactivate a single tool (set active=False).
+
+        Per-tool deactivation for LRU eviction.  Scenes remain the
+        unit of *bulk* activation; this method enables individual
+        deactivation for tools that haven't been used recently.
+
+        Returns True if the tool was found and deactivated.
+        """
+        with self._lock:
+            meta = self._scene_meta.get(name)
+            if meta is not None and meta.active:
+                meta.active = False
+                return True
+            return False
+
     def activate_scene(self, scene_id: str) -> list[str]:
         """Re-activate all tools belonging to *scene_id*.
 

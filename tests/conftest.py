@@ -219,6 +219,24 @@ def _isolate_maxim_request_context_contextvar():
         reset_context(scrub_token)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_discovery_state():
+    """Reset SEM Tool Discovery module-level state between tests.
+
+    ``tools/discovery.py`` has module-level mutable dicts (``_tool_last_used``
+    and ``_goal_selected``) that persist across tests in the same process.
+    A test that calls ``mark_tool_used("slash", 5)`` would leak the entry
+    into every later test that calls ``evict_stale_discoveries``.
+
+    Pattern: reset on entry so every test starts with a clean slate.
+    """
+    from maxim.tools.discovery import reset_discovery_state
+
+    reset_discovery_state()
+    yield
+    reset_discovery_state()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Memory Types Fixtures
 # ─────────────────────────────────────────────────────────────────────────────

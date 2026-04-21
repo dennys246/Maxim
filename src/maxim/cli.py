@@ -465,6 +465,10 @@ def _run_menu_sim(action: str) -> None:
             display.stop()
             set_active_display(None)
         reset_sim_display_state()
+        # Reset SEM tool discovery module-level state between sims
+        from maxim.tools.discovery import reset_discovery_state
+
+        reset_discovery_state()
     except Exception:
         pass
 

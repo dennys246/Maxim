@@ -563,6 +563,11 @@ class StructuredContext:
     # Body state from Embodiment (interoception — always present when embodied)
     body_state: str = ""
 
+    # Bio-enrichment context (L1): focused bio-system associations for the
+    # current percept — memories, predictions, concepts, affordances.
+    # Populated by BioEnrichmentPipeline when a novel percept passes the gate.
+    bio_enrichment_context: str = ""
+
 
 @dataclass
 class PlanProgressContext:
