@@ -132,16 +132,10 @@ class StopReason(Enum):
     SAFETY_GATE = "safety_gate"
 
 
-class ToolErrorKind(Enum):
-    """Classification of tool execution errors."""
-
-    FILE_NOT_FOUND = "file_not_found"
-    PERMISSION_DENIED = "permission_denied"
-    SYNTAX_ERROR = "syntax_error"
-    TIMEOUT = "timeout"
-    INVALID_INPUT = "invalid_input"
-    EXTERNAL_FAILURE = "external_failure"
-    VALIDATION = "validation"
+# ToolErrorKind lives in tools/base (next to ToolOutput) to avoid the
+# tools → agents → default_network → runtime → tools circular import.
+# Re-exported here for backward compatibility.
+from maxim.tools.base import ToolErrorKind as ToolErrorKind  # noqa: F401
 
 
 # ─────────────────────────────────────────────────────────────────────────────

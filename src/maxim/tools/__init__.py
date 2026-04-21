@@ -5,7 +5,7 @@ Tools are the only layer allowed to perform side effects (I/O, network, etc.).
 
 from __future__ import annotations
 
-from maxim.tools.base import Tool, ToolOutput, ToolResult
+from maxim.tools.base import Tool, ToolErrorKind, ToolOutput, ToolResult
 from maxim.tools.comms import CallUserTool, SendMessageTool
 from maxim.tools.filesystem import (
     ExecuteFileTool,
@@ -58,6 +58,7 @@ __all__ = [
     "SendMessageTool",
     "SpeakTool",
     "Tool",
+    "ToolErrorKind",
     "ToolRegistry",
     "ToolOutput",
     "ToolResult",

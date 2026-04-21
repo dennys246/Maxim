@@ -2,9 +2,20 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
-from maxim.agents.bus import ToolErrorKind
+
+class ToolErrorKind(Enum):
+    """Classification of tool execution errors."""
+
+    FILE_NOT_FOUND = "file_not_found"
+    PERMISSION_DENIED = "permission_denied"
+    SYNTAX_ERROR = "syntax_error"
+    TIMEOUT = "timeout"
+    INVALID_INPUT = "invalid_input"
+    EXTERNAL_FAILURE = "external_failure"
+    VALIDATION = "validation"
 
 
 @dataclass(slots=True, frozen=True)

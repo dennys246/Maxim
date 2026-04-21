@@ -7,8 +7,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from maxim.tools.base import Tool, ToolOutput
-from maxim.agents.bus import ToolErrorKind
+from maxim.tools.base import Tool, ToolErrorKind, ToolOutput
 
 
 class CodeSearchTool(Tool):

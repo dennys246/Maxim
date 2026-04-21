@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import subprocess
 
-from maxim.tools.base import Tool, ToolOutput
-from maxim.agents.bus import ToolErrorKind
+from maxim.tools.base import Tool, ToolErrorKind, ToolOutput
 
 
 class GitDiffTool(Tool):
