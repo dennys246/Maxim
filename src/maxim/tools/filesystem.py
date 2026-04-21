@@ -100,8 +100,7 @@ def validate_path_traversal(
 
 from maxim.utils.gpu_compat import env_flag as _env_flag
 
-from .base import Tool, ToolResult
-from maxim.agents.bus import ToolErrorKind
+from .base import Tool, ToolErrorKind, ToolResult
 
 
 class ReadFileTool(Tool):
