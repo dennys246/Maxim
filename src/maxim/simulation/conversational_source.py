@@ -188,7 +188,7 @@ class ConversationalSource:
             from maxim.simulation.sim_logger import sim_percept
 
             summary = yaml_record.get("cli_input") or yaml_record.get("content") or "signal"
-            sim_percept(percept.source, str(summary)[:80], step=yaml_record["at"])
+            sim_percept(percept.source, str(summary)[:200], step=yaml_record["at"])
         except Exception:
             pass
 

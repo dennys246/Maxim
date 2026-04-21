@@ -172,6 +172,42 @@ class AgentInstance:
 
 
 # ---------------------------------------------------------------------------
+# Nickname derivation for sim logging
+# ---------------------------------------------------------------------------
+
+
+def _derive_nickname(config: AgentConfig) -> str:
+    """Derive a short, thematic display nickname for an agent.
+
+    Priority: entity_spec name > personality first word > agent_id.
+    Keeps it <=12 chars for display column alignment.
+    """
+    # Entity spec: "weapons/rusty_sword" → "Rusty Sword"
+    if config.entity_spec:
+        # Take the last path component and humanize it
+        raw = config.entity_spec.rsplit("/", 1)[-1]
+        name = raw.replace("_", " ").replace("-", " ").title()
+        return name[:12]
+
+    # Personality: "A grizzled merchant who..." → "Merchant"
+    if config.personality:
+        # Find the first capitalized or interesting word after common articles
+        words = config.personality.split()
+        skip = {"a", "an", "the", "is", "was", "are", "very", "quite"}
+        for word in words:
+            clean = word.strip(".,;:!?\"'")
+            if clean.lower() not in skip and len(clean) > 1:
+                return clean.capitalize()[:12]
+
+    # NPC agents: "npc_merchant" → "Merchant"
+    if config.agent_id.startswith("npc_"):
+        return config.agent_id[4:].replace("_", " ").title()[:12]
+
+    # Fallback: use agent_id directly
+    return config.agent_id[:12] if config.agent_id else "Agent"
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
@@ -255,9 +291,20 @@ class AgentFactory:
             personality=config.personality,
         )
 
+        # Register a display nickname for sim logging. Prefer entity name
+        # (thematic), fall back to personality-derived name, then agent_id.
+        nickname = _derive_nickname(config)
+        try:
+            from maxim.simulation.sim_logger import register_agent_nickname
+
+            register_agent_nickname(config.agent_id, nickname)
+        except Exception:
+            pass
+
         log.info(
-            "Created agent '%s' (role=%s, remembers=%s, learns=%s)",
+            "Created agent '%s' (nickname='%s', role=%s, remembers=%s, learns=%s)",
             config.agent_id,
+            nickname,
             config.role,
             config.remembers,
             config.learns,

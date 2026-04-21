@@ -479,8 +479,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         metavar="CHANNELS",
         help="Filter simulation output by channel. Comma-separated: "
-        "bio, exec, sim, memory, safety, all (default). "
-        "Example: --show bio,exec",
+        "bio, bio-only (learning mechanisms only), exec, sim, memory, safety, all (default). "
+        "Example: --show bio-only",
     )
 
     # ── Benchmark ──────────────────────────────────────────────────────

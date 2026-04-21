@@ -17,14 +17,32 @@ Interactive mode (orthogonal to display tier):
 
 from __future__ import annotations
 
+import contextvars
 import enum
 import logging
 import sys
 import threading
 import time
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Generator
 
 logger = logging.getLogger(__name__)
+
+# ContextVar for implicit agent_id threading. The agent loop sets this
+# once per turn via ``sim_agent_context(agent_id)``; all nested sim_log
+# calls within that scope automatically pick it up without requiring
+# every bio-system to accept and forward agent_id explicitly.
+_current_agent_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("_current_agent_id", default=None)
+
+
+@contextmanager
+def sim_agent_context(agent_id: str | None) -> Generator[None, None, None]:
+    """Set the implicit agent_id for all sim_log calls within this scope."""
+    token = _current_agent_id.set(agent_id)
+    try:
+        yield
+    finally:
+        _current_agent_id.reset(token)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -62,6 +80,30 @@ class InteractiveMode(enum.Enum):
 _display_tier: DisplayTier = DisplayTier.CLEAN
 _interactive_mode: InteractiveMode = InteractiveMode.AUTO
 _display_floor: DisplayTier = DisplayTier.CLEAN  # User's --display setting (agent can't go below)
+
+# Agent nickname registry — maps agent_id → short display name
+_agent_nicknames: dict[str, str] = {}
+_nickname_lock = threading.Lock()
+
+
+def register_agent_nickname(agent_id: str, nickname: str) -> None:
+    """Register a display nickname for an agent_id."""
+    with _nickname_lock:
+        _agent_nicknames[agent_id] = nickname
+
+
+def get_agent_nickname(agent_id: str | None) -> str | None:
+    """Look up display nickname for an agent_id. Returns None if unregistered."""
+    if agent_id is None:
+        return None
+    with _nickname_lock:
+        return _agent_nicknames.get(agent_id)
+
+
+def clear_agent_nicknames() -> None:
+    """Clear all registered nicknames (call between sim sessions)."""
+    with _nickname_lock:
+        _agent_nicknames.clear()
 
 
 def set_display_tier(tier: DisplayTier | str) -> None:
@@ -120,6 +162,7 @@ def reset_sim_display_state() -> None:
     _display_tier = DisplayTier.CLEAN
     _display_floor = DisplayTier.CLEAN
     _interactive_mode = InteractiveMode.AUTO
+    clear_agent_nicknames()
 
 
 _CRITICAL_CONTEXTS = frozenset(
@@ -288,10 +331,13 @@ _RESET = "\033[0m"
 # traces that would flood bio mode. Unknown subsystems default to BIO so new
 # code emitting to sim_log surfaces by default (opt-out rather than opt-in).
 _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
-    # Bio-tier: surface at --display bio and above. All named biological
-    # subsystems belong here — they are the "bio annotations" users expect
-    # when they pass --display bio. The _CHANNEL_MAP below already groups
-    # all of these under the "bio" --show channel; the tier map must agree.
+    # Clean-tier: narrative events visible at ALL display levels including clean.
+    "SCENE": DisplayTier.CLEAN,
+    "NPC": DisplayTier.CLEAN,
+    "CHOICE": DisplayTier.CLEAN,
+    "RESULT": DisplayTier.CLEAN,
+    "BLOCKED": DisplayTier.CLEAN,
+    # Bio-tier: biological subsystem annotations visible at --display bio+.
     "HIPPOCAMPUS": DisplayTier.BIO,
     "NAc": DisplayTier.BIO,
     "ATL": DisplayTier.BIO,
@@ -301,17 +347,12 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     "BODY": DisplayTier.BIO,
     "BODY_STATE": DisplayTier.BIO,
     "FEAR": DisplayTier.BIO,
-    "BLOCKED": DisplayTier.BIO,
     "PAIN": DisplayTier.BIO,
-    "MOTOR": DisplayTier.BIO,
-    "EXEC": DisplayTier.BIO,
+    "REACTION": DisplayTier.BIO,
     "PERCEPT": DisplayTier.BIO,
-    "SCENE": DisplayTier.BIO,
-    "CHOICE": DisplayTier.BIO,
-    "NPC": DisplayTier.BIO,
-    "RESULT": DisplayTier.BIO,
-    # Debug-tier: granular pipeline internals that would flood bio mode.
-    # These are implementation traces, not biological subsystem events.
+    # Debug-tier: implementation details, tool execution plumbing, pipeline traces.
+    "EXEC": DisplayTier.DEBUG,
+    "MOTOR": DisplayTier.DEBUG,
     "PIPELINE": DisplayTier.DEBUG,
     "SALIENCE": DisplayTier.DEBUG,
 }
@@ -326,11 +367,35 @@ _show_channels: set[str] | None = None  # None = show all, set = filter
 
 # Channel → subsystem mapping for --show flag
 _CHANNEL_MAP: dict[str, set[str]] = {
-    "bio": {"HIPPOCAMPUS", "NAc", "SCN", "ATL", "FEAR", "PAIN", "MOTOR", "SENSORY", "BODY_STATE"},
-    "exec": {"EXEC", "PIPELINE"},
-    "sim": {"PERCEPT", "SCENE", "NPC", "CHOICE"},
+    "bio": {
+        "HIPPOCAMPUS",
+        "NAc",
+        "SCN",
+        "ATL",
+        "FEAR",
+        "PAIN",
+        "REACTION",
+        "SENSORY",
+        "BODY_STATE",
+        "CEREBELLUM",
+        "BODY",
+        "PERCEPT",
+    },
+    "bio-only": {
+        "HIPPOCAMPUS",
+        "NAc",
+        "SCN",
+        "ATL",
+        "FEAR",
+        "PAIN",
+        "REACTION",
+        "SENSORY",
+        "CEREBELLUM",
+    },
+    "exec": {"EXEC", "MOTOR", "PIPELINE"},
+    "sim": {"SCENE", "NPC", "CHOICE", "RESULT", "BLOCKED"},
     "memory": {"HIPPOCAMPUS", "NAc", "SCN", "ATL"},
-    "safety": {"FEAR", "PAIN"},
+    "safety": {"FEAR", "PAIN", "BLOCKED"},
 }
 
 
@@ -338,13 +403,16 @@ def set_show_channels(channels: str | None) -> None:
     """Set which subsystem channels to show in terminal output.
 
     Args:
-        channels: Comma-separated channel names (``"bio"``, ``"exec"``,
-            ``"sim"``, ``"memory"``, ``"safety"``, ``"all"``).
+        channels: Comma-separated channel names (``"bio"``, ``"bio-only"``,
+            ``"exec"``, ``"sim"``, ``"memory"``, ``"safety"``, ``"all"``).
             ``None`` or ``"all"`` shows everything.
+            ``"bio-only"`` shows only biological learning mechanisms
+            (hippo, NAc, ATL, SCN, fear, pain, reaction, sensory, cerebellum).
 
     Examples::
 
-        set_show_channels("bio")          # Only bio-system events
+        set_show_channels("bio")          # Bio-system + percept events
+        set_show_channels("bio-only")     # Only learning mechanisms
         set_show_channels("bio,exec")     # Bio + execution
         set_show_channels("all")          # Everything
         set_show_channels(None)           # Everything (default)
@@ -567,6 +635,7 @@ def sim_log(
     message: str,
     data: dict[str, Any] | None = None,
     *,
+    agent_id: str | None = None,
     _force_debug: bool = False,
 ) -> None:
     """Log a simulation event with subsystem label and timestamp.
@@ -580,10 +649,18 @@ def sim_log(
         subsystem: Bio-inspired subsystem name (PERCEPT, HIPPOCAMPUS, etc.)
         message: Human-readable description of what happened
         data: Optional structured data for detailed inspection
+        agent_id: Optional agent identifier — resolved to a nickname via
+            the registry for display. Falls back to the implicit
+            ``_current_agent_id`` contextvar (set by ``sim_agent_context``).
+            Persisted as-is in JSONL records.
         _force_debug: If True, only show on terminal in debug mode
     """
     if not _sim_active:
         return
+
+    # Resolve agent_id: explicit parameter > contextvar > None
+    if agent_id is None:
+        agent_id = _current_agent_id.get(None)
 
     import threading
 
@@ -598,13 +675,20 @@ def sim_log(
     else:
         thread_tag = ""
 
+    # Resolve agent nickname for display
+    nickname = get_agent_nickname(agent_id)
+
     # Always persist structured record (JSONL log + in-memory)
-    record = {
+    record: dict[str, Any] = {
         "t": round(elapsed, 3),
         "subsystem": subsystem,
         "message": message,
         "data": data or {},
     }
+    if agent_id is not None:
+        record["agent_id"] = agent_id
+    if nickname is not None:
+        record["agent"] = nickname
     _log_records.append(record)
 
     if _log_file is not None:
@@ -634,7 +718,8 @@ def sim_log(
     else:
         label = f"[{subsystem:12s}]"
 
-    line = f"  {timestamp} {label}{(' ' + thread_tag) if thread_tag else ''} {message}"
+    agent_tag = f" [{nickname}]" if nickname else ""
+    line = f"  {timestamp} {label}{agent_tag}{(' ' + thread_tag) if thread_tag else ''} {message}"
 
     if data:
         # Format key data inline (compact)
@@ -646,60 +731,63 @@ def sim_log(
     display = get_active_display()
     if display is not None:
         # Strip ANSI codes — the display applies its own styling
-        plain_msg = f"{timestamp} [{subsystem}] {message}"
+        agent_prefix = f"[{nickname}] " if nickname else ""
+        plain_msg = f"{agent_prefix}{timestamp} [{subsystem}] {message}"
         if data:
             details = ", ".join(f"{k}={v}" for k, v in data.items() if v is not None)
             if details:
                 plain_msg += f"  ({details})"
-        display.log(subsystem.lower(), plain_msg)
+        display.log(subsystem.lower(), plain_msg, agent=nickname)
     else:
         print(line, flush=True)
 
 
-def sim_percept(source: str, summary: str, **kwargs: Any) -> None:
+def sim_percept(source: str, summary: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log an incoming percept."""
-    sim_log("PERCEPT", f"[{source}] {summary}", kwargs if kwargs else None)
+    sim_log("PERCEPT", f"[{source}] {summary}", kwargs if kwargs else None, agent_id=agent_id)
 
 
-def sim_memory(action: str, **kwargs: Any) -> None:
+def sim_memory(action: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log a hippocampus/memory event."""
-    sim_log("HIPPOCAMPUS", action, kwargs if kwargs else None)
+    sim_log("HIPPOCAMPUS", action, kwargs if kwargs else None, agent_id=agent_id)
 
 
-def sim_debug(subsystem: str, action: str, **kwargs: Any) -> None:
+def sim_debug(subsystem: str, action: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log an event that only appears in debug mode (--debug).
 
     Always persisted to JSONL; terminal output suppressed unless debug=True.
     """
-    sim_log(subsystem, action, kwargs if kwargs else None, _force_debug=True)
+    sim_log(subsystem, action, kwargs if kwargs else None, agent_id=agent_id, _force_debug=True)
 
 
-def sim_reaction(kind: str, intensity: float, source: str, **kwargs: Any) -> None:
+def sim_reaction(kind: str, intensity: float, source: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log a Reaction from the ReactionBus.
 
     Generalizes sim_pain for all reaction kinds. Replaces the sim_pain
     call lost when route_pain_percept was deleted in Phase 2a.
     """
-    sim_log("REACTION", f"{kind} (intensity={intensity:.2f}) from {source}", kwargs if kwargs else None)
+    sim_log(
+        "REACTION", f"{kind} (intensity={intensity:.2f}) from {source}", kwargs if kwargs else None, agent_id=agent_id
+    )
 
 
-def sim_pain(pain_type: str, intensity: float, **kwargs: Any) -> None:
+def sim_pain(pain_type: str, intensity: float, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log a pain signal."""
-    sim_log("PAIN", f"{pain_type} (intensity={intensity:.2f})", kwargs if kwargs else None)
+    sim_log("PAIN", f"{pain_type} (intensity={intensity:.2f})", kwargs if kwargs else None, agent_id=agent_id)
 
 
-def sim_fear(tool: str, allowed: bool, reason: str = "") -> None:
+def sim_fear(tool: str, allowed: bool, reason: str = "", *, agent_id: str | None = None) -> None:
     """Log a FearAgent review."""
     if allowed:
-        sim_log("FEAR", f"ALLOWED: {tool}")
+        sim_log("FEAR", f"ALLOWED: {tool}", agent_id=agent_id)
     else:
-        sim_log("BLOCKED", f"BLOCKED: {tool} — {reason}")
+        sim_log("BLOCKED", f"BLOCKED: {tool} — {reason}", agent_id=agent_id)
 
 
-def sim_action(tool: str, success: bool, summary: str = "") -> None:
+def sim_action(tool: str, success: bool, summary: str = "", *, agent_id: str | None = None) -> None:
     """Log a tool execution."""
     status = "OK" if success else "FAIL"
-    sim_log("MOTOR", f"[{status}] {tool}: {summary}" if summary else f"[{status}] {tool}")
+    sim_log("MOTOR", f"[{status}] {tool}: {summary}" if summary else f"[{status}] {tool}", agent_id=agent_id)
 
 
 def sim_result(scenario_name: str, passed: bool, met: int, failed: int) -> None:
@@ -709,32 +797,40 @@ def sim_result(scenario_name: str, passed: bool, met: int, failed: int) -> None:
     sim_log(subsystem, f"{status}: {scenario_name} ({met} passed, {failed} failed)")
 
 
-def sim_nac(event: str, outcome: str, rpe: float, confidence: float) -> None:
+def sim_nac(event: str, outcome: str, rpe: float, confidence: float, *, agent_id: str | None = None) -> None:
     """Log a NAc causal learning observation."""
-    sim_log("NAc", f"Causal link: {event} -> {outcome} (RPE={rpe:.2f}, confidence={confidence:.2f})")
+    sim_log("NAc", f"Causal link: {event} -> {outcome} (RPE={rpe:.2f}, confidence={confidence:.2f})", agent_id=agent_id)
 
 
-def sim_scn(memory_id: str, phase: str, significance: float) -> None:
+def sim_scn(memory_id: str, phase: str, significance: float, *, agent_id: str | None = None) -> None:
     """Log an SCN temporal bin registration."""
-    sim_log("SCN", f"Registered {memory_id[:8]} in {phase} (significance={significance:.2f})")
+    sim_log("SCN", f"Registered {memory_id[:8]} in {phase} (significance={significance:.2f})", agent_id=agent_id)
 
 
-def sim_cerebellum(entity: str, affordance: str, confidence: float, error: float | None = None) -> None:
+def sim_cerebellum(
+    entity: str, affordance: str, confidence: float, error: float | None = None, *, agent_id: str | None = None
+) -> None:
     """Log a Cerebellum forward model observation."""
     if error is not None:
-        sim_log("CEREBELLUM", f"Observed {entity}.{affordance} (conf={confidence:.2f}, pred_error={error:.3f})")
+        sim_log(
+            "CEREBELLUM",
+            f"Observed {entity}.{affordance} (conf={confidence:.2f}, pred_error={error:.3f})",
+            agent_id=agent_id,
+        )
     else:
-        sim_log("CEREBELLUM", f"New model: {entity}.{affordance} (conf={confidence:.2f})")
+        sim_log("CEREBELLUM", f"New model: {entity}.{affordance} (conf={confidence:.2f})", agent_id=agent_id)
 
 
-def sim_sensory(modality: str, entity: str, acuity: float, dropped: bool = False) -> None:
+def sim_sensory(
+    modality: str, entity: str, acuity: float, dropped: bool = False, *, agent_id: str | None = None
+) -> None:
     """Log a SensoryGate modulation event."""
     if dropped:
-        sim_log("SENSORY", f"Dropped {modality} percept from {entity} (acuity={acuity:.2f})")
+        sim_log("SENSORY", f"Dropped {modality} percept from {entity} (acuity={acuity:.2f})", agent_id=agent_id)
     else:
-        sim_log("SENSORY", f"Modulated {modality} from {entity} (acuity={acuity:.2f})")
+        sim_log("SENSORY", f"Modulated {modality} from {entity} (acuity={acuity:.2f})", agent_id=agent_id)
 
 
-def sim_body_state(entity_count: int, active_failures: int) -> None:
+def sim_body_state(entity_count: int, active_failures: int, *, agent_id: str | None = None) -> None:
     """Log body state injection into prompt."""
-    sim_log("BODY", f"State: {entity_count} entities, {active_failures} active failures")
+    sim_log("BODY", f"State: {entity_count} entities, {active_failures} active failures", agent_id=agent_id)

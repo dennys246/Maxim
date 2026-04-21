@@ -241,6 +241,13 @@ def start_simulation_mode(
 
     start_time = time.time()
 
+    # Register well-known sim agent nicknames for display logging.
+    # Must happen early — before any sim_log calls that might carry agent_id.
+    from maxim.simulation.sim_logger import register_agent_nickname, sim_agent_context
+
+    register_agent_nickname("sim_aut", "AUT")
+    register_agent_nickname("sim_orchestrator", "Orch")
+
     # Plan 4 follow-up (2026-04-14): generate session_id AT ENTRY so
     # every LLMWorker constructed downstream can thread it into its
     # request_context dict. Previously this id was created lazily in
@@ -1225,27 +1232,28 @@ def start_simulation_mode(
 
     def _aut_worker() -> None:
         try:
-            run_agentic_loop(
-                aut_agent,
-                aut_env,
-                aut_state,
-                aut_memory,
-                aut_decision_engine,
-                aut_executor,
-                autonomy_controller=aut_autonomy,
-                llm_worker=aut_llm_worker,
-                default_network=aut_default_network,
-                hippocampus=aut_hippocampus,
-                memory_hub=aut_memory_hub,
-                max_steps=0,  # unlimited — AUT stops when bridge.finish() is called
-                stop_event=stop_event,
-                target_hz=2.0,
-                percept_source=bridge.percept_source,
-                action_sink=bridge.action_sink,
-                pain_bus=aut_pain_bus,
-                imagination_trigger=aut_imagination_trigger,
-                bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
-            )
+            with sim_agent_context("sim_aut"):
+                run_agentic_loop(
+                    aut_agent,
+                    aut_env,
+                    aut_state,
+                    aut_memory,
+                    aut_decision_engine,
+                    aut_executor,
+                    autonomy_controller=aut_autonomy,
+                    llm_worker=aut_llm_worker,
+                    default_network=aut_default_network,
+                    hippocampus=aut_hippocampus,
+                    memory_hub=aut_memory_hub,
+                    max_steps=0,  # unlimited — AUT stops when bridge.finish() is called
+                    stop_event=stop_event,
+                    target_hz=2.0,
+                    percept_source=bridge.percept_source,
+                    action_sink=bridge.action_sink,
+                    pain_bus=aut_pain_bus,
+                    imagination_trigger=aut_imagination_trigger,
+                    bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
+                )
         except Exception as e:
             aut_error.append(e)
             logger.error("AUT loop failed: %s", e)
@@ -1922,25 +1930,26 @@ def start_simulation_mode(
     bridge._spinner.start("Orchestrator planning first probe...")
 
     try:
-        run_agentic_loop(
-            orch_agent,
-            orch_env,
-            orch_state,
-            orch_memory,
-            orch_decision_engine,
-            orch_executor,
-            autonomy_controller=orch_autonomy,
-            llm_worker=orch_llm_worker,
-            # NOTE: orchestrator hippocampus disabled for now — it captures
-            # every tool call as an episodic memory, which is noisy.
-            # Re-enable when cross-session learning (Phase 3) is tuned.
-            # hippocampus=orch_hippocampus,
-            # memory_hub=orch_memory_hub,
-            max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
-            stop_event=stop_event,
-            target_hz=2.0,
-            percept_source=orchestrator_source,
-        )
+        with sim_agent_context("sim_orchestrator"):
+            run_agentic_loop(
+                orch_agent,
+                orch_env,
+                orch_state,
+                orch_memory,
+                orch_decision_engine,
+                orch_executor,
+                autonomy_controller=orch_autonomy,
+                llm_worker=orch_llm_worker,
+                # NOTE: orchestrator hippocampus disabled for now — it captures
+                # every tool call as an episodic memory, which is noisy.
+                # Re-enable when cross-session learning (Phase 3) is tuned.
+                # hippocampus=orch_hippocampus,
+                # memory_hub=orch_memory_hub,
+                max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
+                stop_event=stop_event,
+                target_hz=2.0,
+                percept_source=orchestrator_source,
+            )
     except KeyboardInterrupt:
         display_summary(["Simulation stopped by user"])
     except Exception as e:
