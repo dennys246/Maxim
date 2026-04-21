@@ -68,9 +68,25 @@ MAXIM_LOG_FILE=/tmp/sem_discovery_s1.jsonl \
 | sense calls | N/A | 1-3 per session |
 | Token budget (tools section) | ~1,200 | ~400-600 |
 
-## Actual Results
+## Actual Results (2026-04-20)
 
-_(To be filled after sim run completes)_
+**Sim run:** 5 turns, 54.7s, qwen2.5-14b-instruct, `--embodiment weapons/rusty_sword`
+
+| Metric | Result | Pass? |
+|--------|--------|-------|
+| Turn-1 affordance use | `rusty_sword_slash` called on turn 1 | Yes |
+| Tool diversity | `slash` (2) + `parry` (2) = 4 actions, 0 blocked | Yes |
+| Cold start regression | None — agent used combat tools immediately | Yes |
+| discover_tools calls | 0 — not needed (top-k covered the goal) | Expected |
+| sense calls | 0 — agent focused on combat, not sensing | Expected |
+| Errors from deactivated tools | 0 | Yes |
+| Bio-pipeline | 53 memories, 10 causal links | Healthy |
+
+**Analysis:** The hybrid approach works as designed for focused goals. The goal "test sword combat" keyword-matched `slash` and `parry` into the top-k, so the agent had combat tools from turn 1 and never needed discovery. This is the happy path — no behavioral regression vs pre-S1.
+
+**Gap identified:** `discover_tools` and `sense` were never exercised in this run because the goal was specific enough that top-k covered everything. Need a follow-up experiment with a vague goal ("explore freely") or a multi-entity scenario to exercise the discovery path. This is the S2 PoC target.
+
+**Commit:** `d144507`
 
 ## Reproduction
 
