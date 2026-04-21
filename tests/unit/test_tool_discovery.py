@@ -358,3 +358,167 @@ class TestEntityMapIntegration:
         sword = _sword()
         tools = generate_tools_for_entity(sword, registry)
         assert len(tools) > 0
+
+
+# ---------------------------------------------------------------------------
+# S2: Per-tool deactivation tests
+# ---------------------------------------------------------------------------
+
+
+class TestDeactivateTool:
+    def test_deactivate_single_tool(self):
+        registry = ToolRegistry()
+        sword = _sword()
+        tools = generate_tools_for_entity(sword, registry)
+        registry.register_scene_tools(tools, "sword_scene")
+        # All tools active
+        assert registry.is_tool_active("rusty_sword_slash")
+        # Deactivate one tool
+        assert registry.deactivate_tool("rusty_sword_slash")
+        assert not registry.is_tool_active("rusty_sword_slash")
+        # Other tools in same scene still active
+        assert registry.is_tool_active("rusty_sword_parry")
+
+    def test_deactivate_nonexistent_returns_false(self):
+        registry = ToolRegistry()
+        assert not registry.deactivate_tool("nonexistent")
+
+    def test_deactivate_core_tool_returns_false(self):
+        """Core tools (no scene) can't be deactivated via deactivate_tool."""
+        registry = ToolRegistry()
+        sword = _sword()
+        generate_tools_for_entity(sword, registry)
+        # Core-registered tools have no _scene_meta entry
+        assert not registry.deactivate_tool("rusty_sword_slash")
+
+
+# ---------------------------------------------------------------------------
+# S2: LRU eviction tests
+# ---------------------------------------------------------------------------
+
+
+class TestLRUEviction:
+    def test_evict_stale_tools(self):
+        from maxim.tools.discovery import (
+            DISCOVERY_LRU_TURNS,
+            evict_stale_discoveries,
+            mark_tool_used,
+            reset_discovery_state,
+        )
+
+        reset_discovery_state()
+        registry = ToolRegistry()
+        sword = _sword()
+        tools = generate_tools_for_entity(sword, registry)
+        registry.register_scene_tools(tools, "sword_scene")
+
+        # Mark slash as used on turn 1
+        mark_tool_used("rusty_sword_slash", 1)
+        mark_tool_used("rusty_sword_parry", 1)
+
+        # Evict at turn 1 + LRU_TURNS + 1 — both should be evicted
+        evicted = evict_stale_discoveries(1 + DISCOVERY_LRU_TURNS + 1, registry)
+        assert "rusty_sword_slash" in evicted
+        assert "rusty_sword_parry" in evicted
+        assert not registry.is_tool_active("rusty_sword_slash")
+
+    def test_recently_used_not_evicted(self):
+        from maxim.tools.discovery import (
+            DISCOVERY_LRU_TURNS,
+            evict_stale_discoveries,
+            mark_tool_used,
+            reset_discovery_state,
+        )
+
+        reset_discovery_state()
+        registry = ToolRegistry()
+        sword = _sword()
+        tools = generate_tools_for_entity(sword, registry)
+        registry.register_scene_tools(tools, "sword_scene")
+
+        # Mark slash as used on turn 5
+        mark_tool_used("rusty_sword_slash", 5)
+
+        # Evict at turn 7 — still within LRU window
+        evicted = evict_stale_discoveries(7, registry)
+        assert "rusty_sword_slash" not in evicted
+        assert registry.is_tool_active("rusty_sword_slash")
+
+    def test_goal_selected_exempt(self):
+        from maxim.tools.discovery import (
+            DISCOVERY_LRU_TURNS,
+            evict_stale_discoveries,
+            mark_goal_selected,
+            mark_tool_used,
+            reset_discovery_state,
+        )
+
+        reset_discovery_state()
+        registry = ToolRegistry()
+        sword = _sword()
+        tools = generate_tools_for_entity(sword, registry)
+        registry.register_scene_tools(tools, "sword_scene")
+
+        mark_tool_used("rusty_sword_slash", 1)
+        mark_goal_selected(["rusty_sword_slash"])
+
+        # Even past LRU window, goal-selected tools survive
+        evicted = evict_stale_discoveries(1 + DISCOVERY_LRU_TURNS + 1, registry)
+        assert "rusty_sword_slash" not in evicted
+        assert registry.is_tool_active("rusty_sword_slash")
+
+
+# ---------------------------------------------------------------------------
+# S2: NAc valence ranking test
+# ---------------------------------------------------------------------------
+
+
+class TestNAcRanking:
+    def test_nac_boosts_positive_valence(self):
+        """NAc positive valence boosts discovery ranking."""
+        from unittest.mock import MagicMock
+
+        from maxim.decisions.causal_link import CausalLink, TemporalDelta, Valence
+
+        registry = ToolRegistry()
+        emap = EntityMap()
+        sword = _sword()
+        emap.register(sword)
+        generate_tools_for_entity(sword, registry, entity_map=emap)
+
+        # Mock NAc with a positive link for slash
+        nac = MagicMock()
+        positive_link = MagicMock(spec=CausalLink)
+        positive_link.confidence = 0.8
+        positive_link.outcome_valence = Valence.POSITIVE
+        positive_link.outcome_signature = "success"
+        nac.get_links_for_event.return_value = [positive_link]
+
+        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry, nac=nac)
+        result = tool.execute(query="slash sword combat")
+        assert result.success
+        assert "worked well before" in result.output
+
+    def test_nac_annotates_negative_valence(self):
+        """NAc negative valence adds caution annotation."""
+        from unittest.mock import MagicMock
+
+        from maxim.decisions.causal_link import CausalLink, Valence
+
+        registry = ToolRegistry()
+        emap = EntityMap()
+        sword = _sword()
+        emap.register(sword)
+        generate_tools_for_entity(sword, registry, entity_map=emap)
+
+        nac = MagicMock()
+        negative_link = MagicMock(spec=CausalLink)
+        negative_link.confidence = 0.7
+        negative_link.outcome_valence = Valence.NEGATIVE
+        negative_link.outcome_signature = "blade_shattered"
+        nac.get_links_for_event.return_value = [negative_link]
+
+        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry, nac=nac)
+        result = tool.execute(query="slash sword combat")
+        assert result.success
+        assert "caution" in result.output

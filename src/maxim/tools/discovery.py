@@ -6,11 +6,12 @@ Provides two tools that replace the flat per-entity tool explosion:
   all sensors on any named entity, replacing N×M individual read/sense tools.
 - ``DiscoverToolsTool`` — ``discover_tools(query)`` that matches intent
   against entity modulators/affordances and activates the relevant tools
-  via I3's scene-scoped mechanism.
+  via I3's scene-scoped mechanism.  Results are ranked by NAc valence
+  when available (S2).
 
-Also provides the goal-based top-k selection algorithm used at prompt
-build time to keep a small set of goal-relevant affordance tools visible
-from turn 1.
+Also provides:
+- Goal-based top-k selection algorithm for turn-1 affordance visibility.
+- LRU eviction for discovered tools that haven't been called recently (S2).
 """
 
 from __future__ import annotations
@@ -21,11 +22,61 @@ from typing import TYPE_CHECKING, Any
 from maxim.tools.base import Tool, ToolOutput
 
 if TYPE_CHECKING:
+    from maxim.decisions.nac import NAc
     from maxim.embodiment.component_index import ComponentIndex
     from maxim.embodiment.entity_map import EntityMap
     from maxim.tools.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# LRU eviction for discovered tools (S2)
+# ---------------------------------------------------------------------------
+
+DISCOVERY_LRU_TURNS = 5  # Deactivate after 5 turns of non-use
+
+# Module-level state for LRU tracking.  Keyed by tool name.
+_tool_last_used: dict[str, int] = {}
+_goal_selected: set[str] = set()  # Exempt from LRU eviction
+
+
+def mark_tool_used(tool_name: str, turn: int) -> None:
+    """Record that a tool was called on this turn.  Called from executor."""
+    _tool_last_used[tool_name] = turn
+
+
+def mark_goal_selected(tool_names: list[str]) -> None:
+    """Mark tools as goal-selected (exempt from LRU eviction)."""
+    _goal_selected.update(tool_names)
+
+
+def evict_stale_discoveries(current_turn: int, registry: ToolRegistry) -> list[str]:
+    """Deactivate discovered tools not called in DISCOVERY_LRU_TURNS.
+
+    Called at prompt build time before the tool list is assembled.
+    Only affects scene-scoped tools (core tools are exempt).
+    Goal-selected tools are exempt from eviction.
+
+    Returns list of evicted tool names.
+    """
+    evicted: list[str] = []
+    for tool_name, last_turn in list(_tool_last_used.items()):
+        if tool_name in _goal_selected:
+            continue
+        if current_turn - last_turn > DISCOVERY_LRU_TURNS:
+            if registry.get_tool_scene(tool_name) is not None:
+                registry.deactivate_tool(tool_name)
+                evicted.append(tool_name)
+                del _tool_last_used[tool_name]
+    if evicted:
+        log.info("LRU eviction: deactivated %d tools: %s", len(evicted), evicted)
+    return evicted
+
+
+def reset_discovery_state() -> None:
+    """Reset module-level discovery state between sim sessions."""
+    _tool_last_used.clear()
+    _goal_selected.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -108,10 +159,12 @@ class DiscoverToolsTool(Tool):
         entity_map: EntityMap,
         tool_registry: ToolRegistry,
         component_index: ComponentIndex | None = None,
+        nac: NAc | None = None,
     ) -> None:
         self._entity_map = entity_map
         self._registry = tool_registry
         self._component_index = component_index
+        self._nac = nac
         super().__init__()
 
     def execute(self, **kwargs: Any) -> Any:
@@ -157,6 +210,10 @@ class DiscoverToolsTool(Tool):
                         tool_name = f"{entity.name}_{aff_name}"
                         scored.append((tool_name, combined, aff_desc))
 
+        # Apply NAc valence boost/penalty (S2)
+        if self._nac is not None:
+            scored = self._apply_nac_ranking(scored)
+
         # Sort by score descending, take top 8
         scored.sort(key=lambda x: x[1], reverse=True)
         top_matches = scored[:8]
@@ -165,7 +222,7 @@ class DiscoverToolsTool(Tool):
         if not top_matches:
             return self._modulator_summary(entities)
 
-        # Activate matched tools
+        # Activate matched tools and build annotated descriptions
         activated: list[str] = []
         descriptions: list[str] = []
         for tool_name, score, desc in top_matches:
@@ -179,7 +236,11 @@ class DiscoverToolsTool(Tool):
                     self._registry.activate_scene(scene_id)
                 activated.append(resolved)
                 tool_obj = self._registry.get(resolved)
-                descriptions.append(f"- {resolved}: {tool_obj.description}")
+                annotation = self._nac_annotation(resolved)
+                desc_line = f"- {resolved}: {tool_obj.description}"
+                if annotation:
+                    desc_line += f" [{annotation}]"
+                descriptions.append(desc_line)
 
         if not activated:
             return self._modulator_summary(entities)
@@ -216,6 +277,46 @@ class DiscoverToolsTool(Tool):
             "Try a more specific query like 'attack with sword' or 'repair equipment' to activate those tools."
         )
         return ToolOutput(success=True, output="\n".join(lines))
+
+    # -- NAc valence integration (S2) ------------------------------------------
+
+    def _apply_nac_ranking(self, scored: list[tuple[str, float, str]]) -> list[tuple[str, float, str]]:
+        """Boost/penalize scores based on NAc causal link valence."""
+        if self._nac is None:
+            return scored
+        result: list[tuple[str, float, str]] = []
+        for tool_name, score, desc in scored:
+            links = self._nac.get_links_for_event(tool_name)
+            if links:
+                # Use the most confident link
+                best = max(links, key=lambda lk: lk.confidence)
+                if best.confidence >= 0.3:
+                    from maxim.decisions.causal_link import Valence
+
+                    if best.outcome_valence == Valence.POSITIVE:
+                        score *= 1.2  # boost
+                    elif best.outcome_valence == Valence.NEGATIVE:
+                        score *= 0.8  # penalize (but don't suppress)
+            result.append((tool_name, score, desc))
+        return result
+
+    def _nac_annotation(self, tool_name: str) -> str:
+        """Generate a short annotation from NAc valence for a tool."""
+        if self._nac is None:
+            return ""
+        links = self._nac.get_links_for_event(tool_name)
+        if not links:
+            return ""
+        best = max(links, key=lambda lk: lk.confidence)
+        if best.confidence < 0.3:
+            return ""
+        from maxim.decisions.causal_link import Valence
+
+        if best.outcome_valence == Valence.POSITIVE:
+            return "worked well before"
+        elif best.outcome_valence == Valence.NEGATIVE:
+            return f"caution: {best.outcome_signature}"
+        return ""
 
 
 # ---------------------------------------------------------------------------
