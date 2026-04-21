@@ -571,18 +571,26 @@ class ImaginationTrigger:
         synonyms = design_result.synonyms
         self._index.add(ref, spec, synonyms=synonyms)
 
-        # 10. Register affordance tools if tool_registry available
+        # 10. Register affordance tools as DEACTIVATED (SEM discovery S3).
+        # Tools exist but are invisible until the agent calls discover_tools.
+        # This prevents imagination from immediately bloating the prompt with
+        # N new tools per imagined entity.  The agent perceives the new entity
+        # naturally and curiosity drives discovery.
         if self._tool_registry is not None and scene_id is not None:
             try:
                 from maxim.embodiment.tool_bridge import generate_tools_for_entity
                 from maxim.embodiment.spec import _parse_entity
 
                 entity = _parse_entity(spec.get("entity", spec))
-                tools = generate_tools_for_entity(entity, self._tool_registry)
+                # Populate EntityMap if available (wired by orchestrator)
+                _entity_map = getattr(self, "_entity_map", None)
+                tools = generate_tools_for_entity(entity, self._tool_registry, entity_map=_entity_map)
                 if tools:
                     self._tool_registry.register_scene_tools(tools, scene_id)
+                    # Immediately deactivate — discoverable but not visible
+                    self._tool_registry.deactivate_scene(scene_id)
                     log.info(
-                        "Imagination: registered %d tools for imagined entity '%s'",
+                        "Imagination: registered %d tools (deactivated) for imagined entity '%s'",
                         len(tools),
                         ref,
                     )

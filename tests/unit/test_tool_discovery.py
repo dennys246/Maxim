@@ -473,6 +473,46 @@ class TestLRUEviction:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# S3: Imagination deferred registration test
+# ---------------------------------------------------------------------------
+
+
+class TestImaginationDeferred:
+    def test_imagination_registers_tools_deactivated(self):
+        """Simulates the imagination flow: tools registered but scene-deactivated."""
+        registry = ToolRegistry()
+        emap = EntityMap()
+        dragon = _make_entity(
+            "crystal_dragon",
+            "creature",
+            sensors={"health": {"initial": 1.0}},
+            modulators={"combat": {"bite": "Bite the target", "claw": "Claw attack"}},
+        )
+        emap.register(dragon)
+        tools = generate_tools_for_entity(dragon, registry, entity_map=emap)
+        scene_id = "imagination_dragon"
+        registry.register_scene_tools(tools, scene_id)
+        # Immediately deactivate (as imagination trigger does)
+        registry.deactivate_scene(scene_id)
+
+        # Tools exist but are not active
+        assert "crystal_dragon_bite" not in registry.list()
+        assert "crystal_dragon_bite" in registry.list_all()
+
+        # Discovery can reactivate
+        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        result = tool.execute(query="dragon bite combat")
+        assert result.success
+        # Tools should now be active
+        assert "crystal_dragon_bite" in registry.list()
+
+
+# ---------------------------------------------------------------------------
+# S2: NAc valence ranking test
+# ---------------------------------------------------------------------------
+
+
 class TestNAcRanking:
     def test_nac_boosts_positive_valence(self):
         """NAc positive valence boosts discovery ranking."""
