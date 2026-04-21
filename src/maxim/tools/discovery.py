@@ -254,13 +254,20 @@ class DiscoverToolsTool(Tool):
         return ToolOutput(success=True, output="\n".join(result_lines))
 
     def _find_tool_in_registry(self, expected_name: str) -> str | None:
-        """Find a tool by expected name, falling back to fuzzy match."""
+        """Find a tool by expected name, falling back to prefix-aware match.
+
+        Tool names may have been prefixed for collision resolution
+        (e.g., ``parent_entity_affordance`` instead of ``entity_affordance``).
+        Only matches on underscore-delimited suffix to avoid false positives
+        like ``crystal_dragon_slash`` matching ``rusty_sword_slash``.
+        """
         all_tools = self._registry.list_all()
         if expected_name in all_tools:
             return expected_name
-        # Try fuzzy: the tool may have been prefixed for collision resolution
+        # Try prefix-aware match: tool may have parent prefix prepended
+        suffix = f"_{expected_name}"
         for name in all_tools:
-            if name.endswith(expected_name) or expected_name.endswith(name):
+            if name.endswith(suffix):
                 return name
         return None
 

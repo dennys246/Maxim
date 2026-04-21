@@ -713,23 +713,35 @@ def start_simulation_mode(
             )
         )
 
-        # Goal-based top-k: keep relevant affordances active, deactivate rest
-        _keep_active = set(select_goal_relevant_tools(goal, _aut_entity_map, aut_registry))
-        _deactivated_count = 0
-        for _tname in list(aut_registry.list_all()):
-            if _tname in _keep_active:
-                continue
-            scene = aut_registry.get_tool_scene(_tname)
-            if scene is not None and aut_registry.is_tool_active(_tname):
-                try:
-                    tool = aut_registry.get(_tname)
-                    from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+        # Goal-based top-k: keep relevant affordances active, deactivate rest.
+        # generate_tools_for_entity registers tools as core (no scene metadata).
+        # We need to add scene metadata so deactivate_tool works. Re-register
+        # affordance tools as scene-scoped, then deactivate non-top-k ones.
+        from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+        from maxim.tools.discovery import mark_goal_selected
 
-                    if isinstance(tool, ModulatorAffordanceTool):
-                        aut_registry.deactivate_scene(scene)
-                        _deactivated_count += 1
-                except KeyError:
-                    pass
+        _keep_active = set(select_goal_relevant_tools(goal, _aut_entity_map, aut_registry))
+        mark_goal_selected(list(_keep_active))
+
+        # Collect affordance tools and re-register as scene-scoped
+        _affordance_tools = []
+        for _tname in list(aut_registry.list_all()):
+            try:
+                _tool = aut_registry.get(_tname)
+                if isinstance(_tool, ModulatorAffordanceTool):
+                    _affordance_tools.append(_tool)
+            except KeyError:
+                pass
+
+        if _affordance_tools:
+            aut_registry.register_scene_tools(_affordance_tools, "aut_affordances")
+
+        # Deactivate non-top-k affordance tools individually
+        _deactivated_count = 0
+        for _tool in _affordance_tools:
+            if _tool.name not in _keep_active:
+                if aut_registry.deactivate_tool(_tool.name):
+                    _deactivated_count += 1
 
         _active_count = len(aut_registry.list())
         logger.info(
