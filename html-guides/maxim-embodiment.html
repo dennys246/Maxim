@@ -98,6 +98,42 @@
     <p class="text-slate-300 leading-relaxed">Name collisions are handled by progressive prefixing: <code class="bg-slate-950 px-1 rounded text-xs">shoulder_rotate_angle</code> &rarr; <code class="bg-slate-950 px-1 rounded text-xs">robot2_shoulder_rotate_angle</code> if two robots share the same entity name.</p>
   </section>
 
+  <!-- SEM Tool Discovery (0.7) -->
+  <section class="space-y-4">
+    <h2 id="tool-discovery" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">SEM Tool Discovery (0.7)</h2>
+
+    <div class="bg-slate-800 border-l-4 border-cyan-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-cyan-400 mb-2">Problem: Tool Prompt Bloat</h3>
+      <p class="text-slate-300">With multiple entities, per-entity sensor tools (<code class="bg-slate-950 px-1 rounded text-xs">sense_*</code>, <code class="bg-slate-950 px-1 rounded text-xs">read_*</code>) plus affordance tools can exceed 30+ in the prompt. LLMs default to safe/known tools instead of exploring affordances. SEM Tool Discovery solves this with a hybrid approach.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed"><strong class="text-white">Hybrid prompt mode:</strong> Only goal-relevant affordance tools (top 3-5) are visible from turn 1. The rest are discoverable on demand.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-cyan-400 border-b border-slate-700">
+          <th class="pb-2">Tool</th><th class="pb-2">Type</th><th class="pb-2">Description</th>
+        </tr></thead>
+        <tbody class="text-slate-300">
+          <tr><td class="py-1">sense</td><td class="text-slate-500">Universal</td><td>Read all sensors on any named entity</td></tr>
+          <tr><td class="py-1">discover_tools</td><td class="text-slate-500">Discovery</td><td>Find capabilities by intent ("attack", "repair")</td></tr>
+          <tr><td class="py-1">rusty_sword_slash</td><td class="text-slate-500">Top-k</td><td>Goal-selected, visible from turn 1</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed"><strong class="text-white">How it works:</strong></p>
+    <ol class="text-slate-300 list-decimal ml-6 space-y-1">
+      <li><code class="bg-slate-950 px-1 rounded text-xs">sense(entity_name)</code> replaces all per-entity sensor tools (single tool, any entity)</li>
+      <li>Goal keywords auto-select top-k affordance tools for turn-1 visibility</li>
+      <li><code class="bg-slate-950 px-1 rounded text-xs">discover_tools(query)</code> finds and activates additional tools by intent</li>
+      <li>NAc valence ranks results &mdash; positive-valence tools float up, negative get caution notes</li>
+      <li>LRU eviction deactivates tools not called in 5 turns to prevent re-bloat</li>
+    </ol>
+
+    <p class="text-slate-300 leading-relaxed"><strong class="text-white">Imagination integration:</strong> When an imagined entity is designed, its tools are registered as <em class="text-indigo-400 not-italic">scene-deactivated</em> &mdash; discoverable but invisible until the agent calls <code class="bg-slate-950 px-1 rounded text-xs">discover_tools</code>.</p>
+  </section>
+
   <!-- Cerebellum -->
   <section class="space-y-4">
     <h2 id="cerebellum" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Cerebellum: Forward Models</h2>

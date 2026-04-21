@@ -52,6 +52,7 @@
     <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
     <ol class="space-y-1 text-slate-300 list-decimal pl-5">
       <li><a href="#action-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Action Tools (Side Effects)</a></li>
+      <li><a href="#discovery-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Discovery Tools (0.7)</a></li>
       <li><a href="#introspection" class="text-indigo-400 hover:text-indigo-300 no-underline">Introspection Tools (Self-Awareness)</a></li>
       <li><a href="#memory-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Memory: Episodic Recall &amp; Similarity</a></li>
       <li><a href="#causal-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Causal: Prediction &amp; Learned Links</a></li>
@@ -93,6 +94,25 @@
         <p class="text-xs text-slate-500 mt-1">Console output, TTS, SMS/voice via Twilio gateway.</p>
       </div>
     </div>
+  </section>
+
+  <!-- ── Discovery Tools (0.7) ──────────────────────────── -->
+  <section id="discovery-tools" class="space-y-4 pt-6 border-t border-slate-700">
+    <h2 class="text-2xl font-bold text-white">Discovery Tools <span class="text-sm text-cyan-400 font-normal">(0.7)</span></h2>
+    <p class="text-slate-300 leading-relaxed">SEM Tool Discovery replaces the flat per-entity tool explosion with a hybrid approach: goal-relevant tools visible from turn 1, plus on-demand discovery for the rest.</p>
+
+    <div class="grid gap-3 md:grid-cols-2">
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-white font-semibold">sense <span class="text-xs text-slate-500">(entity_name)</span></h4>
+        <p class="text-xs text-slate-500 mt-1">Read all sensors on any named entity. Replaces per-entity <code class="text-slate-400">sense_*</code> and <code class="text-slate-400">read_*</code> tools with a single universal tool.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+        <h4 class="text-white font-semibold">discover_tools <span class="text-xs text-slate-500">(query)</span></h4>
+        <p class="text-xs text-slate-500 mt-1">Describe what you want to do. Matches intent against entity modulators/affordances, ranks by NAc valence, and activates the relevant tools for the next turn.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed text-sm"><strong class="text-white">Token savings:</strong> ~400-1,000 tokens per turn (from ~36 tools to ~12). <strong class="text-white">LRU eviction:</strong> discovered tools deactivated after 5 turns of non-use. <strong class="text-white">Imagination:</strong> imagined entity tools start deactivated and are discoverable on demand.</p>
   </section>
 
   <!-- ── Introspection Overview ──────────────────────────── -->
