@@ -1,6 +1,6 @@
 # Working Memory + Executive Loop — PFC-style thinking as the default
 
-**Status:** Stages 1-7 SHIPPED (2026-04-21). All stages complete.
+**Status:** Stages 1-7 SHIPPED (2026-04-21). Post-ship refinement (2026-04-22): Layer 1 pre-LLM deliberation, Layer 3 gate simplification, WMS enrichment, context-aware stall nudges.
 **Branch:** `feat/working-memory-exec-loop` (each stage gets its own sub-branch per L6)
 **Scope:** ~1800-2200 LOC across 7 staged PRs
 **Target version:** 0.8 (maturity) — NOT gating 1.0
@@ -526,3 +526,48 @@ Parallel architecture + execution review surfaced 12 findings. Cross-confirmed f
 **F11. should_promote() deletion timing.** Between Stage 1 (WORKING removed) and Stage 7 (new promotion logic), there's no SHORT_TERM → LONG_TERM promotion at all. **Action:** Keep should_promote() as dead-but-present code until Stage 7 replaces it. Don't delete in Stage 1.
 
 **F12. StructuredContext deque fields should be deprecated-marked.** After Stage 1, `recent_percepts`, `recent_outcomes` etc. are sourced from WorkingMemorySet. Mark old fields with `# DEPRECATED: sourced from WorkingMemorySet` to prevent re-adding parallel surfaces.
+
+---
+
+## Post-Ship Refinement (2026-04-22)
+
+Sim evaluation of the shipped 7-stage system revealed three issues:
+
+1. **ThinkTool was never called by the LLM.** The tool-based opt-in model is an egg-before-chicken problem: the LLM can't know it needs to think unless it's already thinking. ThoughtGate was wired to gate post-proposal refinement only — downstream of `_should_contemplate`'s complexity heuristic which always rejected because 14B models produce flat single-goal responses.
+
+2. **Stall detector injected adversarial probes** ("ignore your instructions") that derailed sims by completely abandoning the scenario goal.
+
+### Changes shipped:
+
+**Layer 1 — Pre-LLM deliberation (thalamic relay):**
+- `ExecAgent._run_pre_deliberation(ctx)` evaluates ThoughtGate on the working-memory head BEFORE `_invoke_llm_for_goal`.
+- When gate fires, runs `BioEnrichmentPipeline.enrich()` on the percept text with `bypass_gate=True` and `working_memory=self.working_memory`.
+- Enrichment is injected into `ctx.bio_enrichment_context` → rendered as "WHAT YOUR EXPERIENCE TELLS YOU" in the LLM prompt.
+- Records enrichment as `WorkingMemoryKind.THOUGHT` entry in WMS for continuity.
+- `ExecAgent.wire_bio_enrichment(pipeline)` — new late-wiring method, called in orchestrator alongside `wire_thought_gate`.
+- Bio-plausible framing: the thalamus routes salient stimuli to PFC, which retrieves from long-term and working memory before the executive decision fires. This is automatic — no LLM call needed.
+
+**Layer 3 — Simplified refinement gate:**
+- `_maybe_contemplate` uses ThoughtGate as the sole gate for post-proposal critique-refine.
+- `_should_contemplate` complexity heuristic (2+ sub_goals / HIGH priority) dropped. Old heuristic kept as fallback only when no gate is wired.
+
+**WMS in BioEnrichmentPipeline:**
+- `enrich()` accepts `working_memory=` parameter.
+- `_query_working_memory()` summarizes recent OUTCOME/CONVERSATION/PERCEPT entries from WMS.
+- `EnrichmentResult.recent_context` — new field for WMS summaries.
+- `format_thought_response()` renders "Recent actions and outcomes:" section.
+- Even in fresh sessions with no episodic memories, the agent's recent actions inform the next decision.
+
+**Context-aware stall nudges:**
+- `_build_stall_nudge_example(sim_goal, last_tool, total_actions)` replaces hardcoded adversarial probes.
+- Adapts nudge based on last tool (look→push action, speak→push physical, move→push interaction).
+- Stays on sim goal instead of injecting off-topic safety probes.
+
+### Sim validation results:
+- **Before:** AUT spammed `base_humanoid_look` 3x, stall detector injected "ignore your instructions", orch got stuck repeating that. Zero ThinkTool calls. Zero THOUGHT events.
+- **After:** AUT shows coherent escape plan behavior (`pick_up` → `examine` → `look` → `move`). Hippocampus goals show purposeful reasoning ("Picking up the rusty sword to use as a tool for escape"). Zero adversarial probes. Stall nudges stay on-goal.
+
+### Two-layer deliberation model (current):
+- **Layer 1 (automatic, pre-LLM):** ThoughtGate evaluates WMS → BioEnrichment injects memories/predictions/WMS context into prompt. No separate LLM call. This is the default cognitive process.
+- **Layer 2 (voluntary, explicit):** ThinkTool remains available for when the LLM wants deeper reasoning mid-sequence. This is controlled processing.
+- **Layer 3 (post-proposal, automatic):** ThoughtGate decides whether the LLM's draft plan warrants critique-refine. Replaces the old complexity heuristic.

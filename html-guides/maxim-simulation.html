@@ -291,6 +291,11 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
       <p class="text-slate-300 text-sm">Both agents share a single LLM backend. The orchestrator and AUT take turns naturally (inject &rarr; wait &rarr; respond &rarr; analyze), so inference serializes without contention.</p>
     </div>
 
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-5 mt-3">
+      <h4 class="text-amber-400 font-semibold mb-1">Stall Detection</h4>
+      <p class="text-slate-300 text-sm">A daemon thread monitors for idle stalls (&gt;30s no turn advance) and ping-pong loops (6+ orchestrator tool calls without a <code class="text-indigo-300">send_message</code>). When triggered, a <strong class="text-white">context-aware nudge</strong> is injected that stays on the simulation goal &mdash; e.g., <em>"You have observed the scene. Now take a concrete action toward: escape the dungeon"</em>. The nudge adapts based on the AUT's last action (look &rarr; push action, speak &rarr; push physical, move &rarr; push interaction). Configurable via <code class="text-indigo-300">MAXIM_SIM_STALL_THRESHOLD_S</code>, <code class="text-indigo-300">MAXIM_SIM_PING_PONG_BUDGET</code>.</p>
+    </div>
+
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">AUT Inspection</h3>
     <p class="text-slate-300">The orchestrator has an <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">inspect_aut</code> tool for read-only access to the AUT's cognitive state. Supports 8 queries: <code class="bg-slate-950 px-1 rounded text-xs">memory_recall</code>, <code class="bg-slate-950 px-1 rounded text-xs">causal_links</code>, <code class="bg-slate-950 px-1 rounded text-xs">predict_outcome</code>, <code class="bg-slate-950 px-1 rounded text-xs">pain_history</code>, <code class="bg-slate-950 px-1 rounded text-xs">energy_status</code>, <code class="bg-slate-950 px-1 rounded text-xs">system_stats</code>, <code class="bg-slate-950 px-1 rounded text-xs">concept_query</code>, <code class="bg-slate-950 px-1 rounded text-xs">temporal_patterns</code>. Used primarily by the <code class="bg-slate-950 px-1 rounded text-xs">refinement</code> persona for systematic measurement.</p>
 

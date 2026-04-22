@@ -79,6 +79,7 @@ class EnrichmentResult:
     predictions: tuple[CausalPrediction, ...] = ()
     concepts: tuple[ConceptLink, ...] = ()
     affordances: tuple[str, ...] = ()
+    recent_context: tuple[str, ...] = ()  # WMS summaries (recent actions/outcomes)
     valence: float = 0.0  # overall approach/avoid signal (-1 to +1)
     novel: bool = True  # whether the novelty gate fired
 
@@ -155,6 +156,7 @@ class BioEnrichmentPipeline:
         *,
         context: EnrichmentContext | None = None,
         bypass_gate: bool = False,
+        working_memory: Any | None = None,
     ) -> EnrichmentResult | None:
         """Enrich text with bio-system associations.
 
@@ -166,6 +168,11 @@ class BioEnrichmentPipeline:
             text: Input text to enrich.
             context: Goal, recent thoughts, entity names.
             bypass_gate: Skip novelty gating (for explicit think calls).
+            working_memory: Optional WorkingMemorySet.  When provided,
+                recent actions/outcomes are summarized and included in the
+                result.  This is the PFC's short-term/working-memory
+                retrieval path — even in a fresh session, the agent's
+                recent actions inform the next decision.
 
         Returns:
             EnrichmentResult or None if below threshold.
@@ -189,6 +196,7 @@ class BioEnrichmentPipeline:
         predictions = self._query_nac(keywords)
         concepts = self._query_atl(keywords)
         affordances = self._query_component_index(text)
+        recent_context = self._query_working_memory(working_memory)
 
         # Compute overall valence from memories + predictions
         valence = self._compute_valence(memories, predictions)
@@ -198,6 +206,7 @@ class BioEnrichmentPipeline:
             predictions=tuple(predictions),
             concepts=tuple(concepts),
             affordances=tuple(affordances),
+            recent_context=tuple(recent_context),
             valence=valence,
             novel=True,
         )
@@ -228,12 +237,63 @@ class BioEnrichmentPipeline:
         if result.affordances:
             lines.append(f"Available actions: {', '.join(result.affordances[:5])}")
 
+        if result.recent_context:
+            lines.append("Recent actions and outcomes:")
+            for rc in result.recent_context[:5]:
+                lines.append(f"  - {rc}")
+
         if not lines:
             return ""
 
         return "\n".join(lines)
 
     # -- Private query methods -------------------------------------------------
+
+    @staticmethod
+    def _query_working_memory(working_memory: Any | None) -> list[str]:
+        """Summarize recent actions/outcomes from WorkingMemorySet.
+
+        This is the PFC's working-memory retrieval path.  Even in a fresh
+        session with no episodic memories, the agent's recent actions and
+        their outcomes are available to inform the next decision.
+        """
+        if working_memory is None:
+            return []
+        try:
+            from maxim.agents.working_memory import WorkingMemoryKind
+
+            # Pull recent outcomes and conversations (last 5)
+            relevant_kinds = {
+                WorkingMemoryKind.OUTCOME,
+                WorkingMemoryKind.CONVERSATION,
+                WorkingMemoryKind.PERCEPT,
+            }
+            entries = working_memory.by_kind(relevant_kinds, limit=5)
+            summaries: list[str] = []
+            for entry in entries:
+                content = entry.content
+                if isinstance(content, dict):
+                    # Outcome entries have tool_name + success
+                    tool = content.get("tool_name") or content.get("action", "")
+                    if tool:
+                        success = content.get("success", True)
+                        error = content.get("error", "")
+                        status = "succeeded" if success else f"failed: {error}"
+                        goal = content.get("goal", "")
+                        summary = f"{tool} {status}"
+                        if goal:
+                            summary += f" (goal: {goal})"
+                        summaries.append(summary)
+                    else:
+                        # Generic dict — take a short repr
+                        text_val = content.get("text") or content.get("content") or ""
+                        if text_val:
+                            summaries.append(str(text_val)[:100])
+                elif isinstance(content, str) and content.strip():
+                    summaries.append(content[:100])
+            return summaries
+        except Exception:
+            return []
 
     def _extract_keywords(self, text: str) -> list[str]:
         """Extract meaningful keywords from text for bio-system queries."""

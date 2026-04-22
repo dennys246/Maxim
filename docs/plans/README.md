@@ -16,7 +16,10 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## 0.8 — Cognitive Maturity
 
-- [working_memory_exec_loop.md](working_memory_exec_loop.md) — **ALL 7 STAGES SHIPPED** (2026-04-21). Stage 1: WorkingMemorySet + 3-tier model. Stage 2: ThoughtGate. Stage 3: Intent types + deliberate(). Stage 4: F2 bridge fix. Stage 5: TickTypeTracker. Stage 6: Re-validation (Exp 1: 11/11, Exp 3 T1: 10/10 pass). Stage 7: Use-based consolidation (promotion_pressure, recall touch, context-diverse promotion). 77 new tests, 5669 total pass.
+- [working_memory_exec_loop.md](working_memory_exec_loop.md) — **ALL 7 STAGES SHIPPED** (2026-04-21). Post-ship refinement (2026-04-22): Layer 1 pre-LLM deliberation (ThoughtGate + BioEnrichment before LLM call), Layer 3 gate simplification (ThoughtGate as sole gate), WMS enrichment in BioEnrichmentPipeline, context-aware stall nudges. 5680 tests pass.
+- [deliberation_observability.md](deliberation_observability.md) — Shell plan. sim_log for pre-deliberation + contemplation. ~100-150 LOC.
+- [orchestrator_stall_recovery.md](orchestrator_stall_recovery.md) — Shell plan. Tool-cap exemption for send_message + orch diversity injection. ~200-400 LOC.
+- [cross_session_sim_validation.md](cross_session_sim_validation.md) — Shell plan. Prove pre-deliberation enrichment works across sessions. Depends on observability.
 
 ## 0.7 — Self-Generating Simulations
 

@@ -89,13 +89,21 @@ class ExecAgent(Agent):
 
         # WorkingMemorySet: Exec-owned active-reference layer (0.8).
         # All recent-context producers write through this typed interface.
-        from maxim.agents.working_memory import WorkingMemorySet
+        from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
 
         self.working_memory = WorkingMemorySet(agent_id=agent_id or "default")
+        self._WorkingMemoryKind = WorkingMemoryKind  # stash for use outside __init__
 
         # ThoughtGate: composite gate for deliberation (Stage 2).
-        # Consulted before contemplation — if gate rejects, skip deliberation.
+        # Consulted BEFORE the initial LLM call (Layer 1 pre-deliberation)
+        # AND before post-proposal refinement (Layer 3).
         self._thought_gate: Any | None = None  # Late-wired via wire_thought_gate()
+
+        # BioEnrichmentPipeline: thalamic relay for pre-LLM enrichment.
+        # When ThoughtGate fires, enrichment is run on the current percept
+        # and injected into the LLM prompt so bio-system associations
+        # (memories, predictions, concepts) inform the proposal.
+        self._bio_enrichment_pipeline: Any | None = None  # Late-wired via wire_bio_enrichment()
 
         if system_prompt:
             self._system_prompt = system_prompt
@@ -632,6 +640,17 @@ class ExecAgent(Agent):
         """Late-wire ThoughtGate for deliberation gating (Stage 2)."""
         self._thought_gate = gate
 
+    def wire_bio_enrichment(self, pipeline: Any) -> None:
+        """Late-wire BioEnrichmentPipeline for pre-LLM deliberation (Layer 1).
+
+        When ThoughtGate fires on a novel/salient percept, this pipeline
+        enriches the percept with hippocampal memories, NAc predictions,
+        ATL concepts, and SEM affordances BEFORE the LLM call.  The
+        enriched context is injected into the prompt so the LLM's first
+        proposal already reflects bio-system associations.
+        """
+        self._bio_enrichment_pipeline = pipeline
+
     def wire_staging(
         self,
         staging_dir: str,
@@ -1150,6 +1169,17 @@ STATISTICAL PATTERNS ({ctx.active_pattern_count} active):
                 valence_parts.append(f"{entry.get('concept', '?')}: {sentiment} ({v:+.2f})")
             valence_str = "\n\nLEARNED ASSOCIATIONS: " + "; ".join(valence_parts)
 
+        # Pre-deliberation enrichment (Layer 1): bio-system associations
+        # injected by _run_pre_deliberation before this LLM call.
+        bio_str = ""
+        if ctx.bio_enrichment_context:
+            bio_str = f"""
+
+WHAT YOUR EXPERIENCE TELLS YOU (pause and consider before acting):
+{ctx.bio_enrichment_context}
+Use these associations to inform your reasoning. Think about what went well
+or poorly in similar past situations before choosing an action."""
+
         return f"""ROOT GOAL: {ctx.root_goal}
 
 CURRENT STATE:
@@ -1176,12 +1206,20 @@ RECENT OUTCOMES:
 {outcome_str}
 
 RELEVANT MEMORIES:
-{mem_str}{causal_str}{valence_str}{notes_str}{workspace_str}{stat_str}{dn_str}{budget_str}
+{mem_str}{causal_str}{valence_str}{bio_str}{notes_str}{workspace_str}{stat_str}{dn_str}{budget_str}
 
 Based on this context, what goal should be proposed?"""
 
     def _propose_goal(self, ctx: StructuredContext) -> ProposedGoal | None:
-        """Use LLM to propose a goal."""
+        """Use LLM to propose a goal.
+
+        Layer 1 (pre-LLM deliberation):  Before calling the LLM, evaluate
+        ThoughtGate on the current working-memory head.  If the gate fires,
+        run BioEnrichmentPipeline on the percept text and inject the result
+        into StructuredContext so ``_build_llm_context`` can include it.
+        This is the thalamus → PFC path: salient stimuli get automatic
+        retrieval of bio-system associations before the executive decision.
+        """
         # Handle hard overrides without LLM
         if ctx.current_percept and ctx.current_percept.hard_override:
             return self._build_override_goal(ctx.current_percept.hard_override)
@@ -1191,6 +1229,16 @@ Based on this context, what goal should be proposed?"""
             return None
 
         self._enforce_rate_limit()
+
+        # ── Layer 1: Pre-LLM deliberation (thalamic relay) ────────────
+        # Evaluate ThoughtGate on working memory BEFORE the LLM call.
+        # If the gate fires and we have a BioEnrichmentPipeline, enrich
+        # the current percept so the LLM's first proposal already
+        # incorporates bio-system associations (memories, predictions,
+        # concepts, affordances).
+        pre_deliberation_enrichment = self._run_pre_deliberation(ctx)
+        if pre_deliberation_enrichment:
+            ctx.bio_enrichment_context = pre_deliberation_enrichment
 
         try:
             llm_worker = self._ensure_llm_worker()
@@ -1213,6 +1261,7 @@ Based on this context, what goal should be proposed?"""
                     "description": goal.description,
                     "priority": goal.priority.name,
                     "contemplated": contemplated,
+                    "pre_deliberated": bool(pre_deliberation_enrichment),
                 },
             )
             return goal
@@ -1220,6 +1269,105 @@ Based on this context, what goal should be proposed?"""
         except Exception as e:
             warn("ExecAgent: LLM error: %s", e)
             return None
+
+    def _run_pre_deliberation(self, ctx: StructuredContext) -> str:
+        """Layer 1: Evaluate ThoughtGate and enrich percept before LLM call.
+
+        Bio-plausible framing: the thalamus routes salient stimuli to PFC,
+        which retrieves relevant context from long-term memory before the
+        executive decision fires.  This is automatic — the PFC doesn't
+        wait for the basal ganglia to request it.
+
+        Returns formatted enrichment text, or empty string if gate rejects
+        or enrichment is unavailable.
+        """
+        if self._thought_gate is None and self._bio_enrichment_pipeline is None:
+            return ""
+
+        # Extract percept text for enrichment.
+        # In sim mode the text arrives as cli_input on the Percept, not
+        # always as content/raw_transcript_text.
+        percept_text = ""
+        if ctx.current_percept is not None:
+            percept_text = (
+                ctx.current_percept.content
+                or ctx.current_percept.cli_input
+                or ctx.current_percept.raw_transcript_text
+                or ""
+            )
+        if not percept_text and ctx.cli_inputs:
+            percept_text = ctx.cli_inputs[-1]
+        if not percept_text:
+            return ""
+
+        # Evaluate ThoughtGate on working memory head
+        gate_passed = True  # Default: if no gate, always enrich
+        if self._thought_gate is not None:
+            from maxim.runtime.gating import GatingContext
+
+            gate_ctx = GatingContext(
+                active_goal=ctx.active_goal,
+                goal_keywords=tuple(ctx.active_goal.split() if ctx.active_goal else []),
+                energy=ctx.exploration_curiosity,
+            )
+            decision = self._thought_gate.should_think(
+                working_memory=self.working_memory,
+                context=gate_ctx,
+                current_tick=self.working_memory.current_tick,
+            )
+            gate_passed = decision.passed
+
+            log_structured(
+                self.log,
+                logging.DEBUG,
+                "pre_deliberation_gate",
+                {
+                    "passed": decision.passed,
+                    "reason": decision.reason,
+                    "score": decision.score.combined,
+                    "threshold": decision.threshold_used,
+                },
+            )
+
+        if not gate_passed:
+            return ""
+
+        # Gate passed — run bio-enrichment on percept text
+        if self._bio_enrichment_pipeline is None:
+            return ""
+
+        try:
+            from maxim.integration.bio_enrichment import EnrichmentContext
+
+            enrich_ctx = EnrichmentContext(
+                active_goal=ctx.active_goal,
+                goal_keywords=tuple(ctx.active_goal.split() if ctx.active_goal else []),
+            )
+            result = self._bio_enrichment_pipeline.enrich(
+                percept_text,
+                context=enrich_ctx,
+                bypass_gate=True,
+                working_memory=self.working_memory,
+            )
+            if result is not None:
+                formatted = self._bio_enrichment_pipeline.format_thought_response(result)
+                if formatted:
+                    # Record enrichment in working memory as a THOUGHT entry
+                    self.working_memory.add(
+                        kind=self._WorkingMemoryKind.THOUGHT,
+                        content={"source": "pre_deliberation", "enrichment": formatted},
+                        salience=result.valence,
+                    )
+                    return formatted
+        except Exception as e:
+            log_structured(
+                self.log,
+                logging.DEBUG,
+                "pre_deliberation_enrichment_failed",
+                {"error": str(e)},
+            )
+
+        return ""
 
     @staticmethod
     def _build_override_goal(override: str) -> ProposedGoal:
@@ -1307,19 +1455,33 @@ Based on this context, what goal should be proposed?"""
         ctx: StructuredContext,
         thinking_cfg: dict[str, Any] | None,
     ) -> tuple[dict[str, Any], bool, bool]:
-        """Optionally critique-and-refine the draft for complex plans.
+        """Layer 3: Optionally critique-and-refine the draft plan.
 
         Returns ``(final_response, contemplated, refined)``.
 
-        Stage 2: ThoughtGate is consulted first.  If the gate rejects,
-        deliberation is skipped regardless of complexity.  The gate
-        checks refractory window, energy budget, and novelty/salience
-        of recent working memory.
+        ThoughtGate is the sole gate — the old ``_should_contemplate``
+        complexity heuristic (2+ sub_goals / HIGH priority) is dropped.
+        The gate checks refractory window, energy budget, and
+        novelty/salience of recent working memory.  This is more
+        biologically grounded: the PFC decides whether to refine based
+        on the salience of the current context, not the structural
+        complexity of the LLM's output.
+
+        Skip if extended thinking is active (cloud backend handles it).
+        Skip if the response is empty or timed out.
         """
-        if thinking_cfg or not self._should_contemplate(response):
+        if thinking_cfg:
             return response, False, False
 
-        # Stage 2: ThoughtGate predicate
+        # Basic skip conditions (timeout, empty, idle)
+        if response.get("_timeout") or not response.get("goal_description"):
+            return response, False, False
+        priority = str(response.get("priority", "")).upper()
+        if priority == "IDLE":
+            return response, False, False
+
+        # ThoughtGate is the sole refinement gate.
+        # If no gate is wired, fall back to always refining (backwards compat).
         if self._thought_gate is not None:
             from maxim.runtime.gating import GatingContext
 
@@ -1334,6 +1496,10 @@ Based on this context, what goal should be proposed?"""
                 current_tick=self.working_memory.current_tick,
             )
             if not decision.passed:
+                return response, False, False
+        else:
+            # No gate wired — use old complexity heuristic as fallback
+            if not self._should_contemplate(response):
                 return response, False, False
 
         draft = response

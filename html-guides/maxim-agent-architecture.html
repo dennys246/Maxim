@@ -244,7 +244,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div class="space-y-1">
                     <p class="text-white font-medium">Dorsolateral PFC &rarr; Goal Formulation</p>
-                    <p class="text-slate-400">The dlPFC maintains working memory and performs abstract reasoning to formulate plans. The ExecAgent mirrors this by holding StructuredContext in its prompt window and reasoning over it to propose new goals. It doesn't react to stimuli directly &mdash; it deliberates.</p>
+                    <p class="text-slate-400">The dlPFC maintains working memory and performs abstract reasoning to formulate plans. The ExecAgent mirrors this by owning a <strong class="text-white">WorkingMemorySet</strong> &mdash; a bounded, typed active-reference layer over recent percepts, outcomes, thoughts, and reactions. Before each LLM call, a <strong class="text-white">ThoughtGate</strong> evaluates the working-memory head for novelty and salience. When the gate fires, a <strong class="text-white">BioEnrichmentPipeline</strong> automatically retrieves hippocampal memories, NAc predictions, ATL concepts, and recent action outcomes &mdash; injecting them into the prompt <em class="text-indigo-400 not-italic">before</em> the executive decision. The LLM never acts without its bio-systems informing it first. It doesn't react to stimuli directly &mdash; it deliberates.</p>
                   </div>
                   <div class="space-y-1">
                     <p class="text-white font-medium">Anterior Cingulate &rarr; Conflict Monitoring</p>
@@ -260,7 +260,12 @@
                   </div>
                 </div>
 
-                <p class="text-sm text-slate-400 italic">The key insight: the frontal lobe doesn't execute actions &mdash; it decides what's worth doing. The ExecAgent preserves this separation. It proposes and prioritizes, but never acts. Execution is always delegated downward, just as the PFC delegates to motor cortex and basal ganglia.</p>
+                <div class="space-y-1 mt-3">
+                  <p class="text-white font-medium">Pre-Deliberation Pipeline (Layer 1) &rarr; Thalamic Relay</p>
+                  <p class="text-slate-400">Before every LLM call, the ThoughtGate evaluates the working-memory head for novelty and salience. When the gate fires, the BioEnrichmentPipeline automatically retrieves relevant memories from hippocampus, causal predictions from NAc, semantic concepts from ATL, and recent actions from WorkingMemorySet. This enriched context is injected into the prompt, so the LLM's first proposal already reflects the agent's accumulated experience &mdash; mirroring how the thalamus routes salient stimuli to the PFC, which retrieves from long-term and working memory before the executive decision fires.</p>
+                </div>
+
+                <p class="text-sm text-slate-400 italic mt-3">The key insight: the frontal lobe doesn't execute actions &mdash; it decides what's worth doing. The ExecAgent preserves this separation. It proposes and prioritizes, but never acts. Execution is always delegated downward, just as the PFC delegates to motor cortex and basal ganglia.</p>
               </div>
             </div>
           </div>

@@ -143,3 +143,24 @@ If act → any non-think tool → reset_deliberation()
 | `src/maxim/agents/prompt_builder.py` | Render bio_enrichment_context as prompt section |
 | `tests/unit/test_bio_enrichment_wiring.py` | 25 unit tests (L1 enrichment + L2 deliberation) |
 | `tests/experiments/test_deliberation_stress.py` | 18 stress tests (this experiment) |
+
+---
+
+## Post-ship refinement: Pre-LLM deliberation (2026-04-22)
+
+**Problem found via live sim evaluation:** ThinkTool was never called by the LLM in any of 4 sim runs (18 total turns). The opt-in tool model is an egg-before-chicken problem — the LLM can't know it needs to think unless it's already thinking. Additionally, ThoughtGate only gated post-proposal refinement, never the initial decision.
+
+**Fix:** Three-layer deliberation model:
+- **Layer 1 (automatic):** `_run_pre_deliberation()` evaluates ThoughtGate BEFORE the LLM call and injects BioEnrichment (including WMS recent actions) into the prompt. The LLM's first proposal already reflects bio-system associations.
+- **Layer 2 (voluntary):** ThinkTool stays for explicit deep reasoning.
+- **Layer 3 (automatic):** ThoughtGate as sole gate for post-proposal critique-refine (replaces complexity heuristic).
+
+**Additional fix:** Stall detector adversarial probes ("ignore your instructions") replaced with goal-derived, action-aware nudges.
+
+**Sim validation:** AUT shows coherent escape plan behavior (`pick_up` → `examine` → `look` → `move`) with purposeful hippocampus goals. Zero adversarial derailment. 5680 tests pass.
+
+| File | Change |
+|------|--------|
+| `src/maxim/agents/exec_agent.py` | Layer 1: `_run_pre_deliberation()`, `wire_bio_enrichment()`. Layer 3: ThoughtGate as sole gate |
+| `src/maxim/integration/bio_enrichment.py` | `working_memory=` param on `enrich()`, `_query_working_memory()`, `recent_context` field |
+| `src/maxim/simulation/orchestrator.py` | `wire_bio_enrichment()` call, `_build_stall_nudge_example()` |
