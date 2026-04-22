@@ -1,6 +1,6 @@
 # Working Memory + Executive Loop — PFC-style thinking as the default
 
-**Status:** Draft (2026-04-21, needs review fold)
+**Status:** Stages 1-7 SHIPPED (2026-04-21). All stages complete.
 **Branch:** `feat/working-memory-exec-loop` (each stage gets its own sub-branch per L6)
 **Scope:** ~1800-2200 LOC across 7 staged PRs
 **Target version:** 0.8 (maturity) — NOT gating 1.0

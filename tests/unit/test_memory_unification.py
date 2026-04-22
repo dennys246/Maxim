@@ -283,9 +283,10 @@ class TestMemoryTier:
 
     def test_all_values_exist(self):
         assert MemoryTier.FORMING.value == "forming"
-        assert MemoryTier.WORKING.value == "working"
         assert MemoryTier.SHORT_TERM.value == "short"
         assert MemoryTier.LONG_TERM.value == "long"
+        # WORKING removed in 0.8 — WorkingMemorySet replaces the tier.
+        assert not hasattr(MemoryTier, "WORKING")
 
     def test_serialization(self):
         for tier in MemoryTier:
@@ -320,8 +321,7 @@ class TestWorkingMemoryEntry:
         ep = _make_episodic()
         entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.FORMING)
         assert entry.tier == MemoryTier.FORMING
-        entry.tier = MemoryTier.WORKING
-        assert entry.tier == MemoryTier.WORKING
+        # 0.8: FORMING → SHORT_TERM directly (WORKING tier removed)
         entry.tier = MemoryTier.SHORT_TERM
         assert entry.tier == MemoryTier.SHORT_TERM
         entry.tier = MemoryTier.LONG_TERM
@@ -330,29 +330,26 @@ class TestWorkingMemoryEntry:
     def test_tier_transition_rejects_skip(self):
         ep = _make_episodic()
         entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.FORMING)
-        with pytest.raises(TierTransitionError, match="FORMING → SHORT_TERM"):
-            entry.tier = MemoryTier.SHORT_TERM
+        # 0.8: FORMING → LONG_TERM is still a skip (must go through SHORT_TERM)
         with pytest.raises(TierTransitionError, match="FORMING → LONG_TERM"):
             entry.tier = MemoryTier.LONG_TERM
 
     def test_tier_transition_rejects_reverse(self):
         ep = _make_episodic()
         entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.SHORT_TERM)
-        with pytest.raises(TierTransitionError, match="SHORT_TERM → WORKING"):
-            entry.tier = MemoryTier.WORKING
         with pytest.raises(TierTransitionError, match="SHORT_TERM → FORMING"):
             entry.tier = MemoryTier.FORMING
 
     def test_tier_transition_allows_noop(self):
         ep = _make_episodic()
-        entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.WORKING)
-        entry.tier = MemoryTier.WORKING  # No-op, must not raise.
-        assert entry.tier == MemoryTier.WORKING
+        entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.SHORT_TERM)
+        entry.tier = MemoryTier.SHORT_TERM  # No-op, must not raise.
+        assert entry.tier == MemoryTier.SHORT_TERM
 
     def test_tier_transition_rejects_long_term_mutation(self):
         ep = _make_episodic()
         entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.LONG_TERM)
-        for bad in (MemoryTier.FORMING, MemoryTier.WORKING, MemoryTier.SHORT_TERM):
+        for bad in (MemoryTier.FORMING, MemoryTier.SHORT_TERM):
             with pytest.raises(TierTransitionError):
                 entry.tier = bad
 
@@ -360,8 +357,7 @@ class TestWorkingMemoryEntry:
         ep = _make_episodic()
         entry = WorkingMemoryEntry(record=ep, tier=MemoryTier.FORMING)
         assert entry.is_protected is True
-        entry.tier = MemoryTier.WORKING
-        assert entry.is_protected is True
+        # 0.8: FORMING → SHORT_TERM directly; only FORMING is protected now.
         entry.tier = MemoryTier.SHORT_TERM
         assert entry.is_protected is False
 
@@ -392,15 +388,16 @@ class TestWorkingMemoryEntry:
         entry = WorkingMemoryEntry(record=ep, salience=0.9, tier=MemoryTier.FORMING)
         assert entry.current_salience() == 0.9
 
-    def test_should_promote_only_short_term(self):
+    def test_promotion_pressure_persists_on_record(self):
+        """MemoryRecord.promotion_pressure is tracked for use-based consolidation."""
         ep = _make_episodic()
-        entry = WorkingMemoryEntry(record=ep, salience=0.8, tier=MemoryTier.FORMING)
-        assert entry.should_promote() is False
-        # Walk through the legal FORMING → WORKING → SHORT_TERM progression;
-        # direct FORMING → SHORT_TERM now fails the tier-transition guard.
-        entry.tier = MemoryTier.WORKING
-        entry.tier = MemoryTier.SHORT_TERM
-        assert entry.should_promote() is True  # salience 0.8 > 0.7 threshold
+        assert ep.promotion_pressure == 0.0
+        ep.promotion_pressure = 2.5
+        assert ep.promotion_pressure == 2.5
+        # Round-trip via serialization
+        data = ep.to_dict()
+        restored = EpisodicMemory.from_dict(data)
+        assert restored.promotion_pressure == 2.5
 
     def test_should_evict_never_for_protected(self):
         ep = _make_episodic()
@@ -485,7 +482,7 @@ class TestStagedFormation:
         entry = agent._forming_pool["run-1"]
         assert entry.record.action.tool_name == "navigate"
 
-    def test_complete_forming_transitions_to_working(self):
+    def test_complete_forming_transitions_to_short_term(self):
         agent = self._make_agent()
         percept = Percept(timestamp=time.time(), source="vision", salience=0.8)
         with agent._lock:
@@ -493,7 +490,7 @@ class TestStagedFormation:
             agent._complete_forming_memory("run-1", Outcome(success=True))
 
         entry = agent._forming_pool["run-1"]
-        assert entry.tier == MemoryTier.WORKING
+        assert entry.tier == MemoryTier.SHORT_TERM
 
     def test_forming_survives_eviction(self):
         agent = self._make_agent()
@@ -504,13 +501,13 @@ class TestStagedFormation:
 
         assert "run-1" in agent._forming_pool
 
-    def test_flush_working_to_captured(self):
+    def test_flush_completed_from_pool(self):
         agent = self._make_agent()
         percept = Percept(timestamp=time.time(), source="vision", salience=0.8)
         with agent._lock:
             agent._begin_memory_formation(percept, "run-1")
             agent._complete_forming_memory("run-1", Outcome(success=True))
-            agent._flush_working_to_captured()
+            agent._flush_completed_from_pool()
 
         assert "run-1" not in agent._forming_pool
 
@@ -611,12 +608,12 @@ class TestPersistence:
             agent._begin_memory_formation(percept, "run-1")
             agent._complete_forming_memory("run-1", Outcome(success=True))
 
-        # WORKING entry still in pool
+        # SHORT_TERM entry still in pool (pre-flush)
         assert "run-1" in agent._forming_pool
 
         # After flush, removed
         with agent._lock:
-            agent._flush_working_to_captured()
+            agent._flush_completed_from_pool()
         assert "run-1" not in agent._forming_pool
 
     def test_persist_memories_no_crash(self):
@@ -669,7 +666,7 @@ class TestAssociationIndex:
 
 
 class TestFullPipeline:
-    """Integration test: percept → FORMING → decision → action → outcome → WORKING."""
+    """Integration test: percept → FORMING → decision → action → outcome → SHORT_TERM."""
 
     def test_full_lifecycle(self):
         bus = AgentBus()
@@ -707,17 +704,17 @@ class TestFullPipeline:
             )
         assert entry.record.action.tool_name == "navigate"
 
-        # 4. Outcome → WORKING
+        # 4. Outcome → SHORT_TERM (0.8: WORKING tier removed)
         with agent._lock:
             agent._complete_forming_memory(
                 "run-lifecycle",
                 Outcome(success=True, result="grasped"),
             )
-        assert entry.tier == MemoryTier.WORKING
+        assert entry.tier == MemoryTier.SHORT_TERM
 
-        # 5. New cycle → flush WORKING → captured
+        # 5. New cycle → flush completed from pool
         with agent._lock:
-            agent._flush_working_to_captured()
+            agent._flush_completed_from_pool()
         assert "run-lifecycle" not in agent._forming_pool
 
     def test_build_context_includes_forming(self):
@@ -775,7 +772,7 @@ class TestFullPipeline:
         with agent._lock:
             entry = agent._begin_memory_formation(percept, "run-save")
             agent._complete_forming_memory("run-save", Outcome(success=True))
-            agent._flush_working_to_captured()
+            agent._flush_completed_from_pool()
 
         # Entry flushed from forming pool
         assert "run-save" not in agent._forming_pool

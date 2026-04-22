@@ -31,7 +31,7 @@ Maxim has a strict layer dependency graph. See `ARCHITECTURE.md` for full detail
 
 **Key rules:**
 - Agents never call tools directly — they propose intents, the executor dispatches.
-- Memory tier progression is one-way: FORMING → WORKING → SHORT_TERM → LONG_TERM.
+- Memory tier progression is one-way: FORMING → SHORT_TERM → LONG_TERM. Active-reference context is in `WorkingMemorySet` (Exec-owned), not a tier.
 - LLM access goes through `models/language/router.py` — don't import backends directly.
 - Persistence uses `maxim.utils.atomic_io.atomic_write_json` — don't hand-roll `open().write()` + `os.replace()`.
 - User data lives in `~/.maxim/`, bundled defaults in `src/maxim/_data/`.

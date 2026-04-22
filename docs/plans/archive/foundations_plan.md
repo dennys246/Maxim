@@ -153,7 +153,7 @@ Also introduce `Percept.modality: Literal["text", "vision", "audio", "intero"]` 
 
 ## F0.7 — Memory tier transition assertions
 
-**Gap:** CLAUDE.md states the memory tier progression is one-way: FORMING → WORKING → SHORT_TERM → LONG_TERM. Today this is documented but not enforced.
+**Gap:** CLAUDE.md states the memory tier progression is one-way: FORMING → SHORT_TERM → LONG_TERM (previously 4-tier with WORKING, simplified in 0.8). Enforced via `TierTransitionError` since F0.7.
 
 **Why it matters:** A bug that skipped or reversed a tier would silently corrupt learning and only surface as a confusing P3a or P3.5 failure. A 30-line assertion prevents a week of debugging.
 

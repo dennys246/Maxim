@@ -190,12 +190,18 @@ class SimulationBridge:
         # Start spinner for orchestrator thinking phase (between turns)
         self._spinner.start("Orchestrator planning next probe...")
 
+        # Stage 4 (F2 fix): don't count _deliberation_noop markers as
+        # real actions for the timed_out flag.  Noop markers keep the
+        # bridge alive (break the timeout loop) but aren't substantive.
+        real_actions = [a for a in new_actions if a.tool_name != "_deliberation_noop"]
+
         return {
             "turn": self._turn_count,
             "response": response_text,
             "actions": new_actions,
             "blocked": [a for a in new_actions if a.blocked],
-            "timed_out": len(new_actions) == 0,
+            "timed_out": len(real_actions) == 0,
+            "noop_count": len(new_actions) - len(real_actions),
             "duration_ms": (time.time() - start) * 1000,
         }
 

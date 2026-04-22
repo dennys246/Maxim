@@ -17,6 +17,7 @@ from __future__ import annotations
 import threading
 import time
 from abc import ABC, abstractmethod
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -301,6 +302,11 @@ class MemoryRecord(ABC):
     long_term: bool = False
     consolidated_at: float | None = None
 
+    # Use-based consolidation (Stage 7): pressure-based SHORT_TERM → LONG_TERM
+    promotion_pressure: float = 0.0
+    last_scored_at: float = 0.0  # wall-clock timestamp of last scoring
+    access_contexts: deque[str] = field(default_factory=lambda: deque(maxlen=10), repr=False, compare=False)
+
     # Thread-safe access tracking
     _touch_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
@@ -434,6 +440,9 @@ class CompressedMemory(CompressedRecord):
             "access_count": self.access_count,
             "long_term": self.long_term,
             "consolidated_at": self.consolidated_at,
+            "promotion_pressure": self.promotion_pressure,
+            "last_scored_at": self.last_scored_at,
+            "access_contexts": list(self.access_contexts),
             "goal": self.goal,
             "tool_name": self.tool_name,
             "success": self.success,
@@ -457,6 +466,9 @@ class CompressedMemory(CompressedRecord):
             access_count=data.get("access_count", 1),
             long_term=data.get("long_term", False),
             consolidated_at=data.get("consolidated_at"),
+            promotion_pressure=data.get("promotion_pressure", 0.0),
+            last_scored_at=data.get("last_scored_at", 0.0),
+            access_contexts=deque(data.get("access_contexts", []), maxlen=10),
             goal=data.get("goal"),
             tool_name=data.get("tool_name", ""),
             success=data.get("success", False),
@@ -541,6 +553,9 @@ class EpisodicMemory(MemoryRecord):
             "access_count": self.access_count,
             "long_term": self.long_term,
             "consolidated_at": self.consolidated_at,
+            "promotion_pressure": self.promotion_pressure,
+            "last_scored_at": self.last_scored_at,
+            "access_contexts": list(self.access_contexts),
             "perception": self.perception.to_dict(),
             "context": self.context.to_dict(),
             "decision": self.decision.to_dict(),
@@ -561,6 +576,9 @@ class EpisodicMemory(MemoryRecord):
             access_count=data.get("access_count", 1),
             long_term=data.get("long_term", False),
             consolidated_at=data.get("consolidated_at"),
+            promotion_pressure=data.get("promotion_pressure", 0.0),
+            last_scored_at=data.get("last_scored_at", 0.0),
+            access_contexts=deque(data.get("access_contexts", []), maxlen=10),
             perception=Perception.from_dict(data.get("perception", {})),
             context=Context.from_dict(data.get("context", {})),
             decision=Decision.from_dict(data.get("decision", {})),

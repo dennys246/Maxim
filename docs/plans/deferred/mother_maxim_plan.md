@@ -205,7 +205,7 @@ CREATE TABLE memories (
     id UUID PRIMARY KEY,
     tenant_id VARCHAR(64) NOT NULL,
     namespace VARCHAR(64) DEFAULT 'default',
-    tier VARCHAR(16),                -- FORMING, WORKING, SHORT_TERM, LONG_TERM
+    tier VARCHAR(16),                -- FORMING, SHORT_TERM, LONG_TERM
     content JSONB NOT NULL,          -- Full EpisodicMemory.to_dict()
     embedding VECTOR(384),           -- For semantic search (pgvector)
     created_at TIMESTAMPTZ,

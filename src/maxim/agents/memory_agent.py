@@ -6,10 +6,14 @@ The MemoryAgent maintains salient memories using WorkingMemoryEntry wrappers
 around structured MemoryRecord subclasses, builds associations via similarity,
 and provides structured context for goal proposal.
 
-Memory lifecycle: FORMING → WORKING → SHORT_TERM → LONG_TERM → consolidated out.
+Memory lifecycle: FORMING → SHORT_TERM → LONG_TERM → consolidated out.
 FORMING entries are created at percept time and filled incrementally through
 the pipeline (Decision → Action → Outcome). Pattern completion can attach
 predicted outcomes during FORMING.
+
+Active-reference context (recent percepts, outcomes, speech, etc.) is owned
+by ExecAgent via WorkingMemorySet — MemoryAgent writes to it via dependency
+injection but does not own it.
 """
 
 from __future__ import annotations
@@ -57,9 +61,9 @@ class MemoryAgent(Agent, AgentOutputMixin):
     associative graphs. MemoryAgent owns salience scoring, relevance
     ranking, and context building. They are complementary roles.
 
-    Staged memory formation (FORMING → WORKING → SHORT_TERM → LONG_TERM)
-    is managed via WorkingMemoryEntry wrappers around the records that
-    Hippocampus stores. Pattern completion can attach predicted outcomes
+    Staged memory formation (FORMING → SHORT_TERM → LONG_TERM) is managed
+    via WorkingMemoryEntry wrappers around the records that Hippocampus
+    stores. Pattern completion can attach predicted outcomes
     during FORMING via an optional hook.
 
     Responsibilities:
@@ -99,6 +103,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
         plan_manager: Any | None = None,
         workspace_path: str | None = None,
         agent_id: str | None = None,
+        working_memory: Any | None = None,
     ) -> None:
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
@@ -129,7 +134,12 @@ class MemoryAgent(Agent, AgentOutputMixin):
         # Pattern completion hook (set by ATL/MemoryHub wiring)
         self._pattern_completion_fn: Callable[[EpisodicMemory], list[PredictedOutcome]] | None = None
 
-        # Recency buffers (not memory storage — just prompt context)
+        # WorkingMemorySet reference (Exec-owned, injected via constructor).
+        # When present, _on_percept / record_outcome / etc. also write to WMS.
+        # The old deques below are kept for backward compat during migration.
+        self._working_memory = working_memory
+
+        # Recency buffers (DEPRECATED 0.8 — kept during prompt-builder migration)
         self._recent_percepts: deque[Percept] = deque(maxlen=context_window)
         self._recent_outcomes: deque[dict] = deque(maxlen=context_window)
         self._cli_inputs: deque[str] = deque(maxlen=20)
@@ -208,8 +218,8 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
         now = time.time()
 
-        # Sweep WORKING entries from pool
-        self._flush_working_to_captured()
+        # Sweep completed entries from pool
+        self._flush_completed_from_pool()
 
         # Build Context from current agentic state
         context = Context(
@@ -364,10 +374,12 @@ class MemoryAgent(Agent, AgentOutputMixin):
         entry.invalidate_keywords()
 
     def _complete_forming_memory(self, run_id: str, outcome: Outcome) -> None:
-        """Fill in the outcome and transition FORMING → WORKING.
+        """Fill in the outcome and transition FORMING → SHORT_TERM.
 
-        Entry stays in _forming_pool as WORKING until next cycle sweeps it
-        out via _flush_working_to_captured().
+        Entry stays in _forming_pool until next cycle sweeps it out via
+        _flush_completed_from_pool().  The old WORKING tier was removed
+        in 0.8 — outcome-triggered promotion now lands directly at
+        SHORT_TERM (F6).
         """
         from maxim.agents.bus import MemoryTier
 
@@ -376,7 +388,7 @@ class MemoryAgent(Agent, AgentOutputMixin):
             return
         assert isinstance(entry.record, EpisodicMemory)
         entry.record.outcome = outcome
-        entry.tier = MemoryTier.WORKING
+        entry.tier = MemoryTier.SHORT_TERM
         entry.invalidate_keywords()
 
         # Record outcome provenance (P3c) then complete trace
@@ -393,17 +405,19 @@ class MemoryAgent(Agent, AgentOutputMixin):
         if self._collector:
             self._collector.complete_trace(run_id)
 
-    def _flush_working_to_captured(self) -> None:
-        """Transition WORKING entries in the pool — remove from forming pool.
+    def _flush_completed_from_pool(self) -> None:
+        """Remove completed entries from the forming pool.
 
         After Phase 0, Hippocampus owns the canonical record. We just clean up
         the local forming pool reference once the entry is no longer FORMING.
+        Entries that have been promoted to SHORT_TERM (outcome-triggered) are
+        safe to remove.
         """
         from maxim.agents.bus import MemoryTier
 
         to_remove = []
         for run_id, entry in self._forming_pool.items():
-            if entry.tier == MemoryTier.WORKING:
+            if entry.tier != MemoryTier.FORMING:
                 to_remove.append(run_id)
         for run_id in to_remove:
             del self._forming_pool[run_id]
@@ -456,6 +470,22 @@ class MemoryAgent(Agent, AgentOutputMixin):
         with self._lock:
             self._recent_percepts.append(percept)
 
+            # Write to WorkingMemorySet (0.8 — Exec-owned active-reference layer)
+            if self._working_memory is not None:
+                from maxim.agents.working_memory import WorkingMemoryKind
+
+                self._working_memory.add(
+                    WorkingMemoryKind.PERCEPT,
+                    ref=f"percept-{percept.timestamp:.0f}",
+                    content={
+                        "source": percept.source,
+                        "salience": percept.salience,
+                        "content": percept.content or "",
+                        "transcript": percept.raw_transcript_text or "",
+                    },
+                    salience=percept.salience,
+                )
+
             # Update mode
             if percept.maxim_runtime and isinstance(percept.maxim_runtime, dict):
                 mode = percept.maxim_runtime.get("mode")
@@ -465,6 +495,15 @@ class MemoryAgent(Agent, AgentOutputMixin):
             # Track CLI inputs
             if percept.cli_input:
                 self._cli_inputs.append(percept.cli_input)
+                if self._working_memory is not None:
+                    from maxim.agents.working_memory import WorkingMemoryKind
+
+                    self._working_memory.add(
+                        WorkingMemoryKind.PERCEPT,
+                        ref=None,
+                        content={"cli_input": percept.cli_input},
+                        salience=percept.salience,
+                    )
 
             # Track comms messages (SMS, voice, etc.). Prefer typed
             # PerceptContext (F0.4) and fall back to legacy metadata for
@@ -505,6 +544,17 @@ class MemoryAgent(Agent, AgentOutputMixin):
         with self._lock:
             self._recent_outcomes.append(outcome)
 
+            # Write to WorkingMemorySet (0.8)
+            if self._working_memory is not None:
+                from maxim.agents.working_memory import WorkingMemoryKind
+
+                self._working_memory.add(
+                    WorkingMemoryKind.OUTCOME,
+                    ref=None,
+                    content=outcome,
+                    salience=0.8 if not result.success else 0.5,
+                )
+
             # Store significant outcomes
             if not result.success:
                 self._add_memory(outcome, 0.8, 0.02, "goal_outcome")
@@ -527,6 +577,17 @@ class MemoryAgent(Agent, AgentOutputMixin):
 
             salience = 0.7 if completed.success else 0.9
             self._add_memory(outcome, salience, 0.03, "goal_outcome")
+
+            # Write to WorkingMemorySet (0.8)
+            if self._working_memory is not None:
+                from maxim.agents.working_memory import WorkingMemoryKind
+
+                self._working_memory.add(
+                    WorkingMemoryKind.OUTCOME,
+                    ref=completed.goal_id,
+                    content=outcome,
+                    salience=salience,
+                )
 
     def _on_goal_proposed(self, goal: ProposedGoal) -> None:
         """Observe all proposed goals."""

@@ -73,7 +73,7 @@ Model names must match exactly between runs. If the baseline was generated with 
 All scored metrics returned zero. This usually means the scenario did not have enough turns for the bio-systems to activate.
 
 **Minimum turn counts for bio-system activation:**
-- Memory formation (hippocampus): ~5 turns for a memory to reach WORKING tier.
+- Memory formation (hippocampus): ~5 turns for a memory to reach SHORT_TERM tier.
 - Causal learning (NAc): ~3 turns with clear cause-effect structure.
 - Temporal indexing (SCN): ~2 turns with explicit time references.
 - Pain detection: 1 turn with a genuine threat, but the proprioception system needs at least 1 prior turn to establish a baseline.

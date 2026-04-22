@@ -27,7 +27,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | [Time](time.md) | SCN temporal indexing, rhythmic patterns |
 | [Embodiment](embodiment_guide.md) | SEM protocol, entity specs, pain, motor learning |
 | [Simulation](simulation.md) | Simulation modes, scenarios, campaigns, benchmarks |
-| [Memory Layer Lifecycle](memory-layer-lifecycle.md) | Tier progression: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM |
+| [Memory Layer Lifecycle](memory-layer-lifecycle.md) | Tier progression: FORMING -> SHORT_TERM -> LONG_TERM + WorkingMemorySet |
 | [Memory System Interactions](memory-system-interactions.md) | Threading model, RWLock, ContextPool, MemoryHub coordination |
 
 ### Perception & Attention

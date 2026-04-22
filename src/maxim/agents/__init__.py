@@ -8,7 +8,9 @@ from maxim.agents.llm_agent import ChatLLMAgent, LLMAgent, LLMAgentConfig, TaskL
 
 # Agentic architecture components
 from maxim.agents.bus import (
+    ActionIntent,
     AgentBus,
+    DeliberationOutcome,
     DependencyGraph,
     Edge,
     EdgeType,
@@ -18,9 +20,11 @@ from maxim.agents.bus import (
     GoalPriority,
     MemoryItem,
     MemoryTier,
+    NoOpIntent,
     Percept,
     WorkingMemoryEntry,
     ProposedGoal,
+    SpeakIntent,
     StatisticalInsight,
     StatisticalSummary,
     StructuredContext,
@@ -73,6 +77,13 @@ from maxim.agents.context_pool import (
     ContextPoolConfig,
 )
 
+# Working memory (0.8 — Exec-owned active-reference layer)
+from maxim.agents.working_memory import (
+    WMEntry,
+    WorkingMemoryKind,
+    WorkingMemorySet,
+)
+
 __all__ = [
     # Base
     "Agent",
@@ -86,6 +97,7 @@ __all__ = [
     "MaximAgent",
     "TaskLLMAgent",
     # Agentic architecture - Bus and types
+    "ActionIntent",
     "AgentBus",
     "DependencyGraph",
     "Edge",
@@ -94,11 +106,14 @@ __all__ = [
     "GoalAccepted",
     "GoalCompleted",
     "GoalPriority",
+    "DeliberationOutcome",
     "MemoryItem",
     "MemoryTier",
+    "NoOpIntent",
     "WorkingMemoryEntry",
     "Percept",
     "ProposedGoal",
+    "SpeakIntent",
     "StructuredContext",
     "SubGoal",
     "SubGoalStatus",
@@ -146,4 +161,8 @@ __all__ = [
     "ContextEntry",
     "ContextPool",
     "ContextPoolConfig",
+    # Working Memory (0.8)
+    "WMEntry",
+    "WorkingMemoryKind",
+    "WorkingMemorySet",
 ]

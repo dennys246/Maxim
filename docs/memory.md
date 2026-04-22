@@ -546,24 +546,28 @@ wrapper that holds any `MemoryRecord` subclass plus agent-level metadata
 ### Memory Tier Lifecycle
 
 ```
-FORMING → WORKING → SHORT_TERM → LONG_TERM → consolidated out
+FORMING → SHORT_TERM → LONG_TERM → consolidated out
 ```
 
 - **FORMING**: Created at percept time, filled incrementally during pipeline. Eviction-protected.
-- **WORKING**: Pipeline complete, awaiting next cycle sweep. Eviction-protected.
 - **SHORT_TERM**: Normal decay and eviction. Promotes to LONG_TERM on high access/salience.
 - **LONG_TERM**: Age-based eviction. Consolidation marks records in Hippocampus.
 
+Active-reference context (recent percepts, outcomes, speech, CLI inputs) lives in
+`WorkingMemorySet` — an Exec-owned layer in `agents/working_memory.py`, not a
+memory tier. This was previously the orphaned `MemoryTier.WORKING` which was
+removed in 0.8.
+
 ### Staged Formation
 
-EpisodicMemory is constructed incrementally and held in active working memory
+EpisodicMemory is constructed incrementally and held in the forming pool
 throughout the pipeline:
 
 1. **Percept arrives** → `_begin_memory_formation()` creates FORMING entry with Perception+Context
 2. **Decision made** → `_update_forming_decision()` fills in Decision
 3. **Action executes** → `_update_forming_action()` fills in Action
-4. **Outcome received** → `_complete_forming_memory()` fills Outcome, transitions to WORKING
-5. **New cycle** → `_flush_working_to_short_term()` sweeps WORKING → SHORT_TERM
+4. **Outcome received** → `_complete_forming_memory()` fills Outcome, transitions to SHORT_TERM
+5. **New cycle** → `_flush_completed_from_pool()` removes completed entries from the forming pool
 
 ### Pattern Completion Hook
 
