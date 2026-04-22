@@ -60,12 +60,16 @@ Perception Event
     |-- Also written to WorkingMemorySet for Exec prompt context
     |
 [Recall] --> MemoryAgent retrieves for LLM context
+    |-- touch() called on every result (access_count + accessed_at)
+    |-- RECALL entries added to WorkingMemorySet (reconsolidation pull)
+    |-- Use-based promotion scoring (context-diverse access accumulates
+    |   promotion_pressure; wall-clock decay; threshold crossing promotes)
     |-- ConceptGrounder enriches with AG math (async via WorkerPool)
     |-- Cross-layer spreading activation
-    |-- access_count incremented
     |
 [Sleep Consolidation]
     |-- Consolidate: important memories --> LONG_TERM (2x removal boost)
+    |   (also checks promotion_pressure >= threshold from use-based path)
     |-- Compress: old records --> CompressedMemory (~200 bytes vs ~2.5KB)
     |-- Remove: stale, low-score memories --> deleted
     |-- Promote: NAc/StatisticianAgent patterns --> ATL concepts
@@ -199,5 +203,6 @@ Provides predictions during memory formation:
 | `src/maxim/memory/pattern_completer.py` | Cross-layer prediction |
 | `src/maxim/memory/semantic_promoter.py` | Pattern promotion pipeline |
 | `src/maxim/agents/bus.py` | MemoryTier, WorkingMemoryEntry |
+| `src/maxim/agents/working_memory.py` | WorkingMemorySet (Exec-owned active context) |
 | `src/maxim/agents/memory_agent.py` | Formation orchestration |
 | `src/maxim/integration/memory_hub.py` | Central coordinator |

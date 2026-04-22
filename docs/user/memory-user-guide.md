@@ -15,14 +15,15 @@ Maxim remembers what it sees, does, and learns across sessions. Memory is stored
 
 ## Memory Lifecycle
 
-Memories move through four stages:
+Memories move through three tiers:
 
-1. **Forming** -- Raw percepts being processed (current cycle).
-2. **Working** -- Active memories relevant to the current task.
-3. **Short-term** -- Recent memories not yet consolidated.
-4. **Long-term** -- Important memories promoted during sleep/consolidation.
+1. **Forming** -- Raw percepts being processed (current cycle). Protected from eviction.
+2. **Short-term** -- Recent memories with outcome. Subject to consolidation.
+3. **Long-term** -- Important memories promoted during sleep or via use-based consolidation.
 
-Memories are promoted based on: access frequency, emotional significance (surprise/reward), goal relevance, and associative connections.
+Active-reference context (recent percepts, outcomes, recalled memories) lives in the **WorkingMemorySet** -- an Exec-owned layer, not a memory tier. It provides the LLM with immediate context without polluting the Hippocampus tier hierarchy.
+
+Memories are promoted based on: use-based pressure (diverse recall contexts accumulate promotion pressure, which decays over time), access frequency, emotional significance (surprise/reward), goal relevance, and associative connections.
 
 ## Where Memory Lives
 

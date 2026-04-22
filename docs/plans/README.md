@@ -9,14 +9,14 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 |---------|-------|--------|
 | **0.6** | **Generalizable embodiment** — E0 sim wiring + E1 Asset Foundry | **Published** |
 | **0.7** | **Self-generating simulations** — Imagination process (on-demand SEM entity generation), B3 Acting Coach, E2-E3 (foundry with real LLM + auto-curation), F3-F5 (Agent Factory canonicalization) | **SHIPPED** (2026-04-20) |
-| **0.8** | **Cognitive maturity** — Working Memory + Exec Loop (deliberation-first, WorkingMemorySet), I4-I5 (post-session scoring, orchestrator imagination), narrator entity awareness, library GC, design_batch, EC-driven templates | In progress |
+| **0.8** | **Cognitive maturity** — Working Memory + Exec Loop (deliberation-first, WorkingMemorySet, use-based consolidation), I4-I5 (post-session scoring, orchestrator imagination), narrator entity awareness, library GC, design_batch, EC-driven templates | WM+Exec shipped |
 | **1.0** | **Validation + polish** — P5 stress persistence (the gate), API/CLI surface review, final docs | Target |
 
 **Discipline:** 0.7 is the last major feature version. 0.8 matures cognition (Working Memory + Exec Loop) and imagination (deferred I4-I5). 1.0 is validation + polish only — no new features, just proving what's built holds up at scale.
 
 ## 0.8 — Cognitive Maturity
 
-- [working_memory_exec_loop.md](working_memory_exec_loop.md) — **Stages 1-5 SHIPPED** (2026-04-21). Stage 1: WorkingMemorySet + 3-tier model. Stage 2: ThoughtGate (refractory→energy→scoring→adaptive). Stage 3: Intent types (SpeakIntent/ActionIntent/NoOpIntent) + deliberate(). Stage 4: F2 bridge fix (NoOp markers). Stage 5: TickTypeTracker + thinking stall detection. 54 new tests, 5646 total pass. Stages 6-7 pending.
+- [working_memory_exec_loop.md](working_memory_exec_loop.md) — **ALL 7 STAGES SHIPPED** (2026-04-21). Stage 1: WorkingMemorySet + 3-tier model. Stage 2: ThoughtGate. Stage 3: Intent types + deliberate(). Stage 4: F2 bridge fix. Stage 5: TickTypeTracker. Stage 6: Re-validation (Exp 1: 11/11, Exp 3 T1: 10/10 pass). Stage 7: Use-based consolidation (promotion_pressure, recall touch, context-diverse promotion). 77 new tests, 5669 total pass.
 
 ## 0.7 — Self-Generating Simulations
 

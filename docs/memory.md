@@ -550,7 +550,7 @@ FORMING → SHORT_TERM → LONG_TERM → consolidated out
 ```
 
 - **FORMING**: Created at percept time, filled incrementally during pipeline. Eviction-protected.
-- **SHORT_TERM**: Normal decay and eviction. Promotes to LONG_TERM on high access/salience.
+- **SHORT_TERM**: Normal decay and eviction. Promotes to LONG_TERM via use-based consolidation (context-diverse recall accumulates `promotion_pressure`; wall-clock decay prevents trickle-promotion; threshold crossing triggers promotion) or during sleep consolidation (high salience/novelty/access count).
 - **LONG_TERM**: Age-based eviction. Consolidation marks records in Hippocampus.
 
 Active-reference context (recent percepts, outcomes, speech, CLI inputs) lives in
