@@ -10,7 +10,7 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 | **0.6** | **Generalizable embodiment** — E0 sim wiring + E1 Asset Foundry | **Published** |
 | **0.7** | **Self-generating simulations** — Imagination process (on-demand SEM entity generation), B3 Acting Coach, E2-E3 (foundry with real LLM + auto-curation), F3-F5 (Agent Factory canonicalization) | **SHIPPED** (2026-04-20) |
 | **0.8** | **Cognitive maturity** — Working Memory + Exec Loop (deliberation-first, WorkingMemorySet, use-based consolidation), I4-I5 (post-session scoring, orchestrator imagination), narrator entity awareness, library GC, design_batch, EC-driven templates | WM+Exec shipped |
-| **1.0** | **Validation + polish** — P5 stress persistence (the gate), API/CLI surface review, final docs | Target |
+| **1.0** | **Validation + polish** — P5 stress persistence (CLOSED), API/CLI surface review, final docs | Target |
 
 **Discipline:** 0.7 is the last major feature version. 0.8 matures cognition (Working Memory + Exec Loop) and imagination (deferred I4-I5). 1.0 is validation + polish only — no new features, just proving what's built holds up at scale.
 
@@ -27,12 +27,12 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Active (gating 1.0)
 
-**All original 1.0 gates are CLOSED** (2026-04-19). The remaining 1.0 gate is **P5 stress persistence** (10k+ nodes).
+**All 1.0 gates are CLOSED** (2026-04-21). P5 stress persistence was the final gate — PASSED with 19 tests across 7 stages. Results: [experiments/p5_stress_persistence_results.md](../experiments/p5_stress_persistence_results.md). Found + fixed SemanticMemory serialization bug (Stage 7 fields missing from ATL types).
 
 Foundations, reaction abstraction, simulator upgrades, P0-P4, P6, P8, B4, SEM execution hook, E0 generalizable embodiment — all complete.
 
 - [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) — **✅ SPLIT COMPLETE + ARCHIVED** (2026-04-17). Now a pure index. **All four 0.3-target phases CLOSED.** Per-phase plan files created for 0.5 track:
-  - [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — Draft. 10k+ node persistence stress. Depends on P3.5 + P4.
+  - [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — **✅ COMPLETE** (2026-04-21). All 7 stages PASS. **1.0 GATE CLOSED.** Found + fixed SemanticMemory serialization bug. Results: [experiments/p5_stress_persistence_results.md](../experiments/p5_stress_persistence_results.md).
   - [substrate_p6_extinction.md](archive/substrate_p6_extinction.md) — **✅ SHIPPED** (2026-04-19). Hebbian decay beats LRU across 10 seeds. Results: [experiments/p6_extinction_results.md](../experiments/p6_extinction_results.md).
   - [substrate_p8_sleep_replay.md](archive/substrate_p8_sleep_replay.md) — **✅ SHIPPED** (2026-04-19). Sleep replay F1 improves vs no-replay control, 10-seed sweep. Results: [experiments/p8_sleep_replay_results.md](../experiments/p8_sleep_replay_results.md). Activates [memory_consolidation_practice.md](memory_consolidation_practice.md).
   - [prompt_b3_b5_track.md](prompt_b3_b5_track.md) — Draft. Acting Coach + embodiment/narrative separation.
