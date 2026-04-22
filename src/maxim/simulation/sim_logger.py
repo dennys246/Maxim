@@ -306,6 +306,7 @@ _COLORS = {
     "NAc": "\033[33m",  # Yellow
     "FEAR": "\033[31m",  # Red
     "PAIN": "\033[31;1m",  # Bold red
+    "THOUGHT": "\033[32;2m",  # Dim green
     "EXEC": "\033[32m",  # Green
     "MOTOR": "\033[34m",  # Blue
     "SALIENCE": "\033[33;1m",  # Bold yellow
@@ -350,6 +351,7 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     "PAIN": DisplayTier.BIO,
     "REACTION": DisplayTier.BIO,
     "PERCEPT": DisplayTier.BIO,
+    "THOUGHT": DisplayTier.BIO,
     # Debug-tier: implementation details, tool execution plumbing, pipeline traces.
     "EXEC": DisplayTier.DEBUG,
     "MOTOR": DisplayTier.DEBUG,
@@ -378,6 +380,7 @@ _CHANNEL_MAP: dict[str, set[str]] = {
         "SENSORY",
         "BODY_STATE",
         "CEREBELLUM",
+        "THOUGHT",
         "BODY",
         "PERCEPT",
     },
@@ -390,6 +393,7 @@ _CHANNEL_MAP: dict[str, set[str]] = {
         "PAIN",
         "REACTION",
         "SENSORY",
+        "THOUGHT",
         "CEREBELLUM",
     },
     "exec": {"EXEC", "MOTOR", "PIPELINE"},
@@ -834,3 +838,32 @@ def sim_sensory(
 def sim_body_state(entity_count: int, active_failures: int, *, agent_id: str | None = None) -> None:
     """Log body state injection into prompt."""
     sim_log("BODY", f"State: {entity_count} entities, {active_failures} active failures", agent_id=agent_id)
+
+
+def sim_thought(
+    passed: bool,
+    reason: str,
+    score: float = 0.0,
+    threshold: float = 0.0,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a ThoughtGate deliberation decision.
+
+    Shows at BIO display tier.  Passed decisions show score/threshold;
+    rejected decisions show the rejection reason.
+    """
+    if passed:
+        sim_log(
+            "THOUGHT",
+            f"deliberation approved (score={score:.2f} >= {threshold:.2f})",
+            {"score": score, "threshold": threshold, "reason": reason},
+            agent_id=agent_id,
+        )
+    else:
+        sim_log(
+            "THOUGHT",
+            f"deliberation skipped — {reason}",
+            {"score": score, "threshold": threshold, "reason": reason},
+            agent_id=agent_id,
+        )

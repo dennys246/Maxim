@@ -42,14 +42,18 @@ class GoalPriority(Enum):
 class MemoryTier(Enum):
     """Memory storage tier and lifecycle phase.
 
-    FORMING and WORKING are eviction-protected phases during the
-    agent pipeline. SHORT_TERM and LONG_TERM are standard decay tiers.
+    FORMING is the eviction-protected phase during the agent pipeline.
+    SHORT_TERM and LONG_TERM are standard decay tiers.
 
-    Lifecycle: FORMING → WORKING → SHORT_TERM → LONG_TERM → consolidated out.
+    Lifecycle: FORMING → SHORT_TERM → LONG_TERM → consolidated out.
+
+    The old WORKING tier was removed in 0.8 (Working Memory unification).
+    Active-reference context now lives in WorkingMemorySet, an Exec-owned
+    layer — not a memory tier.  Persisted episodes with tier="working"
+    are migrated to SHORT_TERM on load.
     """
 
     FORMING = "forming"  # Being constructed during pipeline (eviction-protected)
-    WORKING = "working"  # Pipeline complete, awaiting next cycle (eviction-protected)
     SHORT_TERM = "short"  # Fast decay, recent context
     LONG_TERM = "long"  # Slow decay, consolidated knowledge
 
@@ -57,9 +61,11 @@ class MemoryTier(Enum):
 # Allowed forward transitions for MemoryTier. The progression is strictly
 # one-way: skipping a tier or reversing direction indicates a bug that would
 # silently corrupt consolidation. Enforced by WorkingMemoryEntry.__setattr__.
+#
+# 0.8: WORKING tier removed. FORMING promotes directly to SHORT_TERM
+# (outcome-triggered, same rule — F6).
 _TIER_FORWARD_TRANSITIONS: dict[MemoryTier, frozenset[MemoryTier]] = {
-    MemoryTier.FORMING: frozenset({MemoryTier.WORKING}),
-    MemoryTier.WORKING: frozenset({MemoryTier.SHORT_TERM}),
+    MemoryTier.FORMING: frozenset({MemoryTier.SHORT_TERM}),
     MemoryTier.SHORT_TERM: frozenset({MemoryTier.LONG_TERM}),
     MemoryTier.LONG_TERM: frozenset(),
 }
@@ -74,7 +80,7 @@ def _assert_tier_transition(old: MemoryTier, new: MemoryTier) -> None:
 
     Allows no-op (same-tier) writes so that idempotent sweeps don't crash,
     but rejects reversals and non-adjacent skips. The progression is:
-    FORMING → WORKING → SHORT_TERM → LONG_TERM.
+    FORMING → SHORT_TERM → LONG_TERM.
     """
     if old == new:
         return
@@ -82,7 +88,7 @@ def _assert_tier_transition(old: MemoryTier, new: MemoryTier) -> None:
     if new not in allowed:
         raise TierTransitionError(
             f"Illegal MemoryTier transition {old.name} → {new.name}; "
-            f"legal progression is FORMING → WORKING → SHORT_TERM → LONG_TERM"
+            f"legal progression is FORMING → SHORT_TERM → LONG_TERM"
         )
 
 
@@ -130,6 +136,50 @@ class StopReason(Enum):
     NO_INTENT = "no_intent"
     LLM_TIMEOUT = "llm_timeout"
     SAFETY_GATE = "safety_gate"
+
+
+# ── Deliberation intents (Stage 3) ──────────────────────────────────
+
+
+class DeliberationOutcome(Enum):
+    """Kind of output from a deliberation tick."""
+
+    SPEAK = "speak"  # Deliberation converged on user-visible text
+    ACTION = "action"  # Deliberation converged on a tool call / goal
+    NOOP = "noop"  # Deliberation tick produced no externalizable output
+
+
+@dataclass(frozen=True)
+class SpeakIntent:
+    """Emitted when deliberation converges on 'say something now'."""
+
+    content: str
+    channel: str = "respond"  # maps to existing respond/speak/say tool
+    reason: str = ""  # provenance for review
+    deliberation_hops: int = 0  # telemetry
+
+
+@dataclass(frozen=True)
+class ActionIntent:
+    """Emitted when deliberation converges on a tool call or goal proposal."""
+
+    tool_name: str
+    tool_params: dict = field(default_factory=dict)
+    reason: str = ""
+    deliberation_hops: int = 0
+
+
+@dataclass(frozen=True)
+class NoOpIntent:
+    """Deliberation tick produced no externalizable output.
+
+    Internal state (working memory, Hebbian bindings from deliberation,
+    thought accumulation) is updated regardless.  This is NOT an error —
+    silence is a valid output of the cognitive loop.
+    """
+
+    reason: str = ""
+    deliberation_hops: int = 0
 
 
 # ToolErrorKind lives in tools/base (next to ToolOutput) to avoid the
@@ -289,12 +339,6 @@ class MemoryItem:
         self.last_accessed = time.time()
         self.access_count += 1
 
-    def should_promote(self, access_threshold: int = 3, salience_threshold: float = 0.7) -> bool:
-        """Check if short-term memory should be promoted to long-term."""
-        if self.tier != MemoryTier.SHORT_TERM:
-            return False
-        return self.access_count >= access_threshold or self.salience >= salience_threshold
-
     def should_evict_long_term(self, max_age_seconds: float) -> bool:
         """Check if long-term memory should be evicted."""
         if self.tier != MemoryTier.LONG_TERM:
@@ -340,8 +384,8 @@ class WorkingMemoryEntry(Generic[T]):
 
     @property
     def is_protected(self) -> bool:
-        """FORMING and WORKING entries cannot be evicted."""
-        return self.tier in (MemoryTier.FORMING, MemoryTier.WORKING)
+        """FORMING entries cannot be evicted."""
+        return self.tier == MemoryTier.FORMING
 
     def touch(self) -> None:
         """Delegate access tracking to the underlying record. Thread-safe."""
@@ -365,15 +409,6 @@ class WorkingMemoryEntry(Generic[T]):
         if name == "tier" and "tier" in self.__dict__:
             _assert_tier_transition(self.__dict__["tier"], value)
         object.__setattr__(self, name, value)
-
-    def should_promote(self, access_threshold: int = 3, salience_threshold: float = 0.7) -> bool:
-        """Check if this entry should be promoted to long-term."""
-        if self.tier != MemoryTier.SHORT_TERM:
-            return False
-        return (
-            self.record.access_count >= access_threshold  # type: ignore[union-attr]
-            or self.salience >= salience_threshold
-        )
 
     def should_evict(self, max_age_seconds: float) -> bool:
         """Check if this entry should be evicted from working memory."""
@@ -441,12 +476,19 @@ class WorkingMemoryEntry(Generic[T]):
 
         record = record_cls.from_dict(data["record"])
 
+        # Persistence migration (0.8): tier="working" → "short" after the
+        # WORKING tier was removed.  Old sessions may have persisted episodes
+        # at the orphan tier.
+        raw_tier = data.get("tier", "short")
+        if raw_tier == "working":
+            raw_tier = "short"
+
         return cls(
             record=record,
             salience=data.get("salience", 0.5),
             decay_rate=data.get("decay_rate", 0.1),
             source=data.get("source", "unknown"),
-            tier=MemoryTier(data.get("tier", "short")),
+            tier=MemoryTier(raw_tier),
             predicted_outcomes=(
                 [PredictedOutcome.from_dict(p) for p in data["predicted_outcomes"]]
                 if data.get("predicted_outcomes")
@@ -486,7 +528,9 @@ class StructuredContext:
     exploration_curiosity: float = 1.0
     exploration_budget_remaining: dict = field(default_factory=dict)
 
-    # Salient memories (filtered by relevance)
+    # DEPRECATED (0.8): sourced from WorkingMemorySet via Exec.
+    # Kept for backward compatibility during prompt-builder migration.
+    # Do NOT add new writers to these fields — use exec.working_memory.add().
     recent_percepts: list[Percept] = field(default_factory=list)
     recent_outcomes: list[dict] = field(default_factory=list)
     # Each entry: {"source": str, "salience": float, "content": dict}
@@ -495,18 +539,18 @@ class StructuredContext:
     # Detected patterns (from vision model, NOT raw images)
     detected_objects: list[dict] = field(default_factory=list)
     detected_people: list[dict] = field(default_factory=list)
-    detected_speech: list[str] = field(default_factory=list)
+    detected_speech: list[str] = field(default_factory=list)  # DEPRECATED (0.8): sourced from WorkingMemorySet
 
     # Abstraction stream data (for LLM context)
     recent_logs: list[dict] = field(default_factory=list)
     goal_history: list[dict] = field(default_factory=list)
-    cli_inputs: list[str] = field(default_factory=list)
+    cli_inputs: list[str] = field(default_factory=list)  # DEPRECATED (0.8): sourced from WorkingMemorySet
     # Inbound/outbound comms messages (SMS, voice, etc.)
     # Each entry: {"direction": str, "content": str, "channel": str, "sender": str, "timestamp": float}
     comms_messages: list[dict] = field(default_factory=list)
     available_environments: list[str] = field(default_factory=list)
 
-    # Conversation history (user input + LLM response pairs)
+    # DEPRECATED (0.8): conversation history sourced from WorkingMemorySet.
     # Each entry: {"user": str, "assistant": str, "timestamp": float}
     conversation_history: list[dict] = field(default_factory=list)
 

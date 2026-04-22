@@ -110,7 +110,11 @@ class MaximAgent(Agent):
             self.memory,
             llm_profile=llm_profile,
             quantization=quantization,
+            agent_id=agent_id,
         )
+
+        # Wire WorkingMemorySet: Exec owns it, MemoryAgent writes to it (0.8).
+        self.memory._working_memory = self.exec_agent.working_memory
 
         # PlanManager (created early, wired to agents; services filled in wire_memory_hub)
         from maxim.planning.plan_manager import PlanManager, PlanServices

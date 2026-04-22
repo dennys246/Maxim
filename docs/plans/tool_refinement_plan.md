@@ -126,7 +126,7 @@ Current tools surface specific memories; these surface **memory health + dynamic
 
 | Tool | Returns | Source | Priority |
 |---|---|---|---|
-| `memory_pressure()` | per-tier counts (FORMING/WORKING/SHORT_TERM/LONG_TERM), promotion rate, decay | `hippocampus.py` + `ATL` | 🔥 |
+| `memory_pressure()` | per-tier counts (FORMING/SHORT_TERM/LONG_TERM), promotion rate, decay | `hippocampus.py` + `ATL` | 🔥 |
 | `consolidation_status()` | pending promotions, last consolidation pass, concept extraction backlog | `semantic_promoter.py` | 🟡 |
 | `bridge_activity(n=10)` | recent cross-system events: which bridges fired, what data flowed | `bridges/` | 🟡 |
 | `angular_gyrus_stats()` | algebraic memory state: cluster counts, recent retrievals, drift | `math/angular_gyrus.py` | 🔵 |

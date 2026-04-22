@@ -529,7 +529,7 @@ Long-running sim with two node groups: Group A receives periodic reinforcement, 
 
 **Swap points:**
 - Decay function shape (linear / exponential / power)
-- Per-tier decay rates (FORMING / WORKING / SHORT_TERM / LONG_TERM)
+- Per-tier decay rates (FORMING / SHORT_TERM / LONG_TERM)
 - Pruning threshold
 - Reinforcement semantics (full reset vs partial)
 

@@ -171,11 +171,9 @@ class MemoryLayer(ABC):
 FORMING    &rarr;  Initial observation, still accumulating context
                Protected from eviction during the active session
 
-WORKING    &rarr;  Enriched with importance scores and decay rates
-               Protected from eviction during the active session
-
 SHORT_TERM &rarr;  Committed to the Hippocampus for storage
                Subject to consolidation during sleep
+               (Active-reference context is in WorkingMemorySet, not a tier)
 
 LONG_TERM  &rarr;  Survived consolidation waves
                Permanent storage in the Hippocampus</div>

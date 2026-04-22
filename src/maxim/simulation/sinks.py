@@ -106,6 +106,26 @@ class RecordingSink:
             results.append(action)
         return results
 
+    def record_noop(self, reason: str = "") -> None:
+        """Record a deliberation NoOp marker (Stage 4, F2 fix).
+
+        The bridge watches ``len(self.actions)`` for growth.  A NoOp
+        deliberation tick records this marker so the bridge sees
+        activity and doesn't timeout.  The bridge's text extraction
+        only looks for "respond"/"speak" tool_name, so this marker
+        doesn't produce response text.
+        """
+        import time as _time
+
+        self.record(
+            ActionRecord(
+                timestamp=_time.time(),
+                tool_name="_deliberation_noop",
+                result_success=True,
+                result_output=reason or "deliberation tick — no externalized output",
+            )
+        )
+
     def find_actions(self, tool: str | None = None, output_matches: str | None = None) -> list[ActionRecord]:
         """Find actions matching criteria."""
         import re

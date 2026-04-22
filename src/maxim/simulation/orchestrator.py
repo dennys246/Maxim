@@ -663,6 +663,18 @@ def start_simulation_mode(
             ec=_aut_ec,
         )
         logger.info("AUT BioEnrichmentPipeline constructed (L1)")
+
+        # Stage 2: ThoughtGate — gates Exec deliberation on novelty/salience.
+        # Reuses the same TextSalienceScorer built for BioEnrichmentPipeline.
+        from maxim.runtime.thought_gate import ThoughtGate
+
+        _aut_thought_gate = ThoughtGate(scorer=_aut_text_scorer)
+        aut_agent.exec_agent.wire_thought_gate(_aut_thought_gate)
+        logger.info(
+            "AUT ThoughtGate wired (Stage 2, refractory=%d, min_score=%.1f)",
+            _aut_thought_gate._config.refractory_ticks,
+            _aut_thought_gate._config.min_combined_score,
+        )
     except Exception as e:
         logger.debug("BioEnrichmentPipeline construction failed (optional): %s", e)
 

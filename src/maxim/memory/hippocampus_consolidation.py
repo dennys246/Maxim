@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from typing import TYPE_CHECKING
@@ -11,6 +12,20 @@ if TYPE_CHECKING:
     from maxim.memory.types import CompressedMemory, EpisodicMemory
 
 logger = logging.getLogger(__name__)
+
+# Use-based consolidation constants
+_PRESSURE_DECAY_RATE = 0.02  # pressure units lost per second of wall-clock time
+_PROMOTION_PRESSURE_THRESHOLD = 3.0  # pressure needed to promote SHORT_TERM → LONG_TERM
+
+
+def _context_signature(query: str) -> str:
+    """Hash a query string into a short context signature for diversity checking.
+
+    Normalizes whitespace and case before hashing so semantically equivalent
+    queries produce the same signature.
+    """
+    normalized = " ".join(query.lower().split())
+    return hashlib.sha256(normalized.encode()).hexdigest()[:12]
 
 
 class ConsolidationMixin:
@@ -311,6 +326,11 @@ class ConsolidationMixin:
         if access_count >= 5:
             return True
 
+        # Criterion 5: Use-based promotion pressure (Stage 7)
+        pressure = getattr(record, "promotion_pressure", 0.0)
+        if pressure >= _PROMOTION_PRESSURE_THRESHOLD:
+            return True
+
         return False
 
     def _promote_to_long_term(self, memory_id: str, now: float) -> bool:
@@ -329,6 +349,11 @@ class ConsolidationMixin:
         record.long_term = True
         record.consolidated_at = now
 
+        # Reset use-based promotion fields (clean slate as long-term)
+        record.promotion_pressure = 0.0
+        record.last_scored_at = 0.0
+        record.access_contexts.clear()
+
         self._stats["long_term_count"] = self._stats.get("long_term_count", 0) + 1
         logger.debug("Promoted memory %s to long-term", memory_id[:8])
         return True
@@ -341,6 +366,89 @@ class ConsolidationMixin:
         """
         # Deque has maxlen — append always succeeds and oldest is rotated out.
         self._consolidation_candidates.append(memory_id)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Use-Based Consolidation (Stage 7)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _score_and_maybe_promote_batch(
+        self,
+        memories: list["EpisodicMemory | CompressedMemory"],
+        query: str,
+    ) -> None:
+        """Score recalled memories for use-based promotion (write lock must be held).
+
+        Each context-diverse recall accumulates promotion_pressure on the
+        memory. When pressure crosses the threshold, SHORT_TERM memories
+        promote to LONG_TERM. Pressure decays with wall-clock elapsed time
+        so infrequent trickle-access doesn't eventually promote everything.
+
+        Context diversity: the query string is hashed into a short signature.
+        If this signature already appears in the memory's access_contexts
+        deque, the access is redundant (same question, same context) and
+        does NOT accumulate pressure. Only novel-context access counts.
+        """
+        now = time.time()
+        ctx_sig = _context_signature(query)
+
+        for mem in memories:
+            # Skip already-promoted memories
+            if getattr(mem, "long_term", False):
+                continue
+
+            # Decay existing pressure by elapsed wall-clock time
+            if mem.last_scored_at > 0:
+                elapsed = now - mem.last_scored_at
+                decay = elapsed * _PRESSURE_DECAY_RATE
+                mem.promotion_pressure = max(0.0, mem.promotion_pressure - decay)
+
+            mem.last_scored_at = now
+
+            # Context-diversity gate: only accumulate on novel contexts
+            if ctx_sig in mem.access_contexts:
+                continue
+            mem.access_contexts.append(ctx_sig)
+
+            # Score this access — composite of salience + access frequency
+            score = self._compute_access_score(mem)
+            mem.promotion_pressure += score
+
+            # Promotion gate
+            if mem.promotion_pressure >= _PROMOTION_PRESSURE_THRESHOLD:
+                if self._promote_to_long_term(mem.id, now):
+                    mem.promotion_pressure = 0.0
+                    mem.access_contexts.clear()
+                    logger.info(
+                        "Use-based promotion: memory %s → LONG_TERM (pressure=%.2f)",
+                        mem.id[:8],
+                        _PROMOTION_PRESSURE_THRESHOLD,
+                    )
+
+    def _compute_access_score(
+        self,
+        record: "EpisodicMemory | CompressedMemory",
+    ) -> float:
+        """Score a single recall access for promotion pressure.
+
+        Combines salience and access frequency into a 0-2 score.
+        Higher salience and more frequent access both contribute.
+        """
+        from maxim.memory.types import CompressedMemory
+
+        if isinstance(record, CompressedMemory):
+            salience = record.salience
+        else:
+            salience = record.perception.salience
+
+        # Salience contribution (0-1)
+        salience_score = min(salience, 1.0)
+
+        # Frequency contribution: diminishing returns via log-like curve
+        # access_count=1 → 0.0, 2 → 0.5, 3 → 0.7, 5 → 0.85, 10 → 0.95
+        freq = record.access_count
+        freq_score = min(1.0, 1.0 - (1.0 / max(freq, 1)))
+
+        return salience_score + freq_score
 
     # ─────────────────────────────────────────────────────────────────────────
     # Temporal Clustering (SCN-integrated consolidation)

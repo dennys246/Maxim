@@ -74,7 +74,7 @@ Measures how the bio-systems responded during the scenario.
 
 | Metric | What it measures |
 |---|---|
-| `memory_formation_rate` | Fraction of salient percepts that reached WORKING tier or higher |
+| `memory_formation_rate` | Fraction of salient percepts that reached SHORT_TERM tier or higher |
 | `memory_recall_accuracy` | Correct retrieval of previously encoded information |
 | `causal_link_accuracy` | Whether NAc formed correct cause-effect associations |
 | `emotional_valence_tracking` | NAc valence movement in response to reward/punishment signals |

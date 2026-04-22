@@ -93,7 +93,7 @@ Simulations call a live LLM for every turn and can burn cost + time quickly. Whe
 
 ## Architectural invariants (do not break without discussion)
 
-- **Memory tier progression is one-way**: FORMING → WORKING → SHORT_TERM → LONG_TERM. Don't skip or reverse.
+- **Memory tier progression is one-way**: FORMING → SHORT_TERM → LONG_TERM. Don't skip or reverse. WORKING is not a tier — it's an Exec-owned `WorkingMemorySet` (active reference layer). See `agents/working_memory.py`.
 - **Hippocampus, NAc, and ATL maintain SEPARATE EpisodicMemory instances** — this is intentional coexistence, not tech debt. Don't merge.
 - **Tool results flow through the agent bus**; don't call agents directly from tools.
 - **Persistence uses `maxim.utils.atomic_io.atomic_write_json`** (fsync + tmp cleanup). Don't hand-roll `open().write()` + `os.replace()`.
@@ -117,6 +117,9 @@ Simulations call a live LLM for every turn and can burn cost + time quickly. Whe
 
 - **`runtime/bio_stack.py::build_bio_stack` is the canonical bio-pipeline construction site** (Wave 3 of biosystem_unification, 2026-04-17). Composes the four individual Wave 1+2 builders (`build_reaction_bus`, `build_pain_bus`, `build_memory_hub`, `build_default_network`) in the correct dependency order. Returns a frozen `BioStack` dataclass containing all wired bio-systems. `persistence_dir: Path | str | None` is the primary configuration — sub-paths (`hippocampus.json`, `atl.json`, `angular_gyrus.json`) are derived internally. `pain_bus=` parameter accepts a pre-built PainBus (sim AUT pattern where the sandbox needs the bus before the rest of the stack); standard learners are subscribed to the pre-existing bus. `with_default_network=True` constructs a DefaultNetwork (Reachy + sim AUT only). Four production callers: cli.py non-sim, simulation/orchestrator.py AUT + orch NPC, embodied_runtime/agentic_runtime.py Reachy. AgentFactory (site #7) deferred to `agent_factory_canonicalization.md` Wave 4 — conditional `remembers`/`learns` + auto_load doesn't fit the umbrella. CLI sim modes stay as-is (just `build_pain_bus`). See [docs/plans/bio_stack_unification.md](docs/plans/bio_stack_unification.md).
 
+- **`Hippocampus.recall()` always calls `memory.touch()` on each result** and adds RECALL entries to WorkingMemorySet when `working_memory=` is provided (reconsolidation pull into active context). Content is NOT mutated on access.
+- **SHORT_TERM → LONG_TERM promotion is pressure-based** (Stage 7): each context-diverse recall accrues `promotion_pressure` via `_compute_access_score`; wall-clock elapsed time decays pressure (`_PRESSURE_DECAY_RATE`); threshold crossing (`_PROMOTION_PRESSURE_THRESHOLD = 3.0`) triggers promotion. Context diversity uses query-string hashing — identical queries don't accumulate. FORMING → SHORT_TERM remains outcome-triggered. The old `should_promote()` methods on `MemoryItem`/`WorkingMemoryEntry` in `agents/bus.py` have been removed.
+- **`MemoryRecord` now carries `promotion_pressure`, `last_scored_at`, `access_contexts`** — all three fields deserialize with backward-compatible defaults (0.0, 0.0, empty deque) from old persisted data.
 - **`Episode.valence` defaults to 0.0 on old data.** Backward compatible. Old episode dicts without the valence field deserialize cleanly.
 - **`spreading_activation(propagate_valence=False)` returns `dict[str, float]` unchanged.** The `propagate_valence=True` path returns `dict[str, tuple[float, float]]`. Existing callers are unaffected.
 - **NAc `_reward_bias` clamps to [0, max_reward_bias].** Negative rewards (pain) produce 0.0 bias. Bias only widens EC recognition, never narrows. Pain avoidance is handled by valence annotation on edges, not by reward bias.
@@ -254,7 +257,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 - **Simulation** orchestrator in `simulation/orchestrator.py`, bridge in `simulation/bridge.py`. Campaign runners in `simulation/campaign_runner.py` (generative + DM + fixture). Fixture-driven testing in `simulation/fixture_orchestrator.py` (S1). Types in `simulation/sim_types.py`.
 - **Interactive runtime** in `interactive/` — universal prompt protocol (`PromptRequest`/`PromptHandler`), rich terminal display with split panels, DM display extensions.
 - **Mode system**: ProcessingState (awake/sleep) x OperationalMode (planning/supervised/autonomous). Sleep is a tool the agent calls; it wakes automatically on user input.
-- **Memory tiers**: FORMING -> WORKING -> SHORT_TERM -> LONG_TERM (enforced by `TierTransitionError` in `agents/bus.py` — see F0.7)
+- **Memory tiers**: FORMING -> SHORT_TERM -> LONG_TERM (enforced by `TierTransitionError` in `agents/bus.py` — see F0.7). Active-reference context lives in `WorkingMemorySet` (Exec-owned, `agents/working_memory.py`), not a memory tier.
 - **Memory store protocols**: `EpisodicStore`, `CausalStore`, `SemanticStore` in `memory/store.py` — split persistence protocols with `File*Store` defaults and database implementations for Mother Maxim.
 - **Percept/Reaction dual surface** (reaction_abstraction_plan, Phases 1–4 shipped):
   - **Percept** = sensory/environmental input. Typed `PerceptContext` (channel, sender, agent_id, scn_tag) in `agents/percept_context.py`. Named factories in `agents/percept_factory.py`: `make_text_percept`, `make_scene_percept`, `make_intero_percept`. `SensoryTag` populated at all producers via `agents/modality.py`.

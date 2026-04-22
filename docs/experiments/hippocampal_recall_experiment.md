@@ -322,7 +322,7 @@ inspect_aut(query_type="memory_recall", query="Verath")
 
 **Measures:**
 - Was a memory containing "Verath" captured? (binary)
-- What tier is it in? (FORMING/WORKING/SHORT_TERM/LONG_TERM)
+- What tier is it in? (FORMING/SHORT_TERM/LONG_TERM)
 - Has it been compressed? (CompressedMemory loses detail)
 - What's its current salience score?
 

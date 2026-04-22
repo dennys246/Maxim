@@ -238,7 +238,7 @@ _FALLBACK_DEFAULT = "The story continues to unfold around you..."
 
 1. **`nac_stats`** — total observations, causal link count, top-rewarded tools (by mean RPE), RPE distribution (mean/std/min/max over recent window). Source: `decisions/nac.py` internal state. The agent can reason about what it's learned: "I've observed 47 tool outcomes, `memory_recall` has the highest reward signal, `filesystem_write` has negative valence."
 
-2. **`memory_pressure`** — per-tier counts (FORMING/WORKING/SHORT_TERM/LONG_TERM), promotion rate (promotions per minute over last 10 min), total episodes, oldest/newest episode timestamps. Source: `memory/hippocampus.py` internal state. The agent can assess its own memory health: "I have 200 episodes, 15 in WORKING tier, promotion rate is 2/min."
+2. **`memory_pressure`** — per-tier counts (FORMING/SHORT_TERM/LONG_TERM), promotion rate (promotions per minute over last 10 min), total episodes, oldest/newest episode timestamps. Source: `memory/hippocampus.py` internal state. The agent can assess its own memory health: "I have 200 episodes, 15 in SHORT_TERM tier, promotion rate is 2/min."
 
 3. **`loop_stats`** — current Hz, average cycle time (last 100 cycles), total steps since boot, time since last action, time since last percept. Source: `runtime/loop_controller.py` counters. The agent can diagnose its own performance: "I'm running at 4Hz, average cycle is 250ms, last action was 30s ago."
 

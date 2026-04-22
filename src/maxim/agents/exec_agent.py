@@ -81,10 +81,22 @@ class ExecAgent(Agent):
         rate_limit_hz: float = 2.0,
         shared_router: LLMRouter | None = None,
         shared_llm_worker: LLMWorker | None = None,
+        agent_id: str | None = None,
     ) -> None:
         super().__init__(name=name, enabled=enabled)
         self._bus = bus
         self._memory = memory_agent
+
+        # WorkingMemorySet: Exec-owned active-reference layer (0.8).
+        # All recent-context producers write through this typed interface.
+        from maxim.agents.working_memory import WorkingMemorySet
+
+        self.working_memory = WorkingMemorySet(agent_id=agent_id or "default")
+
+        # ThoughtGate: composite gate for deliberation (Stage 2).
+        # Consulted before contemplation — if gate rejects, skip deliberation.
+        self._thought_gate: Any | None = None  # Late-wired via wire_thought_gate()
+
         if system_prompt:
             self._system_prompt = system_prompt
         else:
@@ -615,6 +627,10 @@ class ExecAgent(Agent):
     def wire_nac(self, nac: NucleusAccumbens) -> None:
         """Late-wire NAc for contemplation outcome learning."""
         self._nac = nac
+
+    def wire_thought_gate(self, gate: Any) -> None:
+        """Late-wire ThoughtGate for deliberation gating (Stage 2)."""
+        self._thought_gate = gate
 
     def wire_staging(
         self,
@@ -1294,9 +1310,32 @@ Based on this context, what goal should be proposed?"""
         """Optionally critique-and-refine the draft for complex plans.
 
         Returns ``(final_response, contemplated, refined)``.
+
+        Stage 2: ThoughtGate is consulted first.  If the gate rejects,
+        deliberation is skipped regardless of complexity.  The gate
+        checks refractory window, energy budget, and novelty/salience
+        of recent working memory.
         """
         if thinking_cfg or not self._should_contemplate(response):
             return response, False, False
+
+        # Stage 2: ThoughtGate predicate
+        if self._thought_gate is not None:
+            from maxim.runtime.gating import GatingContext
+
+            gate_ctx = GatingContext(
+                active_goal=ctx.active_goal,
+                goal_keywords=tuple(ctx.active_goal.split() if ctx.active_goal else []),
+                energy=ctx.exploration_curiosity,
+            )
+            decision = self._thought_gate.should_think(
+                working_memory=self.working_memory,
+                context=gate_ctx,
+                current_tick=self.working_memory.current_tick,
+            )
+            if not decision.passed:
+                return response, False, False
+
         draft = response
         refined_response = self._contemplate(response, ctx)
         return refined_response, True, refined_response is not draft
@@ -1344,6 +1383,47 @@ Based on this context, what goal should be proposed?"""
             oldest = sorted(self._contemplation_log, key=lambda k: self._contemplation_log[k]["timestamp"])
             for k in oldest[:50]:
                 del self._contemplation_log[k]
+
+    # ── Deliberation entry point (Stage 3) ─────────────────────────────
+
+    def deliberate(self, ctx: StructuredContext) -> Any:
+        """Primary deliberation entry point (Stage 3).
+
+        Runs the full proposal pipeline through ThoughtGate and returns
+        a typed intent:
+        - ``SpeakIntent``: deliberation converged on user-visible text
+        - ``ActionIntent``: deliberation converged on a tool call / goal
+        - ``NoOpIntent``: deliberation tick produced no output (silence)
+
+        The existing ``_propose_goal`` stays as the underlying mechanism.
+        This method adds intent typing as a layer on top.
+
+        Convergence detection: if ``_propose_goal`` returns a ProposedGoal
+        with a ``tool_name`` of "respond"/"speak"/"say", it's a SpeakIntent.
+        Otherwise it's an ActionIntent.  No proposal → NoOpIntent.
+        """
+        from maxim.agents.bus import ActionIntent, NoOpIntent, SpeakIntent
+
+        proposal = self._propose_goal(ctx)
+
+        if proposal is None:
+            return NoOpIntent(reason="no proposal generated")
+
+        # Classify intent by tool name
+        speak_tools = {"respond", "speak", "say"}
+        if proposal.tool_name in speak_tools:
+            content = proposal.tool_params.get("text", proposal.description)
+            return SpeakIntent(
+                content=content,
+                channel=proposal.tool_name,
+                reason=proposal.reasoning,
+            )
+
+        return ActionIntent(
+            tool_name=proposal.tool_name or "unknown",
+            tool_params=proposal.tool_params,
+            reason=proposal.reasoning,
+        )
 
     def _worker_loop(self) -> None:
         """Background worker for goal proposal."""

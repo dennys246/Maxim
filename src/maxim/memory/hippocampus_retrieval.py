@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from maxim.memory.types import CompressedMemory, EpisodicMemory
 
 if TYPE_CHECKING:
+    from maxim.agents.working_memory import WorkingMemorySet
     from maxim.memory.types import Perception
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,17 @@ def _rank_by_relevance(
     return [mem for _, _, mem in scored[:limit]]
 
 
+def _memory_summary(mem: EpisodicMemory | CompressedMemory) -> str:
+    """One-line summary of a memory for WorkingMemorySet RECALL entries."""
+    if isinstance(mem, CompressedMemory):
+        outcome = "success" if mem.success else "failure"
+        return f"[recalled] {mem.goal or 'unknown goal'} → {mem.tool_name} ({outcome})"
+    goal = mem.context.active_goal or mem.decision.intent.get("goal", "")
+    outcome = "success" if mem.outcome.success else "failure"
+    tool = mem.action.tool_name or "none"
+    return f"[recalled] {goal} → {tool} ({outcome})"
+
+
 class RetrievalMixin:
     """Retrieval methods for Hippocampus.
 
@@ -89,6 +101,7 @@ class RetrievalMixin:
         time_after: float | None = None,
         time_before: float | None = None,
         include_compressed: bool = True,
+        working_memory: WorkingMemorySet | None = None,
     ) -> list[EpisodicMemory | CompressedMemory]:
         """Find memories matching filters (hash lookup + filtering).
 
@@ -111,6 +124,8 @@ class RetrievalMixin:
             time_after: Only memories after this timestamp.
             time_before: Only memories before this timestamp.
             include_compressed: Include CompressedMemory results (default True).
+            working_memory: If provided, each recalled memory is added as
+                a RECALL entry (reconsolidation pull into active context).
 
         Returns:
             List of matching memories, ranked by relevance if *query* is
@@ -185,9 +200,27 @@ class RetrievalMixin:
                     results.sort(key=lambda m: m.timestamp, reverse=True)
                     results = results[:limit]
 
-        # Phase 2: Brief write lock for stats update only
+        # Phase 2: Write lock for stats + touch + promotion scoring
         with self._rwlock.write():
             self._stats["queries"] = self._stats.get("queries", 0) + 1
+            # Touch every recalled memory (increments access_count + accessed_at)
+            for mem in results:
+                self._touch_internal(mem.id)
+            # Score for promotion (context-diverse access accumulates pressure)
+            if query and results:
+                self._score_and_maybe_promote_batch(results, query)
+
+        # Phase 3: Outside lock — WMS writes + logging
+        if working_memory is not None and results:
+            from maxim.agents.working_memory import WorkingMemoryKind
+
+            for mem in results:
+                summary = _memory_summary(mem)
+                working_memory.add(
+                    kind=WorkingMemoryKind.RECALL,
+                    ref=mem.id,
+                    content=summary,
+                )
 
         # Simulation verbosity
         if results:

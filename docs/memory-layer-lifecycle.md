@@ -23,18 +23,21 @@ All layers implement the `MemoryLayer` ABC (`src/maxim/memory/layer.py`):
 
 ## Memory Tiers
 
-Memories flow through four lifecycle tiers (defined in `src/maxim/agents/bus.py`):
+Memories flow through three lifecycle tiers (defined in `src/maxim/agents/bus.py`):
 
 ```
-FORMING ──> WORKING ──> SHORT_TERM ──> LONG_TERM
+FORMING ──> SHORT_TERM ──> LONG_TERM
 ```
 
 | Tier | Duration | Eviction | Description |
 |---|---|---|---|
 | **FORMING** | During agent pipeline | Protected | Fields populated incrementally (perception, decision, action, outcome) |
-| **WORKING** | Until next cycle | Protected | Fully formed, ready for recall |
 | **SHORT_TERM** | Minutes | Buffer-based (fixed window) | Recent context, fast salience decay |
 | **LONG_TERM** | Persistent | Age-based (consolidation) | Consolidated knowledge, 2x retention boost |
+
+Active-reference context (recent percepts, outcomes, speech, etc.) is owned by
+`WorkingMemorySet` in `agents/working_memory.py` — an Exec-owned layer, not a
+memory tier. The old `MemoryTier.WORKING` was removed in 0.8.
 
 `WorkingMemoryEntry[T]` wraps any `MemoryRecord` subclass with agent-level
 metadata: `tier`, `salience`, `decay_rate`, `predicted_outcomes`, `source`.
@@ -53,7 +56,8 @@ Perception Event
     |-- PatternCompleter attaches PredictedOutcome
     |-- Cross-layer edges created (INSTANCE_OF)
     |
-[Working] --> WORKING tier, fully formed record
+[Outcome] --> SHORT_TERM tier (outcome-triggered promotion)
+    |-- Also written to WorkingMemorySet for Exec prompt context
     |
 [Recall] --> MemoryAgent retrieves for LLM context
     |-- ConceptGrounder enriches with AG math (async via WorkerPool)
