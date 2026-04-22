@@ -12,7 +12,7 @@ loss of concept knowledge while episodic memory is preserved.
 from __future__ import annotations
 
 import math
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
@@ -224,6 +224,9 @@ class SemanticMemory(MemoryRecord):
             "access_count": self.access_count,
             "long_term": self.long_term,
             "consolidated_at": self.consolidated_at,
+            "promotion_pressure": self.promotion_pressure,
+            "last_scored_at": self.last_scored_at,
+            "access_contexts": list(self.access_contexts),
             "name": self.name,
             "definition": self.definition,
             "category": self.category,
@@ -255,6 +258,9 @@ class SemanticMemory(MemoryRecord):
             access_count=data.get("access_count", 1),
             long_term=data.get("long_term", False),
             consolidated_at=data.get("consolidated_at"),
+            promotion_pressure=data.get("promotion_pressure", 0.0),
+            last_scored_at=data.get("last_scored_at", 0.0),
+            access_contexts=deque(data.get("access_contexts", []), maxlen=10),
             name=data.get("name", ""),
             definition=data.get("definition", ""),
             category=data.get("category", ""),
@@ -344,6 +350,9 @@ class Concept(SemanticMemory):
             access_count=data.get("access_count", 1),
             long_term=data.get("long_term", False),
             consolidated_at=data.get("consolidated_at"),
+            promotion_pressure=data.get("promotion_pressure", 0.0),
+            last_scored_at=data.get("last_scored_at", 0.0),
+            access_contexts=deque(data.get("access_contexts", []), maxlen=10),
             name=data.get("name", ""),
             definition=data.get("definition", ""),
             category=data.get("category", ""),
@@ -428,6 +437,9 @@ class CompressedSemantic(CompressedRecord):
             "access_count": self.access_count,
             "long_term": self.long_term,
             "consolidated_at": self.consolidated_at,
+            "promotion_pressure": self.promotion_pressure,
+            "last_scored_at": self.last_scored_at,
+            "access_contexts": list(self.access_contexts),
             "edge_count": self.edge_count,
             "name": self.name,
             "category": self.category,
@@ -454,6 +466,9 @@ class CompressedSemantic(CompressedRecord):
             access_count=data.get("access_count", 1),
             long_term=data.get("long_term", False),
             consolidated_at=data.get("consolidated_at"),
+            promotion_pressure=data.get("promotion_pressure", 0.0),
+            last_scored_at=data.get("last_scored_at", 0.0),
+            access_contexts=deque(data.get("access_contexts", []), maxlen=10),
             edge_count=data.get("edge_count", 0),
             name=data.get("name", ""),
             category=data.get("category", ""),
