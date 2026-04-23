@@ -26,6 +26,25 @@ from typing import Any
 # Set by _stdin_reader_raw; read by the atexit/SIGTERM handler.
 _termios_restore: tuple[int, list] | None = None
 
+# Declarative keymap: escape sequence suffix -> MaximDisplay method name.
+# Plain arrows (3-byte: \x1b + "[X"), shift+arrows (6-byte: \x1b + "[1;2X"),
+# option/alt+arrows (6-byte: \x1b + "[1;3X").
+_KEYMAP: dict[str, str] = {
+    # Plain arrows — log scroll
+    "[A": "scroll_up",
+    "[B": "scroll_down",
+    "[C": "scroll_bottom",
+    "[D": "scroll_page_up",
+    # Shift+arrows — thinking scroll + agent focus
+    "[1;2A": "scroll_thinking_up",
+    "[1;2B": "scroll_thinking_down",
+    "[1;2C": "focus_next",
+    "[1;2D": "focus_prev",
+    # Option (Alt)+arrows — layout resize
+    "[1;3A": "resize_thinking_more",
+    "[1;3B": "resize_thinking_less",
+}
+
 
 def _restore_terminal() -> None:
     """Restore terminal settings if raw mode was enabled. atexit + SIGTERM safe."""
@@ -1215,7 +1234,7 @@ def start_simulation_mode(
     display_status(f"Max turns: {max_turns}")
     if sim_sandbox and not no_sim_env:
         display_status("Environment: simulated filesystem with pain triggers")
-    display_status("Commands: /cancel  /new <goal>  /status  /report")
+    display_status("Commands: /cancel  /new <goal>  /status  /report  /help")
 
     # Set the scene header based on the goal
     display = get_active_display()
@@ -1498,12 +1517,28 @@ def start_simulation_mode(
                 _emit(f"Display switched to: {tier_name}", "turn")
             else:
                 _emit("Usage: /display clean|bio|debug", "turn")
+        elif line.lower() == "/help":
+            _emit("--- Keybindings ---", "info")
+            _emit("  Up/Down         Scroll log (or thinking panel when expanded)", "info")
+            _emit("  Left            Page up in log", "info")
+            _emit("  Right           Jump to bottom / collapse thinking panel", "info")
+            _emit("  Shift+Left/Right  Cycle agent focus (ALL > AUT > ORCH > NPCs)", "info")
+            _emit("  Option+=        Expand thinking panel (arrows switch to it)", "info")
+            _emit("  Option+-        Shrink thinking panel (arrows revert to log)", "info")
+            _emit("--- Commands ---", "info")
+            _emit("  /cancel         End simulation", "info")
+            _emit("  /new <goal>     Start new scenario", "info")
+            _emit("  /pause /resume  Pause/resume orchestrator", "info")
+            _emit("  /status         Show pipeline state", "info")
+            _emit("  /report         Request interim analysis", "info")
+            _emit("  /display <tier> Switch display (clean|bio|debug)", "info")
+            _emit("  /help           Show this help", "info")
         else:
             # If the agent is waiting for user input via request_interaction,
             # forward non-command text to the prompt handler.
             if _sim_prompt_handler is not None and _sim_prompt_handler.has_pending_prompt:
                 _sim_prompt_handler.deliver_response(line)
-                _emit(f"  You: {line}", "scene")
+                _emit(f"You: {line}", "user")
             # When interactive or paused, free text goes directly
             # to the AUT as a user percept (conversational input).
             elif _is_interactive or _paused[0]:
@@ -1512,7 +1547,7 @@ def start_simulation_mode(
                     salience=0.9,
                     novelty=0.8,
                 )
-                _emit(f"  You: {line}", "scene")
+                _emit(f"You: {line}", "user")
             else:
                 orchestrator_source.inject_cli(
                     f"USER GUIDANCE: {line}",
@@ -1585,9 +1620,30 @@ def start_simulation_mode(
             import os as _os_mod
 
             def _read_char() -> str:
-                """Read a single byte from stdin using raw OS read (not buffered IO)."""
+                """Read a single UTF-8 character from stdin using raw OS read.
+
+                Detects multi-byte UTF-8 leading bytes and reads the
+                correct number of continuation bytes so characters like
+                ≠ (3 bytes) arrive as one Python str, not three garbled
+                replacement chars.
+                """
                 b = _os_mod.read(fd, 1)
-                return b.decode("utf-8", errors="replace") if b else ""
+                if not b:
+                    return ""
+                first = b[0]
+                if first < 0x80:
+                    return b.decode("utf-8", errors="replace")
+                # Multi-byte UTF-8: leading byte tells us how many follow
+                if 0xC0 <= first < 0xE0:
+                    extra = 1
+                elif 0xE0 <= first < 0xF0:
+                    extra = 2
+                elif 0xF0 <= first < 0xF8:
+                    extra = 3
+                else:
+                    return b.decode("utf-8", errors="replace")
+                rest = _os_mod.read(fd, extra)
+                return (b + rest).decode("utf-8", errors="replace")
 
             while not stop_event.is_set():
                 try:
@@ -1620,32 +1676,35 @@ def start_simulation_mode(
                     buf.clear()
                     _update_prompt()
                 elif ch == "\x1b":
-                    # Escape sequence — read remaining bytes in one shot.
-                    # Arrow keys send \x1b[A/B/C/D (3 bytes total).
-                    # Use os.read to grab the remaining bytes without
-                    # Python's buffered IO interfering.
+                    # Escape sequence — variable-length accumulator.
+                    # Plain arrows: \x1b[A (3 bytes). Shift+arrows:
+                    # \x1b[1;2A (6 bytes). Ctrl+arrows: \x1b[1;5A (6 bytes).
+                    # Read byte-by-byte until a terminator (A-Z, a-z, ~).
                     try:
                         # Guard with select to avoid blocking on lone Escape.
-                        # Arrow sequences arrive in microseconds; 50ms is ample.
                         _esc_ready, _, _ = select.select([stdin], [], [], 0.05)
                         if not _esc_ready:
                             continue  # Lone Escape — discard
-                        rest = _os_mod.read(fd, 2)
-                        if len(rest) == 2:
-                            seq = rest.decode("ascii", errors="replace")
+                        _seq_bytes = bytearray()
+                        for _ in range(8):  # max escape sequence length
+                            _sr, _, _ = select.select([stdin], [], [], 0.01)
+                            if not _sr:
+                                break
+                            _b = _os_mod.read(fd, 1)
+                            if not _b:
+                                break
+                            _seq_bytes.extend(_b)
+                            _c = _b[0]
+                            if (0x41 <= _c <= 0x5A) or (0x61 <= _c <= 0x7A) or _c == 0x7E:
+                                break
+                        seq = _seq_bytes.decode("ascii", errors="replace")
+                        _action = _KEYMAP.get(seq)
+                        if _action:
                             display = get_active_display()
                             if display is not None:
-                                if seq == "[A":
-                                    display.scroll(3)
-                                elif seq == "[B":
-                                    display.scroll(-3)
-                                elif seq == "[C":
-                                    # Right arrow — jump to bottom
-                                    display.scroll(-999999)
-                                elif seq == "[D":
-                                    # Left arrow — page up (full panel height)
-                                    approx_page = display.page_height
-                                    display.scroll(approx_page)
+                                _method = getattr(display, _action, None)
+                                if _method:
+                                    _method()
                     except Exception:
                         pass
                 elif ch == "\x03":
@@ -1655,6 +1714,16 @@ def start_simulation_mode(
                 elif ch == "\x04":
                     # Ctrl+D (EOF)
                     return
+                elif ch == "\u2260":
+                    # ≠ (Option+= on macOS) — resize: more thinking
+                    display = get_active_display()
+                    if display is not None:
+                        display.resize_thinking_more()
+                elif ch == "\u2013":
+                    # – (Option+- on macOS) — resize: less thinking
+                    display = get_active_display()
+                    if display is not None:
+                        display.resize_thinking_less()
                 elif ch >= " " or ch == "\t":
                     # Printable character
                     buf.append(ch)
@@ -1707,7 +1776,10 @@ def start_simulation_mode(
         display = get_active_display()
         if display is not None:
             display.set_prompt("Type to talk to the agent (Enter to send) | /cancel to stop")
-        _emit("Interactive mode: type to talk to the agent directly", "turn")
+        _emit(
+            "Interactive mode: type to talk to the agent | arrows scroll | Shift+arrows switch agent | Option+/-  resize | /help for more",
+            "turn",
+        )
 
     # ── Stall detector: nudges orchestrator when it idles or ping-pongs ──
     # Two independent triggers:

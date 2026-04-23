@@ -48,6 +48,7 @@ Interactive mode is **ON by default** when running from a terminal (TTY) and alw
 | `/pause` | Pause orchestrator probing |
 | `/resume` | Resume orchestrator probing |
 | `/display clean\|bio\|debug` | Switch display verbosity |
+| `/help` | Show keybindings and available commands |
 | `quit` | End session and trigger consolidation |
 
 Session consolidation (memory promotion, hippocampus compaction) is deferred to conversation end -- it runs when you type `quit` or `/new`, not after every turn.
@@ -169,14 +170,18 @@ maxim --sim "test basic recall" --interactive false --sim-max-turns 5
 
 **Bio trace styling:** Bio-system activity (hippocampus, NAc, fear, pain, exec) renders in subdued colors so dialogue and scene content stands out. Switch to `/display clean` to hide bio traces entirely.
 
-**Arrow key controls:**
+**Keyboard controls:**
 
 | Key | Action |
 |-----|--------|
-| Up | Scroll log up 3 lines |
-| Down | Scroll log down 3 lines |
-| Left | Page up (full panel height) |
-| Right | Jump to bottom (latest) |
+| Up / Down | Scroll log (or thinking panel when expanded) |
+| Left | Page up in log |
+| Right | Jump to bottom (or collapse thinking panel back to log) |
+| Shift+Left / Right | Cycle agent focus (ALL → AUT → ORCH → NPCs) |
+| Option+`=` | Expand thinking panel (arrows switch to scroll it) |
+| Option+`-` | Shrink thinking panel (arrows revert to log at default) |
+
+The active panel has a green border. When the thinking panel is expanded, a hint reminds you to press Right to return to log scrolling. Type `/help` during a session to see this table.
 
 ### Agent Tools in Interactive Mode
 

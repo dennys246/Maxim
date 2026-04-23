@@ -147,7 +147,7 @@ def run_interactive_sim(
             break
 
         # Generate initial scenario
-        sim_log("PIPELINE", f"Generating initial scenario from: {description[:60]}")
+        sim_log("PIPELINE", f"Generating initial scenario from: {description}")
         display_status("Generating scenario...")
         try:
             yaml_str = generate_scenario(description, output_path=transcript_path, llm_profile=llm_profile)
@@ -157,7 +157,7 @@ def run_interactive_sim(
                 for p in generated.get("percepts", []):
                     src = p.get("source", "?")
                     text = p.get("cli_input") or p.get("transcript_chunk") or p.get("content") or "signal"
-                    display_scene(f"  [{src}] {str(text)[:70]}")
+                    display_scene(f"  [{src}] {str(text)}")
                 exps = generated.get("expectations", [])
                 if exps:
                     display_status(f"({len(exps)} expectation(s))")
@@ -241,7 +241,7 @@ def run_interactive_sim(
                 continue
 
             # Generate continuation percepts with context
-            sim_log("PIPELINE", f"Generating continuation from: {user_input[:60]}")
+            sim_log("PIPELINE", f"Generating continuation from: {user_input}")
             display_status("Generating continuation...")
             new_percepts = _generate_continuation(user_input, all_percepts, all_actions, llm_profile)
 
@@ -263,7 +263,7 @@ def run_interactive_sim(
             for p in new_percepts:
                 src = p.get("source", "?")
                 text = p.get("cli_input") or p.get("transcript_chunk") or p.get("content") or "signal"
-                display_scene(f"  [{src}] {str(text)[:70]}")
+                display_scene(f"  [{src}] {str(text)}")
 
             # Append to conversation history
             all_percepts.extend(new_percepts)
@@ -454,7 +454,7 @@ def _summarize_actions(sink: Any, from_index: int = 0) -> list[str]:
         if a.result_output and isinstance(a.result_output, dict):
             msg = a.result_output.get("message", "")
             if msg:
-                preview = f": {str(msg)[:80]}"
+                preview = f": {str(msg)}"
         summaries.append(f"{tag} {name}{preview}")
     return summaries
 
@@ -493,9 +493,9 @@ def _show_turn_results(sink: Any, from_index: int = 0) -> None:
         if a.result_output and isinstance(a.result_output, dict):
             msg = a.result_output.get("message", "")
             if msg:
-                preview = f": {str(msg)[:70]}"
+                preview = f": {str(msg)}"
         elif a.block_reason:
-            preview = f": {str(a.block_reason)[:70]}"
+            preview = f": {str(a.block_reason)}"
         display_scene(f"  {tag} {name}{preview}")
 
 
@@ -511,7 +511,7 @@ def _print_summary(sink: Any) -> None:
         if a.result_output and isinstance(a.result_output, dict):
             msg = a.result_output.get("message", "")
             if msg:
-                preview = f": {str(msg)[:60]}"
+                preview = f": {str(msg)}"
         display_scene(f"  {tag} {name}{preview}")
     if len(sink.actions) > 15:
         display_scene(f"  ... and {len(sink.actions) - 15} more")
