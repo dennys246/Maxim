@@ -908,9 +908,14 @@ def run_agentic_loop(
                     _exec = getattr(agent, "exec_agent", None)
                     if _exec is not None:
                         _wms = getattr(_exec, "working_memory", None)
-                    _tick = _wms.current_tick if _wms is not None and hasattr(_wms, "current_tick") else step_num
+                    # Use step_num (loop iteration counter) for refractory,
+                    # not WMS current_tick (memory entry counter — stays at 0
+                    # until entries are added, causing perpetual refractory).
                     try:
-                        _gate_decision = thought_gate.should_think(current_tick=_tick)
+                        _gate_decision = thought_gate.should_think(
+                            working_memory=_wms,
+                            current_tick=step_num,
+                        )
                         _pfc_gate_passed = _gate_decision.passed
                     except Exception as _ge:
                         log_swallowed_exception(_ge, operation="thought_gate", context={"step": step_num})
@@ -963,7 +968,8 @@ def run_agentic_loop(
 
                         sim_pre_deliberation(gate_passed=False, score=0.0, threshold=0.0, enrichment_sections=0)
                         _pfc_gate_passed = False
-                elif not _pfc_gate_passed:
+                elif not _pfc_gate_passed and _percept_text_for_cycle:
+                    # Only log gate rejection when there was actual percept text to evaluate
                     from maxim.simulation.sim_logger import sim_pre_deliberation
 
                     sim_pre_deliberation(gate_passed=False, score=0.0, threshold=0.0, enrichment_sections=0)
@@ -977,12 +983,7 @@ def run_agentic_loop(
             sim_contemplation(gate_passed=True, refined=False, score=0.0)
             # Reset refractory to count from enrichment completion
             if thought_gate is not None:
-                _wms = None
-                _exec = getattr(agent, "exec_agent", None)
-                if _exec is not None:
-                    _wms = getattr(_exec, "working_memory", None)
-                _tick = _wms.current_tick if _wms is not None and hasattr(_wms, "current_tick") else step_num
-                thought_gate.reset_refractory(_tick)
+                thought_gate.reset_refractory(step_num)
 
         # Ensure maxim_runtime contains mode from state.data for MemoryAgent
         # This propagates mode set in CLI to PerceptionAgent -> MemoryAgent -> ExecAgent
