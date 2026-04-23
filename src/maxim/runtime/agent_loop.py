@@ -355,113 +355,71 @@ def _jaccard_convergence(keywords_a: set[str], keywords_b: set[str], threshold: 
     return len(keywords_a & keywords_b) / union >= threshold
 
 
-def _run_deliberation_cycle(
+def _run_deliberation_cycles(
     *,
-    percept_text: str,
-    thought_gate: Any | None,
-    bio_enrichment: Any | None,
-    agent: Any,
+    first_proposal: Any,
+    bio_enrichment: Any,
+    working_memory: Any | None,
     context: Any,
+    submit_fn: Any,
     llm_worker: Any,
     stop_event: Any | None,
+    thought_gate: Any | None,
+    active_goal: str | None,
     step_num: int,
     max_cycles: int = 3,
 ) -> Any | None:
-    """PFC deliberation cycle — think-or-act loop.
+    """PFC deliberation cycles 2+ — recurrence after first proposal.
 
-    NOTE: This function is DRAFT — defined but not yet called from the
-    main agentic loop.  The inline enrichment in section 1.2 handles
-    gate + enrich (cycle 1).  Multi-cycle LLM calls (cycles 2+) require
-    wiring at the LLM submission point where StructuredContext + full
-    submit_context params are available.  See pfc_deliberation_cycle.md.
+    Called from the LLM submission point (section 6) when cycle 1 returned
+    a proposal with ``ready_to_act == False``.  Cycle 1 enrichment + gate
+    check are already done in section 1.2; this function handles the
+    recurrence: feed the LLM's reasoning back through bio-enrichment,
+    re-submit, wait, repeat.
 
-    Each cycle:
-      1. ThoughtGate evaluates working memory salience/novelty
-      2. If gate rejects: return None (one-shot path — no enrichment)
-      3. If gate fires: cycle 1 ALWAYS enriches (gate-fired minimum)
-      4. Enrichment added to working memory as THOUGHT entry
-      5. LLM called with enriched context
-      6. If ready_to_act == true (or absent): return proposal
-      7. If ready_to_act == false: feed reasoning text back through
-         bio-enrichment, loop (PFC recurrence)
-      8. Each cycle replaces bio_enrichment_context (not appends);
-         WM accumulates naturally via THOUGHT entries
-      9. If max_cycles reached or convergence detected
-         (Jaccard >= 0.8): force action from best response
+    Args:
+        first_proposal: Cycle 1 result (``ready_to_act == False``).
+        bio_enrichment: BioEnrichmentPipeline instance.
+        working_memory: WorkingMemorySet (or None).
+        context: StructuredContext — mutated in place (bio_enrichment_context,
+            working_memory_thoughts).
+        submit_fn: Callable(context) -> bool.  Closure that captures all
+            LLMWorker.submit_context params (mode, tools, etc.).
+        llm_worker: For polling via ``_wait_for_proposal``.
+        stop_event: Threading stop event.
+        thought_gate: For refractory reset after cycle completes.
+        active_goal: Current goal text for enrichment context.
+        step_num: Loop iteration counter (for refractory reset).
+        max_cycles: Hard cap including cycle 1 (default 3).
 
-    Returns LLMProposal or None.
+    Returns:
+        LLMProposal or None.
     """
-    from maxim.simulation.sim_logger import sim_pre_deliberation, sim_contemplation
-
-    # Access WorkingMemorySet via ExecAgent
-    wms = None
-    exec_agent = getattr(agent, "exec_agent", None)
-    if exec_agent is not None:
-        wms = getattr(exec_agent, "working_memory", None)
-
-    current_tick = wms.current_tick if wms is not None and hasattr(wms, "current_tick") else step_num
-
-    # 1. ThoughtGate — should we deliberate on this percept?
-    gate_passed = False
-    if thought_gate is not None:
-        try:
-            decision = thought_gate.should_think(
-                current_tick=current_tick,
-            )
-            gate_passed = decision.passed
-        except Exception as e:
-            log_swallowed_exception(e, operation="thought_gate", context={"step": step_num})
-            gate_passed = False
-    else:
-        # No gate — always enrich when pipeline is available
-        gate_passed = bio_enrichment is not None
-
-    if not gate_passed:
-        # One-shot path — no enrichment
-        sim_pre_deliberation(
-            gate_passed=False,
-            score=0.0,
-            threshold=0.0,
-            enrichment_sections=0,
-        )
-        sim_contemplation(
-            gate_passed=False,
-            refined=False,
-            score=0.0,
-        )
-        return None
-
-    # 2. Deliberation cycle — gate fired, at least one enriched round
-    if bio_enrichment is None:
-        return None
+    from maxim.simulation.sim_logger import sim_log, sim_pre_deliberation, sim_contemplation
 
     recent_keywords: list[set[str]] = []
-    last_proposal = None
-    enrich_text = percept_text
+    last_proposal = first_proposal
 
-    for cycle in range(1, max_cycles + 1):
-        # 2a. Enrich
+    # Collect keywords from cycle 1 reasoning for convergence check
+    reasoning_1 = first_proposal.reasoning or ""
+    recent_keywords.append(set(reasoning_1.lower().split()))
+
+    enrich_text = reasoning_1
+
+    # Cycles 2..max_cycles
+    for cycle in range(2, max_cycles + 1):
+        # 1. Enrich the LLM's reasoning through bio-systems
         try:
             from maxim.integration.bio_enrichment import EnrichmentContext
 
-            _state = getattr(agent, "_state", None)
-            _active_goal = None
-            if _state is not None and hasattr(_state, "data"):
-                _active_goal = _state.data.get("active_goal")
-
-            enrich_ctx = EnrichmentContext(active_goal=_active_goal)
+            enrich_ctx = EnrichmentContext(active_goal=active_goal)
             enrich_result = bio_enrichment.enrich(enrich_text, context=enrich_ctx, bypass_gate=True)
         except Exception as e:
             log_swallowed_exception(e, operation="deliberation_enrich", context={"cycle": cycle})
             break
 
         if enrich_result is None:
-            sim_pre_deliberation(
-                gate_passed=True,
-                score=0.0,
-                threshold=0.0,
-                enrichment_sections=0,
-            )
+            logger.debug("Deliberation cycle %d: enrichment returned None, stopping", cycle)
             break
 
         formatted = bio_enrichment.format_thought_response(enrich_result)
@@ -483,33 +441,37 @@ def _run_deliberation_cycle(
             threshold=0.0,
             enrichment_sections=n_sections,
         )
+        sim_log(
+            "DELIBERATION",
+            f"cycle {cycle}: {n_sections} enrichment section(s) from reasoning ({len(enrich_text)} chars)",
+        )
 
-        # 2b. Add THOUGHT to working memory
-        if wms is not None and formatted:
+        # 2. Add THOUGHT to working memory
+        if working_memory is not None and formatted:
             from maxim.agents.working_memory import WorkingMemoryKind
 
-            wms.add(
+            working_memory.add(
                 WorkingMemoryKind.THOUGHT,
                 content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": formatted[:500]},
                 salience=0.5,
             )
 
-        # 2c. Update StructuredContext for LLM
+        # 3. Update StructuredContext — replace (not append) enrichment
         if formatted:
             context.bio_enrichment_context = formatted
 
         # Populate working_memory_thoughts for prompt builder
-        if wms is not None:
+        if working_memory is not None:
             from maxim.agents.working_memory import WorkingMemoryKind
 
-            thought_entries = wms.by_kind({WorkingMemoryKind.THOUGHT}, limit=6)
+            thought_entries = working_memory.by_kind({WorkingMemoryKind.THOUGHT}, limit=6)
             context.working_memory_thoughts = [
                 str(e.content.get("enrichment", ""))[:200] if isinstance(e.content, dict) else str(e.content)[:200]
                 for e in thought_entries
             ]
 
-        # 2d. Submit LLM call and wait
-        if not llm_worker.submit_context(context):
+        # 4. Re-submit to LLM and wait
+        if not submit_fn(context):
             logger.warning("LLM worker queue full during deliberation cycle %d", cycle)
             break
 
@@ -519,48 +481,48 @@ def _run_deliberation_cycle(
 
         last_proposal = proposal
 
-        # 2e. Check ready_to_act
+        # 5. Check ready_to_act
         if proposal.ready_to_act:
             sim_contemplation(
                 gate_passed=True,
-                refined=cycle > 1,
+                refined=True,
                 score=0.0,
             )
-            # Reset refractory to count from cycle end
+            sim_log("DELIBERATION", f"deliberation converged: ready_to_act after {cycle} cycles")
             if thought_gate is not None:
-                thought_gate.reset_refractory(current_tick)
+                thought_gate.reset_refractory(step_num)
             return proposal
 
-        # 2f. Not ready — check convergence before looping
+        # 6. Not ready — check convergence before looping
         reasoning = proposal.reasoning or ""
         keywords = set(reasoning.lower().split())
         recent_keywords.append(keywords)
 
-        if len(recent_keywords) >= 2:
-            if _jaccard_convergence(recent_keywords[-1], recent_keywords[-2]):
-                logger.info("Deliberation converged after %d cycles (Jaccard >= 0.8)", cycle)
-                sim_contemplation(
-                    gate_passed=True,
-                    refined=True,
-                    score=0.0,
-                )
-                if thought_gate is not None:
-                    thought_gate.reset_refractory(current_tick)
-                # Force action from the last proposal
-                return proposal if proposal.action else None
+        if len(recent_keywords) >= 2 and _jaccard_convergence(recent_keywords[-1], recent_keywords[-2]):
+            logger.info("Deliberation converged after %d cycles (Jaccard >= 0.8)", cycle)
+            sim_contemplation(
+                gate_passed=True,
+                refined=True,
+                score=0.0,
+            )
+            sim_log("DELIBERATION", f"deliberation converged (Jaccard) after {cycle} cycles")
+            if thought_gate is not None:
+                thought_gate.reset_refractory(step_num)
+            return proposal if proposal.action else None
 
-        # 2g. Feed reasoning back as next enrichment input
+        # 7. Feed reasoning back for next enrichment
         enrich_text = reasoning
         logger.debug("Deliberation cycle %d: reasoning fed back for enrichment (%d chars)", cycle, len(reasoning))
 
     # Max cycles reached without ready_to_act
     sim_contemplation(
         gate_passed=True,
-        refined=max_cycles > 1,
+        refined=True,
         score=0.0,
     )
+    sim_log("DELIBERATION", f"max cycles ({max_cycles}) reached, forcing action")
     if thought_gate is not None:
-        thought_gate.reset_refractory(current_tick)
+        thought_gate.reset_refractory(step_num)
 
     # Return last proposal if it has an action, otherwise None (IDLE)
     if last_proposal is not None and last_proposal.action:
@@ -890,6 +852,7 @@ def run_agentic_loop(
         _percept_enrichment_text = ""
         _percept_text_for_cycle = ""
         _pfc_gate_passed = False
+        _wms = None
         if bio_enrichment_pipeline is not None or thought_gate is not None:
             try:
                 if hasattr(observation, "get"):
@@ -921,6 +884,10 @@ def run_agentic_loop(
                         log_swallowed_exception(_ge, operation="thought_gate", context={"step": step_num})
                 elif _percept_text_for_cycle:
                     _pfc_gate_passed = bio_enrichment_pipeline is not None
+                    # Resolve WMS for the no-gate path (needed by cycles 2+)
+                    _exec = getattr(agent, "exec_agent", None)
+                    if _exec is not None:
+                        _wms = getattr(_exec, "working_memory", None)
 
                 # Gate-fired minimum: always enrich cycle 1 when gate passes
                 if _pfc_gate_passed and bio_enrichment_pipeline is not None and _percept_text_for_cycle:
@@ -976,12 +943,13 @@ def run_agentic_loop(
             except Exception as e:
                 log_swallowed_exception(e, operation="pfc_enrichment", context={"step": step_num})
 
-        # Log enrichment outcome + reset refractory
+        # Log cycle 1 enrichment outcome + reset refractory.
+        # If multi-cycle deliberation runs at section 6, it logs the
+        # final outcome separately and resets refractory again (idempotent).
         if _pfc_gate_passed and _percept_enrichment_text:
             from maxim.simulation.sim_logger import sim_contemplation
 
             sim_contemplation(gate_passed=True, refined=False, score=0.0)
-            # Reset refractory to count from enrichment completion
             if thought_gate is not None:
                 thought_gate.reset_refractory(step_num)
 
@@ -2529,6 +2497,71 @@ def run_agentic_loop(
                                 },
                             )
                             sim.log("EXEC", f"LLM submit: {new_cli_input[:60] if new_cli_input else 'followup'}")
+
+                        # ── PFC multi-cycle deliberation ──────────────────
+                        # When the gate passed in section 1.2 and the first
+                        # proposal says ready_to_act=False, run cycles 2+
+                        # right here where all submission params are in scope.
+                        if submitted and _pfc_gate_passed and bio_enrichment_pipeline is not None:
+                            _first = _wait_for_proposal(llm_worker, stop_event)
+                            if _first is not None:
+                                if not _first.ready_to_act:
+                                    # Build a submit closure that captures all params
+                                    _submit_kwargs = dict(
+                                        mode=mode_info,
+                                        autonomy_level=autonomy_controller.current_level,
+                                        internet_access=internet_access,
+                                        internet_policy_summary=internet_policy_summary,
+                                        available_tools=available_tools,
+                                        tool_descriptions=tool_descriptions,
+                                        context_pool_text=context_pool_text,
+                                        agent_states=agent_states,
+                                        recent_outcomes=recent_outcomes,
+                                        use_tool_prompting=use_tool_prompting and bool(available_tools),
+                                        triggering_input="",
+                                        conversation_history_text=conversation_history_text,
+                                        pending_modification=None,
+                                        prefetch_context="",
+                                        skip_exploration=False,
+                                        is_sleeping=is_sleeping,
+                                        protocol_context=_protocol_context,
+                                    )
+
+                                    def _submit_fn(_ctx: Any, _kw: dict = _submit_kwargs) -> bool:
+                                        return llm_worker.submit_context(context=_ctx, **_kw)
+
+                                    _active_goal = state.data.get("active_goal") if hasattr(state, "data") else None
+                                    _max_cyc = 3 if percept_source is not None else 2
+                                    _delib = _run_deliberation_cycles(
+                                        first_proposal=_first,
+                                        bio_enrichment=bio_enrichment_pipeline,
+                                        working_memory=_wms,
+                                        context=context,
+                                        submit_fn=_submit_fn,
+                                        llm_worker=llm_worker,
+                                        stop_event=stop_event,
+                                        thought_gate=thought_gate,
+                                        active_goal=_active_goal,
+                                        step_num=step_num,
+                                        max_cycles=_max_cyc,
+                                    )
+                                    if _delib is not None:
+                                        ctrl.pending_proposal = _delib
+                                        sim.log(
+                                            "DELIBERATION",
+                                            f"multi-cycle deliberation yielded proposal: "
+                                            f"tool={_delib.action.get('tool_name') if isinstance(_delib.action, dict) else None}",
+                                        )
+                                    else:
+                                        sim.log("DELIBERATION", "multi-cycle deliberation returned None (IDLE)")
+                                else:
+                                    # ready_to_act == True on cycle 1 — use directly
+                                    ctrl.pending_proposal = _first
+                                    from maxim.simulation.sim_logger import sim_contemplation
+
+                                    sim_contemplation(gate_passed=True, refined=False, score=0.0)
+                                    if thought_gate is not None:
+                                        thought_gate.reset_refractory(step_num)
 
                 except Exception as e:
                     import traceback

@@ -91,6 +91,7 @@ class ExecAgent(Agent):
         # All recent-context producers write through this typed interface.
         from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
 
+        self._agent_id: str | None = agent_id
         self.working_memory = WorkingMemorySet(agent_id=agent_id or "default")
         self._WorkingMemoryKind = WorkingMemoryKind  # stash for use outside __init__
 
@@ -1302,6 +1303,8 @@ Based on this context, what goal should be proposed?"""
 
         # Evaluate ThoughtGate on working memory head
         gate_passed = True  # Default: if no gate, always enrich
+        gate_score = 0.0
+        gate_threshold = 0.0
         if self._thought_gate is not None:
             from maxim.runtime.gating import GatingContext
 
@@ -1328,8 +1331,19 @@ Based on this context, what goal should be proposed?"""
                     "threshold": decision.threshold_used,
                 },
             )
+            gate_score = decision.score.combined
+            gate_threshold = decision.threshold_used
 
         if not gate_passed:
+            from maxim.simulation.sim_logger import sim_pre_deliberation
+
+            sim_pre_deliberation(
+                gate_passed=False,
+                score=gate_score,
+                threshold=gate_threshold,
+                enrichment_sections=0,
+                agent_id=self._agent_id,
+            )
             return ""
 
         # Gate passed — run bio-enrichment on percept text
@@ -1352,6 +1366,27 @@ Based on this context, what goal should be proposed?"""
             if result is not None:
                 formatted = self._bio_enrichment_pipeline.format_thought_response(result)
                 if formatted:
+                    # Count how many bio-system sections contributed
+                    _sections = sum(
+                        1
+                        for field in (
+                            result.memories,
+                            result.predictions,
+                            result.concepts,
+                            result.affordances,
+                            result.recent_context,
+                        )
+                        if field
+                    )
+                    from maxim.simulation.sim_logger import sim_pre_deliberation
+
+                    sim_pre_deliberation(
+                        gate_passed=True,
+                        score=gate_score,
+                        threshold=gate_threshold,
+                        enrichment_sections=_sections,
+                        agent_id=self._agent_id,
+                    )
                     # Record enrichment in working memory as a THOUGHT entry
                     self.working_memory.add(
                         kind=self._WorkingMemoryKind.THOUGHT,
@@ -1482,6 +1517,7 @@ Based on this context, what goal should be proposed?"""
 
         # ThoughtGate is the sole refinement gate.
         # If no gate is wired, fall back to always refining (backwards compat).
+        contemplate_score = 0.0
         if self._thought_gate is not None:
             from maxim.runtime.gating import GatingContext
 
@@ -1495,16 +1531,43 @@ Based on this context, what goal should be proposed?"""
                 context=gate_ctx,
                 current_tick=self.working_memory.current_tick,
             )
+            contemplate_score = decision.score.combined
             if not decision.passed:
+                from maxim.simulation.sim_logger import sim_contemplation
+
+                sim_contemplation(
+                    gate_passed=False,
+                    refined=False,
+                    score=contemplate_score,
+                    agent_id=self._agent_id,
+                )
                 return response, False, False
         else:
             # No gate wired — use old complexity heuristic as fallback
             if not self._should_contemplate(response):
+                from maxim.simulation.sim_logger import sim_contemplation
+
+                sim_contemplation(
+                    gate_passed=False,
+                    refined=False,
+                    score=0.0,
+                    agent_id=self._agent_id,
+                )
                 return response, False, False
 
         draft = response
         refined_response = self._contemplate(response, ctx)
-        return refined_response, True, refined_response is not draft
+        refined = refined_response is not draft
+
+        from maxim.simulation.sim_logger import sim_contemplation
+
+        sim_contemplation(
+            gate_passed=True,
+            refined=refined,
+            score=contemplate_score,
+            agent_id=self._agent_id,
+        )
+        return refined_response, True, refined
 
     def _build_proposed_goal_from_response(self, response: dict[str, Any]) -> ProposedGoal:
         """Convert an LLM JSON response dict into a ``ProposedGoal``."""
