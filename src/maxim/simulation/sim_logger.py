@@ -318,6 +318,7 @@ _COLORS = {
     "ATL": "\033[35;1m",  # Bold magenta
     "SENSORY": "\033[36;1m",  # Bold cyan
     "BODY": "\033[37;1m",  # Bold white
+    "DELIBERATION": "\033[32;1m",  # Bold green
 }
 _RESET = "\033[0m"
 
@@ -352,6 +353,7 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     "REACTION": DisplayTier.BIO,
     "PERCEPT": DisplayTier.BIO,
     "THOUGHT": DisplayTier.BIO,
+    "DELIBERATION": DisplayTier.BIO,
     # Debug-tier: implementation details, tool execution plumbing, pipeline traces.
     "EXEC": DisplayTier.DEBUG,
     "MOTOR": DisplayTier.DEBUG,
@@ -381,6 +383,7 @@ _CHANNEL_MAP: dict[str, set[str]] = {
         "BODY_STATE",
         "CEREBELLUM",
         "THOUGHT",
+        "DELIBERATION",
         "BODY",
         "PERCEPT",
     },
@@ -394,6 +397,7 @@ _CHANNEL_MAP: dict[str, set[str]] = {
         "REACTION",
         "SENSORY",
         "THOUGHT",
+        "DELIBERATION",
         "CEREBELLUM",
     },
     "exec": {"EXEC", "MOTOR", "PIPELINE"},
@@ -865,5 +869,81 @@ def sim_thought(
             "THOUGHT",
             f"deliberation skipped — {reason}",
             {"score": score, "threshold": threshold, "reason": reason},
+            agent_id=agent_id,
+        )
+
+
+def sim_pre_deliberation(
+    gate_passed: bool,
+    score: float,
+    threshold: float,
+    enrichment_sections: int,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a Layer 1 pre-deliberation decision + enrichment summary.
+
+    Shows at BIO display tier.  When the gate passes, shows how many
+    bio-system sections contributed enrichment.  When rejected, shows
+    the score vs threshold.
+    """
+    if gate_passed:
+        sim_log(
+            "THOUGHT",
+            f"pre-deliberation: gate passed (score={score:.2f} >= {threshold:.2f}), "
+            f"{enrichment_sections} enrichment section(s)",
+            {
+                "gate_passed": True,
+                "score": score,
+                "threshold": threshold,
+                "enrichment_sections": enrichment_sections,
+            },
+            agent_id=agent_id,
+        )
+    else:
+        sim_log(
+            "THOUGHT",
+            f"pre-deliberation: gate rejected (score={score:.2f} < {threshold:.2f})",
+            {
+                "gate_passed": False,
+                "score": score,
+                "threshold": threshold,
+                "enrichment_sections": 0,
+            },
+            agent_id=agent_id,
+        )
+
+
+def sim_contemplation(
+    gate_passed: bool,
+    refined: bool,
+    score: float,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a Layer 3 post-proposal contemplation decision.
+
+    Shows at BIO display tier.  Distinguishes gate-rejected,
+    contemplated-but-kept, and contemplated-and-refined outcomes.
+    """
+    if not gate_passed:
+        sim_log(
+            "DELIBERATION",
+            f"contemplation skipped (score={score:.2f})",
+            {"gate_passed": False, "refined": False, "score": score},
+            agent_id=agent_id,
+        )
+    elif refined:
+        sim_log(
+            "DELIBERATION",
+            f"contemplation refined plan (score={score:.2f})",
+            {"gate_passed": True, "refined": True, "score": score},
+            agent_id=agent_id,
+        )
+    else:
+        sim_log(
+            "DELIBERATION",
+            f"contemplation kept original (score={score:.2f})",
+            {"gate_passed": True, "refined": False, "score": score},
             agent_id=agent_id,
         )
