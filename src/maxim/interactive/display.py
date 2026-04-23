@@ -22,8 +22,10 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+import time
 from abc import ABC, abstractmethod
 from collections import deque
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 log = logging.getLogger(__name__)
@@ -67,6 +69,32 @@ class DisplayExtension(ABC):
 
 
 # ---------------------------------------------------------------------------
+# Log entry + thinking state
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class _LogEntry:
+    """Structured log line with agent identity for filtering."""
+
+    agent: str | None  # nickname or None (system)
+    markup: str  # full Rich markup string
+
+
+@dataclass
+class _ThinkingState:
+    """State for the thinking panel — tracks active or completed deliberation."""
+
+    reasoning: str  # Full LLM reasoning text
+    cycle: int  # Current cycle number
+    max_cycles: int  # Hard cap
+    enrichment_tags: list[str] = field(default_factory=list)
+    started_at: float = 0.0  # time.monotonic() for elapsed display
+    agent: str | None = None  # Agent nickname
+    completed: bool = False  # True = show summary instead of live text
+
+
+# ---------------------------------------------------------------------------
 # MaximDisplay
 # ---------------------------------------------------------------------------
 
@@ -92,7 +120,9 @@ class MaximDisplay:
     all emit ``sim_log()`` events routed through ``log()``.
     """
 
-    # Bio subsystems get dim styling; scene/dialogue stays bright
+    # Bio subsystems get dim styling; scene/dialogue stays bright.
+    # PFC subsystems (thought, deliberation) get their own styling —
+    # NOT dimmed, since deliberation events are user-relevant.
     _BIO_SUBSYSTEMS = frozenset(
         {
             "hippo",
@@ -101,7 +131,6 @@ class MaximDisplay:
             "fear",
             "pain",
             "exec",
-            "motor",
             "cerebellum",
             "atl",
             "sensory",
@@ -111,25 +140,47 @@ class MaximDisplay:
             "scn",
             "ec",
             "pipeline",
-            "salience",
         }
     )
 
     def __init__(self, title: str = "Maxim", max_log_lines: int = 500) -> None:
         self._title = title
-        self._log_lines: deque[str] = deque(maxlen=max_log_lines)
+        self._log_lines: deque[_LogEntry] = deque(maxlen=max_log_lines)
         self._status: dict[str, str] = {}
         self._prompt_text: str = ""
         self._extensions: list[DisplayExtension] = []
         self._live: Any = None  # rich.live.Live when active
         self._console: Any = None
         self._lock = threading.RLock()
-        self._scroll_offset: int = 0  # 0 = bottom (newest), positive = scrolled up
         self._prompt_urgent: bool = False  # Gold border when agent is asking a question
         self._scene_title: str = "Constructing Simulation"
         self._scene_description: str = ""
         self._status_style: str = "normal"  # "normal" (gold), "error" (red), "stalled" (grey)
         self._warnings: list[str] = []  # Persistent warnings shown below status bar
+
+        # Thinking panel state
+        self._thinking_state: _ThinkingState | None = None
+        self._thinking_scroll_offset: int = 0  # 0 = bottom, positive = scrolled up
+
+        # Agent focus (Stage 2)
+        self._agent_roster: list[str] = []
+        self._focused_agent: str | None = None  # None = ALL (no filter)
+        self._scroll_offsets: dict[str | None, int] = {}  # per-agent scroll positions
+
+        # Resize presets (Stage 3): (log_ratio, thinking_ratio)
+        self._resize_presets: list[tuple[int, int]] = [
+            (5, 1),
+            (3, 1),
+            (2, 1),
+            (1, 1),
+            (1, 2),
+            (1, 3),
+        ]
+        self._resize_index: int = 1  # default 3:1
+        self._default_resize_index: int = 1  # for collapse-back
+
+        # Scroll target: which panel arrows control
+        self._scroll_target: str = "log"  # "log" or "thinking"
 
         if _RICH_AVAILABLE:
             self._console = Console()
@@ -176,32 +227,40 @@ class MaximDisplay:
         # Scene/dialogue: bold + bright color for tag, white message
         # Bio subsystems: colored tag, grey message (readable but subdued)
         tag_colors = {
-            # Scene/dialogue — bold tags
+            # User input — distinctive so it stands out after Enter
+            "user": "bold green",
+            # Scene/dialogue — bold tags (always bright, never dimmed)
             "scene": "bold yellow",
             "npc": "bold yellow",
-            "choice": "bold white",
+            "choice": "bold cyan",
             "result": "bold green",
             "blocked": "bold red",
             "turn": "bold blue",
-            "summary": "bold white",
+            "summary": "bold cyan",
             "response": "bold green",
             "action": "bold cyan",
-            "info": "white",
-            # Bio subsystems — colored tags (not dim)
+            "info": "dim white",
+            # PFC deliberation — green (matches thinking panel border)
+            "thought": "bold green",
+            "deliberation": "bold green",
+            # Tool execution — cyan (visible action the agent is taking)
+            "motor": "bold cyan",
+            # Bio subsystems — colored tags (message dimmed via _BIO_SUBSYSTEMS)
             "hippo": "cyan",
             "hippocampus": "cyan",
             "nac": "magenta",
             "fear": "red",
             "pain": "red",
             "exec": "green",
-            "motor": "blue",
             "cerebellum": "blue",
             "atl": "magenta",
             "sensory": "cyan",
-            "body": "white",
+            "body": "dim cyan",
             "percept": "cyan",
             "reaction": "magenta",
             "scn": "yellow",
+            "ec": "yellow",
+            "pipeline": "dim white",
         }
         sub_lower = subsystem.lower()
         is_bio = sub_lower in self._BIO_SUBSYSTEMS
@@ -213,15 +272,17 @@ class MaximDisplay:
             agent_prefix = f"[bright_cyan][{agent:>8}][/bright_cyan] " if agent else ""
             # Bio messages in grey (readable but visually recessive)
             if is_bio:
-                line = f"{agent_prefix}{tag} [bright_black]{message}[/bright_black]"
+                markup = f"{agent_prefix}{tag} [bright_black]{message}[/bright_black]"
             else:
-                line = f"{agent_prefix}{tag} {message}"
-            self._log_lines.append(line)
+                markup = f"{agent_prefix}{tag} {message}"
+            self._log_lines.append(_LogEntry(agent=agent, markup=markup))
             # Keep absolute scroll position stable: when scrolled up,
             # each new line pushes the bottom further away, so bump
-            # the offset to compensate.
-            if self._scroll_offset > 0:
-                self._scroll_offset += 1
+            # the offset to compensate.  Bump ALL view and the matching
+            # agent view (if any).
+            for key in (None, agent):
+                if self._scroll_offsets.get(key, 0) > 0:
+                    self._scroll_offsets[key] = self._scroll_offsets[key] + 1
             self._refresh()
 
     def set_status(self, **fields: str) -> None:
@@ -252,7 +313,9 @@ class MaximDisplay:
     def page_height(self) -> int:
         """Approximate visible log lines for page-up scrolling. Thread-safe."""
         with self._lock:
-            return max(10, (self._console.height if self._console else 40) - 10)
+            raw = max(5, (self._console.height if self._console else 40) - 14)
+            log_r, think_r = self._resize_presets[self._resize_index]
+            return max(3, (raw * log_r) // (log_r + think_r))
 
     def set_urgent(self, urgent: bool) -> None:
         """Set prompt urgency (gold border when agent is asking a question). Thread-safe."""
@@ -293,18 +356,191 @@ class MaximDisplay:
     def scroll(self, delta: int) -> None:
         """Scroll the log panel. Positive = up (older), negative = down (newer)."""
         with self._lock:
-            total = len(self._log_lines)
-            # Approximate visible lines (exact is computed in _build_layout)
-            approx_visible = max(5, (self._console.height if self._console else 40) - 10)
+            filtered = self._filtered_log_lines()
+            total = len(filtered)
+            # Approximate visible lines accounting for thinking panel ratio
+            raw_visible = max(5, (self._console.height if self._console else 40) - 14)
+            log_r, think_r = self._resize_presets[self._resize_index]
+            approx_visible = max(3, (raw_visible * log_r) // (log_r + think_r))
             max_offset = max(0, total - approx_visible)
-            self._scroll_offset = max(0, min(max_offset, self._scroll_offset + delta))
+            cur = self._scroll_offsets.get(self._focused_agent, 0)
+            self._scroll_offsets[self._focused_agent] = max(0, min(max_offset, cur + delta))
             self._refresh()
+
+    # Keymap-compatible scroll methods (called by name from _KEYMAP).
+    # These delegate to log or thinking panel based on _scroll_target.
+    def scroll_up(self) -> None:
+        """Scroll active panel up 3 lines."""
+        if self._scroll_target == "thinking":
+            self.scroll_thinking_up()
+        else:
+            self.scroll(3)
+
+    def scroll_down(self) -> None:
+        """Scroll active panel down 3 lines."""
+        if self._scroll_target == "thinking":
+            self.scroll_thinking_down()
+        else:
+            self.scroll(-3)
+
+    def scroll_bottom(self) -> None:
+        """Right arrow: if thinking is active, collapse back to default.
+
+        Otherwise jump to bottom of log panel.
+        """
+        if self._scroll_target == "thinking":
+            with self._lock:
+                self._resize_index = self._default_resize_index
+                self._scroll_target = "log"
+                self._refresh()
+        else:
+            self.scroll(-999999)
+
+    def scroll_page_up(self) -> None:
+        """Page up in log panel."""
+        self.scroll(self.page_height)
 
     def add_extension(self, ext: DisplayExtension) -> None:
         """Register a display extension (adds panels, thread-safe)."""
         with self._lock:
             self._extensions.append(ext)
             self._refresh()
+
+    def set_thinking(
+        self,
+        reasoning: str,
+        cycle: int,
+        max_cycles: int,
+        enrichment_tags: list[str] | None = None,
+        *,
+        agent: str | None = None,
+        completed: bool = False,
+    ) -> None:
+        """Update the thinking panel with deliberation state (thread-safe).
+
+        Args:
+            reasoning: Full LLM reasoning text (or summary if completed).
+            cycle: Current deliberation cycle number.
+            max_cycles: Hard cap on cycles.
+            enrichment_tags: Bio-system names that contributed enrichment.
+            agent: Agent nickname producing this deliberation.
+            completed: If True, show as a completed summary (dim).
+        """
+        with self._lock:
+            self._thinking_state = _ThinkingState(
+                reasoning=reasoning,
+                cycle=cycle,
+                max_cycles=max_cycles,
+                enrichment_tags=enrichment_tags or [],
+                started_at=self._thinking_state.started_at
+                if self._thinking_state is not None and not completed
+                else time.monotonic(),
+                agent=agent,
+                completed=completed,
+            )
+            # Auto-scroll to bottom on new content (not when completing)
+            if not completed:
+                self._thinking_scroll_offset = 0
+            self._refresh()
+
+    def clear_thinking(self) -> None:
+        """Clear the thinking panel (thread-safe)."""
+        with self._lock:
+            self._thinking_state = None
+            self._thinking_scroll_offset = 0
+            self._refresh()
+
+    def scroll_thinking_up(self) -> None:
+        """Scroll the thinking panel up (older). Thread-safe."""
+        with self._lock:
+            self._thinking_scroll_offset = max(0, self._thinking_scroll_offset + 3)
+            self._refresh()
+
+    def scroll_thinking_down(self) -> None:
+        """Scroll the thinking panel down (newer). Thread-safe."""
+        with self._lock:
+            self._thinking_scroll_offset = max(0, self._thinking_scroll_offset - 3)
+            self._refresh()
+
+    def register_agent(self, nickname: str) -> None:
+        """Register an agent nickname for the roster (thread-safe).
+
+        Appends only if not already present — preserves ordering stability.
+        """
+        with self._lock:
+            if nickname not in self._agent_roster:
+                self._agent_roster.append(nickname)
+
+    # -- Agent focus (Stage 2) -----------------------------------------------
+
+    def focus_next(self) -> None:
+        """Cycle agent focus forward: ALL -> AUT -> ORCH -> NPC1 -> ... -> ALL. Thread-safe."""
+        with self._lock:
+            if not self._agent_roster:
+                return
+            if self._focused_agent is None:
+                self._focused_agent = self._agent_roster[0]
+            else:
+                try:
+                    idx = self._agent_roster.index(self._focused_agent)
+                    if idx + 1 >= len(self._agent_roster):
+                        self._focused_agent = None  # wrap to ALL
+                    else:
+                        self._focused_agent = self._agent_roster[idx + 1]
+                except ValueError:
+                    self._focused_agent = None
+            self._refresh()
+
+    def focus_prev(self) -> None:
+        """Cycle agent focus backward. Thread-safe."""
+        with self._lock:
+            if not self._agent_roster:
+                return
+            if self._focused_agent is None:
+                self._focused_agent = self._agent_roster[-1]
+            else:
+                try:
+                    idx = self._agent_roster.index(self._focused_agent)
+                    if idx == 0:
+                        self._focused_agent = None  # wrap to ALL
+                    else:
+                        self._focused_agent = self._agent_roster[idx - 1]
+                except ValueError:
+                    self._focused_agent = None
+            self._refresh()
+
+    def _filtered_log_lines(self) -> list[_LogEntry]:
+        """Return log lines filtered by focused agent. Caller must hold _lock."""
+        entries = list(self._log_lines)
+        if self._focused_agent is None:
+            return entries
+        return [e for e in entries if e.agent is None or e.agent == self._focused_agent]
+
+    # -- Layout resize (Stage 3) ---------------------------------------------
+
+    def resize_thinking_more(self) -> None:
+        """Increase thinking panel ratio (decrease log). Thread-safe.
+
+        Expanding above default switches arrow scrolling to the thinking panel.
+        """
+        with self._lock:
+            if self._resize_index < len(self._resize_presets) - 1:
+                self._resize_index += 1
+                if self._resize_index > self._default_resize_index:
+                    self._scroll_target = "thinking"
+                self._refresh()
+
+    def resize_thinking_less(self) -> None:
+        """Decrease thinking panel ratio (increase log). Thread-safe.
+
+        Shrinking to default or below switches arrow scrolling back to log.
+        """
+        with self._lock:
+            if self._resize_index > 0:
+                self._resize_index -= 1
+                if self._resize_index <= self._default_resize_index:
+                    self._scroll_target = "log"
+                self._refresh()
 
     def _refresh(self) -> None:
         """Rebuild and update the live display. Caller must hold _lock."""
@@ -341,7 +577,14 @@ class MaximDisplay:
             "stalled": "grey50",
         }
         status_border = _status_colors.get(self._status_style, "dark_goldenrod")
-        status_text = "  ".join(f"{k}: {v}" for k, v in self._status.items())
+        status_parts = [f"{k}: {v}" for k, v in self._status.items()]
+        # Agent focus indicator
+        focus_label = self._focused_agent or "ALL"
+        status_parts.append(f"Agent: {focus_label}")
+        # Layout preset indicator
+        log_r, think_r = self._resize_presets[self._resize_index]
+        status_parts.append(f"Layout: {log_r}:{think_r}")
+        status_text = "  ".join(status_parts)
         status_panel = Panel(
             Text(status_text or "Ready", style="bold"),
             border_style=status_border,
@@ -360,33 +603,52 @@ class MaximDisplay:
                 height=warnings_height,
             )
 
-        # Compute how many log lines fit: terminal height minus fixed panels.
+        # Compute how many lines fit: terminal height minus fixed panels.
         try:
             term_height = self._console.height if self._console else 40
         except Exception:
             term_height = 40
         prompt_lines = self._prompt_text.count("\n") + 1 if self._prompt_text else 1
         input_height = max(4, prompt_lines + 3)
-        visible_lines = max(5, term_height - title_height - 3 - warnings_height - input_height - 4)
+        # Total flexible space for log + thinking body
+        body_lines = max(8, term_height - title_height - 3 - warnings_height - input_height - 4)
 
-        # Log panel with scroll support
-        all_lines = list(self._log_lines)
-        total = len(all_lines)
-        if self._scroll_offset > 0:
-            end = total - self._scroll_offset
-            start = max(0, end - visible_lines)
-            visible = all_lines[start:end]
+        # Split body between log and thinking using resize presets
+        log_ratio, thinking_ratio = self._resize_presets[self._resize_index]
+        total_ratio = log_ratio + thinking_ratio
+        # -4 accounts for the two panel borders (2 lines each)
+        usable_body = max(4, body_lines - 4)
+        visible_log_lines = max(3, (usable_body * log_ratio) // total_ratio)
+        visible_thinking_lines = max(2, usable_body - visible_log_lines)
+
+        # Log panel with scroll support + agent filtering
+        all_entries = self._filtered_log_lines()
+        total = len(all_entries)
+        scroll_offset = self._scroll_offsets.get(self._focused_agent, 0)
+        if scroll_offset > 0:
+            end = total - scroll_offset
+            start = max(0, end - visible_log_lines)
+            visible = all_entries[start:end]
             scroll_indicator = f" [{start + 1}-{end}/{total}]"
         else:
-            visible = all_lines[-visible_lines:]
+            visible = all_entries[-visible_log_lines:]
+            start = max(0, total - visible_log_lines)
             scroll_indicator = ""
-        log_text = "\n".join(visible) or "(no log entries)"
+        lines = [e.markup for e in visible]
+        # Show top-of-log indicator when scrolled to the first entry
+        if scroll_offset > 0 and start == 0:
+            lines.insert(0, "[dim italic]-- top of log --[/dim italic]")
+        log_text = "\n".join(lines) or "(no log entries)"
         log_title = f"Agent Log{scroll_indicator}"
+        log_active = self._scroll_target == "log"
         log_panel = Panel(
             Text.from_markup(log_text),
             title=log_title,
-            border_style="dim",
+            border_style="green" if log_active else "dim",
         )
+
+        # Thinking panel
+        thinking_panel = self._build_thinking_panel(visible_thinking_lines)
 
         # Input panel — dynamically sized to fit the prompt content
         prompt_display = self._prompt_text or "> _"
@@ -416,7 +678,7 @@ class MaximDisplay:
                     pass
 
             if ext_renderables:
-                # Two-column layout: log left, extensions right
+                # Two-column layout: left column (log+thinking), extensions right
                 layout = Layout()
                 ext_panels = [
                     Layout(title_panel, size=title_height),
@@ -429,24 +691,102 @@ class MaximDisplay:
                     Layout(name="body"),
                     Layout(input_panel, size=input_height),
                 )
+                # Left column splits into log + thinking rows
+                left_col = Layout(name="left_col")
+                left_col.split_column(
+                    Layout(log_panel, ratio=log_ratio),
+                    Layout(thinking_panel, ratio=thinking_ratio),
+                )
                 layout["body"].split_row(
-                    Layout(log_panel, ratio=2),
+                    left_col,
                     Layout(*ext_renderables if len(ext_renderables) == 1 else ext_renderables[0], ratio=1),
                 )
                 return layout
 
-        # Layout: scene + status + [warnings] + log + input
+        # Layout: scene + status + [warnings] + body (log + thinking) + input
         layout = Layout()
+        body = Layout(name="body")
+        body.split_column(
+            Layout(log_panel, ratio=log_ratio),
+            Layout(thinking_panel, ratio=thinking_ratio),
+        )
         panels = [
             Layout(title_panel, size=title_height),
             Layout(status_panel, size=3),
         ]
         if warnings_panel is not None:
             panels.append(Layout(warnings_panel, size=warnings_height))
-        panels.append(Layout(log_panel))
+        panels.append(body)
         panels.append(Layout(input_panel, size=input_height))
         layout.split_column(*panels)
         return layout
+
+    def _build_thinking_panel(self, visible_lines: int) -> Any:
+        """Build the thinking panel renderable."""
+        if not _RICH_AVAILABLE:
+            return ""
+
+        thinking_active = self._scroll_target == "thinking"
+
+        state = self._thinking_state
+        if state is None:
+            border = "green" if thinking_active else "bright_black"
+            return Panel(
+                Text("No active deliberation", style="bright_black"),
+                title="Thinking",
+                border_style=border,
+            )
+
+        # Header: cycle indicator + elapsed + enrichment tags
+        elapsed = time.monotonic() - state.started_at
+        if state.completed:
+            header = f"[dim]Deliberated {state.cycle} cycle(s) in {elapsed:.1f}s[/dim]"
+        else:
+            header = f"[bold green]Cycle {state.cycle}/{state.max_cycles}[/bold green] [dim]{elapsed:.1f}s[/dim]"
+        if state.enrichment_tags:
+            tags_str = ", ".join(state.enrichment_tags)
+            header += f"  [dim cyan]enriched: {tags_str}[/dim cyan]"
+        if state.agent:
+            header = f"[bright_cyan][{state.agent}][/bright_cyan] {header}"
+
+        # Reasoning text with scroll support
+        reasoning_lines = state.reasoning.split("\n") if state.reasoning else []
+        total_reasoning = len(reasoning_lines)
+        # Reserve 1-2 lines for header (+ hint when active)
+        hint_lines = 1 if thinking_active else 0
+        content_lines = max(1, visible_lines - 1 - hint_lines)
+
+        if self._thinking_scroll_offset > 0:
+            end = max(0, total_reasoning - self._thinking_scroll_offset)
+            start = max(0, end - content_lines)
+            visible = reasoning_lines[start:end]
+        else:
+            visible = reasoning_lines[-content_lines:]
+
+        reasoning_text = "\n".join(visible) if visible else ""
+        style = "bright_black" if state.completed else "white"
+        content = f"{header}\n[{style}]{reasoning_text}[/{style}]" if reasoning_text else header
+
+        # Hint when thinking panel is the active scroll target
+        if thinking_active:
+            content += "\n[dim italic]press right arrow to return to logs[/dim italic]"
+
+        # Border: green when active scroll target, dim otherwise
+        if thinking_active:
+            border = "green"
+        elif state.completed:
+            border = "bright_black"
+        else:
+            border = "dim"
+        title = "Thinking"
+        if self._thinking_scroll_offset > 0 and total_reasoning > content_lines:
+            title += f" [{total_reasoning - self._thinking_scroll_offset}/{total_reasoning}]"
+
+        return Panel(
+            Text.from_markup(content),
+            title=title,
+            border_style=border,
+        )
 
 
 # ---------------------------------------------------------------------------

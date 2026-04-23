@@ -87,9 +87,17 @@ _nickname_lock = threading.Lock()
 
 
 def register_agent_nickname(agent_id: str, nickname: str) -> None:
-    """Register a display nickname for an agent_id."""
+    """Register a display nickname for an agent_id.
+
+    Also registers the nickname with the active display's agent roster
+    (for future agent-focus filtering in Stage 2).
+    """
     with _nickname_lock:
         _agent_nicknames[agent_id] = nickname
+    # Register with display roster (outside nickname lock to avoid deadlock)
+    display = get_active_display()
+    if display is not None:
+        display.register_agent(nickname)
 
 
 def get_agent_nickname(agent_id: str | None) -> str | None:
@@ -306,10 +314,11 @@ _COLORS = {
     "NAc": "\033[33m",  # Yellow
     "FEAR": "\033[31m",  # Red
     "PAIN": "\033[31;1m",  # Bold red
-    "THOUGHT": "\033[32;2m",  # Dim green
+    "THOUGHT": "\033[32;1m",  # Bold green
+    "DELIBERATION": "\033[32;1m",  # Bold green
     "EXEC": "\033[32m",  # Green
-    "MOTOR": "\033[34m",  # Blue
-    "SALIENCE": "\033[33;1m",  # Bold yellow
+    "MOTOR": "\033[36;1m",  # Bold cyan
+    "REACTION": "\033[35m",  # Magenta
     "SCN": "\033[37m",  # White
     "PIPELINE": "\033[37;2m",  # Dim white
     "RESULT": "\033[32;1m",  # Bold green
@@ -317,8 +326,15 @@ _COLORS = {
     "CEREBELLUM": "\033[34;1m",  # Bold blue
     "ATL": "\033[35;1m",  # Bold magenta
     "SENSORY": "\033[36;1m",  # Bold cyan
-    "BODY": "\033[37;1m",  # Bold white
-    "DELIBERATION": "\033[32;1m",  # Bold green
+    "BODY": "\033[36;2m",  # Dim cyan
+    "SCENE": "\033[33;1m",  # Bold yellow
+    "NPC": "\033[33;1m",  # Bold yellow
+    "CHOICE": "\033[36;1m",  # Bold cyan
+    "TURN": "\033[34;1m",  # Bold blue
+    "ACTION": "\033[36;1m",  # Bold cyan
+    "RESPONSE": "\033[32;1m",  # Bold green
+    "INFO": "\033[37;2m",  # Dim white
+    "USER": "\033[32;1m",  # Bold green
 }
 _RESET = "\033[0m"
 
@@ -334,11 +350,19 @@ _RESET = "\033[0m"
 # code emitting to sim_log surfaces by default (opt-out rather than opt-in).
 _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     # Clean-tier: narrative events visible at ALL display levels including clean.
+    # Also includes user-facing UI events (turn, info, action, response, summary)
+    # so user input/output is never hidden.
     "SCENE": DisplayTier.CLEAN,
     "NPC": DisplayTier.CLEAN,
     "CHOICE": DisplayTier.CLEAN,
     "RESULT": DisplayTier.CLEAN,
     "BLOCKED": DisplayTier.CLEAN,
+    "TURN": DisplayTier.CLEAN,
+    "INFO": DisplayTier.CLEAN,
+    "ACTION": DisplayTier.CLEAN,
+    "RESPONSE": DisplayTier.CLEAN,
+    "SUMMARY": DisplayTier.CLEAN,
+    "USER": DisplayTier.CLEAN,
     # Bio-tier: biological subsystem annotations visible at --display bio+.
     "HIPPOCAMPUS": DisplayTier.BIO,
     "NAc": DisplayTier.BIO,
@@ -354,11 +378,10 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     "PERCEPT": DisplayTier.BIO,
     "THOUGHT": DisplayTier.BIO,
     "DELIBERATION": DisplayTier.BIO,
-    # Debug-tier: implementation details, tool execution plumbing, pipeline traces.
+    "MOTOR": DisplayTier.BIO,
+    # Debug-tier: implementation details, pipeline traces.
     "EXEC": DisplayTier.DEBUG,
-    "MOTOR": DisplayTier.DEBUG,
     "PIPELINE": DisplayTier.DEBUG,
-    "SALIENCE": DisplayTier.DEBUG,
 }
 
 _sim_active = False
@@ -500,7 +523,10 @@ class _DisplayLoggingHandler(logging.Handler):
                         self._display.warn(record.getMessage())
                     return
 
-            self._display.log("info", msg)
+            if record.levelno >= logging.ERROR:
+                self._display.log("blocked", msg)
+            else:
+                self._display.log("info", msg)
         except Exception:
             pass
 
@@ -946,4 +972,60 @@ def sim_contemplation(
             f"contemplation kept original (score={score:.2f})",
             {"gate_passed": True, "refined": False, "score": score},
             agent_id=agent_id,
+        )
+
+
+def sim_deliberation_update(
+    reasoning: str,
+    cycle: int,
+    max_cycles: int,
+    enrichment_tags: list[str] | None = None,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Push deliberation reasoning text to the thinking panel.
+
+    Called at each deliberation cycle boundary to update the live
+    thinking panel with the LLM's full reasoning text and enrichment
+    metadata.  Also logs a DELIBERATION entry for JSONL persistence.
+    """
+    if agent_id is None:
+        agent_id = _current_agent_id.get(None)
+    nickname = get_agent_nickname(agent_id)
+
+    display = get_active_display()
+    if display is not None:
+        display.set_thinking(
+            reasoning=reasoning,
+            cycle=cycle,
+            max_cycles=max_cycles,
+            enrichment_tags=enrichment_tags,
+            agent=nickname,
+        )
+
+
+def sim_deliberation_end(
+    cycle: int,
+    max_cycles: int,
+    summary: str = "",
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Mark deliberation as completed in the thinking panel.
+
+    Called when deliberation finishes (ready_to_act, convergence, or
+    max cycles).  Sets the thinking panel to a completed summary view.
+    """
+    if agent_id is None:
+        agent_id = _current_agent_id.get(None)
+    nickname = get_agent_nickname(agent_id)
+
+    display = get_active_display()
+    if display is not None:
+        display.set_thinking(
+            reasoning=summary or f"Deliberation complete after {cycle} cycle(s)",
+            cycle=cycle,
+            max_cycles=max_cycles,
+            agent=nickname,
+            completed=True,
         )

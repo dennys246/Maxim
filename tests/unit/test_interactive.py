@@ -293,7 +293,7 @@ class TestDisplayRouting:
         set_display_tier(DisplayTier.CLEAN)
 
         assert len(d._log_lines) >= 1
-        assert "test capture" in d._log_lines[-1]
+        assert "test capture" in d._log_lines[-1].markup
 
     def test_sim_log_falls_back_when_no_display(self, capsys):
         from maxim.simulation.sim_logger import (
@@ -325,7 +325,7 @@ class TestDisplayRouting:
         display_scene("The tavern door opens.")
 
         assert len(d._log_lines) >= 1
-        assert "tavern" in d._log_lines[-1].lower()
+        assert "tavern" in d._log_lines[-1].markup.lower()
 
     def test_display_turn_updates_status(self):
         from maxim.interactive.display import MaximDisplay

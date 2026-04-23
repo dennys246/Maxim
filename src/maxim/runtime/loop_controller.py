@@ -213,6 +213,19 @@ class LoopController:
                 pass
         return set()
 
+    @staticmethod
+    def _clear_confirmation_prompt() -> None:
+        """Reset the input panel after a confirmation is resolved."""
+        try:
+            from maxim.simulation.sim_logger import get_active_display
+
+            display = get_active_display()
+            if display is not None:
+                display.set_prompt("> ")
+                display.set_urgent(False)
+        except Exception:
+            pass
+
     # ── Phase: Handle confirmation input ─────────────────────────────────
 
     def handle_confirmation(self, cli_text: str) -> bool:
@@ -254,7 +267,7 @@ class LoopController:
                     confirmed_success = True
                     display_action(pc.tool_name, pc.params or {})
                     if output:
-                        display_status(f"Result: {str(output)[:200]}")
+                        display_status(f"Result: {str(output)}")
                 else:
                     display_status(f"Action failed: {error_msg or 'unknown error'}")
 
@@ -291,6 +304,7 @@ class LoopController:
             self.state.data.pop("pending_cli_input", None)
             self.clear_pending_user_input()
             self.pending_proposal = None
+            self._clear_confirmation_prompt()
             return True
 
         elif response in ("no", "n", "cancel", "reject", "abort"):
@@ -317,6 +331,7 @@ class LoopController:
             self.set_pending_confirmation(None)
             self.clear_pending_user_input()
             self.pending_proposal = None
+            self._clear_confirmation_prompt()
             return True
 
         else:
@@ -335,10 +350,9 @@ class LoopController:
                 "timestamp": time.time(),
             }
             self.set_pending_confirmation(None)
-            display_status(
-                f'Modification requested — revising action based on: "{cli_text[:80]}{"..." if len(cli_text) > 80 else ""}"'
-            )
+            display_status(f'Modification requested — revising action based on: "{cli_text}"')
             self.clear_pending_user_input()
+            self._clear_confirmation_prompt()
             return True
 
     # ── Phase: Handle timeout retry ──────────────────────────────────────

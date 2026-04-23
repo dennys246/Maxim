@@ -456,7 +456,7 @@ class SimPromptHandler(PromptHandler):
 
                 # Log the response
                 try:
-                    _emit(f"  You answered: {response}", "scene")
+                    _emit(f"You answered: {response}", "user")
                 except Exception:
                     pass
 

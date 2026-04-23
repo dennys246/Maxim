@@ -395,7 +395,13 @@ def _run_deliberation_cycles(
     Returns:
         LLMProposal or None.
     """
-    from maxim.simulation.sim_logger import sim_log, sim_pre_deliberation, sim_contemplation
+    from maxim.simulation.sim_logger import (
+        sim_log,
+        sim_pre_deliberation,
+        sim_contemplation,
+        sim_deliberation_update,
+        sim_deliberation_end,
+    )
 
     recent_keywords: list[set[str]] = []
     last_proposal = first_proposal
@@ -405,6 +411,9 @@ def _run_deliberation_cycles(
     recent_keywords.append(set(reasoning_1.lower().split()))
 
     enrich_text = reasoning_1
+
+    # Push cycle 1 reasoning to thinking panel
+    sim_deliberation_update(reasoning_1, cycle=1, max_cycles=max_cycles)
 
     # Cycles 2..max_cycles
     for cycle in range(2, max_cycles + 1):
@@ -435,6 +444,19 @@ def _run_deliberation_cycles(
             if f
         )
 
+        # Derive enrichment tag names for thinking panel
+        _enrich_tags: list[str] = []
+        if enrich_result.memories:
+            _enrich_tags.append("hippocampus")
+        if enrich_result.predictions:
+            _enrich_tags.append("nac")
+        if enrich_result.concepts:
+            _enrich_tags.append("ec")
+        if enrich_result.affordances:
+            _enrich_tags.append("cerebellum")
+        if enrich_result.recent_context:
+            _enrich_tags.append("scn")
+
         sim_pre_deliberation(
             gate_passed=True,
             score=0.0,
@@ -444,6 +466,12 @@ def _run_deliberation_cycles(
         sim_log(
             "DELIBERATION",
             f"cycle {cycle}: {n_sections} enrichment section(s) from reasoning ({len(enrich_text)} chars)",
+        )
+        sim_deliberation_update(
+            enrich_text,
+            cycle=cycle,
+            max_cycles=max_cycles,
+            enrichment_tags=_enrich_tags,
         )
 
         # 2. Add THOUGHT to working memory
@@ -489,6 +517,7 @@ def _run_deliberation_cycles(
                 score=0.0,
             )
             sim_log("DELIBERATION", f"deliberation converged: ready_to_act after {cycle} cycles")
+            sim_deliberation_end(cycle=cycle, max_cycles=max_cycles, summary=f"Ready to act after {cycle} cycles")
             if thought_gate is not None:
                 thought_gate.reset_refractory(step_num)
             return proposal
@@ -506,6 +535,9 @@ def _run_deliberation_cycles(
                 score=0.0,
             )
             sim_log("DELIBERATION", f"deliberation converged (Jaccard) after {cycle} cycles")
+            sim_deliberation_end(
+                cycle=cycle, max_cycles=max_cycles, summary=f"Converged (Jaccard) after {cycle} cycles"
+            )
             if thought_gate is not None:
                 thought_gate.reset_refractory(step_num)
             return proposal if proposal.action else None
@@ -521,6 +553,9 @@ def _run_deliberation_cycles(
         score=0.0,
     )
     sim_log("DELIBERATION", f"max cycles ({max_cycles}) reached, forcing action")
+    sim_deliberation_end(
+        cycle=max_cycles, max_cycles=max_cycles, summary=f"Max cycles ({max_cycles}) reached, forcing action"
+    )
     if thought_gate is not None:
         thought_gate.reset_refractory(step_num)
 
@@ -915,10 +950,29 @@ def run_agentic_loop(
                             )
                             if _f
                         )
-                        from maxim.simulation.sim_logger import sim_pre_deliberation
+                        from maxim.simulation.sim_logger import sim_pre_deliberation, sim_deliberation_update
 
                         sim_pre_deliberation(
                             gate_passed=True, score=0.0, threshold=0.0, enrichment_sections=_n_sections
+                        )
+                        # Push cycle 1 enrichment to thinking panel
+                        _c1_tags: list[str] = []
+                        if _enrich_result.memories:
+                            _c1_tags.append("hippocampus")
+                        if _enrich_result.predictions:
+                            _c1_tags.append("nac")
+                        if _enrich_result.concepts:
+                            _c1_tags.append("ec")
+                        if _enrich_result.affordances:
+                            _c1_tags.append("cerebellum")
+                        if _enrich_result.recent_context:
+                            _c1_tags.append("scn")
+                        _max_cyc_for_display = 3 if getattr(state, "data", {}).get("percept_source") else 2
+                        sim_deliberation_update(
+                            _percept_text_for_cycle,
+                            cycle=1,
+                            max_cycles=_max_cyc_for_display,
+                            enrichment_tags=_c1_tags,
                         )
                         # Add THOUGHT to working memory
                         if _wms is not None and _percept_enrichment_text:
@@ -2055,13 +2109,22 @@ def run_agentic_loop(
                             display_scene(f"\n  Action requires confirmation: {tool_name}")
                             param_lines = []
                             for key, value in params.items():
-                                dv = str(value)[:200]
-                                param_lines.append(f"    {key}: {dv}")
+                                param_lines.append(f"    {key}: {str(value)}")
                             if param_lines:
                                 display_scene("\n".join(param_lines))
                             if ctrl.pending_proposal.reasoning:
                                 display_scene(f"  Reasoning: {ctrl.pending_proposal.reasoning}")
-                            display_scene("  Type 'yes' or 'no' to confirm/reject:")
+                            # Show confirmation prompt in the input panel so typed
+                            # characters are visible with question context.
+                            try:
+                                from maxim.simulation.sim_logger import get_active_display
+
+                                _conf_display = get_active_display()
+                                if _conf_display is not None:
+                                    _conf_display.set_prompt(f"Confirm {tool_name}? Type 'yes' or 'no'\n\n> ")
+                                    _conf_display.set_urgent(True)
+                            except Exception:
+                                display_scene("  Type 'yes' or 'no' to confirm/reject:")
                         else:
                             # Non-interactive: auto-approve via supervision policy
                             state.data["pending_cli_input"] = "yes"
@@ -2543,7 +2606,7 @@ def run_agentic_loop(
                                     "tools_available": len(available_tools),
                                 },
                             )
-                            sim.log("EXEC", f"LLM submit: {new_cli_input[:60] if new_cli_input else 'followup'}")
+                            sim.log("EXEC", f"LLM submit: {new_cli_input if new_cli_input else 'followup'}")
 
                         # ── PFC multi-cycle deliberation ──────────────────
                         # When the gate passed in section 1.2 and the first
@@ -2552,6 +2615,7 @@ def run_agentic_loop(
                         if submitted and _pfc_gate_passed and bio_enrichment_pipeline is not None:
                             _first = _wait_for_proposal(llm_worker, stop_event)
                             if _first is not None:
+                                _max_cyc = 3 if percept_source is not None else 2
                                 if not _first.ready_to_act:
                                     # Build a submit closure that captures all params
                                     _submit_kwargs = dict(
@@ -2578,7 +2642,6 @@ def run_agentic_loop(
                                         return llm_worker.submit_context(context=_ctx, **_kw)
 
                                     _active_goal = state.data.get("active_goal") if hasattr(state, "data") else None
-                                    _max_cyc = 3 if percept_source is not None else 2
                                     _delib = _run_deliberation_cycles(
                                         first_proposal=_first,
                                         bio_enrichment=bio_enrichment_pipeline,
@@ -2604,9 +2667,10 @@ def run_agentic_loop(
                                 else:
                                     # ready_to_act == True on cycle 1 — use directly
                                     ctrl.pending_proposal = _first
-                                    from maxim.simulation.sim_logger import sim_contemplation
+                                    from maxim.simulation.sim_logger import sim_contemplation, sim_deliberation_end
 
                                     sim_contemplation(gate_passed=True, refined=False, score=0.0)
+                                    sim_deliberation_end(cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)")
                                     if thought_gate is not None:
                                         thought_gate.reset_refractory(step_num)
 
