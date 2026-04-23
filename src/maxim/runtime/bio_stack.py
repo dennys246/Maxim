@@ -70,6 +70,8 @@ class BioStack:
     reaction_bus: ReactionBus
     cerebellum: Any  # Cerebellum | None — optional dep
     default_network: Any  # DefaultNetwork | None — optional dep
+    thought_gate: Any  # ThoughtGate | None — PFC deliberation gate
+    bio_enrichment_pipeline: Any  # BioEnrichmentPipeline | None — PFC enrichment
 
     def save_cerebellum(self) -> None:
         """Save cerebellum state to its persistence path, if configured.
@@ -303,6 +305,31 @@ def build_bio_stack(
 
     reaction_bus.subscribe_all(_distribute_reward_from_reaction)
 
+    # -- Step 4e: ThoughtGate + BioEnrichmentPipeline -----------------------
+    # Non-optional when bio-stack is active.  ThoughtGate gates on
+    # novelty × salience × energy.  BioEnrichmentPipeline enriches text
+    # via hippocampus, NAc, ATL, EC.  Both depend only on systems already
+    # constructed above (no try/except — failure propagates).
+    thought_gate = None
+    bio_enrichment_pipeline = None
+    try:
+        from maxim.integration.bio_enrichment import BioEnrichmentPipeline
+        from maxim.runtime.gating import TextSalienceScorer
+        from maxim.runtime.thought_gate import ThoughtGate
+
+        _text_scorer = TextSalienceScorer(ec=ec, nac=nac)
+        bio_enrichment_pipeline = BioEnrichmentPipeline(
+            scorer=_text_scorer,
+            hippocampus=hippocampus,
+            nac=nac,
+            atl=atl,
+            ec=ec,
+        )
+        thought_gate = ThoughtGate(scorer=_text_scorer)
+        logger.info("ThoughtGate + BioEnrichmentPipeline constructed in bio-stack")
+    except Exception as e:
+        logger.warning("ThoughtGate/BioEnrichmentPipeline construction failed: %s", e)
+
     # -- Step 5: DefaultNetwork (optional) ---------------------------------
     default_network = None
     if with_default_network:
@@ -330,6 +357,8 @@ def build_bio_stack(
         reaction_bus=reaction_bus,
         cerebellum=cerebellum,
         default_network=default_network,
+        thought_gate=thought_gate,
+        bio_enrichment_pipeline=bio_enrichment_pipeline,
     )
 
 

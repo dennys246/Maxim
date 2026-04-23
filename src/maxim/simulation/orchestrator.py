@@ -528,6 +528,13 @@ def start_simulation_mode(
     aut_nac = _aut_instance.nac
     aut_memory_hub = _aut_instance.memory_hub
     aut_executor = _aut_instance.executor
+    # PFC deliberation: ThoughtGate + BioEnrichmentPipeline from BioStack
+    # (constructed in build_bio_stack, no longer sim-only).
+    _aut_bio_stack = _aut_instance.bio_stack
+    aut_bio_enrichment_pipeline = (
+        getattr(_aut_bio_stack, "bio_enrichment_pipeline", None) if _aut_bio_stack is not None else None
+    )
+    _aut_thought_gate = getattr(_aut_bio_stack, "thought_gate", None) if _aut_bio_stack is not None else None
 
     if aut_memory_hub is not None:
         aut_agent.wire_memory_hub(aut_memory_hub)
@@ -646,42 +653,16 @@ def start_simulation_mode(
     # --- AUT narrative tools (sim-only) ---
     # Let the AUT speak in-world, reason explicitly, and examine scene details.
     # ThinkTool gets the BioEnrichmentPipeline for L1 enrichment.
-    aut_bio_enrichment_pipeline = None
-    try:
-        from maxim.integration.bio_enrichment import BioEnrichmentPipeline
-        from maxim.runtime.gating import TextSalienceScorer
-
-        _aut_atl = getattr(aut_memory_hub, "atl", None) if aut_memory_hub else None
-        _aut_ec = getattr(aut_memory_hub, "ec", None) if aut_memory_hub else None
-
-        _aut_text_scorer = TextSalienceScorer(ec=_aut_ec, nac=aut_nac)
-        aut_bio_enrichment_pipeline = BioEnrichmentPipeline(
-            scorer=_aut_text_scorer,
-            hippocampus=aut_hippocampus,
-            nac=aut_nac,
-            atl=_aut_atl,
-            ec=_aut_ec,
-        )
-        logger.info("AUT BioEnrichmentPipeline constructed (L1)")
-
-        # Stage 2: ThoughtGate — gates Exec deliberation on novelty/salience.
-        # Reuses the same TextSalienceScorer built for BioEnrichmentPipeline.
-        from maxim.runtime.thought_gate import ThoughtGate
-
-        _aut_thought_gate = ThoughtGate(scorer=_aut_text_scorer)
-        aut_agent.exec_agent.wire_thought_gate(_aut_thought_gate)
-        # Layer 1: Wire BioEnrichmentPipeline into ExecAgent for pre-LLM
-        # deliberation.  When ThoughtGate fires on a novel/salient percept,
-        # the pipeline enriches the percept BEFORE the LLM call so bio-system
-        # associations (memories, predictions, concepts) inform the proposal.
-        aut_agent.exec_agent.wire_bio_enrichment(aut_bio_enrichment_pipeline)
+    # NOTE: ThoughtGate + BioEnrichmentPipeline now come from BioStack
+    # (constructed in build_bio_stack, extracted above). The dead
+    # wire_thought_gate / wire_bio_enrichment calls to ExecAgent are
+    # removed — deliberation lives in the agentic loop's PFC cycle.
+    if _aut_thought_gate is not None:
         logger.info(
-            "AUT ThoughtGate + BioEnrichment wired (Layer 1, refractory=%d, min_score=%.1f)",
+            "AUT ThoughtGate + BioEnrichment from BioStack (refractory=%d, min_score=%.1f)",
             _aut_thought_gate._config.refractory_ticks,
             _aut_thought_gate._config.min_combined_score,
         )
-    except Exception as e:
-        logger.debug("BioEnrichmentPipeline construction failed (optional): %s", e)
 
     try:
         from maxim.tools.narrative import ExamineTool, SayTool, ThinkTool
@@ -1270,6 +1251,7 @@ def start_simulation_mode(
                     pain_bus=aut_pain_bus,
                     imagination_trigger=aut_imagination_trigger,
                     bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
+                    thought_gate=_aut_thought_gate,
                 )
         except Exception as e:
             aut_error.append(e)

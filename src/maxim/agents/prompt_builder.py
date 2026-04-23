@@ -496,6 +496,7 @@ def build_instructions_section(request: LLMRequest) -> str:
         lines.extend(
             [
                 "Respond with a compact JSON object. IMPORTANT: Put fields in this order:",
+                '  "ready_to_act": true/false (true when you need to call a tool, speak, or move; false to keep thinking)',
                 '  "action": {"tool_name": "<tool>", "params": {...}}',
                 '  "confidence": 0.0-1.0',
                 '  "reasoning": "Brief explanation (1 sentence)"',
@@ -812,11 +813,13 @@ class PromptBuilder:
         # so this orchestrator stays a flat sequence — easy to read and reorder.
         self._add_mandatory_sections(budgeter, request, question_text)
         self._add_critical_sections(budgeter, request, question_text, date_str, time_str, effective_cwd, is_rt)
+        self._add_pfc_preamble_section(budgeter, request)
         self._add_acting_coach_section(budgeter, request)
         self._add_entity_context_section(budgeter, request)
         self._add_guidance_sections(budgeter, request, date_str, time_str)
         self._add_context_sections(budgeter, request, question_text)
         self._add_perception_sections(budgeter, request)
+        self._add_working_memory_section(budgeter, request.context)
         self._add_memory_sections(budgeter, request.context)
 
         prompt_text, dropped = budgeter.build()
@@ -947,6 +950,22 @@ class PromptBuilder:
             else:
                 hint += "Use 'internet_search' tool directly."
             budgeter.add("realtime_hint", hint, SectionPriority.CRITICAL)
+
+    @staticmethod
+    def _add_pfc_preamble_section(
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+    ) -> None:
+        """PFC deliberation preamble — frames the agent as a deliberative entity.
+
+        Injected when bio-enrichment is active (bio_enrichment_context is set
+        or has been set previously on this request's context). Uses IMPORTANT
+        priority — supplementary framing, not a hard operational constraint.
+        """
+        if request.context.bio_enrichment_context:
+            from maxim.agents.exec_prompts import PFC_PREAMBLE
+
+            budgeter.add("pfc_preamble", PFC_PREAMBLE, SectionPriority.IMPORTANT)
 
     @staticmethod
     def _add_acting_coach_section(
@@ -1164,6 +1183,33 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
             )
+
+    @staticmethod
+    def _add_working_memory_section(
+        budgeter: PromptBudgeter,
+        context: Any,
+    ) -> None:
+        """Working memory THOUGHT entries from prior deliberation cycles.
+
+        Renders recent THOUGHT entries so the LLM sees accumulated reasoning
+        and bio-system associations from prior cycles.  400 token budget,
+        truncatable.  Distinct from bio_enrichment (current cycle) — this
+        shows *prior* cycles' enrichment summaries.
+        """
+        thoughts = getattr(context, "working_memory_thoughts", None)
+        if not thoughts:
+            return
+        lines = ["=== Your prior reasoning ==="]
+        for thought in thoughts[-6:]:  # Last 6 entries (covers 2 full 3-cycle deliberations)
+            lines.append(f"- {thought[:200]}")
+        budgeter.add(
+            "working_memory_thoughts",
+            "\n".join(lines),
+            SectionPriority.IMPORTANT,
+            truncatable=True,
+            min_tokens=30,
+            truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 20)]),
+        )
 
     @staticmethod
     def _add_memory_sections(

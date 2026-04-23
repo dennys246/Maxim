@@ -17,7 +17,10 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 ## 0.8 — Cognitive Maturity
 
 - [working_memory_exec_loop.md](working_memory_exec_loop.md) — **ALL 7 STAGES SHIPPED** (2026-04-21). Post-ship refinement (2026-04-22): Layer 1 pre-LLM deliberation (ThoughtGate + BioEnrichment before LLM call), Layer 3 gate simplification (ThoughtGate as sole gate), WMS enrichment in BioEnrichmentPipeline, context-aware stall nudges. 5680 tests pass.
-- [deliberation_observability.md](deliberation_observability.md) — Shell plan. sim_log for pre-deliberation + contemplation. ~100-150 LOC.
+- [pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) — **Stages 1+2 SHIPPED** (2026-04-22). Non-optional ThoughtGate + BioEnrichment via BioStack, gated enrichment in agent loop, `ready_to_act` on LLMProposal, PFC preamble, WMS THOUGHT prompt section, refractory reset. 5680 tests pass. Multi-cycle LLM calls (cycles 2+) deferred — draft `_run_deliberation_cycle` defined. Experiment: [09_pfc_deliberation_cycle.md](../experiments/09_pfc_deliberation_cycle.md). Supersedes deliberation_observability.md.
+- [goal_depth_integration.md](goal_depth_integration.md) — Shell plan. Deepens goal awareness across existing bio-systems (GOAL WMS entry kind, goal-tagged episodes, NAc goal-outcome learning, goal persistence). ~200-300 LOC. Depends on PFC cycle.
+- [interactive_display_overhaul.md](interactive_display_overhaul.md) — Shell plan. Split thinking panel, agent focus switching (shift+left/right), dynamic resize (shift+up/down), keymap refactor. ~400-500 LOC. Depends on PFC cycle.
+- [deliberation_observability.md](deliberation_observability.md) — Superseded by pfc_deliberation_cycle.md. sim_log helpers (`sim_pre_deliberation`, `sim_contemplation`) survive; call sites move into the unified cycle.
 - [orchestrator_stall_recovery.md](orchestrator_stall_recovery.md) — Shell plan. Tool-cap exemption for send_message + orch diversity injection. ~200-400 LOC.
 - [cross_session_sim_validation.md](cross_session_sim_validation.md) — Shell plan. Prove pre-deliberation enrichment works across sessions. Depends on observability.
 

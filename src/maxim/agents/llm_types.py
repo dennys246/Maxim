@@ -185,6 +185,12 @@ class LLMProposal:
     # Whether this proposal requires user approval before execution
     requires_approval: bool = False
 
+    # PFC deliberation: whether the LLM is ready to act.
+    # True (default) = one-shot / backward compatible.
+    # False = LLM wants more context; cycle feeds reasoning back through
+    # bio-enrichment for another round.
+    ready_to_act: bool = True
+
     def get_all_actions(self) -> list[dict[str, Any]]:
         """Get the primary action followed by any next_actions."""
         actions = []

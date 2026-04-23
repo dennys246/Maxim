@@ -189,6 +189,17 @@ class ThoughtGate:
         except Exception:
             pass  # sim logging not available (headless / tests)
 
+    def reset_refractory(self, tick: int) -> None:
+        """Reset the refractory window to start from the given tick.
+
+        Called after a PFC deliberation cycle completes so the refractory
+        window counts from when deliberation *finished*, not when it started.
+        Without this, percepts arriving during a long cycle are penalized
+        by the stale refractory from cycle start.
+        """
+        with self._lock:
+            self._last_pass_tick = tick
+
     def record_outcome(self, decision: GateDecision, *, was_useful: bool) -> None:
         """Feed back whether the deliberation was useful.
 
