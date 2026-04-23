@@ -1099,6 +1099,9 @@ class LLMWorker:
             plan_text = response.pop("_plan_text", None)
             requires_approval = response.pop("_requires_approval", False)
 
+            # PFC deliberation: ready_to_act defaults to True (backward compat)
+            ready_to_act = bool(response.get("ready_to_act", True))
+
             proposal = LLMProposal(
                 request_id=request.request_id,
                 action=response.get("action"),
@@ -1113,6 +1116,7 @@ class LLMWorker:
                 triggering_input=request.triggering_input,
                 plan_text=plan_text,
                 requires_approval=requires_approval,
+                ready_to_act=ready_to_act,
             )
             try:
                 from maxim.simulation.sim_logger import sim_log

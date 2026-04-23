@@ -606,6 +606,11 @@ class StructuredContext:
     # Populated by BioEnrichmentPipeline when a novel percept passes the gate.
     bio_enrichment_context: str = ""
 
+    # PFC deliberation: recent THOUGHT entries from WorkingMemorySet.
+    # Populated by the deliberation cycle before each LLM call so the
+    # LLM sees accumulated reasoning + enrichment from prior cycles.
+    working_memory_thoughts: list[str] | None = None
+
 
 @dataclass
 class PlanProgressContext:

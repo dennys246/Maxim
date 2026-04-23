@@ -319,6 +319,255 @@ def run_agent_loop(
     _persist_state_json(state, state_path, meta={"run_id": run_id, "agent_name": agent_name})
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# PFC Deliberation Cycle
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _wait_for_proposal(
+    llm_worker: Any,
+    stop_event: Any,
+    timeout: float = 300.0,
+) -> Any:
+    """Block until LLM responds, checking stop_event every 100ms.
+
+    Returns LLMProposal or None on timeout/cancellation.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if stop_event is not None and stop_event.is_set():
+            return None
+        proposal = llm_worker.get_latest_proposal()
+        if proposal is not None:
+            return proposal
+        time.sleep(0.1)
+    logger.warning("_wait_for_proposal timed out after %.0fs", timeout)
+    return None
+
+
+def _jaccard_convergence(keywords_a: set[str], keywords_b: set[str], threshold: float = 0.8) -> bool:
+    """Check if two keyword sets have converged (Jaccard >= threshold)."""
+    if len(keywords_a) < 3 or len(keywords_b) < 3:
+        return False
+    union = len(keywords_a | keywords_b)
+    if union == 0:
+        return False
+    return len(keywords_a & keywords_b) / union >= threshold
+
+
+def _run_deliberation_cycle(
+    *,
+    percept_text: str,
+    thought_gate: Any | None,
+    bio_enrichment: Any | None,
+    agent: Any,
+    context: Any,
+    llm_worker: Any,
+    stop_event: Any | None,
+    step_num: int,
+    max_cycles: int = 3,
+) -> Any | None:
+    """PFC deliberation cycle — think-or-act loop.
+
+    NOTE: This function is DRAFT — defined but not yet called from the
+    main agentic loop.  The inline enrichment in section 1.2 handles
+    gate + enrich (cycle 1).  Multi-cycle LLM calls (cycles 2+) require
+    wiring at the LLM submission point where StructuredContext + full
+    submit_context params are available.  See pfc_deliberation_cycle.md.
+
+    Each cycle:
+      1. ThoughtGate evaluates working memory salience/novelty
+      2. If gate rejects: return None (one-shot path — no enrichment)
+      3. If gate fires: cycle 1 ALWAYS enriches (gate-fired minimum)
+      4. Enrichment added to working memory as THOUGHT entry
+      5. LLM called with enriched context
+      6. If ready_to_act == true (or absent): return proposal
+      7. If ready_to_act == false: feed reasoning text back through
+         bio-enrichment, loop (PFC recurrence)
+      8. Each cycle replaces bio_enrichment_context (not appends);
+         WM accumulates naturally via THOUGHT entries
+      9. If max_cycles reached or convergence detected
+         (Jaccard >= 0.8): force action from best response
+
+    Returns LLMProposal or None.
+    """
+    from maxim.simulation.sim_logger import sim_pre_deliberation, sim_contemplation
+
+    # Access WorkingMemorySet via ExecAgent
+    wms = None
+    exec_agent = getattr(agent, "exec_agent", None)
+    if exec_agent is not None:
+        wms = getattr(exec_agent, "working_memory", None)
+
+    current_tick = wms.current_tick if wms is not None and hasattr(wms, "current_tick") else step_num
+
+    # 1. ThoughtGate — should we deliberate on this percept?
+    gate_passed = False
+    if thought_gate is not None:
+        try:
+            decision = thought_gate.should_think(
+                current_tick=current_tick,
+            )
+            gate_passed = decision.passed
+        except Exception as e:
+            log_swallowed_exception(e, operation="thought_gate", context={"step": step_num})
+            gate_passed = False
+    else:
+        # No gate — always enrich when pipeline is available
+        gate_passed = bio_enrichment is not None
+
+    if not gate_passed:
+        # One-shot path — no enrichment
+        sim_pre_deliberation(
+            gate_passed=False,
+            score=0.0,
+            threshold=0.0,
+            enrichment_sections=0,
+        )
+        sim_contemplation(
+            gate_passed=False,
+            refined=False,
+            score=0.0,
+        )
+        return None
+
+    # 2. Deliberation cycle — gate fired, at least one enriched round
+    if bio_enrichment is None:
+        return None
+
+    recent_keywords: list[set[str]] = []
+    last_proposal = None
+    enrich_text = percept_text
+
+    for cycle in range(1, max_cycles + 1):
+        # 2a. Enrich
+        try:
+            from maxim.integration.bio_enrichment import EnrichmentContext
+
+            _state = getattr(agent, "_state", None)
+            _active_goal = None
+            if _state is not None and hasattr(_state, "data"):
+                _active_goal = _state.data.get("active_goal")
+
+            enrich_ctx = EnrichmentContext(active_goal=_active_goal)
+            enrich_result = bio_enrichment.enrich(enrich_text, context=enrich_ctx, bypass_gate=True)
+        except Exception as e:
+            log_swallowed_exception(e, operation="deliberation_enrich", context={"cycle": cycle})
+            break
+
+        if enrich_result is None:
+            sim_pre_deliberation(
+                gate_passed=True,
+                score=0.0,
+                threshold=0.0,
+                enrichment_sections=0,
+            )
+            break
+
+        formatted = bio_enrichment.format_thought_response(enrich_result)
+        n_sections = sum(
+            1
+            for f in (
+                enrich_result.memories,
+                enrich_result.predictions,
+                enrich_result.concepts,
+                enrich_result.affordances,
+                enrich_result.recent_context,
+            )
+            if f
+        )
+
+        sim_pre_deliberation(
+            gate_passed=True,
+            score=0.0,
+            threshold=0.0,
+            enrichment_sections=n_sections,
+        )
+
+        # 2b. Add THOUGHT to working memory
+        if wms is not None and formatted:
+            from maxim.agents.working_memory import WorkingMemoryKind
+
+            wms.add(
+                WorkingMemoryKind.THOUGHT,
+                content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": formatted[:500]},
+                salience=0.5,
+            )
+
+        # 2c. Update StructuredContext for LLM
+        if formatted:
+            context.bio_enrichment_context = formatted
+
+        # Populate working_memory_thoughts for prompt builder
+        if wms is not None:
+            from maxim.agents.working_memory import WorkingMemoryKind
+
+            thought_entries = wms.by_kind({WorkingMemoryKind.THOUGHT}, limit=6)
+            context.working_memory_thoughts = [
+                str(e.content.get("enrichment", ""))[:200] if isinstance(e.content, dict) else str(e.content)[:200]
+                for e in thought_entries
+            ]
+
+        # 2d. Submit LLM call and wait
+        if not llm_worker.submit_context(context):
+            logger.warning("LLM worker queue full during deliberation cycle %d", cycle)
+            break
+
+        proposal = _wait_for_proposal(llm_worker, stop_event)
+        if proposal is None:
+            break
+
+        last_proposal = proposal
+
+        # 2e. Check ready_to_act
+        if proposal.ready_to_act:
+            sim_contemplation(
+                gate_passed=True,
+                refined=cycle > 1,
+                score=0.0,
+            )
+            # Reset refractory to count from cycle end
+            if thought_gate is not None:
+                thought_gate.reset_refractory(current_tick)
+            return proposal
+
+        # 2f. Not ready — check convergence before looping
+        reasoning = proposal.reasoning or ""
+        keywords = set(reasoning.lower().split())
+        recent_keywords.append(keywords)
+
+        if len(recent_keywords) >= 2:
+            if _jaccard_convergence(recent_keywords[-1], recent_keywords[-2]):
+                logger.info("Deliberation converged after %d cycles (Jaccard >= 0.8)", cycle)
+                sim_contemplation(
+                    gate_passed=True,
+                    refined=True,
+                    score=0.0,
+                )
+                if thought_gate is not None:
+                    thought_gate.reset_refractory(current_tick)
+                # Force action from the last proposal
+                return proposal if proposal.action else None
+
+        # 2g. Feed reasoning back as next enrichment input
+        enrich_text = reasoning
+        logger.debug("Deliberation cycle %d: reasoning fed back for enrichment (%d chars)", cycle, len(reasoning))
+
+    # Max cycles reached without ready_to_act
+    sim_contemplation(
+        gate_passed=True,
+        refined=max_cycles > 1,
+        score=0.0,
+    )
+    if thought_gate is not None:
+        thought_gate.reset_refractory(current_tick)
+
+    # Return last proposal if it has an action, otherwise None (IDLE)
+    if last_proposal is not None and last_proposal.action:
+        return last_proposal
+    return None
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -349,6 +598,7 @@ def run_agentic_loop(
     pain_bus: Any | None = None,  # PainBus for simulation pain routing
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
     bio_enrichment_pipeline: Any | None = None,  # BioEnrichmentPipeline for percept enrichment (L1)
+    thought_gate: Any | None = None,  # ThoughtGate for PFC deliberation gating
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -631,31 +881,108 @@ def run_agentic_loop(
                 log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
 
         # ─────────────────────────────────────────────────────────────────
-        # 1.2 BIO-ENRICHMENT — enrich novel percept text via bio-systems
+        # 1.2 BIO-ENRICHMENT — PFC deliberation (gate + enrich)
         # ─────────────────────────────────────────────────────────────────
-        # Gates on novelty (TextSalienceScorer). If the percept passes,
-        # enrichment result is injected into StructuredContext for the LLM.
+        # Phase 1 of the PFC cycle: extract percept text and run
+        # ThoughtGate + BioEnrichment.  The multi-cycle deliberation
+        # (LLM calls) happens later at the submission point (section 2)
+        # where StructuredContext is available.
         _percept_enrichment_text = ""
-        if bio_enrichment_pipeline is not None:
+        _percept_text_for_cycle = ""
+        _pfc_gate_passed = False
+        if bio_enrichment_pipeline is not None or thought_gate is not None:
             try:
-                _enrich_input = ""
                 if hasattr(observation, "get"):
-                    _enrich_input = str(observation.get("transcript") or observation.get("raw_transcript_text") or "")
+                    _percept_text_for_cycle = str(
+                        observation.get("transcript")
+                        or observation.get("raw_transcript_text")
+                        or observation.get("cli_input")
+                        or ""
+                    )
                 elif hasattr(observation, "transcript"):
-                    _enrich_input = str(getattr(observation, "transcript", "") or "")
-                if _enrich_input:
+                    _percept_text_for_cycle = str(
+                        getattr(observation, "transcript", "") or getattr(observation, "cli_input", "") or ""
+                    )
+                if _percept_text_for_cycle and thought_gate is not None:
+                    _wms = None
+                    _exec = getattr(agent, "exec_agent", None)
+                    if _exec is not None:
+                        _wms = getattr(_exec, "working_memory", None)
+                    _tick = _wms.current_tick if _wms is not None and hasattr(_wms, "current_tick") else step_num
+                    try:
+                        _gate_decision = thought_gate.should_think(current_tick=_tick)
+                        _pfc_gate_passed = _gate_decision.passed
+                    except Exception as _ge:
+                        log_swallowed_exception(_ge, operation="thought_gate", context={"step": step_num})
+                elif _percept_text_for_cycle:
+                    _pfc_gate_passed = bio_enrichment_pipeline is not None
+
+                # Gate-fired minimum: always enrich cycle 1 when gate passes
+                if _pfc_gate_passed and bio_enrichment_pipeline is not None and _percept_text_for_cycle:
                     from maxim.integration.bio_enrichment import EnrichmentContext
 
                     _enrich_ctx = EnrichmentContext(
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                     )
-                    _enrich_result = bio_enrichment_pipeline.enrich(_enrich_input, context=_enrich_ctx)
+                    _enrich_result = bio_enrichment_pipeline.enrich(
+                        _percept_text_for_cycle, context=_enrich_ctx, bypass_gate=True
+                    )
                     if _enrich_result is not None:
                         _percept_enrichment_text = bio_enrichment_pipeline.format_thought_response(_enrich_result)
-                        if _percept_enrichment_text:
-                            logger.debug("Bio-enrichment produced %d chars for percept", len(_percept_enrichment_text))
+                        _n_sections = sum(
+                            1
+                            for _f in (
+                                _enrich_result.memories,
+                                _enrich_result.predictions,
+                                _enrich_result.concepts,
+                                _enrich_result.affordances,
+                                _enrich_result.recent_context,
+                            )
+                            if _f
+                        )
+                        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+                        sim_pre_deliberation(
+                            gate_passed=True, score=0.0, threshold=0.0, enrichment_sections=_n_sections
+                        )
+                        # Add THOUGHT to working memory
+                        if _wms is not None and _percept_enrichment_text:
+                            from maxim.agents.working_memory import WorkingMemoryKind
+
+                            _wms.add(
+                                WorkingMemoryKind.THOUGHT,
+                                content={
+                                    "source": "pfc_deliberation",
+                                    "cycle": 1,
+                                    "enrichment": _percept_enrichment_text[:500],
+                                },
+                                salience=0.5,
+                            )
+                    else:
+                        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+                        sim_pre_deliberation(gate_passed=False, score=0.0, threshold=0.0, enrichment_sections=0)
+                        _pfc_gate_passed = False
+                elif not _pfc_gate_passed:
+                    from maxim.simulation.sim_logger import sim_pre_deliberation
+
+                    sim_pre_deliberation(gate_passed=False, score=0.0, threshold=0.0, enrichment_sections=0)
             except Exception as e:
-                log_swallowed_exception(e, operation="bio_enrichment_percept", context={"step": step_num})
+                log_swallowed_exception(e, operation="pfc_enrichment", context={"step": step_num})
+
+        # Log enrichment outcome + reset refractory
+        if _pfc_gate_passed and _percept_enrichment_text:
+            from maxim.simulation.sim_logger import sim_contemplation
+
+            sim_contemplation(gate_passed=True, refined=False, score=0.0)
+            # Reset refractory to count from enrichment completion
+            if thought_gate is not None:
+                _wms = None
+                _exec = getattr(agent, "exec_agent", None)
+                if _exec is not None:
+                    _wms = getattr(_exec, "working_memory", None)
+                _tick = _wms.current_tick if _wms is not None and hasattr(_wms, "current_tick") else step_num
+                thought_gate.reset_refractory(_tick)
 
         # Ensure maxim_runtime contains mode from state.data for MemoryAgent
         # This propagates mode set in CLI to PerceptionAgent -> MemoryAgent -> ExecAgent

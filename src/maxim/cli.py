@@ -1630,6 +1630,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _cli_pain_bus = _cli_instance.pain_bus
                 _cli_embodiment = _cli_instance.embodiment
                 executor = _cli_instance.executor
+                # PFC deliberation: ThoughtGate + BioEnrichmentPipeline from BioStack
+                _cli_thought_gate = getattr(_cli_bio, "thought_gate", None) if _cli_bio is not None else None
+                _cli_bio_enrichment = (
+                    getattr(_cli_bio, "bio_enrichment_pipeline", None) if _cli_bio is not None else None
+                )
 
                 if _cli_memory_hub is not None:
                     agentic_agent.wire_memory_hub(_cli_memory_hub)
@@ -1851,6 +1856,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                         percept_source=sim_source,
                         action_sink=sim_sink,
                         pain_bus=getattr(args, "_sim_pain_bus", None) or _cli_pain_bus,
+                        bio_enrichment_pipeline=_cli_bio_enrichment,
+                        thought_gate=_cli_thought_gate,
                     )
                 finally:
                     if llm_worker:
