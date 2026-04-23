@@ -686,8 +686,11 @@ def run_agentic_loop(
     llm_submit_interval = ctrl.llm_submit_interval
 
     # Consecutive same-tool cap — prevents respond loops (refinement plan 1.5e)
+    # Content-aware: tracks (tool_name, content_hash) so same tool with
+    # different params (e.g. send_message with varied text) is NOT capped.
     _consecutive_same_tool: str = ""
     _consecutive_same_tool_count: int = 0
+    _consecutive_same_content_hash: int = 0  # hash of params for content-aware cap
     _MAX_CONSECUTIVE_SAME_TOOL: int = 5
 
     def _get_all_tools() -> set[str]:
@@ -1492,26 +1495,70 @@ def run_agentic_loop(
             confidence = ctrl.pending_proposal.confidence
 
             # ── Consecutive same-tool cap (respond loop prevention) ──────
+            # Content-aware: only counts consecutive calls with the SAME
+            # tool AND same params hash.  Different params (e.g. varied
+            # send_message text) reset the counter — the cap targets
+            # hallucination loops, not legitimate varied usage.
             _this_tool = action.get("tool_name", "") if isinstance(action, dict) else ""
-            if _this_tool == _consecutive_same_tool:
+            _this_params = action.get("params", {}) if isinstance(action, dict) else {}
+            try:
+                _this_content_hash = hash(
+                    str(sorted(_this_params.items())) if isinstance(_this_params, dict) else str(_this_params)
+                )
+            except Exception:
+                _this_content_hash = 0
+            if _this_tool == _consecutive_same_tool and _this_content_hash == _consecutive_same_content_hash:
                 _consecutive_same_tool_count += 1
+            elif _this_tool == _consecutive_same_tool:
+                # Same tool, different content — reset count (varied usage)
+                _consecutive_same_tool_count = 1
+                _consecutive_same_content_hash = _this_content_hash
             else:
                 _consecutive_same_tool = _this_tool
                 _consecutive_same_tool_count = 1
+                _consecutive_same_content_hash = _this_content_hash
 
             if _consecutive_same_tool_count > _MAX_CONSECUTIVE_SAME_TOOL:
                 logger.warning(
-                    "Consecutive same-tool cap hit: %s called %d times — breaking chain",
+                    "Consecutive same-tool cap hit: %s called %d times with identical params — breaking chain",
                     _this_tool,
                     _consecutive_same_tool_count,
                 )
                 sim.log(
                     "EXEC",
-                    f"CAPPED: {_this_tool} repeated {_consecutive_same_tool_count}x — breaking respond loop",
+                    f"CAPPED: {_this_tool} repeated {_consecutive_same_tool_count}x (identical params) — breaking respond loop",
                 )
+                # Fix 2: Tell the LLM the cap fired so it doesn't blindly
+                # re-propose the same call.  Inject into recent_outcomes
+                # which the prompt builder surfaces in the LLM's context.
+                # NOTE: we deliberately do NOT write to pending_cli_input
+                # because that's a single-slot user-input channel and
+                # using it for system feedback risks silent overwrite of
+                # real input (cross-confirmed by both review lenses).
+                _other_tools = sorted(_get_all_tools() - {_this_tool})
+                _cap_msg = (
+                    f"SYSTEM: '{_this_tool}' was called {_consecutive_same_tool_count} times "
+                    f"with identical parameters — blocked to prevent a loop. "
+                    f"Try a DIFFERENT tool or different parameters. "
+                    f"Available tools: {', '.join(_other_tools[:8]) if _other_tools else 'none'}"
+                )
+                recent_outcomes.append(
+                    {
+                        "tool": _this_tool,
+                        "tool_name": _this_tool,
+                        "success": False,
+                        "result": _cap_msg,
+                        "error": "consecutive_tool_cap",
+                        "timestamp": time.time(),
+                    }
+                )
+                if len(recent_outcomes) > max_recent_outcomes:
+                    recent_outcomes.pop(0)
+
                 ctrl.pending_proposal = None
                 _consecutive_same_tool_count = 0
                 _consecutive_same_tool = ""
+                _consecutive_same_content_hash = 0
                 continue
 
             # ───────────────────────────────────────────────────────────────
