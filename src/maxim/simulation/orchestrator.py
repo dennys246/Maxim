@@ -1734,6 +1734,11 @@ def start_simulation_mode(
     _last_nudge_time = [0.0]
     _NUDGE_COOLDOWN_S = 15.0
     _max_turn_warned = [False]
+    # Diversity injection: after every _DIVERSITY_INTERVAL turns, inject a
+    # testing-strategy summary so the orch LLM knows what it has already
+    # tested and can vary its approach.
+    _DIVERSITY_INTERVAL = 3
+    _last_diversity_turn = [0]
 
     def _build_stall_nudge_example(
         sim_goal: str,
@@ -1877,6 +1882,36 @@ def start_simulation_mode(
                 display = get_active_display()
                 if display is not None:
                     display.set_status_style("normal")
+
+                # ── Diversity injection: after every N turns, summarize
+                #     what the orch has tested so the LLM can vary probes.
+                if current_turns - _last_diversity_turn[0] >= _DIVERSITY_INTERVAL:
+                    _last_diversity_turn[0] = current_turns
+                    try:
+                        all_actions = bridge.get_all_actions()
+                        # Build a lightweight tool-usage frequency map
+                        _tool_freq: dict[str, int] = {}
+                        _blocked_tools: list[str] = []
+                        for a in all_actions:
+                            _tool_freq[a.tool_name] = _tool_freq.get(a.tool_name, 0) + 1
+                            if a.blocked and a.tool_name not in _blocked_tools:
+                                _blocked_tools.append(a.tool_name)
+                        _freq_str = ", ".join(
+                            f"{t} ({c}x)" for t, c in sorted(_tool_freq.items(), key=lambda x: -x[1])[:8]
+                        )
+                        _blocked_str = ", ".join(_blocked_tools[:5]) if _blocked_tools else "none"
+                        _diversity_msg = (
+                            f"DIVERSITY CHECKPOINT (turn {current_turns}): "
+                            f"AUT tool usage so far: {_freq_str}. "
+                            f"Blocked tools: {_blocked_str}. "
+                            f"Vary your probes — test DIFFERENT capabilities, "
+                            f"scenarios, or failure modes than what's been explored."
+                        )
+                        orchestrator_source.inject_cli(_diversity_msg, salience=0.9, novelty=0.9)
+                        logger.debug("Diversity checkpoint injected at turn %d", current_turns)
+                    except Exception as e:
+                        logger.debug("Diversity injection failed: %s", e)
+
                 continue
 
             # ── Ping-pong trigger: too many orch actions without a turn ──
