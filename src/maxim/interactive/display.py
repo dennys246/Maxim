@@ -102,16 +102,6 @@ class _ThinkingState:
     history: list[tuple[int, str, list[str], float | None]] = field(default_factory=list)
 
 
-def _text_similar(a: str, b: str, threshold: float = 0.75) -> bool:
-    """Quick word-overlap check for deduplicating consecutive thoughts."""
-    wa = set(a.lower().split())
-    wb = set(b.lower().split())
-    if not wa or not wb:
-        return False
-    union = len(wa | wb)
-    return len(wa & wb) / union >= threshold if union else False
-
-
 # ---------------------------------------------------------------------------
 # MaximDisplay
 # ---------------------------------------------------------------------------
@@ -829,19 +819,13 @@ class MaximDisplay:
                 enrichment_lines.append(f"[dim]{icon} {detail}[/dim]")
 
         # Build reasoning text as a continuous flowing stream.
-        # Deduplicate near-identical consecutive thoughts (same percept
-        # producing the same reasoning on successive turns).
+        # Deduplication happens at the source (agent_loop novelty gate),
+        # so we just concatenate here.
         reasoning_parts: list[str] = []
-        prev_text = ""
         for _cyc_num, cyc_reasoning, _cyc_tags, _cyc_salience in state.history:
             text = cyc_reasoning.strip()
-            if not text:
-                continue
-            # Skip if this thought is nearly identical to the previous one
-            if prev_text and _text_similar(prev_text, text):
-                continue
-            reasoning_parts.append(text)
-            prev_text = text
+            if text:
+                reasoning_parts.append(text)
         reasoning_lines = "\n".join(reasoning_parts).split("\n") if reasoning_parts else []
         total_reasoning = len(reasoning_lines)
         # Reserve 1-2 lines for header (+ hint when active)
