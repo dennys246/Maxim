@@ -118,6 +118,12 @@ class AffordanceDecompositionStrategy:
         return chunks
 
 
+# Module-level singleton — the strategy is stateless, no need to
+# instantiate per-call. Used by bio_enrichment, discovery tools, and
+# the standalone encode_entity_affordances function.
+AFFORDANCE_STRATEGY = AffordanceDecompositionStrategy()
+
+
 class SpaCyNounChunkStrategy:
     """Default strategy using spaCy noun chunker.
 

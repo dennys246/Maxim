@@ -396,10 +396,12 @@ class TestTemporalEligibility:
         return NAc(config=NACConfig(temporal_credit_weight=temporal_credit_weight))
 
     def _make_sig(self, **overrides):
+        import time
+
         from maxim.time.temporal_signature import TemporalSignature
 
         defaults = {
-            "timestamp": 1000.0,
+            "timestamp": time.time(),  # Recent timestamp so anchors survive pruning
             "circadian_phase": 0.5,
             "weekly_phase": 0.3,
             "monthly_phase": 0.2,

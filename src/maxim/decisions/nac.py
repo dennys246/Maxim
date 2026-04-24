@@ -1126,7 +1126,14 @@ class NAc:
         return pruned
 
     def decay_eligibility(self, factor: float = 0.9) -> None:
-        """Decay all eligibility traces. Called on each tick."""
+        """Decay all eligibility traces. Called on each tick.
+
+        Also prunes temporal anchors whose fast-decay trace has expired
+        AND whose temporal signature is older than ``temporal_window_seconds``.
+        This prevents ``_temporal_anchors`` from growing unboundedly.
+        """
+        now = time.time()
+        temporal_window = self.config.temporal_window_seconds
         with self._lock:
             to_remove = []
             for key, strength in self._eligibility.items():
@@ -1137,6 +1144,14 @@ class NAc:
                     self._eligibility[key] = new_strength
             for key in to_remove:
                 del self._eligibility[key]
+                # Prune temporal anchor if the fast-decay trace expired
+                # AND the anchor is old enough (beyond temporal window)
+                anchor = self._temporal_anchors.get(key)
+                if anchor is not None:
+                    _, sig = anchor
+                    age = now - getattr(sig, "timestamp", 0.0)
+                    if age > temporal_window:
+                        del self._temporal_anchors[key]
 
     def get_threshold_overrides(self, agent_id: str) -> dict[str, float]:
         """Build EC threshold overrides from reward biases for an agent.

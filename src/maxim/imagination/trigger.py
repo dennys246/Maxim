@@ -427,26 +427,10 @@ class ImaginationTrigger:
         # Uses AffordanceDecompositionStrategy (splits on underscores),
         # separate from the percept encoder's SpaCyNounChunkStrategy.
         # Shares the same EC/ATL/NAc backing as the main encoder.
+        # Uses _make_aff_encoder factory (shared with encode_entity_affordances).
         self._aff_encoder: LinguisticEncoder | None = None
         if encoder is not None:
-            try:
-                from maxim.similarity.decomposer import (
-                    AffordanceDecompositionStrategy,
-                    ConceptDecomposer,
-                )
-                from maxim.similarity.encoder import LinguisticEncoder as _LE
-
-                self._aff_encoder = _LE(
-                    ec=encoder.ec,
-                    atl=encoder.atl,
-                    nac=encoder._nac,
-                    decomposer=ConceptDecomposer(
-                        strategy=AffordanceDecompositionStrategy(),
-                    ),
-                    config=encoder.config,
-                )
-            except Exception as e:
-                log.debug("Imagination: affordance encoder setup failed: %s", e)
+            self._aff_encoder = _make_aff_encoder(encoder)
 
         # Stats
         self._phrases_extracted = 0
@@ -826,6 +810,33 @@ class ImaginationTrigger:
 # ---------------------------------------------------------------------------
 
 
+def _make_aff_encoder(encoder: LinguisticEncoder) -> LinguisticEncoder | None:
+    """Build an affordance-specific LinguisticEncoder sharing the same backing.
+
+    Single factory for both ImaginationTrigger.__init__ and the standalone
+    encode_entity_affordances function — keeps construction in sync.
+    """
+    try:
+        from maxim.similarity.decomposer import (
+            AffordanceDecompositionStrategy,
+            ConceptDecomposer,
+        )
+        from maxim.similarity.encoder import LinguisticEncoder as _LE
+
+        return _LE(
+            ec=encoder.ec,
+            atl=encoder.atl,
+            nac=encoder._nac,
+            decomposer=ConceptDecomposer(
+                strategy=AffordanceDecompositionStrategy(),
+            ),
+            config=encoder.config,
+        )
+    except Exception as e:
+        log.debug("_make_aff_encoder: setup failed: %s", e)
+        return None
+
+
 def encode_entity_affordances(
     entity: Entity,
     encoder: LinguisticEncoder,
@@ -837,29 +848,10 @@ def encode_entity_affordances(
     (orchestrator AUT setup, embodied_runtime) — these don't go through
     ImaginationTrigger.
 
-    Creates a temporary AffordanceDecompositionStrategy-backed encoder
-    sharing the same EC/ATL/NAc as the provided encoder.
-
     Returns list of substrate node IDs created/reinforced.
     """
-    try:
-        from maxim.similarity.decomposer import (
-            AffordanceDecompositionStrategy,
-            ConceptDecomposer,
-        )
-        from maxim.similarity.encoder import LinguisticEncoder as _LE
-
-        aff_encoder = _LE(
-            ec=encoder.ec,
-            atl=encoder.atl,
-            nac=encoder._nac,
-            decomposer=ConceptDecomposer(
-                strategy=AffordanceDecompositionStrategy(),
-            ),
-            config=encoder.config,
-        )
-    except Exception as e:
-        log.debug("encode_entity_affordances: encoder setup failed: %s", e)
+    aff_encoder = _make_aff_encoder(encoder)
+    if aff_encoder is None:
         return []
 
     all_node_ids: list[str] = []

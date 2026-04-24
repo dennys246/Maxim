@@ -225,10 +225,9 @@ class SensePresenceTool(Tool):
         if self._nac is None or self._atl is None:
             return aff_name
         try:
-            from maxim.similarity.decomposer import AffordanceDecompositionStrategy
+            from maxim.similarity.decomposer import AFFORDANCE_STRATEGY
 
-            strategy = AffordanceDecompositionStrategy()
-            chunks = strategy.extract(aff_name)
+            chunks = AFFORDANCE_STRATEGY.extract(aff_name)
             for chunk in chunks:
                 concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
                 for concept in concepts:
@@ -500,12 +499,14 @@ class DiscoverToolsTool(Tool):
         # 2. Substrate concept bias fallback (affordance transfer)
         if self._atl is not None:
             try:
-                from maxim.similarity.decomposer import AffordanceDecompositionStrategy
+                from maxim.similarity.decomposer import AFFORDANCE_STRATEGY
 
-                # Extract the bare affordance from the tool name
-                # Tool names are "{entity}_{affordance}" — we want the affordance part
-                strategy = AffordanceDecompositionStrategy()
-                chunks = strategy.extract(tool_name)
+                # Decompose the tool name into words — this includes entity
+                # prefix words, but that's acceptable: "rusty" and "sword"
+                # won't match substrate concepts unless they were encoded.
+                # The affordance components ("fire", "slash") are the ones
+                # that carry bias from prior experience.
+                chunks = AFFORDANCE_STRATEGY.extract(tool_name)
                 for chunk in chunks:
                     concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
                     for concept in concepts:

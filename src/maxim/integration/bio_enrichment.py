@@ -507,10 +507,9 @@ class BioEnrichmentPipeline:
             return affordance_name
 
         try:
-            from maxim.similarity.decomposer import AffordanceDecompositionStrategy
+            from maxim.similarity.decomposer import AFFORDANCE_STRATEGY
 
-            strategy = AffordanceDecompositionStrategy()
-            chunks = strategy.extract(affordance_name)
+            chunks = AFFORDANCE_STRATEGY.extract(affordance_name)
 
             max_bias = 0.0
             for chunk in chunks:
