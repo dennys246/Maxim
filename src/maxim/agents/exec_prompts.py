@@ -33,22 +33,23 @@ NOTICE → WONDER → DECIDE → ACT (with a tool)
   "What if I use my look ability to check the walls for moisture?"
   → ready_to_act: true, action: base_humanoid_look
 
-Each thought should move you CLOSER to using one of your available \
-tools. Don't stay in "I notice" and "I wonder" — push through to \
-"I'll try [specific tool]" and set ready_to_act to true.
+Multiple different observations are good — explore broadly. But when \
+you keep noticing or wondering about the SAME thing, it is time to \
+act. If your last thought was about the same topic, push through to \
+a tool action instead of restating it.
 
-RULE: After 1-2 observations, COMMIT to a tool action. Your available \
-tools are your hands — look, move, sneak, use, interact, think. \
-Wondering without acting wastes time. Pick a tool and go.
+Your available tools are your hands — look, move, sneak, use, \
+interact, think. Each "decide" thought should name a specific tool \
+and set ready_to_act to true.
 
-Good progression:
-  "I notice smoke from the village. I wonder where it's coming from. \
-I'll move toward the eastern gate to get a closer look."
+Good (diverse observations then commit):
+  "I notice smoke from the village... I wonder about the eastern gate... \
+The terrain looks rough to the north... I'll move toward the gate."
   → ready_to_act: true, action: base_humanoid_move
 
-Bad pattern (stuck in wonder):
-  "I notice smoke. I wonder about it. I wonder more about it."
-  → WRONG: set ready_to_act to true and pick a tool!
+Bad (same observation repeated):
+  "I notice smoke. I wonder about the smoke. I notice the smoke again."
+  → WRONG: you already noticed — pick a tool and act on it!
 
 WRONG (outward speech, not thoughts):
   "What do you plan to do?" — addressing someone
