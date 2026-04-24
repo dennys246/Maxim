@@ -399,6 +399,8 @@ class MaximDisplay:
             with self._lock:
                 self._resize_index = self._default_resize_index
                 self._scroll_target = "log"
+                # Reset to bottom so the panel auto-follows new thoughts
+                self._thinking_scroll_offset = 0
                 self._refresh()
         else:
             self.scroll(-999999)
