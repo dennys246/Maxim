@@ -170,6 +170,7 @@ def reset_sim_display_state() -> None:
     _display_tier = DisplayTier.CLEAN
     _display_floor = DisplayTier.CLEAN
     _interactive_mode = InteractiveMode.AUTO
+    _sensor_last_logged.clear()
     clear_agent_nicknames()
 
 
@@ -1147,6 +1148,14 @@ def sim_gate(
     )
 
 
+# Per-(entity, sensor) sampling gate: log at most once per _SENSOR_SAMPLE_S
+# unless drift exceeds the significant threshold.  Prevents flooding in long
+# sessions where evaluate_failures() fires every tick (10-150 calls/sec/entity).
+_SENSOR_SAMPLE_S = 2.0
+_SENSOR_SIGNIFICANT_DRIFT_PCT = 15.0
+_sensor_last_logged: dict[tuple[str, str], float] = {}
+
+
 def sim_sensor(
     entity: str,
     sensor: str,
@@ -1155,9 +1164,25 @@ def sim_sensor(
     *,
     agent_id: str | None = None,
 ) -> None:
-    """Log a SEM entity sensor reading."""
+    """Log a SEM entity sensor reading.
+
+    Sampled: at most one log per entity+sensor per ``_SENSOR_SAMPLE_S``
+    unless drift from baseline exceeds ``_SENSOR_SIGNIFICANT_DRIFT_PCT``.
+    """
+    drift_pct = 0.0
     if baseline is not None and baseline != 0:
         drift_pct = ((value - baseline) / abs(baseline)) * 100
+
+    # Sampling gate: skip unless significant drift or enough time elapsed
+    key = (entity, sensor)
+    now = time.time()
+    if abs(drift_pct) < _SENSOR_SIGNIFICANT_DRIFT_PCT:
+        last = _sensor_last_logged.get(key, 0.0)
+        if now - last < _SENSOR_SAMPLE_S:
+            return
+    _sensor_last_logged[key] = now
+
+    if baseline is not None and baseline != 0:
         icon = "🔥" if abs(drift_pct) > 30 else "⚠️" if abs(drift_pct) > 15 else "📡"
         sim_log(
             "SENSOR",

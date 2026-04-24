@@ -76,7 +76,10 @@ class BioTelemetryCollector:
         except ImportError:
             return None
 
-        # Snapshot records (thread-safe since list copy is atomic in CPython)
+        # Snapshot records. list() on a CPython list is GIL-atomic with
+        # respect to concurrent .append() calls. Under free-threaded Python
+        # (3.13t+) this would need a lock — acceptable since bio_telemetry
+        # is only called at session end (not on the hot path).
         records = list(_log_records)
 
         bio_events = [r for r in records if r.get("subsystem") in BIO_TELEMETRY_SUBSYSTEMS]
