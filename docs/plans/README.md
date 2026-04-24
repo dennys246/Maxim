@@ -65,6 +65,8 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
+- [affordance_concept_transfer.md](affordance_concept_transfer.md) — **Stages 0-4 SHIPPED** (2026-04-24). Substrate-native cross-entity learning via EC pattern completion + SCN temporal coupling. AffordanceDecompositionStrategy, entity affordance substrate encoding, temporal eligibility, valence annotations. Pre-existing NAc decay bug fixed. `discover_tools` renamed to `sense_tools`. 39/39 behavioral convergence hypotheses re-confirmed (zero regression). ~505 LOC + tests. First SCN-substrate PoC.
+- [sem_entity_ownership.md](sem_entity_ownership.md) — **✅ SHIPPED** (2026-04-24). Self vs scene entity separation. Agent controls own body, observes others.
 - [archive/interactive_experience_031.md](archive/interactive_experience_031.md) — **✅ SHIPPED** (2026-04-18, PR #156). 8 stages, ~700 LOC.
 - [archive/substrate_concept_decomposition.md](archive/substrate_concept_decomposition.md) — **✅ SHIPPED** (2026-04-17). 100% concept-level recall vs 36.4% baseline.
 - [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) — **PARTIAL** (2026-04-17). Stage 3 (pain/salience spike) SHIPPED via sem_learning_loop.md. `observe_episode_event` now wired into production agent loop via behavioral_convergence_wiring.md. Stages 1-2 (tool execution + semantic shift) remain — ship before P5.

@@ -124,6 +124,9 @@ Simulations call a live LLM for every turn and can burn cost + time quickly. Whe
 - **`spreading_activation(propagate_valence=False)` returns `dict[str, float]` unchanged.** The `propagate_valence=True` path returns `dict[str, tuple[float, float]]`. Existing callers are unaffected.
 - **NAc `_reward_bias` clamps to [0, max_reward_bias].** Negative rewards (pain) produce 0.0 bias. Bias only widens EC recognition, never narrows. Pain avoidance is handled by valence annotation on edges, not by reward bias.
 - **`BioStack.save_cerebellum()` must be called at session end.** Without it, learned forward models are lost.
+- **NAc per-tick decay is wired into agent_loop.py section 8.5.** Both `decay_eligibility()` and `decay_reward_biases()` run every tick, conditional on `_loop_nac is not None`. Prior to 2026-04-24, these methods were defined but never called from production code — eligibility traces and reward biases persisted indefinitely. The fix is load-bearing for affordance concept transfer (SCN temporal coupling assumes traces decay).
+- **SCN temporal coupling for eligibility traces (first SCN-substrate PoC).** `NAc._temporal_anchors` stores `(original_activation, TemporalSignature)` per `(agent_id, node_id)`. When fast-decay eligibility traces expire, `distribute_reward` falls back to temporal similarity — nodes activated in the same temporal phase as the reward still receive credit at `NACConfig.temporal_credit_weight` (default 0.3x, env-var `MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT`). Session-scoped — NOT persisted. Cross-session transfer uses `reward_bias` (persisted). `_temporal_anchors` are pruned in `decay_eligibility` when both the fast trace expired AND the anchor is older than `temporal_window_seconds`.
+- **Affordance names are encoded through a SEPARATE `LinguisticEncoder` from the percept encoder.** Both share the same EC/ATL/NAc backing, but the affordance encoder uses `AffordanceDecompositionStrategy` (splits on underscores: `fire_breath` → `["fire breath", "fire", "breath"]`) while the percept encoder uses `SpaCyNounChunkStrategy`. The module-level singleton `AFFORDANCE_STRATEGY` in `similarity/decomposer.py` is used by bio_enrichment, discovery tools, and trigger for annotation lookups. `ImaginationTrigger._aff_encoder` and the standalone `encode_entity_affordances()` are constructed via the shared `_make_aff_encoder()` factory.
 
 ## `maxim doctor` — environment diagnostics
 
@@ -430,7 +433,11 @@ Published to PyPI as `pymaxim` (import name stays `maxim`). 17 verb-based functi
 
 See [docs/plans/README.md](docs/plans/README.md) for the roadmap index. Current version: v0.7.0 on PyPI as `pymaxim` ([publication guide](docs/publication_guide.md)).
 
-**Recently shipped (2026-04-20):**
+**Recently shipped (2026-04-24):**
+- **Affordance Concept Transfer** — Substrate-native cross-entity learning. Routes affordance names through existing bio-pipeline (LinguisticEncoder → EC → ATL → NAc reward_bias). Transfer via EC pattern completion — "flame" maps to same node as "fire" (cosine 0.785). SCN temporal coupling for eligibility traces (first SCN-substrate PoC). Pre-existing NAc per-tick decay bug fixed. `discover_tools` renamed to `sense_tools`. Entity ownership shipped (self vs scene separation).
+- **Entity Ownership** — Self vs scene entity tools. Agent controls own body, observes others. Dragon bug fixed.
+
+**Previously shipped (2026-04-20):**
 - **0.7 Feature Completion** — Self-generating simulations. All tracks landed:
   - R0 Prerequisites: ComponentRegistry thread safety, sim-mode consolidation, TOOL_ALIASES lock
   - B3.1 Acting Coach: config + prompt section with bio-system modulation (NAc caution, pain anticipation, cerebellum predictions)
