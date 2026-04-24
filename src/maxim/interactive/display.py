@@ -94,6 +94,7 @@ class _ThinkingState:
     cycle: int  # Current cycle number
     max_cycles: int  # Hard cap
     enrichment_tags: list[str] = field(default_factory=list)
+    enrichment_details: dict[str, str] = field(default_factory=dict)  # system → summary
     started_at: float = 0.0  # time.monotonic() for elapsed display
     agent: str | None = None  # Agent nickname
     completed: bool = False  # True = show summary instead of live text
@@ -141,12 +142,17 @@ class MaximDisplay:
             "cerebellum",
             "atl",
             "sensory",
+            "sensor",
             "body",
             "percept",
             "reaction",
             "scn",
             "ec",
             "pipeline",
+            "enrichment",
+            "imagination",
+            "discovery",
+            "gate",
         }
     )
 
@@ -268,6 +274,12 @@ class MaximDisplay:
             "scn": "yellow",
             "ec": "yellow",
             "pipeline": "dim white",
+            # New bio-system subsystems (Track 1+2)
+            "enrichment": "magenta",
+            "imagination": "yellow",
+            "discovery": "blue",
+            "gate": "white",
+            "sensor": "cyan",
         }
         sub_lower = subsystem.lower()
         is_bio = sub_lower in self._BIO_SUBSYSTEMS
@@ -425,6 +437,7 @@ class MaximDisplay:
         agent: str | None = None,
         completed: bool = False,
         salience: float | None = None,
+        enrichment_details: dict[str, str] | None = None,
     ) -> None:
         """Update the thinking panel with deliberation state (thread-safe).
 
@@ -436,8 +449,11 @@ class MaximDisplay:
             agent: Agent nickname producing this deliberation.
             completed: If True, show as a completed summary (dim).
             salience: Computed thought salience (0.0-1.0) for display.
+            enrichment_details: Map of system name → summary of what it
+                contributed.  Shown as expandable detail under enrichment tags.
         """
         tags = enrichment_tags or []
+        details = enrichment_details or {}
         with self._lock:
             prev = self._thinking_state
             if completed and prev is not None:
@@ -456,6 +472,7 @@ class MaximDisplay:
                 cycle=cycle,
                 max_cycles=max_cycles,
                 enrichment_tags=tags,
+                enrichment_details=details,
                 started_at=prev.started_at if prev is not None and not completed else time.monotonic(),
                 agent=agent,
                 completed=completed,
@@ -767,10 +784,39 @@ class MaximDisplay:
         else:
             header = f"[bold green]Cycle {state.cycle}/{state.max_cycles}[/bold green] [dim]{elapsed:.1f}s[/dim]"
         if state.enrichment_tags:
-            tags_str = ", ".join(state.enrichment_tags)
-            header += f"  [dim cyan]enriched: {tags_str}[/dim cyan]"
+            _TAG_ICONS = {
+                "hippocampus": "💾",
+                "nac": "🧠",
+                "atl": "🏷️",
+                "cerebellum": "🎯",
+                "component_index": "🗺️",
+                "working_memory": "📝",
+                "fear": "😨",
+                "sensory": "📡",
+            }
+            tag_parts = []
+            for t in state.enrichment_tags:
+                icon = _TAG_ICONS.get(t.lower(), "🔬")
+                tag_parts.append(f"{icon}{t}")
+            header += f"  [dim cyan]enriched: {', '.join(tag_parts)}[/dim cyan]"
         if state.agent:
             header = f"[bright_cyan][{state.agent}][/bright_cyan] {header}"
+
+        # Build enrichment detail lines (Track 4: what each system contributed)
+        enrichment_lines: list[str] = []
+        if state.enrichment_details and not state.completed:
+            _DETAIL_ICONS = {
+                "hippocampus": "💾",
+                "nac": "🧠",
+                "atl": "🏷️",
+                "cerebellum": "🎯",
+                "component_index": "🗺️",
+                "working_memory": "📝",
+                "fear": "😨",
+            }
+            for sys_name, detail in state.enrichment_details.items():
+                icon = _DETAIL_ICONS.get(sys_name.lower(), "🔬")
+                enrichment_lines.append(f"[dim]{icon} {detail}[/dim]")
 
         # Build reasoning text from accumulated thought stream
         reasoning_parts: list[str] = []
@@ -796,7 +842,13 @@ class MaximDisplay:
 
         reasoning_text = "\n".join(visible) if visible else ""
         style = "bright_black" if state.completed else "white"
-        content = f"{header}\n[{style}]{reasoning_text}[/{style}]" if reasoning_text else header
+        # Assemble: header + enrichment details + reasoning
+        content_parts = [header]
+        if enrichment_lines:
+            content_parts.extend(enrichment_lines)
+        if reasoning_text:
+            content_parts.append(f"[{style}]{reasoning_text}[/{style}]")
+        content = "\n".join(content_parts)
 
         # Hint when thinking panel is the active scroll target
         if thinking_active:

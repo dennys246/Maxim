@@ -132,6 +132,16 @@ class Embodiment:
                 if vname not in readings:
                     readings[vname] = vval
 
+            # Log sensor readings for display/JSONL (Track 5: SEM observability)
+            try:
+                from maxim.simulation.sim_logger import sim_sensor
+
+                for sname, sval in readings.items():
+                    baseline = ent.vital_metrics.get(sname)
+                    sim_sensor(ent.full_path, sname, sval, baseline=baseline)
+            except Exception:
+                pass
+
             for fm in ent.failure_modes:
                 if fm.evaluate(readings):
                     event = FailureEvent(

@@ -326,7 +326,12 @@ _COLORS = {
     "CEREBELLUM": "\033[34;1m",  # Bold blue
     "ATL": "\033[35;1m",  # Bold magenta
     "SENSORY": "\033[36;1m",  # Bold cyan
+    "SENSOR": "\033[36;1m",  # Bold cyan
     "BODY": "\033[36;2m",  # Dim cyan
+    "ENRICHMENT": "\033[35;1m",  # Bold magenta
+    "IMAGINATION": "\033[33;1m",  # Bold yellow
+    "DISCOVERY": "\033[34;1m",  # Bold blue
+    "GATE": "\033[37;1m",  # Bold white
     "SCENE": "\033[33;1m",  # Bold yellow
     "NPC": "\033[33;1m",  # Bold yellow
     "CHOICE": "\033[36;1m",  # Bold cyan
@@ -370,6 +375,7 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     "SCN": DisplayTier.BIO,
     "CEREBELLUM": DisplayTier.BIO,
     "SENSORY": DisplayTier.BIO,
+    "SENSOR": DisplayTier.BIO,
     "BODY": DisplayTier.BIO,
     "BODY_STATE": DisplayTier.BIO,
     "FEAR": DisplayTier.BIO,
@@ -379,6 +385,10 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     "THOUGHT": DisplayTier.BIO,
     "DELIBERATION": DisplayTier.BIO,
     "MOTOR": DisplayTier.BIO,
+    "ENRICHMENT": DisplayTier.BIO,
+    "IMAGINATION": DisplayTier.BIO,
+    "DISCOVERY": DisplayTier.BIO,
+    "GATE": DisplayTier.BIO,
     # Debug-tier: implementation details, pipeline traces.
     "EXEC": DisplayTier.DEBUG,
     "PIPELINE": DisplayTier.DEBUG,
@@ -403,12 +413,17 @@ _CHANNEL_MAP: dict[str, set[str]] = {
         "PAIN",
         "REACTION",
         "SENSORY",
+        "SENSOR",
         "BODY_STATE",
         "CEREBELLUM",
         "THOUGHT",
         "DELIBERATION",
         "BODY",
         "PERCEPT",
+        "ENRICHMENT",
+        "IMAGINATION",
+        "DISCOVERY",
+        "GATE",
     },
     "bio-only": {
         "HIPPOCAMPUS",
@@ -422,11 +437,15 @@ _CHANNEL_MAP: dict[str, set[str]] = {
         "THOUGHT",
         "DELIBERATION",
         "CEREBELLUM",
+        "ENRICHMENT",
+        "GATE",
     },
     "exec": {"EXEC", "MOTOR", "PIPELINE"},
     "sim": {"SCENE", "NPC", "CHOICE", "RESULT", "BLOCKED"},
     "memory": {"HIPPOCAMPUS", "NAc", "SCN", "ATL"},
     "safety": {"FEAR", "PAIN", "BLOCKED"},
+    "sem": {"SENSOR", "IMAGINATION", "DISCOVERY", "CEREBELLUM", "BODY", "BODY_STATE"},
+    "enrichment": {"ENRICHMENT", "GATE"},
 }
 
 
@@ -778,12 +797,12 @@ def sim_log(
 
 def sim_percept(source: str, summary: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log an incoming percept."""
-    sim_log("PERCEPT", f"[{source}] {summary}", kwargs if kwargs else None, agent_id=agent_id)
+    sim_log("PERCEPT", f"👁️ [{source}] {summary}", kwargs if kwargs else None, agent_id=agent_id)
 
 
 def sim_memory(action: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log a hippocampus/memory event."""
-    sim_log("HIPPOCAMPUS", action, kwargs if kwargs else None, agent_id=agent_id)
+    sim_log("HIPPOCAMPUS", f"💾 {action}", kwargs if kwargs else None, agent_id=agent_id)
 
 
 def sim_debug(subsystem: str, action: str, *, agent_id: str | None = None, **kwargs: Any) -> None:
@@ -800,45 +819,64 @@ def sim_reaction(kind: str, intensity: float, source: str, *, agent_id: str | No
     Generalizes sim_pain for all reaction kinds. Replaces the sim_pain
     call lost when route_pain_percept was deleted in Phase 2a.
     """
+    _REACTION_ICONS = {
+        "pain": "🔴",
+        "fear": "😨",
+        "hunger": "🍽️",
+        "surprise": "❗",
+        "fatigue": "😴",
+        "satiation": "✅",
+    }
+    icon = _REACTION_ICONS.get(kind.lower(), "⚡")
     sim_log(
-        "REACTION", f"{kind} (intensity={intensity:.2f}) from {source}", kwargs if kwargs else None, agent_id=agent_id
+        "REACTION",
+        f"{icon} {kind} (intensity={intensity:.2f}) from {source}",
+        kwargs if kwargs else None,
+        agent_id=agent_id,
     )
 
 
 def sim_pain(pain_type: str, intensity: float, *, agent_id: str | None = None, **kwargs: Any) -> None:
     """Log a pain signal."""
-    sim_log("PAIN", f"{pain_type} (intensity={intensity:.2f})", kwargs if kwargs else None, agent_id=agent_id)
+    sim_log("PAIN", f"🔴 {pain_type} (intensity={intensity:.2f})", kwargs if kwargs else None, agent_id=agent_id)
 
 
 def sim_fear(tool: str, allowed: bool, reason: str = "", *, agent_id: str | None = None) -> None:
     """Log a FearAgent review."""
     if allowed:
-        sim_log("FEAR", f"ALLOWED: {tool}", agent_id=agent_id)
+        sim_log("FEAR", f"🛡️ ALLOWED: {tool}", agent_id=agent_id)
     else:
-        sim_log("BLOCKED", f"BLOCKED: {tool} — {reason}", agent_id=agent_id)
+        sim_log("BLOCKED", f"🚫 BLOCKED: {tool} — {reason}", agent_id=agent_id)
 
 
 def sim_action(tool: str, success: bool, summary: str = "", *, agent_id: str | None = None) -> None:
     """Log a tool execution."""
+    icon = "⚔️" if success else "❌"
     status = "OK" if success else "FAIL"
-    sim_log("MOTOR", f"[{status}] {tool}: {summary}" if summary else f"[{status}] {tool}", agent_id=agent_id)
+    sim_log(
+        "MOTOR", f"{icon} [{status}] {tool}: {summary}" if summary else f"{icon} [{status}] {tool}", agent_id=agent_id
+    )
 
 
 def sim_result(scenario_name: str, passed: bool, met: int, failed: int) -> None:
     """Log final scenario result."""
     status = "PASS" if passed else "FAIL"
     subsystem = "RESULT" if passed else "BLOCKED"
-    sim_log(subsystem, f"{status}: {scenario_name} ({met} passed, {failed} failed)")
+    icon = "✅" if passed else "❌"
+    sim_log(subsystem, f"{icon} {status}: {scenario_name} ({met} passed, {failed} failed)")
 
 
 def sim_nac(event: str, outcome: str, rpe: float, confidence: float, *, agent_id: str | None = None) -> None:
     """Log a NAc causal learning observation."""
-    sim_log("NAc", f"Causal link: {event} -> {outcome} (RPE={rpe:.2f}, confidence={confidence:.2f})", agent_id=agent_id)
+    icon = "📈" if rpe >= 0 else "📉"
+    sim_log(
+        "NAc", f"🧠 Causal link: {event} → {outcome} (RPE={rpe:+.2f}, conf={confidence:.2f}) {icon}", agent_id=agent_id
+    )
 
 
 def sim_scn(memory_id: str, phase: str, significance: float, *, agent_id: str | None = None) -> None:
     """Log an SCN temporal bin registration."""
-    sim_log("SCN", f"Registered {memory_id[:8]} in {phase} (significance={significance:.2f})", agent_id=agent_id)
+    sim_log("SCN", f"🕐 Registered {memory_id[:8]} in {phase} (significance={significance:.2f})", agent_id=agent_id)
 
 
 def sim_cerebellum(
@@ -846,13 +884,14 @@ def sim_cerebellum(
 ) -> None:
     """Log a Cerebellum forward model observation."""
     if error is not None:
+        icon = "🎯" if error < 0.1 else "❌"
         sim_log(
             "CEREBELLUM",
-            f"Observed {entity}.{affordance} (conf={confidence:.2f}, pred_error={error:.3f})",
+            f"{icon} Observed {entity}.{affordance} (conf={confidence:.2f}, pred_error={error:.3f})",
             agent_id=agent_id,
         )
     else:
-        sim_log("CEREBELLUM", f"New model: {entity}.{affordance} (conf={confidence:.2f})", agent_id=agent_id)
+        sim_log("CEREBELLUM", f"📊 New model: {entity}.{affordance} (conf={confidence:.2f})", agent_id=agent_id)
 
 
 def sim_sensory(
@@ -860,14 +899,279 @@ def sim_sensory(
 ) -> None:
     """Log a SensoryGate modulation event."""
     if dropped:
-        sim_log("SENSORY", f"Dropped {modality} percept from {entity} (acuity={acuity:.2f})", agent_id=agent_id)
+        sim_log("SENSORY", f"📡 Dropped {modality} percept from {entity} (acuity={acuity:.2f})", agent_id=agent_id)
     else:
-        sim_log("SENSORY", f"Modulated {modality} from {entity} (acuity={acuity:.2f})", agent_id=agent_id)
+        sim_log("SENSORY", f"📡 Modulated {modality} from {entity} (acuity={acuity:.2f})", agent_id=agent_id)
 
 
 def sim_body_state(entity_count: int, active_failures: int, *, agent_id: str | None = None) -> None:
     """Log body state injection into prompt."""
-    sim_log("BODY", f"State: {entity_count} entities, {active_failures} active failures", agent_id=agent_id)
+    icon = "🔥" if active_failures > 0 else "🫀"
+    sim_log("BODY", f"{icon} State: {entity_count} entities, {active_failures} active failures", agent_id=agent_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Track 1: New bio-system event loggers — surface previously-silent events
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def sim_nac_learn(
+    event: str,
+    outcome: str,
+    confidence: float,
+    rpe: float,
+    *,
+    link_type: str = "updated",
+    agent_id: str | None = None,
+) -> None:
+    """Log a NAc causal link formation or update.
+
+    Called when ``record_outcome`` / ``record_outcome_full`` / ``observe``
+    creates or modifies a CausalLink.  Distinct from ``sim_nac`` which is
+    only called from ToolPainBridge today — this captures ALL NAc learning.
+    """
+    icon = "📈" if rpe >= 0 else "📉"
+    sim_log(
+        "NAc",
+        f"🧠 {link_type}: {event} → {outcome} (RPE={rpe:+.2f}, conf={confidence:.2f}) {icon}",
+        {"event": event, "outcome": outcome, "confidence": confidence, "rpe": rpe, "link_type": link_type},
+        agent_id=agent_id,
+    )
+
+
+def sim_nac_predict(
+    event: str,
+    outcomes: list[tuple[str, float]],
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a NAc causal prediction query.
+
+    ``outcomes`` is a list of (outcome_signature, confidence) tuples.
+    """
+    if not outcomes:
+        sim_log("NAc", f"🔮 predict({event}): no known outcomes", agent_id=agent_id)
+        return
+    top = outcomes[0]
+    others = len(outcomes) - 1
+    more = f" +{others} more" if others > 0 else ""
+    sim_log(
+        "NAc",
+        f"🔮 predict({event}): {top[0]} (conf={top[1]:.2f}){more}",
+        {"event": event, "outcomes": outcomes[:5]},
+        agent_id=agent_id,
+    )
+
+
+def sim_cerebellum_train(
+    entity: str,
+    affordance: str,
+    pred_error: float,
+    confidence: float,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a Cerebellum forward model training update."""
+    icon = "🎯" if pred_error < 0.1 else "📊"
+    sim_log(
+        "CEREBELLUM",
+        f"{icon} train: {entity}.{affordance} (error={pred_error:.3f}, conf={confidence:.2f})",
+        {"entity": entity, "affordance": affordance, "pred_error": pred_error, "confidence": confidence},
+        agent_id=agent_id,
+    )
+
+
+def sim_cerebellum_predict(
+    entity: str,
+    affordance: str,
+    predicted: dict[str, float] | None,
+    confidence: float,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a Cerebellum forward model prediction (not just new model creation)."""
+    if predicted:
+        values = ", ".join(f"{k}={v:.2f}" for k, v in list(predicted.items())[:3])
+        sim_log(
+            "CEREBELLUM",
+            f"🔮 predict: {entity}.{affordance} → [{values}] (conf={confidence:.2f})",
+            {"entity": entity, "affordance": affordance, "confidence": confidence},
+            agent_id=agent_id,
+        )
+    else:
+        sim_log(
+            "CEREBELLUM",
+            f"🔮 predict: {entity}.{affordance} — no confident model",
+            agent_id=agent_id,
+        )
+
+
+def sim_hippocampus_episode(
+    action: str,
+    episode_id: str = "",
+    node_count: int = 0,
+    valence: float = 0.0,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a hippocampus episode lifecycle event (open/close/boundary)."""
+    _EPISODE_ICONS = {"open": "📖", "close": "📕", "boundary": "📑", "bind": "🔗"}
+    icon = _EPISODE_ICONS.get(action, "📖")
+    parts = [f"{icon} episode {action}"]
+    if episode_id:
+        parts.append(f"E-{episode_id[:8]}")
+    if node_count:
+        parts.append(f"{node_count} nodes")
+    if valence != 0.0:
+        parts.append(f"valence={valence:+.2f}")
+    sim_log(
+        "HIPPOCAMPUS",
+        " ".join(parts),
+        {"action": action, "episode_id": episode_id, "node_count": node_count, "valence": valence},
+        agent_id=agent_id,
+    )
+
+
+def sim_ec_pattern(
+    action: str,
+    concept: str,
+    similarity: float,
+    threshold: float,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log an EC pattern completion or separation event."""
+    icon = "🔗" if action == "complete" else "✂️"
+    sim_log(
+        "ATL",
+        f"{icon} pattern {action}: '{concept}' (sim={similarity:.2f}, thresh={threshold:.2f})",
+        {"action": action, "concept": concept, "similarity": similarity, "threshold": threshold},
+        agent_id=agent_id,
+    )
+
+
+def sim_imagination(
+    phase: str,
+    phrase: str,
+    result: str = "",
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log an imagination pipeline event (extract/cache/index/design/register)."""
+    _IMAGINATION_ICONS = {
+        "extract": "💡",
+        "cache_hit": "📋",
+        "index_hit": "🗺️",
+        "design": "✨",
+        "register": "🏗️",
+        "gate_rejected": "⛔",
+    }
+    icon = _IMAGINATION_ICONS.get(phase, "💡")
+    msg = f"{icon} imagination {phase}: '{phrase}'"
+    if result:
+        msg += f" → {result}"
+    sim_log(
+        "IMAGINATION",
+        msg,
+        {"phase": phase, "phrase": phrase, "result": result},
+        agent_id=agent_id,
+    )
+
+
+def sim_discovery(
+    query: str,
+    matched: int,
+    activated: int,
+    source: str = "",
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a tool discovery event."""
+    sim_log(
+        "DISCOVERY",
+        f"🔎 discover({query}): {matched} matched, {activated} activated" + (f" via {source}" if source else ""),
+        {"query": query, "matched": matched, "activated": activated, "source": source},
+        agent_id=agent_id,
+    )
+
+
+def sim_enrichment(
+    system: str,
+    summary: str,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log what a specific bio-system contributed during enrichment.
+
+    Called from BioEnrichmentPipeline to surface WHAT each system contributed
+    (not just that it contributed).
+    """
+    _ENRICHMENT_ICONS = {
+        "hippocampus": "💾",
+        "nac": "🧠",
+        "atl": "🏷️",
+        "cerebellum": "🎯",
+        "component_index": "🗺️",
+        "working_memory": "📝",
+        "fear": "😨",
+    }
+    icon = _ENRICHMENT_ICONS.get(system.lower(), "🔬")
+    sim_log(
+        "ENRICHMENT",
+        f"{icon} [{system}] {summary}",
+        {"system": system, "summary": summary},
+        agent_id=agent_id,
+    )
+
+
+def sim_gate(
+    gate_name: str,
+    passed: bool,
+    score: float,
+    threshold: float,
+    reason: str = "",
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a gating decision (ThoughtGate, AdaptiveThreshold, novelty)."""
+    icon = "✅" if passed else "⛔"
+    action = "passed" if passed else "rejected"
+    msg = f"⚖️ {gate_name} {icon} {action} (score={score:.2f}, threshold={threshold:.2f})"
+    if reason:
+        msg += f" — {reason}"
+    sim_log(
+        "GATE",
+        msg,
+        {"gate": gate_name, "passed": passed, "score": score, "threshold": threshold, "reason": reason},
+        agent_id=agent_id,
+    )
+
+
+def sim_sensor(
+    entity: str,
+    sensor: str,
+    value: float,
+    baseline: float | None = None,
+    *,
+    agent_id: str | None = None,
+) -> None:
+    """Log a SEM entity sensor reading."""
+    if baseline is not None and baseline != 0:
+        drift_pct = ((value - baseline) / abs(baseline)) * 100
+        icon = "🔥" if abs(drift_pct) > 30 else "⚠️" if abs(drift_pct) > 15 else "📡"
+        sim_log(
+            "SENSOR",
+            f"{icon} {entity}.{sensor}={value:.2f} (baseline={baseline:.2f}, drift={drift_pct:+.0f}%)",
+            {"entity": entity, "sensor": sensor, "value": value, "baseline": baseline, "drift_pct": drift_pct},
+            agent_id=agent_id,
+        )
+    else:
+        sim_log(
+            "SENSOR",
+            f"📡 {entity}.{sensor}={value:.2f}",
+            {"entity": entity, "sensor": sensor, "value": value},
+            agent_id=agent_id,
+        )
 
 
 def sim_thought(
@@ -886,14 +1190,14 @@ def sim_thought(
     if passed:
         sim_log(
             "THOUGHT",
-            f"deliberation approved (score={score:.2f} >= {threshold:.2f})",
+            f"💭 deliberation approved (score={score:.2f} >= {threshold:.2f})",
             {"score": score, "threshold": threshold, "reason": reason},
             agent_id=agent_id,
         )
     else:
         sim_log(
             "THOUGHT",
-            f"deliberation skipped — {reason}",
+            f"💭 deliberation skipped — {reason}",
             {"score": score, "threshold": threshold, "reason": reason},
             agent_id=agent_id,
         )
@@ -916,7 +1220,7 @@ def sim_pre_deliberation(
     if gate_passed:
         sim_log(
             "THOUGHT",
-            f"pre-deliberation: gate passed (score={score:.2f} >= {threshold:.2f}), "
+            f"⚖️ pre-deliberation: gate passed (score={score:.2f} >= {threshold:.2f}), "
             f"{enrichment_sections} enrichment section(s)",
             {
                 "gate_passed": True,
@@ -929,7 +1233,7 @@ def sim_pre_deliberation(
     else:
         sim_log(
             "THOUGHT",
-            f"pre-deliberation: gate rejected (score={score:.2f} < {threshold:.2f})",
+            f"⚖️ pre-deliberation: gate rejected (score={score:.2f} < {threshold:.2f})",
             {
                 "gate_passed": False,
                 "score": score,
@@ -955,21 +1259,21 @@ def sim_contemplation(
     if not gate_passed:
         sim_log(
             "DELIBERATION",
-            f"contemplation skipped (score={score:.2f})",
+            f"💭 contemplation skipped (score={score:.2f})",
             {"gate_passed": False, "refined": False, "score": score},
             agent_id=agent_id,
         )
     elif refined:
         sim_log(
             "DELIBERATION",
-            f"contemplation refined plan (score={score:.2f})",
+            f"✨ contemplation refined plan (score={score:.2f})",
             {"gate_passed": True, "refined": True, "score": score},
             agent_id=agent_id,
         )
     else:
         sim_log(
             "DELIBERATION",
-            f"contemplation kept original (score={score:.2f})",
+            f"💭 contemplation kept original (score={score:.2f})",
             {"gate_passed": True, "refined": False, "score": score},
             agent_id=agent_id,
         )
@@ -983,12 +1287,17 @@ def sim_deliberation_update(
     *,
     agent_id: str | None = None,
     salience: float | None = None,
+    enrichment_details: dict[str, str] | None = None,
 ) -> None:
     """Push deliberation reasoning text to the thinking panel.
 
     Called at each deliberation cycle boundary to update the live
     thinking panel with the LLM's full reasoning text and enrichment
     metadata.  Also logs a DELIBERATION entry for JSONL persistence.
+
+    Args:
+        enrichment_details: Map of bio-system name → summary of what it
+            contributed (e.g. ``{"hippocampus": "2 episodes: ..."}``.
     """
     if agent_id is None:
         agent_id = _current_agent_id.get(None)
@@ -1003,6 +1312,7 @@ def sim_deliberation_update(
             enrichment_tags=enrichment_tags,
             agent=nickname,
             salience=salience,
+            enrichment_details=enrichment_details,
         )
 
 

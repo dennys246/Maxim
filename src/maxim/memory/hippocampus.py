@@ -1748,6 +1748,19 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         for node_id, modality in pending.node_modality_buffer.items():
             self._node_modality[node_id] = modality
 
+        # Log episode close for display/JSONL (Track 5: bio observability)
+        try:
+            from maxim.simulation.sim_logger import sim_hippocampus_episode
+
+            sim_hippocampus_episode(
+                "close",
+                episode_id=episode.id,
+                node_count=len(episode.activated_nodes),
+                valence=episode.valence,
+            )
+        except Exception:
+            pass
+
         return episode
 
     # ─────────────────────────────────────────────────────────────────────────

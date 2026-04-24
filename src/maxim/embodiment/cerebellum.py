@@ -301,7 +301,15 @@ class Cerebellum:
                     return None
 
             self._total_predictions += 1
-            return model.predict_sensors()
+            predicted = model.predict_sensors()
+            try:
+                from maxim.simulation.sim_logger import sim_cerebellum_predict
+
+                entity_name = entity if isinstance(entity, str) else entity.full_path
+                sim_cerebellum_predict(entity_name, affordance, predicted, model.confidence)
+            except Exception:
+                pass
+            return predicted
 
     def has_model(
         self,
@@ -375,6 +383,20 @@ class Cerebellum:
             model = self._models[key]
             errors = model.update(actual, self.config.learning_rate)
             self._total_observations += 1
+
+        try:
+            from maxim.simulation.sim_logger import sim_cerebellum_train
+
+            # key is a NamedTuple with entity, modulator, affordance, params_hash, range_hash
+            max_error = max(abs(v) for v in errors.values()) if errors else 0.0
+            sim_cerebellum_train(
+                entity=str(key.entity),
+                affordance=str(key.affordance),
+                pred_error=max_error,
+                confidence=model.confidence,
+            )
+        except Exception:
+            pass
 
         return errors
 
