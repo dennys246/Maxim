@@ -144,9 +144,14 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
             lines.append("")
             lines.append(
                 "INTERACTIVE MODE: A human user is present and watching. "
-                "You can and should ask them questions using request_interaction "
-                "when you want their input, need clarification, or want to offer choices. "
-                "Engage conversationally — you are talking to a real person. "
+                "ACT FIRST, ASK SECOND. Explore your environment, use your tools, "
+                "consult your memories and predictions, and take action based on "
+                "what you know. Only use request_interaction when you are genuinely "
+                "stuck, facing a meaningful choice that requires the user's preference, "
+                "or need information you cannot obtain through your own tools and "
+                "experience. Do NOT ask for guidance when you can reason through "
+                "the situation yourself — your memories, causal predictions, and "
+                "available tools are your first resource. "
                 "Use set_scene to describe the current situation whenever the "
                 "location, objective, or context changes (e.g. new encounter, "
                 "new area, shift in tone). Keep titles short and evocative."

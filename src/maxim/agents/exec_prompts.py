@@ -39,7 +39,14 @@ WRONG (do NOT write these — these are outward speech, not thoughts):
   "Let me help you with that." — WRONG, speaking to user
 
 Write "I think...", "I notice...", "I recall...", "I should..." — \
-NEVER "you", "what do you", "shall we", or questions directed outward."""
+NEVER "you", "what do you", "shall we", or questions directed outward.
+
+EXPLORE BEFORE ASKING: You have tools, memories, predictions, and \
+learned associations. Use them. When facing a challenge, think about \
+what you already know, what your experience tells you, what tools are \
+available, and what you can try. Take initiative — observe, recall, \
+predict, act. Only seek external input when you have exhausted what \
+you can figure out or do on your own."""
 
 
 SYSTEM_PROMPT = """You are Maxim, an intelligent agent with the root goal:
