@@ -83,15 +83,21 @@ class _LogEntry:
 
 @dataclass
 class _ThinkingState:
-    """State for the thinking panel — tracks active or completed deliberation."""
+    """State for the thinking panel — tracks active or completed deliberation.
 
-    reasoning: str  # Full LLM reasoning text
+    ``history`` accumulates (cycle, reasoning, enrichment_tags) tuples
+    across deliberation cycles so the user sees the full chain building,
+    not just the latest cycle's text.
+    """
+
+    reasoning: str  # Latest cycle's reasoning text (or summary if completed)
     cycle: int  # Current cycle number
     max_cycles: int  # Hard cap
     enrichment_tags: list[str] = field(default_factory=list)
     started_at: float = 0.0  # time.monotonic() for elapsed display
     agent: str | None = None  # Agent nickname
     completed: bool = False  # True = show summary instead of live text
+    history: list[tuple[int, str, list[str]]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -427,16 +433,28 @@ class MaximDisplay:
             completed: If True, show as a completed summary (dim).
         """
         with self._lock:
+            # Carry forward history from the prior state (accumulate across cycles)
+            prev = self._thinking_state
+            if prev is not None and not completed:
+                history = list(prev.history)
+                # Append the new cycle's entry to the history
+                history.append((cycle, reasoning, enrichment_tags or []))
+            elif completed and prev is not None:
+                # On completion, preserve the accumulated history
+                history = list(prev.history)
+            else:
+                # Fresh start
+                history = [(cycle, reasoning, enrichment_tags or [])]
+
             self._thinking_state = _ThinkingState(
                 reasoning=reasoning,
                 cycle=cycle,
                 max_cycles=max_cycles,
                 enrichment_tags=enrichment_tags or [],
-                started_at=self._thinking_state.started_at
-                if self._thinking_state is not None and not completed
-                else time.monotonic(),
+                started_at=prev.started_at if prev is not None and not completed else time.monotonic(),
                 agent=agent,
                 completed=completed,
+                history=history,
             )
             # Auto-scroll to bottom on new content (not when completing)
             if not completed:
@@ -749,8 +767,14 @@ class MaximDisplay:
         if state.agent:
             header = f"[bright_cyan][{state.agent}][/bright_cyan] {header}"
 
-        # Reasoning text with scroll support
-        reasoning_lines = state.reasoning.split("\n") if state.reasoning else []
+        # Build reasoning text from accumulated history (shows chain building)
+        reasoning_parts: list[str] = []
+        for cyc_num, cyc_reasoning, cyc_tags in state.history:
+            if len(state.history) > 1:
+                tag_str = f"  [dim cyan]{', '.join(cyc_tags)}[/dim cyan]" if cyc_tags else ""
+                reasoning_parts.append(f"[dim]── cycle {cyc_num} ──{tag_str}[/dim]")
+            reasoning_parts.append(cyc_reasoning)
+        reasoning_lines = "\n".join(reasoning_parts).split("\n") if reasoning_parts else []
         total_reasoning = len(reasoning_lines)
         # Reserve 1-2 lines for header (+ hint when active)
         hint_lines = 1 if thinking_active else 0
