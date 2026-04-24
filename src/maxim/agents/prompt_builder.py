@@ -499,7 +499,7 @@ def build_instructions_section(request: LLMRequest) -> str:
                 '  "ready_to_act": true/false (true when you need to call a tool, speak, or move; false to keep thinking)',
                 '  "action": {"tool_name": "<tool>", "params": {...}}',
                 '  "confidence": 0.0-1.0',
-                '  "reasoning": "Brief explanation (1 sentence)"',
+                '  "reasoning": "Brief inner thought (1 sentence, first person, NOT addressed to anyone)"',
                 "Keep response compact. Do not include optional fields.",
             ]
         )
@@ -1212,7 +1212,7 @@ class PromptBuilder:
         if max_tokens < 50:
             return
 
-        lines = ["=== Your deliberation ==="]
+        lines = ["=== Your inner deliberation (private — not speech) ==="]
         for i, entry in enumerate(transcript, 1):
             lines.append(f"\n[Cycle {i}]")
             lines.append(entry)

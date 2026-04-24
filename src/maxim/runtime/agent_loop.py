@@ -527,7 +527,7 @@ def _run_deliberation_cycles(
 
         # 3. Build transcript entry (reasoning + bio-system response)
         if formatted:
-            entry = f"Your reasoning: {enrich_text[:600]}\nBio-system response:\n{formatted[:800]}"
+            entry = f"You thought: {enrich_text[:600]}\nYour experience responded:\n{formatted[:800]}"
             transcript.append(entry)
 
         # 4. Update StructuredContext

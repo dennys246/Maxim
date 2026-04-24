@@ -563,8 +563,8 @@ class TestDeliberationTranscript:
         assert ctx.deliberation_transcript is not None
         assert len(ctx.deliberation_transcript) == 1  # One cycle 2 entry
         entry = ctx.deliberation_transcript[0]
-        assert "Your reasoning:" in entry
-        assert "Bio-system response:" in entry
+        assert "You thought:" in entry
+        assert "Your experience responded:" in entry
 
     def test_transcript_accumulates_across_cycles(self, bio, wms, ctx, gate):
         """Transcript grows with each cycle."""
