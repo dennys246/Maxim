@@ -2727,8 +2727,22 @@ def run_agentic_loop(
                                 else:
                                     # ready_to_act == True on cycle 1 — use directly
                                     ctrl.pending_proposal = _first
-                                    from maxim.simulation.sim_logger import sim_contemplation, sim_deliberation_end
+                                    from maxim.simulation.sim_logger import (
+                                        sim_contemplation,
+                                        sim_deliberation_end,
+                                        sim_deliberation_update,
+                                    )
 
+                                    # Update thinking panel with the AUT's actual reasoning
+                                    # (replacing the percept text that was shown during enrichment)
+                                    _first_reasoning = _first.reasoning or ""
+                                    if _first_reasoning:
+                                        sim_deliberation_update(
+                                            _first_reasoning,
+                                            cycle=1,
+                                            max_cycles=_max_cyc,
+                                            salience=locals().get("_salience_c1"),
+                                        )
                                     sim_contemplation(gate_passed=True, refined=False, score=0.0)
                                     sim_deliberation_end(cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)")
                                     if thought_gate is not None:
