@@ -130,6 +130,23 @@ class WorkingMemorySet:
             items = list(self._buf)
         return [e for e in items if e.tick >= tick]
 
+    def top_by_salience(
+        self,
+        kinds: set[WorkingMemoryKind],
+        limit: int = 6,
+        min_salience: float = 0.0,
+    ) -> list[WMEntry]:
+        """Entries matching *kinds* sorted by salience desc, recency as tiebreaker.
+
+        Returns up to *limit* entries with ``salience >= min_salience``.
+        Higher salience first; ties broken by higher tick (more recent).
+        """
+        with self._lock:
+            items = list(self._buf)
+        matched = [e for e in items if e.kind in kinds and e.salience >= min_salience]
+        matched.sort(key=lambda e: (e.salience, e.tick), reverse=True)
+        return matched[:limit]
+
     def for_agent(self, agent_id: str) -> list[WMEntry]:
         """Entries scoped to *agent_id*, oldest-first."""
         with self._lock:

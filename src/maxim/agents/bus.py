@@ -611,6 +611,16 @@ class StructuredContext:
     # LLM sees accumulated reasoning + enrichment from prior cycles.
     working_memory_thoughts: list[str] | None = None
 
+    # Deliberation transcript: accumulating reasoning+enrichment pairs
+    # from multi-cycle PFC deliberation.  Each entry pairs the LLM's
+    # reasoning with the bio-system response it triggered.  Set by
+    # _run_deliberation_cycles; consumed by the prompt builder's
+    # _add_deliberation_transcript_section.  None for one-shot (cycle 1
+    # only) deliberation — the transcript is only built when cycles 2+
+    # actually run.  When present, suppresses the separate bio_enrichment
+    # section to avoid rendering the current cycle's enrichment twice.
+    deliberation_transcript: list[str] | None = None
+
 
 @dataclass
 class PlanProgressContext:

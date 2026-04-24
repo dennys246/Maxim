@@ -819,6 +819,7 @@ class PromptBuilder:
         self._add_guidance_sections(budgeter, request, date_str, time_str)
         self._add_context_sections(budgeter, request, question_text)
         self._add_perception_sections(budgeter, request)
+        self._add_deliberation_transcript_section(budgeter, request.context, response_reserve)
         self._add_working_memory_section(budgeter, request.context)
         self._add_memory_sections(budgeter, request.context)
 
@@ -1173,8 +1174,12 @@ class PromptBuilder:
         if context.body_state:
             budgeter.add("body_state", context.body_state, SectionPriority.CRITICAL)
 
-        # Bio-enrichment (L1): focused bio-system associations for current percept
-        if context.bio_enrichment_context:
+        # Bio-enrichment (L1): focused bio-system associations for current percept.
+        # Suppressed when a deliberation transcript is present — the current
+        # cycle's enrichment already appears as the last transcript entry.
+        # Rendering it twice wastes budget and confuses the LLM.
+        has_transcript = bool(getattr(context, "deliberation_transcript", None))
+        if context.bio_enrichment_context and not has_transcript:
             budgeter.add(
                 "bio_enrichment",
                 f"=== What your experience tells you about this situation ===\n{context.bio_enrichment_context}",
@@ -1183,6 +1188,54 @@ class PromptBuilder:
                 min_tokens=30,
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
             )
+
+    def _add_deliberation_transcript_section(
+        self,
+        budgeter: PromptBudgeter,
+        context: Any,
+        response_reserve: int,
+    ) -> None:
+        """Deliberation transcript: accumulating reasoning+enrichment from multi-cycle PFC.
+
+        Only rendered when a multi-cycle deliberation ran (cycles 2+).
+        Budget is proportional to n_ctx to avoid crowding out other
+        sections on small-context models: min(2000, available * 0.3).
+        Truncation drops oldest entries first (most recent reasoning
+        is most valuable).
+        """
+        transcript = getattr(context, "deliberation_transcript", None)
+        if not transcript:
+            return
+        counter = self._token_counter
+        available = max(0, self._n_ctx - response_reserve - 100)
+        max_tokens = min(2000, int(available * 0.3))
+        if max_tokens < 50:
+            return
+
+        lines = ["=== Your deliberation ==="]
+        for i, entry in enumerate(transcript, 1):
+            lines.append(f"\n[Cycle {i}]")
+            lines.append(entry)
+        text = "\n".join(lines)
+
+        def _truncate_transcript(content: str, max_tok: int) -> str:
+            """Drop oldest cycle entries first."""
+            parts = content.split("\n[Cycle ")
+            if len(parts) <= 2:
+                return content[: max_tok * 4]  # rough char approx
+            while len(parts) > 2 and counter.count_tokens(content) > max_tok:
+                parts.pop(1)  # drop oldest (index 1 — index 0 is header)
+                content = parts[0] + "\n[Cycle " + "\n[Cycle ".join(parts[1:])
+            return content
+
+        budgeter.add(
+            "deliberation_transcript",
+            text,
+            SectionPriority.IMPORTANT,
+            truncatable=True,
+            min_tokens=50,
+            truncate_fn=_truncate_transcript,
+        )
 
     @staticmethod
     def _add_working_memory_section(
@@ -1195,7 +1248,14 @@ class PromptBuilder:
         and bio-system associations from prior cycles.  400 token budget,
         truncatable.  Distinct from bio_enrichment (current cycle) — this
         shows *prior* cycles' enrichment summaries.
+
+        When a deliberation transcript is present (multi-cycle), THOUGHT
+        rendering defers to the transcript section — the transcript is a
+        richer, ordered representation of the same information.
         """
+        # When transcript is present, it subsumes the thoughts section
+        if getattr(context, "deliberation_transcript", None):
+            return
         thoughts = getattr(context, "working_memory_thoughts", None)
         if not thoughts:
             return
