@@ -11,6 +11,7 @@ Covers:
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -739,3 +740,133 @@ class TestNAcRanking:
         result = tool.execute(query="slash sword combat")
         assert result.success
         assert "caution" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Affordance concept transfer annotations (Stage 3)
+# ---------------------------------------------------------------------------
+
+
+class TestAffordanceTransferAnnotations:
+    """Tests for substrate-level affordance valence annotations."""
+
+    def _make_nac_with_bias(self, agent_id: str, node_id: str, bias: float):
+        """Create a NAc with a pre-set reward bias on a node."""
+        from maxim.decisions.nac import NAc
+
+        nac = NAc()
+        nac._reward_bias[(agent_id, node_id)] = bias
+        return nac
+
+    def _make_atl_with_concept(self, name: str, concept_id: str):
+        """Create an ATL with a pre-set substrate concept."""
+        from maxim.memory.atl import ATL
+        from maxim.memory.semantic_types import Concept, ConceptProvenance
+
+        atl = ATL()
+        concept = Concept(
+            id=concept_id,
+            timestamp=0.0,
+            name=name,
+            category="substrate",
+            provenance=ConceptProvenance.AGENT_INFERENCE,
+        )
+        atl.store(concept)
+        return atl
+
+    def test_sense_presence_annotates_dangerous(self):
+        """SensePresenceTool adds [DANGEROUS] for negative bias affordances."""
+        entity_map = MagicMock()
+        entity = _make_entity(
+            "dragon",
+            "creature",
+            modulators={"combat": {"fire_breath": "breathe fire"}},
+        )
+        entity_map.list_entities.return_value = [entity]
+        entity_map.is_self.return_value = False
+
+        nac = self._make_nac_with_bias("aut-1", "node-fire", -0.1)
+        atl = self._make_atl_with_concept("fire breath", "node-fire")
+
+        tool = SensePresenceTool(
+            entity_map=entity_map,
+            nac=nac,
+            atl=atl,
+            agent_id="aut-1",
+        )
+        result = tool.execute()
+        assert result.success
+        assert "DANGEROUS" in str(result.output)
+
+    def test_sense_presence_no_annotation_without_bias(self):
+        """SensePresenceTool shows plain names when no bias exists."""
+        entity_map = MagicMock()
+        entity = _make_entity(
+            "dragon",
+            "creature",
+            modulators={"combat": {"fire_breath": "breathe fire"}},
+        )
+        entity_map.list_entities.return_value = [entity]
+        entity_map.is_self.return_value = False
+
+        from maxim.decisions.nac import NAc
+        from maxim.memory.atl import ATL
+
+        tool = SensePresenceTool(
+            entity_map=entity_map,
+            nac=NAc(),
+            atl=ATL(),
+            agent_id="aut-1",
+        )
+        result = tool.execute()
+        assert result.success
+        assert "DANGEROUS" not in str(result.output)
+
+    def test_sense_presence_degrades_without_nac(self):
+        """SensePresenceTool works without NAc — no annotations, no crash."""
+        entity_map = MagicMock()
+        entity = _make_entity(
+            "dragon",
+            "creature",
+            modulators={"combat": {"fire_breath": "breathe fire"}},
+        )
+        entity_map.list_entities.return_value = [entity]
+        entity_map.is_self.return_value = False
+
+        tool = SensePresenceTool(entity_map=entity_map)
+        result = tool.execute()
+        assert result.success
+        assert "fire_breath" in str(result.output)
+
+    def test_discover_tools_substrate_fallback_annotation(self):
+        """DiscoverToolsTool falls back to substrate concept bias."""
+        # Store concepts for individual words — the ATL lookup is by exact name
+        nac = self._make_nac_with_bias("aut-1", "node-fire", -0.1)
+        atl = self._make_atl_with_concept("fire", "node-fire")
+
+        entity_map = MagicMock()
+        sword = _make_entity(
+            "rusty_sword",
+            "weapon",
+            modulators={"combat": {"fire_slash": "flaming slash attack"}},
+        )
+        entity_map.list_self_entities.return_value = [sword]
+        entity_map.list_scene_entities.return_value = []
+
+        registry = MagicMock()
+        registry.list_all.return_value = ["rusty_sword_fire_slash"]
+        registry.get.return_value = MagicMock(description="Flaming slash attack")
+        registry.get_tool_scene.return_value = "scene-1"
+        registry.is_tool_active.return_value = True
+
+        tool = DiscoverToolsTool(
+            entity_map=entity_map,
+            tool_registry=registry,
+            nac=nac,
+            atl=atl,
+            agent_id="aut-1",
+        )
+        # The tool name "rusty_sword_fire_slash" decomposes, and "fire"
+        # matches the ATL concept with negative bias → annotation
+        annotation = tool._nac_annotation("rusty_sword_fire_slash")
+        assert "caution" in annotation or "similar" in annotation

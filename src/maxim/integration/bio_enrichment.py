@@ -141,6 +141,7 @@ class BioEnrichmentPipeline:
         ec: EntorhinalCortex | None = None,
         component_index: ComponentIndex | None = None,
         novelty_threshold: float = 0.4,
+        agent_id: str = "",
     ) -> None:
         self._scorer = scorer
         self._hippocampus = hippocampus
@@ -149,6 +150,7 @@ class BioEnrichmentPipeline:
         self._ec = ec
         self._component_index = component_index
         self._novelty_threshold = novelty_threshold
+        self._agent_id = agent_id
 
     def enrich(
         self,
@@ -470,7 +472,16 @@ class BioEnrichmentPipeline:
             return []
 
     def _query_component_index(self, text: str) -> list[str]:
-        """Query ComponentIndex for available affordances matching text."""
+        """Query ComponentIndex for available affordances matching text.
+
+        When ATL + NAc are available, annotates each affordance with
+        valence from substrate concept nodes. Decomposes affordance names
+        into components (e.g., "fire_breath" → "fire", "breath") and
+        checks NAc reward_bias on their substrate nodes. This is the
+        "last mile" for cross-entity knowledge transfer — the agent sees
+        [DANGEROUS] or [effective] annotations from prior experience with
+        similar affordances on different entities.
+        """
         if self._component_index is None:
             return []
         try:
@@ -478,11 +489,45 @@ class BioEnrichmentPipeline:
             affordances: list[str] = []
             for match in matches:
                 if match.score >= 0.5:
-                    affordances.append(match.name)
+                    annotated = self._annotate_affordance_valence(match.name)
+                    affordances.append(annotated)
             return affordances
         except Exception as e:
             log.debug("Bio-enrichment ComponentIndex query failed: %s", e)
             return []
+
+    def _annotate_affordance_valence(self, affordance_name: str) -> str:
+        """Annotate an affordance name with learned valence from substrate.
+
+        Decomposes the affordance name, looks up component substrate nodes
+        in ATL, checks NAc reward_bias. Returns the original name with
+        an annotation suffix if bias exists, otherwise returns unchanged.
+        """
+        if self._nac is None or self._atl is None:
+            return affordance_name
+
+        try:
+            from maxim.similarity.decomposer import AffordanceDecompositionStrategy
+
+            strategy = AffordanceDecompositionStrategy()
+            chunks = strategy.extract(affordance_name)
+
+            max_bias = 0.0
+            for chunk in chunks:
+                concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
+                for concept in concepts:
+                    bias = self._nac.reward_bias(self._agent_id, concept.id)
+                    if abs(bias) > abs(max_bias):
+                        max_bias = bias
+
+            if max_bias < -0.01:
+                return f"{affordance_name} [DANGEROUS — learned from prior experience]"
+            elif max_bias > 0.01:
+                return f"{affordance_name} [effective — worked well before]"
+        except Exception as e:
+            log.debug("Affordance valence annotation failed for '%s': %s", affordance_name, e)
+
+        return affordance_name
 
     def _compute_valence(self, memories: list[EpisodicSummary], predictions: list[CausalPrediction]) -> float:
         """Compute overall valence signal from memories + predictions.
