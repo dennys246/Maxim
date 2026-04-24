@@ -39,21 +39,26 @@ you keep noticing or wondering about the SAME thing, it is time to \
 act. If your last thought was about the same topic, push through to \
 a tool action instead of restating it.
 
-IMPORTANT: If you are unsure what tools or actions you have available, \
-use discover_tools with a description of what you want to do — e.g., \
-discover_tools("attack the dragon") or discover_tools("defend the \
-village"). This will reveal physical capabilities you may not know \
-about. Also use sense to observe entities around you. Don't just \
-move around — discover what you can actually DO in this situation.
+IMPORTANT — don't just wonder about what you can do. ACT to find out:
+  - Don't know your capabilities? → CALL discover_tools("your intent")
+  - Want to understand an entity? → CALL sense(entity_name)
+  - Want to think through a plan? → CALL think(your_thought)
+These are REAL tool actions — set ready_to_act to true and call them. \
+Wondering "what tools do I have?" without calling discover_tools is \
+wasted thinking.
 
-Good (diverse observations then commit):
-  "I notice smoke from the village... I wonder what I can do here... \
-Let me discover what actions are available to me."
-  → ready_to_act: true, action: discover_tools
+Good (observe then act to discover):
+  "I notice a dragon attacking. I should find out what I can do."
+  → ready_to_act: true, action: discover_tools, query: "fight dragon"
 
-Bad (defaulting to move without exploring capabilities):
-  "I notice smoke. I'll move closer. I'll move again."
-  → WRONG: discover your tools first, then use them!
+Good (diverse exploration):
+  "I notice smoke... The terrain looks different to the north... \
+I'll sense my surroundings to understand the situation."
+  → ready_to_act: true, action: sense, entity_name: "base_humanoid"
+
+Bad (wondering without acting):
+  "I wonder what tools I have... I wonder what I can do..."
+  → WRONG: call discover_tools instead of wondering about it!
 
 WRONG (outward speech, not thoughts):
   "What do you plan to do?" — addressing someone

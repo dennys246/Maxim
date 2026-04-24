@@ -767,7 +767,7 @@ def run_agentic_loop(
 
     _recent_thought_words: _deque[set[str]] = _deque(maxlen=8)
 
-    def _is_novel_thought(text: str, min_novelty: float = 0.25) -> bool:
+    def _is_novel_thought(text: str, min_novelty: float = 0.40) -> bool:
         """Check if a thought is sufficiently novel vs recent thoughts.
 
         Returns True if the thought should be shown (novel enough).
