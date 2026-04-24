@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from maxim.memory.atl import ATL
     from maxim.memory.hippocampus import Hippocampus
     from maxim.runtime.gating import TextSalienceScorer
-    from maxim.similarity.ec import EC
+    from maxim.similarity.ec import EntorhinalCortex
 
 log = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ class BioEnrichmentPipeline:
         hippocampus: Hippocampus | None = None,
         nac: NAc | None = None,
         atl: ATL | None = None,
-        ec: EC | None = None,
+        ec: EntorhinalCortex | None = None,
         component_index: ComponentIndex | None = None,
         novelty_threshold: float = 0.4,
     ) -> None:
@@ -201,6 +201,10 @@ class BioEnrichmentPipeline:
         # Compute overall valence from memories + predictions
         valence = self._compute_valence(memories, predictions)
 
+        # Track 4: Emit enrichment transparency logs so display/JSONL
+        # captures WHAT each bio-system contributed, not just that it did.
+        self._log_enrichment_contributions(memories, predictions, concepts, affordances, recent_context)
+
         return EnrichmentResult(
             memories=tuple(memories),
             predictions=tuple(predictions),
@@ -246,6 +250,38 @@ class BioEnrichmentPipeline:
             return ""
 
         return "\n".join(lines)
+
+    @staticmethod
+    def _log_enrichment_contributions(
+        memories: list[EpisodicSummary],
+        predictions: list[CausalPrediction],
+        concepts: list[ConceptLink],
+        affordances: list[str],
+        recent_context: list[str],
+    ) -> None:
+        """Emit sim_enrichment logs for each bio-system that contributed."""
+        try:
+            from maxim.simulation.sim_logger import sim_enrichment
+        except ImportError:
+            return
+
+        if memories:
+            summaries = [m.summary[:60] for m in memories[:3]]
+            sim_enrichment("hippocampus", f"{len(memories)} episode(s): {'; '.join(summaries)}")
+
+        if predictions:
+            pred_strs = [f"{p.event}→{p.outcome} ({p.confidence:.0%})" for p in predictions[:3]]
+            sim_enrichment("nac", f"{len(predictions)} prediction(s): {', '.join(pred_strs)}")
+
+        if concepts:
+            concept_names = [c.concept for c in concepts[:5]]
+            sim_enrichment("atl", f"{len(concepts)} concept(s): {', '.join(concept_names)}")
+
+        if affordances:
+            sim_enrichment("component_index", f"{len(affordances)} affordance(s): {', '.join(affordances[:5])}")
+
+        if recent_context:
+            sim_enrichment("working_memory", f"{len(recent_context)} recent action(s)")
 
     # -- Private query methods -------------------------------------------------
 

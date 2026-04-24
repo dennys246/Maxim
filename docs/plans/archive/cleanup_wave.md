@@ -1,6 +1,6 @@
 # Cleanup Wave
 
-**Status:** Active, parallel to spine (does not gate 1.0)
+**Status:** SHIPPED (all items complete, does not gate 1.0)
 **Supersedes:** `display_simplification_plan.md`, `agent_permissions_plan.md`
 **Target version:** 0.2.2 — ships as a single coherent wave
 

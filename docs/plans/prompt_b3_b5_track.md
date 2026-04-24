@@ -1,6 +1,6 @@
 # Prompt Track — B3 Acting Coach + B5 Embodiment/Narrative Separation
 
-**Status:** Draft — opens after B1 (SHIPPED).
+**Status:** B3 Acting Coach SHIPPED (PR #165). B5 Embodiment/Narrative separation: shell design, not started.
 **Scope:** ~450 LOC across two phases
 **Target version:** 0.5 (formerly 0.4)
 **Gates:** null (B4 gates 1.0, not B3/B5)

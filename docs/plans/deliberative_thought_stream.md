@@ -3,7 +3,7 @@
 **Status:** Shell plan (2026-04-23), **refined — 5-lens review complete** (2026-04-23)
 **Scope:** ~350-450 LOC across existing modules (no new bio-system)
 **Target version:** 0.9
-**Depends on:** [pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) (shipped)
+**Depends on:** [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) (shipped)
 **Extends:** [goal_depth_integration.md](goal_depth_integration.md) (Stage 3 absorbed here; Stage 1 partially absorbed as goal_tag on THOUGHTs — full GOAL WMS kind remains in goal_depth)
 **Gates:** none; behavioral improvement + architectural foundation
 
@@ -386,7 +386,7 @@ Stage 4 is the extensibility layer.  It doesn't change behavior — it creates t
 ## Relationship to existing plans
 
 - **Partially absorbs** [goal_depth_integration.md](goal_depth_integration.md) Stage 3 (NAc goal-outcome learning).  Stage 1 (GOAL WMS kind) is *partially* absorbed as goal_tag on THOUGHTs — the full GOAL kind + status tracking remains in goal_depth.  Stages 2 (episode goal tagging) and 4 (goal persistence) remain independent follow-ons.
-- **Extends** [pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) — uses the cycle infrastructure shipped in 0.8 without modifying cycle logic.  The cycle produces richer data; the prompt builder consumes it differently.
+- **Extends** [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) — uses the cycle infrastructure shipped in 0.8 without modifying cycle logic.  The cycle produces richer data; the prompt builder consumes it differently.
 - **Enables** ThoughtGate adaptive threshold via NAc goal bias — currently ThoughtGate has no NAc input.  Stage 3 creates the signal.
 - **Enables** cross-session goal learning — once NAc has goal-tagged causal links, they persist across sessions via existing NAc serialization.  No new persistence code needed.
 

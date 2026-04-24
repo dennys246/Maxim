@@ -1,6 +1,6 @@
 # Foundations Plan — F0 Prerequisites for Substrate Work
 
-**Status:** Active, blocks [substrate_plan.md](substrate_plan.md) P1+
+**Status:** SHIPPED (2026-04-11). Unblocked [substrate_plan.md](substrate_plan.md) P1+
 **Target version:** 0.3-pre (lands after Cleanup Wave and peer_leader_flexibility_plan's current waves, before any substrate phase begins)
 **Scope:** ~1,130 LOC + tests, ~2 weeks of focused work
 **Split from:** substrate_plan.md, where these items originally lived as F0.1–F0.7 inside a larger proof-obligation framework. Split out to concentrate substrate_plan on phase gates and keep the foundation work reviewable as its own wave.

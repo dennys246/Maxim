@@ -15,7 +15,7 @@
 | Plan 3 (Fast Failover) | ✅ shipped | PR #94 (`ce5f034`) | [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) |
 | Plan 3.5 (Cancellation Hygiene) | ✅ shipped | PR #96 (`6a4f505`) | [archive/llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md) |
 | Plan 3.6 R5 (VRAM spillover) | ✅ shipped | PR #99 (`2884e58`) | [llm_path_peer_failover.md](llm_path_peer_failover.md) — R1–R4 remain draft |
-| Plan 4 Stage A (agent_id) | ✅ shipped in review | `71f7c24` on `feat/llm-path-operator-visibility` | [llm_path_operator_visibility.md](llm_path_operator_visibility.md) |
+| Plan 4 Stage A (agent_id) | ✅ shipped in review | `71f7c24` on `feat/llm-path-operator-visibility` | [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) |
 | Plan 4 Stage B (bench) | ✅ shipped in review | same | same |
 | Plan 4 Stage C (mesh.yml + admin API) | ⏳ DEFERRED | — | same (Stage C section) |
 | Stress test Phase D | ✅ shipped | [llm_path_stress_20260413.md](../experiments/results/llm_path_stress_20260413.md) | — |
@@ -95,7 +95,7 @@ All ship under version **0.4** as a single "major stability" milestone per user 
 
 **Ship when:** single-URL `peer.yml` works unchanged, multi-leader failover < 2s on stub backends, `maxim doctor` reports per-leader status.
 
-### Plan 4: Operator Visibility — [llm_path_operator_visibility.md](llm_path_operator_visibility.md)
+### Plan 4: Operator Visibility — [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md)
 
 **~650 LOC new. Ships unconditionally — operator visibility is always valuable.** Renamed from "Reactive Mesh" per stress-test-driven scope decision.
 
@@ -253,7 +253,7 @@ The current architecture is a **star topology** — one leader (RTX 5080 + cloud
 | Step | What | Lives in | Trigger | Status |
 |---|---|---|---|---|
 | **0a** | **Multi-URL `peer.yml`** with priority-order failover + **VRAM spillover doctor check**. Reuses Plan 3's typed-exception router loop. ~190 LOC (150 multi-leader + 40 spillover detection added 2026-04-13 after 125s root-cause analysis). | [llm_path_peer_failover.md](llm_path_peer_failover.md) (Plan 3.6) | User has a hot-standby leader (RTX 3070 alongside RTX 5080) OR operator wants `maxim doctor` to catch VRAM-spillover slowdowns | ▶ READY (Draft v2) |
-| **0b** | **`mesh.yml`** as canonical multi-node config + admin API + drain/resume + per-agent rate limits. Supersedes 0a. ~650 LOC. | [llm_path_operator_visibility.md](llm_path_operator_visibility.md) (Plan 4) | Operator-grade visibility needed | ▶ READY |
+| **0b** | **`mesh.yml`** as canonical multi-node config + admin API + drain/resume + per-agent rate limits. Supersedes 0a. ~650 LOC. | [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) (Plan 4) | Operator-grade visibility needed | ▶ READY |
 | **1** | **Multi-peer dispatch** with rendezvous-hash distribution + `X-Maxim-Suggested-Peer` 429 hints. Load-balances across homogeneous nodes. ~250 LOC. | [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) | Phase D shows leader saturation OR ≥2 GPU nodes serving the same model | ⏸ Revive when triggered |
 | **2** | **Capability advertisement + runtime spillover detection** — each node exposes `loaded_model`, `vram_free_gb`, `tier`, `tokens_per_sec`. Router caches + ranks providers by capability AND by measured tok/s vs baseline (catches VRAM spillover that the static doctor check misses). ~450 LOC. | [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) | ≥2 nodes with **different** loaded models OR static spillover check from step 0a proves insufficient | ⏸ Shell plan expanded 2026-04-13 |
 | **3** | **Discovery via mDNS or gossip** — nodes find each other on the LAN without static `mesh.yml`. ~400 LOC. | (Future shell plan, not yet drafted) | ≥3 nodes OR frequent node turnover | ⏸ Not drafted |

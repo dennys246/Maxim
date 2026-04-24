@@ -1,6 +1,6 @@
 # Interactive Display Overhaul — agent focus, thinking panel, dynamic resize
 
-**Status:** Implementation-ready plan (2026-04-23)
+**Status:** SHIPPED (2026-04-23). Thinking panel, agent focus, resize presets, /help, context-sensitive scrolling.
 **Scope:** ~450-550 LOC net
 **Depends on:** [pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) (SHIPPED in PR #178 — deliberation events flowing)
 **Target version:** 0.8 patch

@@ -1,6 +1,6 @@
 # PFC Deliberation Cycle — unified think-or-act loop
 
-**Status:** Shell plan (2026-04-22)
+**Status:** SHIPPED (PR #178, 2026-04-22). Unified think-or-act loop with multi-cycle recurrence.
 **Scope:** ~500-600 LOC net (add ~400, delete ~300 dead code)
 **Target version:** 0.8 patch
 **Priority:** Highest — deliberation is the missing bio-plausible link

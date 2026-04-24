@@ -1,6 +1,6 @@
 # LLM Path Refinement — Plan 4: Operator Visibility
 
-**Status:** Draft v4 — 2026-04-14: split into three sequential stages after Phase D2 surfaced two concrete must-ship items (A+B) that close out the 0.4 stability story before the bigger mesh.yml / admin-API work (C).
+**Status:** Stages A+B SHIPPED (0.4). C1-C3.2 SHIPPED (0.4/0.5). C3.4-C4.6 SHIPPED (0.5). Originally split into three sequential stages after Phase D2 surfaced two concrete must-ship items (A+B).
 **Scope:** ~750 LOC new (A: ~150, B: ~550, C: ~650 as originally scoped — ships across 2-3 sessions)
 **Target version:** A+B in 0.4. C spans 0.4/0.5 depending on session cadence.
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md)

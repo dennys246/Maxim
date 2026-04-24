@@ -1,6 +1,6 @@
 # Bio-System Unification — central tracking doc
 
-**Status:** Living index doc. Captures the structural-enforcement pattern that came out of `executor_bootstrap_unification.md` and applies it to the rest of the bio-system construction surface.
+**Status:** COMPLETE (all 6 items shipped). Index that captured the structural-enforcement pattern from `executor_bootstrap_unification.md`.
 **Created:** 2026-04-14
 **Parent pattern:** [executor_bootstrap_unification.md](executor_bootstrap_unification.md) — the first instance of this work, which pushed the `ToolPainBridge` invariant into `build_executor`.
 **Companion ceiling:** [agent_factory_canonicalization.md](agent_factory_canonicalization.md) — the eventual end state where `AgentFactory.create_agent` is the only door for constructing a Maxim agent. Bio-system unification is the *floor* it rests on.
