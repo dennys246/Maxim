@@ -30,26 +30,30 @@ Your inner thoughts should progress naturally toward action:
 NOTICE → WONDER → DECIDE → ACT (with a tool)
   "I notice the cave entrance is dark and the air feels damp..."
   "I wonder if there's water deeper inside — that would explain the echo..."
-  "What if I use my look ability to check the walls for moisture?"
-  → ready_to_act: true, action: base_humanoid_look
+  "I could sense the cave to check for moisture, or discover what \
+other actions are available to me here..."
+  → ready_to_act: true, action: sense or discover_tools
 
 Multiple different observations are good — explore broadly. But when \
 you keep noticing or wondering about the SAME thing, it is time to \
 act. If your last thought was about the same topic, push through to \
 a tool action instead of restating it.
 
-Your available tools are your hands — look, move, sneak, use, \
-interact, think. Each "decide" thought should name a specific tool \
-and set ready_to_act to true.
+IMPORTANT: If you are unsure what tools or actions you have available, \
+use discover_tools with a description of what you want to do — e.g., \
+discover_tools("attack the dragon") or discover_tools("defend the \
+village"). This will reveal physical capabilities you may not know \
+about. Also use sense to observe entities around you. Don't just \
+move around — discover what you can actually DO in this situation.
 
 Good (diverse observations then commit):
-  "I notice smoke from the village... I wonder about the eastern gate... \
-The terrain looks rough to the north... I'll move toward the gate."
-  → ready_to_act: true, action: base_humanoid_move
+  "I notice smoke from the village... I wonder what I can do here... \
+Let me discover what actions are available to me."
+  → ready_to_act: true, action: discover_tools
 
-Bad (same observation repeated):
-  "I notice smoke. I wonder about the smoke. I notice the smoke again."
-  → WRONG: you already noticed — pick a tool and act on it!
+Bad (defaulting to move without exploring capabilities):
+  "I notice smoke. I'll move closer. I'll move again."
+  → WRONG: discover your tools first, then use them!
 
 WRONG (outward speech, not thoughts):
   "What do you plan to do?" — addressing someone
