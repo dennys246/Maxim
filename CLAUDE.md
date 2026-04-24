@@ -276,7 +276,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Area | Key files |
 |---|---|
 | Agent loop | `runtime/agent_loop.py`, `runtime/loop_controller.py` |
-| Tools | `tools/registry.py` (scene-scoped activation, active tool cap, per-tool `deactivate_tool`), `tools/base.py` (Tool ABC), `tools/discovery.py` (SEM discovery: `DiscoverToolsTool`, `UniversalSenseTool`, goal top-k, LRU eviction), `runtime/executor.py` (dispatch + active-tool gate, aliases), `embodiment/tool_bridge.py` (entity tool generation), `embodiment/entity_map.py` (name→Entity resolution) |
+| Tools | `tools/registry.py` (scene-scoped activation, active tool cap, per-tool `deactivate_tool`), `tools/base.py` (Tool ABC), `tools/discovery.py` (SEM discovery: `SenseToolsTool`, `UniversalSenseTool`, goal top-k, LRU eviction), `runtime/executor.py` (dispatch + active-tool gate, aliases), `embodiment/tool_bridge.py` (entity tool generation), `embodiment/entity_map.py` (name→Entity resolution) |
 | LLM routing | `models/language/router.py` (provider fallback, typed exception branches, `dispatch_exhausted` aggregated WARN), `models/language/maxim_peer_backend.py` (self-hosted peer backend — one HTTP call, typed failure, streaming with strict mid-stream fail, `health_check` + `for_url` factory), `runtime/lane_backends.py::BACKEND_CLASSES` (dispatch table), `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair) |
 | Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols), `memory/percept_trace_buffer.py` (τ-decay ring buffer) |
 | Causal learning | `decisions/nac.py` (reward bias, eligibility traces, distribute_reward), `decisions/causal_link.py` (CausalLink, percept_refs) |

@@ -67,7 +67,7 @@ description = generate_tools_for_entity(entity, mode="observed")
 
 The agent sees: "A dragon is nearby. It appears capable of: fire_breath (ranged fire attack), tail_sweep (area knockback), circle (aerial repositioning). Its health is 1.0, fire_charge is 0.8."
 
-The agent's available tools remain: move, look, speak, pick_up, use, discover_tools, sense, sense_presence.
+The agent's available tools remain: move, look, speak, pick_up, use, sense_tools, sense, sense_presence.
 
 ### Stage 4: Interaction tools — agent actions AGAINST scene entities
 
@@ -81,9 +81,9 @@ The agent needs tools for interacting WITH scene entities, not AS them. Options:
 
 **Recommendation:** Start with Option A (generic interaction verbs) — it's the simplest and doesn't require per-pairing tool generation. Add `attack(target)`, `defend`, `dodge` to the base_humanoid SEM spec.
 
-### Stage 5: discover_tools integration
+### Stage 5: sense_tools integration
 
-`discover_tools` should:
+`sense_tools` should:
 - Search the agent's OWN tools (self entity) for callable actions
 - Include scene entity observation context in the response ("The dragon nearby can breathe fire — consider dodging")
 - NOT return scene entity tools as callable
@@ -118,5 +118,5 @@ The agent needs tools for interacting WITH scene entities, not AS them. Options:
 
 1. Run dragon sim — confirm agent uses humanoid tools (move, attack, dodge) not dragon tools (fire_breath, tail_sweep)
 2. Confirm agent can observe dragon state via `sense("dragon")`
-3. Confirm `discover_tools("fight")` returns humanoid combat tools, not dragon tools
+3. Confirm `sense_tools("fight")` returns humanoid combat tools, not dragon tools
 4. Confirm `sense_presence` shows dragon capabilities as observed, humanoid capabilities as callable

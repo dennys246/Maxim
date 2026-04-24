@@ -233,7 +233,7 @@ def generate_tools_for_entity(
 
     When *entity_map* is provided (an ``EntityMap`` instance), the entity
     tree is registered in it for name-based resolution by
-    ``UniversalSenseTool`` and ``DiscoverToolsTool``.
+    ``UniversalSenseTool`` and ``SenseToolsTool``.
 
     Parameters
     ----------

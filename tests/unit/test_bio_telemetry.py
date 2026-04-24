@@ -130,7 +130,7 @@ class TestNewSimLogFunctions:
 
     def test_sim_discovery(self):
         set_display_tier(DisplayTier.BIO)
-        sim_discovery("attack with sword", matched=5, activated=3, source="DiscoverToolsTool")
+        sim_discovery("attack with sword", matched=5, activated=3, source="SenseToolsTool")
         records = [r for r in get_sim_records() if r["subsystem"] == "DISCOVERY"]
         assert len(records) >= 1
         assert records[-1]["data"]["matched"] == 5

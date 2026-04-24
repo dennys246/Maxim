@@ -4,7 +4,7 @@ Provides two tools that replace the flat per-entity tool explosion:
 
 - ``UniversalSenseTool`` — single ``sense(entity_name)`` tool that reads
   all sensors on any named entity, replacing N×M individual read/sense tools.
-- ``DiscoverToolsTool`` — ``discover_tools(query)`` that matches intent
+- ``SenseToolsTool`` — ``sense_tools(query)`` that matches intent
   against entity modulators/affordances and activates the relevant tools
   via I3's scene-scoped mechanism.  Results are ranked by NAc valence
   when available (S2).
@@ -215,7 +215,7 @@ class SensePresenceTool(Tool):
 
         lines.append("")
         lines.append(
-            "Use discover_tools to find YOUR specific actions, "
+            "Use sense_tools to find YOUR specific actions, "
             "or sense(entity_name) to read any entity's full sensor state."
         )
         return ToolOutput(success=True, output="\n".join(lines))
@@ -242,7 +242,7 @@ class SensePresenceTool(Tool):
 
 
 # ---------------------------------------------------------------------------
-# DiscoverToolsTool
+# SenseToolsTool
 # ---------------------------------------------------------------------------
 
 
@@ -254,7 +254,7 @@ def _keyword_overlap(query_words: set[str], text: str) -> float:
     return len(query_words & text_words) / max(len(query_words), 1)
 
 
-class DiscoverToolsTool(Tool):
+class SenseToolsTool(Tool):
     """Discover physical capabilities by intent.
 
     Takes a natural language query describing what the agent wants to do,
@@ -262,7 +262,7 @@ class DiscoverToolsTool(Tool):
     the relevant tools.  Results appear in the next prompt turn.
     """
 
-    name = "discover_tools"
+    name = "sense_tools"
     description = (
         "Discover what physical actions you can perform. Describe what "
         "you want to do — e.g., 'attack with sword', 'repair equipment', "
@@ -361,7 +361,7 @@ class DiscoverToolsTool(Tool):
                 _ent_names = [e.name for e in entities]
                 sim_log(
                     "SEM_TRACE",
-                    f"discover_tools('{query}'): NO matches — entities={_ent_names}, "
+                    f"sense_tools('{query}'): NO matches — entities={_ent_names}, "
                     f"scored={len(scored)} candidates but all score=0",
                 )
             except Exception:
@@ -407,14 +407,14 @@ class DiscoverToolsTool(Tool):
             "pick the most relevant tool above and call it."
         )
 
-        log.info("discover_tools: activated %d tools for query %r", len(activated), query)
+        log.info("sense_tools: activated %d tools for query %r", len(activated), query)
         try:
             from maxim.simulation.sim_logger import sim_discovery, sim_log
 
-            sim_discovery(query, matched=len(top_matches), activated=len(activated), source="DiscoverToolsTool")
+            sim_discovery(query, matched=len(top_matches), activated=len(activated), source="SenseToolsTool")
             sim_log(
                 "SEM_TRACE",
-                f"discover_tools('{query}'): {len(activated)} activated — {', '.join(activated)}",
+                f"sense_tools('{query}'): {len(activated)} activated — {', '.join(activated)}",
             )
         except Exception:
             pass

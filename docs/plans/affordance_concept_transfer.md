@@ -241,7 +241,7 @@ Surface the transfer to the LLM prompt so the agent can act on transferred knowl
 3. Annotate capability lines: `fire_breath (ranged fire attack) [DANGEROUS]`.
 4. Degrades gracefully when encoder/nac are None — no annotations, existing behavior.
 
-**DiscoverToolsTool changes:**
+**SenseToolsTool changes:**
 1. Already has `nac` — extend `_nac_annotation` to also check bare affordance component nodes.
 2. When entity-specific link doesn't exist, fall back to checking component-level reward_bias.
 3. This is the "transfer surfaces in discovery" path.
@@ -250,7 +250,7 @@ Surface the transfer to the LLM prompt so the agent can act on transferred knowl
 | File | Change | LOC |
 |------|--------|-----|
 | `integration/bio_enrichment.py` | Affordance component bias lookup + annotations | +30 |
-| `tools/discovery.py` | SensePresenceTool + DiscoverToolsTool annotations via component nodes | +25 |
+| `tools/discovery.py` | SensePresenceTool + SenseToolsTool annotations via component nodes | +25 |
 | `simulation/orchestrator.py` | Pass encoder/nac to tools at construction | +5 |
 | `tests/unit/test_bio_enrichment.py` | Annotation tests | +25 |
 | `tests/unit/test_tool_discovery.py` | Extended: component-level annotation tests | +20 |

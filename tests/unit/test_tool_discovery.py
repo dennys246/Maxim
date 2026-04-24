@@ -4,7 +4,7 @@ Covers:
 - EntityMap registration, resolution, collision disambiguation
 - EntityMap ownership: register_self vs register_scene
 - UniversalSenseTool entity resolution and sensor reading
-- DiscoverToolsTool query matching, activation, self-entity filter, scene hints
+- SenseToolsTool query matching, activation, self-entity filter, scene hints
 - Goal-based top-k selection with vague-goal fallback
 - SensePresenceTool ownership labels
 """
@@ -26,7 +26,7 @@ from maxim.embodiment.tool_bridge import (
     generate_tools_for_entity,
 )
 from maxim.tools.discovery import (
-    DiscoverToolsTool,
+    SenseToolsTool,
     SensePresenceTool,
     UniversalSenseTool,
     select_goal_relevant_tools,
@@ -340,11 +340,11 @@ class TestUniversalSenseTool:
 
 
 # ---------------------------------------------------------------------------
-# DiscoverToolsTool tests
+# SenseToolsTool tests
 # ---------------------------------------------------------------------------
 
 
-class TestDiscoverToolsTool:
+class TestSenseToolsTool:
     def _build_discovery_env(self):
         """Build a registry + entity_map with sword + humanoid as self entities."""
         registry = ToolRegistry()
@@ -359,20 +359,20 @@ class TestDiscoverToolsTool:
 
     def test_discover_combat_tools(self):
         registry, emap = self._build_discovery_env()
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry)
         result = tool.execute(query="attack sword combat slash")
         assert result.success
         assert "slash" in result.output.lower()
 
     def test_discover_empty_query(self):
         registry, emap = self._build_discovery_env()
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry)
         result = tool.execute(query="")
         assert not result.success
 
     def test_discover_vague_query_returns_summary(self):
         registry, emap = self._build_discovery_env()
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry)
         result = tool.execute(query="xyzzy nothing matches")
         assert result.success
         # Should get modulator category summary
@@ -381,7 +381,7 @@ class TestDiscoverToolsTool:
     def test_discover_no_entities(self):
         registry = ToolRegistry()
         emap = EntityMap()
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry)
         result = tool.execute(query="attack")
         assert result.success
         assert "no entities" in result.output.lower()
@@ -402,7 +402,7 @@ class TestDiscoverToolsTool:
         active = registry.list()
         assert not any("slash" in t for t in active)
 
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry)
         result = tool.execute(query="slash sword combat")
         assert result.success
         # After discovery, the scene should be reactivated
@@ -410,7 +410,7 @@ class TestDiscoverToolsTool:
         assert any("slash" in t for t in active_after)
 
     def test_discover_excludes_scene_entity_tools(self):
-        """Scene entity affordances must NOT appear in discover_tools results."""
+        """Scene entity affordances must NOT appear in sense_tools results."""
         registry = ToolRegistry()
         emap = EntityMap()
         sword = _sword()
@@ -420,7 +420,7 @@ class TestDiscoverToolsTool:
         # Only generate tools for self entity
         generate_tools_for_entity(sword, registry, entity_map=emap)
 
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry)
         result = tool.execute(query="fire breath dragon combat")
         assert result.success
         # Dragon tools should NOT appear — only sword tools or a summary
@@ -437,7 +437,7 @@ class TestDiscoverToolsTool:
         emap.register_scene(dragon)
         generate_tools_for_entity(sword, registry, entity_map=emap)
 
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry)
         result = tool.execute(query="dragon creature")
         assert result.success
         assert "sense" in result.output.lower()
@@ -712,7 +712,7 @@ class TestNAcRanking:
         positive_link.outcome_signature = "success"
         nac.get_links_for_event.return_value = [positive_link]
 
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry, nac=nac)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry, nac=nac)
         result = tool.execute(query="slash sword combat")
         assert result.success
         assert "worked well before" in result.output
@@ -736,7 +736,7 @@ class TestNAcRanking:
         negative_link.outcome_signature = "blade_shattered"
         nac.get_links_for_event.return_value = [negative_link]
 
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry, nac=nac)
+        tool = SenseToolsTool(entity_map=emap, tool_registry=registry, nac=nac)
         result = tool.execute(query="slash sword combat")
         assert result.success
         assert "caution" in result.output
@@ -838,8 +838,8 @@ class TestAffordanceTransferAnnotations:
         assert result.success
         assert "fire_breath" in str(result.output)
 
-    def test_discover_tools_substrate_fallback_annotation(self):
-        """DiscoverToolsTool falls back to substrate concept bias."""
+    def test_sense_tools_substrate_fallback_annotation(self):
+        """SenseToolsTool falls back to substrate concept bias."""
         # Store concepts for individual words — the ATL lookup is by exact name
         nac = self._make_nac_with_bias("aut-1", "node-fire", -0.1)
         atl = self._make_atl_with_concept("fire", "node-fire")
@@ -859,7 +859,7 @@ class TestAffordanceTransferAnnotations:
         registry.get_tool_scene.return_value = "scene-1"
         registry.is_tool_active.return_value = True
 
-        tool = DiscoverToolsTool(
+        tool = SenseToolsTool(
             entity_map=entity_map,
             tool_registry=registry,
             nac=nac,

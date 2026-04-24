@@ -726,13 +726,13 @@ def start_simulation_mode(
             logger.debug("Deregistered irrelevant tool from AUT: %s", _rt)
 
     # --- SEM Tool Discovery: hybrid prompt mode ---
-    # Replace per-entity sensor tools with universal sense + discover_tools.
+    # Replace per-entity sensor tools with universal sense + sense_tools.
     # Keep top-k goal-relevant affordance tools visible, deactivate the rest.
     _aut_entity_map = None
     if entity_ref is not None and _aut_instance.embodiment is not None:
         from maxim.embodiment.entity_map import EntityMap
         from maxim.tools.discovery import (
-            DiscoverToolsTool,
+            SenseToolsTool,
             SensePresenceTool,
             UniversalSenseTool,
             select_goal_relevant_tools,
@@ -749,10 +749,10 @@ def start_simulation_mode(
                     _sensor_tools_removed += 1
         logger.debug("SEM discovery: removed %d per-entity sensor tools", _sensor_tools_removed)
 
-        # Register universal sense + discover_tools + sense_presence as core tools
+        # Register universal sense + sense_tools + sense_presence as core tools
         aut_registry.register(UniversalSenseTool(entity_map=_aut_entity_map))
         aut_registry.register(
-            DiscoverToolsTool(
+            SenseToolsTool(
                 entity_map=_aut_entity_map,
                 tool_registry=aut_registry,
                 component_index=None,  # wired later if imagination is available
@@ -802,7 +802,7 @@ def start_simulation_mode(
         logger.info(
             "SEM discovery: hybrid prompt mode ��� %d active tools "
             "(%d goal-selected, %d affordance tools deactivated, "
-            "sense + discover_tools registered)",
+            "sense + sense_tools registered)",
             _active_count,
             len(_keep_active),
             _deactivated_count,
@@ -1239,12 +1239,12 @@ def start_simulation_mode(
                 tool_registry=aut_registry,
                 default_network=aut_default_network,
             )
-            # Wire ComponentIndex into DiscoverToolsTool for semantic matching
+            # Wire ComponentIndex into SenseToolsTool for semantic matching
             try:
-                _discover_tool = aut_registry.get("discover_tools")
+                _discover_tool = aut_registry.get("sense_tools")
                 _discover_tool._component_index = _aut_component_index
             except KeyError:
-                pass  # discover_tools not registered (no embodiment)
+                pass  # sense_tools not registered (no embodiment)
 
             # Pass entity_map to ImaginationTrigger for populating on design
             if _aut_entity_map is not None:
