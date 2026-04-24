@@ -1247,8 +1247,20 @@ def start_simulation_mode(
                 aut_bio_enrichment_pipeline._component_index = _aut_component_index
 
             logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
+            try:
+                from maxim.simulation.sim_logger import sim_log
+
+                sim_log("SEM_TRACE", f"ImaginationTrigger ACTIVE — enabled={aut_imagination_trigger._enabled}")
+            except Exception:
+                pass
         except Exception as e:
-            logger.debug("ImaginationTrigger construction failed (optional): %s", e)
+            logger.warning("ImaginationTrigger construction failed: %s", e)
+            try:
+                from maxim.simulation.sim_logger import sim_log
+
+                sim_log("SEM_TRACE", f"ImaginationTrigger FAILED: {e}")
+            except Exception:
+                pass
 
     # ── Print simulation banner ──────────────────────────────────────────
     from maxim.simulation.sim_logger import _emit, display_status, display_summary, get_active_display

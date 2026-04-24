@@ -945,13 +945,30 @@ def run_agentic_loop(
             try:
                 percept_text = ""
                 if hasattr(observation, "get"):
-                    percept_text = str(observation.get("transcript") or observation.get("raw_transcript_text") or "")
+                    percept_text = str(
+                        observation.get("transcript")
+                        or observation.get("raw_transcript_text")
+                        or observation.get("cli_input")
+                        or ""
+                    )
                 elif hasattr(observation, "transcript"):
-                    percept_text = str(getattr(observation, "transcript", "") or "")
+                    percept_text = str(
+                        getattr(observation, "transcript", "") or getattr(observation, "cli_input", "") or ""
+                    )
                 if percept_text:
                     scene_id = state.data.get("current_scene_id") if hasattr(state, "data") else None
                     scene_ctx = state.data.get("scene_context") if hasattr(state, "data") else None
                     imagination_trigger.process_percept(percept_text, scene_context=scene_ctx, scene_id=scene_id)
+                else:
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+
+                        _obs_keys = (
+                            list(observation.keys()) if hasattr(observation, "keys") else type(observation).__name__
+                        )
+                        sim_log("SEM_TRACE", f"Imagination skipped: no percept_text (obs keys: {_obs_keys})")
+                    except Exception:
+                        pass
             except Exception as e:
                 log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
 
