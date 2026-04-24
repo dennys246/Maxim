@@ -97,7 +97,8 @@ class _ThinkingState:
     started_at: float = 0.0  # time.monotonic() for elapsed display
     agent: str | None = None  # Agent nickname
     completed: bool = False  # True = show summary instead of live text
-    history: list[tuple[int, str, list[str]]] = field(default_factory=list)
+    # Each tuple: (cycle, reasoning, enrichment_tags, salience_or_None)
+    history: list[tuple[int, str, list[str], float | None]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -421,6 +422,7 @@ class MaximDisplay:
         *,
         agent: str | None = None,
         completed: bool = False,
+        salience: float | None = None,
     ) -> None:
         """Update the thinking panel with deliberation state (thread-safe).
 
@@ -431,27 +433,28 @@ class MaximDisplay:
             enrichment_tags: Bio-system names that contributed enrichment.
             agent: Agent nickname producing this deliberation.
             completed: If True, show as a completed summary (dim).
+            salience: Computed thought salience (0.0-1.0) for display.
         """
+        tags = enrichment_tags or []
         with self._lock:
-            # Carry forward history from the prior state (accumulate across cycles)
             prev = self._thinking_state
-            if prev is not None and not completed:
-                history = list(prev.history)
-                # Append the new cycle's entry to the history
-                history.append((cycle, reasoning, enrichment_tags or []))
-            elif completed and prev is not None:
+            if completed and prev is not None:
                 # On completion, preserve the accumulated history
                 history = list(prev.history)
+            elif prev is not None and not completed and cycle > 1:
+                # Cycles 2+: accumulate within the same deliberation session
+                history = list(prev.history)
+                history.append((cycle, reasoning, tags, salience))
             else:
-                # Fresh start
-                history = [(cycle, reasoning, enrichment_tags or [])]
+                # Fresh start (cycle 1 or no prior state) — reset history
+                history = [(cycle, reasoning, tags, salience)]
 
             self._thinking_state = _ThinkingState(
                 reasoning=reasoning,
                 cycle=cycle,
                 max_cycles=max_cycles,
-                enrichment_tags=enrichment_tags or [],
-                started_at=prev.started_at if prev is not None and not completed else time.monotonic(),
+                enrichment_tags=tags,
+                started_at=prev.started_at if prev is not None and not completed and cycle > 1 else time.monotonic(),
                 agent=agent,
                 completed=completed,
                 history=history,
@@ -769,10 +772,11 @@ class MaximDisplay:
 
         # Build reasoning text from accumulated history (shows chain building)
         reasoning_parts: list[str] = []
-        for cyc_num, cyc_reasoning, cyc_tags in state.history:
+        for cyc_num, cyc_reasoning, cyc_tags, cyc_salience in state.history:
             if len(state.history) > 1:
                 tag_str = f"  [dim cyan]{', '.join(cyc_tags)}[/dim cyan]" if cyc_tags else ""
-                reasoning_parts.append(f"[dim]── cycle {cyc_num} ──{tag_str}[/dim]")
+                sal_str = f"  [dim yellow]salience {cyc_salience:.2f}[/dim yellow]" if cyc_salience is not None else ""
+                reasoning_parts.append(f"[dim]── cycle {cyc_num} ──{tag_str}{sal_str}[/dim]")
             reasoning_parts.append(cyc_reasoning)
         reasoning_lines = "\n".join(reasoning_parts).split("\n") if reasoning_parts else []
         total_reasoning = len(reasoning_lines)

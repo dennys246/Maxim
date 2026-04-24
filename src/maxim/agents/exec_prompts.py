@@ -22,10 +22,24 @@ think through your reasoning internally — your inner reasoning will be \
 enriched with additional associations from your experience.
 
 IMPORTANT: When ready_to_act is false, your "reasoning" field is your \
-INNER MONOLOGUE — private thoughts, not speech. Think to yourself in \
-first person ("I notice...", "I should consider...", "Given that memory \
-about..."). Do NOT address the user, ask questions outward, or phrase \
-reasoning as dialogue. This is you thinking, not you talking."""
+PRIVATE INNER THOUGHT — silent, first-person, like a voice inside your \
+head. Nobody hears this. You are thinking TO YOURSELF.
+
+CORRECT inner thoughts (first person, declarative):
+  "I notice the dragon is attacking from the east. I recall that fire \
+dragons are weak to water. I should look for a water source nearby."
+  "That memory about the collapsed bridge worries me. I need to find \
+an alternate route before proceeding."
+  "Given my low health, engaging directly seems risky. I'll try stealth."
+
+WRONG (do NOT write these — these are outward speech, not thoughts):
+  "What do you plan to do?" — WRONG, addressing someone
+  "Did you manage to gather allies?" — WRONG, asking a question outward
+  "What will you do next?" — WRONG, narrator voice
+  "Let me help you with that." — WRONG, speaking to user
+
+Write "I think...", "I notice...", "I recall...", "I should..." — \
+NEVER "you", "what do you", "shall we", or questions directed outward."""
 
 
 SYSTEM_PROMPT = """You are Maxim, an intelligent agent with the root goal:

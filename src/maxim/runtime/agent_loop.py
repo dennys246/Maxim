@@ -513,6 +513,7 @@ def _run_deliberation_cycles(
             cycle=cycle,
             max_cycles=max_cycles,
             enrichment_tags=_enrich_tags,
+            salience=salience,
         )
 
         # 2. Add THOUGHT to working memory with computed salience
@@ -1018,16 +1019,17 @@ def run_agentic_loop(
                             _c1_tags.append("cerebellum")
                         if _enrich_result.recent_context:
                             _c1_tags.append("scn")
+                        # Compute salience for cycle 1 THOUGHT (before display so panel shows it)
+                        _n_memories_c1 = len(_enrich_result.memories) if _enrich_result.memories else 0
+                        _salience_c1 = _compute_thought_salience(_n_sections, _n_memories_c1, 0.0)
                         _max_cyc_for_display = 3 if getattr(state, "data", {}).get("percept_source") else 2
                         sim_deliberation_update(
                             _percept_text_for_cycle,
                             cycle=1,
                             max_cycles=_max_cyc_for_display,
                             enrichment_tags=_c1_tags,
+                            salience=_salience_c1,
                         )
-                        # Compute salience for cycle 1 THOUGHT
-                        _n_memories_c1 = len(_enrich_result.memories) if _enrich_result.memories else 0
-                        _salience_c1 = _compute_thought_salience(_n_sections, _n_memories_c1, 0.0)
                         sim_log(
                             "THOUGHT",
                             f"cycle 1: salience={_salience_c1:.2f}, sections={_n_sections}, memories={_n_memories_c1}",
