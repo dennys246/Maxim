@@ -327,6 +327,65 @@ class TestNAcMaintenance:
 
         assert link.confidence == initial_confidence * 0.5
 
+    def test_decay_eligibility_reduces_traces(self, nac):
+        """Eligibility traces decay toward zero each tick."""
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+        nac.update_eligibility("agent-1", "node-b", 0.5)
+
+        nac.decay_eligibility(factor=0.9)
+
+        assert nac._eligibility[("agent-1", "node-a")] == pytest.approx(0.9)
+        assert nac._eligibility[("agent-1", "node-b")] == pytest.approx(0.45)
+
+    def test_decay_eligibility_prunes_below_threshold(self, nac):
+        """Traces below 0.01 are removed entirely."""
+        nac.update_eligibility("agent-1", "node-a", 0.02)
+
+        nac.decay_eligibility(factor=0.4)  # 0.02 * 0.4 = 0.008 < 0.01
+
+        assert ("agent-1", "node-a") not in nac._eligibility
+
+    def test_decay_eligibility_multiple_ticks(self, nac):
+        """After many ticks, traces converge to zero."""
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+
+        for _ in range(100):
+            nac.decay_eligibility(factor=0.9)
+
+        # 0.9^100 ≈ 0.000027 — should be pruned
+        assert ("agent-1", "node-a") not in nac._eligibility
+
+    def test_decay_reward_biases_reduces_toward_zero(self, nac):
+        """Reward biases decay toward zero each tick."""
+        nac.credit_node("agent-1", "node-a", reward=1.0)
+        initial = nac.reward_bias("agent-1", "node-a")
+        assert initial > 0
+
+        nac.decay_reward_biases()
+
+        reduced = nac.reward_bias("agent-1", "node-a")
+        assert reduced < initial
+
+    def test_decay_reward_biases_prunes_near_zero(self, nac):
+        """Biases below 0.001 are removed."""
+        nac._reward_bias[("agent-1", "node-a")] = 0.0005
+
+        pruned = nac.decay_reward_biases()
+
+        assert pruned == 1
+        assert ("agent-1", "node-a") not in nac._reward_bias
+
+    def test_distribute_reward_skips_decayed_traces(self, nac):
+        """After full decay, distribute_reward credits nothing."""
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+
+        # Decay to zero
+        for _ in range(200):
+            nac.decay_eligibility(factor=0.9)
+
+        credited = nac.distribute_reward("agent-1", reward=1.0)
+        assert credited == []
+
 
 class TestNAcPersistence:
     """Test save/load roundtrip."""
