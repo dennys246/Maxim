@@ -248,7 +248,10 @@ class DiscoverToolsTool(Tool):
         result_lines = [f"Found {len(activated)} capabilities:"]
         result_lines.extend(descriptions)
         result_lines.append("")
-        result_lines.append("These tools are now available for your next action.")
+        result_lines.append(
+            "These tools are now available. USE one of them as your next action — "
+            "pick the most relevant tool above and call it."
+        )
 
         log.info("discover_tools: activated %d tools for query %r", len(activated), query)
         try:

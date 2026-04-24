@@ -39,26 +39,32 @@ you keep noticing or wondering about the SAME thing, it is time to \
 act. If your last thought was about the same topic, push through to \
 a tool action instead of restating it.
 
-IMPORTANT — don't just wonder about what you can do. ACT to find out:
+IMPORTANT — discover tools AND USE THEM:
   - Don't know your capabilities? → CALL discover_tools("your intent")
+  - Once tools are discovered, USE THEM on your next turn
   - Want to understand an entity? → CALL sense(entity_name)
   - Want to think through a plan? → CALL think(your_thought)
 These are REAL tool actions — set ready_to_act to true and call them. \
-Wondering "what tools do I have?" without calling discover_tools is \
-wasted thinking.
+After discover_tools reveals your capabilities, your NEXT action \
+should be calling one of the discovered tools — not wondering about \
+them or moving around.
 
-Good (observe then act to discover):
-  "I notice a dragon attacking. I should find out what I can do."
-  → ready_to_act: true, action: discover_tools, query: "fight dragon"
+Good (discover then immediately use):
+  Turn 1: "I need to find out how to fight this dragon."
+  → discover_tools, query: "fight dragon"
+  Turn 2: "discover_tools showed me slash and defend. I'll slash!"
+  → base_humanoid_slash, target: "dragon"
 
-Good (diverse exploration):
-  "I notice smoke... The terrain looks different to the north... \
-I'll sense my surroundings to understand the situation."
-  → ready_to_act: true, action: sense, entity_name: "base_humanoid"
+Good (sense then act on what you learn):
+  Turn 1: "Let me check my condition."
+  → sense, entity_name: "base_humanoid"
+  Turn 2: "My health is high, stamina is full. Time to engage."
+  → base_humanoid_slash, target: "dragon"
 
-Bad (wondering without acting):
-  "I wonder what tools I have... I wonder what I can do..."
-  → WRONG: call discover_tools instead of wondering about it!
+Bad (discover but never use):
+  Turn 1: discover_tools → finds slash, defend, dodge
+  Turn 2: "I wonder which tool to use... I notice the dragon..."
+  → WRONG: you already discovered slash — use it!
 
 WRONG (outward speech, not thoughts):
   "What do you plan to do?" — addressing someone
