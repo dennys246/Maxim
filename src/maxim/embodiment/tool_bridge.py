@@ -305,6 +305,25 @@ def generate_tools_for_entity(
     return tools
 
 
+def describe_entity_capabilities(entity: Entity) -> str:
+    """Describe an entity's capabilities as text for observation.
+
+    Returns a structured description of modulators and affordances
+    suitable for ``sense_presence`` output or percept text.  Does NOT
+    generate callable tools — use ``generate_tools_for_entity`` for that.
+    """
+    lines: list[str] = []
+    for ent in entity.walk():
+        for mod_name, mod in ent.modulators.items():
+            aff_parts: list[str] = []
+            for aff_name, aff_schema in mod.affordances.items():
+                desc = aff_schema.description or aff_name
+                aff_parts.append(f"{aff_name} ({desc})")
+            if aff_parts:
+                lines.append(f"  {mod_name}: {', '.join(aff_parts)}")
+    return "\n".join(lines) if lines else "No observable capabilities."
+
+
 def deregister_entity_tools(
     entity: Entity,
     registry: ToolRegistry,

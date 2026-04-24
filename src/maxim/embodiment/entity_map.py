@@ -1,4 +1,4 @@
-"""EntityMap — name-to-live-Entity resolution.
+"""EntityMap — name-to-live-Entity resolution with ownership tracking.
 
 Standalone object decoupled from ToolRegistry so any layer (tools,
 prompt builder, memory, Reachy runtime) can resolve entity names
@@ -10,6 +10,13 @@ and ``ImaginationTrigger``.  Read by ``UniversalSenseTool`` and
 
 Name collisions (e.g., two entities both named ``"guard"``) are
 disambiguated by storing both under their ``full_path`` instead.
+
+Ownership: entities are either **self** (the agent's body — tools
+are callable) or **scene** (observed entities — no callable tools).
+``register_self`` marks an entity tree as agent-controlled;
+``register_scene`` (and the backward-compat ``register``) marks as
+scene-only.  ``list_self_entities`` / ``list_scene_entities`` filter
+by ownership.
 """
 
 from __future__ import annotations
@@ -27,33 +34,62 @@ class EntityMap:
     Example::
 
         emap = EntityMap()
-        emap.register(rusty_sword_entity)   # walks descendants
-        entity = emap.resolve("rusty_sword")
+        emap.register_self(humanoid_entity)    # agent body — tools callable
+        emap.register_scene(dragon_entity)     # observed — no tools
+        entity = emap.resolve("dragon")
         names = emap.list_names()
     """
 
-    __slots__ = ("_entities", "_lock")
+    __slots__ = ("_entities", "_lock", "_self_ids")
 
     def __init__(self) -> None:
         self._entities: dict[str, Entity] = {}
+        self._self_ids: set[int] = set()
         self._lock = threading.RLock()
 
-    def register(self, entity: Entity) -> None:
-        """Register an entity tree.  Walks all descendants.
+    # -- Registration -------------------------------------------------------
 
-        On name collision, both the existing and new entity are stored
-        under their ``full_path`` to disambiguate.
+    def register_self(self, entity: Entity) -> None:
+        """Register the agent's own entity tree (body + carried items).
+
+        All descendants are marked as self-owned.  Tools generated for
+        self entities are callable by the agent.
         """
         with self._lock:
             for ent in entity.walk():
-                if ent.name in self._entities:
-                    existing = self._entities.pop(ent.name)
-                    # Only re-store under full_path if not already there
-                    if existing.full_path not in self._entities:
-                        self._entities[existing.full_path] = existing
-                    self._entities[ent.full_path] = ent
-                else:
-                    self._entities[ent.name] = ent
+                self._self_ids.add(id(ent))
+            self._register_locked(entity)
+
+    def register_scene(self, entity: Entity) -> None:
+        """Register a scene entity (observable, not controllable).
+
+        The agent can sense scene entities but cannot call their
+        affordances as tools.
+        """
+        with self._lock:
+            self._register_locked(entity)
+
+    def register(self, entity: Entity) -> None:
+        """Backward-compat: defaults to ``register_scene``."""
+        self.register_scene(entity)
+
+    def _register_locked(self, entity: Entity) -> None:
+        """Core registration logic.  Caller MUST hold ``self._lock``.
+
+        Walks all descendants.  On name collision, both the existing
+        and new entity are stored under their ``full_path``.
+        """
+        for ent in entity.walk():
+            if ent.name in self._entities:
+                existing = self._entities.pop(ent.name)
+                # Only re-store under full_path if not already there
+                if existing.full_path not in self._entities:
+                    self._entities[existing.full_path] = existing
+                self._entities[ent.full_path] = ent
+            else:
+                self._entities[ent.name] = ent
+
+    # -- Resolution ---------------------------------------------------------
 
     def resolve(self, name: str) -> Entity | None:
         """Resolve by name, then by full_path.  Returns None if not found."""
@@ -68,22 +104,46 @@ class EntityMap:
                     return ent
             return None
 
+    # -- Ownership queries --------------------------------------------------
+
+    def is_self(self, entity: Entity) -> bool:
+        """Check whether an entity belongs to the agent's body."""
+        with self._lock:
+            return id(entity) in self._self_ids
+
+    def list_self_entities(self) -> list[Entity]:
+        """Return entities belonging to the agent (self-owned)."""
+        with self._lock:
+            return [e for e in self._deduplicated() if id(e) in self._self_ids]
+
+    def list_scene_entities(self) -> list[Entity]:
+        """Return scene entities (observable, not controllable)."""
+        with self._lock:
+            return [e for e in self._deduplicated() if id(e) not in self._self_ids]
+
+    # -- Listing ------------------------------------------------------------
+
     def list_names(self) -> list[str]:
         """Return all known entity keys (for error messages and discovery)."""
         with self._lock:
             return list(self._entities.keys())
 
     def list_entities(self) -> list[Entity]:
-        """Return all unique registered entities."""
+        """Return all unique registered entities (self + scene)."""
         with self._lock:
-            # Deduplicate — an entity may appear under name AND full_path
-            seen_ids: set[int] = set()
-            result: list[Entity] = []
-            for ent in self._entities.values():
-                if id(ent) not in seen_ids:
-                    seen_ids.add(id(ent))
-                    result.append(ent)
-            return result
+            return list(self._deduplicated())
+
+    def _deduplicated(self) -> list[Entity]:
+        """Return unique entities.  Caller MUST hold ``self._lock``."""
+        seen_ids: set[int] = set()
+        result: list[Entity] = []
+        for ent in self._entities.values():
+            if id(ent) not in seen_ids:
+                seen_ids.add(id(ent))
+                result.append(ent)
+        return result
+
+    # -- Dunder -------------------------------------------------------------
 
     def __len__(self) -> int:
         with self._lock:

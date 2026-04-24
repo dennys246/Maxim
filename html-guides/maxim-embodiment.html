@@ -131,7 +131,7 @@
       <li>LRU eviction deactivates tools not called in 5 turns to prevent re-bloat</li>
     </ol>
 
-    <p class="text-slate-300 leading-relaxed"><strong class="text-white">Imagination integration:</strong> When an imagined entity is designed, its tools are registered as <em class="text-indigo-400 not-italic">scene-deactivated</em> &mdash; discoverable but invisible until the agent calls <code class="bg-slate-950 px-1 rounded text-xs">discover_tools</code>.</p>
+    <p class="text-slate-300 leading-relaxed"><strong class="text-white">Entity ownership (0.8+):</strong> The agent's body is a <em class="text-indigo-400 not-italic">self entity</em> &mdash; its affordances are callable tools. Imagined and seed entities (dragons, NPCs, objects) are <em class="text-indigo-400 not-italic">scene entities</em> &mdash; observable via <code class="bg-slate-950 px-1 rounded text-xs">sense</code> and <code class="bg-slate-950 px-1 rounded text-xs">sense_presence</code> but NOT callable. The agent interacts with scene entities using its own body's tools. <code class="bg-slate-950 px-1 rounded text-xs">discover_tools</code> searches self-entity tools only.</p>
   </section>
 
   <!-- Cerebellum -->

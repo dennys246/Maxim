@@ -453,16 +453,17 @@ class ImaginationTrigger:
         scene_context: dict[str, Any] | None,
         scene_id: str | None,
     ) -> None:
-        """Instantiate a known component as a live entity if not already live.
+        """Instantiate a known component as a live scene entity.
 
         When the ComponentIndex matches a seed component (e.g., creatures/dragon),
-        it's recognized but not instantiated — no Entity object, no affordance
-        tools registered. This method loads the spec, parses it into a live
-        Entity, registers it in the EntityMap, and creates affordance tools
-        (deactivated, discoverable via discover_tools).
+        it's recognized but not instantiated.  This method loads the spec,
+        parses it into a live Entity, and registers it as a **scene entity**
+        in the EntityMap (observable via ``sense`` / ``sense_presence``, but
+        NO callable affordance tools).  The agent interacts with scene
+        entities using its own body's tools, not the entity's affordances.
         """
         _entity_map = getattr(self, "_entity_map", None)
-        if _entity_map is None or self._tool_registry is None:
+        if _entity_map is None:
             return
 
         # Check if already live — extract the entity name from the ref
@@ -476,34 +477,25 @@ class ImaginationTrigger:
             entity_raw = spec.get("entity", spec)
 
             from maxim.embodiment.spec import _parse_entity
-            from maxim.embodiment.tool_bridge import generate_tools_for_entity
 
             entity = _parse_entity(entity_raw)
-            _entity_map.register(entity)
+            _entity_map.register_scene(entity)
 
-            _scene = scene_id or f"scene_{entity_name}"
-            tools = generate_tools_for_entity(entity, self._tool_registry, entity_map=_entity_map)
-            if tools:
-                self._tool_registry.register_scene_tools(tools, _scene)
-                # Start deactivated — discoverable via discover_tools
-                self._tool_registry.deactivate_scene(_scene)
-                log.info(
-                    "Imagination: instantiated '%s' from seed component '%s' — %d tools (deactivated)",
-                    entity_name,
-                    ref,
-                    len(tools),
+            log.info(
+                "Imagination: instantiated '%s' from seed '%s' as scene entity (observe-only)",
+                entity_name,
+                ref,
+            )
+            try:
+                from maxim.simulation.sim_logger import sim_log
+
+                sim_log(
+                    "SEM_TRACE",
+                    f"Scene entity '{entity_name}' instantiated from {ref} "
+                    f"(observe-only — use sense/sense_presence to observe)",
                 )
-                try:
-                    from maxim.simulation.sim_logger import sim_log
-
-                    _tool_names = [t.name for t in tools]
-                    sim_log(
-                        "SEM_TRACE",
-                        f"Entity '{entity_name}' instantiated from {ref}: "
-                        f"tools={', '.join(_tool_names)} (deactivated, use discover_tools)",
-                    )
-                except Exception:
-                    pass
+            except Exception:
+                pass
         except Exception as e:
             log.debug("Imagination: failed to instantiate '%s' from '%s': %s", entity_name, ref, e)
 
@@ -671,31 +663,22 @@ class ImaginationTrigger:
         synonyms = design_result.synonyms
         self._index.add(ref, spec, synonyms=synonyms)
 
-        # 10. Register affordance tools as DEACTIVATED (SEM discovery S3).
-        # Tools exist but are invisible until the agent calls discover_tools.
-        # This prevents imagination from immediately bloating the prompt with
-        # N new tools per imagined entity.  The agent perceives the new entity
-        # naturally and curiosity drives discovery.
-        if self._tool_registry is not None and scene_id is not None:
+        # 10. Register as scene entity in EntityMap (observe-only, no tools).
+        # The agent perceives imagined entities through sense/sense_presence
+        # and interacts using its own body's tools, not the entity's affordances.
+        _entity_map = getattr(self, "_entity_map", None)
+        if _entity_map is not None:
             try:
-                from maxim.embodiment.tool_bridge import generate_tools_for_entity
                 from maxim.embodiment.spec import _parse_entity
 
                 entity = _parse_entity(spec.get("entity", spec))
-                # Populate EntityMap if available (wired by orchestrator)
-                _entity_map = getattr(self, "_entity_map", None)
-                tools = generate_tools_for_entity(entity, self._tool_registry, entity_map=_entity_map)
-                if tools:
-                    self._tool_registry.register_scene_tools(tools, scene_id)
-                    # Immediately deactivate — discoverable but not visible
-                    self._tool_registry.deactivate_scene(scene_id)
-                    log.info(
-                        "Imagination: registered %d tools (deactivated) for imagined entity '%s'",
-                        len(tools),
-                        ref,
-                    )
+                _entity_map.register_scene(entity)
+                log.info(
+                    "Imagination: registered imagined entity '%s' as scene entity (observe-only)",
+                    ref,
+                )
             except Exception as e:
-                log.warning("Imagination: tool registration failed for '%s': %s", ref, e)
+                log.warning("Imagination: scene entity registration failed for '%s': %s", ref, e)
 
         result = ImaginationResult(
             phrase=phrase,

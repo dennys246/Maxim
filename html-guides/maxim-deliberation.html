@@ -228,12 +228,12 @@ wells can be used as water sources too &mdash; closer than the river.</pre>
     <div class="grid md:grid-cols-3 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-cyan-400 font-semibold mb-2">sense_presence</h3>
-        <p class="text-slate-300 text-sm">Scan surroundings for entities &mdash; creatures, objects, NPCs. Shows name, type, affordances, and sensor state. Also triggers imagination for novel entity phrases.</p>
+        <p class="text-slate-300 text-sm">Scan surroundings for entities &mdash; shows <span class="text-cyan-300">[YOU]</span> for your body and <span class="text-amber-300">[SCENE]</span> for observed entities. Scene entity capabilities are labeled "observed (not callable)." Also triggers imagination for novel entity phrases.</p>
         <p class="text-slate-500 text-xs mt-2">Use when: arriving somewhere new, wondering what exists</p>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-cyan-400 font-semibold mb-2">discover_tools</h3>
-        <p class="text-slate-300 text-sm">Find specific actions matching intent. Searches entity affordances, activates matched tools for next turn. <code class="bg-slate-950 px-1 rounded text-xs">discover_tools("fight dragon")</code></p>
+        <p class="text-slate-300 text-sm">Find YOUR specific actions matching intent. Searches self-entity affordances only &mdash; scene entities are excluded. Provides hints when a query matches a scene entity. <code class="bg-slate-950 px-1 rounded text-xs">discover_tools("attack")</code></p>
         <p class="text-slate-500 text-xs mt-2">Use when: know what you want to do, need the right tool</p>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
