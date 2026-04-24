@@ -345,14 +345,44 @@ def _wait_for_proposal(
     return None
 
 
+def _jaccard_similarity(keywords_a: set[str], keywords_b: set[str]) -> float:
+    """Jaccard similarity between two keyword sets.  Returns 0.0-1.0."""
+    if not keywords_a or not keywords_b:
+        return 0.0
+    union = len(keywords_a | keywords_b)
+    if union == 0:
+        return 0.0
+    return len(keywords_a & keywords_b) / union
+
+
 def _jaccard_convergence(keywords_a: set[str], keywords_b: set[str], threshold: float = 0.8) -> bool:
     """Check if two keyword sets have converged (Jaccard >= threshold)."""
     if len(keywords_a) < 3 or len(keywords_b) < 3:
         return False
-    union = len(keywords_a | keywords_b)
-    if union == 0:
-        return False
-    return len(keywords_a & keywords_b) / union >= threshold
+    return _jaccard_similarity(keywords_a, keywords_b) >= threshold
+
+
+def _compute_thought_salience(
+    n_sections: int,
+    n_memories: int,
+    jaccard_with_previous: float,
+) -> float:
+    """Compute salience for a THOUGHT WMS entry.
+
+    Range: [0.0, 1.0].  Components weighted to favor novelty
+    (a thought that says something new) over mere activation
+    (a thought that triggers many systems but says the same thing).
+
+    Args:
+        n_sections: Number of bio-system sections that fired (0-5).
+        n_memories: Number of memories recalled by enrichment.
+        jaccard_with_previous: Jaccard similarity with the previous
+            cycle's reasoning keywords (0.0 = fully novel, 1.0 = identical).
+    """
+    section_score = min(n_sections / 5.0, 1.0)
+    recall_score = min(n_memories / 4.0, 1.0)
+    novelty_score = 1.0 - jaccard_with_previous
+    return 0.3 * section_score + 0.3 * recall_score + 0.4 * novelty_score
 
 
 def _run_deliberation_cycles(
@@ -415,6 +445,9 @@ def _run_deliberation_cycles(
     # Push cycle 1 reasoning to thinking panel
     sim_deliberation_update(reasoning_1, cycle=1, max_cycles=max_cycles)
 
+    # Build accumulating transcript (Stage 1: thoughts build on each other)
+    transcript: list[str] = []
+
     # Cycles 2..max_cycles
     for cycle in range(2, max_cycles + 1):
         # 1. Enrich the LLM's reasoning through bio-systems
@@ -443,6 +476,12 @@ def _run_deliberation_cycles(
             )
             if f
         )
+        n_memories = len(enrich_result.memories) if enrich_result.memories else 0
+
+        # Compute Jaccard with previous cycle for salience novelty signal
+        current_keywords = set(enrich_text.lower().split())
+        jaccard_prev = _jaccard_similarity(current_keywords, recent_keywords[-1]) if recent_keywords else 0.0
+        salience = _compute_thought_salience(n_sections, n_memories, jaccard_prev)
 
         # Derive enrichment tag names for thinking panel
         _enrich_tags: list[str] = []
@@ -465,30 +504,43 @@ def _run_deliberation_cycles(
         )
         sim_log(
             "DELIBERATION",
-            f"cycle {cycle}: {n_sections} enrichment section(s) from reasoning ({len(enrich_text)} chars)",
+            f"cycle {cycle}: {n_sections} enrichment section(s), "
+            f"salience={salience:.2f}, {n_memories} memories, "
+            f"novelty={1.0 - jaccard_prev:.2f}",
         )
         sim_deliberation_update(
             enrich_text,
             cycle=cycle,
             max_cycles=max_cycles,
             enrichment_tags=_enrich_tags,
+            salience=salience,
         )
 
-        # 2. Add THOUGHT to working memory
+        # 2. Add THOUGHT to working memory with computed salience
         if working_memory is not None and formatted:
             from maxim.agents.working_memory import WorkingMemoryKind
 
             working_memory.add(
                 WorkingMemoryKind.THOUGHT,
                 content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": formatted[:500]},
-                salience=0.5,
+                salience=salience,
             )
 
-        # 3. Update StructuredContext — replace (not append) enrichment
+        # 3. Build transcript entry (reasoning + bio-system response)
+        if formatted:
+            entry = f"You thought: {enrich_text[:600]}\nYour experience responded:\n{formatted[:800]}"
+            transcript.append(entry)
+
+        # 4. Update StructuredContext
         if formatted:
             context.bio_enrichment_context = formatted
 
-        # Populate working_memory_thoughts for prompt builder
+        # Set transcript on context (replaces working_memory_thoughts for multi-cycle)
+        if transcript:
+            context.deliberation_transcript = list(transcript)
+
+        # Populate working_memory_thoughts for backward compat (prompt builder
+        # uses transcript when present, falls back to this)
         if working_memory is not None:
             from maxim.agents.working_memory import WorkingMemoryKind
 
@@ -498,7 +550,7 @@ def _run_deliberation_cycles(
                 for e in thought_entries
             ]
 
-        # 4. Re-submit to LLM and wait
+        # 5. Re-submit to LLM and wait
         if not submit_fn(context):
             logger.warning("LLM worker queue full during deliberation cycle %d", cycle)
             break
@@ -509,7 +561,7 @@ def _run_deliberation_cycles(
 
         last_proposal = proposal
 
-        # 5. Check ready_to_act
+        # 6. Check ready_to_act
         if proposal.ready_to_act:
             sim_contemplation(
                 gate_passed=True,
@@ -522,7 +574,7 @@ def _run_deliberation_cycles(
                 thought_gate.reset_refractory(step_num)
             return proposal
 
-        # 6. Not ready — check convergence before looping
+        # 7. Not ready — check convergence before looping
         reasoning = proposal.reasoning or ""
         keywords = set(reasoning.lower().split())
         recent_keywords.append(keywords)
@@ -542,7 +594,7 @@ def _run_deliberation_cycles(
                 thought_gate.reset_refractory(step_num)
             return proposal if proposal.action else None
 
-        # 7. Feed reasoning back for next enrichment
+        # 8. Feed reasoning back for next enrichment
         enrich_text = reasoning
         logger.debug("Deliberation cycle %d: reasoning fed back for enrichment (%d chars)", cycle, len(reasoning))
 
@@ -950,7 +1002,7 @@ def run_agentic_loop(
                             )
                             if _f
                         )
-                        from maxim.simulation.sim_logger import sim_pre_deliberation, sim_deliberation_update
+                        from maxim.simulation.sim_logger import sim_log, sim_pre_deliberation, sim_deliberation_update
 
                         sim_pre_deliberation(
                             gate_passed=True, score=0.0, threshold=0.0, enrichment_sections=_n_sections
@@ -967,14 +1019,18 @@ def run_agentic_loop(
                             _c1_tags.append("cerebellum")
                         if _enrich_result.recent_context:
                             _c1_tags.append("scn")
+                        # Compute salience for cycle 1 THOUGHT
+                        _n_memories_c1 = len(_enrich_result.memories) if _enrich_result.memories else 0
+                        _salience_c1 = _compute_thought_salience(_n_sections, _n_memories_c1, 0.0)
                         _max_cyc_for_display = 3 if getattr(state, "data", {}).get("percept_source") else 2
-                        sim_deliberation_update(
-                            _percept_text_for_cycle,
-                            cycle=1,
-                            max_cycles=_max_cyc_for_display,
-                            enrichment_tags=_c1_tags,
+                        # NOTE: don't push percept text to thinking panel here —
+                        # the percept is an INPUT, not a thought. The AUT's actual
+                        # reasoning will be pushed after the LLM responds (section 6).
+                        sim_log(
+                            "THOUGHT",
+                            f"cycle 1: salience={_salience_c1:.2f}, sections={_n_sections}, memories={_n_memories_c1}",
                         )
-                        # Add THOUGHT to working memory
+                        # Add THOUGHT to working memory with computed salience
                         if _wms is not None and _percept_enrichment_text:
                             from maxim.agents.working_memory import WorkingMemoryKind
 
@@ -985,7 +1041,7 @@ def run_agentic_loop(
                                     "cycle": 1,
                                     "enrichment": _percept_enrichment_text[:500],
                                 },
-                                salience=0.5,
+                                salience=_salience_c1,
                             )
                     else:
                         from maxim.simulation.sim_logger import sim_pre_deliberation
@@ -2667,8 +2723,22 @@ def run_agentic_loop(
                                 else:
                                     # ready_to_act == True on cycle 1 — use directly
                                     ctrl.pending_proposal = _first
-                                    from maxim.simulation.sim_logger import sim_contemplation, sim_deliberation_end
+                                    from maxim.simulation.sim_logger import (
+                                        sim_contemplation,
+                                        sim_deliberation_end,
+                                        sim_deliberation_update,
+                                    )
 
+                                    # Update thinking panel with the AUT's actual reasoning
+                                    # (replacing the percept text that was shown during enrichment)
+                                    _first_reasoning = _first.reasoning or ""
+                                    if _first_reasoning:
+                                        sim_deliberation_update(
+                                            _first_reasoning,
+                                            cycle=1,
+                                            max_cycles=_max_cyc,
+                                            salience=locals().get("_salience_c1"),
+                                        )
                                     sim_contemplation(gate_passed=True, refined=False, score=0.0)
                                     sim_deliberation_end(cycle=1, max_cycles=_max_cyc, summary="Ready to act (cycle 1)")
                                     if thought_gate is not None:

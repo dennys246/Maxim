@@ -83,15 +83,22 @@ class _LogEntry:
 
 @dataclass
 class _ThinkingState:
-    """State for the thinking panel — tracks active or completed deliberation."""
+    """State for the thinking panel — tracks active or completed deliberation.
 
-    reasoning: str  # Full LLM reasoning text
+    ``history`` accumulates (cycle, reasoning, enrichment_tags) tuples
+    across deliberation cycles so the user sees the full chain building,
+    not just the latest cycle's text.
+    """
+
+    reasoning: str  # Latest cycle's reasoning text (or summary if completed)
     cycle: int  # Current cycle number
     max_cycles: int  # Hard cap
     enrichment_tags: list[str] = field(default_factory=list)
     started_at: float = 0.0  # time.monotonic() for elapsed display
     agent: str | None = None  # Agent nickname
     completed: bool = False  # True = show summary instead of live text
+    # Each tuple: (cycle, reasoning, enrichment_tags, salience_or_None)
+    history: list[tuple[int, str, list[str], float | None]] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +399,8 @@ class MaximDisplay:
             with self._lock:
                 self._resize_index = self._default_resize_index
                 self._scroll_target = "log"
+                # Reset to bottom so the panel auto-follows new thoughts
+                self._thinking_scroll_offset = 0
                 self._refresh()
         else:
             self.scroll(-999999)
@@ -415,6 +424,7 @@ class MaximDisplay:
         *,
         agent: str | None = None,
         completed: bool = False,
+        salience: float | None = None,
     ) -> None:
         """Update the thinking panel with deliberation state (thread-safe).
 
@@ -425,18 +435,31 @@ class MaximDisplay:
             enrichment_tags: Bio-system names that contributed enrichment.
             agent: Agent nickname producing this deliberation.
             completed: If True, show as a completed summary (dim).
+            salience: Computed thought salience (0.0-1.0) for display.
         """
+        tags = enrichment_tags or []
         with self._lock:
+            prev = self._thinking_state
+            if completed and prev is not None:
+                # On completion, preserve the accumulated history
+                history = list(prev.history)
+            elif prev is not None and not completed:
+                # Always accumulate — full session thought stream, scrollable
+                history = list(prev.history)
+                history.append((cycle, reasoning, tags, salience))
+            else:
+                # No prior state — first thought
+                history = [(cycle, reasoning, tags, salience)]
+
             self._thinking_state = _ThinkingState(
                 reasoning=reasoning,
                 cycle=cycle,
                 max_cycles=max_cycles,
-                enrichment_tags=enrichment_tags or [],
-                started_at=self._thinking_state.started_at
-                if self._thinking_state is not None and not completed
-                else time.monotonic(),
+                enrichment_tags=tags,
+                started_at=prev.started_at if prev is not None and not completed else time.monotonic(),
                 agent=agent,
                 completed=completed,
+                history=history,
             )
             # Auto-scroll to bottom on new content (not when completing)
             if not completed:
@@ -749,8 +772,16 @@ class MaximDisplay:
         if state.agent:
             header = f"[bright_cyan][{state.agent}][/bright_cyan] {header}"
 
-        # Reasoning text with scroll support
-        reasoning_lines = state.reasoning.split("\n") if state.reasoning else []
+        # Build reasoning text from accumulated thought stream
+        reasoning_parts: list[str] = []
+        for i, (cyc_num, cyc_reasoning, cyc_tags, cyc_salience) in enumerate(state.history):
+            if i > 0:
+                # Separator between thoughts (dim horizontal rule)
+                tag_str = f" {', '.join(cyc_tags)}" if cyc_tags else ""
+                sal_str = f" s={cyc_salience:.2f}" if cyc_salience is not None else ""
+                reasoning_parts.append(f"[dim]──{tag_str}{sal_str}[/dim]")
+            reasoning_parts.append(cyc_reasoning)
+        reasoning_lines = "\n".join(reasoning_parts).split("\n") if reasoning_parts else []
         total_reasoning = len(reasoning_lines)
         # Reserve 1-2 lines for header (+ hint when active)
         hint_lines = 1 if thinking_active else 0

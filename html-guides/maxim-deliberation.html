@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Deliberation — Maxim Docs | PFC Inner Monologue & Thought Stream{% endblock %}
+
+{% block meta_description %}Maxim's PFC deliberation system — multi-cycle inner monologue with bio-system enrichment, computed salience, and a continuous thought stream display. The agent thinks before it acts.{% endblock %}
+
+{% block meta_keywords %}Maxim deliberation, PFC cycle, inner monologue, thought stream, computed salience, bio-enrichment, ThoughtGate, working memory{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Deliberation — PFC Inner Monologue & Thought Stream",
+  "description": "How Maxim's agent thinks before acting: multi-cycle deliberation with bio-system enrichment, computed salience scoring, and a continuous thought stream.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/deliberation",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["deliberation", "PFC", "inner monologue", "thought stream", "salience", "bio-enrichment"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Deliberation", "item": "https://www.dennyschaedig.com/maxim/deliberation" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Deliberation</h1>
+    <p class="text-slate-400 text-lg">Multi-cycle inner monologue with bio-system enrichment and computed salience</p>
+  </header>
+
+  <!-- Core Concept -->
+  <section class="space-y-4">
+    <h2 id="overview" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">How It Works</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Core Insight</h3>
+      <p class="text-slate-300">Instead of reacting immediately to every percept, the agent <strong class="text-white">pauses to think</strong> when the situation warrants it. Each thinking cycle consults bio-system memories, causal predictions, and learned associations &mdash; then the enriched reasoning feeds back for another round. The result is a chain of thought that genuinely builds on itself.</p>
+    </div>
+
+    <div class="grid md:grid-cols-4 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">1. Gate</h3>
+        <p class="text-slate-300 text-sm">ThoughtGate decides if the situation warrants deliberation: refractory cooldown, energy budget, salience scoring, adaptive threshold.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">2. Enrich</h3>
+        <p class="text-slate-300 text-sm">Bio-systems surface relevant memories, causal predictions, active concepts, and motor programs for the current percept or reasoning text.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">3. Think</h3>
+        <p class="text-slate-300 text-sm">The LLM reasons with enriched context. If <code class="bg-slate-950 px-1 rounded text-xs">ready_to_act: false</code>, reasoning feeds back to step 2 for another cycle.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">4. Act</h3>
+        <p class="text-slate-300 text-sm">When <code class="bg-slate-950 px-1 rounded text-xs">ready_to_act: true</code> or cycles converge (Jaccard &ge; 0.8), the agent executes the chosen action.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Deliberation Transcript -->
+  <section class="space-y-4">
+    <h2 id="transcript" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Deliberation Transcript</h2>
+
+    <p class="text-slate-300 leading-relaxed">Each deliberation cycle produces a transcript entry pairing the agent's reasoning with the bio-system response it triggered. The full transcript accumulates across cycles so the LLM in cycle 3 sees cycles 1 and 2.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto">
+      <pre class="whitespace-pre-wrap"><span class="text-indigo-400">=== Your inner deliberation (private &mdash; not speech) ===</span>
+
+<span class="text-cyan-400">[Cycle 1]</span>
+<span class="text-slate-400">You thought:</span> The guard is sleeping and I notice keys on his belt.
+I could try to take them, but that risks waking him...
+<span class="text-slate-400">Your experience responded:</span>
+<span class="text-emerald-400">- Memory:</span> Last time you reached for something near a sleeping NPC,
+  the noise check succeeded (salience=0.71)
+<span class="text-amber-400">- Prediction:</span> stealth actions near sleeping entities have 72% success rate
+
+<span class="text-cyan-400">[Cycle 2]</span>
+<span class="text-slate-400">You thought:</span> Given the memory of success with stealth near sleeping
+NPCs, and the prediction of 72% success, I'll reach for the keys slowly...
+<span class="text-slate-400">Your experience responded:</span>
+<span class="text-emerald-400">- Memory:</span> Slow movements reduce noise check difficulty by one tier
+<span class="text-amber-400">- Prediction:</span> combined stealth + slow movement &rarr; 89% success estimate</pre>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The transcript uses a <strong class="text-white">proportional token budget</strong>: <code class="bg-slate-950 px-1 rounded text-xs">min(2000, available &times; 0.3)</code>. On 4K local models this gives ~891 tokens; on 8K+ models it caps at 2000. Oldest entries are dropped first when the budget is exceeded.</p>
+  </section>
+
+  <!-- Computed Salience -->
+  <section class="space-y-4">
+    <h2 id="salience" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Computed Salience</h2>
+
+    <p class="text-slate-300 leading-relaxed">Each thought receives a computed salience score (0.0&ndash;1.0) based on how strongly the bio-systems responded to it.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2">Component</th><th class="pb-2">Weight</th><th class="pb-2">Signal</th>
+        </tr></thead>
+        <tbody class="text-slate-300">
+          <tr><td class="py-1">Section count</td><td class="text-amber-400">0.3</td><td>More bio-systems activated = more cross-system relevance</td></tr>
+          <tr><td class="py-1">Recall depth</td><td class="text-amber-400">0.3</td><td>More memories recalled = stronger associative resonance</td></tr>
+          <tr><td class="py-1">Novelty</td><td class="text-amber-400">0.4</td><td>Novel thoughts (low Jaccard with previous) are more informative</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-emerald-500/30 rounded-xl p-5">
+        <h3 class="text-emerald-400 font-semibold mb-2">High Salience (~0.6&ndash;0.9)</h3>
+        <p class="text-slate-300 text-sm">Novel thought that triggered multiple bio-systems. Typically cycle 1 (maximum novelty) or a thought that surfaces a surprising memory.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-600/30 rounded-xl p-5">
+        <h3 class="text-slate-400 font-semibold mb-2">Low Salience (~0.2&ndash;0.4)</h3>
+        <p class="text-slate-300 text-sm">Converging thought that repeats prior reasoning. The agent is refining, not discovering. Important for reaching a conclusion but less informative.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The <code class="bg-slate-950 px-1 rounded text-xs">top_by_salience</code> query on WorkingMemorySet returns the highest-salience thoughts first, so the most important reasoning surfaces in the prompt when token budget is tight.</p>
+  </section>
+
+  <!-- Thinking Panel -->
+  <section class="space-y-4">
+    <h2 id="display" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Thinking Panel</h2>
+
+    <p class="text-slate-300 leading-relaxed">In interactive mode, the thinking panel shows a <strong class="text-white">continuous stream</strong> of the agent's inner thoughts across the entire session.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 border border-slate-700">
+      <pre class="whitespace-pre-wrap"><span class="text-green-400 font-bold">Cycle 1/3  8.2s</span>  <span class="text-cyan-500">enriched: hippocampus, nac</span>
+I notice the dragon is approaching from the east. My memory
+recalls that fire dragons are vulnerable to water attacks.
+<span class="text-slate-600">&mdash;&mdash; hippocampus, nac s=0.69</span>
+Given my earlier success with the water spell, I should try
+to find the river to the north before engaging directly.
+<span class="text-slate-600">&mdash;&mdash; hippocampus s=0.54</span>
+The villagers mentioned a well near the town square. I recall
+wells can be used as water sources too &mdash; closer than the river.</pre>
+    </div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2">Key</th><th class="pb-2">Action</th>
+        </tr></thead>
+        <tbody class="text-slate-300">
+          <tr><td class="py-1"><code class="text-amber-400">Left arrow</code></td><td>Enter thinking panel for scrolling</td></tr>
+          <tr><td class="py-1"><code class="text-amber-400">Up/Down arrows</code></td><td>Scroll through thought history</td></tr>
+          <tr><td class="py-1"><code class="text-amber-400">Right arrow</code></td><td>Exit thinking panel, auto-follow latest thought</td></tr>
+          <tr><td class="py-1"><code class="text-amber-400">Option+Up/Down</code></td><td>Resize thinking panel (more/less space)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Inner Monologue -->
+  <section class="space-y-4">
+    <h2 id="inner-monologue" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Inner Monologue</h2>
+
+    <p class="text-slate-300 leading-relaxed">Deliberation reasoning is framed as <strong class="text-white">private inner thought</strong>. The agent thinks to itself in first person and explores autonomously before seeking user input.</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-emerald-500/30 rounded-xl p-5">
+        <h3 class="text-emerald-400 font-semibold mb-2">Correct (inner thought)</h3>
+        <ul class="text-slate-300 text-sm space-y-1">
+          <li>"I notice the dragon is attacking from the east..."</li>
+          <li>"I recall that fire dragons are weak to water..."</li>
+          <li>"Given my low health, engaging directly seems risky..."</li>
+          <li>"I should look for a water source nearby."</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-red-500/30 rounded-xl p-5">
+        <h3 class="text-red-400 font-semibold mb-2">Wrong (outward speech)</h3>
+        <ul class="text-slate-300 text-sm space-y-1">
+          <li>"What do you plan to do?" &mdash; narrator voice</li>
+          <li>"Did you manage to gather allies?" &mdash; addressing someone</li>
+          <li>"Would you like me to try stealth?" &mdash; seeking guidance</li>
+          <li>"Let me help you with that." &mdash; speaking to user</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-amber-400 mb-2">Act First, Ask Second</h3>
+      <p class="text-slate-300">The agent uses its tools, memories, predictions, and learned associations before seeking external input. <code class="bg-slate-950 px-1 rounded text-xs">request_interaction</code> is a last resort for genuine user-preference choices, not the default behavior.</p>
+    </div>
+  </section>
+
+  <!-- ThoughtGate -->
+  <section class="space-y-4">
+    <h2 id="thought-gate" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">ThoughtGate</h2>
+
+    <p class="text-slate-300 leading-relaxed">A composite gate that decides whether the agent should deliberate on the current working memory state.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto">
+      <pre class="whitespace-pre-wrap"><span class="text-indigo-400">Short-circuit cascade:</span>
+1. <span class="text-amber-400">Refractory</span>    &mdash; don't re-fire within 2 ticks of last pass
+2. <span class="text-amber-400">Energy</span>        &mdash; don't think below 15% of token budget
+3. <span class="text-amber-400">Salience</span>      &mdash; score working memory head via SalienceScorer
+4. <span class="text-amber-400">Threshold</span>     &mdash; score vs adaptive threshold (learns from outcomes)</pre>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The adaptive threshold adjusts based on whether past deliberations were useful &mdash; if thinking led to better actions, the threshold lowers (think more); if thinking was wasted, the threshold rises (act faster).</p>
+  </section>
+
+  <!-- Bio-plausibility -->
+  <section class="space-y-4">
+    <h2 id="bio" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Bio-Plausible Design</h2>
+
+    <div class="bg-slate-800 border-l-4 border-violet-500 rounded-xl p-6">
+      <p class="text-slate-300">The prefrontal cortex maintains a <strong class="text-white">persistent workspace</strong> &mdash; active representations that accumulate across recurrence cycles, not a FIFO that drops prior iterations. The basal ganglia (NAc) modulate which representations stay active based on predicted reward value. Hippocampus provides episodic context tagged with the goal that was active during encoding.</p>
+      <p class="text-slate-300 mt-3">The deliberation system maps these to software: the transcript is the persistent workspace, computed salience is the activation modulation, bio-enrichment is the hippocampal recall + NAc prediction circuit, and the ThoughtGate is the basal ganglia's go/no-go decision on whether to engage the workspace.</p>
+    </div>
+  </section>
+
+  <!-- Architecture -->
+  <section class="space-y-4">
+    <h2 id="architecture" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Architecture</h2>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto">
+      <pre class="whitespace-pre-wrap"><span class="text-indigo-400">ThoughtGate.should_think()</span>
+  &darr;  (refractory &rarr; energy &rarr; salience &rarr; adaptive threshold)
+<span class="text-emerald-400">BioEnrichmentPipeline.enrich(percept_text)</span>
+  &darr;  (hippocampus, NAc, EC, cerebellum, SCN)
+<span class="text-amber-400">_compute_thought_salience(sections, memories, jaccard)</span>
+  &darr;
+<span class="text-cyan-400">WMS.add(THOUGHT, salience=computed)</span>
+  &darr;
+<span class="text-white">LLM prompt &larr; deliberation transcript + enrichment</span>
+  &darr;
+<span class="text-slate-400">LLM response: {ready_to_act, action, reasoning}</span>
+  &darr;
+  <span class="text-emerald-400">ready_to_act=true</span> &rarr; execute action
+  <span class="text-amber-400">ready_to_act=false</span> &rarr; feed reasoning back &rarr; cycle 2+</pre>
+    </div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto">
+      <table class="w-full text-left">
+        <thead><tr class="text-indigo-400 border-b border-slate-700">
+          <th class="pb-2">File</th><th class="pb-2">Role</th>
+        </tr></thead>
+        <tbody class="text-slate-300">
+          <tr><td class="py-1 text-cyan-400">runtime/agent_loop.py</td><td>_run_deliberation_cycles, _compute_thought_salience</td></tr>
+          <tr><td class="py-1 text-cyan-400">runtime/thought_gate.py</td><td>ThoughtGate composite gate</td></tr>
+          <tr><td class="py-1 text-cyan-400">integration/bio_enrichment.py</td><td>BioEnrichmentPipeline</td></tr>
+          <tr><td class="py-1 text-cyan-400">agents/prompt_builder.py</td><td>Transcript section, bio-enrichment suppression</td></tr>
+          <tr><td class="py-1 text-cyan-400">agents/exec_prompts.py</td><td>PFC_PREAMBLE (inner monologue framing)</td></tr>
+          <tr><td class="py-1 text-cyan-400">agents/working_memory.py</td><td>WorkingMemorySet.top_by_salience</td></tr>
+          <tr><td class="py-1 text-cyan-400">interactive/display.py</td><td>Thinking panel, thought stream</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

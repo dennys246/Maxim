@@ -982,6 +982,7 @@ def sim_deliberation_update(
     enrichment_tags: list[str] | None = None,
     *,
     agent_id: str | None = None,
+    salience: float | None = None,
 ) -> None:
     """Push deliberation reasoning text to the thinking panel.
 
@@ -1001,6 +1002,7 @@ def sim_deliberation_update(
             max_cycles=max_cycles,
             enrichment_tags=enrichment_tags,
             agent=nickname,
+            salience=salience,
         )
 
 

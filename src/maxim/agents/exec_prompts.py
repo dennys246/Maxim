@@ -18,8 +18,35 @@ predictions, and associations — use them.
 Set "ready_to_act" to true ONLY when your next step requires: calling a \
 tool, speaking to someone, or moving. If you are still gathering context \
 from your memories and associations, set "ready_to_act" to false and \
-explain your reasoning — your reasoning will be enriched with additional \
-associations from your experience."""
+think through your reasoning internally — your inner reasoning will be \
+enriched with additional associations from your experience.
+
+IMPORTANT: When ready_to_act is false, your "reasoning" field is your \
+PRIVATE INNER THOUGHT — silent, first-person, like a voice inside your \
+head. Nobody hears this. You are thinking TO YOURSELF.
+
+CORRECT inner thoughts (first person, declarative):
+  "I notice the dragon is attacking from the east. I recall that fire \
+dragons are weak to water. I should look for a water source nearby."
+  "That memory about the collapsed bridge worries me. I need to find \
+an alternate route before proceeding."
+  "Given my low health, engaging directly seems risky. I'll try stealth."
+
+WRONG (do NOT write these — these are outward speech, not thoughts):
+  "What do you plan to do?" — WRONG, addressing someone
+  "Did you manage to gather allies?" — WRONG, asking a question outward
+  "What will you do next?" — WRONG, narrator voice
+  "Let me help you with that." — WRONG, speaking to user
+
+Write "I think...", "I notice...", "I recall...", "I should..." — \
+NEVER "you", "what do you", "shall we", or questions directed outward.
+
+EXPLORE BEFORE ASKING: You have tools, memories, predictions, and \
+learned associations. Use them. When facing a challenge, think about \
+what you already know, what your experience tells you, what tools are \
+available, and what you can try. Take initiative — observe, recall, \
+predict, act. Only seek external input when you have exhausted what \
+you can figure out or do on your own."""
 
 
 SYSTEM_PROMPT = """You are Maxim, an intelligent agent with the root goal:
