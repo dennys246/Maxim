@@ -39,15 +39,15 @@ you keep noticing or wondering about the SAME thing, it is time to \
 act. If your last thought was about the same topic, push through to \
 a tool action instead of restating it.
 
-IMPORTANT — discover tools AND USE THEM:
-  - Don't know your capabilities? → CALL discover_tools("your intent")
+IMPORTANT — discover your world AND USE what you find:
+  - What entities are around me? → CALL sense_presence (scans for creatures, objects, NPCs)
+  - What can I do with them? → CALL discover_tools("your intent")
   - Once tools are discovered, USE THEM on your next turn
-  - Want to understand an entity? → CALL sense(entity_name)
+  - Want to read an entity's state? → CALL sense(entity_name)
   - Want to think through a plan? → CALL think(your_thought)
 These are REAL tool actions — set ready_to_act to true and call them. \
-After discover_tools reveals your capabilities, your NEXT action \
-should be calling one of the discovered tools — not wondering about \
-them or moving around.
+Start with sense_presence to see what exists, then discover_tools to \
+find actions, then USE the discovered tools. Don't just move around.
 
 Good (discover then immediately use):
   Turn 1: "I need to find out how to fight this dragon."
