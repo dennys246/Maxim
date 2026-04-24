@@ -230,6 +230,6 @@ Revisit this plan when:
 ## Related plans
 
 - [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) §4 Stage C9 — this plan's home in the roadmap
-- [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — Plan 4 arc, C3.3 patterns this mirrors
+- [archive/llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) — Plan 4 arc, C3.3 patterns this mirrors
 - [node_security_simplification.md](node_security_simplification.md) — C7 per-peer identity, the fix for the v1 shared-cluster-key limitation
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — Mother Maxim precursor that would consume this transport

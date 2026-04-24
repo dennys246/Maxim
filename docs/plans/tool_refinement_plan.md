@@ -95,7 +95,7 @@ Exposes the agent's computational substrate — making compute legible alongside
 | `lane_status(lane)` | backend kind, model, p50/p99 latency, queue depth, failure rate, recent cost | Multi-LLM Phase 8 `LaneMetrics` | 🔥 |
 | `inference_trace(n=10)` | last N LLM calls: request_id, lane, backend_chosen, latency, tokens, cost_usd | Phase 8 + 7a `LeaderProxy` | 🔥 |
 | `compute_budget()` | spent_usd, limit_usd, breakdown_by_backend, projected_exhaustion | `CostTracker` + `LaneMetrics` | 🔥 |
-| `peer_list()` | per-peer node_id, host, device, vram_gb, models, is_alive, last_latency | Phase 7c — requires `mesh.yml` from [llm_path_operator_visibility.md](llm_path_operator_visibility.md) | 🟡 |
+| `peer_list()` | per-peer node_id, host, device, vram_gb, models, is_alive, last_latency | Phase 7c — requires `mesh.yml` from [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) | 🟡 |
 | `cluster_status()` | full mesh snapshot: local lanes + peers + their loads | Phase 7d | 🟡 |
 | `explain_backend_choice(request_id)` | why the router picked the backend it did | Phase 7d routing decisions | 🟡 |
 

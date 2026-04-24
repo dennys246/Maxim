@@ -1,6 +1,6 @@
 # Circular Import Resolution Plan
 
-**Status:** Ready
+**Status:** RESOLVED. ToolErrorKind lives in tools/base.py, circular import chain broken.
 **Scope:** Pre-1.0 tech debt — prevents test isolation failures and future refactoring pain
 **Priority:** Ship before 1.0 (user decision 2026-04-20)
 **Estimated LOC:** ~80 (mostly moving imports, not new code)

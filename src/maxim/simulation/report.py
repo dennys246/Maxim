@@ -65,6 +65,9 @@ class SimulationReport:
     # Substrate metrics (populated by FixtureDrivenOrchestrator, S1)
     substrate_metrics: dict[str, Any] = field(default_factory=dict)
 
+    # Bio-system telemetry (Track 3: rich event-level data for research)
+    bio_telemetry_path: str = ""  # Path to bio_telemetry.jsonl if saved
+
 
 def build_report(
     *,
@@ -204,6 +207,16 @@ def save_report(report: SimulationReport, base_dir: str | None = None) -> Path:
         base_dir = str(sim_reports())
     session_dir = Path(base_dir) / report.session_id
     session_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save bio telemetry (Track 3: rich event-level data for research)
+    try:
+        from maxim.simulation.bio_telemetry import BioTelemetryCollector
+
+        telemetry_path = BioTelemetryCollector().save(session_dir)
+        if telemetry_path is not None:
+            report.bio_telemetry_path = str(telemetry_path)
+    except Exception as e:
+        logger.debug("Bio telemetry save failed: %s", e)
 
     report_path = session_dir / "report.json"
     from maxim.utils.atomic_io import atomic_write_json

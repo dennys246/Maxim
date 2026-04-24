@@ -251,6 +251,12 @@ class DiscoverToolsTool(Tool):
         result_lines.append("These tools are now available for your next action.")
 
         log.info("discover_tools: activated %d tools for query %r", len(activated), query)
+        try:
+            from maxim.simulation.sim_logger import sim_discovery
+
+            sim_discovery(query, matched=len(top_matches), activated=len(activated), source="DiscoverToolsTool")
+        except Exception:
+            pass
         return ToolOutput(success=True, output="\n".join(result_lines))
 
     def _find_tool_in_registry(self, expected_name: str) -> str | None:

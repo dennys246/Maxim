@@ -1,7 +1,7 @@
 # PainBus bridge × subscriber unification — close the latent attribution-asymmetry trap
 
 **Status:** SHELL ONLY. Surfaced by the `pain_bus_unification.md` pre-merge architecture review (2026-04-14). NOT scheduled. Open this when (a) `record_tool_start`'s pending-event context is enriched OR (b) the latent risk is observed firing in production.
-**Parent index:** [biosystem_unification.md](biosystem_unification.md)
+**Parent index:** [archive/biosystem_unification.md](../archive/biosystem_unification.md)
 **Wave:** Sibling to Wave 1 / Wave 2 — exact slot TBD when the plan opens.
 **Depends on:** `pain_bus_unification.md` (this is the follow-up to it). Probably also wants `executor_bootstrap_unification.md` (which already shipped) and arguably `memory_hub_unification.md`.
 
@@ -108,7 +108,7 @@ Both shapes need the same audit + design discipline as Wave 1: walk every PainBu
 ## Cross-references
 
 - [pain_bus_unification.md](pain_bus_unification.md) — the parent plan that surfaced this trap during pre-merge review
-- [biosystem_unification.md](biosystem_unification.md) — central index
+- [archive/biosystem_unification.md](../archive/biosystem_unification.md) — central index
 - [executor_bootstrap_unification.md](executor_bootstrap_unification.md) — `build_executor` precedent + bridge wiring rules
 - `CLAUDE.md` "Tool-invoked embodiment pain attributes directly, not via context similarity" invariant — the rule the bridge guard enforces
 - `CLAUDE.md` "Context-similarity attribution is the wrong mechanism when a direct lookup key exists" lesson — the SEM execution hook Stage 1 root-cause writeup

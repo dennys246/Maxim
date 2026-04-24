@@ -4,7 +4,7 @@
 **Scope:** Tracks the full arc from "operator manually drives the mesh" to "fully reactive peer mesh." Cross-cuts several active and deferred plans rather than replacing them — this is the index that ties them together.
 **Target versions:** 0.4 → 0.7 (mesh ship). 1.0 banner is cross-session learning, separate from mesh.
 **Maintained alongside:**
-- [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — Plan 4 (Stages A, B, C1-C3.x). The active Plan 4 work feeds this roadmap; this doc is the index.
+- [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) — Plan 4 (ALL SHIPPED). The Plan 4 work feeds this roadmap; this doc is the index.
 - [llm_path_refinement.md](llm_path_refinement.md) — Plan 1-3.6 ancestor.
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — Stage C5.
 - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
@@ -214,7 +214,7 @@ Update this roadmap when:
 
 ## 9. Related plans
 
-- [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — the active Plan 4 work, which feeds C3.x in this roadmap.
+- [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) — Plan 4 (ALL SHIPPED), which feeds C3.x in this roadmap.
 - [llm_path_refinement.md](llm_path_refinement.md) — the Plan 1-3.6 ancestor chain.
 - [llm_path_peer_failover.md](llm_path_peer_failover.md) — Plan 3.6 (VRAM spillover detection).
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — the C5 skeleton.

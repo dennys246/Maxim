@@ -492,6 +492,12 @@ class ImaginationTrigger:
         if cached is not None:
             with self._lock:
                 self._cache_hits += 1
+            try:
+                from maxim.simulation.sim_logger import sim_imagination
+
+                sim_imagination("cache_hit", phrase, result=cached.ref)
+            except Exception:
+                pass
             return cached
 
         # 2. Record mention and check threshold
@@ -516,6 +522,12 @@ class ImaginationTrigger:
                 match.score,
                 match.layer,
             )
+            try:
+                from maxim.simulation.sim_logger import sim_imagination
+
+                sim_imagination("index_hit", phrase, result=f"{match.ref} (score={match.score:.2f})")
+            except Exception:
+                pass
             return result
 
         # 4. Below threshold → not enough mentions yet, skip
@@ -525,11 +537,23 @@ class ImaginationTrigger:
         # 5. Check DN arousal gate — only imagine during low arousal
         if not self._is_arousal_allowed():
             log.debug("Imagination: arousal gate blocked design for '%s'", phrase)
+            try:
+                from maxim.simulation.sim_logger import sim_imagination
+
+                sim_imagination("gate_rejected", phrase, result="arousal too high")
+            except Exception:
+                pass
             return None
 
         # 6. Check energy budget
         if not self._is_energy_available():
             log.debug("Imagination: energy gate blocked design for '%s'", phrase)
+            try:
+                from maxim.simulation.sim_logger import sim_imagination
+
+                sim_imagination("gate_rejected", phrase, result="energy critical")
+            except Exception:
+                pass
             return None
 
         # 7. Design the entity
@@ -612,6 +636,12 @@ class ImaginationTrigger:
             self._imagined_refs.add(ref)
 
         log.info("Imagination: designed new entity '%s' from phrase '%s'", ref, phrase)
+        try:
+            from maxim.simulation.sim_logger import sim_imagination
+
+            sim_imagination("design", phrase, result=ref)
+        except Exception:
+            pass
         return result
 
     def _is_arousal_allowed(self) -> bool:

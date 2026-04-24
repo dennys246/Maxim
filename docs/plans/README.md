@@ -16,20 +16,21 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## 0.8 — Cognitive Maturity
 
-- [working_memory_exec_loop.md](working_memory_exec_loop.md) — **ALL 7 STAGES SHIPPED** (2026-04-21). Post-ship refinement (2026-04-22): Layer 1 pre-LLM deliberation (ThoughtGate + BioEnrichment before LLM call), Layer 3 gate simplification (ThoughtGate as sole gate), WMS enrichment in BioEnrichmentPipeline, context-aware stall nudges. 5680 tests pass.
-- [pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) — **Stages 1+2 SHIPPED** (2026-04-22). Non-optional ThoughtGate + BioEnrichment via BioStack, gated enrichment in agent loop, `ready_to_act` on LLMProposal, PFC preamble, WMS THOUGHT prompt section, refractory reset. 5680 tests pass. Multi-cycle LLM calls (cycles 2+) deferred — draft `_run_deliberation_cycle` defined. Experiment: [09_pfc_deliberation_cycle.md](../experiments/09_pfc_deliberation_cycle.md). Supersedes deliberation_observability.md.
-- [goal_depth_integration.md](goal_depth_integration.md) — Shell plan. Deepens goal awareness across existing bio-systems (GOAL WMS entry kind, goal-tagged episodes, NAc goal-outcome learning, goal persistence). ~200-300 LOC. Depends on PFC cycle.
-- [interactive_display_overhaul.md](interactive_display_overhaul.md) — Shell plan. Split thinking panel, agent focus switching (shift+left/right), dynamic resize (shift+up/down), keymap refactor. ~400-500 LOC. Depends on PFC cycle.
-- [deliberation_observability.md](deliberation_observability.md) — Superseded by pfc_deliberation_cycle.md. sim_log helpers (`sim_pre_deliberation`, `sim_contemplation`) survive; call sites move into the unified cycle.
+- [archive/working_memory_exec_loop.md](archive/working_memory_exec_loop.md) — **✅ ALL 7 STAGES SHIPPED + ARCHIVED** (2026-04-21). Post-ship refinement (2026-04-22): Layer 1 pre-LLM deliberation, Layer 3 gate simplification, WMS enrichment, context-aware stall nudges.
+- [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) — **✅ SHIPPED + ARCHIVED** (PR #178, 2026-04-22). Unified think-or-act loop. Supersedes deliberation_observability.md. Experiment: [09_pfc_deliberation_cycle.md](../experiments/09_pfc_deliberation_cycle.md).
+- [archive/interactive_display_overhaul.md](archive/interactive_display_overhaul.md) — **✅ SHIPPED + ARCHIVED** (2026-04-23). Thinking panel, agent focus, resize, /help, context-sensitive scrolling.
+- [archive/deliberation_observability.md](archive/deliberation_observability.md) — **SUPERSEDED + ARCHIVED**. sim_log helpers shipped via unified PFC cycle.
+- [deliberative_thought_stream.md](deliberative_thought_stream.md) — **Stages 1+2 SHIPPED** (PR #183, 2026-04-23). Transcript, salience, thinking panel stream, inner monologue. Stages 3+4 remain.
+- [goal_depth_integration.md](goal_depth_integration.md) — Shell plan. GOAL WMS entry kind, goal-tagged episodes, NAc goal-outcome learning. ~200-300 LOC.
 - [orchestrator_stall_recovery.md](orchestrator_stall_recovery.md) — Shell plan. Tool-cap exemption for send_message + orch diversity injection. ~200-400 LOC.
-- [cross_session_sim_validation.md](cross_session_sim_validation.md) — Shell plan. Prove pre-deliberation enrichment works across sessions. Depends on observability.
+- [cross_session_sim_validation.md](cross_session_sim_validation.md) — Shell plan. Prove pre-deliberation enrichment works across sessions.
 
 ## 0.7 — Self-Generating Simulations
 
 - [archive/07_feature_completion.md](archive/07_feature_completion.md) — **✅ SHIPPED + ARCHIVED** (2026-04-20). All tracks landed: R0 prerequisites, B3.1 Acting Coach, F3-F5 Factory, E2-E2.5-E3 Foundry+Index+Curation, I1-I3 Imagination. Integration wiring complete. ~3620 LOC. I4-I5 deferred to 0.8. Experiment: [07_imagination_wiring.md](../experiments/07_imagination_wiring.md).
 - [archive/sem_tool_discovery.md](archive/sem_tool_discovery.md) — **✅ SHIPPED + ARCHIVED** (2026-04-20). Hybrid prompt mode (top-k + discover_tools), universal sense, EntityMap, NAc ranking, LRU eviction, imagination deferred registration. ~500 LOC. 32 tests. PoC: [sem_tool_discovery_s1.md](../experiments/sem_tool_discovery_s1.md).
 - [gating_abstraction.md](gating_abstraction.md) — **G0+G1 SHIPPED** (2026-04-20). SalienceScorer protocol, AdaptiveThresholdController, TextSalienceScorer. G2 (ImaginationTrigger wiring) + G3 (ThalamicGate cleanup) remain.
-- [concept_exploration.md](concept_exploration.md) — **L0+L1+L2 SHIPPED** (2026-04-20). BioEnrichmentPipeline, ThinkTool enrichment, percept enrichment, active deliberation (convergence + hard cap + NAc gating). L3 (NoveltyScorer extraction) optional. Experiment: [08_deliberation_system.md](../experiments/08_deliberation_system.md).
+- [archive/concept_exploration.md](archive/concept_exploration.md) — **✅ L0+L1+L2 SHIPPED + ARCHIVED** (2026-04-20). BioEnrichmentPipeline, ThinkTool enrichment, percept enrichment, active deliberation. L3 (NoveltyScorer extraction) optional. Experiment: [08_deliberation_system.md](../experiments/08_deliberation_system.md).
 
 ## Active (gating 1.0)
 
@@ -38,7 +39,7 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 Foundations, reaction abstraction, simulator upgrades, P0-P4, P6, P8, B4, SEM execution hook, E0 generalizable embodiment — all complete.
 
 - [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) — **✅ SPLIT COMPLETE + ARCHIVED** (2026-04-17). Now a pure index. **All four 0.3-target phases CLOSED.** Per-phase plan files created for 0.5 track:
-  - [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — **✅ COMPLETE** (2026-04-21). All 7 stages PASS. **1.0 GATE CLOSED.** Found + fixed SemanticMemory serialization bug. Results: [experiments/p5_stress_persistence_results.md](../experiments/p5_stress_persistence_results.md).
+  - [archive/substrate_p5_stress_persistence.md](archive/substrate_p5_stress_persistence.md) — **✅ COMPLETE + ARCHIVED** (2026-04-21). All 7 stages PASS. **1.0 GATE CLOSED.** Found + fixed SemanticMemory serialization bug. Results: [experiments/p5_stress_persistence_results.md](../experiments/p5_stress_persistence_results.md).
   - [substrate_p6_extinction.md](archive/substrate_p6_extinction.md) — **✅ SHIPPED** (2026-04-19). Hebbian decay beats LRU across 10 seeds. Results: [experiments/p6_extinction_results.md](../experiments/p6_extinction_results.md).
   - [substrate_p8_sleep_replay.md](archive/substrate_p8_sleep_replay.md) — **✅ SHIPPED** (2026-04-19). Sleep replay F1 improves vs no-replay control, 10-seed sweep. Results: [experiments/p8_sleep_replay_results.md](../experiments/p8_sleep_replay_results.md). Activates [memory_consolidation_practice.md](memory_consolidation_practice.md).
   - [prompt_b3_b5_track.md](prompt_b3_b5_track.md) — Draft. Acting Coach + embodiment/narrative separation.
@@ -67,7 +68,7 @@ These accumulate evidence and refinement over time. They are not on the critical
 - [archive/interactive_experience_031.md](archive/interactive_experience_031.md) — **✅ SHIPPED** (2026-04-18, PR #156). 8 stages, ~700 LOC.
 - [archive/substrate_concept_decomposition.md](archive/substrate_concept_decomposition.md) — **✅ SHIPPED** (2026-04-17). 100% concept-level recall vs 36.4% baseline.
 - [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) — **PARTIAL** (2026-04-17). Stage 3 (pain/salience spike) SHIPPED via sem_learning_loop.md. `observe_episode_event` now wired into production agent loop via behavioral_convergence_wiring.md. Stages 1-2 (tool execution + semantic shift) remain — ship before P5.
-- [biosystem_unification.md](biosystem_unification.md) — **central tracking doc** (2026-04-14, updated 2026-04-17). Waves 0-3 **ALL SHIPPED + ARCHIVED**. Wave 4 (agent_factory_canonicalization) not scheduled.
+- [archive/biosystem_unification.md](archive/biosystem_unification.md) — **✅ COMPLETE + ARCHIVED** (2026-04-14, updated 2026-04-17). All 6 items shipped. Wave 4 (agent_factory_canonicalization) separate.
 - [tool_refinement_plan.md](tool_refinement_plan.md) — living doc for agent tool surface curation
 - [agent_factory_canonicalization.md](agent_factory_canonicalization.md) — **RUNNING DOC, trigger #4 activated** (2026-04-18). The Option D follow-up to `executor_bootstrap_unification.md` — make `AgentFactory.create_agent` the only door for constructing an agent in Maxim. **Wave G (Game/External Host) folded in** from game_npc_integration.md: wire Executor + bio-pipeline into `AgentPool.run_turn()`, HostContext protocol, async tool dispatch, emotional state readout, memory backend. F-wave ~1500-2500 LOC + G-wave ~940 LOC. Target: 0.5.
 - [deferred/node_security_simplification.md](deferred/node_security_simplification.md) — Phase 1 ✅ SHIPPED. Phase 2 config-surface unification deferred.
@@ -78,7 +79,7 @@ These accumulate evidence and refinement over time. They are not on the critical
 - **Interactive NAc attribution** (future concern, no plan file yet) — NAc tool-outcome learning is suppressed during interactive mode (0.4.0) because human-directed tool calls would corrupt the causal model with patterns that depend on human presence. The interim fix gates `record_tool_start`/`record_tool_complete` and the PainBus NAc subscriber on `get_interactive_mode() == ON`. Proper fix: add `human_influenced: bool` metadata to NAc links, or implement separate interactive vs autonomous learning modes so the agent can learn from interactive sessions without conflating human-directed causality with environmental causality. Revive when behavioral convergence experiments show drift between interactive-trained and autonomous-trained agents.
 - [llm_path_refinement.md](llm_path_refinement.md) — meta-plan for the LLM routing path refactor. Plans 1-3.5 archived; Plan 3.6 R5 shipped; **Plan 4 Stages A+B + C1-C3.6 + C4+C4.5+C4.6 ALL SHIPPED.** Reactive mesh self-healing loop complete. Only stress phases B/C/E remain in scope. Architecture ref: [../architecture/llm_routing.md](../architecture/llm_routing.md).
   - [llm_path_peer_failover.md](archive/llm_path_peer_failover.md) — Plan 3.6 R5 (VRAM spillover) ✅ SHIPPED. R1-R4 (multi-leader) remain draft, on hold until second GPU.
-  - [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — Plan 4. **Core stages ALL SHIPPED** (A, B, C1-C3.6, C4, C4.5, C4.6). Remaining deferred scope (admin API, rate limiting, key rotation) tracked in [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) as C6/C7.
+  - [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) — Plan 4. **✅ Core stages ALL SHIPPED + ARCHIVED** (A, B, C1-C3.6, C4, C4.5, C4.6). Remaining deferred scope (admin API, rate limiting, key rotation) tracked in [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) as C6/C7.
   - Deferred: [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md), [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md), [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md), [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md)
 
   **Long-term mesh roadmap**: [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md). Stages C3-C4.6 complete; C5 (capacity-aware routing), C6 (admin API), C7 (security hardening) remain.
@@ -91,14 +92,26 @@ Design work is preserved in [deferred/](deferred/). Each plan has an explicit "r
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — **needs heavy refinement.** Two-agent stimulus pattern: Baby Maxim is the AUT with frozen LLM and evolving substrate; Mother NPC is a separate agent with her own LLM that produces realistic, varied percepts Baby learns from. Interaction is percepts only, zero information leak beyond that surface. Gives behavioral convergence experiments scalable stimulus variety without breaking the "no fine-tuning" research claim. Revive when [behavioral_convergence_practice.md](behavioral_convergence_practice.md) has ≥2 successful experiments + 1 blocked-on-variety. Isolation leak vector list in the plan is a starting point, not a contract — heavy refinement needed at revive time.
 - [deferred/pecking_order_graph_plan.md](deferred/pecking_order_graph_plan.md) — unified hierarchy DAG
 - [deferred/mother_maxim_plan.md](deferred/mother_maxim_plan.md) — persistent collective memory
-- ~~[deferred/asset_foundry_plan.md](deferred/asset_foundry_plan.md)~~ — **PROMOTED to 0.6** (pre-1.0). **Stage 0 (sim affordance gap) ✅ SHIPPED** (2026-04-19). `--embodiment` now works with `--sim` across all modes. Stages E1-E3 (LLM-driven component generation + gauntlet + curation) remain.
+- [archive/asset_foundry_plan.md](archive/asset_foundry_plan.md) — **PROMOTED from deferred → 0.6 → ✅ SHIPPED + ARCHIVED**. Stage 0 + E1-E3 all complete.
 - [deferred/dungeon_master_extensions.md](deferred/dungeon_master_extensions.md) — DM post-MVP features
 
 ## Archive
 
 Completed or superseded plans live in [archive/](archive/).
 
-Recently archived (2026-04-19):
+Recently archived (2026-04-23):
+- [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) — **✅ SHIPPED + ARCHIVED** (PR #178). Unified think-or-act loop.
+- [archive/interactive_display_overhaul.md](archive/interactive_display_overhaul.md) — **✅ SHIPPED + ARCHIVED**. Thinking panel, agent focus, resize.
+- [archive/working_memory_exec_loop.md](archive/working_memory_exec_loop.md) — **✅ ALL 7 STAGES SHIPPED + ARCHIVED**. WMS, ThoughtGate, intent types.
+- [archive/substrate_p5_stress_persistence.md](archive/substrate_p5_stress_persistence.md) — **✅ COMPLETE + ARCHIVED**. 1.0 gate closed.
+- [archive/concept_exploration.md](archive/concept_exploration.md) — **✅ L0+L1+L2 SHIPPED + ARCHIVED**. BioEnrichmentPipeline, deliberation.
+- [archive/biosystem_unification.md](archive/biosystem_unification.md) — **✅ COMPLETE + ARCHIVED**. All 6 items shipped.
+- [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) — **✅ ALL STAGES SHIPPED + ARCHIVED**. Plan 4.
+- [archive/deliberation_observability.md](archive/deliberation_observability.md) — **SUPERSEDED + ARCHIVED**. Folded into PFC cycle.
+- [archive/circular_import_resolution.md](archive/circular_import_resolution.md) — **✅ RESOLVED + ARCHIVED**. ToolErrorKind in tools/base.py.
+- [archive/asset_foundry_plan.md](archive/asset_foundry_plan.md) — **PROMOTED + SHIPPED + ARCHIVED**. Moved from deferred.
+
+Previously archived (2026-04-19):
 - [archive/prompt_b4_replanning.md](archive/prompt_b4_replanning.md) — **✅ COMPLETE + ARCHIVED**. 1.0 gate closed. Blind A/B: treatment 100% vs control 0%.
 - [archive/substrate_p6_extinction.md](archive/substrate_p6_extinction.md) — **✅ SHIPPED + ARCHIVED**. Hebbian decay beats LRU, 10 seeds.
 - [archive/substrate_p8_sleep_replay.md](archive/substrate_p8_sleep_replay.md) — **✅ SHIPPED + ARCHIVED**. Sleep replay F1 improves, 10 seeds.
@@ -200,7 +213,7 @@ No new features. Proving what's built holds up at scale and the API/CLI surfaces
 
 | What | Plan | Why |
 |---|---|---|
-| **P5 stress persistence** (the gate) | [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) | 10k+ node persistence validates substrate at realistic scale |
+| **P5 stress persistence** (the gate) | [archive/substrate_p5_stress_persistence.md](archive/substrate_p5_stress_persistence.md) | ✅ CLOSED. 10k+ node persistence validates substrate at realistic scale |
 | **API/CLI surface review** | Sweep for edge cases and missed opportunities in the public API (`api.py`, `__init__.py`) and CLI (`cli.py`, `cli_parser.py`). The API was designed before much of the current infrastructure — ensure all new capabilities (foundry, embodiment, bio-stack, factory) are properly accessible to power users. | Pre-1.0 accessibility |
 | **Agent memory transfer docs** | Universal onboarding document set that allows any agent (Claude, human, or future AI) to quickly understand the repo's architecture, invariants, and conventions without reading every memory file. Refine `.claude/` memory, consolidate into a transferable format. | Knowledge continuity |
 | **Final docs pass** | Publication guide, user docs, architecture docs | Ship-ready documentation |
@@ -235,7 +248,7 @@ All originally defined gates are **CLOSED** (2026-04-19). Remaining criteria for
 - ✅ **Generalizable embodiment (E0):** `--embodiment` works with `--sim` across all modes.
 - ✅ **Living-doc discipline:** Both practice docs have experiment entries.
 - ✅ **0.7 feature completion:** E2-E3, B3, F3-F5, I1-I3, SEM discovery, gating, deliberative thinking — **ALL SHIPPED** (2026-04-20).
-- **P5 stress persistence:** 10k+ node persistence stress test. The final hard gate.
+- ✅ **P5 stress persistence:** 10k+ node persistence stress test. **1.0 GATE CLOSED** (2026-04-21).
 - **API/CLI surface review:** Sweep the public API and CLI for edge cases and missed opportunities. Not a hard gate — a quality bar.
 - **Agent memory transfer docs:** Universal onboarding document set for knowledge continuity across agents.
 

@@ -1,6 +1,6 @@
 # Deliberation Observability — sim_log for the thinking pipeline
 
-**Status:** Shell plan (2026-04-22)
+**Status:** SUPERSEDED by [pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) (2026-04-22). The sim_log helpers (`sim_pre_deliberation`, `sim_contemplation`) shipped via the unified PFC cycle, not as standalone gates.
 **Scope:** ~100-150 LOC
 **Priority:** Highest — can't iterate on what you can't see
 **Depends on:** working_memory_exec_loop.md (shipped), post-ship refinement (shipped)

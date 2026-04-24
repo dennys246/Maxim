@@ -433,15 +433,17 @@ class NAc:
                     sources=[ProvenanceRef("nac", link.id, link.event_signature)],
                 )
 
-        # Simulation verbosity
+        # Simulation verbosity — use structured sim_nac_learn for display + JSONL
         for link in updated_links:
             try:
-                from maxim.simulation.sim_logger import sim_log
+                from maxim.simulation.sim_logger import sim_nac_learn
 
-                sim_log(
-                    "NAc",
-                    f"Causal link: {link.event_signature} -> {link.outcome_valence.value} "
-                    f"(RPE={link.last_rpe:.2f}, confidence={link.confidence:.2f})",
+                sim_nac_learn(
+                    event=link.event_signature,
+                    outcome=link.outcome_signature,
+                    confidence=link.confidence,
+                    rpe=link.last_rpe,
+                    link_type="updated" if link.observation_count > 1 else "new",
                 )
             except Exception:
                 pass
@@ -491,6 +493,18 @@ class NAc:
                 )
                 existing_link.update_prediction_rw(outcome_valence, learning_rate=self.config.base_learning_rate)
                 self._total_observations += 1
+                try:
+                    from maxim.simulation.sim_logger import sim_nac_learn
+
+                    sim_nac_learn(
+                        event=event_signature,
+                        outcome=outcome_signature,
+                        confidence=existing_link.confidence,
+                        rpe=existing_link.last_rpe,
+                        link_type="observed",
+                    )
+                except Exception:
+                    pass
                 return existing_link
 
             new_link = CausalLink(
@@ -516,6 +530,18 @@ class NAc:
             self._outcome_index.setdefault(outcome_signature, set()).add(link_id)
             self._total_observations += 1
             self._enforce_limits()
+            try:
+                from maxim.simulation.sim_logger import sim_nac_learn
+
+                sim_nac_learn(
+                    event=event_signature,
+                    outcome=outcome_signature,
+                    confidence=new_link.confidence,
+                    rpe=new_link.last_rpe,
+                    link_type="new_observed",
+                )
+            except Exception:
+                pass
             return new_link
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -544,7 +570,19 @@ class NAc:
             OutcomePrediction if any relevant links exist, None otherwise.
         """
         with self._lock:
-            return self._predict_impl(event_type, event_signature, context)
+            result = self._predict_impl(event_type, event_signature, context)
+        # Log prediction outside lock to avoid import-under-lock
+        try:
+            from maxim.simulation.sim_logger import sim_nac_predict
+
+            if result is not None:
+                outcomes = [(result.outcome_signature, result.confidence)]
+            else:
+                outcomes = []
+            sim_nac_predict(event=event_signature, outcomes=outcomes)
+        except Exception:
+            pass
+        return result
 
     def _predict_impl(
         self,
