@@ -1,16 +1,16 @@
-"""Tests for SEM Tool Discovery (S1).
+"""Tests for SEM Tool Discovery (S1) + Entity Ownership.
 
 Covers:
 - EntityMap registration, resolution, collision disambiguation
+- EntityMap ownership: register_self vs register_scene
 - UniversalSenseTool entity resolution and sensor reading
-- DiscoverToolsTool query matching, activation, and fallback
+- DiscoverToolsTool query matching, activation, self-entity filter, scene hints
 - Goal-based top-k selection with vague-goal fallback
+- SensePresenceTool ownership labels
 """
 
 from __future__ import annotations
 
-import time
-from typing import Any
 
 import pytest
 
@@ -18,12 +18,15 @@ from maxim.embodiment.entity_map import EntityMap
 from maxim.embodiment.sem import (
     AffordanceSchema,
     Entity,
-    SensorReading,
 )
 from maxim.embodiment.spec import SpecModulator, SpecSensor
-from maxim.embodiment.tool_bridge import generate_tools_for_entity
+from maxim.embodiment.tool_bridge import (
+    describe_entity_capabilities,
+    generate_tools_for_entity,
+)
 from maxim.tools.discovery import (
     DiscoverToolsTool,
+    SensePresenceTool,
     UniversalSenseTool,
     select_goal_relevant_tools,
 )
@@ -107,6 +110,23 @@ def _humanoid() -> Entity:
     )
 
 
+def _dragon() -> Entity:
+    return _make_entity(
+        "dragon",
+        "creature",
+        sensors={"health": {"initial": 1.0}, "fire_charge": {"initial": 0.8}},
+        modulators={
+            "combat": {
+                "fire_breath": "Breathe fire at a target",
+                "tail_sweep": "Sweep tail to knock back nearby enemies",
+            },
+            "flight": {
+                "circle": "Circle overhead to reposition",
+            },
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # EntityMap tests
 # ---------------------------------------------------------------------------
@@ -148,8 +168,8 @@ class TestEntityMap:
 
     def test_collision_uses_full_path(self):
         emap = EntityMap()
-        guard1 = _make_entity("guard", "npc")
-        guard2 = _make_entity("guard", "npc")
+        _make_entity("guard", "npc")
+        _make_entity("guard", "npc")
         # Attach to different parents so full_path differs
         town = Entity("town", "location")
         dungeon = Entity("dungeon", "location")
@@ -179,6 +199,93 @@ class TestEntityMap:
         emap.register(_sword())
         assert "rusty_sword" in emap
         assert "nonexistent" not in emap
+
+
+# ---------------------------------------------------------------------------
+# EntityMap ownership tests
+# ---------------------------------------------------------------------------
+
+
+class TestEntityMapOwnership:
+    def test_register_self_marks_as_self(self):
+        emap = EntityMap()
+        sword = _sword()
+        emap.register_self(sword)
+        assert emap.is_self(sword)
+        assert emap.resolve("rusty_sword") is sword
+
+    def test_register_scene_not_self(self):
+        emap = EntityMap()
+        dragon = _dragon()
+        emap.register_scene(dragon)
+        assert not emap.is_self(dragon)
+        assert emap.resolve("dragon") is dragon
+
+    def test_register_defaults_to_scene(self):
+        emap = EntityMap()
+        dragon = _dragon()
+        emap.register(dragon)
+        assert not emap.is_self(dragon)
+
+    def test_list_self_entities(self):
+        emap = EntityMap()
+        sword = _sword()
+        dragon = _dragon()
+        emap.register_self(sword)
+        emap.register_scene(dragon)
+        self_ents = emap.list_self_entities()
+        assert len(self_ents) == 1
+        assert self_ents[0] is sword
+
+    def test_list_scene_entities(self):
+        emap = EntityMap()
+        sword = _sword()
+        dragon = _dragon()
+        emap.register_self(sword)
+        emap.register_scene(dragon)
+        scene_ents = emap.list_scene_entities()
+        assert len(scene_ents) == 1
+        assert scene_ents[0] is dragon
+
+    def test_list_entities_returns_all(self):
+        emap = EntityMap()
+        sword = _sword()
+        dragon = _dragon()
+        emap.register_self(sword)
+        emap.register_scene(dragon)
+        all_ents = emap.list_entities()
+        assert len(all_ents) == 2
+
+    def test_mixed_self_and_scene(self):
+        emap = EntityMap()
+        humanoid = _humanoid()
+        sword = _sword()
+        dragon = _dragon()
+        emap.register_self(humanoid)
+        emap.register_self(sword)
+        emap.register_scene(dragon)
+        assert len(emap.list_self_entities()) == 2
+        assert len(emap.list_scene_entities()) == 1
+        assert len(emap.list_entities()) == 3
+
+
+# ---------------------------------------------------------------------------
+# describe_entity_capabilities tests
+# ---------------------------------------------------------------------------
+
+
+class TestDescribeEntityCapabilities:
+    def test_describes_modulators(self):
+        dragon = _dragon()
+        desc = describe_entity_capabilities(dragon)
+        assert "fire_breath" in desc
+        assert "tail_sweep" in desc
+        assert "circle" in desc
+
+    def test_no_modulators(self):
+        ent = _make_entity("rock", "object", sensors={"weight": {"initial": 1.0}})
+        desc = describe_entity_capabilities(ent)
+        assert desc == "No observable capabilities."
 
 
 # ---------------------------------------------------------------------------
@@ -220,6 +327,16 @@ class TestUniversalSenseTool:
         result = tool.execute(entity_name="nonexistent")
         assert "rusty_sword" in result.error
 
+    def test_sense_works_on_scene_entities(self):
+        """sense() can read any entity — self or scene."""
+        emap = EntityMap()
+        dragon = _dragon()
+        emap.register_scene(dragon)
+        tool = UniversalSenseTool(entity_map=emap)
+        result = tool.execute(entity_name="dragon")
+        assert result.success
+        assert "health" in result.output["sensors"]
+
 
 # ---------------------------------------------------------------------------
 # DiscoverToolsTool tests
@@ -228,13 +345,13 @@ class TestUniversalSenseTool:
 
 class TestDiscoverToolsTool:
     def _build_discovery_env(self):
-        """Build a registry + entity_map with sword + humanoid, tools registered."""
+        """Build a registry + entity_map with sword + humanoid as self entities."""
         registry = ToolRegistry()
         emap = EntityMap()
         sword = _sword()
         humanoid = _humanoid()
-        emap.register(sword)
-        emap.register(humanoid)
+        emap.register_self(sword)
+        emap.register_self(humanoid)
         generate_tools_for_entity(sword, registry, entity_map=emap)
         generate_tools_for_entity(humanoid, registry, entity_map=emap)
         return registry, emap
@@ -273,7 +390,7 @@ class TestDiscoverToolsTool:
         registry = ToolRegistry()
         emap = EntityMap()
         sword = _sword()
-        emap.register(sword)
+        emap.register_self(sword)
 
         # Generate tools then re-register as scene-scoped (mirroring orchestrator flow)
         tools = generate_tools_for_entity(sword, registry, entity_map=emap)
@@ -291,6 +408,40 @@ class TestDiscoverToolsTool:
         active_after = registry.list()
         assert any("slash" in t for t in active_after)
 
+    def test_discover_excludes_scene_entity_tools(self):
+        """Scene entity affordances must NOT appear in discover_tools results."""
+        registry = ToolRegistry()
+        emap = EntityMap()
+        sword = _sword()
+        dragon = _dragon()
+        emap.register_self(sword)
+        emap.register_scene(dragon)
+        # Only generate tools for self entity
+        generate_tools_for_entity(sword, registry, entity_map=emap)
+
+        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        result = tool.execute(query="fire breath dragon combat")
+        assert result.success
+        # Dragon tools should NOT appear — only sword tools or a summary
+        assert "fire_breath" not in result.output
+        assert "tail_sweep" not in result.output
+
+    def test_discover_scene_entity_hint(self):
+        """When query matches a scene entity, provide a hint."""
+        registry = ToolRegistry()
+        emap = EntityMap()
+        sword = _sword()
+        dragon = _dragon()
+        emap.register_self(sword)
+        emap.register_scene(dragon)
+        generate_tools_for_entity(sword, registry, entity_map=emap)
+
+        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
+        result = tool.execute(query="dragon creature")
+        assert result.success
+        assert "sense" in result.output.lower()
+        assert "observe" in result.output.lower() or "cannot control" in result.output.lower()
+
 
 # ---------------------------------------------------------------------------
 # Goal-based top-k selection tests
@@ -303,8 +454,8 @@ class TestGoalSelection:
         emap = EntityMap()
         sword = _sword()
         humanoid = _humanoid()
-        emap.register(sword)
-        emap.register(humanoid)
+        emap.register_self(sword)
+        emap.register_self(humanoid)
         generate_tools_for_entity(sword, registry, entity_map=emap)
         generate_tools_for_entity(humanoid, registry, entity_map=emap)
         return registry, emap
@@ -337,6 +488,20 @@ class TestGoalSelection:
             max_tools=3,
         )
         assert len(selected) <= 3
+
+    def test_scene_entities_excluded_from_fallback(self):
+        """Scene entities should not contribute tools in the vague-goal fallback."""
+        registry = ToolRegistry()
+        emap = EntityMap()
+        sword = _sword()
+        dragon = _dragon()
+        emap.register_self(sword)
+        emap.register_scene(dragon)
+        generate_tools_for_entity(sword, registry, entity_map=emap)
+
+        selected = select_goal_relevant_tools("explore", emap, registry)
+        for tool_name in selected:
+            assert "dragon" not in tool_name
 
 
 # ---------------------------------------------------------------------------
@@ -424,7 +589,6 @@ class TestLRUEviction:
 
     def test_recently_used_not_evicted(self):
         from maxim.tools.discovery import (
-            DISCOVERY_LRU_TURNS,
             evict_stale_discoveries,
             mark_tool_used,
             reset_discovery_state,
@@ -469,43 +633,56 @@ class TestLRUEviction:
 
 
 # ---------------------------------------------------------------------------
-# S2: NAc valence ranking test
+# Scene entity ownership: no tools generated, observe-only
 # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# S3: Imagination deferred registration test
-# ---------------------------------------------------------------------------
-
-
-class TestImaginationDeferred:
-    def test_imagination_registers_tools_deactivated(self):
-        """Simulates the imagination flow: tools registered but scene-deactivated."""
+class TestSceneEntityOwnership:
+    def test_scene_entity_has_no_tools_in_registry(self):
+        """Scene entities registered via register_scene have no affordance tools."""
         registry = ToolRegistry()
         emap = EntityMap()
-        dragon = _make_entity(
-            "crystal_dragon",
-            "creature",
-            sensors={"health": {"initial": 1.0}},
-            modulators={"combat": {"bite": "Bite the target", "claw": "Claw attack"}},
-        )
-        emap.register(dragon)
-        tools = generate_tools_for_entity(dragon, registry, entity_map=emap)
-        scene_id = "imagination_dragon"
-        registry.register_scene_tools(tools, scene_id)
-        # Immediately deactivate (as imagination trigger does)
-        registry.deactivate_scene(scene_id)
+        dragon = _dragon()
+        emap.register_scene(dragon)
+        # No generate_tools_for_entity called for scene entity
+        all_tools = registry.list_all()
+        assert not any("dragon" in t for t in all_tools)
 
-        # Tools exist but are not active
-        assert "crystal_dragon_bite" not in registry.list()
-        assert "crystal_dragon_bite" in registry.list_all()
-
-        # Discovery can reactivate
-        tool = DiscoverToolsTool(entity_map=emap, tool_registry=registry)
-        result = tool.execute(query="dragon bite combat")
+    def test_scene_entity_sensable(self):
+        """Scene entities can be sensed via UniversalSenseTool."""
+        emap = EntityMap()
+        dragon = _dragon()
+        emap.register_scene(dragon)
+        tool = UniversalSenseTool(entity_map=emap)
+        result = tool.execute(entity_name="dragon")
         assert result.success
-        # Tools should now be active
-        assert "crystal_dragon_bite" in registry.list()
+        assert result.output["entity"] == "dragon"
+
+    def test_sense_presence_labels_ownership(self):
+        """sense_presence shows [YOU] for self, [SCENE] for scene entities."""
+        emap = EntityMap()
+        humanoid = _humanoid()
+        dragon = _dragon()
+        emap.register_self(humanoid)
+        emap.register_scene(dragon)
+        tool = SensePresenceTool(entity_map=emap)
+        result = tool.execute()
+        output = result.output
+        assert "[YOU]" in output
+        assert "[SCENE]" in output
+        assert "base_humanoid" in output
+        assert "dragon" in output
+        assert "not callable" in output.lower()
+
+    def test_sense_presence_all_self(self):
+        """When only self entities exist, no [SCENE] labels."""
+        emap = EntityMap()
+        humanoid = _humanoid()
+        emap.register_self(humanoid)
+        tool = SensePresenceTool(entity_map=emap)
+        result = tool.execute()
+        assert "[YOU]" in result.output
+        assert "[SCENE]" not in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -518,12 +695,12 @@ class TestNAcRanking:
         """NAc positive valence boosts discovery ranking."""
         from unittest.mock import MagicMock
 
-        from maxim.decisions.causal_link import CausalLink, TemporalDelta, Valence
+        from maxim.decisions.causal_link import CausalLink, Valence
 
         registry = ToolRegistry()
         emap = EntityMap()
         sword = _sword()
-        emap.register(sword)
+        emap.register_self(sword)
         generate_tools_for_entity(sword, registry, entity_map=emap)
 
         # Mock NAc with a positive link for slash
@@ -548,7 +725,7 @@ class TestNAcRanking:
         registry = ToolRegistry()
         emap = EntityMap()
         sword = _sword()
-        emap.register(sword)
+        emap.register_self(sword)
         generate_tools_for_entity(sword, registry, entity_map=emap)
 
         nac = MagicMock()

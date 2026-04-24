@@ -183,12 +183,18 @@ class SensePresenceTool(Tool):
 
         lines = [f"You sense {len(entities)} entity/entities nearby:"]
         for entity in entities:
+            is_self = self._entity_map.is_self(entity)
+            ownership = "YOU" if is_self else "SCENE"
             etype = f" ({entity.entity_type})" if entity.entity_type else ""
-            lines.append(f"\n  {entity.name}{etype}")
+            lines.append(f"\n  [{ownership}] {entity.name}{etype}")
+            if is_self:
+                cap_label = "Your capabilities"
+            else:
+                cap_label = "Observed capabilities (not callable — use your own tools to interact)"
             for mod_name, mod in entity.modulators.items():
                 aff_names = list(mod.affordances.keys())
                 if aff_names:
-                    lines.append(f"    {mod_name}: {', '.join(aff_names)}")
+                    lines.append(f"    {cap_label} — {mod_name}: {', '.join(aff_names)}")
             # Show sensor summary
             try:
                 readings = entity.read_all_sensors()
@@ -202,8 +208,8 @@ class SensePresenceTool(Tool):
 
         lines.append("")
         lines.append(
-            "Use discover_tools to find specific actions for an entity, "
-            "or sense(entity_name) to read its full sensor state."
+            "Use discover_tools to find YOUR specific actions, "
+            "or sense(entity_name) to read any entity's full sensor state."
         )
         return ToolOutput(success=True, output="\n".join(lines))
 
@@ -260,13 +266,27 @@ class DiscoverToolsTool(Tool):
             )
 
         query_words = set(query.lower().replace("_", " ").split())
-        entities = self._entity_map.list_entities()
+        # Only search the agent's OWN tools (self entities), not scene entities.
+        entities = self._entity_map.list_self_entities()
 
         if not entities:
             return ToolOutput(
                 success=True,
                 output="No entities available. You have no physical capabilities to discover.",
             )
+
+        # Check if query matches a scene entity — provide a hint
+        scene_entities = self._entity_map.list_scene_entities()
+        _scene_hint = ""
+        for se in scene_entities:
+            se_score = _keyword_overlap(query_words, f"{se.name} {se.entity_type}")
+            if se_score > 0.3:
+                _scene_hint = (
+                    f"\nNote: '{se.name}' is a nearby entity you can observe with "
+                    f'sense("{se.name}"), but you cannot control it. '
+                    f"Use YOUR tools (move, use, etc.) to interact with it."
+                )
+                break
 
         # Score each affordance tool against the query
         scored: list[tuple[str, float, str]] = []  # (tool_name, score, description)
@@ -315,7 +335,10 @@ class DiscoverToolsTool(Tool):
                 )
             except Exception:
                 pass
-            return self._modulator_summary(entities)
+            summary = self._modulator_summary(entities)
+            if _scene_hint:
+                summary = ToolOutput(success=summary.success, output=str(summary.output) + _scene_hint)
+            return summary
 
         # Activate matched tools and build annotated descriptions
         activated: list[str] = []
@@ -338,10 +361,15 @@ class DiscoverToolsTool(Tool):
                 descriptions.append(desc_line)
 
         if not activated:
-            return self._modulator_summary(entities)
+            summary = self._modulator_summary(entities)
+            if _scene_hint:
+                summary = ToolOutput(success=summary.success, output=str(summary.output) + _scene_hint)
+            return summary
 
         result_lines = [f"Found {len(activated)} capabilities:"]
         result_lines.extend(descriptions)
+        if _scene_hint:
+            result_lines.append(_scene_hint)
         result_lines.append("")
         result_lines.append(
             "These tools are now available. USE one of them as your next action — "
@@ -479,9 +507,9 @@ def select_goal_relevant_tools(
     scores.sort(key=lambda x: x[1], reverse=True)
     top_k = [name for name, _ in scores[:max_tools]]
 
-    # Vague goal fallback: one affordance per entity if top-k is thin
+    # Vague goal fallback: one affordance per self entity if top-k is thin
     if len(top_k) < min_tools:
-        for entity in entity_map.list_entities():
+        for entity in entity_map.list_self_entities():
             if not entity.modulators:
                 continue
             best_mod = max(

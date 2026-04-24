@@ -739,7 +739,7 @@ def start_simulation_mode(
         )
 
         _aut_entity_map = EntityMap()
-        _aut_entity_map.register(_aut_instance.embodiment.root)
+        _aut_entity_map.register_self(_aut_instance.embodiment.root)
 
         # Deregister per-entity sensor tools (replaced by universal sense)
         _sensor_tools_removed = 0

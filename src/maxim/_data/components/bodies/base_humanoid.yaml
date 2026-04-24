@@ -59,7 +59,7 @@ entity:
           description: "Drop a carried object"
         use:
           params: {object: str, action: str}
-          description: "Use a held or nearby object (open, drink, pull, push, read, activate)"
+          description: "Use a held or nearby object, or interact with an entity (open, drink, pull, push, read, activate, attack, defend, dodge, throw)"
     communication:
       affordances:
         speak:
