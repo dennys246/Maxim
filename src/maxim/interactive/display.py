@@ -436,17 +436,21 @@ class MaximDisplay:
             salience: Computed thought salience (0.0-1.0) for display.
         """
         tags = enrichment_tags or []
+        _MAX_THOUGHT_HISTORY = 12
         with self._lock:
             prev = self._thinking_state
             if completed and prev is not None:
                 # On completion, preserve the accumulated history
                 history = list(prev.history)
-            elif prev is not None and not completed and cycle > 1:
-                # Cycles 2+: accumulate within the same deliberation session
+            elif prev is not None and not completed:
+                # Always accumulate — thoughts build across turns
                 history = list(prev.history)
                 history.append((cycle, reasoning, tags, salience))
+                # Cap to prevent unbounded growth (keep most recent)
+                if len(history) > _MAX_THOUGHT_HISTORY:
+                    history = history[-_MAX_THOUGHT_HISTORY:]
             else:
-                # Fresh start (cycle 1 or no prior state) — reset history
+                # No prior state — first thought
                 history = [(cycle, reasoning, tags, salience)]
 
             self._thinking_state = _ThinkingState(
@@ -454,7 +458,7 @@ class MaximDisplay:
                 cycle=cycle,
                 max_cycles=max_cycles,
                 enrichment_tags=tags,
-                started_at=prev.started_at if prev is not None and not completed and cycle > 1 else time.monotonic(),
+                started_at=prev.started_at if prev is not None and not completed else time.monotonic(),
                 agent=agent,
                 completed=completed,
                 history=history,
@@ -770,13 +774,14 @@ class MaximDisplay:
         if state.agent:
             header = f"[bright_cyan][{state.agent}][/bright_cyan] {header}"
 
-        # Build reasoning text from accumulated history (shows chain building)
+        # Build reasoning text from accumulated thought stream
         reasoning_parts: list[str] = []
-        for cyc_num, cyc_reasoning, cyc_tags, cyc_salience in state.history:
-            if len(state.history) > 1:
-                tag_str = f"  [dim cyan]{', '.join(cyc_tags)}[/dim cyan]" if cyc_tags else ""
-                sal_str = f"  [dim yellow]salience {cyc_salience:.2f}[/dim yellow]" if cyc_salience is not None else ""
-                reasoning_parts.append(f"[dim]── cycle {cyc_num} ──{tag_str}{sal_str}[/dim]")
+        for i, (cyc_num, cyc_reasoning, cyc_tags, cyc_salience) in enumerate(state.history):
+            if i > 0:
+                # Separator between thoughts (dim horizontal rule)
+                tag_str = f" {', '.join(cyc_tags)}" if cyc_tags else ""
+                sal_str = f" s={cyc_salience:.2f}" if cyc_salience is not None else ""
+                reasoning_parts.append(f"[dim]──{tag_str}{sal_str}[/dim]")
             reasoning_parts.append(cyc_reasoning)
         reasoning_lines = "\n".join(reasoning_parts).split("\n") if reasoning_parts else []
         total_reasoning = len(reasoning_lines)
