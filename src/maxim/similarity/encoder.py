@@ -277,7 +277,18 @@ class LinguisticEncoder:
 
             if self._nac is not None:
                 activation = 1.0 if result.is_new else result.similarity
-                self._nac.update_eligibility(agent_id, result.node_id, activation)
+                # Pass TemporalSignature for SCN-coupled eligibility credit.
+                # If the fast-decay trace expires before a reward arrives,
+                # distribute_reward can still credit this node via temporal
+                # similarity (affordance concept transfer).
+                temporal_sig = None
+                try:
+                    from maxim.time.temporal_signature import TemporalSignature
+
+                    temporal_sig = TemporalSignature.now()
+                except Exception:
+                    pass
+                self._nac.update_eligibility(agent_id, result.node_id, activation, temporal_sig=temporal_sig)
 
             node_ids.append(result.node_id)
             chunk_node_map.append((chunk, result.node_id))
