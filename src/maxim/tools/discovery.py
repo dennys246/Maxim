@@ -220,6 +220,17 @@ class DiscoverToolsTool(Tool):
 
         # If no specific matches, return modulator category summary
         if not top_matches:
+            try:
+                from maxim.simulation.sim_logger import sim_log
+
+                _ent_names = [e.name for e in entities]
+                sim_log(
+                    "SEM_TRACE",
+                    f"discover_tools('{query}'): NO matches — entities={_ent_names}, "
+                    f"scored={len(scored)} candidates but all score=0",
+                )
+            except Exception:
+                pass
             return self._modulator_summary(entities)
 
         # Activate matched tools and build annotated descriptions
@@ -255,9 +266,13 @@ class DiscoverToolsTool(Tool):
 
         log.info("discover_tools: activated %d tools for query %r", len(activated), query)
         try:
-            from maxim.simulation.sim_logger import sim_discovery
+            from maxim.simulation.sim_logger import sim_discovery, sim_log
 
             sim_discovery(query, matched=len(top_matches), activated=len(activated), source="DiscoverToolsTool")
+            sim_log(
+                "SEM_TRACE",
+                f"discover_tools('{query}'): {len(activated)} activated — {', '.join(activated)}",
+            )
         except Exception:
             pass
         return ToolOutput(success=True, output="\n".join(result_lines))

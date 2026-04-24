@@ -465,6 +465,15 @@ class ImaginationTrigger:
 
         # Extract candidates
         phrases = extract_entity_phrases(percept_text)
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            if phrases:
+                sim_log("SEM_TRACE", f"Imagination extracted {len(phrases)} phrases: {phrases[:5]}")
+            else:
+                sim_log("SEM_TRACE", f"Imagination: no entity phrases from '{percept_text[:80]}'")
+        except Exception:
+            pass
         if not phrases:
             return []
 

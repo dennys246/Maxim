@@ -789,14 +789,38 @@ def start_simulation_mode(
                     _deactivated_count += 1
 
         _active_count = len(aut_registry.list())
+        _all_tools = list(aut_registry.list_all())
+        _active_tools = list(aut_registry.list())
         logger.info(
-            "SEM discovery: hybrid prompt mode — %d active tools "
+            "SEM discovery: hybrid prompt mode ��� %d active tools "
             "(%d goal-selected, %d affordance tools deactivated, "
             "sense + discover_tools registered)",
             _active_count,
             len(_keep_active),
             _deactivated_count,
         )
+        # Trace: log all registered tools for debugging SEM availability
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            sim_log("SEM_TRACE", f"All registered tools ({len(_all_tools)}): {', '.join(sorted(_all_tools))}")
+            sim_log("SEM_TRACE", f"Active tools ({len(_active_tools)}): {', '.join(sorted(_active_tools))}")
+            sim_log("SEM_TRACE", f"Goal-selected (top-k): {', '.join(sorted(_keep_active))}")
+            sim_log(
+                "SEM_TRACE",
+                f"Entities: {', '.join(e.name + '(' + e.entity_type + ')' for e in _aut_entity_map.list_entities())}",
+            )
+            # Log affordances per entity
+            for _ent in _aut_entity_map.list_entities():
+                for _mod_name, _mod in _ent.modulators.items():
+                    _aff_names = list(_mod.affordances.keys())
+                    if _aff_names:
+                        sim_log(
+                            "SEM_TRACE",
+                            f"  {_ent.name}.{_mod_name}: affordances={', '.join(_aff_names)}",
+                        )
+        except Exception:
+            pass
 
     # AUT PainBus subscriptions are now handled by build_bio_stack above
     # (Wave 3: pre-built pain_bus= parameter subscribes standard learners).
