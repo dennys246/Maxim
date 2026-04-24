@@ -504,7 +504,7 @@ def build_instructions_section(request: LLMRequest) -> str:
                 '  "ready_to_act": true/false (true when you need to call a tool, speak, or move; false to keep thinking)',
                 '  "action": {"tool_name": "<tool>", "params": {...}}',
                 '  "confidence": 0.0-1.0',
-                '  "reasoning": "Brief inner thought (1 sentence, first person, NOT addressed to anyone)"',
+                '  "reasoning": "Brief inner thought (1 sentence, first person — observe/wonder/hypothesize/commit)"',
                 "Keep response compact. Do not include optional fields.",
             ]
         )
