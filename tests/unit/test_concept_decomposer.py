@@ -10,6 +10,7 @@ from __future__ import annotations
 import pytest
 
 from maxim.similarity.decomposer import (
+    AffordanceDecompositionStrategy,
     ConceptChunk,
     ConceptDecomposer,
     DecomposerConfig,
@@ -42,6 +43,65 @@ class TestIdentityStrategy:
         chunks = s.extract("")
         assert len(chunks) == 1
         assert chunks[0].text == ""
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# AffordanceDecompositionStrategy
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestAffordanceDecompositionStrategy:
+    def test_compound_splits_into_compound_plus_parts(self) -> None:
+        s = AffordanceDecompositionStrategy()
+        chunks = s.extract("fire_breath")
+        texts = [c.text for c in chunks]
+        assert texts == ["fire breath", "fire", "breath"]
+
+    def test_three_word_compound(self) -> None:
+        s = AffordanceDecompositionStrategy()
+        chunks = s.extract("poison_cloud_breath")
+        texts = [c.text for c in chunks]
+        assert texts == ["poison cloud breath", "poison", "cloud", "breath"]
+
+    def test_single_word_passes_through(self) -> None:
+        s = AffordanceDecompositionStrategy()
+        chunks = s.extract("circle")
+        assert len(chunks) == 1
+        assert chunks[0].text == "circle"
+
+    def test_empty_string(self) -> None:
+        s = AffordanceDecompositionStrategy()
+        chunks = s.extract("")
+        assert len(chunks) == 1
+        assert chunks[0].text == ""
+
+    def test_whitespace_only(self) -> None:
+        s = AffordanceDecompositionStrategy()
+        chunks = s.extract("   ")
+        assert len(chunks) == 1
+        assert chunks[0].text == ""
+
+    def test_min_part_len_filters_short_parts(self) -> None:
+        s = AffordanceDecompositionStrategy(min_part_len=4)
+        chunks = s.extract("go_to")
+        texts = [c.text for c in chunks]
+        # "go" and "to" are both < 4 chars, so only the compound is returned
+        assert texts == ["go to"]
+
+    def test_compound_span_is_set(self) -> None:
+        s = AffordanceDecompositionStrategy()
+        chunks = s.extract("tail_sweep")
+        assert chunks[0].span == (0, 10)  # "tail sweep" is 10 chars
+
+    def test_protocol_compliance(self) -> None:
+        s = AffordanceDecompositionStrategy()
+        assert isinstance(s, DecompositionStrategy)
+
+    def test_plugs_into_concept_decomposer(self) -> None:
+        d = ConceptDecomposer(strategy=AffordanceDecompositionStrategy())
+        chunks = d.extract("fire_breath")
+        texts = [c.text for c in chunks]
+        assert texts == ["fire breath", "fire", "breath"]
 
 
 # ─────────────────────────────────────────────────────────────────────────

@@ -80,6 +80,44 @@ class IdentityStrategy:
         return [ConceptChunk(text=text, span=(0, len(text)))]
 
 
+class AffordanceDecompositionStrategy:
+    """Split underscore-joined affordance identifiers into constituent concepts.
+
+    Designed for SEM affordance names (``fire_breath``, ``tail_sweep``),
+    NOT natural language.  Does not use spaCy — the input is domain-specific
+    identifiers where underscore is the only word boundary.
+
+    Returns the compound name (underscores replaced with spaces) PLUS each
+    individual word as a separate chunk.  Single-word affordances pass
+    through unchanged.
+
+    Examples::
+
+        "fire_breath" → ["fire breath", "fire", "breath"]
+        "tail_sweep"  → ["tail sweep", "tail", "sweep"]
+        "circle"      → ["circle"]
+        "poison_cloud_breath" → ["poison cloud breath", "poison", "cloud", "breath"]
+    """
+
+    def __init__(self, *, min_part_len: int = 2) -> None:
+        self._min_part_len = min_part_len
+
+    def extract(self, text: str) -> list[ConceptChunk]:
+        text = text.strip()
+        if not text:
+            return [ConceptChunk(text="", span=(0, 0))]
+
+        normalized = text.replace("_", " ")
+        parts = normalized.split()
+
+        chunks = [ConceptChunk(text=normalized, span=(0, len(normalized)))]
+        if len(parts) > 1:
+            for part in parts:
+                if len(part) >= self._min_part_len:
+                    chunks.append(ConceptChunk(text=part, span=None))
+        return chunks
+
+
 class SpaCyNounChunkStrategy:
     """Default strategy using spaCy noun chunker.
 
