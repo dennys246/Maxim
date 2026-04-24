@@ -436,19 +436,15 @@ class MaximDisplay:
             salience: Computed thought salience (0.0-1.0) for display.
         """
         tags = enrichment_tags or []
-        _MAX_THOUGHT_HISTORY = 12
         with self._lock:
             prev = self._thinking_state
             if completed and prev is not None:
                 # On completion, preserve the accumulated history
                 history = list(prev.history)
             elif prev is not None and not completed:
-                # Always accumulate — thoughts build across turns
+                # Always accumulate — full session thought stream, scrollable
                 history = list(prev.history)
                 history.append((cycle, reasoning, tags, salience))
-                # Cap to prevent unbounded growth (keep most recent)
-                if len(history) > _MAX_THOUGHT_HISTORY:
-                    history = history[-_MAX_THOUGHT_HISTORY:]
             else:
                 # No prior state — first thought
                 history = [(cycle, reasoning, tags, salience)]
