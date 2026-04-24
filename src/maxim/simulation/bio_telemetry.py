@@ -72,15 +72,18 @@ class BioTelemetryCollector:
             Path to the saved file, or None if no events were captured.
         """
         try:
-            from maxim.simulation.sim_logger import _log_records
+            import maxim.simulation.sim_logger as _sim_mod
         except ImportError:
             return None
 
-        # Snapshot records. list() on a CPython list is GIL-atomic with
-        # respect to concurrent .append() calls. Under free-threaded Python
-        # (3.13t+) this would need a lock — acceptable since bio_telemetry
-        # is only called at session end (not on the hot path).
-        records = list(_log_records)
+        # Use module reference (not by-name import) to avoid the mutable-
+        # globals rebinding trap: enable_sim_logging() rebinds _log_records
+        # to a new list, so a by-name import would capture a stale reference.
+        # list() on a CPython list is GIL-atomic with respect to concurrent
+        # .append() calls. Under free-threaded Python (3.13t+) this would
+        # need a lock — acceptable since bio_telemetry is only called at
+        # session end (not on the hot path).
+        records = list(_sim_mod._log_records)
 
         bio_events = [r for r in records if r.get("subsystem") in BIO_TELEMETRY_SUBSYSTEMS]
 
