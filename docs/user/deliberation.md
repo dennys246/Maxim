@@ -145,6 +145,14 @@ Look for these entries in the log panel or JSONL:
 - `[DELIBERATION] cycle 2: 3 enrichment section(s)` — multi-cycle enrichment
 - `[DELIBERATION] deliberation converged (Jaccard)` — convergence detection
 
+### SEM Diagnostics
+
+When running with embodiment (default in sim mode), `[SEM_TRACE]` entries appear in the log showing:
+- Registered entities and their affordances
+- `discover_tools` query results (what matched and what didn't)
+- Imagination trigger extraction (what entity phrases were found in percepts)
+- Entity instantiation from seed components
+
 ### Common Issues
 
 | Symptom | Likely Cause | Fix |
@@ -153,6 +161,19 @@ Look for these entries in the log panel or JSONL:
 | All salience=0.40 | Cold start — hippocampus has no memories to recall | Run more turns; enrichment improves with memory |
 | Agent asks user instead of acting | Interactive mode prompt encouraging guidance-seeking | The "ACT FIRST, ASK SECOND" instruction should prevent this; check prompt assembly |
 | Transcript too long for 4K model | Proportional budget should handle this | Check `n_ctx` is set correctly |
+| discover_tools returns 0 matches | Entity not instantiated or no matching affordances | Check `[SEM_TRACE]` for entity registration |
+| Agent uses dragon's tools as its own | SEM entity ownership gap (tracked in sem_entity_ownership.md) | Known issue — entity tools currently shared |
+| Repetitive thoughts in panel | Novelty gate threshold may need tuning (default 0.40 Jaccard) | Thoughts with >= 60% word overlap are suppressed |
+
+## Entity Discovery
+
+The agent has three tools for understanding its environment:
+
+- **`sense_presence`** — Scan surroundings for interactive entities. Shows name, type, modulators, affordances, and sensor state. Also triggers imagination for entity phrases in the context query.
+- **`discover_tools(query)`** — Find specific actions matching an intent. Activates matched tools for the next turn.
+- **`sense(entity_name)`** — Read detailed sensor state of a specific entity.
+
+The recommended flow: `sense_presence` (what exists?) → `discover_tools` (what can I do?) → use discovered tool.
 
 ## Architecture
 
