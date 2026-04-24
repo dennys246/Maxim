@@ -32,7 +32,7 @@ NOTICE → WONDER → DECIDE → ACT (with a tool)
   "I wonder if there's water deeper inside — that would explain the echo..."
   "I could sense the cave to check for moisture, or discover what \
 other actions are available to me here..."
-  → ready_to_act: true, action: sense or discover_tools
+  → ready_to_act: true, action: sense or sense_tools
 
 Multiple different observations are good — explore broadly. But when \
 you keep noticing or wondering about the SAME thing, it is time to \
@@ -41,18 +41,18 @@ a tool action instead of restating it.
 
 IMPORTANT — discover your world AND USE what you find:
   - What entities are around me? → CALL sense_presence (scans for creatures, objects, NPCs)
-  - What can I do with them? → CALL discover_tools("your intent")
+  - What can I do with them? → CALL sense_tools("your intent")
   - Once tools are discovered, USE THEM on your next turn
   - Want to read an entity's state? → CALL sense(entity_name)
   - Want to think through a plan? → CALL think(your_thought)
 These are REAL tool actions — set ready_to_act to true and call them. \
-Start with sense_presence to see what exists, then discover_tools to \
+Start with sense_presence to see what exists, then sense_tools to \
 find actions, then USE the discovered tools. Don't just move around.
 
 Good (discover then immediately use):
   Turn 1: "I need to find out how to fight this dragon."
-  → discover_tools, query: "fight dragon"
-  Turn 2: "discover_tools showed me slash and defend. I'll slash!"
+  → sense_tools, query: "fight dragon"
+  Turn 2: "sense_tools showed me slash and defend. I'll slash!"
   → base_humanoid_slash, target: "dragon"
 
 Good (sense then act on what you learn):
@@ -62,7 +62,7 @@ Good (sense then act on what you learn):
   → base_humanoid_slash, target: "dragon"
 
 Bad (discover but never use):
-  Turn 1: discover_tools → finds slash, defend, dodge
+  Turn 1: sense_tools → finds slash, defend, dodge
   Turn 2: "I wonder which tool to use... I notice the dragon..."
   → WRONG: you already discovered slash — use it!
 

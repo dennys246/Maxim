@@ -726,13 +726,13 @@ def start_simulation_mode(
             logger.debug("Deregistered irrelevant tool from AUT: %s", _rt)
 
     # --- SEM Tool Discovery: hybrid prompt mode ---
-    # Replace per-entity sensor tools with universal sense + discover_tools.
+    # Replace per-entity sensor tools with universal sense + sense_tools.
     # Keep top-k goal-relevant affordance tools visible, deactivate the rest.
     _aut_entity_map = None
     if entity_ref is not None and _aut_instance.embodiment is not None:
         from maxim.embodiment.entity_map import EntityMap
         from maxim.tools.discovery import (
-            DiscoverToolsTool,
+            SenseToolsTool,
             SensePresenceTool,
             UniversalSenseTool,
             select_goal_relevant_tools,
@@ -749,10 +749,10 @@ def start_simulation_mode(
                     _sensor_tools_removed += 1
         logger.debug("SEM discovery: removed %d per-entity sensor tools", _sensor_tools_removed)
 
-        # Register universal sense + discover_tools + sense_presence as core tools
+        # Register universal sense + sense_tools + sense_presence as core tools
         aut_registry.register(UniversalSenseTool(entity_map=_aut_entity_map))
         aut_registry.register(
-            DiscoverToolsTool(
+            SenseToolsTool(
                 entity_map=_aut_entity_map,
                 tool_registry=aut_registry,
                 component_index=None,  # wired later if imagination is available
@@ -802,7 +802,7 @@ def start_simulation_mode(
         logger.info(
             "SEM discovery: hybrid prompt mode ��� %d active tools "
             "(%d goal-selected, %d affordance tools deactivated, "
-            "sense + discover_tools registered)",
+            "sense + sense_tools registered)",
             _active_count,
             len(_keep_active),
             _deactivated_count,
@@ -1231,6 +1231,10 @@ def start_simulation_mode(
                 _aut_entity_designer,
                 component_index=_aut_component_index,
             )
+            # Resolve the LinguisticEncoder for affordance substrate encoding.
+            # Lives in MemoryHub (wired by _wire_substrate_encoder).
+            _aut_encoder = getattr(aut_memory_hub, "_encoder", None) if aut_memory_hub is not None else None
+
             aut_imagination_trigger = ImaginationTrigger(
                 component_index=_aut_component_index,
                 component_registry=aut_component_registry,
@@ -1238,29 +1242,52 @@ def start_simulation_mode(
                 cache=ImaginationCache(),
                 tool_registry=aut_registry,
                 default_network=aut_default_network,
+                encoder=_aut_encoder,
+                agent_id="sim_aut",
             )
-            # Wire ComponentIndex into DiscoverToolsTool for semantic matching
+
+            # Wire ComponentIndex + affordance transfer deps into SenseToolsTool
+            _aut_nac = aut_memory_hub.nac if aut_memory_hub is not None else None
+            _aut_atl = aut_memory_hub.atl if aut_memory_hub is not None else None
             try:
-                _discover_tool = aut_registry.get("discover_tools")
-                _discover_tool._component_index = _aut_component_index
+                _sense_tools = aut_registry.get("sense_tools")
+                _sense_tools._component_index = _aut_component_index
+                _sense_tools._atl = _aut_atl
+                _sense_tools._agent_id = "sim_aut"
+                # NAc is already wired at construction if passed, but
+                # the tool was constructed with nac=None — patch it now.
+                if _sense_tools._nac is None and _aut_nac is not None:
+                    _sense_tools._nac = _aut_nac
             except KeyError:
-                pass  # discover_tools not registered (no embodiment)
+                pass  # sense_tools not registered (no embodiment)
 
             # Pass entity_map to ImaginationTrigger for populating on design
             if _aut_entity_map is not None:
                 aut_imagination_trigger._entity_map = _aut_entity_map
 
-            # Wire ImaginationTrigger into SensePresenceTool so it can
-            # trigger entity instantiation when the agent scans for presence
+            # Wire ImaginationTrigger + affordance transfer deps into SensePresenceTool
             try:
                 _presence_tool = aut_registry.get("sense_presence")
                 _presence_tool._imagination_trigger = aut_imagination_trigger
+                _presence_tool._nac = _aut_nac
+                _presence_tool._atl = _aut_atl
+                _presence_tool._agent_id = "sim_aut"
             except KeyError:
                 pass
 
-            # Wire ComponentIndex into BioEnrichmentPipeline for affordance queries
+            # Wire ComponentIndex + agent_id into BioEnrichmentPipeline
             if aut_bio_enrichment_pipeline is not None:
                 aut_bio_enrichment_pipeline._component_index = _aut_component_index
+                aut_bio_enrichment_pipeline._agent_id = "sim_aut"
+
+            # Encode self-entity affordances through the substrate path.
+            # The agent's own body affordances form substrate concepts just
+            # like scene entities — enabling self-affordance concept formation.
+            if _aut_encoder is not None and _aut_entity_map is not None:
+                from maxim.imagination.trigger import encode_entity_affordances
+
+                for _self_entity in _aut_entity_map.list_self_entities():
+                    encode_entity_affordances(_self_entity, _aut_encoder, agent_id="sim_aut")
 
             logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
             try:

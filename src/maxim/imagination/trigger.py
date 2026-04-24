@@ -23,7 +23,9 @@ if TYPE_CHECKING:
     from maxim.default_network.network import DefaultNetwork
     from maxim.embodiment.component_index import ComponentIndex
     from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.embodiment.sem import Entity
     from maxim.imagination.designer import ImaginationDesigner
+    from maxim.similarity.encoder import LinguisticEncoder
     from maxim.tools.registry import ToolRegistry
 
 log = logging.getLogger(__name__)
@@ -397,7 +399,9 @@ class ImaginationTrigger:
         cache: ImaginationCache | None = None,
         tool_registry: ToolRegistry | None = None,
         default_network: DefaultNetwork | None = None,
+        encoder: LinguisticEncoder | None = None,
         *,
+        agent_id: str = "",
         imagination_threshold: int = 2,
         enabled: bool = True,
     ) -> None:
@@ -407,6 +411,7 @@ class ImaginationTrigger:
         self._cache = cache or ImaginationCache()
         self._tool_registry = tool_registry
         self._dn = default_network
+        self._agent_id = agent_id
         self._threshold = imagination_threshold
         self._enabled = enabled
         self._lock = threading.RLock()
@@ -416,6 +421,16 @@ class ImaginationTrigger:
 
         # Track imagined entity refs for provenance tagging at session end
         self._imagined_refs: set[str] = set()
+
+        # Affordance substrate encoder: encodes affordance names through
+        # EC → ATL → NAc eligibility trace pipeline for concept transfer.
+        # Uses AffordanceDecompositionStrategy (splits on underscores),
+        # separate from the percept encoder's SpaCyNounChunkStrategy.
+        # Shares the same EC/ATL/NAc backing as the main encoder.
+        # Uses _make_aff_encoder factory (shared with encode_entity_affordances).
+        self._aff_encoder: LinguisticEncoder | None = None
+        if encoder is not None:
+            self._aff_encoder = _make_aff_encoder(encoder)
 
         # Stats
         self._phrases_extracted = 0
@@ -445,6 +460,46 @@ class ImaginationTrigger:
         """
         with self._lock:
             return frozenset(self._imagined_refs)
+
+    def _encode_entity_affordances(self, entity: Entity) -> list[str]:
+        """Encode an entity's affordance names through the substrate path.
+
+        Decomposes each affordance identifier (e.g., ``fire_breath``) via
+        ``AffordanceDecompositionStrategy`` into compound + component concepts,
+        then encodes each through LinguisticEncoder → EC → ATL → NAc eligibility.
+
+        This creates substrate nodes for concepts like "fire" and "breath"
+        that are shared across entities — enabling cross-entity transfer
+        through EC pattern completion.
+
+        Called OUTSIDE the trigger's ``_lock`` to avoid cross-lock ordering
+        issues with ATL's RWLock.
+
+        Returns list of substrate node IDs created/reinforced.
+        """
+        if self._aff_encoder is None:
+            return []
+
+        all_node_ids: list[str] = []
+        for mod in entity.modulators.values():
+            for aff_name in mod.affordances:
+                try:
+                    node_ids = self._aff_encoder.encode_decomposed(aff_name, "text", self._agent_id)
+                    all_node_ids.extend(node_ids)
+                except Exception as e:
+                    log.debug(
+                        "Imagination: affordance encoding failed for '%s': %s",
+                        aff_name,
+                        e,
+                    )
+        if all_node_ids:
+            log.info(
+                "Imagination: encoded %d affordance concepts for '%s' (%d nodes)",
+                sum(1 for m in entity.modulators.values() for _ in m.affordances),
+                entity.name,
+                len(all_node_ids),
+            )
+        return all_node_ids
 
     def _ensure_entity_live(
         self,
@@ -480,6 +535,10 @@ class ImaginationTrigger:
 
             entity = _parse_entity(entity_raw)
             _entity_map.register_scene(entity)
+
+            # Encode affordance names through substrate path for concept transfer.
+            # Runs OUTSIDE _lock — ATL has its own RWLock.
+            self._encode_entity_affordances(entity)
 
             log.info(
                 "Imagination: instantiated '%s' from seed '%s' as scene entity (observe-only)",
@@ -673,6 +732,8 @@ class ImaginationTrigger:
 
                 entity = _parse_entity(spec.get("entity", spec))
                 _entity_map.register_scene(entity)
+                # Encode imagined entity affordances through substrate path
+                self._encode_entity_affordances(entity)
                 log.info(
                     "Imagination: registered imagined entity '%s' as scene entity (observe-only)",
                     ref,
@@ -742,3 +803,71 @@ class ImaginationTrigger:
             self._index_hits = 0
             self._designs_attempted = 0
             self._designs_succeeded = 0
+
+
+# ---------------------------------------------------------------------------
+# Standalone affordance encoding (for self-entity registration sites)
+# ---------------------------------------------------------------------------
+
+
+def _make_aff_encoder(encoder: LinguisticEncoder) -> LinguisticEncoder | None:
+    """Build an affordance-specific LinguisticEncoder sharing the same backing.
+
+    Single factory for both ImaginationTrigger.__init__ and the standalone
+    encode_entity_affordances function — keeps construction in sync.
+    """
+    try:
+        from maxim.similarity.decomposer import (
+            AffordanceDecompositionStrategy,
+            ConceptDecomposer,
+        )
+        from maxim.similarity.encoder import LinguisticEncoder as _LE
+
+        return _LE(
+            ec=encoder.ec,
+            atl=encoder.atl,
+            nac=encoder._nac,
+            decomposer=ConceptDecomposer(
+                strategy=AffordanceDecompositionStrategy(),
+            ),
+            config=encoder.config,
+        )
+    except Exception as e:
+        log.debug("_make_aff_encoder: setup failed: %s", e)
+        return None
+
+
+def encode_entity_affordances(
+    entity: Entity,
+    encoder: LinguisticEncoder,
+    agent_id: str = "",
+) -> list[str]:
+    """Encode an entity's affordance names through the substrate path.
+
+    Standalone version for call sites that register the agent's OWN body
+    (orchestrator AUT setup, embodied_runtime) — these don't go through
+    ImaginationTrigger.
+
+    Returns list of substrate node IDs created/reinforced.
+    """
+    aff_encoder = _make_aff_encoder(encoder)
+    if aff_encoder is None:
+        return []
+
+    all_node_ids: list[str] = []
+    for mod in entity.modulators.values():
+        for aff_name in mod.affordances:
+            try:
+                node_ids = aff_encoder.encode_decomposed(aff_name, "text", agent_id)
+                all_node_ids.extend(node_ids)
+            except Exception as e:
+                log.debug("encode_entity_affordances: failed for '%s': %s", aff_name, e)
+
+    if all_node_ids:
+        log.info(
+            "Encoded %d affordance concepts for self-entity '%s' (%d nodes)",
+            sum(1 for m in entity.modulators.values() for _ in m.affordances),
+            entity.name,
+            len(all_node_ids),
+        )
+    return all_node_ids

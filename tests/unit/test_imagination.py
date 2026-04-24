@@ -725,3 +725,177 @@ class TestImaginationTrigger:
         results = trigger.process_percept("You see a mystical sword.")
         # No designer → no design, but no crash
         assert all(not r.imagined for r in results)
+
+
+# ---------------------------------------------------------------------------
+# Affordance concept encoding (Stage 1)
+# ---------------------------------------------------------------------------
+
+
+class TestAffordanceConceptEncoding:
+    """Tests for affordance name encoding through the substrate path.
+
+    Verifies that when entities are registered, their affordance names
+    are decomposed and encoded through EC → ATL → NAc eligibility.
+    """
+
+    def _make_entity(self, name="dragon", affordances=None):
+        """Create a minimal Entity with affordances for testing."""
+        from maxim.embodiment.sem import AffordanceSchema, Entity
+        from maxim.embodiment.spec import SpecModulator
+
+        if affordances is None:
+            affordances = {
+                "fire_breath": AffordanceSchema(description="breathe fire"),
+                "tail_sweep": AffordanceSchema(description="sweep with tail"),
+            }
+        mod = SpecModulator(_name="combat", _entity_name=name, _affordances=affordances)
+        ent = Entity(name=name, entity_type="creature")
+        ent.modulators["combat"] = mod
+        return ent
+
+    def _make_encoder(self):
+        """Create a LinguisticEncoder with EC + ATL + NAc for testing."""
+        from maxim.decisions.nac import NAc
+        from maxim.memory.atl import ATL
+        from maxim.similarity.ec import ECConfig, EntorhinalCortex
+        from maxim.similarity.encoder import LinguisticEncoder
+
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.50))
+        atl = ATL()
+        nac = NAc()
+        encoder = LinguisticEncoder(ec=ec, atl=atl, nac=nac)
+        return encoder, ec, atl, nac
+
+    def test_encode_entity_affordances_creates_nodes(self):
+        """Encoding affordances creates substrate nodes in ATL."""
+        from maxim.imagination.trigger import encode_entity_affordances
+
+        encoder, ec, atl, nac = self._make_encoder()
+        entity = self._make_entity()
+
+        node_ids = encode_entity_affordances(entity, encoder, agent_id="aut-1")
+
+        # fire_breath → ["fire breath", "fire", "breath"] = 3 nodes
+        # tail_sweep → ["tail sweep", "tail", "sweep"] = 3 nodes
+        # (some may share if EC completes to existing nodes)
+        assert len(node_ids) >= 4  # At least 4 unique nodes
+
+    def test_encode_creates_eligibility_traces(self):
+        """Encoded affordance concepts have NAc eligibility traces."""
+        from maxim.imagination.trigger import encode_entity_affordances
+
+        encoder, ec, atl, nac = self._make_encoder()
+        entity = self._make_entity()
+
+        node_ids = encode_entity_affordances(entity, encoder, agent_id="aut-1")
+
+        # Each node should have an eligibility trace under the agent_id
+        for nid in node_ids:
+            assert ("aut-1", nid) in nac._eligibility
+            assert nac._eligibility[("aut-1", nid)] > 0
+
+    def test_encode_creates_atl_concepts(self):
+        """Encoded affordances produce ATL substrate concepts."""
+        from maxim.imagination.trigger import encode_entity_affordances
+
+        encoder, ec, atl, nac = self._make_encoder()
+        entity = self._make_entity()
+
+        encode_entity_affordances(entity, encoder, agent_id="aut-1")
+
+        # ATL should have substrate concepts. Short words may complete to
+        # the same node as their compound (EC groups by similarity), so
+        # check category rather than exact name.
+        substrate_concepts = atl.recall(category="substrate")
+        assert len(substrate_concepts) > 0
+
+    def test_shared_component_creates_single_node(self):
+        """Two entities with overlapping affordance components share EC nodes."""
+        from maxim.embodiment.sem import AffordanceSchema
+        from maxim.imagination.trigger import encode_entity_affordances
+
+        encoder, ec, atl, nac = self._make_encoder()
+
+        dragon = self._make_entity("dragon", {"fire_breath": AffordanceSchema(description="fire")})
+        mage = self._make_entity("mage", {"fire_bolt": AffordanceSchema(description="fire")})
+
+        dragon_nodes = encode_entity_affordances(dragon, encoder, agent_id="aut-1")
+        mage_nodes = encode_entity_affordances(mage, encoder, agent_id="aut-1")
+
+        # "fire" from both should complete to the same EC node
+        # (cosine("fire", "fire") = 1.0 > 0.50 threshold)
+        fire_nodes_dragon = [n for n in dragon_nodes]
+        fire_nodes_mage = [n for n in mage_nodes]
+        shared = set(fire_nodes_dragon) & set(fire_nodes_mage)
+        assert len(shared) >= 1, "Dragon and mage should share at least the 'fire' node"
+
+    def test_trigger_encodes_on_entity_registration(self):
+        """ImaginationTrigger with encoder encodes affordances on entity live."""
+        encoder, ec, atl, nac = self._make_encoder()
+
+        mock_index = MagicMock()
+        mock_registry = MagicMock()
+
+        trigger = ImaginationTrigger(
+            component_index=mock_index,
+            component_registry=mock_registry,
+            encoder=encoder,
+            agent_id="aut-1",
+        )
+
+        # Wire entity_map so _ensure_entity_live can register
+        mock_entity_map = MagicMock()
+        mock_entity_map.resolve.return_value = None  # Not yet live
+        trigger._entity_map = mock_entity_map
+
+        # Mock registry.get to return a parseable spec
+        mock_registry.get.return_value = {
+            "entity": {
+                "name": "dragon",
+                "entity_type": "creature",
+                "modulators": {
+                    "combat": {
+                        "name": "combat",
+                        "affordances": {
+                            "fire_breath": {"description": "breathe fire"},
+                        },
+                    },
+                },
+            },
+        }
+
+        trigger._ensure_entity_live("creatures/dragon", "dragon", None, None)
+
+        # Verify ATL got substrate concepts for the affordance
+        substrate_concepts = atl.recall(category="substrate")
+        assert len(substrate_concepts) > 0
+
+    def test_no_encoder_skips_gracefully(self):
+        """Trigger without encoder doesn't crash on entity registration."""
+        mock_index = MagicMock()
+        mock_registry = MagicMock()
+
+        trigger = ImaginationTrigger(
+            component_index=mock_index,
+            component_registry=mock_registry,
+            # No encoder
+            agent_id="aut-1",
+        )
+        assert trigger._aff_encoder is None
+        # _encode_entity_affordances should return empty
+        entity = self._make_entity()
+        result = trigger._encode_entity_affordances(entity)
+        assert result == []
+
+    def test_single_word_affordance_creates_one_node(self):
+        """Single-word affordance (no underscore) creates exactly one node."""
+        from maxim.embodiment.sem import AffordanceSchema
+        from maxim.imagination.trigger import encode_entity_affordances
+
+        encoder, ec, atl, nac = self._make_encoder()
+        entity = self._make_entity("beast", {"circle": AffordanceSchema(description="fly in circles")})
+
+        node_ids = encode_entity_affordances(entity, encoder, agent_id="aut-1")
+
+        assert len(node_ids) == 1  # "circle" → one chunk → one node

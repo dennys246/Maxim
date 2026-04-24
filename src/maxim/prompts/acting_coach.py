@@ -84,13 +84,13 @@ def compose_acting_coach_section(
     has_entity_tools = _has_entity_tools(available_tools)
     if config.embodiment_guidance and has_entity_tools:
         lines.append("=== Physical Exploration ===")
-        has_discovery = available_tools is not None and "discover_tools" in available_tools
+        has_discovery = available_tools is not None and "sense_tools" in available_tools
         if config.exploration_intensity >= 0.5:
             if has_discovery:
                 lines.append(
                     "You have a physical form. Your most relevant capabilities "
                     "are already available as tools. To find more — describe "
-                    "what you want to do to discover_tools. Don't ask for "
+                    "what you want to do to sense_tools. Don't ask for "
                     "permission — act. Vary your approach: try different force "
                     "levels, angles, or techniques. Sense your body to observe "
                     "the effects of each action."
@@ -108,7 +108,7 @@ def compose_acting_coach_section(
                 lines.append(
                     "You have a physical form. Your most relevant capabilities "
                     "are available as tools. To find more, describe what you "
-                    "want to do to discover_tools. Sense your body before and "
+                    "want to do to sense_tools. Sense your body before and "
                     "after each action. Start with cautious parameters."
                 )
             else:
@@ -145,7 +145,7 @@ def compose_acting_coach_section(
 def _has_entity_tools(available_tools: set[str] | None) -> bool:
     """Check if any available tools look like SEM entity tools.
 
-    Detection: ``discover_tools`` present (SEM discovery mode, S2) OR
+    Detection: ``sense_tools`` present (SEM discovery mode, S2) OR
     entity tools matching the naming patterns ``{entity}_{affordance}``
     and ``read_{entity}_{sensor}`` from ``embodiment/tool_bridge.py``.
 
@@ -154,8 +154,8 @@ def _has_entity_tools(available_tools: set[str] | None) -> bool:
     """
     if not available_tools:
         return False
-    # S2: discover_tools presence is the primary indicator
-    if "discover_tools" in available_tools:
+    # S2: sense_tools presence is the primary indicator
+    if "sense_tools" in available_tools:
         return True
     _BUILTIN_TOOLS = {
         "say",
@@ -177,7 +177,7 @@ def _has_entity_tools(available_tools: set[str] | None) -> bool:
         "navigate",
         "plan",
         "sense",
-        "discover_tools",
+        "sense_tools",
     }
     for tool in available_tools:
         if tool not in _BUILTIN_TOOLS and (tool.startswith("read_") or "_" in tool):

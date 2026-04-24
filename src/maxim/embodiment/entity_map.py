@@ -6,7 +6,7 @@ without depending on the tools layer.
 
 Thread-safe via RLock.  Populated by ``generate_tools_for_entity``
 and ``ImaginationTrigger``.  Read by ``UniversalSenseTool`` and
-``DiscoverToolsTool``.
+``SenseToolsTool``.
 
 Name collisions (e.g., two entities both named ``"guard"``) are
 disambiguated by storing both under their ``full_path`` instead.

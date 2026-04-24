@@ -237,6 +237,23 @@ def _isolate_discovery_state():
     reset_discovery_state()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_maxim_nac_temporal_credit_weight_env():
+    """Scrub ``MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT`` across every test.
+
+    NAc.__init__ reads this env var to override the temporal credit weight
+    for SCN-coupled eligibility. A test that sets a custom weight would
+    leak into every later test that constructs a NAc instance.
+    """
+    saved = os.environ.pop("MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT", None)
+        if saved is not None:
+            os.environ["MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT"] = saved
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Memory Types Fixtures
 # ─────────────────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ Provides two tools that replace the flat per-entity tool explosion:
 
 - ``UniversalSenseTool`` — single ``sense(entity_name)`` tool that reads
   all sensors on any named entity, replacing N×M individual read/sense tools.
-- ``DiscoverToolsTool`` — ``discover_tools(query)`` that matches intent
+- ``SenseToolsTool`` — ``sense_tools(query)`` that matches intent
   against entity modulators/affordances and activates the relevant tools
   via I3's scene-scoped mechanism.  Results are ranked by NAc valence
   when available (S2).
@@ -154,9 +154,15 @@ class SensePresenceTool(Tool):
         *,
         entity_map: EntityMap,
         imagination_trigger: Any | None = None,
+        nac: NAc | None = None,
+        atl: Any | None = None,
+        agent_id: str = "",
     ) -> None:
         self._entity_map = entity_map
         self._imagination_trigger = imagination_trigger
+        self._nac = nac
+        self._atl = atl
+        self._agent_id = agent_id
         super().__init__()
 
     def execute(self, **kwargs: Any) -> Any:
@@ -194,7 +200,8 @@ class SensePresenceTool(Tool):
             for mod_name, mod in entity.modulators.items():
                 aff_names = list(mod.affordances.keys())
                 if aff_names:
-                    lines.append(f"    {cap_label} — {mod_name}: {', '.join(aff_names)}")
+                    annotated = [self._annotate_aff(n) for n in aff_names]
+                    lines.append(f"    {cap_label} — {mod_name}: {', '.join(annotated)}")
             # Show sensor summary
             try:
                 readings = entity.read_all_sensors()
@@ -208,14 +215,34 @@ class SensePresenceTool(Tool):
 
         lines.append("")
         lines.append(
-            "Use discover_tools to find YOUR specific actions, "
+            "Use sense_tools to find YOUR specific actions, "
             "or sense(entity_name) to read any entity's full sensor state."
         )
         return ToolOutput(success=True, output="\n".join(lines))
 
+    def _annotate_aff(self, aff_name: str) -> str:
+        """Annotate an affordance name with valence from substrate concepts."""
+        if self._nac is None or self._atl is None:
+            return aff_name
+        try:
+            from maxim.similarity.decomposer import AFFORDANCE_STRATEGY
+
+            chunks = AFFORDANCE_STRATEGY.extract(aff_name)
+            for chunk in chunks:
+                concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
+                for concept in concepts:
+                    bias = self._nac.reward_bias(self._agent_id, concept.id)
+                    if bias < -0.01:
+                        return f"{aff_name} [DANGEROUS]"
+                    elif bias > 0.01:
+                        return f"{aff_name} [effective]"
+        except Exception:
+            pass
+        return aff_name
+
 
 # ---------------------------------------------------------------------------
-# DiscoverToolsTool
+# SenseToolsTool
 # ---------------------------------------------------------------------------
 
 
@@ -227,7 +254,7 @@ def _keyword_overlap(query_words: set[str], text: str) -> float:
     return len(query_words & text_words) / max(len(query_words), 1)
 
 
-class DiscoverToolsTool(Tool):
+class SenseToolsTool(Tool):
     """Discover physical capabilities by intent.
 
     Takes a natural language query describing what the agent wants to do,
@@ -235,7 +262,7 @@ class DiscoverToolsTool(Tool):
     the relevant tools.  Results appear in the next prompt turn.
     """
 
-    name = "discover_tools"
+    name = "sense_tools"
     description = (
         "Discover what physical actions you can perform. Describe what "
         "you want to do — e.g., 'attack with sword', 'repair equipment', "
@@ -250,11 +277,15 @@ class DiscoverToolsTool(Tool):
         tool_registry: ToolRegistry,
         component_index: ComponentIndex | None = None,
         nac: NAc | None = None,
+        atl: Any | None = None,
+        agent_id: str = "",
     ) -> None:
         self._entity_map = entity_map
         self._registry = tool_registry
         self._component_index = component_index
         self._nac = nac
+        self._atl = atl
+        self._agent_id = agent_id
         super().__init__()
 
     def execute(self, **kwargs: Any) -> Any:
@@ -330,7 +361,7 @@ class DiscoverToolsTool(Tool):
                 _ent_names = [e.name for e in entities]
                 sim_log(
                     "SEM_TRACE",
-                    f"discover_tools('{query}'): NO matches — entities={_ent_names}, "
+                    f"sense_tools('{query}'): NO matches — entities={_ent_names}, "
                     f"scored={len(scored)} candidates but all score=0",
                 )
             except Exception:
@@ -376,14 +407,14 @@ class DiscoverToolsTool(Tool):
             "pick the most relevant tool above and call it."
         )
 
-        log.info("discover_tools: activated %d tools for query %r", len(activated), query)
+        log.info("sense_tools: activated %d tools for query %r", len(activated), query)
         try:
             from maxim.simulation.sim_logger import sim_discovery, sim_log
 
-            sim_discovery(query, matched=len(top_matches), activated=len(activated), source="DiscoverToolsTool")
+            sim_discovery(query, matched=len(top_matches), activated=len(activated), source="SenseToolsTool")
             sim_log(
                 "SEM_TRACE",
-                f"discover_tools('{query}'): {len(activated)} activated — {', '.join(activated)}",
+                f"sense_tools('{query}'): {len(activated)} activated — {', '.join(activated)}",
             )
         except Exception:
             pass
@@ -444,21 +475,49 @@ class DiscoverToolsTool(Tool):
         return result
 
     def _nac_annotation(self, tool_name: str) -> str:
-        """Generate a short annotation from NAc valence for a tool."""
+        """Generate a short annotation from NAc valence for a tool.
+
+        Two-level lookup:
+        1. Entity-specific causal link (existing, e.g., "dragon_fire_breath")
+        2. Substrate concept bias fallback (new, e.g., "fire" node reward_bias)
+        """
         if self._nac is None:
             return ""
-        links = self._nac.get_links_for_event(tool_name)
-        if not links:
-            return ""
-        best = max(links, key=lambda lk: lk.confidence)
-        if best.confidence < 0.3:
-            return ""
-        from maxim.decisions.causal_link import Valence
 
-        if best.outcome_valence == Valence.POSITIVE:
-            return "worked well before"
-        elif best.outcome_valence == Valence.NEGATIVE:
-            return f"caution: {best.outcome_signature}"
+        # 1. Entity-specific causal link (existing path)
+        links = self._nac.get_links_for_event(tool_name)
+        if links:
+            best = max(links, key=lambda lk: lk.confidence)
+            if best.confidence >= 0.3:
+                from maxim.decisions.causal_link import Valence
+
+                if best.outcome_valence == Valence.POSITIVE:
+                    return "worked well before"
+                elif best.outcome_valence == Valence.NEGATIVE:
+                    return f"caution: {best.outcome_signature}"
+
+        # 2. Substrate concept bias fallback (affordance transfer)
+        if self._atl is not None:
+            try:
+                from maxim.similarity.decomposer import AFFORDANCE_STRATEGY
+
+                # Decompose the tool name into words — this includes entity
+                # prefix words, but that's acceptable: "rusty" and "sword"
+                # won't match substrate concepts unless they were encoded.
+                # The affordance components ("fire", "slash") are the ones
+                # that carry bias from prior experience.
+                chunks = AFFORDANCE_STRATEGY.extract(tool_name)
+                for chunk in chunks:
+                    concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
+                    for concept in concepts:
+                        bias = self._nac.reward_bias(self._agent_id, concept.id)
+                        if bias < -0.01:
+                            return "caution: similar affordance was dangerous"
+                        elif bias > 0.01:
+                            return "similar affordance worked well"
+            except Exception:
+                pass
+
         return ""
 
 

@@ -48,6 +48,12 @@ class NACConfig:
     reward_bias_decay_tau: float = 50.0  # Decay timescale (ticks) for reward bias
     max_reward_bias: float = 0.20  # Cap on how much bias can lower EC threshold
 
+    # Temporal credit weight for SCN-coupled eligibility (affordance transfer).
+    # When fast-decay traces expire, nodes with temporal anchors still receive
+    # credit at this fraction of the temporal similarity score.
+    # Override: MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT (clamped 0.05-1.0)
+    temporal_credit_weight: float = 0.3
+
 
 class NAc:
     """Nucleus Accumbens - Causal inference and reward prediction engine.
@@ -56,7 +62,13 @@ class NAc:
     prediction of outcomes before taking actions.
 
     Integration points:
-    - SCN: Temporal context for when causal patterns apply
+    - SCN: Temporal eligibility credit via ``_temporal_anchors``.
+      First closed loop (2026-04-24): affordance concept nodes get
+      ``TemporalSignature`` anchors at encoding time; ``distribute_reward``
+      uses ``TemporalSignature.similarity()`` to credit nodes whose
+      fast-decay traces expired but whose temporal phase matches the
+      reward. Broader temporal pattern learning (tool reliability by
+      time-of-day, oscillator-driven prediction) remains unbuilt.
     - Hippocampus: Query similar episodes for causal inference
 
     Example:
@@ -90,7 +102,18 @@ class NAc:
     schema_version: ClassVar[int] = 1
 
     def __init__(self, config: NACConfig | None = None, ec: Any = None):
-        self.config = config or NACConfig()
+        config = config or NACConfig()
+        # Apply env-var override for temporal_credit_weight if set
+        tcw_env = os.environ.get("MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT")
+        if tcw_env is not None:
+            try:
+                from dataclasses import replace
+
+                tcw = max(0.05, min(1.0, float(tcw_env)))
+                config = replace(config, temporal_credit_weight=tcw)
+            except (ValueError, TypeError):
+                pass
+        self.config = config
 
         # Thread safety: RLock for concurrent access from multi-agent party mode
         # and Mother Maxim's contribution processing. RLock (not Lock) because
@@ -124,6 +147,14 @@ class NAc:
         # should receive credit when a reward arrives. Maps
         # (agent_id, node_id) → activation strength from PerceptTraceBuffer.
         self._eligibility: dict[tuple[str, str], float] = {}
+
+        # SCN temporal anchors for eligibility credit (affordance transfer).
+        # When fast-decay traces expire, temporal anchors let distribute_reward
+        # credit nodes that were activated in the same temporal phase as the
+        # reward, via TemporalSignature.similarity(). Session-scoped — NOT
+        # persisted (wall-clock timestamps go stale across sessions).
+        self._temporal_anchors: dict[tuple[str, str], tuple[float, Any]] = {}
+        # Maps (agent_id, node_id) → (original_activation, TemporalSignature)
 
         # Stats
         self._total_observations = 0
@@ -985,6 +1016,7 @@ class NAc:
         agent_id: str,
         node_id: str,
         activation: float,
+        temporal_sig: Any = None,
     ) -> None:
         """Update the eligibility trace for a node.
 
@@ -992,13 +1024,22 @@ class NAc:
         activation strength determines how much credit the node receives
         when a reward arrives later.
 
+        When ``temporal_sig`` (a ``TemporalSignature``) is provided, a
+        temporal anchor is also stored. If the fast-decay trace expires
+        before a reward arrives, ``distribute_reward`` can still credit
+        the node via SCN temporal similarity — at reduced weight
+        (``NACConfig.temporal_credit_weight``).
+
         Args:
             agent_id: Agent context.
             node_id: ATL node that was activated.
             activation: Activation strength (typically from PerceptTraceBuffer).
+            temporal_sig: Optional TemporalSignature for SCN-coupled credit.
         """
         with self._lock:
             self._eligibility[(agent_id, node_id)] = activation
+            if temporal_sig is not None:
+                self._temporal_anchors[(agent_id, node_id)] = (activation, temporal_sig)
 
     def distribute_reward(
         self,
@@ -1007,22 +1048,56 @@ class NAc:
     ) -> list[tuple[str, float]]:
         """Distribute reward to all eligible nodes for an agent.
 
-        Credits each node proportional to its eligibility trace strength.
+        Two-path credit assignment:
+
+        1. **Fast-decay path** (existing): nodes with active eligibility
+           traces (> 0.01) receive credit proportional to trace strength.
+        2. **Temporal fallback** (SCN coupling): nodes whose fast-decay
+           trace has expired but that have a temporal anchor receive credit
+           proportional to ``TemporalSignature.similarity(anchor, now)``
+           scaled by ``NACConfig.temporal_credit_weight`` (default 0.3x).
+
+        The temporal path only fires for nodes NOT already credited by
+        the fast-decay path, preventing double-counting.
+
         Returns list of (node_id, credit_applied) for logging.
         """
         credited: list[tuple[str, float]] = []
         with self._lock:
+            # 1. Fast-decay path
             eligible = {
                 (aid, nid): strength
                 for (aid, nid), strength in self._eligibility.items()
                 if aid == agent_id and strength > 0.01
             }
-            if not eligible:
+
+            # 2. Temporal fallback — nodes with expired traces but valid anchors
+            temporal_eligible: dict[tuple[str, str], float] = {}
+            if self._temporal_anchors:
+                try:
+                    from maxim.time.temporal_signature import TemporalSignature
+
+                    now_sig = TemporalSignature.now()
+                    tcw = self.config.temporal_credit_weight
+                    for (aid, nid), (orig_activation, anchor_sig) in self._temporal_anchors.items():
+                        if aid != agent_id:
+                            continue
+                        if (aid, nid) in eligible:
+                            continue  # Already credited by fast-decay
+                        sim = anchor_sig.similarity(now_sig)
+                        temporal_strength = tcw * sim * orig_activation
+                        if temporal_strength > 0.01:
+                            temporal_eligible[(aid, nid)] = temporal_strength
+                except Exception:
+                    pass  # TemporalSignature not available — skip fallback
+
+            all_eligible = {**eligible, **temporal_eligible}
+            if not all_eligible:
                 return credited
 
-            # Normalize eligibility so total credit = reward
-            total_strength = sum(eligible.values())
-            for (aid, nid), strength in eligible.items():
+            # Normalize so total credit = reward
+            total_strength = sum(all_eligible.values())
+            for (aid, nid), strength in all_eligible.items():
                 proportion = strength / total_strength
                 credit = reward * proportion
                 self.credit_node(aid, nid, credit)
@@ -1057,7 +1132,14 @@ class NAc:
         return pruned
 
     def decay_eligibility(self, factor: float = 0.9) -> None:
-        """Decay all eligibility traces. Called on each tick."""
+        """Decay all eligibility traces. Called on each tick.
+
+        Also prunes temporal anchors whose fast-decay trace has expired
+        AND whose temporal signature is older than ``temporal_window_seconds``.
+        This prevents ``_temporal_anchors`` from growing unboundedly.
+        """
+        now = time.time()
+        temporal_window = self.config.temporal_window_seconds
         with self._lock:
             to_remove = []
             for key, strength in self._eligibility.items():
@@ -1068,6 +1150,14 @@ class NAc:
                     self._eligibility[key] = new_strength
             for key in to_remove:
                 del self._eligibility[key]
+                # Prune temporal anchor if the fast-decay trace expired
+                # AND the anchor is old enough (beyond temporal window)
+                anchor = self._temporal_anchors.get(key)
+                if anchor is not None:
+                    _, sig = anchor
+                    age = now - getattr(sig, "timestamp", 0.0)
+                    if age > temporal_window:
+                        del self._temporal_anchors[key]
 
     def get_threshold_overrides(self, agent_id: str) -> dict[str, float]:
         """Build EC threshold overrides from reward biases for an agent.

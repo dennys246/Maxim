@@ -2822,6 +2822,20 @@ def run_agentic_loop(
             break
 
         # ─────────────────────────────────────────────────────────────────
+        # 8.5 BIO-SYSTEM PER-TICK MAINTENANCE
+        # ─────────────────────────────────────────────────────────────────
+        # NAc eligibility traces and reward biases decay each tick.
+        # Without this, traces persist indefinitely and distribute_reward
+        # credits ALL nodes ever activated in the session at original
+        # strength — incorrect for causal credit assignment.
+        if _loop_nac is not None:
+            try:
+                _loop_nac.decay_eligibility()
+                _loop_nac.decay_reward_biases()
+            except Exception as e:
+                log_swallowed_exception(e, operation="nac_per_tick_decay")
+
+        # ─────────────────────────────────────────────────────────────────
         # 9. MAINTAIN LOOP FREQUENCY
         # ─────────────────────────��───────────────────────────────────────
         elapsed = time.time() - loop_start

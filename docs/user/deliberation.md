@@ -149,7 +149,7 @@ Look for these entries in the log panel or JSONL:
 
 When running with embodiment (default in sim mode), `[SEM_TRACE]` entries appear in the log showing:
 - Registered entities and their affordances
-- `discover_tools` query results (what matched and what didn't)
+- `sense_tools` query results (what matched and what didn't)
 - Imagination trigger extraction (what entity phrases were found in percepts)
 - Entity instantiation from seed components
 
@@ -161,7 +161,7 @@ When running with embodiment (default in sim mode), `[SEM_TRACE]` entries appear
 | All salience=0.40 | Cold start — hippocampus has no memories to recall | Run more turns; enrichment improves with memory |
 | Agent asks user instead of acting | Interactive mode prompt encouraging guidance-seeking | The "ACT FIRST, ASK SECOND" instruction should prevent this; check prompt assembly |
 | Transcript too long for 4K model | Proportional budget should handle this | Check `n_ctx` is set correctly |
-| discover_tools returns 0 matches | Entity not instantiated or no matching affordances | Check `[SEM_TRACE]` for entity registration |
+| sense_tools returns 0 matches | Entity not instantiated or no matching affordances | Check `[SEM_TRACE]` for entity registration |
 | Agent uses dragon's tools as its own | Fixed in 0.8 (entity ownership) | Should not occur — scene entities are observe-only. Check `[SEM_TRACE]` for "scene entity" |
 | Repetitive thoughts in panel | Novelty gate threshold may need tuning (default 0.40 Jaccard) | Thoughts with >= 60% word overlap are suppressed |
 
@@ -170,16 +170,16 @@ When running with embodiment (default in sim mode), `[SEM_TRACE]` entries appear
 The agent has three tools for understanding its environment:
 
 - **`sense_presence`** — Scan surroundings for interactive entities. Shows `[YOU]` for the agent's own body and `[SCENE]` for observed entities. Scene entity capabilities are labeled "observed (not callable)" to reinforce that the agent uses its OWN tools to interact.
-- **`discover_tools(query)`** — Find specific actions matching an intent. Searches the agent's OWN tools only (self entities). If the query matches a scene entity, provides a hint: "use sense() to observe it, use YOUR tools to interact."
+- **`sense_tools(query)`** — Find specific actions matching an intent. Searches the agent's OWN tools only (self entities). If the query matches a scene entity, provides a hint: "use sense() to observe it, use YOUR tools to interact."
 - **`sense(entity_name)`** — Read detailed sensor state of any entity (self or scene).
 
-The recommended flow: `sense_presence` (what exists?) → `discover_tools` (what can I do?) → use discovered tool.
+The recommended flow: `sense_presence` (what exists?) → `sense_tools` (what can I do?) → use discovered tool.
 
 ### Self vs Scene Entities (0.8+)
 
 The agent's body (loaded via `--embodiment`) is registered as a **self entity** — its affordances become callable tools. All other entities (imagined dragons, seed NPCs, environmental objects) are **scene entities** — observable but not controllable. The agent fights a dragon using its own humanoid tools (move, use, dodge), not by calling the dragon's fire_breath.
 
-This separation is managed by `EntityMap` ownership tracking. `sense_presence` shows both types with clear labels; `discover_tools` only searches self-entity tools.
+This separation is managed by `EntityMap` ownership tracking. `sense_presence` shows both types with clear labels; `sense_tools` only searches self-entity tools.
 
 ## Architecture
 

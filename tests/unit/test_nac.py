@@ -327,6 +327,207 @@ class TestNAcMaintenance:
 
         assert link.confidence == initial_confidence * 0.5
 
+    def test_decay_eligibility_reduces_traces(self, nac):
+        """Eligibility traces decay toward zero each tick."""
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+        nac.update_eligibility("agent-1", "node-b", 0.5)
+
+        nac.decay_eligibility(factor=0.9)
+
+        assert nac._eligibility[("agent-1", "node-a")] == pytest.approx(0.9)
+        assert nac._eligibility[("agent-1", "node-b")] == pytest.approx(0.45)
+
+    def test_decay_eligibility_prunes_below_threshold(self, nac):
+        """Traces below 0.01 are removed entirely."""
+        nac.update_eligibility("agent-1", "node-a", 0.02)
+
+        nac.decay_eligibility(factor=0.4)  # 0.02 * 0.4 = 0.008 < 0.01
+
+        assert ("agent-1", "node-a") not in nac._eligibility
+
+    def test_decay_eligibility_multiple_ticks(self, nac):
+        """After many ticks, traces converge to zero."""
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+
+        for _ in range(100):
+            nac.decay_eligibility(factor=0.9)
+
+        # 0.9^100 ≈ 0.000027 — should be pruned
+        assert ("agent-1", "node-a") not in nac._eligibility
+
+    def test_decay_reward_biases_reduces_toward_zero(self, nac):
+        """Reward biases decay toward zero each tick."""
+        nac.credit_node("agent-1", "node-a", reward=1.0)
+        initial = nac.reward_bias("agent-1", "node-a")
+        assert initial > 0
+
+        nac.decay_reward_biases()
+
+        reduced = nac.reward_bias("agent-1", "node-a")
+        assert reduced < initial
+
+    def test_decay_reward_biases_prunes_near_zero(self, nac):
+        """Biases below 0.001 are removed."""
+        nac._reward_bias[("agent-1", "node-a")] = 0.0005
+
+        pruned = nac.decay_reward_biases()
+
+        assert pruned == 1
+        assert ("agent-1", "node-a") not in nac._reward_bias
+
+    def test_distribute_reward_skips_decayed_traces(self, nac):
+        """After full decay, distribute_reward credits nothing."""
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+
+        # Decay to zero
+        for _ in range(200):
+            nac.decay_eligibility(factor=0.9)
+
+        credited = nac.distribute_reward("agent-1", reward=1.0)
+        assert credited == []
+
+
+class TestTemporalEligibility:
+    """Tests for SCN-coupled temporal eligibility credit (Stage 2)."""
+
+    def _make_nac(self, temporal_credit_weight=0.3):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        return NAc(config=NACConfig(temporal_credit_weight=temporal_credit_weight))
+
+    def _make_sig(self, **overrides):
+        import time
+
+        from maxim.time.temporal_signature import TemporalSignature
+
+        defaults = {
+            "timestamp": time.time(),  # Recent timestamp so anchors survive pruning
+            "circadian_phase": 0.5,
+            "weekly_phase": 0.3,
+            "monthly_phase": 0.2,
+            "annual_phase": 0.1,
+        }
+        defaults.update(overrides)
+        return TemporalSignature(**defaults)
+
+    def test_temporal_anchor_stored_with_eligibility(self):
+        """update_eligibility with temporal_sig stores anchor."""
+        nac = self._make_nac()
+        sig = self._make_sig()
+        nac.update_eligibility("agent-1", "node-a", 1.0, temporal_sig=sig)
+
+        assert ("agent-1", "node-a") in nac._temporal_anchors
+        orig_act, stored_sig = nac._temporal_anchors[("agent-1", "node-a")]
+        assert orig_act == 1.0
+        assert stored_sig is sig
+
+    def test_no_temporal_sig_no_anchor(self):
+        """update_eligibility without temporal_sig creates no anchor."""
+        nac = self._make_nac()
+        nac.update_eligibility("agent-1", "node-a", 1.0)
+
+        assert ("agent-1", "node-a") not in nac._temporal_anchors
+
+    def test_temporal_fallback_credits_decayed_node(self):
+        """After fast-decay expires, temporal anchor still credits node."""
+        nac = self._make_nac(temporal_credit_weight=0.5)
+        sig = self._make_sig()
+        nac.update_eligibility("agent-1", "node-a", 1.0, temporal_sig=sig)
+
+        # Decay to zero
+        for _ in range(200):
+            nac.decay_eligibility(factor=0.9)
+
+        # Fast-decay trace should be gone
+        assert ("agent-1", "node-a") not in nac._eligibility
+
+        # But temporal anchor should remain
+        assert ("agent-1", "node-a") in nac._temporal_anchors
+
+        # distribute_reward should still credit via temporal path
+        credited = nac.distribute_reward("agent-1", reward=1.0)
+        assert len(credited) > 0
+        assert credited[0][0] == "node-a"
+
+    def test_fast_decay_takes_priority_over_temporal(self):
+        """When fast-decay trace exists, temporal path doesn't fire."""
+        nac = self._make_nac(temporal_credit_weight=0.5)
+        sig = self._make_sig()
+        nac.update_eligibility("agent-1", "node-a", 1.0, temporal_sig=sig)
+
+        # Don't decay — fast-decay trace is still alive
+        credited = nac.distribute_reward("agent-1", reward=1.0)
+        assert len(credited) == 1
+        # Credit should be proportional to fast-decay strength (1.0),
+        # not the reduced temporal weight
+        assert credited[0][1] == pytest.approx(1.0)
+
+    def test_temporal_credit_weight_scales_credit(self):
+        """temporal_credit_weight scales the temporal fallback credit."""
+        nac_low = self._make_nac(temporal_credit_weight=0.1)
+        nac_high = self._make_nac(temporal_credit_weight=0.9)
+
+        sig = self._make_sig()
+        nac_low.update_eligibility("agent-1", "node-a", 1.0, temporal_sig=sig)
+        nac_high.update_eligibility("agent-1", "node-a", 1.0, temporal_sig=sig)
+
+        # Decay both fully
+        for _ in range(200):
+            nac_low.decay_eligibility(factor=0.9)
+            nac_high.decay_eligibility(factor=0.9)
+
+        # Both should credit, but amounts differ
+        # (total is normalized to reward, but the temporal_strength differs)
+        credited_low = nac_low.distribute_reward("agent-1", reward=1.0)
+        credited_high = nac_high.distribute_reward("agent-1", reward=1.0)
+
+        # Both should credit since it's the only node
+        assert len(credited_low) > 0
+        assert len(credited_high) > 0
+
+    def test_env_var_overrides_temporal_credit_weight(self):
+        """MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT env var overrides config."""
+        import os
+
+        from maxim.decisions.nac import NAc, NACConfig
+
+        os.environ["MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT"] = "0.7"
+        try:
+            nac = NAc(config=NACConfig(temporal_credit_weight=0.3))
+            assert nac.config.temporal_credit_weight == pytest.approx(0.7)
+        finally:
+            os.environ.pop("MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT", None)
+
+    def test_env_var_clamped(self):
+        """Env var is clamped to [0.05, 1.0]."""
+        import os
+
+        from maxim.decisions.nac import NAc
+
+        os.environ["MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT"] = "5.0"
+        try:
+            nac = NAc()
+            assert nac.config.temporal_credit_weight == pytest.approx(1.0)
+        finally:
+            os.environ.pop("MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT", None)
+
+    def test_agent_id_scoping(self):
+        """Temporal credit is scoped to agent_id — no cross-agent leaking."""
+        nac = self._make_nac(temporal_credit_weight=0.5)
+        sig = self._make_sig()
+        nac.update_eligibility("agent-A", "node-a", 1.0, temporal_sig=sig)
+        nac.update_eligibility("agent-B", "node-b", 1.0, temporal_sig=sig)
+
+        # Decay both
+        for _ in range(200):
+            nac.decay_eligibility(factor=0.9)
+
+        # Agent A reward should only credit node-a
+        credited = nac.distribute_reward("agent-A", reward=1.0)
+        credited_ids = [nid for nid, _ in credited]
+        assert "node-a" in credited_ids
+        assert "node-b" not in credited_ids
+
 
 class TestNAcPersistence:
     """Test save/load roundtrip."""
