@@ -219,6 +219,36 @@ wells can be used as water sources too &mdash; closer than the river.</pre>
     <p class="text-slate-300 leading-relaxed">The adaptive threshold adjusts based on whether past deliberations were useful &mdash; if thinking led to better actions, the threshold lowers (think more); if thinking was wasted, the threshold rises (act faster).</p>
   </section>
 
+  <!-- Entity Discovery -->
+  <section class="space-y-4">
+    <h2 id="entity-discovery" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Entity Discovery</h2>
+
+    <p class="text-slate-300 leading-relaxed">The agent discovers its world through three complementary tools:</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-cyan-400 font-semibold mb-2">sense_presence</h3>
+        <p class="text-slate-300 text-sm">Scan surroundings for entities &mdash; creatures, objects, NPCs. Shows name, type, affordances, and sensor state. Also triggers imagination for novel entity phrases.</p>
+        <p class="text-slate-500 text-xs mt-2">Use when: arriving somewhere new, wondering what exists</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-cyan-400 font-semibold mb-2">discover_tools</h3>
+        <p class="text-slate-300 text-sm">Find specific actions matching intent. Searches entity affordances, activates matched tools for next turn. <code class="bg-slate-950 px-1 rounded text-xs">discover_tools("fight dragon")</code></p>
+        <p class="text-slate-500 text-xs mt-2">Use when: know what you want to do, need the right tool</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-cyan-400 font-semibold mb-2">sense</h3>
+        <p class="text-slate-300 text-sm">Read detailed sensor state of a specific entity. Health, stamina, durability, position &mdash; everything the entity's sensors expose.</p>
+        <p class="text-slate-500 text-xs mt-2">Use when: need precise state before acting</p>
+      </div>
+    </div>
+
+    <div class="bg-slate-800 border-l-4 border-cyan-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-cyan-400 mb-2">Imagination Pipeline</h3>
+      <p class="text-slate-300">When the agent perceives an entity it hasn't encountered before (e.g., "dragon" in a combat scenario), the <strong class="text-white">imagination trigger</strong> extracts the entity phrase from the percept, checks the ComponentIndex for matching seed components (65 across 7 categories), and instantiates the entity as a live SEM object with sensors and affordances. This happens automatically on each percept.</p>
+    </div>
+  </section>
+
   <!-- Bio-plausibility -->
   <section class="space-y-4">
     <h2 id="bio" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Bio-Plausible Design</h2>

@@ -125,6 +125,90 @@ class UniversalSenseTool(Tool):
 
 
 # ---------------------------------------------------------------------------
+# SensePresenceTool
+# ---------------------------------------------------------------------------
+
+
+class SensePresenceTool(Tool):
+    """Scan the environment for entities the agent can interact with.
+
+    Returns all live entities in the scene — their name, type, and a
+    summary of their capabilities (modulators + affordances).  Also
+    triggers the imagination pipeline for any scene description phrases
+    that haven't been processed yet, bringing seed components to life.
+    """
+
+    name = "sense_presence"
+    description = (
+        "Scan your surroundings for interactive entities — creatures, objects, "
+        "NPCs, environmental features. Shows what exists around you and what "
+        "each entity can do. Use this when you arrive somewhere new or want "
+        "to know what you can interact with."
+    )
+    input_schema: dict[str, Any] = {
+        "context": "Optional description of what you're looking for (e.g., 'weapons', 'enemies', 'allies')"
+    }
+
+    def __init__(
+        self,
+        *,
+        entity_map: EntityMap,
+        imagination_trigger: Any | None = None,
+    ) -> None:
+        self._entity_map = entity_map
+        self._imagination_trigger = imagination_trigger
+        super().__init__()
+
+    def execute(self, **kwargs: Any) -> Any:
+        context_query = kwargs.get("context", "")
+
+        # If there's a context query, run it through imagination to potentially
+        # instantiate entities the agent is looking for
+        if context_query and self._imagination_trigger is not None:
+            try:
+                self._imagination_trigger.process_percept(
+                    context_query,
+                    scene_context={"source": "sense_presence"},
+                    scene_id="sense_presence_scan",
+                )
+            except Exception:
+                pass  # Best-effort
+
+        entities = self._entity_map.list_entities()
+        if not entities:
+            return ToolOutput(
+                success=True,
+                output="No interactive entities detected in your surroundings.",
+            )
+
+        lines = [f"You sense {len(entities)} entity/entities nearby:"]
+        for entity in entities:
+            etype = f" ({entity.entity_type})" if entity.entity_type else ""
+            lines.append(f"\n  {entity.name}{etype}")
+            for mod_name, mod in entity.modulators.items():
+                aff_names = list(mod.affordances.keys())
+                if aff_names:
+                    lines.append(f"    {mod_name}: {', '.join(aff_names)}")
+            # Show sensor summary
+            try:
+                readings = entity.read_all_sensors()
+                if readings:
+                    sensor_parts = []
+                    for s_name, s_reading in readings.items():
+                        sensor_parts.append(f"{s_name}={s_reading.value:.1f}")
+                    lines.append(f"    state: {', '.join(sensor_parts)}")
+            except Exception:
+                pass
+
+        lines.append("")
+        lines.append(
+            "Use discover_tools to find specific actions for an entity, "
+            "or sense(entity_name) to read its full sensor state."
+        )
+        return ToolOutput(success=True, output="\n".join(lines))
+
+
+# ---------------------------------------------------------------------------
 # DiscoverToolsTool
 # ---------------------------------------------------------------------------
 
@@ -220,6 +304,17 @@ class DiscoverToolsTool(Tool):
 
         # If no specific matches, return modulator category summary
         if not top_matches:
+            try:
+                from maxim.simulation.sim_logger import sim_log
+
+                _ent_names = [e.name for e in entities]
+                sim_log(
+                    "SEM_TRACE",
+                    f"discover_tools('{query}'): NO matches — entities={_ent_names}, "
+                    f"scored={len(scored)} candidates but all score=0",
+                )
+            except Exception:
+                pass
             return self._modulator_summary(entities)
 
         # Activate matched tools and build annotated descriptions
@@ -248,13 +343,20 @@ class DiscoverToolsTool(Tool):
         result_lines = [f"Found {len(activated)} capabilities:"]
         result_lines.extend(descriptions)
         result_lines.append("")
-        result_lines.append("These tools are now available for your next action.")
+        result_lines.append(
+            "These tools are now available. USE one of them as your next action — "
+            "pick the most relevant tool above and call it."
+        )
 
         log.info("discover_tools: activated %d tools for query %r", len(activated), query)
         try:
-            from maxim.simulation.sim_logger import sim_discovery
+            from maxim.simulation.sim_logger import sim_discovery, sim_log
 
             sim_discovery(query, matched=len(top_matches), activated=len(activated), source="DiscoverToolsTool")
+            sim_log(
+                "SEM_TRACE",
+                f"discover_tools('{query}'): {len(activated)} activated — {', '.join(activated)}",
+            )
         except Exception:
             pass
         return ToolOutput(success=True, output="\n".join(result_lines))

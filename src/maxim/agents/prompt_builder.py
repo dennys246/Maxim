@@ -504,7 +504,7 @@ def build_instructions_section(request: LLMRequest) -> str:
                 '  "ready_to_act": true/false (true when you need to call a tool, speak, or move; false to keep thinking)',
                 '  "action": {"tool_name": "<tool>", "params": {...}}',
                 '  "confidence": 0.0-1.0',
-                '  "reasoning": "Brief inner thought (1 sentence, first person, NOT addressed to anyone)"',
+                '  "reasoning": "Brief inner thought (1 sentence, first person — observe/wonder/hypothesize/commit)"',
                 "Keep response compact. Do not include optional fields.",
             ]
         )
@@ -964,11 +964,30 @@ class PromptBuilder:
     ) -> None:
         """PFC deliberation preamble — frames the agent as a deliberative entity.
 
-        Injected when bio-enrichment is active (bio_enrichment_context is set
-        or has been set previously on this request's context). Uses IMPORTANT
-        priority — supplementary framing, not a hard operational constraint.
+        Injected whenever the agent is in a context where deliberation can
+        happen: simulation mode, or any bio-signal present on the context.
+        Must be present even on cold-start turns where enrichment returned
+        nothing — otherwise the agent defaults to generic task-mode reasoning
+        ("I need to...") without the inner monologue structure.
         """
-        if request.context.bio_enrichment_context:
+        ctx = request.context
+        # Check for any bio-stack signal, including sim mode
+        in_sim = False
+        try:
+            from maxim.simulation.sim_logger import _sim_active
+
+            in_sim = _sim_active
+        except ImportError:
+            pass
+        has_bio_signal = (
+            in_sim
+            or ctx.bio_enrichment_context
+            or getattr(ctx, "deliberation_transcript", None)
+            or ctx.working_memory_thoughts
+            or ctx.causal_context
+            or ctx.motor_programs
+        )
+        if has_bio_signal:
             from maxim.agents.exec_prompts import PFC_PREAMBLE
 
             budgeter.add("pfc_preamble", PFC_PREAMBLE, SectionPriority.IMPORTANT)

@@ -446,6 +446,67 @@ class ImaginationTrigger:
         with self._lock:
             return frozenset(self._imagined_refs)
 
+    def _ensure_entity_live(
+        self,
+        ref: str,
+        phrase: str,
+        scene_context: dict[str, Any] | None,
+        scene_id: str | None,
+    ) -> None:
+        """Instantiate a known component as a live entity if not already live.
+
+        When the ComponentIndex matches a seed component (e.g., creatures/dragon),
+        it's recognized but not instantiated — no Entity object, no affordance
+        tools registered. This method loads the spec, parses it into a live
+        Entity, registers it in the EntityMap, and creates affordance tools
+        (deactivated, discoverable via discover_tools).
+        """
+        _entity_map = getattr(self, "_entity_map", None)
+        if _entity_map is None or self._tool_registry is None:
+            return
+
+        # Check if already live — extract the entity name from the ref
+        # (e.g., "creatures/dragon" → "dragon")
+        entity_name = ref.rsplit("/", 1)[-1] if "/" in ref else ref
+        if _entity_map.resolve(entity_name) is not None:
+            return  # Already instantiated
+
+        try:
+            spec = self._registry.get(ref)
+            entity_raw = spec.get("entity", spec)
+
+            from maxim.embodiment.spec import _parse_entity
+            from maxim.embodiment.tool_bridge import generate_tools_for_entity
+
+            entity = _parse_entity(entity_raw)
+            _entity_map.register(entity)
+
+            _scene = scene_id or f"scene_{entity_name}"
+            tools = generate_tools_for_entity(entity, self._tool_registry, entity_map=_entity_map)
+            if tools:
+                self._tool_registry.register_scene_tools(tools, _scene)
+                # Start deactivated — discoverable via discover_tools
+                self._tool_registry.deactivate_scene(_scene)
+                log.info(
+                    "Imagination: instantiated '%s' from seed component '%s' — %d tools (deactivated)",
+                    entity_name,
+                    ref,
+                    len(tools),
+                )
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+
+                    _tool_names = [t.name for t in tools]
+                    sim_log(
+                        "SEM_TRACE",
+                        f"Entity '{entity_name}' instantiated from {ref}: "
+                        f"tools={', '.join(_tool_names)} (deactivated, use discover_tools)",
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            log.debug("Imagination: failed to instantiate '%s' from '%s': %s", entity_name, ref, e)
+
     def process_percept(
         self,
         percept_text: str,
@@ -465,6 +526,15 @@ class ImaginationTrigger:
 
         # Extract candidates
         phrases = extract_entity_phrases(percept_text)
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            if phrases:
+                sim_log("SEM_TRACE", f"Imagination extracted {len(phrases)} phrases: {phrases[:5]}")
+            else:
+                sim_log("SEM_TRACE", f"Imagination: no entity phrases from '{percept_text[:80]}'")
+        except Exception:
+            pass
         if not phrases:
             return []
 
@@ -506,6 +576,12 @@ class ImaginationTrigger:
         # 3. Check ComponentIndex for existing match
         match = self._index.find(phrase)
         if match is not None:
+            # Bring the entity to life if it isn't already a live entity.
+            # The ComponentIndex knows about seed components (creatures/dragon,
+            # weapons/rusty_sword, etc.) but they aren't instantiated as live
+            # Entities with registered affordance tools until this happens.
+            self._ensure_entity_live(match.ref, phrase, scene_context, scene_id)
+
             result = ImaginationResult(
                 phrase=phrase,
                 ref=match.ref,

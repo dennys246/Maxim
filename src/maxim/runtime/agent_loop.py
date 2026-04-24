@@ -760,6 +760,29 @@ def run_agentic_loop(
     ctrl.prefetcher = prefetcher
     ctrl.result_cache = result_cache
 
+    # Thought novelty tracker: deque of recent thought word-sets for
+    # cross-turn novelty gating.  Thoughts with >= 75% word overlap with
+    # any recent entry are suppressed from the display (they're redundant).
+    from collections import deque as _deque
+
+    _recent_thought_words: _deque[set[str]] = _deque(maxlen=8)
+
+    def _is_novel_thought(text: str, min_novelty: float = 0.40) -> bool:
+        """Check if a thought is sufficiently novel vs recent thoughts.
+
+        Returns True if the thought should be shown (novel enough).
+        Side effect: appends the thought's words to the tracker if novel.
+        """
+        words = set(text.lower().split())
+        if not words:
+            return False
+        for recent in _recent_thought_words:
+            union = len(words | recent)
+            if union and len(words & recent) / union >= (1.0 - min_novelty):
+                return False  # Too similar to a recent thought
+        _recent_thought_words.append(words)
+        return True
+
     # Mutable-container aliases — safe because in-place mutation is shared.
     # State variables (pending_proposal, pending_action_followup, etc.) use
     # ctrl.X directly to prevent local/controller divergence.
@@ -922,13 +945,30 @@ def run_agentic_loop(
             try:
                 percept_text = ""
                 if hasattr(observation, "get"):
-                    percept_text = str(observation.get("transcript") or observation.get("raw_transcript_text") or "")
+                    percept_text = str(
+                        observation.get("transcript")
+                        or observation.get("raw_transcript_text")
+                        or observation.get("cli_input")
+                        or ""
+                    )
                 elif hasattr(observation, "transcript"):
-                    percept_text = str(getattr(observation, "transcript", "") or "")
+                    percept_text = str(
+                        getattr(observation, "transcript", "") or getattr(observation, "cli_input", "") or ""
+                    )
                 if percept_text:
                     scene_id = state.data.get("current_scene_id") if hasattr(state, "data") else None
                     scene_ctx = state.data.get("scene_context") if hasattr(state, "data") else None
                     imagination_trigger.process_percept(percept_text, scene_context=scene_ctx, scene_id=scene_id)
+                else:
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+
+                        _obs_keys = (
+                            list(observation.keys()) if hasattr(observation, "keys") else type(observation).__name__
+                        )
+                        sim_log("SEM_TRACE", f"Imagination skipped: no percept_text (obs keys: {_obs_keys})")
+                    except Exception:
+                        pass
             except Exception as e:
                 log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
 
@@ -2730,9 +2770,9 @@ def run_agentic_loop(
                                     )
 
                                     # Update thinking panel with the AUT's actual reasoning
-                                    # (replacing the percept text that was shown during enrichment)
+                                    # Only if the thought is novel enough vs recent thoughts
                                     _first_reasoning = _first.reasoning or ""
-                                    if _first_reasoning:
+                                    if _first_reasoning and _is_novel_thought(_first_reasoning):
                                         sim_deliberation_update(
                                             _first_reasoning,
                                             cycle=1,
