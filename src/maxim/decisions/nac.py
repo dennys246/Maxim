@@ -62,7 +62,13 @@ class NAc:
     prediction of outcomes before taking actions.
 
     Integration points:
-    - SCN: Temporal context for when causal patterns apply
+    - SCN: Temporal eligibility credit via ``_temporal_anchors``.
+      First closed loop (2026-04-24): affordance concept nodes get
+      ``TemporalSignature`` anchors at encoding time; ``distribute_reward``
+      uses ``TemporalSignature.similarity()`` to credit nodes whose
+      fast-decay traces expired but whose temporal phase matches the
+      reward. Broader temporal pattern learning (tool reliability by
+      time-of-day, oscillator-driven prediction) remains unbuilt.
     - Hippocampus: Query similar episodes for causal inference
 
     Example:
