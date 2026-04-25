@@ -460,7 +460,7 @@ class SenseToolsTool(Tool):
             return scored
         result: list[tuple[str, float, str]] = []
         for tool_name, score, desc in scored:
-            links = self._nac.get_links_for_event(tool_name)
+            links = self._nac.get_links_for_event(f"tool:{tool_name}")
             if links:
                 # Use the most confident link
                 best = max(links, key=lambda lk: lk.confidence)
@@ -485,7 +485,7 @@ class SenseToolsTool(Tool):
             return ""
 
         # 1. Entity-specific causal link (existing path)
-        links = self._nac.get_links_for_event(tool_name)
+        links = self._nac.get_links_for_event(f"tool:{tool_name}")
         if links:
             best = max(links, key=lambda lk: lk.confidence)
             if best.confidence >= 0.3:

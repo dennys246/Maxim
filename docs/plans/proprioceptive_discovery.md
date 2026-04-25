@@ -138,13 +138,32 @@ Both are independently shippable. Mechanism A is higher impact (every sim benefi
 - Acquired entities contribute sensors to the damage model while equipped
 - Dropping a shield while it's being damaged produces a Reaction for NAc to learn from
 
+## Gap Analysis: Embedding Similarity for Verb→Response
+
+Empirical testing (2026-04-25) revealed that **embedding similarity is the wrong mechanism for surfacing defensive responses from attack percepts.** Cosine similarity between attack descriptions and defense affordances:
+
+| Percept | → dodge | → block | → roll |
+|---------|---------|---------|--------|
+| "dragon breathes fire at you" | 0.355 | 0.339 | 0.300 |
+| "guard swings sword at head" | 0.464 | 0.367 | 0.138 |
+| "wolf leaps at throat" | 0.298 | 0.170 | 0.197 |
+
+All below the 0.50 threshold, let alone 0.65. The model knows these are combat-related but doesn't know dodge is the *response* to an attack. That's causal knowledge, not semantic similarity.
+
+**Resolution:** Latent affordance surfacing for Mechanism A should use **threat-level × body-capability** gating (bio-enrichment's existing TextSalienceScorer provides the threat signal, the body spec declares which modulators have which latent responses) instead of embedding similarity. The Cradle plan will provide initial experience via structured sensorimotor development, after which NAc's causal predictions take over. The cold-start gap is addressed by the Cradle, not by embedding heuristics.
+
+**Pre-existing bug fixed (2026-04-25):** `record_outcome` in `tool_dispatch.py` recorded `event_signature="tool:use"` for ALL `use()` calls — dodge, open door, attack all looked identical to NAc. Fixed: `build_tool_signature(tool_name, tool_params)` now produces `"tool:use:dodge"` for `use(action="dodge")`. This is the single source of truth for tool→NAc event signature format. Also fixed 3 pre-existing bare `tool_name` query bugs in planning_bridge.py, discovery.py, and exec_agent.py that never matched because they lacked the `"tool:"` prefix.
+
 ## Learning Loop (end-to-end)
 
 ```
-Dragon attacks → percept → bio-enrichment surfaces "dodge" →
-LLM calls use(self, dodge) → embodiment evaluates → NAc records outcome →
-Next attack → bio-enrichment surfaces "dodge [effective]" via reward_bias →
-Agent dodges faster/more confidently
+Dragon attacks → percept → damage_component(arms) → pain signal →
+NAc records: fire_breath → damage (negative) →
+Next turn: bio-enrichment surfaces "fire_breath → damage (negative)" prediction →
+LLM sees warning + use(action=dodge) in tool list → tries dodge →
+Dodge succeeds → NAc records: tool:use:dodge → success (positive) →
+Next encounter: NAc has both fire_breath=dangerous AND dodge=effective →
+Agent dodges from turn 1 of session 2
 ```
 
-No new subsystems. No triggers. No orchestration. The same pipeline that processes "you see a door" also processes "you could dodge."
+The critical path: NAc compound signatures (`tool:use:dodge` not `tool:use`) ensure the agent learns "dodging specifically works" not "the generic use tool works."

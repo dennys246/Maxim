@@ -2081,6 +2081,7 @@ def run_agentic_loop(
                         context_pool=context_pool,
                         nac=_loop_nac,
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                        tool_params=action.get("params"),
                     )
 
                     # Record plan outcome in MemoryHub for learning
