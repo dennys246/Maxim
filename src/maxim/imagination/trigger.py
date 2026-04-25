@@ -639,8 +639,13 @@ class ImaginationTrigger:
                 pass
             return cached
 
-        # 2. Record mention and check threshold
-        count = self._cache.record_mention(phrase)
+        # 2. Record mention using the head noun so variant phrases
+        # ("fire-breathing dragon", "large dragon", "the dragon") all
+        # accumulate under the same key.  The full phrase is still used
+        # for cache lookups and designer input.
+        words = phrase.strip().lower().split()
+        head_noun = words[-1] if words else phrase
+        count = self._cache.record_mention(head_noun)
 
         # 3. Check ComponentIndex for existing match
         match = self._index.find(phrase)
