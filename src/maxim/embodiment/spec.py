@@ -228,11 +228,32 @@ def _parse_entity(
                 description=aff_spec.get("description", ""),
                 timeout=aff_spec.get("timeout", 30.0),
             )
-        entity.modulators[mod_name] = SpecModulator(
+
+        # Per-modulator sensors (component-level damage model)
+        mod_sensors = mod_spec.get("sensors", {})
+        mod_integrity_fn = mod_spec.get("integrity", "weighted_mean")
+        mod_damage_affinities = mod_spec.get("damage_affinities", {})
+
+        modulator = SpecModulator(
             _name=mod_name,
             _entity_name=name,
             _affordances=affordances,
+            _sensors=mod_sensors,
+            _integrity_fn=mod_integrity_fn,
+            _damage_affinities=mod_damage_affinities,
         )
+
+        # Initialize modulator vital_metrics from sensor specs
+        for ms_name, ms_spec in mod_sensors.items():
+            if isinstance(ms_spec, dict) and "range" in ms_spec:
+                initial = ms_spec.get("initial")
+                if initial is not None:
+                    modulator.vital_metrics[ms_name] = float(initial)
+                else:
+                    lo, hi = ms_spec["range"]
+                    modulator.vital_metrics[ms_name] = float((lo + hi) / 2)
+
+        entity.modulators[mod_name] = modulator
 
     # -- failure modes ------------------------------------------------------
     for fm_data in data.get("failure_modes", []):
@@ -443,9 +464,24 @@ class SpecModulator:
 
     Holds affordance schemas from the YAML definition.  Execution is
     a no-op by default; a real backend (LLM, hardware) can be attached.
+
+    Optionally holds per-modulator **sensors** and an **integrity**
+    aggregation function (component-level damage model).  When sensors
+    are present, ``compute_integrity()`` derives a single ``integrity``
+    value from the sub-sensor readings.  This enables damage to target
+    body-part modulators instead of a flat entity-level health sensor.
     """
 
-    __slots__ = ("_name", "_entity_name", "_affordances", "_backend")
+    __slots__ = (
+        "_name",
+        "_entity_name",
+        "_affordances",
+        "_backend",
+        "_sensors",
+        "_integrity_fn",
+        "_damage_affinities",
+        "vital_metrics",
+    )
 
     def __init__(
         self,
@@ -453,11 +489,19 @@ class SpecModulator:
         _entity_name: str,
         _affordances: dict[str, AffordanceSchema],
         _backend: Any | None = None,
+        _sensors: dict[str, Any] | None = None,
+        _integrity_fn: str = "weighted_mean",
+        _damage_affinities: dict[str, dict[str, float]] | None = None,
     ) -> None:
         self._name = _name
         self._entity_name = _entity_name
         self._affordances = _affordances
         self._backend = _backend
+        self._sensors = _sensors or {}
+        self._integrity_fn = _integrity_fn
+        self._damage_affinities = _damage_affinities or {}
+        # Mutable state for per-modulator sensor values (like entity.vital_metrics)
+        self.vital_metrics: dict[str, float] = {}
 
     @property
     def name(self) -> str:
@@ -466,6 +510,88 @@ class SpecModulator:
     @property
     def affordances(self) -> dict[str, AffordanceSchema]:
         return self._affordances
+
+    @property
+    def sensors(self) -> dict[str, Any]:
+        """Per-modulator sensors (may be empty for capability-only modulators)."""
+        return self._sensors
+
+    @property
+    def integrity_fn(self) -> str:
+        """Aggregation function name: 'weighted_mean', 'min', 'max'."""
+        return self._integrity_fn
+
+    @property
+    def damage_affinities(self) -> dict[str, dict[str, float]]:
+        """Damage type → sub-sensor weight map (level 3 only)."""
+        return self._damage_affinities
+
+    def compute_integrity(self) -> float:
+        """Derive modulator integrity from sub-sensor vital_metrics.
+
+        Returns 1.0 if no sub-sensors are defined (backward compat —
+        capability-only modulators are always at full integrity).
+        """
+        if not self.vital_metrics:
+            return 1.0
+
+        values = list(self.vital_metrics.values())
+        if not values:
+            return 1.0
+
+        if self._integrity_fn == "min":
+            return min(values)
+        elif self._integrity_fn == "max":
+            return max(values)
+        else:
+            # weighted_mean (default) — uses 'weight' from sensor spec
+            # if available, else equal weights
+            total_weight = 0.0
+            weighted_sum = 0.0
+            for sname, sval in self.vital_metrics.items():
+                sensor_spec = self._sensors.get(sname, {})
+                weight = sensor_spec.get("weight", 1.0) if isinstance(sensor_spec, dict) else 1.0
+                weighted_sum += sval * weight
+                total_weight += weight
+            if total_weight == 0:
+                return 1.0
+            return weighted_sum / total_weight
+
+    def apply_damage(self, amount: float, damage_type: str | None = None) -> float:
+        """Apply damage to this modulator's sub-sensors.
+
+        If *damage_type* is given and ``damage_affinities`` exist,
+        distributes damage according to the affinity weights.
+        Otherwise distributes proportionally across all sub-sensors.
+
+        Returns the new integrity value after damage.
+        """
+        if not self.vital_metrics:
+            # No sub-sensors — can't take component damage
+            return 1.0
+
+        if damage_type and damage_type in self._damage_affinities:
+            # Level 3: route through affinities
+            affinities = self._damage_affinities[damage_type]
+            total_affinity = sum(affinities.values())
+            if total_affinity > 0:
+                for sensor_name, affinity in affinities.items():
+                    if sensor_name in self.vital_metrics:
+                        self.vital_metrics[sensor_name] = max(
+                            0.0,
+                            self.vital_metrics[sensor_name] - amount * (affinity / total_affinity),
+                        )
+        else:
+            # Level 2: distribute proportionally across all sub-sensors
+            n = len(self.vital_metrics)
+            per_sensor = amount / n if n > 0 else 0.0
+            for sensor_name in self.vital_metrics:
+                self.vital_metrics[sensor_name] = max(
+                    0.0,
+                    self.vital_metrics[sensor_name] - per_sensor,
+                )
+
+        return self.compute_integrity()
 
     def execute(self, affordance: str, params: dict[str, Any]) -> Any:
         """Execute via backend if attached, else return stub success."""

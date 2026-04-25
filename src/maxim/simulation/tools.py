@@ -191,58 +191,11 @@ class SendMessageTool(Tool):
         if not text:
             return ToolOutput(success=False, error="text is required")
 
-        # Auto-damage: if the probe describes an attack and embodiment is
-        # active, apply SEM damage automatically so the orchestrator LLM
-        # doesn't need to remember to call damage_entity separately.
-        if self._embodiment is not None:
-            is_attack, amount, source = _detect_attack(text)
-            if is_attack and self._embodiment.root is not None:
-                root = self._embodiment.root
-                old_health = root.vital_metrics.get("health", 1.0)
-                new_health = max(0.0, old_health - amount)
-                root.vital_metrics["health"] = new_health
-
-                # Publish pain IMMEDIATELY on every hit — proportional to
-                # damage, not gated on a threshold.  In biology, you feel
-                # the sword strike instantly; you don't wait until you're
-                # critically injured to notice pain.
-                pain_bus = getattr(self._embodiment, "_pain_bus", None)
-                if pain_bus is not None:
-                    try:
-                        from maxim.proprioception.pain import PainSignal, PainType
-
-                        signal = PainSignal(
-                            pain_type=PainType.EXTERNAL_SIGNAL,
-                            intensity=min(1.0, amount * 2),  # scale: 0.15 hit → 0.3 pain
-                            timestamp=time.time(),
-                            context={
-                                "source": "combat_auto_damage",
-                                "entity": root.full_path,
-                                "entity_type": root.entity_type,
-                                "failure_mode": source,
-                                "damage_amount": amount,
-                                "health_before": old_health,
-                                "health_after": new_health,
-                                "sensor_readings": {"health": new_health},
-                            },
-                        )
-                        pain_bus.publish(signal)
-                    except Exception:
-                        pass
-
-                # Also evaluate threshold-based failure modes (critical injury)
-                self._embodiment.evaluate_failures()
-
-                try:
-                    from maxim.simulation.sim_logger import sim_log
-
-                    sim_log(
-                        "SEM_DAMAGE",
-                        f"auto-damage: health {old_health:.2f} → {new_health:.2f} "
-                        f"(source={source}, amount={amount:.2f}, pain={min(1.0, amount * 2):.2f})",
-                    )
-                except Exception:
-                    pass
+        # Auto-damage removed — damage is now a deliberate orchestrator
+        # action via DamageComponentTool (or the deprecated DamageEntityTool
+        # shim).  This fixes the double-damage bug where auto-damage AND
+        # explicit damage_entity could fire on the same attack event.
+        # See docs/plans/component_level_damage.md Stage 2.
 
         # Don't use LLM-requested timeout — it often guesses 30s which is
         # too short for local models. Let the bridge's default (120s) apply.
@@ -500,14 +453,14 @@ class GenerateScenarioTool(Tool):
 
 
 class DamageEntityTool(Tool):
-    """Apply SEM damage to the AUT's body sensors.
+    """DEPRECATED: Apply SEM damage to the AUT's body sensors.
 
-    When the orchestrator narrates combat (e.g., "the dragon breathes fire"),
-    this tool makes it real: it mutates the AUT's vital_metrics, then
-    evaluates failure modes to trigger the full PainBus → NAc chain.
+    Thin compat shim that delegates to ``DamageComponentTool`` with
+    ``component="torso"`` (default target).  Existing orchestrator prompts
+    that call ``damage_entity`` still work.
 
-    Without this, combat narration is text-only — no sensor changes, no pain
-    signals, no NAc learning about what hurts.
+    New code should use ``DamageComponentTool`` directly for body-part
+    targeted damage.  See docs/plans/component_level_damage.md.
     """
 
     name = "damage_entity"
@@ -527,11 +480,90 @@ class DamageEntityTool(Tool):
         super().__init__()
         self._embodiment = embodiment
         self._entity_map = entity_map
+        # Delegate to DamageComponentTool for the actual work
+        self._delegate = DamageComponentTool(embodiment=embodiment, entity_map=entity_map)
 
     def execute(self, **kwargs: Any) -> ToolOutput:
+        # Map old API (sensor=, amount=, source=) to new API (component=, amount=, source=)
         sensor = kwargs.get("sensor", "health")
         amount = float(kwargs.get("amount", 0.1))
         source = kwargs.get("source", "unknown")
+
+        # If targeting a non-health sensor (e.g., stamina), fall back to
+        # direct vital_metrics mutation (old behavior)
+        if sensor != "health":
+            if self._embodiment is None:
+                return ToolOutput(success=False, error="No embodiment configured")
+            root = self._embodiment.root
+            if root is None:
+                return ToolOutput(success=False, error="No root entity")
+            old_val = root.vital_metrics.get(sensor, 1.0)
+            new_val = max(0.0, old_val - amount)
+            root.vital_metrics[sensor] = new_val
+            self._embodiment.evaluate_failures()
+            return ToolOutput(
+                success=True,
+                output={
+                    "sensor": sensor,
+                    "old_value": round(old_val, 2),
+                    "new_value": round(new_val, 2),
+                    "damage": round(amount, 2),
+                    "source": source,
+                },
+            )
+
+        # Health damage → delegate to component tool (targets torso by default)
+        return self._delegate.execute(
+            component="torso",
+            amount=amount,
+            source=source,
+        )
+
+
+class DamageComponentTool(Tool):
+    """Apply SEM damage to a specific body component (modulator).
+
+    The orchestrator picks which body part takes the hit based on the
+    narrative.  Damage reduces the component's integrity, which cascades
+    upward to entity health (when ``health: derived`` is configured).
+    Pain is published immediately — proportional to damage, not gated
+    on a failure-mode threshold.
+
+    This replaces both the old ``DamageEntityTool`` (flat health) and the
+    auto-damage in ``SendMessageTool`` (keyword detection).  Single source
+    of truth for all combat damage.
+
+    At level 2 (default): damage reduces component integrity directly.
+    At level 3 (--deep-embodiment): optional ``damage_type`` routes
+    through the component's ``damage_affinities`` to specific sub-sensors.
+    """
+
+    name = "damage_component"
+    description = (
+        "Apply damage to a specific body part of the agent. Specify which "
+        "component (e.g., 'head', 'wing', 'torso', 'leg') and the damage "
+        "amount (0.0 to 1.0). Use when a scene entity attacks or the "
+        "environment causes harm. The agent will feel pain proportional to "
+        "the damage. If no matching component exists, damage falls back to "
+        "entity-level health."
+    )
+    input_schema = {
+        "component": (str, "torso"),  # modulator name
+        "amount": (float, 0.1),
+        "source": (str, ""),  # e.g., "dragon_fire_breath"
+        "damage_type": (str, ""),  # level 3 only: "slash", "blunt", "fire", etc.
+    }
+
+    def __init__(self, *, embodiment: Any, entity_map: Any) -> None:
+        super().__init__()
+        self._embodiment = embodiment
+        self._entity_map = entity_map
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        component_name = kwargs.get("component", "torso")
+        amount = float(kwargs.get("amount", 0.1))
+        source = kwargs.get("source", "unknown")
+        damage_type = kwargs.get("damage_type", "") or None
 
         if self._embodiment is None:
             return ToolOutput(success=False, error="No embodiment configured")
@@ -540,63 +572,96 @@ class DamageEntityTool(Tool):
         if root is None:
             return ToolOutput(success=False, error="No root entity")
 
-        # Apply damage to vital_metrics
-        old_val = root.vital_metrics.get(sensor, 1.0)
-        new_val = max(0.0, old_val - amount)
-        root.vital_metrics[sensor] = new_val
+        # Try to find the target component (modulator)
+        component = root.get_component(component_name)
+        new_integrity = None
+        fallback = False
+
+        if (
+            component is not None
+            and hasattr(component, "apply_damage")
+            and hasattr(component, "vital_metrics")
+            and component.vital_metrics
+        ):
+            # Component has sub-sensors — apply component-level damage
+            new_integrity = component.apply_damage(amount, damage_type)
+        else:
+            # Fallback: no component sensors or unknown component name.
+            # Apply to entity-level health (backward compat with old specs).
+            fallback = True
+            old_health = root.vital_metrics.get("health", 1.0)
+            new_health = max(0.0, old_health - amount)
+            root.vital_metrics["health"] = new_health
 
         # Publish pain IMMEDIATELY — proportional to damage amount.
-        # Don't wait for threshold-based failure modes.
         pain_bus = getattr(self._embodiment, "_pain_bus", None)
         if pain_bus is not None:
             try:
                 from maxim.proprioception.pain import PainSignal, PainType
 
+                context: dict[str, Any] = {
+                    "source": "damage_component",
+                    "entity": root.full_path,
+                    "entity_type": root.entity_type,
+                    "failure_mode": source,
+                    "damage_amount": amount,
+                    "component": component_name,
+                }
+                if damage_type:
+                    context["damage_type"] = damage_type
+                if new_integrity is not None:
+                    context["component_integrity"] = new_integrity
+                    context["sensor_readings"] = {f"{component_name}.integrity": new_integrity}
+                else:
+                    context["sensor_readings"] = {"health": root.vital_metrics.get("health", 0.0)}
+
                 signal = PainSignal(
                     pain_type=PainType.EXTERNAL_SIGNAL,
                     intensity=min(1.0, amount * 2),
                     timestamp=time.time(),
-                    context={
-                        "source": "damage_entity",
-                        "entity": root.full_path,
-                        "entity_type": root.entity_type,
-                        "failure_mode": source,
-                        "damage_amount": amount,
-                        "sensor": sensor,
-                        "sensor_readings": {sensor: new_val},
-                    },
+                    context=context,
                 )
                 pain_bus.publish(signal)
             except Exception:
                 pass
 
-        # Also evaluate threshold-based failure modes (critical injury)
+        # Evaluate threshold-based failure modes (cascading)
         failures = self._embodiment.evaluate_failures()
 
-        # Log for observability
+        # Log
         try:
             from maxim.simulation.sim_logger import sim_log
 
-            sim_log(
-                "SEM_DAMAGE",
-                f"damage applied: {sensor} {old_val:.2f} → {new_val:.2f} (source={source}, pain={min(1.0, amount * 2):.2f})",
-                {"sensor": sensor, "old": old_val, "new": new_val, "source": source, "failures": len(failures)},
-            )
+            if fallback:
+                sim_log(
+                    "SEM_DAMAGE",
+                    f"component damage (fallback to entity health): "
+                    f"health → {root.vital_metrics.get('health', 0.0):.2f} "
+                    f"(source={source}, amount={amount:.2f})",
+                )
+            else:
+                sim_log(
+                    "SEM_DAMAGE",
+                    f"component damage: {component_name}.integrity → {new_integrity:.2f} "
+                    f"(source={source}, amount={amount:.2f}" + (f", type={damage_type}" if damage_type else "") + ")",
+                )
         except Exception:
             pass
 
-        return ToolOutput(
-            success=True,
-            output={
-                "sensor": sensor,
-                "old_value": round(old_val, 2),
-                "new_value": round(new_val, 2),
-                "damage": round(amount, 2),
-                "source": source,
-                "pain_triggered": len(failures) > 0,
-                "failure_modes": [f.failure_name for f in failures],
-            },
-        )
+        output: dict[str, Any] = {
+            "component": component_name,
+            "damage": round(amount, 2),
+            "source": source,
+            "fallback_to_entity": fallback,
+            "pain_triggered": len(failures) > 0,
+            "failure_modes": [f.failure_name for f in failures],
+        }
+        if new_integrity is not None:
+            output["integrity"] = round(new_integrity, 2)
+        if damage_type:
+            output["damage_type"] = damage_type
+
+        return ToolOutput(success=True, output=output)
 
 
 class SetEntitySensorTool(Tool):

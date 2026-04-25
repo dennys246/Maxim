@@ -248,6 +248,7 @@ def start_simulation_mode(
     from maxim.simulation.tools import (
         AnalyzeResultsTool,
         CheckCompletionTool,
+        DamageComponentTool,
         DamageEntityTool,
         ExtendSimulationTool,
         FinishSimulationTool,
@@ -931,10 +932,11 @@ def start_simulation_mode(
     orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
     orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
     orch_registry.register(InjectPainTool(bridge=bridge))
-    # DamageEntityTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
+    # DamageComponentTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
     # Only registered when embodiment is active (--embodiment flag).
-    # _aut_embodiment already resolved above for SendMessageTool.
+    # DamageEntityTool kept as deprecated shim for existing prompts.
     if _aut_embodiment is not None:
+        orch_registry.register(DamageComponentTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
         orch_registry.register(DamageEntityTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
         orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
     orch_registry.register(spawn_tool)
@@ -1044,16 +1046,27 @@ def start_simulation_mode(
                 "params": {"pain_type": "(optional) Type of pain signal", "intensity": "(optional) 0.0-1.0"},
                 "followup_type": "process",
             },
-            "damage_entity": {
-                "description": "Apply physical damage to the agent's body. Use EVERY TIME a scene "
-                "entity attacks or the environment causes harm. This makes the damage REAL — "
-                "the agent's sensors change, pain fires, and it learns what hurts.",
+            "damage_component": {
+                "description": "Apply physical damage to a specific body part of the agent. "
+                "Use EVERY TIME a scene entity attacks or the environment causes harm. "
+                "Specify WHICH body part takes the hit (head, torso, wing, leg, arm, etc.). "
+                "This makes damage REAL — the body part's integrity drops, pain fires, "
+                "and the agent learns which body parts are vulnerable.",
                 "params": {
-                    "sensor": "Which sensor to affect: health, stamina (default: health)",
+                    "component": "Which body part to damage (e.g., 'head', 'wing', 'torso', 'leg'). Default: torso",
                     "amount": "Damage amount 0.0-1.0 (default: 0.1). 0.1=light, 0.3=heavy, 0.5=devastating",
                     "source": "What caused the damage (e.g., 'dragon_fire_breath', 'falling_rocks')",
                 },
-                "example": '{"tool_name": "damage_entity", "params": {"sensor": "health", "amount": 0.3, "source": "dragon_fire_breath"}}',
+                "example": '{"tool_name": "damage_component", "params": {"component": "wing", "amount": 0.3, "source": "sword_slash"}}',
+                "followup_type": "process",
+            },
+            "damage_entity": {
+                "description": "(Deprecated — use damage_component instead.) Apply damage to entity health.",
+                "params": {
+                    "sensor": "health or stamina (default: health)",
+                    "amount": "Damage amount 0.0-1.0",
+                    "source": "What caused the damage",
+                },
                 "followup_type": "process",
             },
             "respond": {

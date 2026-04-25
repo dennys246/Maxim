@@ -228,6 +228,49 @@ class Entity:
                 result[name] = sensor.read()
         return result
 
+    # -- component-level damage -----------------------------------------------
+
+    def derive_health(self) -> float | None:
+        """Derive entity health from modulator component integrities.
+
+        Returns a weighted mean of modulator integrities using
+        ``metadata["health_weights"]`` if present.  Returns None if
+        no modulators have component sensors (backward compat — entity
+        uses direct ``vital_metrics["health"]`` instead).
+
+        Called by ``Body.evaluate_failures()`` to update
+        ``vital_metrics["health"]`` when ``metadata.get("health") == "derived"``.
+        """
+        # Collect modulator integrities
+        integrities: dict[str, float] = {}
+        for mod_name, mod in self.modulators.items():
+            if hasattr(mod, "compute_integrity"):
+                integrity = mod.compute_integrity()
+                if hasattr(mod, "vital_metrics") and mod.vital_metrics:
+                    integrities[mod_name] = integrity
+
+        if not integrities:
+            return None  # No component sensors → not using derived health
+
+        weights = self.metadata.get("health_weights", {})
+        total_weight = 0.0
+        weighted_sum = 0.0
+        for mod_name, integrity in integrities.items():
+            w = weights.get(mod_name, 1.0)
+            weighted_sum += integrity * w
+            total_weight += w
+
+        if total_weight == 0:
+            return None
+        return weighted_sum / total_weight
+
+    def get_component(self, name: str) -> Any | None:
+        """Get a modulator by name (for component-level damage targeting).
+
+        Returns the modulator if found, None otherwise.
+        """
+        return self.modulators.get(name)
+
     # -- tree mutation (DM entity transfer) ------------------------------------
 
     def reparent(self, new_parent: Entity) -> None:
