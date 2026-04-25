@@ -12,7 +12,9 @@
 # Results: ~/.maxim/experiments/temporal_credit_YYYYMMDD_HHMMSS/
 # Protocol: docs/experiments/protocols/temporal_credit_validation.md
 
-set -euo pipefail
+set -uo pipefail
+# Note: NOT set -e — individual sim failures should not abort the suite.
+# Each set is independent and we want all results even if one crashes.
 
 MODEL="${MODEL:-qwen2.5-14b-instruct}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
