@@ -1029,6 +1029,18 @@ def start_simulation_mode(
                 "params": {"pain_type": "(optional) Type of pain signal", "intensity": "(optional) 0.0-1.0"},
                 "followup_type": "process",
             },
+            "damage_entity": {
+                "description": "Apply physical damage to the agent's body. Use EVERY TIME a scene "
+                "entity attacks or the environment causes harm. This makes the damage REAL — "
+                "the agent's sensors change, pain fires, and it learns what hurts.",
+                "params": {
+                    "sensor": "Which sensor to affect: health, stamina (default: health)",
+                    "amount": "Damage amount 0.0-1.0 (default: 0.1). 0.1=light, 0.3=heavy, 0.5=devastating",
+                    "source": "What caused the damage (e.g., 'dragon_fire_breath', 'falling_rocks')",
+                },
+                "example": '{"tool_name": "damage_entity", "params": {"sensor": "health", "amount": 0.3, "source": "dragon_fire_breath"}}',
+                "followup_type": "process",
+            },
             "respond": {
                 "description": "NOT AVAILABLE. Use send_message instead.",
                 "followup_type": "process",  # Error triggers re-think
