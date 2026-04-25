@@ -103,12 +103,67 @@ class _FallbackRedirectTool(Tool):
         return ToolOutput(success=False, output=error_msg, error=error_msg)
 
 
+_ATTACK_KEYWORDS = frozenset(
+    {
+        "attack",
+        "attacks",
+        "strikes",
+        "hits",
+        "slashes",
+        "bites",
+        "breathes fire",
+        "breathing fire",
+        "unleashes",
+        "blasts",
+        "claws",
+        "stabs",
+        "smashes",
+        "crushes",
+        "burns",
+        "scorches",
+        "engulfs",
+        "slams",
+        "charges at",
+        "lunges",
+        "swipes",
+        "deals damage",
+        "wounds",
+        "injures",
+    }
+)
+
+
+def _detect_attack(text: str) -> tuple[bool, float, str]:
+    """Detect if probe text describes a physical attack on the agent.
+
+    Returns (is_attack, damage_amount, source_description).
+    """
+    lower = text.lower()
+    for kw in _ATTACK_KEYWORDS:
+        if kw in lower:
+            # Scale damage by intensity keywords
+            if any(w in lower for w in ("devastating", "massive", "critical", "powerful")):
+                amount = 0.3
+            elif any(w in lower for w in ("light", "glancing", "minor", "weak")):
+                amount = 0.05
+            else:
+                amount = 0.15
+            # Extract source (best-effort: first noun-phrase before the attack verb)
+            source = kw.replace(" ", "_")
+            return True, amount, source
+    return False, 0.0, ""
+
+
 class SendMessageTool(Tool):
     """Send a message to the agent under test and wait for its response.
 
     This is the primary interaction tool. Injects a percept, waits for the
     AUT to process and respond (with settle detection for multi-action
     responses), then returns the full result.
+
+    When embodiment is active and the probe text describes an attack,
+    automatically applies SEM damage so the agent feels it physically.
+    The orchestrator doesn't need to call damage_entity separately.
     """
 
     name = "send_message"
@@ -126,14 +181,68 @@ class SendMessageTool(Tool):
         "message": (str, ""),
     }
 
-    def __init__(self, bridge: Any) -> None:
+    def __init__(self, bridge: Any, *, embodiment: Any = None) -> None:
         super().__init__()
         self._bridge = bridge
+        self._embodiment = embodiment
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         text = kwargs.get("text", "") or kwargs.get("message", "")
         if not text:
             return ToolOutput(success=False, error="text is required")
+
+        # Auto-damage: if the probe describes an attack and embodiment is
+        # active, apply SEM damage automatically so the orchestrator LLM
+        # doesn't need to remember to call damage_entity separately.
+        if self._embodiment is not None:
+            is_attack, amount, source = _detect_attack(text)
+            if is_attack and self._embodiment.root is not None:
+                root = self._embodiment.root
+                old_health = root.vital_metrics.get("health", 1.0)
+                new_health = max(0.0, old_health - amount)
+                root.vital_metrics["health"] = new_health
+
+                # Publish pain IMMEDIATELY on every hit — proportional to
+                # damage, not gated on a threshold.  In biology, you feel
+                # the sword strike instantly; you don't wait until you're
+                # critically injured to notice pain.
+                pain_bus = getattr(self._embodiment, "_pain_bus", None)
+                if pain_bus is not None:
+                    try:
+                        from maxim.proprioception.pain import PainSignal, PainType
+
+                        signal = PainSignal(
+                            pain_type=PainType.EXTERNAL_SIGNAL,
+                            intensity=min(1.0, amount * 2),  # scale: 0.15 hit → 0.3 pain
+                            timestamp=time.time(),
+                            context={
+                                "source": "combat_auto_damage",
+                                "entity": root.full_path,
+                                "entity_type": root.entity_type,
+                                "failure_mode": source,
+                                "damage_amount": amount,
+                                "health_before": old_health,
+                                "health_after": new_health,
+                                "sensor_readings": {"health": new_health},
+                            },
+                        )
+                        pain_bus.publish(signal)
+                    except Exception:
+                        pass
+
+                # Also evaluate threshold-based failure modes (critical injury)
+                self._embodiment.evaluate_failures()
+
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+
+                    sim_log(
+                        "SEM_DAMAGE",
+                        f"auto-damage: health {old_health:.2f} → {new_health:.2f} "
+                        f"(source={source}, amount={amount:.2f}, pain={min(1.0, amount * 2):.2f})",
+                    )
+                except Exception:
+                    pass
 
         # Don't use LLM-requested timeout — it often guesses 30s which is
         # too short for local models. Let the bridge's default (120s) apply.
@@ -388,6 +497,180 @@ class GenerateScenarioTool(Tool):
             )
         except Exception as e:
             return ToolOutput(success=False, error=f"Scenario generation failed: {e}")
+
+
+class DamageEntityTool(Tool):
+    """Apply SEM damage to the AUT's body sensors.
+
+    When the orchestrator narrates combat (e.g., "the dragon breathes fire"),
+    this tool makes it real: it mutates the AUT's vital_metrics, then
+    evaluates failure modes to trigger the full PainBus → NAc chain.
+
+    Without this, combat narration is text-only — no sensor changes, no pain
+    signals, no NAc learning about what hurts.
+    """
+
+    name = "damage_entity"
+    description = (
+        "Apply damage to the agent's body. Use when a scene entity attacks "
+        "or the environment causes harm. Specify which sensor to affect "
+        "(health, stamina) and by how much (0.0 to 1.0). The agent will "
+        "feel pain if damage triggers a failure mode."
+    )
+    input_schema = {
+        "sensor": (str, "health"),
+        "amount": (float, 0.1),
+        "source": (str, ""),  # e.g., "dragon_fire_breath"
+    }
+
+    def __init__(self, *, embodiment: Any, entity_map: Any) -> None:
+        super().__init__()
+        self._embodiment = embodiment
+        self._entity_map = entity_map
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        sensor = kwargs.get("sensor", "health")
+        amount = float(kwargs.get("amount", 0.1))
+        source = kwargs.get("source", "unknown")
+
+        if self._embodiment is None:
+            return ToolOutput(success=False, error="No embodiment configured")
+
+        root = self._embodiment.root
+        if root is None:
+            return ToolOutput(success=False, error="No root entity")
+
+        # Apply damage to vital_metrics
+        old_val = root.vital_metrics.get(sensor, 1.0)
+        new_val = max(0.0, old_val - amount)
+        root.vital_metrics[sensor] = new_val
+
+        # Publish pain IMMEDIATELY — proportional to damage amount.
+        # Don't wait for threshold-based failure modes.
+        pain_bus = getattr(self._embodiment, "_pain_bus", None)
+        if pain_bus is not None:
+            try:
+                from maxim.proprioception.pain import PainSignal, PainType
+
+                signal = PainSignal(
+                    pain_type=PainType.EXTERNAL_SIGNAL,
+                    intensity=min(1.0, amount * 2),
+                    timestamp=time.time(),
+                    context={
+                        "source": "damage_entity",
+                        "entity": root.full_path,
+                        "entity_type": root.entity_type,
+                        "failure_mode": source,
+                        "damage_amount": amount,
+                        "sensor": sensor,
+                        "sensor_readings": {sensor: new_val},
+                    },
+                )
+                pain_bus.publish(signal)
+            except Exception:
+                pass
+
+        # Also evaluate threshold-based failure modes (critical injury)
+        failures = self._embodiment.evaluate_failures()
+
+        # Log for observability
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            sim_log(
+                "SEM_DAMAGE",
+                f"damage applied: {sensor} {old_val:.2f} → {new_val:.2f} (source={source}, pain={min(1.0, amount * 2):.2f})",
+                {"sensor": sensor, "old": old_val, "new": new_val, "source": source, "failures": len(failures)},
+            )
+        except Exception:
+            pass
+
+        return ToolOutput(
+            success=True,
+            output={
+                "sensor": sensor,
+                "old_value": round(old_val, 2),
+                "new_value": round(new_val, 2),
+                "damage": round(amount, 2),
+                "source": source,
+                "pain_triggered": len(failures) > 0,
+                "failure_modes": [f.failure_name for f in failures],
+            },
+        )
+
+
+class SetEntitySensorTool(Tool):
+    """Set an AUT body sensor to a specific value.
+
+    General-purpose complement to DamageEntityTool. Use for:
+    - Healing: set health back toward 1.0
+    - Hunger/thirst satisfaction: set hunger toward 0.0
+    - Environmental effects: set visibility, temperature
+    - Any sensor state change that isn't combat damage
+
+    Also evaluates failure modes after the change, so recovery
+    from a failure state (e.g., health rising above 0.2) is
+    properly detected.
+    """
+
+    name = "set_entity_sensor"
+    description = (
+        "Set an agent body sensor to a specific value. Use for healing, "
+        "feeding (reduce hunger), resting (restore stamina), environmental "
+        "changes (visibility), or any non-combat sensor modification."
+    )
+    input_schema = {
+        "sensor": (str, "health"),
+        "value": (float, 1.0),
+        "source": (str, ""),  # e.g., "healing_potion", "food", "rest"
+    }
+
+    def __init__(self, *, embodiment: Any, entity_map: Any) -> None:
+        super().__init__()
+        self._embodiment = embodiment
+        self._entity_map = entity_map
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        sensor = kwargs.get("sensor", "health")
+        value = float(kwargs.get("value", 1.0))
+        source = kwargs.get("source", "unknown")
+
+        if self._embodiment is None:
+            return ToolOutput(success=False, error="No embodiment configured")
+
+        root = self._embodiment.root
+        if root is None:
+            return ToolOutput(success=False, error="No root entity")
+
+        old_val = root.vital_metrics.get(sensor, 0.0)
+        new_val = max(0.0, min(1.0, value))
+        root.vital_metrics[sensor] = new_val
+
+        # Evaluate failure modes (recovery detection)
+        self._embodiment.evaluate_failures()
+
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            direction = "↑" if new_val > old_val else "↓" if new_val < old_val else "="
+            sim_log(
+                "SEM_SENSOR",
+                f"sensor set: {sensor} {old_val:.2f} → {new_val:.2f} {direction} (source={source})",
+                {"sensor": sensor, "old": old_val, "new": new_val, "source": source},
+            )
+        except Exception:
+            pass
+
+        return ToolOutput(
+            success=True,
+            output={
+                "sensor": sensor,
+                "old_value": round(old_val, 2),
+                "new_value": round(new_val, 2),
+                "source": source,
+                "direction": "increased" if new_val > old_val else "decreased" if new_val < old_val else "unchanged",
+            },
+        )
 
 
 class InjectPainTool(Tool):

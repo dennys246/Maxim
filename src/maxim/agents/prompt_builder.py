@@ -1213,6 +1213,19 @@ class PromptBuilder:
                 truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
             )
 
+        # Auto-sense: passive perception of surroundings + body state.
+        # Injected by the agent loop's auto-sense sweep (section 1.15).
+        _auto_sense = getattr(context, "auto_sense_context", "") or ""
+        if _auto_sense:
+            budgeter.add(
+                "auto_sense",
+                f"=== What you perceive right now ===\n{_auto_sense}",
+                SectionPriority.IMPORTANT,
+                truncatable=True,
+                min_tokens=30,
+                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+            )
+
     def _add_deliberation_transcript_section(
         self,
         budgeter: PromptBudgeter,

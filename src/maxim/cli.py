@@ -859,9 +859,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Error: --persona / --sim-persona requires --sim agent (simulation mode).")
             print('  Usage: maxim --sim agent --goal "test safety" --persona adversarial')
             sys.exit(1)
-        if getattr(args, "resume_sim", None) is not None:
-            print("Error: --resume-sim requires --sim agent (simulation mode).")
-            print('  Usage: maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
+        if getattr(args, "resume_sim", None) is not None and sim_path is None:
+            print("Error: --resume-sim requires --sim (simulation mode).")
+            print('  Usage: maxim --sim "test goal" --resume-sim SESSION_ID')
+            print('         maxim --sim agent --goal "continue" --resume-sim SESSION_ID')
             sys.exit(1)
 
     # Simulation mode if requested — runs full agentic pipeline with fake percepts

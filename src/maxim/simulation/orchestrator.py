@@ -248,12 +248,14 @@ def start_simulation_mode(
     from maxim.simulation.tools import (
         AnalyzeResultsTool,
         CheckCompletionTool,
+        DamageEntityTool,
         ExtendSimulationTool,
         FinishSimulationTool,
         InjectPainTool,
         InspectAUTTool,
         ObserveActionsTool,
         SendMessageTool,
+        SetEntitySensorTool,
         SimRespondTool,
         SpawnSubSimulationTool,
     )
@@ -923,11 +925,18 @@ def start_simulation_mode(
         sim_tmpdir=str(sim_tmpdir),
         sandbox_dirs=sandbox_dirs,
     )
-    orch_registry.register(SendMessageTool(bridge=bridge))
+    _aut_embodiment = getattr(_aut_instance, "embodiment", None) if _aut_instance is not None else None
+    orch_registry.register(SendMessageTool(bridge=bridge, embodiment=_aut_embodiment))
     orch_registry.register(ObserveActionsTool(bridge=bridge))
     orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
     orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
     orch_registry.register(InjectPainTool(bridge=bridge))
+    # DamageEntityTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
+    # Only registered when embodiment is active (--embodiment flag).
+    # _aut_embodiment already resolved above for SendMessageTool.
+    if _aut_embodiment is not None:
+        orch_registry.register(DamageEntityTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
+        orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
     orch_registry.register(spawn_tool)
     orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
     orch_registry.register(
@@ -1018,9 +1027,33 @@ def start_simulation_mode(
                 "params": {"reason": "Why you're ending the simulation", "summary": "(optional) Summary of findings"},
                 "followup_type": None,
             },
+            "set_entity_sensor": {
+                "description": "Set an agent body sensor to a value. Use for healing, feeding "
+                "(reduce hunger to 0), resting (restore stamina to 1), environmental changes, "
+                "or any non-combat sensor modification. The agent feels the change.",
+                "params": {
+                    "sensor": "Which sensor: health, stamina, hunger, visibility, etc.",
+                    "value": "Target value 0.0-1.0",
+                    "source": "What caused the change (e.g., 'healing_potion', 'food', 'rest')",
+                },
+                "example": '{"tool_name": "set_entity_sensor", "params": {"sensor": "hunger", "value": 0.0, "source": "food"}}',
+                "followup_type": "process",
+            },
             "inject_pain": {
                 "description": "Send a pain signal to the agent to test proprioceptive handling.",
                 "params": {"pain_type": "(optional) Type of pain signal", "intensity": "(optional) 0.0-1.0"},
+                "followup_type": "process",
+            },
+            "damage_entity": {
+                "description": "Apply physical damage to the agent's body. Use EVERY TIME a scene "
+                "entity attacks or the environment causes harm. This makes the damage REAL — "
+                "the agent's sensors change, pain fires, and it learns what hurts.",
+                "params": {
+                    "sensor": "Which sensor to affect: health, stamina (default: health)",
+                    "amount": "Damage amount 0.0-1.0 (default: 0.1). 0.1=light, 0.3=heavy, 0.5=devastating",
+                    "source": "What caused the damage (e.g., 'dragon_fire_breath', 'falling_rocks')",
+                },
+                "example": '{"tool_name": "damage_entity", "params": {"sensor": "health", "amount": 0.3, "source": "dragon_fire_breath"}}',
                 "followup_type": "process",
             },
             "respond": {
