@@ -422,16 +422,28 @@ def generate_scene_manifest(llm: Any, goal: str) -> str:
     failure — the caller should proceed without pre-triggering.
 
     Args:
-        llm: LLM router or similar (must have ``generate_text``).
+        llm: LLM router or similar (must have ``generate_json``).
         goal: The simulation goal string.
     """
     prompt = f"{_MANIFEST_SYSTEM}\n\nSimulation goal: {goal}\n\nList the entities:"
 
     try:
-        text = llm.generate_text(prompt, max_tokens=300)
-        if text and text.strip():
-            log.info("Scene manifest generated: %d chars", len(text.strip()))
-            return text.strip()
+        # Use generate_json since LLMRouter doesn't have generate_text.
+        # Ask for JSON with an "entities" key to get structured output,
+        # then join into text for the imagination pipeline.
+        result = llm.generate_json(
+            f'{prompt}\n\nRespond with JSON: {{"entities": ["entity 1 description", "entity 2 description", ...]}}',
+            max_tokens=300,
+        )
+        if isinstance(result, dict):
+            entities = result.get("entities", [])
+            if entities:
+                text = "\n".join(str(e) for e in entities)
+                log.info("Scene manifest generated: %d entities", len(entities))
+                return text
+        elif isinstance(result, str) and result.strip():
+            log.info("Scene manifest generated: %d chars", len(result.strip()))
+            return result.strip()
     except Exception as e:
         log.warning("Scene manifest generation failed: %s", e)
 

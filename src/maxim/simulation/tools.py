@@ -162,8 +162,11 @@ class SendMessageTool(Tool):
     responses), then returns the full result.
 
     When embodiment is active and the probe text describes an attack,
-    automatically applies SEM damage so the agent feels it physically.
-    The orchestrator doesn't need to call damage_entity separately.
+    auto-applies light damage via ``DamageComponentTool`` as a fallback
+    for orchestrator LLMs (especially 14B models) that don't reliably
+    call ``damage_component`` explicitly.  Targets torso by default.
+    When the orchestrator DOES call damage_component, this stacks as
+    a minor additional hit.
     """
 
     name = "send_message"
@@ -191,11 +194,42 @@ class SendMessageTool(Tool):
         if not text:
             return ToolOutput(success=False, error="text is required")
 
-        # Auto-damage removed — damage is now a deliberate orchestrator
-        # action via DamageComponentTool (or the deprecated DamageEntityTool
-        # shim).  This fixes the double-damage bug where auto-damage AND
-        # explicit damage_entity could fire on the same attack event.
-        # See docs/plans/component_level_damage.md Stage 2.
+        # Auto-damage fallback: if the orchestrator LLM doesn't call
+        # damage_component explicitly (common with 14B models that ignore
+        # tool-calling instructions), auto-detect attacks in narration and
+        # apply light damage so the agent feels SOMETHING.  When the
+        # orchestrator DOES call damage_component, this stacks as a minor
+        # additional hit — narratively appropriate ("you got clawed AND
+        # the claw dug into your arm").  Larger models that reliably call
+        # damage_component will eventually make this path obsolete.
+        if self._embodiment is not None:
+            is_attack, amount, source = _detect_attack(text)
+            if is_attack and self._embodiment.root is not None:
+                # Use DamageComponentTool for component-level damage
+                # instead of flat health mutation.
+                try:
+                    from maxim.simulation.tools import DamageComponentTool
+
+                    _auto_damage = DamageComponentTool(
+                        embodiment=self._embodiment,
+                        entity_map=None,
+                    )
+                    _auto_damage.execute(
+                        component="torso",
+                        amount=amount,
+                        source=f"auto_{source}",
+                    )
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
+
+                        sim_log(
+                            "SEM_DAMAGE",
+                            f"auto-damage fallback: torso amount={amount:.2f} source=auto_{source}",
+                        )
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
 
         # Don't use LLM-requested timeout — it often guesses 30s which is
         # too short for local models. Let the bridge's default (120s) apply.
