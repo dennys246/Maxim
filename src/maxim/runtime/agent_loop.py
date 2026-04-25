@@ -970,7 +970,7 @@ def run_agentic_loop(
                         _obs_keys = (
                             list(observation.keys()) if hasattr(observation, "keys") else type(observation).__name__
                         )
-                        sim_log("SEM_TRACE", f"Imagination skipped: no percept_text (obs keys: {_obs_keys})")
+                        sim_log("SEM_TRACE", f"Imagination skipped: no percept_text (obs keys: {_obs_keys})", _force_debug=True)
                     except Exception:
                         pass
             except Exception as e:
