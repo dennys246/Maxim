@@ -104,14 +104,24 @@ In interactive mode, the thinking panel (left side of the display) shows a **con
 
 ## ThoughtGate
 
-The ThoughtGate decides when the agent should deliberate. It composes four checks in a short-circuit cascade:
+The ThoughtGate decides when the agent should deliberate. It composes five checks in a short-circuit cascade:
 
 1. **Refractory:** Don't re-fire within N ticks of the last deliberation (default: 2 ticks)
 2. **Energy:** Don't think below 15% of the token budget
 3. **Salience score:** Run the SalienceScorer over the working memory head
 4. **Adaptive threshold:** Score vs. AdaptiveThresholdController (adjusts based on whether past deliberations were useful)
+5. **Goal reward bias:** NAc modulates the threshold based on whether deliberation under the current goal has historically produced good outcomes
 
 If all checks pass, deliberation proceeds. If any fails, the agent acts on the percept without deliberating.
+
+### Goal-level learning
+
+Thoughts carry a **goal tag** — the active goal when the thought was created. When the resulting action produces an outcome, NAc credits the goal:
+
+- **Positive outcome** → `credit_goal(goal, +1.0)` → ThoughtGate threshold **lowers** next time this goal is active (direct pathway: "deliberation helped, do it again")
+- **Negative outcome** → `credit_goal(goal, -1.0)` → ThoughtGate threshold **raises** (indirect pathway: "deliberation was unproductive, act faster")
+
+This is the first bidirectional learning signal in the architecture — `_goal_reward_bias` allows `[-max, +max]`, unlike substrate `_reward_bias` which only widens EC recognition `[0, max]`. The agent learns both **when to think** and **when not to bother**.
 
 ## Token Budget
 
@@ -184,8 +194,8 @@ This separation is managed by `EntityMap` ownership tracking. `sense_presence` s
 ## Architecture
 
 ```
-ThoughtGate.should_think()
-  │ (refractory → energy → salience → adaptive threshold)
+ThoughtGate.should_think(goal_reward_bias=nac.get_goal_reward_bias(goal))
+  │ (refractory → energy → salience → adaptive threshold - goal_bias)
   ▼
 BioEnrichmentPipeline.enrich(percept_text)
   │ (hippocampus recall, NAc predictions, EC concepts, cerebellum motor programs)
@@ -193,7 +203,7 @@ BioEnrichmentPipeline.enrich(percept_text)
 _compute_thought_salience(n_sections, n_memories, jaccard)
   │
   ▼
-WMS.add(THOUGHT, salience=computed, content={enrichment})
+WMS.add(THOUGHT, salience=computed, goal_tag=active_goal, ref=thought_id)
   │
   ▼
 LLM prompt ← deliberation transcript + bio-enrichment sections
@@ -201,7 +211,7 @@ LLM prompt ← deliberation transcript + bio-enrichment sections
   ▼
 LLM response: {ready_to_act, action, reasoning, confidence}
   │
-  ├─ ready_to_act=true → execute action
+  ├─ ready_to_act=true → execute action → nac.credit_goal(goal, ±1.0)
   └─ ready_to_act=false → feed reasoning back → cycle 2+
 ```
 
@@ -209,11 +219,16 @@ LLM response: {ready_to_act, action, reasoning, confidence}
 
 | File | Role |
 |------|------|
-| `runtime/agent_loop.py` | `_run_deliberation_cycles`, `_compute_thought_salience`, `_jaccard_similarity` |
-| `runtime/thought_gate.py` | ThoughtGate composite gate |
+| `runtime/agent_loop.py` | `_run_deliberation_cycles`, `_compute_thought_salience`, `_jaccard_similarity`, goal_tag wiring |
+| `runtime/thought_gate.py` | ThoughtGate composite gate (incl. `goal_reward_bias` modulation) |
+| `runtime/tool_dispatch.py` | `record_outcome` — calls `nac.credit_goal()` at action outcome |
+| `decisions/nac.py` | `_goal_reward_bias`, `credit_goal()`, `get_goal_reward_bias()`, `decay_goal_reward_biases()` |
+| `decisions/temporal_credit.py` | `TemporalCreditDistributor` — temporal-phase-aware reward distribution |
+| `decisions/valence_signal.py` | `ValenceSignal` — abstract reward/punishment transport type |
+| `time/temporal_event.py` | `TemporalEvent` — signal source envelope for temporal credit |
 | `integration/bio_enrichment.py` | BioEnrichmentPipeline |
 | `agents/prompt_builder.py` | `_add_deliberation_transcript_section`, bio-enrichment suppression |
 | `agents/exec_prompts.py` | PFC_PREAMBLE (inner monologue framing) |
-| `agents/working_memory.py` | `WorkingMemorySet.top_by_salience` |
+| `agents/working_memory.py` | `WorkingMemorySet.top_by_salience`, `receive_valence`, `goal_tag` on `WMEntry` |
 | `simulation/sim_logger.py` | `sim_deliberation_update`, `sim_deliberation_end` |
 | `interactive/display.py` | `_ThinkingState`, `set_thinking`, `_build_thinking_panel` |

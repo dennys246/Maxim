@@ -80,6 +80,7 @@ class ThoughtGate:
         working_memory: Any,
         context: GatingContext | None = None,
         current_tick: int = 0,
+        goal_reward_bias: float = 0.0,
     ) -> GateDecision:
         """Decide whether Exec should deliberate on working memory.
 
@@ -87,6 +88,10 @@ class ThoughtGate:
             working_memory: The Exec-owned WorkingMemorySet.
             context: Gating context (goal, energy, load).
             current_tick: Monotonic tick from the agent loop or WMS.
+            goal_reward_bias: NAc goal-level reward bias.  Positive lowers
+                threshold (direct pathway "go" — deliberation helped before).
+                Negative raises threshold (indirect pathway "no-go" —
+                deliberation was unproductive under this goal).
 
         Returns:
             GateDecision with passed=True if deliberation should proceed.
@@ -145,8 +150,11 @@ class ThoughtGate:
             content = head.content if isinstance(head.content, str) else str(head.content)
             score = self._scorer.score(content, ctx)
 
-        # 4. Adaptive threshold check
+        # 4. Adaptive threshold check (modulated by goal reward bias)
         threshold = self._threshold.combined_threshold
+        # Goal reward bias: positive → lower threshold (deliberate more),
+        # negative → raise threshold (skip deliberation).
+        threshold = threshold - goal_reward_bias
         threshold = max(threshold, self._config.min_combined_score)
 
         if score.combined < threshold:

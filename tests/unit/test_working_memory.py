@@ -36,6 +36,20 @@ class TestWorkingMemorySetBasic:
         assert entry.agent_id == "test"
         assert entry.tick == 0
 
+    def test_add_with_goal_tag(self):
+        wms = WorkingMemorySet(agent_id="test")
+        entry = wms.add(
+            WorkingMemoryKind.THOUGHT,
+            content="deliberation",
+            goal_tag="escape the dungeon",
+        )
+        assert entry.goal_tag == "escape the dungeon"
+
+    def test_add_goal_tag_default_none(self):
+        wms = WorkingMemorySet(agent_id="test")
+        entry = wms.add(WorkingMemoryKind.PERCEPT, content="hello")
+        assert entry.goal_tag is None
+
     def test_add_increments_tick(self):
         wms = WorkingMemorySet(agent_id="test")
         e1 = wms.add(WorkingMemoryKind.PERCEPT, content="a")
@@ -114,6 +128,88 @@ class TestWorkingMemorySetBasic:
         assert wms.size == 0
         # tick is NOT reset — monotonic
         assert wms.current_tick == old_tick
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Valence signal modulation
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestValenceModulation:
+    def test_receive_valence_creates_ema(self):
+        wms = WorkingMemorySet(agent_id="test")
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="think")
+        wms.receive_valence(entry.tick, 1.0)
+        assert entry.tick in wms._valence_ema
+        assert wms._valence_ema[entry.tick] > 0
+
+    def test_ema_bounded(self):
+        """EMA stays in [-1, +1] even with extreme inputs."""
+        wms = WorkingMemorySet(agent_id="test")
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="think")
+        for _ in range(100):
+            wms.receive_valence(entry.tick, 1.0)
+        assert wms._valence_ema[entry.tick] <= 1.0
+
+        for _ in range(200):
+            wms.receive_valence(entry.tick, -1.0)
+        assert wms._valence_ema[entry.tick] >= -1.0
+
+    def test_negative_valence_boosts_salience(self):
+        """Negative valence increases effective salience (survival)."""
+        wms = WorkingMemorySet(agent_id="test")
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="pain", salience=0.5)
+        wms.receive_valence(entry.tick, -1.0)
+        effective = wms.get_effective_salience(entry)
+        assert effective > entry.salience
+
+    def test_positive_valence_boosts_salience(self):
+        """Positive valence increases effective salience (reinforcement)."""
+        wms = WorkingMemorySet(agent_id="test")
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="reward", salience=0.5)
+        wms.receive_valence(entry.tick, 1.0)
+        effective = wms.get_effective_salience(entry)
+        assert effective > entry.salience
+
+    def test_top_by_salience_uses_effective(self):
+        """top_by_salience ranks by effective salience (base + abs(ema))."""
+        wms = WorkingMemorySet(agent_id="test")
+        low = wms.add(WorkingMemoryKind.THOUGHT, content="low", salience=0.3)
+        wms.add(WorkingMemoryKind.THOUGHT, content="high", salience=0.5)
+
+        # Boost the low-base entry with valence
+        wms.receive_valence(low.tick, 1.0)  # EMA = 0.1
+
+        # If 0.3 + 0.1 > 0.5 + 0.0, low ranks higher — but 0.4 < 0.5
+        # Need bigger boost
+        for _ in range(10):
+            wms.receive_valence(low.tick, 1.0)
+        # Now low.effective ≈ 0.3 + 0.65 = 0.95 > 0.5
+
+        result = wms.top_by_salience({WorkingMemoryKind.THOUGHT}, limit=2)
+        assert result[0].content == "low"  # Valence-boosted entry ranks first
+
+    def test_eviction_prunes_valence_ema(self):
+        """Evicted entries don't leak in _valence_ema."""
+        wms = WorkingMemorySet(agent_id="test", capacity=3)
+        entries = []
+        for i in range(3):
+            e = wms.add(WorkingMemoryKind.THOUGHT, content=f"t-{i}")
+            wms.receive_valence(e.tick, 0.5)
+            entries.append(e)
+
+        assert len(wms._valence_ema) == 3
+
+        # Add a 4th — first entry (tick=0) should be evicted + pruned
+        wms.add(WorkingMemoryKind.THOUGHT, content="t-3")
+        assert entries[0].tick not in wms._valence_ema
+        assert len(wms._valence_ema) == 2  # tick 1 and 2 remain
+
+    def test_no_valence_means_base_salience(self):
+        """Without valence signals, effective == base."""
+        wms = WorkingMemorySet(agent_id="test")
+        entry = wms.add(WorkingMemoryKind.THOUGHT, content="clean", salience=0.7)
+        assert wms.get_effective_salience(entry) == 0.7
 
 
 # ─────────────────────────────────────────────────────────────────────────────

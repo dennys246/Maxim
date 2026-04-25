@@ -71,8 +71,8 @@ class FakeWMS:
         self.entries: list[dict] = []
         self.current_tick = 0
 
-    def add(self, kind: Any, *, content: Any, salience: float = 0.5) -> None:
-        self.entries.append({"kind": kind, "content": content, "salience": salience})
+    def add(self, kind: Any, *, content: Any, salience: float = 0.5, **kwargs: Any) -> None:
+        self.entries.append({"kind": kind, "content": content, "salience": salience, **kwargs})
 
     def by_kind(self, kinds: set, limit: int = 10) -> list:
         return []

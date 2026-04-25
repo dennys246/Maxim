@@ -72,6 +72,7 @@ class BioStack:
     default_network: Any  # DefaultNetwork | None — optional dep
     thought_gate: Any  # ThoughtGate | None — PFC deliberation gate
     bio_enrichment_pipeline: Any  # BioEnrichmentPipeline | None — PFC enrichment
+    distributor: Any  # TemporalCreditDistributor | None — temporal credit
 
     def save_cerebellum(self) -> None:
         """Save cerebellum state to its persistence path, if configured.
@@ -85,6 +86,20 @@ class BioStack:
             path = getattr(config, "persistence_path", None)
             if path:
                 self.cerebellum.save(path)
+
+    def on_session_end(self) -> None:
+        """Centralized session-end cleanup.
+
+        Calls ``save_cerebellum()`` + ``distributor.cleanup_session()``.
+        Single call site prevents the N-sites-forget-to-call bug class.
+        Idempotent — safe to call multiple times.
+        """
+        self.save_cerebellum()
+        if self.distributor is not None:
+            try:
+                self.distributor.cleanup_session()
+            except Exception as e:
+                logger.debug("distributor.cleanup_session failed: %s", e)
 
 
 def build_bio_stack(
@@ -273,10 +288,17 @@ def build_bio_stack(
                 memory_hub.cerebellum = cerebellum
             logger.info("Cerebellum initialized in bio-stack")
 
-    # -- Step 4d: distribute_reward subscriber -----------------------------
-    # Map Reaction valence/intensity to NAc.distribute_reward so that
+    # -- Step 4d: TemporalCreditDistributor + reward subscriber -------------
+    # Construct the distributor (composes NAc + SCN for temporal-phase-aware
+    # credit).  The distributor REPLACES the old nac.distribute_reward()
+    # subscriber — they must NOT coexist for the same agent.
+    from maxim.decisions.temporal_credit import TemporalCreditDistributor
+
+    distributor = TemporalCreditDistributor(nac=nac, scn=scn)
+
+    # Map Reaction valence/intensity to distributor.distribute so that
     # positive/negative reactions during an episode feed into causal
-    # learning even when there is no explicit tool outcome.
+    # learning with temporal credit fallback.
     def _distribute_reward_from_reaction(reaction: Any) -> None:
         val = getattr(reaction, "valence", None)
         intensity = getattr(reaction, "intensity", 0.0)
@@ -299,7 +321,10 @@ def build_bio_stack(
             if agent_id is None:
                 return
             try:
-                nac.distribute_reward(agent_id, reward)
+                # Route through distributor (adds temporal fallback + goal
+                # credit).  goal_tag=None from reaction path — goal credit
+                # flows through the deliberation path in tool_dispatch.py.
+                distributor.distribute(agent_id, reward, goal_tag=None)
             except Exception as _dr:
                 logger.debug("distribute_reward failed: %s", _dr)
 
@@ -359,6 +384,7 @@ def build_bio_stack(
         default_network=default_network,
         thought_gate=thought_gate,
         bio_enrichment_pipeline=bio_enrichment_pipeline,
+        distributor=distributor,
     )
 
 

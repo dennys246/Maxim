@@ -187,3 +187,58 @@ class TestThoughtGateComposite:
         d2 = gate.should_think(working_memory=_FakeWMS(), current_tick=1)
         assert not d2.passed
         assert "refractory" in d2.reason
+
+
+class TestGoalRewardBiasModulation:
+    """Tests for goal_reward_bias parameter (Phase 3)."""
+
+    def test_positive_bias_lowers_threshold(self):
+        """Positive goal bias makes borderline scores pass."""
+        scorer = _FakeScorer(combined=0.45)
+        gate = ThoughtGate(
+            scorer=scorer,
+            config=ThoughtGateConfig(refractory_ticks=0, min_combined_score=0.1),
+        )
+        # Without bias: score 0.45 may be below the adaptive threshold
+        d1 = gate.should_think(working_memory=_FakeWMS(), current_tick=0)
+        threshold_no_bias = d1.threshold_used
+
+        # With positive bias: threshold drops (floor is 0.1, room for bias)
+        d2 = gate.should_think(working_memory=_FakeWMS(), current_tick=100, goal_reward_bias=0.2)
+        threshold_with_bias = d2.threshold_used
+        assert threshold_with_bias < threshold_no_bias
+
+    def test_negative_bias_raises_threshold(self):
+        """Negative goal bias makes it harder to deliberate."""
+        scorer = _FakeScorer(combined=0.8)
+        gate = ThoughtGate(
+            scorer=scorer,
+            config=ThoughtGateConfig(refractory_ticks=0, min_combined_score=0.3),
+        )
+        # Without bias: should pass
+        d1 = gate.should_think(working_memory=_FakeWMS(), current_tick=0)
+        assert d1.passed
+
+        # With large negative bias: threshold rises above score
+        d2 = gate.should_think(working_memory=_FakeWMS(), current_tick=100, goal_reward_bias=-0.5)
+        threshold_with_neg = d2.threshold_used
+        assert threshold_with_neg > d1.threshold_used
+
+    def test_zero_bias_is_default(self):
+        """Zero bias has no effect (backward compatible)."""
+        gate = ThoughtGate(config=ThoughtGateConfig(refractory_ticks=0))
+        d1 = gate.should_think(working_memory=_FakeWMS(), current_tick=0)
+        d2 = gate.should_think(working_memory=_FakeWMS(), current_tick=100, goal_reward_bias=0.0)
+        assert d1.threshold_used == d2.threshold_used
+
+    def test_threshold_floor_respected(self):
+        """Even with large positive bias, threshold doesn't go below min."""
+        scorer = _FakeScorer(combined=0.1)
+        gate = ThoughtGate(
+            scorer=scorer,
+            config=ThoughtGateConfig(refractory_ticks=0, min_combined_score=0.3),
+        )
+        d = gate.should_think(working_memory=_FakeWMS(), current_tick=0, goal_reward_bias=10.0)
+        # min_combined_score = 0.3, score = 0.1 → still fails
+        assert not d.passed
+        assert d.threshold_used >= 0.3

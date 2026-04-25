@@ -529,6 +529,158 @@ class TestTemporalEligibility:
         assert "node-b" not in credited_ids
 
 
+class TestTemporalAnchorPruning:
+    """Test anchor pruning edge cases."""
+
+    def _make_nac(self, temporal_window_seconds: float = 300.0):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        return NAc(NACConfig(temporal_window_seconds=temporal_window_seconds))
+
+    def test_anchors_survive_in_short_session(self):
+        """In a short sim (<5 min), ALL anchors survive — pruning never fires.
+
+        Regression guard: anchors are pruned only when fast-decay expires
+        AND age > temporal_window_seconds. With default 300s window,
+        anchors created within the last 5 minutes are always retained.
+        """
+        from maxim.time.temporal_signature import TemporalSignature
+
+        nac = self._make_nac(temporal_window_seconds=300.0)
+
+        sig = TemporalSignature.now()
+        nac.update_eligibility("agent", "node-a", 1.0, temporal_sig=sig)
+        nac.update_eligibility("agent", "node-b", 0.8, temporal_sig=sig)
+
+        # Run enough decay cycles to expire fast-decay traces
+        for _ in range(200):
+            nac.decay_eligibility(factor=0.9)
+
+        # Fast-decay should be gone
+        active = {k: v for k, v in nac._eligibility.items() if v > 0.01}
+        assert not active, "Fast-decay traces should be expired"
+
+        # But temporal anchors survive (session is <5 min old)
+        assert ("agent", "node-a") in nac._temporal_anchors
+        assert ("agent", "node-b") in nac._temporal_anchors
+
+    def test_anchors_pruned_after_temporal_window(self):
+        """Anchors ARE pruned when age exceeds temporal_window_seconds."""
+        from maxim.time.temporal_signature import TemporalSignature
+
+        nac = self._make_nac(temporal_window_seconds=0.0)  # Zero window = prune immediately
+
+        sig = TemporalSignature.now()
+        nac.update_eligibility("agent", "node-a", 1.0, temporal_sig=sig)
+
+        # Decay until fast-decay expires
+        for _ in range(200):
+            nac.decay_eligibility(factor=0.9)
+
+        # With 0s window, anchor should be pruned
+        assert ("agent", "node-a") not in nac._temporal_anchors
+
+
+class TestGoalRewardBias:
+    """Tests for _goal_reward_bias (bidirectional, for ThoughtGate)."""
+
+    def _make_nac(self):
+        from maxim.decisions.nac import NAc
+
+        return NAc()
+
+    def test_credit_goal_positive(self):
+        """Positive credit creates positive bias."""
+        nac = self._make_nac()
+        nac.credit_goal("escape", 1.0)
+        assert nac.get_goal_reward_bias("escape") > 0
+
+    def test_credit_goal_negative(self):
+        """Negative credit creates negative bias (indirect pathway)."""
+        nac = self._make_nac()
+        nac.credit_goal("negotiate", -1.0)
+        assert nac.get_goal_reward_bias("negotiate") < 0
+
+    def test_credit_goal_none_is_noop(self):
+        """credit_goal(None, ...) must not create a phantom None key."""
+        nac = self._make_nac()
+        nac.credit_goal(None, 1.0)
+        assert nac.get_goal_reward_bias(None) == 0.0
+        assert None not in nac._goal_reward_bias
+
+    def test_get_goal_reward_bias_none_returns_zero(self):
+        """get_goal_reward_bias(None) always returns 0.0."""
+        nac = self._make_nac()
+        nac.credit_goal("escape", 1.0)
+        assert nac.get_goal_reward_bias(None) == 0.0
+
+    def test_goal_bias_clamped_bidirectional(self):
+        """Goal bias clamps to [-max, +max], unlike _reward_bias [0, max]."""
+        nac = self._make_nac()
+        cap = nac.config.max_reward_bias
+
+        # Max out positive
+        for _ in range(100):
+            nac.credit_goal("good_goal", 1.0)
+        assert nac.get_goal_reward_bias("good_goal") == pytest.approx(cap, abs=0.001)
+
+        # Max out negative
+        for _ in range(100):
+            nac.credit_goal("bad_goal", -1.0)
+        assert nac.get_goal_reward_bias("bad_goal") == pytest.approx(-cap, abs=0.001)
+
+    def test_decay_goal_reward_biases(self):
+        """Biases decay toward zero over time."""
+        nac = self._make_nac()
+        nac.credit_goal("escape", 1.0)
+        initial = nac.get_goal_reward_bias("escape")
+        assert initial > 0
+
+        for _ in range(10):
+            nac.decay_goal_reward_biases()
+
+        decayed = nac.get_goal_reward_bias("escape")
+        assert 0 < decayed < initial
+
+    def test_decay_prunes_near_zero(self):
+        """Biases below 0.001 are pruned on decay."""
+        nac = self._make_nac()
+        nac.credit_goal("ephemeral", 0.01)
+
+        # Decay until pruned
+        for _ in range(500):
+            pruned = nac.decay_goal_reward_biases()
+            if pruned > 0:
+                break
+
+        assert "ephemeral" not in nac._goal_reward_bias
+
+    def test_serialization_roundtrip(self):
+        """goal_reward_bias survives dump/load_state."""
+        nac = self._make_nac()
+        nac.credit_goal("escape", 1.0)
+        nac.credit_goal("negotiate", -1.0)
+
+        state = nac.dump()
+        assert "goal_reward_bias" in state
+        assert state["goal_reward_bias"]["escape"] > 0
+        assert state["goal_reward_bias"]["negotiate"] < 0
+
+        # Load into fresh NAc
+        nac2 = self._make_nac()
+        nac2.load_state(state)
+        assert nac2.get_goal_reward_bias("escape") > 0
+        assert nac2.get_goal_reward_bias("negotiate") < 0
+
+    def test_load_state_backward_compatible(self):
+        """Old snapshots without goal_reward_bias load cleanly."""
+        nac = self._make_nac()
+        old_state = {"links": {}, "outcome_index": {}, "priors": {}, "total_observations": 0, "reward_bias": {}}
+        nac.load_state(old_state)
+        assert nac._goal_reward_bias == {}
+        assert nac.get_goal_reward_bias("anything") == 0.0
+
+
 class TestNAcPersistence:
     """Test save/load roundtrip."""
 

@@ -855,7 +855,9 @@ class TestAffordanceTransferAnnotations:
 
         registry = MagicMock()
         registry.list_all.return_value = ["rusty_sword_fire_slash"]
-        registry.get.return_value = MagicMock(description="Flaming slash attack")
+        mock_tool = MagicMock(description="Flaming slash attack")
+        mock_tool._affordance_name = "fire_slash"
+        registry.get.return_value = mock_tool
         registry.get_tool_scene.return_value = "scene-1"
         registry.is_tool_active.return_value = True
 

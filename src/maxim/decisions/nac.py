@@ -156,6 +156,14 @@ class NAc:
         self._temporal_anchors: dict[tuple[str, str], tuple[float, Any]] = {}
         # Maps (agent_id, node_id) → (original_activation, TemporalSignature)
 
+        # Goal-level reward bias: tracks whether deliberation under a goal
+        # type historically produces good outcomes.  Keyed by goal string.
+        # Range: [-max_reward_bias, +max_reward_bias] — UNLIKE _reward_bias
+        # which clamps to [0, max].  Positive = direct pathway "go" (lower
+        # ThoughtGate threshold), negative = indirect pathway "no-go" (raise
+        # threshold, skip deliberation).  Persisted across sessions.
+        self._goal_reward_bias: dict[str, float] = {}
+
         # Stats
         self._total_observations = 0
         self._last_decay_time = time.time()
@@ -979,6 +987,19 @@ class NAc:
         """
         return self._reward_bias.get((agent_id, node_id), 0.0)
 
+    def get_temporal_anchors(self, agent_id: str) -> dict[str, tuple[float, Any]]:
+        """Return temporal anchors for an agent, keyed by node_id.
+
+        The distributor reads these to provide phase-similarity credit
+        after fast-decay traces expire.  NAc owns the anchors — the
+        distributor does NOT mutate them.
+
+        Returns:
+            ``{node_id: (original_activation, TemporalSignature)}``
+        """
+        with self._lock:
+            return {nid: anchor for (aid, nid), anchor in self._temporal_anchors.items() if aid == agent_id}
+
     def credit_node(
         self,
         agent_id: str,
@@ -1010,6 +1031,60 @@ class NAc:
                 self._reward_bias[key],
                 reward,
             )
+
+    # -- Goal-level reward bias (bidirectional, for ThoughtGate) ----------
+
+    def credit_goal(self, goal_tag: str | None, reward: float) -> None:
+        """Update goal-level reward bias.
+
+        Unlike credit_node (unidirectional [0, max]), goal bias allows
+        negative values for indirect pathway "no-go" suppression.
+
+        Args:
+            goal_tag: Active goal string.  None is a no-op (guard against
+                phantom None key in _goal_reward_bias).
+            reward: Positive = deliberation helped, negative = wasted time.
+        """
+        if goal_tag is None:
+            return
+        with self._lock:
+            current = self._goal_reward_bias.get(goal_tag, 0.0)
+            updated = current + self.config.reward_bias_alpha * reward
+            cap = self.config.max_reward_bias
+            self._goal_reward_bias[goal_tag] = max(-cap, min(updated, cap))
+
+    def get_goal_reward_bias(self, goal_tag: str | None) -> float:
+        """Return goal-level reward bias for ThoughtGate modulation.
+
+        Returns 0.0 for None goal (no modulation when goalless).
+        Positive = lower threshold (deliberate more).
+        Negative = raise threshold (skip deliberation).
+        """
+        if goal_tag is None:
+            return 0.0
+        return self._goal_reward_bias.get(goal_tag, 0.0)
+
+    def decay_goal_reward_biases(self) -> int:
+        """Decay goal-level biases toward zero.  Called alongside decay_reward_biases().
+
+        Uses same decay tau as node biases.  Returns count pruned.
+        """
+        if not self._goal_reward_bias:
+            return 0
+        decay_factor = 1.0 / self.config.reward_bias_decay_tau
+        pruned = 0
+        with self._lock:
+            to_remove = []
+            for goal, bias in self._goal_reward_bias.items():
+                new_bias = bias * (1.0 - decay_factor)
+                if abs(new_bias) < 0.001:
+                    to_remove.append(goal)
+                    pruned += 1
+                else:
+                    self._goal_reward_bias[goal] = new_bias
+            for goal in to_remove:
+                del self._goal_reward_bias[goal]
+        return pruned
 
     def update_eligibility(
         self,
@@ -1214,6 +1289,7 @@ class NAc:
                 "priors": self._priors,
                 "total_observations": self._total_observations,
                 "reward_bias": {f"{aid}:{nid}": bias for (aid, nid), bias in self._reward_bias.items()},
+                "goal_reward_bias": dict(self._goal_reward_bias),
             }
 
     def load_state(self, state: dict[str, Any]) -> None:
@@ -1244,6 +1320,9 @@ class NAc:
             parts = key_str.split(":", 1)
             if len(parts) == 2:
                 self._reward_bias[(parts[0], parts[1])] = bias
+
+        # Goal-level reward biases (backward-compatible: missing → empty)
+        self._goal_reward_bias = dict(state.get("goal_reward_bias", {}))
 
     def save(self, path: str | None = None) -> None:
         """Save NAc state to JSON file.

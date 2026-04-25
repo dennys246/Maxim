@@ -501,12 +501,20 @@ class SenseToolsTool(Tool):
             try:
                 from maxim.similarity.decomposer import AFFORDANCE_STRATEGY
 
-                # Decompose the tool name into words — this includes entity
-                # prefix words, but that's acceptable: "rusty" and "sword"
-                # won't match substrate concepts unless they were encoded.
-                # The affordance components ("fire", "slash") are the ones
-                # that carry bias from prior experience.
-                chunks = AFFORDANCE_STRATEGY.extract(tool_name)
+                # Extract the bare affordance name from the tool when possible.
+                # Tool names are "{entity_name}_{affordance_name}" — decomposing
+                # the full name wastes cycles on entity-prefix words ("rusty",
+                # "sword") that won't match substrate concepts.
+                decompose_target = tool_name
+                try:
+                    tool_obj = self._registry.get(tool_name)
+                    aff_name = getattr(tool_obj, "_affordance_name", None)
+                    if aff_name:
+                        decompose_target = aff_name
+                except (KeyError, Exception):
+                    pass  # Fall back to full tool name
+
+                chunks = AFFORDANCE_STRATEGY.extract(decompose_target)
                 for chunk in chunks:
                     concepts = self._atl.recall(name=chunk.text, category="substrate", limit=1)
                     for concept in concepts:

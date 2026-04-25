@@ -1,11 +1,13 @@
 # Deliberative Thought Stream — goal-aware, salience-scored inner monologue
 
-**Status:** Shell plan (2026-04-23), **refined — 5-lens review complete** (2026-04-23)
+**Status:** Stages 1+2 SHIPPED (PR #183, 2026-04-23). **Stages 3, 3b, 4 ABSORBED** into [temporal_credit_integration.md](temporal_credit_integration.md) (2026-04-24).
 **Scope:** ~350-450 LOC across existing modules (no new bio-system)
 **Target version:** 0.9
 **Depends on:** [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) (shipped)
 **Extends:** [goal_depth_integration.md](goal_depth_integration.md) (Stage 3 absorbed here; Stage 1 partially absorbed as goal_tag on THOUGHTs — full GOAL WMS kind remains in goal_depth)
 **Gates:** none; behavioral improvement + architectural foundation
+
+> **Note:** Stages 3 (goal-tagged thoughts + NAc goal-outcome learning), 3b (SCN temporal correlation), and 4 (ValenceSignal) are now tracked in [temporal_credit_integration.md](temporal_credit_integration.md) Phases 4, 3, and 5 respectively.  The deliberation-specific content (goal_tag on WMEntry, _goal_reward_bias on NAc, ThoughtGate goal_reward_bias parameter) is preserved verbatim.  The attribution mechanism (how deliberation events reach NAc) is upgraded from ad-hoc _last_deliberation_event_id to the TemporalEvent protocol + TemporalCreditDistributor.  Stages 1 and 2 below are shipped and unchanged.
 
 ---
 
