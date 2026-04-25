@@ -518,12 +518,16 @@ def _run_deliberation_cycles(
 
         # 2. Add THOUGHT to working memory with computed salience
         if working_memory is not None and formatted:
+            import uuid
+
             from maxim.agents.working_memory import WorkingMemoryKind
 
             working_memory.add(
                 WorkingMemoryKind.THOUGHT,
+                ref=f"thought:{uuid.uuid4().hex[:8]}",
                 content={"source": "pfc_deliberation", "cycle": cycle, "enrichment": formatted[:500]},
                 salience=salience,
+                goal_tag=active_goal,
             )
 
         # 3. Build transcript entry (reasoning + bio-system response)
@@ -1005,9 +1009,14 @@ def run_agentic_loop(
                     # not WMS current_tick (memory entry counter — stays at 0
                     # until entries are added, causing perpetual refractory).
                     try:
+                        _goal_bias = 0.0
+                        if _loop_nac is not None:
+                            _active_goal = state.data.get("active_goal") if hasattr(state, "data") else None
+                            _goal_bias = _loop_nac.get_goal_reward_bias(_active_goal)
                         _gate_decision = thought_gate.should_think(
                             working_memory=_wms,
                             current_tick=step_num,
+                            goal_reward_bias=_goal_bias,
                         )
                         _pfc_gate_passed = _gate_decision.passed
                     except Exception as _ge:
@@ -1072,16 +1081,21 @@ def run_agentic_loop(
                         )
                         # Add THOUGHT to working memory with computed salience
                         if _wms is not None and _percept_enrichment_text:
+                            import uuid
+
                             from maxim.agents.working_memory import WorkingMemoryKind
 
+                            _c1_goal = state.data.get("active_goal") if hasattr(state, "data") else None
                             _wms.add(
                                 WorkingMemoryKind.THOUGHT,
+                                ref=f"thought:{uuid.uuid4().hex[:8]}",
                                 content={
                                     "source": "pfc_deliberation",
                                     "cycle": 1,
                                     "enrichment": _percept_enrichment_text[:500],
                                 },
                                 salience=_salience_c1,
+                                goal_tag=_c1_goal,
                             )
                     else:
                         from maxim.simulation.sim_logger import sim_pre_deliberation
@@ -1613,6 +1627,7 @@ def run_agentic_loop(
                                         llm_worker=llm_worker,
                                         context_pool=context_pool,
                                         nac=_loop_nac,
+                                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                                     )
                             else:
                                 # Log rejected action
@@ -1728,6 +1743,7 @@ def run_agentic_loop(
                     llm_worker=llm_worker,
                     context_pool=context_pool,
                     nac=_loop_nac,
+                    active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                 )
 
                 # Queue as a followup for the next LLM call
@@ -2000,6 +2016,7 @@ def run_agentic_loop(
                         llm_worker=llm_worker,
                         context_pool=context_pool,
                         nac=_loop_nac,
+                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                     )
 
                     # Record plan outcome in MemoryHub for learning
@@ -2136,6 +2153,7 @@ def run_agentic_loop(
                         llm_worker=llm_worker,
                         context_pool=context_pool,
                         nac=_loop_nac,
+                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                     )
 
                     # Mark failure in state
@@ -2250,6 +2268,7 @@ def run_agentic_loop(
                         llm_worker=llm_worker,
                         context_pool=context_pool,
                         nac=_loop_nac,
+                        active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                     )
                     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
                 ctrl.pending_proposal = None
@@ -2290,6 +2309,7 @@ def run_agentic_loop(
                             llm_worker=llm_worker,
                             context_pool=context_pool,
                             nac=_loop_nac,
+                            active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         )
 
                         # L2: Reset deliberation state on non-think tool execution
@@ -2328,6 +2348,7 @@ def run_agentic_loop(
                             llm_worker=llm_worker,
                             context_pool=context_pool,
                             nac=_loop_nac,
+                            active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         )
 
         # ─────────────────────────────────────────────────────────────────
@@ -2832,6 +2853,7 @@ def run_agentic_loop(
             try:
                 _loop_nac.decay_eligibility()
                 _loop_nac.decay_reward_biases()
+                _loop_nac.decay_goal_reward_biases()
             except Exception as e:
                 log_swallowed_exception(e, operation="nac_per_tick_decay")
 

@@ -20,8 +20,11 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 - [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) — **✅ SHIPPED + ARCHIVED** (PR #178, 2026-04-22). Unified think-or-act loop. Supersedes deliberation_observability.md. Experiment: [09_pfc_deliberation_cycle.md](../experiments/09_pfc_deliberation_cycle.md).
 - [archive/interactive_display_overhaul.md](archive/interactive_display_overhaul.md) — **✅ SHIPPED + ARCHIVED** (2026-04-23). Thinking panel, agent focus, resize, /help, context-sensitive scrolling.
 - [archive/deliberation_observability.md](archive/deliberation_observability.md) — **SUPERSEDED + ARCHIVED**. sim_log helpers shipped via unified PFC cycle.
-- [deliberative_thought_stream.md](deliberative_thought_stream.md) — **Stages 1+2 SHIPPED** (PR #183, 2026-04-23). Transcript, salience, thinking panel stream, inner monologue. Stages 3+4 remain.
-- [goal_depth_integration.md](goal_depth_integration.md) — Shell plan. GOAL WMS entry kind, goal-tagged episodes, NAc goal-outcome learning. ~200-300 LOC.
+- [deliberative_thought_stream.md](deliberative_thought_stream.md) — **Stages 1+2 SHIPPED** (PR #183, 2026-04-23). Stages 3/3b/4 **ABSORBED** into temporal_credit_integration.md.
+- [temporal_credit_integration.md](temporal_credit_integration.md) — **Phases 1-7 SHIPPED** (2026-04-24). TemporalEvent, TemporalCreditDistributor, ValenceSignal, goal-tagged thoughts, NAc goal-level bias `[-max,+max]`, ThoughtGate bidirectional modulation, 15 integration tests + 39 unit tests. Absorbs deliberative S3/3b/4 + goal_depth S3.
+- [tool_pain_bridge_temporal_migration.md](tool_pain_bridge_temporal_migration.md) — Shell plan. Migrate ToolPainBridge's 4 SCN sites to emit TemporalEvents through distributor. ~50 LOC.
+- [scn_oscillator_feedback.md](scn_oscillator_feedback.md) — Shell plan, **deferred**. Anticipatory temporal credit via SCN oscillator coupling. ~100-150 LOC. Trigger: 2+ weeks stable production + scenario demonstrating value.
+- [goal_depth_integration.md](goal_depth_integration.md) — Shell plan. GOAL WMS entry kind, goal-tagged episodes, goal persistence. Stage 3 (NAc goal-outcome learning) absorbed by temporal_credit_integration. ~150-200 LOC remaining.
 - [orchestrator_stall_recovery.md](orchestrator_stall_recovery.md) — Shell plan. Tool-cap exemption for send_message + orch diversity injection. ~200-400 LOC.
 - [cross_session_sim_validation.md](cross_session_sim_validation.md) — Shell plan. Prove pre-deliberation enrichment works across sessions.
 
@@ -65,7 +68,7 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 ## Parallel (ship anytime, not gating 1.0)
 
-- [affordance_concept_transfer.md](affordance_concept_transfer.md) — **Stages 0-4 SHIPPED** (2026-04-24). Substrate-native cross-entity learning via EC pattern completion + SCN temporal coupling. AffordanceDecompositionStrategy, entity affordance substrate encoding, temporal eligibility, valence annotations. Pre-existing NAc decay bug fixed. `discover_tools` renamed to `sense_tools`. 39/39 behavioral convergence hypotheses re-confirmed (zero regression). ~505 LOC + tests. First SCN-substrate PoC.
+- [affordance_concept_transfer.md](affordance_concept_transfer.md) — **Stages 0-4 SHIPPED** (2026-04-24). Substrate-native cross-entity learning. First SCN-substrate PoC. Extended by temporal_credit_integration.md.
 - [sem_entity_ownership.md](sem_entity_ownership.md) — **✅ SHIPPED** (2026-04-24). Self vs scene entity separation. Agent controls own body, observes others.
 - [archive/interactive_experience_031.md](archive/interactive_experience_031.md) — **✅ SHIPPED** (2026-04-18, PR #156). 8 stages, ~700 LOC.
 - [archive/substrate_concept_decomposition.md](archive/substrate_concept_decomposition.md) — **✅ SHIPPED** (2026-04-17). 100% concept-level recall vs 36.4% baseline.

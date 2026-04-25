@@ -47,6 +47,7 @@ def record_outcome(
     context_pool: Any,
     nac: Any | None = None,
     elapsed_s: float = 0.0,
+    active_goal: str | None = None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -98,6 +99,13 @@ def record_outcome(
                 delta_seconds=elapsed_s,
                 context={"goal": reasoning[:100]} if reasoning else {},
             )
+            # Goal-level credit: if deliberation was active under a goal,
+            # credit/penalize that goal so ThoughtGate learns whether
+            # deliberation under this goal type produces good outcomes.
+            if active_goal is not None:
+                reward = 1.0 if success else -1.0
+                nac.credit_goal(active_goal, reward)
+
             # Sim trace
             try:
                 from maxim.simulation.sim_logger import sim_nac

@@ -34,8 +34,8 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/simulation/` | Simulation modes, generative campaigns, research protocol, benchmarks |
 | `src/maxim/integration/` | MemoryHub cross-system coordinator (11 bio-systems) |
 | `src/maxim/reactions/` | Reaction types, ReactionBus (per-kind dispatch), PerceptProducer/ReactionProducer protocols |
-| `src/maxim/decisions/` | NAc causal learning, adaptive planner, reward distribution |
-| `src/maxim/time/` | SCN temporal rhythm indexing |
+| `src/maxim/decisions/` | NAc causal learning, adaptive planner, reward distribution, **TemporalCreditDistributor** (temporal-phase-aware credit via NAc+SCN), **ValenceSignal** (abstract reward/punishment transport type for WMS salience modulation), goal-level reward bias (`_goal_reward_bias` `[-max,+max]` for ThoughtGate "go"/"no-go" modulation) |
+| `src/maxim/time/` | SCN temporal rhythm indexing, **TemporalEvent** (frozen dataclass envelope for signal sources — tool, pain, reaction, percept, deliberation events) |
 | `src/maxim/similarity/` | Entorhinal Cortex (pattern completion, centroid update) + LinguisticEncoder (P1, affordance name encoding) + ConceptDecomposer (noun-phrase extraction before EC) + AffordanceDecompositionStrategy (underscore-split for SEM affordance identifiers) |
 | `src/maxim/prompts/` | PromptAssembler (B1), MemorySummary, prompt profiles, **Acting Coach (B3)** — meta-prompt scaffolding for affordance exploration with bio-system modulation (NAc valence, pain anticipation, cerebellum predictions) |
 | `src/maxim/math/` | Angular Gyrus mathematical cognition, IPS fast stats |

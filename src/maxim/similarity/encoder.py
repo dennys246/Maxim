@@ -197,13 +197,21 @@ class LinguisticEncoder:
 
         percept.substrate_node_id = result.node_id
 
-        # P2: Update eligibility trace
+        # P2: Update eligibility trace (with temporal anchor for phase-
+        # similarity credit — same pattern as encode_decomposed).
         if self._nac is not None:
             agent_id = ""
             if percept.context is not None and hasattr(percept.context, "agent_id"):
                 agent_id = percept.context.agent_id or ""
             activation = 1.0 if result.is_new else result.similarity
-            self._nac.update_eligibility(agent_id, result.node_id, activation)
+            temporal_sig = None
+            try:
+                from maxim.time.temporal_signature import TemporalSignature
+
+                temporal_sig = TemporalSignature.now()
+            except Exception:
+                pass
+            self._nac.update_eligibility(agent_id, result.node_id, activation, temporal_sig=temporal_sig)
 
         logger.debug(
             "Encoded percept → node %s (sim=%.3f, new=%s, mod=%s)",

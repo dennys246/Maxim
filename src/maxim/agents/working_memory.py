@@ -47,12 +47,13 @@ class WMEntry:
     """
 
     kind: WorkingMemoryKind
-    ref: str | None  # episode_id, percept_id, reaction_id, or None
+    ref: str | None  # episode_id, percept_id, reaction_id, thought_id, or None
     content: Any  # dict or string payload (display-ready)
     timestamp: float
     tick: int  # monotonic add-order counter (for decay / ordering)
     salience: float = 0.0
     agent_id: str | None = None  # multi-agent scoping
+    goal_tag: str | None = None  # active goal when this entry was created
 
 
 class WorkingMemorySet:
@@ -69,12 +70,20 @@ class WorkingMemorySet:
     ``working_memory`` ref via dependency injection.
     """
 
+    # EMA smoothing coefficient for valence signals.
+    # ema = (1 - alpha) * ema + alpha * signal.value
+    # 0.1 means recent signals shift the EMA gradually.
+    VALENCE_EMA_ALPHA: float = 0.1
+
     def __init__(self, *, agent_id: str, capacity: int = 64) -> None:
         self._agent_id = agent_id
         self._capacity = capacity
         self._buf: deque[WMEntry] = deque(maxlen=capacity)
         self._tick = 0
         self._lock = threading.Lock()
+        # Valence EMA keyed by WMEntry.tick (monotonic, never None).
+        # Pruned on deque eviction to prevent unbounded growth.
+        self._valence_ema: dict[int, float] = {}
 
     # ------------------------------------------------------------------
     # Write interface
@@ -88,12 +97,18 @@ class WorkingMemorySet:
         content: Any,
         salience: float = 0.0,
         agent_id: str | None = None,
+        goal_tag: str | None = None,
     ) -> WMEntry:
         """Append a new entry.  Thread-safe.
 
         Returns the created entry (useful for testing / provenance).
         """
         with self._lock:
+            # Prune valence EMA for evicted entry (deque drops leftmost)
+            if len(self._buf) == self._capacity:
+                evicted = self._buf[0]
+                self._valence_ema.pop(evicted.tick, None)
+
             entry = WMEntry(
                 kind=kind,
                 ref=ref,
@@ -102,10 +117,38 @@ class WorkingMemorySet:
                 tick=self._tick,
                 salience=salience,
                 agent_id=agent_id or self._agent_id,
+                goal_tag=goal_tag,
             )
             self._buf.append(entry)
             self._tick += 1
             return entry
+
+    def receive_valence(self, tick: int, value: float) -> None:
+        """Accumulate a valence signal on the entry at *tick*.
+
+        Uses exponential moving average: ``ema = (1 - α) * ema + α * value``.
+        Bounded in [-1, +1].  Thread-safe.
+
+        Args:
+            tick: The ``WMEntry.tick`` to modulate (monotonic, never None).
+            value: Signal value in [-1.0, +1.0].  Source-blind — consumers
+                do NOT need to know where it came from.
+        """
+        with self._lock:
+            alpha = self.VALENCE_EMA_ALPHA
+            current = self._valence_ema.get(tick, 0.0)
+            updated = (1.0 - alpha) * current + alpha * value
+            self._valence_ema[tick] = max(-1.0, min(1.0, updated))
+
+    def get_effective_salience(self, entry: WMEntry) -> float:
+        """Compute effective salience incorporating valence EMA.
+
+        Positive EMA → boosts salience (reinforcement).
+        Negative EMA → also boosts salience via abs() (survival — you
+        want to REMEMBER what hurt you).
+        """
+        ema = self._valence_ema.get(entry.tick, 0.0)
+        return entry.salience + abs(ema)
 
     # ------------------------------------------------------------------
     # Query interface (all return snapshots — safe outside the lock)
@@ -136,15 +179,22 @@ class WorkingMemorySet:
         limit: int = 6,
         min_salience: float = 0.0,
     ) -> list[WMEntry]:
-        """Entries matching *kinds* sorted by salience desc, recency as tiebreaker.
+        """Entries matching *kinds* sorted by effective salience desc.
 
-        Returns up to *limit* entries with ``salience >= min_salience``.
-        Higher salience first; ties broken by higher tick (more recent).
+        Effective salience = base salience + abs(valence EMA).
+        Returns up to *limit* entries with ``base salience >= min_salience``.
+        Higher effective salience first; ties broken by higher tick (more recent).
         """
         with self._lock:
             items = list(self._buf)
+            ema_snapshot = dict(self._valence_ema)
+
+        def _effective(e: WMEntry) -> float:
+            ema = ema_snapshot.get(e.tick, 0.0)
+            return e.salience + abs(ema)
+
         matched = [e for e in items if e.kind in kinds and e.salience >= min_salience]
-        matched.sort(key=lambda e: (e.salience, e.tick), reverse=True)
+        matched.sort(key=lambda e: (_effective(e), e.tick), reverse=True)
         return matched[:limit]
 
     def for_agent(self, agent_id: str) -> list[WMEntry]:
