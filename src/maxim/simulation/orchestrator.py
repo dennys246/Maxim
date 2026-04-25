@@ -1356,7 +1356,7 @@ def start_simulation_mode(
     # goal and resolve all entities through the imagination pipeline.
     # This runs AFTER ImaginationTrigger wiring (EntityMap, ComponentIndex,
     # designer all constructed) and BEFORE the AUT thread launch.
-    if aut_imagination_trigger is not None and generative and llm_router is not None:
+    if aut_imagination_trigger is not None and llm_router is not None:
         try:
             from maxim.simulation.narrator import generate_scene_manifest
             from maxim.simulation.sim_logger import sim_log
