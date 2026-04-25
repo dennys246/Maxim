@@ -109,10 +109,28 @@ class Embodiment:
 
         Returns list of newly-fired failure events.  Also publishes
         PainSignals through the PainBus if configured.
+
+        When an entity has ``metadata["health"] == "derived"``, entity
+        health is computed from modulator component integrities before
+        failure mode evaluation.  This enables component-level damage
+        to cascade upward to entity-level failure modes (e.g., wing
+        integrity < 0.3 → entity health drops → death failure mode).
         """
         events: list[FailureEvent] = []
 
         for ent in self.root.walk():
+            # Derive entity health from component integrities if configured
+            if ent.metadata.get("health") == "derived":
+                derived = ent.derive_health()
+                if derived is not None:
+                    ent.vital_metrics["health"] = derived
+
+            # Include per-modulator integrity readings so failure modes
+            # can trigger on component state (e.g., trigger on wing.integrity)
+            for mod_name, mod in ent.modulators.items():
+                if hasattr(mod, "compute_integrity") and hasattr(mod, "vital_metrics") and mod.vital_metrics:
+                    ent.vital_metrics[f"{mod_name}.integrity"] = mod.compute_integrity()
+
             if not ent.failure_modes:
                 continue
 

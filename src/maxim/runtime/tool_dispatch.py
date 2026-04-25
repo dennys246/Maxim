@@ -34,6 +34,24 @@ def safe_agent_name(agent: Any) -> str:
     return name.strip("._-") or "agent"
 
 
+def build_tool_signature(tool_name: str, tool_params: dict[str, Any] | None = None) -> str:
+    """Build a compound NAc event signature for a tool call.
+
+    For generic action tools like ``use``, includes the ``action``
+    parameter so NAc distinguishes ``use:dodge`` from ``use:open``.
+    For all other tools, returns ``tool:<name>``.
+
+    This is the single source of truth for tool→NAc event signature
+    format.  All code that records or queries tool signatures MUST
+    use this function.
+    """
+    if tool_params and tool_name == "use":
+        action = tool_params.get("action", "")
+        if action:
+            return f"tool:use:{action}"
+    return f"tool:{tool_name}"
+
+
 def record_outcome(
     *,
     tool_name: str,
@@ -48,6 +66,7 @@ def record_outcome(
     nac: Any | None = None,
     elapsed_s: float = 0.0,
     active_goal: str | None = None,
+    tool_params: dict[str, Any] | None = None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -90,9 +109,10 @@ def record_outcome(
 
             outcome_summary = (result_summary or error or "")[:50]
             valence = Valence.POSITIVE if success else Valence.NEGATIVE
+            sig = build_tool_signature(tool_name, tool_params)
             link = nac.observe(
                 event_type="tool",
-                event_signature=f"tool:{tool_name}",
+                event_signature=sig,
                 outcome_type="tool_result",
                 outcome_signature=f"{'success' if success else 'failure'}:{outcome_summary}",
                 outcome_valence=valence,

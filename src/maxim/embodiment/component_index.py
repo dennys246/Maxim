@@ -188,9 +188,14 @@ class ComponentIndex:
     # -- public API ---------------------------------------------------------
 
     def find(self, query: str) -> ComponentMatch | None:
-        """Two-layer lookup: alias -> embedding -> None.
+        """Two-layer lookup: alias -> head-noun alias -> embedding -> None.
 
         Layer 1 checks for an exact alias match (O(1)).
+        Layer 1b extracts the head noun from compound phrases
+        (e.g., ``"fire-breathing dragon"`` → ``"dragon"``) and retries
+        the alias table.  This catches adjective+entity combinations
+        against seed component names and synonyms without requiring
+        every possible modifier to be listed as a synonym.
         Layer 2 computes cosine similarity against all component embeddings.
         Returns the best match above ``similarity_threshold``, or None.
         """
@@ -199,15 +204,56 @@ class ComponentIndex:
 
         normalized = query.strip().lower()
 
-        # Layer 1: alias table
+        # Layer 1: alias table (exact match)
         with self._lock:
             ref = self._aliases.get(normalized)
         if ref is not None:
             name = ref.rsplit("/", 1)[-1] if "/" in ref else ref
             return ComponentMatch(ref=ref, name=name, score=1.0, layer="alias")
 
+        # Layer 1b: head-noun fallback — extract the last word from
+        # compound phrases and retry.  "fire-breathing dragon" → "dragon",
+        # "large wolf" → "wolf", "rusty sword" → "sword".
+        words = normalized.split()
+        if len(words) > 1:
+            head_noun = words[-1]
+            with self._lock:
+                ref = self._aliases.get(head_noun)
+            if ref is not None:
+                name = ref.rsplit("/", 1)[-1] if "/" in ref else ref
+                return ComponentMatch(ref=ref, name=name, score=0.95, layer="alias")
+
         # Layer 2: embedding similarity
         return self._find_by_embedding(normalized)
+
+    def find_alias_only(self, query: str) -> ComponentMatch | None:
+        """Layer 1 + 1b alias lookup only — no embedding computation.
+
+        Use this in hot paths (e.g., bio-enrichment pipeline) where the
+        ~5ms embedding cost per query is unacceptable.  Returns a match
+        only if the query (or its head noun) exactly matches an alias.
+        """
+        if not query or not query.strip():
+            return None
+
+        normalized = query.strip().lower()
+
+        with self._lock:
+            ref = self._aliases.get(normalized)
+        if ref is not None:
+            name = ref.rsplit("/", 1)[-1] if "/" in ref else ref
+            return ComponentMatch(ref=ref, name=name, score=1.0, layer="alias")
+
+        words = normalized.split()
+        if len(words) > 1:
+            head_noun = words[-1]
+            with self._lock:
+                ref = self._aliases.get(head_noun)
+            if ref is not None:
+                name = ref.rsplit("/", 1)[-1] if "/" in ref else ref
+                return ComponentMatch(ref=ref, name=name, score=0.95, layer="alias")
+
+        return None
 
     def find_similar(self, query: str, k: int = 5) -> list[ComponentMatch]:
         """Return top-k similar components by embedding cosine similarity.

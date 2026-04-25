@@ -899,3 +899,264 @@ class TestAffordanceConceptEncoding:
         node_ids = encode_entity_affordances(entity, encoder, agent_id="aut-1")
 
         assert len(node_ids) == 1  # "circle" → one chunk → one node
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: process_manifest + generate_scene_manifest
+# ---------------------------------------------------------------------------
+
+
+class TestProcessManifest:
+    """Tests for ImaginationTrigger.process_manifest()."""
+
+    def _make_trigger(self, designer=None, threshold=2):
+        mock_index = MagicMock()
+        mock_index.find.return_value = None
+        mock_registry = MagicMock()
+        cache = ImaginationCache()
+        trigger = ImaginationTrigger(
+            component_index=mock_index,
+            component_registry=mock_registry,
+            designer=designer,
+            cache=cache,
+            imagination_threshold=threshold,
+        )
+        return trigger, mock_index, mock_registry
+
+    def test_manifest_bypasses_threshold(self):
+        """Entities in manifest resolve on first mention — no threshold."""
+        trigger, mock_index, _ = self._make_trigger(threshold=99)
+        from maxim.embodiment.component_index import ComponentMatch
+
+        mock_index.find.return_value = ComponentMatch(ref="creatures/dragon", name="dragon", score=1.0, layer="alias")
+
+        results = trigger.process_manifest("a fire-breathing dragon in the cave")
+        assert len(results) == 1
+        assert results[0].ref == "creatures/dragon"
+
+    def test_manifest_bypasses_arousal_gate(self):
+        """process_manifest does NOT check arousal — pre-trigger is deliberate."""
+        mock_dn = MagicMock()
+        mock_dn.imagination_allowed.return_value = False  # Would block process_percept
+
+        mock_index = MagicMock()
+        from maxim.embodiment.component_index import ComponentMatch
+
+        mock_index.find.return_value = ComponentMatch(ref="creatures/wolf", name="wolf", score=1.0, layer="alias")
+        trigger = ImaginationTrigger(
+            component_index=mock_index,
+            component_registry=MagicMock(),
+            default_network=mock_dn,
+            imagination_threshold=2,
+        )
+
+        results = trigger.process_manifest("a large wolf appears")
+        assert len(results) == 1
+        # arousal gate was NOT checked
+        mock_dn.imagination_allowed.assert_not_called()
+
+    def test_manifest_caps_entities(self):
+        """Hard cap on max_entities limits total resolved."""
+        trigger, mock_index, _ = self._make_trigger()
+        from maxim.embodiment.component_index import ComponentMatch
+
+        # Return a match for every query
+        mock_index.find.side_effect = lambda q: ComponentMatch(
+            ref=f"items/{q.split()[-1]}", name=q.split()[-1], score=1.0, layer="alias"
+        )
+
+        manifest = "a rusty sword\na magic staff\na healing potion\na silver dagger\na wooden bow\n"
+        results = trigger.process_manifest(manifest, max_entities=3)
+        assert len(results) <= 3
+
+    def test_manifest_caps_designs(self):
+        """max_designs limits LLM design calls for novel entities."""
+        mock_designer = MagicMock()
+        call_count = 0
+
+        def _imagine(phrase, ctx):
+            nonlocal call_count
+            call_count += 1
+            return DesignResult(
+                ref=f"items/{phrase.replace(' ', '_')}",
+                spec={"entity": {"name": phrase.replace(" ", "_")}},
+                synonyms=[],
+                validation_warnings=(),
+            )
+
+        mock_designer.imagine.side_effect = _imagine
+        trigger, mock_index, _ = self._make_trigger(designer=mock_designer)
+
+        manifest = "a crystal orb\na silver amulet\na magic scroll\na healing potion\na rusty dagger\n"
+        trigger.process_manifest(manifest, max_designs=2)
+        assert call_count <= 2
+
+    def test_manifest_skips_self_entity(self):
+        """Self-entity is not resolved via manifest to avoid ownership collision."""
+        trigger, mock_index, _ = self._make_trigger()
+        from maxim.embodiment.component_index import ComponentMatch
+
+        mock_index.find.return_value = ComponentMatch(
+            ref="bodies/base_humanoid", name="base_humanoid", score=1.0, layer="alias"
+        )
+
+        # Simulate EntityMap with a self-entity named "humanoid"
+        mock_entity = MagicMock()
+        mock_entity.name = "humanoid"
+        mock_entity_map = MagicMock()
+        mock_entity_map.list_self_entities.return_value = [mock_entity]
+        mock_entity_map.resolve.return_value = None  # Not already live
+        trigger._entity_map = mock_entity_map
+
+        # "humanoid" head noun matches self-entity → skipped
+        # "guard" is also an indicator but "humanoid" is the self-entity
+        trigger.process_manifest("a humanoid figure stands guard")
+        # Test directly with head noun = "humanoid"
+        results2 = trigger.process_manifest("the humanoid")
+        # Head noun is "humanoid" which matches self-entity
+        assert len(results2) == 0
+
+    def test_manifest_skips_already_live(self):
+        """Already-live entities are skipped."""
+        trigger, mock_index, _ = self._make_trigger()
+
+        mock_entity_map = MagicMock()
+        mock_entity_map.list_self_entities.return_value = []
+        # dragon is already live
+        mock_entity_map.resolve.side_effect = lambda n: "exists" if n == "dragon" else None
+        trigger._entity_map = mock_entity_map
+
+        results = trigger.process_manifest("a fire-breathing dragon")
+        assert len(results) == 0
+
+    def test_manifest_disabled_returns_empty(self):
+        trigger, _, _ = self._make_trigger()
+        trigger.enabled = False
+        results = trigger.process_manifest("a dragon and a wolf")
+        assert results == []
+
+    def test_manifest_empty_text(self):
+        trigger, _, _ = self._make_trigger()
+        results = trigger.process_manifest("")
+        assert results == []
+
+    def test_manifest_index_hits_before_designs(self):
+        """ComponentIndex hits are processed before any LLM designs."""
+        call_order = []
+        trigger, mock_index, _ = self._make_trigger()
+
+        from maxim.embodiment.component_index import ComponentMatch
+
+        def _find(q):
+            if "dragon" in q:
+                call_order.append("index_hit")
+                return ComponentMatch(ref="creatures/dragon", name="dragon", score=1.0, layer="alias")
+            call_order.append("index_miss")
+            return None
+
+        mock_index.find.side_effect = _find
+
+        mock_designer = MagicMock()
+
+        def _imagine(phrase, ctx):
+            call_order.append("design")
+            return DesignResult(
+                ref=f"items/{phrase.replace(' ', '_')}",
+                spec={"entity": {"name": phrase.replace(" ", "_")}},
+                synonyms=[],
+                validation_warnings=(),
+            )
+
+        mock_designer.imagine.side_effect = _imagine
+        trigger._designer = mock_designer
+
+        trigger.process_manifest("a dragon guards a magic scroll")
+        # Index hits come before designs
+        assert call_order.index("index_hit") < call_order.index("design")
+
+
+class TestGenerateSceneManifest:
+    """Tests for generate_scene_manifest()."""
+
+    def test_returns_llm_text(self):
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = {
+            "entities": ["a rusty sword", "a large dragon", "a healing potion"]
+        }
+
+        result = generate_scene_manifest(mock_llm, "explore a dungeon")
+        assert "dragon" in result
+        assert "sword" in result
+
+    def test_returns_empty_on_failure(self):
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm = MagicMock()
+        mock_llm.generate_json.side_effect = RuntimeError("LLM down")
+
+        result = generate_scene_manifest(mock_llm, "explore a dungeon")
+        assert result == ""
+
+    def test_returns_empty_on_none(self):
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = None
+
+        result = generate_scene_manifest(mock_llm, "test memory")
+        assert result == ""
+
+    def test_returns_empty_on_whitespace(self):
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = {"entities": []}
+
+        result = generate_scene_manifest(mock_llm, "test")
+        assert result == ""
+
+
+class TestFindAliasOnly:
+    """Tests for ComponentIndex.find_alias_only()."""
+
+    def test_exact_alias_match(self):
+        from maxim.embodiment.component_index import ComponentIndex
+
+        index = ComponentIndex()
+        index._aliases = {"dragon": "creatures/dragon"}
+
+        match = index.find_alias_only("dragon")
+        assert match is not None
+        assert match.ref == "creatures/dragon"
+        assert match.score == 1.0
+
+    def test_head_noun_fallback(self):
+        from maxim.embodiment.component_index import ComponentIndex
+
+        index = ComponentIndex()
+        index._aliases = {"dragon": "creatures/dragon"}
+
+        match = index.find_alias_only("fire-breathing dragon")
+        assert match is not None
+        assert match.ref == "creatures/dragon"
+        assert match.score == 0.95
+
+    def test_no_embedding_computation(self):
+        """find_alias_only must NOT trigger embedding computation."""
+        from maxim.embodiment.component_index import ComponentIndex
+
+        index = ComponentIndex()
+        index._aliases = {}
+        index._embed = MagicMock(side_effect=AssertionError("should not be called"))
+
+        result = index.find_alias_only("something unknown")
+        assert result is None
+
+    def test_empty_query(self):
+        from maxim.embodiment.component_index import ComponentIndex
+
+        index = ComponentIndex()
+        assert index.find_alias_only("") is None
+        assert index.find_alias_only("   ") is None

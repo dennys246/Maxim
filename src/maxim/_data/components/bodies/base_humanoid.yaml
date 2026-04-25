@@ -3,6 +3,7 @@ component:
   tags: [body, humanoid, generic, foundational, default]
   synonyms: [humanoid body, human body, adventurer, person, character, protagonist, hero, agent body]
   category: bodies
+  archetype: humanoid
   description: |
     Generic humanoid body for simulation agents. Provides a minimal but
     functional set of sensors and affordances that let the agent physically
@@ -12,10 +13,6 @@ entity:
   name: base_humanoid
   entity_type: body
   sensors:
-    health:
-      unit: ratio
-      range: [0, 1]
-      initial: 1.0
     stamina:
       unit: ratio
       range: [0, 1]
@@ -32,16 +29,29 @@ entity:
       unit: ratio
       range: [0, 1]
       initial: 0.0
+  health: derived
+  health_weights:
+    head: 0.3
+    torso: 0.35
+    arms: 0.15
+    legs: 0.2
   modulators:
-    locomotion:
-      affordances:
-        move:
-          params: {direction: str, speed: str}
-          description: "Move in a direction (north/south/east/west) at a speed (walk/run/sneak)"
-        rest:
-          params: {duration: str}
-          description: "Rest to recover stamina and health (brief/moderate/long)"
-    perception:
+    head:
+      sensors:
+        awareness:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.9
+          weight: 0.6
+        skull_integrity:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.4
+      integrity: weighted_mean
+      damage_affinities:
+        slash: {skull_integrity: 0.7, awareness: 0.3}
+        blunt: {skull_integrity: 0.5, awareness: 0.5}
       affordances:
         look:
           params: {target: str}
@@ -49,25 +59,77 @@ entity:
         listen:
           params: {}
           description: "Listen carefully to nearby sounds"
-    manipulation:
+    torso:
+      sensors:
+        core_integrity:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+      integrity: weighted_mean
+      damage_affinities:
+        slash: {core_integrity: 1.0}
+        blunt: {core_integrity: 1.0}
+        fire: {core_integrity: 0.8}
+      affordances:
+        rest:
+          params: {duration: str}
+          description: "Rest to recover stamina and health (brief/moderate/long)"
+    arms:
+      sensors:
+        grip_strength:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.5
+        arm_mobility:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.5
+      integrity: weighted_mean
+      damage_affinities:
+        slash: {arm_mobility: 0.6, grip_strength: 0.4}
+        blunt: {grip_strength: 0.7, arm_mobility: 0.3}
       affordances:
         pick_up:
           params: {object: str}
           description: "Pick up an object from the environment"
+          requires: {integrity: 0.2}
         drop:
           params: {object: str}
           description: "Drop a carried object"
         use:
           params: {object: str, action: str}
           description: "Use a held or nearby object, or interact with an entity (open, drink, pull, push, read, activate, attack, defend, dodge, throw)"
+          requires: {integrity: 0.15}
+    legs:
+      sensors:
+        leg_mobility:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+      integrity: weighted_mean
+      damage_affinities:
+        slash: {leg_mobility: 1.0}
+        blunt: {leg_mobility: 1.0}
+      affordances:
+        move:
+          params: {direction: str, speed: str}
+          description: "Move in a direction (north/south/east/west) at a speed (walk/run/sneak)"
+          requires: {integrity: 0.1}
     communication:
+      abstract: true
       affordances:
         speak:
           params: {message: str}
           description: "Say something out loud to nearby entities"
   failure_modes:
+    - name: concussion
+      trigger: {field: head.integrity, op: "<", value: 0.2, pain: 0.6}
     - name: exhaustion
       trigger: {field: stamina, op: "<", value: 0.1, pain: 0.4}
+    - name: crippled
+      trigger: {field: legs.integrity, op: "<", value: 0.15, pain: 0.5}
     - name: injury
       trigger: {field: health, op: "<", value: 0.2, pain: 0.7}
     - name: overburdened

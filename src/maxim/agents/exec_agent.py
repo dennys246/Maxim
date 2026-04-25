@@ -734,7 +734,7 @@ class ExecAgent(Agent):
         nac_obs = 0
         if nac is not None and tool_name != "unknown":
             try:
-                links = nac.get_links_for_event(tool_name)
+                links = nac.get_links_for_event(f"tool:{tool_name}")
                 nac_obs = sum(getattr(link, "observation_count", 0) for link in links)
             except Exception:
                 pass

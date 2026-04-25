@@ -639,8 +639,13 @@ class ImaginationTrigger:
                 pass
             return cached
 
-        # 2. Record mention and check threshold
-        count = self._cache.record_mention(phrase)
+        # 2. Record mention using the head noun so variant phrases
+        # ("fire-breathing dragon", "large dragon", "the dragon") all
+        # accumulate under the same key.  The full phrase is still used
+        # for cache lookups and designer input.
+        words = phrase.strip().lower().split()
+        head_noun = words[-1] if words else phrase
+        count = self._cache.record_mention(head_noun)
 
         # 3. Check ComponentIndex for existing match
         match = self._index.find(phrase)
@@ -679,6 +684,25 @@ class ImaginationTrigger:
         if count < self._threshold:
             return None
 
+        # 4b. Head-noun cache check: a variant phrase for the same head noun
+        # may have already been designed and cached (e.g., "fire-breathing
+        # dragon" designed, now "large dragon" hits threshold).  Check the
+        # cache by head noun to avoid duplicate designs.
+        head_cached = self._cache.get(head_noun)
+        if head_cached is not None:
+            # Cache the variant phrase as well so future lookups are instant.
+            self._cache.put(
+                ImaginationResult(
+                    phrase=phrase,
+                    ref=head_cached.ref,
+                    imagined=head_cached.imagined,
+                    score=head_cached.score,
+                )
+            )
+            with self._lock:
+                self._cache_hits += 1
+            return head_cached
+
         # 5. Check DN arousal gate — only imagine during low arousal
         if not self._is_arousal_allowed():
             log.debug("Imagination: arousal gate blocked design for '%s'", phrase)
@@ -706,12 +730,12 @@ class ImaginationTrigger:
             log.debug("Imagination: no designer available, skipping '%s'", phrase)
             return None
 
-        # Per-phrase guard: prevent concurrent LLM design for the same phrase
-        normalized = self._cache.normalize(phrase)
+        # Per-phrase guard: use head noun to prevent concurrent/duplicate
+        # design for variant phrases of the same entity.
         with self._lock:
-            if normalized in self._designing:
-                return None  # Another thread is already designing this
-            self._designing.add(normalized)
+            if head_noun in self._designing:
+                return None  # Another thread/variant is already designing this
+            self._designing.add(head_noun)
             self._designs_attempted += 1
 
         try:
@@ -721,7 +745,7 @@ class ImaginationTrigger:
             return None
         finally:
             with self._lock:
-                self._designing.discard(normalized)
+                self._designing.discard(head_noun)
 
         if design_result is None:
             return None
@@ -768,6 +792,16 @@ class ImaginationTrigger:
             validation_warnings=design_result.validation_warnings,
         )
         self._cache.put(result)
+        # Also cache under head noun so variant phrases ("large dragon"
+        # after "fire-breathing dragon" was designed) get a cache hit at
+        # step 4b instead of triggering another design call.
+        head_noun_result = ImaginationResult(
+            phrase=head_noun,
+            ref=ref,
+            imagined=True,
+            score=1.0,
+        )
+        self._cache.put(head_noun_result)
 
         with self._lock:
             self._designs_succeeded += 1
@@ -799,6 +833,209 @@ class ImaginationTrigger:
         except Exception:
             pass  # Energy system not available → allow
         return True
+
+    def process_manifest(
+        self,
+        manifest_text: str,
+        scene_context: dict[str, Any] | None = None,
+        scene_id: str | None = None,
+        *,
+        max_entities: int = 8,
+        max_designs: int = 5,
+    ) -> list[ImaginationResult]:
+        """Pre-trigger: resolve entities from a scene manifest.
+
+        Called by the orchestrator BEFORE the first sim turn to
+        pre-instantiate entities.  Unlike :meth:`process_percept`, this
+        method bypasses the mention threshold, arousal gate, and energy
+        gate — pre-triggering is a deliberate orchestrator action, not a
+        reactive response to mid-sim percepts.
+
+        Processes ComponentIndex hits first (instant), then budgets up
+        to *max_designs* LLM design calls for truly novel entities.
+        Skips any entity already live in the EntityMap (including the
+        AUT's self-entity) to avoid ownership collisions.
+
+        Args:
+            manifest_text: Natural-language scene description listing
+                key entities.
+            scene_context: Optional context dict for the designer.
+            scene_id: Optional scene identifier.
+            max_entities: Hard cap on total entities resolved.
+            max_designs: Max LLM design calls for novel entities.
+
+        Returns:
+            List of resolved ImaginationResults.
+        """
+        if not self._enabled:
+            return []
+
+        phrases = extract_entity_phrases(manifest_text)
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            sim_log(
+                "SEM_TRACE",
+                f"Manifest pre-trigger: {len(phrases)} phrases extracted" + (f": {phrases[:8]}" if phrases else ""),
+            )
+        except Exception:
+            pass
+        if not phrases:
+            return []
+
+        with self._lock:
+            self._phrases_extracted += len(phrases)
+
+        # Resolve the self-entity name(s) so we can skip them.
+        # Store both the full name and individual words so compound names
+        # like "dark_knight" match head-noun "knight" as well as the full
+        # name.  This prevents a manifest phrase like "a dark knight"
+        # from being registered as a scene entity when the agent's own
+        # body is named "dark_knight" (executor review finding #2).
+        _entity_map = getattr(self, "_entity_map", None)
+        self_names: set[str] = set()
+        if _entity_map is not None:
+            try:
+                for ent in _entity_map.list_self_entities():
+                    name_lower = ent.name.lower()
+                    self_names.add(name_lower)
+                    # Also add individual words for compound names
+                    for part in name_lower.replace("_", " ").split():
+                        self_names.add(part)
+            except Exception:
+                pass
+
+        # Pass 1: ComponentIndex hits (instant, no cap)
+        results: list[ImaginationResult] = []
+        novel_phrases: list[str] = []
+
+        for phrase in phrases:
+            if len(results) >= max_entities:
+                break
+
+            # Skip if already live (self-entity or previously instantiated)
+            words = phrase.strip().lower().split()
+            head_noun = words[-1] if words else phrase
+            if head_noun in self_names:
+                continue
+            if _entity_map is not None and _entity_map.resolve(head_noun) is not None:
+                continue
+
+            # Check cache
+            cached = self._cache.get(phrase)
+            if cached is not None:
+                results.append(cached)
+                continue
+
+            # Check ComponentIndex
+            match = self._index.find(phrase)
+            if match is not None:
+                self._ensure_entity_live(match.ref, phrase, scene_context, scene_id)
+                result = ImaginationResult(
+                    phrase=phrase,
+                    ref=match.ref,
+                    imagined=False,
+                    score=match.score,
+                )
+                self._cache.put(result)
+                results.append(result)
+                with self._lock:
+                    self._index_hits += 1
+                continue
+
+            # Novel — queue for design
+            novel_phrases.append(phrase)
+
+        # Pass 2: LLM design for novel entities (capped)
+        designs_done = 0
+        for phrase in novel_phrases:
+            if len(results) >= max_entities or designs_done >= max_designs:
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+
+                    sim_log(
+                        "SEM_TRACE",
+                        f"Manifest: skipping '{phrase}' (cap reached: "
+                        f"{len(results)}/{max_entities} entities, "
+                        f"{designs_done}/{max_designs} designs)",
+                    )
+                except Exception:
+                    pass
+                break
+
+            if self._designer is None:
+                break
+
+            # Per-phrase design guard — use head noun for consistency
+            # with _resolve_phrase (prevents variant duplicates).
+            manifest_words = phrase.strip().lower().split()
+            manifest_head = manifest_words[-1] if manifest_words else phrase
+            with self._lock:
+                if manifest_head in self._designing:
+                    continue
+                self._designing.add(manifest_head)
+                self._designs_attempted += 1
+
+            try:
+                design_result = self._designer.imagine(phrase, scene_context or {})
+            except Exception as e:
+                log.warning("Manifest: design failed for '%s': %s", phrase, e)
+                design_result = None
+            finally:
+                with self._lock:
+                    self._designing.discard(manifest_head)
+
+            if design_result is None:
+                continue
+
+            # Register ephemeral component
+            self._registry.register_ephemeral(
+                design_result.ref,
+                design_result.spec,
+                provenance="imagined",
+            )
+            self._index.add(design_result.ref, design_result.spec, synonyms=design_result.synonyms)
+
+            # Register as scene entity
+            if _entity_map is not None:
+                try:
+                    from maxim.embodiment.spec import _parse_entity
+
+                    entity = _parse_entity(design_result.spec.get("entity", design_result.spec))
+                    _entity_map.register_scene(entity)
+                    self._encode_entity_affordances(entity)
+                except Exception as e:
+                    log.warning("Manifest: scene entity registration failed for '%s': %s", design_result.ref, e)
+
+            result = ImaginationResult(
+                phrase=phrase,
+                ref=design_result.ref,
+                imagined=True,
+                score=1.0,
+                spec=design_result.spec,
+                validation_warnings=design_result.validation_warnings,
+            )
+            self._cache.put(result)
+            results.append(result)
+            designs_done += 1
+
+            with self._lock:
+                self._designs_succeeded += 1
+                self._imagined_refs.add(design_result.ref)
+
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            index_hits = sum(1 for r in results if not r.imagined)
+            designed = sum(1 for r in results if r.imagined)
+            sim_log(
+                "SEM_TRACE",
+                f"Manifest resolved {len(results)} entities ({index_hits} from index, {designed} designed)",
+            )
+        except Exception:
+            pass
+
+        return results
 
     def stats(self) -> dict[str, int]:
         """Return imagination trigger statistics."""

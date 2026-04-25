@@ -3,15 +3,12 @@ component:
   tags: [creature, predator, hostile, flying, fantasy]
   synonyms: [wyrm, drake, fire breather, winged serpent, flying lizard, great beast, wyvern]
   category: creatures
+  archetype: quadruped
 
 entity:
   name: dragon
   entity_type: creature
   sensors:
-    hp:
-      unit: points
-      range: [0, 200]
-      initial: 200
     fire_breath_charge:
       unit: ratio
       range: [0, 1]
@@ -20,16 +17,107 @@ entity:
       unit: ratio
       range: [0, 1]
       initial: 0.8
-    altitude:
-      unit: meters
-      range: [0, 500]
-      initial: 0
-    armor_integrity:
-      unit: ratio
-      range: [0, 1]
-      initial: 0.95
+  health: derived
+  health_weights:
+    head: 0.25
+    wing: 0.15
+    torso: 0.4
+    combat: 0.2
   modulators:
+    head:
+      sensors:
+        skull_integrity:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.6
+        jaw_strength:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.4
+      integrity: weighted_mean
+      damage_affinities:
+        slash: {skull_integrity: 0.3, jaw_strength: 0.5}
+        blunt: {skull_integrity: 0.8, jaw_strength: 0.2}
+        fire: {skull_integrity: 0.1}
+      affordances:
+        bite:
+          params: {target: str}
+          description: "Seize a target in massive jaws"
+          requires: {integrity: 0.2}
+        roar:
+          params: {}
+          description: "Terrifying roar that shakes the ground"
+    wing:
+      sensors:
+        membrane_integrity:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.4
+        bone_integrity:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.4
+        joint_mobility:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.2
+      integrity: weighted_mean
+      damage_affinities:
+        slash: {membrane_integrity: 0.8, bone_integrity: 0.1}
+        blunt: {bone_integrity: 0.7, joint_mobility: 0.3}
+        fire: {membrane_integrity: 0.9, bone_integrity: 0.1}
+      affordances:
+        take_flight:
+          params: {}
+          description: "Launch into the air"
+          requires: {integrity: 0.3}
+        dive_attack:
+          params: {target: str}
+          description: "Plunge from altitude onto a target — devastating impact"
+          requires: {integrity: 0.5}
+        land:
+          params: {}
+          description: "Settle to the ground"
+        circle:
+          params: {}
+          description: "Circle overhead menacingly"
+          requires: {integrity: 0.2}
+    torso:
+      sensors:
+        armor_integrity:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.95
+          weight: 0.5
+        organ_health:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.5
+      integrity: min
+      damage_affinities:
+        slash: {armor_integrity: 0.7, organ_health: 0.3}
+        blunt: {armor_integrity: 0.4, organ_health: 0.6}
+        fire: {armor_integrity: 0.2}
+      affordances: {}
     combat:
+      sensors:
+        claw_sharpness:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.5
+        tail_strength:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.5
+      integrity: weighted_mean
       affordances:
         fire_breath:
           params: {target: str}
@@ -37,30 +125,15 @@ entity:
         claw_strike:
           params: {target: str}
           description: "Rake with massive claws"
+          requires: {integrity: 0.2}
         tail_sweep:
           params: {}
           description: "Sweep the tail in a wide arc — knocks back nearby targets"
-        bite:
-          params: {target: str}
-          description: "Seize a target in massive jaws"
-    movement:
-      affordances:
-        take_flight:
-          params: {}
-          description: "Launch into the air"
-        dive_attack:
-          params: {target: str}
-          description: "Plunge from altitude onto a target — devastating impact"
-        land:
-          params: {}
-          description: "Settle to the ground"
-        circle:
-          params: {}
-          description: "Circle overhead menacingly"
+          requires: {integrity: 0.3}
   failure_modes:
     - name: grounded
-      trigger: {field: hp, op: "<", value: 50, pain: 0.4}
-    - name: breath_exhausted
-      trigger: {field: fire_breath_charge, op: "<", value: 0.1, pain: 0.3}
+      trigger: {field: wing.integrity, op: "<", value: 0.3, pain: 0.4}
+    - name: jaw_broken
+      trigger: {field: head.integrity, op: "<", value: 0.2, pain: 0.5}
     - name: death
-      trigger: {field: hp, op: "<=", value: 0, pain: 1.0}
+      trigger: {field: health, op: "<=", value: 0, pain: 1.0}

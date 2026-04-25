@@ -567,17 +567,21 @@ class ToolPainBridge:
         self,
         tool_name: str,
         context: dict[str, Any] | None = None,
+        tool_params: dict[str, Any] | None = None,
     ) -> tuple[bool, str]:
         """Check if a tool should be gated due to predicted failure.
 
         Args:
             tool_name: Name of the tool to check.
             context: Optional context for the prediction.
+            tool_params: Tool call parameters (for compound signature).
 
         Returns:
             Tuple of (should_gate, reason).
         """
-        event_signature = f"tool:{tool_name}"
+        from maxim.runtime.tool_dispatch import build_tool_signature
+
+        event_signature = build_tool_signature(tool_name, tool_params)
         prediction = self._nac.predict(
             event_type="tool",
             event_signature=event_signature,

@@ -309,7 +309,7 @@ class PlanHistoryBridge:
             from maxim.decisions.causal_link import Valence
 
             # Query NAc for tool outcomes
-            links = self.nac.get_links_for_event(tool_name)
+            links = self.nac.get_links_for_event(f"tool:{tool_name}")
 
             if not links:
                 return (0.5, 0)

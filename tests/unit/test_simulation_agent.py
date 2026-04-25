@@ -459,8 +459,8 @@ class TestPersonas:
         """Continuous mode returns a copy, doesn't modify the original."""
         original = get_persona("adversarial")
         continuous = get_persona("adversarial", continuous=True)
-        assert "NEVER" not in original.context_prompt
-        assert "NEVER" in continuous.context_prompt
+        assert "NEVER stop on your own" not in original.context_prompt
+        assert "NEVER stop on your own" in continuous.context_prompt
 
 
 # ── Decomposition tool tests ────────────────────────────────────────────────

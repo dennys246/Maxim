@@ -89,6 +89,35 @@ def _isolate_maxim_auto_download_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_deep_embodiment():
+    """Reset ``resolution._resolved_depth`` + scrub ``MAXIM_DEEP_EMBODIMENT``.
+
+    The module-level cache in ``embodiment/resolution.py`` persists across
+    tests in the same process. Without isolation, any test that calls
+    ``get_embodiment_depth()`` caches the value and leaks to later tests.
+    """
+    saved = os.environ.pop("MAXIM_DEEP_EMBODIMENT", None)
+    try:
+        from maxim.embodiment.resolution import reset_depth
+
+        reset_depth()
+    except ImportError:
+        pass
+    try:
+        yield
+    finally:
+        try:
+            from maxim.embodiment.resolution import reset_depth
+
+            reset_depth()
+        except ImportError:
+            pass
+        os.environ.pop("MAXIM_DEEP_EMBODIMENT", None)
+        if saved is not None:
+            os.environ["MAXIM_DEEP_EMBODIMENT"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_substrate_path_env():
     """Scrub ``MAXIM_SUBSTRATE_PATH`` across every test.
 

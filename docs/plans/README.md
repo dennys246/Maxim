@@ -70,6 +70,12 @@ These accumulate evidence and refinement over time. They are not on the critical
 
 - [affordance_concept_transfer.md](affordance_concept_transfer.md) — **Stages 0-4 SHIPPED** (2026-04-24). Substrate-native cross-entity learning. First SCN-substrate PoC. Extended by temporal_credit_integration.md.
 - [sem_entity_ownership.md](sem_entity_ownership.md) — **✅ SHIPPED** (2026-04-24). Self vs scene entity separation. Agent controls own body, observes others.
+- [orchestrator_sem_damage.md](orchestrator_sem_damage.md) — **✅ SHIPPED** (2026-04-25). Auto-damage + pain on every hit. PR #190.
+- [sem_world_enrichment.md](sem_world_enrichment.md) — **Phase 1 SHIPPED** (2026-04-25). Scene manifest pre-trigger, head-noun alias fallback, imagination pipeline fixes. Phases 2-3 planned.
+- [component_level_damage.md](component_level_damage.md) — **Stages 1-5 SHIPPED** (2026-04-25). Per-modulator sensors, integrity aggregation, DamageComponentTool (fixes double-damage), affordance `requires` gating, `--deep-embodiment` CLI flag, dragon + base_humanoid upgraded. Stage 6 (damage types) deferred.
+- [v1_refinement.md](v1_refinement.md) — PLANNING. Remove silent backward compat: modulators without sensors, DamageEntityTool shim, probe shims, dead code.
+- [percept_reflex_system.md](percept_reflex_system.md) — DESIGN. Automatic body reflexes (attack→damage, flash→squint). 3-lens review folded. Depends on component damage.
+- [proprioceptive_discovery.md](proprioceptive_discovery.md) — DESIGN. Latent motor programs (dodge, roll) + entity acquisition (pick_up→reparent). Embedding gap confirmed.
 - [archive/interactive_experience_031.md](archive/interactive_experience_031.md) — **✅ SHIPPED** (2026-04-18, PR #156). 8 stages, ~700 LOC.
 - [archive/substrate_concept_decomposition.md](archive/substrate_concept_decomposition.md) — **✅ SHIPPED** (2026-04-17). 100% concept-level recall vs 36.4% baseline.
 - [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) — **PARTIAL** (2026-04-17). Stage 3 (pain/salience spike) SHIPPED via sem_learning_loop.md. `observe_episode_event` now wired into production agent loop via behavioral_convergence_wiring.md. Stages 1-2 (tool execution + semantic shift) remain — ship before P5.

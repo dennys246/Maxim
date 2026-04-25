@@ -279,7 +279,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Area | Key files |
 |---|---|
 | Agent loop | `runtime/agent_loop.py`, `runtime/loop_controller.py` |
-| Tools | `tools/registry.py` (scene-scoped activation, active tool cap, per-tool `deactivate_tool`), `tools/base.py` (Tool ABC), `tools/discovery.py` (SEM discovery: `SenseToolsTool`, `UniversalSenseTool`, goal top-k, LRU eviction), `runtime/executor.py` (dispatch + active-tool gate, aliases), `embodiment/tool_bridge.py` (entity tool generation), `embodiment/entity_map.py` (name→Entity resolution) |
+| Tools | `tools/registry.py` (scene-scoped activation, active tool cap, per-tool `deactivate_tool`), `tools/base.py` (Tool ABC), `tools/discovery.py` (SEM discovery: `SenseToolsTool`, `UniversalSenseTool`, goal top-k, LRU eviction), `runtime/executor.py` (dispatch + active-tool gate, aliases), `embodiment/tool_bridge.py` (entity tool generation, affordance `requires` gating), `embodiment/entity_map.py` (name→Entity resolution), `simulation/tools.py::DamageComponentTool` (body-part targeted damage, cascading integrity) |
 | LLM routing | `models/language/router.py` (provider fallback, typed exception branches, `dispatch_exhausted` aggregated WARN), `models/language/maxim_peer_backend.py` (self-hosted peer backend — one HTTP call, typed failure, streaming with strict mid-stream fail, `health_check` + `for_url` factory), `runtime/lane_backends.py::BACKEND_CLASSES` (dispatch table), `models/language/config.py` (profiles), `models/language/json_parser.py` (JSON repair) |
 | Memory | `memory/hippocampus.py`, `memory/concept_extractor.py`, `memory/store.py` (protocols), `memory/percept_trace_buffer.py` (τ-decay ring buffer) |
 | Causal learning | `decisions/nac.py` (reward bias, eligibility traces, distribute_reward, **goal_reward_bias**), `decisions/causal_link.py` (CausalLink, percept_refs) |
@@ -298,7 +298,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Benchmarks | `simulation/benchmark.py`, `simulation/validation.py` |
 | Research | `simulation/research_agents.py`, `simulation/research_orchestrator.py` |
 | Valence | `memory/episode.py` (Episode.valence, apply_hebbian_on_close, salience_spike_rule), `agents/bus.py` (propagate_valence), `memory/hippocampus.py` (capture_reaction, include_valence) |
-| Embodiment | `embodiment/sem.py`, `embodiment/body.py`, `embodiment/cerebellum.py` (forward models), `embodiment/backends/cerebellum_modulator.py` (predict/fallback/train + success reactions), `embodiment/motor.py` |
+| Embodiment | `embodiment/sem.py` (Entity, Sensor, Modulator, AffordanceSchema with `requires`), `embodiment/body.py` (evaluate_failures, derived health, component integrity), `embodiment/spec.py` (SpecModulator with per-modulator sensors, integrity aggregation, damage_affinities, apply_damage, check_affordance_requires), `embodiment/resolution.py` (LOD depth: level 2 collapsed / level 3 deep), `embodiment/cerebellum.py` (forward models), `embodiment/motor.py` |
 | Imagination | `imagination/trigger.py` (entity extraction + ComponentIndex lookup + design dispatch), `imagination/designer.py` (ImaginationDesigner wrapping EntityDesigner), `imagination/cache.py` (session-scoped ImaginationCache) |
 | Mesh | `mesh/identity.py`, `mesh/knowledge.py`, `mesh/task_delegation.py`, `mesh/clock.py` |
 | Lane tiers | `runtime/function_router.py`, `runtime/lane_models.py`, `runtime/lane_backends.py` |
@@ -358,6 +358,9 @@ MAXIM_PEER_LOG_REQUESTS=1        # JSON log per outbound peer call
 MAXIM_DRAIN_CACHE_TTL_S=1.0              # DrainConstraint mtime cache freshness (clamped 0-60)
 MAXIM_AUTO_DRAIN_THRESHOLD=5             # Transient failure count before auto-drain (clamped 2-20; permanent=1)
 MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S=90   # Auto-undrain probe cycle interval (clamped 30-600)
+
+# Embodiment resolution (component-level damage)
+MAXIM_DEEP_EMBODIMENT=1          # Enable level-3 deep embodiment: sub-sensors exposed, damage_affinities active. Same as --deep-embodiment.
 
 # Leader proxy admission control
 MAXIM_PROXY_MAX_CONCURRENT=4     # Max in-flight requests to upstream (0=unlimited)
