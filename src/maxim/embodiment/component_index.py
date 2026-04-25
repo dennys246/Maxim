@@ -226,6 +226,35 @@ class ComponentIndex:
         # Layer 2: embedding similarity
         return self._find_by_embedding(normalized)
 
+    def find_alias_only(self, query: str) -> ComponentMatch | None:
+        """Layer 1 + 1b alias lookup only — no embedding computation.
+
+        Use this in hot paths (e.g., bio-enrichment pipeline) where the
+        ~5ms embedding cost per query is unacceptable.  Returns a match
+        only if the query (or its head noun) exactly matches an alias.
+        """
+        if not query or not query.strip():
+            return None
+
+        normalized = query.strip().lower()
+
+        with self._lock:
+            ref = self._aliases.get(normalized)
+        if ref is not None:
+            name = ref.rsplit("/", 1)[-1] if "/" in ref else ref
+            return ComponentMatch(ref=ref, name=name, score=1.0, layer="alias")
+
+        words = normalized.split()
+        if len(words) > 1:
+            head_noun = words[-1]
+            with self._lock:
+                ref = self._aliases.get(head_noun)
+            if ref is not None:
+                name = ref.rsplit("/", 1)[-1] if "/" in ref else ref
+                return ComponentMatch(ref=ref, name=name, score=0.95, layer="alias")
+
+        return None
+
     def find_similar(self, query: str, k: int = 5) -> list[ComponentMatch]:
         """Return top-k similar components by embedding cosine similarity.
 

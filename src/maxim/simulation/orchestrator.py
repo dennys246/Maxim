@@ -1338,6 +1338,36 @@ def start_simulation_mode(
             except Exception:
                 pass
 
+    # ── Scene manifest pre-trigger (Phase 1: SEM World Enrichment) ───────
+    # Before the first turn, generate a scene entity inventory from the
+    # goal and resolve all entities through the imagination pipeline.
+    # This runs AFTER ImaginationTrigger wiring (EntityMap, ComponentIndex,
+    # designer all constructed) and BEFORE the AUT thread launch.
+    if aut_imagination_trigger is not None and generative and llm_router is not None:
+        try:
+            from maxim.simulation.narrator import generate_scene_manifest
+            from maxim.simulation.sim_logger import sim_log
+
+            logger.info("Generating scene manifest for SEM world enrichment...")
+            manifest_text = generate_scene_manifest(llm_router, goal)
+            if manifest_text:
+                manifest_results = aut_imagination_trigger.process_manifest(
+                    manifest_text,
+                    scene_id="pre_trigger",
+                )
+                logger.info(
+                    "Scene manifest: %d entities pre-instantiated",
+                    len(manifest_results),
+                )
+                sim_log(
+                    "SEM_TRACE",
+                    f"Scene manifest pre-trigger: {len(manifest_results)} entities resolved",
+                )
+            else:
+                sim_log("SEM_TRACE", "Scene manifest: empty (goal too vague or LLM failed)")
+        except Exception as e:
+            logger.warning("Scene manifest pre-trigger failed: %s", e)
+
     # ── Print simulation banner ──────────────────────────────────────────
     from maxim.simulation.sim_logger import _emit, display_status, display_summary, get_active_display
 

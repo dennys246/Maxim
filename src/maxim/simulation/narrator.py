@@ -381,3 +381,58 @@ class Narrator:
     def export_decisions(self) -> list[dict[str, Any]]:
         """Return all decision records for YAML export."""
         return list(self._decisions)
+
+
+# ---------------------------------------------------------------------------
+# Scene manifest generation (pre-trigger)
+# ---------------------------------------------------------------------------
+
+_MANIFEST_SYSTEM = """\
+You are a world builder for a cognitive agent simulation. Given a \
+simulation goal, list the key physical entities that should populate \
+the scene.
+
+RULES:
+- List 5-10 entities, one per line
+- Include creatures, weapons, items, NPCs, and environmental features
+- For each entity, write a short physical description (5-10 words)
+- Focus on entities the agent can physically interact with or observe
+- Do NOT list abstract concepts, emotions, or story beats
+- Do NOT list the agent itself or its body
+
+Example output for "explore a haunted dungeon":
+a rusty iron gate blocking the entrance
+a flickering torch mounted on the stone wall
+a giant spider lurking in the shadows
+a dusty wooden chest in the corner
+a skeleton guard with a rusted sword
+a deep pit trap hidden under loose stones
+a carved stone altar glowing faintly
+"""
+
+
+def generate_scene_manifest(llm: Any, goal: str) -> str:
+    """Generate a scene entity manifest from a simulation goal.
+
+    Makes a single LLM call to produce a natural-language list of
+    entities for the scenario. The output is intended for
+    :meth:`ImaginationTrigger.process_manifest`.
+
+    Returns raw text (one entity per line). Returns empty string on
+    failure — the caller should proceed without pre-triggering.
+
+    Args:
+        llm: LLM router or similar (must have ``generate_text``).
+        goal: The simulation goal string.
+    """
+    prompt = f"{_MANIFEST_SYSTEM}\n\nSimulation goal: {goal}\n\nList the entities:"
+
+    try:
+        text = llm.generate_text(prompt, max_tokens=300)
+        if text and text.strip():
+            log.info("Scene manifest generated: %d chars", len(text.strip()))
+            return text.strip()
+    except Exception as e:
+        log.warning("Scene manifest generation failed: %s", e)
+
+    return ""
