@@ -60,6 +60,7 @@ if [[ "$SETS" == *"1"* ]]; then
     echo "▶ SIM SET 1: Cross-session affordance transfer"
     echo "  Part A: Dragon encounter (learn fire = dangerous)..."
 
+    MAXIM_SUBSTRATE_PATH=1 \
     MAXIM_LOG_FILE="$RESULTS_DIR/sim1a_dragon.jsonl" \
     MAXIM_BACKEND_TRACE=1 \
     python -m maxim \
@@ -78,6 +79,7 @@ if [[ "$SETS" == *"1"* ]]; then
     if [ -n "$SIM1_SESSION" ]; then
         echo "  Part B: Mage encounter (test fire transfer)..."
 
+        MAXIM_SUBSTRATE_PATH=1 \
         MAXIM_LOG_FILE="$RESULTS_DIR/sim1b_mage.jsonl" \
         MAXIM_BACKEND_TRACE=1 \
         python -m maxim \
@@ -108,6 +110,7 @@ fi
 if [[ "$SETS" == *"2"* ]]; then
     echo "▶ SIM SET 2: Goal-level deliberation learning (Arena campaign)"
 
+    MAXIM_SUBSTRATE_PATH=1 \
     MAXIM_LOG_FILE="$RESULTS_DIR/sim2_arena.jsonl" \
     python -m maxim \
         --sim scenarios/campaigns/arena_v1.yaml \
@@ -132,6 +135,7 @@ fi
 if [[ "$SETS" == *"3"* ]]; then
     echo "▶ SIM SET 3: Multi-entity imagination + temporal credit"
 
+    MAXIM_SUBSTRATE_PATH=1 \
     MAXIM_LOG_FILE="$RESULTS_DIR/sim3_marketplace.jsonl" \
     python -m maxim \
         --sim "explore a fantasy marketplace with merchants and thieves, then venture into monster-infested ruins with creatures and magical artifacts" \
@@ -159,6 +163,7 @@ fi
 if [[ "$SETS" == *"4"* ]]; then
     echo "▶ SIM SET 4: Sensory deprivation stress test (Darkened Cavern)"
 
+    MAXIM_SUBSTRATE_PATH=1 \
     MAXIM_LOG_FILE="$RESULTS_DIR/sim4_cavern.jsonl" \
     python -m maxim \
         --sim scenarios/campaigns/darkened_cavern_v1.yaml \
