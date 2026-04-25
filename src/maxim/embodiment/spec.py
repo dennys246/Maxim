@@ -574,18 +574,37 @@ class SpecModulator:
             return 1.0
 
         if damage_type and damage_type in self._damage_affinities:
-            # Level 3: route through affinities
+            # Level 3: route through affinities.
+            # Only count affinities for sensors that actually exist in
+            # vital_metrics — prevents silent damage loss on typos
+            # (executor review finding #1).
             affinities = self._damage_affinities[damage_type]
-            total_affinity = sum(affinities.values())
-            if total_affinity > 0:
-                for sensor_name, affinity in affinities.items():
-                    if sensor_name in self.vital_metrics:
-                        self.vital_metrics[sensor_name] = max(
-                            0.0,
-                            self.vital_metrics[sensor_name] - amount * (affinity / total_affinity),
-                        )
-        else:
-            # Level 2: distribute proportionally across all sub-sensors
+            valid = {k: v for k, v in affinities.items() if k in self.vital_metrics}
+            if not valid and affinities:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "%s: damage_affinities[%s] references no valid sensors "
+                    "(keys: %s, available: %s) — falling back to proportional",
+                    self._name,
+                    damage_type,
+                    list(affinities.keys()),
+                    list(self.vital_metrics.keys()),
+                )
+                # Fall through to proportional distribution
+                valid = {}
+            if valid:
+                total_affinity = sum(valid.values())
+                for sensor_name, affinity in valid.items():
+                    self.vital_metrics[sensor_name] = max(
+                        0.0,
+                        self.vital_metrics[sensor_name] - amount * (affinity / total_affinity),
+                    )
+            # else: fall through to proportional below
+
+        if not (damage_type and damage_type in self._damage_affinities and valid):
+            # Level 2 (no damage_type) or affinity fallback: distribute
+            # proportionally across all sub-sensors
             n = len(self.vital_metrics)
             per_sensor = amount / n if n > 0 else 0.0
             for sensor_name in self.vital_metrics:
