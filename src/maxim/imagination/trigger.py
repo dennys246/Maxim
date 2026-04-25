@@ -478,9 +478,27 @@ class ImaginationTrigger:
         Returns list of substrate node IDs created/reinforced.
         """
         if self._aff_encoder is None:
+            try:
+                from maxim.simulation.sim_logger import sim_log
+
+                sim_log("SEM_TRACE", f"affordance encoding skipped: _aff_encoder is None for '{entity.name}'")
+            except Exception:
+                pass
             return []
 
         all_node_ids: list[str] = []
+        _n_mods = len(entity.modulators)
+        _n_affs = sum(len(m.affordances) for m in entity.modulators.values())
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            sim_log(
+                "SEM_TRACE",
+                f"affordance encoding: '{entity.name}' has {_n_mods} modulators, {_n_affs} affordances",
+            )
+        except Exception:
+            pass
+
         for mod in entity.modulators.values():
             for aff_name in mod.affordances:
                 try:
