@@ -1082,7 +1082,9 @@ class TestGenerateSceneManifest:
         from maxim.simulation.narrator import generate_scene_manifest
 
         mock_llm = MagicMock()
-        mock_llm.generate_text.return_value = "a rusty sword\na large dragon\na healing potion"
+        mock_llm.generate_json.return_value = {
+            "entities": ["a rusty sword", "a large dragon", "a healing potion"]
+        }
 
         result = generate_scene_manifest(mock_llm, "explore a dungeon")
         assert "dragon" in result
@@ -1092,7 +1094,7 @@ class TestGenerateSceneManifest:
         from maxim.simulation.narrator import generate_scene_manifest
 
         mock_llm = MagicMock()
-        mock_llm.generate_text.side_effect = RuntimeError("LLM down")
+        mock_llm.generate_json.side_effect = RuntimeError("LLM down")
 
         result = generate_scene_manifest(mock_llm, "explore a dungeon")
         assert result == ""
@@ -1101,7 +1103,7 @@ class TestGenerateSceneManifest:
         from maxim.simulation.narrator import generate_scene_manifest
 
         mock_llm = MagicMock()
-        mock_llm.generate_text.return_value = None
+        mock_llm.generate_json.return_value = None
 
         result = generate_scene_manifest(mock_llm, "test memory")
         assert result == ""
@@ -1110,7 +1112,7 @@ class TestGenerateSceneManifest:
         from maxim.simulation.narrator import generate_scene_manifest
 
         mock_llm = MagicMock()
-        mock_llm.generate_text.return_value = "   \n   "
+        mock_llm.generate_json.return_value = {"entities": []}
 
         result = generate_scene_manifest(mock_llm, "test")
         assert result == ""
