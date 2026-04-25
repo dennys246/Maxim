@@ -16,10 +16,16 @@ set -uo pipefail
 # Note: NOT set -e — individual sim failures should not abort the suite.
 # Each set is independent and we want all results even if one crashes.
 
-MODEL="${MODEL:-qwen2.5-14b-instruct}"
+MODEL="${MODEL:-}"  # Empty = use default routing (peer mesh → leader)
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESULTS_DIR="${HOME}/.maxim/experiments/temporal_credit_${TIMESTAMP}"
 SETS="1,2,3,4"
+
+# Build model flag (only passed when explicitly set)
+MODEL_FLAG=""
+if [ -n "$MODEL" ]; then
+    MODEL_FLAG="--language-model $MODEL"
+fi
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -61,7 +67,7 @@ if [[ "$SETS" == *"1"* ]]; then
         --embodiment bodies/base_humanoid \
         --sim-max-turns 20 \
         --interactive false \
-        --language-model "$MODEL" \
+        $MODEL_FLAG \
         2>&1 | tee "$RESULTS_DIR/sim1a_stdout.txt"
 
     # Extract session ID from report output for resume
@@ -80,7 +86,7 @@ if [[ "$SETS" == *"1"* ]]; then
             --sim-max-turns 20 \
             --interactive false \
             --resume-sim "$SIM1_SESSION" \
-            --language-model "$MODEL" \
+            $MODEL_FLAG \
             2>&1 | tee "$RESULTS_DIR/sim1b_stdout.txt"
     else
         echo "  ✗ Could not find session ID for resume — skipping Part B"
@@ -108,7 +114,7 @@ if [[ "$SETS" == *"2"* ]]; then
         --embodiment weapons/rusty_sword \
         --sim-max-turns 40 \
         --interactive false \
-        --language-model "$MODEL" \
+        $MODEL_FLAG \
         2>&1 | tee "$RESULTS_DIR/sim2_stdout.txt"
 
     echo ""
@@ -133,7 +139,7 @@ if [[ "$SETS" == *"3"* ]]; then
         --auto-curate \
         --sim-max-turns 30 \
         --interactive false \
-        --language-model "$MODEL" \
+        $MODEL_FLAG \
         2>&1 | tee "$RESULTS_DIR/sim3_stdout.txt"
 
     echo ""
@@ -159,7 +165,7 @@ if [[ "$SETS" == *"4"* ]]; then
         --embodiment bodies/base_humanoid \
         --sim-max-turns 30 \
         --interactive false \
-        --language-model "$MODEL" \
+        $MODEL_FLAG \
         2>&1 | tee "$RESULTS_DIR/sim4_stdout.txt"
 
     echo ""
