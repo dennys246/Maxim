@@ -925,14 +925,15 @@ def start_simulation_mode(
         sim_tmpdir=str(sim_tmpdir),
         sandbox_dirs=sandbox_dirs,
     )
-    orch_registry.register(SendMessageTool(bridge=bridge))
+    _aut_embodiment = getattr(_aut_instance, "embodiment", None) if _aut_instance is not None else None
+    orch_registry.register(SendMessageTool(bridge=bridge, embodiment=_aut_embodiment))
     orch_registry.register(ObserveActionsTool(bridge=bridge))
     orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
     orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
     orch_registry.register(InjectPainTool(bridge=bridge))
-    # DamageEntityTool: applies SEM damage to AUT body → failure modes → PainBus → NAc.
+    # DamageEntityTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
     # Only registered when embodiment is active (--embodiment flag).
-    _aut_embodiment = getattr(_aut_instance, "embodiment", None) if _aut_instance is not None else None
+    # _aut_embodiment already resolved above for SendMessageTool.
     if _aut_embodiment is not None:
         orch_registry.register(DamageEntityTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
         orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
