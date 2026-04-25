@@ -199,15 +199,47 @@ class SendMessageTool(Tool):
             if is_attack and self._embodiment.root is not None:
                 root = self._embodiment.root
                 old_health = root.vital_metrics.get("health", 1.0)
-                root.vital_metrics["health"] = max(0.0, old_health - amount)
+                new_health = max(0.0, old_health - amount)
+                root.vital_metrics["health"] = new_health
+
+                # Publish pain IMMEDIATELY on every hit — proportional to
+                # damage, not gated on a threshold.  In biology, you feel
+                # the sword strike instantly; you don't wait until you're
+                # critically injured to notice pain.
+                pain_bus = getattr(self._embodiment, "_pain_bus", None)
+                if pain_bus is not None:
+                    try:
+                        from maxim.proprioception.pain import PainSignal, PainType
+
+                        signal = PainSignal(
+                            pain_type=PainType.EXTERNAL_SIGNAL,
+                            intensity=min(1.0, amount * 2),  # scale: 0.15 hit → 0.3 pain
+                            timestamp=time.time(),
+                            context={
+                                "source": "combat_auto_damage",
+                                "entity": root.full_path,
+                                "entity_type": root.entity_type,
+                                "failure_mode": source,
+                                "damage_amount": amount,
+                                "health_before": old_health,
+                                "health_after": new_health,
+                                "sensor_readings": {"health": new_health},
+                            },
+                        )
+                        pain_bus.publish(signal)
+                    except Exception:
+                        pass
+
+                # Also evaluate threshold-based failure modes (critical injury)
                 self._embodiment.evaluate_failures()
+
                 try:
                     from maxim.simulation.sim_logger import sim_log
 
                     sim_log(
                         "SEM_DAMAGE",
-                        f"auto-damage: health {old_health:.2f} → {root.vital_metrics['health']:.2f} "
-                        f"(source={source}, amount={amount:.2f})",
+                        f"auto-damage: health {old_health:.2f} → {new_health:.2f} "
+                        f"(source={source}, amount={amount:.2f}, pain={min(1.0, amount * 2):.2f})",
                     )
                 except Exception:
                     pass
@@ -513,8 +545,32 @@ class DamageEntityTool(Tool):
         new_val = max(0.0, old_val - amount)
         root.vital_metrics[sensor] = new_val
 
-        # Evaluate failure modes — this triggers the full chain:
-        # sensor change → FailureMode.evaluate() → PainBus.publish() → NAc
+        # Publish pain IMMEDIATELY — proportional to damage amount.
+        # Don't wait for threshold-based failure modes.
+        pain_bus = getattr(self._embodiment, "_pain_bus", None)
+        if pain_bus is not None:
+            try:
+                from maxim.proprioception.pain import PainSignal, PainType
+
+                signal = PainSignal(
+                    pain_type=PainType.EXTERNAL_SIGNAL,
+                    intensity=min(1.0, amount * 2),
+                    timestamp=time.time(),
+                    context={
+                        "source": "damage_entity",
+                        "entity": root.full_path,
+                        "entity_type": root.entity_type,
+                        "failure_mode": source,
+                        "damage_amount": amount,
+                        "sensor": sensor,
+                        "sensor_readings": {sensor: new_val},
+                    },
+                )
+                pain_bus.publish(signal)
+            except Exception:
+                pass
+
+        # Also evaluate threshold-based failure modes (critical injury)
         failures = self._embodiment.evaluate_failures()
 
         # Log for observability
@@ -523,7 +579,7 @@ class DamageEntityTool(Tool):
 
             sim_log(
                 "SEM_DAMAGE",
-                f"damage applied: {sensor} {old_val:.2f} → {new_val:.2f} (source={source})",
+                f"damage applied: {sensor} {old_val:.2f} → {new_val:.2f} (source={source}, pain={min(1.0, amount * 2):.2f})",
                 {"sensor": sensor, "old": old_val, "new": new_val, "source": source, "failures": len(failures)},
             )
         except Exception:
