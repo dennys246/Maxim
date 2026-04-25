@@ -248,6 +248,7 @@ def start_simulation_mode(
     from maxim.simulation.tools import (
         AnalyzeResultsTool,
         CheckCompletionTool,
+        DamageEntityTool,
         ExtendSimulationTool,
         FinishSimulationTool,
         InjectPainTool,
@@ -928,6 +929,11 @@ def start_simulation_mode(
     orch_registry.register(CheckCompletionTool(bridge=bridge, llm=llm_router, goal=goal, continuous=continuous))
     orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
     orch_registry.register(InjectPainTool(bridge=bridge))
+    # DamageEntityTool: applies SEM damage to AUT body → failure modes → PainBus → NAc.
+    # Only registered when embodiment is active (--embodiment flag).
+    _aut_embodiment = getattr(_aut_instance, "embodiment", None) if _aut_instance is not None else None
+    if _aut_embodiment is not None:
+        orch_registry.register(DamageEntityTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
     orch_registry.register(spawn_tool)
     orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
     orch_registry.register(

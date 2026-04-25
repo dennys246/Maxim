@@ -970,11 +970,75 @@ def run_agentic_loop(
                         _obs_keys = (
                             list(observation.keys()) if hasattr(observation, "keys") else type(observation).__name__
                         )
-                        sim_log("SEM_TRACE", f"Imagination skipped: no percept_text (obs keys: {_obs_keys})", _force_debug=True)
+                        sim_log(
+                            "SEM_TRACE",
+                            f"Imagination skipped: no percept_text (obs keys: {_obs_keys})",
+                            _force_debug=True,
+                        )
                     except Exception:
                         pass
             except Exception as e:
                 log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
+
+        _auto_sense_text = ""  # populated by section 1.15, set on context at submission
+
+        # ─────────────────────────────────────────────────────────────────
+        # 1.15 AUTO-SENSE — passive perception (exteroception + interoception)
+        # ─────────────────────────────────────────────────────────────────
+        # On each new percept (not empty ticks), auto-run sense_presence
+        # (what's around me?) and sense on self-entity (how do I feel?).
+        # Results are injected into StructuredContext so the LLM sees them
+        # alongside the narrative — the agent passively perceives its
+        # surroundings and body state without choosing to call tools.
+        # Check if there's a new percept this tick (reuse observation parsing)
+        _has_new_percept = False
+        if hasattr(observation, "get"):
+            _has_new_percept = bool(
+                observation.get("transcript") or observation.get("raw_transcript_text") or observation.get("cli_input")
+            )
+        elif hasattr(observation, "transcript"):
+            _has_new_percept = bool(getattr(observation, "transcript", ""))
+        if _has_new_percept and executor is not None:
+            try:
+                _tool_reg = getattr(executor, "_registry", None) or getattr(executor, "registry", None)
+                if _tool_reg is not None:
+                    _auto_sense_parts = []
+
+                    # Exteroception: sense_presence (what entities are around me?)
+                    try:
+                        _presence = _tool_reg.get("sense_presence")
+                        _presence_result = _presence.execute()
+                        if _presence_result.success and _presence_result.output:
+                            _auto_sense_parts.append(str(_presence_result.output))
+                    except (KeyError, Exception):
+                        pass
+
+                    # Interoception: sense self-entity (health, stamina, hunger)
+                    try:
+                        _sense = _tool_reg.get("sense")
+                        # Find self-entity name from entity_map
+                        _emap = getattr(_presence, "_entity_map", None) if "_presence" in dir() else None
+                        if _emap is not None:
+                            _self_ents = _emap.list_self_entities()
+                            for _se in _self_ents:
+                                _sense_result = _sense.execute(entity_name=_se.name)
+                                if _sense_result.success and _sense_result.output:
+                                    _auto_sense_parts.append(f"Body state ({_se.name}): {_sense_result.output}")
+                    except (KeyError, Exception):
+                        pass
+
+                    if _auto_sense_parts:
+                        _auto_sense_text = "\n".join(_auto_sense_parts)
+
+                        try:
+                            from maxim.simulation.sim_logger import sim_log
+
+                            _n_entities = _auto_sense_text.count("[SCENE]") + _auto_sense_text.count("[YOU]")
+                            sim_log("PERCEPTION", f"auto-sense: {_n_entities} entities, body state updated")
+                        except Exception:
+                            pass
+            except Exception as _ase:
+                log_swallowed_exception(_ase, operation="auto_sense", context={"step": step_num})
 
         # ─────────────────────────────────────────────────────────────────
         # 1.2 BIO-ENRICHMENT — PFC deliberation (gate + enrich)
@@ -2395,6 +2459,10 @@ def run_agentic_loop(
                     # Inject bio-enrichment context if percept passed novelty gate
                     if context is not None and _percept_enrichment_text:
                         context.bio_enrichment_context = _percept_enrichment_text
+
+                    # Auto-sense context (section 1.15) — passive perception
+                    if context is not None and _auto_sense_text:
+                        context.auto_sense_context = _auto_sense_text
 
                     # Check if there's something meaningful to react to
                     # Only submit to LLM if we have:

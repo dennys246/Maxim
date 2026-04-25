@@ -390,6 +390,82 @@ class GenerateScenarioTool(Tool):
             return ToolOutput(success=False, error=f"Scenario generation failed: {e}")
 
 
+class DamageEntityTool(Tool):
+    """Apply SEM damage to the AUT's body sensors.
+
+    When the orchestrator narrates combat (e.g., "the dragon breathes fire"),
+    this tool makes it real: it mutates the AUT's vital_metrics, then
+    evaluates failure modes to trigger the full PainBus → NAc chain.
+
+    Without this, combat narration is text-only — no sensor changes, no pain
+    signals, no NAc learning about what hurts.
+    """
+
+    name = "damage_entity"
+    description = (
+        "Apply damage to the agent's body. Use when a scene entity attacks "
+        "or the environment causes harm. Specify which sensor to affect "
+        "(health, stamina) and by how much (0.0 to 1.0). The agent will "
+        "feel pain if damage triggers a failure mode."
+    )
+    input_schema = {
+        "sensor": (str, "health"),
+        "amount": (float, 0.1),
+        "source": (str, ""),  # e.g., "dragon_fire_breath"
+    }
+
+    def __init__(self, *, embodiment: Any, entity_map: Any) -> None:
+        super().__init__()
+        self._embodiment = embodiment
+        self._entity_map = entity_map
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        sensor = kwargs.get("sensor", "health")
+        amount = float(kwargs.get("amount", 0.1))
+        source = kwargs.get("source", "unknown")
+
+        if self._embodiment is None:
+            return ToolOutput(success=False, error="No embodiment configured")
+
+        root = self._embodiment.root
+        if root is None:
+            return ToolOutput(success=False, error="No root entity")
+
+        # Apply damage to vital_metrics
+        old_val = root.vital_metrics.get(sensor, 1.0)
+        new_val = max(0.0, old_val - amount)
+        root.vital_metrics[sensor] = new_val
+
+        # Evaluate failure modes — this triggers the full chain:
+        # sensor change → FailureMode.evaluate() → PainBus.publish() → NAc
+        failures = self._embodiment.evaluate_failures()
+
+        # Log for observability
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            sim_log(
+                "SEM_DAMAGE",
+                f"damage applied: {sensor} {old_val:.2f} → {new_val:.2f} (source={source})",
+                {"sensor": sensor, "old": old_val, "new": new_val, "source": source, "failures": len(failures)},
+            )
+        except Exception:
+            pass
+
+        return ToolOutput(
+            success=True,
+            output={
+                "sensor": sensor,
+                "old_value": round(old_val, 2),
+                "new_value": round(new_val, 2),
+                "damage": round(amount, 2),
+                "source": source,
+                "pain_triggered": len(failures) > 0,
+                "failure_modes": [f.failure_name for f in failures],
+            },
+        )
+
+
 class InjectPainTool(Tool):
     """Send a pain/proprioceptive signal to the AUT.
 

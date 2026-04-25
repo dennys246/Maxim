@@ -606,6 +606,12 @@ class StructuredContext:
     # Populated by BioEnrichmentPipeline when a novel percept passes the gate.
     bio_enrichment_context: str = ""
 
+    # Auto-sense: passive perception results (exteroception + interoception).
+    # Populated by the agent loop's auto-sense sweep (section 1.15) on each
+    # new percept.  Contains sense_presence output (visible entities +
+    # affordance annotations) and self-entity sensor readings (health, etc.).
+    auto_sense_context: str = ""
+
     # PFC deliberation: recent THOUGHT entries from WorkingMemorySet.
     # Populated by the deliberation cycle before each LLM call so the
     # LLM sees accumulated reasoning + enrichment from prior cycles.
