@@ -466,6 +466,80 @@ class DamageEntityTool(Tool):
         )
 
 
+class SetEntitySensorTool(Tool):
+    """Set an AUT body sensor to a specific value.
+
+    General-purpose complement to DamageEntityTool. Use for:
+    - Healing: set health back toward 1.0
+    - Hunger/thirst satisfaction: set hunger toward 0.0
+    - Environmental effects: set visibility, temperature
+    - Any sensor state change that isn't combat damage
+
+    Also evaluates failure modes after the change, so recovery
+    from a failure state (e.g., health rising above 0.2) is
+    properly detected.
+    """
+
+    name = "set_entity_sensor"
+    description = (
+        "Set an agent body sensor to a specific value. Use for healing, "
+        "feeding (reduce hunger), resting (restore stamina), environmental "
+        "changes (visibility), or any non-combat sensor modification."
+    )
+    input_schema = {
+        "sensor": (str, "health"),
+        "value": (float, 1.0),
+        "source": (str, ""),  # e.g., "healing_potion", "food", "rest"
+    }
+
+    def __init__(self, *, embodiment: Any, entity_map: Any) -> None:
+        super().__init__()
+        self._embodiment = embodiment
+        self._entity_map = entity_map
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        sensor = kwargs.get("sensor", "health")
+        value = float(kwargs.get("value", 1.0))
+        source = kwargs.get("source", "unknown")
+
+        if self._embodiment is None:
+            return ToolOutput(success=False, error="No embodiment configured")
+
+        root = self._embodiment.root
+        if root is None:
+            return ToolOutput(success=False, error="No root entity")
+
+        old_val = root.vital_metrics.get(sensor, 0.0)
+        new_val = max(0.0, min(1.0, value))
+        root.vital_metrics[sensor] = new_val
+
+        # Evaluate failure modes (recovery detection)
+        self._embodiment.evaluate_failures()
+
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            direction = "↑" if new_val > old_val else "↓" if new_val < old_val else "="
+            sim_log(
+                "SEM_SENSOR",
+                f"sensor set: {sensor} {old_val:.2f} → {new_val:.2f} {direction} (source={source})",
+                {"sensor": sensor, "old": old_val, "new": new_val, "source": source},
+            )
+        except Exception:
+            pass
+
+        return ToolOutput(
+            success=True,
+            output={
+                "sensor": sensor,
+                "old_value": round(old_val, 2),
+                "new_value": round(new_val, 2),
+                "source": source,
+                "direction": "increased" if new_val > old_val else "decreased" if new_val < old_val else "unchanged",
+            },
+        )
+
+
 class InjectPainTool(Tool):
     """Send a pain/proprioceptive signal to the AUT.
 

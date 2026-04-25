@@ -255,6 +255,7 @@ def start_simulation_mode(
         InspectAUTTool,
         ObserveActionsTool,
         SendMessageTool,
+        SetEntitySensorTool,
         SimRespondTool,
         SpawnSubSimulationTool,
     )
@@ -934,6 +935,7 @@ def start_simulation_mode(
     _aut_embodiment = getattr(_aut_instance, "embodiment", None) if _aut_instance is not None else None
     if _aut_embodiment is not None:
         orch_registry.register(DamageEntityTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
+        orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
     orch_registry.register(spawn_tool)
     orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
     orch_registry.register(
@@ -1023,6 +1025,18 @@ def start_simulation_mode(
                 "description": "End the simulation. Call when your goal is achieved or you're done testing.",
                 "params": {"reason": "Why you're ending the simulation", "summary": "(optional) Summary of findings"},
                 "followup_type": None,
+            },
+            "set_entity_sensor": {
+                "description": "Set an agent body sensor to a value. Use for healing, feeding "
+                "(reduce hunger to 0), resting (restore stamina to 1), environmental changes, "
+                "or any non-combat sensor modification. The agent feels the change.",
+                "params": {
+                    "sensor": "Which sensor: health, stamina, hunger, visibility, etc.",
+                    "value": "Target value 0.0-1.0",
+                    "source": "What caused the change (e.g., 'healing_potion', 'food', 'rest')",
+                },
+                "example": '{"tool_name": "set_entity_sensor", "params": {"sensor": "hunger", "value": 0.0, "source": "food"}}',
+                "followup_type": "process",
             },
             "inject_pain": {
                 "description": "Send a pain signal to the agent to test proprioceptive handling.",
