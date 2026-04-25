@@ -1,7 +1,7 @@
 # Component-Level Damage Model
 
 **Branch:** `feat/sem-damage-autosense` (continues from Phase 1 manifest work)
-**Status:** IMPLEMENTING
+**Status:** STAGES 1-5 SHIPPED, Stage 6 deferred
 **Depends on:** Phase 1 scene manifest (committed)
 
 ## Motivation

@@ -113,6 +113,26 @@ class ModulatorAffordanceTool(Tool):
         super().__init__()
 
     def execute(self, **kwargs: Any) -> Any:
+        # Check affordance preconditions (component integrity gating).
+        # When a body part is too damaged, its affordances fail with an
+        # explanatory message — producing the natural tool-failure → pain
+        # → learning chain.  The agent learns "can't fly with broken wing."
+        if hasattr(self._modulator, "check_affordance_requires"):
+            allowed, reason = self._modulator.check_affordance_requires(self._affordance_name)
+            if not allowed:
+                return ToolOutput(
+                    success=False,
+                    error=reason,
+                    side_effects={
+                        "affordance_blocked": {
+                            "affordance": self._affordance_name,
+                            "modulator": self._modulator.name,
+                            "entity": self._entity.name,
+                            "reason": reason,
+                        }
+                    },
+                )
+
         result = self._modulator.execute(self._affordance_name, kwargs)
         if not result.success:
             return ToolOutput(success=False, error=result.error)

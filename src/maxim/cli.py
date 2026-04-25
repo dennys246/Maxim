@@ -1028,6 +1028,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         # --embodiment for the primary (generative/DM) use cases.
         _sim_entity_ref = getattr(args, "embodiment", None)
 
+        # Resolve embodiment depth (level 2 default, level 3 with --deep-embodiment)
+        try:
+            from maxim.embodiment.resolution import get_embodiment_depth
+
+            get_embodiment_depth(args)
+        except Exception:
+            pass
+
         # Default to base_humanoid embodiment for sim mode (0.7+).
         # The agent gets physical affordances (move, look, pick_up, use, speak, rest)
         # which unlocks the full 0.7 chain: Acting Coach, imagination, scene-scoped tools.

@@ -223,10 +223,13 @@ def _parse_entity(
         affordances: dict[str, AffordanceSchema] = {}
         for aff_name, aff_spec in mod_spec.get("affordances", {}).items():
             params = _parse_params(aff_spec.get("params", {}))
+            requires_raw = aff_spec.get("requires", {})
+            requires = {k: float(v) for k, v in requires_raw.items()} if requires_raw else {}
             affordances[aff_name] = AffordanceSchema(
                 params=params,
                 description=aff_spec.get("description", ""),
                 timeout=aff_spec.get("timeout", 30.0),
+                requires=requires,
             )
 
         # Per-modulator sensors (component-level damage model)
@@ -592,6 +595,38 @@ class SpecModulator:
                 )
 
         return self.compute_integrity()
+
+    def check_affordance_requires(self, affordance_name: str) -> tuple[bool, str]:
+        """Check if an affordance's preconditions are met.
+
+        Returns ``(allowed, reason)``. If allowed is False, reason
+        describes which requirement failed (e.g., "Wing too damaged to
+        take flight (integrity: 0.15, requires: 0.30)").
+        """
+        schema = self._affordances.get(affordance_name)
+        if schema is None or not schema.requires:
+            return True, ""
+
+        integrity = self.compute_integrity()
+
+        for req_name, req_threshold in schema.requires.items():
+            if req_name == "integrity":
+                if integrity < req_threshold:
+                    return False, (
+                        f"{self._name.replace('_', ' ').title()} too damaged for "
+                        f"{affordance_name.replace('_', ' ')} "
+                        f"(integrity: {integrity:.2f}, requires: {req_threshold:.2f})"
+                    )
+            elif req_name in self.vital_metrics:
+                val = self.vital_metrics[req_name]
+                if val < req_threshold:
+                    return False, (
+                        f"{self._name.replace('_', ' ').title()} {req_name.replace('_', ' ')} "
+                        f"too low for {affordance_name.replace('_', ' ')} "
+                        f"({val:.2f}, requires: {req_threshold:.2f})"
+                    )
+
+        return True, ""
 
     def execute(self, affordance: str, params: dict[str, Any]) -> Any:
         """Execute via backend if attached, else return stub success."""

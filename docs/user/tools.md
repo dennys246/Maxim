@@ -279,8 +279,9 @@ These tools are available to the simulation orchestrator when running `maxim --s
 | `analyze_results` | Structured analysis (focus: safety, compliance, behavior) |
 | `inspect_aut` | Read-only access to AUT cognitive state (see below) |
 | `inject_pain` | Send proprioceptive pain signal to AUT |
-| `damage_entity` | Apply physical damage to AUT body (health, stamina). Publishes PainSignal immediately — triggers NAc learning. Auto-fires when `send_message` text contains attack keywords. Only available with `--embodiment`. |
-| `set_entity_sensor` | Set any body sensor to a value (healing, feeding, resting, environment). Complement to `damage_entity` for recovery. Only available with `--embodiment`. |
+| `damage_component` | Apply physical damage to a specific body part (e.g., `component="wing"`, `amount=0.3`). Reduces component integrity, cascades to entity health, publishes PainSignal immediately. Optional `damage_type` (slash, blunt, fire) routes via damage affinities at level 3. Only available with `--embodiment`. |
+| `damage_entity` | **(Deprecated — use `damage_component`.)** Thin shim that delegates to `damage_component` with `component="torso"`. Kept for backward compat with existing orchestrator prompts. |
+| `set_entity_sensor` | Set any body sensor to a value (healing, feeding, resting, environment). Complement to `damage_component` for recovery. Only available with `--embodiment`. |
 | `spawn_sub_simulation` | Fresh AUT for isolated test (optional `approach` param: adversarial, sweep, cooperative, etc.) |
 | `extend_simulation` | Continue current AUT with new objective (uses sub-bridge if active) |
 | `generate_scenario` | Generate replayable YAML from natural language |

@@ -55,11 +55,21 @@ class AffordanceSchema:
 
     ``params`` uses the same format as ``Tool.input_schema``:
     ``{"name": type}`` for required, ``{"name": (type, default)}`` for optional.
+
+    ``requires`` is an optional dict of preconditions that must be met
+    for the affordance to execute.  Keys are sensor/integrity names,
+    values are minimum thresholds.  When the parent modulator's
+    integrity (or a specific sub-sensor) drops below the threshold,
+    the affordance is **blocked** — the tool returns a failure result
+    explaining why, producing the natural tool-failure → pain → learning
+    chain.  Example: ``requires={"integrity": 0.3}`` means the affordance
+    needs at least 30% component integrity to execute.
     """
 
     params: dict[str, type | tuple[type, Any]] = field(default_factory=dict)
     description: str = ""
     timeout: float = 30.0
+    requires: dict[str, float] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

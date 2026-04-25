@@ -167,15 +167,18 @@ class TestSensorReadWrite:
 
 
 class TestAffordances:
-    def test_modulators_have_affordances(self, registry, all_components):
-        """Every modulator has at least one affordance."""
+    def test_modulators_have_affordances_or_sensors(self, registry, all_components):
+        """Every modulator has at least one affordance OR sensors (body-part modulators)."""
         for info in all_components:
             spec = registry.get(info.ref)
             entity_spec = spec.get("entity", spec)
             modulators = entity_spec.get("modulators", {})
             for mod_name, mod in modulators.items():
                 affordances = mod.get("affordances", {})
-                assert len(affordances) >= 1, f"{info.ref}: modulator '{mod_name}' has no affordances"
+                sensors = mod.get("sensors", {})
+                assert len(affordances) >= 1 or len(sensors) >= 1, (
+                    f"{info.ref}: modulator '{mod_name}' has neither affordances nor sensors"
+                )
 
     def test_affordances_have_descriptions(self, registry, all_components):
         """Every affordance has a non-empty description."""
@@ -245,18 +248,31 @@ class TestToolGeneration:
 
 class TestFailureModes:
     def test_failure_triggers_reference_valid_sensors(self, registry, all_components):
-        """Failure mode trigger fields reference sensors that exist."""
+        """Failure mode trigger fields reference sensors that exist.
+
+        Trigger fields can reference:
+        - Entity-level sensors (e.g., 'health', 'stamina')
+        - Derived health ('health' when ``health: derived``)
+        - Per-modulator computed integrity (e.g., 'wing.integrity')
+        """
         valid_ops = {"<", "<=", ">", ">=", "==", "!="}
         for info in all_components:
             spec = registry.get(info.ref)
             entity_spec = spec.get("entity", spec)
-            sensors = entity_spec.get("sensors", {})
+            sensors = set(entity_spec.get("sensors", {}).keys())
+            # Include 'health' if derived
+            if entity_spec.get("health") == "derived":
+                sensors.add("health")
+            # Include modulator.integrity for modulators with sensors
+            for mod_name, mod in entity_spec.get("modulators", {}).items():
+                if mod.get("sensors"):
+                    sensors.add(f"{mod_name}.integrity")
             for failure in entity_spec.get("failure_modes", []):
                 trigger = failure.get("trigger", {})
                 field = trigger.get("field", "")
                 assert field in sensors, (
                     f"{info.ref}: failure trigger references missing sensor '{field}'. "
-                    f"Available: {list(sensors.keys())}"
+                    f"Available: {sorted(sensors)}"
                 )
                 op = trigger.get("op", "")
                 assert op in valid_ops, f"{info.ref}: failure trigger op '{op}' not in {valid_ops}"
