@@ -587,11 +587,15 @@ class BioEnrichmentPipeline:
                 except Exception as e:
                     log.debug("Graph-based hippocampus query failed: %s", e)
 
-            # Path 2: Index-based retrieval by goal (cross-session)
+            # Path 2: Free-text query by goal (cross-session).
+            # Uses recall(query=goal) for keyword-relevance ranking, NOT
+            # recall(goal=goal) which does exact index key match. The index
+            # stores LLM-generated plan text as goal keys, not the user's
+            # sim goal, so exact match fails.
             if len(summaries) < 3:
                 goal = getattr(context, "active_goal", None) if context else None
                 if goal:
-                    goal_results = self._hippocampus.recall(goal=goal, limit=5)
+                    goal_results = self._hippocampus.recall(query=goal, limit=5)
                     for mem in goal_results[:3]:
                         _add_memory(mem, relevance=0.7)
 
