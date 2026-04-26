@@ -1371,6 +1371,11 @@ def start_simulation_mode(
                             aut_bio_enrichment_pipeline._reflex_damage_tool = _reflex_damage
                             aut_bio_enrichment_pipeline._reflex_sensor_tool = _reflex_sensor
 
+                            # Wire entity root for latent affordance surfacing.
+                            # Must look up at evaluation time (not capture) —
+                            # same live-lookup pattern as integrity closure.
+                            aut_bio_enrichment_pipeline._entity_root = _emb_ref.root
+
                             logger.info(
                                 "Percept reflex system wired: archetype=%s, %d reflexes",
                                 _archetype,

@@ -621,3 +621,166 @@ class TestAutoDamageRegression:
         # Light
         f_light = reg.evaluate("a light attack grazes you")
         assert f_light[0].raw_intensity <= 0.10  # was 0.05 in old code
+
+
+# ---------------------------------------------------------------------------
+# Latent affordance surfacing (proprioceptive discovery)
+# ---------------------------------------------------------------------------
+
+
+class TestLatentAffordances:
+    """Latent motor programs surface when reflexes fire, piggybacking on
+    reflex detection to reveal body responses the agent could take."""
+
+    def _make_entity_with_latent(self, *, legs_integrity: float = 1.0, arms_integrity: float = 1.0):
+        """Build a minimal Entity with latent affordances on legs and arms."""
+        from maxim.embodiment.sem import Entity
+        from maxim.embodiment.spec import LatentAffordance, SpecModulator
+
+        entity = Entity(name="test_body", entity_type="body")
+
+        legs = SpecModulator(
+            _name="legs",
+            _entity_name="test_body",
+            _affordances={},
+            _sensors={"leg_mobility": {"unit": "ratio", "range": [0, 1], "weight": 1.0}},
+            _latent_affordances=(
+                LatentAffordance(name="dodge", description="Dodge sideways", requires={"integrity": 0.2}),
+                LatentAffordance(name="roll", description="Roll away", requires={"integrity": 0.3}),
+            ),
+        )
+        legs.vital_metrics["leg_mobility"] = legs_integrity
+        entity.modulators["legs"] = legs
+
+        arms = SpecModulator(
+            _name="arms",
+            _entity_name="test_body",
+            _affordances={},
+            _sensors={"arm_mobility": {"unit": "ratio", "range": [0, 1], "weight": 1.0}},
+            _latent_affordances=(
+                LatentAffordance(name="block", description="Block a blow", requires={"integrity": 0.15}),
+                LatentAffordance(name="parry", description="Deflect with weapon", requires={"integrity": 0.3}),
+            ),
+        )
+        arms.vital_metrics["arm_mobility"] = arms_integrity
+        entity.modulators["arms"] = arms
+
+        return entity
+
+    def test_latent_affordances_surface_when_reflex_fires(self):
+        """When a reflex fires, latent affordances from ALL body modulators appear."""
+        clock = _Clock()
+        reg = ReflexRegistry((_attack_reflex(),), clock=clock)
+        entity = self._make_entity_with_latent()
+
+        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline._entity_root = entity
+
+        result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
+        assert result is not None
+
+        # Should see latent affordances in the affordances tuple
+        aff_names = [a.split(" — ")[0] for a in result.affordances]
+        assert "dodge" in aff_names
+        assert "block" in aff_names
+        assert "roll" in aff_names
+        assert "parry" in aff_names
+
+    def test_no_latent_affordances_without_reflex(self):
+        """When no reflex fires, no latent affordances surface."""
+        clock = _Clock()
+        reg = ReflexRegistry((_attack_reflex(),), clock=clock)
+        entity = self._make_entity_with_latent()
+
+        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline._entity_root = entity
+
+        result = pipeline.enrich("The weather is pleasant today", bypass_gate=True)
+        assert result is not None
+        # No reflexes fired → no latent affordances
+        aff_names = [a.split(" — ")[0] for a in result.affordances]
+        assert "dodge" not in aff_names
+        assert "block" not in aff_names
+
+    def test_integrity_gating_excludes_damaged_affordances(self):
+        """Broken legs → dodge and roll excluded."""
+        clock = _Clock()
+        reg = ReflexRegistry((_attack_reflex(),), clock=clock)
+        # Legs at 0.1 integrity — below dodge (0.2) and roll (0.3) thresholds
+        entity = self._make_entity_with_latent(legs_integrity=0.1)
+
+        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline._entity_root = entity
+
+        result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
+        assert result is not None
+
+        aff_names = [a.split(" — ")[0] for a in result.affordances]
+        assert "dodge" not in aff_names  # requires 0.2, legs at 0.1
+        assert "roll" not in aff_names  # requires 0.3, legs at 0.1
+        assert "block" in aff_names  # arms are fine
+
+    def test_partial_integrity_gating(self):
+        """Legs at 0.25 → dodge available (0.2) but roll excluded (0.3)."""
+        clock = _Clock()
+        reg = ReflexRegistry((_attack_reflex(),), clock=clock)
+        entity = self._make_entity_with_latent(legs_integrity=0.25)
+
+        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline._entity_root = entity
+
+        result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
+        assert result is not None
+
+        aff_names = [a.split(" — ")[0] for a in result.affordances]
+        assert "dodge" in aff_names  # 0.25 >= 0.2 threshold
+        assert "roll" not in aff_names  # 0.25 < 0.3 threshold
+
+    def test_no_entity_root_no_crash(self):
+        """Pipeline without entity_root still works — no latent affordances."""
+        clock = _Clock()
+        reg = ReflexRegistry((_attack_reflex(),), clock=clock)
+
+        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        # No _entity_root set
+
+        result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
+        assert result is not None
+        assert "attack_flinch" in result.reflexes_fired
+        # No crash, no latent affordances
+        aff_names = [a.split(" — ")[0] for a in result.affordances]
+        assert "dodge" not in aff_names
+
+    def test_latent_affordances_include_descriptions(self):
+        """Latent affordance strings include the description."""
+        clock = _Clock()
+        reg = ReflexRegistry((_attack_reflex(),), clock=clock)
+        entity = self._make_entity_with_latent()
+
+        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline._entity_root = entity
+
+        result = pipeline.enrich("The dragon attacks you", bypass_gate=True)
+        assert result is not None
+
+        # Find the dodge entry — should have description
+        dodge_entries = [a for a in result.affordances if a.startswith("dodge")]
+        assert len(dodge_entries) == 1
+        assert "Dodge sideways" in dodge_entries[0]
+
+    def test_deduplication(self):
+        """Same latent affordance from multiple reflexes is deduplicated."""
+        clock = _Clock()
+        # Two reflexes that can both fire
+        reg = ReflexRegistry((_attack_reflex(), _fire_reflex()), clock=clock)
+        entity = self._make_entity_with_latent()
+
+        pipeline = BioEnrichmentPipeline(reflex_registry=reg)
+        pipeline._entity_root = entity
+
+        result = pipeline.enrich("The dragon attacks with fire", bypass_gate=True)
+        assert result is not None
+
+        # Even though 2 reflexes fired, dodge should appear only once
+        aff_names = [a.split(" — ")[0] for a in result.affordances]
+        assert aff_names.count("dodge") == 1

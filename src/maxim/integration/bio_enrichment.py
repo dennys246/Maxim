@@ -211,17 +211,22 @@ class BioEnrichmentPipeline:
         # Fires BEFORE the LLM deliberates — the body responds before the
         # mind decides.  Predictions are passed in (not re-queried) for
         # pre-emption suppression.
-        reflexes_fired = self._evaluate_reflexes(text, tuple(predictions))
+        latent_affordance_strs: list[str] = []
+        reflexes_fired = self._evaluate_reflexes(text, tuple(predictions), latent_affordance_strs)
+
+        # Merge latent affordances into affordances (reflex-triggered
+        # motor programs the agent can take — "dodge", "block", etc.)
+        all_affordances = list(affordances) + latent_affordance_strs
 
         # Track 4: Emit enrichment transparency logs so display/JSONL
         # captures WHAT each bio-system contributed, not just that it did.
-        self._log_enrichment_contributions(memories, predictions, concepts, affordances, recent_context)
+        self._log_enrichment_contributions(memories, predictions, concepts, all_affordances, recent_context)
 
         return EnrichmentResult(
             memories=tuple(memories),
             predictions=tuple(predictions),
             concepts=tuple(concepts),
-            affordances=tuple(affordances),
+            affordances=tuple(all_affordances),
             recent_context=tuple(recent_context),
             valence=valence,
             novel=True,
@@ -296,12 +301,22 @@ class BioEnrichmentPipeline:
         if recent_context:
             sim_enrichment("working_memory", f"{len(recent_context)} recent action(s)")
 
-    def _evaluate_reflexes(self, text: str, predictions: tuple[CausalPrediction, ...]) -> tuple[str, ...]:
+    def _evaluate_reflexes(
+        self,
+        text: str,
+        predictions: tuple[CausalPrediction, ...],
+        latent_out: list[str] | None = None,
+    ) -> tuple[str, ...]:
         """Evaluate reflex registry against percept text.
 
         Reflexes fire tools (damage_component, set_entity_sensor) as
         automatic body responses.  The pain pipeline handles NAc learning
         — no separate Reaction is emitted.
+
+        When reflexes fire and ``_entity_root`` is set, also collects
+        latent motor programs (dodge, block, brace) from ALL body
+        modulators that pass integrity gating.  These are appended to
+        ``latent_out`` for merging into the affordances tuple.
 
         Returns tuple of reflex names that fired.
         """
@@ -316,11 +331,20 @@ class BioEnrichmentPipeline:
             )
             if firings:
                 names = tuple(f.reflex_name for f in firings)
+
+                # Surface latent motor programs from ALL body modulators.
+                # Whole-body response: an attack to torso also surfaces
+                # dodge (legs) and block (arms).
+                if latent_out is not None:
+                    self._collect_latent_affordances(latent_out)
+
                 try:
                     from maxim.simulation.sim_logger import sim_enrichment
 
                     details = [f"{f.reflex_name}({f.tool}, intensity={f.effective_intensity:.2f})" for f in firings]
                     sim_enrichment("reflex", f"{len(firings)} reflex(es): {', '.join(details)}")
+                    if latent_out:
+                        sim_enrichment("latent", f"{len(latent_out)} motor program(s): {', '.join(latent_out[:5])}")
                 except ImportError:
                     pass
                 return names
@@ -328,6 +352,30 @@ class BioEnrichmentPipeline:
         except Exception as e:
             log.debug("Reflex evaluation failed: %s", e)
             return ()
+
+    def _collect_latent_affordances(self, out: list[str]) -> None:
+        """Collect integrity-gated latent affordances from all body modulators.
+
+        Called when reflexes fire — surfaces motor programs the agent
+        could take in response (dodge, block, brace).  Only available
+        affordances (passing integrity threshold) are included.
+        """
+        entity_root = getattr(self, "_entity_root", None)
+        if entity_root is None:
+            return
+
+        seen: set[str] = set()
+        try:
+            for mod in entity_root.modulators.values():
+                if not hasattr(mod, "available_latent_affordances"):
+                    continue
+                for la in mod.available_latent_affordances():
+                    if la.name not in seen:
+                        seen.add(la.name)
+                        label = f"{la.name} — {la.description}" if la.description else la.name
+                        out.append(label)
+        except Exception as e:
+            log.debug("Latent affordance collection failed: %s", e)
 
     def _dispatch_reflex_tool(self, tool_name: str, **params: Any) -> Any:
         """Dispatch a reflex tool invocation.
