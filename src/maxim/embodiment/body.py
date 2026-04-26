@@ -56,10 +56,12 @@ class Embodiment:
         *,
         config: EmbodimentConfig | None = None,
         pain_bus: Any | None = None,
+        distributor: Any | None = None,
     ) -> None:
         self.root = root
         self.config = config or EmbodimentConfig()
         self._pain_bus = pain_bus
+        self._distributor = distributor  # TemporalCreditDistributor for SCN drive events
         self._failure_history: list[FailureEvent] = []
         self._last_poll: float = 0.0
         self._tick_count: int = 0
@@ -218,7 +220,7 @@ class Embodiment:
                         )
                         events.append(event)
                         self._failure_history.append(event)
-                        self._publish_drive_pain(ent, ds_name, ds.deprivation_pain, readings)
+                        self._publish_drive_pain(ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived")
                     elif ds.drift_direction == "down" and current <= ds.deprivation_threshold:
                         event = FailureEvent(
                             entity_path=ent.full_path,
@@ -228,7 +230,7 @@ class Embodiment:
                         )
                         events.append(event)
                         self._failure_history.append(event)
-                        self._publish_drive_pain(ent, ds_name, ds.deprivation_pain, readings)
+                        self._publish_drive_pain(ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived")
 
         return events
 
@@ -238,6 +240,8 @@ class Embodiment:
         drive_name: str,
         intensity: float,
         readings: dict[str, float],
+        *,
+        event_suffix: str = "discomfort",
     ) -> None:
         """Publish a PainSignal for a drive-spec threshold crossing."""
         if not self.config.enable_pain or self._pain_bus is None:
@@ -262,6 +266,27 @@ class Embodiment:
             self._pain_bus.publish(signal)
         except Exception as exc:
             log.debug("Drive pain publish failed for %s: %s", drive_name, exc)
+
+        # Emit TemporalEvent for SCN oscillator learning (best-effort)
+        self._emit_drive_temporal_event(f"drive:{drive_name}:{event_suffix}", entity.name)
+
+    def _emit_drive_temporal_event(self, event_type: str, agent_id: str) -> None:
+        """Emit a TemporalEvent for a drive state transition (best-effort)."""
+        if self._distributor is None:
+            return
+        try:
+            from maxim.time.temporal_event import TemporalEvent
+            from maxim.time.temporal_signature import TemporalSignature
+
+            event = TemporalEvent(
+                event_type=event_type,
+                agent_id=agent_id,
+                temporal_signature=TemporalSignature.now(),
+                metadata={"source": "drive_protocol"},
+            )
+            self._distributor.record_event(event)
+        except Exception as exc:
+            log.debug("Drive temporal event failed for %s: %s", event_type, exc)
 
     def _publish_pain(
         self,
