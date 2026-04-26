@@ -349,6 +349,7 @@ def build_bio_stack(
             nac=nac,
             atl=atl,
             ec=ec,
+            encoder=getattr(memory_hub, "_encoder", None),
         )
         thought_gate = ThoughtGate(scorer=_text_scorer)
         logger.info("ThoughtGate + BioEnrichmentPipeline constructed in bio-stack")

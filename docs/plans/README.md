@@ -20,10 +20,10 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 
 | Section | Items | Status |
 |---------|-------|--------|
-| **Validation** | Cross-session sim experiment (prove the 1.0 claim) | Pending |
+| **Validation** | Cross-session sim experiment (prove the 1.0 claim) | **PARTIAL PASS** — 3 memories/turn on resume ([Exp 10](../experiments/10_cross_session_enrichment.md)) |
 | **Bio-system stabilization** | Protocol enrichment (freeze-worthy interfaces), SCN oscillator feedback (close the loop), SEM world enrichment Phases 2-3 (rich environments) | Pending |
 | **Sensorimotor grounding** | Cradle of Artificial Civilization (fire hurts, learned through sensors not language) | Pending |
-| **Pipeline completion** | ToolPainBridge temporal migration (~50 LOC), episode semantic shift (Stage 2) | Pending |
+| **Pipeline completion** | ToolPainBridge temporal migration (~50 LOC), episode semantic shift (Stage 2) | **P1 SHIPPED** (temporal events), P2 pending |
 | **Cleanup** | Probe shim removal, dead code, DamageEntityTool shim, modulator sensors, health derived, raw constructor enforcement | Pending |
 | **Docs** | Agent memory transfer, API/CLI review, final docs pass | Pending |
 
@@ -34,7 +34,7 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 - ✅ Generalizable embodiment (E0): `--embodiment` works with `--sim`
 - ✅ 0.7+0.8 feature completion: all tracks shipped
 - ��� P5 stress persistence: 1.0 gate CLOSED (2026-04-21)
-- Pending: Cross-session validation experiment (V1)
+- **PARTIAL PASS**: Cross-session validation (V1) — 3 memories/turn on resume, predictions/concepts pending
 - Pending: Bio-system protocol enrichment (B1) — interfaces freeze at 1.0
 - Pending: SCN oscillator feedback (B2) — close the last open feedback loop
 - Pending: SEM world enrichment Phases 2-3 (B3) — rich learning environments
