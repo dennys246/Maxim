@@ -215,7 +215,7 @@ class BioEnrichmentPipeline:
                 "data": {
                     "query_text": text[:120],
                     "keywords": keywords[:8],
-                    "goal": getattr(ctx, "goal", "")[:80] if ctx else "",
+                    "goal": getattr(ctx, "active_goal", "")[:80] if ctx else "",
                     "memories": len(memories),
                     "predictions": len(predictions),
                     "concepts": len(concepts),
