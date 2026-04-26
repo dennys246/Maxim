@@ -1,7 +1,7 @@
 # Proprioceptive Discovery — Emergent Affordances + Entity Acquisition
 
-**Status:** DESIGN COMPLETE
-**Depends on:** Component-level damage (Stages 1-5 shipped)
+**Status:** MECHANISM A SHIPPED (feat/percept-reflex-system), MECHANISM B PLANNED
+**Depends on:** Component-level damage (shipped), Percept reflex system (shipped)
 
 ## Principle
 
@@ -150,7 +150,9 @@ Empirical testing (2026-04-25) revealed that **embedding similarity is the wrong
 
 All below the 0.50 threshold, let alone 0.65. The model knows these are combat-related but doesn't know dodge is the *response* to an attack. That's causal knowledge, not semantic similarity.
 
-**Resolution:** Latent affordance surfacing for Mechanism A should use **threat-level × body-capability** gating (bio-enrichment's existing TextSalienceScorer provides the threat signal, the body spec declares which modulators have which latent responses) instead of embedding similarity. The Cradle plan will provide initial experience via structured sensorimotor development, after which NAc's causal predictions take over. The cold-start gap is addressed by the Cradle, not by embedding heuristics.
+**Resolution (implemented):** Latent affordances piggyback on reflex firings (option 1). When ANY reflex fires, ALL body modulators' latent affordances are integrity-gated and surfaced in the prompt. No embedding similarity, no independent keyword matching. The reflex system already detects threats via keyword patterns — we reuse that signal.
+
+**Future pivot (option 2):** If scenarios emerge where affordances should surface WITHOUT a reflex firing (e.g., seeing an enemy prepare to attack but no damage yet), add independent keyword matching in `_evaluate_reflexes` as a second trigger path. The Cradle plan will provide initial experience via structured sensorimotor development.
 
 **Pre-existing bug fixed (2026-04-25):** `record_outcome` in `tool_dispatch.py` recorded `event_signature="tool:use"` for ALL `use()` calls — dodge, open door, attack all looked identical to NAc. Fixed: `build_tool_signature(tool_name, tool_params)` now produces `"tool:use:dodge"` for `use(action="dodge")`. This is the single source of truth for tool→NAc event signature format. Also fixed 3 pre-existing bare `tool_name` query bugs in planning_bridge.py, discovery.py, and exec_agent.py that never matched because they lacked the `"tool:"` prefix.
 
