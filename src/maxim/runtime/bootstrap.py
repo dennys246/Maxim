@@ -301,6 +301,8 @@ def build_executor(
     cerebellum: Any = None,
     permissions: Any = None,
     entity_map: Any = None,
+    distributor: Any = None,
+    agent_id: str = "",
 ) -> Executor:
     """Build an Executor with an explicit ToolPainBridge decision.
 
@@ -434,6 +436,8 @@ def build_executor(
             hippocampus=hippocampus,
             tool_index=tool_index,
             pain_bus=pain_bus,
+            distributor=distributor,
+            agent_id=agent_id,
         )
 
     # ── Optional embodiment loading (BEFORE Executor construction) ──

@@ -476,6 +476,165 @@ class TestToolPainBridgeSCNOnSuccess:
 
 
 # ---------------------------------------------------------------------------
+# 15b. ToolPainBridge TemporalEvent emission at all 4 sites
+# ---------------------------------------------------------------------------
+
+
+class TestToolPainBridgeTemporalEventEmission:
+    """TemporalEvents should be emitted through the distributor at each
+    SCN registration site (additive — SCN registration still happens)."""
+
+    def _make_bridge(self, *, with_distributor: bool = True):
+        """Helper to build a bridge with mocked distributor."""
+        from maxim.bridges.tool_pain_bridge import ToolPainBridge
+
+        nac = MagicMock()
+        scn = MagicMock()
+        config = PainConfig(pain_cooldown_seconds=0.0)
+        detector = PainDetector(config=config)
+        distributor = MagicMock() if with_distributor else None
+
+        bridge = ToolPainBridge(
+            nac=nac,
+            pain_detector=detector,
+            scn=scn,
+            distributor=distributor,
+            agent_id="test_agent",
+        )
+        return bridge, nac, scn, distributor
+
+    def test_temporal_event_on_tool_success(self) -> None:
+        """Site 1: record_tool_complete(success=True) emits TemporalEvent."""
+        bridge, nac, scn, distributor = self._make_bridge()
+
+        bridge.record_tool_start("web_search", "inv-1")
+        bridge.record_tool_complete("web_search", "inv-1", success=True)
+
+        # SCN still called (existing behavior preserved)
+        scn.register.assert_called_once()
+
+        # Distributor also called
+        distributor.record_event.assert_called_once()
+        event = distributor.record_event.call_args[0][0]
+        assert event.event_type == "tool"
+        assert event.event_signature == "tool:web_search"
+        assert event.agent_id == "test_agent"
+        assert event.activation == 0.3
+        assert event.context["outcome"] == "success"
+        assert event.context["tool_name"] == "web_search"
+
+    def test_temporal_event_on_embodiment_failure(self) -> None:
+        """Site 2: record_tool_embodiment_failure emits TemporalEvent."""
+        bridge, nac, scn, distributor = self._make_bridge()
+
+        bridge.record_tool_start("fire_breath", "inv-2")
+        bridge.record_tool_embodiment_failure(
+            "fire_breath",
+            "inv-2",
+            failures=[{"name": "burn", "pain": 0.8, "entity": "dragon"}],
+        )
+
+        distributor.record_event.assert_called_once()
+        event = distributor.record_event.call_args[0][0]
+        assert event.event_type == "pain"
+        assert "fire_breath" in event.event_signature
+        assert event.activation == 0.8
+        assert event.context["outcome"] == "embodiment_failure"
+        assert event.context["failure_mode"] == "burn"
+
+    def test_temporal_event_on_tool_pain(self) -> None:
+        """Site 3: _on_pain (tool failure) emits TemporalEvent."""
+        bridge, nac, scn, distributor = self._make_bridge()
+
+        bridge.record_tool_start("flaky_api", "inv-3")
+        signal = PainSignal(
+            pain_type=PainType.TOOL_FAILURE,
+            intensity=0.7,
+            timestamp=time.time(),
+            context={"tool_name": "flaky_api", "invocation_id": "inv-3"},
+        )
+        bridge._on_pain(signal)
+
+        distributor.record_event.assert_called_once()
+        event = distributor.record_event.call_args[0][0]
+        assert event.event_type == "pain"
+        assert event.event_signature == "tool:flaky_api"
+        assert event.activation == 0.7
+        assert event.context["outcome"] == "tool_pain"
+        assert event.context["pain_type"] == "tool_failure"
+
+    def test_temporal_event_on_embodiment_pain_out_of_band(self) -> None:
+        """Site 4: _on_embodiment_pain (no pending tool) emits TemporalEvent."""
+        bridge, nac, scn, distributor = self._make_bridge()
+
+        # No pending tool — out-of-band embodiment pain
+        signal = PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.6,
+            timestamp=time.time(),
+            context={
+                "source": "embodiment",
+                "entity": "rusty_sword",
+                "entity_type": "weapon",
+                "failure_mode": "blade_snap",
+                "composes": [],
+                "sensor_readings": {},
+            },
+        )
+        bridge._on_embodiment_pain(signal)
+
+        distributor.record_event.assert_called_once()
+        event = distributor.record_event.call_args[0][0]
+        assert event.event_type == "pain"
+        assert "rusty_sword" in event.event_signature
+        assert "blade_snap" in event.event_signature
+        assert event.activation == 0.6
+        assert event.context["entity"] == "rusty_sword"
+
+    def test_no_temporal_event_without_distributor(self) -> None:
+        """No crash when distributor is None (backward compat)."""
+        bridge, nac, scn, _ = self._make_bridge(with_distributor=False)
+
+        bridge.record_tool_start("web_search", "inv-5")
+        bridge.record_tool_complete("web_search", "inv-5", success=True)
+        # Should not raise — distributor is None, emission is skipped
+        scn.register.assert_called_once()  # SCN still works
+
+    def test_temporal_event_not_emitted_on_failure_complete(self) -> None:
+        """record_tool_complete(success=False) does NOT emit (no SCN either)."""
+        bridge, nac, scn, distributor = self._make_bridge()
+
+        bridge.record_tool_start("bad_tool", "inv-6")
+        bridge.record_tool_complete("bad_tool", "inv-6", success=False)
+
+        scn.register.assert_not_called()
+        distributor.record_event.assert_not_called()
+
+    def test_embodiment_pain_suppressed_with_pending_tool(self) -> None:
+        """Out-of-band path skips when a tool is in flight (broad guard)."""
+        bridge, nac, scn, distributor = self._make_bridge()
+
+        bridge.record_tool_start("some_tool", "inv-7")
+        signal = PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.5,
+            timestamp=time.time(),
+            context={
+                "source": "embodiment",
+                "entity": "arm",
+                "entity_type": "body",
+                "failure_mode": "sprain",
+                "composes": [],
+                "sensor_readings": {},
+            },
+        )
+        bridge._on_embodiment_pain(signal)
+
+        # Broad guard suppresses — no distributor call either
+        distributor.record_event.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # 16. CausalLink stores last_rpe after update_prediction_rw
 # ---------------------------------------------------------------------------
 

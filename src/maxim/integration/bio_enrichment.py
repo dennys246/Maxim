@@ -204,6 +204,31 @@ class BioEnrichmentPipeline:
         affordances = self._query_component_index(text)
         recent_context = self._query_working_memory(working_memory)
 
+        # Structured trace for JSONL capture
+        _trace = log.info
+        _trace(
+            "enrichment trace",
+            extra={
+                "event": "enrichment_trace",
+                "data": {
+                    "query_text": text[:120],
+                    "keywords": keywords[:8],
+                    "goal": getattr(ctx, "goal", "")[:80] if ctx else "",
+                    "memories": len(memories),
+                    "predictions": len(predictions),
+                    "concepts": len(concepts),
+                    "affordances": len(affordances),
+                    "recent_context": len(recent_context),
+                    "hippocampus_wired": self._hippocampus is not None,
+                    "nac_wired": self._nac is not None,
+                    "hippocampus_size": len(getattr(self._hippocampus, "_memories", {}))
+                    if self._hippocampus is not None
+                    else 0,
+                    "nac_sigs": list(self._nac._links.keys())[:8] if self._nac is not None else [],
+                },
+            },
+        )
+
         # Compute overall valence from memories + predictions
         valence = self._compute_valence(memories, predictions)
 

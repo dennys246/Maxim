@@ -1002,9 +1002,33 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         results: list[EpisodicMemory | CompressedMemory] = []
 
         with self._rwlock.read():
+            n_total = len(self._memories)
             for memory in self._memories.values():
                 if self._memory_matches_query(memory, query_lower):
                     results.append(memory)
+
+            # Structured trace for JSONL capture
+            sample_obs = ""
+            sample_res = ""
+            if not results and self._memories:
+                sample = next(iter(self._memories.values()))
+                p = getattr(sample, "perception", None)
+                sample_obs = str(getattr(p, "observations", ""))[:120] if p else ""
+                o = getattr(sample, "outcome", None)
+                sample_res = str(getattr(o, "result", ""))[:120] if o else ""
+            logger.info(
+                "hippocampus search",
+                extra={
+                    "event": "hippocampus_search",
+                    "data": {
+                        "query": query[:80],
+                        "total_memories": n_total,
+                        "matches": len(results),
+                        "sample_obs": sample_obs,
+                        "sample_result": sample_res,
+                    },
+                },
+            )
 
             results.sort(key=lambda m: m.timestamp, reverse=True)
             return results[:limit]

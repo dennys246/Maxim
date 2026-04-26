@@ -584,6 +584,7 @@ def run_gauntlet(
         registry = ToolRegistry()
         tools = generate_tools_for_entity(entity, registry, embodiment=embodiment)
 
+        # distributor=None: gauntlet is short-lived, no temporal credit needed
         executor = build_executor(
             registry,
             pain_bus=pain_bus,

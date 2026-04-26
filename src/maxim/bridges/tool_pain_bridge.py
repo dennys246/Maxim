@@ -16,6 +16,7 @@ from maxim.decisions.nac import NAc
 from maxim.proprioception.pain import PainDetector, PainSignal, PainType
 
 if TYPE_CHECKING:
+    from maxim.decisions.temporal_credit import TemporalCreditDistributor
     from maxim.memory.hippocampus import Hippocampus
     from maxim.time.scn import SCN
 
@@ -64,12 +65,16 @@ class ToolPainBridge:
         llm: Any = None,
         pain_bus: Any | None = None,
         tool_index: Any = None,
+        distributor: TemporalCreditDistributor | None = None,
+        agent_id: str = "",
     ) -> None:
         self._nac = nac
         self._scn = scn
         self._hippocampus = hippocampus
         self._llm = llm
         self._tool_index = tool_index  # LearnedToolIndex for keyword weight updates
+        self._distributor = distributor
+        self._agent_id = agent_id
         self._lock = threading.Lock()
         self._pending_tools: dict[tuple[str, str], str] = {}
         self._pending_contexts: dict[tuple[str, str], dict[str, Any]] = {}  # (tool, inv_id) → context
@@ -80,6 +85,40 @@ class ToolPainBridge:
             pain_bus.subscribe(self._on_pain)
         elif pain_detector is not None:
             pain_detector.add_pain_callback(self._on_pain)
+
+    def _emit_temporal_event(
+        self,
+        event_type: str,
+        event_signature: str,
+        activation: float,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a TemporalEvent through the distributor (best-effort).
+
+        Additive to the existing SCN registration — the distributor
+        routes events through NAc eligibility traces and SCN phase
+        anchoring for temporal credit attribution.
+        """
+        if self._distributor is None:
+            return
+        try:
+            from uuid import uuid4
+
+            from maxim.time.temporal_event import TemporalEvent
+            from maxim.time.temporal_signature import TemporalSignature
+
+            event = TemporalEvent(
+                event_id=uuid4().hex,
+                event_type=event_type,
+                event_signature=event_signature,
+                agent_id=self._agent_id,
+                temporal_sig=TemporalSignature.now(),
+                activation=activation,
+                context=context or {},
+            )
+            self._distributor.record_event(event)
+        except Exception:
+            pass  # Temporal event emission is best-effort
 
     def record_tool_start(
         self,
@@ -157,6 +196,14 @@ class ToolPainBridge:
                     )
                 except Exception:
                     pass  # SCN registration is best-effort
+
+            # Emit temporal event for credit attribution
+            self._emit_temporal_event(
+                "tool",
+                event_signature,
+                activation=0.3,
+                context={"outcome": "success", "tool_name": tool_name},
+            )
 
             return rpe
         return 0.0
@@ -281,6 +328,18 @@ class ToolPainBridge:
             except Exception:
                 pass  # SCN registration is best-effort.
 
+        # Emit temporal event for credit attribution
+        self._emit_temporal_event(
+            "pain",
+            event_signature,
+            activation=outcome_context.get("intensity") or 0.5,
+            context={
+                "outcome": "embodiment_failure",
+                "tool_name": tool_name,
+                "failure_mode": outcome_context.get("failure_mode", ""),
+            },
+        )
+
         return rpe
 
     def _on_pain(self, signal: PainSignal) -> None:
@@ -332,6 +391,14 @@ class ToolPainBridge:
                     )
                 except Exception:
                     pass  # SCN registration is best-effort
+
+            # Emit temporal event for credit attribution
+            self._emit_temporal_event(
+                "pain",
+                event_signature,
+                activation=signal.intensity,
+                context={"outcome": "tool_pain", "tool_name": tool_name, "pain_type": signal.pain_type.value},
+            )
 
     def _on_embodiment_pain(self, signal: PainSignal) -> None:
         """Handle pain signals from embodiment failures (SEM entities).
@@ -437,6 +504,14 @@ class ToolPainBridge:
                 )
             except Exception:
                 pass
+
+        # Emit temporal event for credit attribution
+        self._emit_temporal_event(
+            "pain",
+            event_signature,
+            activation=signal.intensity,
+            context={"outcome": "embodiment_pain", "entity": entity_path, "failure_mode": failure_mode},
+        )
 
     def _create_causal_edges(self, links: list) -> None:
         """Create CAUSES edges for surprising outcomes (RPE > 0.3).
