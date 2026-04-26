@@ -195,6 +195,24 @@ class Embodiment:
                 if current is None:
                     continue
 
+                # Drive state trace (for --display debug / JSONL)
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+
+                    if isinstance(ds, HomeostaticDriveSpec):
+                        deviation = abs(current - ds.set_point)
+                        sim_log(
+                            f"drive:{ds_name}",
+                            f"val={current:.3f} set={ds.set_point} dev={deviation:.3f} band={ds.comfort_band}",
+                        )
+                    elif isinstance(ds, EntropicDriveSpec):
+                        sim_log(
+                            f"drive:{ds_name}",
+                            f"val={current:.3f} threshold={ds.deprivation_threshold} dir={ds.drift_direction}",
+                        )
+                except Exception:
+                    pass
+
                 if isinstance(ds, HomeostaticDriveSpec):
                     deviation = abs(current - ds.set_point)
                     excess = deviation - ds.comfort_band

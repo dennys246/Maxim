@@ -87,6 +87,7 @@ STYLE:
 
 CURRENT PHASE: {phase}
 SCENE DIRECTION: {scene_direction}
+{phase_instruction}
 {story_context}
 
 Output ONLY the narrative text. No JSON, no explanations, no meta-commentary.
@@ -216,6 +217,23 @@ class Narrator:
                 self._decisions.append(decision)
                 if decision["done"]:
                     self._done = True
+                # Debug trace: narrator decision
+                log.info(
+                    "narrator decision",
+                    extra={
+                        "event": "narrator_decision",
+                        "data": {
+                            "phase": decision["phase"],
+                            "scene_type": decision["scene_type"],
+                            "act": self._arc.phases[self._phase_idx].act
+                            if self._phase_idx < len(self._arc.phases)
+                            else None,
+                            "turn": self._total_turns,
+                            "turns_in_phase": self._turns_in_phase,
+                            "done": decision["done"],
+                        },
+                    },
+                )
                 return decision
         except Exception as e:
             log.warning("Narrator decision call failed, using defaults: %s", e)
@@ -236,10 +254,18 @@ class Narrator:
         phase = decision.get("phase", self.current_phase)
         scene_direction = decision.get("notes", decision.get("scene_type", ""))
 
+        # Look up the current phase's instruction so the generation LLM
+        # knows WHAT to narrate, not just which phase we're in.
+        phase_instruction = ""
+        if self._phase_idx < len(self._arc.phases):
+            current = self._arc.phases[self._phase_idx]
+            phase_instruction = f"PHASE INSTRUCTION: {current.instruction}"
+
         system = NARRATOR_SYSTEM_GENERATION.format(
             aut_name=self._aut_name,
             phase=phase,
             scene_direction=scene_direction,
+            phase_instruction=phase_instruction,
             story_context=f"STORY SO FAR:\n{self._story_context}" if self._story_context else "",
         )
         user = ""
@@ -258,6 +284,18 @@ class Narrator:
                 self._total_turns += 1
                 # Update compressed story context (keep last ~200 tokens worth)
                 self._update_story_context(text, last_aut_response)
+                log.info(
+                    "narrator generated",
+                    extra={
+                        "event": "narrator_generation",
+                        "data": {
+                            "phase": phase,
+                            "text_preview": text.strip()[:120],
+                            "has_phase_instruction": bool(phase_instruction),
+                            "fallback": False,
+                        },
+                    },
+                )
                 return text.strip()
         except Exception as e:
             log.warning("Narrator generation failed (phase=%s): %s", phase, e)
@@ -265,7 +303,20 @@ class Narrator:
         # Fallback: immersive phase-aware text (no brackets, no meta-commentary)
         self._turns_in_phase += 1
         self._total_turns += 1
-        return _fallback_for_phase(phase)
+        fallback = _fallback_for_phase(phase)
+        log.info(
+            "narrator fallback",
+            extra={
+                "event": "narrator_generation",
+                "data": {
+                    "phase": phase,
+                    "text_preview": fallback[:120],
+                    "has_phase_instruction": bool(phase_instruction),
+                    "fallback": True,
+                },
+            },
+        )
+        return fallback
 
     # -- single-call approach (Option B) ------------------------------------
 

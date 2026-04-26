@@ -25,7 +25,7 @@ entity:
       drive:
         drift_mode: entropic
         drift_direction: up
-        drift_rate: 0.002
+        drift_rate: 0.006           # reaches 0.7 in ~120s (tuned for 15-turn PoC)
         deprivation_threshold: 0.7
         deprivation_pain: 0.3
         satisfaction_threshold: 0.3
@@ -36,7 +36,7 @@ entity:
       drive:
         drift_mode: entropic
         drift_direction: up
-        drift_rate: 0.003
+        drift_rate: 0.008           # reaches 0.6 in ~75s
         deprivation_threshold: 0.6
         deprivation_pain: 0.25
         satisfaction_threshold: 0.3
