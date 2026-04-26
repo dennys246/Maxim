@@ -14,9 +14,7 @@ import pytest
 
 from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 from maxim.models.language.types import INFERENCE_BROKEN_BACKOFF_S
-from maxim.runtime.llm_server import (
-    _probe_stage2_readiness,
-)
+from maxim.models.language.maxim_peer_backend import _probe_stage2_readiness
 from maxim.runtime.probe_cache import load_cache, ttl_for_outcome
 from maxim.utils import http as _http
 

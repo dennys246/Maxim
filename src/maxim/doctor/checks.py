@@ -142,18 +142,19 @@ def check_llama_cpp_server_installed() -> CheckResult:
 
 
 def check_server_reachable(port: int = 8100) -> CheckResult:
-    """Probe the local auto-spawn port.
-
-    Plan 3 R2.6: the standalone ``llm_server_responding_at`` was removed.
-    The ``_llm_server_responding_at`` wrapper in lane_backends now
-    delegates to ``_MaximPeerBackend.health_check`` with
-    ``enable_stage2=False`` — same bool return shape, one probe
-    implementation under the hood.
-    """
-    from maxim.runtime.lane_backends import _llm_server_responding_at
+    """Probe the local auto-spawn port."""
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 
     url = f"http://127.0.0.1:{port}/v1"
-    if _llm_server_responding_at(url, timeout_s=2.0):
+    if (
+        _MaximPeerBackend.for_url(url)
+        .health_check(
+            first_timeout_s=1.0,
+            retry_timeout_s=2.0,
+            enable_stage2=False,
+        )
+        .is_reachable
+    ):
         return CheckResult(
             name="Auto-spawn server",
             status="ok",
@@ -1846,19 +1847,14 @@ def check_remote_reachability(url: str | None = None, api_key: str | None = None
                 message=f"Could not load peer config: {e}",
             )
     try:
-        from maxim.runtime.llm_server import probe_llm_server
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
     except ImportError as e:
         return CheckResult(
             name="Remote leader probe",
             status="warn",
             message=f"Probe unavailable: {e}",
         )
-    # Plan 3 R2.6: ``probe_llm_server`` is a thin compat shim that
-    # delegates to ``_MaximPeerBackend.for_url(url).health_check``.
-    # Routing through the shim preserves the existing
-    # test_doctor_p8_checks mocking pattern while still funnelling
-    # production traffic into the backend's canonical implementation.
-    result = probe_llm_server(url, api_key=api_key)
+    result = _MaximPeerBackend.for_url(url, api_key=api_key).health_check()
     if result.outcome == "ok":
         return CheckResult(
             name="Remote leader probe",

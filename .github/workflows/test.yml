@@ -84,29 +84,17 @@ jobs:
             echo "       Failover is the router's job. See docs/plans/archive/llm_path_fast_failover.md."
             exit 1
           fi
-          # Plan 3 R2.6 deprecated-shim allow list: probe_llm_server,
-          # llm_server_responding_at, and _probe_once are kept as
-          # DEPRECATED thin delegates to _MaximPeerBackend.health_check.
-          # New callers MUST use _MaximPeerBackend.for_url(...).health_check()
-          # directly. The allow list below records every existing
-          # in-repo call site at R2.6 landing; any new match is a CI
-          # failure and must be justified in the PR description or
-          # migrated to the backend's method.
-          # Matches only FUNCTION CALLS (trailing "(") and imports
-          # (leading "import ") — prose mentions in docstrings and
-          # comments are ignored via the regex, not via post-filter.
-          PROBE_SHIM_MATCHES=$(grep -rn --include="*.py" -E "(probe_llm_server\(|llm_server_responding_at\(|[^_]_probe_once\(|import.*\b(probe_llm_server|llm_server_responding_at|_probe_once)\b)" src/maxim/ \
-            | grep -vE "^src/maxim/runtime/llm_server\.py:" \
-            | grep -vE "^src/maxim/runtime/lane_backends\.py:.*(probe_llm_server|llm_server_responding_at)" \
-            | grep -vE "^src/maxim/doctor/checks\.py:.*(probe_llm_server|_llm_server_responding_at)" \
-            | grep -vE "^src/maxim/models/language/maxim_peer_backend\.py:.*_probe_once" \
+          # Probe shims removed (v1 cleanup C1). probe_llm_server,
+          # llm_server_responding_at, and _probe_once were moved/deleted.
+          # Probe primitives now live in maxim_peer_backend.py. Block any
+          # re-introduction of the old shim names in production code.
+          PROBE_SHIM_MATCHES=$(grep -rn --include="*.py" -E "(probe_llm_server\(|llm_server_responding_at\(|import.*\b(probe_llm_server|llm_server_responding_at)\b)" src/maxim/ \
             || true)
           if [ -n "$PROBE_SHIM_MATCHES" ]; then
-            echo "ERROR: new caller of deprecated probe shim detected (Plan 3 R2.6)"
+            echo "ERROR: removed probe shim re-introduced"
             echo "$PROBE_SHIM_MATCHES"
             echo ""
-            echo "New code must use _MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()"
-            echo "See docs/plans/archive/llm_path_fast_failover.md R2.6 section."
+            echo "Use _MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()"
             exit 1
           fi
           # Plan 4 C3.1 + C3.2 mesh.yml writer allow list: write_mesh_config

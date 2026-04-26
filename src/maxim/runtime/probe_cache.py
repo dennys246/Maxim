@@ -1,7 +1,8 @@
 """Last-known probe outcomes for remote LLM endpoints (P6).
 
-The lane-bringup path probes every configured ``remote_url`` with
-:func:`maxim.runtime.llm_server.probe_llm_server` so dead leaders don't
+The lane-bringup path probes every configured ``remote_url`` via
+:meth:`maxim.models.language.maxim_peer_backend._MaximPeerBackend.health_check`
+so dead leaders don't
 wedge the runtime into retry storms. Probing has cost (one round-trip
 per lane per startup, ~800 ms worst-case), so we cache the outcome on
 disk and re-probe only after the entry goes stale.

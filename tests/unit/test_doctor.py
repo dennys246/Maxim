@@ -9,6 +9,8 @@ import pytest
 
 from maxim.doctor.checks import CheckResult
 from maxim.doctor.cli import run_doctor_subcommand, run_peer_subcommand
+from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+from maxim.runtime.llm_server import ProbeResult
 from maxim.doctor.platform_detect import (
     PlatformInfo,
     detect_platform,
@@ -234,7 +236,8 @@ class TestServerCheck:
     def test_reachable_returns_ok(self):
         from maxim.doctor.checks import check_server_reachable
 
-        with patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=True):
+        ok = ProbeResult("http://127.0.0.1:9999/v1", "ok", "HTTP 200", 5.0)
+        with patch.object(_MaximPeerBackend, "health_check", return_value=ok):
             result = check_server_reachable(port=9999)
         assert result.status == "ok"
         assert "9999" in result.message
@@ -242,7 +245,8 @@ class TestServerCheck:
     def test_unreachable_returns_warn(self):
         from maxim.doctor.checks import check_server_reachable
 
-        with patch("maxim.runtime.lane_backends._llm_server_responding_at", return_value=False):
+        down = ProbeResult("http://127.0.0.1:9999/v1", "connection_refused", "boom", None)
+        with patch.object(_MaximPeerBackend, "health_check", return_value=down):
             result = check_server_reachable(port=9999)
         assert result.status == "warn"
         assert result.fix is not None

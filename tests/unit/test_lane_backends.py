@@ -6,11 +6,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 from maxim.runtime.lane_backends import (
     BackendGateError,
     LaneBackendManager,
     _is_cloud_url,
-    _llm_server_responding_at,
     _validate_remote_urls,
     build_primary_router,
 )
@@ -457,10 +457,9 @@ class TestBuildPrimaryRouter:
         with (
             patch("maxim.models.language.config.load_llm_config") as mock_load,
             patch("maxim.models.language.router.LLMRouter"),
-            # P6: _validate_remote_urls now uses the structured probe.
-            # Force "ok" so the env-supplied URL flows through.
-            patch(
-                "maxim.runtime.llm_server.probe_llm_server",
+            # Force probe to return "ok" so the env-supplied URL flows through.
+            patch.object(
+                _MaximPeerBackend, "health_check",
                 return_value=ProbeResult("http://127.0.0.1:8000/v1", "ok", "HTTP 200", 10.0),
             ),
             # Mock the persisted-model read so the developer's real
@@ -511,13 +510,15 @@ class TestBuildPrimaryRouter:
 
 
 class TestLLMServerHealthCheck:
+    """Tests that _MaximPeerBackend.for_url(...).health_check() returns
+    correct reachability for local URLs (formerly _llm_server_responding_at)."""
+
+    def _is_reachable(self, url):
+        if not url:
+            return False
+        return _MaximPeerBackend.for_url(url).health_check(enable_stage2=False).is_reachable
+
     def test_responding_url_returns_true(self):
-        # Plan 1 R1: _llm_server_responding_at now goes through
-        # maxim.utils.http.fetch_url, which uses httpx under the hood. Mock
-        # at the fetch_url layer and assert it was called with the expected
-        # /v1/models path. User-Agent is now set once at _external endpoint
-        # registration (http.DEFAULT_USER_AGENT = "maxim-peer/1.0") — that's
-        # verified structurally in tests/unit/test_http_client.py.
         from maxim.utils import http as _http
 
         fake_resp = _http.Response(
@@ -529,7 +530,7 @@ class TestLLMServerHealthCheck:
             request_id="r",
         )
         with patch("maxim.utils.http.fetch_url", return_value=fake_resp) as mock_fetch:
-            assert _llm_server_responding_at("http://127.0.0.1:8100/v1") is True
+            assert self._is_reachable("http://127.0.0.1:8100/v1") is True
             called_url = mock_fetch.call_args[0][0]
             assert called_url.endswith("/v1/models")
 
@@ -540,20 +541,16 @@ class TestLLMServerHealthCheck:
             "maxim.utils.http.fetch_url",
             side_effect=_http.HTTPConnectionError("_external", fix_hint="refused"),
         ):
-            assert _llm_server_responding_at("http://127.0.0.1:8100/v1") is False
+            assert self._is_reachable("http://127.0.0.1:8100/v1") is False
 
     def test_empty_url_returns_false(self):
-        assert _llm_server_responding_at("") is False
-        assert _llm_server_responding_at(None) is False
+        assert self._is_reachable("") is False
+        assert self._is_reachable(None) is False
 
 
 class TestValidateRemoteUrls:
-    """P6 rewrote `_validate_remote_urls` to use the structured probe
-    instead of the old loopback-only `_llm_server_responding_at`. The
-    tests below now mock `probe_llm_server` and assert per-outcome
-    behavior. Public/cloud URLs ARE probed (the old "skip public"
-    heuristic was the bug — dead Cloudflare tunnels were silently
-    wedging peers).
+    """Tests _validate_remote_urls with mocked health_check. Production
+    code now calls _MaximPeerBackend.for_url(...).health_check() directly.
     """
 
     @pytest.fixture(autouse=True)
@@ -594,7 +591,7 @@ class TestValidateRemoteUrls:
                 remote_api_key="test-key",
             )
         }
-        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=self._down(url)):
+        with patch.object(_MaximPeerBackend, "health_check", return_value=self._down(url)):
             out = _validate_remote_urls(cfgs, logger)
         assert out["large"].remote_url is None
         assert out["large"].remote_model is None
@@ -611,7 +608,7 @@ class TestValidateRemoteUrls:
                 remote_model="mistral-7b",
             )
         }
-        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=self._ok(url)):
+        with patch.object(_MaximPeerBackend, "health_check", return_value=self._ok(url)):
             out = _validate_remote_urls(cfgs, None)
         assert out["large"].remote_url == url
 
@@ -628,7 +625,7 @@ class TestValidateRemoteUrls:
                 remote_model="claude-3",
             )
         }
-        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=self._ok(url)) as mock_probe:
+        with patch.object(_MaximPeerBackend, "health_check", return_value=self._ok(url)) as mock_probe:
             out = _validate_remote_urls(cfgs, None)
         mock_probe.assert_called_once()
         assert out["large"].remote_url == url

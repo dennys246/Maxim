@@ -18,6 +18,7 @@ import json
 
 import pytest
 
+from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 from maxim.runtime import decision_log
 from maxim.runtime.capabilities import RuntimeCapabilities
 from maxim.runtime.worker_pool import LaneConfig
@@ -232,8 +233,9 @@ class TestBuildPrimaryRouterAppends:
                 "maxim.runtime.lane_backends._ensure_lane_profiles_available",
                 side_effect=lambda lc, _caps, _log: lc,
             ),
-            patch(
-                "maxim.runtime.llm_server.probe_llm_server",
+            patch.object(
+                _MaximPeerBackend,
+                "health_check",
                 return_value=ProbeResult("http://stub", "ok", "HTTP 200", 1.0),
             ),
         ):

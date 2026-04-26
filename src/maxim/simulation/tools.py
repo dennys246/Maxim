@@ -397,74 +397,6 @@ class GenerateScenarioTool(Tool):
             return ToolOutput(success=False, error=f"Scenario generation failed: {e}")
 
 
-class DamageEntityTool(Tool):
-    """DEPRECATED: Apply SEM damage to the AUT's body sensors.
-
-    Thin compat shim that delegates to ``DamageComponentTool`` with
-    ``component="torso"`` (default target).  Existing orchestrator prompts
-    that call ``damage_entity`` still work.
-
-    New code should use ``DamageComponentTool`` directly for body-part
-    targeted damage.  See docs/plans/component_level_damage.md.
-    """
-
-    name = "damage_entity"
-    description = (
-        "Apply damage to the agent's body. Use when a scene entity attacks "
-        "or the environment causes harm. Specify which sensor to affect "
-        "(health, stamina) and by how much (0.0 to 1.0). The agent will "
-        "feel pain if damage triggers a failure mode."
-    )
-    input_schema = {
-        "sensor": (str, "health"),
-        "amount": (float, 0.1),
-        "source": (str, ""),  # e.g., "dragon_fire_breath"
-    }
-
-    def __init__(self, *, embodiment: Any, entity_map: Any) -> None:
-        super().__init__()
-        self._embodiment = embodiment
-        self._entity_map = entity_map
-        # Delegate to DamageComponentTool for the actual work
-        self._delegate = DamageComponentTool(embodiment=embodiment, entity_map=entity_map)
-
-    def execute(self, **kwargs: Any) -> ToolOutput:
-        # Map old API (sensor=, amount=, source=) to new API (component=, amount=, source=)
-        sensor = kwargs.get("sensor", "health")
-        amount = float(kwargs.get("amount", 0.1))
-        source = kwargs.get("source", "unknown")
-
-        # If targeting a non-health sensor (e.g., stamina), fall back to
-        # direct vital_metrics mutation (old behavior)
-        if sensor != "health":
-            if self._embodiment is None:
-                return ToolOutput(success=False, error="No embodiment configured")
-            root = self._embodiment.root
-            if root is None:
-                return ToolOutput(success=False, error="No root entity")
-            old_val = root.vital_metrics.get(sensor, 1.0)
-            new_val = max(0.0, old_val - amount)
-            root.vital_metrics[sensor] = new_val
-            self._embodiment.evaluate_failures()
-            return ToolOutput(
-                success=True,
-                output={
-                    "sensor": sensor,
-                    "old_value": round(old_val, 2),
-                    "new_value": round(new_val, 2),
-                    "damage": round(amount, 2),
-                    "source": source,
-                },
-            )
-
-        # Health damage → delegate to component tool (targets torso by default)
-        return self._delegate.execute(
-            component="torso",
-            amount=amount,
-            source=source,
-        )
-
-
 class DamageComponentTool(Tool):
     """Apply SEM damage to a specific body component (modulator).
 
@@ -474,9 +406,7 @@ class DamageComponentTool(Tool):
     Pain is published immediately — proportional to damage, not gated
     on a failure-mode threshold.
 
-    This replaces both the old ``DamageEntityTool`` (flat health) and the
-    auto-damage in ``SendMessageTool`` (keyword detection).  Single source
-    of truth for all combat damage.
+    Single source of truth for all combat damage.
 
     At level 2 (default): damage reduces component integrity directly.
     At level 3 (--deep-embodiment): optional ``damage_type`` routes
@@ -612,7 +542,7 @@ class DamageComponentTool(Tool):
 class SetEntitySensorTool(Tool):
     """Set an AUT body sensor to a specific value.
 
-    General-purpose complement to DamageEntityTool. Use for:
+    General-purpose complement to DamageComponentTool. Use for:
     - Healing: set health back toward 1.0
     - Hunger/thirst satisfaction: set hunger toward 0.0
     - Environmental effects: set visibility, temperature
