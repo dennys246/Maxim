@@ -77,6 +77,9 @@ class GatingContext:
     energy: float = 1.0  # 0=exhausted, 1=fully energized (from SCN)
     processing_load: int = 0  # LLM queue depth or similar
     recent_input_count: int = 0  # inputs in last window
+    # Drive states for salience modulation (1.0 interface — scoring impl deferred)
+    # Keys are drive sensor names, values are current levels (e.g., {"hunger": 0.72})
+    drive_states: dict[str, float] | None = None
 
 
 # ---------------------------------------------------------------------------

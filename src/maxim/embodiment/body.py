@@ -456,6 +456,41 @@ class Embodiment:
 
                 ent_state["sensors"][sname] = sensor_info
 
+            # Include drive state from vital_metrics for sensors with DriveSpecs
+            # that may not be captured by sensor.read() (vital_metrics path)
+            from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
+
+            for ds_name, ds in ent.drive_specs.items():
+                if ds_name in ent_state["sensors"]:
+                    # Already captured — add drive annotation
+                    val = ent_state["sensors"][ds_name]["value"]
+                elif "." not in ds_name and ds_name in ent.vital_metrics:
+                    # Entity-level vital metric not captured by sensor read
+                    val = ent.vital_metrics[ds_name]
+                    ent_state["sensors"][ds_name] = {"value": val, "unit": "ratio"}
+                else:
+                    continue
+
+                # Annotate with drive state
+                if isinstance(ds, HomeostaticDriveSpec):
+                    deviation = abs(val - ds.set_point)
+                    if deviation > ds.comfort_band:
+                        excess = deviation - ds.comfort_band
+                        ent_state["sensors"][ds_name]["drive"] = (
+                            f"outside comfort band, discomfort {excess * ds.pain_scale:.2f}"
+                        )
+                    else:
+                        ent_state["sensors"][ds_name]["drive"] = "comfortable"
+                elif isinstance(ds, EntropicDriveSpec):
+                    if ds.drift_direction == "up" and val >= ds.deprivation_threshold:
+                        ent_state["sensors"][ds_name]["drive"] = f"deprived, intensity {ds.deprivation_pain:.2f}"
+                    elif ds.drift_direction == "down" and val <= ds.deprivation_threshold:
+                        ent_state["sensors"][ds_name]["drive"] = f"deprived, intensity {ds.deprivation_pain:.2f}"
+                    elif ds.drift_direction == "up" and val > ds.satisfaction_threshold:
+                        ent_state["sensors"][ds_name]["drive"] = "rising"
+                    else:
+                        ent_state["sensors"][ds_name]["drive"] = "satisfied"
+
             if ent_state["sensors"]:
                 summary.append(ent_state)
 
@@ -474,11 +509,14 @@ class Embodiment:
                 unit = sinfo.get("unit", "")
                 val = sinfo["value"]
                 warning = sinfo.get("warning")
+                drive = sinfo.get("drive")
+                parts = [f"- {ent_state['entity']}.{sname}: {val}{unit}"]
+                if drive:
+                    parts.append(f"(DRIVE: {drive})")
                 if warning:
-                    lines.append(f"- {ent_state['entity']}.{sname}: {val}{unit} (WARN: {warning})")
+                    parts.append(f"(WARN: {warning})")
                     has_warnings = True
-                else:
-                    lines.append(f"- {ent_state['entity']}.{sname}: {val}{unit}")
+                lines.append(" ".join(parts))
 
         if has_warnings:
             lines[0] = "=== Body State (pain-relevant) ==="
