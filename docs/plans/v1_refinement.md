@@ -20,9 +20,11 @@
 
 ## Section 1: Validation (prove the claim)
 
-### V1. Cross-session sim validation
+### V1. Cross-session sim validation — VALIDATED (2026-04-26)
 
 **Absorbed from:** `cross_session_sim_validation.md`
+**Results:** [docs/experiments/10_cross_session_enrichment.md](../experiments/10_cross_session_enrichment.md)
+**Status:** PARTIAL PASS — memories surface (3/turn on resume), predictions/concepts/affordances need more session history.
 
 Prove that Layer 1 pre-deliberation enrichment produces measurably different behavior when the agent has prior session history vs. a fresh start.
 
@@ -118,9 +120,10 @@ A newborn agent that learns from sensation, not language. Strip away LLM world k
 
 ## Section 4: Pipeline Completion (small gaps)
 
-### P1. ToolPainBridge temporal event migration (~50 LOC)
+### P1. ToolPainBridge temporal event migration (~50 LOC) — SHIPPED (2026-04-25)
 
 **Absorbed from:** `tool_pain_bridge_temporal_migration.md`
+**Status:** COMPLETE. 7 new tests, 5925 tests passing. Deep 2-lens review folded.
 
 ToolPainBridge has 4 `scn.register()` call sites that write temporal signatures to SCN bins but never emit `TemporalEvent`s for credit attribution via the `TemporalCreditDistributor`.
 
