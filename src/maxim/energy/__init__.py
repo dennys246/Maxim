@@ -1,13 +1,18 @@
 """Energy tracking module - Monitors resource expenditure across subsystems.
 
 Provides a unified framework for tracking energy consumption in different
-domains: LLM tokens, compute time, motor activity, and (optionally) actual
-power draw from hardware telemetry.
+domains: LLM tokens, compute time, and (optionally) actual power draw from
+hardware telemetry.
 
 This enables:
 1. Energy-aware decision making (avoid expensive actions when resources are low)
 2. Learning associations between actions and their energy costs
-3. Fatigue simulation and resource budgeting
+3. Resource budgeting
+
+Note: ``EnergyReactionBridge`` and ``MovementEnergyTracker`` were removed in
+the cradle sensorimotor update.  Interoceptive drive signals (hunger, fatigue,
+stamina recovery) are now handled by the drive protocol in
+``embodiment.sem.HomeostaticDriveSpec`` / ``EntropicDriveSpec``.
 
 Example:
     from maxim.energy import EnergyRegistry, LLMEnergyTracker
@@ -15,14 +20,6 @@ Example:
     # Create registry and register trackers
     registry = EnergyRegistry()
     registry.register(LLMEnergyTracker())
-
-    # Record energy expenditure
-    registry.record_llm_usage(
-        input_tokens=500,
-        output_tokens=150,
-        model="claude-3-haiku",
-        latency_ms=1200,
-    )
 
     # Query energy state
     summary = registry.get_summary()
@@ -32,7 +29,6 @@ Example:
 from maxim.energy.signal import EnergySignal, EnergyType
 from maxim.energy.tracker import EnergyTracker, EnergyConfig
 from maxim.energy.llm_tracker import LLMEnergyTracker, LLMEnergyConfig
-from maxim.energy.movement_tracker import MovementEnergyTracker, MovementEnergyConfig
 from maxim.energy.registry import EnergyRegistry, get_global_registry
 
 __all__ = [
@@ -45,9 +41,6 @@ __all__ = [
     # LLM tracker
     "LLMEnergyTracker",
     "LLMEnergyConfig",
-    # Movement tracker
-    "MovementEnergyTracker",
-    "MovementEnergyConfig",
     # Registry
     "EnergyRegistry",
     "get_global_registry",

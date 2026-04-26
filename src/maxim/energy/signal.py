@@ -24,19 +24,12 @@ class EnergyType(Enum):
     LLM_TOKENS = "llm_tokens"  # Token-based energy (input + output)
     LLM_LATENCY = "llm_latency"  # Time waiting for LLM response
     LLM_COST = "llm_cost"  # USD-normalized cost signal
-    COMPUTE_TIME = "compute_time"  # General CPU/GPU compute time
 
     # Movement-related energy
     MOTOR_COMMAND = "motor_command"  # Energy to execute movement
-    MOTOR_CURRENT = "motor_current"  # Actual motor current draw (if available)
 
     # Sensor-related energy
     VISION_INFERENCE = "vision_inference"  # Vision model inference
-    AUDIO_PROCESSING = "audio_processing"  # Audio transcription/TTS
-
-    # Meta energy
-    ATTENTION = "attention"  # Cognitive attention/focus cost
-    MEMORY_ACCESS = "memory_access"  # Memory retrieval cost
 
 
 @dataclass
