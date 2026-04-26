@@ -202,6 +202,7 @@ def build_bio_stack(
     )
     nac = NAc()
     scn = SCN()
+    scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
     ec = EntorhinalCortex()
 
     # -- Step 2: Optional multi-layer memory (ATL + AngularGyrus) ----------

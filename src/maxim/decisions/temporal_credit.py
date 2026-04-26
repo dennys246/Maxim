@@ -109,6 +109,12 @@ class TemporalCreditDistributor:
             except Exception as e:
                 logger.debug("SCN registration failed for %s: %s", event.event_id, e)
 
+            # Feed oscillator per-event-type phase tracker for anticipatory credit
+            try:
+                self._scn.observe_event(event.event_signature, event.temporal_sig)
+            except Exception as e:
+                logger.debug("SCN observe_event failed for %s: %s", event.event_signature, e)
+
             # Track for session-end cleanup
             self._session_event_ids.append(event.event_id)
 
@@ -118,6 +124,56 @@ class TemporalCreditDistributor:
                 if goal is not None:
                     self._deliberation_events[goal] = event
 
+    def anticipatory_pre_activate(self, agent_id: str) -> list[tuple[str, float]]:
+        """Pre-activate eligibility traces for events the oscillator predicts.
+
+        Called once per tick (before distribute) to prime the fast-decay
+        path.  When the predicted event actually fires and a reward
+        arrives, the pre-activated trace will be credited through the
+        normal fast-decay path in ``distribute()``.
+
+        This is the correct mechanism: anticipation primes the system
+        for future rewards — it does NOT distribute reward itself.
+        Event signatures share the key namespace with eligibility traces
+        (both keyed by ``event_signature`` from ``TemporalEvent``), so
+        the pre-activated traces will be found by the fast-decay path.
+
+        Returns list of ``(event_signature, activation)`` for logging.
+        """
+        pre_activated: list[tuple[str, float]] = []
+        with self._lock:
+            try:
+                anticipatory = self._scn.get_anticipatory_signatures(min_imminence=0.5)
+                if not anticipatory:
+                    return pre_activated
+
+                osc = self._scn.oscillator
+                ant_weight = getattr(getattr(osc, "config", None), "anticipatory_weight", 0.2)
+
+                # Check which event signatures already have active traces
+                active_sigs: set[str] = set()
+                for (aid, nid), strength in self._nac._eligibility.items():
+                    if aid == agent_id and strength > 0.01:
+                        active_sigs.add(nid)
+
+                now_sig = TemporalSignature.now()
+                for event_sig, imminence in anticipatory.items():
+                    if event_sig in active_sigs:
+                        continue  # Already has active trace
+                    activation = ant_weight * imminence
+                    if activation > 0.01:
+                        self._nac.update_eligibility(
+                            agent_id,
+                            event_sig,
+                            activation,
+                            temporal_sig=now_sig,
+                        )
+                        pre_activated.append((event_sig, activation))
+            except Exception as e:
+                logger.debug("Anticipatory pre-activation failed: %s", e)
+
+        return pre_activated
+
     def distribute(
         self,
         agent_id: str,
@@ -126,9 +182,10 @@ class TemporalCreditDistributor:
     ) -> list[tuple[str, float]]:
         """Distribute reward with temporal credit fallback.
 
-        Two-path credit assignment:
+        Two-path credit assignment (anticipatory pre-activation is separate):
         1. **Fast-decay path**: nodes with active eligibility traces (> 0.01)
-           receive credit proportional to trace strength.
+           receive credit proportional to trace strength.  This includes any
+           traces pre-activated by ``anticipatory_pre_activate()``.
         2. **Phase-similarity fallback**: nodes whose fast-decay trace has
            expired but that have temporal anchors receive credit proportional
            to ``TemporalSignature.similarity(anchor, now)`` scaled by
@@ -140,13 +197,14 @@ class TemporalCreditDistributor:
         Returns list of ``(node_id, credit_applied)`` for logging.
         """
         with self._lock:
-            # Read eligibility traces from NAc
+            # 1. Fast-decay path — active eligibility traces
+            #    (includes anticipatory pre-activated traces)
             eligible: dict[str, float] = {}
             for (aid, nid), strength in self._nac._eligibility.items():
                 if aid == agent_id and strength > 0.01:
                     eligible[nid] = strength
 
-            # Phase-similarity fallback from temporal anchors
+            # 2. Phase-similarity fallback from temporal anchors
             temporal_eligible: dict[str, float] = {}
             anchors = self._nac.get_temporal_anchors(agent_id)
             if anchors:

@@ -211,7 +211,7 @@ context = {
 | System | Integration |
 |--------|-------------|
 | **Hippocampus** | Query similar episodes for inference |
-| **SCN** | Temporal context for when patterns apply |
+| **SCN** | Temporal context for when patterns apply. Oscillator feedback (B2): event-type phase tracking → anticipatory credit pre-activates eligibility traces for predicted-imminent events |
 | **FearAgent** | Gate actions with negative predictions |
 | **PainCircuitBridge** | Learn from movement pain signals |
 | **EscalationLearningBridge** | Learn escalation thresholds |

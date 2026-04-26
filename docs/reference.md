@@ -130,7 +130,7 @@ Maxim uses neuroscience-inspired names. Here is the translation:
 | Hippocampus | Episodic memory | `memory/` | Stores and recalls experiences (events, conversations) |
 | ATL | Semantic memory | `memory/` | Extracts concepts, categories, and generalizations |
 | NAc | Reward / causal learning | `decisions/` | Learns cause-and-effect relationships ("what leads to what"). `distribute_reward` now wired via ReactionBus subscriber in `build_bio_stack` |
-| SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms |
+| SCN | Internal clock | `time/` | Tracks circadian-like temporal patterns and rhythms. Kuramoto oscillator learns event-type co-occurrence for anticipatory temporal credit (B2) |
 | EC | Memory indexing + substrate recognition | `similarity/` | Routes queries via similarity; pattern_complete_or_separate for substrate nodes (P1) |
 | Angular Gyrus | Cross-modal algebra | `math/` | Combines memories across different modalities |
 | Cerebellum | Motor prediction | `embodiment/` | Predicts outcomes of physical actions, learns motor programs. Now activated in production via `BioStack.cerebellum` and `build_executor(cerebellum=...)` |

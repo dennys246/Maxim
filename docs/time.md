@@ -181,6 +181,79 @@ scn.add_temporal_prior("evening_wind_down", hour_bin=21)
 
 ---
 
+## Coupled Oscillator Network
+
+The SCN includes an optional Kuramoto-inspired coupled oscillator network for temporal rhythm learning and anticipatory prediction.  Enabled by default in production via `build_bio_stack`.
+
+### Architecture
+
+Four oscillators represent temporal scales: circadian (daily), weekly, monthly, annual.  The coupling matrix learns which scales co-activate via Hebbian plasticity:
+
+```
+dθ_i/dt = ω_i + (K/N) Σ_j W[i][j] * sin(θ_j - θ_i)    (Kuramoto dynamics)
+ΔW[i][j] = η * cos(θ_i - θ_j)                             (Hebbian learning)
+```
+
+### Event-Type Phase Tracking (B2: Anticipatory Credit)
+
+The oscillator tracks per-event-type circadian phases.  When the same event type fires repeatedly at a consistent time, the oscillator learns the association and can predict imminence:
+
+```python
+scn = SCN()
+scn.enable_oscillator()
+
+# Events are recorded automatically via TemporalCreditDistributor.record_event()
+# Manual observation:
+sig = TemporalSignature.now()
+scn.observe_event("tool:sword_slash", sig)
+
+# Query which events are predicted to be imminent
+imminent = scn.get_anticipatory_signatures(min_imminence=0.5)
+# {"tool:sword_slash": 0.83}  — the slash event is expected soon
+```
+
+### Anticipatory Pre-Activation
+
+The `TemporalCreditDistributor` uses oscillator predictions to prime the system:
+
+```python
+# Called once per tick (before distribute):
+dist.anticipatory_pre_activate(agent_id)
+
+# When reward arrives, pre-activated traces are credited normally:
+dist.distribute(agent_id, reward=1.0)
+```
+
+Anticipation primes NAc eligibility traces for events predicted to be imminent.  When the predicted event actually fires and a reward arrives, the pre-activated trace is credited through the normal fast-decay path.  This closes the SCN→NAc feedback loop.
+
+### Key Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `coupling_strength` | 0.1 | Global K in Kuramoto model |
+| `learning_rate` | 0.01 | Hebbian learning rate η |
+| `weight_decay` | 0.999 | Per-observation weight decay |
+| `max_event_phases` | 50 | Ring buffer cap per event signature |
+| `anticipatory_weight` | 0.2 | Credit weight for anticipatory pre-activation |
+
+### Analysis
+
+```python
+# Kuramoto order parameter (synchronization measure)
+coherence = scn.phase_coherence()  # 0.0-1.0, None if disabled
+
+# Coupling strength between oscillators
+coupling = scn.coupling_strength(0, 1)  # circadian-weekly coupling
+
+# Temporal anomaly score
+anomaly = scn.temporal_anomaly_score(sig)  # 0.0-1.0
+
+# Predict next occurrence of a circadian phase
+hours = scn.predict_next_occurrence(target_hour=14.0)  # hours until 2pm
+```
+
+---
+
 ## Integration with Hippocampus
 
 SCN integrates with Hippocampus for temporal memory queries:
