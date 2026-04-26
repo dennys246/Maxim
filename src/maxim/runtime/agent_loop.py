@@ -945,6 +945,7 @@ def run_agentic_loop(
         # phrases, check ComponentIndex for existing matches, and if truly
         # novel, dispatch to ImaginationDesigner for real-time SEM entity
         # generation. Gates: DN arousal + energy budget (checked inside trigger).
+        _imagination_results: list = []  # ImaginationResult list for enrichment context
         if imagination_trigger is not None:
             try:
                 percept_text = ""
@@ -962,7 +963,9 @@ def run_agentic_loop(
                 if percept_text:
                     scene_id = state.data.get("current_scene_id") if hasattr(state, "data") else None
                     scene_ctx = state.data.get("scene_context") if hasattr(state, "data") else None
-                    imagination_trigger.process_percept(percept_text, scene_context=scene_ctx, scene_id=scene_id)
+                    _imagination_results = imagination_trigger.process_percept(
+                        percept_text, scene_context=scene_ctx, scene_id=scene_id
+                    )
                 else:
                     try:
                         from maxim.simulation.sim_logger import sim_log
@@ -1096,8 +1099,13 @@ def run_agentic_loop(
                 if _pfc_gate_passed and bio_enrichment_pipeline is not None and _percept_text_for_cycle:
                     from maxim.integration.bio_enrichment import EnrichmentContext
 
+                    # Collect entity refs resolved by ImaginationTrigger this tick
+                    _resolved_entity_refs = (
+                        tuple(r.ref for r in _imagination_results if r.ref) if _imagination_results else ()
+                    )
                     _enrich_ctx = EnrichmentContext(
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                        resolved_entities=_resolved_entity_refs,
                     )
                     _enrich_result = bio_enrichment_pipeline.enrich(
                         _percept_text_for_cycle, context=_enrich_ctx, bypass_gate=True

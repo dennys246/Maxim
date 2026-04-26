@@ -3,6 +3,7 @@ component:
   tags: [weapon, ranged, tech, degradable, cyberpunk]
   synonyms: [brain scrambler, nerve gun, neural weapon, mind disruptor, psi gun, synapse blaster, neuro weapon]
   category: weapons
+  archetype: environmental
 
 entity:
   name: neural_disruptor

@@ -3,6 +3,7 @@ component:
   tags: [item, consumable, water, fantasy]
   synonyms: [canteen, water bottle, waterskin, drinking flask, water container, flask of water, hydration flask]
   category: items
+  archetype: environmental
 
 entity:
   name: water_flask

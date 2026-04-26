@@ -3,6 +3,7 @@ component:
   tags: [item, consumable, dangerous, fantasy]
   synonyms: [vial of poison, toxic potion, deadly liquid, poison bottle, toxin vial, noxious draught, venomous fluid]
   category: items
+  archetype: environmental
 
 entity:
   name: poison_vial

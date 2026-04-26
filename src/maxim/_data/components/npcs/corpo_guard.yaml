@@ -2,6 +2,7 @@ component:
   name: corpo_guard
   tags: [npc, humanoid, military, augmented, authority, cyberpunk]
   category: npcs
+  archetype: humanoid
   extends: npcs/base_humanoid
   synonyms: [corporate security, corp soldier, company guard, corporate enforcer, security operative, corpo sec, augmented guard]
 

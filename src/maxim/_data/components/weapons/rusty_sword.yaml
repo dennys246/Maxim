@@ -3,6 +3,7 @@ component:
   tags: [weapon, melee, degradable]
   synonyms: [old sword, dull blade, rusty blade, iron sword, corroded sword, worn sword, battered blade]
   category: weapons
+  archetype: environmental
 
 entity:
   name: rusty_sword

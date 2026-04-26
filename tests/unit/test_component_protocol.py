@@ -91,6 +91,7 @@ class TestInstantiation:
         "environment",
         "character",
         "robot",
+        "machine",
         "item",
         "vehicle",
     }
@@ -271,8 +272,7 @@ class TestFailureModes:
                 trigger = failure.get("trigger", {})
                 field = trigger.get("field", "")
                 assert field in sensors, (
-                    f"{info.ref}: failure trigger references missing sensor '{field}'. "
-                    f"Available: {sorted(sensors)}"
+                    f"{info.ref}: failure trigger references missing sensor '{field}'. Available: {sorted(sensors)}"
                 )
                 op = trigger.get("op", "")
                 assert op in valid_ops, f"{info.ref}: failure trigger op '{op}' not in {valid_ops}"

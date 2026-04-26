@@ -3,6 +3,7 @@ component:
   tags: [item, consumable, medicinal, fantasy]
   synonyms: [cure vial, anti-poison, poison cure, remedy vial, antivenom, neutralizing potion, detox potion]
   category: items
+  archetype: environmental
 
 entity:
   name: antidote_vial

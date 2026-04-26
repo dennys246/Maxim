@@ -88,6 +88,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "Works with --sim across all modes (since 0.6).",
     )
     core.add_argument(
+        "--no-embodiment",
+        action="store_true",
+        default=False,
+        help="Disable default embodiment in sim mode. By default, sims use "
+        "bodies/base_humanoid so the agent has physical affordances. "
+        "Pass this flag to run without a body (pre-0.7 behavior).",
+    )
+    core.add_argument(
         "--deep-embodiment",
         action="store_true",
         default=False,

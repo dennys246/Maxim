@@ -3,6 +3,7 @@ component:
   tags: [item, tech, communication, modern, historical]
   synonyms: [radio, walkie talkie, two-way radio, comm device, field radio, handheld radio, transmitter]
   category: items
+  archetype: environmental
 
 entity:
   name: radio_transceiver

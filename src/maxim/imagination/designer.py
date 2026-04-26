@@ -58,6 +58,12 @@ class ImaginationDesigner:
     ) -> DesignResult | None:
         """Design a new entity from a natural language description.
 
+        When archetypes are available, infers the best archetype from the
+        description and uses it as a scaffold — the generated entity
+        inherits the archetype's body-part structure as a starting point.
+        The LLM customizes sensors/affordances but stays within the
+        archetype's vocabulary of body parts.
+
         Args:
             description: Entity phrase (e.g., "rusty iron gate").
             scene_context: Scene/campaign context for genre inference.
@@ -72,6 +78,9 @@ class ImaginationDesigner:
 
         # Infer entity_type from description
         entity_type = self._infer_entity_type(description)
+
+        # Infer archetype and get scaffold
+        archetype_name = self._infer_archetype(description, entity_type)
 
         # Call EntityDesigner
         try:
@@ -88,6 +97,17 @@ class ImaginationDesigner:
             log.debug("ImaginationDesigner: design() returned empty spec for '%s'", description)
             return None
 
+        # Apply archetype scaffold: if the LLM generated a spec without
+        # modulators (or with minimal ones), merge the archetype's body
+        # parts as a structural starting point.
+        entity_spec = spec.get("entity", spec)
+        if archetype_name:
+            entity_spec = self._apply_archetype_scaffold(entity_spec, archetype_name)
+            if "entity" in spec:
+                spec["entity"] = entity_spec
+            else:
+                spec = entity_spec
+
         # Quick validation — schema + sensor sanity (no gauntlet)
         from maxim.simulation.entity_designer import validate_entity_spec
 
@@ -101,8 +121,22 @@ class ImaginationDesigner:
             )
             return None
 
+        # Archetype validation — warn (don't reject) if modulators
+        # fall outside the archetype vocabulary.
+        archetype_warnings: list[str] = []
+        if archetype_name:
+            try:
+                from maxim.embodiment.archetype import validate_component_archetype
+
+                archetype_warnings = validate_component_archetype({"archetype": archetype_name}, entity_spec)
+                for w in archetype_warnings:
+                    log.debug("ImaginationDesigner archetype warning: %s", w)
+            except Exception:
+                pass
+
         # Additional sensor sanity (from foundry validation)
         warnings = self._sensor_sanity(entity_spec)
+        warnings.extend(archetype_warnings)
 
         # Extract synonyms from the spec (EntityDesigner prompt generates them)
         synonyms = self._extract_synonyms(spec, description)
@@ -294,3 +328,123 @@ class ImaginationDesigner:
         slug = re.sub(r"[^a-z0-9]+", "_", text.lower().strip())
         slug = slug.strip("_")
         return slug or "unknown_entity"
+
+    # -- Archetype inference and scaffolding ---------------------------------
+
+    # Keyword → archetype mapping for description-based inference.
+    # Specific overrides take precedence over entity_type defaults.
+    _ARCHETYPE_KEYWORDS: dict[str, str] = {
+        # quadruped
+        "wolf": "quadruped",
+        "dog": "quadruped",
+        "hound": "quadruped",
+        "bear": "quadruped",
+        "horse": "quadruped",
+        "spider": "quadruped",
+        "dragon": "quadruped",
+        "lion": "quadruped",
+        "tiger": "quadruped",
+        "cat": "quadruped",
+        "deer": "quadruped",
+        "boar": "quadruped",
+        # serpentine
+        "snake": "serpentine",
+        "serpent": "serpentine",
+        "worm": "serpentine",
+        "eel": "serpentine",
+        "tentacle": "serpentine",
+        # avian
+        "bird": "avian",
+        "eagle": "avian",
+        "hawk": "avian",
+        "raven": "avian",
+        "bat": "avian",
+        "phoenix": "avian",
+        "griffin": "avian",
+        # machine
+        "robot": "machine",
+        "drone": "machine",
+        "android": "machine",
+        "cyborg": "machine",
+        "terminal": "machine",
+        "console": "machine",
+        "turret": "machine",
+        # vehicle
+        "cart": "vehicle",
+        "wagon": "vehicle",
+        "ship": "vehicle",
+        "boat": "vehicle",
+        "speeder": "vehicle",
+        "car": "vehicle",
+        "bike": "vehicle",
+    }
+
+    # Entity type → default archetype (when keywords don't match)
+    _TYPE_ARCHETYPE_MAP: dict[str, str] = {
+        "creatures": "quadruped",
+        "npcs": "humanoid",
+        "weapons": "environmental",
+        "items": "environmental",
+        "environments": "environmental",
+        "vehicles": "vehicle",
+        "bodies": "humanoid",
+    }
+
+    @classmethod
+    def _infer_archetype(cls, description: str, entity_type: str | None) -> str | None:
+        """Infer the best archetype from description keywords and entity type.
+
+        Keyword match takes priority (dragon → quadruped). Falls back to
+        entity_type default (creatures → quadruped). Returns None if no
+        archetype can be inferred.
+        """
+        desc_lower = description.lower()
+        for word in desc_lower.split():
+            stem = word.rstrip("s") if not word.endswith("ss") else word
+            if stem in cls._ARCHETYPE_KEYWORDS:
+                return cls._ARCHETYPE_KEYWORDS[stem]
+            if word in cls._ARCHETYPE_KEYWORDS:
+                return cls._ARCHETYPE_KEYWORDS[word]
+
+        if entity_type:
+            return cls._TYPE_ARCHETYPE_MAP.get(entity_type)
+
+        return None
+
+    @staticmethod
+    def _apply_archetype_scaffold(
+        entity_spec: dict[str, Any],
+        archetype_name: str,
+    ) -> dict[str, Any]:
+        """Merge archetype scaffold into entity spec.
+
+        If the entity spec has no modulators (or very few), fills in the
+        archetype's required body parts as a structural scaffold. Existing
+        modulators in the spec are preserved — scaffold only adds what's
+        missing.
+
+        Returns the (possibly modified) entity spec.
+        """
+        try:
+            from maxim.embodiment.archetype import archetype_scaffold
+
+            scaffold = archetype_scaffold(archetype_name)
+            if scaffold is None:
+                return entity_spec
+        except Exception:
+            return entity_spec
+
+        existing_mods = entity_spec.get("modulators", {})
+        scaffold_mods = scaffold.get("modulators", {})
+
+        # Only scaffold if the entity has fewer modulators than the archetype
+        if len(existing_mods) >= len(scaffold_mods):
+            return entity_spec
+
+        # Merge: scaffold provides structure, existing spec overrides
+        merged_mods = dict(scaffold_mods)
+        merged_mods.update(existing_mods)
+        entity_spec = dict(entity_spec)
+        entity_spec["modulators"] = merged_mods
+
+        return entity_spec

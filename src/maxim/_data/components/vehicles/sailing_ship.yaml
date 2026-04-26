@@ -3,6 +3,7 @@ component:
   tags: [vehicle, water, historical]
   synonyms: [ship, sailboat, galleon, vessel, tall ship, schooner, brigantine, sea vessel]
   category: vehicles
+  archetype: vehicle
 
 entity:
   name: sailing_ship

@@ -3,6 +3,7 @@ component:
   tags: [item, consumable, food, fantasy]
   synonyms: [rations, trail food, dried food, provisions, travel food, field rations, packed meal]
   category: items
+  archetype: environmental
 
 entity:
   name: food_ration

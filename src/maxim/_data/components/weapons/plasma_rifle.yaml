@@ -3,6 +3,7 @@ component:
   tags: [weapon, ranged, tech, degradable, scifi]
   synonyms: [energy rifle, plasma gun, laser rifle, particle beam, ion rifle, blaster rifle, ray gun]
   category: weapons
+  archetype: environmental
 
 entity:
   name: plasma_rifle

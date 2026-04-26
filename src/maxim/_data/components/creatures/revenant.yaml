@@ -3,6 +3,7 @@ component:
   tags: [creature, undead, hostile, horror]
   synonyms: [vengeful spirit, undead horror, risen dead, wraith, walking corpse, ghoul, vengeful undead]
   category: creatures
+  archetype: humanoid
 
 entity:
   name: revenant

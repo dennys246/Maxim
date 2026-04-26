@@ -3,6 +3,7 @@ component:
   tags: [environment, indoor, medical, tech, cyberpunk]
   synonyms: [chop shop, street clinic, cyber clinic, implant shop, body shop, augmentation clinic, back-alley surgery]
   category: environments
+  archetype: environmental
 
 entity:
   name: ripperdoc_clinic

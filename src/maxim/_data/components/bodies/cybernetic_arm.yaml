@@ -3,6 +3,7 @@ component:
   tags: [augmentation, body, degradable, cyberpunk]
   synonyms: [cyber arm, robotic arm, prosthetic arm, metal arm, bionic arm, chrome arm, augmented limb]
   category: bodies
+  archetype: machine
 
 entity:
   name: cybernetic_arm

@@ -2,6 +2,7 @@ component:
   name: blacksmith
   tags: [npc, humanoid, craftsman, fantasy, historical]
   category: npcs
+  archetype: humanoid
   extends: npcs/base_humanoid
   synonyms: [smith, weaponsmith, armorer, forge worker, metalworker, iron worker, hammer smith]
 

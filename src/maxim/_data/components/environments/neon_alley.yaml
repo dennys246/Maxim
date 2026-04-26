@@ -3,6 +3,7 @@ component:
   tags: [environment, outdoor, urban, sensory-dense, cyberpunk]
   synonyms: [neon street, cyber alley, back alley, glowing street, night market alley, rain-slick alley, urban corridor]
   category: environments
+  archetype: environmental
 
 entity:
   name: neon_alley

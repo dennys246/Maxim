@@ -1039,10 +1039,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Default to base_humanoid embodiment for sim mode (0.7+).
         # The agent gets physical affordances (move, look, pick_up, use, speak, rest)
         # which unlocks the full 0.7 chain: Acting Coach, imagination, scene-scoped tools.
-        if _sim_entity_ref is None:
+        # Pass --no-embodiment to disable (pre-0.7 behavior).
+        _no_embodiment = bool(getattr(args, "no_embodiment", False))
+        if _sim_entity_ref is None and not _no_embodiment:
             _sim_entity_ref = "bodies/base_humanoid"
             logging.getLogger("maxim").info(
-                "Sim embodiment defaulting to bodies/base_humanoid (pass --embodiment to override)"
+                "Sim embodiment defaulting to bodies/base_humanoid (pass --no-embodiment to disable)"
             )
 
         # ── E3: Pre-sim auto-curation ─────────────────────────────────

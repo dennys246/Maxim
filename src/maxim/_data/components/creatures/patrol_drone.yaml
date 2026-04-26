@@ -3,6 +3,7 @@ component:
   tags: [creature, machine, flying, hostile, cyberpunk]
   synonyms: [security drone, flying drone, surveillance drone, scout drone, hovering sentry, robot drone, aerial drone]
   category: creatures
+  archetype: machine
 
 entity:
   name: patrol_drone

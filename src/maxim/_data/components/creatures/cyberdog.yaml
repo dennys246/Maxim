@@ -3,6 +3,7 @@ component:
   tags: [creature, animal, augmented, semi-hostile, cyberpunk]
   synonyms: [robot dog, augmented dog, chrome hound, mech dog, cybernetic canine, robo dog, metal mutt]
   category: creatures
+  archetype: quadruped
 
 entity:
   name: cyberdog

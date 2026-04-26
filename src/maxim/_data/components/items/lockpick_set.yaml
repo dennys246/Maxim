@@ -3,6 +3,7 @@ component:
   tags: [item, tool, stealth, modern, fantasy]
   synonyms: [lockpicks, thieves tools, lock picks, pick set, burglar tools, lock opener, picking tools]
   category: items
+  archetype: environmental
 
 entity:
   name: lockpick_set
