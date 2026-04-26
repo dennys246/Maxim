@@ -257,7 +257,7 @@ class BioEnrichmentPipeline:
             lines.append(f"Related concepts: {', '.join(concept_names)}")
 
         if result.affordances:
-            lines.append(f"Available actions: {', '.join(result.affordances[:5])}")
+            lines.append(f"Available actions (use via use tool): {', '.join(result.affordances[:5])}")
 
         if result.recent_context:
             lines.append("Recent actions and outcomes:")
