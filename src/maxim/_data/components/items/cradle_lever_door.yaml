@@ -1,0 +1,30 @@
+component:
+  name: cradle_lever_door
+  category: items
+  tags: [cradle, mechanism, cause-effect]
+  description: |
+    A lever mechanism connected to a door. Pulling the lever opens
+    the door, revealing food behind it. The orchestrator handles the
+    narrative consequence (auto-sense picks up newly visible entities).
+
+entity:
+  name: lever_door
+  entity_type: mechanism
+  sensors:
+    lever_position:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0  # 0=closed, 1=open
+    door_state:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0  # 0=closed, 1=open
+  modulators:
+    mechanism:
+      affordances:
+        pull:
+          params: {}
+          description: "Pull the lever to see what happens"
+        push:
+          params: {}
+          description: "Push the lever back to its resting position"

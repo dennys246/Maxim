@@ -1,0 +1,28 @@
+component:
+  name: cradle_fire_pit
+  category: items
+  tags: [cradle, hazard, thermal, fire]
+  description: |
+    A small fire pit that radiates heat. Non-acquirable — the agent
+    cannot pick it up. Proximity effects are handled by orchestrator
+    sensor writes to the agent's thermal sensors. The fire_burn reflex
+    provides the narrative fallback layer.
+
+entity:
+  name: fire_pit
+  entity_type: hazard
+  sensors:
+    heat_output:
+      unit: celsius_norm
+      range: [0, 1]
+      initial: 0.9
+    fuel:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+  modulators:
+    flame:
+      affordances:
+        observe:
+          params: {}
+          description: "Look at the fire pit from a safe distance"

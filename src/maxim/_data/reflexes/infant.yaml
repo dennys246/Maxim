@@ -1,0 +1,50 @@
+# Infant reflexes — innate body responses for the cradle scenario.
+#
+# Extends the humanoid reflex set with thermal-contact responses
+# specific to the infant body's somatosensory sensors. The thermal
+# reflex fires when the infant contacts high-temperature objects,
+# targeting the arms (where thermal sub-sensors live).
+
+reflexes:
+
+  thermal_contact:
+    detect_keywords:
+      - touch fire
+      - touches fire
+      - reaches into
+      - hand in flame
+      - hand in fire
+      - grabs the fire
+      - burning sensation
+      - searing heat
+      - scalding
+    response:
+      tool: damage_component
+      params:
+        component: arms
+        source: reflex_thermal_contact
+        damage_type: fire
+    base_intensity: 0.15
+    intensity_scale:
+      searing: 0.25
+      scalding: 0.25
+      severe: 0.20
+      mild: 0.05
+    cooldown_s: 1.5
+    suppressible: true
+
+  cold_contact:
+    detect_keywords:
+      - freezing cold
+      - ice cold
+      - frostbitten
+      - frozen surface
+    response:
+      tool: set_entity_sensor
+      params:
+        sensor: arms.thermal
+        value: -0.1
+        source: reflex_cold_contact
+    base_intensity: 0.05
+    cooldown_s: 5.0
+    suppressible: false

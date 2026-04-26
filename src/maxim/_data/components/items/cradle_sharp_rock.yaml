@@ -1,0 +1,28 @@
+component:
+  name: cradle_sharp_rock
+  category: items
+  tags: [cradle, hazard, sharp, acquirable]
+  description: |
+    A sharp rock that causes laceration when grasped. Acquirable —
+    picking it up reparents it to the agent's body and its sharpness
+    sensor joins the damage model (contact sensation layer).
+
+entity:
+  name: sharp_rock
+  entity_type: item
+  acquirable: true
+  on_acquire: equip
+  sensors:
+    sharpness:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+  failure_modes:
+    - name: laceration
+      trigger: {field: sharpness, op: ">", value: 0.5, pain: 0.4}
+  modulators:
+    surface:
+      affordances:
+        examine:
+          params: {}
+          description: "Examine the rock's surface closely"

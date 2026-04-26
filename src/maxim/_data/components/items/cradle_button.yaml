@@ -1,0 +1,22 @@
+component:
+  name: cradle_button
+  category: items
+  tags: [cradle, mechanism, cause-effect, auditory]
+  description: |
+    A button that produces a pleasant chime when pressed. Provides
+    positive sensory feedback without physical consequences.
+
+entity:
+  name: button
+  entity_type: mechanism
+  sensors:
+    pressed:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+  modulators:
+    interface:
+      affordances:
+        press:
+          params: {}
+          description: "Press the button to see what happens"
