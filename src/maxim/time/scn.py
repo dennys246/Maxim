@@ -604,6 +604,35 @@ class SCN:
         """Access the oscillator network (None if disabled)."""
         return self._oscillator
 
+    def observe_event(self, event_signature: str, signature: TemporalSignature) -> None:
+        """Record an event type's occurrence for anticipatory prediction.
+
+        Delegates to the oscillator's per-event-type phase tracker.
+        No-op when the oscillator is disabled.
+
+        Args:
+            event_signature: Hashable event identifier (e.g. "tool:sword_slash").
+            signature: TemporalSignature at the time the event fired.
+        """
+        if self._oscillator is not None:
+            self._oscillator.observe_event(event_signature, signature)
+
+    def get_anticipatory_signatures(self, min_imminence: float = 0.5) -> dict[str, float]:
+        """Return event signatures predicted to be imminent.
+
+        Delegates to the oscillator's per-event-type phase tracker.
+        Returns empty dict when the oscillator is disabled.
+
+        Args:
+            min_imminence: Minimum imminence score (0-1) to include.
+
+        Returns:
+            ``{event_signature: imminence_score}`` for imminent events.
+        """
+        if self._oscillator is None:
+            return {}
+        return self._oscillator.get_anticipatory_signatures(min_imminence)
+
     def predict_next_occurrence(self, target_hour: float, max_hours: float = 168.0) -> float | None:
         """Predict hours until the circadian oscillator reaches target phase.
 

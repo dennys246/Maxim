@@ -63,6 +63,12 @@ class OscillatorConfig:
     integration_steps: int = 1
     """Number of Euler steps per observe() call."""
 
+    max_event_phases: int = 50
+    """Maximum phase observations stored per event signature (ring buffer)."""
+
+    anticipatory_weight: float = 0.2
+    """Credit weight for anticipatory pre-activation (0-1)."""
+
 
 class OscillatorNetwork:
     """Kuramoto coupled oscillator network with Hebbian learning.
@@ -80,6 +86,12 @@ class OscillatorNetwork:
         self._coupling: list[list[float]] = [[0.0] * _N_OSC for _ in range(_N_OSC)]
         self._observation_count: int = 0
         self._prediction_error_ema: float = 0.0
+
+        # Per-event-type phase tracking for anticipatory credit.
+        # Maps event_signature → list of circadian phases (radians) at
+        # which that event type was observed.  Ring buffer capped at
+        # config.max_event_phases.
+        self._event_phases: dict[str, list[float]] = {}
 
     # ------------------------------------------------------------------
     # Phase dynamics
@@ -253,6 +265,83 @@ class OscillatorNetwork:
         return None
 
     # ------------------------------------------------------------------
+    # Event-type phase tracking (anticipatory credit feedback)
+    # ------------------------------------------------------------------
+
+    def observe_event(self, event_signature: str, signature: Any) -> None:
+        """Record the circadian phase at which an event type occurred.
+
+        Builds a per-event-type phase history so the oscillator can
+        predict when specific event types are likely to fire.
+
+        Args:
+            event_signature: Hashable event identifier (e.g. "tool:sword_slash").
+            signature: TemporalSignature with circadian_phase in [0, 1).
+        """
+        phase = getattr(signature, "circadian_phase", 0.0) * TWO_PI
+        phases = self._event_phases.get(event_signature)
+        if phases is None:
+            phases = []
+            self._event_phases[event_signature] = phases
+
+        phases.append(phase)
+        # Ring buffer — drop oldest when over cap
+        cap = self.config.max_event_phases
+        if len(phases) > cap:
+            del phases[: len(phases) - cap]
+
+    def predict_event_imminence(self, event_signature: str) -> float:
+        """Predict how imminent an event type is based on learned phase patterns.
+
+        Compares the oscillator's current circadian phase to the mean
+        circadian phase of past observations for this event type.
+
+        Returns:
+            Imminence score in [0, 1].  1.0 = current phase matches the
+            event's typical phase exactly.  0.0 = maximally far away or
+            no observations.  Requires >= 3 observations to produce a
+            non-zero score (cold-start guard).
+        """
+        phases = self._event_phases.get(event_signature)
+        if not phases or len(phases) < 3:
+            return 0.0
+
+        # Circular mean of observed phases
+        sin_sum = sum(math.sin(p) for p in phases)
+        cos_sum = sum(math.cos(p) for p in phases)
+        mean_phase = math.atan2(sin_sum, cos_sum) % TWO_PI
+
+        # Circular concentration (R / N) — high R means consistent timing
+        n = len(phases)
+        r = math.sqrt(sin_sum * sin_sum + cos_sum * cos_sum) / n
+
+        # Distance from current circadian phase to mean event phase
+        current_phase = self._phases[0]  # oscillator 0 = circadian
+        dist = _circular_distance(current_phase, mean_phase)
+        # Normalize: max dist is π → similarity in [0, 1]
+        phase_similarity = 1.0 - (dist / math.pi)
+
+        # Scale by concentration — scattered events get low imminence
+        return phase_similarity * r
+
+    def get_anticipatory_signatures(self, min_imminence: float = 0.5) -> dict[str, float]:
+        """Return event signatures with imminence above threshold.
+
+        Args:
+            min_imminence: Minimum imminence score to include (0-1).
+
+        Returns:
+            ``{event_signature: imminence_score}`` for all events above
+            the threshold.
+        """
+        result: dict[str, float] = {}
+        for sig in self._event_phases:
+            score = self.predict_event_imminence(sig)
+            if score >= min_imminence:
+                result[sig] = score
+        return result
+
+    # ------------------------------------------------------------------
     # Analysis
     # ------------------------------------------------------------------
 
@@ -305,6 +394,7 @@ class OscillatorNetwork:
             "coupling": [row[:] for row in self._coupling],
             "observation_count": self._observation_count,
             "prediction_error_ema": self._prediction_error_ema,
+            "event_phases": {k: list(v) for k, v in self._event_phases.items()},
             "config": {
                 "coupling_strength": self.config.coupling_strength,
                 "learning_rate": self.config.learning_rate,
@@ -313,6 +403,8 @@ class OscillatorNetwork:
                 "min_weight": self.config.min_weight,
                 "dt": self.config.dt,
                 "integration_steps": self.config.integration_steps,
+                "max_event_phases": self.config.max_event_phases,
+                "anticipatory_weight": self.config.anticipatory_weight,
             },
         }
 
@@ -328,6 +420,8 @@ class OscillatorNetwork:
             min_weight=config_data.get("min_weight", -0.5),
             dt=config_data.get("dt", 1.0 / 24.0),
             integration_steps=config_data.get("integration_steps", 1),
+            max_event_phases=config_data.get("max_event_phases", 50),
+            anticipatory_weight=config_data.get("anticipatory_weight", 0.2),
         )
         network = cls(config)
         network._phases = data.get("phases", [0.0] * _N_OSC)
@@ -336,6 +430,9 @@ class OscillatorNetwork:
             network._coupling = [row[:] for row in coupling]
         network._observation_count = data.get("observation_count", 0)
         network._prediction_error_ema = data.get("prediction_error_ema", 0.0)
+        # Restore per-event-type phase history (backward-compatible default)
+        event_phases = data.get("event_phases", {})
+        network._event_phases = {k: list(v) for k, v in event_phases.items()}
         return network
 
 

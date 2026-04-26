@@ -1,35 +1,58 @@
 # SCN Oscillator Feedback — anticipatory temporal credit
 
-**Status:** Shell plan (2026-04-24), **deferred until temporal credit Phases 1-7 are stable in production**
-**Scope:** ~100-150 LOC across SCN, TemporalCreditDistributor
-**Depends on:** [temporal_credit_integration.md](temporal_credit_integration.md) (Phases 1-7 shipped), [tool_pain_bridge_temporal_migration.md](tool_pain_bridge_temporal_migration.md)
-**Branch:** TBD
+**Status:** SHIPPED (2026-04-26), Branch: `feat/v1-scn-oscillator`
+**Scope:** ~120 LOC across OscillatorNetwork, SCN, TemporalCreditDistributor, build_bio_stack
+**Depends on:** [temporal_credit_integration.md](archive/temporal_credit_integration.md) (Phases 1-7 shipped), [tool_pain_bridge_temporal_migration.md](archive/tool_pain_bridge_temporal_migration.md) (P1 shipped)
 
 ---
 
-## Problem
+## Problem (resolved)
 
-The temporal credit system (shipped) distributes reward based on **historical** temporal phase similarity — "this event type happened at this time of day before."  The SCN oscillator already has coupling weights that learn co-occurrence patterns (Hebbian on Kuramoto phases), but these weights are never fed back into the credit system.
+The temporal credit system distributed reward based on **historical** temporal phase similarity — "this event type happened at this time of day before."  The SCN oscillator had coupling weights that learned co-occurrence patterns (Hebbian on Kuramoto phases), but these weights were never fed back into the credit system.
 
-The gap: the system can credit events that already happened but cannot **anticipate** events that are likely to happen based on learned temporal patterns.
+The gap: the system could credit events that already happened but could not **anticipate** events likely to happen based on learned temporal patterns.
 
-## Design
+## Implementation
 
-1. **SCN oscillator `observe(signature)` called on each `TemporalEvent`.**  The oscillator learns which event types co-occur in temporal phase space.
+### 1. Per-event-type phase tracking (OscillatorNetwork)
 
-2. **Coupling weights learn co-occurrence patterns** via Hebbian rule on Kuramoto phases.  When two event types consistently fire at the same circadian phase, their coupling strengthens.
+`observe_event(event_signature, signature)` records the circadian phase at which each event type fires.  Ring buffer capped at `max_event_phases` (default 50).
 
-3. **`predict_next_occurrence(event_signature)` becomes actionable.**  Given an event type, the oscillator predicts when it's likely to fire next based on learned phase patterns.
+### 2. Imminence prediction (OscillatorNetwork)
 
-4. **Anticipatory credit: pre-activate eligibility traces** for events predicted by the oscillator.  When the oscillator predicts "tool X tends to fire at 2pm" and it's approaching 2pm, the distributor pre-activates eligibility for tool X's substrate nodes.
+`predict_event_imminence(event_signature)` computes how close the current circadian phase is to an event type's learned phase pattern.  Uses circular mean + concentration (R/N) — events with scattered timing produce low imminence scores.  Cold-start guard: < 3 observations returns 0.0.
 
-## Key constraint
+### 3. Anticipatory pre-activation (TemporalCreditDistributor)
 
-This is a **future extension**, not a correction.  The shipped temporal credit system works correctly without oscillator feedback — it just can't anticipate.  Only implement after Phases 1-7 have been validated in production sims.
+`anticipatory_pre_activate(agent_id)` primes NAc eligibility traces for events the oscillator predicts are imminent.  Called once per tick BEFORE `distribute()`.  When the predicted event actually fires and a reward arrives, the pre-activated trace is credited through the normal fast-decay path in `distribute()`.
 
-## Trigger condition
+This is the biologically correct mechanism: anticipation primes the system for future rewards — it does NOT distribute reward itself.  Events with already-active traces are skipped (no double-priming).
 
-Implement when:
-- Temporal credit integration has been stable for 2+ weeks in production sims
-- A sim scenario demonstrates the value of anticipatory credit (e.g., recurring daily encounters where the agent should prepare)
-- The ToolPainBridge temporal migration (Phase 6 remainder) is complete, providing enough diverse TemporalEvents for the oscillator to learn patterns from
+Pre-activation strength = `OscillatorConfig.anticipatory_weight` (default 0.2) × imminence score.
+
+### 4. Production wiring (build_bio_stack)
+
+`build_bio_stack` now calls `scn.enable_oscillator()` after SCN construction.  The oscillator is enabled by default for all production paths.
+
+`record_event()` calls `scn.observe_event(event_signature, temporal_sig)` on every TemporalEvent, feeding the oscillator's per-event-type phase tracker.
+
+### Key files changed
+
+| File | Change |
+|------|--------|
+| `time/oscillator.py` | `observe_event`, `predict_event_imminence`, `get_anticipatory_signatures`, serialization |
+| `time/scn.py` | `observe_event`, `get_anticipatory_signatures` delegation |
+| `decisions/temporal_credit.py` | Third credit path in `distribute()`, `observe_event` call in `record_event()` |
+| `runtime/bio_stack.py` | `scn.enable_oscillator()` after construction |
+
+### Tests
+
+21 new tests in `tests/unit/test_scn_oscillator_feedback.py`:
+- Phase recording + ring buffer
+- Cold-start guard (< 3 observations)
+- High imminence when phase-aligned, low when scattered/distant
+- Anticipatory threshold filtering
+- SCN delegation (with + without oscillator)
+- Serialization round-trip + backward compat
+- Distributor integration (record feeds oscillator, anticipatory credit fires, no double-count)
+- build_bio_stack enables oscillator

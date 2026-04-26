@@ -73,19 +73,20 @@ Add standardized `*Context` dataclass parameters to each bio-system's primary me
 
 **Why before 1.0:** Adding an optional `context=None` parameter is non-breaking. Removing one or changing its shape post-1.0 IS breaking. The cost of adding these now is near-zero; the cost of not having them later is a 2.0.
 
-### B2. SCN oscillator feedback — anticipatory temporal credit
+### B2. SCN oscillator feedback — anticipatory temporal credit — SHIPPED (2026-04-26)
 
-**Companion plan:** [scn_oscillator_feedback.md](scn_oscillator_feedback.md) (~100-150 LOC)
+**Companion plan:** [scn_oscillator_feedback.md](scn_oscillator_feedback.md) (~120 LOC)
+**Branch:** `feat/v1-scn-oscillator`
 
-Close the SCN→NAc feedback loop. The temporal credit system distributes reward based on historical phase similarity, but the SCN oscillator's learned coupling weights (Hebbian on Kuramoto phases) are never fed back into credit distribution.
+Closed the SCN→NAc feedback loop. Three-path credit in TemporalCreditDistributor: fast-decay → phase-similarity → anticipatory (oscillator-predicted imminent events). 21 new tests.
 
-**Changes:**
-1. SCN oscillator `observe(signature)` called on each `TemporalEvent`
-2. Coupling weights learn co-occurrence patterns via Hebbian rule
-3. `predict_next_occurrence(event_signature)` becomes actionable
-4. Anticipatory credit: pre-activate eligibility traces for events predicted by the oscillator
+**Changes shipped:**
+1. `OscillatorNetwork.observe_event()` — per-event-type circadian phase tracking
+2. `OscillatorNetwork.predict_event_imminence()` — circular mean + concentration scoring
+3. `TemporalCreditDistributor.distribute()` — third anticipatory credit path
+4. `build_bio_stack` — `scn.enable_oscillator()` by default
 
-**Why before 1.0:** SCN is the only bio-system with a one-way data flow (writes temporal signatures, never reads its own predictions back). Every other bio-system has a closed feedback loop. Shipping 1.0 with a half-wired SCN undermines the "bio-systems run in unison" invariant.
+**Why before 1.0:** SCN was the only bio-system with a one-way data flow. Now every bio-system has a closed feedback loop.
 
 ### B3. SEM world enrichment (Phases 2-3)
 
