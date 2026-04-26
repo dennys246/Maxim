@@ -260,6 +260,13 @@ class MemoryHub:
 
         try:
             self._encoder.encode(percept)
+            # Stash substrate node IDs for the next observe_episode call.
+            # This bridges the encoding path to the episode binding path.
+            node_id = getattr(percept, "substrate_node_id", None)
+            if node_id:
+                from maxim.runtime import bio_integration
+
+                bio_integration.record_substrate_nodes((node_id,))
         except Exception as e:
             logger.warning("Substrate encoding failed: %s", e)
 

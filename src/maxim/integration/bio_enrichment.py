@@ -141,6 +141,7 @@ class BioEnrichmentPipeline:
         nac: NAc | None = None,
         atl: ATL | None = None,
         ec: EntorhinalCortex | None = None,
+        encoder: Any | None = None,
         component_index: ComponentIndex | None = None,
         reflex_registry: ReflexRegistry | None = None,
         novelty_threshold: float = 0.4,
@@ -151,6 +152,7 @@ class BioEnrichmentPipeline:
         self._nac = nac
         self._atl = atl
         self._ec = ec
+        self._encoder = encoder  # LinguisticEncoder for graph-based retrieval
         self._component_index = component_index
         self._reflex_registry = reflex_registry
         self._novelty_threshold = novelty_threshold
@@ -198,7 +200,7 @@ class BioEnrichmentPipeline:
         keywords = self._extract_keywords(text)
 
         # Query bio-systems (each handles None gracefully)
-        memories = self._query_hippocampus(text, keywords)
+        memories = self._query_hippocampus(text, keywords, context=ctx)
         predictions = self._query_nac(keywords)
         concepts = self._query_atl(keywords)
         affordances = self._query_component_index(text)
@@ -516,28 +518,90 @@ class BioEnrichmentPipeline:
         words = text.lower().replace("_", " ").replace("-", " ").split()
         return [w for w in words if len(w) > 2 and w not in stop_words]
 
-    def _query_hippocampus(self, text: str, keywords: list[str]) -> list[EpisodicSummary]:
-        """Search hippocampus for episodes matching the text."""
+    def _query_hippocampus(
+        self,
+        text: str,
+        keywords: list[str],
+        context: "EnrichmentContext | None" = None,
+    ) -> list[EpisodicSummary]:
+        """Search hippocampus for episodes matching the text.
+
+        Three retrieval paths, tried in order:
+        1. **Graph path**: encode text → EC pattern complete → retrieve_on_cue
+           (spreading activation on binding graph) → reverse index → memories.
+           This is the associative "fire → pain" path.
+        2. **Index path**: query by goal (when goal matches prior sessions).
+           This is the direct cross-session path.
+        3. **Substring path**: legacy full-text search (fallback).
+        """
         if self._hippocampus is None:
             return []
-        try:
-            results = self._hippocampus.search_by_content(text, limit=5)
-            summaries = []
-            for mem in results[:3]:
-                summary = self._summarize_episode(mem)
-                valence = getattr(mem, "valence", 0.0)
-                if not hasattr(mem, "valence"):
-                    # Infer from success
-                    valence = 0.3 if getattr(mem, "success", False) else -0.3
-                summaries.append(
-                    EpisodicSummary(
-                        memory_id=mem.id,
-                        summary=summary,
-                        valence=float(valence),
-                        relevance=0.8,  # search_by_content doesn't return scores
-                    )
+
+        summaries: list[EpisodicSummary] = []
+        seen_ids: set[str] = set()
+
+        def _add_memory(mem: Any, relevance: float) -> None:
+            if mem.id in seen_ids:
+                return
+            seen_ids.add(mem.id)
+            summary = self._summarize_episode(mem)
+            valence = getattr(mem, "valence", 0.0)
+            if not hasattr(mem, "valence"):
+                valence = 0.3 if getattr(mem, "success", False) else -0.3
+            summaries.append(
+                EpisodicSummary(
+                    memory_id=mem.id,
+                    summary=summary,
+                    valence=float(valence),
+                    relevance=relevance,
                 )
-            return summaries
+            )
+
+        try:
+            # Path 1: Graph-based retrieval via spreading activation.
+            # Encode percept → EC pattern complete (reconsolidation: centroid
+            # update on match is intentional, ~1/(n+1) shift per query) →
+            # spreading activation on binding graph → ATL concept names →
+            # hippocampus recall by concept.
+            if self._encoder is not None and self._ec is not None:
+                try:
+                    embedding = self._encoder.embed(text)
+                    if embedding is not None:
+                        from maxim.similarity.ec import PatternResult
+
+                        pr: PatternResult = self._ec.pattern_complete_or_separate(embedding, "text")
+                        if not pr.is_new and pr.similarity > 0.3:
+                            # Found a known substrate node — spread activation
+                            activated = self._hippocampus.retrieve_on_cue(pr.node_id, limit=5, multi_hop=True)
+                            # Map activated substrate nodes → ATL concept names
+                            # → hippocampus recall by concept. Substrate node_id
+                            # IS the ATL concept record_id (set by LinguisticEncoder).
+                            if self._atl is not None and activated:
+                                for node_id, activation in activated[:5]:
+                                    concept = self._atl.get(node_id)
+                                    name = getattr(concept, "name", "") if concept else ""
+                                    if name:
+                                        mems = self._hippocampus.recall(object_detected=name, limit=2)
+                                        for mem in mems:
+                                            _add_memory(mem, relevance=float(activation))
+                except Exception as e:
+                    log.debug("Graph-based hippocampus query failed: %s", e)
+
+            # Path 2: Index-based retrieval by goal (cross-session)
+            if len(summaries) < 3:
+                goal = getattr(context, "active_goal", None) if context else None
+                if goal:
+                    goal_results = self._hippocampus.recall(goal=goal, limit=5)
+                    for mem in goal_results[:3]:
+                        _add_memory(mem, relevance=0.7)
+
+            # Path 3: Substring fallback
+            if len(summaries) < 3:
+                results = self._hippocampus.search_by_content(text, limit=5)
+                for mem in results[:3]:
+                    _add_memory(mem, relevance=0.5)
+
+            return summaries[:3]
         except Exception as e:
             log.debug("Bio-enrichment hippocampus query failed: %s", e)
             return []
@@ -548,7 +612,14 @@ class BioEnrichmentPipeline:
             return []
         predictions: list[CausalPrediction] = []
         try:
-            for keyword in keywords[:5]:  # Limit to avoid excessive queries
+            # Query both raw keywords AND tool-prefixed variants.
+            # NAc stores event signatures like "tool:base_humanoid_move"
+            # while percept keywords are narrative words like "move".
+            query_sigs: list[str] = []
+            for kw in keywords[:5]:
+                query_sigs.append(kw)
+                query_sigs.append(f"tool:{kw}")
+            for keyword in query_sigs:
                 links = self._nac.get_links_for_event(keyword)
                 for link in links:
                     if link.confidence < 0.3:

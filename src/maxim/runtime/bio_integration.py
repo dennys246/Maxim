@@ -174,6 +174,35 @@ def end_bio_session(
 
 _episode_tick: int = 0
 _latest_pain_intensity: float = 0.0
+_latest_substrate_nodes: tuple[str, ...] = ()
+
+
+def record_substrate_nodes(node_ids: tuple[str, ...]) -> None:
+    """Stash substrate node IDs from the latest percept encoding.
+
+    Called by MemoryHub.on_percept_received after LinguisticEncoder
+    produces substrate_node_id(s). Consumed by the next observe_episode
+    call, which passes them as activated_nodes to the CaptureEvent.
+
+    This bridges the encoding path (memory_hub → encoder) to the episode
+    observation path (agent_loop → bio_integration → hippocampus).
+
+    Threading note: this is a module-level stash (same pattern as
+    ``_latest_pain_intensity``). GIL makes the tuple reference swap
+    atomic. In multi-agent (AgentPool) scenarios, agents share this
+    stash — acceptable because multi-agent substrate encoding is not
+    yet a production path. If it becomes one, scope per agent_id.
+    """
+    global _latest_substrate_nodes
+    _latest_substrate_nodes = node_ids
+
+
+def consume_substrate_nodes() -> tuple[str, ...]:
+    """Consume and reset the stashed substrate node IDs."""
+    global _latest_substrate_nodes
+    nodes = _latest_substrate_nodes
+    _latest_substrate_nodes = ()
+    return nodes
 
 
 def observe_episode(
@@ -188,9 +217,15 @@ def observe_episode(
     """Feed an event into the episode boundary detector.
 
     Called from the agent loop alongside capture_episodic_memory.
+    If the caller passes empty activated_nodes, we consume any
+    stashed substrate nodes from the latest percept encoding.
     """
     global _episode_tick
     _episode_tick += 1
+
+    # Merge caller-provided nodes with stashed substrate nodes
+    if not activated_nodes:
+        activated_nodes = consume_substrate_nodes()
 
     try:
         from maxim.memory.episode import CaptureEvent

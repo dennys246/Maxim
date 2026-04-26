@@ -375,6 +375,7 @@ def start_simulation_mode(
     aut_state = RuntimeState()
     aut_state.data["mode"] = "active"
     aut_state.data["in_simulation"] = True
+    aut_state.data["active_goal"] = goal
     aut_memory = build_memory()
 
     # Enable bash for the AUT in simulation mode.
