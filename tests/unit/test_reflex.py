@@ -206,6 +206,23 @@ class TestIntensityScaling:
         firings = reg.evaluate("a light attack grazes you")
         assert firings[0].raw_intensity == 0.05
 
+    def test_zero_base_intensity_no_crash(self):
+        """A reflex with base_intensity=0 should not crash with ZeroDivisionError."""
+        clock = _Clock()
+        spec = ReflexSpec(
+            name="zero_base",
+            detect_keywords=("test",),
+            response=ReflexResponse(
+                tool="set_entity_sensor",
+                params={"sensor": "stamina", "value": -0.1},
+            ),
+            base_intensity=0.0,
+        )
+        reg = ReflexRegistry((spec,), clock=clock)
+        # Should not raise — the value scaling is guarded
+        firings = reg.evaluate("this is a test")
+        assert len(firings) == 0  # effective intensity = 0.0 * ... < 0.01 threshold
+
 
 # ---------------------------------------------------------------------------
 # Habituation
@@ -407,6 +424,30 @@ class TestToolDispatch:
 
         firings = reg.evaluate("dragon attacks", execute_tool=failing_tool)
         assert len(firings) == 1  # failure logged but reflex still recorded
+
+    def test_failed_dispatch_does_not_consume_cooldown(self):
+        """When tool dispatch fails, cooldown should NOT be consumed
+        so the reflex can retry on the next tick."""
+        clock = _Clock()
+        reg = ReflexRegistry((_attack_reflex(),), clock=clock)
+
+        call_count = 0
+
+        def failing_then_ok(tool_name: str, **params):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("First call fails")
+
+        # First call: dispatch fails
+        f1 = reg.evaluate("dragon attacks", execute_tool=failing_then_ok)
+        assert len(f1) == 1
+
+        # Second call at same time: should NOT be blocked by cooldown
+        # because the first dispatch failed
+        f2 = reg.evaluate("dragon attacks again", execute_tool=failing_then_ok)
+        assert len(f2) == 1
+        assert call_count == 2
 
 
 # ---------------------------------------------------------------------------

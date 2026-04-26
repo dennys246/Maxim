@@ -1345,9 +1345,13 @@ def start_simulation_mode(
                     if _archetype:
                         _reflex_specs = load_archetype_reflexes(_archetype)
                         if _reflex_specs:
-                            _root = _aut_embodiment.root
+                            # Closure must look up root at evaluation time,
+                            # not capture it — root may change during sim
+                            # (entity acquisition, imagination replacement).
+                            _emb_ref = _aut_embodiment
 
                             def _get_component_integrity(name: str) -> float:
+                                _root = _emb_ref.root if _emb_ref is not None else None
                                 if _root is None:
                                     return 1.0
                                 comp = _root.get_component(name)

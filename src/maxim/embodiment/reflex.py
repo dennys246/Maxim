@@ -227,20 +227,25 @@ class ReflexRegistry:
             if spec.response.tool == "damage_component":
                 params["amount"] = round(effective, 3)
             elif spec.response.tool == "set_entity_sensor":
-                # Scale the value adjustment by intensity
-                if "value" in params:
+                # Scale the value adjustment by intensity ratio
+                if "value" in params and spec.base_intensity > 0:
                     params["value"] = round(float(params["value"]) * effective / spec.base_intensity, 3)
 
             # 9. Execute tool (if dispatcher provided)
+            dispatch_ok = True
             if execute_tool is not None:
                 try:
                     execute_tool(spec.response.tool, **params)
                 except Exception as e:
                     log.debug("Reflex %s tool dispatch failed: %s", spec.name, e)
+                    dispatch_ok = False
 
-            # 10. Update state
-            self._last_fired[spec.name] = now
-            self._exposure_counts[habit_key] += 1
+            # 10. Update state — only on successful dispatch (or dry run).
+            # Failed dispatch should not consume cooldown or increment
+            # habituation, so the reflex can retry next tick.
+            if dispatch_ok:
+                self._last_fired[spec.name] = now
+                self._exposure_counts[habit_key] += 1
 
             firings.append(
                 ReflexFiring(
