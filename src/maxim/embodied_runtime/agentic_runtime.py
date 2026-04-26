@@ -314,6 +314,8 @@ class AgenticRuntimeMixin:
                 hippocampus=memory_hub.hippocampus if memory_hub else None,
                 scn=memory_hub.scn if memory_hub else None,
                 tool_index=tool_index,
+                distributor=bio.distributor if bio is not None else None,
+                agent_id=getattr(self, "agent_id", "reachy"),
             )
             self._tool_pain_bridge = executor._tool_pain_bridge
             self.log.debug("ToolPainBridge wired via build_executor (pain_bus=%s)", _pain_bus is not None)

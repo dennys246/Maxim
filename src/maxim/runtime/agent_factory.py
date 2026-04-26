@@ -439,6 +439,8 @@ class AgentFactory:
                 entity_ref=config.embodiment_ref,
                 component_registry=self._component_registry,
                 cerebellum=bio.cerebellum if bio is not None else None,
+                distributor=bio.distributor if bio is not None else None,
+                agent_id=config.agent_id,
             )
             # Review fix (Exec #1): attribute is `embodiment`, not `_embodiment`.
             # The old CLI code had the identical bug — always returned None.
