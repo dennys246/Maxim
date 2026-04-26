@@ -74,6 +74,10 @@ entity:
         rest:
           params: {duration: str}
           description: "Rest to recover stamina and health (brief/moderate/long)"
+      latent_affordances:
+        brace:
+          description: "Tense muscles to absorb impact"
+          requires: {integrity: 0.1}
     arms:
       sensors:
         grip_strength:
@@ -102,6 +106,13 @@ entity:
           params: {object: str, action: str}
           description: "Use a held or nearby object, or interact with an entity (open, drink, pull, push, read, activate, attack, defend, dodge, throw)"
           requires: {integrity: 0.15}
+      latent_affordances:
+        block:
+          description: "Raise arms to block an incoming blow"
+          requires: {integrity: 0.15}
+        parry:
+          description: "Deflect an attack with a held weapon"
+          requires: {integrity: 0.3}
     legs:
       sensors:
         leg_mobility:
@@ -117,6 +128,13 @@ entity:
           params: {direction: str, speed: str}
           description: "Move in a direction (north/south/east/west) at a speed (walk/run/sneak)"
           requires: {integrity: 0.1}
+      latent_affordances:
+        dodge:
+          description: "Dodge sideways to avoid an incoming attack"
+          requires: {integrity: 0.2}
+        roll:
+          description: "Roll away from an area of danger"
+          requires: {integrity: 0.3}
     communication:
       abstract: true
       affordances:

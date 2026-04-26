@@ -103,57 +103,6 @@ class _FallbackRedirectTool(Tool):
         return ToolOutput(success=False, output=error_msg, error=error_msg)
 
 
-_ATTACK_KEYWORDS = frozenset(
-    {
-        "attack",
-        "attacks",
-        "strikes",
-        "hits",
-        "slashes",
-        "bites",
-        "breathes fire",
-        "breathing fire",
-        "unleashes",
-        "blasts",
-        "claws",
-        "stabs",
-        "smashes",
-        "crushes",
-        "burns",
-        "scorches",
-        "engulfs",
-        "slams",
-        "charges at",
-        "lunges",
-        "swipes",
-        "deals damage",
-        "wounds",
-        "injures",
-    }
-)
-
-
-def _detect_attack(text: str) -> tuple[bool, float, str]:
-    """Detect if probe text describes a physical attack on the agent.
-
-    Returns (is_attack, damage_amount, source_description).
-    """
-    lower = text.lower()
-    for kw in _ATTACK_KEYWORDS:
-        if kw in lower:
-            # Scale damage by intensity keywords
-            if any(w in lower for w in ("devastating", "massive", "critical", "powerful")):
-                amount = 0.3
-            elif any(w in lower for w in ("light", "glancing", "minor", "weak")):
-                amount = 0.05
-            else:
-                amount = 0.15
-            # Extract source (best-effort: first noun-phrase before the attack verb)
-            source = kw.replace(" ", "_")
-            return True, amount, source
-    return False, 0.0, ""
-
-
 class SendMessageTool(Tool):
     """Send a message to the agent under test and wait for its response.
 
@@ -161,12 +110,10 @@ class SendMessageTool(Tool):
     AUT to process and respond (with settle detection for multi-action
     responses), then returns the full result.
 
-    When embodiment is active and the probe text describes an attack,
-    auto-applies light damage via ``DamageComponentTool`` as a fallback
-    for orchestrator LLMs (especially 14B models) that don't reliably
-    call ``damage_component`` explicitly.  Targets torso by default.
-    When the orchestrator DOES call damage_component, this stacks as
-    a minor additional hit.
+    Auto-damage detection has been migrated to the percept reflex system
+    (``embodiment/reflex.py``).  Reflexes fire during bio-enrichment
+    processing, BEFORE this message reaches the AUT — the body responds
+    before the mind decides.
     """
 
     name = "send_message"
@@ -187,49 +134,13 @@ class SendMessageTool(Tool):
     def __init__(self, bridge: Any, *, embodiment: Any = None) -> None:
         super().__init__()
         self._bridge = bridge
+        # Kept for API compat — callers still pass embodiment=.
         self._embodiment = embodiment
 
     def execute(self, **kwargs: Any) -> ToolOutput:
         text = kwargs.get("text", "") or kwargs.get("message", "")
         if not text:
             return ToolOutput(success=False, error="text is required")
-
-        # Auto-damage fallback: if the orchestrator LLM doesn't call
-        # damage_component explicitly (common with 14B models that ignore
-        # tool-calling instructions), auto-detect attacks in narration and
-        # apply light damage so the agent feels SOMETHING.  When the
-        # orchestrator DOES call damage_component, this stacks as a minor
-        # additional hit — narratively appropriate ("you got clawed AND
-        # the claw dug into your arm").  Larger models that reliably call
-        # damage_component will eventually make this path obsolete.
-        if self._embodiment is not None:
-            is_attack, amount, source = _detect_attack(text)
-            if is_attack and self._embodiment.root is not None:
-                # Use DamageComponentTool for component-level damage
-                # instead of flat health mutation.
-                try:
-                    from maxim.simulation.tools import DamageComponentTool
-
-                    _auto_damage = DamageComponentTool(
-                        embodiment=self._embodiment,
-                        entity_map=None,
-                    )
-                    _auto_damage.execute(
-                        component="torso",
-                        amount=amount,
-                        source=f"auto_{source}",
-                    )
-                    try:
-                        from maxim.simulation.sim_logger import sim_log
-
-                        sim_log(
-                            "SEM_DAMAGE",
-                            f"auto-damage fallback: torso amount={amount:.2f} source=auto_{source}",
-                        )
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
 
         # Don't use LLM-requested timeout — it often guesses 30s which is
         # too short for local models. Let the bridge's default (120s) apply.

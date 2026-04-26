@@ -1,0 +1,146 @@
+# Humanoid archetype reflexes — innate body responses to percept signals.
+#
+# These fire during bio-enrichment BEFORE the LLM deliberates.  The body
+# responds before the mind decides.  Learning happens through the pain
+# pipeline: reflex → damage → pain → NAc causal link.
+#
+# Over time, NAc pre-emption learns to ANTICIPATE these reflexes.
+# Pre-emption suppresses reflex intensity (bracing reduces damage).
+# Mature agents rely on pre-emption; reflexes only fire on surprises.
+
+reflexes:
+
+  attack_flinch:
+    detect_keywords:
+      - attack
+      - attacks
+      - strikes
+      - hits
+      - slashes
+      - bites
+      - claws
+      - stabs
+      - smashes
+      - crushes
+      - wounds
+      - injures
+      - swipes
+      - lunges
+      - charges at
+      - deals damage
+    response:
+      tool: damage_component
+      params:
+        component: torso
+        source: reflex_attack
+    base_intensity: 0.15
+    intensity_scale:
+      devastating: 0.30
+      massive: 0.25
+      critical: 0.25
+      powerful: 0.20
+      light: 0.05
+      glancing: 0.05
+      minor: 0.05
+      weak: 0.05
+    cooldown_s: 1.0
+    suppressible: true
+
+  fire_burn:
+    detect_keywords:
+      - fire
+      - flame
+      - burn
+      - burns
+      - scorch
+      - scorches
+      - engulf
+      - engulfs
+      - inferno
+      - breathes fire
+      - breathing fire
+      - blaze
+    response:
+      tool: damage_component
+      params:
+        component: torso
+        source: reflex_fire
+        damage_type: fire
+    base_intensity: 0.15
+    intensity_scale:
+      devastating: 0.30
+      massive: 0.25
+      engulfs: 0.25
+      powerful: 0.20
+      light: 0.05
+      minor: 0.05
+    cooldown_s: 1.0
+    suppressible: true
+
+  impact_brace:
+    detect_keywords:
+      - fall
+      - falls
+      - crash
+      - crashes
+      - slam
+      - slams
+      - impact
+      - thrown
+      - collide
+      - collides
+    response:
+      tool: damage_component
+      params:
+        component: legs
+        source: reflex_impact
+        damage_type: blunt
+    base_intensity: 0.10
+    intensity_scale:
+      devastating: 0.25
+      massive: 0.20
+      powerful: 0.15
+      light: 0.05
+    cooldown_s: 2.0
+    suppressible: true
+
+  startle:
+    detect_keywords:
+      - explosion
+      - roar
+      - roars
+      - scream
+      - screams
+      - thunderous
+      - deafening
+      - terrifying
+    response:
+      tool: set_entity_sensor
+      params:
+        sensor: awareness
+        value: -0.1
+        source: reflex_startle
+    base_intensity: 0.10
+    intensity_scale:
+      deafening: 0.20
+      terrifying: 0.15
+      thunderous: 0.15
+    cooldown_s: 5.0
+    suppressible: true
+
+  environment_cold:
+    detect_keywords:
+      - freezing
+      - frost
+      - blizzard
+      - frostbite
+      - hypothermia
+    response:
+      tool: set_entity_sensor
+      params:
+        sensor: stamina
+        value: -0.05
+        source: reflex_cold
+    base_intensity: 0.05
+    cooldown_s: 10.0
+    suppressible: false

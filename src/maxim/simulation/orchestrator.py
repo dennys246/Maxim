@@ -1326,6 +1326,64 @@ def start_simulation_mode(
                 aut_bio_enrichment_pipeline._component_index = _aut_component_index
                 aut_bio_enrichment_pipeline._agent_id = "sim_aut"
 
+            # Wire percept reflex system into BioEnrichmentPipeline.
+            # Reflexes detect keyword patterns in percept text and invoke
+            # damage_component / set_entity_sensor BEFORE the LLM deliberates.
+            # Replaces the auto-damage hack that was in SendMessageTool.
+            if aut_bio_enrichment_pipeline is not None and _aut_embodiment is not None:
+                try:
+                    from maxim.embodiment.reflex import load_archetype_reflexes, ReflexRegistry
+
+                    _archetype = None
+                    if aut_component_registry is not None and entity_ref is not None:
+                        try:
+                            _spec = aut_component_registry.get(entity_ref)
+                            _archetype = _spec.get("component", {}).get("archetype")
+                        except Exception:
+                            pass
+
+                    if _archetype:
+                        _reflex_specs = load_archetype_reflexes(_archetype)
+                        if _reflex_specs:
+                            # Closure must look up root at evaluation time,
+                            # not capture it — root may change during sim
+                            # (entity acquisition, imagination replacement).
+                            _emb_ref = _aut_embodiment
+
+                            def _get_component_integrity(name: str) -> float:
+                                _root = _emb_ref.root if _emb_ref is not None else None
+                                if _root is None:
+                                    return 1.0
+                                comp = _root.get_component(name)
+                                if comp is not None and hasattr(comp, "compute_integrity"):
+                                    return comp.compute_integrity()
+                                return 1.0
+
+                            _reflex_registry = ReflexRegistry(
+                                _reflex_specs,
+                                get_component_integrity=_get_component_integrity,
+                            )
+                            aut_bio_enrichment_pipeline._reflex_registry = _reflex_registry
+
+                            # Wire tool instances for reflex dispatch
+                            _reflex_damage = DamageComponentTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map)
+                            _reflex_sensor = SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map)
+                            aut_bio_enrichment_pipeline._reflex_damage_tool = _reflex_damage
+                            aut_bio_enrichment_pipeline._reflex_sensor_tool = _reflex_sensor
+
+                            # Wire entity root for latent affordance surfacing.
+                            # Must look up at evaluation time (not capture) —
+                            # same live-lookup pattern as integrity closure.
+                            aut_bio_enrichment_pipeline._entity_root = _emb_ref.root
+
+                            logger.info(
+                                "Percept reflex system wired: archetype=%s, %d reflexes",
+                                _archetype,
+                                len(_reflex_specs),
+                            )
+                except Exception as e:
+                    logger.warning("Reflex system wiring failed: %s", e)
+
             # Encode self-entity affordances through the substrate path.
             # The agent's own body affordances form substrate concepts just
             # like scene entities — enabling self-affordance concept formation.

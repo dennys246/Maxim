@@ -62,6 +62,23 @@ class EmbodimentSpec:
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
 
+@dataclass(frozen=True, slots=True)
+class LatentAffordance:
+    """A latent motor program that surfaces when contextually relevant.
+
+    Unlike regular affordances (always-visible tools), latent affordances
+    only appear in the prompt when a reflex fires — they represent
+    body responses the agent *could* take but wouldn't think of unprompted.
+
+    Integrity gating uses the same ``requires`` mechanism as regular
+    affordances: can't dodge with broken legs.
+    """
+
+    name: str
+    description: str = ""
+    requires: dict[str, float] = field(default_factory=dict)
+
+
 def resolve_entity_spec(
     spec: dict[str, Any] | str,
     registry: Any | None = None,
@@ -232,6 +249,20 @@ def _parse_entity(
                 requires=requires,
             )
 
+        # Latent motor programs (surfaces when reflexes fire)
+        latent_affs: list[LatentAffordance] = []
+        for la_name, la_spec in mod_spec.get("latent_affordances", {}).items():
+            if isinstance(la_spec, dict):
+                la_requires_raw = la_spec.get("requires", {})
+                la_requires = {k: float(v) for k, v in la_requires_raw.items()} if la_requires_raw else {}
+                latent_affs.append(
+                    LatentAffordance(
+                        name=str(la_name),
+                        description=la_spec.get("description", ""),
+                        requires=la_requires,
+                    )
+                )
+
         # Per-modulator sensors (component-level damage model)
         mod_sensors = mod_spec.get("sensors", {})
         mod_integrity_fn = mod_spec.get("integrity", "weighted_mean")
@@ -244,6 +275,7 @@ def _parse_entity(
             _sensors=mod_sensors,
             _integrity_fn=mod_integrity_fn,
             _damage_affinities=mod_damage_affinities,
+            _latent_affordances=tuple(latent_affs),
         )
 
         # Initialize modulator vital_metrics from sensor specs
@@ -479,6 +511,7 @@ class SpecModulator:
         "_name",
         "_entity_name",
         "_affordances",
+        "_latent_affordances",
         "_backend",
         "_sensors",
         "_integrity_fn",
@@ -495,10 +528,12 @@ class SpecModulator:
         _sensors: dict[str, Any] | None = None,
         _integrity_fn: str = "weighted_mean",
         _damage_affinities: dict[str, dict[str, float]] | None = None,
+        _latent_affordances: tuple[LatentAffordance, ...] = (),
     ) -> None:
         self._name = _name
         self._entity_name = _entity_name
         self._affordances = _affordances
+        self._latent_affordances = _latent_affordances
         self._backend = _backend
         self._sensors = _sensors or {}
         self._integrity_fn = _integrity_fn
@@ -528,6 +563,31 @@ class SpecModulator:
     def damage_affinities(self) -> dict[str, dict[str, float]]:
         """Damage type → sub-sensor weight map (level 3 only)."""
         return self._damage_affinities
+
+    @property
+    def latent_affordances(self) -> tuple[LatentAffordance, ...]:
+        """Latent motor programs declared on this modulator."""
+        return self._latent_affordances
+
+    def available_latent_affordances(self) -> list[LatentAffordance]:
+        """Return latent affordances that pass integrity gating.
+
+        Same threshold mechanism as regular affordance ``requires``:
+        if the modulator's integrity is below the threshold, the
+        latent affordance is not available (can't dodge with broken legs).
+        """
+        if not self._latent_affordances:
+            return []
+        integrity = self.compute_integrity()
+        result: list[LatentAffordance] = []
+        for la in self._latent_affordances:
+            if not la.requires:
+                result.append(la)
+                continue
+            threshold = la.requires.get("integrity", 0.0)
+            if integrity >= threshold:
+                result.append(la)
+        return result
 
     def compute_integrity(self) -> float:
         """Derive modulator integrity from sub-sensor vital_metrics.
