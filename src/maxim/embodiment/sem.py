@@ -70,6 +70,7 @@ class AffordanceSchema:
     description: str = ""
     timeout: float = 30.0
     requires: dict[str, float] = field(default_factory=dict)
+    self_effect: dict[str, float] = field(default_factory=dict)  # agent sensor deltas on voluntary use
 
 
 # ---------------------------------------------------------------------------

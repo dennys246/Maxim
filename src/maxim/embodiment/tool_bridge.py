@@ -109,6 +109,7 @@ class ModulatorAffordanceTool(Tool):
         self._entity = entity
         self._modulator = modulator
         self._affordance_name = affordance_name
+        self._affordance_schema = schema
         self._embodiment = embodiment
         self._cerebellum = cerebellum
         self._entity_map = entity_map
@@ -209,6 +210,34 @@ class ModulatorAffordanceTool(Tool):
             "active_failures": active_failures,
             **result.metadata,
         }
+        # Self-effect: voluntary affordance execution can write back to agent body.
+        # Only fires when the agent explicitly called the tool (not reflex/orchestrator).
+        if self._affordance_schema.self_effect and self._embodiment is not None:
+            for sensor_name, delta in self._affordance_schema.self_effect.items():
+                if sensor_name in self._embodiment.root.vital_metrics:
+                    old_val = self._embodiment.root.vital_metrics[sensor_name]
+                    new_val = max(0.0, min(1.0, old_val + delta))
+                    self._embodiment.root.vital_metrics[sensor_name] = new_val
+                    try:
+                        from maxim.simulation.sim_logger import sim_sensor
+
+                        sim_sensor(
+                            self._embodiment.root.full_path,
+                            sensor_name,
+                            new_val,
+                            baseline=old_val,
+                        )
+                    except Exception:
+                        pass
+                else:
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).warning(
+                        "self_effect target %r not found on agent body %s",
+                        sensor_name,
+                        self._embodiment.root.name,
+                    )
+
         # Build side_effects dict
         side_effects: dict[str, Any] | None = None
         if active_failures:

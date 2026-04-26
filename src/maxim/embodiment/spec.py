@@ -296,11 +296,14 @@ def _parse_entity(
             params = _parse_params(aff_spec.get("params", {}))
             requires_raw = aff_spec.get("requires", {})
             requires = {k: float(v) for k, v in requires_raw.items()} if requires_raw else {}
+            self_effect_raw = aff_spec.get("self_effect", {})
+            self_effect = {k: float(v) for k, v in self_effect_raw.items()} if self_effect_raw else {}
             affordances[aff_name] = AffordanceSchema(
                 params=params,
                 description=aff_spec.get("description", ""),
                 timeout=aff_spec.get("timeout", 30.0),
                 requires=requires,
+                self_effect=self_effect,
             )
 
         # Latent motor programs (surfaces when reflexes fire)
