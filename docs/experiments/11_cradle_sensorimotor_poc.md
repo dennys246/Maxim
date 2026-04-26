@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-26
 **Branch:** feat/cradle-sensorimotor
-**Status:** Infrastructure validated, narrator tuning needed
+**Status:** Infrastructure validated, narrator generating cradle scenes
 
 ## Setup
 
@@ -64,12 +64,35 @@ MAXIM_LOG_FILE=/tmp/cradle_test4.jsonl maxim --sim cradle --embodiment bodies/in
 1. **cli.py:** Auto-detect generative mode for goal strings matching builtin arcs
 2. **orchestrator.py:** Import `sim_reports` at generative runner call site (UnboundLocalError fix)
 
+## Run 6 (Claude Sonnet, with all fixes) — VALIDATED
+
+```bash
+MAXIM_LOG_FILE=/tmp/cradle_test6.jsonl maxim --sim cradle \
+  --embodiment bodies/infant_humanoid --interactive false \
+  --sim-max-turns 10 --language-model claude-sonnet
+```
+
+- **Duration:** 390.3s, 10 turns, $0.21
+- **Narrator:** ALL 10 scenes generated (0 fallbacks!). Fire pit, warm room, objects all described correctly.
+- **Phase progression:** exploration → pain_consequence → object_introduction → discrimination
+- **Tool usage:** sense_tools (4x), infant_humanoid_pick_up (2x!), examine (1x), infant_humanoid_use (1x)
+- **Bio-pipeline:** 355 episodic memories, 23 causal links
+- **Narrator content:** "You find yourself in a cozy, warm room where the scent of wood smoke fills the air. The fire pit cra[ckles]..." → "You sit in the cozy room... In front of [you, two objects]..."
+
+### Bugs fixed during PoC
+
+1. **cli.py:** Auto-detect generative mode for goal strings matching builtin arcs
+2. **orchestrator.py:** Import `sim_reports` at generative runner call site (UnboundLocalError)
+3. **narrator.py:** Phase instructions now flow to generate() call (were only in decide())
+4. **narrator.py:** Use `generate_json()` instead of `generate_text()` (LLMRouter has no generate_text)
+5. **infant_humanoid.yaml:** Tuned hunger/thirst drift rates 3x faster for shorter PoC runs
+
 ## Next Steps
 
-1. **Narrator tuning:** Phase instructions need to be stronger — the narrator generates generic fantasy scenes instead of the cradle-specific developmental stimuli. Consider: (a) shorter more directive instructions, (b) explicit sensor-write commands in narrator system prompt, (c) cradle-specific persona that understands developmental stages.
-2. **Longer runs:** 25+ turns needed for hunger to cross deprivation threshold (at 0.002/s drift rate, ~350s = ~6 min).
-3. **Cross-session test:** Resume with `--resume-sim` to validate enrichment surfaces prior-session memories.
-4. **Fix `GenerativeCampaignResult.turns_completed`** attribute error.
+1. **Cross-session test:** Resume with `--resume-sim` to validate enrichment surfaces prior-session memories.
+2. **Fix `GenerativeCampaignResult.turns_completed`** attribute error (non-blocking — sim completes before this).
+3. **Orchestrator sensor writes:** The narrator describes fire proximity but doesn't write thermal sensors yet. This requires the orchestrator (not narrator) to have `set_entity_sensor` tool access during generative campaigns.
+4. **25-turn runs:** Test full 4-act arc including Act 3 (secondary circular) and Act 4 (consolidation).
 
 ## Reproduction
 
