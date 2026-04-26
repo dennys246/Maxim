@@ -196,6 +196,13 @@ class BioEnrichmentPipeline:
 
         # Extract keywords for bio-system queries
         keywords = self._extract_keywords(text)
+        log.info(
+            "enrich query: text=%r (len=%d), keywords=%s, goal=%r",
+            text[:120],
+            len(text),
+            keywords[:8],
+            getattr(ctx, "goal", "")[:80] if ctx else "",
+        )
 
         # Query bio-systems (each handles None gracefully)
         memories = self._query_hippocampus(text, keywords)
@@ -203,6 +210,17 @@ class BioEnrichmentPipeline:
         concepts = self._query_atl(keywords)
         affordances = self._query_component_index(text)
         recent_context = self._query_working_memory(working_memory)
+        log.info(
+            "enrich results: memories=%d, predictions=%d, concepts=%d, "
+            "affordances=%d, recent=%d (hippocampus=%s, nac=%s)",
+            len(memories),
+            len(predictions),
+            len(concepts),
+            len(affordances),
+            len(recent_context),
+            self._hippocampus is not None,
+            self._nac is not None,
+        )
 
         # Compute overall valence from memories + predictions
         valence = self._compute_valence(memories, predictions)
@@ -494,9 +512,17 @@ class BioEnrichmentPipeline:
     def _query_hippocampus(self, text: str, keywords: list[str]) -> list[EpisodicSummary]:
         """Search hippocampus for episodes matching the text."""
         if self._hippocampus is None:
+            log.info("hippocampus query skipped: hippocampus is None")
             return []
         try:
+            n_memories = len(getattr(self._hippocampus, "_memories", {}))
             results = self._hippocampus.search_by_content(text, limit=5)
+            log.info(
+                "hippocampus query: text=%r, total_memories=%d, matches=%d",
+                text[:80],
+                n_memories,
+                len(results),
+            )
             summaries = []
             for mem in results[:3]:
                 summary = self._summarize_episode(mem)
@@ -520,11 +546,27 @@ class BioEnrichmentPipeline:
     def _query_nac(self, keywords: list[str]) -> list[CausalPrediction]:
         """Query NAc for causal predictions matching keywords."""
         if self._nac is None:
+            log.info("nac query skipped: nac is None")
             return []
         predictions: list[CausalPrediction] = []
         try:
+            # Trace: show available event signatures vs queried keywords
+            available_sigs = list(self._nac._links.keys())[:10]
+            log.info(
+                "nac query: keywords=%s, available_sigs=%s (%d total)",
+                keywords[:5],
+                available_sigs,
+                len(self._nac._links),
+            )
             for keyword in keywords[:5]:  # Limit to avoid excessive queries
                 links = self._nac.get_links_for_event(keyword)
+                if links:
+                    log.info(
+                        "nac hit: keyword=%r → %d links (conf: %s)",
+                        keyword,
+                        len(links),
+                        [f"{lnk.confidence:.2f}" for lnk in links[:3]],
+                    )
                 for link in links:
                     if link.confidence < 0.3:
                         continue

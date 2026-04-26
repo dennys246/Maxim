@@ -1002,9 +1002,35 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         results: list[EpisodicMemory | CompressedMemory] = []
 
         with self._rwlock.read():
+            n_total = len(self._memories)
             for memory in self._memories.values():
                 if self._memory_matches_query(memory, query_lower):
                     results.append(memory)
+
+            if not results:
+                # Trace: show why zero matches — sample first memory's fields
+                sample = next(iter(self._memories.values()), None) if self._memories else None
+                if sample is not None:
+                    p = getattr(sample, "perception", None)
+                    obs = str(getattr(p, "observations", ""))[:100] if p else ""
+                    o = getattr(sample, "outcome", None)
+                    res = str(getattr(o, "result", ""))[:100] if o else ""
+                    logger.info(
+                        "search_by_content: 0/%d matches for query=%r; sample memory obs=%r, result=%r",
+                        n_total,
+                        query[:80],
+                        obs,
+                        res,
+                    )
+                else:
+                    logger.info("search_by_content: 0 memories in store")
+            else:
+                logger.info(
+                    "search_by_content: %d/%d matches for query=%r",
+                    len(results),
+                    n_total,
+                    query[:80],
+                )
 
             results.sort(key=lambda m: m.timestamp, reverse=True)
             return results[:limit]
