@@ -73,6 +73,87 @@ class AffordanceSchema:
 
 
 # ---------------------------------------------------------------------------
+# Drive specs — homeostatic vs entropic interoceptive drives
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class CouplingSpec:
+    """How one drive's state modulates another drive's drift rate.
+
+    Example: hunger drifts 2x faster when stamina drops below 0.4.
+    Ships as 1.0 interface — implementation deferred post-cradle.
+    """
+
+    sensor: str  # source sensor name (e.g., "stamina")
+    below: float  # threshold on source that activates coupling
+    multiplier: float  # drift_rate multiplier when active (e.g., 2.0)
+
+
+@dataclass(frozen=True, slots=True)
+class ModulationSpec:
+    """How an external system modulates a homeostatic drive's parameters.
+
+    Example: SCN circadian signal adjusts core_temperature set_point ±0.1.
+    Ships as 1.0 interface — implementation deferred post-cradle.
+    """
+
+    source: str  # modulating system (e.g., "scn", "nac")
+    target_field: str  # which drive field to modulate ("set_point", "drift_rate")
+    modulation_range: tuple[float, float]  # bounds (e.g., (-0.1, 0.1))
+
+
+@dataclass(frozen=True, slots=True)
+class HomeostaticDriveSpec:
+    """Body self-regulates toward set_point. Discomfort proportional to deviation.
+
+    Homeostatic drives model thermoregulation, pressure recovery, and similar
+    systems where the body has an equilibrium point it returns to when
+    external forces are removed.  Pain intensity is proportional to how far
+    the current value deviates beyond the comfort band from the set point.
+
+    Environmental forces (fire, sun, contact) push the sensor value away
+    from set_point.  The body's homeostatic drift pulls it back at
+    ``drift_rate`` per second.  When environmental push > body drift,
+    pain accumulates.  When the force is removed, homeostasis restores
+    the sensor and pain subsides.
+    """
+
+    set_point: float  # body's equilibrium target
+    drift_rate: float  # body's self-regulation rate per second
+    comfort_band: float = 0.0  # no discomfort within ±band of set_point
+    pain_scale: float = 0.5  # intensity per unit outside comfort band
+    pain_model: str = "linear"  # "linear" (v1); future: "exponential", "asymmetric"
+    modulated_by: tuple[ModulationSpec, ...] | None = None  # 1.0 interface, deferred
+
+
+@dataclass(frozen=True, slots=True)
+class EntropicDriveSpec:
+    """Drifts away from equilibrium. Requires external action to reset.
+
+    Entropic drives model hunger, thirst, fatigue, and similar systems
+    where the state degrades over time and only external action (eating,
+    drinking, resting) reverses the drift.
+
+    ``drift_direction`` is ``"up"`` (toward 1.0) or ``"down"`` (toward 0.0).
+    Pain fires when the value crosses ``deprivation_threshold``.  A positive
+    Reaction fires when the value crosses back below
+    ``satisfaction_threshold`` after being deprived.
+    """
+
+    drift_direction: str  # "up" or "down"
+    drift_rate: float  # per-second drift rate
+    deprivation_threshold: float  # PainSignal fires beyond this
+    deprivation_pain: float  # pain intensity at deprivation
+    satisfaction_threshold: float  # positive Reaction fires when crossing back
+    coupled_to: tuple[CouplingSpec, ...] | None = None  # 1.0 interface, deferred
+
+
+# Union type for convenience
+DriveSpec = HomeostaticDriveSpec | EntropicDriveSpec
+
+
+# ---------------------------------------------------------------------------
 # Protocols
 # ---------------------------------------------------------------------------
 
@@ -169,6 +250,7 @@ class Entity:
         "metadata",
         "vital_metrics",
         "failure_modes",
+        "drive_specs",
     )
 
     def __init__(
@@ -190,6 +272,7 @@ class Entity:
         self.metadata: dict[str, Any] = metadata or {}
         self.vital_metrics: dict[str, float] = {}
         self.failure_modes: list[FailureMode] = []
+        self.drive_specs: dict[str, DriveSpec] = {}  # sensor_name → DriveSpec
 
         if parent is not None:
             parent.children.append(self)
@@ -383,6 +466,28 @@ class Entity:
             result["vital_metrics"] = dict(self.vital_metrics)
         if self.failure_modes:
             result["failure_modes"] = [_failure_dict(fm) for fm in self.failure_modes]
+        if self.drive_specs:
+            drive_dict: dict[str, Any] = {}
+            for ds_name, ds in self.drive_specs.items():
+                if isinstance(ds, HomeostaticDriveSpec):
+                    drive_dict[ds_name] = {
+                        "drift_mode": "homeostatic",
+                        "set_point": ds.set_point,
+                        "drift_rate": ds.drift_rate,
+                        "comfort_band": ds.comfort_band,
+                        "pain_scale": ds.pain_scale,
+                        "pain_model": ds.pain_model,
+                    }
+                elif isinstance(ds, EntropicDriveSpec):
+                    drive_dict[ds_name] = {
+                        "drift_mode": "entropic",
+                        "drift_direction": ds.drift_direction,
+                        "drift_rate": ds.drift_rate,
+                        "deprivation_threshold": ds.deprivation_threshold,
+                        "deprivation_pain": ds.deprivation_pain,
+                        "satisfaction_threshold": ds.satisfaction_threshold,
+                    }
+            result["drive_specs"] = drive_dict
         if self.children:
             result["children"] = [child.to_dict() for child in self.children]
         return result
@@ -404,6 +509,27 @@ class Entity:
         )
         if "vital_metrics" in data:
             entity.vital_metrics = dict(data["vital_metrics"])
+
+        # Reconstruct drive specs
+        if "drive_specs" in data:
+            for ds_name, ds_data in data["drive_specs"].items():
+                mode = ds_data.get("drift_mode")
+                if mode == "homeostatic":
+                    entity.drive_specs[ds_name] = HomeostaticDriveSpec(
+                        set_point=ds_data["set_point"],
+                        drift_rate=ds_data["drift_rate"],
+                        comfort_band=ds_data.get("comfort_band", 0.0),
+                        pain_scale=ds_data.get("pain_scale", 0.5),
+                        pain_model=ds_data.get("pain_model", "linear"),
+                    )
+                elif mode == "entropic":
+                    entity.drive_specs[ds_name] = EntropicDriveSpec(
+                        drift_direction=ds_data["drift_direction"],
+                        drift_rate=ds_data["drift_rate"],
+                        deprivation_threshold=ds_data["deprivation_threshold"],
+                        deprivation_pain=ds_data["deprivation_pain"],
+                        satisfaction_threshold=ds_data["satisfaction_threshold"],
+                    )
 
         # Reconstruct sensors as SpecSensor stubs
         if "sensors" in data:

@@ -35,9 +35,14 @@ import yaml
 
 from maxim.embodiment.sem import (
     AffordanceSchema,
+    CouplingSpec,
+    DriveSpec,
     Entity,
+    EntropicDriveSpec,
     FailureMode,
     FailureTrigger,
+    HomeostaticDriveSpec,
+    ModulationSpec,
 )
 
 log = logging.getLogger(__name__)
@@ -195,6 +200,52 @@ def load_spec(path: str | Path, registry: Any | None = None) -> EmbodimentSpec:
     )
 
 
+def _parse_drive_spec(drive_data: dict[str, Any]) -> DriveSpec:
+    """Parse a ``drive:`` YAML block into a HomeostaticDriveSpec or EntropicDriveSpec."""
+    mode = drive_data.get("drift_mode", "entropic")
+
+    if mode == "homeostatic":
+        modulated_by = None
+        if "modulated_by" in drive_data:
+            modulated_by = tuple(
+                ModulationSpec(
+                    source=m["source"],
+                    target_field=m["target_field"],
+                    modulation_range=tuple(m["range"]),
+                )
+                for m in drive_data["modulated_by"]
+            )
+        return HomeostaticDriveSpec(
+            set_point=float(drive_data.get("set_point", 0.0)),
+            drift_rate=float(drive_data.get("drift_rate", 0.001)),
+            comfort_band=float(drive_data.get("comfort_band", 0.0)),
+            pain_scale=float(drive_data.get("pain_scale", 0.5)),
+            pain_model=str(drive_data.get("pain_model", "linear")),
+            modulated_by=modulated_by,
+        )
+    elif mode == "entropic":
+        coupled_to = None
+        if "coupled_to" in drive_data:
+            coupled_to = tuple(
+                CouplingSpec(
+                    sensor=c["sensor"],
+                    below=float(c["below"]),
+                    multiplier=float(c["multiplier"]),
+                )
+                for c in drive_data["coupled_to"]
+            )
+        return EntropicDriveSpec(
+            drift_direction=str(drive_data.get("drift_direction", "up")),
+            drift_rate=float(drive_data.get("drift_rate", 0.001)),
+            deprivation_threshold=float(drive_data.get("deprivation_threshold", 0.7)),
+            deprivation_pain=float(drive_data.get("deprivation_pain", 0.3)),
+            satisfaction_threshold=float(drive_data.get("satisfaction_threshold", 0.3)),
+            coupled_to=coupled_to,
+        )
+    else:
+        raise ValueError(f"Unknown drive drift_mode: {mode!r}. Expected 'homeostatic' or 'entropic'.")
+
+
 def _parse_entity(
     data: dict[str, Any],
     parent: Entity | None = None,
@@ -234,6 +285,9 @@ def _parse_entity(
             _initial=sensor_spec.get("initial"),
             _entity_ref=entity,
         )
+        # Parse drive spec from entity-level sensors
+        if isinstance(sensor_spec, dict) and "drive" in sensor_spec:
+            entity.drive_specs[sensor_name] = _parse_drive_spec(sensor_spec["drive"])
 
     # -- modulators ---------------------------------------------------------
     for mod_name, mod_spec in data.get("modulators", {}).items():
@@ -287,6 +341,11 @@ def _parse_entity(
                 else:
                     lo, hi = ms_spec["range"]
                     modulator.vital_metrics[ms_name] = float((lo + hi) / 2)
+            # Parse drive spec from modulator sub-sensors
+            if isinstance(ms_spec, dict) and "drive" in ms_spec:
+                # Use qualified name so evaluate_failures can look it up
+                qualified = f"{mod_name}.{ms_name}"
+                entity.drive_specs[qualified] = _parse_drive_spec(ms_spec["drive"])
 
         entity.modulators[mod_name] = modulator
 

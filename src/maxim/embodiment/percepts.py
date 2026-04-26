@@ -68,13 +68,15 @@ class EmbodimentPerceptSource:
         if now - self._last_poll < interval:
             return None
 
+        # Use actual elapsed wall-clock time for drift, not planned interval.
+        # If the LLM takes 30s between polls, drives should drift for 30s.
+        dt = now - self._last_poll if self._last_poll > 0 else interval
         self._last_poll = now
 
         # Evaluate failures (may publish PainSignals)
         failures = self._embodiment.evaluate_failures()
 
-        # Apply vital metric drift
-        dt = interval
+        # Apply vital metric drift with real elapsed time
         self._embodiment.tick_vital_drift(dt)
 
         # Build percept from body state
