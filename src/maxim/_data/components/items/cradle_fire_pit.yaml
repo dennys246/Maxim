@@ -26,3 +26,9 @@ entity:
         observe:
           params: {}
           description: "Look at the fire pit from a safe distance"
+        touch:
+          params: {}
+          description: "Reach toward the fire pit to feel the heat"
+          self_effect:
+            arms.thermal: 0.6
+            core_temperature: 0.15

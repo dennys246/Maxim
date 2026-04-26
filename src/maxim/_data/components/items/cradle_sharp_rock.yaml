@@ -26,3 +26,8 @@ entity:
         examine:
           params: {}
           description: "Examine the rock's surface closely"
+        touch:
+          params: {}
+          description: "Run your fingers across the rock's surface"
+          self_effect:
+            arms.pressure: 0.4  # sharp pressure on arms

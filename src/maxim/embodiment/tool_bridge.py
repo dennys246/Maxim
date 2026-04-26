@@ -212,12 +212,45 @@ class ModulatorAffordanceTool(Tool):
         }
         # Self-effect: voluntary affordance execution can write back to agent body.
         # Only fires when the agent explicitly called the tool (not reflex/orchestrator).
+        # Supports both entity-level sensors ("hunger") and qualified modulator
+        # sub-sensors ("arms.thermal") for transient contact effects.
         if self._affordance_schema.self_effect and self._embodiment is not None:
             for sensor_name, delta in self._affordance_schema.self_effect.items():
-                if sensor_name in self._embodiment.root.vital_metrics:
-                    old_val = self._embodiment.root.vital_metrics[sensor_name]
-                    new_val = max(0.0, min(1.0, old_val + delta))
-                    self._embodiment.root.vital_metrics[sensor_name] = new_val
+                old_val: float | None = None
+                target_metrics: dict[str, float] | None = None
+                target_key: str = sensor_name
+
+                if "." in sensor_name:
+                    # Qualified modulator sub-sensor: "arms.thermal"
+                    mod_name, sub_name = sensor_name.split(".", 1)
+                    mod = self._embodiment.root.modulators.get(mod_name)
+                    if mod is not None and hasattr(mod, "vital_metrics"):
+                        target_metrics = mod.vital_metrics
+                        target_key = sub_name
+                        old_val = target_metrics.get(sub_name)
+                else:
+                    # Entity-level sensor
+                    target_metrics = self._embodiment.root.vital_metrics
+                    old_val = target_metrics.get(sensor_name)
+
+                if old_val is not None and target_metrics is not None:
+                    # Clamp to sensor range if available, else [0, 1]
+                    lo, hi = 0.0, 1.0
+                    if "." in sensor_name:
+                        mod_name, sub_name = sensor_name.split(".", 1)
+                        mod = self._embodiment.root.modulators.get(mod_name)
+                        if mod is not None and hasattr(mod, "_sensors"):
+                            sub_spec = mod._sensors.get(sub_name, {})
+                            if isinstance(sub_spec, dict) and "range" in sub_spec:
+                                lo, hi = sub_spec["range"]
+                    else:
+                        sensor = self._embodiment.root.sensors.get(sensor_name)
+                        if sensor is not None:
+                            rng = sensor.reading_schema.get("range")
+                            if rng and len(rng) == 2:
+                                lo, hi = rng
+                    new_val = max(lo, min(hi, old_val + delta))
+                    target_metrics[target_key] = new_val
                     try:
                         from maxim.simulation.sim_logger import sim_sensor
 

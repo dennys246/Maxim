@@ -29,6 +29,13 @@ entity:
         wrap:
           params: {}
           description: "Wrap the blanket around yourself for warmth"
+          self_effect:
+            core_temperature: 0.1  # mild warming when wrapped
+        touch:
+          params: {}
+          description: "Touch the blanket to feel its texture and warmth"
+          self_effect:
+            arms.thermal: 0.1  # brief mild warmth on arms
         examine:
           params: {}
-          description: "Feel the blanket's texture"
+          description: "Look closely at the blanket's texture"
