@@ -1,6 +1,6 @@
 # Energy Tracking System
 
-The energy module provides unified resource expenditure monitoring across all Maxim subsystems.
+The energy module provides LLM resource expenditure monitoring.
 
 ## Overview
 
@@ -8,8 +8,14 @@ Maxim tracks energy consumption to enable:
 
 1. **Energy-aware decisions**: Avoid expensive actions when resources are low
 2. **Cost learning**: Associate actions with their energy costs
-3. **Fatigue simulation**: Resource budgeting over time
+3. **Budget gating**: Resource budgeting over time (e.g., imagination energy gate)
 4. **Optimization**: Identify high-cost operations for efficiency improvements
+
+> **Note (post-cradle update):** Interoceptive drive signals (hunger, fatigue,
+> stamina recovery) are now handled by the **drive protocol** in
+> `embodiment/sem.py` (`HomeostaticDriveSpec` / `EntropicDriveSpec`), not the
+> energy module. `EnergyReactionBridge` and `MovementEnergyTracker` were removed
+> as dead code (zero callers) during the cradle sensorimotor update.
 
 ## Components
 
@@ -18,7 +24,6 @@ Maxim tracks energy consumption to enable:
 | `EnergyRegistry` | `registry.py` | Central coordinator for all trackers |
 | `EnergyTracker` | `tracker.py` | Base tracker interface |
 | `LLMEnergyTracker` | `llm_tracker.py` | Token and compute costs |
-| `MovementEnergyTracker` | `movement_tracker.py` | Motor activity costs |
 | `EnergySignal` | `signal.py` | Energy event representation |
 
 ---

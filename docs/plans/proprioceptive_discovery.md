@@ -1,6 +1,6 @@
 # Proprioceptive Discovery — Emergent Affordances + Entity Acquisition
 
-**Status:** MECHANISM A SHIPPED (feat/percept-reflex-system), MECHANISM B PLANNED
+**Status:** MECHANISM A SHIPPED (feat/percept-reflex-system), MECHANISM B SHIPPED (feat/cradle-sensorimotor Stage 2)
 **Depends on:** Component-level damage (shipped), Percept reflex system (shipped)
 
 ## Principle

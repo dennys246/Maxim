@@ -26,7 +26,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/modes/` | Operating mode definitions |
 | `src/maxim/proprioception/` | Movement tracking and pain detection |
 | `src/maxim/harm/` | Predictive harm detection (velocity, joint limits) |
-| `src/maxim/energy/` | Resource expenditure tracking (tokens, compute, movement). Energy depletion fires interoceptive Reactions (hunger, fatigue, satiation) via the energy→Reaction bridge, feeding the SEM learning loop |
+| `src/maxim/energy/` | Resource expenditure tracking (LLM tokens, cost, latency). `LLMEnergyTracker` + `EnergyRegistry` are live. Interoceptive drive signals (hunger, fatigue, stamina recovery) are handled by the drive protocol in `embodiment/sem.py` (`HomeostaticDriveSpec` / `EntropicDriveSpec`), not the energy module |
 | `src/maxim/bridges/` | Cross-system integration (pain, energy, memory) |
 | `src/maxim/embodiment/` | SEM protocol (Sensor-Entity-Modulator), Cerebellum, motor programs, ComponentIndex 3-layer semantic discovery (alias + head-noun fallback + embedding), ComponentRegistry ephemeral overlay, component-level damage model (per-modulator sensors, integrity aggregation, damage affinities, affordance `requires` gating), resolution LOD (`resolution.py`: level 2 collapsed / level 3 deep via `--deep-embodiment`) |
 | `src/maxim/imagination/` | Real-time entity design from novel percept mentions: entity extraction, ComponentIndex lookup, LLM-driven design, session-scoped registration, DN arousal gating. Scene manifest pre-trigger (`process_manifest()`) pre-instantiates entities before first sim turn. Head-noun mention accumulation for threshold convergence |
