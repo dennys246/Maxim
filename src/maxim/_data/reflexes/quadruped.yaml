@@ -1,0 +1,75 @@
+# Quadruped archetype reflexes (dragon, etc.) — innate body responses.
+#
+# Dragons are fire-immune (no fire_burn reflex).  They have wing-specific
+# protective reflexes and tail-guard responses.  Combat damage routes
+# through torso (heavily armored).
+
+reflexes:
+
+  attack_flinch:
+    detect_keywords:
+      - attack
+      - attacks
+      - strikes
+      - hits
+      - slashes
+      - stabs
+      - smashes
+      - crushes
+    response:
+      tool: damage_component
+      params:
+        component: torso
+        source: reflex_attack
+    base_intensity: 0.10
+    intensity_scale:
+      devastating: 0.25
+      massive: 0.20
+      critical: 0.20
+      powerful: 0.15
+      light: 0.03
+      glancing: 0.03
+      minor: 0.03
+    cooldown_s: 1.0
+    suppressible: true
+
+  wing_fold:
+    detect_keywords:
+      - wing
+      - wings
+      - membrane
+      - arrow
+      - arrows
+      - bolt
+      - bolts
+      - projectile
+    response:
+      tool: damage_component
+      params:
+        component: wing
+        source: reflex_wing_hit
+    base_intensity: 0.10
+    intensity_scale:
+      devastating: 0.25
+      massive: 0.20
+      pierces: 0.20
+      light: 0.05
+    cooldown_s: 1.5
+    suppressible: true
+
+  tail_guard:
+    detect_keywords:
+      - behind
+      - flank
+      - flanks
+      - rear
+      - sneaks
+      - ambush
+    response:
+      tool: damage_component
+      params:
+        component: combat
+        source: reflex_tail_guard
+    base_intensity: 0.05
+    cooldown_s: 3.0
+    suppressible: true
