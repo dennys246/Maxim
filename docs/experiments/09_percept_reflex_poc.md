@@ -140,6 +140,45 @@ for line in sys.stdin:
 - The `startle` reflex adjusts awareness sensor, not component integrity. Check for `set_entity_sensor` in logs, not `SEM_DAMAGE`.
 - `environment_cold` targets stamina and has a longer cooldown (10s). May not fire more than once in 8 turns.
 
-## Results
+## Results (2026-04-25)
 
-*Pending — to be filled after running the experiment.*
+**Run on:** RTX 5080 leader, Qwen 2.5 14B Instruct, Mac peer
+**Duration:** ~94s for 8 turns
+**Branch:** `feat/percept-reflex-system` commit `e2c6bab`
+
+### Hypothesis Results
+
+| H# | Result | Evidence |
+|----|--------|----------|
+| H1 | **PASS** | Body-part damage applied automatically. `torso.integrity` degraded from 1.00 to 0.29 over 8 turns. No orchestrator `damage_component` calls in JSONL (14B model confirmed non-calling in Exp 08). Old auto-damage code removed. Only source of damage: reflex system. |
+| H2 | **PASS** | Three different targets hit: torso (attack_flinch, fire_burn), legs (impact_brace: `legs.integrity=0.90`), awareness (startle: `awareness=0.00`). Body-part targeting works. |
+| H3 | **PASS** | Pain signals fire every damage event: `pain (intensity=0.30) from pain_detector:external_signal`. Multiple pain events visible across turns. |
+| H4 | **PARTIAL** | Cannot directly measure habituation from console output (JSONL structured formatter strips log message text). Pain intensities show 0.30 and 0.40 across turns — consistent with sensitization offsetting habituation but not conclusive for habituation alone. Unit tests confirm habituation works. |
+| H5 | **PASS** | Pain intensity increases from 0.30 to 0.40 as torso integrity drops (1.00→0.29). Sensitization factor amplifies damage on already-damaged parts. |
+| H6 | **PASS** | Zero `auto_attack` or `auto_damage` in JSONL. Old `_detect_attack` code removed. All damage routes through reflex system. |
+| H7 | **PARTIAL** | JSONL structured formatter does not capture sim_enrichment events as structured entries — they only appear in the Rich console output. Need to add structured event emission for reflex firings (not just sim_log text). |
+
+### Sensor State at End of Sim
+
+| Sensor | Final Value | Notes |
+|--------|------------|-------|
+| torso.integrity | 0.29 | Heavy damage from attack_flinch + fire_burn reflexes |
+| legs.integrity | 0.90 | Light damage from impact_brace reflex |
+| arms.integrity | 1.00 | No arm-targeted reflexes fired |
+| head.integrity | 0.94 | Minor damage (pre-existing from Exp 08 seed?) |
+| awareness | 0.00 | Startle reflex dropped awareness to zero |
+| health (derived) | 0.71 | Correctly computed from component weights |
+
+### Key Observations
+
+1. **Reflex system works end-to-end.** Without auto-damage in SendMessageTool and without the orchestrator LLM calling damage_component, the agent still takes body-part-specific damage from percept keyword detection.
+2. **Multi-target validated.** attack_flinch→torso, impact_brace→legs, startle→awareness all fired in the same sim.
+3. **Pain → NAc learning active.** Console shows `NAc updated: tool:base_humanoid_use → negative` with increasing confidence (0.50→0.64). The agent is learning that its actions lead to pain.
+4. **Sensitization visible.** Pain intensity 0.30→0.40 as torso integrity drops. The existing damage amplifies subsequent pain.
+5. **JSONL limitation.** The structured JSONL formatter (`StructuredFormatter`) does not capture `sim_log` / `sim_enrichment` text messages. These only appear in the Rich console. Future work: add structured event emission for reflex firings with `e: "reflex_fired"` format.
+
+### Limitations
+
+- JSONL analysis cannot confirm individual reflex firings or habituation curves (console-only data)
+- Awareness dropped to 0.00 which may be too aggressive — startle reflex at 0.10 cooldown 5s fires repeatedly
+- No cross-session test yet (does NAc retain attack→pain links across sessions?)
