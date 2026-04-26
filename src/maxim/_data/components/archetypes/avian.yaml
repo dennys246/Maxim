@@ -1,0 +1,25 @@
+archetype:
+  name: avian
+  description: >
+    Winged flying creature. Birds, bats, flying insects, phoenixes,
+    griffins. Primary locomotion is flight.
+  body_parts:
+    head:
+      sensors: [awareness, beak_integrity]
+      affordances: [peck, screech]
+    wings:
+      sensors: [membrane_integrity, bone_integrity]
+      affordances: [take_flight, dive_attack, land, circle, gust]
+    body:
+      sensors: [body_integrity]
+      affordances: []
+    talons:
+      sensors: [talon_sharpness]
+      affordances: [grab, rake]
+  optional_parts:
+    tail_feathers:
+      sensors: []
+      affordances: [sharp_turn, display]
+    breath_weapon:
+      sensors: [charge]
+      affordances: [fire_breath, frost_breath]

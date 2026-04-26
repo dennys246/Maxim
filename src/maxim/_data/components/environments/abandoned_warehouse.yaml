@@ -3,6 +3,7 @@ component:
   tags: [environment, indoor, dangerous, modern]
   synonyms: [empty warehouse, derelict building, deserted warehouse, rundown storage, old factory, disused depot, condemned building]
   category: environments
+  archetype: environmental
 
 entity:
   name: abandoned_warehouse

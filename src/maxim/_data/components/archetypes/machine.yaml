@@ -1,0 +1,28 @@
+archetype:
+  name: machine
+  description: >
+    Mechanical or electronic device. Robots, drones, terminals,
+    turrets, consoles, vending machines, host servers.
+  body_parts:
+    chassis:
+      sensors: [structural_integrity, power_level]
+      affordances: []
+    processor:
+      sensors: [cpu_usage, memory_usage]
+      affordances: [compute, query]
+  optional_parts:
+    manipulator:
+      sensors: [grip_precision]
+      affordances: [grab, assemble, weld]
+    locomotion:
+      sensors: [mobility]
+      affordances: [move, hover, fly]
+    weapons_system:
+      sensors: [ammo_count, targeting_accuracy]
+      affordances: [fire_weapon, lock_on]
+    sensors_array:
+      sensors: [scan_range, detection_quality]
+      affordances: [scan, detect, track]
+    communication:
+      sensors: [signal_strength]
+      affordances: [transmit, receive, jam]

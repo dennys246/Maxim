@@ -3,6 +3,7 @@ component:
   tags: [weapon, melee, stealth, degradable, fantasy]
   synonyms: [venomous blade, toxic dagger, envenomed knife, assassin blade, poisoned knife, coated dagger, venom blade]
   category: weapons
+  archetype: environmental
 
 entity:
   name: poison_dagger

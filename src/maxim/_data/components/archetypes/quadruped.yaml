@@ -1,0 +1,31 @@
+archetype:
+  name: quadruped
+  description: >
+    Four-legged creature. Wolves, horses, dragons, dogs, bears, large
+    spiders, lizards, big cats. May have wings or breath weapons.
+  body_parts:
+    head:
+      sensors: [skull_integrity, jaw_strength]
+      affordances: [bite, roar]
+    torso:
+      sensors: [armor_integrity, organ_health]
+      affordances: []
+    front_legs:
+      sensors: [mobility, claw_sharpness]
+      affordances: [claw_strike, pounce]
+    hind_legs:
+      sensors: [mobility]
+      affordances: [kick, leap]
+  optional_parts:
+    wings:
+      sensors: [membrane_integrity, bone_integrity, joint_mobility]
+      affordances: [take_flight, dive_attack, land, circle]
+    breath_weapon:
+      sensors: [charge]
+      affordances: [fire_breath, frost_breath, acid_spray]
+    tail:
+      sensors: [tail_strength]
+      affordances: [tail_sweep]
+    stinger:
+      sensors: [venom_charge]
+      affordances: [sting]

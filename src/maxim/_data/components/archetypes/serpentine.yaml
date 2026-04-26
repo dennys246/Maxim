@@ -1,0 +1,22 @@
+archetype:
+  name: serpentine
+  description: >
+    Elongated limbless or near-limbless body. Snakes, worms, eels,
+    tentacle creatures, wyrms without legs.
+  body_parts:
+    head:
+      sensors: [skull_integrity, jaw_strength]
+      affordances: [bite, sense_vibration]
+    body:
+      sensors: [body_integrity, flexibility]
+      affordances: [constrict, coil, slither]
+  optional_parts:
+    fangs:
+      sensors: [venom_charge]
+      affordances: [venomous_bite, spit_venom]
+    hood:
+      sensors: []
+      affordances: [intimidate]
+    tail_rattle:
+      sensors: []
+      affordances: [rattle_warning]

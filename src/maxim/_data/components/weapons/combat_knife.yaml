@@ -3,6 +3,7 @@ component:
   tags: [weapon, melee, modern]
   synonyms: [fighting knife, tactical knife, military knife, hunting knife, bowie knife, blade, survival knife]
   category: weapons
+  archetype: environmental
 
 entity:
   name: combat_knife

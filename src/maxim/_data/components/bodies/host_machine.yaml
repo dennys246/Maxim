@@ -1,0 +1,78 @@
+component:
+  name: host_machine
+  tags: [body, machine, production, monitoring, modern, devops]
+  synonyms: [server, host, computer, workstation, system]
+  category: bodies
+  archetype: machine
+  description: |
+    Production host machine — the physical or virtual server running the
+    agent. Scene entity (not self) with read-only sensors fed by system
+    monitoring. No callable affordances — the agent observes its host but
+    does not control hardware via SEM. Hardware-control actions (restart
+    service, clear cache) stay in the tool registry where autonomy gating
+    is mature.
+
+entity:
+  name: host_machine
+  entity_type: machine
+  sensors:
+    cpu_usage:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.2
+    memory_usage:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.3
+    disk_usage:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.4
+    gpu_usage:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+    network_latency:
+      unit: milliseconds
+      range: [0, 10000]
+      initial: 50
+  health: derived
+  health_weights:
+    chassis: 0.5
+    processor: 0.5
+  modulators:
+    chassis:
+      sensors:
+        structural_integrity:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.5
+        power_level:
+          unit: ratio
+          range: [0, 1]
+          initial: 1.0
+          weight: 0.5
+      integrity: weighted_mean
+      affordances: {}
+    processor:
+      sensors:
+        compute_load:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.2
+          weight: 0.5
+        thermal_state:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.3
+          weight: 0.5
+      integrity: weighted_mean
+      affordances: {}
+  failure_modes:
+    - name: overheating
+      trigger: {field: processor.integrity, op: "<", value: 0.3, pain: 0.5}
+    - name: disk_full
+      trigger: {field: disk_usage, op: ">", value: 0.95, pain: 0.4}
+    - name: high_latency
+      trigger: {field: network_latency, op: ">", value: 5000, pain: 0.3}

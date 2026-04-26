@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from maxim.decisions.nac import NAc
     from maxim.embodiment.component_index import ComponentIndex
+    from maxim.embodiment.component_registry import ComponentRegistry
     from maxim.embodiment.reflex import ReflexRegistry
     from maxim.memory.atl import ATL
     from maxim.memory.hippocampus import Hippocampus
@@ -99,6 +100,7 @@ class EnrichmentContext:
     goal_keywords: tuple[str, ...] = ()
     recent_thoughts: tuple[str, ...] = ()  # last 3 thoughts for convergence
     entity_names: tuple[str, ...] = ()  # known entity names
+    resolved_entities: tuple[str, ...] = ()  # entity refs resolved by ImaginationTrigger
 
     def to_gating_context(self) -> Any:
         """Convert to GatingContext for the scorer."""
@@ -143,6 +145,7 @@ class BioEnrichmentPipeline:
         ec: EntorhinalCortex | None = None,
         encoder: Any | None = None,
         component_index: ComponentIndex | None = None,
+        component_registry: ComponentRegistry | None = None,
         reflex_registry: ReflexRegistry | None = None,
         novelty_threshold: float = 0.4,
         agent_id: str = "",
@@ -154,6 +157,7 @@ class BioEnrichmentPipeline:
         self._ec = ec
         self._encoder = encoder  # LinguisticEncoder for graph-based retrieval
         self._component_index = component_index
+        self._component_registry = component_registry
         self._reflex_registry = reflex_registry
         self._novelty_threshold = novelty_threshold
         self._agent_id = agent_id
@@ -203,7 +207,7 @@ class BioEnrichmentPipeline:
         memories = self._query_hippocampus(text, keywords, context=ctx)
         predictions = self._query_nac(keywords)
         concepts = self._query_atl(keywords)
-        affordances = self._query_component_index(text)
+        affordances = self._query_component_index(text, resolved_entities=ctx.resolved_entities)
         recent_context = self._query_working_memory(working_memory)
 
         # Structured trace for JSONL capture
@@ -686,8 +690,22 @@ class BioEnrichmentPipeline:
             log.debug("Bio-enrichment ATL query failed: %s", e)
             return []
 
-    def _query_component_index(self, text: str) -> list[str]:
+    def _query_component_index(
+        self,
+        text: str,
+        resolved_entities: tuple[str, ...] = (),
+    ) -> list[str]:
         """Query ComponentIndex for available affordances matching text.
+
+        When *resolved_entities* are provided (entity refs already resolved
+        by ImaginationTrigger), loads their specs from ComponentRegistry
+        and surfaces ALL affordance names with NAc valence annotations.
+        This gives the agent a complete view of what the scene entities can
+        do — "fire_breath [DANGEROUS]", "claw_strike [effective]" — instead
+        of relying on text-similarity guesswork.
+
+        Falls back to the text-similarity path when no resolved entities
+        are available (fresh session, no ImaginationTrigger wired).
 
         When ATL + NAc are available, annotates each affordance with
         valence from substrate concept nodes. Decomposes affordance names
@@ -697,19 +715,40 @@ class BioEnrichmentPipeline:
         [DANGEROUS] or [effective] annotations from prior experience with
         similar affordances on different entities.
         """
-        if self._component_index is None:
-            return []
-        try:
-            matches = self._component_index.find_similar(text, k=3)
-            affordances: list[str] = []
-            for match in matches:
-                if match.score >= 0.5:
-                    annotated = self._annotate_affordance_valence(match.name)
-                    affordances.append(annotated)
-            return affordances
-        except Exception as e:
-            log.debug("Bio-enrichment ComponentIndex query failed: %s", e)
-            return []
+        affordances: list[str] = []
+        seen: set[str] = set()
+
+        # Primary path: surface affordances from already-resolved entities.
+        # ImaginationTrigger resolved these before enrichment runs, so we
+        # know they're live scene entities with valid specs.
+        if resolved_entities and self._component_registry is not None:
+            for ref in resolved_entities:
+                try:
+                    spec = self._component_registry.get(ref)
+                except (KeyError, Exception):
+                    continue  # Unknown ref — skip, don't abort loop
+                entity_spec = spec.get("entity", spec)
+                entity_name = entity_spec.get("name", ref.rsplit("/", 1)[-1])
+                for mod_spec in entity_spec.get("modulators", {}).values():
+                    for aff_name in mod_spec.get("affordances", {}):
+                        if aff_name in seen:
+                            continue
+                        seen.add(aff_name)
+                        annotated = self._annotate_affordance_valence(aff_name)
+                        affordances.append(f"{entity_name}: {annotated}")
+
+        # Fallback: text-similarity search when no resolved entities available
+        if not affordances and self._component_index is not None:
+            try:
+                matches = self._component_index.find_similar(text, k=3)
+                for match in matches:
+                    if match.score >= 0.5:
+                        annotated = self._annotate_affordance_valence(match.name)
+                        affordances.append(annotated)
+            except Exception as e:
+                log.debug("Bio-enrichment ComponentIndex query failed: %s", e)
+
+        return affordances
 
     def _annotate_affordance_valence(self, affordance_name: str) -> str:
         """Annotate an affordance name with learned valence from substrate.

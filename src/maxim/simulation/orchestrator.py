@@ -1310,9 +1310,10 @@ def start_simulation_mode(
             except KeyError:
                 pass
 
-            # Wire ComponentIndex + agent_id into BioEnrichmentPipeline
+            # Wire ComponentIndex + ComponentRegistry + agent_id into BioEnrichmentPipeline
             if aut_bio_enrichment_pipeline is not None:
                 aut_bio_enrichment_pipeline._component_index = _aut_component_index
+                aut_bio_enrichment_pipeline._component_registry = aut_component_registry
                 aut_bio_enrichment_pipeline._agent_id = "sim_aut"
 
             # Wire percept reflex system into BioEnrichmentPipeline.

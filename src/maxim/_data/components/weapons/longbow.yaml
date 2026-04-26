@@ -3,6 +3,7 @@ component:
   tags: [weapon, ranged, degradable]
   synonyms: [bow, long bow, wooden bow, war bow, hunting bow, great bow, archer bow]
   category: weapons
+  archetype: environmental
 
 entity:
   name: longbow

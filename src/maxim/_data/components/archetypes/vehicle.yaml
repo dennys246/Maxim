@@ -1,0 +1,25 @@
+archetype:
+  name: vehicle
+  description: >
+    Rideable or driveable transport. Carts, wagons, ships, boats,
+    speeders, hovercrafts, cars, motorcycles.
+  body_parts:
+    hull:
+      sensors: [hull_integrity, cargo_capacity]
+      affordances: []
+    propulsion:
+      sensors: [engine_health, fuel_level]
+      affordances: [accelerate, brake, reverse]
+    controls:
+      sensors: [control_responsiveness]
+      affordances: [steer, stop]
+  optional_parts:
+    weapons_mount:
+      sensors: [ammo_count]
+      affordances: [fire_weapon, reload]
+    shields:
+      sensors: [shield_integrity]
+      affordances: [raise_shields, lower_shields]
+    cargo:
+      sensors: [cargo_weight]
+      affordances: [load, unload]

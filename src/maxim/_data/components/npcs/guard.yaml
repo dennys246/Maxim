@@ -2,6 +2,7 @@ component:
   name: guard
   tags: [npc, humanoid, military, authority]
   category: npcs
+  archetype: humanoid
   extends: npcs/base_humanoid
   synonyms: [town guard, sentry, watchman, soldier, patrol guard, gate keeper, armed guard]
 

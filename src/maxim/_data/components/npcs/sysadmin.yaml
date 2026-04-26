@@ -2,6 +2,7 @@ component:
   name: sysadmin
   tags: [npc, humanoid, tech, devops, modern]
   category: npcs
+  archetype: humanoid
   extends: npcs/base_humanoid
   synonyms: [system administrator, it admin, server admin, tech support, network admin, it guy, ops engineer]
 

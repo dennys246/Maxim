@@ -3,6 +3,7 @@ component:
   tags: [creature, undead, hostile, fantasy]
   synonyms: [bone soldier, undead warrior, skeletal fighter, animated skeleton, risen bones, death knight, bone knight]
   category: creatures
+  archetype: humanoid
 
 entity:
   name: skeleton_warrior

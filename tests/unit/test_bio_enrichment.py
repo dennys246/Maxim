@@ -245,3 +245,208 @@ class TestEnrichmentContext:
         gctx = ctx.to_gating_context()
         assert gctx.active_goal == "find the key"
         assert gctx.goal_keywords == ("find", "key")
+
+    def test_resolved_entities_default_empty(self):
+        ctx = EnrichmentContext()
+        assert ctx.resolved_entities == ()
+
+    def test_resolved_entities_passthrough(self):
+        ctx = EnrichmentContext(resolved_entities=("creatures/dragon", "weapons/rusty_sword"))
+        assert ctx.resolved_entities == ("creatures/dragon", "weapons/rusty_sword")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Resolved entity affordance surfacing
+# ---------------------------------------------------------------------------
+
+
+def _make_registry(specs: dict[str, dict] | None = None) -> MagicMock:
+    """Create a mock ComponentRegistry that returns specs by ref.
+
+    Mimics real ComponentRegistry.get() which raises KeyError on unknown refs.
+    """
+    registry = MagicMock()
+    _specs = specs or {}
+
+    def _get(ref: str) -> dict:
+        if ref not in _specs:
+            raise KeyError(f"Component not found: {ref}")
+        return _specs[ref]
+
+    registry.get = MagicMock(side_effect=_get)
+    return registry
+
+
+_DRAGON_SPEC = {
+    "entity": {
+        "name": "dragon",
+        "entity_type": "creature",
+        "sensors": {},
+        "modulators": {
+            "head": {
+                "affordances": {
+                    "bite": {"params": {"target": "str"}, "description": "Bite"},
+                    "roar": {"params": {}, "description": "Roar"},
+                },
+            },
+            "combat": {
+                "affordances": {
+                    "fire_breath": {"params": {"target": "str"}, "description": "Fire"},
+                    "claw_strike": {"params": {"target": "str"}, "description": "Claw"},
+                },
+            },
+        },
+    }
+}
+
+
+class TestResolvedEntityAffordances:
+    """Phase 2: BioEnrichmentPipeline surfaces affordances from resolved entities."""
+
+    def test_resolved_entities_surface_all_affordances(self):
+        """When resolved_entities are provided, all affordances from those entities appear."""
+        registry = _make_registry({"creatures/dragon": _DRAGON_SPEC})
+        pipeline = BioEnrichmentPipeline(component_registry=registry)
+        ctx = EnrichmentContext(resolved_entities=("creatures/dragon",))
+        result = pipeline.enrich("a dragon breathes fire", bypass_gate=True, context=ctx)
+        assert result is not None
+        # Should have all 4 dragon affordances
+        aff_text = " ".join(result.affordances)
+        assert "bite" in aff_text
+        assert "roar" in aff_text
+        assert "fire_breath" in aff_text
+        assert "claw_strike" in aff_text
+
+    def test_resolved_entities_prefixed_with_entity_name(self):
+        """Each affordance is prefixed with entity name for clarity."""
+        registry = _make_registry({"creatures/dragon": _DRAGON_SPEC})
+        pipeline = BioEnrichmentPipeline(component_registry=registry)
+        ctx = EnrichmentContext(resolved_entities=("creatures/dragon",))
+        result = pipeline.enrich("a dragon", bypass_gate=True, context=ctx)
+        assert result is not None
+        assert any(a.startswith("dragon:") for a in result.affordances)
+
+    def test_resolved_entities_with_nac_valence_annotation(self):
+        """Affordances get NAc valence annotations when NAc + ATL are available."""
+        registry = _make_registry({"creatures/dragon": _DRAGON_SPEC})
+
+        # Mock ATL that returns a concept for "fire"
+        atl = MagicMock()
+        concept = MagicMock()
+        concept.id = "node_fire"
+        concept.name = "fire"
+        concept.category = "substrate"
+        atl.recall.return_value = [concept]
+
+        # Mock NAc that returns negative reward_bias for fire
+        nac = MagicMock()
+        nac.reward_bias.return_value = -0.5
+        nac.get_links_for_event.return_value = []
+
+        pipeline = BioEnrichmentPipeline(component_registry=registry, nac=nac, atl=atl)
+        ctx = EnrichmentContext(resolved_entities=("creatures/dragon",))
+        result = pipeline.enrich("a dragon", bypass_gate=True, context=ctx)
+        assert result is not None
+        # fire_breath should be annotated as DANGEROUS
+        aff_text = " ".join(result.affordances)
+        assert "DANGEROUS" in aff_text
+
+    def test_no_resolved_entities_falls_back_to_text_similarity(self):
+        """Without resolved_entities, falls back to text-similarity search."""
+        index = MagicMock()
+        match = MagicMock()
+        match.name = "rusty_sword"
+        match.score = 0.7
+        index.find_similar.return_value = [match]
+
+        pipeline = BioEnrichmentPipeline(component_index=index)
+        result = pipeline.enrich("attack with sword", bypass_gate=True)
+        assert result is not None
+        assert "rusty_sword" in result.affordances[0]
+
+    def test_resolved_entities_skips_fallback(self):
+        """When resolved_entities produce affordances, text-similarity is not called."""
+        registry = _make_registry({"creatures/dragon": _DRAGON_SPEC})
+        index = MagicMock()
+        index.find_similar.return_value = []
+
+        pipeline = BioEnrichmentPipeline(component_registry=registry, component_index=index)
+        ctx = EnrichmentContext(resolved_entities=("creatures/dragon",))
+        result = pipeline.enrich("a dragon", bypass_gate=True, context=ctx)
+        assert result is not None
+        assert len(result.affordances) > 0
+        # Fallback should NOT have been called
+        index.find_similar.assert_not_called()
+
+    def test_multiple_resolved_entities(self):
+        """Multiple entities each contribute their affordances."""
+        sword_spec = {
+            "entity": {
+                "name": "rusty_sword",
+                "entity_type": "weapon",
+                "sensors": {},
+                "modulators": {
+                    "blade": {
+                        "affordances": {
+                            "slash": {"params": {"target": "str"}},
+                            "thrust": {"params": {"target": "str"}},
+                        },
+                    },
+                },
+            }
+        }
+        registry = _make_registry(
+            {
+                "creatures/dragon": _DRAGON_SPEC,
+                "weapons/rusty_sword": sword_spec,
+            }
+        )
+        pipeline = BioEnrichmentPipeline(component_registry=registry)
+        ctx = EnrichmentContext(resolved_entities=("creatures/dragon", "weapons/rusty_sword"))
+        result = pipeline.enrich("dragon and sword", bypass_gate=True, context=ctx)
+        assert result is not None
+        aff_text = " ".join(result.affordances)
+        assert "fire_breath" in aff_text
+        assert "slash" in aff_text
+
+    def test_unknown_ref_in_resolved_entities_skipped(self):
+        """Unknown refs in resolved_entities are silently skipped."""
+        registry = _make_registry({})
+        pipeline = BioEnrichmentPipeline(component_registry=registry)
+        ctx = EnrichmentContext(resolved_entities=("creatures/unknown",))
+        result = pipeline.enrich("some text", bypass_gate=True, context=ctx)
+        assert result is not None
+        assert result.affordances == ()
+
+    def test_deduplicate_affordances_across_entities(self):
+        """Affordances with the same name from different entities appear only once."""
+        spec_a = {
+            "entity": {
+                "name": "wolf",
+                "sensors": {},
+                "modulators": {
+                    "head": {"affordances": {"bite": {"params": {"target": "str"}}}},
+                },
+            }
+        }
+        spec_b = {
+            "entity": {
+                "name": "dog",
+                "sensors": {},
+                "modulators": {
+                    "head": {"affordances": {"bite": {"params": {"target": "str"}}}},
+                },
+            }
+        }
+        registry = _make_registry(
+            {
+                "creatures/wolf": spec_a,
+                "creatures/dog": spec_b,
+            }
+        )
+        pipeline = BioEnrichmentPipeline(component_registry=registry)
+        ctx = EnrichmentContext(resolved_entities=("creatures/wolf", "creatures/dog"))
+        result = pipeline.enrich("wolf and dog", bypass_gate=True, context=ctx)
+        assert result is not None
+        bite_count = sum(1 for a in result.affordances if "bite" in a)
+        assert bite_count == 1  # deduplicated

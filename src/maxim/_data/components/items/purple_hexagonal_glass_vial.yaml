@@ -3,6 +3,7 @@ component:
   tags: [item, consumable, unknown, fantasy]
   synonyms: [purple potion, hexagonal bottle, violet vial, glass vial, purple elixir, mysterious purple liquid, strange glass flask]
   category: items
+  archetype: environmental
   genre: fantasy
 
 entity:

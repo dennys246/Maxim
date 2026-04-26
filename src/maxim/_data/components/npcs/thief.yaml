@@ -2,6 +2,7 @@ component:
   name: thief
   tags: [npc, humanoid, stealth, criminal, fantasy]
   category: npcs
+  archetype: humanoid
   extends: npcs/base_humanoid
   synonyms: [rogue, burglar, pickpocket, cutpurse, sneak thief, cat burglar, pilferer]
 

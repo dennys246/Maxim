@@ -3,6 +3,7 @@ component:
   tags: [augmentation, body, degradable, cyberpunk, military-grade]
   synonyms: [military arm, combat prosthetic, heavy cyber arm, mil-spec arm, gorilla arm, power arm, tactical limb]
   category: bodies
+  archetype: machine
 
 entity:
   name: megarm_v3

@@ -1,0 +1,28 @@
+archetype:
+  name: humanoid
+  description: >
+    Bipedal upright creature with head, torso, arms, and legs.
+    Humans, elves, dwarves, orcs, skeletons, zombies, androids.
+  body_parts:
+    head:
+      sensors: [awareness, skull_integrity]
+      affordances: [look, listen]
+    torso:
+      sensors: [core_integrity]
+      affordances: [rest]
+    arms:
+      sensors: [grip_strength, arm_mobility]
+      affordances: [pick_up, drop, use]
+    legs:
+      sensors: [leg_mobility]
+      affordances: [move]
+    communication:
+      abstract: true
+      affordances: [speak]
+  optional_parts:
+    tail:
+      sensors: [tail_strength]
+      affordances: [tail_sweep]
+    wings:
+      sensors: [membrane_integrity]
+      affordances: [take_flight, land]

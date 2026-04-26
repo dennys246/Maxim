@@ -2,6 +2,7 @@ component:
   name: netrunner
   tags: [npc, humanoid, hacker, tech, cyberpunk]
   category: npcs
+  archetype: humanoid
   extends: npcs/base_humanoid
   synonyms: [hacker, cyber hacker, net diver, console cowboy, decker, data thief, ice breaker]
 

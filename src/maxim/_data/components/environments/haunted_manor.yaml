@@ -3,6 +3,7 @@ component:
   tags: [environment, indoor, dangerous, horror]
   synonyms: [haunted house, spooky mansion, ghost house, creepy manor, abandoned mansion, cursed estate, dark manor]
   category: environments
+  archetype: environmental
 
 entity:
   name: haunted_manor

@@ -1,0 +1,25 @@
+archetype:
+  name: environmental
+  description: >
+    Stationary environmental feature. Doors, gates, bridges, levers,
+    switches, traps, altars, fountains, chests, portals, mechanisms.
+  body_parts:
+    structure:
+      sensors: [structural_integrity]
+      affordances: []
+    mechanism:
+      sensors: [mechanism_state]
+      affordances: [activate, deactivate]
+  optional_parts:
+    lock:
+      sensors: [lock_state]
+      affordances: [lock, unlock]
+    trap:
+      sensors: [trap_armed]
+      affordances: [trigger, disarm]
+    container:
+      sensors: [fill_level]
+      affordances: [open, close, store, retrieve]
+    light_source:
+      sensors: [brightness]
+      affordances: [ignite, extinguish]

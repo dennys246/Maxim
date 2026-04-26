@@ -3,6 +3,7 @@ component:
   tags: [item, tech, tool, devops, modern]
   synonyms: [computer terminal, console, command terminal, server terminal, access terminal, workstation terminal, shell console]
   category: items
+  archetype: environmental
 
 entity:
   name: terminal_console

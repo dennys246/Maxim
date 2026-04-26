@@ -3,6 +3,7 @@ component:
   tags: [environment, indoor, social, corporate, cyberpunk]
   synonyms: [corporate lobby, office lobby, corporate foyer, corp reception, headquarters entrance, tower lobby, company atrium]
   category: environments
+  archetype: environmental
 
 entity:
   name: megacorp_lobby

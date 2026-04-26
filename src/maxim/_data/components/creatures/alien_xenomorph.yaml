@@ -3,6 +3,7 @@ component:
   tags: [creature, predator, hostile, scifi, horror]
   synonyms: [xenomorph, alien creature, space predator, alien beast, extraterrestrial, chitinous horror, hive creature]
   category: creatures
+  archetype: quadruped
 
 entity:
   name: alien_xenomorph
