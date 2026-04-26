@@ -1007,30 +1007,28 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                 if self._memory_matches_query(memory, query_lower):
                     results.append(memory)
 
-            if not results:
-                # Trace: show why zero matches — sample first memory's fields
-                sample = next(iter(self._memories.values()), None) if self._memories else None
-                if sample is not None:
-                    p = getattr(sample, "perception", None)
-                    obs = str(getattr(p, "observations", ""))[:100] if p else ""
-                    o = getattr(sample, "outcome", None)
-                    res = str(getattr(o, "result", ""))[:100] if o else ""
-                    logger.info(
-                        "search_by_content: 0/%d matches for query=%r; sample memory obs=%r, result=%r",
-                        n_total,
-                        query[:80],
-                        obs,
-                        res,
-                    )
-                else:
-                    logger.info("search_by_content: 0 memories in store")
-            else:
-                logger.info(
-                    "search_by_content: %d/%d matches for query=%r",
-                    len(results),
-                    n_total,
-                    query[:80],
-                )
+            # Structured trace for JSONL capture
+            sample_obs = ""
+            sample_res = ""
+            if not results and self._memories:
+                sample = next(iter(self._memories.values()))
+                p = getattr(sample, "perception", None)
+                sample_obs = str(getattr(p, "observations", ""))[:120] if p else ""
+                o = getattr(sample, "outcome", None)
+                sample_res = str(getattr(o, "result", ""))[:120] if o else ""
+            logger.info(
+                "hippocampus search",
+                extra={
+                    "event": "hippocampus_search",
+                    "data": {
+                        "query": query[:80],
+                        "total_memories": n_total,
+                        "matches": len(results),
+                        "sample_obs": sample_obs,
+                        "sample_result": sample_res,
+                    },
+                },
+            )
 
             results.sort(key=lambda m: m.timestamp, reverse=True)
             return results[:limit]
