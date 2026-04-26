@@ -20,8 +20,11 @@ import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Iterator
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Iterator
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from maxim.models.bio_context import SemanticContext
 
 from maxim.agents.bus import DependencyGraph
 from maxim.memory.layer import MemoryLayer
@@ -215,6 +218,8 @@ class ATL(MemoryLayer):
     def recall(
         self,
         limit: int = 10,
+        *,
+        semantic_context: "SemanticContext | None" = None,
         **filters: Any,
     ) -> list[SemanticMemory | CompressedSemantic]:
         """Query concepts with optional filters.
@@ -500,6 +505,7 @@ class ATL(MemoryLayer):
         definition: str = "",
         provenance: ConceptProvenance = ConceptProvenance.EPISODIC_CONSOLIDATION,
         source_episode_id: str | None = None,
+        semantic_context: "SemanticContext | None" = None,
     ) -> tuple[str, bool]:
         """Find existing concept by name or create a new one.
 

@@ -11,6 +11,7 @@ from maxim.memory.types import CompressedMemory, EpisodicMemory
 if TYPE_CHECKING:
     from maxim.agents.working_memory import WorkingMemorySet
     from maxim.memory.types import Perception
+    from maxim.models.bio_context import RetrievalContext
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,7 @@ class RetrievalMixin:
         time_before: float | None = None,
         include_compressed: bool = True,
         working_memory: WorkingMemorySet | None = None,
+        retrieval_context: "RetrievalContext | None" = None,
     ) -> list[EpisodicMemory | CompressedMemory]:
         """Find memories matching filters (hash lookup + filtering).
 

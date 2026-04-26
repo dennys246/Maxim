@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 if TYPE_CHECKING:
     from maxim.agents.bus import DependencyGraph
     from maxim.memory.types import CompressedRecord, MemoryRecord
+    from maxim.models.bio_context import RetrievalContext
 
 
 class MemoryLayer(ABC):
@@ -60,6 +61,8 @@ class MemoryLayer(ABC):
     def recall(
         self,
         limit: int = 10,
+        *,
+        retrieval_context: "RetrievalContext | None" = None,
         **filters: Any,
     ) -> "list[MemoryRecord | CompressedRecord]":
         """Retrieve records matching layer-specific filters."""

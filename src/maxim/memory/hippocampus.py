@@ -24,6 +24,7 @@ from uuid import uuid4
 
 if TYPE_CHECKING:
     from maxim.memory.strategies import MemoryStrategy
+    from maxim.models.bio_context import RetrievalContext
     from maxim.time.scn import SCN
 
 from maxim.agents.bus import DependencyGraph, EdgeType
@@ -982,7 +983,13 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
                     results.append(mem)
             return results
 
-    def search_by_content(self, query: str, limit: int = 20) -> list[EpisodicMemory | CompressedMemory]:
+    def search_by_content(
+        self,
+        query: str,
+        limit: int = 20,
+        *,
+        retrieval_context: RetrievalContext | None = None,
+    ) -> list[EpisodicMemory | CompressedMemory]:
         """Search memories by text content across all fields.
 
         Searches perception.observations, outcome.result, and
@@ -1280,6 +1287,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         multi_hop: bool = True,
         node_filter: Callable[[str], bool] | None = None,
         include_valence: Literal[False] = False,
+        retrieval_context: RetrievalContext | None = None,
     ) -> list[tuple[str, float]]: ...
 
     @overload
@@ -1291,6 +1299,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         multi_hop: bool = True,
         node_filter: Callable[[str], bool] | None = None,
         include_valence: Literal[True] = ...,
+        retrieval_context: RetrievalContext | None = None,
     ) -> list[tuple[str, float, float]]: ...
 
     def retrieve_on_cue(
@@ -1301,6 +1310,7 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
         multi_hop: bool = True,
         node_filter: Callable[[str], bool] | None = None,
         include_valence: bool = False,
+        retrieval_context: RetrievalContext | None = None,
     ) -> list[tuple[str, float]] | list[tuple[str, float, float]]:
         """Return substrate nodes co-activated with the cue, ranked by binding weight.
 
