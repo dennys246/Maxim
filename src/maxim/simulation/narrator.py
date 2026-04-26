@@ -275,10 +275,17 @@ class Narrator:
             user = "Generate the opening scene."
 
         try:
-            text = self._llm.generate_text(
-                f"{system}\n\n{user}",
+            # LLMRouter only has generate_json, not generate_text.
+            # We ask for {"narrative": "<text>"} and extract the text.
+            result = self._llm.generate_json(
+                f'{system}\n\nRespond with JSON: {{"narrative": "<your scene text>"}}\n\n{user}',
                 max_tokens=500,
             )
+            text = ""
+            if isinstance(result, dict):
+                text = result.get("narrative", "")
+            elif isinstance(result, str):
+                text = result
             if text:
                 self._turns_in_phase += 1
                 self._total_turns += 1
