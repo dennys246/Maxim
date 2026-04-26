@@ -25,7 +25,8 @@ import pytest
 
 from maxim.runtime import probe_cache
 from maxim.runtime.lane_backends import _validate_remote_urls
-from maxim.runtime.llm_server import ProbeResult, _probe_once, probe_llm_server
+from maxim.models.language.maxim_peer_backend import _MaximPeerBackend, _probe_once
+from maxim.runtime.llm_server import ProbeResult
 from maxim.runtime.worker_pool import LaneConfig
 from maxim.utils import http as _http
 
@@ -163,26 +164,30 @@ class TestProbeOnce:
         assert ep.default_headers.get("User-Agent") == "maxim-peer/1.0"
 
 
-# ─── probe_llm_server two-attempt retry ─────────────────────────────────────
+# ─── health_check two-attempt retry ──────────────────────────────────────────
 
 
-class TestProbeLlmServerRetry:
+class TestHealthCheckRetry:
     URL = "http://leader.local:8100/v1"
+
+    def _probe(self, **kwargs):
+        kwargs.setdefault("enable_stage2", False)
+        return _MaximPeerBackend.for_url(self.URL).health_check(**kwargs)
 
     def test_ok_short_circuits_no_retry(self):
         with patch(
-            "maxim.runtime.llm_server._probe_once",
+            "maxim.models.language.maxim_peer_backend._probe_once",
             return_value=ProbeResult(self.URL, "ok", "HTTP 200", 12.3),
         ) as mock:
-            probe_llm_server(self.URL)
+            self._probe()
         assert mock.call_count == 1
 
     def test_auth_rejected_short_circuits_no_retry(self):
         with patch(
-            "maxim.runtime.llm_server._probe_once",
+            "maxim.models.language.maxim_peer_backend._probe_once",
             return_value=ProbeResult(self.URL, "auth_rejected", "401", 5.0),
         ) as mock:
-            probe_llm_server(self.URL)
+            self._probe()
         assert mock.call_count == 1
 
     def test_timeout_retries_once(self):
@@ -190,8 +195,8 @@ class TestProbeLlmServerRetry:
             ProbeResult(self.URL, "timeout", "0.8s", None),
             ProbeResult(self.URL, "ok", "HTTP 200", 1500.0),
         ]
-        with patch("maxim.runtime.llm_server._probe_once", side_effect=results) as mock:
-            final = probe_llm_server(self.URL)
+        with patch("maxim.models.language.maxim_peer_backend._probe_once", side_effect=results) as mock:
+            final = self._probe()
         assert mock.call_count == 2
         assert final.outcome == "ok"
 
@@ -270,8 +275,9 @@ class TestValidateRemoteUrls:
 
     def test_ok_keeps_lane_wired(self, fake_data_home):
         cfg = self._lane("https://leader.example.com/v1")
-        with patch(
-            "maxim.runtime.llm_server.probe_llm_server",
+        with patch.object(
+            _MaximPeerBackend,
+            "health_check",
             return_value=_ok(cfg.remote_url),
         ):
             out = _validate_remote_urls({"large": cfg}, logger=None)
@@ -282,8 +288,9 @@ class TestValidateRemoteUrls:
         wrong move; the user should fix their key, not run locally."""
         cfg = self._lane("https://leader.example.com/v1")
         log = MagicMock()
-        with patch(
-            "maxim.runtime.llm_server.probe_llm_server",
+        with patch.object(
+            _MaximPeerBackend,
+            "health_check",
             return_value=_auth(cfg.remote_url),
         ):
             out = _validate_remote_urls({"large": cfg}, logger=log)
@@ -295,8 +302,9 @@ class TestValidateRemoteUrls:
 
     def test_unreachable_drops_lane(self, fake_data_home):
         cfg = self._lane("https://dead.example.com/v1")
-        with patch(
-            "maxim.runtime.llm_server.probe_llm_server",
+        with patch.object(
+            _MaximPeerBackend,
+            "health_check",
             return_value=_down(cfg.remote_url, "dns_fail"),
         ):
             out = _validate_remote_urls({"large": cfg}, logger=MagicMock())
@@ -316,7 +324,7 @@ class TestValidateRemoteUrls:
             }
         )
         cfg = self._lane(url)
-        with patch("maxim.runtime.llm_server.probe_llm_server") as mock_probe:
+        with patch.object(_MaximPeerBackend, "health_check") as mock_probe:
             out = _validate_remote_urls({"large": cfg}, logger=None)
         mock_probe.assert_not_called()
         assert out["large"].remote_url == url
@@ -336,8 +344,9 @@ class TestValidateRemoteUrls:
             }
         )
         cfg = self._lane(url)
-        with patch(
-            "maxim.runtime.llm_server.probe_llm_server",
+        with patch.object(
+            _MaximPeerBackend,
+            "health_check",
             return_value=_ok(url),
         ) as mock_probe:
             _validate_remote_urls({"large": cfg}, logger=None)
@@ -346,22 +355,23 @@ class TestValidateRemoteUrls:
     def test_skip_env_bypasses_probe(self, fake_data_home, monkeypatch):
         monkeypatch.setenv("MAXIM_SKIP_REMOTE_PROBE", "1")
         cfg = self._lane("https://anything.example.com/v1")
-        with patch("maxim.runtime.llm_server.probe_llm_server") as mock_probe:
+        with patch.object(_MaximPeerBackend, "health_check") as mock_probe:
             out = _validate_remote_urls({"large": cfg}, logger=None)
         mock_probe.assert_not_called()
         assert out["large"].remote_url == cfg.remote_url
 
     def test_empty_remote_url_skipped(self, fake_data_home):
         cfg = LaneConfig(name="large", max_workers=1, remote_url=None)
-        with patch("maxim.runtime.llm_server.probe_llm_server") as mock_probe:
+        with patch.object(_MaximPeerBackend, "health_check") as mock_probe:
             _validate_remote_urls({"large": cfg}, logger=None)
         mock_probe.assert_not_called()
 
     def test_probe_writes_cache_after_run(self, fake_data_home):
         url = "https://leader.example.com/v1"
         cfg = self._lane(url)
-        with patch(
-            "maxim.runtime.llm_server.probe_llm_server",
+        with patch.object(
+            _MaximPeerBackend,
+            "health_check",
             return_value=_ok(url),
         ):
             _validate_remote_urls({"large": cfg}, logger=None)

@@ -249,7 +249,6 @@ def start_simulation_mode(
         AnalyzeResultsTool,
         CheckCompletionTool,
         DamageComponentTool,
-        DamageEntityTool,
         ExtendSimulationTool,
         FinishSimulationTool,
         InjectPainTool,
@@ -935,10 +934,8 @@ def start_simulation_mode(
     orch_registry.register(InjectPainTool(bridge=bridge))
     # DamageComponentTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
     # Only registered when embodiment is active (--embodiment flag).
-    # DamageEntityTool kept as deprecated shim for existing prompts.
     if _aut_embodiment is not None:
         orch_registry.register(DamageComponentTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
-        orch_registry.register(DamageEntityTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
         orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
     orch_registry.register(spawn_tool)
     orch_registry.register(ExtendSimulationTool(main_bridge=bridge, spawn_tool=spawn_tool))
@@ -1059,15 +1056,6 @@ def start_simulation_mode(
                     "source": "What caused the damage (e.g., 'dragon_fire_breath', 'falling_rocks')",
                 },
                 "example": '{"tool_name": "damage_component", "params": {"component": "wing", "amount": 0.3, "source": "sword_slash"}}',
-                "followup_type": "process",
-            },
-            "damage_entity": {
-                "description": "(Deprecated — use damage_component instead.) Apply damage to entity health.",
-                "params": {
-                    "sensor": "health or stamina (default: health)",
-                    "amount": "Damage amount 0.0-1.0",
-                    "source": "What caused the damage",
-                },
                 "followup_type": "process",
             },
             "respond": {

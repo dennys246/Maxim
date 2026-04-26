@@ -25,6 +25,7 @@ from maxim.doctor.checks import (
     check_storage_footprint,
     check_tier_effectiveness,
 )
+from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 from maxim.runtime.capabilities import RuntimeCapabilities
 from maxim.runtime.llm_server import ProbeResult
 from maxim.runtime.worker_pool import LaneConfig
@@ -136,14 +137,14 @@ class TestCheckRemoteReachability:
 
     def test_ok_returns_latency(self):
         result_obj = ProbeResult(self.URL, "ok", "HTTP 200", 42.0)
-        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=result_obj):
+        with patch.object(_MaximPeerBackend, "health_check", return_value=result_obj):
             result = check_remote_reachability(self.URL, "k")
         assert result.status == "ok"
         assert "42" in result.message
 
     def test_auth_rejected_warns_with_key_rotation_hint(self):
         result_obj = ProbeResult(self.URL, "auth_rejected", "401 Unauthorized", 5.0)
-        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=result_obj):
+        with patch.object(_MaximPeerBackend, "health_check", return_value=result_obj):
             result = check_remote_reachability(self.URL, "wrong-key")
         assert result.status == "warn"
         assert result.fix is not None
@@ -151,14 +152,14 @@ class TestCheckRemoteReachability:
 
     def test_dns_fail_fails_with_hostname_hint(self):
         result_obj = ProbeResult(self.URL, "dns_fail", "name not known", None)
-        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=result_obj):
+        with patch.object(_MaximPeerBackend, "health_check", return_value=result_obj):
             result = check_remote_reachability(self.URL, "k")
         assert result.status == "fail"
         assert "hostname" in (result.fix or "").lower()
 
     def test_connection_refused_suggests_starting_leader(self):
         result_obj = ProbeResult(self.URL, "connection_refused", "nope", None)
-        with patch("maxim.runtime.llm_server.probe_llm_server", return_value=result_obj):
+        with patch.object(_MaximPeerBackend, "health_check", return_value=result_obj):
             result = check_remote_reachability(self.URL, "k")
         assert result.status == "fail"
         assert "maxim" in (result.fix or "").lower() or "leader" in (result.fix or "").lower()

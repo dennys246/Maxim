@@ -58,6 +58,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import socket
+import ssl
 import time
 from typing import Any, Mapping
 
@@ -92,6 +94,153 @@ from maxim.utils.net import validate_base_url
 from maxim.utils.structured_logging import log_structured
 
 logger = logging.getLogger(__name__)
+
+
+# ─── Probe primitives (moved from runtime/llm_server.py) ─────────────────
+#
+# These are the actual probe implementations. ``health_check()`` calls them
+# directly. Previously they lived in ``llm_server.py`` with lazy imports in
+# both directions to avoid circular deps; moving them here eliminates the
+# cycle entirely. ``ProbeResult`` stays in ``llm_server.py`` as the public
+# type used by callers outside ``models/language/``.
+
+
+def _build_probe_url(base_url: str) -> str:
+    base = base_url.rstrip("/")
+    return base + "/models" if base.endswith("/v1") else base + "/v1/models"
+
+
+def _classify_probe_cause(exc: BaseException, fallback_detail: str) -> str:
+    """Walk the ``__cause__`` chain looking for a socket-level error class."""
+    cur: BaseException | None = exc
+    seen = 0
+    while cur is not None and seen < 6:
+        if isinstance(cur, socket.gaierror):
+            return "dns_fail"
+        if isinstance(cur, ssl.SSLError):
+            return "tls_error"
+        if isinstance(cur, TimeoutError) or isinstance(cur, socket.timeout):
+            return "timeout"
+        if isinstance(cur, (ConnectionRefusedError, ConnectionResetError)):
+            return "connection_refused"
+        cur = cur.__cause__ or cur.__context__
+        seen += 1
+    return "other"
+
+
+def _probe_once(url: str, api_key: str | None, timeout_s: float):
+    """Single liveness probe attempt — ``GET /v1/models``.
+
+    Specific-before-general ``except`` ordering — ``HTTPAuthError``
+    before ``HTTPError`` — guarantees auth rejection is classified as
+    ``auth_rejected`` rather than ``other``.
+    """
+    from maxim.runtime.llm_server import ProbeResult
+
+    probe_url = _build_probe_url(url)
+    headers: dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    start = time.monotonic()
+    try:
+        resp = _http.fetch_url(
+            probe_url,
+            method="GET",
+            headers=headers,
+            timeout=_http.TimeoutPolicy(
+                connect_s=min(timeout_s, 2.0),
+                read_s=timeout_s,
+                total_s=timeout_s + 1.0,
+            ),
+        )
+    except _http.HTTPAuthError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "auth_rejected", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPServerError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "http_5xx", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPClientError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "other", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPRateLimited as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "other", f"HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPTimeout:
+        return ProbeResult(url, "timeout", f"{timeout_s}s", None)
+    except _http.HTTPConnectionError as e:
+        outcome = _classify_probe_cause(e, "connection failure")
+        return ProbeResult(url, outcome, e.fix_hint or str(e), None)
+    except _http.HTTPError as e:
+        return ProbeResult(url, "other", f"{type(e).__name__}: {e.fix_hint}", None)
+    except Exception as e:  # noqa: BLE001 — defensive catch-all
+        return ProbeResult(url, "other", f"{type(e).__name__}: {e}", None)
+
+    latency_ms = (time.monotonic() - start) * 1000
+    return ProbeResult(url, "ok", f"HTTP {resp.status}", round(latency_ms, 1))
+
+
+def _probe_stage2_readiness(
+    url: str,
+    api_key: str | None,
+    model_name: str,
+    timeout_s: float = 3.0,
+):
+    """Stage-2 readiness probe: micro-completion via ``POST /v1/chat/completions``."""
+    from maxim.runtime.llm_server import ProbeResult
+
+    base = url.rstrip("/")
+    chat_url = base + "/chat/completions" if base.endswith("/v1") else base + "/v1/chat/completions"
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    body = {
+        "model": model_name or "default",
+        "messages": [{"role": "user", "content": "."}],
+        "max_tokens": 1,
+        "temperature": 0.0,
+    }
+    start = time.monotonic()
+    try:
+        resp = _http.fetch_url(
+            chat_url,
+            method="POST",
+            headers=headers,
+            json=body,
+            timeout=_http.TimeoutPolicy(
+                connect_s=min(timeout_s, 2.0),
+                read_s=timeout_s,
+                total_s=timeout_s + 1.0,
+            ),
+        )
+    except _http.HTTPAuthError as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "auth_rejected", f"stage2 HTTP {e.status}", round(latency_ms, 1))
+    except _http.HTTPRateLimited as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(url, "other", f"stage2 HTTP {e.status} (rate limited)", round(latency_ms, 1))
+    except (_http.HTTPServerError, _http.HTTPClientError, _http.HTTPTimeout) as e:
+        latency_ms = (time.monotonic() - start) * 1000
+        return ProbeResult(
+            url, "inference_broken", f"stage2: {type(e).__name__} {getattr(e, 'status', '')}", round(latency_ms, 1)
+        )
+    except _http.HTTPConnectionError as e:
+        return ProbeResult(url, "inference_broken", f"stage2: {e.fix_hint or str(e)}", None)
+    except _http.HTTPError as e:
+        return ProbeResult(url, "inference_broken", f"stage2: {type(e).__name__}", None)
+    except Exception as e:  # noqa: BLE001 — fallback safety
+        log_structured(
+            logger,
+            logging.WARNING,
+            event="probe_stage2_fallback",
+            data={"endpoint": url, "reason": f"{type(e).__name__}: {e}"},
+        )
+        return ProbeResult(url, "ok", "stage1-ok (stage2 fallback)", None)
+
+    latency_ms = (time.monotonic() - start) * 1000
+    if resp.status == 200:
+        return ProbeResult(url, "ok", "stage2 HTTP 200", round(latency_ms, 1))
+    return ProbeResult(url, "inference_broken", f"stage2 HTTP {resp.status}", round(latency_ms, 1))
 
 
 def _backend_trace_enabled() -> bool:
@@ -348,25 +497,13 @@ class _MaximPeerBackend:
         wired. Opt-out via ``enable_stage2=False`` for callers that only
         need liveness.
 
-        **R2.6 contract:** this is the single probe entry point for all
-        Maxim peer URLs. ``runtime/llm_server.py``'s ``probe_llm_server``
-        and ``llm_server_responding_at`` were deleted in R2.6;
-        :func:`_probe_stage2_readiness` in the same module is still
-        re-used as a shared primitive.
+        **Canonical probe entry point** for all Maxim peer URLs. Probe
+        primitives (``_probe_once``, ``_probe_stage2_readiness``) live in
+        this module.
         """
         import uuid
 
-        # Lazy imports are load-bearing for cycle avoidance:
-        # ``runtime.llm_server`` lazy-imports ``_MaximPeerBackend`` from
-        # inside its deprecated ``probe_llm_server`` /
-        # ``llm_server_responding_at`` shims. Hoisting either side to
-        # module level materialises a circular import. Keep both sides
-        # inside function bodies.
-        from maxim.runtime.llm_server import (
-            ProbeResult,
-            _probe_once,
-            _probe_stage2_readiness,
-        )
+        from maxim.runtime.llm_server import ProbeResult
 
         # Probe path uses the raw base_url WITHOUT the SSRF check —
         # callers have already vetted the URL (operator typed it into

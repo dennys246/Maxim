@@ -300,7 +300,6 @@ from maxim.runtime.llm_server import (  # noqa: F401, E402
     _model_state_file,
     read_persisted_model as _read_persisted_model,
     write_persisted_model as _write_persisted_model,
-    llm_server_responding_at as _llm_server_responding_at,  # Plan 3 R2.6 compat shim
     profile_has_local_file as _profile_has_local_file,
 )
 
@@ -1292,7 +1291,7 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
     """Probe each lane's remote_url and drop unreachable ones.
 
     Replaces the older "skip public URLs" heuristic with a structured
-    probe (:func:`maxim.runtime.llm_server.probe_llm_server`) backed by a
+    probe via :meth:`_MaximPeerBackend.for_url(...).health_check` backed by a
     short-TTL on-disk cache (:mod:`maxim.runtime.probe_cache`). Catches
     dead Cloudflare tunnels that the previous "loopback only" guard
     would have left wired to the lane, generating retry storms on every
@@ -1320,8 +1319,9 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
     ):
         return dict(lane_configs)
 
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
     from maxim.runtime import probe_cache
-    from maxim.runtime.llm_server import ProbeResult, probe_llm_server
+    from maxim.runtime.llm_server import ProbeResult
 
     ttl_s = _safe_float_env("MAXIM_REMOTE_PROBE_CACHE_TTL_S", 60.0, min_value=0.0, max_value=600.0)
     # First-attempt timeout: 1.5s handles a warm-but-cold httpx connection
@@ -1353,17 +1353,10 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
                 latency_ms=cached.get("latency_ms"),
             )
         else:
-            # Plan 3 R2.6: ``probe_llm_server`` is now a thin compat
-            # shim that delegates to
-            # ``_MaximPeerBackend.for_url(url).health_check``. Routing
-            # through the shim preserves the existing test surface
-            # (tests mock ``maxim.runtime.llm_server.probe_llm_server``
-            # and replace the whole thing with a canned ProbeResult)
-            # while still funneling production traffic into the
-            # backend's canonical implementation.
-            result = probe_llm_server(
+            result = _MaximPeerBackend.for_url(
                 url,
                 api_key=cfg.remote_api_key,
+            ).health_check(
                 first_timeout_s=first_timeout,
                 retry_timeout_s=retry_timeout,
             )
@@ -1532,8 +1525,10 @@ def _maybe_auto_spawn_server(
     # a previous session are killed and respawned — reusing them is a
     # security risk (the old agent loop may still be connected) and can
     # serve stale models.
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend as _PeerBackend
+
     existing_url = f"http://127.0.0.1:{port}/v1"
-    if _llm_server_responding_at(existing_url):
+    if _PeerBackend.for_url(existing_url).health_check(enable_stage2=False).is_reachable:
         if _server_mod._active_spawner is not None and _server_mod._active_spawner.is_running:
             # We spawned this server in this process — safe to reuse.
             if logger is not None:

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
 from maxim.runtime.llm_server import (
     stop_active_spawner,
     register_router,
     _find_active_routers,
     read_persisted_model,
     write_persisted_model,
-    llm_server_responding_at,
     profile_has_local_file,
 )
 
@@ -112,13 +112,14 @@ class TestModelPersistence:
             assert result is None
 
 
-class TestLlmServerResponding:
-    def test_empty_url_returns_false(self):
-        assert llm_server_responding_at("") is False
+class TestHealthCheckReachability:
+    """Tests for _MaximPeerBackend.for_url(...).health_check().is_reachable
+    (replacement for the removed llm_server_responding_at)."""
+
+    def _is_reachable(self, url):
+        return _MaximPeerBackend.for_url(url).health_check(enable_stage2=False).is_reachable
 
     def test_200_returns_true(self):
-        # Plan 1 R1 migrated llm_server_responding_at off urllib onto
-        # maxim.utils.http.fetch_url. Mock at the new layer.
         from maxim.utils import http as _http
 
         fake_resp = _http.Response(
@@ -130,11 +131,11 @@ class TestLlmServerResponding:
             request_id="r",
         )
         with patch("maxim.utils.http.fetch_url", return_value=fake_resp):
-            assert llm_server_responding_at("http://localhost:8100/v1") is True
+            assert self._is_reachable("http://localhost:8100/v1") is True
 
     def test_connection_error_returns_false(self):
         # Non-existent URL — should not raise, just return False
-        assert llm_server_responding_at("http://localhost:99999/v1") is False
+        assert self._is_reachable("http://localhost:99999/v1") is False
 
 
 class TestProfileHasLocalFile:
@@ -173,7 +174,6 @@ class TestImportPaths:
             register_router,
             _read_persisted_model,
             _write_persisted_model,
-            _llm_server_responding_at,
             _profile_has_local_file,
         )
 
@@ -181,7 +181,6 @@ class TestImportPaths:
         assert callable(register_router)
         assert callable(_read_persisted_model)
         assert callable(_write_persisted_model)
-        assert callable(_llm_server_responding_at)
         assert callable(_profile_has_local_file)
 
     def test_globals_accessible(self):
