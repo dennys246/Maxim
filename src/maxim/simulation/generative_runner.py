@@ -89,6 +89,113 @@ def _load_world_entities(
         return 0
 
 
+def _activate_phase_entities(
+    phase_entities: tuple[str, ...],
+    tool_registry: Any,
+    activated: set[str],
+    *,
+    embodiment: Any = None,
+    entity_map: Any = None,
+) -> int:
+    """Activate entities for a narrative phase via component refs.
+
+    Resolves refs from ComponentRegistry. When a ref is not found,
+    falls back to the imagination system to design an entity on the fly.
+    Already-activated entities (tracked in *activated* set) are skipped.
+
+    Returns the number of new tools generated.
+    """
+    if not phase_entities or tool_registry is None:
+        return 0
+
+    new_refs = [ref for ref in phase_entities if ref not in activated]
+    if not new_refs:
+        return 0
+
+    tools_generated = 0
+    try:
+        from maxim.embodiment.component_registry import ComponentRegistry
+        from maxim.embodiment.tool_bridge import generate_tools_for_entity
+        from maxim.exceptions import ComponentNotFoundError
+
+        registry = ComponentRegistry()
+
+        for ref in new_refs:
+            entity = None
+            try:
+                entity = registry.instantiate(ref)
+                log.info("Phase entity activated from registry: %s", ref)
+            except (KeyError, ValueError, ComponentNotFoundError):
+                # Not in registry — fall back to imagination
+                log.warning(
+                    "World entity %r not found in ComponentRegistry — "
+                    "imagining one from the name. Create a YAML spec in "
+                    "_data/components/ for precise control.",
+                    ref,
+                )
+                entity = _imagine_entity_from_ref(ref)
+
+            if entity is not None:
+                tools = generate_tools_for_entity(
+                    entity,
+                    tool_registry,
+                    embodiment=embodiment,
+                    entity_map=entity_map,
+                )
+                tools_generated += len(tools)
+                activated.add(ref)
+                log.info(
+                    "Phase entity %s: %d tools registered",
+                    ref,
+                    len(tools),
+                )
+    except ImportError:
+        log.debug("Embodiment module not available — skipping phase entities")
+
+    return tools_generated
+
+
+def _imagine_entity_from_ref(ref: str) -> Any:
+    """Design an entity from a component ref string via imagination.
+
+    Extracts a human-readable name from the ref path (e.g.,
+    ``"items/cradle_sticky_lever"`` → ``"sticky lever"``) and uses
+    the EntityDesigner to create a minimal entity spec.
+
+    Returns an Entity or None if imagination is unavailable.
+    """
+    # Extract readable name: "items/cradle_sticky_lever" → "sticky lever"
+    name = ref.rsplit("/", 1)[-1]
+    name = name.replace("cradle_", "").replace("_", " ")
+
+    try:
+        from maxim.embodiment.sem import Entity
+        from maxim.embodiment.spec import SpecSensor
+
+        # Minimal entity with an examine affordance — imagination would
+        # produce richer specs but we keep this as a lightweight fallback
+        # that doesn't require an LLM call.
+        entity = Entity(
+            name=name.replace(" ", "_"),
+            entity_type="item",
+            metadata={"imagined": True, "source_ref": ref},
+        )
+        entity.sensors["presence"] = SpecSensor(
+            _name="presence",
+            _entity_name=entity.name,
+            _unit="ratio",
+            _schema={"type": "float", "range": [0, 1]},
+            _initial=1.0,
+            _entity_ref=entity,
+        )
+        entity.vital_metrics["presence"] = 1.0
+        log.info("Imagined minimal entity %r from ref %r", entity.name, ref)
+        return entity
+    except Exception as exc:
+        log.warning("Failed to imagine entity from ref %r: %s", ref, exc)
+        return None
+
+
 # ---------------------------------------------------------------------------
 # YAML export
 # ---------------------------------------------------------------------------
@@ -246,10 +353,32 @@ def run_generative_campaign(
     aut_responses: list[str] = []
     last_aut_response = ""
     finish_reason = "completed"
+    # Track per-phase entity activation
+    _activated_entities: set[str] = set()
+    _last_phase_idx: int = -1
 
     for turn_idx in range(max_turns):
         if narrator.is_done:
             break
+
+        # Activate world_entities when entering a new phase
+        if narrator._phase_idx != _last_phase_idx:
+            _last_phase_idx = narrator._phase_idx
+            if narrator._phase_idx < len(arc.phases):
+                phase = arc.phases[narrator._phase_idx]
+                if phase.world_entities:
+                    n_tools = _activate_phase_entities(
+                        phase.world_entities,
+                        tool_registry,
+                        _activated_entities,
+                    )
+                    if n_tools > 0:
+                        log.info(
+                            "Phase %r (act=%s): activated %d entity tools",
+                            phase.name,
+                            phase.act or "?",
+                            n_tools,
+                        )
 
         try:
             if use_two_call:
