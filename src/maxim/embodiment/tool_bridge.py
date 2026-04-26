@@ -98,6 +98,7 @@ class ModulatorAffordanceTool(Tool):
         tool_name: str,
         embodiment: Any = None,
         cerebellum: Any = None,
+        entity_map: Any = None,
     ) -> None:
         self.name = tool_name
         self.description = (
@@ -110,6 +111,7 @@ class ModulatorAffordanceTool(Tool):
         self._affordance_name = affordance_name
         self._embodiment = embodiment
         self._cerebellum = cerebellum
+        self._entity_map = entity_map
         super().__init__()
 
     def execute(self, **kwargs: Any) -> Any:
@@ -207,10 +209,38 @@ class ModulatorAffordanceTool(Tool):
             "active_failures": active_failures,
             **result.metadata,
         }
+        # Build side_effects dict
+        side_effects: dict[str, Any] | None = None
+        if active_failures:
+            side_effects = {"embodiment_failures": active_failures}
+
+        # Entity acquisition: if this is a pick_up affordance and the target
+        # is acquirable, signal the executor to reparent + register tools.
+        target_name = kwargs.get("object") or kwargs.get("target")
+        is_pickup = self._affordance_name == "pick_up" or (
+            self._affordance_name == "use"
+            and str(kwargs.get("action", "")).lower() in ("pick_up", "pickup", "grab", "take")
+        )
+        is_drop = self._affordance_name == "drop" or (
+            self._affordance_name == "use" and str(kwargs.get("action", "")).lower() in ("drop", "release", "put_down")
+        )
+        if is_pickup and target_name:
+            # Check if target entity is acquirable via entity_map
+            if self._entity_map is not None:
+                target_entity = self._entity_map.resolve(target_name)
+                if target_entity is not None and target_entity.metadata.get("acquirable"):
+                    if side_effects is None:
+                        side_effects = {}
+                    side_effects["entity_acquired"] = target_name
+        elif is_drop and target_name:
+            if side_effects is None:
+                side_effects = {}
+            side_effects["entity_released"] = target_name
+
         return ToolOutput(
             success=True,
             output=output_dict,
-            side_effects=({"embodiment_failures": active_failures} if active_failures else None),
+            side_effects=side_effects,
         )
 
 
@@ -312,6 +342,7 @@ def generate_tools_for_entity(
                     tname,
                     embodiment=embodiment,
                     cerebellum=cerebellum,
+                    entity_map=entity_map,
                 )
                 registry.register(tool)
                 existing.add(tname)

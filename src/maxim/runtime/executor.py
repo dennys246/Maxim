@@ -91,6 +91,7 @@ class Executor:
         # re-instantiating it. Read pre-wrap (FearGatedExecutor and
         # other wrappers do not proxy this attribute).
         self.embodiment: "Embodiment | None" = embodiment
+        self._entity_map: Any | None = None  # Set by build_executor for entity acquisition
         self._lock = threading.Lock()
         # (tool_name, start_time, invocation_id) or None
         self._running: tuple[str, float, str] | None = None
@@ -283,6 +284,11 @@ class Executor:
                         )
                     else:
                         self._tool_pain_bridge.record_tool_complete(tool_name, invocation_id, success=True)
+
+                    # -- Entity acquisition/release (Mechanism B) --
+                    if result.side_effects:
+                        self._handle_entity_acquisition(result.side_effects)
+
                 except Exception as bridge_err:
                     import logging as _logging
 
@@ -317,6 +323,57 @@ class Executor:
                     "metadata": result.metadata,
                 },
             )
+
+    def _handle_entity_acquisition(self, side_effects: dict[str, Any]) -> None:
+        """Handle entity_acquired / entity_released side_effects (Mechanism B).
+
+        When an agent picks up an acquirable entity, the entity is
+        reparented to the agent's body and its tools are registered.
+        When dropped, the entity is reparented back to scene and tools
+        are deregistered.
+        """
+        import logging as _logging
+
+        _log = _logging.getLogger(__name__)
+
+        entity_acquired = side_effects.get("entity_acquired")
+        if entity_acquired and self._entity_map is not None and self.embodiment is not None:
+            entity = self._entity_map.resolve(entity_acquired)
+            if entity is not None and not self._entity_map.is_self(entity):
+                # Reparent to agent body root
+                entity.reparent(self.embodiment.root)
+                self._entity_map.transfer_to_self(entity)
+                # Register the acquired entity's tools
+                try:
+                    from maxim.embodiment.tool_bridge import generate_tools_for_entity
+
+                    tools = generate_tools_for_entity(
+                        entity,
+                        self.registry,
+                        entity_map=self._entity_map,
+                    )
+                    _log.info("Entity acquired: %s (%d tools registered)", entity_acquired, len(tools))
+                except Exception as exc:
+                    _log.warning("Failed to register tools for acquired entity %s: %s", entity_acquired, exc)
+            elif entity is None:
+                _log.debug("entity_acquired: %s not found in entity_map", entity_acquired)
+
+        entity_released = side_effects.get("entity_released")
+        if entity_released and self._entity_map is not None and self.embodiment is not None:
+            entity = self._entity_map.resolve(entity_released)
+            if entity is not None and self._entity_map.is_self(entity):
+                # Deregister the entity's tools
+                try:
+                    for tool_name in list(self.registry.list_all()):
+                        if tool_name.startswith(f"{entity.name}_") or tool_name == f"sense_{entity.name}":
+                            self.registry.deregister(tool_name)
+                except Exception as exc:
+                    _log.warning("Failed to deregister tools for released entity %s: %s", entity_released, exc)
+                # Reparent back to scene (detach from agent body)
+                # Use the embodiment root's parent or create orphan
+                entity.reparent(self.embodiment.root.parent or self.embodiment.root)
+                self._entity_map.transfer_to_scene(entity)
+                _log.info("Entity released: %s", entity_released)
 
     def get_last_rpe(self) -> float:
         """Get RPE magnitude from the most recent tool execution.

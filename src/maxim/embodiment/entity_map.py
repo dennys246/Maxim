@@ -121,6 +121,30 @@ class EntityMap:
         with self._lock:
             return [e for e in self._deduplicated() if id(e) not in self._self_ids]
 
+    # -- Ownership transfer ---------------------------------------------------
+
+    def transfer_to_self(self, entity: Entity) -> None:
+        """Transfer a scene entity to self-owned (agent picked it up).
+
+        Adds the entity and all descendants to self-ownership.
+        Does NOT reparent — caller must call entity.reparent() first.
+        """
+        with self._lock:
+            self._self_ids.add(id(entity))
+            for child in entity.children:
+                self._self_ids.add(id(child))
+
+    def transfer_to_scene(self, entity: Entity) -> None:
+        """Transfer a self-owned entity back to scene (agent dropped it).
+
+        Removes the entity and all descendants from self-ownership.
+        Does NOT reparent — caller must call entity.reparent() first.
+        """
+        with self._lock:
+            self._self_ids.discard(id(entity))
+            for child in entity.children:
+                self._self_ids.discard(id(child))
+
     # -- Listing ------------------------------------------------------------
 
     def list_names(self) -> list[str]:
