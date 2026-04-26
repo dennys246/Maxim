@@ -1133,14 +1133,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 sys.exit(0 if result.review_verdict != "reject" else 1)
             else:
-                # Pure generative campaign — use the orchestrator with generative runner
-                # For now, delegate to start_simulation_mode with the goal
-                # The generative runner will be wired in as the default persona
+                # Pure generative campaign — use the orchestrator.
+                # When the goal matches a builtin narrative arc (cradle,
+                # memory_recall, etc.), enable the generative campaign runner
+                # so the narrator drives multi-turn structured phases.
                 from maxim.simulation.orchestrator import start_simulation_mode
 
                 persona = getattr(args, "sim_persona", "campaign")
                 debug = bool(_debug_raw)
                 resume_sim = getattr(args, "resume_sim", None)
+
+                # Auto-detect generative mode: if goal matches a builtin arc,
+                # route through the generative campaign runner.
+                _use_generative = False
+                try:
+                    from maxim.simulation.arcs import select_arc_for_goal
+
+                    if select_arc_for_goal(goal) is not None:
+                        _use_generative = True
+                except Exception:
+                    pass
 
                 result = start_simulation_mode(
                     goal=goal,
@@ -1155,6 +1167,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     aut_model=getattr(args, "aut_model", None),
                     max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                     entity_ref=_sim_entity_ref,
+                    generative=_use_generative,
                 )
                 sys.exit(0 if result.finish_reason != "error" else 1)
 
