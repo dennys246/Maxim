@@ -24,6 +24,7 @@ from maxim.decisions.causal_link import (
 
 if TYPE_CHECKING:
     from maxim.memory.semantic_promoter import PromotionCandidate
+    from maxim.models.bio_context import PredictionContext
 
 logger = logging.getLogger(__name__)
 
@@ -301,6 +302,7 @@ class NAc:
         outcome_valence: Valence,
         context: dict[str, Any] | None = None,
         memory_id: str | None = None,
+        prediction_context: PredictionContext | None = None,
     ) -> list[CausalLink]:
         """Record an outcome and attribute it to recent events.
 
@@ -334,6 +336,7 @@ class NAc:
         memory_id: str | None = None,
         attributed_event_id: str | None = None,
         attributed_event_signature: str | None = None,
+        prediction_context: "PredictionContext | None" = None,
     ) -> list[CausalLink]:
         """Record an outcome and attribute it to recent events (full API).
 
@@ -592,6 +595,7 @@ class NAc:
         event_type: str,
         event_signature: str,
         context: dict[str, Any] | None = None,
+        prediction_context: "PredictionContext | None" = None,
     ) -> OutcomePrediction | None:
         """Predict the outcome of a potential event/action.
 
@@ -719,6 +723,7 @@ class NAc:
         event_type: str,
         event_signature: str,
         context: dict[str, Any] | None = None,
+        prediction_context: "PredictionContext | None" = None,
     ) -> list[OutcomePrediction]:
         """Predict all possible outcomes for an event."""
         context = context or {}
@@ -759,7 +764,11 @@ class NAc:
     # QUERIES
     # ─────────────────────────────────────────────────────────────────────────
 
-    def get_links_for_event(self, event_signature: str) -> list[CausalLink]:
+    def get_links_for_event(
+        self,
+        event_signature: str,
+        prediction_context: "PredictionContext | None" = None,
+    ) -> list[CausalLink]:
         """Get all causal links originating from an event type."""
         return self._links.get(event_signature, [])
 

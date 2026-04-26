@@ -9,8 +9,11 @@ import json
 import logging
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from maxim.models.bio_context import EncodingContext
 
 from maxim.similarity.indices import InvertedIndices
 from maxim.similarity.lsh import LSHIndex, SemanticLSH
@@ -188,6 +191,7 @@ class EntorhinalCortex:
         modality: str,
         threshold: float | None = None,
         threshold_override: dict[str, float] | None = None,
+        encoding_context: "EncodingContext | None" = None,
     ) -> PatternResult:
         """Route an embedding to an existing ATL node or create a new one.
 
@@ -424,6 +428,7 @@ class EntorhinalCortex:
         query: str,
         k: int = 10,
         threshold: float = 0.5,
+        encoding_context: "EncodingContext | None" = None,
     ) -> list[tuple[str, float]]:
         """Find memories semantically similar to query text.
 

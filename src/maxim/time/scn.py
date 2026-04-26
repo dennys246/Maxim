@@ -11,7 +11,10 @@ import logging
 import time as _time
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from maxim.models.bio_context import TemporalContext
 
 from maxim.time.temporal_signature import TemporalSignature
 
@@ -202,6 +205,7 @@ class SCN:
         memory_id: str,
         signature: TemporalSignature,
         significance: float = 0.5,
+        temporal_context: "TemporalContext | None" = None,
     ) -> None:
         """Register a memory's temporal signature in all indices.
 
@@ -418,7 +422,11 @@ class SCN:
         """
         self._priors[pattern_name].add(hour_bin % 24)
 
-    def get_threshold_adjustment(self, signature: TemporalSignature) -> float:
+    def get_threshold_adjustment(
+        self,
+        signature: TemporalSignature,
+        temporal_context: "TemporalContext | None" = None,
+    ) -> float:
         """Get threshold adjustment factor for a given time.
 
         Used by EscalationLearningBridge to adjust thresholds based on
