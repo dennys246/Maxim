@@ -393,14 +393,24 @@ def run_generative_campaign(
         if narrator.is_done and not narrative:
             break
 
-        # Send to AUT via bridge
+        # Send to AUT via bridge.  Shorter timeout than default (120s)
+        # because the generative narrator drives pacing — if the AUT
+        # goes IDLE (deliberation converges to no-action, e.g., confused
+        # infant freezing after being burned), the narrator should
+        # continue with the next scene rather than waiting 2 minutes.
         try:
             bridge_result = bridge.send_and_wait(
                 narrative,
                 salience=0.8,
                 novelty=0.7,
+                timeout=30.0,
             )
             last_aut_response = bridge_result.get("response", "") or ""
+            if bridge_result.get("timed_out"):
+                log.info(
+                    "AUT went IDLE on turn %d (no action within 30s) — narrator continuing",
+                    turn_idx + 1,
+                )
         except Exception as e:
             log.error("Bridge failed at turn %d: %s", turn_idx + 1, e)
             last_aut_response = ""
