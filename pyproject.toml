@@ -4,16 +4,29 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pymaxim"
-version = "0.7.0"
-description = "Bio-inspired cognitive architecture with adaptive planning, biological memory systems, and local LLM inference. Works headless, with simulation, or connected to robots."
+version = "0.8.0"
+description = "Bio-inspired cognitive architecture for LLM agents — embodied sensation, homeostatic drives, and brain-modeled persistent memory enable cross-session learning without fine-tuning."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [{name = "Denny Schaedig"}]
-keywords = ["cognitive-architecture", "llm", "agentic", "planning", "embodied-ai", "robotics", "memory", "simulation", "bio-inspired"]
+keywords = [
+    "cognitive-architecture",
+    "bio-inspired",
+    "llm-agents",
+    "embodied-ai",
+    "sensorimotor",
+    "memory-systems",
+    "reinforcement-learning",
+    "robotics",
+    "simulation",
+    "homeostasis",
+    "pain-learning",
+    "cross-session-learning",
+]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3.10",
@@ -21,6 +34,8 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
 ]
 
 dependencies = [
@@ -38,8 +53,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/dennys246/Maxim"
-Repository = "https://github.com/dennys246/Maxim.git"
+Homepage = "https://www.dennyschaedig.com/maxim"
+Documentation = "https://www.dennyschaedig.com/maxim"
+Repository = "https://github.com/dennys246/Maxim"
 Issues = "https://github.com/dennys246/Maxim/issues"
 
 [project.optional-dependencies]
