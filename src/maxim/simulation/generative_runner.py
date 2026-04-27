@@ -357,6 +357,19 @@ def run_generative_campaign(
     _activated_entities: set[str] = set()
     _last_phase_idx: int = -1
 
+    # For embodied arcs (any arc with world_entities on its phases),
+    # deregister conversational tools that cause 14B models to fall
+    # into respond loops instead of using physical body tools.
+    _has_embodied_phases = any(p.world_entities for p in arc.phases)
+    if _has_embodied_phases and tool_registry is not None:
+        _conversational_tools = ("respond", "say")
+        for _ct in _conversational_tools:
+            try:
+                tool_registry.deregister(_ct)
+                log.info("Deregistered conversational tool %r for embodied arc", _ct)
+            except (KeyError, ValueError):
+                pass  # tool may not be registered
+
     for turn_idx in range(max_turns):
         if narrator.is_done:
             break

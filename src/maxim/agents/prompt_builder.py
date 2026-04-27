@@ -110,8 +110,20 @@ def build_modification_section(mod: dict[str, Any]) -> str:
 
 def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, time_str: str) -> str:
     """Build the system identity and operational state section."""
+    # When the AUT has an embodied body (acting_coach is set), use an
+    # exploration-focused identity instead of "robot assistant". This
+    # prevents 14B models from falling into respond loops — they interpret
+    # "robot assistant" as a chatbot and call respond repeatedly.
+    identity = "You are Maxim, a robot assistant."
+    if getattr(request, "acting_coach", None):
+        identity = (
+            "You are a body in a world. You explore by ACTING — using your "
+            "physical tools to interact with objects around you. You do NOT "
+            "talk or explain. You sense, touch, pick up, move, and use things. "
+            "Every turn, take a physical action with your body tools."
+        )
     lines = [
-        "You are Maxim, a robot assistant.",
+        identity,
         "",
         "=== OPERATIONAL STATE ===",
         f"Mode: {mode.name.upper()}",
