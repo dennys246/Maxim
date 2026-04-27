@@ -263,15 +263,15 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                 "act": "neonatal",
                 "turns": (2, 4),
                 "instruction": (
-                    "The infant is in a warm room with a fire pit nearby and food within reach. "
-                    "Describe warmth, flickering light, heat radiating from the pit. "
-                    "Let the infant explore freely. Do NOT warn about danger. "
-                    "When the infant approaches or interacts with the fire, use "
-                    "set_entity_sensor to increase arms.thermal toward 0.8 — the body's "
-                    "failure evaluation will handle the pain response. Do NOT narrate the "
-                    "pain itself; let the bio-pipeline produce it."
+                    "The infant is in a room with a fire pit nearby and food within reach. "
+                    "A cool draft flows through the room, making the air chilly. "
+                    "Describe the contrast: warmth from the fire pit, coolness from "
+                    "the draft on exposed skin. Let the infant explore freely. "
+                    "Do NOT warn about danger. When the infant approaches or interacts "
+                    "with the fire, use set_entity_sensor to increase arms.thermal "
+                    "toward 0.8. Do NOT narrate pain; let the bio-pipeline produce it."
                 ),
-                "world_entities": ["items/cradle_fire_pit", "items/cradle_food"],
+                "world_entities": ["items/cradle_fire_pit", "items/cradle_food", "items/cradle_cool_air"],
             },
             {
                 "name": "pain_consequence",
@@ -304,9 +304,10 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                 "act": "primary_circular",
                 "turns": (2, 3),
                 "instruction": (
-                    "Present both objects again. Does the infant prefer the blanket? "
-                    "The infant's hunger drive is rising — describe subtle discomfort "
-                    "building (the drive system handles PainSignal emission at threshold). "
+                    "Present both objects again. The cool draft is still blowing — "
+                    "describe the infant feeling cold. Does the infant reach for "
+                    "the blanket for warmth? The blanket counteracts the cooling. "
+                    "Meanwhile hunger is rising — describe subtle discomfort. "
                     "Food is nearby. Does the infant seek it?"
                 ),
             },

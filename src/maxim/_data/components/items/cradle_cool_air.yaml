@@ -1,0 +1,37 @@
+component:
+  name: cradle_cool_air
+  category: items
+  tags: [cradle, environment, thermal, cooling, homeostatic]
+  synonyms: [cool air, cold draft, chilly breeze, draft]
+  description: |
+    A persistent cool draft in the cradle room. Non-acquirable ambient
+    entity. Touching it (standing in the draft) cools the agent's
+    core temperature and arm thermal sensors. The agent must learn
+    to use the blanket to counteract the cooling and reach homeostasis.
+
+entity:
+  name: cool_air
+  entity_type: environment
+  sensors:
+    temperature:
+      unit: celsius_norm
+      range: [-1, 1]
+      initial: -0.4
+    intensity:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+  modulators:
+    draft:
+      affordances:
+        feel:
+          params: {}
+          description: "Stand in the cool draft and feel the air on your skin"
+          self_effect:
+            core_temperature: -0.2
+            arms.thermal: -0.15
+        shelter:
+          params: {}
+          description: "Move away from the draft to a sheltered spot"
+          self_effect:
+            core_temperature: 0.05
