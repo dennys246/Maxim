@@ -1093,7 +1093,12 @@ class PromptBuilder:
         counter = self._token_counter
 
         if request.conversation_history_text:
-            conv_text = _compact_conversation(request.conversation_history_text, 12)
+            # Embodied sims: bio-enrichment carries forward learned context,
+            # so conversation history can be much shorter. 3 turns gives
+            # the LLM the most recent scene + response without bloating
+            # the prompt on 14B models with limited n_ctx.
+            max_conv_turns = 3 if getattr(request, "acting_coach", None) else 12
+            conv_text = _compact_conversation(request.conversation_history_text, max_conv_turns)
             budgeter.add(
                 "conversation",
                 "=== Conversation History ===\n" + conv_text,
