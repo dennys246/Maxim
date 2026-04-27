@@ -112,7 +112,7 @@ class FakeMemoryHub:
 
 
 class FakeEnergyRegistry:
-    def get_stats(self):
+    def get_summary(self):
         return {"tokens_used": 1000, "cost_usd": 0.05}
 
 
