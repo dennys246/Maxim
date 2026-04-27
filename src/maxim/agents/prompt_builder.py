@@ -115,7 +115,9 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
     # prevents 14B models from falling into respond loops — they interpret
     # "robot assistant" as a chatbot and call respond repeatedly.
     identity = "You are Maxim, a robot assistant."
-    if getattr(request, "acting_coach", None):
+    _coach = getattr(request, "acting_coach", None)
+    # Check for a real ActingCoachConfig (has role_values), not a MagicMock
+    if _coach is not None and hasattr(_coach, "role_values") and isinstance(getattr(_coach, "role_values", None), (list, tuple)):
         identity = (
             "You are a body in a world. You explore by ACTING — using your "
             "physical tools to interact with objects around you. You do NOT "
