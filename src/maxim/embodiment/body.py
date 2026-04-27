@@ -112,6 +112,12 @@ class Embodiment:
         Returns list of newly-fired failure events.  Also publishes
         PainSignals through the PainBus if configured.
 
+        Automatically applies drive drift before evaluation: when
+        ``evaluate_failures`` is called from tool_bridge or simulation
+        tools (paths that don't use EmbodimentPerceptSource), drive
+        drift would otherwise never execute.  The dt is computed from
+        wall-clock time since the last evaluation.
+
         When an entity has ``metadata["health"] == "derived"``, entity
         health is computed from modulator component integrities before
         failure mode evaluation.  This enables component-level damage
@@ -126,6 +132,17 @@ class Embodiment:
           checked here for entities loaded without failure mode generation).
         """
         from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
+
+        # Apply drive drift before failure evaluation.  This ensures
+        # drives advance even in code paths that don't use
+        # EmbodimentPerceptSource (generative runner, tool_bridge
+        # immediate evaluation, sim tools).
+        now = time.time()
+        if self._last_poll > 0:
+            drift_dt = now - self._last_poll
+            if drift_dt > 0:
+                self.tick_vital_drift(drift_dt)
+        self._last_poll = now
 
         events: list[FailureEvent] = []
 
