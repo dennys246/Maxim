@@ -80,7 +80,7 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect), `interactive` (redirects to generative sim with full interactive stack). No argument with bare `maxim`: Rich menu with campaign discovery. |
+| `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect), `interactive` (redirects to generative sim with full interactive stack), `cradle` (sensorimotor developmental sim — requires `--embodiment bodies/infant_humanoid`). Goals matching builtin arcs (cradle, memory_recall, causal_learning, etc.) auto-enable the generative narrator. No argument with bare `maxim`: Rich menu with campaign discovery. |
 | `--sim-goal`, `--goal` | str | None | Simulation goal (alternative to passing goal as `--sim` value) |
 | `--sim-persona`, `--persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement` |
 | `--dm` | flag | | DM campaign mode. With `--sim <goal>`: generate. With `--sim <path.yaml>`: auto-detected. |

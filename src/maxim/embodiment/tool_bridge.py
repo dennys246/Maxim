@@ -98,6 +98,7 @@ class ModulatorAffordanceTool(Tool):
         tool_name: str,
         embodiment: Any = None,
         cerebellum: Any = None,
+        entity_map: Any = None,
     ) -> None:
         self.name = tool_name
         self.description = (
@@ -108,8 +109,10 @@ class ModulatorAffordanceTool(Tool):
         self._entity = entity
         self._modulator = modulator
         self._affordance_name = affordance_name
+        self._affordance_schema = schema
         self._embodiment = embodiment
         self._cerebellum = cerebellum
+        self._entity_map = entity_map
         super().__init__()
 
     def execute(self, **kwargs: Any) -> Any:
@@ -207,10 +210,99 @@ class ModulatorAffordanceTool(Tool):
             "active_failures": active_failures,
             **result.metadata,
         }
+        # Self-effect: voluntary affordance execution can write back to agent body.
+        # Only fires when the agent explicitly called the tool (not reflex/orchestrator).
+        # Supports both entity-level sensors ("hunger") and qualified modulator
+        # sub-sensors ("arms.thermal") for transient contact effects.
+        if self._affordance_schema.self_effect and self._embodiment is not None:
+            for sensor_name, delta in self._affordance_schema.self_effect.items():
+                old_val: float | None = None
+                target_metrics: dict[str, float] | None = None
+                target_key: str = sensor_name
+
+                if "." in sensor_name:
+                    # Qualified modulator sub-sensor: "arms.thermal"
+                    mod_name, sub_name = sensor_name.split(".", 1)
+                    mod = self._embodiment.root.modulators.get(mod_name)
+                    if mod is not None and hasattr(mod, "vital_metrics"):
+                        target_metrics = mod.vital_metrics
+                        target_key = sub_name
+                        old_val = target_metrics.get(sub_name)
+                else:
+                    # Entity-level sensor
+                    target_metrics = self._embodiment.root.vital_metrics
+                    old_val = target_metrics.get(sensor_name)
+
+                if old_val is not None and target_metrics is not None:
+                    # Clamp to sensor range if available, else [0, 1]
+                    lo, hi = 0.0, 1.0
+                    if "." in sensor_name:
+                        mod_name, sub_name = sensor_name.split(".", 1)
+                        mod = self._embodiment.root.modulators.get(mod_name)
+                        if mod is not None and hasattr(mod, "_sensors"):
+                            sub_spec = mod._sensors.get(sub_name, {})
+                            if isinstance(sub_spec, dict) and "range" in sub_spec:
+                                lo, hi = sub_spec["range"]
+                    else:
+                        sensor = self._embodiment.root.sensors.get(sensor_name)
+                        if sensor is not None:
+                            rng = sensor.reading_schema.get("range")
+                            if rng and len(rng) == 2:
+                                lo, hi = rng
+                    new_val = max(lo, min(hi, old_val + delta))
+                    target_metrics[target_key] = new_val
+                    try:
+                        from maxim.simulation.sim_logger import sim_sensor
+
+                        sim_sensor(
+                            self._embodiment.root.full_path,
+                            sensor_name,
+                            new_val,
+                            baseline=old_val,
+                        )
+                    except Exception:
+                        pass
+                else:
+                    import logging as _logging
+
+                    _logging.getLogger(__name__).warning(
+                        "self_effect target %r not found on agent body %s",
+                        sensor_name,
+                        self._embodiment.root.name,
+                    )
+
+        # Build side_effects dict
+        side_effects: dict[str, Any] | None = None
+        if active_failures:
+            side_effects = {"embodiment_failures": active_failures}
+
+        # Entity acquisition: if this is a pick_up affordance and the target
+        # is acquirable, signal the executor to reparent + register tools.
+        target_name = kwargs.get("object") or kwargs.get("target")
+        is_pickup = self._affordance_name == "pick_up" or (
+            self._affordance_name == "use"
+            and str(kwargs.get("action", "")).lower() in ("pick_up", "pickup", "grab", "take")
+        )
+        is_drop = self._affordance_name == "drop" or (
+            self._affordance_name == "use" and str(kwargs.get("action", "")).lower() in ("drop", "release", "put_down")
+        )
+        if is_pickup and target_name:
+            # Check if target entity is acquirable via entity_map
+            if self._entity_map is not None:
+                target_entity = self._entity_map.resolve(target_name)
+                if target_entity is not None and target_entity.metadata.get("acquirable"):
+                    if side_effects is None:
+                        side_effects = {}
+                    side_effects["entity_acquired"] = target_name
+        elif is_drop and target_name:
+            if side_effects is None:
+                side_effects = {}
+            side_effects["entity_released"] = target_name
+
         return ToolOutput(
             success=True,
             output=output_dict,
-            side_effects=({"embodiment_failures": active_failures} if active_failures else None),
+            side_effects=side_effects,
         )
 
 
@@ -312,6 +404,7 @@ def generate_tools_for_entity(
                     tname,
                     embodiment=embodiment,
                     cerebellum=cerebellum,
+                    entity_map=entity_map,
                 )
                 registry.register(tool)
                 existing.add(tname)

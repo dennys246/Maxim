@@ -27,6 +27,7 @@ class SimulationAdapter:
         self.percept_source = percept_source
         self.action_sink = action_sink
         self.pain_bus = pain_bus
+        self._tool_registry: Any | None = None  # set by orchestrator for deregistered-tool filtering
         self._grace_deadline: float | None = None
         self._grace_action_count: int = 0
 
@@ -123,8 +124,25 @@ class SimulationAdapter:
             pass
 
     def should_skip_fallback_proposal(self, proposal: Any) -> bool:
-        """In sim mode, skip fallback proposals — wait for real LLM."""
-        return getattr(proposal, "reasoning", "") == "llm_fallback"
+        """In sim mode, skip fallback proposals — wait for real LLM.
+
+        Also skips proposals for deregistered tools (e.g., 'respond' in
+        embodied arcs where conversational tools are removed).
+        """
+        if getattr(proposal, "reasoning", "") == "llm_fallback":
+            return True
+        # If the proposed tool doesn't exist in the registry, skip it
+        action = getattr(proposal, "action", None)
+        if isinstance(action, dict):
+            tool_name = action.get("tool_name", "")
+            if tool_name and self._tool_registry is not None:
+                try:
+                    available = self._tool_registry.list_all()
+                    if tool_name not in available and tool_name != "_llm_unavailable":
+                        return True
+                except Exception:
+                    pass
+        return False
 
     def resolve_confirmation(self, confirmation: dict[str, Any]) -> str | None:
         """Auto-resolve confirmation prompts using the bridge's response policy."""

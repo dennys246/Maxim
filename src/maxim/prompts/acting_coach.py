@@ -139,6 +139,12 @@ def compose_acting_coach_section(
             lines.extend(cerebellum_notes)
             lines.append("")
 
+        # --- Layer 4: Drive modulation (interoceptive needs) ---
+        drive_note = _compose_drive_modulation(body_state)
+        if drive_note:
+            lines.append(drive_note)
+            lines.append("")
+
     return "\n".join(lines)
 
 
@@ -247,6 +253,39 @@ def _compose_pain_anticipation(body_state: str) -> str:
             "of sensor changes."
         )
     return ""
+
+
+def _compose_drive_modulation(body_state: str) -> str:
+    """Extract drive state signals from body_state and compose guidance.
+
+    The body_state string carries DRIVE annotations from the drive protocol
+    (e.g., "DRIVE: deprived, intensity 0.30" for hunger, "DRIVE: outside
+    comfort band" for temperature).  This function translates those into
+    actionable guidance for the LLM.
+    """
+    if not body_state:
+        return ""
+
+    lower = body_state.lower()
+    drive_notes: list[str] = []
+
+    if "drive: deprived" in lower:
+        drive_notes.append(
+            "Your body has unmet needs. Prioritize finding ways to "
+            "address them — seek food, water, or rest as appropriate."
+        )
+    if "drive: outside comfort band" in lower:
+        drive_notes.append(
+            "Your body temperature or pressure is outside the comfortable "
+            "range. Consider moving away from the source of discomfort, "
+            "or seek shelter/warmth as needed."
+        )
+    if "drive: rising" in lower:
+        drive_notes.append("A need is building but not yet urgent. Keep it in mind as you plan your next actions.")
+
+    if not drive_notes:
+        return ""
+    return "=== Body Needs ===\n" + "\n".join(drive_notes)
 
 
 def _compose_cerebellum_predictions(

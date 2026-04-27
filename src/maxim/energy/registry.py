@@ -58,7 +58,6 @@ class EnergyRegistry:
 
         # Register trackers
         registry.register(LLMEnergyTracker())
-        registry.register(MovementEnergyTracker())
 
         # Get unified summary
         summary = registry.get_summary()

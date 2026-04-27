@@ -146,7 +146,7 @@ class Observer:
         if self._energy_registry is None:
             return {"available": False, "reason": "energy registry not wired"}
         try:
-            stats = self._energy_registry.get_stats()
+            stats = self._energy_registry.get_summary()
             return {"available": True, **stats}
         except Exception:
             return {"available": True, "error": "stats unavailable"}

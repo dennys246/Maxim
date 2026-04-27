@@ -56,10 +56,12 @@ class Embodiment:
         *,
         config: EmbodimentConfig | None = None,
         pain_bus: Any | None = None,
+        distributor: Any | None = None,
     ) -> None:
         self.root = root
         self.config = config or EmbodimentConfig()
         self._pain_bus = pain_bus
+        self._distributor = distributor  # TemporalCreditDistributor for SCN drive events
         self._failure_history: list[FailureEvent] = []
         self._last_poll: float = 0.0
         self._tick_count: int = 0
@@ -110,12 +112,38 @@ class Embodiment:
         Returns list of newly-fired failure events.  Also publishes
         PainSignals through the PainBus if configured.
 
+        Automatically applies drive drift before evaluation: when
+        ``evaluate_failures`` is called from tool_bridge or simulation
+        tools (paths that don't use EmbodimentPerceptSource), drive
+        drift would otherwise never execute.  The dt is computed from
+        wall-clock time since the last evaluation.
+
         When an entity has ``metadata["health"] == "derived"``, entity
         health is computed from modulator component integrities before
         failure mode evaluation.  This enables component-level damage
         to cascade upward to entity-level failure modes (e.g., wing
         integrity < 0.3 → entity health drops → death failure mode).
+
+        Drive-spec evaluation:
+        - Homeostatic drives emit pain proportional to deviation from
+          set_point beyond comfort_band.
+        - Entropic drives emit pain when crossing deprivation_threshold
+          (handled via auto-generated failure modes at parse time, or
+          checked here for entities loaded without failure mode generation).
         """
+        from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
+
+        # Apply drive drift before failure evaluation.  This ensures
+        # drives advance even in code paths that don't use
+        # EmbodimentPerceptSource (generative runner, tool_bridge
+        # immediate evaluation, sim tools).
+        now = time.time()
+        if self._last_poll > 0:
+            drift_dt = now - self._last_poll
+            if drift_dt > 0:
+                self.tick_vital_drift(drift_dt)
+        self._last_poll = now
+
         events: list[FailureEvent] = []
 
         for ent in self.root.walk():
@@ -130,9 +158,6 @@ class Embodiment:
             for mod_name, mod in ent.modulators.items():
                 if hasattr(mod, "compute_integrity") and hasattr(mod, "vital_metrics") and mod.vital_metrics:
                     ent.vital_metrics[f"{mod_name}.integrity"] = mod.compute_integrity()
-
-            if not ent.failure_modes:
-                continue
 
             # collect scalar sensor values for trigger evaluation
             readings: dict[str, float] = {}
@@ -150,6 +175,14 @@ class Embodiment:
                 if vname not in readings:
                     readings[vname] = vval
 
+            # Include modulator sub-sensor vital_metrics for drive evaluation
+            for mod_name, mod in ent.modulators.items():
+                if hasattr(mod, "vital_metrics"):
+                    for ms_name, ms_val in mod.vital_metrics.items():
+                        qualified = f"{mod_name}.{ms_name}"
+                        if qualified not in readings:
+                            readings[qualified] = ms_val
+
             # Log sensor readings for display/JSONL (Track 5: SEM observability)
             try:
                 from maxim.simulation.sim_logger import sim_sensor
@@ -160,6 +193,7 @@ class Embodiment:
             except Exception:
                 pass
 
+            # -- Standard failure mode evaluation --
             for fm in ent.failure_modes:
                 if fm.evaluate(readings):
                     event = FailureEvent(
@@ -172,7 +206,122 @@ class Embodiment:
                     self._failure_history.append(event)
                     self._publish_pain(ent, fm, readings)
 
+            # -- Drive-spec pain evaluation --
+            for ds_name, ds in ent.drive_specs.items():
+                current = readings.get(ds_name)
+                if current is None:
+                    continue
+
+                # Drive state trace (for --display debug / JSONL)
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+
+                    if isinstance(ds, HomeostaticDriveSpec):
+                        deviation = abs(current - ds.set_point)
+                        sim_log(
+                            f"drive:{ds_name}",
+                            f"val={current:.3f} set={ds.set_point} dev={deviation:.3f} band={ds.comfort_band}",
+                        )
+                    elif isinstance(ds, EntropicDriveSpec):
+                        sim_log(
+                            f"drive:{ds_name}",
+                            f"val={current:.3f} threshold={ds.deprivation_threshold} dir={ds.drift_direction}",
+                        )
+                except Exception:
+                    pass
+
+                if isinstance(ds, HomeostaticDriveSpec):
+                    deviation = abs(current - ds.set_point)
+                    excess = deviation - ds.comfort_band
+                    if excess > 0:
+                        intensity = excess * ds.pain_scale
+                        event = FailureEvent(
+                            entity_path=ent.full_path,
+                            failure_name=f"drive:{ds_name}:discomfort",
+                            pain_intensity=min(1.0, intensity),
+                            sensor_readings=dict(readings),
+                        )
+                        events.append(event)
+                        self._failure_history.append(event)
+                        self._publish_drive_pain(ent, ds_name, intensity, readings)
+
+                elif isinstance(ds, EntropicDriveSpec):
+                    if ds.drift_direction == "up" and current >= ds.deprivation_threshold:
+                        event = FailureEvent(
+                            entity_path=ent.full_path,
+                            failure_name=f"drive:{ds_name}:deprived",
+                            pain_intensity=ds.deprivation_pain,
+                            sensor_readings=dict(readings),
+                        )
+                        events.append(event)
+                        self._failure_history.append(event)
+                        self._publish_drive_pain(ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived")
+                    elif ds.drift_direction == "down" and current <= ds.deprivation_threshold:
+                        event = FailureEvent(
+                            entity_path=ent.full_path,
+                            failure_name=f"drive:{ds_name}:deprived",
+                            pain_intensity=ds.deprivation_pain,
+                            sensor_readings=dict(readings),
+                        )
+                        events.append(event)
+                        self._failure_history.append(event)
+                        self._publish_drive_pain(ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived")
+
         return events
+
+    def _publish_drive_pain(
+        self,
+        entity: Entity,
+        drive_name: str,
+        intensity: float,
+        readings: dict[str, float],
+        *,
+        event_suffix: str = "discomfort",
+    ) -> None:
+        """Publish a PainSignal for a drive-spec threshold crossing."""
+        if not self.config.enable_pain or self._pain_bus is None:
+            return
+
+        try:
+            from maxim.proprioception.pain import PainSignal, PainType
+
+            signal = PainSignal(
+                pain_type=PainType.EXTERNAL_SIGNAL,
+                intensity=min(1.0, max(0.0, intensity)),
+                timestamp=time.time(),
+                context={
+                    "source": f"drive:{drive_name}",
+                    "entity": entity.full_path,
+                    "entity_type": entity.entity_type,
+                    "failure_mode": f"drive:{drive_name}",
+                    "sensor_readings": {k: v for k, v in readings.items() if isinstance(v, (int, float))},
+                    "entity_path": entity.full_path,
+                },
+            )
+            self._pain_bus.publish(signal)
+        except Exception as exc:
+            log.debug("Drive pain publish failed for %s: %s", drive_name, exc)
+
+        # Emit TemporalEvent for SCN oscillator learning (best-effort)
+        self._emit_drive_temporal_event(f"drive:{drive_name}:{event_suffix}", entity.name)
+
+    def _emit_drive_temporal_event(self, event_type: str, agent_id: str) -> None:
+        """Emit a TemporalEvent for a drive state transition (best-effort)."""
+        if self._distributor is None:
+            return
+        try:
+            from maxim.time.temporal_event import TemporalEvent
+            from maxim.time.temporal_signature import TemporalSignature
+
+            event = TemporalEvent(
+                event_type=event_type,
+                agent_id=agent_id,
+                temporal_signature=TemporalSignature.now(),
+                metadata={"source": "drive_protocol"},
+            )
+            self._distributor.record_event(event)
+        except Exception as exc:
+            log.debug("Drive temporal event failed for %s: %s", event_type, exc)
 
     def _publish_pain(
         self,
@@ -226,15 +375,56 @@ class Embodiment:
     # -- vital metric drift -------------------------------------------------
 
     def tick_vital_drift(self, dt: float = 1.0) -> None:
-        """Apply linear drift to vital metrics.
+        """Apply drift to vital metrics via drive specs or legacy hardcoded names.
 
-        Called once per poll cycle.  Drift rate is configured in
-        ``EmbodimentConfig.vital_drift_rate``.
+        Called once per poll cycle.  Drive specs on the entity take
+        precedence over the legacy hardcoded metric-name dispatch.
+        Homeostatic drives drift toward ``set_point``; entropic drives
+        drift in ``drift_direction``.
         """
+        from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
+
         rate = self.config.vital_drift_rate
         for ent in self.root.walk():
+            # --- Drive-spec-based drift (preferred) ---
+            for ds_name, ds in ent.drive_specs.items():
+                # Resolve the sensor value — could be entity-level or modulator-level
+                if "." in ds_name:
+                    mod_name, sensor_name = ds_name.split(".", 1)
+                    mod = ent.modulators.get(mod_name)
+                    if mod is None or not hasattr(mod, "vital_metrics"):
+                        continue
+                    current = mod.vital_metrics.get(sensor_name)
+                    if current is None:
+                        continue
+                    if isinstance(ds, HomeostaticDriveSpec):
+                        delta = ds.set_point - current
+                        step = min(abs(delta), ds.drift_rate * dt)
+                        mod.vital_metrics[sensor_name] = current + (step if delta > 0 else -step)
+                    elif isinstance(ds, EntropicDriveSpec):
+                        if ds.drift_direction == "up":
+                            mod.vital_metrics[sensor_name] = min(1.0, current + ds.drift_rate * dt)
+                        else:
+                            mod.vital_metrics[sensor_name] = max(0.0, current - ds.drift_rate * dt)
+                else:
+                    current = ent.vital_metrics.get(ds_name)
+                    if current is None:
+                        continue
+                    if isinstance(ds, HomeostaticDriveSpec):
+                        delta = ds.set_point - current
+                        step = min(abs(delta), ds.drift_rate * dt)
+                        ent.vital_metrics[ds_name] = current + (step if delta > 0 else -step)
+                    elif isinstance(ds, EntropicDriveSpec):
+                        if ds.drift_direction == "up":
+                            ent.vital_metrics[ds_name] = min(1.0, current + ds.drift_rate * dt)
+                        else:
+                            ent.vital_metrics[ds_name] = max(0.0, current - ds.drift_rate * dt)
+
+            # --- Legacy hardcoded drift (for entities without drive specs) ---
+            driven_sensors = set(ent.drive_specs.keys())
             for vname in list(ent.vital_metrics.keys()):
-                # Drift toward degradation (e.g., fatigue increases)
+                if vname in driven_sensors:
+                    continue  # already handled by drive spec
                 if vname in ("fatigue", "strain", "exhaustion"):
                     ent.vital_metrics[vname] = min(
                         1.0,
@@ -245,7 +435,6 @@ class Embodiment:
                         0.0,
                         ent.vital_metrics[vname] - rate * dt,
                     )
-                # Other metrics don't drift by default
 
     # -- body state snapshot for prompts ------------------------------------
 
@@ -302,6 +491,41 @@ class Embodiment:
 
                 ent_state["sensors"][sname] = sensor_info
 
+            # Include drive state from vital_metrics for sensors with DriveSpecs
+            # that may not be captured by sensor.read() (vital_metrics path)
+            from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
+
+            for ds_name, ds in ent.drive_specs.items():
+                if ds_name in ent_state["sensors"]:
+                    # Already captured — add drive annotation
+                    val = ent_state["sensors"][ds_name]["value"]
+                elif "." not in ds_name and ds_name in ent.vital_metrics:
+                    # Entity-level vital metric not captured by sensor read
+                    val = ent.vital_metrics[ds_name]
+                    ent_state["sensors"][ds_name] = {"value": val, "unit": "ratio"}
+                else:
+                    continue
+
+                # Annotate with drive state
+                if isinstance(ds, HomeostaticDriveSpec):
+                    deviation = abs(val - ds.set_point)
+                    if deviation > ds.comfort_band:
+                        excess = deviation - ds.comfort_band
+                        ent_state["sensors"][ds_name]["drive"] = (
+                            f"outside comfort band, discomfort {excess * ds.pain_scale:.2f}"
+                        )
+                    else:
+                        ent_state["sensors"][ds_name]["drive"] = "comfortable"
+                elif isinstance(ds, EntropicDriveSpec):
+                    if ds.drift_direction == "up" and val >= ds.deprivation_threshold:
+                        ent_state["sensors"][ds_name]["drive"] = f"deprived, intensity {ds.deprivation_pain:.2f}"
+                    elif ds.drift_direction == "down" and val <= ds.deprivation_threshold:
+                        ent_state["sensors"][ds_name]["drive"] = f"deprived, intensity {ds.deprivation_pain:.2f}"
+                    elif ds.drift_direction == "up" and val > ds.satisfaction_threshold:
+                        ent_state["sensors"][ds_name]["drive"] = "rising"
+                    else:
+                        ent_state["sensors"][ds_name]["drive"] = "satisfied"
+
             if ent_state["sensors"]:
                 summary.append(ent_state)
 
@@ -320,11 +544,14 @@ class Embodiment:
                 unit = sinfo.get("unit", "")
                 val = sinfo["value"]
                 warning = sinfo.get("warning")
+                drive = sinfo.get("drive")
+                parts = [f"- {ent_state['entity']}.{sname}: {val}{unit}"]
+                if drive:
+                    parts.append(f"(DRIVE: {drive})")
                 if warning:
-                    lines.append(f"- {ent_state['entity']}.{sname}: {val}{unit} (WARN: {warning})")
+                    parts.append(f"(WARN: {warning})")
                     has_warnings = True
-                else:
-                    lines.append(f"- {ent_state['entity']}.{sname}: {val}{unit}")
+                lines.append(" ".join(parts))
 
         if has_warnings:
             lines[0] = "=== Body State (pain-relevant) ==="

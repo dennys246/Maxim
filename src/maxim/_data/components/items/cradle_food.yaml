@@ -1,0 +1,30 @@
+component:
+  name: cradle_food
+  category: items
+  tags: [cradle, food, satisfaction, drive]
+  description: |
+    A food source with multiple portions. Eating reduces the agent's
+    hunger via self_effect. Portions decrease on consumption.
+
+entity:
+  name: food_source
+  entity_type: consumable
+  sensors:
+    portions:
+      unit: count
+      range: [0, 5]
+      initial: 5
+    freshness:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.9
+  modulators:
+    nutrition:
+      affordances:
+        eat:
+          params: {}
+          description: "Eat the food to satisfy hunger"
+          requires:
+            portions: 1
+          self_effect:
+            hunger: -0.4

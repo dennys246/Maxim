@@ -1486,6 +1486,7 @@ def start_simulation_mode(
     generative_result = None
     if generative:
         from maxim.simulation.campaign_runner import run_generative_campaign as _run_gen
+        from maxim.utils.paths import sim_reports as _gen_reports_dir
 
         generative_result = _run_gen(
             goal=goal,
@@ -1494,7 +1495,7 @@ def start_simulation_mode(
             arc_yaml=arc_yaml,
             max_turns=max_turns,
             tool_registry=aut_registry,
-            session_dir_base=str(_sim_reports_dir() / time.strftime("%Y%m%d_%H%M%S")),
+            session_dir_base=str(_gen_reports_dir() / time.strftime("%Y%m%d_%H%M%S")),
         )
         stop_event.set()
 

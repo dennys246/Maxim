@@ -110,8 +110,22 @@ def build_modification_section(mod: dict[str, Any]) -> str:
 
 def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, time_str: str) -> str:
     """Build the system identity and operational state section."""
+    # When the AUT has an embodied body (acting_coach is set), use an
+    # exploration-focused identity instead of "robot assistant". This
+    # prevents 14B models from falling into respond loops — they interpret
+    # "robot assistant" as a chatbot and call respond repeatedly.
+    identity = "You are Maxim, a robot assistant."
+    _coach = getattr(request, "acting_coach", None)
+    # Check for a real ActingCoachConfig (has role_values), not a MagicMock
+    if _coach is not None and hasattr(_coach, "role_values") and isinstance(getattr(_coach, "role_values", None), (list, tuple)):
+        identity = (
+            "You are a body in a world. You explore by ACTING — using your "
+            "physical tools to interact with objects around you. You do NOT "
+            "talk or explain. You sense, touch, pick up, move, and use things. "
+            "Every turn, take a physical action with your body tools."
+        )
     lines = [
-        "You are Maxim, a robot assistant.",
+        identity,
         "",
         "=== OPERATIONAL STATE ===",
         f"Mode: {mode.name.upper()}",
@@ -1081,7 +1095,12 @@ class PromptBuilder:
         counter = self._token_counter
 
         if request.conversation_history_text:
-            conv_text = _compact_conversation(request.conversation_history_text, 12)
+            # Embodied sims: bio-enrichment carries forward learned context,
+            # so conversation history can be much shorter. 3 turns gives
+            # the LLM the most recent scene + response without bloating
+            # the prompt on 14B models with limited n_ctx.
+            max_conv_turns = 3 if getattr(request, "acting_coach", None) else 12
+            conv_text = _compact_conversation(request.conversation_history_text, max_conv_turns)
             budgeter.add(
                 "conversation",
                 "=== Conversation History ===\n" + conv_text,

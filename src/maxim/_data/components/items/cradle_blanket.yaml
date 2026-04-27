@@ -1,0 +1,41 @@
+component:
+  name: cradle_blanket
+  category: items
+  tags: [cradle, comfort, thermal, acquirable]
+  description: |
+    A soft warm blanket. Acquirable — picking it up adds its thermal
+    warmth (+0.2) to the agent's sensor space. When the agent is cool
+    (below core temperature set_point), this provides homeostatic
+    relief. When warm, it adds discomfort. Contextual valence from
+    the homeostatic drive protocol.
+
+entity:
+  name: blanket
+  entity_type: item
+  acquirable: true
+  on_acquire: equip
+  sensors:
+    texture:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.1  # very smooth
+    thermal:
+      unit: celsius_norm
+      range: [-1, 1]
+      initial: 0.2  # mild warmth
+  modulators:
+    fabric:
+      affordances:
+        wrap:
+          params: {}
+          description: "Wrap the blanket around yourself for warmth"
+          self_effect:
+            core_temperature: 0.1  # mild warming when wrapped
+        touch:
+          params: {}
+          description: "Touch the blanket to feel its texture and warmth"
+          self_effect:
+            arms.thermal: 0.1  # brief mild warmth on arms
+        examine:
+          params: {}
+          description: "Look closely at the blanket's texture"

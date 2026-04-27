@@ -1,0 +1,97 @@
+component:
+  name: infant_humanoid
+  extends: bodies/base_humanoid
+  category: bodies
+  archetype: humanoid
+  tags: [body, humanoid, infant, cradle, developmental]
+  synonyms: [infant body, baby body, newborn, infant agent]
+  description: |
+    Infant humanoid body for the cradle sensorimotor development scenario.
+    Extends base_humanoid with interoceptive drives (hunger, thirst,
+    core temperature) and somatosensory sub-sensors (thermal, pressure,
+    texture) on arms and head. Drives use the homeostatic/entropic
+    protocol for biologically-grounded need signals.
+
+entity:
+  name: infant_humanoid
+  entity_type: body
+
+  # Interoceptive drives (entity-level sensors)
+  sensors:
+    hunger:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      drive:
+        drift_mode: entropic
+        drift_direction: up
+        drift_rate: 0.006           # reaches 0.7 in ~120s (tuned for 15-turn PoC)
+        deprivation_threshold: 0.7
+        deprivation_pain: 0.3
+        satisfaction_threshold: 0.3
+    thirst:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      drive:
+        drift_mode: entropic
+        drift_direction: up
+        drift_rate: 0.008           # reaches 0.6 in ~75s
+        deprivation_threshold: 0.6
+        deprivation_pain: 0.25
+        satisfaction_threshold: 0.3
+    core_temperature:
+      unit: celsius_norm
+      range: [-1, 1]
+      initial: -0.15  # slightly cool — blanket provides relief
+      drive:
+        drift_mode: homeostatic
+        set_point: 0.0
+        drift_rate: 0.001
+        comfort_band: 0.4
+        pain_scale: 0.5
+
+  # Somatosensory sub-sensors on modulators (deep-merged onto base_humanoid)
+  modulators:
+    arms:
+      sensors:
+        thermal:
+          unit: celsius_norm
+          range: [-1, 1]
+          initial: 0.0
+          weight: 0.0
+          drive:
+            drift_mode: homeostatic
+            set_point: 0.0
+            drift_rate: 0.0008
+            comfort_band: 0.5
+            pain_scale: 0.4
+        pressure:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.0
+          weight: 0.0
+          drive:
+            drift_mode: homeostatic
+            set_point: 0.0
+            drift_rate: 0.002
+            comfort_band: 0.6
+            pain_scale: 0.3
+        texture:
+          unit: ratio
+          range: [0, 1]
+          initial: 0.5
+          weight: 0.0
+    head:
+      sensors:
+        thermal:
+          unit: celsius_norm
+          range: [-1, 1]
+          initial: 0.0
+          weight: 0.0
+          drive:
+            drift_mode: homeostatic
+            set_point: 0.0
+            drift_rate: 0.0008
+            comfort_band: 0.5
+            pain_scale: 0.4

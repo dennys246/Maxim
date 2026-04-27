@@ -700,6 +700,9 @@ def run_agentic_loop(
 
     if percept_source is not None:
         sim = SimulationAdapter(percept_source, action_sink, pain_bus)
+        # Wire tool registry for deregistered-tool filtering in should_skip_fallback_proposal
+        if executor is not None and hasattr(executor, "registry"):
+            sim._tool_registry = executor.registry
     else:
         sim = NullSimulationAdapter()
 

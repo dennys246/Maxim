@@ -105,17 +105,18 @@ Phase 1 shipped (scene manifest pre-trigger, head-noun alias fallback). Remainin
 
 ### B4. Cradle of Artificial Civilization
 
-**Companion plan:** [cradle_sensorimotor_development.md](cradle_sensorimotor_development.md) (~500-800 LOC)
+**Companion plan:** [cradle_sensorimotor_development.md](cradle_sensorimotor_development.md) (~550-650 LOC)
 
-A newborn agent that learns from sensation, not language. Strip away LLM world knowledge and force learning through direct sensorimotor experience. The agent doesn't "know" fire is dangerous because GPT said so — it knows because touching fire triggered pain in its thermal sensors, and NAc formed a causal link between the thermal spike and negative valence.
+A newborn agent that learns from sensation, not language. Three-layer sensation model (contact via entity acquisition, proximity via orchestrator sensor writes, narrative fallback via keyword reflexes) all converging on the same downstream pipeline. Multi-act developmental scenario mimicking Piaget's sensorimotor stages.
 
 **Key deliverables:**
-1. **Somatosensory registry** — distributed sensor patches (thermal, pressure, sharp, texture) across body regions
-2. **Interoceptive drives** — hunger, fatigue, curiosity as internal signals that modulate behavior
-3. **Cradle environment** — controlled scenario where sensorimotor contingencies are discoverable (hot stove, sharp objects, soft bedding)
-4. **Validation experiment** — fresh agent + 3-5 sessions → demonstrate learned avoidance of harmful stimuli AND approach toward beneficial ones, purely through bio-pipeline learning
+1. **Drive protocol** — `HomeostaticDriveSpec` (temperature, pressure, stamina — body self-regulates toward set point) + `EntropicDriveSpec` (hunger, thirst, fatigue — drift away from equilibrium). Interface-level `CouplingSpec` and `ModulationSpec` ship for 1.0 freeze, implementation deferred.
+2. **Three-layer sensation model** — standardized external→internal signal translation. Contact (entity acquisition / Mechanism B from proprioceptive_discovery.md), proximity (orchestrator sensor writes), narrative fallback (keyword reflexes). All produce sensor changes → `evaluate_failures()` → PainBus → NAc.
+3. **Energy system unification** — `EnergyReactionBridge` replaced by generic drive protocol. `MovementEnergyTracker` → writes stamina sensor (homeostatic drive). Prevents two parallel threshold systems from freezing in 1.0 API.
+4. **Narrative acts** — `act` + `world_entities` fields on `NarrativePhase`. Cradle uses 4 developmental acts. General sim framework for long-horizon narrative structure.
+5. **Validation experiment** — 4-act developmental scenario with 8 measurements, 8 pass/fail criteria. Cross-session transfer via `--resume-sim`.
 
-**Why before 1.0:** This is the strongest possible demonstration of the 1.0 claim. If the agent can learn "fire hurts" through its own sensors without any linguistic scaffolding, the cross-session learning claim is proven at the deepest level. It's also a compelling demo for the bio-inspired framing.
+**Why before 1.0:** (a) Strongest demonstration of the cross-session learning claim. (b) Drive protocol interfaces freeze at 1.0 — `CouplingSpec`/`ModulationSpec`/`pain_model` must ship now even though implementation is deferred. (c) Energy bridge replacement prevents parallel threshold systems from becoming frozen API surface. (d) Sensation standardization is the foundation for real sensor integration.
 
 ---
 
@@ -146,6 +147,23 @@ Add semantic-shift episode boundary detection. When incoming text embedding dive
 2. Add `centroid_embedding: ndarray | None = None` to `PendingEpisodeState` with incremental centroid update
 3. Implement `semantic_shift_rule(threshold=0.40)` in `episode.py`
 4. Calibration sweep against real conversational data
+
+### P3. Dead energy code removal + drive protocol migration
+
+**Ships with:** Cradle Stage 1c (B4)
+
+**Audit finding:** `EnergyReactionBridge` (125 LOC) and `MovementEnergyTracker` (362 LOC) are **completely dead code** — zero callers anywhere in the codebase. Never instantiated, never wired. Additionally, 6 of 10 `EnergyType` enum values are unused (COMPUTE_TIME, MOTOR_CURRENT, VISION_INFERENCE, AUDIO_PROCESSING, ATTENTION, MEMORY_ACCESS).
+
+**Changes:**
+1. Hard-remove `energy/reactions.py` (entire file — EnergyReactionBridge, create_energy_reaction_bridge)
+2. Hard-remove `energy/movement_tracker.py` (entire file — MovementEnergyTracker, MovementEnergyConfig)
+3. Remove 6 unused `EnergyType` enum values from `energy/signal.py`
+4. Fix `simulation/introspection.py:149` — `get_stats()` → `get_summary()` (AttributeError bug)
+5. The generic drive protocol (B4 Stage 1) replaces what the bridge was SUPPOSED to do
+
+**What stays (live code):** `LLMEnergyTracker` (wired in llm_worker.py), `EnergyRegistry` (budget gating + imagination energy gate), `EnergyBudget`, `EnergySignal`.
+
+**Why before 1.0:** Dead code in 1.0 is permanently awkward. Someone will eventually import it, depend on it, and then removing it is a breaking change. Clean removal now costs nothing.
 
 ---
 
@@ -202,7 +220,7 @@ Publication guide, user docs, architecture docs — ship-ready state.
 3. **P1 + P2** (pipeline gaps) — small, can run in parallel with B1.
 4. **B2** (SCN oscillator) — depends on P1 (ToolPainBridge temporal migration provides diverse TemporalEvents for the oscillator to learn from).
 5. **B3** (SEM world enrichment Phases 2-3) — enriches the learning environment.
-6. **B4** (cradle) — depends on B2 (SCN feedback) and B3 (rich world). The capstone demo.
+6. **B4** (cradle) — depends on B2 (SCN feedback) and B3 (rich world). The capstone demo. **Includes P3** (energy bridge replacement ships as cradle Stage 1c). Also includes drive protocol interfaces (`CouplingSpec`, `ModulationSpec`, `pain_model`) that must freeze at 1.0.
 7. **C1-C3** (internal cleanup) — ship anytime.
 8. **C4-C6** (deprecation phase) — 0.9 warnings, 1.0 hard errors.
 9. **D1-D3** (docs) — last, after content stabilizes.
@@ -211,5 +229,25 @@ Publication guide, user docs, architecture docs — ship-ready state.
 
 - B1 and P1+P2 are the quickest wins — ship first.
 - B2→B3→B4 is the critical chain for the sensorimotor grounding story.
+- B4 is the largest single item (~550-650 LOC) but stages are independently shippable and testable.
+- P3 (dead energy code removal) ships inside B4 Stage 1c, not as a separate PR.
 - C1-C3 are internal hard-removes, zero user impact, ship anytime.
 - C4-C6 need a 0.9 deprecation release before 1.0 hard errors.
+
+## 1.0 interface freeze checklist
+
+These items must ship before 1.0 because they define frozen interfaces. Post-1.0, adding or changing fields is a breaking change:
+
+- [ ] B1: `*Context` parameters on bio-system methods (shipped)
+- [ ] B4 Stage 1a: `HomeostaticDriveSpec`, `EntropicDriveSpec`, `CouplingSpec`, `ModulationSpec` dataclasses
+- [ ] B4 Stage 1a: `pain_model: str` field on `HomeostaticDriveSpec`
+- [ ] B4 Stage 1c: Dead energy code hard-removed (prevents dead code from becoming frozen API surface)
+- [ ] B4 Stage 3: `self_effect` YAML key on `AffordanceSchema`
+- [ ] B4 Stage 4: `GatingContext.drive_states` field in `runtime/gating.py`
+- [ ] B4 Stage 4: DRIVE annotations in `body_state_summary()` output format
+- [ ] B4 Stage 5: `act` and `world_entities` fields on `NarrativePhase`
+
+## Pre-1.0 but post-cradle (interface reservations that need implementation before freeze)
+
+- [ ] `GatingContext.drive_states` scoring modulation in `TextSalienceScorer`
+- [ ] Novelty tracker formalized as `HomeostaticDriveSpec` on a `novelty_drive` sensor
