@@ -336,6 +336,36 @@ Uses `LLMAgent` with a specialized system prompt that teaches the model about pe
 
 CLI: `maxim --generate-simulation "description" -o output.yaml`
 
+## Cradle Sensorimotor Development
+
+`--sim cradle --embodiment bodies/infant_humanoid` runs a structured multi-act developmental simulation based on Piaget's sensorimotor stages.
+
+**Narrative acts** (`simulation/arcs.py`): The `NarrativePhase` dataclass supports `act` (grouping phases into narrative acts) and `world_entities` (component refs activated on phase entry). The cradle builtin arc has 4 acts:
+
+1. **Neonatal** (exploration + pain_consequence) — fire pit, food
+2. **Primary circular** (object_introduction + discrimination) — sharp rock, blanket
+3. **Secondary circular** (tool_discovery + intentional_action) — lever door, button
+4. **Consolidation** (recall) — all entities, cross-session transfer test
+
+**Three-layer sensation model:**
+- **Contact** (Layer 1): Entity acquisition via `pick_up` → `entity_acquired` side_effect → reparent to body → sensors join damage model
+- **Proximity** (Layer 2): Orchestrator writes sensor values via `set_entity_sensor`
+- **Narrative** (Layer 3): Keyword reflexes fire on percept text (fallback)
+
+All three layers converge on: sensor change → `evaluate_failures()` → PainBus → NAc.
+
+**Touch affordances** provide transient contact without acquisition via `self_effect` on AffordanceSchema (e.g., touching fire writes `arms.thermal: +0.6`).
+
+**Drive protocol** (`embodiment/sem.py`): `HomeostaticDriveSpec` (body self-regulates toward set_point — temperature, pressure, stamina) and `EntropicDriveSpec` (drifts away, requires external reset — hunger, thirst, fatigue). Drive state surfaces in body_state prompt via DRIVE annotations and Acting Coach Layer 4 drive modulation.
+
+**Per-phase entity activation** (`generative_runner.py`): When the narrator advances to a phase with `world_entities`, entities are instantiated from ComponentRegistry and their tools registered. Missing refs fall back to imagination (minimal entity created with warning).
+
+**Running:**
+```
+maxim --sim cradle --embodiment bodies/infant_humanoid --interactive false --sim-max-turns 25
+maxim --sim cradle --embodiment bodies/infant_humanoid --sim-max-turns 40  # long-horizon
+```
+
 ## Simulation Logger
 
 `src/maxim/simulation/sim_logger.py` provides bio-inspired subsystem tracing during simulation runs.
