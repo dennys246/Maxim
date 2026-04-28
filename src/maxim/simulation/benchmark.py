@@ -802,8 +802,9 @@ class BenchmarkRunner:
         if report.baseline_comparison is not None:
             report_data["baseline_comparison"] = report.baseline_comparison
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(str(report_path), report_data)
+        atomic_write_json(str(report_path), with_format_version(report_data))
 
         # Markdown summary
         summary_path = report_dir / "summary.md"

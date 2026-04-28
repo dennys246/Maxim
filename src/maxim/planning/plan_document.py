@@ -751,8 +751,9 @@ class PlanDocument:
         }
 
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(save_path, payload)
+        atomic_write_json(save_path, with_format_version(payload))
 
         # Update persistence path for future saves
         self._persistence_path = save_path
@@ -767,8 +768,14 @@ class PlanDocument:
     @classmethod
     def load(cls, path: str) -> PlanDocument:
         """Restore plan from disk."""
+        import logging
+
+        from maxim.utils.format_version import check_format_version
+
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        check_format_version(data, "plan_document", log=logging.getLogger(__name__))
 
         version = data.get("version", "1.0")
         if version not in ("1.0",):

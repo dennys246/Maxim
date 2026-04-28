@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +67,44 @@ class SemanticStore(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def _wrap_items(kind: str, items: list[dict]) -> dict[str, Any]:
+    """Wrap a list of items in the v1.0 file-format envelope.
+
+    File*Store implementations historically wrote a bare JSON array at
+    root, which has no slot for ``_format_version``. v1.0 wraps items
+    in a ``{kind, items}`` dict so the version field can sit at root
+    alongside the payload. ``_unwrap_items`` accepts both shapes for
+    backwards compatibility.
+    """
+    from maxim.utils.format_version import with_format_version
+
+    return with_format_version({"kind": kind, "items": items})
+
+
+def _unwrap_items(data: Any, kind: str) -> list[dict]:
+    """Read a File*Store payload, accepting both v1.0 dict and pre-1.0 list.
+
+    A bare list at root indicates a pre-1.0 file. The version helper's
+    ``check_format_version`` only handles dicts; we emit the warning
+    by passing a synthetic empty dict so the helper's dedupe logic
+    keys correctly on ``kind``.
+    """
+    from maxim.utils.format_version import check_format_version
+
+    if isinstance(data, list):
+        check_format_version({}, kind, log=log)
+        return data
+
+    if isinstance(data, dict):
+        check_format_version(data, kind, log=log)
+        items = data.get("items")
+        if isinstance(items, list):
+            return items
+        return []
+
+    return []
+
+
 class FileEpisodicStore:
     """JSON file persistence for Hippocampus (wraps current save/load)."""
 
@@ -77,14 +115,14 @@ class FileEpisodicStore:
         from maxim.utils.atomic_io import atomic_write_json
 
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(str(self._path), memories)
+        atomic_write_json(str(self._path), _wrap_items("file_episodic_store", memories))
 
     def load(self, *, namespace: str = "default") -> list[dict]:
         if not self._path.exists():
             return []
         with open(self._path) as f:
             data = json.load(f)
-        return data if isinstance(data, list) else []
+        return _unwrap_items(data, "file_episodic_store")
 
     def query_similar(self, embedding: list[float], *, top_k: int = 5, namespace: str = "default") -> list[dict]:
         # File-based store doesn't support vector search — return empty
@@ -105,14 +143,14 @@ class FileCausalStore:
         from maxim.utils.atomic_io import atomic_write_json
 
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(str(self._path), links)
+        atomic_write_json(str(self._path), _wrap_items("file_causal_store", links))
 
     def load(self, *, namespace: str = "default") -> list[dict]:
         if not self._path.exists():
             return []
         with open(self._path) as f:
             data = json.load(f)
-        return data if isinstance(data, list) else []
+        return _unwrap_items(data, "file_causal_store")
 
     def query_by_event(self, event_sig: str, *, namespace: str = "default") -> list[dict]:
         links = self.load(namespace=namespace)
@@ -129,14 +167,14 @@ class FileSemanticStore:
         from maxim.utils.atomic_io import atomic_write_json
 
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(str(self._path), concepts)
+        atomic_write_json(str(self._path), _wrap_items("file_semantic_store", concepts))
 
     def load(self, *, namespace: str = "default") -> list[dict]:
         if not self._path.exists():
             return []
         with open(self._path) as f:
             data = json.load(f)
-        return data if isinstance(data, list) else []
+        return _unwrap_items(data, "file_semantic_store")
 
     def query_by_type(self, concept_type: str, *, namespace: str = "default") -> list[dict]:
         concepts = self.load(namespace=namespace)

@@ -221,8 +221,9 @@ class Session:
             "finish_reason": self.finish_reason,
         }
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(str(session_dir / "session.json"), meta)
+        atomic_write_json(str(session_dir / "session.json"), with_format_version(meta))
 
         self.dir = str(session_dir)
         return self.dir

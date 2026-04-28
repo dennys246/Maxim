@@ -36,16 +36,23 @@ class RuntimeState:
         }
 
     def save_json(self, path: str, *, meta: dict[str, Any] | None = None) -> None:
+        from maxim.utils.format_version import with_format_version
+
         abs_path = os.path.abspath(path)
         payload: dict[str, Any] = {"saved_at": time.time(), **self.snapshot()}
         if meta:
             payload.update(meta)
-        atomic_write_json(abs_path, payload)
+        atomic_write_json(abs_path, with_format_version(payload))
 
     @classmethod
     def load_json(cls, path: str) -> "RuntimeState":
+        import logging
+
+        from maxim.utils.format_version import check_format_version
+
         with open(path, "r", encoding="utf-8") as fp:
             payload = json.load(fp)
+        check_format_version(payload, "runtime_state", log=logging.getLogger(__name__))
 
         data = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(data, dict):

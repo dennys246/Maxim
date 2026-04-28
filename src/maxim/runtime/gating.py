@@ -318,8 +318,10 @@ class AdaptiveThresholdController:
                     },
                 }
 
-            with open(save_path, "w") as f:
-                json.dump(data, f, indent=2)
+            from maxim.utils.atomic_io import atomic_write_json
+            from maxim.utils.format_version import with_format_version
+
+            atomic_write_json(save_path, with_format_version(data))
 
             self._last_save_time = time.time()
             logger.debug("AdaptiveThresholdController saved to %s", save_path)
@@ -341,6 +343,10 @@ class AdaptiveThresholdController:
         try:
             with open(load_path) as f:
                 data = json.load(f)
+
+            from maxim.utils.format_version import check_format_version
+
+            check_format_version(data, "gating", log=logger)
 
             with self._lock:
                 thresholds = data.get("thresholds", {})

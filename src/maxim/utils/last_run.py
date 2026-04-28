@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -67,8 +68,9 @@ def save_last_run(argv: list[str]) -> None:
         runs = runs[:_MAX_SAVED_RUNS]
 
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(str(_LAST_RUNS_PATH), runs)
+        atomic_write_json(str(_LAST_RUNS_PATH), with_format_version({"runs": runs}))
     except Exception:
         pass  # Best-effort
 
@@ -124,8 +126,15 @@ def _load_all() -> list[dict[str, Any]]:
             data = json.loads(_LAST_RUNS_PATH.read_text())
             if isinstance(data, list):
                 return data
-            # Migrate from old single-entry format
+            from maxim.utils.format_version import check_format_version
+
             if isinstance(data, dict):
+                check_format_version(data, "last_runs", log=logging.getLogger(__name__))
+                # v1.0 wraps the list under "runs"
+                runs = data.get("runs")
+                if isinstance(runs, list):
+                    return runs
+                # Pre-1.0 stored a single run as a dict at root.
                 return [data]
     except Exception:
         pass

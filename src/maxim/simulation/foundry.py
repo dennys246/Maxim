@@ -882,7 +882,9 @@ def _save_result_json(score: CandidateScore, gauntlet: GauntletResult, output_di
             "error": gauntlet.error,
         },
     }
-    atomic_write_json(str(path), data)
+    from maxim.utils.format_version import with_format_version
+
+    atomic_write_json(str(path), with_format_version(data))
     return path
 
 
@@ -1138,6 +1140,8 @@ class FoundryRunner:
         atomic_write_text(str(output_dir / "report.md"), report)
 
         # Save scores summary
+        from maxim.utils.format_version import with_format_version
+
         scores_data = {
             "run_id": self.run_id,
             "theme": self.theme,
@@ -1146,7 +1150,7 @@ class FoundryRunner:
             "review": [s.candidate_name for s in result.review],
             "rejected": [s.candidate_name for s in result.rejected],
         }
-        atomic_write_json(str(output_dir / "scores.json"), scores_data)
+        atomic_write_json(str(output_dir / "scores.json"), with_format_version(scores_data))
 
         # Save config
         atomic_write_text(

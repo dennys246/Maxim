@@ -739,14 +739,18 @@ class SCN:
     def save(self, path: str) -> None:
         """Save SCN state to JSON file (v3.0 with bounded bins)."""
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, self.dump())
+        atomic_write_json(path, with_format_version(self.dump()))
         logger.info("Saved SCN to %s (%d signatures)", path, len(self._signatures))
 
     def load(self, path: str) -> None:
         """Load SCN state from JSON file (supports v1.0, v2.0, and v3.0)."""
         with open(path, encoding="utf-8") as f:
             state = json.load(f)
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(state, "scn", log=logger)
         self.load_state(state)
         logger.info("Loaded SCN from %s (%d signatures)", path, len(self._signatures))
 

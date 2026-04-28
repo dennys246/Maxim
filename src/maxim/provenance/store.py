@@ -115,15 +115,23 @@ class ProvenanceStore:
                 **stats,
             }
             from maxim.utils.atomic_io import atomic_write_json
+            from maxim.utils.format_version import with_format_version
 
-            atomic_write_json(str(self._manifest_path), manifest)
+            atomic_write_json(str(self._manifest_path), with_format_version({"sessions": manifest}))
         except Exception as e:
             logger.warning("Failed to update manifest: %s", e)
 
     def _load_manifest(self) -> dict[str, Any]:
         if self._manifest_path.exists():
             with open(self._manifest_path) as f:
-                return json.load(f)
+                data = json.load(f)
+            from maxim.utils.format_version import check_format_version
+
+            check_format_version(data, "provenance_manifest", log=logger)
+            # v1.0 wraps sessions under "sessions"; pre-1.0 stored session ids at root.
+            if isinstance(data.get("sessions"), dict):
+                return data["sessions"]
+            return {k: v for k, v in data.items() if not k.startswith("_") and isinstance(v, dict)}
         return {}
 
     # ---- Cross-run queries ----

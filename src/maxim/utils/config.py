@@ -204,15 +204,21 @@ class build:
         os.makedirs(dest_dir, exist_ok=True)
 
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(self.config_filepath, self.dump(), indent=4)
+        atomic_write_json(self.config_filepath, with_format_version(self.dump()), indent=4)
 
     def load_config(self, config_path: str) -> dict[str, Any]:
+        import logging
+
+        from maxim.utils.format_version import check_format_version
+
         with open(config_path, "r", encoding="utf-8") as config_file:
             config_json = json.load(config_file)
 
         if not isinstance(config_json, dict):
             raise ValueError(f"Expected top-level JSON object in {config_path}, got {type(config_json).__name__}")
+        check_format_version(config_json, "user_config", log=logging.getLogger(__name__))
         return config_json
 
     def configure(self, **kwargs: Any) -> None:

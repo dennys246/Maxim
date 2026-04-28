@@ -830,8 +830,9 @@ class Maxim(InputHandlerMixin, ConnectionMixin, MovementMixin, VisionStreamMixin
                         "records": history,
                     }
                     from maxim.utils.atomic_io import atomic_write_json
+                    from maxim.utils.format_version import with_format_version
 
-                    atomic_write_json(str(history_path), payload)
+                    atomic_write_json(str(history_path), with_format_version(payload))
                     try:
                         num_records = len(history)
                     except Exception:

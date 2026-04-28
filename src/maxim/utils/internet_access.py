@@ -136,6 +136,9 @@ def load_internet_access(path: Path | str | None = None) -> InternetAccessState:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(data, "internet_access", log=logger)
         return InternetAccessState.from_dict(data)
     except Exception as e:
         logger.warning(f"Failed to load internet access state: {e}")
@@ -151,8 +154,9 @@ def save_internet_access(state: InternetAccessState, path: Path | str | None = N
         state.updated_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(str(path), state.to_dict())
+        atomic_write_json(str(path), with_format_version(state.to_dict()))
         return True
     except Exception as e:
         logger.error(f"Failed to save internet access state: {e}")

@@ -495,8 +495,11 @@ class SessionSnapshot:
         if cross_layer_graph is not None:
             systems["cross_layer_graph"] = cross_layer_graph_to_snapshot(cross_layer_graph)
 
+        from maxim.utils.format_version import FORMAT_VERSION
+
         return cls(
             envelope={
+                "_format_version": FORMAT_VERSION,
                 "schema_version": 1,
                 "kind": "session",
                 "systems": systems,
@@ -657,6 +660,9 @@ class SessionSnapshot:
     def from_file(cls, path: str | Path) -> SessionSnapshot:
         with open(path, encoding="utf-8") as f:
             envelope = json.load(f)
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(envelope, "session_snapshot", log=logger)
         return cls.from_dict(envelope)
 
     def _validate_envelope(self) -> None:

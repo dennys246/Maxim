@@ -148,6 +148,11 @@ class CostTracker:
         if not isinstance(data, dict) or data.get("version") != self.VERSION:
             self._mark_corrupt(path)
             return
+        import logging
+
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(data, "cost_tracker", log=logging.getLogger(__name__))
         try:
             hourly = data.get("hourly", {})
             daily = data.get("daily", {})
@@ -240,8 +245,9 @@ class CostTracker:
         path = self._config.state_path
         data = self.to_dict()
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, data)
+        atomic_write_json(path, with_format_version(data))
         self._pending_writes = 0
         self._last_persist_time = time.time()
 

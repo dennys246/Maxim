@@ -618,8 +618,9 @@ class Embodiment:
         state = self.export_failure_state()
         try:
             from maxim.utils.atomic_io import atomic_write_json
+            from maxim.utils.format_version import with_format_version
 
-            atomic_write_json(path, state)
+            atomic_write_json(path, with_format_version(state))
         except ImportError:
             with open(path, "w") as f:
                 json.dump(state, f, indent=2)
@@ -633,6 +634,9 @@ class Embodiment:
             return False
         with open(path) as f:
             data = json.load(f)
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(data, "body_failures", log=log)
         self.import_failure_state(data)
         return True
 

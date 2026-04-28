@@ -257,8 +257,9 @@ class CrossLayerGraph:
             return
 
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, self.dump(), default=None)
+        atomic_write_json(path, with_format_version(self.dump()), default=None)
 
     def load(self, path: str | None = None) -> None:
         """Restore cross-layer graph from JSON."""
@@ -269,6 +270,9 @@ class CrossLayerGraph:
         with open(path) as f:
             state = json.load(f)
 
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(state, "cross_layer_graph", log=logger)
         self.load_state(state)
 
     def to_dict(self) -> dict[str, Any]:
