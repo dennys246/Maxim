@@ -54,6 +54,7 @@ def build_tool_signature(tool_name: str, tool_params: dict[str, Any] | None = No
 
 def record_outcome(
     *,
+    agent_id: str,
     tool_name: str,
     success: bool,
     result_summary: str | None,
@@ -73,6 +74,14 @@ def record_outcome(
     Appends to recent_outcomes, records reasoning carryover on llm_worker,
     adds to context_pool, and (if NAc is wired) records a causal observation
     so NAc learns tool → outcome patterns.
+
+    ``agent_id`` is required (keyword-only) so multi-agent paths attribute
+    learning to the right agent. Forgetting it is a TypeError, not a
+    silent cross-agent attribution bug — the same pattern that
+    ``build_executor(pain_bus=...)`` and ``build_pain_bus(hippocampus=...,
+    nac=...)`` use to push silent-no-op invariants into the type. The
+    ``agent_id`` is included in the NAc context dict so links can be
+    filtered per-agent at query time.
     """
     ts = time.time()
     recent_outcomes.append(
@@ -110,6 +119,12 @@ def record_outcome(
             outcome_summary = (result_summary or error or "")[:50]
             valence = Valence.POSITIVE if success else Valence.NEGATIVE
             sig = build_tool_signature(tool_name, tool_params)
+            # Tag every NAc observation with agent_id so cross-agent
+            # attribution gaps surface as filterable context, not
+            # silently merged links.
+            ctx: dict[str, Any] = {"agent_id": agent_id}
+            if reasoning:
+                ctx["goal"] = reasoning[:100]
             link = nac.observe(
                 event_type="tool",
                 event_signature=sig,
@@ -117,7 +132,7 @@ def record_outcome(
                 outcome_signature=f"{'success' if success else 'failure'}:{outcome_summary}",
                 outcome_valence=valence,
                 delta_seconds=elapsed_s,
-                context={"goal": reasoning[:100]} if reasoning else {},
+                context=ctx,
             )
             # Goal-level credit: if deliberation was active under a goal,
             # credit/penalize that goal so ThoughtGate learns whether
@@ -155,7 +170,7 @@ def record_outcome(
                 outcome_signature=f"elapsed:{elapsed_s:.1f}s",
                 outcome_valence=energy_valence,
                 delta_seconds=elapsed_s,
-                context={"tool": tool_name},
+                context={"agent_id": agent_id, "tool": tool_name},
             )
         except Exception:
             pass
@@ -163,6 +178,7 @@ def record_outcome(
 
 def execute_parallel_actions(
     *,
+    agent_id: str,
     actions: list[dict[str, Any]],
     executor: Any,
     autonomy_controller: Any,
@@ -173,11 +189,22 @@ def execute_parallel_actions(
     llm_worker: Any | None,
     context_pool: Any,
     nac: Any | None = None,
+    active_goal: str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Execute a batch of parallel actions with autonomy gating.
 
     Returns a tuple of (parallel_results, combined_results_text).
     Each result dict has keys: tool, success, result, error, params.
+
+    ``agent_id`` is required (keyword-only) — every per-action
+    ``record_outcome`` below tags NAc with this id so multi-agent
+    attribution stays per-agent.
+
+    ``active_goal`` is forwarded to per-action ``record_outcome``
+    so ThoughtGate goal-credit applies inside the parallel batch.
+    Pre-fix the parameter was missing from this signature even though
+    the agent-loop call site already passed ``active_goal=`` — any
+    parallel-actions batch would have raised TypeError.
     """
     parallel_results: list[dict[str, Any]] = []
     all_succeeded = True
@@ -246,6 +273,7 @@ def execute_parallel_actions(
     # Record individual outcomes so LLM has structured history
     for pr in parallel_results:
         record_outcome(
+            agent_id=agent_id,
             tool_name=pr["tool"],
             success=pr["success"],
             result_summary=pr.get("result"),
@@ -256,6 +284,8 @@ def execute_parallel_actions(
             llm_worker=llm_worker,
             context_pool=context_pool,
             nac=nac,
+            active_goal=active_goal,
+            tool_params=pr.get("params"),
         )
 
     log_agentic(

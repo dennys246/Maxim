@@ -191,7 +191,13 @@ class LoopController:
         error: str | None,
         reasoning: str,
     ) -> None:
+        # ``self.agent_name`` is the canonical per-agent attribution key
+        # (set in __init__ via _safe_agent_name). Multi-agent tests
+        # that construct LoopController per-agent get isolated
+        # NAc attribution because record_outcome tags every NAc
+        # observation with this id.
         _record_outcome(
+            agent_id=self.agent_name,
             tool_name=tool_name,
             success=success,
             result_summary=result_summary,

@@ -171,13 +171,29 @@ def end_bio_session(
 
 
 # ── Episode observation (P3a binding in production) ──────────────────
+#
+# Per-agent stash dicts. Replaces the previous module-level globals
+# (``_episode_tick``, ``_latest_pain_intensity``, ``_latest_substrate_nodes``)
+# which trampled under concurrent agents — every agent shared one
+# tick counter, one pain intensity slot, and one substrate-nodes slot,
+# so substrate nodes encoded for agent A could land on agent B's next
+# episode event, and every agent's tick number was a global ordering
+# of all events instead of per-agent.
+#
+# Concurrency: dict ``__getitem__``/``__setitem__``/``pop`` on a single
+# key are GIL-atomic in CPython — read-modify-write on a numeric value
+# (``_latest_pain_intensity``'s "max" merge) is the only RMW path and
+# happens while a single agent is producing pain signals on its own
+# pain bus, so contention on a single agent_id is negligible. Multi-
+# agent isolation is by key; concurrency on the dict structure itself
+# is GIL-protected and sized at most O(num_agents).
 
-_episode_tick: int = 0
-_latest_pain_intensity: float = 0.0
-_latest_substrate_nodes: tuple[str, ...] = ()
+_episode_ticks: dict[str, int] = {}
+_latest_pain_intensity: dict[str, float] = {}
+_latest_substrate_nodes: dict[str, tuple[str, ...]] = {}
 
 
-def record_substrate_nodes(node_ids: tuple[str, ...]) -> None:
+def record_substrate_nodes(node_ids: tuple[str, ...], *, agent_id: str) -> None:
     """Stash substrate node IDs from the latest percept encoding.
 
     Called by MemoryHub.on_percept_received after LinguisticEncoder
@@ -187,27 +203,22 @@ def record_substrate_nodes(node_ids: tuple[str, ...]) -> None:
     This bridges the encoding path (memory_hub → encoder) to the episode
     observation path (agent_loop → bio_integration → hippocampus).
 
-    Threading note: this is a module-level stash (same pattern as
-    ``_latest_pain_intensity``). GIL makes the tuple reference swap
-    atomic. In multi-agent (AgentPool) scenarios, agents share this
-    stash — acceptable because multi-agent substrate encoding is not
-    yet a production path. If it becomes one, scope per agent_id.
+    ``agent_id`` is required so multiple agents running in parallel
+    (AgentPool, sim AUT + orchestrator pair, agent-backed entities)
+    do not trample each other's stash.
     """
-    global _latest_substrate_nodes
-    _latest_substrate_nodes = node_ids
+    _latest_substrate_nodes[agent_id] = node_ids
 
 
-def consume_substrate_nodes() -> tuple[str, ...]:
-    """Consume and reset the stashed substrate node IDs."""
-    global _latest_substrate_nodes
-    nodes = _latest_substrate_nodes
-    _latest_substrate_nodes = ()
-    return nodes
+def consume_substrate_nodes(*, agent_id: str) -> tuple[str, ...]:
+    """Consume and reset the stashed substrate node IDs for ``agent_id``."""
+    return _latest_substrate_nodes.pop(agent_id, ())
 
 
 def observe_episode(
     *,
     hippocampus: Any,
+    agent_id: str,
     channel: str = "text",
     sender_id: str | None = None,
     activated_nodes: tuple[str, ...] = (),
@@ -218,21 +229,22 @@ def observe_episode(
 
     Called from the agent loop alongside capture_episodic_memory.
     If the caller passes empty activated_nodes, we consume any
-    stashed substrate nodes from the latest percept encoding.
+    stashed substrate nodes from the latest percept encoding for
+    this ``agent_id``.
     """
-    global _episode_tick
-    _episode_tick += 1
+    tick = _episode_ticks.get(agent_id, 0) + 1
+    _episode_ticks[agent_id] = tick
 
-    # Merge caller-provided nodes with stashed substrate nodes
+    # Merge caller-provided nodes with stashed substrate nodes (per agent)
     if not activated_nodes:
-        activated_nodes = consume_substrate_nodes()
+        activated_nodes = consume_substrate_nodes(agent_id=agent_id)
 
     try:
         from maxim.memory.episode import CaptureEvent
 
         hippocampus.observe_episode_event(
             CaptureEvent(
-                tick=_episode_tick,
+                tick=tick,
                 channel=channel,
                 sender_id=sender_id,
                 activated_nodes=activated_nodes,
@@ -244,16 +256,26 @@ def observe_episode(
         logger.debug("Episode observation failed: %s", e)
 
 
-def record_pain_intensity(intensity: float) -> None:
-    """Record a pain intensity for the next episode event's salience_spike."""
-    global _latest_pain_intensity
-    if intensity > _latest_pain_intensity:
-        _latest_pain_intensity = intensity
+def record_pain_intensity(intensity: float, *, agent_id: str) -> None:
+    """Record a pain intensity for the next episode event's salience_spike.
+
+    Per-agent: signals from agent A's pain bus must not land on
+    agent B's next episode.
+    """
+    current = _latest_pain_intensity.get(agent_id, 0.0)
+    if intensity > current:
+        _latest_pain_intensity[agent_id] = intensity
 
 
-def consume_pain_intensity() -> float | None:
-    """Consume the recorded pain intensity (reset to 0)."""
-    global _latest_pain_intensity
-    val = _latest_pain_intensity
-    _latest_pain_intensity = 0.0
+def consume_pain_intensity(*, agent_id: str) -> float | None:
+    """Consume the recorded pain intensity for ``agent_id`` (reset to 0)."""
+    val = _latest_pain_intensity.pop(agent_id, 0.0)
     return val if val > 0.0 else None
+
+
+def reset_agent_stash(agent_id: str) -> None:
+    """Drop all per-agent stash entries. Intended for test isolation
+    and end-of-session cleanup."""
+    _episode_ticks.pop(agent_id, None)
+    _latest_pain_intensity.pop(agent_id, None)
+    _latest_substrate_nodes.pop(agent_id, None)

@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import pytest
+
 from unittest.mock import MagicMock
 from maxim.runtime.bio_integration import (
     capture_episodic_memory,
     record_plan_outcome,
     start_bio_session,
     end_bio_session,
+    record_substrate_nodes,
+    consume_substrate_nodes,
+    record_pain_intensity,
+    consume_pain_intensity,
+    observe_episode,
+    reset_agent_stash,
 )
 
 
@@ -242,3 +250,104 @@ class TestEndBioSession:
             hippocampus=hippo,
             is_sim_mode=False,
         )
+
+
+@pytest.fixture(autouse=True)
+def _reset_per_agent_stash():
+    """Make sure module-level per-agent dicts don't leak between tests."""
+    for agent in ("alpha", "bravo", "charlie", "agent"):
+        reset_agent_stash(agent)
+    yield
+    for agent in ("alpha", "bravo", "charlie", "agent"):
+        reset_agent_stash(agent)
+
+
+class TestPerAgentSubstrateStash:
+    """Per-agent substrate-node stash isolation (P4)."""
+
+    def test_record_consume_roundtrip(self):
+        record_substrate_nodes(("n1", "n2"), agent_id="alpha")
+        assert consume_substrate_nodes(agent_id="alpha") == ("n1", "n2")
+        # Subsequent consume returns empty (popped on first consume)
+        assert consume_substrate_nodes(agent_id="alpha") == ()
+
+    def test_two_agents_isolated(self):
+        record_substrate_nodes(("alpha-1",), agent_id="alpha")
+        record_substrate_nodes(("bravo-1", "bravo-2"), agent_id="bravo")
+        assert consume_substrate_nodes(agent_id="alpha") == ("alpha-1",)
+        assert consume_substrate_nodes(agent_id="bravo") == ("bravo-1", "bravo-2")
+
+    def test_consume_unknown_agent_returns_empty(self):
+        assert consume_substrate_nodes(agent_id="nobody") == ()
+
+    def test_record_overwrites_per_agent(self):
+        record_substrate_nodes(("first",), agent_id="alpha")
+        record_substrate_nodes(("second",), agent_id="alpha")
+        assert consume_substrate_nodes(agent_id="alpha") == ("second",)
+
+
+class TestPerAgentPainIntensity:
+    """Per-agent pain-intensity stash isolation (P4)."""
+
+    def test_record_consume_roundtrip(self):
+        record_pain_intensity(0.7, agent_id="alpha")
+        assert consume_pain_intensity(agent_id="alpha") == 0.7
+        assert consume_pain_intensity(agent_id="alpha") is None
+
+    def test_two_agents_isolated(self):
+        record_pain_intensity(0.4, agent_id="alpha")
+        record_pain_intensity(0.9, agent_id="bravo")
+        assert consume_pain_intensity(agent_id="alpha") == 0.4
+        assert consume_pain_intensity(agent_id="bravo") == 0.9
+
+    def test_max_merge_per_agent(self):
+        record_pain_intensity(0.3, agent_id="alpha")
+        record_pain_intensity(0.7, agent_id="alpha")
+        record_pain_intensity(0.5, agent_id="alpha")  # lower, ignored
+        assert consume_pain_intensity(agent_id="alpha") == 0.7
+
+    def test_zero_returns_none(self):
+        # Never recorded — pop default 0.0 → None
+        assert consume_pain_intensity(agent_id="alpha") is None
+
+
+class TestObserveEpisode:
+    """observe_episode threads per-agent ticks and stash."""
+
+    def test_per_agent_tick_counter(self):
+        hippo_a = MagicMock()
+        hippo_b = MagicMock()
+        observe_episode(hippocampus=hippo_a, agent_id="alpha")
+        observe_episode(hippocampus=hippo_a, agent_id="alpha")
+        observe_episode(hippocampus=hippo_b, agent_id="bravo")
+        # Alpha got ticks 1 and 2; bravo got tick 1.
+        a_calls = hippo_a.observe_episode_event.call_args_list
+        b_calls = hippo_b.observe_episode_event.call_args_list
+        assert [c.args[0].tick for c in a_calls] == [1, 2]
+        assert [c.args[0].tick for c in b_calls] == [1]
+
+    def test_stash_consumed_only_for_owning_agent(self):
+        hippo_a = MagicMock()
+        hippo_b = MagicMock()
+        record_substrate_nodes(("alpha-node",), agent_id="alpha")
+        record_substrate_nodes(("bravo-node",), agent_id="bravo")
+        observe_episode(hippocampus=hippo_a, agent_id="alpha")
+        observe_episode(hippocampus=hippo_b, agent_id="bravo")
+        evt_a = hippo_a.observe_episode_event.call_args.args[0]
+        evt_b = hippo_b.observe_episode_event.call_args.args[0]
+        assert evt_a.activated_nodes == ("alpha-node",)
+        assert evt_b.activated_nodes == ("bravo-node",)
+
+    def test_caller_provided_nodes_skip_stash_consume(self):
+        # When the caller passes activated_nodes, the stash is NOT consumed.
+        hippo = MagicMock()
+        record_substrate_nodes(("stashed",), agent_id="alpha")
+        observe_episode(
+            hippocampus=hippo,
+            agent_id="alpha",
+            activated_nodes=("explicit",),
+        )
+        evt = hippo.observe_episode_event.call_args.args[0]
+        assert evt.activated_nodes == ("explicit",)
+        # Stash is still there for the next call
+        assert consume_substrate_nodes(agent_id="alpha") == ("stashed",)

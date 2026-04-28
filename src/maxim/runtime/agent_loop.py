@@ -1673,10 +1673,11 @@ def run_agentic_loop(
                                         )
                                         _bio_integration.observe_episode(
                                             hippocampus=hippocampus,
+                                            agent_id=agent_name,
                                             channel="text",
                                             activated_nodes=(),
                                             after_tool_execution=True,
-                                            salience_spike=_bio_integration.consume_pain_intensity(),
+                                            salience_spike=_bio_integration.consume_pain_intensity(agent_id=agent_name),
                                         )
 
                                 except Exception as e:
@@ -1690,6 +1691,7 @@ def run_agentic_loop(
 
                                     # Track exception in recent_outcomes for LLM learning
                                     _record_outcome(
+                                        agent_id=agent_name,
                                         tool_name=action["tool_name"],
                                         success=False,
                                         result_summary=None,
@@ -1808,6 +1810,7 @@ def run_agentic_loop(
             if parallel_actions:
                 all_parallel_actions = ctrl.pending_proposal.get_parallel_actions()
                 _par_results, combined_results = _execute_parallel(
+                    agent_id=agent_name,
                     actions=all_parallel_actions,
                     executor=executor,
                     autonomy_controller=autonomy_controller,
@@ -2081,6 +2084,7 @@ def run_agentic_loop(
                             result_str = None
 
                     _record_outcome(
+                        agent_id=agent_name,
                         tool_name=tool_name or "unknown",
                         success=success,
                         result_summary=result_str,
@@ -2183,10 +2187,11 @@ def run_agentic_loop(
                         )
                         _bio_integration.observe_episode(
                             hippocampus=hippocampus,
+                            agent_id=agent_name,
                             channel="text",
                             activated_nodes=(),
                             after_tool_execution=True,
-                            salience_spike=_bio_integration.consume_pain_intensity(),
+                            salience_spike=_bio_integration.consume_pain_intensity(agent_id=agent_name),
                         )
 
                     # Handle failure
@@ -2219,6 +2224,7 @@ def run_agentic_loop(
 
                     # Track exception in recent_outcomes for LLM learning
                     _record_outcome(
+                        agent_id=agent_name,
                         tool_name=action.get("tool_name", "unknown"),
                         success=False,
                         result_summary=None,
@@ -2334,6 +2340,7 @@ def run_agentic_loop(
                     # Record rejection so LLM knows not to re-propose
                     rejection_msg = f"Rejected by autonomy: {reason}"
                     _record_outcome(
+                        agent_id=agent_name,
                         tool_name=action.get("tool_name", "unknown"),
                         success=False,
                         result_summary=None,
@@ -2375,6 +2382,7 @@ def run_agentic_loop(
                         # Record outcome so LLM sees the result
                         result_str = str(output)[:3000] if output is not None else None
                         _record_outcome(
+                            agent_id=agent_name,
                             tool_name=tool_name,
                             success=success,
                             result_summary=result_str,
@@ -2414,6 +2422,7 @@ def run_agentic_loop(
                         logger.error(f"Approved action failed: {e}")
                         # Record failure so LLM knows (also fixes missing llm_worker call)
                         _record_outcome(
+                            agent_id=agent_name,
                             tool_name=tool_name,
                             success=False,
                             result_summary=None,

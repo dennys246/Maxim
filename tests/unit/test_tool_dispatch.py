@@ -74,6 +74,7 @@ class TestRecordOutcome:
         outcomes: list = []
         pool = self._make_context_pool()
         record_outcome(
+            agent_id="test",
             tool_name="look",
             success=True,
             result_summary="saw a cup",
@@ -92,6 +93,7 @@ class TestRecordOutcome:
         outcomes: list = [{"tool": f"t{i}"} for i in range(5)]
         pool = self._make_context_pool()
         record_outcome(
+            agent_id="test",
             tool_name="new_tool",
             success=True,
             result_summary=None,
@@ -109,6 +111,7 @@ class TestRecordOutcome:
         worker = MagicMock()
         pool = self._make_context_pool()
         record_outcome(
+            agent_id="test",
             tool_name="say",
             success=True,
             result_summary="hello",
@@ -127,6 +130,7 @@ class TestRecordOutcome:
     def test_records_to_context_pool(self):
         pool = self._make_context_pool()
         record_outcome(
+            agent_id="test",
             tool_name="examine",
             success=False,
             result_summary=None,
@@ -148,6 +152,7 @@ class TestRecordOutcome:
         nac = MagicMock()
         pool = self._make_context_pool()
         record_outcome(
+            agent_id="test",
             tool_name="move",
             success=True,
             result_summary="moved forward",
@@ -167,6 +172,7 @@ class TestRecordOutcome:
         nac = MagicMock()
         pool = self._make_context_pool()
         record_outcome(
+            agent_id="test",
             tool_name="heavy_compute",
             success=True,
             result_summary="done",
@@ -186,6 +192,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         # Should not raise even with nac=None
         record_outcome(
+            agent_id="test",
             tool_name="look",
             success=True,
             result_summary="ok",
@@ -204,6 +211,7 @@ class TestRecordOutcome:
         pool = self._make_context_pool()
         # Should not raise — NAc errors are logged, not propagated
         record_outcome(
+            agent_id="test",
             tool_name="look",
             success=True,
             result_summary="ok",
@@ -247,6 +255,7 @@ class TestExecuteParallelActions:
             {"tool_name": "examine", "params": {"target": "door"}},
         ]
         results, combined = execute_parallel_actions(
+            agent_id="test",
             actions=actions,
             executor=self._make_executor(),
             autonomy_controller=self._make_autonomy(),
@@ -266,6 +275,7 @@ class TestExecuteParallelActions:
 
         actions = [{"tool_name": "delete", "params": {}}]
         results, _ = execute_parallel_actions(
+            agent_id="test",
             actions=actions,
             executor=self._make_executor(),
             autonomy_controller=self._make_autonomy(allow=False),
@@ -287,6 +297,7 @@ class TestExecuteParallelActions:
         ex.execute.side_effect = RuntimeError("crash")
         actions = [{"tool_name": "boom", "params": {}}]
         results, combined = execute_parallel_actions(
+            agent_id="test",
             actions=actions,
             executor=ex,
             autonomy_controller=self._make_autonomy(),
@@ -310,6 +321,7 @@ class TestExecuteParallelActions:
             {"tool_name": "b", "params": {}},
         ]
         execute_parallel_actions(
+            agent_id="test",
             actions=actions,
             executor=self._make_executor(),
             autonomy_controller=self._make_autonomy(),
@@ -321,6 +333,132 @@ class TestExecuteParallelActions:
             context_pool=self._make_context_pool(),
         )
         assert len(outcomes) == 2
+
+
+class TestAgentIdAttribution:
+    """P4: agent_id is required + tagged on every NAc observation."""
+
+    def _make_context_pool(self):
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        return pool
+
+    def test_record_outcome_requires_agent_id(self):
+        pool = self._make_context_pool()
+        import pytest
+
+        with pytest.raises(TypeError, match="agent_id"):
+            record_outcome(  # type: ignore[call-arg]
+                tool_name="look",
+                success=True,
+                result_summary="ok",
+                error=None,
+                reasoning="",
+                recent_outcomes=[],
+                max_recent=10,
+                llm_worker=None,
+                context_pool=pool,
+            )
+
+    def test_nac_observation_tagged_with_agent_id(self):
+        nac = MagicMock()
+        pool = self._make_context_pool()
+        record_outcome(
+            agent_id="alpha",
+            tool_name="move",
+            success=True,
+            result_summary="moved",
+            error=None,
+            reasoning="navigate",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+            elapsed_s=0.5,
+        )
+        # First call is the tool result NAc.observe
+        first_kwargs = nac.observe.call_args_list[0].kwargs
+        assert first_kwargs["context"]["agent_id"] == "alpha"
+
+    def test_two_agents_isolated_in_nac_context(self):
+        nac = MagicMock()
+        pool = self._make_context_pool()
+        record_outcome(
+            agent_id="alpha",
+            tool_name="t",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+        )
+        record_outcome(
+            agent_id="bravo",
+            tool_name="t",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+        )
+        agent_ids = [c.kwargs["context"]["agent_id"] for c in nac.observe.call_args_list]
+        assert "alpha" in agent_ids
+        assert "bravo" in agent_ids
+
+
+class TestExecuteParallelActiveGoal:
+    """Pre-existing-bug regression: active_goal must reach record_outcome."""
+
+    def _make_context_pool(self):
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        return pool
+
+    def _make_autonomy(self, allow=True):
+        ac = MagicMock()
+        ac.can_execute_action.return_value = (allow, "" if allow else "rejected")
+        return ac
+
+    def _make_executor(self, success=True):
+        ex = MagicMock()
+        result = MagicMock()
+        result.success = success
+        result.output = "ok"
+        result.error = None
+        ex.execute.return_value = result
+        return ex
+
+    def test_active_goal_propagates_to_per_action_credit(self):
+        # Pre-fix: passing active_goal= to execute_parallel_actions raised
+        # TypeError because the parameter was missing from the signature.
+        from maxim.runtime.tool_dispatch import execute_parallel_actions
+
+        nac = MagicMock()
+        execute_parallel_actions(
+            agent_id="test",
+            actions=[{"tool_name": "look", "params": {}}],
+            executor=self._make_executor(success=True),
+            autonomy_controller=self._make_autonomy(),
+            confidence=0.9,
+            reasoning="r",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=self._make_context_pool(),
+            nac=nac,
+            active_goal="explore_room",
+        )
+        # credit_goal is what active_goal triggers inside record_outcome.
+        nac.credit_goal.assert_called_with("explore_room", 1.0)
 
 
 class TestImportPaths:

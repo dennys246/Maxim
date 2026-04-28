@@ -266,7 +266,20 @@ class MemoryHub:
             if node_id:
                 from maxim.runtime import bio_integration
 
-                bio_integration.record_substrate_nodes((node_id,))
+                # Per-agent stash: read agent_id from the percept's
+                # PerceptContext (populated by F0.5). If absent we skip
+                # rather than route the stash through a shared default
+                # key — a shared key would silently re-introduce the
+                # multi-agent collision the per-agent dict was added
+                # to fix.
+                ctx_agent_id = None
+                ctx = getattr(percept, "context", None)
+                if ctx is not None:
+                    ctx_agent_id = getattr(ctx, "agent_id", None)
+                if ctx_agent_id:
+                    bio_integration.record_substrate_nodes((node_id,), agent_id=ctx_agent_id)
+                else:
+                    logger.debug("Skipping substrate-node stash: percept has no agent_id")
         except Exception as e:
             logger.warning("Substrate encoding failed: %s", e)
 
