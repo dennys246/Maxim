@@ -117,6 +117,10 @@ def build_bio_stack(
     dn_frame_size: tuple[int, int] = (640, 480),
     # Extra wiring
     additional_pain_subscribers: tuple[Callable[["PainSignal"], None], ...] = (),
+    # P4 multi-agent attribution: owning agent's id, threaded into MemoryHub
+    # so single-agent percept paths get a stable fallback for the substrate
+    # stash even when the percept factory hasn't populated agent_id.
+    agent_id: str = "default_agent",
 ) -> BioStack:
     """Construct the full bio-pipeline as a coherent unit.
 
@@ -240,6 +244,7 @@ def build_bio_stack(
         ec=ec,
         atl=atl,
         angular_gyrus=angular_gyrus,
+        agent_id=agent_id,
     )
 
     # -- Step 4: PainBus ---------------------------------------------------

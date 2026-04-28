@@ -265,7 +265,7 @@ class AgentFactory:
             nac = self._create_nac(agent_dir, auto_load=auto_load)
 
         atl = self._create_atl(agent_dir)
-        memory_hub = self._create_memory_hub(hippocampus, nac, atl, agent_dir=agent_dir)
+        memory_hub = self._create_memory_hub(hippocampus, nac, atl, agent_dir=agent_dir, agent_id=config.agent_id)
 
         # Create tool registry (scoped by whitelist)
         tool_registry = self._create_tool_registry(config.tool_whitelist)
@@ -547,6 +547,7 @@ class AgentFactory:
         nac: Any | None,
         atl: Any | None,
         agent_dir: Path | None = None,
+        agent_id: str = "default_agent",
     ) -> Any:
         """Create a MemoryHub coordinating the agent's memory systems."""
         try:
@@ -582,6 +583,7 @@ class AgentFactory:
                 nac=nac,
                 ec=EntorhinalCortex(),
                 atl=atl,
+                agent_id=agent_id,
             )
         except Exception as e:
             log.warning("Failed to create MemoryHub: %s", e)
