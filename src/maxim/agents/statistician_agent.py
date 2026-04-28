@@ -720,8 +720,9 @@ class StatisticianAgent(Agent):
 
         try:
             from maxim.utils.atomic_io import atomic_write_json
+            from maxim.utils.format_version import with_format_version
 
-            atomic_write_json(path, data)
+            atomic_write_json(path, with_format_version(data))
             logger.debug(
                 "StatisticianAgent saved %d metrics to %s",
                 len(self._metric_series),
@@ -741,6 +742,10 @@ class StatisticianAgent(Agent):
         except (OSError, json.JSONDecodeError) as e:
             logger.debug("Failed to load statistician state: %s", e)
             return
+
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(data, "statistician", log=logger)
 
         # Restore metric series
         for name, values in data.get("metric_series", {}).items():

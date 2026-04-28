@@ -538,6 +538,9 @@ class ContextPool:
                 with open(self.config.persistence_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
+                from maxim.utils.format_version import check_format_version
+
+                check_format_version(data, "context_pool", log=logger)
                 self._entries = [ContextEntry.from_dict(e) for e in data.get("entries", [])]
                 self._summaries = data.get("summaries", [])
                 self._conversation_history = [
@@ -571,8 +574,9 @@ class ContextPool:
                 }
 
             from maxim.utils.atomic_io import atomic_write_json
+            from maxim.utils.format_version import with_format_version
 
-            atomic_write_json(self.config.persistence_path, data)
+            atomic_write_json(self.config.persistence_path, with_format_version(data))
 
         except Exception as e:
             logger.warning(f"Failed to save context pool: {e}")

@@ -1344,8 +1344,9 @@ class NAc:
             raise ValueError("NAc.save() requires a path or NACConfig.persistence_path to be set")
 
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, self.dump())
+        atomic_write_json(path, with_format_version(self.dump()))
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 
     def load(self, path: str | None = None) -> None:
@@ -1360,6 +1361,9 @@ class NAc:
         with open(path, encoding="utf-8") as f:
             state = json.load(f)
 
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(state, "nac", log=logger)
         self.load_state(state)
         logger.info("Loaded NAc from %s (%d links, %d biases)", path, len(self), len(self._reward_bias))
 

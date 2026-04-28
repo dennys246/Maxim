@@ -414,8 +414,9 @@ class ComponentIndex:
         meta = {"refs": refs, "signatures": signatures}
         try:
             from maxim.utils.atomic_io import atomic_write_text
+            from maxim.utils.format_version import with_format_version
 
-            atomic_write_text(meta_path, json.dumps(meta))
+            atomic_write_text(meta_path, json.dumps(with_format_version(meta)))
         except ImportError:
             # Fallback if atomic_io not available (e.g., minimal install)
             with open(meta_path, "w") as f:
@@ -442,6 +443,10 @@ class ComponentIndex:
             embeddings = np.load(str(load_path))
             with open(meta_path) as f:
                 meta = json.load(f)
+
+            from maxim.utils.format_version import check_format_version
+
+            check_format_version(meta, "component_index_meta", log=log)
 
             with self._lock:
                 self._embeddings = embeddings

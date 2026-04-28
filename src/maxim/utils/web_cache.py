@@ -295,10 +295,7 @@ class WebCache:
             self._persistence_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Load existing
-            entries = []
-            if self._persistence_path.exists():
-                with open(self._persistence_path, "r", encoding="utf-8") as f:
-                    entries = json.load(f)
+            entries = self._read_persisted_entries()
 
             # Check if entry already exists
             self._url_key(entry.url)
@@ -309,11 +306,30 @@ class WebCache:
 
             # Save
             from maxim.utils.atomic_io import atomic_write_json
+            from maxim.utils.format_version import with_format_version
 
-            atomic_write_json(str(self._persistence_path), entries)
+            atomic_write_json(str(self._persistence_path), with_format_version({"entries": entries}))
 
         except Exception as e:
             logger.error(f"Failed to persist cache entry: {e}")
+
+    def _read_persisted_entries(self) -> list[dict]:
+        """Read the persisted entries list, accepting both v1.0 dict and pre-1.0 list."""
+        if not self._persistence_path or not self._persistence_path.exists():
+            return []
+        from maxim.utils.format_version import check_format_version
+
+        with open(self._persistence_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            check_format_version({}, "web_cache", log=logger)
+            return data
+        if isinstance(data, dict):
+            check_format_version(data, "web_cache", log=logger)
+            entries = data.get("entries")
+            if isinstance(entries, list):
+                return entries
+        return []
 
     def _load_persisted(self) -> None:
         """Load persisted salient extracts (must hold lock)."""
@@ -321,8 +337,7 @@ class WebCache:
             return
 
         try:
-            with open(self._persistence_path, "r", encoding="utf-8") as f:
-                entries = json.load(f)
+            entries = self._read_persisted_entries()
 
             for entry_data in entries:
                 entry = CacheEntry.from_dict(entry_data)

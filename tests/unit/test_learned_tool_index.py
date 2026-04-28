@@ -332,10 +332,12 @@ class TestPersistence:
         index.save(path)
         assert os.path.exists(path)
         assert not os.path.exists(f"{path}.tmp")
-        # Verify valid JSON
+        # Verify valid JSON. v1.0 wraps tool data under "tools" with the
+        # _format_version field at root (CC1 persistence-format contract).
         with open(path) as f:
             data = json.load(f)
-        assert "grab" in data
+        assert data["_format_version"] == "1.0"
+        assert "grab" in data["tools"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

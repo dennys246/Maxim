@@ -250,7 +250,9 @@ class PersistenceMixin:
         if not path:
             raise ValueError("No persistence path specified")
 
-        payload = self.dump()
+        from maxim.utils.format_version import with_format_version
+
+        payload = with_format_version(self.dump())
         atomic_write_json(path, payload)
         logger.info("Saved hippocampus to %s (%d memories)", path, len(payload["memories"]))
 
@@ -271,6 +273,9 @@ class PersistenceMixin:
         with open(path, "r", encoding="utf-8") as f:
             state = json.load(f)
 
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(state, "hippocampus", log=logger)
         self.load_state(state)
 
         edge_count = sum(

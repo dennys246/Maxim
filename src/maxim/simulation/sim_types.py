@@ -70,6 +70,9 @@ def load_resume_context(session_id: str) -> dict[str, Any] | None:
     try:
         with open(str(report_path), "r", encoding="utf-8") as f:
             report_data = json.load(f)
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(report_data, "session_report", log=logger)
         logger.info("Loaded previous session: %s", report_path.parent.name)
         return report_data
     except Exception as e:

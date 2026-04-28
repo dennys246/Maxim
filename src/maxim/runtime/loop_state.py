@@ -49,8 +49,10 @@ def _persist_state_json(state: Any, path: str, *, meta: dict[str, Any]) -> None:
             snap = state.snapshot()
         else:
             snap = {"state": repr(state)}
+        from maxim.utils.format_version import with_format_version
+
         abs_path = os.path.abspath(path)
-        atomic_write_json(abs_path, {"saved_at": time.time(), **meta, **snap})
+        atomic_write_json(abs_path, with_format_version({"saved_at": time.time(), **meta, **snap}))
     except Exception:
         pass  # Non-critical: state persistence is best-effort
 

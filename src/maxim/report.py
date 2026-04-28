@@ -160,6 +160,7 @@ class Report:
     def _save_json(self, path: Path) -> str:
         """Save as structured JSON."""
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
         data = {
             "title": self.title,
@@ -173,15 +174,18 @@ class Report:
             "metadata": self.metadata,
         }
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(str(path), data)
+        atomic_write_json(str(path), with_format_version(data))
         logger.info("Report saved: %s", path)
         return str(path)
 
     @classmethod
     def from_json(cls, path: str) -> "Report":
         """Load a Report from a JSON file."""
+        from maxim.utils.format_version import check_format_version
+
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
+        check_format_version(data, "report", log=logger)
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
 
     def __repr__(self) -> str:

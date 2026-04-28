@@ -570,8 +570,9 @@ class EntorhinalCortex:
         }
 
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, data)
+        atomic_write_json(path, with_format_version(data))
 
         logger.info(
             "Saved EC to %s (%d signatures, %d substrate nodes)",
@@ -585,6 +586,14 @@ class EntorhinalCortex:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(data, "ec", log=logger)
+
+        # Inner payload version is the legacy "version" string; tombstoned
+        # for the same reason the BioSystemSnapshot payload versions are
+        # tombstoned. The root-level _format_version is the authoritative
+        # contract going forward.
         version = data.get("version", "0.0")
         if version != "1.0":
             raise ValueError(f"Unsupported EC version: {version}")

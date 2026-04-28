@@ -160,6 +160,11 @@ class SignificanceWeightLearner:
             try:
                 with open(path) as f:
                     data = json.load(f)
+                import logging
+
+                from maxim.utils.format_version import check_format_version
+
+                check_format_version(data, "significance_weights", log=logging.getLogger(__name__))
                 for name, w in data.get("weights", {}).items():
                     # Handle deque fields from JSON lists
                     uh = w.pop("utility_history", [])
@@ -334,8 +339,9 @@ class SignificanceWeightLearner:
             data["weights"][name] = d
 
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(self.weights_path, data)
+        atomic_write_json(self.weights_path, with_format_version(data))
 
 
 __all__ = [

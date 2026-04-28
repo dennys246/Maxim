@@ -376,7 +376,9 @@ class ATL(MemoryLayer):
         if path is None:
             return
 
-        atomic_write_json(path, self.dump(), default=None)
+        from maxim.utils.format_version import with_format_version
+
+        atomic_write_json(path, with_format_version(self.dump()), default=None)
         logger.debug("ATL saved to %s (%d concepts)", path, len(self._concepts))
 
     def load(self, path: str | None = None) -> None:
@@ -388,6 +390,9 @@ class ATL(MemoryLayer):
         with open(path) as f:
             state = json.load(f)
 
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(state, "atl", log=logger)
         self.load_state(state)
 
         logger.debug("ATL loaded from %s (%d concepts)", path, len(self._concepts))

@@ -272,8 +272,9 @@ def run_precampaign_turns(
         analysis_path = Path("data") / "sim_reports" / f"campaign_analysis_{time.strftime('%Y%m%d_%H%M%S')}.json"
         analysis_path.parent.mkdir(parents=True, exist_ok=True)
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(str(analysis_path), campaign_analysis)
+        atomic_write_json(str(analysis_path), with_format_version(campaign_analysis))
         display_status(f"Analysis saved: {analysis_path}")
     except Exception as e:
         logger.warning("Failed to save campaign analysis: %s", e, exc_info=True)

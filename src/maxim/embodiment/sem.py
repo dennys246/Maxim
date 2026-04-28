@@ -611,16 +611,21 @@ class Entity:
     def save(self, path: str) -> None:
         """Save entity tree to a JSON file."""
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, self.to_dict())
+        atomic_write_json(path, with_format_version(self.to_dict()))
 
     @classmethod
     def load(cls, path: str) -> "Entity":
         """Load entity tree from a JSON file."""
         import json
+        import logging
+
+        from maxim.utils.format_version import check_format_version
 
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
+        check_format_version(data, "sem_entity", log=logging.getLogger(__name__))
         return cls.from_dict(data)
 
     # -- repr ---------------------------------------------------------------

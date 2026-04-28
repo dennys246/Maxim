@@ -367,8 +367,9 @@ class LearnedToolIndex:
             }
         try:
             from maxim.utils.atomic_io import atomic_write_json
+            from maxim.utils.format_version import with_format_version
 
-            atomic_write_json(path, data)
+            atomic_write_json(path, with_format_version({"tools": data}))
         except Exception as e:
             logger.debug("Failed to save tool index: %s", e)
 
@@ -384,8 +385,20 @@ class LearnedToolIndex:
         except (FileNotFoundError, json.JSONDecodeError):
             return
 
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(data, "learned_tool_index", log=logger)
+        # v1.0 wraps tools under "tools"; pre-1.0 stored tool names at root.
+        # Filter only the literal sentinel — startswith("_") would silently
+        # drop a future underscore-prefixed tool name (CC1 review fold,
+        # executor #3).
+        if isinstance(data.get("tools"), dict):
+            tool_data: dict[str, Any] = data["tools"]
+        else:
+            tool_data = {k: v for k, v in data.items() if k != "_format_version" and isinstance(v, dict)}
+
         with self._lock:
-            for tool_name, keywords in data.items():
+            for tool_name, keywords in tool_data.items():
                 if tool_name not in self._tool_keywords:
                     continue
                 for word, kw_data in keywords.items():

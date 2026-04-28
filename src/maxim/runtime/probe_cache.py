@@ -92,8 +92,18 @@ def load_cache() -> dict[str, dict[str, Any]]:
             data = json.load(f)
         if not isinstance(data, dict):
             return {}
-        # Defensive: drop any entries that aren't dicts.
-        return {k: v for k, v in data.items() if isinstance(v, dict)}
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(data, "probe_cache", log=logger)
+        # v1.0 stores entries under "entries"; pre-1.0 stored URL keys at root.
+        # Filter only the literal sentinel — startswith("_") would silently
+        # drop a future URL-keyed entry that began with an underscore (CC1
+        # review fold, executor #3).
+        if isinstance(data.get("entries"), dict):
+            entries: dict[str, Any] = data["entries"]
+        else:
+            entries = {k: v for k, v in data.items() if k != "_format_version"}
+        return {k: v for k, v in entries.items() if isinstance(v, dict)}
     except (OSError, json.JSONDecodeError) as e:
         # Plan 2 R2c: promoted from debug → warning. A corrupt probe cache
         # is operationally significant — operators shouldn't need -v to see it.
@@ -115,11 +125,12 @@ def load_cache() -> dict[str, dict[str, Any]]:
 def save_cache(cache: dict[str, dict[str, Any]]) -> None:
     """Atomically write the cache. Best-effort — never raises."""
     from maxim.utils.atomic_io import atomic_write_json
+    from maxim.utils.format_version import with_format_version
 
     path = _cache_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(path, cache)
+        atomic_write_json(path, with_format_version({"entries": cache}))
     except OSError as e:
         logger.debug("probe_cache save failed (%s) — continuing", e)
 

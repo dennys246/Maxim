@@ -301,8 +301,9 @@ class AngularGyrus(MemoryLayer):
 
         try:
             from maxim.utils.atomic_io import atomic_write_json
+            from maxim.utils.format_version import with_format_version
 
-            atomic_write_json(save_path, data)
+            atomic_write_json(save_path, with_format_version(data))
             logger.debug("Angular gyrus saved %d records to %s", len(self._records), save_path)
         except OSError as e:
             logger.warning("Failed to save angular gyrus: %s", e)
@@ -319,6 +320,10 @@ class AngularGyrus(MemoryLayer):
         except (OSError, json.JSONDecodeError) as e:
             logger.debug("Failed to load angular gyrus: %s", e)
             return
+
+        from maxim.utils.format_version import check_format_version
+
+        check_format_version(data, "angular_gyrus", log=logger)
 
         with self._rwlock.write():
             self._records.clear()

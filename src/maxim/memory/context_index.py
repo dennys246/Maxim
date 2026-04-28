@@ -124,14 +124,20 @@ class SimilarityIndex:
             "bands": [{json.dumps(list(k)): list(v) for k, v in band.items()} for band in self.bands],
         }
         from maxim.utils.atomic_io import atomic_write_json
+        from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, data, indent=None)
+        atomic_write_json(path, with_format_version(data), indent=None)
 
     @classmethod
     def load(cls, path: str) -> SimilarityIndex:
         """Load index from disk."""
+        import logging
+
+        from maxim.utils.format_version import check_format_version
+
         with open(path) as f:
             data = json.load(f)
+        check_format_version(data, "context_index", log=logging.getLogger(__name__))
         idx = cls(data["num_hashes"], data["num_bands"])
         idx.signatures = data["signatures"]
         idx.bands = [{tuple(json.loads(k)): set(v) for k, v in band.items()} for band in data["bands"]]

@@ -220,8 +220,9 @@ def save_report(report: SimulationReport, base_dir: str | None = None) -> Path:
 
     report_path = session_dir / "report.json"
     from maxim.utils.atomic_io import atomic_write_json
+    from maxim.utils.format_version import with_format_version
 
-    atomic_write_json(str(report_path), asdict(report))
+    atomic_write_json(str(report_path), with_format_version(asdict(report)))
 
     logger.info("Simulation report saved: %s", report_path)
     return report_path
