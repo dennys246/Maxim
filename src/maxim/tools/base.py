@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -59,7 +60,219 @@ class ToolOutput:
 ToolResult = ToolOutput
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Schema format conversion helpers (CC9 — dual-format support)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Python type → JSONSchema "type" string. The reverse map below uses the
+# first Python type for each JSON type.
+_PY_TO_JSON_TYPE: dict[type, str] = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+    list: "array",
+    dict: "object",
+    type(None): "null",
+}
+
+_JSON_TO_PY_TYPE: dict[str, type] = {
+    "string": str,
+    "integer": int,
+    "number": float,
+    "boolean": bool,
+    "array": list,
+    "object": dict,
+    "null": type(None),
+}
+
+
+def _looks_like_json_schema(schema: Any) -> bool:
+    """Heuristic: dict with ``"type": "object"`` and ``"properties"`` keys.
+
+    The two markers together unambiguously identify JSONSchema; the custom
+    format never uses ``"type"`` as a top-level key (a tool param literally
+    named ``"type"`` would be its own property, not the dict's type tag).
+    """
+    if not isinstance(schema, dict):
+        return False
+    return schema.get("type") == "object" and "properties" in schema
+
+
+def _json_schema_to_custom(schema: dict[str, Any]) -> dict[str, Any]:
+    """Convert a JSONSchema dict to the legacy custom format.
+
+    Exposed for round-trip equivalence testing and for callers that need
+    a Python-typed view of an externally-supplied JSONSchema. ``Tool``
+    itself does NOT call this at construction — ``input_schema`` is left
+    exactly as authored to preserve the public contract.
+
+    JSONSchema shape: ``{"type": "object", "properties": {NAME: PROP, ...},
+    "required": [NAME, ...]}``.
+
+    Mapping:
+    - Required property with simple ``"type"``: ``{NAME: python_type}``
+    - Optional property: ``{NAME: (python_type, default_or_None)}``
+    - Type unions (``["string", "null"]``) collapse to the first non-null
+      Python type (custom format can't express unions). Validation only
+      checks presence, not type, so this loss is dispatch-equivalent.
+    - Unknown / unsupported ``"type"`` values fall back to ``object`` so
+      validation still treats the param as present.
+    """
+    properties = schema.get("properties") or {}
+    required = set(schema.get("required") or [])
+    custom: dict[str, Any] = {}
+
+    for name, prop in properties.items():
+        if not isinstance(prop, dict):
+            # Malformed entry — treat as required, untyped.
+            custom[name] = dict if name in required else (dict, None)
+            continue
+
+        py_type = _resolve_property_type(prop.get("type"))
+
+        if name in required:
+            custom[name] = py_type
+        else:
+            default = prop.get("default")
+            custom[name] = (py_type, default)
+
+    return custom
+
+
+def _resolve_property_type(json_type: Any) -> type:
+    """Map a JSONSchema ``"type"`` value to a Python type for dispatch.
+
+    Accepts a single string, a union (list), or anything else. Returns
+    ``dict`` as a permissive fallback so validation doesn't reject params
+    with exotic schemas.
+
+    Note: this is asymmetric vs ``_python_type_name`` (which falls back
+    to ``"string"`` for unknown Python types). The asymmetry is intentional
+    today — both helpers are used only for round-trip equivalence, never
+    on the construction path. If 1.1+ MCP server mode flows
+    externally-supplied JSONSchema through here, raise on unknowns instead
+    of coercing silently.
+    """
+    if isinstance(json_type, str):
+        return _JSON_TO_PY_TYPE.get(json_type, dict)
+    if isinstance(json_type, list):
+        for t in json_type:
+            if isinstance(t, str) and t != "null" and t in _JSON_TO_PY_TYPE:
+                return _JSON_TO_PY_TYPE[t]
+    return dict
+
+
+def _custom_to_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Convert custom-format ``input_schema`` to JSONSchema (MCP-compatible).
+
+    Custom format variants:
+    - ``{NAME: type}`` — required, typed
+    - ``{NAME: (type, default)}`` — optional with default
+    - ``{NAME: "description string"}`` — required string with description.
+      **Legacy convention.** Matches existing ``_validate_input`` behavior
+      (non-tuple → required), even when the description text says "Optional".
+      Strict MCP / Anthropic tool-use clients will mark these as required
+      and reject calls that omit the parameter. New tool code should
+      migrate to ``{NAME: (str, None)}`` or author JSONSchema directly.
+
+    The custom format is strictly less expressive than JSONSchema: it
+    cannot represent ``enum``, ``pattern``, ``format``, ``oneOf``,
+    ``additionalProperties``, or nested object schemas. Authors needing
+    those features must author JSONSchema directly.
+
+    Output is a valid JSONSchema 2020-12 object: ``{"type": "object",
+    "properties": {...}, "required": [...]}`` with ``"required"`` only
+    present when non-empty (per JSONSchema convention).
+    """
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+    for name, spec in schema.items():
+        if isinstance(spec, tuple) and len(spec) >= 2:
+            py_type, default = spec[0], spec[1]
+            prop: dict[str, Any] = {"type": _python_type_name(py_type)}
+            # JSONSchema accepts null; emit only when default is meaningful
+            # to avoid noisy "default: null" entries on convention-optional
+            # parameters.
+            if default is not None:
+                prop["default"] = default
+            properties[name] = prop
+        elif isinstance(spec, type):
+            properties[name] = {"type": _python_type_name(spec)}
+            required.append(name)
+        elif isinstance(spec, str):
+            # Description-as-value pattern (e.g. SensePresenceTool).
+            properties[name] = {"type": "string", "description": spec}
+            required.append(name)
+        else:
+            properties[name] = {}
+            required.append(name)
+
+    out: dict[str, Any] = {"type": "object", "properties": properties}
+    if required:
+        out["required"] = required
+    return out
+
+
+def _python_type_name(py_type: Any) -> str:
+    """Map a Python type to its JSONSchema type name. Fallback: ``"string"``."""
+    if isinstance(py_type, type):
+        return _PY_TO_JSON_TYPE.get(py_type, "string")
+    return "string"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tool ABC
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 class Tool(ABC):
+    """Base class for agent-callable tools.
+
+    ``input_schema`` accepts EITHER format:
+
+    1. **Custom (legacy) format** — a flat dict where each entry is one of:
+
+       - ``{NAME: python_type}`` — required parameter
+       - ``{NAME: (python_type, default)}`` — optional parameter with default
+       - ``{NAME: "description string"}`` — required string with description
+
+       Example: ``{"path": str, "tail_lines": (int, None)}``
+
+    2. **JSONSchema** — a dict shaped ``{"type": "object", "properties":
+       {...}, "required": [...]}`` per the JSONSchema spec.
+
+       Example: ``{"type": "object", "properties": {"path": {"type":
+       "string"}}, "required": ["path"]}``
+
+    Both formats are first-class. ``input_schema`` is left exactly as the
+    tool author declared it — no construction-time mutation. ``_validate_input``
+    branches on the schema shape so dispatch is identical for both formats.
+    Existing tools (custom format) and ``@maxim.tool``-decorated tools
+    (which already produce JSONSchema) keep working unchanged.
+
+    **JSONSchema is the canonical format going forward.** It is the wire
+    format used by MCP, OpenAI tool calls, Anthropic tool use, and OpenAPI.
+    Authoring new tools against JSONSchema directly is recommended; the
+    custom format remains supported indefinitely as a Python convenience.
+    The custom format is strictly less expressive — it cannot represent
+    ``enum``, ``pattern``, ``format``, ``oneOf/anyOf/allOf``,
+    ``additionalProperties``, or nested object schemas. Authors needing
+    those features must author JSONSchema directly.
+
+    Use ``Tool.to_json_schema()`` to export the schema as JSONSchema for
+    MCP servers, prompt construction, or external tool catalogs. The
+    output is JSONSchema 2020-12 / MCP-compatible per
+    https://spec.modelcontextprotocol.io/. Format-sensitive consumers
+    inside the codebase should also route through ``to_json_schema()``
+    rather than reading ``input_schema`` directly, so they handle both
+    authored formats correctly.
+
+    See ``docs/plans/mcp_compatibility.md`` for the broader 1.1+ MCP work
+    that this dual-format support unlocks.
+    """
+
     name: str
     description: str = ""
     input_schema: dict[str, Any] = {}
@@ -84,20 +297,40 @@ class Tool(ABC):
         """Perform the side effect."""
         raise NotImplementedError
 
+    def to_json_schema(self) -> dict[str, Any]:
+        """Export ``input_schema`` as a JSONSchema dict (MCP-compatible).
+
+        If ``input_schema`` is already JSONSchema, returns a deep copy
+        (preserves enums, descriptions, additionalProperties, nested
+        schemas, etc.). Otherwise converts the custom format to JSONSchema.
+
+        Output shape: ``{"type": "object", "properties": {...}, "required":
+        [...]}``. ``"required"`` is omitted when empty per JSONSchema
+        convention. The result is suitable for direct use as an MCP tool
+        ``inputSchema``, an Anthropic ``input_schema``, or an OpenAI
+        function-call ``parameters`` object.
+        """
+        schema = getattr(self, "input_schema", None) or {}
+        if not isinstance(schema, dict):
+            return {"type": "object", "properties": {}}
+        if _looks_like_json_schema(schema):
+            return copy.deepcopy(schema)
+        return _custom_to_json_schema(schema)
+
     def _validate_input(self, kwargs: dict[str, Any]) -> None:
         schema = getattr(self, "input_schema", None)
         if not isinstance(schema, dict):
             return
 
-        # JSON Schema format: {"type": "object", "properties": {...}, "required": [...]}
-        if "type" in schema and "properties" in schema:
+        # JSONSchema format: {"type": "object", "properties": {...}, "required": [...]}
+        if _looks_like_json_schema(schema):
             required = set(schema.get("required", []))
             for key in required:
                 if key not in kwargs:
                     raise ValueError(f"Missing required input: {key}")
             return
 
-        # Flat format: {"param_name": spec, ...}
+        # Custom (legacy) format: {"param_name": spec, ...}
         for key, spec in schema.items():
             optional = isinstance(spec, tuple) and len(spec) >= 2
             if key not in kwargs and not optional:
