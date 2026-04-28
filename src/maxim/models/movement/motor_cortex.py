@@ -5,7 +5,10 @@ import os
 os.environ.setdefault("TF_GPU_ALLOCATOR", "cuda_malloc_async")
 os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
 
-import keras
+try:
+    import keras
+except ImportError as _e:
+    raise ImportError("motor_cortex requires keras. Install with: pip install pymaxim[training]") from _e
 
 from maxim.utils import config
 

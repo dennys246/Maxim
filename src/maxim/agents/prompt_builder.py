@@ -117,7 +117,11 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
     identity = "You are Maxim, a robot assistant."
     _coach = getattr(request, "acting_coach", None)
     # Check for a real ActingCoachConfig (has role_values), not a MagicMock
-    if _coach is not None and hasattr(_coach, "role_values") and isinstance(getattr(_coach, "role_values", None), (list, tuple)):
+    if (
+        _coach is not None
+        and hasattr(_coach, "role_values")
+        and isinstance(getattr(_coach, "role_values", None), (list, tuple))
+    ):
         identity = (
             "You are a body in a world. You explore by ACTING — using your "
             "physical tools to interact with objects around you. You do NOT "

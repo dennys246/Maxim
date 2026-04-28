@@ -916,7 +916,11 @@ class LLMRouter:
                     drained_keys=self._last_drained_keys,
                 )
             else:
-                warn("No eligible LLM providers for request")
+                warn(
+                    "No eligible LLM providers for request. "
+                    "Run `maxim --list-models` to check model status, "
+                    "or set an API key (e.g. ANTHROPIC_API_KEY)"
+                )
             return "", None
 
         # Plan 3 R2.5: reset the per-dispatch attempt log at the top of

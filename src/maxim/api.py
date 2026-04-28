@@ -145,6 +145,15 @@ def configure(
 _API_DEFAULT_MODEL = "mistral-7b"
 
 
+def _restore_env(saved: dict[str, str | None]) -> None:
+    """Restore env vars from a snapshot. ``None`` means the key was absent."""
+    for key, value in saved.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
 def _resolve_model(model: str) -> str:
     """Return the effective model, checking persisted choice when caller
     passed the default.  Allows ``maxim.run()`` (no explicit model) to
@@ -428,6 +437,7 @@ def run(
     os.makedirs(effective_home, exist_ok=True)
 
     # ── LLM router ───────────────────────────────────────────────────────
+    _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
     os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
 
@@ -540,6 +550,7 @@ def run(
                 _api_instance.shutdown()
             except Exception as e:
                 logger.debug("Agent instance shutdown failed: %s", e)
+        _restore_env(_saved_env)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -591,6 +602,7 @@ def imagine(
     _validate_model(model)
     configure(verbosity=verbosity)
 
+    _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
     os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
 
@@ -618,17 +630,20 @@ def imagine(
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
-    sim_result = start_simulation_mode(
-        goal=goal,
-        persona=persona,
-        max_turns=max_turns,
-        debug=verbosity >= 3,
-        sandbox_backend=sandbox,
-        pre_campaign_turns=pre_campaign_turns,
-        resume_session=resume,
-    )
+    try:
+        sim_result = start_simulation_mode(
+            goal=goal,
+            persona=persona,
+            max_turns=max_turns,
+            debug=verbosity >= 3,
+            sandbox_backend=sandbox,
+            pre_campaign_turns=pre_campaign_turns,
+            resume_session=resume,
+        )
 
-    return Session.from_result(sim_result, model=model)
+        return Session.from_result(sim_result, model=model)
+    finally:
+        _restore_env(_saved_env)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1044,6 +1059,7 @@ def campaign(
     model = _resolve_model(model)
     configure(verbosity=verbosity)
 
+    _saved_env = {k: os.environ.get(k) for k in ("MAXIM_LLM_ENABLED", "MAXIM_LLM_PROFILE")}
     os.environ.setdefault("MAXIM_LLM_ENABLED", "1")
     os.environ["MAXIM_LLM_PROFILE"] = model  # explicit model= must win
 
@@ -1062,28 +1078,31 @@ def campaign(
 
     from maxim.simulation.orchestrator import start_simulation_mode
 
-    sim_result = start_simulation_mode(
-        goal=campaign_def.goal or f"Complete the {campaign_def.name} campaign",
-        persona="campaign",
-        dm_campaign=campaign_def,
-    )
+    try:
+        sim_result = start_simulation_mode(
+            goal=campaign_def.goal or f"Complete the {campaign_def.name} campaign",
+            persona="campaign",
+            dm_campaign=campaign_def,
+        )
 
-    # Extract structured results from the sim
-    rollup = sim_result.campaign_analysis or {}
-    choices = rollup.get("choices", [])
-    flags = rollup.get("flags", [])
+        # Extract structured results from the sim
+        rollup = sim_result.campaign_analysis or {}
+        choices = rollup.get("choices", [])
+        flags = rollup.get("flags", [])
 
-    return CampaignResult(
-        session_id=sim_result.session_id,
-        campaign_name=campaign_def.name,
-        turns=sim_result.turns,
-        choices_made=choices,
-        flags=flags,
-        finish_reason=sim_result.finish_reason,
-        party_mode=campaign_def.party_mode,
-        npc_memories=rollup.get("npc_memories", {}),
-        rollup=rollup,
-    )
+        return CampaignResult(
+            session_id=sim_result.session_id,
+            campaign_name=campaign_def.name,
+            turns=sim_result.turns,
+            choices_made=choices,
+            flags=flags,
+            finish_reason=sim_result.finish_reason,
+            party_mode=campaign_def.party_mode,
+            npc_memories=rollup.get("npc_memories", {}),
+            rollup=rollup,
+        )
+    finally:
+        _restore_env(_saved_env)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1147,10 +1166,11 @@ def benchmark(
 
     suite_path = suite
     if not Path(suite).exists():
-        # Try scenarios/benchmarks/{suite}.yaml
+        # Benchmarks live in `scenarios/benchmarks/` in the source repo
+        # and are NOT shipped in the pip wheel. Pip-install users must
+        # pass a direct path to a YAML file.
         candidate = Path("scenarios") / "benchmarks" / f"{suite}.yaml"
         if not candidate.exists():
-            # Try scenarios/benchmarks/{suite}_suite.yaml
             candidate = Path("scenarios") / "benchmarks" / f"{suite}_suite.yaml"
         if candidate.exists():
             suite_path = str(candidate)
@@ -1159,8 +1179,8 @@ def benchmark(
 
             raise ConfigurationError(
                 f"Benchmark suite '{suite}' not found. "
-                f"Available suites: cognitive_suite, quick_check, causal_learning, etc. "
-                f"Or pass a direct path to a YAML file.",
+                f"Benchmarks are only available when running from a Maxim source checkout "
+                f"(scenarios/benchmarks/*.yaml). Pass a direct path to a YAML file instead.",
                 context={"suite": suite},
             )
 

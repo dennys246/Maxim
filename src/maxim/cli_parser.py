@@ -10,7 +10,19 @@ import os
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="maxim")
+    parser = argparse.ArgumentParser(
+        prog="maxim",
+        description=(
+            "Maxim — bio-inspired cognitive architecture for AI agents.\n\n"
+            "Quick start:\n"
+            "  maxim                              Interactive menu\n"
+            '  maxim --sim "test memory recall"   Run a simulation\n'
+            "  maxim --llm claude-sonnet          Use Claude as the LLM backend\n"
+            "  maxim --list-models                Show available models\n"
+            "  maxim doctor                       Run environment diagnostics\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
     # ── Core ───────────────────────────────────────────────────────────
     core = parser.add_argument_group("core", "Runtime and model configuration")

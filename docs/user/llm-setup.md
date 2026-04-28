@@ -7,9 +7,9 @@ Maxim uses local LLM inference by default via llama.cpp. Cloud backends (Anthrop
 ## Quick Start
 
 ```bash
-pip install -e '.[llm-llama]'
-./scripts/download_models.sh --llm --enable
-maxim --mode agentic --language-model smollm-1.7b
+pip install pymaxim[llm-llama]
+maxim --list-models                    # see available local models
+maxim --llm smollm-1.7b                # auto-downloads on first run
 ```
 
 ## Local Models
@@ -27,10 +27,11 @@ maxim --mode agentic --language-model smollm-1.7b
 ### Downloading Models
 
 ```bash
-./scripts/download_models.sh --llm --enable
+maxim --list-models                    # see what's available + download status
+maxim --llm mistral-7b                 # auto-downloads on first run
 ```
 
-This downloads the default model (Mistral 7B) in Q4_K_M quantization. To download a specific model, edit the `model_path` field in `~/.maxim/config/llm.json` before running the script.
+The first launch with a given `--llm` profile prompts to download the GGUF (~4 GB for Mistral 7B Q4_K_M). Set `MAXIM_AUTO_DOWNLOAD_MODELS=1` to skip the prompt in CI.
 
 ### Quantization
 
@@ -740,7 +741,7 @@ result = agent.generate_json("Extract name and age from: 'John is 25'")
 
 | Issue | Solution |
 |-------|----------|
-| Model not found | Run `./scripts/download_models.sh --llm --enable` |
+| Model not found | Run `maxim --list-models` to see download status |
 | Out of memory | Use a smaller model or lower quantization level |
 | Slow inference | Use smaller model (`smollm-1.7b`) or lower quantization (`Q3_K_M`) |
 | Gibberish output | Check that `prompt_style` matches the model family in `~/.maxim/config/llm.json` |

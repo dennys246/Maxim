@@ -54,8 +54,9 @@ Install any combination with `pip install "pymaxim[extra1,extra2]"` (or `pip ins
 ### Downloading Models
 
 ```bash
-# LLM models (pick one)
-./scripts/download_models.sh --llm --enable
+# LLM models (auto-downloads on first --llm use)
+maxim --list-models                    # see available + status
+maxim --llm mistral-7b                 # auto-downloads (prompts first time)
 
 # Vision models (RTMDet + RTMPose, Apache 2.0)
 python -m maxim.models.download --vision

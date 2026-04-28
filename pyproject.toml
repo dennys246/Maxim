@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pymaxim"
-version = "0.8.0"
+version = "0.8.1"
 description = "Bio-inspired cognitive architecture for LLM agents — embodied sensation, homeostatic drives, and brain-modeled persistent memory enable cross-session learning without fine-tuning."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,7 @@ dependencies = [
     "scipy>=1.11,<2.0",
     "pyyaml>=6.0,<7.0",
     "json-repair>=0.30,<1.0",
+    "httpx>=0.27,<1.0",
     "rich>=13.0.0,<14.0",
     # Plan 4 C2: cross-platform RMW file locking for drain state
     # serialization. Already present transitively via huggingface_hub /
@@ -137,6 +138,7 @@ comms = [
 semantic = [
     "sentence-transformers>=2.2.0",
     "torch>=2.1",
+    "spacy>=3.7",
 ]
 # Temporal reference parsing for natural language time extraction
 temporal = [
