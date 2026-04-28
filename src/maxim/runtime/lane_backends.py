@@ -581,7 +581,7 @@ class LaneBackendManager:
             from maxim.models.language.config import load_llm_config
             from maxim.models.language.router import LLMRouter
         except Exception as e:
-            logger.warning("LLM modules not available: %s", e)
+            logger.warning("Language model modules not available: %s", e)
             return None
 
         env_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
@@ -1451,7 +1451,7 @@ def _maybe_auto_spawn_server(
         if logger is not None:
             logger.warning(
                 "Auto-spawn skipped: llama_cpp.server not installed. "
-                "Run: pip install -e '.[llm-server]' to enable local server spawning."
+                "Run: pip install pymaxim[llm-server] to enable local server spawning."
             )
         return lane_configs
 
@@ -1482,7 +1482,7 @@ def _maybe_auto_spawn_server(
         if logger is not None:
             logger.warning(
                 "Auto-spawn skipped: GGUF file not found at %s (profile=%s). "
-                "Run ./scripts/download_models.sh --llm or adjust MAXIM_LLM_PROFILE.",
+                "Run: maxim --list-models to see download status, or set MAXIM_LLM_PROFILE.",
                 model_path,
                 infer_cfg.model_profile,
             )

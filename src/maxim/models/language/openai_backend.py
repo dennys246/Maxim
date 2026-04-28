@@ -154,11 +154,11 @@ class _OpenAIBackend:
         try:
             from openai import OpenAI  # type: ignore
         except Exception as e:
-            warn("OpenAI backend unavailable (install `openai`): %s", e)
+            warn("OpenAI backend unavailable. Fix: pip install pymaxim[llm-openai]  (%s)", e)
             return None
         api_key = self._get_api_key()
         if not api_key:
-            warn("OpenAI API key missing")
+            warn("OpenAI API key missing. Fix: export OPENAI_API_KEY=<your-key>")
             return None
         try:
             base_url = self._get_base_url()

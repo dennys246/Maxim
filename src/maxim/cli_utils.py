@@ -277,6 +277,12 @@ def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data")
         "No GPU detected; falling back to smaller model (smollm-1.7b-instruct) "
         "with CPU inference. Performance may be reduced."
     )
+    print(
+        "  INFO: No GPU detected — using smollm-1.7b-instruct (CPU mode).\n"
+        "  For better results, set a cloud API key (e.g. export ANTHROPIC_API_KEY=...)\n"
+        "  or install GPU support: pip install pymaxim[llm-torch]",
+        file=sys.stderr,
+    )
     os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")
     os.environ.setdefault("MAXIM_LLM_N_GPU_LAYERS", "0")
 

@@ -138,11 +138,11 @@ class _AnthropicBackend:
         try:
             from anthropic import Anthropic  # type: ignore
         except Exception as e:
-            warn("Anthropic backend unavailable (install `anthropic`): %s", e)
+            warn("Anthropic backend unavailable. Fix: pip install pymaxim[llm-anthropic]  (%s)", e)
             return None
         api_key = self._get_api_key()
         if not api_key:
-            warn("Anthropic API key missing")
+            warn("Anthropic API key missing. Fix: export ANTHROPIC_API_KEY=<your-key>")
             return None
         try:
             self._client = Anthropic(api_key=api_key, timeout=self._get_timeout())

@@ -686,15 +686,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
                 _api_key = read_key()
             except Exception:
+                # Real leader: surface to operator. See docs/troubleshooting/leader_proxy_debug.md
                 print("[leader-boot] WARNING: could not read API key — proxy will run without auth")
             _proxy = start_leader_proxy(api_key=_api_key, bind_host=detected_role.bind_host)
             if _proxy is None:
                 print("[leader-boot] WARNING: LeaderProxy failed to start (port in use?)")
     except Exception as _e:
-        import traceback as _tb
+        # Only surface to operators when role resolved to leader. Solo users
+        # should never see leader-boot noise.
+        if detected_role is not None and detected_role.role == "leader":
+            import traceback as _tb
 
-        print(f"[leader-boot] WARNING: early proxy boot failed: {_e}")
-        _tb.print_exc()
+            print(f"[leader-boot] WARNING: early proxy boot failed: {_e}")
+            _tb.print_exc()
+        else:
+            logging.getLogger(__name__).debug("Early proxy boot skipped: %s", _e)
 
     # ── Normalize args (after proxy boot — can trigger heavy CUDA imports) ──
     _normalize_args(args)
@@ -1754,12 +1760,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                                 if download_llm(profile):
                                     print(f"  Download complete: {profile}")
                                 else:
-                                    print("  Download failed. Run: ./scripts/download_models.sh --llm --enable")
+                                    print("  Download failed. Run: maxim --list-models to see available models.")
                             else:
-                                print("  Model not found. Run: ./scripts/download_models.sh --llm --enable")
+                                print("  Model not found. Run: maxim --list-models to see available models.")
                         except Exception as e:
                             print(f"  Auto-download failed: {e}")
-                            print("  Run: ./scripts/download_models.sh --llm --enable")
+                            print("  Run: maxim --list-models to see available models.")
 
                     if hasattr(llm_router, "warmup"):
                         llm_router.warmup()
@@ -1772,7 +1778,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         else:
                             logger.warning("LLM failed to load — simulation will use fallback responses")
                             print("  WARNING: LLM failed to load. Simulation will not produce real responses.")
-                            print("  Ensure model is downloaded: ./scripts/download_models.sh --llm --enable")
+                            print("  Ensure model is downloaded. Run: maxim --list-models")
                     logger.info("LLM router initialized: %s", llm_router)
                     llm_worker = LLMWorker(
                         llm_router,

@@ -175,7 +175,7 @@ class ExecAgent(Agent):
                 )
                 self._llm = ChatLLMAgent(config=config)
             except Exception as e:
-                warn("ExecAgent: Failed to init LLM: %s", e)
+                warn("Failed to initialize language model: %s", e)
                 return None
         return self._llm
 
@@ -198,7 +198,7 @@ class ExecAgent(Agent):
             if profile_override:
                 cfg = load_llm_config(profile_override=profile_override)
         except Exception as e:
-            warn("ExecAgent: Failed to load LLM config: %s", e)
+            warn("Failed to load language model config: %s", e)
             return None
         if not cfg.enabled:
             return None
@@ -222,7 +222,7 @@ class ExecAgent(Agent):
             self._llm_worker = llm_worker
             self._owns_llm_worker = True
         except Exception as e:
-            warn("ExecAgent: Failed to init LLMWorker: %s", e)
+            warn("Failed to start language model worker: %s", e)
             return None
         return self._llm_worker
 
@@ -1268,7 +1268,7 @@ Based on this context, what goal should be proposed?"""
             return goal
 
         except Exception as e:
-            warn("ExecAgent: LLM error: %s", e)
+            warn("Language model error during plan generation: %s", e)
             return None
 
     def _run_pre_deliberation(self, ctx: StructuredContext) -> str:
