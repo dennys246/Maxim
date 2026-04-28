@@ -2719,7 +2719,12 @@ def run_agentic_loop(
                         available_tools = mode_info.get_available_tools(_all_tools)
                         last_surfaced_tools = list(available_tools)
 
-                        # Get full tool info for prompt (description, params, example)
+                        # Get full tool info for prompt (description, params, example).
+                        # Route through Tool.to_json_schema() so dynamic tools authored
+                        # in either input_schema format render correctly. Pre-CC9 this
+                        # iterated input_schema.items() directly and silently produced
+                        # empty params for JSONSchema-authored tools (the @maxim.tool
+                        # decorator path) via the swallow-everything except below.
                         tool_descriptions = {}
                         for name in available_tools:
                             if name in TOOL_DESCRIPTIONS:
@@ -2728,14 +2733,24 @@ def run_agentic_loop(
                                 # Dynamic tool (from skill/protocol) — build from Tool instance
                                 try:
                                     tool = executor.registry.get(name)
+                                    json_schema = (
+                                        tool.to_json_schema()
+                                        if hasattr(tool, "to_json_schema")
+                                        else {"properties": {}, "required": []}
+                                    )
+                                    properties = json_schema.get("properties", {}) or {}
+                                    required = set(json_schema.get("required", []) or [])
+                                    params: dict[str, str] = {}
+                                    for param_name, prop in properties.items():
+                                        prop_type = prop.get("type", "string") if isinstance(prop, dict) else "string"
+                                        if param_name in required:
+                                            params[param_name] = str(prop_type)
+                                        else:
+                                            default = prop.get("default") if isinstance(prop, dict) else None
+                                            params[param_name] = f"({prop_type}, default={default!r})"
                                     tool_descriptions[name] = {
                                         "description": tool.description,
-                                        "params": {
-                                            k: f"({v[0].__name__}, default={v[1]!r})"
-                                            if isinstance(v, tuple)
-                                            else v.__name__
-                                            for k, v in getattr(tool, "input_schema", {}).items()
-                                        },
+                                        "params": params,
                                         "example": None,
                                         "followup_type": None,
                                     }
