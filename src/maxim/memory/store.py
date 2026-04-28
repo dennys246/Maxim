@@ -88,6 +88,11 @@ def _unwrap_items(data: Any, kind: str) -> list[dict]:
     ``check_format_version`` only handles dicts; we emit the warning
     by passing a synthetic empty dict so the helper's dedupe logic
     keys correctly on ``kind``.
+
+    Loud-fail on truly unrecognized roots (CC1 review fold, arch I3):
+    a JSON value that's neither list nor dict is corruption, not a
+    valid file shape — return [] but log a warning so the caller sees
+    silent data loss before it cascades.
     """
     from maxim.utils.format_version import check_format_version
 
@@ -102,6 +107,12 @@ def _unwrap_items(data: Any, kind: str) -> list[dict]:
             return items
         return []
 
+    log.warning(
+        "%s payload has unexpected JSON root type %s (expected dict or list); "
+        "treating as empty store",
+        kind,
+        type(data).__name__,
+    )
     return []
 
 

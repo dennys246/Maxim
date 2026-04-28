@@ -89,9 +89,21 @@ def with_format_version(payload: dict[str, Any], version: str = FORMAT_VERSION) 
     """Return ``payload`` annotated with ``_format_version`` at root.
 
     Mutates the input dict in place AND returns it (callers may chain).
-    Existing ``_format_version`` keys are preserved — this never
-    silently overwrites an explicit caller-set version. Callers that
-    DO want to re-stamp must delete the key first.
+
+    **Fail-loud on stale conflict** (CC1 review fold, arch B1 + executor #6).
+    The pre-fold version used ``setdefault`` so an existing
+    ``_format_version`` key was silently preserved. That hides exactly
+    the failure mode this contract is meant to surface: a stale
+    ``"0.x"`` (or otherwise wrong) literal anywhere in the payload
+    survives into the persisted file. Per CLAUDE.md's silent-no-op
+    invariant lesson, freeze-critical contracts must fail loudly when
+    the assumption breaks. So:
+
+    - If ``_format_version`` is absent, set it to ``version``.
+    - If ``_format_version`` is already equal to ``version``, no-op.
+    - If ``_format_version`` is present but different (a stale value
+      survived a load-modify-save round-trip), raise ``ValueError`` so
+      the caller sees the bug.
 
     Raises ``TypeError`` if ``payload`` is not a dict — the format
     contract is JSON-object-rooted, never list-rooted. Loaders relying
@@ -103,7 +115,16 @@ def with_format_version(payload: dict[str, Any], version: str = FORMAT_VERSION) 
             f"with_format_version: payload must be dict, got {type(payload).__name__}; "
             "the _format_version contract requires a JSON object at root"
         )
-    payload.setdefault(_FIELD, version)
+    existing = payload.get(_FIELD)
+    if existing is None:
+        payload[_FIELD] = version
+    elif existing != version:
+        raise ValueError(
+            f"with_format_version: payload already carries {_FIELD}={existing!r} "
+            f"but writer requested {version!r}; refusing to silently re-stamp. "
+            "If you are re-saving a payload that came from a versioned file, "
+            "delete the field first or pass a matching version."
+        )
     return payload
 
 

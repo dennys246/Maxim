@@ -389,10 +389,13 @@ class LearnedToolIndex:
 
         check_format_version(data, "learned_tool_index", log=logger)
         # v1.0 wraps tools under "tools"; pre-1.0 stored tool names at root.
+        # Filter only the literal sentinel — startswith("_") would silently
+        # drop a future underscore-prefixed tool name (CC1 review fold,
+        # executor #3).
         if isinstance(data.get("tools"), dict):
             tool_data: dict[str, Any] = data["tools"]
         else:
-            tool_data = {k: v for k, v in data.items() if not k.startswith("_") and isinstance(v, dict)}
+            tool_data = {k: v for k, v in data.items() if k != "_format_version" and isinstance(v, dict)}
 
         with self._lock:
             for tool_name, keywords in tool_data.items():

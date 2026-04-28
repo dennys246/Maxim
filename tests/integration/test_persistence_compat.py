@@ -51,10 +51,21 @@ class TestFormatVersionHelper:
         assert out["_format_version"] == FORMAT_VERSION
         assert out["foo"] == "bar"
 
-    def test_with_format_version_preserves_existing(self) -> None:
-        # Caller-set version is not silently overwritten.
-        out = with_format_version({"_format_version": "9.9", "foo": "bar"})
-        assert out["_format_version"] == "9.9"
+    def test_with_format_version_raises_on_stale_conflict(self) -> None:
+        # Pre-fold (CC1 review B1 + executor #6): used setdefault so a stale
+        # _format_version silently survived. Post-fold: any pre-existing
+        # _format_version that does NOT match the writer's version raises
+        # ValueError so the caller sees the round-trip bug.
+        with pytest.raises(ValueError, match="already carries"):
+            with_format_version({"_format_version": "9.9", "foo": "bar"})
+
+    def test_with_format_version_idempotent_on_match(self) -> None:
+        # Stamping a payload that already carries the matching version is a
+        # no-op (re-stamping a freshly-captured envelope through write()
+        # exercises this path).
+        out = with_format_version({"_format_version": "1.0", "foo": "bar"})
+        assert out["_format_version"] == "1.0"
+        assert out["foo"] == "bar"
 
     def test_with_format_version_rejects_non_dict(self) -> None:
         with pytest.raises(TypeError):
@@ -226,6 +237,70 @@ class TestBioSystemPreV1Compat:
             atl2 = ATL()
             atl2.load(str(path))
         assert not any("pre-1.0" in r.message for r in caplog.records)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# SessionSnapshot envelope coexistence (CC1 review fold, B2 + executor #1)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestSessionSnapshotEnvelopeCoexistence:
+    """``SessionSnapshot`` envelopes carry BOTH ``schema_version`` (int —
+    P3.5 Stage 2 migration trigger) and ``_format_version`` (string — CC1
+    file-format contract) at root. The two are orthogonal; load-modify-
+    save round-trips must preserve both.
+    """
+
+    def test_capture_stamps_both_version_fields(self) -> None:
+        from maxim.memory.snapshot import SessionSnapshot
+
+        snap = SessionSnapshot.capture()
+        env = snap.envelope
+        assert env["schema_version"] == 1  # migration trigger
+        assert env["_format_version"] == FORMAT_VERSION  # file-format contract
+        assert env["kind"] == "session"
+
+    def test_legacy_envelope_round_trip_stamps_format_version(self, tmp_path) -> None:
+        from maxim.memory.snapshot import SessionSnapshot
+
+        # Hand-craft a pre-1.0 session envelope (no _format_version field).
+        # This is the load-modify-save scenario the executor review flagged
+        # as a gap pre-fold.
+        legacy_path = tmp_path / "session_legacy.json"
+        _write_json(
+            legacy_path,
+            {
+                "schema_version": 1,
+                "kind": "session",
+                "systems": {},
+            },
+        )
+
+        # Load the legacy envelope, then write it back.
+        snap = SessionSnapshot.from_file(legacy_path)
+        out_path = tmp_path / "session_resaved.json"
+        snap.write(out_path)
+
+        # The re-saved file MUST carry both version fields, even though the
+        # in-memory envelope had no _format_version when from_file returned.
+        on_disk = json.loads(out_path.read_text())
+        assert on_disk["schema_version"] == 1
+        assert on_disk["_format_version"] == FORMAT_VERSION
+
+    def test_write_does_not_mutate_in_memory_envelope(self, tmp_path) -> None:
+        from maxim.memory.snapshot import SessionSnapshot
+
+        legacy_path = tmp_path / "session_legacy.json"
+        _write_json(
+            legacy_path,
+            {"schema_version": 1, "kind": "session", "systems": {}},
+        )
+        snap = SessionSnapshot.from_file(legacy_path)
+        out_path = tmp_path / "session_resaved.json"
+        snap.write(out_path)
+        # The in-memory envelope is unchanged — write() copies before
+        # stamping (otherwise re-writing would carry over the mutation).
+        assert "_format_version" not in snap.envelope
 
 
 # ─────────────────────────────────────────────────────────────────────────

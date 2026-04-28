@@ -25,13 +25,42 @@ Every sub-snapshot is wrapped in an envelope:
     {"schema_version": 1, "kind": "atl", "payload": <bio-system dict>}
 
 The ``schema_version`` at the ENVELOPE layer is the ONLY authoritative
-version. Payload-layer legacy version strings (ATL's ``"1.0"``,
-Hippocampus's ``"3.0"``, NAc's ``"1.0"``, SCN's ``"3.0"``,
-CrossLayerGraph's ``"1.0"``) are **TOMBSTONED** — no new migrations bump
-them. All future forward-migration logic lives at the envelope layer
-via ``SessionSnapshot.migrate`` (Stage 2+). Bumping both layers in the
-same change would create an ambiguous contract that Stage 2 migration
-tooling cannot reason about.
+version **for migration**. Payload-layer legacy version strings
+(ATL's ``"1.0"``, Hippocampus's ``"3.0"``, NAc's ``"1.0"``, SCN's
+``"3.0"``, CrossLayerGraph's ``"1.0"``) are **TOMBSTONED** — no new
+migrations bump them. All future forward-migration logic lives at the
+envelope layer via ``SessionSnapshot.migrate`` (Stage 2+). Bumping
+both layers in the same change would create an ambiguous contract
+that Stage 2 migration tooling cannot reason about.
+
+Coexistence with ``_format_version`` (CC1, 2026-04-28)
+------------------------------------------------------
+
+Starting in v1.0, ``SessionSnapshot.capture`` ALSO stamps a
+``_format_version`` (string) at envelope root, alongside the
+authoritative ``schema_version`` (int). This is **not** a parallel
+migration trigger and does NOT participate in the migration registry.
+The two fields have strictly disjoint roles:
+
+- ``schema_version`` (int) drives forward migration. The Stage 2+
+  registry rewrites payloads keyed off this field; all migration
+  logic reads/writes only this field. **DO NOT** add migration
+  branches that read ``_format_version``.
+- ``_format_version`` (string, ``"1.0"`` today) is the file-format
+  contract that every persisted JSON file in Maxim carries (CC1).
+  External tooling and the generic ``check_format_version`` loader
+  helper read this field; no Maxim production code should branch on
+  it. Stage 2+ session migrations must preserve ``_format_version``
+  unchanged (or re-stamp it via ``with_format_version`` if the
+  *file shape itself* changed in a way external readers should
+  notice — distinct from a payload-structure migration).
+
+A v1.1 file that re-shapes the envelope wrapper (e.g., changes the
+``"systems"`` dict structure) bumps ``_format_version`` to ``"1.1"``;
+a v1.x payload-structure migration bumps ``schema_version`` to 2 and
+leaves ``_format_version`` at ``"1.0"``. A change that does both
+(rare) bumps both, in lockstep with a registered migration that
+maps the old-shape envelope to the new-shape envelope.
 
 Load semantics: in-place mutation
 =================================
@@ -639,8 +668,19 @@ class SessionSnapshot:
         return copy.deepcopy(self.envelope)
 
     def write(self, path: str | Path) -> None:
-        """Persist this snapshot to disk atomically."""
-        atomic_write_json(str(path), self.envelope)
+        """Persist this snapshot to disk atomically.
+
+        Stamps ``_format_version`` defensively: capture-built envelopes
+        already carry the field (the call is a no-op there), but
+        snapshots loaded from pre-1.0 files via ``from_file`` and then
+        re-saved would otherwise drop through without it. Closes the
+        load-modify-save round-trip gap (CC1 review fold, executor #1).
+        Copies the envelope first so the in-memory snapshot is not
+        mutated by the writer (the helper modifies its argument).
+        """
+        from maxim.utils.format_version import with_format_version
+
+        atomic_write_json(str(path), with_format_version(dict(self.envelope)))
 
     @classmethod
     def from_dict(cls, envelope: dict[str, Any]) -> SessionSnapshot:

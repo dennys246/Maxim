@@ -129,11 +129,19 @@ def _load_all() -> list[dict[str, Any]]:
             from maxim.utils.format_version import check_format_version
 
             if isinstance(data, dict):
+                # Detect v1.0-shape BEFORE check_format_version so a
+                # corrupted v1.0 file (lost the "runs" key but kept the
+                # _format_version marker) returns [] cleanly instead of
+                # treating the version envelope as a single legacy run
+                # (CC1 review fold, executor #4).
+                has_v1_marker = "_format_version" in data
                 check_format_version(data, "last_runs", log=logging.getLogger(__name__))
-                # v1.0 wraps the list under "runs"
+                # v1.0 wraps the list under "runs".
                 runs = data.get("runs")
                 if isinstance(runs, list):
                     return runs
+                if has_v1_marker:
+                    return []
                 # Pre-1.0 stored a single run as a dict at root.
                 return [data]
     except Exception:
