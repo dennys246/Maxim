@@ -156,6 +156,17 @@ class MemoryHub:
     _encoder: Any = None
     _substrate_enabled: bool = False
 
+    # P4 multi-agent attribution: this hub's owning agent_id, used as
+    # the fallback bio_integration stash key when a percept arrives
+    # without PerceptContext.agent_id populated. Single-agent CLI/sim
+    # paths today don't propagate agent_id through make_text_percept,
+    # so the hub-owned fallback keeps the substrate→episode bridge
+    # alive without re-introducing a process-global default key.
+    # Multi-agent paths construct one MemoryHub per agent (see
+    # build_memory_hub + AgentFactory), so the fallback never crosses
+    # agents.
+    agent_id: str = "default_agent"
+
     def __post_init__(self) -> None:
         """Initialize and wire core systems."""
         # Resolve default embedding persist path lazily
@@ -266,20 +277,22 @@ class MemoryHub:
             if node_id:
                 from maxim.runtime import bio_integration
 
-                # Per-agent stash: read agent_id from the percept's
-                # PerceptContext (populated by F0.5). If absent we skip
-                # rather than route the stash through a shared default
-                # key — a shared key would silently re-introduce the
-                # multi-agent collision the per-agent dict was added
-                # to fix.
-                ctx_agent_id = None
+                # Per-agent stash: prefer the percept's own agent_id
+                # (set by F0.5 when the producer threads it through
+                # PerceptContext); fall back to this hub's owning
+                # agent so single-agent CLI/sim paths — which today
+                # don't propagate agent_id through the percept
+                # factories — keep their substrate→episode bridge
+                # working. Multi-agent paths construct one MemoryHub
+                # per agent (build_memory_hub + AgentFactory route
+                # config.agent_id through), so this fallback never
+                # crosses agents.
+                ctx_agent_id: str | None = None
                 ctx = getattr(percept, "context", None)
                 if ctx is not None:
                     ctx_agent_id = getattr(ctx, "agent_id", None)
-                if ctx_agent_id:
-                    bio_integration.record_substrate_nodes((node_id,), agent_id=ctx_agent_id)
-                else:
-                    logger.debug("Skipping substrate-node stash: percept has no agent_id")
+                stash_agent_id = ctx_agent_id or self.agent_id
+                bio_integration.record_substrate_nodes((node_id,), agent_id=stash_agent_id)
         except Exception as e:
             logger.warning("Substrate encoding failed: %s", e)
 
@@ -1720,6 +1733,9 @@ def build_memory_hub(
     salience: "SalienceNetwork | None" = None,
     fear_agent: "FearAgent | None" = None,
     novelty_tracker: Any | None = None,
+    # P4: owning agent's id — fallback for the bio_integration substrate
+    # stash when a percept has no PerceptContext.agent_id.
+    agent_id: str = "default_agent",
 ) -> MemoryHub:
     """Construct a MemoryHub with bridges ALWAYS wired.
 
@@ -1762,6 +1778,7 @@ def build_memory_hub(
         worker_pool=worker_pool,
         cerebellum=cerebellum,
         embodiment=embodiment,
+        agent_id=agent_id,
     )
     hub.connect(
         spatial=spatial,

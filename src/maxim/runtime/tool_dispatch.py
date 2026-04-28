@@ -75,14 +75,23 @@ def record_outcome(
     adds to context_pool, and (if NAc is wired) records a causal observation
     so NAc learns tool → outcome patterns.
 
-    ``agent_id`` is required (keyword-only) so multi-agent paths attribute
-    learning to the right agent. Forgetting it is a TypeError, not a
-    silent cross-agent attribution bug — the same pattern that
-    ``build_executor(pain_bus=...)`` and ``build_pain_bus(hippocampus=...,
-    nac=...)`` use to push silent-no-op invariants into the type. The
-    ``agent_id`` is included in the NAc context dict so links can be
-    filtered per-agent at query time.
+    ``agent_id`` is required (keyword-only) and must be a non-empty
+    string so multi-agent paths attribute learning to the right
+    agent. Forgetting it is a TypeError, and an empty string is a
+    ValueError — pre-merge architecture review caught the empty-
+    string bypass as the same band-aid pattern P4 was supposed to
+    eliminate. This mirrors ``build_executor(pain_bus=...)`` and
+    ``build_pain_bus(hippocampus=..., nac=...)`` — pushing silent-
+    no-op invariants into the type. The ``agent_id`` is included in
+    the NAc context dict so links can be filtered per-agent at query
+    time.
     """
+    if not isinstance(agent_id, str) or not agent_id:
+        raise ValueError(
+            f"agent_id must be a non-empty string, got {agent_id!r}. "
+            "Tool outcome recording is per-agent — empty / missing values "
+            "would silently merge attribution across agents."
+        )
     ts = time.time()
     recent_outcomes.append(
         {
@@ -206,6 +215,8 @@ def execute_parallel_actions(
     the agent-loop call site already passed ``active_goal=`` — any
     parallel-actions batch would have raised TypeError.
     """
+    if not isinstance(agent_id, str) or not agent_id:
+        raise ValueError(f"agent_id must be a non-empty string, got {agent_id!r}.")
     parallel_results: list[dict[str, Any]] = []
     all_succeeded = True
 

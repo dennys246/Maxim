@@ -185,6 +185,143 @@ class TestMultiAgentNacAttribution:
                 )
 
 
+class TestSharedNacIsolation:
+    """Pre-merge review N1: when two agents share ONE NAc instance,
+    causal links must be partitionable by ``event_context["agent_id"]``.
+
+    The headline P4 test (``test_concurrent_record_outcome_isolates_per_agent_nac``)
+    runs each agent against its own NAc, so non-overlapping signatures
+    are structurally guaranteed by separate NAc instances — not by
+    ``agent_id`` itself.  This variant shares one NAc so the only
+    thing distinguishing per-agent attribution is the ``agent_id``
+    tag in the persisted ``event_context``."""
+
+    @staticmethod
+    def _make_pool() -> Any:
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        return pool
+
+    def test_shared_nac_partitions_by_agent_id(self, tmp_path: Path) -> None:
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig(persistence_path=str(tmp_path / "shared_nac.json")))
+
+        def runner(agent_id: str, tool_prefix: str) -> None:
+            for i in range(5):
+                record_outcome(
+                    agent_id=agent_id,
+                    tool_name=f"{tool_prefix}_{i}",
+                    success=True,
+                    result_summary=f"{agent_id}-ok",
+                    error=None,
+                    reasoning=f"{agent_id} reasoning",
+                    recent_outcomes=[],
+                    max_recent=10,
+                    llm_worker=None,
+                    context_pool=self._make_pool(),
+                    nac=nac,
+                )
+
+        ta = threading.Thread(target=runner, args=("agent_alpha", "alpha"))
+        tb = threading.Thread(target=runner, args=("agent_bravo", "bravo"))
+        ta.start()
+        tb.start()
+        ta.join()
+        tb.join()
+
+        nac.save(str(tmp_path / "shared_nac.json"))
+        state = json.loads((tmp_path / "shared_nac.json").read_text())
+
+        # Bucket every link by event_context.agent_id and assert
+        # tool prefixes match the originating agent.
+        alpha_sigs: set[str] = set()
+        bravo_sigs: set[str] = set()
+        for sig, links in state["links"].items():
+            for link in links:
+                aid = link["event_context"].get("agent_id")
+                if aid == "agent_alpha":
+                    alpha_sigs.add(sig)
+                elif aid == "agent_bravo":
+                    bravo_sigs.add(sig)
+
+        assert all("alpha_" in s for s in alpha_sigs), alpha_sigs
+        assert all("bravo_" in s for s in bravo_sigs), bravo_sigs
+        assert alpha_sigs.isdisjoint(bravo_sigs)
+
+
+class TestEmptyAgentIdRejected:
+    """Pre-merge review C2: empty-string agent_id is the same band-aid
+    pattern P4 was supposed to eliminate.  Reject it loudly."""
+
+    @staticmethod
+    def _make_pool() -> Any:
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        return pool
+
+    def test_record_outcome_rejects_empty_agent_id(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            record_outcome(
+                agent_id="",
+                tool_name="t",
+                success=True,
+                result_summary="ok",
+                error=None,
+                reasoning="",
+                recent_outcomes=[],
+                max_recent=10,
+                llm_worker=None,
+                context_pool=self._make_pool(),
+            )
+
+    def test_bio_integration_rejects_empty_agent_id(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            record_substrate_nodes(("n1",), agent_id="")
+        with pytest.raises(ValueError, match="non-empty"):
+            consume_substrate_nodes(agent_id="")
+        with pytest.raises(ValueError, match="non-empty"):
+            record_pain_intensity(0.5, agent_id="")
+        with pytest.raises(ValueError, match="non-empty"):
+            consume_pain_intensity(agent_id="")
+        with pytest.raises(ValueError, match="non-empty"):
+            observe_episode(hippocampus=MagicMock(), agent_id="")
+
+
+class TestBackwardCompatibilityNacJson:
+    """Pre-merge review I4: pre-P4 nac.json has no ``agent_id`` in
+    event_context.  Loading old data must not crash; missing values
+    deserialize as untagged links."""
+
+    def test_pre_p4_nac_json_loads_without_crash(self, tmp_path: Path) -> None:
+        from maxim.decisions.causal_link import CausalLink
+
+        # Hand-craft a v0 link dict (no agent_id in event_context)
+        legacy_dict = {
+            "id": "legacy_link_1",
+            "event_type": "tool",
+            "event_signature": "tool:legacy",
+            "event_context": {"goal": "do the thing"},  # no agent_id
+            "outcome_type": "tool_result",
+            "outcome_signature": "success:done",
+            "outcome_valence": "positive",
+            "temporal_delta": {"mean": 0.5, "variance": 0.1, "count": 1, "samples": [0.5]},
+            "predicted_value": 0.5,
+            "prediction_history": [],
+            "observation_count": 1,
+            "confidence": 0.5,
+            "last_observed": 1700000000.0,
+            "memory_ids": [],
+            "context_factors": {},
+            "last_rpe": None,
+            "percept_refs": [],
+            "imagined": False,
+        }
+        link = CausalLink.from_dict(legacy_dict)
+        assert link.event_context == {"goal": "do the thing"}
+        assert link.event_context.get("agent_id") is None  # gracefully None
+
+
 class TestBioIntegrationStashIsolation:
     """The bio_integration substrate-node + pain-intensity stash must
     survive concurrent producers/consumers across two agents without

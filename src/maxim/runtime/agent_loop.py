@@ -828,6 +828,16 @@ def run_agentic_loop(
     # Extract NAc reference for causal learning (passed to _record_outcome)
     _loop_nac = getattr(memory_hub, "nac", None) if memory_hub is not None else None
 
+    # P4 multi-agent attribution: per-agent stash key.  Producer
+    # (MemoryHub.on_percept_received) writes substrate nodes keyed by
+    # the hub's owning agent_id; the consumer here must use the same
+    # key or the stash leaks (consumer never finds the producer's
+    # write).  Prefer memory_hub.agent_id (canonical per-agent
+    # identifier from AgentFactory.create_agent) and fall back to
+    # the loop's filesystem-safe agent_name for raw-loop callers
+    # that don't construct a MemoryHub.
+    _loop_agent_id: str = (getattr(memory_hub, "agent_id", None) if memory_hub is not None else None) or agent_name
+
     # Initialize bio-system session (MemoryHub + hippocampus capture worker)
     memory_hub_enabled = _start_bio_session(memory_hub=memory_hub, hippocampus=hippocampus)
 
@@ -1673,11 +1683,13 @@ def run_agentic_loop(
                                         )
                                         _bio_integration.observe_episode(
                                             hippocampus=hippocampus,
-                                            agent_id=agent_name,
+                                            agent_id=_loop_agent_id,
                                             channel="text",
                                             activated_nodes=(),
                                             after_tool_execution=True,
-                                            salience_spike=_bio_integration.consume_pain_intensity(agent_id=agent_name),
+                                            salience_spike=_bio_integration.consume_pain_intensity(
+                                                agent_id=_loop_agent_id
+                                            ),
                                         )
 
                                 except Exception as e:
@@ -1691,7 +1703,7 @@ def run_agentic_loop(
 
                                     # Track exception in recent_outcomes for LLM learning
                                     _record_outcome(
-                                        agent_id=agent_name,
+                                        agent_id=_loop_agent_id,
                                         tool_name=action["tool_name"],
                                         success=False,
                                         result_summary=None,
@@ -1810,7 +1822,7 @@ def run_agentic_loop(
             if parallel_actions:
                 all_parallel_actions = ctrl.pending_proposal.get_parallel_actions()
                 _par_results, combined_results = _execute_parallel(
-                    agent_id=agent_name,
+                    agent_id=_loop_agent_id,
                     actions=all_parallel_actions,
                     executor=executor,
                     autonomy_controller=autonomy_controller,
@@ -2084,7 +2096,7 @@ def run_agentic_loop(
                             result_str = None
 
                     _record_outcome(
-                        agent_id=agent_name,
+                        agent_id=_loop_agent_id,
                         tool_name=tool_name or "unknown",
                         success=success,
                         result_summary=result_str,
@@ -2187,11 +2199,11 @@ def run_agentic_loop(
                         )
                         _bio_integration.observe_episode(
                             hippocampus=hippocampus,
-                            agent_id=agent_name,
+                            agent_id=_loop_agent_id,
                             channel="text",
                             activated_nodes=(),
                             after_tool_execution=True,
-                            salience_spike=_bio_integration.consume_pain_intensity(agent_id=agent_name),
+                            salience_spike=_bio_integration.consume_pain_intensity(agent_id=_loop_agent_id),
                         )
 
                     # Handle failure
@@ -2224,7 +2236,7 @@ def run_agentic_loop(
 
                     # Track exception in recent_outcomes for LLM learning
                     _record_outcome(
-                        agent_id=agent_name,
+                        agent_id=_loop_agent_id,
                         tool_name=action.get("tool_name", "unknown"),
                         success=False,
                         result_summary=None,
@@ -2340,7 +2352,7 @@ def run_agentic_loop(
                     # Record rejection so LLM knows not to re-propose
                     rejection_msg = f"Rejected by autonomy: {reason}"
                     _record_outcome(
-                        agent_id=agent_name,
+                        agent_id=_loop_agent_id,
                         tool_name=action.get("tool_name", "unknown"),
                         success=False,
                         result_summary=None,
@@ -2382,7 +2394,7 @@ def run_agentic_loop(
                         # Record outcome so LLM sees the result
                         result_str = str(output)[:3000] if output is not None else None
                         _record_outcome(
-                            agent_id=agent_name,
+                            agent_id=_loop_agent_id,
                             tool_name=tool_name,
                             success=success,
                             result_summary=result_str,
@@ -2422,7 +2434,7 @@ def run_agentic_loop(
                         logger.error(f"Approved action failed: {e}")
                         # Record failure so LLM knows (also fixes missing llm_worker call)
                         _record_outcome(
-                            agent_id=agent_name,
+                            agent_id=_loop_agent_id,
                             tool_name=tool_name,
                             success=False,
                             result_summary=None,

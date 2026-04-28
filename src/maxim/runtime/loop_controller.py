@@ -193,9 +193,15 @@ class LoopController:
     ) -> None:
         # ``self.agent_name`` is the canonical per-agent attribution key
         # (set in __init__ via _safe_agent_name). Multi-agent tests
-        # that construct LoopController per-agent get isolated
-        # NAc attribution because record_outcome tags every NAc
-        # observation with this id.
+        # that construct LoopController per-agent get isolated NAc
+        # attribution because record_outcome tags every NAc observation
+        # with this id.  ``nac`` is read off the bound memory_hub —
+        # pre-P4 this helper dropped ``nac=`` on the floor entirely,
+        # so the three indirect callers (confirmation accept/reject +
+        # plan reject) all silently produced ZERO NAc causal links.
+        # Pre-merge architecture review caught this as the band-aid
+        # pattern P4 was supposed to eliminate.
+        nac = getattr(self.memory_hub, "nac", None) if self.memory_hub is not None else None
         _record_outcome(
             agent_id=self.agent_name,
             tool_name=tool_name,
@@ -207,6 +213,7 @@ class LoopController:
             max_recent=self.max_recent_outcomes,
             llm_worker=self.llm_worker,
             context_pool=self.context_pool,
+            nac=nac,
         )
 
     # ── Tool registry cache ──────────────────────────────────────────────

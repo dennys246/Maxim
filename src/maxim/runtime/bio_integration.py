@@ -193,6 +193,38 @@ _latest_pain_intensity: dict[str, float] = {}
 _latest_substrate_nodes: dict[str, tuple[str, ...]] = {}
 
 
+def _check_agent_id(agent_id: str) -> None:
+    """Reject empty / non-string agent_id at the entry point.
+
+    The whole P4 fix is structural enforcement: forgetting an
+    ``agent_id`` is a ``TypeError`` (missing kwarg) instead of a
+    silent cross-agent attribution bug.  An empty string slips past
+    the missing-kwarg check, routes every "agent" through one shared
+    ``""`` key, and re-introduces the bug class.  Reject it loudly.
+    Pre-merge architecture review caught this as the same band-aid
+    pattern P4 was supposed to eliminate.
+    """
+    if not isinstance(agent_id, str) or not agent_id:
+        raise ValueError(
+            f"agent_id must be a non-empty string, got {agent_id!r}. "
+            "Bio-integration stash entries are keyed by agent — empty / "
+            "missing values would silently merge attribution across agents."
+        )
+
+
+# Lock guarding the per-agent pain intensity max-merge.  The merge is a
+# read-modify-write (``current = get(); if intensity > current: set``)
+# and is NOT atomic under the GIL in CPython 3.11+ (specialised
+# bytecode breaks the "single bytecode" assumption).  Today there are
+# no production callers of ``record_pain_intensity`` — the bus path
+# bypasses this stash — so the lock is a future-proofing net for when
+# a producer wires up.  Pre-merge architecture review flagged the
+# original docstring's "GIL makes RMW safe" claim as incorrect.
+import threading as _threading
+
+_pain_intensity_lock = _threading.Lock()
+
+
 def record_substrate_nodes(node_ids: tuple[str, ...], *, agent_id: str) -> None:
     """Stash substrate node IDs from the latest percept encoding.
 
@@ -203,15 +235,17 @@ def record_substrate_nodes(node_ids: tuple[str, ...], *, agent_id: str) -> None:
     This bridges the encoding path (memory_hub → encoder) to the episode
     observation path (agent_loop → bio_integration → hippocampus).
 
-    ``agent_id`` is required so multiple agents running in parallel
-    (AgentPool, sim AUT + orchestrator pair, agent-backed entities)
-    do not trample each other's stash.
+    ``agent_id`` is required and must be non-empty — multiple agents
+    running in parallel (AgentPool, sim AUT + orchestrator pair,
+    agent-backed entities) must NOT trample each other's stash.
     """
+    _check_agent_id(agent_id)
     _latest_substrate_nodes[agent_id] = node_ids
 
 
 def consume_substrate_nodes(*, agent_id: str) -> tuple[str, ...]:
     """Consume and reset the stashed substrate node IDs for ``agent_id``."""
+    _check_agent_id(agent_id)
     return _latest_substrate_nodes.pop(agent_id, ())
 
 
@@ -232,6 +266,7 @@ def observe_episode(
     stashed substrate nodes from the latest percept encoding for
     this ``agent_id``.
     """
+    _check_agent_id(agent_id)
     tick = _episode_ticks.get(agent_id, 0) + 1
     _episode_ticks[agent_id] = tick
 
@@ -260,16 +295,22 @@ def record_pain_intensity(intensity: float, *, agent_id: str) -> None:
     """Record a pain intensity for the next episode event's salience_spike.
 
     Per-agent: signals from agent A's pain bus must not land on
-    agent B's next episode.
+    agent B's next episode.  Read-modify-write is serialised by an
+    internal lock so concurrent producers don't drop a higher
+    intensity.
     """
-    current = _latest_pain_intensity.get(agent_id, 0.0)
-    if intensity > current:
-        _latest_pain_intensity[agent_id] = intensity
+    _check_agent_id(agent_id)
+    with _pain_intensity_lock:
+        current = _latest_pain_intensity.get(agent_id, 0.0)
+        if intensity > current:
+            _latest_pain_intensity[agent_id] = intensity
 
 
 def consume_pain_intensity(*, agent_id: str) -> float | None:
     """Consume the recorded pain intensity for ``agent_id`` (reset to 0)."""
-    val = _latest_pain_intensity.pop(agent_id, 0.0)
+    _check_agent_id(agent_id)
+    with _pain_intensity_lock:
+        val = _latest_pain_intensity.pop(agent_id, 0.0)
     return val if val > 0.0 else None
 
 
