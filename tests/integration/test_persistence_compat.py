@@ -426,17 +426,30 @@ class TestLearnedIndexCompat:
 
 
 class TestCapturedPreV1Fixtures:
-    """Load **real** state files captured from a 0.8 build (no
+    """Load real on-disk state files captured from a 0.8 build (no
     ``_format_version`` field present) and assert (a) no errors on
     load, (b) one warning per file type, (c) re-save stamps the 1.0
-    field. The hand-crafted fixtures in :class:`TestBioSystemPreV1Compat`
-    pin the contract at the helper layer; these pin it at the
-    on-disk shape that real users will actually upgrade from.
+    field.
 
-    Captured from ``~/.maxim/agents/scout/`` on a 0.8 build (the only
-    agent that pre-dated CC1 in the maintainer's local install). If
-    the bio-system save format changes in a way that breaks these
-    fixtures, the test surfaces the regression and the fix is one of:
+    **Scope:** these fixtures pin the **file-format contract** — that
+    a pre-1.0 file lacking ``_format_version`` at root is loadable by
+    1.0+ readers and re-saves with the field stamped. The fixtures
+    are minimal-shape captures (zero memories, zero NAc links —
+    snapshotted from ``~/.maxim/agents/scout/`` which never
+    accumulated bio-state in the maintainer's local install). They
+    exercise the empty-state load path on real on-disk shape, NOT
+    the populated bio-system semantic shape.
+
+    Bio-system shape regressions (a populated NAc dump's link
+    structure, a hippocampus with episodes, etc.) are tracked
+    separately by :mod:`maxim.memory.snapshot`'s envelope migration
+    registry — bumping the envelope ``schema_version`` triggers a
+    registered migration and the registry is the right place to add
+    populated-fixture regression guards. This class is intentionally
+    scoped to the broader ``_format_version`` file-format layer.
+
+    If the bio-system save format changes in a way that breaks these
+    fixtures, the fix is one of:
 
     1. Add a forward-migration entry in
        :mod:`maxim.memory.snapshot`'s envelope migration registry.

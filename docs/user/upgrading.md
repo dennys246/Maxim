@@ -36,22 +36,24 @@ The contract is **append-only on the wire format**: 1.0 reads anything 0.8 wrote
 
 ## What might warn but still work
 
-When 1.0 first loads a file 0.8 wrote, you may see one warning per file type:
+When 1.0 first loads a file 0.8 wrote, you may see one warning per file type. The logger name varies per loader — NAc emits under `maxim.decisions.nac`, ATL under `maxim.memory.atl`, hippocampus under `maxim.memory.hippocampus_persistence`, SCN under `maxim.time.scn`. The message text always contains the literal string `pre-1.0 <file_type>` — grep on that, not on the logger name, when scanning for upgrade warnings:
 
 ```
-WARNING maxim.utils.format_version: Loading pre-1.0 nac file (no _format_version
+WARNING maxim.decisions.nac: Loading pre-1.0 nac file (no _format_version
 at root); assuming 0.x. Re-save with this build to upgrade the file format.
 Future warnings for nac suppressed.
 ```
 
 This is informational. The file loads. The warning is one-shot per file type per process — loading 12 NAc snapshots only warns once. Re-saving the file (any normal session that touches the bio-system) stamps the 1.0 version field at root, and future loads no longer warn.
 
-If you want to silence warnings without running a session, you can re-save in place:
+If you want to silence warnings without running a session, you can re-save in place. Each bio-system has the same `load(path)` / `save(path)` pair; the constructor signatures differ slightly:
 
 ```python
 # Optional: silence the one-time warning by re-saving in place.
 from maxim.memory.atl import ATL
 from maxim.decisions.nac import NAc, NACConfig
+from maxim.memory.hippocampus import Hippocampus
+from maxim.time.scn import SCN
 
 agent_dir = "/Users/you/.maxim/agents/scout"
 
@@ -62,7 +64,14 @@ atl.save(f"{agent_dir}/atl.json")
 nac = NAc(NACConfig())
 nac.load(f"{agent_dir}/nac.json")
 nac.save(f"{agent_dir}/nac.json")
-# Repeat for hippocampus, scn as needed.
+
+hippo = Hippocampus()
+hippo.load(f"{agent_dir}/hippocampus.json")
+hippo.save(f"{agent_dir}/hippocampus.json")
+
+scn = SCN()
+scn.load(f"{agent_dir}/scn.json")
+scn.save(f"{agent_dir}/scn.json")
 ```
 
 ## What requires manual action

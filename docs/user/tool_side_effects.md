@@ -73,11 +73,11 @@ Currently informational only — no automated learning hook reads this key. Usef
 
 When you want to add a new well-known `side_effects` key:
 
-1. **Decide whether it belongs in `side_effects` at all.** If it's caller-facing extras (timestamps, latency, structured replay metadata), use `metadata`. If it's the main result the LLM should see, that goes in `output`. `side_effects` is reserved for **bio-pipeline signals** consumed by the executor or bridges.
+1. **Decide whether it belongs in `side_effects` at all.** If it's caller-facing extras (timestamps, latency, structured replay metadata), use `metadata`. If it's the main result the LLM should see, that goes in `output`. `side_effects` is reserved for **bio-pipeline signals** the executor / bridge / NAc layer routes on, OR purely informational telemetry signals consumed by external observers (replay tooling, dashboards).
 2. **Pick a stable name.** Once shipped, the name is frozen by the append-only contract.
 3. **Define the value shape** — keep it JSON-serializable (str, int, float, bool, None, list, dict only). Numpy arrays and datetimes break persistence.
-4. **Wire the consumer first.** A producer with no consumer is dead weight; document the producer/consumer pair atomically.
-5. **Add a row to the registry table above** in the same PR. Set `Since` to the version you're shipping in.
+4. **Wire the consumer first** — *for keys with bio-pipeline semantics* (a Maxim-internal consumer routes on this key). A producer with no internal consumer of those keys is dead weight; document the producer/consumer pair atomically. **Informational keys** are exempt — they exist so external telemetry / replay / prompt-composition subscribers can read them, and may ship without any internal consumer wired. `affordance_blocked` is the canonical example: no learning hook reads it today, but external observers rely on the key being present and stable.
+5. **Add a row to the registry table above** in the same PR. Set `Since` to the version you're shipping in. For informational keys, set the Consumer column to `informational` and document the intended external consumer in the value-schema section.
 
 The append-only invariant is the load-bearing rule: any tool author can read this page and rely on the keys remaining present and shaped as documented. Removing or reshaping a key requires a major-version bump.
 

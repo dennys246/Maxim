@@ -4,6 +4,8 @@ Stable extension points for third-party packages and end-user code. Anything on 
 
 If you're extending Maxim against a surface **not** on this page, expect breakage on minor-version upgrades.
 
+This page documents **extension surfaces** — what third parties plug INTO Maxim. For the **stability contract on the verbs Maxim exposes outward** (what callers consume), see [stable_api.md](stable_api.md). The two pages are siblings: this one for plugin/extension authors, that one for callers using `maxim.run()` / `maxim.imagine()` / `maxim.campaign()` etc.
+
 ## Index
 
 | # | Extension point | Stability | Where to plug in |
@@ -50,14 +52,28 @@ class AtlasController(RobotController):
     def robot_type(self) -> str:
         return "atlas"
 
+    # Lifecycle
     def connect(self, timeout: float = 30.0) -> bool: ...
     def disconnect(self) -> None: ...
+
+    # Motion
     def goto_target(self, target: MotionTarget) -> bool: ...
     def look_at_pixel(self, target: PixelTarget) -> bool: ...
     def get_current_pose(self) -> dict[str, float]: ...
+
+    # Sleep / wake
     def wake_up(self) -> bool: ...
     def goto_sleep(self) -> bool: ...
+
+    # Streams + recording (required by the ABC even when capabilities
+    # don't advertise them — return None / no-op when unsupported)
+    def get_audio_stream(self): ...
+    def get_video_stream(self): ...
+    def start_recording(self, path: str) -> bool: ...
+    def stop_recording(self) -> bool: ...
 ```
+
+`RobotController` declares 12 abstract methods total (lifecycle, motion, sleep/wake, streams, recording). All must be implemented for the subclass to instantiate; advertise the actual supported subset via the `RobotCapabilities` flag set you return from `connect()`.
 
 ### Reference
 
@@ -125,6 +141,7 @@ The decorator infers `input_schema` from type hints and exports it as JSONSchema
 - ABC: [`src/maxim/tools/base.py`](../../src/maxim/tools/base.py)
 - Registration verbs: [`src/maxim/api.py::register_tool`](../../src/maxim/api.py), [`src/maxim/api.py::tool`](../../src/maxim/api.py)
 - Schema export: `Tool.to_json_schema()` returns JSONSchema 2020-12 / MCP-compatible output
+- Cancellation hook: `Tool.cancel()` is a non-abstract no-op on the ABC, reserved for 1.1+ MCP-subprocess and async-cancel work. No 1.0 dispatch path calls it; heavy tools (HTTP fetch, web search) override it to set a `threading.Event` for cooperative cancellation. See CLAUDE.md "Tool.cancel" invariant.
 - Side-effects channel: [tool_side_effects.md](tool_side_effects.md)
 - Full guide: [tools.md](tools.md)
 
@@ -173,7 +190,10 @@ class _MyBackend:
 ```
 
 ```python
-# In your package's __init__.py or a setup hook the user runs once:
+# In your package's __init__.py or a setup hook the user runs once.
+# IMPORTANT: register BEFORE the first call to maxim.run() / maxim.imagine() /
+# maxim.campaign() — backends are resolved during lane bootstrap, and a
+# registration that runs after bootstrap won't affect the active session.
 from maxim.runtime.lane_backends import BACKEND_CLASSES
 
 BACKEND_CLASSES["my_backend"] = ("my_package.my_backend", "_MyBackend")
