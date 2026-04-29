@@ -21,7 +21,23 @@ integration must import it too. Do not duplicate the value."""
 
 @dataclass(slots=True)
 class LLMResponse:
-    """Structured response from any LLM backend."""
+    """Structured response from any LLM backend.
+
+    Token telemetry contract (CC12, frozen at 1.0):
+
+    - ``input_tokens`` — total prompt tokens (cached + uncached)
+    - ``output_tokens`` — generated tokens
+    - ``cached_tokens`` (property) — alias for ``cached_input_tokens``;
+      exposed under the de-facto-standard name used by Anthropic and
+      OpenAI usage payloads
+    - ``cached_input_tokens`` — cached portion of input (legacy name,
+      kept for ``CostTracker`` / router internals)
+    - ``uncached_input_tokens`` — non-cached portion of input
+      (cost-calculation detail; not part of the public contract)
+
+    External callers should prefer ``cached_tokens`` over
+    ``cached_input_tokens``.
+    """
 
     content: str
     input_tokens: int = 0
@@ -33,6 +49,11 @@ class LLMResponse:
     tool_calls: list[dict[str, Any]] | None = None
     cached_input_tokens: int = 0
     uncached_input_tokens: int = 0
+
+    @property
+    def cached_tokens(self) -> int:
+        """Standard-name alias for :attr:`cached_input_tokens` (CC12, 1.0)."""
+        return self.cached_input_tokens
 
 
 @dataclass(slots=True)
