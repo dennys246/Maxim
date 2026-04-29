@@ -105,7 +105,7 @@ Phase 1 shipped (scene manifest pre-trigger, head-noun alias fallback). Remainin
 
 ### B4. Cradle of Artificial Civilization
 
-**Companion plan:** [cradle_sensorimotor_development.md](cradle_sensorimotor_development.md) (~550-650 LOC)
+**Companion plan (archived):** [archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md). **SHIPPED 2026-04-25** (PR #200), validated by [exp 11](../experiments/11_cradle_sensorimotor_poc.md).
 
 A newborn agent that learns from sensation, not language. Three-layer sensation model (contact via entity acquisition, proximity via orchestrator sensor writes, narrative fallback via keyword reflexes) all converging on the same downstream pipeline. Multi-act developmental scenario mimicking Piaget's sensorimotor stages.
 
@@ -165,11 +165,31 @@ Add semantic-shift episode boundary detection. When incoming text embedding dive
 
 **Why before 1.0:** Dead code in 1.0 is permanently awkward. Someone will eventually import it, depend on it, and then removing it is a breaking change. Clean removal now costs nothing.
 
+### P4. Multi-agent learning attribution gaps (~50 LOC)
+
+**Surfaced by:** [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md) audit. Independently necessary regardless of cast direction.
+
+Two correctness gaps in multi-agent paths surfaced while investigating SEM-backed Maxim entities. Both gaps would manifest the moment any path runs more than one cognitive agent in parallel — including the AUT + orchestrator pair shipped today, though the orchestrator's hippocampus is currently disabled so the gap is latent.
+
+**Changes:**
+
+1. **`bio_integration.py` global stash → per-agent dict.** Replace module-level `_latest_substrate_nodes` and `_latest_pain_intensity` ([bio_integration.py:175-205, 247-259](../../src/maxim/memory/bio_integration.py#L175-L259)) with per-`agent_id` dicts at the `Hippocampus.observe_episode_event()` callsite. Code comment currently admits "acceptable because multi-agent substrate encoding is not yet a production path" — this lifts the bound.
+
+2. **`agent_id` on `tool_dispatch.record_outcome()`.** Add `agent_id: str` parameter ([tool_dispatch.py::record_outcome](../../src/maxim/runtime/tool_dispatch.py)) and update all 7 callers in `agent_loop.py` (per `feedback_record_outcome_call_sites.md`). Today `ToolPainBridge` handles attribution via direct lookup; this closes the loop-level gap.
+
+**Test:** two parallel `AgentFactory` agents running `run_agentic_loop` simultaneously must produce isolated learning, verified by inspecting their separate `nac.json` files for non-overlapping causal links.
+
+**Why before 1.0:** Both are silent failure modes per CLAUDE.md "push silent-no-op invariants into types" rule. They don't produce errors; they produce wrong attribution. The moment any multi-agent path lights up — [scene_actor_affordances.md](scene_actor_affordances.md) Stage 5, agent-backed entities revival, Minecraft villagers, or any other 1.0+ work — these become live correctness bugs.
+
 ---
 
 ## Section 5: Cleanup (breaking changes)
 
 Several backward-compatibility shims silently accept under-specified inputs. Per CLAUDE.md "push silent-no-op invariants into types, not helpers," these are silent-failure risks.
+
+**Timeline contract (refined 2026-04-28):**
+- **C1-C3 (internal hard-removes):** ship in **0.9 or 1.0**. Zero user impact, no deprecation cycle needed — these only remove internal shims.
+- **C4-C6 (user-facing breaking changes):** ship **deprecation warnings in 0.9, hard errors in 1.1**. NOT in 1.0. Per semver discipline, breaking-change-on-X.0 is fine when it's the first major release, but 1.0 should be the stable contract — users adopting 1.0 should not be surprised by 1.0.1 or 1.1 hard errors. The 0.9 deprecation cycle gives users a release to react.
 
 ### C1. Probe compat shim removal (internal)
 
@@ -251,3 +271,153 @@ These items must ship before 1.0 because they define frozen interfaces. Post-1.0
 
 - [ ] `GatingContext.drive_states` scoring modulation in `TextSalienceScorer`
 - [ ] Novelty tracker formalized as `HomeostaticDriveSpec` on a `novelty_drive` sensor
+
+---
+
+## Section 7: Contract clarification — freeze hardening (1.0 work, not features)
+
+The architectural work for 1.0 is done. This section is about *clarifying which parts of that work are public contract vs internal implementation*, so post-1.0 changes don't accidentally break users or force a 2.0. None of these items change how Maxim behaves; all of them change whether we owe a 2.0 to fix mistakes.
+
+**Why this section exists separately from Cleanup:** Section 5 removes things. This section adds stability markers, version fields, classification docs, and forward-compat hooks. Different work, different review lens.
+
+### CC1. Persistence format versioning audit (~50 LOC + 1 test)
+
+Some persisted JSON files reference `format_version` / `schema_version` (`nac.py`, `atl.py`, `scn.py`, `cross_layer.py`, `percept_trace_buffer.py`, `snapshot.py`, `hippocampus_persistence.py`); others may not. Standardize: every persisted JSON file carries a `_format_version: "1.0"` field at the root. Loaders default to `"0.x"` when absent and emit a one-time warning. Adds a single integration test that loads a pre-1.0 fixture and asserts no errors.
+
+**Why before 1.0:** Without version markers, a 1.1 schema change either silently mis-loads 1.0 state or relies on heuristics. Adding `_format_version` post-1.0 is itself a breaking change (the field appears in old files saved by new code, breaks old code reading new files).
+
+### CC2. Public API stability classification (mostly doc)
+
+[`api.py`](../../src/maxim/api.py) exports 17 verbs + ~10 dataclasses. Today there's no marker for "stable in 1.0" vs "experimental, may change." Add a `docs/user/stable_api.md` page listing what's frozen at 1.0. Anything not on that page is fair game for post-1.0 changes. Mark experimental functions in their docstring header with a clear note.
+
+**Candidates for "experimental" tag:** `research()` (research orchestrator surface still evolving), the event subscription API (`on()`, `EventHandle`) if it's still maturing, anything else flagged during D2 review.
+
+**Why before 1.0:** This is the strongest "we don't owe a 2.0 for X" insulation lever. Cheap to add, expensive if missing.
+
+### CC3. Frozen dataclass forward-compat audit (~2 hours)
+
+Every frozen dataclass shipping in 1.0 must have either (a) all fields with defaults, or (b) an `extra: dict[str, Any] = field(default_factory=dict)` escape hatch. Auditees: `PainSignal`, `Reaction`, `ReactionContext`, `PerceptContext`, `TraceSnapshot`, `AffordanceSchema`, `HomeostaticDriveSpec`, `EntropicDriveSpec`, `CouplingSpec`, `ModulationSpec`, `BackendError` subclasses, `HTTPError` subclasses, persisted dataclasses (Episode, MemoryRecord, etc.).
+
+**Why before 1.0:** Adding a field to a frozen dataclass is non-breaking IFF every existing field has a default. Forgetting this on one dataclass forces a breaking change later.
+
+### CC4. Environment variable + CLI flag classification (~doc work)
+
+CLAUDE.md documents ~30 `MAXIM_*` env vars mixing public-contract (`MAXIM_LLM_PROFILE`, `MAXIM_DATA_BUDGET_GB`) with debug/internal (`MAXIM_BACKEND_TRACE`, `MAXIM_HEARTBEAT`). Classify in user docs:
+- **Public** — stable in 1.0, removal is a breaking change.
+- **Debug / experimental** — explicitly may change without notice; documented with that disclaimer.
+
+Same treatment for CLI flags. Mark experimental flags in `--help` output (e.g., `[experimental]` suffix). Candidates: `--auto-curate`, `--research`, possibly cradle role flags.
+
+**Why before 1.0:** Without the classification, removing a debug var post-1.0 breaks someone's shell alias and the user has a legitimate complaint. With it, the contract is explicit.
+
+### CC5. State migration policy (~50 LOC + doc)
+
+When users pip-upgrade 0.8 → 1.0 with existing `~/.maxim/agents/` state, what happens? Two minimum bars:
+- `tests/integration/test_persistence_compat.py` loads a pre-1.0 fixture state and asserts no errors. Becomes the regression guard for future format changes.
+- `docs/user/upgrading.md` documents the contract — what survives upgrades, what doesn't, what `maxim` should do if it can't load old state.
+
+Future work (post-1.0): a `maxim migrate` verb that detects and warns. Not required for 1.0 if the test + doc exist.
+
+**Why before 1.0:** First user upgrade is high-stakes. Silent state corruption on upgrade is the worst possible 1.0 first impression.
+
+### CC6. Plugin / extension API documentation (~1 page)
+
+`maxim.robots` entry point group is documented. Other extension surfaces are not: custom tools (Tool ABC), custom backends (Plan 3 dispatch table), custom bio-system bridges, custom percept sources. Without a "Maxim Extension API" doc, third parties write against internal modules and we can't refactor.
+
+**Deliverable:** `docs/user/extension_api.md` listing every supported extension point with stable vs experimental tags. ~1 page.
+
+### CC7. Tool side_effects registry centralization (~doc)
+
+CLAUDE.md says side_effects keys are "well-known, append-only registry, documented in class docstring." Move the registry to `docs/user/tool_side_effects.md` so third-party tool authors know what keys exist. Append-only is the right invariant; visibility makes it enforceable.
+
+### CC8. Sim → general adapter contract audit (~1 hour audit + maybe 50 LOC)
+
+For Minecraft (1.1) and game-NPC integration to slot in cleanly, `PerceptSource`, `ActionSink`, and the bridge protocols in [`simulation/bridge.py`](../../src/maxim/simulation/bridge.py) need to NOT assume sim orchestrator. Run a focused audit: can a non-sim adapter (e.g., a Mineflayer adapter) implement these cleanly? If the protocols leak sim-specific assumptions (orchestrator dependency, narrative phase coupling, etc.), clarify or generalize before freeze.
+
+**Why before 1.0:** If the protocols freeze with sim assumptions baked in, every external adapter post-1.0 either inherits the assumptions or forces a refactor.
+
+### CC9. Tool schema dual-format support — MCP-compat preparation (~100 LOC)
+
+Today `Tool.input_schema` uses a custom format `{"name": type}` or `{"name": (type, default)}`. The wider ecosystem (MCP, OpenAI, Anthropic, OpenAPI) uses JSONSchema. To keep the door open for MCP server/client modes in 1.1+ without breaking user-written tools:
+
+1. Add `Tool.to_json_schema()` method that converts the custom format to JSONSchema.
+2. Allow `Tool.input_schema` to accept *either* the custom format OR a JSONSchema dict (auto-detect at construction).
+3. Internally, normalize to the existing custom format (no behavior change in 1.0).
+4. Document that JSONSchema is the canonical format going forward; the custom format is supported indefinitely as a convenience.
+
+**Why before 1.0:** If 1.0 ships with only the custom format and 1.1 adds MCP server mode, third-party tool authors who wrote tools against 1.0 either need a conversion step or break. Adding the bridge now is non-breaking and forward-compatible. See [mcp_compatibility.md](mcp_compatibility.md) for the broader 1.1+ MCP work.
+
+### CC10. Async wrappability check (~1 hour audit)
+
+Modern Python frameworks (FastAPI, Pydantic AI, LangGraph) are async-native. Maxim's `api.py` verbs are sync. As long as users can wrap them in `asyncio.to_thread()` cleanly, no work is needed. But if any verb does something that breaks under threadpool wrapping (e.g., uses asyncio internally without an event loop, depends on stdin/stdout, depends on the current working directory), retrofitting async support post-1.0 is invasive.
+
+**Deliverable:** focused 1-hour audit of every verb in `api.py`. For each, confirm:
+- No internal asyncio usage that requires a running event loop
+- No stdin/stdout dependency (terminal output is fine; required input is not)
+- No CWD assumption
+
+If anything fails the check, fix it (small surface adjustments, likely <30 LOC each). Document the threadpool wrap pattern in the stability page from CC2.
+
+**Why before 1.0:** Adding async support post-1.0 is additive; making sync verbs threadpool-safe post-1.0 may not be — depends on what's leaked into them. Cheap to verify now.
+
+### CC11. Tool cancellation contract (~30 LOC + doc)
+
+Tools have a `timeout` field but no cancellation hook. A user pressing Ctrl-C, an exceeded budget, or an upstream cancellation has no graceful path — long-running tools (web scraping, large file ops, MCP subprocess calls in 1.1+) become stuck threads.
+
+**Deliverable:** add `Tool.cancel()` hook to the ABC with a default no-op implementation. Document semantics: when called, the tool should attempt to abort its current execution and release resources. Backwards-compatible for existing tools (default no-op = today's behavior); explicit for new ones. Wire one or two heavy built-in tools (web fetch, MCP subprocess) to actually implement cancel.
+
+**Why before 1.0:** Adding a method to the Tool ABC post-1.0 is a breaking change for third-party tool authors who subclassed `Tool` (Python's ABC raises if subclasses don't implement abstractmethods, even with defaults). Adding a non-abstract method with a default body now is non-breaking.
+
+### CC12. Token telemetry standardization (~doc + small surface adjustment)
+
+Modern frameworks expose `input_tokens`, `output_tokens`, `cached_tokens` in standardized dicts. Maxim has cost tracking per-session via `LLMEnergyTracker`. Verify the per-call telemetry exposes the standard fields in `ToolOutput`, `BackendError`, or wherever — so users building dashboards / fine-tuning datasets / cost analyses don't have to reverse-engineer the format.
+
+**Deliverable:** audit the call-site telemetry in `models/language/router.py`, `_MaximPeerBackend`, `_OpenAIBackend`, `LLMEnergyTracker`. Confirm `input_tokens` / `output_tokens` / `cached_tokens` are exposed under those exact field names in any user-visible structure. Where missing, add them. Document the contract in CC4's classification doc.
+
+**Why before 1.0:** Renaming a telemetry field post-1.0 breaks anyone parsing the JSONL log. Aligning to the de-facto standard names now is cheap.
+
+---
+
+## Section 8: 1.1 track (concurrent development, not 1.0 gating)
+
+Items deliberately scoped OUT of 1.0 to keep the stabilization release tight. Shipped concurrently or in 1.1 splash.
+
+### 1.1-T1. Minecraft live demo + harness benchmark
+
+**Plan stub:** [minecraft_benchmark.md](minecraft_benchmark.md) (design exploration, post-1.0)
+
+Compare Maxim against Voyager / GITM / SPRING on a Minecraft live demo. Builds on Cradle's embodied learning foundation. Why 1.1 not 1.0:
+
+1. Comparison protocol design (same seeds, same turn budgets, same embodiment) is research-grade work that benefits from time, not haste.
+2. 1.0 is the interface freeze; 1.1 is the showpiece. Two news cycles, less risk per release.
+3. Cradle (B4) already provides the cross-session learning evidence 1.0 needs. Minecraft strengthens the story without gating it.
+
+### 1.1-T2. Scene actor affordances
+
+**Plan:** [scene_actor_affordances.md](scene_actor_affordances.md)
+
+`target_effect` field + `OrchestratorActorTool` so scene entities produce real SEM mechanics on the AUT body. ~110 LOC. Diagnostic for whether agent-backed entities are needed. Slips from 1.0 because it's a quality-of-life refinement, not a freeze gate.
+
+### 1.1-T3. SEM world enrichment Phases 2-3
+
+**Plan:** [sem_world_enrichment.md](sem_world_enrichment.md)
+
+Bio-enrichment routing through ComponentIndex, composable body archetypes. Phase 1 shipped. Phases 2-3 enrich the learning environment for the Minecraft demo but don't gate the cross-session claim — the Cradle and Experiment 10 already validate the claim with simpler worlds.
+
+### 1.1-T4. C4-C6 hard errors
+
+After 0.9 deprecation cycle.
+
+### 1.1-T5. Agent-backed entities (revival path)
+
+**Plan (deferred):** [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md)
+
+Revives if scene_actor_affordances doesn't close the dragon-narration symptom OR if Minecraft demo exposes a cognition gap (zombies need pathfinding, villagers need trade memory).
+
+### 1.1-T6. B5 embodiment/narrative separation
+
+**Plan (deferred):** [deferred/b5_embodiment_narrative_separation.md](deferred/b5_embodiment_narrative_separation.md)
+
+B3 Acting Coach shipped. B5 is a shell.
+
+---
