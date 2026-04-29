@@ -84,6 +84,14 @@ class PerceptContext:
 
     See the module docstring for the isolation-hygiene rule governing
     what fields may be added here.
+
+    SHAPE-FROZEN at 1.0 (CC3). The percept-level escape hatch is
+    ``Percept.metadata`` (free-form dict on the carrying ``Percept``
+    instance, not on this struct) — DO NOT add an ``extra`` dict here,
+    that would re-open the cross-agent leakage path the isolation-
+    hygiene rule above forbids. New fields appended with defaults are
+    non-breaking but require isolation review; adding a *required*
+    field post-1.0 is a major-version-bump change.
     """
 
     channel: Channel | None = None

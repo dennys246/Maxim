@@ -39,6 +39,15 @@ class TemporalSignature:
         weekly_phase: 0.0-1.0 (Monday 00:00=0, Sunday 23:59≈1.0)
         monthly_phase: 0.0-1.0 (1st=0, ~15th=0.5, 28-31st≈1.0)
         annual_phase: 0.0-1.0 (Jan 1=0, July 1≈0.5, Dec 31≈1.0)
+
+    SHAPE-FROZEN at 1.0 (CC3). The four-phase structure is the
+    similarity-and-binning contract — adding a free-form ``extra`` dict
+    would invite producers to encode noisy phase signals that
+    ``similarity()`` and ``to_bins()`` cannot honour. Additional phase
+    layers (e.g., decadal) may be added at the end with defaults — but
+    consumers that index by phase tuple need to be migrated in the
+    same change. Adding a *required* field post-1.0 is a
+    major-version-bump change.
     """
 
     timestamp: float

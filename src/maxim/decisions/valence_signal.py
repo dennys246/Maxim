@@ -30,6 +30,14 @@ class ValenceSignal:
     Produced by NAc (outcome valence), PainBus (negative),
     EC (novelty as mild positive), TemporalCreditDistributor.
     Consumed by WMS entries to modulate thought salience over time.
+
+    SHAPE-FROZEN at 1.0 (CC3). Every field is load-bearing for the
+    transport contract; an ``extra`` dict would tempt consumers to
+    branch on producer-private side data, violating the
+    consumer-source-blindness invariant declared in the module
+    docstring. New fields appended at the end with sensible defaults
+    are non-breaking; adding a *required* field post-1.0 is a
+    major-version-bump change.
     """
 
     value: float

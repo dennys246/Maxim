@@ -73,6 +73,12 @@ class Episode:
     rule fires, and added to the ``EpisodeStore`` at that point. Once
     created they are not mutated; any new co-activation opens a fresh
     pending episode.
+
+    Forward-compat (CC3, 1.0): persisted via ``EpisodeStore``; ``extra``
+    is the post-1.0 escape hatch for additive metadata so new analytic
+    or provenance keys can round-trip through serialization without
+    bumping a major version. Loaders default ``extra`` to ``{}`` for
+    pre-1.0 episodes via ``data.get("extra")``.
     """
 
     id: str
@@ -89,6 +95,8 @@ class Episode:
     valence: float = 0.0
     # Provenance: True when this episode involved imagined (session-scoped) entities.
     imagined: bool = False
+    # CC3 escape hatch — additive metadata for forward-compat.
+    extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         d = {
@@ -105,6 +113,8 @@ class Episode:
         }
         if self.imagined:
             d["imagined"] = True
+        if self.extra:
+            d["extra"] = dict(self.extra)
         return d
 
     @classmethod
@@ -121,6 +131,7 @@ class Episode:
             scn_tag=data.get("scn_tag"),
             valence=float(data.get("valence", 0.0)),
             imagined=bool(data.get("imagined", False)),
+            extra=dict(data.get("extra") or {}),
         )
 
 

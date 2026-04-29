@@ -87,6 +87,16 @@ class BackendError(Exception):
     ``TypeError``\\s at call time, not silent hot-path bugs in Plan 3.
     Subclasses without extra fields (``BackendDown``, ``BackendAuthFailed``,
     ``BackendInferenceBroken``) inherit the base ``__init__`` directly.
+
+    SHAPE-FROZEN at 1.0 (CC3). The exception hierarchy is a typed
+    contract bridged by the router on a per-subclass basis (specific-
+    before-general); a free-form ``**kwargs`` / ``extra`` would re-open
+    the silent-typo class of bugs Fix #8 closed. New keyword-only
+    parameters with defaults are non-breaking and may be added per
+    subclass; adding a *new subclass* requires the matching
+    ``LLMRouter._try_provider`` branch in specific-before-general
+    order. Adding a *required* field post-1.0 is a major-version-bump
+    change.
     """
 
     provider_key: str = ""
