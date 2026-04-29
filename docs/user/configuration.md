@@ -4,31 +4,149 @@
 
 Maxim is configured through three mechanisms: CLI flags, environment variables, and JSON config files. CLI flags override environment variables, which override config file defaults.
 
-## Environment Variables
+## Public env var contract (CC4)
+
+The variables below are **public**: removal or rename is a breaking change at a major-version bump (1.x → 2.0). Behavior may evolve (smarter defaults, better validation) but the names and the contract these variables provide will not.
+
+Environment variables not on this list are **debug / experimental** — see the [Debug / experimental env vars](#debug--experimental-env-vars-may-change-without-notice) section. They may change without notice in any minor release.
+
+### Public — LLM + model selection
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MAXIM_LLM_ENABLED` | Enable LLM inference (1/true) | 0 |
-| `MAXIM_LLM_PROFILE` | Model profile name | None |
-| `MAXIM_LLM_QUANTIZATION` | Quantization level (Q3_K_M, Q4_K_M, Q5_K_M, Q8_0) | Q4_K_M |
-| `MAXIM_LLM_N_CTX` | Override auto-computed llama.cpp context window (P4c). Same as `--llm-n-ctx`. | (formula) |
+| `MAXIM_LLM_ENABLED` | Enable LLM inference (1/true). | 0 |
+| `MAXIM_LLM_PROFILE` | Model profile name. | None |
+| `MAXIM_LLM_QUANTIZATION` | Quantization level (Q3_K_M, Q4_K_M, Q5_K_M, Q8_0). | Q4_K_M |
+| `MAXIM_LLM_N_CTX` | Override auto-computed llama.cpp context window. Same as `--llm-n-ctx`. | (formula) |
+| `MAXIM_AUTO_DOWNLOAD_MODELS` | Set to `1` to auto-download missing GGUFs. Same as `--auto-download`. | off |
+| `MAXIM_DATA_BUDGET_GB` | Soft cap on `~/.maxim/` disk usage. Auto-download preflight refuses if it would exceed the cap. | (unset) |
+| `MAXIM_DATA_HOME` | Override the base data directory (default `~/.maxim`). | `~/.maxim` |
+| `MAXIM_LLM_CALL_TIMEOUT_S` | LLMWorker agent-level call timeout (clamped 10-1800). | 300 |
+| `MAXIM_PROVENANCE_VERBOSITY` | Provenance tracing (0=off, 1=compact, 2=verbose). | 0 |
+| `MAXIM_LOG_FILE` | Path to JSONL log file. Dual-format: stdout stays human-readable, file is machine-parseable. | (unset) |
+
+### Public — peer / leader / role
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_ROLE` | Explicit role: `leader`, `peer`, or `solo`. Set automatically by `cli.py::main` at startup. | (auto) |
+| `MAXIM_LANE_LARGE_REMOTE_URL` | Override large tier to use a remote peer/leader URL. | (unset) |
+| `MAXIM_LANE_LARGE_REMOTE_MODEL` | Model name to request from the remote server. | (unset) |
+| `MAXIM_LANE_LARGE_REMOTE_API_KEY` | Auth token for the remote server. | (unset) |
+
+### Public — cloud providers
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ANTHROPIC_API_KEY` | Required for Claude backend. | (unset) |
+| `OPENAI_API_KEY` | Required for OpenAI backend. | (unset) |
+| `GOOGLE_API_KEY` | Required for Gemini backend. | (unset) |
+| `GROQ_API_KEY` | Required for Groq backend. | (unset) |
+| `TOGETHER_API_KEY` | Required for Together backend. | (unset) |
+| `FIREWORKS_API_KEY` | Required for Fireworks backend. | (unset) |
+| `MISTRAL_API_KEY` | Required for Mistral API backend. | (unset) |
+| `DEEPSEEK_API_KEY` | Required for DeepSeek backend. | (unset) |
+| `MAXIM_LLM_CLOUD_ENABLED` | Enable cloud dispatch (required for `--cloud-*` flags). | 0 |
+| `MAXIM_MAX_CLOUD_LANES` | Max lanes using cloud providers. | 0 |
+| `MAXIM_LLM_REDACTION_POLICY` | Redaction policy for cloud dispatch (standard/relaxed/strict). | standard |
+| `MAXIM_CLOUD_SESSION_BUDGET` | Hard ceiling on cloud spending per session (USD). | 5.00 |
+
+### Public — embodiment + hardware
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_DEEP_EMBODIMENT` | Enable level-3 deep embodiment: sub-sensor exposure + per-sub-sensor damage routing. Same as `--deep-embodiment`. | 0 |
+| `MAXIM_ROBOT_NAME` | Robot identifier (Reachy daemon `robot_name` / zenoh namespace). | reachy_mini |
+| `MAXIM_COMMS_ENABLED` | Enable SMS/Voice (1/true). | 0 |
+| `MAXIM_WHISPER_COMPUTE_TYPE` | Whisper compute type (int8/float16/float32). | int8 |
+| `MAXIM_DISABLE_IMSHOW` | Disable OpenCV window display. | 0 |
+| `TWILIO_ACCOUNT_SID` | Twilio Account SID. | None |
+| `TWILIO_AUTH_TOKEN` | Twilio Auth Token. | None |
+| `TWILIO_FROM_NUMBER` | Twilio phone number. | None |
+| `CUDA_VISIBLE_DEVICES` | GPU selection (empty string = CPU only). | auto |
+
+## Debug / experimental env vars (may change without notice)
+
+These variables are **debug / experimental**: useful for diagnostics or workarounds, but their names, default values, and behavior may change in any minor release. **Do not depend on them in scripts or shell aliases that need to survive Maxim upgrades.**
+
+### Debug — tracing + logging
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_HTTP_TRACE` | Bumps `http_request` events from DEBUG to INFO (every outbound call logged). | 0 |
+| `MAXIM_BACKEND_TRACE` | Bumps `_MaximPeerBackend` `peer_backend_call` events from DEBUG to INFO. Pair with `MAXIM_LOG_FILE` for per-call JSONL. | 0 |
+| `MAXIM_HEARTBEAT` | System health heartbeat every 10s (GPU/CPU/RAM/disk/WiFi + stall detection). | 0 |
+| `MAXIM_HEARTBEAT_INTERVAL_S` | Heartbeat sample interval. | 10 |
+| `MAXIM_HEARTBEAT_STALL_S` | Warn after this many seconds with no LLM calls. | 30 |
+| `MAXIM_LANE_TRACE` | Per-request LLM trace logs (also enables heartbeat). | 0 |
+| `MAXIM_PEER_LOG_REQUESTS` | JSON log per outbound peer call. | 0 |
+| `MAXIM_HIPPO_TRACE` / `MAXIM_NAC_TRACE` / `MAXIM_ATL_TRACE` / `MAXIM_EC_TRACE` / `MAXIM_SCN_TRACE` / `MAXIM_PAIN_TRACE` / `MAXIM_FEAR_TRACE` / `MAXIM_DEFAULT_NET_TRACE` | Enable bio-subsystem traces. Set by the `--trace` CLI flag. | 0 |
+
+### Debug — substrate + decision-system experiments
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_SUBSTRATE_PATH` | Enable substrate encoding path (LinguisticEncoder → EC → ATL dual-write). | 0 |
+| `MAXIM_CONCEPT_DECOMPOSITION` | Enable concept decomposition (noun-phrase extraction before EC). Requires spaCy + en_core_web_sm. | 0 |
+| `MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT` | Temporal credit weight for SCN-substrate eligibility traces. | 0.3 |
 | `MAXIM_AUTO_SPAWN_N_CTX` | Legacy alias for `MAXIM_LLM_N_CTX`. Kept for in-place upgrades. | (unset) |
-| `MAXIM_AUTO_DOWNLOAD_MODELS` | Set to `1` to skip the interactive download prompt and auto-download missing GGUFs (P5). Same as `--auto-download`. | off |
-| `MAXIM_DATA_BUDGET_GB` | Optional soft cap on `~/.maxim/` disk usage. The auto-download preflight refuses if the new download would exceed it. | (unset) |
-| `MAXIM_SKIP_REMOTE_PROBE` | Set to `1` to bypass the P6 remote-URL probe. CI/test escape hatch. | off |
+
+### Debug — peer/probe internals
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_SKIP_REMOTE_PROBE` | Bypass the remote-URL probe. CI/test escape hatch. | 0 |
 | `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` | First-attempt probe timeout (clamped 0.2-5.0). | 0.8 |
 | `MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S` | Retry probe timeout (clamped 0.5-10.0). | 2.5 |
 | `MAXIM_REMOTE_PROBE_CACHE_TTL_S` | Probe cache freshness window (clamped 0-600). | 60 |
-| `MAXIM_PROMPT_PROFILE` | Prompt optimization (deprecated — not read by current code; use per-mode config in llm.json) | standard |
-| `MAXIM_ROBOT_NAME` | Robot identifier | reachy_mini |
-| `MAXIM_COMMS_ENABLED` | Enable SMS/Voice (1/true) | 0 |
-| `MAXIM_WHISPER_COMPUTE_TYPE` | Whisper compute type (int8/float16/float32) | int8 |
-| `MAXIM_DISABLE_IMSHOW` | Disable OpenCV window display | 0 |
-| `MAXIM_PROVENANCE_VERBOSITY` | Provenance tracing (0=off, 1=compact, 2=verbose) | 0 |
-| `TWILIO_ACCOUNT_SID` | Twilio Account SID (for comms) | None |
-| `TWILIO_AUTH_TOKEN` | Twilio Auth Token (for comms) | None |
-| `TWILIO_FROM_NUMBER` | Twilio phone number (for comms) | None |
-| `CUDA_VISIBLE_DEVICES` | GPU selection (empty string = CPU only) | auto |
+| `MAXIM_DRAIN_CACHE_TTL_S` | DrainConstraint mtime cache freshness (clamped 0-60). | 1.0 |
+| `MAXIM_AUTO_DRAIN_THRESHOLD` | Transient failure count before auto-drain (clamped 2-20). | 5 |
+| `MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S` | Auto-undrain probe cycle interval (clamped 30-600). | 90 |
+| `MAXIM_PROXY_MAX_CONCURRENT` | Max in-flight requests to upstream (0 = unlimited). | 4 |
+| `MAXIM_PROXY_RATE_LIMIT_RPM` | Per-peer requests/minute (0 = unlimited). | 0 |
+
+### Debug — sim safety + deprecated
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_REAP_ORPHANS` | Kill stale `maxim sim` processes detected at startup. | 0 |
+| `MAXIM_SHOW_CHANNELS` | Channel filter for simulation output (legacy — `--display` is preferred). | (unset) |
+| `MAXIM_PROMPT_PROFILE` | Prompt optimization (deprecated — not read by current code). | standard |
+
+## CLI flag stability (CC4)
+
+CLI flags are **stable** unless their `--help` text carries the `[experimental]` suffix. Stable flags' names and default values are part of the contract; experimental flags may be renamed, retyped, or removed in any minor release.
+
+Currently flagged as `[experimental]`:
+
+- `--research` — research protocol; matches the experimental status of `maxim.research()`
+- `--auto-curate`, `--curate-threshold`, `--no-curate` — pre-sim auto-curation surface (E3, late 0.7)
+- `--foundry`, `--foundry-count`, `--foundry-genre`, `--foundry-category`, `--foundry-dry-run` — Asset Foundry surface
+- `--reap-orphans` — sim safety net; behavior may evolve
+- `--audit-architecture` — internal audit verb
+- `--generate-simulation` — scenario generation utility
+
+## Token telemetry contract (CC12)
+
+Per-call LLM token telemetry is exposed under these field names — frozen at 1.0:
+
+| Field | Meaning |
+|---|---|
+| `input_tokens` | Total prompt tokens (cached + uncached). |
+| `output_tokens` | Generated tokens. |
+| `cached_tokens` | Cached portion of the input. Read from prompt cache, charged at the cached rate (or free, depending on provider). |
+
+Where these fields appear:
+
+| Surface | Contract |
+|---|---|
+| `LLMResponse.input_tokens` / `.output_tokens` / `.cached_tokens` | `cached_tokens` is a property alias for the legacy `cached_input_tokens` field. |
+| `LLMRouter.generate(...)` `usage` dict | All three fields present. `cached_input_tokens` retained as legacy alias. |
+| JSONL events `peer_backend_call`, `peer_stream_complete` | Emitted under `MAXIM_LOG_FILE`. All three fields present. |
+| Leader proxy per-request log entry | `cached_tokens` parsed from upstream `usage.prompt_tokens_details.cached_tokens` when present. |
+| `CostTracker.get_session_tokens()` | Exposes `input_tokens`, `output_tokens`, `cached_tokens`, `total_tokens`. |
+
+Legacy field names (`cached_input_tokens`, `uncached_input_tokens`, `prompt_tokens`, `completion_tokens`) are still present in some internal paths for backwards compatibility with older callers and OpenAI-shape compatibility on peer endpoints. **External callers should prefer the standard names** (`input_tokens`, `output_tokens`, `cached_tokens`) — those are the only token field names this page commits to.
 
 ## Data Directory
 
