@@ -404,6 +404,24 @@ class InternetSearchTool(Tool):
         self._blocked_domains = self.BLOCKED_DOMAINS.copy()
         if blocked_domains:
             self._blocked_domains.update(blocked_domains)
+        # CC11 cancellation hook (see ``cancel`` docstring + the
+        # HttpFetchTool comment for rationale on threading.Event +
+        # clear-at-execute-entry).
+        self._cancelled = threading.Event()
+
+    def cancel(self) -> None:
+        """Mark the in-flight search as cancelled (CC11).
+
+        Sets a ``threading.Event`` that ``execute()`` checks at safe
+        points (post policy checks, BEFORE rate-limit accounting and
+        BEFORE the network call). ``execute()`` clears the event at
+        entry so the registered singleton tool can be reused after a
+        prior cancel. Like ``HttpFetchTool.cancel()``, it does not
+        interrupt a thread already inside the underlying DuckDuckGo
+        HTTP request — the request's own timeout is the load-bearing
+        hard interruption mechanism.
+        """
+        self._cancelled.set()
 
     def _is_blocked_domain(self, url: str) -> bool:
         """Check if URL is from a blocked domain.
@@ -447,6 +465,9 @@ class InternetSearchTool(Tool):
 
     def execute(self, **kwargs: Any) -> ToolResult:
         """Execute the search."""
+        # CC11: clear any prior cancel signal — see __init__ comment.
+        self._cancelled.clear()
+
         query = str(kwargs.get("query", "")).strip()
         max_results = int(kwargs.get("max_results", 5))
 
@@ -455,6 +476,9 @@ class InternetSearchTool(Tool):
                 success=False,
                 error="No search query provided",
             )
+
+        if self._cancelled.is_set():
+            return ToolResult(success=False, error="Search cancelled")
 
         # Check internet access policy
         if self._get_internet_policy:
@@ -473,6 +497,13 @@ class InternetSearchTool(Tool):
                 metadata={"policy_blocked": True},
             )
 
+        # CC11 cancellation check BEFORE rate-limit accounting — a
+        # cancelled request must not consume a rate-limit slot. The
+        # second cancel check below covers the gap between this point
+        # and the network call.
+        if self._cancelled.is_set():
+            return ToolResult(success=False, error="Search cancelled")
+
         # Check rate limit
         now = time.time()
         self._request_times = [t for t in self._request_times if now - t < 60]
@@ -484,6 +515,10 @@ class InternetSearchTool(Tool):
             )
 
         self._request_times.append(now)
+
+        # CC11 cancellation check before the network call.
+        if self._cancelled.is_set():
+            return ToolResult(success=False, error="Search cancelled")
 
         # Perform the search
         try:

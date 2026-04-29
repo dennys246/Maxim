@@ -582,7 +582,10 @@ def imagine(
         persona: Orchestrator persona (``"adversarial"``, ``"cooperative"``,
             ``"confused"``, ``"escalating"``, ``"researcher"``, etc.).
         scenario: Path to YAML scenario file.  If provided, percepts are
-            loaded from the file and injected directly.
+            loaded from the file and injected directly. Relative paths
+            resolve against the current working directory — pass an
+            absolute path from async / pip-install / arbitrary-CWD
+            callers (CC10, see ``docs/user/stable_api.md``).
         model: LLM profile for both AUT and orchestrator.
         sandbox: Sandbox backend (``"tmpdir"`` or ``"docker"``).
         max_turns: Maximum simulation turns before auto-finish.
@@ -1035,7 +1038,10 @@ def campaign(
     real memory), and returns structured results.
 
     Args:
-        path: Path to campaign YAML file.
+        path: Path to campaign YAML file. Relative paths resolve against
+            the current working directory — pass an absolute path from
+            async / pip-install / arbitrary-CWD callers (CC10, see
+            ``docs/user/stable_api.md``).
         model: LLM profile for the PC agent / orchestrator.
         party_mode: Override campaign's party_mode setting.  If ``None``,
             uses the value from the campaign YAML.
@@ -1149,6 +1155,17 @@ def benchmark(
     Returns:
         BenchmarkResult with per-model scores and summary.
 
+    Note:
+        When ``suite`` is a bare name (e.g. ``"cognitive"``) rather than
+        an absolute path, lookup is relative to the *current working
+        directory* — only ``scenarios/benchmarks/{suite}.yaml`` from a
+        source-repo checkout will be found. **Pass an absolute path
+        when calling from non-checkout contexts** (pip-install, async
+        web handlers via ``asyncio.to_thread``, scripts run from
+        arbitrary directories). The CWD-relative behavior is preserved
+        as a developer-checkout convenience but is not part of the
+        async-wrappability contract — see ``docs/user/stable_api.md``.
+
     Example::
 
         result = maxim.benchmark(
@@ -1167,8 +1184,13 @@ def benchmark(
     suite_path = suite
     if not Path(suite).exists():
         # Benchmarks live in `scenarios/benchmarks/` in the source repo
-        # and are NOT shipped in the pip wheel. Pip-install users must
-        # pass a direct path to a YAML file.
+        # and are NOT shipped in the pip wheel.
+        # CC10: this lookup is CWD-relative on purpose — source-checkout
+        # users can pass bare names like "cognitive" and have the loader
+        # find ``./scenarios/benchmarks/cognitive.yaml``. Pip-install /
+        # async / arbitrary-CWD callers must pass an absolute path; the
+        # ConfigurationError below surfaces the active CWD so the
+        # failure mode is obvious.
         candidate = Path("scenarios") / "benchmarks" / f"{suite}.yaml"
         if not candidate.exists():
             candidate = Path("scenarios") / "benchmarks" / f"{suite}_suite.yaml"
@@ -1180,8 +1202,9 @@ def benchmark(
             raise ConfigurationError(
                 f"Benchmark suite '{suite}' not found. "
                 f"Benchmarks are only available when running from a Maxim source checkout "
-                f"(scenarios/benchmarks/*.yaml). Pass a direct path to a YAML file instead.",
-                context={"suite": suite},
+                f"(scenarios/benchmarks/*.yaml). Pass a direct path to a YAML file instead. "
+                f"(CWD-relative lookup tried from {Path.cwd()})",
+                context={"suite": suite, "cwd": str(Path.cwd())},
             )
 
     from maxim.simulation.benchmark import BenchmarkRunner
