@@ -71,29 +71,30 @@ class TraceSnapshot:
     Before F0.2 lands, construct manually with ``activation_strength=1.0``
     and ``decay_factor=1.0`` (full-strength, no decay information).
 
-    Forward-compat (CC3, 1.0): ``extra`` is the post-1.0 escape hatch for
-    additive metadata so new fields can be carried through serialization
-    round-trips without bumping a major version. Producers should prefer
-    declared fields when the data is part of the typed contract; only
-    fall back to ``extra`` for genuinely additive observability metadata.
+    SHAPE-FROZEN at 1.0 (CC3). No ``extra`` escape hatch by design —
+    ``TraceSnapshot`` is reachable from every Reaction via
+    :class:`ReactionContext` ``bindings: dict[str, TraceSnapshot]``, so a
+    free-form dict here would re-open the isolation back-channel that
+    ``ReactionContext`` explicitly closes (cross-agent intent, scenario
+    oracles, learned-policy hints). The pre-merge architecture review
+    flagged the original ``extra`` draft as exactly this leak path.
+    Adding any new field is a deliberate act requiring isolation review
+    per the module docstring; adding a *required* field post-1.0 is a
+    major-version-bump change.
     """
 
     percept_id: str
     activation_strength: float = 1.0
     content_hash: str | None = None
     decay_factor: float = 1.0
-    extra: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        d = {
+        return {
             "percept_id": self.percept_id,
             "activation_strength": self.activation_strength,
             "content_hash": self.content_hash,
             "decay_factor": self.decay_factor,
         }
-        if self.extra:
-            d["extra"] = dict(self.extra)
-        return d
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TraceSnapshot":
@@ -102,7 +103,6 @@ class TraceSnapshot:
             activation_strength=data.get("activation_strength", 1.0),
             content_hash=data.get("content_hash"),
             decay_factor=data.get("decay_factor", 1.0),
-            extra=dict(data.get("extra") or {}),
         )
 
 

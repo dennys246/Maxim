@@ -123,6 +123,16 @@ def _validate_yaml_safe(field_name: str, value: str) -> None:
 
 @dataclass(frozen=True)
 class MeshNode:
+    """One node entry in ``mesh.yml``.
+
+    SHAPE-FROZEN at 1.0 (CC3). The hand-rolled ``mesh.yml`` parser
+    dialect is FROZEN per CLAUDE.md — adding a new ``MeshNode`` field
+    requires extending both the parser and ``to_yaml_lines`` (which
+    enforces round-trip integrity per the docstring on that method).
+    Adding any field post-1.0 is a major-version-bump change for the
+    cross-host wire format; the parser-frozen dialect is the gate.
+    """
+
     name: str
     url: str
     role: NodeRole
@@ -159,6 +169,16 @@ class MeshNode:
 
 @dataclass(frozen=True)
 class MeshConfig:
+    """Top-level ``mesh.yml`` contents.
+
+    SHAPE-FROZEN at 1.0 (CC3). Same rationale as :class:`MeshNode` —
+    parser-frozen YAML dialect on the cross-host wire. ``protocol_version``
+    is the deliberate forward-compat knob; bump that integer when the
+    wire format changes incompatibly. Adding any other field post-1.0
+    requires the parser, ``to_yaml`` writer, and round-trip test all
+    to land together.
+    """
+
     cluster_key: str
     self_name: str
     nodes: tuple[MeshNode, ...]
