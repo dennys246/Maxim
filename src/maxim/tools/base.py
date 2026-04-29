@@ -34,18 +34,18 @@ class ToolOutput:
     is a plain ``dict[str, Any]`` keyed by well-known strings, and
     consumers (bridges, bio-systems) know the keys they care about.
 
-    Well-known ``side_effects`` keys (append-only, document new ones here):
+    The append-only registry of well-known ``side_effects`` keys lives
+    in ``docs/user/tool_side_effects.md``. That page is authoritative:
+    it lists every documented key, value shape, producer, consumer, and
+    the version each key was introduced. Third-party tool authors
+    should read it to know which keys they may produce or consume; it
+    is also the place to add new keys via PR.
 
-    - ``"embodiment_failures"``: ``list[dict]`` of SEM failure event dicts
-      with shape ``{"name": failure_mode, "entity": entity_path,
-      "pain": intensity}``. Populated by
-      ``ModulatorAffordanceTool.execute`` when
-      ``embodiment.evaluate_failures()`` fires post-action. Consumed by
-      ``runtime/executor.py`` which routes to
-      ``ToolPainBridge.record_tool_embodiment_failure`` for direct NAc
-      attribution. A tool that succeeded at its action but produced
-      embodiment failures still returns ``success=True`` — the tool did
-      what was asked; the side-effect reports what the body felt.
+    Adding a new key requires (a) appending a row to the registry table
+    in that doc, (b) wiring the consumer in the same PR, and (c)
+    keeping the value JSON-serializable. The append-only invariant is
+    load-bearing for third-party interoperability — once shipped, a
+    key's name and shape do not change without a major-version bump.
     """
 
     success: bool

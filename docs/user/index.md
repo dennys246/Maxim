@@ -36,6 +36,12 @@ Documentation for users of Maxim (pymaxim) — a bio-inspired cognitive architec
 
 - [Robot Setup](robot-setup.md) — Reachy Mini connection, daemon, diagnostics
 - [Troubleshooting](troubleshooting.md) — Common issues and fixes
+- [Upgrading](upgrading.md) — Version-to-version upgrade contract (state files, warnings, manual actions)
+
+## Extending Maxim
+
+- [Extension API](extension_api.md) — Stable extension points: robots, tools, backends, percept sources, action sinks, bio-system bridges
+- [Tool side_effects Registry](tool_side_effects.md) — Append-only registry of well-known `ToolOutput.side_effects` keys
 
 ## Developer Documentation
 
