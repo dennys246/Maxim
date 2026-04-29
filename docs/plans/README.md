@@ -24,7 +24,7 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 | **Bio-system stabilization** | Protocol enrichment (freeze-worthy interfaces), SCN oscillator feedback (close the loop), SEM world enrichment Phases 2-3 (rich environments) | Pending |
 | **Sensorimotor grounding** | Cradle of Artificial Civilization (fire hurts, learned through sensors not language) | Pending |
 | **Pipeline completion** | ToolPainBridge temporal migration (~50 LOC), episode semantic shift (Stage 2) | **P1 SHIPPED** (temporal events), P2 pending |
-| **Cleanup** | Probe shim removal, dead code, DamageEntityTool shim, modulator sensors, health derived, raw constructor enforcement | Pending |
+| **Cleanup** | Probe shim removal, dead code, DamageEntityTool shim, modulator sensors, health derived, raw constructor enforcement | **C1+C2+C3 SHIPPED** (PR #196, 2026-04-26); C4-C6 pending (0.9 deprecation cycle) |
 | **Docs** | Agent memory transfer, API/CLI review, final docs pass | Pending |
 
 **1.0 exit criteria:**

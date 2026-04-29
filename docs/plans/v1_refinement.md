@@ -191,17 +191,23 @@ Several backward-compatibility shims silently accept under-specified inputs. Per
 - **C1-C3 (internal hard-removes):** ship in **0.9 or 1.0**. Zero user impact, no deprecation cycle needed — these only remove internal shims.
 - **C4-C6 (user-facing breaking changes):** ship **deprecation warnings in 0.9, hard errors in 1.1**. NOT in 1.0. Per semver discipline, breaking-change-on-X.0 is fine when it's the first major release, but 1.0 should be the stable contract — users adopting 1.0 should not be surprised by 1.0.1 or 1.1 hard errors. The 0.9 deprecation cycle gives users a release to react.
 
-### C1. Probe compat shim removal (internal)
+### C1. Probe compat shim removal (internal) — SHIPPED (2026-04-26)
 
-Remove `probe_llm_server`, `llm_server_responding_at`, `_probe_once`. Migrate remaining 4 callers to `_MaximPeerBackend.for_url(...).health_check()`. Hard-remove.
+**Shipped via:** PR #196 (commit `1f20df7`)
 
-### C2. `SendMessageTool._detect_attack` dead code removal (internal)
+Removed `probe_llm_server`, `llm_server_responding_at`, `_probe_once` from `runtime/llm_server.py` (-271 LOC). Probe primitives (`_probe_once`, `_probe_stage2_readiness`, `_build_probe_url`, `_classify_probe_cause`) moved into `models/language/maxim_peer_backend.py` where `health_check()` lives. 4 production callers migrated to `_MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()` (lane_backends.py ×2, doctor/checks.py ×2). Eliminated the bidirectional lazy-import cycle between `llm_server.py` and `maxim_peer_backend.py`. CI grep allow-list at `.github/workflows/test.yml` updated to zero-tolerance — any re-introduction now fails CI.
 
-Delete `_detect_attack()`, `_ATTACK_KEYWORDS`, and related comments. Dead code after reflex system shipped. Hard-remove.
+### C2. `SendMessageTool._detect_attack` dead code removal (internal) — SHIPPED (2026-04-26)
 
-### C3. `DamageEntityTool` shim removal (internal)
+**Shipped via:** PR #196 (commit `1f20df7`)
 
-Remove `DamageEntityTool` entirely. Update orchestrator prompts to use `damage_component`. Hard-remove.
+No-op at ship time — the reflex system landing in 0.8 had already removed `_detect_attack()` and `_ATTACK_KEYWORDS`. Verified zero hits across `src/maxim/` and `tests/`.
+
+### C3. `DamageEntityTool` shim removal (internal) — SHIPPED (2026-04-26)
+
+**Shipped via:** PR #196 (commit `1f20df7`)
+
+Removed `DamageEntityTool` class, import, registration, and `TOOL_DESCRIPTIONS` entry from `simulation/tools.py`. Removed from `docs/user/tools.md`. Orchestrator prompts in `simulation/orchestrator.py` updated to use `damage_component`. `DamageComponentTool` is the sole damage tool going forward.
 
 ### C4. Modulators without sensors (deprecation phase)
 
@@ -241,7 +247,7 @@ Publication guide, user docs, architecture docs — ship-ready state.
 4. **B2** (SCN oscillator) — depends on P1 (ToolPainBridge temporal migration provides diverse TemporalEvents for the oscillator to learn from).
 5. **B3** (SEM world enrichment Phases 2-3) — enriches the learning environment.
 6. **B4** (cradle) — depends on B2 (SCN feedback) and B3 (rich world). The capstone demo. **Includes P3** (energy bridge replacement ships as cradle Stage 1c). Also includes drive protocol interfaces (`CouplingSpec`, `ModulationSpec`, `pain_model`) that must freeze at 1.0.
-7. **C1-C3** (internal cleanup) — ship anytime.
+7. **C1-C3** (internal cleanup) — **SHIPPED** (PR #196, 2026-04-26).
 8. **C4-C6** (deprecation phase) — 0.9 warnings, 1.0 hard errors.
 9. **D1-D3** (docs) — last, after content stabilizes.
 
@@ -251,7 +257,7 @@ Publication guide, user docs, architecture docs — ship-ready state.
 - B2→B3→B4 is the critical chain for the sensorimotor grounding story.
 - B4 is the largest single item (~550-650 LOC) but stages are independently shippable and testable.
 - P3 (dead energy code removal) ships inside B4 Stage 1c, not as a separate PR.
-- C1-C3 are internal hard-removes, zero user impact, ship anytime.
+- C1-C3 are internal hard-removes, zero user impact — shipped 2026-04-26 (PR #196).
 - C4-C6 need a 0.9 deprecation release before 1.0 hard errors.
 
 ## 1.0 interface freeze checklist
