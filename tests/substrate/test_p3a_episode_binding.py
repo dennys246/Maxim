@@ -973,9 +973,7 @@ class TestSemanticShiftHippocampusIntegration:
         # ev1: no embedding → centroid unchanged
         h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",)))
         # ev2: orthogonal embedding → 1-cos(v_orth, v1) = 1 > 0.5 → close
-        h.observe_episode_event(
-            CaptureEvent(tick=2, channel="text", activated_nodes=("c",), embedding=v_orthogonal)
-        )
+        h.observe_episode_event(CaptureEvent(tick=2, channel="text", activated_nodes=("c",), embedding=v_orthogonal))
         h.finalize_pending_episode()
 
         episodes = h._episode_store.all_episodes()

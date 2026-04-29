@@ -216,8 +216,7 @@ def test_default_threshold_passes_calibration() -> None:
     sig = inspect.signature(semantic_shift_rule)
     published_default = sig.parameters["threshold"].default
     assert isinstance(published_default, float), (
-        f"semantic_shift_rule.threshold default must be a float, got "
-        f"{type(published_default).__name__}"
+        f"semantic_shift_rule.threshold default must be a float, got {type(published_default).__name__}"
     )
 
     results = run_sweep(thresholds=(published_default,))
