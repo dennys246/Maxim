@@ -1704,6 +1704,12 @@ class Hippocampus(PersistenceMixin, ConsolidationMixin, RetrievalMixin, MemoryLa
             for pair, relation in event.node_relations.items():
                 if pair not in pending.node_relations:
                     pending.node_relations[pair] = relation
+        # v1_refinement P2 — fold the event's text embedding into the
+        # pending episode's running-mean centroid. ``update_centroid``
+        # tolerates None embeddings as no-ops, preserving the
+        # backwards-compat contract for callers that don't yet supply an
+        # embedding (the rule then never fires).
+        pending.update_centroid(event.embedding)
 
     def _close_pending_episode_locked(self) -> Episode:
         """Finalize ``self._pending_episode``, add it to the store, and

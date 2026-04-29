@@ -28,6 +28,7 @@ import inspect
 import threading
 import time
 
+import numpy as np
 import pytest
 
 from maxim.agents.bus import EdgeType
@@ -759,3 +760,263 @@ class TestRoleTaggedEdges:
         assert edge_cb.metadata.get("relation") == "possessive"
         # mat-box pair has no explicit relation
         assert "relation" not in edge_mb.metadata
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# v1_refinement P2 — semantic shift episode boundary
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestSemanticShiftRule:
+    """v1_refinement P2 — embedding-based episode boundary detection.
+
+    These tests use synthetic orthogonal numpy vectors instead of a real
+    sentence-transformer model so they run in the fast suite without a
+    heavy dependency. The realistic threshold-tuning evidence lives in
+    ``tests/calibration/p2_episode_boundary_calibration.py`` (slow).
+    """
+
+    def _vec(self, *vals: float) -> np.ndarray:
+        return np.asarray(vals, dtype=np.float32)
+
+    def test_no_centroid_no_close(self):
+        """Cold start: pending state with no centroid never fires the rule."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        rule = semantic_shift_rule(threshold=0.5)
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        ev = CaptureEvent(tick=1, channel="text", embedding=self._vec(1.0, 0.0))
+        assert rule(pending, ev) is False
+
+    def test_no_event_embedding_no_close(self):
+        """Backwards-compat: legacy callers that don't pass an embedding
+        never trigger the rule even when the pending centroid exists."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        rule = semantic_shift_rule(threshold=0.5)
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.update_centroid(self._vec(1.0, 0.0))
+        ev = CaptureEvent(tick=1, channel="text")  # no embedding
+        assert rule(pending, ev) is False
+
+    def test_aligned_embedding_no_close(self):
+        """Identical-direction event embedding has cos=1, 1-cos=0 < threshold."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        rule = semantic_shift_rule(threshold=0.4)
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.update_centroid(self._vec(1.0, 0.0))
+        ev = CaptureEvent(tick=1, channel="text", embedding=self._vec(0.5, 0.0))
+        assert rule(pending, ev) is False
+
+    def test_orthogonal_embedding_closes(self):
+        """Orthogonal vectors have cos=0, 1-cos=1.0 > threshold → close."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        rule = semantic_shift_rule(threshold=0.4)
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.update_centroid(self._vec(1.0, 0.0))
+        ev = CaptureEvent(tick=1, channel="text", embedding=self._vec(0.0, 1.0))
+        assert rule(pending, ev) is True
+
+    def test_opposite_embedding_closes(self):
+        """Antipodal vectors have cos=-1, 1-cos=2.0 > threshold → close."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        rule = semantic_shift_rule(threshold=0.5)
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.update_centroid(self._vec(1.0, 0.0))
+        ev = CaptureEvent(tick=1, channel="text", embedding=self._vec(-1.0, 0.0))
+        assert rule(pending, ev) is True
+
+    def test_zero_norm_centroid_closes(self):
+        """Degenerate zero-vector centroid: rule returns True (treated as
+        a maximal shift) rather than NaN-comparing."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        rule = semantic_shift_rule(threshold=0.5)
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.centroid_embedding = self._vec(0.0, 0.0)
+        pending.centroid_count = 1
+        ev = CaptureEvent(tick=1, channel="text", embedding=self._vec(1.0, 0.0))
+        assert rule(pending, ev) is True
+
+    def test_threshold_validation(self):
+        """Out-of-range thresholds raise at construction, not at first call."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        with pytest.raises(ValueError, match=r"threshold must be in"):
+            semantic_shift_rule(threshold=-0.1)
+        with pytest.raises(ValueError, match=r"threshold must be in"):
+            semantic_shift_rule(threshold=1.1)
+        # Boundary values OK
+        semantic_shift_rule(threshold=0.0)
+        semantic_shift_rule(threshold=1.0)
+
+    def test_published_default_in_range(self):
+        """Smoke test: the published default lives inside the valid range
+        and constructs without error."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        default = inspect.signature(semantic_shift_rule).parameters["threshold"].default
+        assert isinstance(default, float)
+        assert 0.0 <= default <= 1.0
+        # No raise:
+        semantic_shift_rule()
+
+
+class TestPendingCentroidUpdate:
+    """v1_refinement P2 — running-mean centroid arithmetic."""
+
+    def test_first_update_initialises_centroid(self):
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        emb = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+        pending.update_centroid(emb)
+        assert pending.centroid_count == 1
+        np.testing.assert_array_equal(pending.centroid_embedding, emb)
+
+    def test_running_mean_two_events(self):
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.update_centroid(np.asarray([1.0, 0.0], dtype=np.float32))
+        pending.update_centroid(np.asarray([0.0, 1.0], dtype=np.float32))
+        assert pending.centroid_count == 2
+        # Mean of [(1, 0), (0, 1)] is (0.5, 0.5).
+        np.testing.assert_allclose(pending.centroid_embedding, [0.5, 0.5], rtol=1e-6)
+
+    def test_running_mean_three_events(self):
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        for vec in [(3.0, 0.0), (0.0, 3.0), (3.0, 3.0)]:
+            pending.update_centroid(np.asarray(vec, dtype=np.float32))
+        assert pending.centroid_count == 3
+        # Mean = (2.0, 2.0).
+        np.testing.assert_allclose(pending.centroid_embedding, [2.0, 2.0], rtol=1e-6)
+
+    def test_none_embedding_no_op(self):
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.update_centroid(np.asarray([1.0, 0.0], dtype=np.float32))
+        pending.update_centroid(None)
+        # Count and centroid unchanged.
+        assert pending.centroid_count == 1
+        np.testing.assert_array_equal(pending.centroid_embedding, [1.0, 0.0])
+
+    def test_zero_norm_embedding_skipped(self):
+        """Pre-merge review fold (Executor E1): a zero-norm embedding
+        from the encoder fallback path (``semantic.py`` returns
+        ``np.zeros(...)`` when the model is unhealthy) MUST NOT seed the
+        centroid. If it did, every subsequent ``semantic_shift_rule``
+        call would hit ``denom == 0.0`` and return True, slicing the
+        episode at every event."""
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.update_centroid(np.zeros(3, dtype=np.float32))
+        assert pending.centroid_count == 0
+        assert pending.centroid_embedding is None
+        # A real embedding then succeeds.
+        pending.update_centroid(np.asarray([1.0, 0.0, 0.0], dtype=np.float32))
+        assert pending.centroid_count == 1
+        np.testing.assert_array_equal(pending.centroid_embedding, [1.0, 0.0, 0.0])
+
+    def test_centroid_does_not_mutate_caller_array(self):
+        """``update_centroid`` MUST own its centroid copy; the caller's
+        embedding array (which the encoder layer may cache) must not be
+        mutated by subsequent updates."""
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        original = np.asarray([1.0, 0.0], dtype=np.float32)
+        snapshot = original.copy()
+        pending.update_centroid(original)
+        # Subsequent update with a different vector must not write back
+        # into ``original``.
+        pending.update_centroid(np.asarray([0.0, 1.0], dtype=np.float32))
+        np.testing.assert_array_equal(original, snapshot)
+
+
+class TestSemanticShiftHippocampusIntegration:
+    """End-to-end: install ``semantic_shift_rule`` on a Hippocampus,
+    feed events with embeddings, observe episode close behavior."""
+
+    def test_shift_closes_pending_episode(self):
+        """Two same-topic events then one orthogonal event closes the
+        pending episode and opens a new one."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h._episode_detector.add_rule(semantic_shift_rule(threshold=0.5))
+
+        v1 = np.asarray([1.0, 0.0], dtype=np.float32)
+        v2 = np.asarray([0.9, 0.1], dtype=np.float32)  # similar to v1
+        v3 = np.asarray([0.0, 1.0], dtype=np.float32)  # orthogonal to centroid
+
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a",), embedding=v1))
+        h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",), embedding=v2))
+        h.observe_episode_event(CaptureEvent(tick=2, channel="text", activated_nodes=("c",), embedding=v3))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 2
+        assert set(episodes[0].activated_nodes) == {"a", "b"}
+        assert set(episodes[1].activated_nodes) == {"c"}
+
+    def test_no_embeddings_legacy_callers_unchanged(self):
+        """Backwards-compat: with the rule installed but NO event
+        carrying an embedding, behavior matches a Hippocampus without
+        the rule."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h._episode_detector.add_rule(semantic_shift_rule(threshold=0.5))
+
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a",)))
+        h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",)))
+        h.observe_episode_event(CaptureEvent(tick=2, channel="text", activated_nodes=("c",)))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 1
+        assert set(episodes[0].activated_nodes) == {"a", "b", "c"}
+
+    def test_partial_embeddings_only_count_toward_centroid(self):
+        """Mixed populated/None embeddings: the centroid should reflect
+        only events that supplied an embedding."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h._episode_detector.add_rule(semantic_shift_rule(threshold=0.5))
+
+        v1 = np.asarray([1.0, 0.0], dtype=np.float32)
+        v_orthogonal = np.asarray([0.0, 1.0], dtype=np.float32)
+
+        # ev0: embedding v1 → centroid = v1, count=1
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a",), embedding=v1))
+        # ev1: no embedding → centroid unchanged
+        h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",)))
+        # ev2: orthogonal embedding → 1-cos(v_orth, v1) = 1 > 0.5 → close
+        h.observe_episode_event(CaptureEvent(tick=2, channel="text", activated_nodes=("c",), embedding=v_orthogonal))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 2
+        assert set(episodes[0].activated_nodes) == {"a", "b"}
+        assert set(episodes[1].activated_nodes) == {"c"}
+
+    def test_centroid_resets_on_episode_close(self):
+        """After close, the new pending episode starts with a fresh
+        centroid seeded by the event that caused the close."""
+        from maxim.memory.episode import semantic_shift_rule
+
+        h = _fresh_hippocampus(boundary_tick_gap=1000)
+        h._episode_detector.add_rule(semantic_shift_rule(threshold=0.5))
+
+        v1 = np.asarray([1.0, 0.0], dtype=np.float32)
+        v2 = np.asarray([0.0, 1.0], dtype=np.float32)
+        v3 = np.asarray([0.0, 0.95], dtype=np.float32)  # similar to v2 → no shift
+
+        h.observe_episode_event(CaptureEvent(tick=0, channel="text", activated_nodes=("a",), embedding=v1))
+        # v2 closes ep1, opens ep2 with centroid seeded at v2.
+        h.observe_episode_event(CaptureEvent(tick=1, channel="text", activated_nodes=("b",), embedding=v2))
+        # v3 is similar to v2 → no shift; stays in ep2.
+        h.observe_episode_event(CaptureEvent(tick=2, channel="text", activated_nodes=("c",), embedding=v3))
+        h.finalize_pending_episode()
+
+        episodes = h._episode_store.all_episodes()
+        assert len(episodes) == 2
+        assert set(episodes[0].activated_nodes) == {"a"}
+        assert set(episodes[1].activated_nodes) == {"b", "c"}
