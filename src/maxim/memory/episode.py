@@ -62,6 +62,8 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+import numpy as np
+
 from maxim.agents.modality import SubstrateModality
 
 
@@ -174,6 +176,15 @@ class CaptureEvent:
     # Populated by LinguisticEncoder.encode_decomposed when chunks carry
     # relation types. Consumed by apply_hebbian_on_close to annotate edges.
     node_relations: dict[frozenset[str], str] | None = None
+    # P2 (v1_refinement) — text embedding for the event, used by the
+    # semantic shift episode-boundary rule. Optional: callers without an
+    # embedding handy (CLI tool-execution rule, sim percepts pre-encoder)
+    # leave it ``None`` and the rule no-ops. Populated by callers that
+    # already have an embedding (the substrate path through
+    # LinguisticEncoder + the future BioEnrichmentPipeline). Marked
+    # ``compare=False`` because dataclass equality on ``ndarray`` returns
+    # an element-wise array, not a bool.
+    embedding: np.ndarray | None = field(default=None, compare=False)
 
 
 @dataclass
@@ -209,8 +220,57 @@ class PendingEpisodeState:
     # (if two events provide different relations for the same pair, the
     # first one is kept).
     node_relations: dict[frozenset[str], str] = field(default_factory=dict)
+    # P2 (v1_refinement) — running-mean text embedding over every
+    # CaptureEvent that supplied one. ``None`` until the first event
+    # carrying an embedding is folded in. Updated incrementally via
+    # ``update_centroid`` below; consumed by ``semantic_shift_rule`` to
+    # decide whether the next event's embedding has drifted far enough
+    # from the established centroid to close the episode.
+    centroid_embedding: np.ndarray | None = field(default=None, compare=False)
+    # Companion counter for the running mean. Counts only events whose
+    # embedding was non-None — events without an embedding do not affect
+    # the centroid and do not increment the count.
+    centroid_count: int = 0
     # Provenance: set to True when this episode involves imagined entities.
     imagined: bool = False
+
+    def update_centroid(self, embedding: np.ndarray | None) -> None:
+        """Fold ``embedding`` into the running-mean ``centroid_embedding``.
+
+        Implements the standard incremental running-mean update::
+
+            new_centroid = old_centroid + (embedding - old_centroid) / new_count
+
+        which is equivalent to ``(old_centroid * old_count + embedding) /
+        new_count`` but avoids the intermediate large-magnitude product.
+        Both forms are numerically stable for the embedding magnitudes we
+        deal with (typically L2-normalised sentence embeddings of dim
+        ~384).
+
+        ``None`` embeddings are silently skipped — callers that don't have
+        an embedding handy (CLI tool-execution rule, sim percepts pre-
+        encoder) keep the centroid unchanged so the rule no-ops on legacy
+        callers (backwards-compat).
+
+        Caller must hold whatever lock owns ``self``. In the production
+        wiring this is ``Hippocampus._episode_lock``, taken by
+        ``observe_episode_event`` before ``_apply_event_to_pending``.
+        """
+        if embedding is None:
+            return
+        if self.centroid_embedding is None:
+            # First contributing embedding — copy so subsequent in-place
+            # arithmetic on the centroid does not mutate the caller's
+            # array (which may be cached by the encoder layer).
+            self.centroid_embedding = np.array(embedding, dtype=np.float32, copy=True)
+            self.centroid_count = 1
+            return
+        self.centroid_count += 1
+        # In-place update on our owned copy. ``np.subtract`` + scalar
+        # divide allocates one intermediate; acceptable at episode-event
+        # cadence (≤ a few per second).
+        delta = embedding.astype(np.float32, copy=False) - self.centroid_embedding
+        self.centroid_embedding = self.centroid_embedding + delta / self.centroid_count
 
     def finalize(self) -> Episode:
         # Compute net valence from captured reactions.
@@ -765,6 +825,101 @@ def salience_spike_rule(min_intensity: float = 0.5) -> BoundaryRule:
     return _rule
 
 
+def semantic_shift_rule(threshold: float = 0.80) -> BoundaryRule:
+    """Close the pending episode when the incoming event's embedding has
+    drifted far enough from the episode centroid that the conversation
+    has likely shifted topic.
+
+    (v1_refinement P2 — semantic shift episode boundary detection)
+
+    Decision rule: ``(1 - cosine_similarity(event.embedding,
+    pending.centroid_embedding)) > threshold`` → close. Cosine similarity
+    is the standard tool for sentence-embedding topical comparison; the
+    ``1 -`` form turns it into a "distance" so the threshold reads as
+    "how far apart the meaning got."
+
+    Threshold calibration (2026-04-28)
+    ----------------------------------
+
+    The calibration sweep lives at
+    ``tests/calibration/p2_episode_boundary_calibration.py``. Sweep was
+    run against the bundled ``SAME_TOPIC`` (8 sentences, all about a
+    single Python debugging session) and ``CROSS_TOPIC`` (12 sentences,
+    4 each on Python / cooking / hiking — boundaries at indices 4, 8)
+    fixtures using the production sentence-transformer
+    ``all-MiniLM-L6-v2`` model (L2-normalised float32 vectors). Headline
+    results::
+
+        threshold   same-topic FP   cross-topic fires   cross indices
+        ─────────   ─────────────   ─────────────────   ─────────────
+            0.30          7               11             [1..11]
+            0.40          7               11             [1..11]
+            0.50          7               11             [1..11]
+            0.60          6               10             [1..6, 8..11]
+            0.70          3                6             [2,3,4,8,10,11]
+            0.80          0                4             [4, 8, 10, 11]
+            0.85          0                4             [4, 8, 10, 11]
+            0.90          0                1             [4]
+
+    The original v1_refinement plan suggested ``threshold=0.40`` as the
+    default. The calibration evidence shows that value is far too low
+    for sentence-transformer embeddings on short text — pairwise cosine
+    similarity for same-topic short sentences is typically 0.2-0.5
+    (so ``1 - cos`` lands at 0.5-0.8 even within one topic) and the
+    rule fires on every event. The honest data-driven default for this
+    embedding model is **0.80**: zero same-topic false positives, both
+    expected cross-topic boundaries (indices 4, 8) detected. The two
+    extra fires at indices 10/11 reflect genuine within-topic embedding
+    drift on short, semantically diverse hiking sentences and are an
+    embedding-model property, not a rule-tuning failure — they shrink
+    or vanish on longer text.
+
+    **The threshold is embedding-model dependent.** Models with high
+    baseline pairwise similarity on unrelated text (e.g. OpenAI
+    ``text-embedding-ada-002``, where unrelated text often sits at
+    cos ~0.7-0.8) need a much lower threshold (~0.30-0.40 — the
+    plan's original suggestion). If you wire this rule to a non-
+    sentence-transformer embedding source, re-run the calibration
+    sweep with that model and document the new chosen threshold here.
+
+    Backwards-compat
+    ----------------
+
+    No-op semantics for legacy callers:
+
+    - If ``pending.centroid_embedding is None`` (no event so far supplied
+      an embedding), the rule returns ``False`` and the episode stays
+      open. Pre-P2 callers that never populate ``CaptureEvent.embedding``
+      see no behavior change.
+    - If ``event.embedding is None``, the rule returns ``False``.
+      Mixed populated/empty event streams are tolerated; only events
+      that bring an embedding can contribute to a shift decision.
+
+    Both shapes are silent — the rule is one signal among several in the
+    detector's ``any()`` evaluation. The previously-installed rules
+    (tick gap, channel change, scn_tag change, tool execution, salience
+    spike) continue to govern the no-embedding case.
+    """
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError(f"semantic_shift_rule threshold must be in [0.0, 1.0], got {threshold}")
+
+    def _rule(pending: PendingEpisodeState, event: CaptureEvent) -> bool:
+        if event.embedding is None or pending.centroid_embedding is None:
+            return False
+        # Cosine similarity. Zero-norm vectors degrade silently to a
+        # similarity of 0 (treated as a shift) — the alternative is
+        # NaN, which would make the boolean comparison ambiguous.
+        a = event.embedding
+        b = pending.centroid_embedding
+        denom = float(np.linalg.norm(a)) * float(np.linalg.norm(b))
+        if denom == 0.0:
+            return True
+        similarity = float(np.dot(a, b)) / denom
+        return (1.0 - similarity) > threshold
+
+    return _rule
+
+
 __all__ = [
     "BoundaryRule",
     "CaptureEvent",
@@ -774,6 +929,7 @@ __all__ = [
     "PendingEpisodeState",
     "apply_hebbian_on_close",
     "salience_spike_rule",
+    "semantic_shift_rule",
     "tool_execution_rule",
     "channel_change_rule",
     "channel_gap_rule",
