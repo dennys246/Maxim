@@ -111,11 +111,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--deep-embodiment",
         action="store_true",
         default=False,
-        help="Enable level-3 deep embodiment: per-sub-sensor damage routing "
-        "via damage_affinities, individual sub-sensor exposure to the agent. "
-        "Requires a capable LLM — level 2 (default) collapses sub-sensors "
-        "to a single integrity value per body part. "
-        "Env var: MAXIM_DEEP_EMBODIMENT=1.",
+        help="[experimental] Enable level-3 deep embodiment: per-sub-sensor "
+        "damage routing via damage_affinities, individual sub-sensor "
+        "exposure to the agent. Requires a capable LLM — level 2 "
+        "(default) collapses sub-sensors to a single integrity value per "
+        "body part. Env var: MAXIM_DEEP_EMBODIMENT=1.",
     )
     core.add_argument(
         "--epochs",

@@ -30,9 +30,9 @@ Environment variables not on this list are **debug / experimental** — see the 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MAXIM_ROLE` | Explicit role: `leader`, `peer`, or `solo`. Set automatically by `cli.py::main` at startup. | (auto) |
-| `MAXIM_LANE_LARGE_REMOTE_URL` | Override large tier to use a remote peer/leader URL. | (unset) |
-| `MAXIM_LANE_LARGE_REMOTE_MODEL` | Model name to request from the remote server. | (unset) |
-| `MAXIM_LANE_LARGE_REMOTE_API_KEY` | Auth token for the remote server. | (unset) |
+| `MAXIM_LANE_{TIER}_REMOTE_URL` | Override the named tier to use a remote peer/leader URL. `{TIER}` is one of `LARGE`, `MEDIUM`, `SMALL`. | (unset) |
+| `MAXIM_LANE_{TIER}_REMOTE_MODEL` | Model name to request from the remote server for the named tier. | (unset) |
+| `MAXIM_LANE_{TIER}_REMOTE_API_KEY` | Auth token for the remote server for the named tier. | (unset) |
 
 ### Public — cloud providers
 
@@ -55,7 +55,6 @@ Environment variables not on this list are **debug / experimental** — see the 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MAXIM_DEEP_EMBODIMENT` | Enable level-3 deep embodiment: sub-sensor exposure + per-sub-sensor damage routing. Same as `--deep-embodiment`. | 0 |
 | `MAXIM_ROBOT_NAME` | Robot identifier (Reachy daemon `robot_name` / zenoh namespace). | reachy_mini |
 | `MAXIM_COMMS_ENABLED` | Enable SMS/Voice (1/true). | 0 |
 | `MAXIM_WHISPER_COMPUTE_TYPE` | Whisper compute type (int8/float16/float32). | int8 |
@@ -105,6 +104,12 @@ These variables are **debug / experimental**: useful for diagnostics or workarou
 | `MAXIM_PROXY_MAX_CONCURRENT` | Max in-flight requests to upstream (0 = unlimited). | 4 |
 | `MAXIM_PROXY_RATE_LIMIT_RPM` | Per-peer requests/minute (0 = unlimited). | 0 |
 
+### Debug — embodiment
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_DEEP_EMBODIMENT` | Enable level-3 deep embodiment: sub-sensor exposure + per-sub-sensor damage routing. Same as `--deep-embodiment`. Level-3 semantics are post-1.0 work; the toggle is debug-only until the broader feature stabilises. | 0 |
+
 ### Debug — sim safety + deprecated
 
 | Variable | Description | Default |
@@ -120,6 +125,7 @@ CLI flags are **stable** unless their `--help` text carries the `[experimental]`
 Currently flagged as `[experimental]`:
 
 - `--research` — research protocol; matches the experimental status of `maxim.research()`
+- `--deep-embodiment` — level-3 deep embodiment; matches `MAXIM_DEEP_EMBODIMENT` debug status
 - `--auto-curate`, `--curate-threshold`, `--no-curate` — pre-sim auto-curation surface (E3, late 0.7)
 - `--foundry`, `--foundry-count`, `--foundry-genre`, `--foundry-category`, `--foundry-dry-run` — Asset Foundry surface
 - `--reap-orphans` — sim safety net; behavior may evolve
@@ -146,7 +152,7 @@ Where these fields appear:
 | Leader proxy per-request log entry | `cached_tokens` parsed from upstream `usage.prompt_tokens_details.cached_tokens` when present. |
 | `CostTracker.get_session_tokens()` | Exposes `input_tokens`, `output_tokens`, `cached_tokens`, `total_tokens`. |
 
-Legacy field names (`cached_input_tokens`, `uncached_input_tokens`, `prompt_tokens`, `completion_tokens`) are still present in some internal paths for backwards compatibility with older callers and OpenAI-shape compatibility on peer endpoints. **External callers should prefer the standard names** (`input_tokens`, `output_tokens`, `cached_tokens`) — those are the only token field names this page commits to.
+Legacy field names — `cached_input_tokens`, `uncached_input_tokens` (Maxim-internal cost-calculation detail), `prompt_tokens`, `completion_tokens` (OpenAI/llama-cpp wire-format compatibility) — are kept as **permanent legacy aliases**. Removing them is a major-version-bump change. **External callers should prefer the standard names** (`input_tokens`, `output_tokens`, `cached_tokens`) — those are the only token field names this page commits to.
 
 ## Data Directory
 

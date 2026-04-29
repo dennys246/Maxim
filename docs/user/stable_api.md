@@ -137,7 +137,7 @@ These names appear in:
 - JSONL log records emitted under `MAXIM_LOG_FILE` for `peer_backend_call`, `peer_stream_complete`, and the leader proxy's per-request log entry
 - `CostTracker.get_session_tokens()`
 
-Legacy field names (`cached_input_tokens`, `uncached_input_tokens`, `prompt_tokens`, `completion_tokens`) are still present in some internal paths for backwards compatibility with older callers and OpenAI-shape compatibility on the peer endpoint. **External callers should prefer the standard names** (`input_tokens`, `output_tokens`, `cached_tokens`).
+Legacy field names (`cached_input_tokens`, `uncached_input_tokens`, `prompt_tokens`, `completion_tokens`) are kept as **permanent legacy aliases** — internal cost-calculation paths still reference `cached_input_tokens`/`uncached_input_tokens`, and the peer wire format mirrors OpenAI's `prompt_tokens`/`completion_tokens`. Removing any of these is a major-version-bump change. **External callers should prefer the standard names** (`input_tokens`, `output_tokens`, `cached_tokens`).
 
 See [configuration.md](configuration.md) for the full token telemetry surface table.
 

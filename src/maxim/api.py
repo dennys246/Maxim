@@ -1327,16 +1327,19 @@ def research(
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Public event payload types — these define the contract for on() callbacks.
-# **Experimental** (CC2): the event payload shape may grow in 1.x. New
-# fields will be appended at the end with defaults; field names and
-# types of existing fields will not change without a major-version bump.
+# **Experimental** (CC2): the *subscription mechanism* may evolve in
+# 1.x to support filters, async callbacks, or wildcard patterns. The
+# payload classes themselves follow the CC3 shape-frozen rule: existing
+# field names and types are stable, and new fields will be appended at
+# the end with defaults so handler code stays forward-compatible.
 
 
 @dataclass
 class ToolCallEvent:
     """Payload delivered to ``"tool_call"`` subscribers.
 
-    **Experimental** (CC2). Field set may grow.
+    **Experimental** (CC2): subscription mechanism may evolve. Payload
+    is field-additive — new fields appear at the end with defaults.
     """
 
     tool_name: str
@@ -1351,7 +1354,8 @@ class ToolCallEvent:
 class MemoryCaptureEvent:
     """Payload delivered to ``"memory_capture"`` subscribers.
 
-    **Experimental** (CC2). Field set may grow.
+    **Experimental** (CC2): subscription mechanism may evolve. Payload
+    is field-additive — new fields appear at the end with defaults.
     """
 
     content: str
@@ -1363,7 +1367,8 @@ class MemoryCaptureEvent:
 class PainSignalEvent:
     """Payload delivered to ``"pain_signal"`` subscribers.
 
-    **Experimental** (CC2). Field set may grow.
+    **Experimental** (CC2): subscription mechanism may evolve. Payload
+    is field-additive — new fields appear at the end with defaults.
     """
 
     pain_type: str
@@ -1376,7 +1381,8 @@ class PainSignalEvent:
 class PromptEvent:
     """Payload delivered to ``"prompt"`` subscribers.
 
-    **Experimental** (CC2). Field set may grow.
+    **Experimental** (CC2): subscription mechanism may evolve. Payload
+    is field-additive — new fields appear at the end with defaults.
     """
 
     prompt_text: str
