@@ -229,8 +229,10 @@ class PendingEpisodeState:
     centroid_embedding: np.ndarray | None = field(default=None, compare=False)
     # Companion counter for the running mean. Counts only events whose
     # embedding was non-None — events without an embedding do not affect
-    # the centroid and do not increment the count.
-    centroid_count: int = 0
+    # the centroid and do not increment the count. Marked ``compare=False``
+    # for symmetry with ``centroid_embedding``: the centroid + its count
+    # form one unit and either both participate in equality or neither.
+    centroid_count: int = field(default=0, compare=False)
     # Provenance: set to True when this episode involves imagined entities.
     imagined: bool = False
 
@@ -252,11 +254,28 @@ class PendingEpisodeState:
         encoder) keep the centroid unchanged so the rule no-ops on legacy
         callers (backwards-compat).
 
+        **Zero-norm embeddings are also skipped** (pre-merge review fold,
+        Executor lens). ``similarity/semantic.py::NeuralSemanticLSH.embed``
+        returns ``np.zeros(...)`` as a graceful fallback when the encoder
+        model is unhealthy — a real production path. If that zero-vector
+        seeded the centroid, every later cosine comparison hit the
+        ``denom == 0.0`` branch and ``semantic_shift_rule`` returned
+        ``True`` for every subsequent event, slicing the episode at every
+        tick. Treating zero-norm input as "no information to fold in"
+        keeps the rule dormant until a real embedding arrives, matching
+        the no-embedding path's behavior. Callers that genuinely want to
+        record a zero-vector signal must wrap it in a non-zero magnitude
+        first.
+
         Caller must hold whatever lock owns ``self``. In the production
         wiring this is ``Hippocampus._episode_lock``, taken by
         ``observe_episode_event`` before ``_apply_event_to_pending``.
         """
         if embedding is None:
+            return
+        # Skip zero-norm embeddings — see docstring. Cheap O(d) check;
+        # the alternative (NaN-poisoning the centroid) is structural.
+        if not np.any(embedding):
             return
         if self.centroid_embedding is None:
             # First contributing embedding — copy so subsequent in-place

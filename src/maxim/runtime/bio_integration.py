@@ -277,6 +277,16 @@ def observe_episode(
     try:
         from maxim.memory.episode import CaptureEvent
 
+        # TODO(v1-p2-producer): wire ``embedding=`` from the substrate-path
+        # encoder so ``semantic_shift_rule`` has input. Today the rule is
+        # opt-in (not in the default detector) and dormant infrastructure;
+        # adding this CaptureEvent producer + installing the rule on the
+        # default detector is the follow-up that activates topical-drift
+        # episode boundaries. The encoder layer
+        # (``MemoryHub.on_percept_received`` → ``LinguisticEncoder.encode``)
+        # already produces a per-percept embedding; pass it through a
+        # per-agent stash analogous to ``_latest_substrate_nodes`` and
+        # consume it here.
         hippocampus.observe_episode_event(
             CaptureEvent(
                 tick=tick,

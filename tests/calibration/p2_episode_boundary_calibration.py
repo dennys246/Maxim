@@ -1,12 +1,14 @@
 """Calibration sweep for ``semantic_shift_rule`` (v1_refinement P2).
 
-Runs the rule across a small bundled conversational fixture at four
-candidate thresholds {0.30, 0.40, 0.50, 0.60} and reports:
+Runs the rule across a small bundled conversational fixture at the
+candidate threshold range ``(0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.85,
+0.90)`` and reports:
 
 - false-positive count on a same-topic stream (expected: zero shifts —
   the conversation never leaves its topic, so the rule should not fire)
-- true-positive count on a cross-topic stream (expected: one shift at
-  each topic boundary, so 2 shifts across 3 topics)
+- true-positive count on a cross-topic stream (expected: at least one
+  shift at each of the two topic boundaries — indices 4 and 8 — so
+  ``>= 2`` shifts across 3 topics)
 
 The headline numbers from this script populate the calibration table in
 ``semantic_shift_rule``'s docstring. Re-run when the embedding model or
@@ -16,10 +18,13 @@ Two execution surfaces:
 
 1. ``python -m tests.calibration.p2_episode_boundary_calibration``
    (or ``pytest -s`` on this file) — prints the full sweep table to
-   stdout for human review.
-2. ``pytest tests/calibration/p2_episode_boundary_calibration.py`` —
-   collects ``test_default_threshold_passes_calibration`` as a
-   regression guard that asserts the published 0.40 default still
+   stdout for human review. Note: pytest is imported lazily inside the
+   regression-test function so the CLI mode runs without pytest in the
+   active venv.
+2. ``pytest -m slow tests/calibration/p2_episode_boundary_calibration.py``
+   — collects ``test_default_threshold_passes_calibration`` as a
+   regression guard that asserts the **published default** (currently
+   ``0.80``, pulled dynamically from the function signature) still
    passes the criteria used to choose it.
 
 The fixture is hand-written and intentionally small (20 messages) so
@@ -36,7 +41,18 @@ import sys
 from dataclasses import dataclass
 
 import numpy as np
-import pytest
+
+# pytest is imported lazily so the CLI entry point (`python -m
+# tests.calibration.p2_episode_boundary_calibration`) works without
+# pytest in the active venv. The decorator below references the lazy
+# import only when pytest is collecting this file as a test module.
+try:
+    import pytest
+
+    _HAS_PYTEST = True
+except ImportError:  # pragma: no cover — only hit in the CLI venv path
+    pytest = None  # type: ignore[assignment]
+    _HAS_PYTEST = False
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -193,7 +209,12 @@ def _format_table(results: list[SweepResult]) -> str:
 # ─────────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.slow
+# Module-level mark applied by pytest at collection time. Importable
+# regardless of pytest's presence (the bare list is a no-op outside
+# pytest collection).
+pytestmark = [pytest.mark.slow] if _HAS_PYTEST else []
+
+
 def test_default_threshold_passes_calibration() -> None:
     """Regression guard: the published default must produce zero false
     positives on the same-topic fixture and fire at every expected

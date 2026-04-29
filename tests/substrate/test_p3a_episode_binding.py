@@ -899,6 +899,22 @@ class TestPendingCentroidUpdate:
         assert pending.centroid_count == 1
         np.testing.assert_array_equal(pending.centroid_embedding, [1.0, 0.0])
 
+    def test_zero_norm_embedding_skipped(self):
+        """Pre-merge review fold (Executor E1): a zero-norm embedding
+        from the encoder fallback path (``semantic.py`` returns
+        ``np.zeros(...)`` when the model is unhealthy) MUST NOT seed the
+        centroid. If it did, every subsequent ``semantic_shift_rule``
+        call would hit ``denom == 0.0`` and return True, slicing the
+        episode at every event."""
+        pending = PendingEpisodeState(id="ep_1", start_tick=0, last_tick=0, channel="text")
+        pending.update_centroid(np.zeros(3, dtype=np.float32))
+        assert pending.centroid_count == 0
+        assert pending.centroid_embedding is None
+        # A real embedding then succeeds.
+        pending.update_centroid(np.asarray([1.0, 0.0, 0.0], dtype=np.float32))
+        assert pending.centroid_count == 1
+        np.testing.assert_array_equal(pending.centroid_embedding, [1.0, 0.0, 0.0])
+
     def test_centroid_does_not_mutate_caller_array(self):
         """``update_centroid`` MUST own its centroid copy; the caller's
         embedding array (which the encoder layer may cache) must not be
