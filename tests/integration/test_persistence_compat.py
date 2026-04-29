@@ -410,11 +410,7 @@ class TestLearnedIndexCompat:
         path = tmp_path / "learned.json"
         _write_json(
             path,
-            {
-                "explore_tool": {
-                    "look": {"weight": 0.5, "source": "learned", "observations": 3}
-                }
-            },
+            {"explore_tool": {"look": {"weight": 0.5, "source": "learned", "observations": 3}}},
         )
 
         # Constructing without a registered tool means load is a no-op
@@ -422,3 +418,123 @@ class TestLearnedIndexCompat:
         # not raise. That's the contract under test.
         idx = LearnedToolIndex()
         idx.load(str(path))
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# CC5: real captured 0.8-era fixtures from tests/fixtures/persistence_0_8/
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestCapturedPreV1Fixtures:
+    """Load real on-disk state files captured from a 0.8 build (no
+    ``_format_version`` field present) and assert (a) no errors on
+    load, (b) one warning per file type, (c) re-save stamps the 1.0
+    field.
+
+    **Scope:** these fixtures pin the **file-format contract** — that
+    a pre-1.0 file lacking ``_format_version`` at root is loadable by
+    1.0+ readers and re-saves with the field stamped. The fixtures
+    are minimal-shape captures (zero memories, zero NAc links —
+    snapshotted from ``~/.maxim/agents/scout/`` which never
+    accumulated bio-state in the maintainer's local install). They
+    exercise the empty-state load path on real on-disk shape, NOT
+    the populated bio-system semantic shape.
+
+    Bio-system shape regressions (a populated NAc dump's link
+    structure, a hippocampus with episodes, etc.) are tracked
+    separately by :mod:`maxim.memory.snapshot`'s envelope migration
+    registry — bumping the envelope ``schema_version`` triggers a
+    registered migration and the registry is the right place to add
+    populated-fixture regression guards. This class is intentionally
+    scoped to the broader ``_format_version`` file-format layer.
+
+    If the bio-system save format changes in a way that breaks these
+    fixtures, the fix is one of:
+
+    1. Add a forward-migration entry in
+       :mod:`maxim.memory.snapshot`'s envelope migration registry.
+    2. Document the breaking change in ``docs/user/upgrading.md``
+       under a new "1.0 → 1.x" section.
+
+    Re-capturing the fixtures from a newer build is **not** a fix —
+    the whole point is to catch the 1.0 regression before it ships.
+    """
+
+    FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "persistence_0_8"
+
+    def test_fixtures_directory_exists(self) -> None:
+        # Guard against the fixtures being deleted out from under us
+        # (a tree-rename refactor or accidental .gitignore entry).
+        assert self.FIXTURE_DIR.is_dir(), (
+            f"Missing {self.FIXTURE_DIR} — restore from git history. "
+            "Re-capturing from a newer build defeats the regression "
+            "guard's purpose; see this class's docstring."
+        )
+        assert (self.FIXTURE_DIR / "hippocampus_0_8.json").is_file()
+        assert (self.FIXTURE_DIR / "nac_0_8.json").is_file()
+
+    def test_captured_fixtures_have_no_format_version(self) -> None:
+        # Pin the precondition: these fixtures pre-date CC1. If a
+        # future commit accidentally rewrites the field into them,
+        # the regression guard becomes a no-op silently.
+        for name in ("hippocampus_0_8.json", "nac_0_8.json"):
+            data = json.loads((self.FIXTURE_DIR / name).read_text())
+            assert "_format_version" not in data, (
+                f"{name} carries _format_version — fixture was overwritten by a 1.0+ writer. Restore from git history."
+            )
+
+    def test_captured_hippocampus_loads_and_resaves(self, tmp_path, caplog) -> None:
+        from maxim.memory.hippocampus import Hippocampus
+
+        src = self.FIXTURE_DIR / "hippocampus_0_8.json"
+        # Copy into tmp so re-save doesn't mutate the fixture.
+        working = tmp_path / "hippocampus.json"
+        working.write_bytes(src.read_bytes())
+
+        hippo = Hippocampus()
+        with caplog.at_level(logging.WARNING):
+            hippo.load(str(working))
+        assert any("pre-1.0" in r.message and "hippocampus" in r.message for r in caplog.records), (
+            "expected one-time pre-1.0 warning for captured hippocampus fixture"
+        )
+
+        out = tmp_path / "hippocampus_resaved.json"
+        hippo.save(str(out))
+        on_disk = json.loads(out.read_text())
+        assert on_disk["_format_version"] == FORMAT_VERSION
+
+    def test_captured_nac_loads_and_resaves(self, tmp_path, caplog) -> None:
+        from maxim.decisions.nac import NACConfig, NAc
+
+        src = self.FIXTURE_DIR / "nac_0_8.json"
+        working = tmp_path / "nac.json"
+        working.write_bytes(src.read_bytes())
+
+        nac = NAc(NACConfig())
+        with caplog.at_level(logging.WARNING):
+            nac.load(str(working))
+        assert any("pre-1.0" in r.message and "nac" in r.message for r in caplog.records), (
+            "expected one-time pre-1.0 warning for captured NAc fixture"
+        )
+
+        out = tmp_path / "nac_resaved.json"
+        nac.save(str(out))
+        on_disk = json.loads(out.read_text())
+        assert on_disk["_format_version"] == FORMAT_VERSION
+
+    def test_captured_fixtures_warn_once_per_file_type(self, tmp_path, caplog) -> None:
+        # Loading the same fixture twice in one process emits exactly
+        # one warning. The dedupe set is per-file-type, per-process.
+        from maxim.decisions.nac import NACConfig, NAc
+
+        src = self.FIXTURE_DIR / "nac_0_8.json"
+
+        with caplog.at_level(logging.WARNING):
+            for i in range(3):
+                working = tmp_path / f"nac_{i}.json"
+                working.write_bytes(src.read_bytes())
+                nac = NAc(NACConfig())
+                nac.load(str(working))
+
+        warnings = [r for r in caplog.records if "pre-1.0 nac" in r.message]
+        assert len(warnings) == 1, f"expected exactly one pre-1.0 nac warning across 3 loads, got {len(warnings)}"
