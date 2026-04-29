@@ -1240,7 +1240,11 @@ def benchmark(
 
 @dataclass
 class ResearchResult:
-    """Result of a research protocol execution."""
+    """Result of a research protocol execution.
+
+    **Experimental** (CC2). Field set may grow alongside the research
+    orchestrator.
+    """
 
     goal: str = ""
     session_id: str = ""
@@ -1258,6 +1262,11 @@ def research(
     verbosity: int = 1,
 ) -> ResearchResult:
     """Run the research protocol (experiment → paper → review).
+
+    **Experimental** (CC2): the research orchestrator surface is still
+    evolving. Prompt templates, paper structure, and reviewer logic may
+    change in 1.x without a major-version bump. See
+    [docs/user/stable_api.md](../../docs/user/stable_api.md) for the contract.
 
     Executes a structured research investigation with hypothesis
     formation, experiment execution, and automated paper generation.
@@ -1318,11 +1327,20 @@ def research(
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Public event payload types — these define the contract for on() callbacks.
+# **Experimental** (CC2): the *subscription mechanism* may evolve in
+# 1.x to support filters, async callbacks, or wildcard patterns. The
+# payload classes themselves follow the CC3 shape-frozen rule: existing
+# field names and types are stable, and new fields will be appended at
+# the end with defaults so handler code stays forward-compatible.
 
 
 @dataclass
 class ToolCallEvent:
-    """Payload delivered to ``"tool_call"`` subscribers."""
+    """Payload delivered to ``"tool_call"`` subscribers.
+
+    **Experimental** (CC2): subscription mechanism may evolve. Payload
+    is field-additive — new fields appear at the end with defaults.
+    """
 
     tool_name: str
     params: dict[str, Any]
@@ -1334,7 +1352,11 @@ class ToolCallEvent:
 
 @dataclass
 class MemoryCaptureEvent:
-    """Payload delivered to ``"memory_capture"`` subscribers."""
+    """Payload delivered to ``"memory_capture"`` subscribers.
+
+    **Experimental** (CC2): subscription mechanism may evolve. Payload
+    is field-additive — new fields appear at the end with defaults.
+    """
 
     content: str
     memory_type: str = ""
@@ -1343,7 +1365,11 @@ class MemoryCaptureEvent:
 
 @dataclass
 class PainSignalEvent:
-    """Payload delivered to ``"pain_signal"`` subscribers."""
+    """Payload delivered to ``"pain_signal"`` subscribers.
+
+    **Experimental** (CC2): subscription mechanism may evolve. Payload
+    is field-additive — new fields appear at the end with defaults.
+    """
 
     pain_type: str
     intensity: float
@@ -1353,7 +1379,11 @@ class PainSignalEvent:
 
 @dataclass
 class PromptEvent:
-    """Payload delivered to ``"prompt"`` subscribers."""
+    """Payload delivered to ``"prompt"`` subscribers.
+
+    **Experimental** (CC2): subscription mechanism may evolve. Payload
+    is field-additive — new fields appear at the end with defaults.
+    """
 
     prompt_text: str
     prompt_type: str = ""
@@ -1371,6 +1401,10 @@ _EVENT_TYPES: dict[str, type] = {
 
 class EventHandle:
     """Handle returned by ``on()`` for managing event subscriptions.
+
+    **Experimental** (CC2). The handle's surface (currently
+    ``unsubscribe()`` + ``active``) may grow alongside the event
+    subscription system.
 
     Call ``unsubscribe()`` to stop receiving events.
     """
@@ -1400,6 +1434,11 @@ _next_handle_id = 0
 
 def on(event_name: str, callback: Any) -> EventHandle:
     """Subscribe to agent events.
+
+    **Experimental** (CC2): event names and payload field sets may grow
+    in 1.x. The subscription mechanism may evolve to support filters,
+    async callbacks, or wildcard patterns. See
+    [docs/user/stable_api.md](../../docs/user/stable_api.md) for the contract.
 
     Events bridge to the internal AgentBus when an agent is running.
     Subscriptions registered before ``run()``/``imagine()``/``campaign()``
@@ -1668,6 +1707,11 @@ def register_persona(
     max_initiative: float = 0.5,
 ) -> None:
     """Register a custom simulation persona.
+
+    **Experimental** (CC2): the persona system may be redesigned
+    alongside future Mother Maxim/orchestrator work. Field set may
+    change in 1.x. See
+    [docs/user/stable_api.md](../../docs/user/stable_api.md) for the contract.
 
     Custom personas are available for ``imagine()`` and ``campaign()``
     via the ``persona`` parameter.

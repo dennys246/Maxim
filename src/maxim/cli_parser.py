@@ -111,11 +111,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--deep-embodiment",
         action="store_true",
         default=False,
-        help="Enable level-3 deep embodiment: per-sub-sensor damage routing "
-        "via damage_affinities, individual sub-sensor exposure to the agent. "
-        "Requires a capable LLM — level 2 (default) collapses sub-sensors "
-        "to a single integrity value per body part. "
-        "Env var: MAXIM_DEEP_EMBODIMENT=1.",
+        help="[experimental] Enable level-3 deep embodiment: per-sub-sensor "
+        "damage routing via damage_affinities, individual sub-sensor "
+        "exposure to the agent. Requires a capable LLM — level 2 "
+        "(default) collapses sub-sensors to a single integrity value per "
+        "body part. Env var: MAXIM_DEEP_EMBODIMENT=1.",
     )
     core.add_argument(
         "--epochs",
@@ -319,8 +319,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--reap-orphans",
         action="store_true",
         default=False,
-        help="Kill stale maxim sim processes detected at startup (safety net "
-        "for runaway runs that may still be hitting the LLM backend). "
+        help="[experimental] Kill stale maxim sim processes detected at startup "
+        "(safety net for runaway runs that may still be hitting the LLM backend). "
         "Equivalent to MAXIM_REAP_ORPHANS=1.",
     )
     sim.add_argument(
@@ -337,7 +337,8 @@ def _build_parser() -> argparse.ArgumentParser:
     sim.add_argument(
         "--research",
         action="store_true",
-        help="Generate research report (Writer + Reviewer agents) after simulation completes.",
+        help="[experimental] Generate research report (Writer + Reviewer agents) "
+        "after simulation completes. Surface still evolving — see docs/user/stable_api.md.",
     )
     sim.add_argument(
         "--sim-persona",
@@ -431,8 +432,8 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         metavar="THEME",
-        help="Run the Asset Foundry pipeline. Generates SEM components "
-        "from a theme prompt, validates, tests, and scores them. "
+        help="[experimental] Run the Asset Foundry pipeline. Generates SEM "
+        "components from a theme prompt, validates, tests, and scores them. "
         "Example: maxim --foundry 'cyberpunk weapons' --count 10",
     )
     foundry.add_argument(
@@ -441,27 +442,28 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=10,
         metavar="N",
-        help="Number of components to generate (default: 10).",
+        help="[experimental] Number of components to generate (default: 10).",
     )
     foundry.add_argument(
         "--foundry-genre",
         type=str,
         default="fantasy",
         metavar="GENRE",
-        help="Genre tag for generated components (default: fantasy).",
+        help="[experimental] Genre tag for generated components (default: fantasy).",
     )
     foundry.add_argument(
         "--foundry-category",
         type=str,
         default=None,
         metavar="CATEGORY",
-        help="Specific category (weapons, creatures, npcs, items, etc.). If omitted, distributes across categories.",
+        help="[experimental] Specific category (weapons, creatures, npcs, items, etc.). "
+        "If omitted, distributes across categories.",
     )
     foundry.add_argument(
         "--foundry-dry-run",
         action="store_true",
         default=False,
-        help="Generate + validate only, skip gauntlet testing.",
+        help="[experimental] Generate + validate only, skip gauntlet testing.",
     )
 
     # ── Auto-Curation ─────────────────────────────────────────────────
@@ -470,21 +472,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--auto-curate",
         action="store_true",
         default=False,
-        help="Before sim, check genre/category coverage and run foundry "
-        "to fill gaps. Promoted components go to ~/.maxim/components/.",
+        help="[experimental] Before sim, check genre/category coverage and run "
+        "foundry to fill gaps. Promoted components go to ~/.maxim/components/.",
     )
     curation.add_argument(
         "--curate-threshold",
         type=int,
         default=5,
         metavar="N",
-        help="Min components per genre/category before auto-curate triggers (default: 5).",
+        help="[experimental] Min components per genre/category before auto-curate triggers (default: 5).",
     )
     curation.add_argument(
         "--no-curate",
         action="store_true",
         default=False,
-        help="Explicit opt-out of auto-curation (overrides config defaults).",
+        help="[experimental] Explicit opt-out of auto-curation (overrides config defaults).",
     )
 
     # ── Debug/Trace ────────────────────────────────────────────────────
@@ -570,14 +572,14 @@ def _build_parser() -> argparse.ArgumentParser:
     util.add_argument(
         "--audit-architecture",
         action="store_true",
-        help="Audit codebase for architecture rule violations and exit.",
+        help="[experimental] Audit codebase for architecture rule violations and exit.",
     )
     util.add_argument(
         "--generate-simulation",
         type=str,
         default=None,
         metavar="DESCRIPTION",
-        help="Generate a simulation scenario YAML from a natural language description.",
+        help="[experimental] Generate a simulation scenario YAML from a natural language description.",
     )
     util.add_argument(
         "-o",

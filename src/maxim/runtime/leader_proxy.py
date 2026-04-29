@@ -968,13 +968,22 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         # Extract token counts from response body
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
         model = ""
         try:
             if resp_code == 200 and resp_body:
                 data = json.loads(resp_body)
-                usage = data.get("usage", {})
+                usage = data.get("usage", {}) or {}
                 input_tokens = usage.get("prompt_tokens", 0)
                 output_tokens = usage.get("completion_tokens", 0)
+                # OpenAI-compatible servers expose cached portion under
+                # usage.prompt_tokens_details.cached_tokens. Surface it
+                # under the public-contract name (CC12) so JSONL
+                # consumers don't have to peek into nested
+                # OpenAI-specific shapes.
+                details = usage.get("prompt_tokens_details") or {}
+                if isinstance(details, dict):
+                    cached_tokens = int(details.get("cached_tokens") or 0)
                 model = data.get("model", "")
         except Exception:
             pass
@@ -991,6 +1000,8 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             "server_ms": round(server_ms, 1) if server_ms is not None else None,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
+            # CC12: standard-name token telemetry on JSONL emissions.
+            "cached_tokens": cached_tokens,
             "gpu": gpu,
             "timestamp": time.time(),
         }

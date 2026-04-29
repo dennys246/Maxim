@@ -996,6 +996,8 @@ class _MaximPeerBackend:
                 "latency_ms": round(elapsed_ms, 1),
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
+                # CC12: standard-name token telemetry on JSONL emissions.
+                "cached_tokens": cached,
             },
         )
 
@@ -1041,6 +1043,8 @@ class _MaximPeerBackend:
                 "latency_ms": round(resp.latency_ms, 1),
                 "input_tokens": resp.input_tokens,
                 "output_tokens": resp.output_tokens,
+                # CC12: standard-name token telemetry on JSONL emissions.
+                "cached_tokens": resp.cached_input_tokens,
                 "request_id": context.request_id,
                 "agent_id": context.agent_id,
                 "session_id": context.session_id,

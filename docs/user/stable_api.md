@@ -1,6 +1,151 @@
 # Public API stability — 1.0 contract
 
-This page tracks 1.0 stability commitments for the public Maxim API. The fuller classification (every verb, every result type, every event payload) is being assembled alongside CC2; this page currently documents the **async wrappability** contract that ships with CC10.
+This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. The contract is:
+
+- **Stable** symbols: removal or rename is a breaking change. Argument names + types do not shift without a major-version bump. New keyword-only arguments with defaults are allowed.
+- **Experimental** symbols: marked in the symbol's docstring header. Shape may shift in 1.x without a major-version bump. Use at your own risk; pin to a version if you build hard against them.
+
+**Anything not listed on this page is not part of the public 1.0 contract** — it is fair game for changes in any future release. If you want a non-listed symbol elevated to stable, open an issue.
+
+---
+
+## Stable verbs (`maxim.*`)
+
+| Symbol | Stable | Notes |
+|---|---|---|
+| `maxim.configure(...)` | ✅ | Logging + display settings. Keyword-only. |
+| `maxim.run(...)` | ✅ | Agentic cycle entry point. |
+| `maxim.imagine(...) -> Session` | ✅ | Generative simulation. Returns persistent Session. |
+| `maxim.connect(robot_type, ...) -> RobotController` | ✅ | Robot registry connection. |
+| `maxim.diagnose(...) -> DiagnosticReport` | ✅ | Local + peer diagnostics. |
+| `maxim.observe(subsystem, ...)` | ✅ | Cognitive subsystem inspection. |
+| `maxim.introspect(...)` | ✅ | Alias for `observe`. |
+| `maxim.campaign(path, ...) -> CampaignResult` | ✅ | DM campaign runner. |
+| `maxim.benchmark(models, ...) -> BenchmarkResult` | ✅ | Multi-model benchmark. |
+| `maxim.list_models() -> dict[str, list[ModelInfo]]` | ✅ | Profile discovery. |
+| `maxim.download_model(name) -> bool` | ✅ | Local LLM download. |
+| `maxim.delete_model(name) -> bool` | ✅ | Local LLM cleanup. |
+| `maxim.register_tool(tool)` | ✅ | Custom tool registration. |
+| `maxim.tool` (decorator) | ✅ | Function-as-tool decorator. |
+| `maxim.get_version_info() -> dict` | ✅ | Version + git hash. |
+| `maxim.__version__` | ✅ | Package version string. |
+
+## Experimental verbs
+
+| Symbol | Stable | Notes |
+|---|---|---|
+| `maxim.research(...) -> ResearchResult` | ⚠️ Experimental | Research orchestrator surface still evolving. Prompt templates, paper structure, and reviewer logic may change. |
+| `maxim.on(event_name, callback) -> EventHandle` | ⚠️ Experimental | Event names + payload fields may grow. Subscription mechanism may evolve to support filters or async callbacks. |
+| `maxim.register_persona(...)` | ⚠️ Experimental | Persona system may be redesigned alongside future Mother Maxim/orchestrator work. |
+
+---
+
+## Stable result types (importable from `maxim.*`)
+
+| Symbol | Stable | Notes |
+|---|---|---|
+| `DiagnosticReport` | ✅ | Returned by `diagnose()`. |
+| `CampaignResult` | ✅ | Returned by `campaign()`. |
+| `BenchmarkResult` | ✅ | Returned by `benchmark()`. |
+| `ModelInfo` | ✅ | Element of `list_models()` output. |
+| `Session` | ✅ | Returned by `imagine()`; load via `maxim.load.session(...)`. |
+| `Report` | ✅ | Final-form simulation report. |
+| `Entity` | ✅ | SEM entity composition root. |
+| `RobotController` | ✅ | Returned by `connect()`. |
+
+## Experimental result + event types
+
+| Symbol | Stable | Notes |
+|---|---|---|
+| `ResearchResult` | ⚠️ Experimental | Returned by `research()`. Field set may grow. |
+| `EventHandle` | ⚠️ Experimental | Returned by `on()`. |
+| `ToolCallEvent` | ⚠️ Experimental | Payload type for `on("tool_call", ...)`. |
+| `MemoryCaptureEvent` | ⚠️ Experimental | Payload type for `on("memory_capture", ...)`. |
+| `PainSignalEvent` | ⚠️ Experimental | Payload type for `on("pain_signal", ...)`. |
+| `PromptEvent` | ⚠️ Experimental | Payload type for `on("prompt", ...)`. |
+
+---
+
+## Stable error hierarchy
+
+All exceptions are importable from `maxim.*`:
+
+| Symbol | Stable | Notes |
+|---|---|---|
+| `MaximError` | ✅ | Base class for catch-all. |
+| `ConfigurationError` | ✅ | Config / model unavailable / SDK missing. |
+| `MaximConnectionError` | ✅ | Robot / peer connect failures. |
+| `ModelError` | ✅ | LLM-level errors (base). |
+| `ModelLoadError` | ✅ | Backend / GGUF load failures. |
+| `ToolExecutionError` | ✅ | Tool dispatch / execution failures. |
+| `ToolNotFoundError` | ✅ | Tool registry lookup failures. |
+| `MaximMemoryError` | ✅ | Persistence / load failures. |
+| `PlanningError` | ✅ | Goal / plan failures. |
+| `HardwareError` | ✅ | Robot hardware faults. |
+| `MaximRuntimeError` | ✅ | Generic runtime fallback. |
+
+---
+
+## Stable namespaces
+
+### `maxim.create.*` — factory namespace
+
+| Symbol | Stable | Notes |
+|---|---|---|
+| `create.hippocampus(...)` | ✅ | |
+| `create.nac(...)` | ✅ | |
+| `create.atl(...)` | ✅ | |
+| `create.scn()` | ✅ | |
+| `create.angular_gyrus(...)` | ✅ | |
+| `create.agent(name, ...) -> AgentInstance` | ✅ | |
+| `create.pool(...) -> AgentPool` | ✅ | |
+| `create.entity(template_ref, ...) -> Entity` | ✅ | |
+| `create.embodiment(root_entity, ...) -> Embodiment` | ✅ | |
+| `create.templates() -> dict[str, list[str]]` | ✅ | |
+| `create.router(model) -> LLMRouter` | ✅ | |
+
+### `maxim.load.*` — deserialization namespace
+
+| Symbol | Stable | Notes |
+|---|---|---|
+| `load.hippocampus(path) -> Hippocampus` | ✅ | |
+| `load.nac(path) -> NAc` | ✅ | |
+| `load.atl(path) -> ATL` | ✅ | |
+| `load.session(session_id) -> Session` | ✅ | |
+| `load.sessions(*, limit=20) -> list[Session]` | ✅ | |
+| `load.agent(name, *, base_dir=None) -> AgentInstance` | ✅ | |
+| `load.entity(path) -> Entity` | ✅ | |
+
+`AgentInstance`, `AgentPool`, `LLMRouter`, `Hippocampus`, `NAc`, `ATL`, and `Embodiment` are returned by these factory/loader functions; their **public** methods (the ones documented in [python-api.md](python-api.md)) are stable. Internal helper methods (leading underscore) are not.
+
+---
+
+## Token telemetry contract (CC12)
+
+Per-call token telemetry is exposed under these field names — frozen at 1.0:
+
+| Field | Meaning |
+|---|---|
+| `input_tokens` | Total prompt tokens (cached + uncached). |
+| `output_tokens` | Generated tokens. |
+| `cached_tokens` | Cached portion of the input. Read from prompt cache, charged at the cached rate (or free, depending on provider). |
+
+These names appear in:
+
+- `LLMResponse.input_tokens`, `LLMResponse.output_tokens`, `LLMResponse.cached_tokens` (property alias for `cached_input_tokens`)
+- The `usage` dict returned alongside `LLMRouter.generate(...)` results
+- JSONL log records emitted under `MAXIM_LOG_FILE` for `peer_backend_call`, `peer_stream_complete`, and the leader proxy's per-request log entry
+- `CostTracker.get_session_tokens()`
+
+Legacy field names (`cached_input_tokens`, `uncached_input_tokens`, `prompt_tokens`, `completion_tokens`) are kept as **permanent legacy aliases** — internal cost-calculation paths still reference `cached_input_tokens`/`uncached_input_tokens`, and the peer wire format mirrors OpenAI's `prompt_tokens`/`completion_tokens`. Removing any of these is a major-version-bump change. **External callers should prefer the standard names** (`input_tokens`, `output_tokens`, `cached_tokens`).
+
+See [configuration.md](configuration.md) for the full token telemetry surface table.
+
+---
+
+## Stable env var + CLI flag contracts
+
+See [configuration.md](configuration.md) for the public env-var classification and CLI flag `[experimental]` tags.
 
 ---
 
@@ -67,5 +212,5 @@ The `is_sim_mode` flag inside `runtime/sim_adapter.py` is more accurately read a
 2. **Removing** or **renaming** a stable symbol or argument is a breaking change and only happens at a major-version bump (1.x → 2.0).
 3. **Behavior** of stable verbs may evolve (smarter defaults, better error messages, additional internal validation) without a major-version bump as long as the documented input/output contract holds.
 4. **Adding** a new method to the `Tool` ABC with a default body is non-breaking (CC11 `cancel()` is the canonical example). Adding an `@abstractmethod` is a breaking change for third-party tool authors.
-
-The fuller classification of stable vs experimental verbs, result types, event payloads, env vars, and CLI flags will be added here as part of CC2.
+5. **Experimental** symbols may shift in a minor release (1.0 → 1.1). When they stabilize, the experimental note is removed and the row in this table moves to the stable section.
+6. **Internal** symbols (anything starting with `_`, anything not on this page) are not part of the contract regardless of how someone is using them today.

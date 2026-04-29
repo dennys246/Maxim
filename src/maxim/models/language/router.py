@@ -1292,6 +1292,10 @@ class LLMRouter:
                     "output_tokens": resp.output_tokens,
                     "model": resp.model,
                     "provider": resp.provider,
+                    # CC12: cached_tokens is the public-contract field
+                    # name; cached_input_tokens is the legacy alias kept
+                    # for CostTracker / router internals.
+                    "cached_tokens": resp.cached_input_tokens,
                     "cached_input_tokens": resp.cached_input_tokens,
                     "uncached_input_tokens": resp.uncached_input_tokens,
                 }

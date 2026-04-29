@@ -138,6 +138,10 @@ class CostTracker:
         # reports consume this and reset per process).
         self._session_input_tokens = 0
         self._session_output_tokens = 0
+        # CC12: track cached portion of session input tokens so
+        # ``get_session_tokens()`` can expose ``cached_tokens`` under
+        # the public-contract field name.
+        self._session_cached_tokens = 0
         self._load_state()
 
     def _current_month_key(self, ts: float) -> str:
@@ -382,6 +386,7 @@ class CostTracker:
         # Track tokens even for zero-cost calls (cached prompts).
         self._session_input_tokens += max(0, int(input_tokens))
         self._session_output_tokens += max(0, int(output_tokens))
+        self._session_cached_tokens += max(0, int(cached_input_tokens))
 
         if cost_usd <= 0:
             return 0.0
@@ -475,10 +480,16 @@ class CostTracker:
         }
 
     def get_session_tokens(self) -> dict[str, int]:
-        """Return session-lifetime token counts (not persisted)."""
+        """Return session-lifetime token counts (not persisted).
+
+        CC12: ``cached_tokens`` is exposed under the public-contract
+        field name; it's the cached portion of ``input_tokens`` summed
+        across all backend responses this process has recorded.
+        """
         return {
             "input_tokens": self._session_input_tokens,
             "output_tokens": self._session_output_tokens,
+            "cached_tokens": self._session_cached_tokens,
             "total_tokens": self._session_input_tokens + self._session_output_tokens,
         }
 
@@ -486,6 +497,7 @@ class CostTracker:
         """Reset session token counters (e.g. between simulation runs)."""
         self._session_input_tokens = 0
         self._session_output_tokens = 0
+        self._session_cached_tokens = 0
 
     def get_spend_rates(self) -> dict[str, SpendRate]:
         return {
