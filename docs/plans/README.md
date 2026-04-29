@@ -45,13 +45,18 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 
 Plans on the 1.0 critical path or actively shipping:
 
-- [v1_refinement.md](v1_refinement.md) — **1.0 release plan.** Validation + bio-system stabilization + sensorimotor grounding + pipeline completion + cleanup + docs.
+- [v1_refinement.md](v1_refinement.md) — **1.0 release plan.** Validation + bio-system stabilization + sensorimotor grounding + pipeline completion + cleanup + docs + contract clarification (Section 7). 1.1 track index is Section 8.
 - [bio_system_protocol_enrichment.md](bio_system_protocol_enrichment.md) — Future-proof bio-system interfaces with `*Context` dataclass parameters. Cheap now, expensive post-1.0.
 - [scn_oscillator_feedback.md](scn_oscillator_feedback.md) — Close the SCN→NAc feedback loop. Anticipatory temporal credit. ~100-150 LOC.
-- [sem_world_enrichment.md](sem_world_enrichment.md) — **Phase 1 SHIPPED.** Phases 2-3 (bio-enrichment routing, composable archetypes) gating 1.0.
-- [cradle_sensorimotor_development.md](cradle_sensorimotor_development.md) — Non-linguistic sensorimotor learning. The capstone 1.0 demo. ~500-800 LOC.
-- [proprioceptive_discovery.md](proprioceptive_discovery.md) — **Mechanism A SHIPPED.** Mechanism B (entity acquisition) planned. Parallel.
+- [sem_world_enrichment.md](sem_world_enrichment.md) — **Phase 1 SHIPPED.** Phases 2-3 deferred to 1.1.
+- [proprioceptive_discovery.md](proprioceptive_discovery.md) — **Mechanism A SHIPPED.** Mechanism B (entity acquisition) shipped with cradle.
 - [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — Living roadmap. C3-C4.6 complete. C5+ remain. Not gating 1.0.
+
+### 1.1 track (concurrent development)
+
+- [scene_actor_affordances.md](scene_actor_affordances.md) — `target_effect` + OrchestratorActorTool. ~110 LOC. Diagnostic for agent-backed entities. 1.1.
+- [minecraft_benchmark.md](minecraft_benchmark.md) — Live demo + harness comparison. Stub. 1.1 splash launch.
+- [mcp_compatibility.md](mcp_compatibility.md) — MCP server + client + schema interop. Stub. 1.0 ships CC9 (dual-format Tool schema) as the prerequisite.
 
 ## Living practice docs
 
@@ -65,7 +70,8 @@ Accumulate evidence over time. Not on the critical path — ongoing scientific/o
 
 Design work preserved in [deferred/](deferred/). Each has an explicit "revive when" condition.
 
-- [deferred/prompt_b3_b5_track.md](deferred/prompt_b3_b5_track.md) — B3 shipped. B5 (embodiment/narrative separation) design only. Revive for post-1.0 prompt refinement.
+- [deferred/b5_embodiment_narrative_separation.md](deferred/b5_embodiment_narrative_separation.md) — Formalize SEM/DM prompt boundary. Revive when prompt-bleed bug surfaces.
+- [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md) — 3-tier cognition + Cradle-trained cast + mesh-pressure budget. Revive if scene_actor_affordances diagnostic doesn't close the gap.
 - [deferred/goal_depth_integration.md](deferred/goal_depth_integration.md) — GOAL WMS entry kind, goal-tagged episodes. Stage 3 absorbed by temporal_credit_integration. Remaining stages are enrichment, not gating.
 - [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md) — Plugin discovery for bio-systems. Revive when external contributors appear.
 - [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — Two-agent stimulus pattern. Revive when behavioral convergence hits variety ceiling.
