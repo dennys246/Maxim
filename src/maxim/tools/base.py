@@ -297,6 +297,53 @@ class Tool(ABC):
         """Perform the side effect."""
         raise NotImplementedError
 
+    def cancel(self) -> None:
+        """Best-effort abort hook for in-flight ``execute()`` calls.
+
+        Default implementation is a no-op so existing tools work
+        unchanged. Tools whose ``execute()`` does heavy work (HTTP
+        requests, LLM calls, subprocess execution, large file reads)
+        should override this to:
+
+        - Set an instance flag the executing thread checks at safe
+          points (e.g. between chunk reads or HTTP responses).
+        - Close any open network/file/subprocess handles to unblock
+          a thread waiting on I/O.
+        - Release any tool-owned resources (cached responses, temp
+          files) the implementation considers expensive to leak.
+
+        ``cancel()`` is called from a *different thread* than the one
+        running ``execute()``. Implementations must be thread-safe and
+        should not raise — log and continue on partial failure.
+        ``cancel()`` does NOT itself wait for ``execute()`` to return;
+        the caller (e.g. the agent loop, an upstream cancellation
+        token, or a Ctrl-C handler) is responsible for the join.
+
+        ``cancel()`` may be called when no execution is in flight; the
+        default no-op preserves that behavior. Implementations should
+        treat redundant calls as benign.
+
+        Defined as a regular method with a default body (NOT
+        ``@abstractmethod``) so existing third-party Tool subclasses
+        keep working without modification. New tools that need
+        cancellation should override it.
+
+        **No 1.0 dispatch path calls this method.** It ships as forward-
+        compat infrastructure for 1.1+ MCP-subprocess and async-cancel
+        work; today it can only be invoked by a caller that holds the
+        tool reference directly (e.g. a test harness or a future agent-
+        loop cancellation wiring). The ``Tool.timeout`` field is also
+        not currently enforced by ``runtime/executor.py``; the two are
+        independent reservations of contract surface for the same
+        future cancellation pathway.
+
+        ``tests/unit/test_tool_cancel.py::test_cancel_has_no_caller_in_executor_dispatch``
+        pins the "no 1.0 caller" contract — if you wire ``cancel()``
+        into the executor, update that test and document the new caller
+        in CLAUDE.md under the ``Tool.cancel`` invariant.
+        """
+        return None
+
     def to_json_schema(self) -> dict[str, Any]:
         """Export ``input_schema`` as a JSONSchema dict (MCP-compatible).
 

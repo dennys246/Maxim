@@ -2,6 +2,31 @@
 
 The ActionSink captures every tool execution (including FearAgent blocks)
 for post-run validation in scenario testing.
+
+Adapter contract (CC8, 2026-04-29 audit)
+---------------------------------------
+
+The protocol's two members — ``record(action)`` and the ``actions``
+property — are the public adapter contract. A non-sim adapter (e.g. a
+Minecraft/Mineflayer integration that wants to mirror agent actions
+into the world) can implement these without orchestrator, scenario, or
+narrative-phase coupling.
+
+What the protocol does NOT assume:
+
+- **No orchestrator dependency.** The executor calls ``record()`` after
+  every tool execution; the sink decides what to do with the record
+  (store, forward, drop). Validation/scenario logic lives elsewhere.
+- **No conversational-turn assumption.** Records arrive as the executor
+  produces them — possibly clustered, possibly sparse. The protocol
+  does not promise turn alignment.
+- **No tool-registry coupling.** ``ActionRecord.tool_name`` is an
+  opaque string from the sink's perspective; the sink does not need
+  access to the registry.
+
+Sink implementations may freely impose additional structure (e.g.
+``RecordingSink``'s 10k-action ring buffer with compression) — but the
+protocol minimum is just the two members below.
 """
 
 from __future__ import annotations

@@ -2,6 +2,48 @@
 
 Replaces ~20 inline ``if percept_source is not None`` guards with a clean
 adapter interface.  Production uses ``NullSimulationAdapter`` which no-ops.
+
+Naming note (CC8, 2026-04-29):
+The flag ``is_sim_mode`` is more accurately read as "an external adapter
+is driving percepts" — it gates behaviors that fire when ``percept_source``
+is non-None, not behaviors specific to the simulation orchestrator.
+A future Mineflayer/Minecraft adapter (per ``simulation/sources.py`` adapter
+contract) will reuse this same path: it constructs a ``PerceptSource`` +
+``ActionSink`` pair, hands them to ``run_agentic_loop``, and the loop
+treats it as ``is_sim_mode=True``. The behaviors gated by the flag are:
+
+- Skip Default Network startup (DN is robot-vision specific; external
+  adapters provide their own world state).
+- Use sim-specific structured logging (``sim_log`` calls).
+- Skip LLM fallback proposals (wait for the real LLM rather than emit
+  a placeholder action).
+- **End the session in lightweight mode**:
+  ``runtime/bio_integration.py::end_bio_session`` calls
+  ``MemoryHub.on_session_end_lightweight()`` instead of
+  ``on_session_end()``, skipping the blocking sleep/replay
+  consolidation pass. The lightweight path still persists NAc decay,
+  semantic embeddings, and subsystem state so learning is not lost,
+  but it does not run the full consolidation. This matches sim
+  expectations (short-lived AUT runs) but **may surprise long-running
+  external adapters** (e.g. a Minecraft session lasting hours expects
+  full consolidation). 1.1+ adapter integrations should either set
+  ``is_sim_mode=False`` post-construction, or
+  ``end_bio_session(is_sim_mode=False, ...)`` should be called
+  directly. This trade-off is preserved in 1.0 to avoid changing
+  existing sim behavior; revisit when the first non-sim adapter ships.
+
+The field is kept as ``is_sim_mode`` for back-compat with existing
+callers; do not rename without a deprecation cycle.
+
+Sim-specific coupling lives in two places intentionally:
+- ``resolve_confirmation`` / ``resolve_plan_approval`` /
+  ``resolve_timeout_retry`` use ``isinstance(...,SimulationBridge)`` to
+  reach the bridge's ``response_policy``. A non-sim adapter without a
+  bridge falls through to the default ``return "yes"`` (auto-approve)
+  or ``return None`` (no-resolve), both of which are sensible defaults
+  for an external adapter that handles confirmations itself.
+- ``_tool_registry`` is set by the orchestrator for deregistered-tool
+  filtering; non-sim adapters leave it ``None`` and skip the filter.
 """
 
 from __future__ import annotations
@@ -145,16 +187,24 @@ class SimulationAdapter:
         return False
 
     def resolve_confirmation(self, confirmation: dict[str, Any]) -> str | None:
-        """Auto-resolve confirmation prompts using the bridge's response policy."""
+        """Auto-resolve confirmation prompts using the bridge's response policy.
+
+        CC8 audit (2026-04-29): the ``isinstance`` check below is the
+        orchestrator-coupled escape hatch documented in the module
+        docstring. A non-sim adapter (no ``SimulationBridge``) falls
+        through to the default ``"yes"`` — it owns confirmation
+        resolution itself and does not need to plug into the bridge's
+        response policy. A previous draft probed
+        ``self.percept_source._bridge`` as a fallback for a
+        ``ConversationalSource``-with-policy shape that was never
+        actually wired (no producer ever set ``_bridge`` on a percept
+        source); the dead branch was removed during the CC8 fold round.
+        """
         try:
             from maxim.simulation.bridge import SimulationBridge
 
             if isinstance(self.percept_source, SimulationBridge):
                 return self.percept_source.response_policy.resolve_confirmation(confirmation)
-            # For ConversationalSource (non-bridge sim), check if it has a policy
-            bridge = getattr(self.percept_source, "_bridge", None)
-            if bridge and hasattr(bridge, "response_policy"):
-                return bridge.response_policy.resolve_confirmation(confirmation)
         except Exception:
             pass
         # Default: auto-approve in sim mode

@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import threading
 import time
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -235,9 +236,42 @@ class HttpFetchTool(Tool):
         self._get_internet_policy = get_internet_policy
         self._content_safety_checker = content_safety_checker
         self._request_times: list[float] = []
+        # CC11 cancellation hook. Use threading.Event for proper
+        # cross-thread visibility — cancel() runs on a different thread
+        # than execute() per the Tool.cancel docstring. execute() clears
+        # the event at entry so a registered singleton tool instance
+        # (tools/registry.py treats tools as singletons, not per-call)
+        # stays usable after a previous cancel; the cancel signal applies
+        # only to in-flight or about-to-start work, not to the next call.
+        self._cancelled = threading.Event()
+
+    def cancel(self) -> None:
+        """Mark the in-flight fetch as cancelled (CC11).
+
+        Sets a ``threading.Event`` that ``execute()`` checks at safe
+        points (post policy/robots/auth checks, before the network
+        read). ``execute()`` clears the event at entry so a registered
+        singleton tool instance can be reused after a previous
+        cancellation; the cancel signal applies only to work currently
+        in flight or about to start, not to subsequent calls.
+
+        Does not interrupt a thread blocked inside ``http.fetch_url``;
+        the underlying request still completes (or times out) before
+        the cancel flag is observed. For hard interruption, the upstream
+        timeout policy (``TimeoutPolicy(connect_s, read_s, total_s)``)
+        is the load-bearing mechanism.
+        """
+        self._cancelled.set()
 
     def execute(self, **kwargs: Any) -> ToolResult:
         """Execute the fetch."""
+        # Clear any prior cancel signal — see __init__ comment for why.
+        # Note: there is an inherent race between this clear() and a
+        # cancel() that arrives mid-execute(); the contract is "cancel
+        # affects in-flight or imminent work," and the safe-point checks
+        # below honor that for the period AFTER this clear().
+        self._cancelled.clear()
+
         url = str(kwargs.get("url", "")).strip()
         extract_text = bool(kwargs.get("extract_text", True))
         max_bytes_override = kwargs.get("max_bytes")
@@ -247,6 +281,9 @@ class HttpFetchTool(Tool):
                 success=False,
                 error="No URL provided",
             )
+
+        if self._cancelled.is_set():
+            return ToolResult(success=False, error="Fetch cancelled")
 
         # Ensure URL has scheme
         if not url.startswith(("http://", "https://")):
@@ -294,6 +331,11 @@ class HttpFetchTool(Tool):
                     error=robots_reason or "Blocked by robots.txt",
                     metadata={"robots_blocked": True, "url": url},
                 )
+
+        # CC11 cancellation check before the network read — last
+        # safe point before we hand control to the HTTP layer.
+        if self._cancelled.is_set():
+            return ToolResult(success=False, error="Fetch cancelled")
 
         # Perform the fetch
         try:
