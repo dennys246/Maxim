@@ -78,6 +78,16 @@ class HTTPError(Exception):
 
     Every subclass sets a ``fix_hint`` with actionable guidance. Catching
     ``HTTPError`` broadly is fine; catching bare ``Exception`` is not.
+
+    SHAPE-FROZEN at 1.0 (CC3). The exception hierarchy mirrors
+    :class:`maxim.models.language.types.BackendError`. New keyword-only
+    parameters with defaults may be added per subclass (additive,
+    non-breaking); adding a *new subclass* requires the matching
+    ``_classify_status`` branch in specific-before-general order. Do
+    NOT add a free-form ``**kwargs`` / ``extra`` — the typed shape is
+    what lets callers branch on subclasses instead of string-matching
+    exception messages. Adding a *required* field post-1.0 is a
+    major-version-bump change.
     """
 
     def __init__(

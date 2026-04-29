@@ -27,13 +27,22 @@ from typing import Any, Protocol, runtime_checkable
 
 @dataclass(frozen=True, slots=True)
 class SensorReading:
-    """One reading from a sensor."""
+    """One reading from a sensor.
+
+    Forward-compat (CC3, 1.0): ``extra`` is the post-1.0 escape hatch
+    for additive metadata (provenance tags, calibration hints, etc.)
+    so new sensor types can carry context without bumping a major
+    version. Producers should prefer declared fields when the data is
+    part of the SEM contract; ``extra`` is for genuinely additive
+    observability metadata only.
+    """
 
     sensor_name: str
     entity_name: str
     value: Any  # float, dict, ndarray — depends on sensor
     unit: str
     timestamp: float
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +73,12 @@ class AffordanceSchema:
     explaining why, producing the natural tool-failure → pain → learning
     chain.  Example: ``requires={"integrity": 0.3}`` means the affordance
     needs at least 30% component integrity to execute.
+
+    Forward-compat (CC3, 1.0): all fields have defaults, so additive
+    fields appended at the end stay non-breaking. The four dict-typed
+    fields (``params``, ``requires``, ``self_effect``) absorb most
+    extension needs at the YAML layer; new top-level fields require
+    explicit consideration.
     """
 
     params: dict[str, type | tuple[type, Any]] = field(default_factory=dict)
@@ -84,6 +99,14 @@ class CouplingSpec:
 
     Example: hunger drifts 2x faster when stamina drops below 0.4.
     Ships as 1.0 interface — implementation deferred post-cradle.
+
+    SHAPE-FROZEN at 1.0 (CC3). All three fields are load-bearing
+    interface reservations parsed from YAML; an ``extra`` dict would
+    invite YAML authors to stash unstructured logic that the
+    deferred-implementation evaluator could not honour. Adding any new
+    field post-1.0 is a major-version-bump change. Per CLAUDE.md:
+    "Do NOT add fields to these frozen dataclasses post-1.0 without a
+    breaking-change plan."
     """
 
     sensor: str  # source sensor name (e.g., "stamina")
@@ -97,6 +120,9 @@ class ModulationSpec:
 
     Example: SCN circadian signal adjusts core_temperature set_point ±0.1.
     Ships as 1.0 interface — implementation deferred post-cradle.
+
+    SHAPE-FROZEN at 1.0 (CC3). Same rationale as :class:`CouplingSpec`
+    — adding any new field post-1.0 is a major-version-bump change.
     """
 
     source: str  # modulating system (e.g., "scn", "nac")
@@ -118,6 +144,12 @@ class HomeostaticDriveSpec:
     ``drift_rate`` per second.  When environmental push > body drift,
     pain accumulates.  When the force is removed, homeostasis restores
     the sensor and pain subsides.
+
+    SHAPE-FROZEN at 1.0 (CC3). YAML-parsed drive contract; ``pain_model``
+    is the future-proofing knob for non-linear pain formulas. Adding
+    any new field post-1.0 is a major-version-bump change. Per CLAUDE.md:
+    "Do NOT add fields to these frozen dataclasses post-1.0 without a
+    breaking-change plan."
     """
 
     set_point: float  # body's equilibrium target
@@ -140,6 +172,11 @@ class EntropicDriveSpec:
     Pain fires when the value crosses ``deprivation_threshold``.  A positive
     Reaction fires when the value crosses back below
     ``satisfaction_threshold`` after being deprived.
+
+    SHAPE-FROZEN at 1.0 (CC3). YAML-parsed drive contract. Adding any
+    new field post-1.0 is a major-version-bump change. Per CLAUDE.md:
+    "Do NOT add fields to these frozen dataclasses post-1.0 without a
+    breaking-change plan."
     """
 
     drift_direction: str  # "up" or "down"

@@ -27,9 +27,14 @@ class TemporalDelta:
 
     Rather than fixed delays, we learn the distribution of observed
     delays to enable flexible temporal predictions.
+
+    Forward-compat (CC3, 1.0): defaults to an empty tuple so the
+    constructor stays callable without arguments — adding additive
+    fields at the end with defaults is non-breaking. Persisted
+    indirectly via :class:`CausalLink.to_dict`.
     """
 
-    observed_deltas: tuple[float, ...]  # All observed delays (seconds)
+    observed_deltas: tuple[float, ...] = ()  # All observed delays (seconds)
 
     @property
     def mean(self) -> float:
