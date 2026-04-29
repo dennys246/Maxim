@@ -244,6 +244,12 @@ class VRAMProjection:
 
     Pure data object — no side effects. Callers decide how to surface the
     result (doctor WARN, startup log, refusal to spawn, …).
+
+    SHAPE-FROZEN at 1.0 (CC3). Surfaces in ``maxim doctor --json`` output
+    consumed by external tooling. Adding new optional fields with defaults
+    at the end is non-breaking; an ``extra`` dict would dilute the typed
+    diagnostic surface. Adding a *required* field post-1.0 is a
+    major-version-bump change for the doctor JSON contract.
     """
 
     profile: str

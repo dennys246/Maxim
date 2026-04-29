@@ -18,7 +18,16 @@ from maxim.utils.logging import warn
 
 @dataclass(frozen=True, slots=True)
 class ModelPricing:
-    """Actual API pricing in USD per 1M tokens."""
+    """Actual API pricing in USD per 1M tokens.
+
+    SHAPE-FROZEN at 1.0 (CC3). Pricing tuples are looked up by model
+    name and applied directly to cost computations; an ``extra`` dict
+    here would invite ad-hoc surcharges that the cost-tracker can't
+    enforce uniformly. New pricing axes (e.g., per-image, per-cached-
+    write tier) get added as named optional fields with defaults so
+    additive updates stay non-breaking. Adding a *required* field
+    post-1.0 is a major-version-bump change.
+    """
 
     input_price: float
     output_price: float

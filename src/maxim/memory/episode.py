@@ -79,6 +79,18 @@ class Episode:
     or provenance keys can round-trip through serialization without
     bumping a major version. Loaders default ``extra`` to ``{}`` for
     pre-1.0 episodes via ``data.get("extra")``.
+
+    ``extra`` values MUST be JSON-serializable (str/int/float/bool/None
+    + nested list/dict only). Stashing ``numpy.ndarray``, ``datetime``,
+    or arbitrary objects raises a ``TypeError`` at persistence time
+    (``atomic_write_json`` → ``json.dumps``); validate at the producer
+    boundary if the source could yield non-JSON values.
+
+    ``extra`` is excluded from ``__hash__`` and ``__eq__`` (``hash=False,
+    compare=False``) so the dataclass stays hashable and identity-safe.
+    Two episodes with identical declared fields but different ``extra``
+    dicts compare equal and hash to the same value — ``extra`` is
+    out-of-band observability metadata, not part of episode identity.
     """
 
     id: str
@@ -96,7 +108,10 @@ class Episode:
     # Provenance: True when this episode involved imagined (session-scoped) entities.
     imagined: bool = False
     # CC3 escape hatch — additive metadata for forward-compat.
-    extra: dict[str, Any] = field(default_factory=dict)
+    # ``hash=False, compare=False``: keeps the dataclass hashable when
+    # ``extra`` contains a (mutable) dict, and keeps episode identity
+    # in the declared fields rather than the observability dict.
+    extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         d = {

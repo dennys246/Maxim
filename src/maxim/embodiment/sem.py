@@ -35,6 +35,16 @@ class SensorReading:
     version. Producers should prefer declared fields when the data is
     part of the SEM contract; ``extra`` is for genuinely additive
     observability metadata only.
+
+    ``extra`` values MUST be JSON-serializable if the reading is going
+    to be persisted (``atomic_write_json`` raises on ndarray/datetime/
+    arbitrary objects). The ``value`` field is intentionally typed
+    ``Any`` because some sensors yield ndarray/audio frames; ``extra``
+    is the strict-JSON sibling.
+
+    ``extra`` is excluded from ``__hash__`` and ``__eq__`` (``hash=False,
+    compare=False``) so the dataclass stays hashable when ``extra``
+    contains a mutable dict.
     """
 
     sensor_name: str
@@ -42,7 +52,7 @@ class SensorReading:
     value: Any  # float, dict, ndarray — depends on sensor
     unit: str
     timestamp: float
-    extra: dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
