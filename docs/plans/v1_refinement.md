@@ -86,8 +86,6 @@ Closed the SCN→NAc feedback loop. Three-path credit in TemporalCreditDistribut
 3. `TemporalCreditDistributor.distribute()` — third anticipatory credit path
 4. `build_bio_stack` — `scn.enable_oscillator()` by default
 
-**Why before 1.0:** SCN was the only bio-system with a one-way data flow. Now every bio-system has a closed feedback loop.
-
 ### B3. SEM world enrichment (Phases 2-3)
 
 **Companion plan:** [sem_world_enrichment.md](sem_world_enrichment.md)
@@ -116,8 +114,6 @@ A newborn agent that learns from sensation, not language. Three-layer sensation 
 4. **Narrative acts** — `act` + `world_entities` fields on `NarrativePhase`. Cradle uses 4 developmental acts. General sim framework for long-horizon narrative structure.
 5. **Validation experiment** — 4-act developmental scenario with 8 measurements, 8 pass/fail criteria. Cross-session transfer via `--resume-sim`.
 
-**Why before 1.0:** (a) Strongest demonstration of the cross-session learning claim. (b) Drive protocol interfaces freeze at 1.0 — `CouplingSpec`/`ModulationSpec`/`pain_model` must ship now even though implementation is deferred. (c) Energy bridge replacement prevents parallel threshold systems from becoming frozen API surface. (d) Sensation standardization is the foundation for real sensor integration.
-
 ---
 
 ## Section 4: Pipeline Completion (small gaps)
@@ -136,7 +132,9 @@ ToolPainBridge has 4 `scn.register()` call sites that write temporal signatures 
 
 **Constraint:** Existing NAc calls stay unchanged. Temporal event emission is additive.
 
-### P2. Episode boundary — semantic shift detection (Stage 2)
+### P2. Episode boundary — semantic shift detection (Stage 2) — SHIPPED (PR #208, 2026-04-28)
+
+**Shipped via:** PR #208 (initial) + PR #208 follow-up (review fold)
 
 **Absorbed from:** `substrate_episode_boundary_enrichment.md` Stage 2
 
@@ -148,9 +146,9 @@ Add semantic-shift episode boundary detection. When incoming text embedding dive
 3. Implement `semantic_shift_rule(threshold=0.40)` in `episode.py`
 4. Calibration sweep against real conversational data
 
-### P3. Dead energy code removal + drive protocol migration
+### P3. Dead energy code removal + drive protocol migration — SHIPPED (PR #200, 2026-04-26)
 
-**Ships with:** Cradle Stage 1c (B4)
+**Shipped via:** PR #200 (cradle Stage 1c, per the original plan)
 
 **Audit finding:** `EnergyReactionBridge` (125 LOC) and `MovementEnergyTracker` (362 LOC) are **completely dead code** — zero callers anywhere in the codebase. Never instantiated, never wired. Additionally, 6 of 10 `EnergyType` enum values are unused (COMPUTE_TIME, MOTOR_CURRENT, VISION_INFERENCE, AUDIO_PROCESSING, ATTENTION, MEMORY_ACCESS).
 
@@ -163,9 +161,9 @@ Add semantic-shift episode boundary detection. When incoming text embedding dive
 
 **What stays (live code):** `LLMEnergyTracker` (wired in llm_worker.py), `EnergyRegistry` (budget gating + imagination energy gate), `EnergyBudget`, `EnergySignal`.
 
-**Why before 1.0:** Dead code in 1.0 is permanently awkward. Someone will eventually import it, depend on it, and then removing it is a breaking change. Clean removal now costs nothing.
+### P4. Multi-agent learning attribution gaps (~50 LOC) — SHIPPED (PR #202, 2026-04-28)
 
-### P4. Multi-agent learning attribution gaps (~50 LOC)
+**Shipped via:** PR #202 (`feat(v1-p4): per-agent stash + agent_id attribution`)
 
 **Surfaced by:** [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md) audit. Independently necessary regardless of cast direction.
 
@@ -178,8 +176,6 @@ Two correctness gaps in multi-agent paths surfaced while investigating SEM-backe
 2. **`agent_id` on `tool_dispatch.record_outcome()`.** Add `agent_id: str` parameter ([tool_dispatch.py::record_outcome](../../src/maxim/runtime/tool_dispatch.py)) and update all 7 callers in `agent_loop.py` (per `feedback_record_outcome_call_sites.md`). Today `ToolPainBridge` handles attribution via direct lookup; this closes the loop-level gap.
 
 **Test:** two parallel `AgentFactory` agents running `run_agentic_loop` simultaneously must produce isolated learning, verified by inspecting their separate `nac.json` files for non-overlapping causal links.
-
-**Why before 1.0:** Both are silent failure modes per CLAUDE.md "push silent-no-op invariants into types" rule. They don't produce errors; they produce wrong attribution. The moment any multi-agent path lights up — [scene_actor_affordances.md](scene_actor_affordances.md) Stage 5, agent-backed entities revival, Minecraft villagers, or any other 1.0+ work — these become live correctness bugs.
 
 ---
 
@@ -286,27 +282,29 @@ The architectural work for 1.0 is done. This section is about *clarifying which 
 
 **Why this section exists separately from Cleanup:** Section 5 removes things. This section adds stability markers, version fields, classification docs, and forward-compat hooks. Different work, different review lens.
 
-### CC1. Persistence format versioning audit (~50 LOC + 1 test)
+### CC1. Persistence format versioning audit (~50 LOC + 1 test) — SHIPPED (PR #203, 2026-04-28)
+
+**Shipped via:** PR #203 (+ `src/maxim/utils/format_version.py` + `tests/integration/test_persistence_compat.py`)
 
 Some persisted JSON files reference `format_version` / `schema_version` (`nac.py`, `atl.py`, `scn.py`, `cross_layer.py`, `percept_trace_buffer.py`, `snapshot.py`, `hippocampus_persistence.py`); others may not. Standardize: every persisted JSON file carries a `_format_version: "1.0"` field at the root. Loaders default to `"0.x"` when absent and emit a one-time warning. Adds a single integration test that loads a pre-1.0 fixture and asserts no errors.
 
-**Why before 1.0:** Without version markers, a 1.1 schema change either silently mis-loads 1.0 state or relies on heuristics. Adding `_format_version` post-1.0 is itself a breaking change (the field appears in old files saved by new code, breaks old code reading new files).
+### CC2. Public API stability classification (mostly doc) — SHIPPED (PR #212, 2026-04-29)
 
-### CC2. Public API stability classification (mostly doc)
+**Shipped via:** PR #212 (bundled with CC4 + CC12)
 
 [`api.py`](../../src/maxim/api.py) exports 17 verbs + ~10 dataclasses. Today there's no marker for "stable in 1.0" vs "experimental, may change." Add a `docs/user/stable_api.md` page listing what's frozen at 1.0. Anything not on that page is fair game for post-1.0 changes. Mark experimental functions in their docstring header with a clear note.
 
 **Candidates for "experimental" tag:** `research()` (research orchestrator surface still evolving), the event subscription API (`on()`, `EventHandle`) if it's still maturing, anything else flagged during D2 review.
 
-**Why before 1.0:** This is the strongest "we don't owe a 2.0 for X" insulation lever. Cheap to add, expensive if missing.
+### CC3. Frozen dataclass forward-compat audit (~2 hours) — SHIPPED (PR #207, 2026-04-28)
 
-### CC3. Frozen dataclass forward-compat audit (~2 hours)
+**Shipped via:** PR #207 (initial) + PR #209 (review fold)
 
 Every frozen dataclass shipping in 1.0 must have either (a) all fields with defaults, or (b) an `extra: dict[str, Any] = field(default_factory=dict)` escape hatch. Auditees: `PainSignal`, `Reaction`, `ReactionContext`, `PerceptContext`, `TraceSnapshot`, `AffordanceSchema`, `HomeostaticDriveSpec`, `EntropicDriveSpec`, `CouplingSpec`, `ModulationSpec`, `BackendError` subclasses, `HTTPError` subclasses, persisted dataclasses (Episode, MemoryRecord, etc.).
 
-**Why before 1.0:** Adding a field to a frozen dataclass is non-breaking IFF every existing field has a default. Forgetting this on one dataclass forces a breaking change later.
+### CC4. Environment variable + CLI flag classification (~doc work) — SHIPPED (PR #212, 2026-04-29)
 
-### CC4. Environment variable + CLI flag classification (~doc work)
+**Shipped via:** PR #212 (bundled with CC2 + CC12)
 
 CLAUDE.md documents ~30 `MAXIM_*` env vars mixing public-contract (`MAXIM_LLM_PROFILE`, `MAXIM_DATA_BUDGET_GB`) with debug/internal (`MAXIM_BACKEND_TRACE`, `MAXIM_HEARTBEAT`). Classify in user docs:
 - **Public** — stable in 1.0, removal is a breaking change.
@@ -314,9 +312,9 @@ CLAUDE.md documents ~30 `MAXIM_*` env vars mixing public-contract (`MAXIM_LLM_PR
 
 Same treatment for CLI flags. Mark experimental flags in `--help` output (e.g., `[experimental]` suffix). Candidates: `--auto-curate`, `--research`, possibly cradle role flags.
 
-**Why before 1.0:** Without the classification, removing a debug var post-1.0 breaks someone's shell alias and the user has a legitimate complaint. With it, the contract is explicit.
+### CC5. State migration policy (~50 LOC + doc) — SHIPPED (PR #211, 2026-04-29)
 
-### CC5. State migration policy (~50 LOC + doc)
+**Shipped via:** PR #211 (bundled with CC6 + CC7)
 
 When users pip-upgrade 0.8 → 1.0 with existing `~/.maxim/agents/` state, what happens? Two minimum bars:
 - `tests/integration/test_persistence_compat.py` loads a pre-1.0 fixture state and asserts no errors. Becomes the regression guard for future format changes.
@@ -324,25 +322,29 @@ When users pip-upgrade 0.8 → 1.0 with existing `~/.maxim/agents/` state, what 
 
 Future work (post-1.0): a `maxim migrate` verb that detects and warns. Not required for 1.0 if the test + doc exist.
 
-**Why before 1.0:** First user upgrade is high-stakes. Silent state corruption on upgrade is the worst possible 1.0 first impression.
+### CC6. Plugin / extension API documentation (~1 page) — SHIPPED (PR #211, 2026-04-29)
 
-### CC6. Plugin / extension API documentation (~1 page)
+**Shipped via:** PR #211 (bundled with CC5 + CC7)
 
 `maxim.robots` entry point group is documented. Other extension surfaces are not: custom tools (Tool ABC), custom backends (Plan 3 dispatch table), custom bio-system bridges, custom percept sources. Without a "Maxim Extension API" doc, third parties write against internal modules and we can't refactor.
 
 **Deliverable:** `docs/user/extension_api.md` listing every supported extension point with stable vs experimental tags. ~1 page.
 
-### CC7. Tool side_effects registry centralization (~doc)
+### CC7. Tool side_effects registry centralization (~doc) — SHIPPED (PR #211, 2026-04-29)
+
+**Shipped via:** PR #211 (bundled with CC5 + CC6)
 
 CLAUDE.md says side_effects keys are "well-known, append-only registry, documented in class docstring." Move the registry to `docs/user/tool_side_effects.md` so third-party tool authors know what keys exist. Append-only is the right invariant; visibility makes it enforceable.
 
-### CC8. Sim → general adapter contract audit (~1 hour audit + maybe 50 LOC)
+### CC8. Sim → general adapter contract audit (~1 hour audit + maybe 50 LOC) — SHIPPED (PR #210, 2026-04-29)
+
+**Shipped via:** PR #210 (bundled with CC10 + CC11)
 
 For Minecraft (1.1) and game-NPC integration to slot in cleanly, `PerceptSource`, `ActionSink`, and the bridge protocols in [`simulation/bridge.py`](../../src/maxim/simulation/bridge.py) need to NOT assume sim orchestrator. Run a focused audit: can a non-sim adapter (e.g., a Mineflayer adapter) implement these cleanly? If the protocols leak sim-specific assumptions (orchestrator dependency, narrative phase coupling, etc.), clarify or generalize before freeze.
 
-**Why before 1.0:** If the protocols freeze with sim assumptions baked in, every external adapter post-1.0 either inherits the assumptions or forces a refactor.
+### CC9. Tool schema dual-format support — MCP-compat preparation (~100 LOC) — SHIPPED (PR #204, 2026-04-28)
 
-### CC9. Tool schema dual-format support — MCP-compat preparation (~100 LOC)
+**Shipped via:** PR #204 (+ `tests/unit/test_tool_dual_schema.py`)
 
 Today `Tool.input_schema` uses a custom format `{"name": type}` or `{"name": (type, default)}`. The wider ecosystem (MCP, OpenAI, Anthropic, OpenAPI) uses JSONSchema. To keep the door open for MCP server/client modes in 1.1+ without breaking user-written tools:
 
@@ -351,9 +353,9 @@ Today `Tool.input_schema` uses a custom format `{"name": type}` or `{"name": (ty
 3. Internally, normalize to the existing custom format (no behavior change in 1.0).
 4. Document that JSONSchema is the canonical format going forward; the custom format is supported indefinitely as a convenience.
 
-**Why before 1.0:** If 1.0 ships with only the custom format and 1.1 adds MCP server mode, third-party tool authors who wrote tools against 1.0 either need a conversion step or break. Adding the bridge now is non-breaking and forward-compatible. See [mcp_compatibility.md](mcp_compatibility.md) for the broader 1.1+ MCP work.
+### CC10. Async wrappability check (~1 hour audit) — SHIPPED (PR #210, 2026-04-29)
 
-### CC10. Async wrappability check (~1 hour audit)
+**Shipped via:** PR #210 (bundled with CC8 + CC11)
 
 Modern Python frameworks (FastAPI, Pydantic AI, LangGraph) are async-native. Maxim's `api.py` verbs are sync. As long as users can wrap them in `asyncio.to_thread()` cleanly, no work is needed. But if any verb does something that breaks under threadpool wrapping (e.g., uses asyncio internally without an event loop, depends on stdin/stdout, depends on the current working directory), retrofitting async support post-1.0 is invasive.
 
@@ -364,23 +366,21 @@ Modern Python frameworks (FastAPI, Pydantic AI, LangGraph) are async-native. Max
 
 If anything fails the check, fix it (small surface adjustments, likely <30 LOC each). Document the threadpool wrap pattern in the stability page from CC2.
 
-**Why before 1.0:** Adding async support post-1.0 is additive; making sync verbs threadpool-safe post-1.0 may not be — depends on what's leaked into them. Cheap to verify now.
+### CC11. Tool cancellation contract (~30 LOC + doc) — SHIPPED (PR #210, 2026-04-29)
 
-### CC11. Tool cancellation contract (~30 LOC + doc)
+**Shipped via:** PR #210 (bundled with CC8 + CC10)
 
 Tools have a `timeout` field but no cancellation hook. A user pressing Ctrl-C, an exceeded budget, or an upstream cancellation has no graceful path — long-running tools (web scraping, large file ops, MCP subprocess calls in 1.1+) become stuck threads.
 
 **Deliverable:** add `Tool.cancel()` hook to the ABC with a default no-op implementation. Document semantics: when called, the tool should attempt to abort its current execution and release resources. Backwards-compatible for existing tools (default no-op = today's behavior); explicit for new ones. Wire one or two heavy built-in tools (web fetch, MCP subprocess) to actually implement cancel.
 
-**Why before 1.0:** Adding a method to the Tool ABC post-1.0 is a breaking change for third-party tool authors who subclassed `Tool` (Python's ABC raises if subclasses don't implement abstractmethods, even with defaults). Adding a non-abstract method with a default body now is non-breaking.
+### CC12. Token telemetry standardization (~doc + small surface adjustment) — SHIPPED (PR #212, 2026-04-29)
 
-### CC12. Token telemetry standardization (~doc + small surface adjustment)
+**Shipped via:** PR #212 (bundled with CC2 + CC4)
 
 Modern frameworks expose `input_tokens`, `output_tokens`, `cached_tokens` in standardized dicts. Maxim has cost tracking per-session via `LLMEnergyTracker`. Verify the per-call telemetry exposes the standard fields in `ToolOutput`, `BackendError`, or wherever — so users building dashboards / fine-tuning datasets / cost analyses don't have to reverse-engineer the format.
 
 **Deliverable:** audit the call-site telemetry in `models/language/router.py`, `_MaximPeerBackend`, `_OpenAIBackend`, `LLMEnergyTracker`. Confirm `input_tokens` / `output_tokens` / `cached_tokens` are exposed under those exact field names in any user-visible structure. Where missing, add them. Document the contract in CC4's classification doc.
-
-**Why before 1.0:** Renaming a telemetry field post-1.0 breaks anyone parsing the JSONL log. Aligning to the de-facto standard names now is cheap.
 
 ---
 
