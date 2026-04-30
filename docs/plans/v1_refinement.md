@@ -52,6 +52,39 @@ Prove that Layer 1 pre-deliberation enrichment produces measurably different beh
 
 **Results doc:** `docs/experiments/10_cross_session_enrichment.md`
 
+### V2. Confound quarantine for V1 re-run — gates substrate attribution claim
+
+**Companion plan:** [confound_quarantine.md](confound_quarantine.md)
+**Status:** PLANNING — pre-implementation; gates the V1 re-run
+
+A multi-lens audit (default-on prompt injectors / goal-keyword path divergence / hidden state leakage) found **five default-on confound systems** that fire silently on every `maxim --sim` invocation, including V1. The original V1 PARTIAL PASS result is contaminated: it cannot be attributed to the substrate alone while four other systems are simultaneously shaping AUT behavior.
+
+**The five confounds:**
+
+| # | Confound | Site | Impact |
+|---|---|---|---|
+| 1 | PFC deliberation preamble (~1k token reasoning scaffold w/ hardcoded "fight dragon → slash" example) | [exec_prompts.py:13](../../src/maxim/agents/exec_prompts.py#L13), gate at [prompt_builder.py:979](../../src/maxim/agents/prompt_builder.py#L979) | Primes combat behavior on every embodied sim. *Widened* on 2026-04-24 to fire on cold-start. |
+| 2 | Acting Coach + embodied identity rewrite (`role_values=("curiosity","survival")` baked in) | [prompt_builder.py:117](../../src/maxim/agents/prompt_builder.py#L117), [acting_coach.py:73](../../src/maxim/prompts/acting_coach.py#L73) | Pre-decides what counts as a good outcome — the very thing affordance-learning experiments measure. |
+| 3 | "SIMULATION ENVIRONMENT — all tool actions are sandboxed and safe" prompt block | [prompt_builder.py:148](../../src/maxim/agents/prompt_builder.py#L148) | Plausibly deflates risk-aversion behavior. |
+| 4 | Orchestrator NPC global state at `~/.maxim/orchestrator/` | [orchestrator.py:1181](../../src/maxim/simulation/orchestrator.py#L1181) | Persists across every sim run. Run N+1's narrator carries learned biases from Run N. |
+| 5 | Persona default `adversarial` | [personas.py:352](../../src/maxim/simulation/personas.py#L352) | Already known. The original 9-experiment confound. |
+
+Plus second-tier: arc keyword routing (goals containing "learn"/"memory"/"cradle" silently route through generative narrator path); default `bodies/base_humanoid` injection; global `~/.maxim/util/{semantic_embeddings.npz, escalation_learning.json, fear_learning.json, ...}` bridge state.
+
+**Phased re-run protocol** (full design in [confound_quarantine.md](confound_quarantine.md) §"Phased re-run protocol"):
+
+| Phase | Description |
+|-------|-------------|
+| **A** (substrate-only baseline) | All confound flags ON (disable everything), isolated `MAXIM_DATA_HOME` |
+| B–F | Re-enable each confound one-at-a-time; measure delta vs Phase A |
+| **G** (control) | All defaults ON, isolated `MAXIM_DATA_HOME` only — confirms isolation alone doesn't move metrics |
+
+The phase deltas attribute the V1 result to specific contributors. Phase A is the actual substrate-attribution number for the 1.0 claim.
+
+**Existential risk flagged:** if Phase A shows the cross-session recall signal disappears once the scaffold is removed, the 1.0 substrate-attribution claim must be re-scoped. That's the point of the experiment — discover this before 1.0, not after.
+
+**Why before 1.0:** the substrate-attribution claim is the central 1.0 marketing claim. Shipping it on contaminated data is a credibility risk. The flag surface is ~40 production LOC; the test surface and harness are larger but cheap.
+
 ---
 
 ## Section 2: Bio-System Stabilization (freeze-worthy interfaces)
