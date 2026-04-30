@@ -50,6 +50,8 @@ Plans on the 1.0 critical path or actively shipping:
 - [scn_oscillator_feedback.md](scn_oscillator_feedback.md) — Close the SCN→NAc feedback loop. Anticipatory temporal credit. ~100-150 LOC.
 - [sem_world_enrichment.md](sem_world_enrichment.md) — **Phase 1 SHIPPED.** Phases 2-3 deferred to 1.1.
 - [proprioceptive_discovery.md](proprioceptive_discovery.md) — **Mechanism A SHIPPED.** Mechanism B (entity acquisition) shipped with cradle.
+- [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) — **Draft.** Delete the persona prompt-injection scaffold; introduce `--mode` flag for the dispatch logic that was hiding inside persona names. Open decision: A/B/C on testing-strategy fate. ~400 add / 730 delete.
+- [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) — **Draft.** Decision-boundary wires that close bio-system gaps: embodiment-state filter, stimulus-class aversion, risk-sensitive selection. Stages 0-3 ship in 1.0; Wires 4-5 deferred to 1.1+. ~680 LOC.
 - [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — Living roadmap. C3-C4.6 complete. C5+ remain. Not gating 1.0.
 
 ### 1.1 track (concurrent development)
@@ -65,6 +67,7 @@ Accumulate evidence over time. Not on the critical path — ongoing scientific/o
 - [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — Does the agent get better across sessions? 4 experiments, 41/41 hypotheses confirmed.
 - [memory_consolidation_practice.md](memory_consolidation_practice.md) — Refines P8 sleep-replay. ACTIVATED (P8 shipped 2026-04-19).
 - [tool_refinement_plan.md](tool_refinement_plan.md) — Ongoing tool surface curation.
+- [persona_convergence_crucible.md](persona_convergence_crucible.md) — Long-horizon persona emergence ("Roy" iterations). Three-arm comparison methodology, substrate-only priming. Begins post-1.0; depends on bio_emergent_persona_foundations Stages 0-3.
 
 ## Deferred (post-1.0, revive on trigger)
 
