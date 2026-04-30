@@ -409,8 +409,12 @@ class TestSimulationTools:
 
 class TestPersonas:
     def test_all_personas_defined(self):
-        assert len(SIMULATION_PERSONAS) == 10
+        # 11 = 10 behavioural personas + "neutral" (V1 substrate-attribution
+        # baseline, intentionally empty context_prompt — see
+        # docs/plans/confound_quarantine.md).
+        assert len(SIMULATION_PERSONAS) == 11
         for name in (
+            "neutral",
             "adversarial",
             "cooperative",
             "confused",
@@ -441,10 +445,16 @@ class TestPersonas:
         names = list_personas()
         assert "adversarial" in names
         assert "campaign" in names
-        assert len(names) == 10
+        assert "neutral" in names
+        assert len(names) == 11
 
     def test_all_personas_have_context_prompt(self):
         for name, persona in SIMULATION_PERSONAS.items():
+            # "neutral" intentionally has an empty context_prompt — it's
+            # the V1 substrate-attribution baseline.
+            if name == "neutral":
+                assert persona.context_prompt == ""
+                continue
             assert persona.context_prompt, f"Persona '{name}' has empty context_prompt"
             assert persona.focus, f"Persona '{name}' has empty focus"
 
