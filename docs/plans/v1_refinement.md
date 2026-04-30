@@ -86,16 +86,15 @@ Closed the SCN→NAc feedback loop. Three-path credit in TemporalCreditDistribut
 3. `TemporalCreditDistributor.distribute()` — third anticipatory credit path
 4. `build_bio_stack` — `scn.enable_oscillator()` by default
 
-### B3. SEM world enrichment (Phases 2-3)
+### B3. SEM world enrichment (Phase 3 only — Phases 1+2 shipped)
 
 **Companion plan:** [sem_world_enrichment.md](sem_world_enrichment.md)
 
-Phase 1 shipped (scene manifest pre-trigger, head-noun alias fallback). Remaining:
+Phase 1 shipped (scene manifest pre-trigger via `ImaginationTrigger.process_manifest`, head-noun alias fallback). Phase 2 shipped (`BioEnrichmentPipeline` consumes `resolved_entities` and queries `ComponentIndex.find_alias_only` to enrich percept context with SEM-aware affordances; `agent_loop.py` forwards the imagination resolution into the enrichment context).
 
-- **Phase 2: Bio-enrichment routing** — BioEnrichmentPipeline queries ComponentIndex for SEM-aware context. Entity affordances appear in enrichment sections ("your experience with fire_breath suggests...").
-- **Phase 3: Composable body archetypes** — Mix-and-match body templates (biped + wings, quadruped + tail weapon) so imagination can compose novel entities from known parts rather than designing from scratch.
+**Remaining (1.0 vs 1.1 scope decision pending):**
 
-**Why before 1.0:** Sim agents currently start in sparse worlds (1-2 entities). Real learning requires a rich environment — doors, torches, traps, multiple creatures. Without Phases 2-3, the cradle (B4) has nothing to learn from.
+- **Phase 3: Composable body archetypes** — Mix-and-match body templates (biped + wings, quadruped + tail weapon) so imagination can compose novel entities from known parts rather than designing from scratch. Archetype YAMLs partially landed in `_data/components/archetypes/`; the `maxim_sim_avatar` body migration and the `archetype: <name>` field plumbing on existing components are not yet done.
 
 ---
 
@@ -241,7 +240,7 @@ Publication guide, user docs, architecture docs — ship-ready state.
 2. **B1** (protocol enrichment) — cheap now, expensive later. Do early while interfaces are still warm.
 3. **P1 + P2** (pipeline gaps) — small, can run in parallel with B1.
 4. **B2** (SCN oscillator) — depends on P1 (ToolPainBridge temporal migration provides diverse TemporalEvents for the oscillator to learn from).
-5. **B3** (SEM world enrichment Phases 2-3) — enriches the learning environment.
+5. **B3** (SEM world enrichment Phase 3) — Phases 1+2 shipped; Phase 3 (composable body archetypes) optional for 1.0.
 6. **B4** (cradle) — depends on B2 (SCN feedback) and B3 (rich world). The capstone demo. **Includes P3** (energy bridge replacement ships as cradle Stage 1c). Also includes drive protocol interfaces (`CouplingSpec`, `ModulationSpec`, `pain_model`) that must freeze at 1.0.
 7. **C1-C3** (internal cleanup) — **SHIPPED** (PR #196, 2026-04-26).
 8. **C4-C6** (deprecation phase) — 0.9 warnings, 1.0 hard errors.

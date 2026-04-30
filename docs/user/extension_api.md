@@ -17,7 +17,7 @@ This page documents **extension surfaces** — what third parties plug INTO Maxi
 | 5 | Custom action sinks | stable | [`ActionSink` protocol](#5-custom-action-sinks) |
 | 6 | Bio-system bridges | experimental | [`PainBus.subscribe` / `ReactionBus.subscribe`](#6-bio-system-bridges) |
 | 7 | Event subscriptions | experimental | [`maxim.on(event_name, callback)`](#7-event-subscriptions) |
-| 8 | Custom personas | stable | [`maxim.register_persona(...)`](#8-custom-personas) |
+| 8 | Custom personas | ⚠️ experimental | [`maxim.register_persona(...)`](#8-custom-personas) |
 
 ---
 
@@ -408,7 +408,7 @@ handle.unsubscribe()
 
 ## 8. Custom personas
 
-**Stability:** stable.
+**Stability:** ⚠️ experimental — the persona system may be redesigned alongside future Mother Maxim / orchestrator work (see [stable_api.md](stable_api.md) and `docs/plans/persona_cleanup_and_mode_transition.md`). The verb name and signature may change in a future minor release.
 
 Personas shape how the simulation orchestrator framing affects an agent — adversarial probing, cooperative coaching, etc. Register a persona once and reference it by name in `--persona <name>` or the `persona=` argument to `imagine()`/`run()`.
 

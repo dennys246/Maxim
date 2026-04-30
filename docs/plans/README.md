@@ -46,10 +46,7 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 Plans on the 1.0 critical path or actively shipping:
 
 - [v1_refinement.md](v1_refinement.md) — **1.0 release plan.** Validation + bio-system stabilization + sensorimotor grounding + pipeline completion + cleanup + docs + contract clarification (Section 7). 1.1 track index is Section 8.
-- [bio_system_protocol_enrichment.md](bio_system_protocol_enrichment.md) — Future-proof bio-system interfaces with `*Context` dataclass parameters. Cheap now, expensive post-1.0.
-- [scn_oscillator_feedback.md](scn_oscillator_feedback.md) — Close the SCN→NAc feedback loop. Anticipatory temporal credit. ~100-150 LOC.
-- [sem_world_enrichment.md](sem_world_enrichment.md) — **Phase 1 SHIPPED.** Phases 2-3 deferred to 1.1.
-- [proprioceptive_discovery.md](proprioceptive_discovery.md) — **Mechanism A SHIPPED.** Mechanism B (entity acquisition) shipped with cradle.
+- [sem_world_enrichment.md](sem_world_enrichment.md) — **Phases 1+2 SHIPPED.** Phase 3 (composable body archetypes) partial — archetype YAMLs in `_data/components/archetypes/`, no avatar migration yet. 1.0 vs 1.1 scope decision pending.
 - [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) — **Draft.** Delete the persona prompt-injection scaffold; introduce `--mode` flag for the dispatch logic that was hiding inside persona names. Open decision: A/B/C on testing-strategy fate. ~400 add / 730 delete.
 - [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) — **Draft.** Decision-boundary wires that close bio-system gaps: embodiment-state filter, stimulus-class aversion, risk-sensitive selection. Stages 0-3 ship in 1.0; Wires 4-5 deferred to 1.1+. ~680 LOC.
 - [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — Living roadmap. C3-C4.6 complete. C5+ remain. Not gating 1.0.
@@ -93,6 +90,11 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 ## Archive
 
 Completed or superseded plans live in [archive/](archive/).
+
+Recently archived (2026-04-29 1.0 audit — verified shipped against code):
+- [archive/bio_system_protocol_enrichment.md](archive/bio_system_protocol_enrichment.md) — **✅ COMPLETE + ARCHIVED.** All 5 `*Context` dataclasses live at `src/maxim/models/bio_context.py`.
+- [archive/scn_oscillator_feedback.md](archive/scn_oscillator_feedback.md) — **✅ SHIPPED + ARCHIVED.** B2 anticipatory temporal credit. `OscillatorNetwork.predict_event_imminence`, `TemporalCreditDistributor.anticipatory_pre_activate`, `scn.enable_oscillator()` all wired.
+- [archive/proprioceptive_discovery.md](archive/proprioceptive_discovery.md) — **✅ Mechanisms A+B SHIPPED + ARCHIVED.** Latent-affordance discovery + entity acquisition.
 
 Recently archived (2026-04-25 plans audit + stall recovery verified shipped):
 - [archive/affordance_concept_transfer.md](archive/affordance_concept_transfer.md) — **✅ Stages 0-4 SHIPPED + ARCHIVED.** Cross-entity learning, SCN temporal coupling.

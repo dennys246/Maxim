@@ -1,7 +1,6 @@
 # SEM World Enrichment — Rich Entity Environments
 
-**Branch:** `feat/sem-world-enrichment` (from `main` after `feat/sem-damage-autosense` merges)
-**Status:** PLANNING
+**Status:** PHASES 1+2 SHIPPED. Phase 3 (composable body archetypes) PARTIAL — archetype YAMLs exist in `_data/components/archetypes/`, avatar migration not yet done. 1.0 vs 1.1 scope decision pending.
 **Depends on:** PR #190 (sem-damage-autosense) merged
 
 ## Motivation
