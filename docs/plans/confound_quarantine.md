@@ -1,7 +1,7 @@
 # Confound quarantine — substrate-only V1 baseline
 
 **Status:** draft, pre-implementation
-**Ships in:** 0.9.x (post-1.0-freeze branch — see "Risks" §R1 below for the lifecycle decision)
+**Ships in:** 0.9.x (experimental); flag lifecycle decided in 1.0 conditional on Phase A outcome — see "Risks" §R1 for branches
 **Owns:** prompt-injection gates in [src/maxim/agents/prompt_builder.py](../../src/maxim/agents/prompt_builder.py), [src/maxim/agents/exec_prompts.py](../../src/maxim/agents/exec_prompts.py), [src/maxim/prompts/acting_coach.py](../../src/maxim/prompts/acting_coach.py); orchestrator state path in [src/maxim/simulation/orchestrator.py](../../src/maxim/simulation/orchestrator.py); persona default in [src/maxim/simulation/personas.py](../../src/maxim/simulation/personas.py); arc routing in [src/maxim/cli.py](../../src/maxim/cli.py); env-var contract doc in [docs/user/configuration.md](../user/configuration.md) under CC4
 **Companion plans:** [v1_refinement.md](v1_refinement.md) §V2 + §CC4, [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md)
 **Branch:** `confound-quarantine`
@@ -205,20 +205,19 @@ The unit tests are short — the value is that **silently removing any condition
 
 ## Risks
 
-### R1 — Flags become permanent public surface
+### R1 — Flag lifecycle decided in 1.0 based on Phase A outcome
 
-**Tradeoff:**
-- **(a) Ship as public 1.0 contract:** future researchers can reproduce the V1 numbers verbatim against a 1.0+ install. Costs an ongoing maintenance commitment for four flags whose only purpose is auditing the substrate.
-- **(b) Mark experimental, plan removal post-1.0:** smaller public surface; researchers reproducing V1 against post-1.0 installs need a pinned 0.9.x commit.
+The flags ship in 0.9.x as experimental (per CC4). Their disposition is **decided in 1.0**, conditionally on what the Phase A re-run reveals. No experimental limbo through 1.1+.
 
-**Recommendation: (b), with a documented removal target of 1.2.** Reasons:
+**Three branches, decided when Phase A results land:**
 
-1. The substrate has to stand on its own without the scaffold-disable flags being a permanent option. Keeping them public-stable signals that the maintainers don't trust the substrate, and that's the wrong message for 1.0+.
-2. CC4 explicitly carves out an "experimental — may change without notice" tier. These flags are textbook fits for it. The configuration.md doc warns users they may be removed.
-3. Reproducibility is preserved by **pinning the V1 experiment to a specific commit hash in the experiment's README**, not by freezing 0.9-era debug flags into the 1.0 contract. This is how academic ML reproduces results — by commit hash, not by flag stability.
-4. Removal is a one-line revert per gate site. Cheap.
+- **Clean pass** — substrate alone reproduces the V1 cross-session recall result without the scaffolds. **Flags removed in 1.0.** They did their job (attribution). Reproducibility for the V1 numbers is preserved by pinning the experiment README to a specific 0.9.x commit hash — that's the academic-ML standard, not freezing debug flags into the 1.0 contract. Removal is a one-line revert per gate site.
 
-The plan ships in 0.9.x. The flags survive through 1.1 to give early-1.0 researchers a re-run window. Removal in 1.2 is tracked as a one-line entry in `v1_refinement.md`'s "post-1.0 cleanup" section.
+- **Conditional pass** — substrate works but specific scaffolds materially boost the result. **Flags graduate from experimental to public-stable in 1.0**, classified under the public env-var contract per CC4. Documentation explicitly states which scaffold combinations the claim is conditional on. The flags become part of the production diagnostic surface (researchers and users debugging substrate behavior can disable scaffolds to isolate signal).
+
+- **Fail** (R2 fires) — substrate alone does NOT reproduce V1. **Re-scope the 1.0 claim** to "the substrate produces cross-session recall when supported by scaffold X+Y." Keep the flags as evidence of the re-scoping. Update the README and stable_api.md accordingly.
+
+The disposition decision is part of the V1 phased re-run experiment doc — Phase A results land, the doc records which branch fires, and the 1.0 release blocks on that decision. No deferral past 1.0.
 
 ### R2 — Phase A reveals the substrate alone doesn't reproduce V1
 

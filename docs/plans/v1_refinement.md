@@ -83,6 +83,8 @@ The phase deltas attribute the V1 result to specific contributors. Phase A is th
 
 **Existential risk flagged:** if Phase A shows the cross-session recall signal disappears once the scaffold is removed, the 1.0 substrate-attribution claim must be re-scoped. That's the point of the experiment — discover this before 1.0, not after.
 
+**Flag lifecycle — decided in 1.0, not deferred.** Flags ship in 0.9.x as experimental. Their disposition is forced at 1.0, conditional on Phase A results: (a) clean pass → flags removed in 1.0, V1 reproducibility via 0.9.x commit-hash pinning; (b) conditional pass → flags graduate from experimental to public-stable, claim documents which scaffolds it depends on; (c) fail → re-scope the 1.0 claim, keep flags as evidence. No experimental limbo through 1.1+.
+
 **Why before 1.0:** the substrate-attribution claim is the central 1.0 marketing claim. Shipping it on contaminated data is a credibility risk. The flag surface is ~40 production LOC; the test surface and harness are larger but cheap.
 
 ---
@@ -269,24 +271,26 @@ Publication guide, user docs, architecture docs — ship-ready state.
 
 ## Execution order
 
-1. **V1** (validation) — proves the claim. If it fails, everything else is moot.
-2. **B1** (protocol enrichment) — cheap now, expensive later. Do early while interfaces are still warm.
-3. **P1 + P2** (pipeline gaps) — small, can run in parallel with B1.
-4. **B2** (SCN oscillator) — depends on P1 (ToolPainBridge temporal migration provides diverse TemporalEvents for the oscillator to learn from).
-5. **B3** (SEM world enrichment Phase 3) — Phases 1+2 shipped; Phase 3 (composable body archetypes) optional for 1.0.
-6. **B4** (cradle) — depends on B2 (SCN feedback) and B3 (rich world). The capstone demo. **Includes P3** (energy bridge replacement ships as cradle Stage 1c). Also includes drive protocol interfaces (`CouplingSpec`, `ModulationSpec`, `pain_model`) that must freeze at 1.0.
-7. **C1-C3** (internal cleanup) — **SHIPPED** (PR #196, 2026-04-26).
-8. **C4-C6** (deprecation phase) — 0.9 warnings, 1.0 hard errors.
-9. **D1-D3** (docs) — last, after content stabilizes.
+The persona-cleanup track (1.1-T-persona-triad: scene_actor_affordances → bio_emergent → persona_cleanup) interleaves with the V1 re-run because Phase E of the dial-down protocol exercises persona-disabled runs and Phase F exercises embodiment-disabled runs. Both need infrastructure landed before the re-run is meaningful. Final ordering:
+
+1. **B1, P1, P2** — already shipped; baseline.
+2. **scene_actor_affordances Stages 1-2** (target_effect field on `AffordanceSchema` + `OrchestratorActorTool`) — absorbs the world-physics-engine job from the adversarial persona prompt, so killing persona doesn't break narrative→SEM coupling.
+3. **confound_quarantine flags** — opt-in disable env vars + `--no-acting-coach` / `--no-persona` CLI flags + autouse scrub fixture + per-flag pin tests. ~40 production LOC. See [confound_quarantine.md](confound_quarantine.md).
+4. **V1 phased re-run** (Phases A–G) — the dial-down experiment. Phase A produces the substrate-only baseline number for the 1.0 claim. Phase A's outcome forces the flag-lifecycle decision in 1.0 (clean pass / conditional pass / fail).
+5. **bio_emergent_persona_foundations** — scope decided after Phase A. If Phase A reveals the substrate needs richer disposition mechanics (learned aversions, risk sensitivity), implement Stages 0-3 before 1.0. Otherwise reserve fields on `GatingContext` and `OutcomePrediction` and ship implementation in 1.1.
+6. **persona_cleanup_and_mode_transition Stage 1** — additive `--mode` flag + deprecation warning on `--persona` and `register_persona`. Hard-remove in 1.1.
+7. **B2** (SCN oscillator) — already shipped (PR #198).
+8. **B3** (SEM world enrichment Phase 3) — Phases 1+2 shipped; Phase 3 (composable body archetypes) optional for 1.0.
+9. **B4** (cradle) — already shipped (PR #200).
+10. **C1-C3** — already shipped (PR #196, 2026-04-26).
+11. **C4-C6** (deprecation phase) — 0.9 warnings, 1.0 hard errors.
+12. **D1-D3** (docs) — last, after content stabilizes.
 
 ## Timing
 
-- B1 and P1+P2 are the quickest wins — ship first.
-- B2→B3→B4 is the critical chain for the sensorimotor grounding story.
-- B4 is the largest single item (~550-650 LOC) but stages are independently shippable and testable.
-- P3 (dead energy code removal) ships inside B4 Stage 1c, not as a separate PR.
-- C1-C3 are internal hard-removes, zero user impact — shipped 2026-04-26 (PR #196).
-- C4-C6 need a 0.9 deprecation release before 1.0 hard errors.
+- Items 2-6 are the new triad-plus-validation chain. Ordering is load-bearing: target_effect must exist before persona is disabled in Phase E; confound_quarantine flags must exist before V1 re-run; V1 results must land before bio_emergent and persona-cleanup scopes are decided.
+- Items 7-11 are largely shipped or low-LOC; the critical-path constraint is the 2-6 chain.
+- Date pressure is light per user direction (no external dependents on a specific 1.0 ship date) — foundation correctness matters more than calendar.
 
 ## 1.0 interface freeze checklist
 
