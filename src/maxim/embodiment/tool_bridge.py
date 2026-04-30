@@ -30,6 +30,98 @@ log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Sensor delta application
+# ---------------------------------------------------------------------------
+
+
+def _apply_sensor_deltas(
+    body: Entity,
+    deltas: dict[str, float],
+    *,
+    delta_kind: str,
+) -> None:
+    """Apply a {sensor_name: delta} map to a body's sensors.
+
+    Shared by ``self_effect`` (writes to the executor's body) and
+    ``target_effect`` (writes to the resolved target body).  Handles
+    entity-level sensors (``"hunger"``) and qualified modulator
+    sub-sensors (``"arms.thermal"``), range clamping (sensor schema
+    range or ``[0, 1]`` fallback), and ``sim_sensor`` logging.
+
+    Missing sensors emit a warning rather than raising so a partially-
+    valid delta map applies what it can.
+
+    Parameters
+    ----------
+    body : Entity
+        Root entity of the body that receives the deltas.
+    deltas : dict[str, float]
+        Sensor-name → delta map (negative deltas decrease the value).
+    delta_kind : str
+        ``"self_effect"`` or ``"target_effect"`` — used in the
+        missing-sensor warning so logs disambiguate the two paths.
+    """
+    if not deltas:
+        return
+
+    for sensor_name, delta in deltas.items():
+        old_val: float | None = None
+        target_metrics: dict[str, float] | None = None
+        target_key: str = sensor_name
+
+        if "." in sensor_name:
+            # Qualified modulator sub-sensor: "arms.thermal"
+            mod_name, sub_name = sensor_name.split(".", 1)
+            mod = body.modulators.get(mod_name)
+            if mod is not None and hasattr(mod, "vital_metrics"):
+                target_metrics = mod.vital_metrics
+                target_key = sub_name
+                old_val = target_metrics.get(sub_name)
+        else:
+            target_metrics = body.vital_metrics
+            old_val = target_metrics.get(sensor_name)
+
+        if old_val is None or target_metrics is None:
+            log.warning(
+                "%s target %r not found on body %s",
+                delta_kind,
+                sensor_name,
+                body.name,
+            )
+            continue
+
+        # Clamp to sensor range if available, else [0, 1]
+        lo, hi = 0.0, 1.0
+        if "." in sensor_name:
+            mod_name, sub_name = sensor_name.split(".", 1)
+            mod = body.modulators.get(mod_name)
+            if mod is not None and hasattr(mod, "_sensors"):
+                sub_spec = mod._sensors.get(sub_name, {})
+                if isinstance(sub_spec, dict) and "range" in sub_spec:
+                    lo, hi = sub_spec["range"]
+        else:
+            sensor = body.sensors.get(sensor_name)
+            if sensor is not None:
+                rng = sensor.reading_schema.get("range")
+                if rng and len(rng) == 2:
+                    lo, hi = rng
+
+        new_val = max(lo, min(hi, old_val + delta))
+        target_metrics[target_key] = new_val
+        try:
+            from maxim.simulation.sim_logger import sim_sensor
+
+            sim_sensor(
+                body.full_path,
+                sensor_name,
+                new_val,
+                baseline=old_val,
+            )
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Name resolution
 # ---------------------------------------------------------------------------
 
@@ -114,6 +206,45 @@ class ModulatorAffordanceTool(Tool):
         self._cerebellum = cerebellum
         self._entity_map = entity_map
         super().__init__()
+
+    def _resolve_target_body(self, target_arg: Any) -> Entity | None:
+        """Resolve a ``target=`` kwarg to a body :class:`Entity`.
+
+        ``"self"`` / ``"aut"`` / ``"player"`` (case-insensitive) map to
+        the executor's own body (``self._embodiment.root``) when an
+        embodiment is wired.  Anything else is looked up in the
+        entity_map; ``Entity`` instances passed directly are returned
+        as-is.  Returns ``None`` if no target was provided or the target
+        cannot be resolved — caller treats that as a silent no-op
+        (Stage 1 invariant: ``target_effect`` is silent without a
+        target).
+
+        Alias dual-semantics warning: the alias path is *AUT-context-
+        relative* — "self" means whatever body the executor is bound
+        to.  When :class:`maxim.simulation.tools.OrchestratorActorTool`
+        constructs an ephemeral ``ModulatorAffordanceTool`` bound to a
+        SCENE entity's body, "self" inside this resolver would point
+        at the scene entity, not the AUT.  ``OrchestratorActorTool``
+        therefore pre-resolves its target via the AUT-side entity_map
+        and passes the resolved :class:`Entity` instance directly via
+        ``target=<Entity>`` so this method's first branch (``isinstance
+        (target_arg, Entity)``) returns it without touching the alias
+        path.  Do NOT add a string-alias path that bypasses this
+        invariant — re-introduces the dragon-vs-AUT routing footgun.
+        """
+        if target_arg is None or target_arg == "":
+            return None
+        if isinstance(target_arg, Entity):
+            return target_arg
+        if isinstance(target_arg, str):
+            lowered = target_arg.strip().lower()
+            if lowered in ("self", "aut", "player") and self._embodiment is not None:
+                return self._embodiment.root
+            if self._entity_map is not None:
+                resolved = self._entity_map.resolve(target_arg)
+                if resolved is not None:
+                    return resolved
+        return None
 
     def execute(self, **kwargs: Any) -> Any:
         # Check affordance preconditions (component integrity gating).
@@ -210,66 +341,31 @@ class ModulatorAffordanceTool(Tool):
             "active_failures": active_failures,
             **result.metadata,
         }
-        # Self-effect: voluntary affordance execution can write back to agent body.
-        # Only fires when the agent explicitly called the tool (not reflex/orchestrator).
-        # Supports both entity-level sensors ("hunger") and qualified modulator
-        # sub-sensors ("arms.thermal") for transient contact effects.
+        # Self-effect: voluntary affordance execution writes back to the
+        # executor's own body.  Fires when the agent explicitly called the
+        # tool (not reflex/orchestrator).  Supports entity-level sensors
+        # ("hunger") and qualified modulator sub-sensors ("arms.thermal").
         if self._affordance_schema.self_effect and self._embodiment is not None:
-            for sensor_name, delta in self._affordance_schema.self_effect.items():
-                old_val: float | None = None
-                target_metrics: dict[str, float] | None = None
-                target_key: str = sensor_name
+            _apply_sensor_deltas(
+                self._embodiment.root,
+                self._affordance_schema.self_effect,
+                delta_kind="self_effect",
+            )
 
-                if "." in sensor_name:
-                    # Qualified modulator sub-sensor: "arms.thermal"
-                    mod_name, sub_name = sensor_name.split(".", 1)
-                    mod = self._embodiment.root.modulators.get(mod_name)
-                    if mod is not None and hasattr(mod, "vital_metrics"):
-                        target_metrics = mod.vital_metrics
-                        target_key = sub_name
-                        old_val = target_metrics.get(sub_name)
-                else:
-                    # Entity-level sensor
-                    target_metrics = self._embodiment.root.vital_metrics
-                    old_val = target_metrics.get(sensor_name)
-
-                if old_val is not None and target_metrics is not None:
-                    # Clamp to sensor range if available, else [0, 1]
-                    lo, hi = 0.0, 1.0
-                    if "." in sensor_name:
-                        mod_name, sub_name = sensor_name.split(".", 1)
-                        mod = self._embodiment.root.modulators.get(mod_name)
-                        if mod is not None and hasattr(mod, "_sensors"):
-                            sub_spec = mod._sensors.get(sub_name, {})
-                            if isinstance(sub_spec, dict) and "range" in sub_spec:
-                                lo, hi = sub_spec["range"]
-                    else:
-                        sensor = self._embodiment.root.sensors.get(sensor_name)
-                        if sensor is not None:
-                            rng = sensor.reading_schema.get("range")
-                            if rng and len(rng) == 2:
-                                lo, hi = rng
-                    new_val = max(lo, min(hi, old_val + delta))
-                    target_metrics[target_key] = new_val
-                    try:
-                        from maxim.simulation.sim_logger import sim_sensor
-
-                        sim_sensor(
-                            self._embodiment.root.full_path,
-                            sensor_name,
-                            new_val,
-                            baseline=old_val,
-                        )
-                    except Exception:
-                        pass
-                else:
-                    import logging as _logging
-
-                    _logging.getLogger(__name__).warning(
-                        "self_effect target %r not found on agent body %s",
-                        sensor_name,
-                        self._embodiment.root.name,
-                    )
+        # Target-effect: when the affordance fires WITH a target parameter,
+        # write deltas to the resolved target's body sensors.  Silent
+        # no-op if no target is provided (preserves backward compatibility
+        # with self-targeted-only affordances).  Target resolution uses
+        # the entity_map; "self"/"aut"/"player" map to the executor's body.
+        if self._affordance_schema.target_effect:
+            target_arg = kwargs.get("target")
+            target_body = self._resolve_target_body(target_arg)
+            if target_body is not None:
+                _apply_sensor_deltas(
+                    target_body,
+                    self._affordance_schema.target_effect,
+                    delta_kind="target_effect",
+                )
 
         # Build side_effects dict
         side_effects: dict[str, Any] | None = None

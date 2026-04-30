@@ -75,7 +75,11 @@ class TestSelfEffectExecution:
         nutrition_mod = food.modulators["nutrition"]
         schema = nutrition_mod.affordances["eat"]
         tool = ModulatorAffordanceTool(
-            food, nutrition_mod, "eat", schema, "food_eat",
+            food,
+            nutrition_mod,
+            "eat",
+            schema,
+            "food_eat",
             embodiment=emb,
         )
         result = tool.execute()
@@ -155,6 +159,7 @@ class TestSelfEffectExecution:
         tool = ModulatorAffordanceTool(food, nutrition_mod, "eat", schema, "food_eat", embodiment=emb)
 
         import logging
+
         with caplog.at_level(logging.WARNING):
             tool.execute()
 

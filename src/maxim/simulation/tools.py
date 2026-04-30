@@ -539,6 +539,239 @@ class DamageComponentTool(Tool):
         return ToolOutput(success=True, output=output)
 
 
+class OrchestratorActorTool(Tool):
+    """Have a scene entity perform one of its affordances against a target.
+
+    The orchestrator narrates 'the dragon breathes fire on you' AND calls
+    ``actor(entity='dragon', affordance='breathe_fire', target='player')``.
+    The scene entity's affordance spec drives the SEM mechanics — sensor
+    changes, failure-mode evaluation, PainBus, NAc — instead of the
+    orchestrator writing raw damage values.
+
+    Provenance: the resulting pain signal carries
+    ``source_entity="dragon"`` and ``source_affordance="breathe_fire"``,
+    so the AUT's NAc records the causal link to the scene entity rather
+    than to a generic ``orchestrator_damage`` source.
+
+    Invariants (per ``docs/plans/scene_actor_affordances.md``):
+    1. Self-side entities are rejected — orchestrator cannot puppet the
+       AUT's body via this tool.  Use ``damage_component`` /
+       ``set_entity_sensor`` for AUT-body writes.
+    2. ``target="self"|"aut"|"player"`` resolve to the AUT body root.
+       Any other value must be an entity name in EntityMap; unresolvable
+       targets fail loudly (no silent no-op).
+    3. Affordance ``requires`` gating fires naturally — if a scene entity
+       is too damaged, the affordance returns a failure result with
+       reason for the orchestrator to narrate ("the dragon tries to
+       breathe fire but only chokes").
+
+    Stage 2 scope limitation: failure-mode evaluation runs on the AUT's
+    embodiment ONLY.  When ``target`` resolves to a non-AUT scene entity
+    (e.g., a future co-op sim with an NPC ally getting hit by the
+    dragon), ``target_effect`` deltas land on the NPC body's sensors
+    but its ``evaluate_failures()`` is NOT invoked here — that path
+    requires per-entity embodiment + PainBus wiring which is deferred
+    to ``v1_refinement.md`` P4 multi-agent attribution work.  Today the
+    primary use case is "scene entity acts on AUT", which composes
+    correctly: target_effect → AUT sensors → AUT.evaluate_failures →
+    AUT PainBus → AUT NAc, with ``agent_id`` plumbing inherited from
+    the AUT's ``MemoryHub.agent_id`` per the P4 canonical-key rule.
+    """
+
+    name = "actor"
+    description = (
+        "Have a scene entity perform one of its affordances against a "
+        "target (default: the agent under test). Use this when the "
+        "scene entity has an affordance that mechanically describes "
+        "what is happening (e.g. dragon.breathe_fire, wolf.bite). The "
+        "affordance's target_effect deltas drive the AUT's body sensors, "
+        "producing pain via the same path as voluntary AUT actions. "
+        "For raw sensor writes not covered by any affordance, use "
+        "damage_component or set_entity_sensor instead."
+    )
+    input_schema = {
+        "entity": str,
+        "affordance": str,
+        "target": (str, "player"),
+        "params": (dict, {}),
+    }
+
+    _TARGET_ALIASES = frozenset({"self", "aut", "player"})
+
+    def __init__(self, *, embodiment: Any, entity_map: Any) -> None:
+        super().__init__()
+        self._aut_embodiment = embodiment
+        self._aut_entity_map = entity_map
+
+    def execute(self, **kwargs: Any) -> ToolOutput:
+        from maxim.embodiment.body import Embodiment
+        from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
+
+        entity_name = str(kwargs.get("entity", "")).strip()
+        affordance_name = str(kwargs.get("affordance", "")).strip()
+        target_name = str(kwargs.get("target", "player")).strip()
+        params_raw = kwargs.get("params") or {}
+        params = dict(params_raw) if isinstance(params_raw, dict) else {}
+        # Strip reserved kwargs the OrchestratorActorTool injects itself
+        # into the ephemeral tool call.  Without this an LLM that
+        # mistakenly nests ``target`` inside ``params`` (a real failure
+        # mode for 14B local models) raises a duplicate-kwarg TypeError.
+        for reserved in ("target",):
+            params.pop(reserved, None)
+
+        if not entity_name:
+            return ToolOutput(success=False, error="entity is required")
+        if not affordance_name:
+            return ToolOutput(success=False, error="affordance is required")
+        if self._aut_entity_map is None:
+            return ToolOutput(success=False, error="No entity_map configured for actor tool")
+        if self._aut_embodiment is None:
+            return ToolOutput(success=False, error="No AUT embodiment configured for actor tool")
+
+        # 1. Resolve scene entity from EntityMap.
+        scene_entity = self._aut_entity_map.resolve(entity_name)
+        if scene_entity is None:
+            known = ", ".join(self._aut_entity_map.list_names()[:10])
+            return ToolOutput(
+                success=False,
+                error=f"Entity '{entity_name}' not in scene (known: {known})",
+            )
+
+        # 2. Reject self-side entities (invariant 1).
+        if self._aut_entity_map.is_self(scene_entity):
+            return ToolOutput(
+                success=False,
+                error=(
+                    f"Entity '{entity_name}' is the AUT's own body, not a scene actor. "
+                    "Use damage_component or set_entity_sensor for AUT-body writes."
+                ),
+            )
+
+        # 3. Look up the affordance on the entity's modulators.
+        modulator: Any = None
+        schema: Any = None
+        for mod in scene_entity.modulators.values():
+            if affordance_name in mod.affordances:
+                modulator = mod
+                schema = mod.affordances[affordance_name]
+                break
+        if modulator is None or schema is None:
+            available = sorted({aff for mod in scene_entity.modulators.values() for aff in mod.affordances.keys()})
+            return ToolOutput(
+                success=False,
+                error=(
+                    f"Entity '{entity_name}' has no affordance '{affordance_name}'. "
+                    f"Available: {', '.join(available) if available else 'none'}"
+                ),
+            )
+
+        # 4. Resolve target (invariant 2).
+        target_lower = target_name.lower()
+        if target_lower in self._TARGET_ALIASES:
+            target_entity = self._aut_embodiment.root
+        else:
+            target_entity = self._aut_entity_map.resolve(target_name)
+        if target_entity is None:
+            return ToolOutput(
+                success=False,
+                error=(
+                    f"Target '{target_name}' could not be resolved. "
+                    "Use 'player'/'aut'/'self' for the agent under test, "
+                    "or an entity name from the scene."
+                ),
+            )
+
+        # 5. Construct the ephemeral affordance tool.  Bind to the scene
+        #    entity's body so self_effect writes to the scene entity
+        #    (e.g. dragon stamina drops on breathe_fire).  Pass the
+        #    resolved target Entity through the kwarg so the tool's
+        #    target_effect path resolves it directly without touching
+        #    the alias path (which is AUT-relative and would point back
+        #    to the dragon when bound to scene_emb).
+        scene_emb = Embodiment(scene_entity)
+        eph_tool = ModulatorAffordanceTool(
+            scene_entity,
+            modulator,
+            affordance_name,
+            schema,
+            f"actor_{entity_name}_{affordance_name}",
+            embodiment=scene_emb,
+            entity_map=self._aut_entity_map,
+        )
+        result = eph_tool.execute(target=target_entity, **params)
+
+        # 6. Run evaluate_failures on the AUT body so target_effect
+        #    deltas crossing AUT failure thresholds publish PainSignals
+        #    on the AUT's PainBus (NAc records "dragon → fire → pain").
+        #    Narrow the catch: evaluate_failures() should not raise in
+        #    healthy paths.  Swallowing AttributeError covers the case
+        #    where a caller wires a partial Embodiment for tests; any
+        #    other exception is a real bug we want to see (per the
+        #    project's no-band-aid rule).
+        events = self._aut_embodiment.evaluate_failures()
+        aut_failures: list[dict[str, Any]] = [
+            {
+                "name": ev.failure_name,
+                "entity": ev.entity_path,
+                "pain": ev.pain_intensity,
+            }
+            for ev in events
+        ]
+
+        # Compose response — preserve ToolOutput contract from the
+        # ephemeral tool (success/output/side_effects/error) while
+        # annotating provenance and AUT-side failures for the
+        # orchestrator to narrate.
+        side_effects: dict[str, Any] = dict(getattr(result, "side_effects", None) or {})
+        if aut_failures:
+            existing = side_effects.get("embodiment_failures") or []
+            if isinstance(existing, list):
+                side_effects["embodiment_failures"] = existing + aut_failures
+            else:
+                side_effects["embodiment_failures"] = aut_failures
+        side_effects["actor_invocation"] = {
+            "source_entity": entity_name,
+            "source_affordance": affordance_name,
+            "target": target_entity.name,
+        }
+
+        if not result.success:
+            return ToolOutput(
+                success=False,
+                error=result.error,
+                output=result.output,
+                side_effects=side_effects or None,
+            )
+
+        output = dict(result.output) if isinstance(result.output, dict) else {"result": result.output}
+        output.setdefault("source_entity", entity_name)
+        output.setdefault("source_affordance", affordance_name)
+        output["target"] = target_entity.name
+        output["aut_failures"] = aut_failures
+
+        try:
+            from maxim.simulation.sim_logger import sim_log
+
+            sim_log(
+                "ACTOR",
+                f"{entity_name}.{affordance_name} → {target_entity.name} (pain_triggered={bool(aut_failures)})",
+                {
+                    "entity": entity_name,
+                    "affordance": affordance_name,
+                    "target": target_entity.name,
+                    "aut_failures": aut_failures,
+                },
+            )
+        except Exception:
+            pass
+
+        return ToolOutput(
+            success=True,
+            output=output,
+            side_effects=side_effects or None,
+        )
+
+
 class SetEntitySensorTool(Tool):
     """Set an AUT body sensor to a specific value.
 

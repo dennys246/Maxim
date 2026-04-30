@@ -84,11 +84,27 @@ class AffordanceSchema:
     chain.  Example: ``requires={"integrity": 0.3}`` means the affordance
     needs at least 30% component integrity to execute.
 
-    Forward-compat (CC3, 1.0): all fields have defaults, so additive
-    fields appended at the end stay non-breaking. The four dict-typed
-    fields (``params``, ``requires``, ``self_effect``) absorb most
-    extension needs at the YAML layer; new top-level fields require
-    explicit consideration.
+    ``self_effect`` is the per-affordance sensor-delta map applied to
+    the *executor's own body* on voluntary use (e.g. eating food drops
+    the eater's hunger).  ``target_effect`` is the parallel map applied
+    to a *resolved target body* when the affordance fires with a
+    ``target`` parameter (e.g. ``breathe_fire`` on a dragon writes
+    thermal deltas onto the target).  When no target is provided,
+    ``target_effect`` is silently skipped — the affordance still works
+    for self-targeted use (this preserves backward compatibility with
+    every existing affordance that has no ``target_effect`` field).
+
+    SHAPE-FROZEN at 1.0 (CC3). The dict-typed fields (``params``,
+    ``requires``, ``self_effect``, ``target_effect``) absorb most
+    extension needs at the YAML layer, so a free-form ``extra: dict``
+    hatch is deliberately rejected — it would re-open the silent-typo
+    class for sensor-name keys (``arms.thermall`` instead of
+    ``arms.thermal``) that ``_apply_sensor_deltas`` already fail-loud
+    warns on for declared keys. All fields have defaults, so additive
+    fields appended at the end stay non-breaking. Adding a *required*
+    field post-1.0 is a major-version-bump change. Per CLAUDE.md:
+    "Do NOT add fields to these frozen dataclasses post-1.0 without a
+    breaking-change plan."
     """
 
     params: dict[str, type | tuple[type, Any]] = field(default_factory=dict)
@@ -96,6 +112,7 @@ class AffordanceSchema:
     timeout: float = 30.0
     requires: dict[str, float] = field(default_factory=dict)
     self_effect: dict[str, float] = field(default_factory=dict)  # agent sensor deltas on voluntary use
+    target_effect: dict[str, float] = field(default_factory=dict)  # sensor deltas applied to resolved target
 
 
 # ---------------------------------------------------------------------------

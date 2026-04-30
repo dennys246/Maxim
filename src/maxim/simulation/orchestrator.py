@@ -254,6 +254,7 @@ def start_simulation_mode(
         InjectPainTool,
         InspectAUTTool,
         ObserveActionsTool,
+        OrchestratorActorTool,
         SendMessageTool,
         SetEntitySensorTool,
         SimRespondTool,
@@ -933,8 +934,11 @@ def start_simulation_mode(
     orch_registry.register(AnalyzeResultsTool(bridge=bridge, llm=llm_router))
     orch_registry.register(InjectPainTool(bridge=bridge))
     # DamageComponentTool + SetEntitySensorTool: SEM damage/recovery → PainBus → NAc.
+    # OrchestratorActorTool: scene entity affordances against the AUT —
+    # writes target_effect deltas through the SEM mechanics path.
     # Only registered when embodiment is active (--embodiment flag).
     if _aut_embodiment is not None:
+        orch_registry.register(OrchestratorActorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
         orch_registry.register(DamageComponentTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
         orch_registry.register(SetEntitySensorTool(embodiment=_aut_embodiment, entity_map=_aut_entity_map))
     orch_registry.register(spawn_tool)
