@@ -28,6 +28,7 @@ Additional guardrails:
 - If you touch provenance, run a sim with `MAXIM_PROVENANCE_VERBOSITY=2` and eyeball the trace
 - **Run `mypy` on public API files** after changing api.py, session.py, create.py, load.py, or __init__.py: `mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py src/maxim/create.py src/maxim/load.py --ignore-missing-imports`
 - **Run `ruff format`** after any changes: `ruff format src/ tests/`
+- **Parallel sessions use worktrees.** When ≥2 Claude sessions run concurrently on independent work, each uses its own git worktree (`git worktree add ../Maxim-wt-<branch> -b <full-branch>`) and works entirely in absolute paths within that worktree. Single-session work stays in the main checkout. Tests in worktrees need `PYTHONPATH=src`. Note `~/.maxim/` is shared across worktrees — don't run sims from concurrent doc/code sessions or they'll collide on persisted state.
 
 ## Lessons learned (bugs that bit us)
 
