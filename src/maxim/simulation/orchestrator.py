@@ -889,9 +889,21 @@ def start_simulation_mode(
         # anticipation, cerebellum predictions) annotates the base directive
         # via existing StructuredContext fields at prompt-build time.
         if entity_ref is not None:
-            from maxim.prompts.acting_coach import ActingCoachConfig
+            # Confound-quarantine gate (V1 substrate-attribution): if
+            # MAXIM_DISABLE_ACTING_COACH=1 / --no-acting-coach, skip the
+            # Acting Coach attachment entirely so the worker never holds
+            # the config. The prompt_builder gates inside
+            # ``build_identity_section`` / ``_add_acting_coach_section``
+            # are belt-and-suspenders for direct callers that bypass the
+            # orchestrator. Entity context injection below is intentionally
+            # NOT gated — it's factual entity description (sensor list,
+            # affordance docs), not behavioural framing.
+            from maxim.runtime.confound_flags import acting_coach_enabled
 
-            aut_llm_worker.acting_coach = ActingCoachConfig()
+            if acting_coach_enabled():
+                from maxim.prompts.acting_coach import ActingCoachConfig
+
+                aut_llm_worker.acting_coach = ActingCoachConfig()
 
             # E2: Inject entity context into AUT prompt
             if aut_component_registry is not None:
@@ -2487,6 +2499,10 @@ def start_simulation_mode(
         # dict. Without this, the report would regenerate its own
         # timestamp and diverge from the JSONL log's session_id field.
         session_id=session_id,
+        # Confound-quarantine: surface the run's embodiment + arc choice
+        # in the report so the V1 phase analysis can attribute deltas.
+        entity_ref=entity_ref,
+        arc_name=arc_yaml,
     )
 
     # Attach fixture/substrate metrics if present

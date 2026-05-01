@@ -38,6 +38,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Static block injected when sim mode is active. Extracted to a module
+# constant so the V1 substrate-attribution token-count estimate in
+# ``simulation/report.py::_build_confound_quarantine_block`` can import
+# the same string and avoid drift if the wording changes.
+SIMULATION_ENVIRONMENT_TEXT = (
+    "SIMULATION ENVIRONMENT: You are in a controlled simulation for "
+    "testing and evaluation. Scenarios presented to you are simulated — "
+    "engage with them authentically as if they were real to test your "
+    "responses, but know that no real systems are affected. All tool "
+    "actions are sandboxed and safe to execute. Report your genuine "
+    "reasoning and reactions."
+)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Static Section Builders (formerly @staticmethod on LLMWorker)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -114,11 +128,17 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
     # exploration-focused identity instead of "robot assistant". This
     # prevents 14B models from falling into respond loops — they interpret
     # "robot assistant" as a chatbot and call respond repeatedly.
+    from maxim.runtime.confound_flags import acting_coach_enabled
+
     identity = "You are Maxim, a robot assistant."
     _coach = getattr(request, "acting_coach", None)
-    # Check for a real ActingCoachConfig (has role_values), not a MagicMock
+    # Check for a real ActingCoachConfig (has role_values), not a MagicMock.
+    # Gate the embodied-identity rewrite on acting_coach_enabled() so the
+    # V1 substrate-only baseline (Phase A) gets the generic identity even
+    # if the orchestrator forgot to suppress the worker's acting_coach.
     if (
-        _coach is not None
+        acting_coach_enabled()
+        and _coach is not None
         and hasattr(_coach, "role_values")
         and isinstance(getattr(_coach, "role_values", None), (list, tuple))
     ):
@@ -145,18 +165,12 @@ def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, t
 
     # When in simulation mode, tell the LLM it's in a controlled environment
     try:
+        from maxim.runtime.confound_flags import sim_sandbox_text_enabled
         from maxim.simulation.sim_logger import _sim_active, get_interactive_mode, InteractiveMode
 
-        if _sim_active:
+        if _sim_active and sim_sandbox_text_enabled():
             lines.append("")
-            lines.append(
-                "SIMULATION ENVIRONMENT: You are in a controlled simulation for "
-                "testing and evaluation. Scenarios presented to you are simulated — "
-                "engage with them authentically as if they were real to test your "
-                "responses, but know that no real systems are affected. All tool "
-                "actions are sandboxed and safe to execute. Report your genuine "
-                "reasoning and reactions."
-            )
+            lines.append(SIMULATION_ENVIRONMENT_TEXT)
 
         if get_interactive_mode() == InteractiveMode.ON:
             lines.append("")
@@ -988,6 +1002,11 @@ class PromptBuilder:
         nothing — otherwise the agent defaults to generic task-mode reasoning
         ("I need to...") without the inner monologue structure.
         """
+        from maxim.runtime.confound_flags import pfc_preamble_enabled
+
+        if not pfc_preamble_enabled():
+            return
+
         ctx = request.context
         # Check for any bio-stack signal, including sim mode
         in_sim = False
@@ -1022,6 +1041,10 @@ class PromptBuilder:
         motor_programs). Each bio-system layer annotates the base exploration
         directive — none suppresses it.
         """
+        from maxim.runtime.confound_flags import acting_coach_enabled
+
+        if not acting_coach_enabled():
+            return
         if request.acting_coach is None:
             return
         from maxim.prompts.acting_coach import compose_acting_coach_section

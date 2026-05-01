@@ -154,6 +154,42 @@ def _isolate_maxim_concept_decomposition_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_confound_flags_env():
+    """Scrub every flag in ``confound_flags.ALL_FLAGS`` + ``MAXIM_V1_PHASE``.
+
+    The V1 substrate-attribution scaffold-disable flags
+    (MAXIM_DISABLE_PFC_PREAMBLE, MAXIM_DISABLE_ACTING_COACH,
+    MAXIM_DISABLE_SIM_SANDBOX_TEXT, MAXIM_NO_DEFAULT_PERSONA) are read
+    inside hot prompt-build paths (PromptBuilder._add_pfc_preamble_section
+    etc.) reachable during LLMWorker construction. Per CLAUDE.md
+    feedback_opt_in_env_in_hot_paths.md, every new opt-in env var in a
+    hot path must be paired with an autouse scrub. Iterates ALL_FLAGS
+    from the module so adding a flag in confound_flags.py automatically
+    scrubs it here — the per-flag pin tests in
+    tests/unit/test_confound_flags.py catch a forgotten ALL_FLAGS entry
+    via leaked env state.
+
+    ``MAXIM_V1_PHASE`` is telemetry-only (recorded verbatim into the
+    report's confound_quarantine block; doesn't gate runtime behavior),
+    so it lives outside ``ALL_FLAGS``. But it's still env-derived and
+    test-leaks would surface in any ``build_report`` integration test —
+    scrub it under the same fixture.
+    """
+    from maxim.runtime.confound_flags import ALL_FLAGS
+
+    names = list(ALL_FLAGS) + ["MAXIM_V1_PHASE"]
+    saved = {name: os.environ.pop(name, None) for name in names}
+    try:
+        yield
+    finally:
+        for name in names:
+            os.environ.pop(name, None)
+        for name, value in saved.items():
+            if value is not None:
+                os.environ[name] = value
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_llm_call_timeout_env():
     """Scrub ``MAXIM_LLM_CALL_TIMEOUT_S`` across every test (Plan 3.5 R2).
 
