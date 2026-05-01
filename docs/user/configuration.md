@@ -89,11 +89,6 @@ These variables are **debug / experimental**: useful for diagnostics or workarou
 | `MAXIM_CONCEPT_DECOMPOSITION` | Enable concept decomposition (noun-phrase extraction before EC). Requires spaCy + en_core_web_sm. | 0 |
 | `MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT` | Temporal credit weight for SCN-substrate eligibility traces. | 0.3 |
 | `MAXIM_AUTO_SPAWN_N_CTX` | Legacy alias for `MAXIM_LLM_N_CTX`. Kept for in-place upgrades. | (unset) |
-| `MAXIM_DISABLE_PFC_PREAMBLE` | Skip the PFC deliberation preamble injection (~1k tokens). Used by the V1 substrate-attribution phased re-run. Disposition decided at 1.0 per `docs/plans/confound_quarantine.md`. | 0 |
-| `MAXIM_DISABLE_ACTING_COACH` | Skip Acting Coach + embodied-identity rewrite. Same as `--no-acting-coach`. V1 substrate-attribution. | 0 |
-| `MAXIM_DISABLE_SIM_SANDBOX_TEXT` | Skip the "SIMULATION ENVIRONMENT" sandbox-context block in the system prompt. V1 substrate-attribution. | 0 |
-| `MAXIM_NO_DEFAULT_PERSONA` | Treat absent `--persona` as `None` (true neutral) instead of the `adversarial` fallback. Same as `--no-persona`. V1 substrate-attribution. | 0 |
-| `MAXIM_V1_PHASE` | Phase label recorded verbatim in `report.json` under `confound_quarantine.phase` so the V1 harness can correlate runs. | (unset) |
 
 ### Debug — peer/probe internals
 
@@ -136,7 +131,6 @@ Currently flagged as `[experimental]`:
 - `--reap-orphans` — sim safety net; behavior may evolve
 - `--audit-architecture` — internal audit verb
 - `--generate-simulation` — scenario generation utility
-- `--no-acting-coach`, `--no-persona` — V1 substrate-attribution scaffold-disable flags. Disposition (remove / graduate / re-scope) decided at 1.0 conditional on Phase A outcome — see `docs/plans/confound_quarantine.md`.
 
 ## Token telemetry contract (CC12)
 

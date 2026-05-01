@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -69,12 +68,6 @@ class SimulationReport:
     # Bio-system telemetry (Track 3: rich event-level data for research)
     bio_telemetry_path: str = ""  # Path to bio_telemetry.jsonl if saved
 
-    # Confound-quarantine block (V1 substrate-attribution phased re-run).
-    # See docs/plans/confound_quarantine.md. Records which scaffold-disable
-    # flags were active during the run + best-effort token counts so the
-    # phase delta can be attributed to a specific scaffold.
-    confound_quarantine: dict[str, Any] = field(default_factory=dict)
-
 
 def _count_tokens(text: str, llm_router: Any | None) -> int:
     """Best-effort token count for a static template.
@@ -105,79 +98,6 @@ def _count_tokens(text: str, llm_router: Any | None) -> int:
     return max(1, len(text) // 4)
 
 
-def _build_confound_quarantine_block(
-    *,
-    persona: str,
-    entity_ref: str | None,
-    arc_name: str | None,
-    llm_router: Any | None,
-) -> dict[str, Any]:
-    """Assemble the confound_quarantine report block.
-
-    Records which V1 substrate-attribution scaffolds were active and
-    best-effort token counts so a downstream phase comparison can
-    attribute the V1 result to a specific contributor. See
-    ``docs/plans/confound_quarantine.md``.
-
-    The harness wrapper (next session) sets ``MAXIM_V1_PHASE`` to label
-    each phase's report; we record it verbatim here.
-
-    Imports the static templates (``PFC_PREAMBLE``,
-    ``SIMULATION_ENVIRONMENT_TEXT``, ``ActingCoachConfig``) at function
-    scope and DOES NOT swallow ``ImportError``. Pre-merge review fold:
-    catching ``Exception: pass`` here would silently zero-out a token
-    count if a future refactor renamed those symbols, masking a regression
-    in the V1 phase G control. Let the import error propagate so the
-    refactor breaks loudly. The integration test in Phase G asserts
-    counts > 0, which catches a deletion but not a path rename — the
-    explicit non-swallowing import is the structural backstop.
-    """
-    from maxim.agents.exec_prompts import PFC_PREAMBLE
-    from maxim.agents.prompt_builder import SIMULATION_ENVIRONMENT_TEXT
-    from maxim.prompts.acting_coach import ActingCoachConfig, compose_acting_coach_section
-    from maxim.runtime.confound_flags import (
-        ALL_FLAGS,
-        acting_coach_enabled,
-        default_persona_enabled,
-        pfc_preamble_enabled,
-        sim_sandbox_text_enabled,
-    )
-
-    flags = {name: os.environ.get(name, "") for name in ALL_FLAGS}
-    # MAXIM_DATA_HOME is the existing public env var used to isolate
-    # ~/.maxim/ across phases. Record its value so phase-G control runs
-    # show isolation_data_home=true and same-result, proving isolation
-    # alone does not move metrics.
-    data_home = os.environ.get("MAXIM_DATA_HOME", "")
-    flags["MAXIM_DATA_HOME"] = data_home
-
-    # Best-effort token counts: 0 when the gate skipped the injection,
-    # estimated static-template size when the gate fired. Phase A asserts
-    # 0 across the three scaffold counts; richer "actual" budgeter-driven
-    # counts can be plumbed via a separate worker → router → report path
-    # in a follow-up if Phase B+ deltas need tighter attribution.
-    tokens_pfc = _count_tokens(PFC_PREAMBLE, llm_router) if pfc_preamble_enabled() else 0
-    coach_text = compose_acting_coach_section(ActingCoachConfig()) if acting_coach_enabled() else ""
-    tokens_coach = _count_tokens(coach_text or "", llm_router)
-    tokens_sim = _count_tokens(SIMULATION_ENVIRONMENT_TEXT, llm_router) if sim_sandbox_text_enabled() else 0
-
-    persona_active: str | None = persona if default_persona_enabled() else None
-
-    return {
-        "phase": os.environ.get("MAXIM_V1_PHASE", ""),
-        "flags": flags,
-        "isolated_data_home": bool(data_home),
-        "metrics": {
-            "tokens_in_pfc_preamble": tokens_pfc,
-            "tokens_in_acting_coach": tokens_coach,
-            "tokens_in_sim_sandbox": tokens_sim,
-            "persona_active": persona_active,
-            "embodiment_ref": entity_ref,
-            "arc_active": arc_name,
-        },
-    }
-
-
 def build_report(
     *,
     goal: str,
@@ -192,8 +112,6 @@ def build_report(
     language_model: str = "",
     llm_finish_context: dict[str, Any] | None = None,
     session_id: str | None = None,
-    entity_ref: str | None = None,
-    arc_name: str | None = None,
 ) -> SimulationReport:
     """Build a SimulationReport from all available data sinks.
 
@@ -284,12 +202,6 @@ def build_report(
             logger.debug("cost/token lookup failed: %s", e)
 
     ctx = llm_finish_context or {}
-    confound_block = _build_confound_quarantine_block(
-        persona=persona,
-        entity_ref=entity_ref,
-        arc_name=arc_name,
-        llm_router=llm_router,
-    )
     return SimulationReport(
         session_id=session_id,
         timestamp=time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -313,7 +225,6 @@ def build_report(
         llm_finish_status=str(ctx.get("status", "")),
         llm_finish_reason=str(ctx.get("reason", "")),
         llm_finish_summary=str(ctx.get("summary", "")),
-        confound_quarantine=confound_block,
     )
 
 

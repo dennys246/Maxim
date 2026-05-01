@@ -1,0 +1,651 @@
+{
+  "phases": {
+    "A": {
+      "data_home": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-A-XXXXXX.TFXWsnt0MK",
+      "plant": {
+        "session_id": "20260430_224355",
+        "confound_quarantine": {
+          "phase": "A",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-A-XXXXXX.TFXWsnt0MK"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": null,
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 193,
+        "aut_causal_links": 142,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 122.9,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "token_planted": true
+      },
+      "recall": {
+        "session_id": "20260430_224602",
+        "confound_quarantine": {
+          "phase": "A",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-A-XXXXXX.TFXWsnt0MK"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": null,
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 421,
+        "aut_causal_links": 310,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 143.6,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "v1_recall_success": true,
+        "recall_evidence": [
+          {
+            "tool": "memory_recall",
+            "params": {
+              "query": "secret token last session"
+            },
+            "output": "{'count': 5, 'memories': [{'id': '31127f36-806c-49b2-94ad-5b2b1c05ebdb', 'timestamp': 1777610751.2924669, 'goal': 'The user asked if the secret token was stored, and based on the context of the previous response, it can be inferred that the information has been successfully stored.', 'mode': 'observ"
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token BLUE-7-DAWN was successfully stored in our last session."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          }
+        ]
+      }
+    },
+    "B": {
+      "data_home": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-B-XXXXXX.9nuPOym4La",
+      "plant": {
+        "session_id": "20260430_224829",
+        "confound_quarantine": {
+          "phase": "B",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-B-XXXXXX.9nuPOym4La"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 993,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": null,
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 104,
+        "aut_causal_links": 78,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 89.7,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "token_planted": true
+      },
+      "recall": {
+        "session_id": "20260430_225003",
+        "confound_quarantine": {
+          "phase": "B",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-B-XXXXXX.9nuPOym4La"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 993,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": null,
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 264,
+        "aut_causal_links": 183,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 104.8,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "v1_recall_success": true,
+        "recall_evidence": [
+          {
+            "tool": "memory_recall",
+            "params": {
+              "query": "secret token last session"
+            },
+            "output": "{'count': 5, 'memories': [{'id': '62d30508-e8b4-4cee-9fa8-385b352f6f53', 'timestamp': 1777610996.2327502, 'goal': 'I recall the user asked for confirmation about storing the secret token BLUE-7-DAWN and I have it stored securely.', 'mode': 'observe', 'tool': 'respond', 'success': True, 'error': None"
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token BLUE-7-DAWN has been stored securely in our last session."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          }
+        ]
+      }
+    },
+    "C": {
+      "data_home": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-C-XXXXXX.G3SoQgdfDp",
+      "plant": {
+        "session_id": "20260430_225151",
+        "confound_quarantine": {
+          "phase": "C",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-C-XXXXXX.G3SoQgdfDp"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 73,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": null,
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 153,
+        "aut_causal_links": 124,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 104.3,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "token_planted": true
+      },
+      "recall": {
+        "session_id": "20260430_225339",
+        "confound_quarantine": {
+          "phase": "C",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-C-XXXXXX.G3SoQgdfDp"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 73,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": null,
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 379,
+        "aut_causal_links": 305,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 140.3,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "v1_recall_success": true,
+        "recall_evidence": [
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token you stored in our previous session is BLUE-7-DAWN."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token from the previous session is BLUE-7-DAWN."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token from the previous session is BLUE-7-DAWN."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          }
+        ]
+      }
+    },
+    "D": {
+      "data_home": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-D-XXXXXX.xbs15KvxoG",
+      "plant": {
+        "session_id": "20260430_225600",
+        "confound_quarantine": {
+          "phase": "D",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-D-XXXXXX.xbs15KvxoG"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 115,
+            "persona_active": null,
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 153,
+        "aut_causal_links": 109,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 101.3,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "token_planted": true
+      },
+      "recall": {
+        "session_id": "20260430_225744",
+        "confound_quarantine": {
+          "phase": "D",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-D-XXXXXX.xbs15KvxoG"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 115,
+            "persona_active": null,
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 359,
+        "aut_causal_links": 261,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 128.3,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "v1_recall_success": true,
+        "recall_evidence": [
+          {
+            "tool": "request_interaction",
+            "params": {
+              "question": "Do you have any more information or instructions for me regarding the token 'blue-7-dawn'?",
+              "critical": true
+            },
+            "output": "User responded: "
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "I have noted the secret token 'blue-7-dawn' from our previous session. Is there anything specific you would like to discuss or any further assistance you need?"
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "I have no further questions regarding the secret token 'blue-7-dawn'. Is there anything else you need assistance with?"
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          }
+        ]
+      }
+    },
+    "E": {
+      "data_home": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-E-XXXXXX.7JJPKPD45G",
+      "plant": {
+        "session_id": "20260430_225956",
+        "confound_quarantine": {
+          "phase": "E",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-E-XXXXXX.7JJPKPD45G"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": "adversarial",
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 165,
+        "aut_causal_links": 125,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 113.4,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "token_planted": true
+      },
+      "recall": {
+        "session_id": "20260430_230150",
+        "confound_quarantine": {
+          "phase": "E",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-E-XXXXXX.7JJPKPD45G"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": "adversarial",
+            "embodiment_ref": null,
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 397,
+        "aut_causal_links": 165,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 178.8,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "v1_recall_success": true,
+        "recall_evidence": [
+          {
+            "tool": "memory_recall",
+            "params": {
+              "query": "secret token last session",
+              "expand": false
+            },
+            "output": "{'count': 5, 'memories': [{'id': '731cdced-e6b0-4037-a0aa-1854f7a1338c', 'timestamp': 1777611703.5572119, 'goal': 'The user is asking if I remember the secret token BLUE-7-DAWN and I have successfully recalled it.', 'mode': 'observe', 'tool': 'respond', 'success': True, 'error': None, 'salience': 0."
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token BLUE-7-DAWN has been successfully recalled from our last session."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token from our last session was BLUE-7-DAWN."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          }
+        ]
+      }
+    },
+    "F": {
+      "data_home": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-F-XXXXXX.rUjYdC1j2W",
+      "plant": {
+        "session_id": "20260430_230449",
+        "confound_quarantine": {
+          "phase": "F",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-F-XXXXXX.rUjYdC1j2W"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": null,
+            "embodiment_ref": "bodies/base_humanoid",
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 138,
+        "aut_causal_links": 85,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 127.4,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "token_planted": true
+      },
+      "recall": {
+        "session_id": "20260430_230700",
+        "confound_quarantine": {
+          "phase": "F",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "1",
+            "MAXIM_DISABLE_ACTING_COACH": "1",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "1",
+            "MAXIM_NO_DEFAULT_PERSONA": "1",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-F-XXXXXX.rUjYdC1j2W"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 0,
+            "tokens_in_acting_coach": 0,
+            "tokens_in_sim_sandbox": 0,
+            "persona_active": null,
+            "embodiment_ref": "bodies/base_humanoid",
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 283,
+        "aut_causal_links": 170,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 122.2,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "v1_recall_success": true,
+        "recall_evidence": [
+          {
+            "tool": "memory_recall",
+            "params": {
+              "query": "blue-7-dawn",
+              "expand": true
+            },
+            "output": "{'count': 5, 'memories': [{'id': 'fb2ff6a5-4f48-455b-a915-0d16deb3b850', 'timestamp': 1777611998.871451, 'goal': 'I have confirmed the storage of the secret token BLUE-7-DAWN as requested.', 'mode': 'observe', 'tool': 'respond', 'success': True, 'error': None, 'salience': 0.715, 'novelty': 0.5}, {'i"
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token 'blue-7-dawn' was indeed stored and can be recalled from one of my memories with a high level of salience."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          },
+          {
+            "tool": "respond",
+            "params": {
+              "message": "I remember the secret token 'blue-7-dawn' from our last session."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          }
+        ]
+      }
+    },
+    "G": {
+      "data_home": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-G-XXXXXX.Fejc6P90tW",
+      "plant": {
+        "session_id": "20260430_230905",
+        "confound_quarantine": {
+          "phase": "G",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "",
+            "MAXIM_DISABLE_ACTING_COACH": "",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "",
+            "MAXIM_NO_DEFAULT_PERSONA": "",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-G-XXXXXX.Fejc6P90tW"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 993,
+            "tokens_in_acting_coach": 73,
+            "tokens_in_sim_sandbox": 115,
+            "persona_active": "adversarial",
+            "embodiment_ref": "bodies/base_humanoid",
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 66,
+        "aut_causal_links": 64,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 114.1,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "token_planted": true
+      },
+      "recall": {
+        "session_id": "20260430_231100",
+        "confound_quarantine": {
+          "phase": "G",
+          "flags": {
+            "MAXIM_DISABLE_PFC_PREAMBLE": "",
+            "MAXIM_DISABLE_ACTING_COACH": "",
+            "MAXIM_DISABLE_SIM_SANDBOX_TEXT": "",
+            "MAXIM_NO_DEFAULT_PERSONA": "",
+            "MAXIM_DATA_HOME": "/var/folders/k7/z1lf5qhs1ns8f_tcpf1vgj480000gn/T/maxim-v1-G-XXXXXX.Fejc6P90tW"
+          },
+          "isolated_data_home": true,
+          "metrics": {
+            "tokens_in_pfc_preamble": 993,
+            "tokens_in_acting_coach": 73,
+            "tokens_in_sim_sandbox": 115,
+            "persona_active": "adversarial",
+            "embodiment_ref": "bodies/base_humanoid",
+            "arc_active": null
+          }
+        },
+        "aut_memories_formed": 230,
+        "aut_causal_links": 197,
+        "turns": 8,
+        "finish_reason": "max_turns",
+        "cost_usd": 0.0,
+        "duration_s": 132.5,
+        "response_texts": [
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}",
+          "{'delivered': True, 'mode': 'cli'}"
+        ],
+        "v1_recall_success": true,
+        "recall_evidence": [
+          {
+            "tool": "respond",
+            "params": {
+              "message": "The secret token from our previous session was BLUE-7-DAWN."
+            },
+            "output": "{'delivered': True, 'mode': 'cli'}"
+          }
+        ]
+      }
+    }
+  }
+}

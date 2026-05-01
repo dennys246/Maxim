@@ -252,3 +252,4 @@ data/util/active_llm_model.txt
 data/agents/MagicMock*
 dist/
 .worktrees/
+v1_phase_results/

@@ -52,10 +52,13 @@ Prove that Layer 1 pre-deliberation enrichment produces measurably different beh
 
 **Results doc:** `docs/experiments/10_cross_session_enrichment.md`
 
-### V2. Confound quarantine for V1 re-run — gates substrate attribution claim
+### V2. Confound quarantine for V1 re-run — gates substrate attribution claim — **CLEAN PASS** (2026-04-30, PR #214 + Experiment 12)
 
 **Companion plan:** [confound_quarantine.md](confound_quarantine.md)
-**Status:** PLANNING — pre-implementation; gates the V1 re-run
+**Companion experiment:** [docs/experiments/12_v1_phased_attribution.md](../experiments/12_v1_phased_attribution.md)
+**Status:** SHIPPED + VALIDATED. Implementation: PR #214 (confound flags + report block + tests). Re-run: 7 phases run 2026-04-30 against commit `f742527` over peer-routed qwen2.5-14b. **All 7 phases (7/7) successfully recalled `BLUE-7-DAWN` across sessions, including Phase A (substrate-only baseline)**, see Experiment 12 for the full table + recall evidence excerpts.
+
+**Disposition (per §R1 clean-pass branch):** flags removed in 1.0. `MAXIM_DISABLE_PFC_PREAMBLE`, `MAXIM_DISABLE_ACTING_COACH`, `MAXIM_DISABLE_SIM_SANDBOX_TEXT`, `MAXIM_NO_DEFAULT_PERSONA`, `--no-acting-coach`, `--no-persona`, `runtime/confound_flags.py`, the `report.json::confound_quarantine` block, and the test surface (autouse scrub + `test_confound_flags.py` + `test_v1_phased_metrics.py`) are scheduled for removal in a follow-up `chore(v1): remove confound flags after Phase A clean pass` PR. `--no-embodiment` and `MAXIM_DATA_HOME` are unrelated escape hatches and stay. The harness `scripts/run_v1_phases.sh` and the experiment doc remain in-tree for academic-ML reproducibility — re-running against post-removal main shows the env vars no-op; checking out `f742527` reproduces the full protocol.
 
 A multi-lens audit (default-on prompt injectors / goal-keyword path divergence / hidden state leakage) found **five default-on confound systems** that fire silently on every `maxim --sim` invocation, including V1. The original V1 PARTIAL PASS result is contaminated: it cannot be attributed to the substrate alone while four other systems are simultaneously shaping AUT behavior.
 

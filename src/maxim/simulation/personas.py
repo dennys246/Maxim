@@ -25,18 +25,11 @@ class Persona:
 
 
 SIMULATION_PERSONAS: dict[str, Persona] = {
-    # "neutral" — no behavioural framing (V1 substrate-attribution Phase A).
-    # Used by --no-persona / MAXIM_NO_DEFAULT_PERSONA=1 to suppress the
-    # default adversarial persona's context_prompt without crashing the
-    # orchestrator's get_persona() lookup. Empty context_prompt → no
-    # persona content gets injected into the orchestrator's system prompt.
-    # max_initiative=0.0 keeps the orchestrator passive (no auto-spawning
-    # adversarial probes). Confound-quarantine flag, not a public persona —
-    # documented in docs/plans/confound_quarantine.md, not user-facing
-    # docs.
+    # "neutral" — no behavioural framing. Empty context_prompt + max_initiative=0
+    # keep the orchestrator passive (observation only, no auto-spawned probes).
     "neutral": Persona(
         name="neutral",
-        description="No persona framing (substrate-attribution baseline)",
+        description="No persona framing (observation-only baseline)",
         focus="Minimal orchestrator behaviour — observation only",
         max_initiative=0.0,
         context_prompt="",
@@ -406,15 +399,12 @@ def get_persona(name: str, continuous: bool = False) -> Persona | None:
     appended so the LLM knows it can abort-early only after
     exhausting alternatives. Continuous personas never abort.
 
-    The "neutral" persona (V1 substrate-attribution baseline) skips
-    EARLY_FINISH_GUIDANCE — that text contains adversarial-framed cues
-    ("Rephrase the attack/probe", "spawn fresh angle") that would
-    re-inject the framing --no-persona was meant to suppress. It still
-    gets CONTINUOUS_SUFFIX in continuous mode because that suffix is a
-    procedural orchestrator invariant ("never stop on your own"), not
-    behavioural framing — without it, a continuous run with neutral
-    persona would auto-finish at the first opportunity and break the
-    continuous-mode contract.
+    The "neutral" persona skips EARLY_FINISH_GUIDANCE because that text
+    contains adversarial-framed cues ("Rephrase the attack/probe", "spawn
+    fresh angle") that re-inject the framing the neutral persona is
+    designed to omit. It still gets CONTINUOUS_SUFFIX in continuous mode
+    because that suffix is a procedural orchestrator invariant ("never
+    stop on your own"), not behavioural framing.
     """
     persona = SIMULATION_PERSONAS.get(name.lower())
     if persona is None:

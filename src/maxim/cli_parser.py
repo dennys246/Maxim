@@ -351,26 +351,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "escalating, campaign, refinement). Alias: --persona",
     )
     sim.add_argument(
-        "--no-persona",
-        action="store_true",
-        default=False,
-        dest="no_persona",
-        help="[experimental] Treat absent --persona as None (true neutral) "
-        "instead of falling back to the 'adversarial' default. Used by the "
-        "V1 substrate-attribution phased re-run to isolate persona impact. "
-        "Sets MAXIM_NO_DEFAULT_PERSONA=1.",
-    )
-    sim.add_argument(
-        "--no-acting-coach",
-        action="store_true",
-        default=False,
-        dest="no_acting_coach",
-        help="[experimental] Suppress the Acting Coach meta-prompt and the "
-        "embodied-identity rewrite, even when an embodiment is attached. "
-        "Used by the V1 substrate-attribution phased re-run. "
-        "Sets MAXIM_DISABLE_ACTING_COACH=1.",
-    )
-    sim.add_argument(
         "--aut-model",
         type=str,
         default=None,

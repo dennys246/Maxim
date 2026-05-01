@@ -29,21 +29,8 @@ from maxim.cli_utils import MEMORY_PATHS  # noqa: F401
 # ── Discrete subcommand handlers (extracted from main() for clarity) ────────
 
 
-def _resolve_persona(args, default: str = "adversarial") -> str | None:
-    """Resolve the persona arg, honouring ``MAXIM_NO_DEFAULT_PERSONA``.
-
-    Returns ``None`` when ``MAXIM_NO_DEFAULT_PERSONA=1`` is set (i.e. the
-    user passed ``--no-persona`` or set the env var directly). Callers
-    that need a string for the orchestrator should coerce ``None`` to
-    ``"neutral"`` (the empty-context built-in persona). The helper itself
-    returns ``None`` so the V1 substrate-attribution report block can
-    record ``persona_active: null`` without ambiguity — see
-    ``docs/plans/confound_quarantine.md``.
-    """
-    from maxim.runtime.confound_flags import default_persona_enabled
-
-    if not default_persona_enabled():
-        return None
+def _resolve_persona(args, default: str = "adversarial") -> str:
+    """Resolve the persona arg, falling back to the supplied default."""
     return getattr(args, "sim_persona", default) or default
 
 
@@ -639,18 +626,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         seed_all(args.seed)
 
-    # ── Confound quarantine flags (V1 substrate-attribution) ────────────
-    # CLI flags --no-acting-coach and --no-persona are surface ergonomics
-    # for the env vars consumed by maxim.runtime.confound_flags. Propagate
-    # here (before any sim/agent dispatch) so worker construction and
-    # persona resolution see the env var. Only set when the CLI flag is
-    # truthy — never clear a pre-existing env var, so that env-only callers
-    # (CI matrices, the harness wrapper script) keep working alongside CLI.
-    if getattr(args, "no_acting_coach", False):
-        os.environ["MAXIM_DISABLE_ACTING_COACH"] = "1"
-    if getattr(args, "no_persona", False):
-        os.environ["MAXIM_NO_DEFAULT_PERSONA"] = "1"
-
     # ── Force-kill on double Ctrl+C ──────────────────────────────────
     # First Ctrl+C signals the LLM cancellation primitive and raises
     # KeyboardInterrupt in the main thread for graceful shutdown. If the
@@ -1175,10 +1150,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 # so the narrator drives multi-turn structured phases.
                 from maxim.simulation.orchestrator import start_simulation_mode
 
-                # `_resolve_persona` returns None when --no-persona /
-                # MAXIM_NO_DEFAULT_PERSONA=1; coerce to "neutral" (empty
-                # context_prompt) so the orchestrator's get_persona() lookup
-                # succeeds.
                 persona = _resolve_persona(args, default="campaign") or "neutral"
                 debug = bool(_debug_raw)
                 resume_sim = getattr(args, "resume_sim", None)
@@ -1217,9 +1188,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             from maxim.simulation.orchestrator import start_simulation_mode
 
             goal = getattr(args, "sim_goal", None) or "test the agent's capabilities"
-            # `_resolve_persona` returns None when --no-persona /
-            # MAXIM_NO_DEFAULT_PERSONA=1; coerce to "neutral" so
-            # get_persona() succeeds without injecting adversarial framing.
             persona = _resolve_persona(args, default="adversarial") or "neutral"
             debug = bool(_debug_raw)
             resume_sim = getattr(args, "resume_sim", None)
