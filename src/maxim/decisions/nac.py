@@ -165,6 +165,28 @@ class NAc:
         # threshold, skip deliberation).  Persisted across sessions.
         self._goal_reward_bias: dict[str, float] = {}
 
+        # Reserved for 1.1 (bio_emergent_persona_foundations Wire 2): per-agent
+        # percept-level valence keyed by (agent_id, entity_class, failure_mode)
+        # → float in [-1.0, +1.0].  Lives on NAc because the *learning source*
+        # is NAc-adjacent: the PainBus subscriber feeding it would mirror
+        # `create_pain_nac_subscriber`, and the per-tick decay would extend the
+        # existing `decay_reward_biases` / `decay_goal_reward_biases` cycle
+        # in agent_loop.py section 8.5.  (The cross-bio-system valence scalar
+        # — Episode.valence, ValenceSignal — justifies the *type*, not the
+        # *placement*; placement is justified by learning-source proximity.)
+        # Flat-tuple keying matches `_reward_bias`'s shape so persistence
+        # (1.1: ``f"{aid}:{ec}:{fm}"`` join, mirroring `_reward_bias`'s
+        # ``f"{aid}:{nid}"``) reuses the same dump/load idiom.  1.0 reserves
+        # the attribute name + placement + shape only; no methods, no
+        # persistence, no read sites.  Consumer-side concerns (per-agent
+        # scoping on the GatingContext path, JSON-key encoding for keys
+        # containing ':') are deferred to 1.1 design with Crucible data.
+        # See docs/plans/bio_emergent_persona_foundations.md and
+        # docs/experiments/12_v1_phased_attribution.md (Phase A clean pass —
+        # substrate sufficient for V1 cross-session recall; persona-divergence
+        # wires deferred pending Crucible findings).
+        self._percept_valences: dict[tuple[str, str, str], float] = {}
+
         # Stats
         self._total_observations = 0
         self._last_decay_time = time.time()
