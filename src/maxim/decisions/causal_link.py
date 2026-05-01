@@ -366,7 +366,22 @@ class CausalLink:
 
 @dataclass
 class OutcomePrediction:
-    """A prediction about what will happen if an event occurs."""
+    """A prediction about what will happen if an event occurs.
+
+    Forward-compat reservation (1.0, bio_emergent_persona_foundations Wire 1):
+        ``uncertainty_interval`` is a 1.1 reservation slot for risk-sensitive
+        action selection.  The 1.1 implementation will populate this from a
+        Welford online-variance estimator on ``CausalLink.observation_count``
+        outcomes; the agent_loop tool description assembler will read it to
+        annotate tools with ``[high variance]`` / ``[reliable]`` tags.
+        Default ``(0.0, 0.0)`` is the "no uncertainty data yet" sentinel.
+        Field is in-memory only in 1.0 — deliberately omitted from
+        ``to_dict()`` until 1.1 has a consumer, so the serialization shape
+        is not committed before the representation choice (bounds tuple vs.
+        ``{lower, upper, std}`` dict) is settled.  Additive default-having
+        field at the end of the field list; no contract risk.
+        See docs/plans/bio_emergent_persona_foundations.md.
+    """
 
     event_signature: str
     predicted_outcome: str  # Expected outcome signature
@@ -377,6 +392,11 @@ class OutcomePrediction:
     confidence: float  # How confident in this prediction
     contributing_links: list[str]  # CausalLink IDs that informed this
     context_match: float  # How well current context matches learned context
+    # Reserved for 1.1 (Wire 1): (lower, upper) bounds on predicted_value
+    # from variance estimator.  Default (0.0, 0.0) == "no uncertainty data".
+    # In-memory only; not serialized in to_dict until 1.1 picks the
+    # representation shape (bounds tuple vs. {lower, upper, std} dict).
+    uncertainty_interval: tuple[float, float] = (0.0, 0.0)
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
