@@ -409,9 +409,8 @@ class TestSimulationTools:
 
 class TestPersonas:
     def test_all_personas_defined(self):
-        # 11 = 10 behavioural personas + "neutral" (V1 substrate-attribution
-        # baseline, intentionally empty context_prompt — see
-        # docs/plans/confound_quarantine.md).
+        # 11 = 10 behavioural personas + "neutral" (observation-only baseline,
+        # intentionally empty context_prompt).
         assert len(SIMULATION_PERSONAS) == 11
         for name in (
             "neutral",
