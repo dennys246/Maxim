@@ -36,7 +36,7 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 |---|---|---|
 | `maxim.research(...) -> ResearchResult` | ⚠️ Experimental | Research orchestrator surface still evolving. Prompt templates, paper structure, and reviewer logic may change. |
 | `maxim.on(event_name, callback) -> EventHandle` | ⚠️ Experimental | Event names + payload fields may grow. Subscription mechanism may evolve to support filters or async callbacks. |
-| `maxim.register_persona(...)` | ⚠️ Experimental | Persona system may be redesigned alongside future Mother Maxim/orchestrator work. |
+| `maxim.register_persona(...)` | ⛔ Deprecated in 0.9 — removed in 1.1 | Emits `DeprecationWarning` in 0.9 / 1.0; raises in 1.1. Persona system is being replaced by `--sim-mode` (orchestrator flow-shape) plus bio-emergent disposition mechanics. See [`docs/plans/persona_cleanup_and_mode_transition.md`](../plans/persona_cleanup_and_mode_transition.md). |
 
 ---
 
