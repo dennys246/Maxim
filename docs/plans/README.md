@@ -46,15 +46,14 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 Plans on the 1.0 critical path or actively shipping:
 
 - [v1_refinement.md](v1_refinement.md) — **1.0 release plan.** Validation + bio-system stabilization + sensorimotor grounding + pipeline completion + cleanup + docs + contract clarification (Section 7). 1.1 track index is Section 8.
-- [confound_quarantine.md](confound_quarantine.md) — **Gates V1 substrate-attribution claim.** Multi-lens audit found 5 default-on confound systems contaminating every `maxim --sim` (PFC preamble + Acting Coach + sim-sandbox text + orchestrator NPC global state + default persona). Adds opt-in disable flags + 6-phase dial-down re-run protocol. ~40 production LOC + tests + harness. Ships in 0.9.x; flags marked experimental, removal target 1.2.
 - [sem_world_enrichment.md](sem_world_enrichment.md) — **Phases 1+2 SHIPPED.** Phase 3 (composable body archetypes) partial — archetype YAMLs in `_data/components/archetypes/`, no avatar migration yet. 1.0 vs 1.1 scope decision pending.
-- [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) — **Draft.** Delete the persona prompt-injection scaffold; introduce `--mode` flag for the dispatch logic that was hiding inside persona names. Open decision: A/B/C on testing-strategy fate. ~400 add / 730 delete.
-- [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) — **Draft.** Decision-boundary wires that close bio-system gaps: embodiment-state filter, stimulus-class aversion, risk-sensitive selection. Stages 0-3 ship in 1.0; Wires 4-5 deferred to 1.1+. ~680 LOC.
+- [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) — **Stage 1 SHIPPED** (PR #217, 2026-04-30): additive `--mode` flag + deprecation warnings on `--persona` and `register_persona`. Stages 2-6 (resolve testing strategy, dispatch hook migration, public API migration, hard-delete, docs+memory) are 1.1 deprecation cleanup work.
+- [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) — **Field reservations SHIPPED** (PR #216, 2026-04-30) under V1 Phase A clean-pass branch. Full Stages 0-3 implementation + Stages 4-5 deferred to 1.1+ since substrate alone reproduced V1 cross-session recall.
+- [scene_actor_affordances.md](scene_actor_affordances.md) — **Stages 1+2 SHIPPED** (PR #213, 2026-04-30): `target_effect` field + `OrchestratorActorTool`. Stages 3-5 (orchestrator prompt update, designer template hint, validation experiment) are 1.1 work.
 - [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — Living roadmap. C3-C4.6 complete. C5+ remain. Not gating 1.0.
 
 ### 1.1 track (concurrent development)
 
-- [scene_actor_affordances.md](scene_actor_affordances.md) — `target_effect` + OrchestratorActorTool. ~110 LOC. Diagnostic for agent-backed entities. 1.1.
 - [minecraft_benchmark.md](minecraft_benchmark.md) — Live demo + harness comparison. Stub. 1.1 splash launch.
 - [mcp_compatibility.md](mcp_compatibility.md) — MCP server + client + schema interop. Stub. 1.0 ships CC9 (dual-format Tool schema) as the prerequisite.
 
@@ -92,7 +91,10 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 
 Completed or superseded plans live in [archive/](archive/).
 
-Recently archived (2026-04-29 1.0 audit — verified shipped against code):
+Recently archived (2026-05-02 — V1 phased re-run wave complete):
+- [archive/confound_quarantine.md](archive/confound_quarantine.md) — **✅ PURPOSE SERVED + ARCHIVED.** Flags shipped (PR #214), V1 phased re-run executed against commit `f742527` (2026-04-30, [Experiment 12](../experiments/12_v1_phased_attribution.md)) → all 7 phases recalled `BLUE-7-DAWN`, Phase A clean pass forced flag removal in 1.0 (PR #215). Plan stays in archive as the artifact explaining the disposition; harness `scripts/run_v1_phases.sh` and Experiment 12 stay in-tree for academic-ML reproducibility.
+
+Previously archived (2026-04-29 1.0 audit — verified shipped against code):
 - [archive/bio_system_protocol_enrichment.md](archive/bio_system_protocol_enrichment.md) — **✅ COMPLETE + ARCHIVED.** All 5 `*Context` dataclasses live at `src/maxim/models/bio_context.py`.
 - [archive/scn_oscillator_feedback.md](archive/scn_oscillator_feedback.md) — **✅ SHIPPED + ARCHIVED.** B2 anticipatory temporal credit. `OscillatorNetwork.predict_event_imminence`, `TemporalCreditDistributor.anticipatory_pre_activate`, `scn.enable_oscillator()` all wired.
 - [archive/proprioceptive_discovery.md](archive/proprioceptive_discovery.md) — **✅ Mechanisms A+B SHIPPED + ARCHIVED.** Latent-affordance discovery + entity acquisition.

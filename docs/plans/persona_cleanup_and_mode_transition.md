@@ -1,7 +1,7 @@
 # Persona cleanup + orchestrator mode transition
 
-**Status:** draft, pre-implementation
-**Ships in:** 1.0
+**Status:** PARTIAL — Stage 1 shipped 2026-04-30 (PR #217). Stages 2-6 are 1.1+ deprecation cleanup work.
+**Ships in:** Stage 1 in 1.0 (additive `--mode` flag + deprecation warnings on `--persona` and `register_persona`); Stages 2-6 in 1.1 (resolve testing strategy, dispatch hook migration, public API migration, hard-delete the persona system, docs+memory).
 **Owns:** [src/maxim/simulation/personas.py](../../src/maxim/simulation/personas.py), [src/maxim/cli_parser.py](../../src/maxim/cli_parser.py), [src/maxim/simulation/orchestrator.py](../../src/maxim/simulation/orchestrator.py), public API surface in [src/maxim/api.py](../../src/maxim/api.py)
 **Companion plans:** [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) (the wire work this cleanup makes room for), [persona_convergence_crucible.md](persona_convergence_crucible.md) (the long-term living doc)
 

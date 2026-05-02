@@ -1,11 +1,10 @@
 # Scene Actor Affordances — let scene entity affordances drive AUT body sensors
 
-**Status:** Design draft, pre-implementation (1.1 track).
-**Scope:** ~110 LOC across `embodiment/sem.py`, `embodiment/tool_bridge.py`, `simulation/tools.py`, `simulation/orchestrator.py`, plus prompt updates.
+**Status:** PARTIAL — Stages 1+2 shipped 2026-04-30 (PR #213). Stages 3-5 are 1.1+ work (orchestrator prompt update, designer template hint, validation experiment).
+**Scope:** ~110 LOC across `embodiment/sem.py`, `embodiment/tool_bridge.py`, `simulation/tools.py`, `simulation/orchestrator.py`, plus prompt updates. Stages 1+2 (target_effect field + OrchestratorActorTool) shipped under v1_refinement.md execution-order item #2 — absorbed the world-physics-engine job from the adversarial persona prompt so persona could be deprecated in PR #217 without breaking narrative→SEM coupling.
 **Depends on:** Imagination trigger (shipped 0.7), entity ownership (shipped 0.7), AUT embodiment in sim (E0, shipped 0.6), Cradle (B4, shipped 0.8 — provides three-layer sensation model this extends).
 **Diagnostic for:** [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md). If this closes the gap, the bigger plan stays deferred.
 **Gates:** None.
-**Branch:** TBD
 
 ---
 

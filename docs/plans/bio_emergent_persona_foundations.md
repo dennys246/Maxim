@@ -1,7 +1,8 @@
 # Bio-system foundations for emergent persona
 
-**Status:** draft, pre-implementation
-**Ships in:** 1.0 (Stages 0-3); Stages 4-5 deferred to 1.1+
+**Status:** PARTIAL — field reservations shipped 2026-04-30 (PR #216) under the V1 Phase A clean-pass branch. Full Stages 0-3 implementation deferred to 1.1.
+**Ships in:** ~~1.0 (Stages 0-3)~~ → 1.0 ships field-shape reservations only (`GatingContext.learned_aversions`, `OutcomePrediction.uncertainty_interval`, NAc `_percept_valences` slot — all CC3-compliant defaults). Full Stages 0-3 implementation + Stages 4-5 are 1.1+ work.
+**1.0 disposition rationale:** [docs/experiments/12_v1_phased_attribution.md](../experiments/12_v1_phased_attribution.md) Phase A reproduced cross-session recall without scaffolds, so the substrate is sufficient for 1.0; richer disposition mechanics (Pavlovian aversion, risk sensitivity, uncertainty-bound prediction) become 1.1 implementation work against the reserved fields.
 **Owns:** decision-time wiring across [decisions/nac.py](../../src/maxim/decisions/nac.py), [runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py), [runtime/gating.py](../../src/maxim/runtime/gating.py), [embodiment/](../../src/maxim/embodiment/), [proprioception/pain_bus.py](../../src/maxim/proprioception/pain_bus.py)
 **Companion plans:** [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) (clears the cognitive dissonance), [persona_convergence_crucible.md](persona_convergence_crucible.md) (uses these foundations for Roy experiments)
 
