@@ -74,11 +74,15 @@ run_phase() {
     [[ "$sandbox" == "0" ]]  && sandbox_env="MAXIM_DISABLE_SIM_SANDBOX_TEXT=1" || sandbox_env=""
     [[ "$persona_default" == "0" ]] && persona_env="MAXIM_NO_DEFAULT_PERSONA=1" || persona_env=""
 
-    # CLI flag block (mirrors env where useful — CLI flags only sets env, never clears).
+    # CLI flag block.
+    # NOTE (post-PR #215, 2026-04-30): --no-persona and --no-acting-coach were
+    # removed in 1.0 after Phase A clean pass per docs/experiments/12_v1_phased_attribution.md.
+    # On post-removal main, the four MAXIM_DISABLE_* env vars no-op and these CLI
+    # flags would actively error. The original protocol is reproducible at commit
+    # f742527. On current main, this harness functionally tests Phase A vs Phase G
+    # via --no-embodiment alone.
     local persona_cli=""
     local coach_cli=""
-    [[ "$persona_default" == "0" ]] && persona_cli="--no-persona"
-    [[ "$coach" == "0" ]] && coach_cli="--no-acting-coach"
 
     local embodiment_cli="--no-embodiment"
     [[ "$embodiment_default" == "1" ]] && embodiment_cli=""
