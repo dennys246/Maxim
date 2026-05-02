@@ -22,8 +22,65 @@ def normalize_epoch_value(value: object) -> int:
     return epochs if epochs > 0 else 0
 
 
+# Default for --persona / --mode when neither flag is passed. Preserves
+# the historical CLI behavior (the orchestrator used "adversarial" as
+# the silent default before the persona deprecation cycle started in 0.9).
+# Once --persona is hard-removed in 1.1 and Stages 3-5 of
+# docs/plans/persona_cleanup_and_mode_transition.md migrate dispatch off
+# persona names entirely, this constant goes with it.
+_DEFAULT_SIM_PERSONA = "adversarial"
+
+
+def _resolve_persona_mode(args: argparse.Namespace) -> None:
+    """Resolve --mode / --persona precedence + emit the persona deprecation warning.
+
+    Stage 1 of docs/plans/persona_cleanup_and_mode_transition.md:
+    --mode is the new flag, --persona is deprecated in 0.9 and removed
+    in 1.1 (matches the C4-C6 timing contract in v1_refinement.md
+    Section 5). Both flags are accepted through 1.0; --mode wins on
+    conflict.
+
+    After this runs, args.sim_persona is always set (the rest of the CLI
+    treats sim_persona as the canonical dispatch slot — Stages 3-5 will
+    migrate dispatch off persona names entirely).
+    """
+    has_persona = hasattr(args, "sim_persona")
+    has_mode = hasattr(args, "sim_mode")
+    persona_val = getattr(args, "sim_persona", None)
+    mode_val = getattr(args, "sim_mode", None)
+
+    if has_mode and has_persona:
+        if persona_val != mode_val:
+            print(
+                f"WARNING: --sim-mode {mode_val!r} and --persona {persona_val!r} both "
+                f"specified; using --sim-mode {mode_val!r}. --persona is deprecated and "
+                f"will be removed in 1.1.",
+                file=sys.stderr,
+            )
+        args.sim_persona = mode_val
+    elif has_mode:
+        args.sim_persona = mode_val
+    elif has_persona:
+        import warnings
+
+        msg = (
+            f"--persona / --sim-persona is deprecated and will be removed in 1.1. "
+            f"Use --sim-mode {persona_val!r} instead. "
+            f"See docs/plans/persona_cleanup_and_mode_transition.md."
+        )
+        # Stderr line for human visibility (DeprecationWarning is silenced
+        # by Python's default warning filter outside __main__).
+        print(f"DeprecationWarning: {msg}", file=sys.stderr)
+        warnings.warn(msg, DeprecationWarning, stacklevel=3)
+        # args.sim_persona already equals persona_val.
+    else:
+        args.sim_persona = _DEFAULT_SIM_PERSONA
+
+
 def normalize_args(args: argparse.Namespace) -> None:
     """Coerce and validate parsed CLI arguments, setting env vars as needed."""
+    _resolve_persona_mode(args)
+
     audio_raw = str(getattr(args, "audio", "true")).strip().lower()
     if audio_raw in ("1", "true", "t", "yes", "y", "on"):
         args.audio = True

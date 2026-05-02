@@ -17,7 +17,7 @@ This page documents **extension surfaces** — what third parties plug INTO Maxi
 | 5 | Custom action sinks | stable | [`ActionSink` protocol](#5-custom-action-sinks) |
 | 6 | Bio-system bridges | experimental | [`PainBus.subscribe` / `ReactionBus.subscribe`](#6-bio-system-bridges) |
 | 7 | Event subscriptions | experimental | [`maxim.on(event_name, callback)`](#7-event-subscriptions) |
-| 8 | Custom personas | ⚠️ experimental | [`maxim.register_persona(...)`](#8-custom-personas) |
+| 8 | Custom personas | ⛔ deprecated in 0.9 — removed in 1.1 | [`maxim.register_persona(...)`](#8-custom-personas) |
 
 ---
 
@@ -408,7 +408,11 @@ handle.unsubscribe()
 
 ## 8. Custom personas
 
-**Stability:** ⚠️ experimental — the persona system may be redesigned alongside future Mother Maxim / orchestrator work (see [stable_api.md](stable_api.md) and `docs/plans/persona_cleanup_and_mode_transition.md`). The verb name and signature may change in a future minor release.
+**Stability:** ⛔ **deprecated in 0.9 — removed in 1.1.** `maxim.register_persona()` emits `DeprecationWarning` in 0.9 / 1.0 and will raise in 1.1. The persona system is being replaced by `--sim-mode` (an orchestrator flow-shape selector) plus the bio-emergent disposition mechanics tracked in `docs/plans/bio_emergent_persona_foundations.md`. The CLI flag `--persona` (and its `--sim-persona` alias) is also deprecated in 0.9; use `--sim-mode` instead. See [`docs/plans/persona_cleanup_and_mode_transition.md`](../plans/persona_cleanup_and_mode_transition.md) for the migration timeline and rationale.
+
+> **Note on flag naming:** the persona-cleanup plan originally proposed the short alias `--mode`, but that token is already owned by the core run-mode flag (`--mode {live,train,reflection,sleep,agentic,exploration}`). Stage 1 ships `--sim-mode` only; freeing `--mode` for sim use is a separate breaking change with its own deprecation cycle.
+
+> **Note (audit finding):** registered personas currently flow through to reports and logs as a label; the orchestrator does not inject the supplied `context_prompt` into the agent prompt today. The rich prompt strings shipped in `simulation/personas.py` exist as scaffolding for behavioural shaping that is being moved to `--sim-mode` and the bio-emergent disposition mechanics. Stage 5 of the cleanup plan removes the unused field.
 
 Personas shape how the simulation orchestrator framing affects an agent — adversarial probing, cooperative coaching, etc. Register a persona once and reference it by name in `--persona <name>` or the `persona=` argument to `imagine()`/`run()`.
 

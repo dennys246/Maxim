@@ -296,16 +296,24 @@ class TestToolRegistration:
 
 class TestPersonaRegistration:
     def test_register_custom_persona(self):
+        import warnings
+
         from maxim.api import register_persona
         from maxim.simulation.personas import SIMULATION_PERSONAS
 
-        register_persona(
-            name="test_api_persona",
-            description="Test persona from API",
-            focus="Testing",
-            context_prompt="You are a test persona.",
-            max_initiative=0.7,
-        )
+        # Stage 1 of persona_cleanup_and_mode_transition.md emits a
+        # DeprecationWarning here. The verb itself still works through
+        # 1.0; suppress the warning so this side of the test stays focused
+        # on registration behaviour.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            register_persona(
+                name="test_api_persona",
+                description="Test persona from API",
+                focus="Testing",
+                context_prompt="You are a test persona.",
+                max_initiative=0.7,
+            )
 
         assert "test_api_persona" in SIMULATION_PERSONAS
         p = SIMULATION_PERSONAS["test_api_persona"]
@@ -314,6 +322,26 @@ class TestPersonaRegistration:
 
         # Cleanup
         SIMULATION_PERSONAS.pop("test_api_persona", None)
+
+    def test_register_persona_emits_deprecation_warning(self):
+        """Stage 1: register_persona() must emit DeprecationWarning. Removed in 1.1."""
+        import warnings
+
+        from maxim.api import register_persona
+        from maxim.simulation.personas import SIMULATION_PERSONAS
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            register_persona(name="test_deprecation_persona")
+
+        SIMULATION_PERSONAS.pop("test_deprecation_persona", None)
+
+        dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
+        assert len(dep) == 1, f"expected 1 DeprecationWarning, got {len(dep)}"
+        msg = str(dep[0].message)
+        assert "register_persona" in msg
+        assert "1.1" in msg
+        assert "--sim-mode" in msg
 
 
 # ---------------------------------------------------------------------------

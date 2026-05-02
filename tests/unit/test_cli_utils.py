@@ -81,6 +81,80 @@ class TestNormalizeArgs:
         assert args.epochs == 0
 
 
+class TestPersonaModeResolution:
+    """Stage 1 of docs/plans/persona_cleanup_and_mode_transition.md.
+
+    --mode is the new flag, --persona is deprecated in 0.9 and removed
+    in 1.1. After normalize_args, args.sim_persona is always set (the
+    rest of the CLI treats it as the canonical dispatch slot).
+    """
+
+    def _bare_args(self, **kwargs):
+        defaults = {
+            "audio": "true",
+            "interactive": "true",
+            "mode": "active",
+            "epochs": 0,
+            "language_model": None,
+            "cloud_fallback": None,
+            "cloud_lane": None,
+            "cloud_budget": None,
+            "segmentation_model": None,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def test_neither_flag_falls_back_to_default(self):
+        args = self._bare_args()
+        normalize_args(args)
+        assert args.sim_persona == "adversarial"
+
+    def test_mode_only_sets_sim_persona(self):
+        args = self._bare_args(sim_mode="researcher")
+        normalize_args(args)
+        assert args.sim_persona == "researcher"
+
+    def test_mode_only_does_not_warn(self, capsys, recwarn):
+        args = self._bare_args(sim_mode="cooperative")
+        normalize_args(args)
+        captured = capsys.readouterr()
+        assert "DeprecationWarning" not in captured.err
+        assert not any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+
+    def test_persona_only_emits_deprecation(self, capsys, recwarn):
+        args = self._bare_args(sim_persona="researcher")
+        normalize_args(args)
+        # sim_persona preserved so dispatch keeps working
+        assert args.sim_persona == "researcher"
+        # Stderr line for human visibility
+        captured = capsys.readouterr()
+        assert "DeprecationWarning" in captured.err
+        assert "--sim-mode" in captured.err
+        # DeprecationWarning emitted for programmatic catch
+        dep_warnings = [w for w in recwarn.list if issubclass(w.category, DeprecationWarning)]
+        assert len(dep_warnings) == 1
+        assert "1.1" in str(dep_warnings[0].message)
+
+    def test_both_flags_consistent_prefer_mode_silently(self, capsys, recwarn):
+        args = self._bare_args(sim_persona="adversarial", sim_mode="adversarial")
+        normalize_args(args)
+        assert args.sim_persona == "adversarial"
+        # No conflict warning because values match; no deprecation either
+        # because --sim-mode is the canonical path.
+        captured = capsys.readouterr()
+        assert "WARNING" not in captured.err
+        assert "DeprecationWarning" not in captured.err
+        assert not any(issubclass(w.category, DeprecationWarning) for w in recwarn.list)
+
+    def test_both_flags_conflict_warns_and_prefers_mode(self, capsys):
+        args = self._bare_args(sim_persona="researcher", sim_mode="adversarial")
+        normalize_args(args)
+        assert args.sim_persona == "adversarial"
+        captured = capsys.readouterr()
+        assert "WARNING" in captured.err
+        assert "--sim-mode" in captured.err and "--persona" in captured.err
+
+
 class TestGpuAvailable:
     def test_returns_bool(self):
         result = gpu_available()

@@ -1708,10 +1708,17 @@ def register_persona(
 ) -> None:
     """Register a custom simulation persona.
 
-    **Experimental** (CC2): the persona system may be redesigned
-    alongside future Mother Maxim/orchestrator work. Field set may
-    change in 1.x. See
-    [docs/user/stable_api.md](../../docs/user/stable_api.md) for the contract.
+    **Deprecated in 0.9 — removed in 1.1.** Stage 1 of
+    [docs/plans/persona_cleanup_and_mode_transition.md](../../docs/plans/persona_cleanup_and_mode_transition.md)
+    starts the deprecation cycle: ``DeprecationWarning`` in 0.9 / 1.0,
+    ``raise`` in 1.1. Orchestrator behaviour shaping is moving to
+    ``--sim-mode`` (a flow-shape selector) plus the bio-emergent
+    disposition mechanics tracked in
+    ``docs/plans/bio_emergent_persona_foundations.md``. Registered
+    personas currently flow through to reports and logs as a label; the
+    orchestrator does not inject the supplied ``context_prompt`` into the
+    agent prompt today (audit finding in the plan). Stage 5 of the
+    cleanup plan removes the unused field.
 
     Custom personas are available for ``imagine()`` and ``campaign()``
     via the ``persona`` parameter.
@@ -1734,6 +1741,17 @@ def register_persona(
         )
         maxim.imagine(goal="test", persona="medical_tester")
     """
+    import warnings
+
+    warnings.warn(
+        "maxim.register_persona() is deprecated and will be removed in 1.1. "
+        "The persona system is being replaced by --sim-mode (orchestrator "
+        "flow-shape) plus bio-emergent disposition mechanics. "
+        "See docs/plans/persona_cleanup_and_mode_transition.md.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     from maxim.simulation.personas import SIMULATION_PERSONAS, Persona
 
     SIMULATION_PERSONAS[name.lower()] = Persona(

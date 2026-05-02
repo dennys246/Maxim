@@ -863,12 +863,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not _is_sim_mode:
         if getattr(args, "sim_goal", None) is not None:
             print("Error: --goal / --sim-goal requires --sim agent or --sim research.")
-            print('  Usage: maxim --sim agent --goal "test safety" --persona adversarial')
+            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode adversarial')
             print('         maxim --sim research --goal "hippocampal recall" --campaign <yaml>')
             sys.exit(1)
         if getattr(args, "sim_persona", "adversarial") != "adversarial":
-            print("Error: --persona / --sim-persona requires --sim agent (simulation mode).")
-            print('  Usage: maxim --sim agent --goal "test safety" --persona adversarial')
+            print("Error: --sim-mode / --persona / --sim-persona requires --sim agent (simulation mode).")
+            print('  Usage: maxim --sim agent --goal "test safety" --sim-mode adversarial')
             sys.exit(1)
         if getattr(args, "resume_sim", None) is not None and sim_path is None:
             print("Error: --resume-sim requires --sim (simulation mode).")
