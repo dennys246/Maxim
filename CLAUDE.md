@@ -313,7 +313,7 @@ Project structure is documented in [docs/reference.md](docs/reference.md).
 | Causal learning | `decisions/nac.py` (reward bias, eligibility traces, distribute_reward, **goal_reward_bias**), `decisions/causal_link.py` (CausalLink, percept_refs) |
 | Temporal credit | `decisions/temporal_credit.py` (**TemporalCreditDistributor** — NAc+SCN composition, fast-decay + phase-similarity credit, **anticipatory_pre_activate** (B2 oscillator feedback)), `time/temporal_event.py` (TemporalEvent envelope), `decisions/valence_signal.py` (ValenceSignal transport for WMS salience modulation) |
 | Substrate encoding | `similarity/encoder.py` (LinguisticEncoder), `similarity/ec.py` (pattern_complete_or_separate, centroid update) |
-| Prompt composition | `prompts/assembler.py` (PromptAssembler, MemorySummary), `agents/prompt_builder.py` (legacy), `prompts/acting_coach.py` (B3: Acting Coach — bio-modulated affordance exploration meta-prompt) |
+| Prompt composition | `agents/prompt_builder.py` (PromptBuilder + budgeter — single composition point), `prompts/acting_coach.py` (B3: Acting Coach — bio-modulated affordance exploration meta-prompt). Substrate-plan B1's PromptAssembler scaffold was deleted; never wired into production. |
 | Percept schema | `agents/percept_context.py` (PerceptContext), `agents/percept_factory.py` (factories), `agents/modality.py` (SensoryTag, SubstrateModality) |
 | Reactions | `reactions/types.py` (Reaction, ReactionContext, TraceSnapshot), `reactions/bus.py` (ReactionBus), `reactions/protocols.py` (PerceptProducer, ReactionProducer) |
 | Cross-layer wiring | `integration/memory_hub.py` (single coordinator) |

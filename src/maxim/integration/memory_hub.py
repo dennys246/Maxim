@@ -296,26 +296,6 @@ class MemoryHub:
         except Exception as e:
             logger.warning("Substrate encoding failed: %s", e)
 
-    def get_memory_summary(
-        self,
-        current_node_id: str | None = None,
-        pattern_completed: bool = False,
-    ) -> Any:
-        """Build a MemorySummary from current ATL substrate state.
-
-        Returns None if substrate path is not active.
-        """
-        if not self._substrate_enabled or self.atl is None:
-            return None
-
-        from maxim.prompts.assembler import MemorySummary
-
-        return MemorySummary.from_atl(
-            self.atl,
-            current_node_id=current_node_id,
-            pattern_completed=pattern_completed,
-        )
-
     def _wire_multi_layer(self) -> None:
         """Wire ATL, CrossLayerGraph, and SemanticPromoter when ATL is available."""
         layers = self._build_layer_map()

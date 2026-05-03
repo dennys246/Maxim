@@ -415,8 +415,7 @@ class DMRuntime:
             if hint_text:
                 npc_display = metadata.get("role", npc_name)
                 # Inject persona into the stimulus so distinct NPCs reach the
-                # LLM with visibly different framing. Substrate B1's
-                # PromptAssembler will replace this ad-hoc path.
+                # LLM with visibly different framing.
                 if persona:
                     parts.append(f"\n[{npc_name} — {persona}]")
                 parts.append(f'\n{npc_name} ({npc_display}): "{hint_text}"')
