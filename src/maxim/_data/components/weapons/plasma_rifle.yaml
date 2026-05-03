@@ -27,6 +27,7 @@ entity:
       initial: 0.85
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         fire:
           params: {target: str}
@@ -38,6 +39,7 @@ entity:
           params: {target: str}
           description: "Fire three rapid bolts — less accurate but suppressive"
     maintenance:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         vent_heat:
           params: {}

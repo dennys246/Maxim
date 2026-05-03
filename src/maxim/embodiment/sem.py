@@ -494,6 +494,22 @@ class Entity:
                         "timeout": getattr(schema, "timeout", 30.0),
                     }
                 d["affordances"] = affs
+            # Always emit the C4 abstract marker (symmetric serialization).
+            # Asymmetric "only-when-true" emission silently loses the explicit
+            # opt-in/opt-out signal once 1.x flips the warning to a hard
+            # error — the same trap CC1's `_format_version` discipline
+            # exists to close. False is the documented default; emitting it
+            # explicitly keeps reloaded entities indistinguishable from the
+            # source they were saved from.
+            d["abstract"] = bool(getattr(m, "abstract", False))
+            # Preserve per-modulator sensor metadata so reloaded modulators
+            # reconstruct as the same shape that was saved. Without this,
+            # `Entity.from_dict` returns no-sensor stubs for modulators that
+            # originally had component-damage sensors, which (after C4) would
+            # spuriously trip the deprecation warning on every load.
+            mod_sensors = getattr(m, "sensors", None)
+            if mod_sensors:
+                d["sensors"] = dict(mod_sensors)
             return d
 
         def _trigger_dict(t: Any) -> dict[str, Any]:
@@ -625,10 +641,28 @@ class Entity:
                             description=aff_data.get("description", ""),
                             timeout=aff_data.get("timeout", 30.0),
                         )
+                    # Legacy compat: pre-C4 snapshots have neither
+                    # `sensors` nor `abstract` on the modulator dict. Treat
+                    # them as abstract=True so they don't spuriously warn
+                    # on load — the saved-entity contract didn't carry the
+                    # discriminator so we can't re-derive intent. Snapshots
+                    # written by 0.9+ always carry an explicit `abstract`
+                    # boolean (see _modulator_dict).
+                    has_explicit_abstract = "abstract" in mdata
+                    has_sensors = bool(mdata.get("sensors"))
+                    if has_explicit_abstract:
+                        mod_abstract = bool(mdata["abstract"])
+                    else:
+                        mod_abstract = not has_sensors
+                    mod_sensors = mdata.get("sensors") or {}
+                    if not isinstance(mod_sensors, dict):
+                        mod_sensors = {}
                     entity.modulators[mname] = SpecModulator(
                         _name=mdata.get("name", mname),
                         _entity_name=data["name"],
                         _affordances=affs,
+                        _sensors=mod_sensors,
+                        _abstract=mod_abstract,
                     )
             except ImportError:
                 pass  # spec module not available — skip modulator reconstruction

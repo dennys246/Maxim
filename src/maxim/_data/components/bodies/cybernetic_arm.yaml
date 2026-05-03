@@ -31,6 +31,7 @@ entity:
       initial: 0.5
   modulators:
     physical:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         grip:
           params: {target: str, force: float}
@@ -45,6 +46,7 @@ entity:
           params: {object: str, action: str}
           description: "Precise manipulation — wiring, lockpicking, surgery"
     maintenance:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         recalibrate:
           params: {}

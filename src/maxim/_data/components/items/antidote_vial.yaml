@@ -19,6 +19,7 @@ entity:
       initial: 0.9
   modulators:
     usage:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         drink:
           params: {}

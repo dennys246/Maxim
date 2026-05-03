@@ -25,6 +25,7 @@ entity:
       initial: 0.2  # mild warmth
   modulators:
     fabric:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         wrap:
           params: {}

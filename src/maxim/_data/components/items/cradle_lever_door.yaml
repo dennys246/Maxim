@@ -21,6 +21,7 @@ entity:
       initial: 0.0  # 0=closed, 1=open
   modulators:
     mechanism:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         pull:
           params: {}

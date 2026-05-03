@@ -23,6 +23,7 @@ entity:
       initial: 1.2
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         slash:
           params: {target: str, force: float}
@@ -34,6 +35,7 @@ entity:
           params: {target: str}
           description: "Throw the weapon at a target"
     maintenance:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         sharpen:
           params: {}

@@ -16,6 +16,7 @@ entity:
       initial: 0.0
   modulators:
     interface:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         press:
           params: {}

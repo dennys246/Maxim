@@ -27,6 +27,7 @@ entity:
       initial: 0.6
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         bite:
           params: {target: str}
@@ -38,6 +39,7 @@ entity:
           params: {}
           description: "Drop from above onto an unsuspecting target"
     movement:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         climb:
           params: {surface: str}

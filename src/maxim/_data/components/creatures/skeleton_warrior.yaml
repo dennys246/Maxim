@@ -27,6 +27,7 @@ entity:
       initial: 0.8
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         sword_slash:
           params: {target: str}
@@ -38,6 +39,7 @@ entity:
           params: {target: str}
           description: "Hurl a detached bone as a projectile"
     movement:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         shamble:
           params: {direction: str}

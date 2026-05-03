@@ -31,6 +31,7 @@ entity:
       initial: 0.3
   modulators:
     riding:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         mount:
           params: {}
@@ -48,6 +49,7 @@ entity:
           params: {}
           description: "Bring the horse to a stop"
     care:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         feed:
           params: {food: str}

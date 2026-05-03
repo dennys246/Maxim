@@ -28,6 +28,7 @@ entity:
       initial: 0.75
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
@@ -36,6 +37,7 @@ entity:
           params: {item: str, price: float}
           description: "Negotiate a price for goods or services"
     crafting:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         repair_weapon:
           params: {weapon: str}

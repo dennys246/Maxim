@@ -23,6 +23,7 @@ entity:
       initial: 0.8
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         shock_strike:
           params: {target: str, force: float}
@@ -34,6 +35,7 @@ entity:
           params: {}
           description: "Parry an incoming attack"
     maintenance:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         recharge:
           params: {source: str}

@@ -23,7 +23,7 @@
 Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). What remains:
 
 **Hard requirements:**
-- **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. Per-item designs intact in §C4-C6.
+- **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. C4 SHIPPED (PR #219). C5+C6 designs intact in §C5-C6. C4 hard-error flip has prerequisites tracked in §1.1-T4 (imagination/foundry pipeline normalizer + sensor-promotion audit on bundled YAMLs).
 - **D1-D3** (Section 6) — Docs passes (agent memory transfer, API/CLI surface review, final docs pass). No code, just writing.
 
 **Optional polish:**
@@ -265,9 +265,17 @@ No-op at ship time — the reflex system landing in 0.8 had already removed `_de
 
 Removed `DamageEntityTool` class, import, registration, and `TOOL_DESCRIPTIONS` entry from `simulation/tools.py`. Removed from `docs/user/tools.md`. Orchestrator prompts in `simulation/orchestrator.py` updated to use `damage_component`. `DamageComponentTool` is the sole damage tool going forward.
 
-### C4. Modulators without sensors (deprecation phase)
+### C4. Modulators without sensors (deprecation phase) — SHIPPED (PR #219, 2026-05-03)
 
-Require every modulator to declare at least one sensor. Capability-only modulators declare `abstract: true`. 0.9 deprecation warning, 1.0 hard error.
+Require every modulator to declare at least one sensor. Capability-only modulators declare `abstract: true`. 0.9 deprecation warning, 1.x hard error.
+
+**Shipped:** warning lives in `SpecModulator.__init__` (not `_parse_entity`) per CLAUDE.md "push silent-no-op invariants into types, not helpers" — covers parser, `Entity.from_dict`, foundry-generated specs, future programmatic builders. The 1.x flip is one-line. Symmetric `to_dict` emission of the `abstract` boolean. `Entity.from_dict` reconstructs per-modulator sensors (pre-existing roundtrip gap that the new constructor warning would have made spuriously fire) + legacy-pre-C4 dict-shape compat (no `sensors` and no `abstract` → load as `abstract=True`). Bundled audit: 115 modulators in `_data/components/` + 11 in `scenarios/embodiment/` declare `abstract: true`. Regression-guarded by `test_bundled_components_emit_no_deprecation_warning`. Pre-merge two-lens review folded.
+
+**Known follow-ups (track for 1.x track, before the hard-error flip in §1.1-T4):**
+
+- **C4-followup-1: Imagination + foundry pipelines emit bare LLM specs.** `imagination/trigger.py` (3 call sites) and `simulation/foundry.py` (2 call sites) call `_parse_entity` on LLM-generated specs that don't declare `abstract: true` on capability-only modulators. v0.9 surfaces deprecation warnings on every imagined entity — the intended deprecation signal. v1.x flip will hard-fail those entry points until fixed. **Fix shape:** small post-process normalizer in `spec.py` (`if not mod.get("sensors") and "abstract" not in mod: mod["abstract"] = True`) called at the 5 LLM-spec entry points + update `simulation/entity_designer.py` JSON template to ask the LLM to emit `abstract: true` for capability-only modulators. The post-process is a safety net for LLM forgetfulness; the prompt update is the right-shaped ask. Hard 1.x deadline (warning → error). ~50-100 LOC.
+
+- **C4-followup-2: Sensor-promotion audit.** The 115 bundled modulators were marked `abstract: true` uniformly by an audit script. A small subset (~5-15) arguably should grow real sensors instead so `compute_integrity()` reflects "this capability is degraded" — `cradle_lever_door.mechanism` should own `lever_position`, `wizard.magic` should own `mana`, etc. **Approach:** group the 115 by modulator-name category (combat/social/maintenance/usage are clearly verbs and stay abstract — ~95+ of them); the real audit shrinks to the ~15 ambiguous ones (`magic`, `mechanism`, `lifecycle`, `physical`, `expression`). For each: does the entity carry sensors that conceptually belong to this modulator's working order? Net diff is small (5-10 promotions); the architectural signal it sends ("we know what state belongs where") is large. Polish pass — no hard deadline, can land any time before 1.x.
 
 ### C5. Entity health as direct sensor (deprecation phase)
 
@@ -474,7 +482,11 @@ Bio-enrichment routing through ComponentIndex, composable body archetypes. Phase
 
 ### 1.1-T4. C4-C6 hard errors
 
-After 0.9 deprecation cycle.
+After 0.9 deprecation cycle. Flip `warnings.warn(DeprecationWarning, ...)` → `raise ConfigurationError(...)` at each shipped warning site.
+
+**C4 prerequisites (must clear before flipping the C4 warning):**
+- C4-followup-1 (imagination + foundry pipeline normalizer + prompt update) — see §C4. Hard prerequisite: without it, the flip hard-fails every imagined entity.
+- C4-followup-2 (sensor-promotion audit on ambiguous bundled modulators) — see §C4. Soft prerequisite: the bundled YAMLs already pass the C4 invariant, but the audit is the right time to promote ~5-15 from `abstract: true` to "owns these sensors."
 
 ### 1.1-T5. Agent-backed entities (revival path)
 

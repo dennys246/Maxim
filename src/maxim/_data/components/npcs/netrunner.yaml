@@ -30,6 +30,7 @@ entity:
       initial: 0.8
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
@@ -41,6 +42,7 @@ entity:
           params: {leverage: str}
           description: "Threaten using leverage or force"
     tech:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         hack:
           params: {target: str}

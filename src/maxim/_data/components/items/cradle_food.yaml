@@ -20,6 +20,7 @@ entity:
       initial: 0.9
   modulators:
     nutrition:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         eat:
           params: {}
