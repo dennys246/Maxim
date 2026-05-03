@@ -685,6 +685,27 @@ class TestSceneEntityOwnership:
         assert "[YOU]" in result.output
         assert "[SCENE]" not in result.output
 
+    def test_sense_presence_context_optional_in_jsonschema(self):
+        """``context`` must export as optional, not required.
+
+        Regression for the legacy description-as-value pattern: when
+        ``input_schema`` was ``{"context": "Optional description..."}``
+        the JSONSchema export emitted ``required: ["context"]`` despite
+        the prose saying "Optional", so strict MCP / Anthropic clients
+        rejected calls that omitted it. ``execute()`` already accepts a
+        missing context (and the auto-sense caller in agent_loop never
+        passes one), so the fix is in the schema.
+        """
+        emap = EntityMap()
+        tool = SensePresenceTool(entity_map=emap)
+        schema = tool.to_json_schema()
+        assert schema["type"] == "object"
+        assert "context" in schema["properties"]
+        # The critical assertion: not required.
+        assert "context" not in schema.get("required", [])
+        # Description preserved so the LLM still sees the usage hint.
+        assert "description" in schema["properties"]["context"]
+
 
 # ---------------------------------------------------------------------------
 # S2: NAc valence ranking test

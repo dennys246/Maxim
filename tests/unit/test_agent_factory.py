@@ -292,6 +292,27 @@ class TestAgentPool:
         with pytest.raises(KeyError):
             pool.get_agent("npc_guard")
 
+    def test_remove_clears_per_agent_stash(self, factory, guard_config):
+        """remove() must drop module-level bio_integration stash entries
+        so a future agent that reuses the id doesn't inherit stale state.
+        """
+        from maxim.runtime import bio_integration
+
+        pool = AgentPool()
+        guard = factory.create_agent(guard_config)
+        pool.add(guard)
+
+        # Seed all three stash dicts for this agent.
+        bio_integration._episode_ticks["npc_guard"] = 42
+        bio_integration._latest_pain_intensity["npc_guard"] = 0.7
+        bio_integration._latest_substrate_nodes["npc_guard"] = ("node-a",)
+
+        pool.remove("npc_guard")
+
+        assert "npc_guard" not in bio_integration._episode_ticks
+        assert "npc_guard" not in bio_integration._latest_pain_intensity
+        assert "npc_guard" not in bio_integration._latest_substrate_nodes
+
     def test_run_turn(self, factory, guard_config):
         pool = AgentPool()
         guard = factory.create_agent(guard_config)

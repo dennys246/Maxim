@@ -1021,27 +1021,47 @@ def run_agentic_loop(
                     _auto_sense_parts = []
 
                     # Exteroception: sense_presence (what entities are around me?)
+                    # KeyError = tool not registered (agent has no exteroception
+                    # by config); other exceptions are real failures and get
+                    # logged so silent blindness can't hide a bug.
+                    _presence = None
                     try:
                         _presence = _tool_reg.get("sense_presence")
-                        _presence_result = _presence.execute()
-                        if _presence_result.success and _presence_result.output:
-                            _auto_sense_parts.append(str(_presence_result.output))
-                    except (KeyError, Exception):
+                    except KeyError:
                         pass
+                    if _presence is not None:
+                        try:
+                            _presence_result = _presence.execute()
+                            if _presence_result.success and _presence_result.output:
+                                _auto_sense_parts.append(str(_presence_result.output))
+                        except Exception as _exc:
+                            log_swallowed_exception(
+                                _exc,
+                                operation="auto_sense_presence",
+                                context={"step": step_num},
+                            )
 
                     # Interoception: sense self-entity (health, stamina, hunger)
+                    _sense = None
                     try:
                         _sense = _tool_reg.get("sense")
-                        # Find self-entity name from entity_map
-                        _emap = getattr(_presence, "_entity_map", None) if "_presence" in dir() else None
-                        if _emap is not None:
-                            _self_ents = _emap.list_self_entities()
-                            for _se in _self_ents:
-                                _sense_result = _sense.execute(entity_name=_se.name)
-                                if _sense_result.success and _sense_result.output:
-                                    _auto_sense_parts.append(f"Body state ({_se.name}): {_sense_result.output}")
-                    except (KeyError, Exception):
+                    except KeyError:
                         pass
+                    if _sense is not None and _presence is not None:
+                        try:
+                            _emap = getattr(_presence, "_entity_map", None)
+                            if _emap is not None:
+                                _self_ents = _emap.list_self_entities()
+                                for _se in _self_ents:
+                                    _sense_result = _sense.execute(entity_name=_se.name)
+                                    if _sense_result.success and _sense_result.output:
+                                        _auto_sense_parts.append(f"Body state ({_se.name}): {_sense_result.output}")
+                        except Exception as _exc:
+                            log_swallowed_exception(
+                                _exc,
+                                operation="auto_sense_self",
+                                context={"step": step_num},
+                            )
 
                     if _auto_sense_parts:
                         _auto_sense_text = "\n".join(_auto_sense_parts)

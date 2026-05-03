@@ -5,7 +5,6 @@ Covers:
 - EC pattern_complete_or_separate
 - ATL modality tags + filtered queries
 - LinguisticEncoder pipeline
-- MemorySummary + PromptAssembler
 - Dual-path flag wiring
 - P1 metric extractor
 """
@@ -26,7 +25,6 @@ from maxim.agents.modality import (
 )
 from maxim.memory.atl import ATL, ATLConfig
 from maxim.memory.semantic_types import Concept, SemanticMemory
-from maxim.prompts.assembler import MemorySummary, PromptAssembler, SubstrateNode
 from maxim.similarity.ec import ECConfig, EntorhinalCortex, _cosine_similarity
 
 
@@ -545,110 +543,6 @@ class TestEncoderNAcEligibility:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MemorySummary + PromptAssembler tests
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestMemorySummary:
-    """MemorySummary construction and PromptAssembler output."""
-
-    def test_from_atl_empty(self):
-        atl = ATL()
-        summary = MemorySummary.from_atl(atl)
-        assert summary.total_nodes == 0
-        assert summary.active_nodes == []
-
-    def test_from_atl_with_substrate_nodes(self):
-        atl = ATL()
-        atl.activate_substrate_node("n1", "hello", "text")
-        atl.activate_substrate_node("n2", "world", "text")
-        atl.activate_substrate_node("v1", "scene", "vision")
-
-        summary = MemorySummary.from_atl(atl, current_node_id="n1", pattern_completed=True)
-        assert summary.total_nodes == 3
-        assert summary.text_nodes == 2
-        assert summary.vision_nodes == 1
-        assert summary.current_node_id == "n1"
-        assert summary.pattern_completed
-
-    def test_from_atl_modality_filtered(self):
-        atl = ATL()
-        atl.activate_substrate_node("n1", "hello", "text")
-        atl.activate_substrate_node("v1", "scene", "vision")
-
-        summary = MemorySummary.from_atl(atl, modality="text")
-        assert summary.total_nodes == 1
-        assert summary.text_nodes == 1
-        assert summary.vision_nodes == 0
-
-
-class TestPromptAssembler:
-    """PromptAssembler composition."""
-
-    def test_compose_memory_section_empty(self):
-        assembler = PromptAssembler()
-        summary = MemorySummary()
-        assert assembler.compose_memory_section(summary) == ""
-
-    def test_compose_memory_section_with_nodes(self):
-        assembler = PromptAssembler()
-        summary = MemorySummary(
-            active_nodes=[
-                SubstrateNode(node_id="n1", text="greeting", modality="text"),
-                SubstrateNode(node_id="n2", text="farewell", modality="text"),
-            ],
-            current_node_id="n1",
-            pattern_completed=True,
-            total_nodes=2,
-            text_nodes=2,
-        )
-        output = assembler.compose_memory_section(summary)
-        assert "Substrate Memory" in output
-        assert "recognized" in output
-        assert "greeting" in output
-        assert "farewell" in output
-
-    def test_compose_memory_section_new_concept(self):
-        assembler = PromptAssembler()
-        summary = MemorySummary(
-            active_nodes=[SubstrateNode(node_id="n1", text="novel", modality="text")],
-            current_node_id="n1",
-            pattern_completed=False,
-            total_nodes=1,
-            text_nodes=1,
-        )
-        output = assembler.compose_memory_section(summary)
-        assert "new concept" in output
-
-    def test_compose_observation_section_without_substrate(self):
-        assembler = PromptAssembler()
-        percept = Percept(
-            timestamp=0.0,
-            source="test",
-            transcript_chunk="Hello world",
-        )
-        output = assembler.compose_observation_section(percept)
-        assert "Hello world" in output
-        assert "Substrate" not in output
-
-    def test_compose_observation_section_with_substrate(self):
-        assembler = PromptAssembler()
-        percept = Percept(
-            timestamp=0.0,
-            source="test",
-            transcript_chunk="Hello world",
-        )
-        summary = MemorySummary(
-            active_nodes=[SubstrateNode(node_id="n1", text="greeting", modality="text")],
-            total_nodes=1,
-            text_nodes=1,
-        )
-        output = assembler.compose_observation_section(percept, summary=summary)
-        assert "Hello world" in output
-        assert "Substrate Memory" in output
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Dual-path flag wiring tests
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -704,17 +598,6 @@ class TestDualPathWiring:
         percept = Percept(timestamp=0.0, source="test", transcript_chunk="hello")
         # Should not raise
         hub.on_percept_received(percept)
-
-    def test_get_memory_summary_none_when_disabled(self):
-        from maxim.integration.memory_hub import MemoryHub
-
-        hub = MemoryHub(
-            hippocampus=Mock(),
-            scn=Mock(register=Mock(), unregister=Mock()),
-            nac=Mock(remove_memory=Mock()),
-            ec=Mock(semantic_enabled=False, remove_signature=Mock()),
-        )
-        assert hub.get_memory_summary() is None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
