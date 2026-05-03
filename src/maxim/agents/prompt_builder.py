@@ -1105,11 +1105,16 @@ class PromptBuilder:
         counter = self._token_counter
 
         if request.conversation_history_text:
-            # Embodied sims: bio-enrichment carries forward learned context,
-            # so conversation history can be much shorter. 3 turns gives
-            # the LLM the most recent scene + response without bloating
-            # the prompt on 14B models with limited n_ctx.
-            max_conv_turns = 3 if getattr(request, "acting_coach", None) else 12
+            # Scale conversation depth with available context. Embodied
+            # agents (acting_coach present) compete with bio sections for
+            # budget, so the multiplier is smaller; non-embodied passive
+            # agents can afford more history. The budgeter will further
+            # truncate under pressure (truncatable=True below), so this
+            # is the upper bound, not a guaranteed quota.
+            if getattr(request, "acting_coach", None):
+                max_conv_turns = min(12, max(3, self._n_ctx // 2000))
+            else:
+                max_conv_turns = min(20, max(6, self._n_ctx // 800))
             conv_text = _compact_conversation(request.conversation_history_text, max_conv_turns)
             budgeter.add(
                 "conversation",
@@ -1470,13 +1475,36 @@ class PromptBuilder:
                 risks = prog.get("risks", [])
                 if risks:
                     motor_lines.append(f"  Known risks: {', '.join(risks)}")
+
+            def _truncate_motor_programs(content: str, max_tok: int) -> str:
+                """Drop full motor program entries (name + steps + risks) from
+                the tail. The previous implementation sliced by line count,
+                which left partial entries (e.g. a Steps line with no name)
+                because each entry spans 1-3 lines. Pure function — uses the
+                conservative ~4-chars-per-token estimate (same as the
+                deliberation-transcript truncator) since the static-method
+                context has no token counter in scope.
+                """
+                lines = content.split("\n")
+                target_chars = max_tok * 4
+                while len("\n".join(lines)) > target_chars:
+                    cut = None
+                    for i in range(len(lines) - 1, 0, -1):
+                        if lines[i].startswith("- "):
+                            cut = i
+                            break
+                    if cut is None:
+                        break  # only header left, can't drop more
+                    lines = lines[:cut]
+                return "\n".join(lines)
+
             budgeter.add(
                 "motor_programs",
                 "\n".join(motor_lines),
                 SectionPriority.IMPORTANT,
                 truncatable=True,
                 min_tokens=30,
-                truncate_fn=lambda c, m: "\n".join(c.split("\n")[: max(2, m // 15)]),
+                truncate_fn=_truncate_motor_programs,
             )
 
         if context.statistical_context and context.active_pattern_count > 0:

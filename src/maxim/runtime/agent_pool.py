@@ -109,6 +109,15 @@ class AgentPool:
                     self._bus.unregister(agent_id)
                 except Exception:
                     pass
+            # Drop module-level per-agent stash entries so a future agent
+            # reusing this id doesn't inherit stale episode_tick / pain
+            # intensity / substrate_nodes from the dead one.
+            try:
+                from maxim.runtime.bio_integration import reset_agent_stash
+
+                reset_agent_stash(agent_id)
+            except Exception:
+                pass
             log.info("AgentPool: removed '%s'", agent_id)
 
     def get_agent(self, agent_id: str) -> Any:

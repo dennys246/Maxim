@@ -184,3 +184,101 @@ class TestTranscriptSubsumesAll:
         names = _section_names(b)
         assert "bio_enrichment" not in names
         assert "working_memory_thoughts" not in names
+
+
+# ─── motor_programs entry-aware truncation ─────────────────────────────────
+
+
+class TestMotorProgramTruncation:
+    """The motor_programs truncate_fn must drop full entries (1-3 lines each:
+    name + Steps + Known risks), never partial ones. The previous
+    implementation sliced by line count and would leave orphaned Steps or
+    Known-risks lines whose owning name had been dropped.
+    """
+
+    def _build_with_programs(self, programs: list[dict]) -> PromptBudgeter:
+        from dataclasses import replace as _dc_replace
+
+        b = _budgeter()
+        # Use _add_memory_sections, which is the static method that adds the
+        # motor_programs section + its truncate_fn.
+        ctx = StructuredContext(timestamp=time.time())
+        ctx = _dc_replace(ctx, motor_programs=programs)
+        PromptBuilder._add_memory_sections(b, ctx)
+        return b
+
+    def _section(self, b: PromptBudgeter, name: str):
+        return next(s for s in b._sections if s.name == name)
+
+    def test_no_truncation_under_generous_budget(self):
+        progs = [
+            {
+                "name": f"prog_{i}",
+                "confidence": 0.5,
+                "executions": 1,
+                "success_rate": 0.5,
+                "steps": ["a", "b"],
+                "risks": ["r1"],
+            }
+            for i in range(3)
+        ]
+        b = self._build_with_programs(progs)
+        s = self._section(b, "motor_programs")
+        # Under no pressure the full content survives.
+        assert "prog_0" in s.content
+        assert "prog_2" in s.content
+
+    def test_truncate_drops_full_entries_no_orphans(self):
+        progs = [
+            {
+                "name": f"prog_{i}",
+                "confidence": 0.5,
+                "executions": 1,
+                "success_rate": 0.5,
+                "steps": ["a", "b"],
+                "risks": ["r1", "r2"],
+            }
+            for i in range(5)
+        ]
+        b = self._build_with_programs(progs)
+        s = self._section(b, "motor_programs")
+        # Squeeze hard — only header + ~1 entry should fit.
+        truncated = s.truncate_fn(s.content, max_tok=60)
+        # The header survives.
+        assert "Available Motor Programs" in truncated
+        # Any "Steps:" line must be preceded by a "- " entry header (no orphan).
+        lines = truncated.split("\n")
+        for i, ln in enumerate(lines):
+            if ln.lstrip().startswith("Steps:") or ln.lstrip().startswith("Known risks:"):
+                # find the nearest preceding "- " line
+                preceded = any(lines[j].startswith("- ") for j in range(i - 1, -1, -1))
+                assert preceded, f"Orphan continuation line at index {i}: {ln!r}\nFull:\n{truncated}"
+
+    def test_truncate_preserves_head_entries(self):
+        """Tail entries are dropped first; head entry survives."""
+        progs = [
+            {"name": "first", "confidence": 0.9, "executions": 5, "success_rate": 0.9, "steps": ["s1"], "risks": []},
+            {
+                "name": "second",
+                "confidence": 0.5,
+                "executions": 1,
+                "success_rate": 0.3,
+                "steps": ["s2"],
+                "risks": ["danger"],
+            },
+            {
+                "name": "third",
+                "confidence": 0.2,
+                "executions": 1,
+                "success_rate": 0.1,
+                "steps": ["s3"],
+                "risks": ["danger"],
+            },
+        ]
+        b = self._build_with_programs(progs)
+        s = self._section(b, "motor_programs")
+        truncated = s.truncate_fn(s.content, max_tok=30)
+        assert "first" in truncated
+        # third should be dropped before first under tight budget
+        if "third" in truncated:
+            assert "first" in truncated  # invariant: head survives
