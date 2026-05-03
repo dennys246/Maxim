@@ -1043,7 +1043,7 @@ class PromptBuilder:
             budgeter.add(
                 "acting_coach",
                 coach_text,
-                SectionPriority.IMPORTANT,
+                SectionPriority.CRITICAL,
             )
 
     @staticmethod
