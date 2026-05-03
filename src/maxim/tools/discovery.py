@@ -145,8 +145,23 @@ class SensePresenceTool(Tool):
         "each entity can do. Use this when you arrive somewhere new or want "
         "to know what you can interact with."
     )
+    # Authored as JSONSchema (not the legacy description-as-value form) so
+    # ``context`` is correctly marked optional in the export — strict MCP /
+    # Anthropic clients reject calls that omit a "required" param, but
+    # ``execute()`` already handles a missing context (and the auto-sense
+    # caller in agent_loop never passes one).
     input_schema: dict[str, Any] = {
-        "context": "Optional description of what you're looking for (e.g., 'weapons', 'enemies', 'allies')"
+        "type": "object",
+        "properties": {
+            "context": {
+                "type": "string",
+                "description": (
+                    "Optional — describe what you're looking for "
+                    "(e.g., 'weapons', 'enemies', 'allies'). Triggers "
+                    "imagination to instantiate matching entities."
+                ),
+            },
+        },
     }
 
     def __init__(

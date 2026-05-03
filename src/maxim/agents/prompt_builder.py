@@ -1197,7 +1197,7 @@ class PromptBuilder:
         if context.current_percept:
             obs_text = build_observation_section(context.current_percept)
             if obs_text:
-                budgeter.add("observation", obs_text, SectionPriority.NICE_TO_HAVE)
+                budgeter.add("observation", obs_text, SectionPriority.IMPORTANT)
 
         if context.detected_speech:
             speech_lines = ["=== Recent Speech ==="]
