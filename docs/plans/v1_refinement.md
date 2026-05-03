@@ -18,6 +18,30 @@
 
 ---
 
+## Outstanding for 1.0 (as of 2026-05-03)
+
+Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). What remains:
+
+**Hard requirements:**
+- **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. Per-item designs intact in §C4-C6.
+- **D1-D3** (Section 6) — Docs passes (agent memory transfer, API/CLI surface review, final docs pass). No code, just writing.
+
+**Optional polish:**
+- **B3 Phase 3** (Section 2) — Composable body archetypes. YAMLs partially landed; `maxim_sim_avatar` migration pending. 1.0 vs 1.1 scope decision still open. Doesn't gate the substrate-attribution claim.
+
+**Continuing past 1.0** (not 1.0 gates — listed in Section 8 "1.1 track" + per-plan partial-status headers):
+- bio_emergent_persona_foundations Stages 0-3 full implementation (1.0 shipped reservations only per V1 Phase A clean-pass branch)
+- persona_cleanup_and_mode_transition Stages 2-6 (1.0 shipped Stage 1 deprecation only)
+- scene_actor_affordances Stages 3-5 (1.0 shipped Stages 1+2 only)
+- 1.1-T1 Minecraft live demo + harness benchmark
+- 1.1-T5 Agent-backed entities revival
+- 1.1-T6 B5 embodiment/narrative separation
+- MCP compatibility (CC9 prereq shipped)
+
+**Net assessment:** 1.0 substantively done. Path to ship is one 0.9 release carrying C4/C5/C6 deprecation warnings → deprecation window of operator's choosing → 1.0 release flipping warnings to hard errors. D1-D3 docs work proceeds in parallel; B3 Phase 3 is optional polish. No more substrate uncertainty, no more confound risk, no more unshipped invariants.
+
+---
+
 ## Section 1: Validation (prove the claim)
 
 ### V1. Cross-session sim validation — VALIDATED (2026-04-26)
@@ -96,20 +120,19 @@ The phase deltas attribute the V1 result to specific contributors. Phase A is th
 
 These are the systems that must be fully operational and standardized before 1.0 freezes the interfaces. Post-1.0, interface changes are expensive.
 
-### B1. Bio-system protocol enrichment
+### B1. Bio-system protocol enrichment — SHIPPED (2026-04-26)
 
-**Companion plan:** [bio_system_protocol_enrichment.md](bio_system_protocol_enrichment.md)
+**Companion plan (archived):** [archive/bio_system_protocol_enrichment.md](archive/bio_system_protocol_enrichment.md)
+**Shipped surface:** all 5 `*Context` frozen dataclasses live at [src/maxim/models/bio_context.py](../../src/maxim/models/bio_context.py).
 
 Add standardized `*Context` dataclass parameters to each bio-system's primary methods NOW (optional, defaults to None) so future backends can consume richer input without Protocol breaks. Current implementations ignore the context; future ones use it.
 
-**Systems to enrich:**
+**Systems enriched:**
 - Hippocampus: `RetrievalContext` (temporal, emotional, goal state, consolidation level)
 - NAc: `PredictionContext` (arousal, temporal discount, context richness)
 - ATL: `SemanticContext` (abstraction level, domain hints)
 - EC: `EncodingContext` (decomposition strategy hints, resolution)
 - SCN: `TemporalContext` (oscillator phase, prediction confidence)
-
-**Why before 1.0:** Adding an optional `context=None` parameter is non-breaking. Removing one or changing its shape post-1.0 IS breaking. The cost of adding these now is near-zero; the cost of not having them later is a 2.0.
 
 ### B2. SCN oscillator feedback — anticipatory temporal credit — SHIPPED (2026-04-26)
 
