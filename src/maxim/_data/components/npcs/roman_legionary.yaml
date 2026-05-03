@@ -34,6 +34,7 @@ entity:
       initial: 0.4
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         gladius_thrust:
           params: {target: str}
@@ -45,6 +46,7 @@ entity:
           params: {target: str}
           description: "Hurl a javelin at range — single use"
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}

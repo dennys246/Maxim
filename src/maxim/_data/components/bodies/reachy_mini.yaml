@@ -76,6 +76,7 @@ entity:
 
   modulators:
     motion:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         look_at:
           params: {u: int, v: int, duration: float}
@@ -93,6 +94,7 @@ entity:
           params: {amplitude: float, cycles: int}
           description: "Negative head shake gesture"
     expression:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         antenna_alert:
           params: {}
@@ -104,6 +106,7 @@ entity:
           params: {left: float, right: float}
           description: "Independent antenna positioning for nuanced expression"
     capture:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         get_frame:
           params: {}
@@ -112,6 +115,7 @@ entity:
           params: {duration: float}
           description: "Capture an audio clip from the microphone"
     lifecycle:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         wake_up:
           params: {}

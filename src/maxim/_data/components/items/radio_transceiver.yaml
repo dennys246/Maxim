@@ -27,6 +27,7 @@ entity:
       initial: 0.0
   modulators:
     communication:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         transmit:
           params: {message: str}
@@ -41,6 +42,7 @@ entity:
           params: {freq: float}
           description: "Tune to a specific frequency"
     hardware:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         extend_antenna:
           params: {}

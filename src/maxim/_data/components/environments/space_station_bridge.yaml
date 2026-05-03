@@ -31,6 +31,7 @@ entity:
       initial: 0.0
   modulators:
     systems:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         check_sensors:
           params: {}
@@ -48,6 +49,7 @@ entity:
           params: {}
           description: "Seal all bulkheads and activate emergency lighting"
     interaction:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         look_through_viewport:
           params: {}

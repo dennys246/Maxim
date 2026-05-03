@@ -27,6 +27,7 @@ entity:
       initial: 0.5
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         tase:
           params: {target: str}
@@ -38,6 +39,7 @@ entity:
           params: {target: str}
           description: "Ram into a target at speed"
     movement:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         patrol:
           params: {area: str}

@@ -25,11 +25,13 @@ entity:
       initial: 0.0
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
           description: "Say something to this character"
     physical:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         punch:
           params: {force: float}

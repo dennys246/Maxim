@@ -23,6 +23,7 @@ entity:
       initial: 0.6
   modulators:
     draft:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         feel:
           params: {}

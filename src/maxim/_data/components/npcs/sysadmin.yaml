@@ -34,6 +34,7 @@ entity:
       initial: 0.85
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
@@ -45,6 +46,7 @@ entity:
           params: {issue: str}
           description: "Escalate a critical issue — only use for real emergencies"
     technical:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         pair_debug:
           params: {service: str}

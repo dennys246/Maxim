@@ -27,6 +27,7 @@ entity:
       initial: 0.7
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         claw:
           params: {target: str}
@@ -41,6 +42,7 @@ entity:
           params: {target: str}
           description: "Siphon life force from a grappled target — heals self"
     movement:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         phase_through:
           params: {barrier: str}

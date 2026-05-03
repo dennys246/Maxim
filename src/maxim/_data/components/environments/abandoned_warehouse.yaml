@@ -31,6 +31,7 @@ entity:
       initial: 3
   modulators:
     interaction:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         look_around:
           params: {}
@@ -45,6 +46,7 @@ entity:
           params: {}
           description: "Sweep a flashlight beam across the space"
     movement:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         sneak:
           params: {direction: str}

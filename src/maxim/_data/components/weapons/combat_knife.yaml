@@ -19,6 +19,7 @@ entity:
       initial: 0.95
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         slash:
           params: {target: str}
@@ -30,6 +31,7 @@ entity:
           params: {target: str}
           description: "Throw the knife — may lose it"
     utility:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         cut_rope:
           params: {}

@@ -31,6 +31,7 @@ entity:
       initial: 0.8
   modulators:
     interaction:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         look_around:
           params: {}
@@ -45,6 +46,7 @@ entity:
           params: {}
           description: "Light a candle to push back the oppressive darkness"
     survival:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         barricade_door:
           params: {}

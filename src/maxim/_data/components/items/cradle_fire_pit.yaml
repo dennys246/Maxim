@@ -22,6 +22,7 @@ entity:
       initial: 0.8
   modulators:
     flame:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         observe:
           params: {}

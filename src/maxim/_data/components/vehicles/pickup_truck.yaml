@@ -31,6 +31,7 @@ entity:
       initial: 0
   modulators:
     driving:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         start_engine:
           params: {}
@@ -48,6 +49,7 @@ entity:
           params: {}
           description: "Drive in reverse"
     utility:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         load_cargo:
           params: {item: str}

@@ -27,6 +27,7 @@ entity:
       initial: 0.5
   modulators:
     interaction:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         observe_crowd:
           params: {}
@@ -41,6 +42,7 @@ entity:
           params: {stall: str}
           description: "Browse goods at a merchant's stall"
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         approach_senator:
           params: {name: str}

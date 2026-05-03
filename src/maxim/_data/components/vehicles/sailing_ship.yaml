@@ -35,6 +35,7 @@ entity:
       initial: 0
   modulators:
     navigation:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         set_course:
           params: {heading: str}
@@ -49,6 +50,7 @@ entity:
           params: {}
           description: "Lower the anchor to hold position"
     management:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         ration_supplies:
           params: {level: str}

@@ -37,6 +37,7 @@ entity:
       initial: 0.9
   modulators:
     physical:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         grip:
           params: {target: str, force: float}
@@ -51,6 +52,7 @@ entity:
           params: {object: str, action: str}
           description: "Precision manipulation with integrated micro-tools"
     tech:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         deploy_blade:
           params: {}
@@ -59,6 +61,7 @@ entity:
           params: {target: str}
           description: "Neural interface jack — direct-connect to systems"
     maintenance:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         recalibrate:
           params: {}

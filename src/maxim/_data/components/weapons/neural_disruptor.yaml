@@ -27,6 +27,7 @@ entity:
       initial: 0.7
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         fire:
           params: {target: str}
@@ -38,6 +39,7 @@ entity:
           params: {target: str}
           description: "Strike with the weapon body as a last resort"
     maintenance:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         reload:
           params: {}

@@ -378,11 +378,20 @@ def _parse_entity(
                     )
                 )
 
-        # Per-modulator sensors (component-level damage model)
-        mod_sensors = mod_spec.get("sensors", {})
+        # Per-modulator sensors (component-level damage model). Normalise
+        # sensors:null and sensors:[] (legal YAML, semantically "no sensors")
+        # so the C4 abstract check below and the .items() loop both behave
+        # consistently — the pre-fix `.get("sensors", {})` returned the bare
+        # None/list and crashed downstream.
+        mod_sensors_raw = mod_spec.get("sensors")
+        mod_sensors = mod_sensors_raw if isinstance(mod_sensors_raw, dict) else {}
         mod_integrity_fn = mod_spec.get("integrity", "weighted_mean")
         mod_damage_affinities = mod_spec.get("damage_affinities", {})
+        mod_abstract = bool(mod_spec.get("abstract", False))
 
+        # The C4 deprecation warning fires inside SpecModulator.__init__ —
+        # see that constructor for why the structural enforcement lives at
+        # the type, not here.
         modulator = SpecModulator(
             _name=mod_name,
             _entity_name=name,
@@ -391,6 +400,7 @@ def _parse_entity(
             _integrity_fn=mod_integrity_fn,
             _damage_affinities=mod_damage_affinities,
             _latent_affordances=tuple(latent_affs),
+            _abstract=mod_abstract,
         )
 
         # Initialize modulator vital_metrics from sensor specs
@@ -636,6 +646,7 @@ class SpecModulator:
         "_sensors",
         "_integrity_fn",
         "_damage_affinities",
+        "_abstract",
         "vital_metrics",
     )
 
@@ -649,6 +660,7 @@ class SpecModulator:
         _integrity_fn: str = "weighted_mean",
         _damage_affinities: dict[str, dict[str, float]] | None = None,
         _latent_affordances: tuple[LatentAffordance, ...] = (),
+        _abstract: bool = False,
     ) -> None:
         self._name = _name
         self._entity_name = _entity_name
@@ -658,8 +670,29 @@ class SpecModulator:
         self._sensors = _sensors or {}
         self._integrity_fn = _integrity_fn
         self._damage_affinities = _damage_affinities or {}
+        self._abstract = _abstract
         # Mutable state for per-modulator sensor values (like entity.vital_metrics)
         self.vital_metrics: dict[str, float] = {}
+
+        # C4 (v0.9 deprecation, v1.x hard ConfigurationError): a modulator
+        # with no sensors is silent dead weight for the component-damage
+        # model unless it's explicitly capability-only. Per CLAUDE.md "push
+        # silent-no-op invariants into types, not helpers" — enforcing here
+        # covers _parse_entity, Entity.from_dict, foundry-generated specs,
+        # and any future programmatic builder in one place. The 1.x flip
+        # is `warnings.warn(...)` → `raise ConfigurationError(...)`.
+        if not self._sensors and not self._abstract:
+            warnings.warn(
+                (
+                    f"Modulator {self._entity_name!r}.{self._name!r} declares no sensors. "
+                    "Capability-only modulators must declare `abstract: true` "
+                    "in their YAML to opt out; otherwise declare at least one "
+                    "sensor. This will become a hard ConfigurationError in 1.x. "
+                    "See docs/plans/v1_refinement.md §C4."
+                ),
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
     @property
     def name(self) -> str:
@@ -688,6 +721,16 @@ class SpecModulator:
     def latent_affordances(self) -> tuple[LatentAffordance, ...]:
         """Latent motor programs declared on this modulator."""
         return self._latent_affordances
+
+    @property
+    def abstract(self) -> bool:
+        """Capability-only marker (C4): modulator intentionally has no sensors.
+
+        Set in YAML via ``abstract: true``. Suppresses the v0.9 deprecation
+        warning for modulators that genuinely expose only affordances and have
+        no observable state of their own (e.g. ``weapon.combat``, ``npc.social``).
+        """
+        return self._abstract
 
     def available_latent_affordances(self) -> list[LatentAffordance]:
         """Return latent affordances that pass integrity gating.

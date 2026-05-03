@@ -31,6 +31,7 @@ entity:
       initial: 0.9
   modulators:
     interaction:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         look_around:
           params: {}
