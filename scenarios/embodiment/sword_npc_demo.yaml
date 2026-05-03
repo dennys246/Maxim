@@ -31,6 +31,7 @@ world_entities:
         initial: 1.2
     modulators:
       combat:
+        abstract: true  # capability-only — no sensors (C4)
         affordances:
           slash:
             params: {target: str, force: float}
@@ -42,6 +43,7 @@ world_entities:
             params: {target: str}
             description: "Throw the weapon at a target"
       maintenance:
+        abstract: true  # capability-only — no sensors (C4)
         affordances:
           sharpen:
             params: {}
@@ -72,6 +74,7 @@ world_entities:
         initial: 1.0
     modulators:
       social:
+        abstract: true  # capability-only — no sensors (C4)
         affordances:
           speak:
             params: {message: str}
@@ -83,6 +86,7 @@ world_entities:
             params: {}
             description: "Threaten the ferryman"
       physical:
+        abstract: true  # capability-only — no sensors (C4)
         affordances:
           punch:
             params: {force: float}

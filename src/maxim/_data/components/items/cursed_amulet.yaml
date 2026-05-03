@@ -27,6 +27,7 @@ entity:
       initial: 0.2
   modulators:
     dark_power:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         invoke_power:
           params: {intention: str}
@@ -38,6 +39,7 @@ entity:
           params: {}
           description: "Study the amulet's inscriptions and pulsing glyphs"
     management:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         attempt_removal:
           params: {}

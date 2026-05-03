@@ -23,6 +23,7 @@ entity:
       initial: 0.7
   modulators:
     usage:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         pick_lock:
           params: {lock: str}

@@ -26,6 +26,7 @@ entity:
       initial: 200
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}

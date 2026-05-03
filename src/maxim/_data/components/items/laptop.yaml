@@ -27,6 +27,7 @@ entity:
       initial: 0.7
   modulators:
     computing:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         write_file:
           params: {filename: str, content: str}
@@ -44,6 +45,7 @@ entity:
           params: {to: str, subject: str, body: str}
           description: "Send an email message"
     hardware:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         plug_in:
           params: {}

@@ -27,6 +27,7 @@ entity:
       initial: 0.0
   modulators:
     spellcasting:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         cast_fireball:
           params: {target: str}
@@ -41,11 +42,13 @@ entity:
           params: {}
           description: "Focus to regenerate mana slowly — leaves you vulnerable"
     physical:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         strike:
           params: {target: str}
           description: "Strike with the staff as a blunt weapon — no mana cost"
     maintenance:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         purify:
           params: {}

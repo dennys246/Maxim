@@ -23,6 +23,7 @@ entity:
       initial: 20
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         shoot:
           params: {target: str, draw_strength: float}
@@ -31,6 +32,7 @@ entity:
           params: {}
           description: "Nock an arrow and prepare to fire"
     maintenance:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         restring:
           params: {}

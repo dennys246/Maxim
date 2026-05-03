@@ -23,6 +23,7 @@ entity:
       initial: 0.5
   modulators:
     study:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         read:
           params: {section: str}
@@ -34,6 +35,7 @@ entity:
           params: {}
           description: "Attempt to decode a warded or encrypted passage"
     usage:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         cast_from_book:
           params: {spell: str, target: str}

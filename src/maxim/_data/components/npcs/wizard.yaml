@@ -30,6 +30,7 @@ entity:
       initial: 0.7
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
@@ -41,6 +42,7 @@ entity:
           params: {offer: str}
           description: "Offer a trade — wizards value rare components"
     magic:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         cast_spell:
           params: {spell: str, target: str}

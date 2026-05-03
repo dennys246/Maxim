@@ -21,6 +21,7 @@ body:
           initial: 25
       modulators:
         motor:
+          abstract: true  # capability-only — no sensors (C4)
           affordances:
             rotate_angle:
               params: {degrees: float, speed: float}
@@ -49,6 +50,7 @@ body:
           initial: 0.0
       modulators:
         motor:
+          abstract: true  # capability-only — no sensors (C4)
           affordances:
             rotate_angle:
               params: {degrees: float, speed: float}
@@ -68,6 +70,7 @@ body:
           dtype: uint8
       modulators:
         lifecycle:
+          abstract: true  # capability-only — no sensors (C4)
           affordances:
             capture_frame:
               params: {}

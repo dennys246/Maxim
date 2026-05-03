@@ -22,6 +22,7 @@ entity:
       trigger: {field: sharpness, op: ">", value: 0.5, pain: 0.4}
   modulators:
     surface:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         examine:
           params: {}

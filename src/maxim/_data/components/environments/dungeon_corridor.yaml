@@ -27,6 +27,7 @@ entity:
       initial: 0.6
   modulators:
     interaction:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         search_for_traps:
           params: {}
@@ -41,6 +42,7 @@ entity:
           params: {}
           description: "Feel along the walls for hidden passages or mechanisms"
     movement:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         proceed_carefully:
           params: {}

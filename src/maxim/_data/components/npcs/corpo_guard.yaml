@@ -31,6 +31,7 @@ entity:
       initial: 0.3
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
@@ -39,6 +40,7 @@ entity:
           params: {subject: str}
           description: "Question someone about a subject"
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         attack:
           params: {target: str}

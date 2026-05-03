@@ -23,6 +23,7 @@ entity:
       initial: 0.5
   modulators:
     interaction:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         survey:
           params: {}

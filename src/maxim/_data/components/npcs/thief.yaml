@@ -30,6 +30,7 @@ entity:
       initial: 0.6
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
@@ -41,6 +42,7 @@ entity:
           params: {}
           description: "Threaten the thief to get what you want"
     criminal:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         pickpocket:
           params: {target: str}

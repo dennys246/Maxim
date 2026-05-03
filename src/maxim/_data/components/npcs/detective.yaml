@@ -30,6 +30,7 @@ entity:
       initial: 0.8
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
@@ -41,6 +42,7 @@ entity:
           params: {evidence: str}
           description: "Show evidence to the detective"
     investigation:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         observe:
           params: {target: str}

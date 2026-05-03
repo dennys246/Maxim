@@ -23,6 +23,7 @@ entity:
       initial: 0.9
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         stab:
           params: {target: str}
@@ -34,6 +35,7 @@ entity:
           params: {target: str}
           description: "Throw the dagger at range — may lose the weapon"
     stealth:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         conceal:
           params: {}

@@ -31,6 +31,7 @@ entity:
       initial: 0.7
   modulators:
     combat:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         tail_strike:
           params: {target: str}
@@ -45,6 +46,7 @@ entity:
           params: {target: str}
           description: "Leap from the shadows onto prey"
     movement:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         climb_surface:
           params: {surface: str}

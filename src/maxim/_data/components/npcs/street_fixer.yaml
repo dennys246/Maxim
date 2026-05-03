@@ -34,6 +34,7 @@ entity:
       initial: 0.0
   modulators:
     social:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         speak:
           params: {message: str}
@@ -48,6 +49,7 @@ entity:
           params: {favor: str}
           description: "Call in a debt the fixer owes"
     intel:
+      abstract: true  # capability-only — no sensors (C4)
       affordances:
         buy_intel:
           params: {topic: str, price: float}
