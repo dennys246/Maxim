@@ -27,6 +27,7 @@ Example YAML::
 from __future__ import annotations
 
 import logging
+import sys
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -247,6 +248,57 @@ def _parse_drive_spec(drive_data: dict[str, Any]) -> DriveSpec:
         raise ValueError(f"Unknown drive drift_mode: {mode!r}. Expected 'homeostatic' or 'entropic'.")
 
 
+def _check_c5_direct_health_deprecation(data: dict[str, Any]) -> None:
+    """Emit a DeprecationWarning when an entity declares both a direct
+    ``health`` sensor and modulators that carry sensors (component-damage
+    model), without opting into derived health.
+
+    The canonical 1.0 shape is one source of truth for entity health:
+    when an entity has modulators with sub-sensors, ``Body.evaluate_failures``
+    derives ``vital_metrics["health"]`` from modulator integrities.
+    A direct ``health`` sensor duplicates that state and goes stale —
+    the agent reads ``health = 1.0`` while modulators sit at 0.3 integrity.
+
+    To opt in to derived health, declare ``health: derived`` at the entity
+    root (alongside ``sensors``/``modulators``).  Becomes a hard error in 1.0.
+
+    Mirrors the deprecation pattern in ``cli_utils._resolve_persona_mode``:
+    ``DeprecationWarning`` is silenced by Python's default warning filter
+    outside ``__main__``, and ``_parse_entity`` is reached via deep call
+    chains from the orchestrator / foundry / imagination paths — so we
+    also print a stderr line for human visibility.
+    """
+    sensors = data.get("sensors") or {}
+    if not isinstance(sensors, dict) or "health" not in sensors:
+        return
+
+    # Single canonical form: ``health: derived`` (string) at the entity root.
+    # Boolean ``True`` is intentionally NOT accepted — shipping one form
+    # into 1.0 keeps the contract narrow.
+    if data.get("health") == "derived":
+        return
+
+    modulators = data.get("modulators") or {}
+    if not isinstance(modulators, dict):
+        return
+    has_modulator_sensors = any(isinstance(m, dict) and m.get("sensors") for m in modulators.values())
+    if not has_modulator_sensors:
+        return
+
+    msg = (
+        f"Entity {data['name']!r} declares a direct 'health' sensor while "
+        f"also having modulators with sub-sensors (component-damage model). "
+        f"The direct sensor duplicates state computed from modulator "
+        f"integrities and will go stale. Either (a) declare "
+        f"'health: derived' at the entity root so health is computed "
+        f"from modulator integrities, or (b) remove the direct 'health' "
+        f"sensor if the modulators already model the relevant integrity. "
+        f"This becomes a hard error in 1.0. (C5 deprecation)"
+    )
+    print(f"DeprecationWarning: {msg}", file=sys.stderr)
+    warnings.warn(msg, DeprecationWarning, stacklevel=2)
+
+
 def _parse_entity(
     data: dict[str, Any],
     parent: Entity | None = None,
@@ -261,6 +313,8 @@ def _parse_entity(
     name = data.get("name")
     if not name:
         raise ValueError("Entity must have a 'name' field")
+
+    _check_c5_direct_health_deprecation(data)
 
     entity_type = data.get("entity_type", "generic")
     metadata = {
