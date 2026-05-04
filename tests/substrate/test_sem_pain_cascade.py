@@ -144,7 +144,7 @@ def _build_world():
     registry = ComponentRegistry()
     sword = registry.instantiate("weapons/rusty_sword")
 
-    pain_bus = PainBus()
+    pain_bus = PainBus(_allow_raw=True)
     nac = NAc(NACConfig(temporal_window_seconds=60.0))
     pain_bus.subscribe(create_pain_nac_subscriber(nac, intensity_threshold=0.3))
 
@@ -260,7 +260,7 @@ class TestSEMPainCascadePoC:
         sword_a = registry.instantiate("weapons/rusty_sword", name="sword_a")
         sword_b = registry.instantiate("weapons/rusty_sword", name="sword_b")
 
-        pain_bus_a = PainBus()
+        pain_bus_a = PainBus(_allow_raw=True)
         nac_a = NAc(NACConfig(temporal_window_seconds=60.0))
         pain_bus_a.subscribe(create_pain_nac_subscriber(nac_a))
         emb_a = Embodiment(sword_a, pain_bus=pain_bus_a)

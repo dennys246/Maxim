@@ -139,7 +139,7 @@ def run_experiment(persist_dir: str | None = None) -> dict:
 
     h1 = make_hippocampus(hippo_path)
     nac1 = NAc()
-    bus1 = ReactionBus()
+    bus1 = ReactionBus(_allow_raw=True)
     bus1.subscribe_all(h1.capture_reaction)
 
     def _distribute(reaction):

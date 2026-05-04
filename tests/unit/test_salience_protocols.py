@@ -467,6 +467,7 @@ class TestMemoryHubSalienceHooks:
             nac=NAc(),
             scn=SCN(),
             ec=EntorhinalCortex(),
+            _allow_raw=True,
         )
 
         callback = MagicMock()
@@ -488,6 +489,7 @@ class TestMemoryHubSalienceHooks:
             nac=NAc(),
             scn=SCN(),
             ec=EntorhinalCortex(),
+            _allow_raw=True,
         )
 
         callback = MagicMock()
@@ -515,6 +517,7 @@ class TestMemoryHubSalienceHooks:
             nac=NAc(),
             scn=SCN(),
             ec=EntorhinalCortex(),
+            _allow_raw=True,
         )
 
         bad_callback = MagicMock(side_effect=RuntimeError("boom"))

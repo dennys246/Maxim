@@ -54,6 +54,7 @@ def memory_hub(core_systems):
         scn=core_systems["scn"],
         nac=core_systems["nac"],
         ec=core_systems["ec"],
+        _allow_raw=True,
     )
     hub.connect()  # Initialize bridges
     return hub

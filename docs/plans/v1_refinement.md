@@ -23,7 +23,7 @@
 Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). What remains:
 
 **Hard requirements:**
-- **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. C4 SHIPPED (PR #219). C5+C6 designs intact in §C5-C6. C4 hard-error flip has prerequisites tracked in §1.1-T4 (imagination/foundry pipeline normalizer + sensor-promotion audit on bundled YAMLs).
+- **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. C4 SHIPPED (PR #219). C6 SHIPPED (2026-05-03). C5 design intact in §C5. C4/C6 hard-error flip prerequisites tracked in §1.1-T4.
 - **D1-D3** (Section 6) — Docs passes (agent memory transfer, API/CLI surface review, final docs pass). No code, just writing.
 
 **Optional polish:**
@@ -281,9 +281,23 @@ Require every modulator to declare at least one sensor. Capability-only modulato
 
 If entity has modulators with sensors AND a direct `health` sensor (not `derived`), parse-time warning in 0.9, hard error in 1.0.
 
-### C6. Raw constructor enforcement (deprecation phase)
+### C6. Raw constructor enforcement (deprecation phase) — SHIPPED (2026-05-03)
 
-Add `_allow_raw=False` to `PainBus()` / `ReactionBus()` / `MemoryHub()`. Production uses builders, tests pass `_allow_raw=True`. 0.9 warning, 1.0 hard error.
+**Shipped:** Added keyword-only `_allow_raw: bool = False` to `PainBus.__init__`, `ReactionBus.__init__`, and `MemoryHub` (as a `kw_only=True` dataclass field, kept out of `repr` / `compare`). When `_allow_raw` is False, each constructor emits a `DeprecationWarning` naming the canonical builder (`build_pain_bus` / `build_reaction_bus` / `build_memory_hub`) plus the load-bearing rationale (Wave 1+2 silent-no-op bug class). Each warning also prints to stderr (`print(f"DeprecationWarning: {msg}", file=sys.stderr)`) for human visibility — `DeprecationWarning` is silenced by Python's default warning filter outside `__main__` and by pytest's global `ignore::DeprecationWarning`, so the stderr line is the load-bearing signal that callers actually see. Mirrors the C4/C5 + `cli_utils._resolve_persona_mode` pattern.
+
+`build_pain_bus`, `build_reaction_bus`, and `build_memory_hub` now pass `_allow_raw=True` internally so production paths are silent. `PainBus.__init__`'s internal `ReactionBus(...)` call also passes `_allow_raw=True` — only the *outer* type's warning fires (one warning per raw construction, not two).
+
+`simulation/orchestrator.py::_setup_sim_sandbox` migrated from raw `PainBus()` to `build_pain_bus(hippocampus=None, nac=None)` — the early sandbox bus pattern routes through the canonical door. `default_network/network.py::_init_pain_circuit` keeps its raw `PainBus(_allow_raw=True)` opt-out with an explicit `TODO(wave-2)` comment naming the deferred plan (`pain_bus_unification.md` "Latent bridge × subscriber attribution-asymmetry trap" + this doc's §1.1-T4 C6 prerequisite).
+
+The `ReactionBus` warning text deliberately distinguishes itself from `PainBus`/`MemoryHub`: it has no current production silent-no-op bug class (PainBus constructs ReactionBus internally), but the door is enforced now to be forward-protective for the Wave-3 ordering where `build_bio_stack` will construct a standalone ReactionBus and hand it to `build_pain_bus(reaction_bus=...)`. The text says so explicitly so a user hitting the warning doesn't hunt for a non-existent retroactive bug.
+
+CI grep guard at `.github/workflows/test.yml` blocks new `_allow_raw=True` opt-outs in `src/maxim/`. The allow-list covers exactly the 5 legitimate sites (4 internal builder calls + DefaultNetwork's deferred opt-out). New production opt-outs require updating both the allow-list and CLAUDE.md in the same commit, with a `TODO(wave-N)` comment at the call site. Same shape as the existing `write_mesh_config` / install-core / admin-update / admin-llm allow-lists.
+
+Test surface: ~60 raw-construct sites updated to `_allow_raw=True` across 15 test files + 5 scripts. Regression-guarded by `tests/unit/test_c6_raw_construction_warnings.py` (17 tests covering: raw-warns, `_allow_raw=True`-silent, builder-silent, kw-only-field-shape, builders-propagate-allow-raw-internally).
+
+Pre-merge two-lens review: 5 findings folded (ReactionBus message clarification, stderr-print visibility, CI grep allow-list, DN TODO marker, plan §1.1-T4 prereq mirror). 1 NIT deferred (future tag-bypass-with-reason-string enhancement).
+
+1.0 flip is tracked in §1.1-T4: change the default warning to a `TypeError` (or remove the parameter and require the builder).
 
 ---
 
@@ -482,11 +496,14 @@ Bio-enrichment routing through ComponentIndex, composable body archetypes. Phase
 
 ### 1.1-T4. C4-C6 hard errors
 
-After 0.9 deprecation cycle. Flip `warnings.warn(DeprecationWarning, ...)` → `raise ConfigurationError(...)` at each shipped warning site.
+After 0.9 deprecation cycle. Flip `warnings.warn(DeprecationWarning, ...)` → `raise ConfigurationError(...)` (or `TypeError` for the C6 raw-construction path) at each shipped warning site.
 
 **C4 prerequisites (must clear before flipping the C4 warning):**
 - C4-followup-1 (imagination + foundry pipeline normalizer + prompt update) — see §C4. Hard prerequisite: without it, the flip hard-fails every imagined entity.
 - C4-followup-2 (sensor-promotion audit on ambiguous bundled modulators) — see §C4. Soft prerequisite: the bundled YAMLs already pass the C4 invariant, but the audit is the right time to promote ~5-15 from `abstract: true` to "owns these sensors."
+
+**C6 prerequisite (must clear before flipping the C6 warning):**
+- `default_network/network.py::_init_pain_circuit` still constructs `PainBus(_allow_raw=True)` when no bus is injected. The Wave-2 follow-on (split-subscriber-ownership fix in `pain_bus_unification.md`) couples DefaultNetwork to MemoryHub so the bus comes from `build_pain_bus`. Until that lands, C6's hard-error flip would break DN's standalone path. Either (a) ship the Wave-2 follow-on first, or (b) leave the explicit `_allow_raw=True` opt-out in DN and flip C6 elsewhere — if you take (b), keep the comment at the call site current.
 
 ### 1.1-T5. Agent-backed entities (revival path)
 

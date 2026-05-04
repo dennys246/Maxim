@@ -68,7 +68,7 @@ class TestBuildDefaultNetworkPainBusInjection:
         from maxim.proprioception.pain_bus import PainBus
 
         nac = MagicMock()
-        injected_bus = PainBus()
+        injected_bus = PainBus(_allow_raw=True)
         dn = build_default_network(nac=nac, pain_bus=injected_bus)
         if dn is not None:
             assert dn._pain_bus is injected_bus

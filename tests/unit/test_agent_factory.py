@@ -240,7 +240,7 @@ class TestCreateFullAgent:
         """Pre-built PainBus is passed through to build_bio_stack."""
         from maxim.proprioception.pain_bus import PainBus
 
-        pre_bus = PainBus()
+        pre_bus = PainBus(_allow_raw=True)
         cfg = AgentConfig(
             agent_id="pre_bus",
             with_bio_stack=True,

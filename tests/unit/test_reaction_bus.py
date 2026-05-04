@@ -25,7 +25,7 @@ def _make_pain_reaction(source: str = "test:pain", intensity: float = 0.5) -> Re
 
 class TestReactionBus:
     def test_subscribe_and_publish(self):
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         received: list[Reaction] = []
         bus.subscribe("pain", received.append)
         bus.publish(_make_pain_reaction())
@@ -33,14 +33,14 @@ class TestReactionBus:
         assert received[0].kind == "pain"
 
     def test_subscribe_all(self):
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         received: list[Reaction] = []
         bus.subscribe_all(received.append)
         bus.publish(_make_pain_reaction())
         assert len(received) == 1
 
     def test_kind_filtering(self):
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         pain_received: list[Reaction] = []
         fear_received: list[Reaction] = []
         bus.subscribe("pain", pain_received.append)
@@ -51,7 +51,7 @@ class TestReactionBus:
         assert len(fear_received) == 0
 
     def test_refractory_period(self):
-        bus = ReactionBus(refractory_overrides={"pain": 0.5})
+        bus = ReactionBus(refractory_overrides={"pain": 0.5}, _allow_raw=True)
         received: list[Reaction] = []
         bus.subscribe("pain", received.append)
 
@@ -61,7 +61,7 @@ class TestReactionBus:
         assert len(received) == 1
 
     def test_different_sources_bypass_refractory(self):
-        bus = ReactionBus(refractory_overrides={"pain": 0.5})
+        bus = ReactionBus(refractory_overrides={"pain": 0.5}, _allow_raw=True)
         received: list[Reaction] = []
         bus.subscribe("pain", received.append)
 
@@ -70,7 +70,7 @@ class TestReactionBus:
         assert len(received) == 2
 
     def test_history(self):
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         bus.publish(_make_pain_reaction(source="test:1"))
         bus.publish(_make_pain_reaction(source="test:2"))
         assert len(bus.history()) == 2
@@ -78,7 +78,7 @@ class TestReactionBus:
         assert len(bus.history("fear")) == 0
 
     def test_get_stats(self):
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         bus.subscribe("pain", lambda r: None)
         bus.subscribe_all(lambda r: None)
         bus.publish(_make_pain_reaction())
@@ -88,7 +88,7 @@ class TestReactionBus:
         assert stats["history_size"] == 1
 
     def test_thread_safety(self):
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         received: list[Reaction] = []
         bus.subscribe("pain", received.append)
 
@@ -104,7 +104,7 @@ class TestReactionBus:
         assert len(received) == 80
 
     def test_unsubscribe(self):
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         received: list[Reaction] = []
         bus.subscribe("pain", received.append)
         bus.unsubscribe("pain", received.append)
@@ -202,7 +202,7 @@ class TestBuildReactionBus:
 
 class TestPainBusBackwardCompat:
     def test_publish_pain_signal_reaches_subscriber(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(received.append)
 
@@ -216,11 +216,11 @@ class TestPainBusBackwardCompat:
         assert received[0].pain_type == PainType.EXTERNAL_SIGNAL
 
     def test_pain_bus_exposes_reaction_bus(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         assert isinstance(bus.reaction_bus, ReactionBus)
 
     def test_reaction_bus_receives_converted_pain(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         reaction_received: list[Reaction] = []
         bus.reaction_bus.subscribe("pain", reaction_received.append)
 
@@ -235,7 +235,7 @@ class TestPainBusBackwardCompat:
         assert reaction_received[0].intensity == 0.9
 
     def test_recent_returns_pain_signals(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         signal = PainSignal(
             pain_type=PainType.MOVEMENT_FAILURE,
             intensity=0.6,
@@ -247,7 +247,7 @@ class TestPainBusBackwardCompat:
         assert isinstance(recent[0], PainSignal)
 
     def test_stats(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         bus.subscribe(lambda s: None)
         signal = PainSignal(pain_type=PainType.EXTERNAL_SIGNAL, intensity=0.5, timestamp=time.time())
         bus.publish(signal)

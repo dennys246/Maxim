@@ -229,4 +229,42 @@ jobs:
             echo "Import llm_swap_on_target from peer/admin_core instead."
             exit 1
           fi
+          # v0.9 C6 raw-construction allow list: PainBus / ReactionBus /
+          # MemoryHub raw construction must go through the canonical builders
+          # (build_pain_bus / build_reaction_bus / build_memory_hub). The
+          # builders pass _allow_raw=True internally; the only other
+          # legitimate src/maxim/ opt-out is DefaultNetwork's raw PainBus
+          # construction, which is deferred to the Wave-2
+          # memory_hub_unification follow-on (split-subscriber-ownership
+          # fix). New _allow_raw=True production sites are an architectural
+          # decision and require explicit allow-list update + CLAUDE.md
+          # rationale.
+          #
+          # Match `_allow_raw=True` ONLY on lines where it appears as a
+          # kwarg in a call: at line-start (after indentation), after a
+          # comma, or after `(`. This excludes docstring/string text like
+          # `"may pass _allow_raw=True"`.
+          ALLOW_RAW_MATCHES=$(grep -rnE --include="*.py" "^\s*_allow_raw=True|, _allow_raw=True|\(_allow_raw=True" src/maxim/ \
+            | grep -vE "^src/maxim/integration/memory_hub\.py:[0-9]+:        _allow_raw=True," \
+            | grep -vE "^src/maxim/proprioception/pain_bus\.py:[0-9]+:            _allow_raw=True," \
+            | grep -vE "^src/maxim/reactions/bus\.py:[0-9]+:        _allow_raw=True," \
+            | grep -vE "^src/maxim/default_network/network\.py:.*PainBus\(_allow_raw=True\)" \
+            || true)
+          if [ -n "$ALLOW_RAW_MATCHES" ]; then
+            echo "ERROR: new _allow_raw=True opt-out in src/maxim/ detected (v0.9 C6)"
+            echo "$ALLOW_RAW_MATCHES"
+            echo ""
+            echo "Production code MUST go through build_pain_bus / build_reaction_bus /"
+            echo "build_memory_hub. The builders pass _allow_raw=True internally."
+            echo ""
+            echo "If you have a legitimate new opt-out (rare — usually means a"
+            echo "deferred Wave-N follow-on like DefaultNetwork's), update BOTH:"
+            echo "  1. The allow list in .github/workflows/test.yml"
+            echo "  2. CLAUDE.md (the corresponding bus's lesson section)"
+            echo "in the same commit, with a TODO(wave-N) comment at the call site."
+            echo ""
+            echo "See docs/plans/v1_refinement.md §C6 + §1.1-T4 for the deprecation"
+            echo "cycle + 1.0 hard-error flip."
+            exit 1
+          fi
           echo "CI grep invariants clean"

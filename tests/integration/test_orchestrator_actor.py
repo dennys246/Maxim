@@ -93,7 +93,7 @@ def actor_world():
 
     aut_body = _make_aut_body()
     dragon = _make_dragon()
-    pain_bus = PainBus()
+    pain_bus = PainBus(_allow_raw=True)
     aut_emb = Embodiment(aut_body, pain_bus=pain_bus)
 
     emap = EntityMap()
@@ -276,7 +276,7 @@ class TestRequiresGating:
                 },
             }
         )
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
         aut_emb = Embodiment(aut_body, pain_bus=pain_bus)
         emap = EntityMap()
         emap.register_self(aut_body)

@@ -19,7 +19,9 @@ Architecture:
 from __future__ import annotations
 
 import logging
+import sys
 import time
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -167,8 +169,27 @@ class MemoryHub:
     # agents.
     agent_id: str = "default_agent"
 
+    # C6 deprecation: raw construction is deprecated; production code goes
+    # through build_memory_hub. Keyword-only, kept out of repr/compare so
+    # the existing dataclass surface is unchanged.
+    _allow_raw: bool = field(default=False, kw_only=True, repr=False, compare=False)
+
     def __post_init__(self) -> None:
         """Initialize and wire core systems."""
+        if not self._allow_raw:
+            msg = (
+                "Raw MemoryHub() construction is deprecated; use "
+                "maxim.integration.memory_hub.build_memory_hub(...) instead. "
+                "The builder always calls .connect() so PlanHistoryBridge, "
+                "EscalationLearningBridge, and FearCircuitBridge are alive on "
+                "every returned hub (see docs/plans/memory_hub_unification.md) — "
+                "two production CLI sites previously constructed MemoryHub() "
+                "and never called .connect(), silently disabling all three "
+                "bridges. Tests that need a bare hub may pass _allow_raw=True. "
+                "This becomes a hard error in 1.0. (C6 deprecation)"
+            )
+            print(f"DeprecationWarning: {msg}", file=sys.stderr)
+            warnings.warn(msg, DeprecationWarning, stacklevel=3)
         # Resolve default embedding persist path lazily
         if not self.embedding_persist_path:
             from maxim.utils.paths import resolve_user_state
@@ -1759,6 +1780,7 @@ def build_memory_hub(
         cerebellum=cerebellum,
         embodiment=embodiment,
         agent_id=agent_id,
+        _allow_raw=True,
     )
     hub.connect(
         spatial=spatial,
