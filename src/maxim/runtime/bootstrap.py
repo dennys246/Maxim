@@ -453,7 +453,7 @@ def build_executor(
         # exception type + message — `ComponentNotFoundError` includes
         # a sorted list of available refs so the user can spot a typo.
         entity = component_registry.instantiate(entity_ref)  # type: ignore[union-attr]
-        embodiment = Embodiment(entity, pain_bus=pain_bus)
+        embodiment = Embodiment(entity, pain_bus=pain_bus, agent_id=agent_id)
 
         generated = generate_tools_for_entity(
             entity,

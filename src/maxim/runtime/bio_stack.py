@@ -306,9 +306,13 @@ def build_bio_stack(
     # positive/negative reactions during an episode feed into causal
     # learning with temporal credit fallback.
     def _distribute_reward_from_reaction(reaction: Any) -> None:
+        from maxim.proprioception.pain_bus import pain_chain_trace
+
         val = getattr(reaction, "valence", None)
         intensity = getattr(reaction, "intensity", 0.0)
+        kind = getattr(reaction, "kind", "?")
         if val is None:
+            pain_chain_trace("pain_chain.reward_skip_no_valence", kind=kind)
             return
         v = val.value if hasattr(val, "value") else str(val)
         if v == "negative":
@@ -316,6 +320,7 @@ def build_bio_stack(
         elif v == "positive":
             reward = intensity
         else:
+            pain_chain_trace("pain_chain.reward_skip_neutral", kind=kind, valence=v)
             return
         if reward != 0.0:
             # Pre-merge Exec review critical #1: agent_id must come from
@@ -324,13 +329,27 @@ def build_bio_stack(
             # rather than polluting a phantom "default" bucket.
             ctx = getattr(reaction, "context", None)
             agent_id = getattr(ctx, "agent_id", None)
+            pain_chain_trace(
+                "pain_chain.reward_subscriber",
+                kind=kind,
+                valence=v,
+                reward=reward,
+                agent_id=agent_id,
+                will_distribute=agent_id is not None,
+            )
             if agent_id is None:
                 return
             try:
                 # Route through distributor (adds temporal fallback + goal
                 # credit).  goal_tag=None from reaction path — goal credit
                 # flows through the deliberation path in tool_dispatch.py.
-                distributor.distribute(agent_id, reward, goal_tag=None)
+                credited = distributor.distribute(agent_id, reward, goal_tag=None)
+                pain_chain_trace(
+                    "pain_chain.distribute_returned",
+                    agent_id=agent_id,
+                    reward=reward,
+                    credited_count=len(credited),
+                )
             except Exception as _dr:
                 logger.debug("distribute_reward failed: %s", _dr)
 

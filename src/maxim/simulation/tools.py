@@ -481,6 +481,11 @@ class DamageComponentTool(Tool):
                     "failure_mode": source,
                     "damage_amount": amount,
                     "component": component_name,
+                    # Mirror the body.py pain publishers so the reaction_bus
+                    # subscriber (_distribute_reward_from_reaction) can credit
+                    # the right agent's eligibility traces. Empty string is
+                    # treated as None by pain_signal_to_reaction.
+                    "agent_id": getattr(self._embodiment, "agent_id", ""),
                 }
                 if damage_type:
                     context["damage_type"] = damage_type

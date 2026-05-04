@@ -53,6 +53,7 @@ No ContextVar, no nested subscriber, no re-entrancy hazard.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
 import time
@@ -69,6 +70,24 @@ if TYPE_CHECKING:
     from maxim.reactions.types import Reaction
 
 logger = logging.getLogger(__name__)
+
+# Diagnostic trace for the pain → reaction → reward chain.  Off by default;
+# enable with MAXIM_PAIN_CHAIN_TRACE=1 to emit one structured event per
+# transition so the JSONL log can be diffed to find where the chain breaks
+# (pain emitted but reward_bias never populated is the canonical failure
+# mode). Trace events: pain_chain.body_publish, pain_chain.bus_publish,
+# pain_chain.reaction_emitted, pain_chain.reward_subscriber, pain_chain.distribute.
+_PAIN_CHAIN_TRACE = os.environ.get("MAXIM_PAIN_CHAIN_TRACE") == "1"
+
+
+def pain_chain_trace(event: str, **data: Any) -> None:
+    """Emit a structured pain-chain trace event when MAXIM_PAIN_CHAIN_TRACE=1."""
+    if not _PAIN_CHAIN_TRACE:
+        return
+    logging.getLogger("maxim.pain_chain").info(
+        event,
+        extra={"event": event, "data": data},
+    )
 
 
 def _sim_log_reaction(reaction: "Reaction") -> None:
@@ -173,12 +192,26 @@ class PainBus:
         key = (str(entity), str(failure))
         now = time.monotonic()
 
+        pain_chain_trace(
+            "pain_chain.bus_publish",
+            entity=str(entity),
+            failure=str(failure),
+            intensity=signal.intensity,
+            ctx_keys=sorted(ctx.keys()),
+            ctx_has_agent_id="agent_id" in ctx,
+        )
+
         with self._lock:
             last = self._last_pain_fired.get(key, 0.0)
             if now - last < self._pain_refractory_s:
                 # Refractory — drop silently for direct subscribers.
                 # The Reaction ALSO gets dropped by reaction_bus's own
                 # (kind, source) gate, which is coarser but aligned.
+                pain_chain_trace(
+                    "pain_chain.bus_refractory_drop",
+                    entity=str(entity),
+                    failure=str(failure),
+                )
                 return
             self._last_pain_fired[key] = now
             subs = list(self._pain_signal_subs)
@@ -200,6 +233,14 @@ class PainBus:
         self._suppress_bridge = True
         try:
             reaction = pain_signal_to_reaction(signal)
+            pain_chain_trace(
+                "pain_chain.reaction_emitted",
+                kind=reaction.kind,
+                valence=getattr(reaction.valence, "value", str(reaction.valence)),
+                intensity=reaction.intensity,
+                source=reaction.source,
+                reaction_agent_id=reaction.context.agent_id,
+            )
             self.reaction_bus.publish(reaction)
         finally:
             self._suppress_bridge = False

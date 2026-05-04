@@ -57,11 +57,19 @@ class Embodiment:
         config: EmbodimentConfig | None = None,
         pain_bus: Any | None = None,
         distributor: Any | None = None,
+        agent_id: str = "",
     ) -> None:
         self.root = root
         self.config = config or EmbodimentConfig()
         self._pain_bus = pain_bus
         self._distributor = distributor  # TemporalCreditDistributor for SCN drive events
+        # agent_id flows into every PainSignal.context this body publishes
+        # so reaction_bus subscribers (notably _distribute_reward_from_reaction
+        # in bio_stack.py) can credit the right agent's eligibility traces.
+        # Empty string means "agent_id-unaware" and reactions will be silently
+        # skipped by the reward distributor — fine for foundry test embodiments
+        # and scene-entity Embodiment wrappers that aren't a learning subject.
+        self.agent_id = agent_id
         self._failure_history: list[FailureEvent] = []
         self._last_poll: float = 0.0
         self._tick_count: int = 0
@@ -296,6 +304,7 @@ class Embodiment:
                     "failure_mode": f"drive:{drive_name}",
                     "sensor_readings": {k: v for k, v in readings.items() if isinstance(v, (int, float))},
                     "entity_path": entity.full_path,
+                    "agent_id": self.agent_id,
                 },
             )
             self._pain_bus.publish(signal)
@@ -360,6 +369,7 @@ class Embodiment:
                     "sensor_readings": dict(readings),
                     # Retained for legacy consumers that read entity_path.
                     "entity_path": entity.full_path,
+                    "agent_id": self.agent_id,
                 },
             )
             self._pain_bus.publish(signal)

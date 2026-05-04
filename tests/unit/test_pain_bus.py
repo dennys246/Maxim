@@ -86,6 +86,54 @@ class TestPainBusDirectDispatch:
         assert reactions[0].kind == "pain"
         assert reactions[0].intensity == 0.7
 
+    def test_publish_propagates_agent_id_into_reaction_context(self):
+        """``signal.context['agent_id']`` flows into ``ReactionContext.agent_id``.
+
+        Regression for the silent-failure mode that left ``_reward_bias``
+        empty across every cradle / damage sim: pain was firing, the
+        reaction was being emitted, but ReactionContext.agent_id stayed
+        ``None`` (compat layer didn't extract it from the signal). The
+        reward-distributor subscriber in ``runtime/bio_stack.py``
+        early-returns on ``agent_id is None``, so distribute() was never
+        called, so eligibility traces never converted to reward_bias.
+        """
+        bus = PainBus(_allow_raw=True)
+        reactions: list[Reaction] = []
+        bus.reaction_bus.subscribe("pain", reactions.append)
+
+        signal = _make_signal(agent_id="sim_aut")
+        bus.publish(signal)
+
+        assert len(reactions) == 1
+        assert reactions[0].context.agent_id == "sim_aut"
+
+    def test_publish_without_agent_id_yields_none_context(self):
+        """A missing ``agent_id`` survives as ``None`` on ReactionContext."""
+        bus = PainBus(_allow_raw=True)
+        reactions: list[Reaction] = []
+        bus.reaction_bus.subscribe("pain", reactions.append)
+
+        bus.publish(_make_signal())  # no agent_id field
+
+        assert len(reactions) == 1
+        assert reactions[0].context.agent_id is None
+
+    def test_publish_with_empty_agent_id_normalises_to_none(self):
+        """Empty string normalises to ``None`` so the subscriber's
+        ``agent_id is None`` early-return fires correctly. Bootstrap
+        passes ``agent_id=""`` for foundry / scene-entity embodiments
+        that aren't a learning subject; we treat that as "unknown agent"
+        rather than a phantom ``""`` bucket.
+        """
+        bus = PainBus(_allow_raw=True)
+        reactions: list[Reaction] = []
+        bus.reaction_bus.subscribe("pain", reactions.append)
+
+        bus.publish(_make_signal(agent_id=""))
+
+        assert len(reactions) == 1
+        assert reactions[0].context.agent_id is None
+
     def test_multiple_subscribers_all_fire(self):
         bus = PainBus(_allow_raw=True)
         a: list[PainSignal] = []
