@@ -117,6 +117,34 @@ class TestComposedFailures:
         assert signal.context["composes"] == ["strain", "fatigue"]
         assert signal.context["entity_path"] == ent.full_path  # legacy key preserved
 
+    def test_embodiment_includes_agent_id_in_pain_context(self):
+        """``Embodiment(agent_id=X)`` propagates X into every PainSignal.context.
+
+        Load-bearing for the reaction_bus subscriber in
+        ``runtime/bio_stack.py``: without agent_id in the signal context,
+        ``pain_signal_to_reaction`` produces a ReactionContext with
+        ``agent_id=None``, the subscriber early-returns, and
+        ``distribute()`` is never called for any pain reaction.
+        """
+        ent = Entity("arm", "limb")
+        ent.sensors["strain"] = _stub_sensor("strain", 0.9)
+        ent.vital_metrics["strain"] = 0.9
+        ent.failure_modes.append(
+            FailureMode(
+                name="overstrain",
+                triggers=[FailureTrigger("strain", ">", 0.5, 0.5)],
+                pain_intensity=0.6,
+            )
+        )
+
+        pain_bus = MagicMock()
+        emb = Embodiment(ent, pain_bus=pain_bus, agent_id="agent_42")
+        emb.evaluate_failures()
+
+        pain_bus.publish.assert_called()
+        signal = pain_bus.publish.call_args[0][0]
+        assert signal.context["agent_id"] == "agent_42"
+
 
 # ---------------------------------------------------------------------------
 # Failure persistence
