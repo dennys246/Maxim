@@ -287,6 +287,86 @@ class TestNAcQueries:
         links = nac.get_links_for("mem_123")
         assert len(links) == 1
 
+    def test_scan_links_for_keywords_substring_match(self, nac, valence_positive):
+        """Narrative keywords find compound tool signatures via substring."""
+        # Boost confidence so links pass the default 0.3 floor.
+        for _ in range(10):
+            nac.observe(
+                event_type="tool",
+                event_signature="tool:rusty_sword_slash",
+                outcome_type="result",
+                outcome_signature="success",
+                outcome_valence=valence_positive,
+                delta_seconds=1.0,
+            )
+
+        # Each fragment from AffordanceDecompositionStrategy("rusty_sword_slash")
+        # should now find the compound signature.
+        for kw in ["rusty", "sword", "slash"]:
+            matches = nac.scan_links_for_keywords([kw])
+            assert any(lk.event_signature == "tool:rusty_sword_slash" for lk in matches), (
+                f"keyword {kw!r} did not match tool:rusty_sword_slash"
+            )
+
+    def test_scan_links_for_keywords_dedupes_and_sorts(self, nac, valence_positive):
+        """Multiple keywords matching the same link return it once, sorted by confidence."""
+        for _ in range(15):
+            nac.observe(
+                event_type="tool",
+                event_signature="tool:fire_breath",
+                outcome_type="result",
+                outcome_signature="success",
+                outcome_valence=valence_positive,
+                delta_seconds=1.0,
+            )
+        for _ in range(5):
+            nac.observe(
+                event_type="tool",
+                event_signature="tool:water_splash",
+                outcome_type="result",
+                outcome_signature="success",
+                outcome_valence=valence_positive,
+                delta_seconds=1.0,
+            )
+
+        # Both "fire" and "breath" hit the same link; "water" hits a different one.
+        matches = nac.scan_links_for_keywords(["fire", "breath", "water"])
+        sigs = [lk.event_signature for lk in matches]
+        # Each signature appears at most once.
+        assert len(sigs) == len(set(sigs))
+        # Higher-confidence link comes first.
+        assert sigs[0] == "tool:fire_breath"
+
+    def test_scan_links_for_keywords_drops_short_kws(self, nac, valence_positive):
+        """Stop-words below min_keyword_length don't match everything."""
+        for _ in range(10):
+            nac.observe(
+                event_type="tool",
+                event_signature="tool:a_very_long_tool_name",
+                outcome_type="result",
+                outcome_signature="success",
+                outcome_valence=valence_positive,
+                delta_seconds=1.0,
+            )
+        # "a" would substring-match "tool:a_very_long_tool_name" if not filtered.
+        matches = nac.scan_links_for_keywords(["a", "to", "of"])
+        assert matches == []
+
+    def test_scan_links_for_keywords_respects_confidence_floor(self, nac, valence_positive):
+        """Links below min_confidence are filtered out."""
+        # Single observation: confidence stays at the bootstrap value (~0.5
+        # base * RW step), well below 0.9.
+        nac.observe(
+            event_type="tool",
+            event_signature="tool:rare_tool",
+            outcome_type="result",
+            outcome_signature="success",
+            outcome_valence=valence_positive,
+            delta_seconds=1.0,
+        )
+        matches = nac.scan_links_for_keywords(["rare"], min_confidence=0.9)
+        assert matches == []
+
 
 class TestNAcMaintenance:
     """Test maintenance operations."""

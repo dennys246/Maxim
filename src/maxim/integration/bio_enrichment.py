@@ -615,47 +615,47 @@ class BioEnrichmentPipeline:
             return []
 
     def _query_nac(self, keywords: list[str]) -> list[CausalPrediction]:
-        """Query NAc for causal predictions matching keywords."""
+        """Query NAc for causal predictions matching keywords.
+
+        NAc stores event signatures under canonical shapes like
+        ``tool:rusty_sword_slash``, while percept keywords are narrative
+        words like ``"rusty"`` / ``"sword"`` / ``"slash"``. The exact
+        ``get_links_for_event`` lookup will never match narrative
+        keywords against compound tool signatures, so this delegates to
+        ``scan_links_for_keywords`` which does case-insensitive substring
+        containment + dedupe + confidence sort.
+        """
         if self._nac is None:
             return []
-        predictions: list[CausalPrediction] = []
         try:
-            # Query both raw keywords AND tool-prefixed variants.
-            # NAc stores event signatures like "tool:base_humanoid_move"
-            # while percept keywords are narrative words like "move".
-            query_sigs: list[str] = []
-            for kw in keywords[:5]:
-                query_sigs.append(kw)
-                query_sigs.append(f"tool:{kw}")
-            for keyword in query_sigs:
-                links = self._nac.get_links_for_event(keyword)
-                for link in links:
-                    if link.confidence < 0.3:
-                        continue
-                    from maxim.decisions.causal_link import Valence
+            from maxim.decisions.causal_link import Valence
 
+            links = self._nac.scan_links_for_keywords(
+                keywords[:5],
+                min_confidence=0.3,
+                max_matches=10,
+            )
+            predictions: list[CausalPrediction] = []
+            seen_events: set[str] = set()
+            for link in links:
+                if link.event_signature in seen_events:
+                    continue
+                seen_events.add(link.event_signature)
+                if link.outcome_valence == Valence.POSITIVE:
+                    valence_str = "positive"
+                elif link.outcome_valence == Valence.NEGATIVE:
+                    valence_str = "negative"
+                else:
                     valence_str = "neutral"
-                    if link.outcome_valence == Valence.POSITIVE:
-                        valence_str = "positive"
-                    elif link.outcome_valence == Valence.NEGATIVE:
-                        valence_str = "negative"
-
-                    predictions.append(
-                        CausalPrediction(
-                            event=link.event_signature,
-                            outcome=link.outcome_signature,
-                            confidence=link.confidence,
-                            valence=valence_str,
-                        )
+                predictions.append(
+                    CausalPrediction(
+                        event=link.event_signature,
+                        outcome=link.outcome_signature,
+                        confidence=link.confidence,
+                        valence=valence_str,
                     )
-            # Deduplicate by event and sort by confidence
-            seen: set[str] = set()
-            unique: list[CausalPrediction] = []
-            for p in sorted(predictions, key=lambda x: x.confidence, reverse=True):
-                if p.event not in seen:
-                    seen.add(p.event)
-                    unique.append(p)
-            return unique[:3]
+                )
+            return predictions[:3]
         except Exception as e:
             log.debug("Bio-enrichment NAc query failed: %s", e)
             return []

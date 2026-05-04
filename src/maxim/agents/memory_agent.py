@@ -1397,21 +1397,27 @@ class MemoryAgent(Agent, AgentOutputMixin):
         if nac is None:
             return []
 
+        from maxim.runtime.tool_dispatch import build_tool_signature
+
         entries: list[dict] = []
         seen_sigs: set[str] = set()
 
-        # Query predictions for recent tool outcomes + active goal
+        # Query predictions for recent tool outcomes + active goal.
+        # Tool events use the canonical "tool:<name>" signature shape
+        # written by tool_dispatch / tool_pain_bridge / planning_bridge;
+        # goal events keep the bare goal_id (no canonical helper).
         for outcome in list(self._recent_outcomes)[-5:]:
             tool = outcome.get("tool_name") or outcome.get("goal_id")
             if not tool or tool in seen_sigs:
                 continue
             seen_sigs.add(tool)
 
+            is_tool = "tool_name" in outcome
             ctx = {"goal": self._active_goal_description or ""}
             try:
                 prediction = nac.predict(
-                    event_type="tool" if "tool_name" in outcome else "goal",
-                    event_signature=tool,
+                    event_type="tool" if is_tool else "goal",
+                    event_signature=build_tool_signature(tool) if is_tool else tool,
                     context=ctx,
                 )
                 if prediction and prediction.confidence >= 0.3 and prediction.context_match >= 0.2:
