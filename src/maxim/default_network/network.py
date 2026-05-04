@@ -380,7 +380,15 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         else:
             from maxim.proprioception.pain_bus import PainBus
 
-            self._pain_bus = PainBus()
+            # C6: DefaultNetwork's raw PainBus construction is deferred to the
+            # Wave-2 memory_hub_unification follow-on (split-subscriber-ownership
+            # fix). For now, opt out of the deprecation warning explicitly so
+            # the legitimate-but-temporary raw call site stays loud about why.
+            # TODO(wave-2): route via build_pain_bus once DN owns/consumes a
+            # MemoryHub; tracked in docs/plans/pain_bus_unification.md "Latent
+            # bridge × subscriber attribution-asymmetry trap" + v1_refinement.md
+            # §1.1-T4 C6 prerequisite.
+            self._pain_bus = PainBus(_allow_raw=True)
 
         pain_config = PainConfig(
             angular_velocity_pain=self._config.pain_angular_velocity_threshold,

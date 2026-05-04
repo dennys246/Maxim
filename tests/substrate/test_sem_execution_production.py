@@ -48,7 +48,7 @@ def _build_production_world(*, sword_durability: float = 1.0):
     Returns a dict mirroring _build_world() in test_sem_pain_cascade
     but with the production constructor in place of the PoC harness.
     """
-    pain_bus = PainBus()
+    pain_bus = PainBus(_allow_raw=True)
     nac = NAc(NACConfig(temporal_window_seconds=60.0))
     component_registry = ComponentRegistry()
 

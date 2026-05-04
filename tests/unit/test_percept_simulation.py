@@ -341,7 +341,7 @@ class TestPainRouting:
         from maxim.decisions.causal_link import Valence
         from maxim.reactions.types import Reaction, ReactionContext
 
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(lambda s: received.append(s))
 
@@ -359,7 +359,7 @@ class TestPainRouting:
 
     def test_pain_signal_still_works_via_wrapper(self):
         """Backward compat: PainSignal.publish still reaches subscribers."""
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(lambda s: received.append(s))
 
@@ -374,7 +374,7 @@ class TestPainRouting:
 
     def test_pain_memory_subscriber(self):
         hippo = Hippocampus(config=HippocampusConfig())
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         bus.subscribe(create_pain_memory_subscriber(hippo))
 
         signal = PainSignal(
@@ -391,7 +391,7 @@ class TestPainRouting:
 
     def test_low_intensity_pain_no_memory(self):
         hippo = Hippocampus(config=HippocampusConfig())
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         bus.subscribe(create_pain_memory_subscriber(hippo, intensity_threshold=0.5))
 
         signal = PainSignal(

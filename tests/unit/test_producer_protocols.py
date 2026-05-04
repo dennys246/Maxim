@@ -90,7 +90,7 @@ class TestCerebellumModulatorReactionEmission:
     def test_emits_pain_on_unknown_affordance(self):
         from maxim.reactions.bus import ReactionBus
 
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         received = []
         bus.subscribe("pain", received.append)
 
@@ -110,7 +110,7 @@ class TestCerebellumModulatorReactionEmission:
     def test_emits_pain_on_fallback_failure(self):
         from maxim.reactions.bus import ReactionBus
 
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         received = []
         bus.subscribe("pain", received.append)
 
@@ -135,7 +135,7 @@ class TestCerebellumModulatorReactionEmission:
     def test_no_emission_on_success(self):
         from maxim.reactions.bus import ReactionBus
 
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         received = []
         bus.subscribe("pain", received.append)
 
@@ -175,7 +175,7 @@ class TestCerebellumModulatorFactoryWiring:
         from maxim.embodiment.backends.cerebellum_modulator import cerebellum_modulator_factory
         from maxim.reactions.bus import ReactionBus
 
-        bus = ReactionBus()
+        bus = ReactionBus(_allow_raw=True)
         received = []
         bus.subscribe("pain", received.append)
 

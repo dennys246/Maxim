@@ -137,7 +137,7 @@ class TestDurabilityFailureCascade:
         # Drive durability below the shatter threshold (< 0.1).
         entity.vital_metrics["durability"] = 0.05
 
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
         captured: list[PainSignal] = []
         pain_bus.subscribe(captured.append)
 

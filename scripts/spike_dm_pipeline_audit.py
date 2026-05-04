@@ -103,7 +103,7 @@ def _init_biosystems() -> dict[str, Any]:
     nac = NAc()
     scn = SCN()
     ec = EntorhinalCortex()
-    pain_bus = PainBus()
+    pain_bus = PainBus(_allow_raw=True)
     novelty = ThreadSafeNoveltyTracker(NoveltyTracker())
 
     # Optional systems
@@ -136,6 +136,7 @@ def _init_biosystems() -> dict[str, Any]:
         ec=ec,
         atl=atl,
         angular_gyrus=angular_gyrus,
+        _allow_raw=True,
     )
     if cerebellum:
         hub.cerebellum = cerebellum

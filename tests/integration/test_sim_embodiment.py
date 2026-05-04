@@ -40,7 +40,7 @@ def _build_sim_aut_executor(
     orchestrator.py — entity_ref present → pain_bus + component_registry
     injected; entity_ref absent → pain_bus=None (existing behavior).
     """
-    pain_bus = PainBus() if with_pain_bus else None
+    pain_bus = PainBus(_allow_raw=True) if with_pain_bus else None
     nac = NAc(NACConfig(temporal_window_seconds=60.0)) if with_nac else None
 
     component_registry = None
@@ -86,7 +86,7 @@ class TestSimEmbodimentWiring:
     def test_entity_ref_registers_affordance_tools(self):
         """Affordance tools appear in the executor's tool registry."""
         registry = ToolRegistry()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
         nac = NAc(NACConfig())
 
         build_executor(
@@ -105,7 +105,7 @@ class TestSimEmbodimentWiring:
     def test_entity_ref_registers_sense_tools(self):
         """Sensor read tools are registered alongside affordances."""
         registry = ToolRegistry()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
         nac = NAc(NACConfig())
 
         build_executor(
@@ -160,7 +160,7 @@ class TestSimEmbodimentPreconditions:
         with pytest.raises(ComponentNotFoundError):
             build_executor(
                 ToolRegistry(),
-                pain_bus=PainBus(),
+                pain_bus=PainBus(_allow_raw=True),
                 nac=NAc(NACConfig()),
                 entity_ref="weapons/legendary_excalibur_that_does_not_exist",
                 component_registry=ComponentRegistry(),

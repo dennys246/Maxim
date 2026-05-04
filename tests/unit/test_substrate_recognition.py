@@ -559,6 +559,7 @@ class TestDualPathWiring:
             scn=Mock(register=Mock(), unregister=Mock()),
             nac=Mock(remove_memory=Mock()),
             ec=Mock(semantic_enabled=False, remove_signature=Mock()),
+            _allow_raw=True,
         )
         assert not hub._substrate_enabled
         assert hub._encoder is None
@@ -579,6 +580,7 @@ class TestDualPathWiring:
                 nac=Mock(remove_memory=Mock()),
                 ec=ec,
                 atl=atl,
+                _allow_raw=True,
             )
             assert hub._substrate_enabled
             assert hub._encoder is not None
@@ -594,6 +596,7 @@ class TestDualPathWiring:
             scn=Mock(register=Mock(), unregister=Mock()),
             nac=Mock(remove_memory=Mock()),
             ec=Mock(semantic_enabled=False, remove_signature=Mock()),
+            _allow_raw=True,
         )
         percept = Percept(timestamp=0.0, source="test", transcript_chunk="hello")
         # Should not raise

@@ -83,7 +83,7 @@ def make_reaction(kind, intensity, valence, source):
 
 
 def wire_pipeline(h, nac):
-    bus = ReactionBus()
+    bus = ReactionBus(_allow_raw=True)
     bus.subscribe_all(h.capture_reaction)
 
     def _dist(reaction):

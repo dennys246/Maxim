@@ -60,7 +60,7 @@ class TestBuildExecutorRequiredKeyword:
         from maxim.tools.registry import ToolRegistry
 
         with pytest.raises(TypeError):
-            build_executor(ToolRegistry(), PainBus())  # type: ignore[misc]
+            build_executor(ToolRegistry(), PainBus(_allow_raw=True))  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +125,7 @@ class TestBuildExecutorBridgeWiring:
         from maxim.tools.registry import ToolRegistry
 
         nac = MagicMock()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
 
         executor = build_executor(
             ToolRegistry(),
@@ -164,7 +164,7 @@ class TestBuildExecutorBridgeWiring:
         with pytest.raises(ValueError, match="nac"):
             build_executor(
                 ToolRegistry(),
-                pain_bus=PainBus(),
+                pain_bus=PainBus(_allow_raw=True),
                 nac=None,
             )
 
@@ -189,7 +189,7 @@ class TestBuildExecutorFailFastPreconditions:
         from maxim.tools.registry import ToolRegistry
 
         nac = MagicMock()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
         pain_detector = MagicMock()
 
         with pytest.raises(ValueError, match="pain_bus AND pain_detector"):
@@ -224,7 +224,7 @@ class TestBuildExecutorFailFastPreconditions:
         from maxim.tools.registry import ToolRegistry
 
         nac = MagicMock()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
 
         with pytest.raises(ValueError, match="component_registry"):
             build_executor(
@@ -255,7 +255,7 @@ class TestBuildExecutorEmbodiment:
         from maxim.tools.registry import ToolRegistry
 
         nac = MagicMock()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
         registry = ToolRegistry()
 
         executor = build_executor(
@@ -290,7 +290,7 @@ class TestBuildExecutorEmbodiment:
         from maxim.tools.registry import ToolRegistry
 
         nac = MagicMock()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
 
         executor = build_executor(
             ToolRegistry(),
@@ -313,7 +313,7 @@ class TestBuildExecutorEmbodiment:
         from maxim.tools.registry import ToolRegistry
 
         nac = MagicMock()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
 
         with pytest.raises(ComponentNotFoundError) as exc_info:
             build_executor(
@@ -350,7 +350,7 @@ class TestBuildExecutorEndToEndCascade:
         from maxim.tools.registry import ToolRegistry
 
         nac = NAc()
-        pain_bus = PainBus()
+        pain_bus = PainBus(_allow_raw=True)
 
         executor = build_executor(
             ToolRegistry(),

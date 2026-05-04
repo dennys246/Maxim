@@ -75,7 +75,7 @@ def run_poc() -> dict:
     # -- Setup: hippocampus + NAc + ReactionBus with subscribers -----------
     h = make_hippocampus()
     nac = NAc()
-    reaction_bus = ReactionBus()
+    reaction_bus = ReactionBus(_allow_raw=True)
 
     # Wire subscribers (same as build_bio_stack does)
     reaction_bus.subscribe_all(h.capture_reaction)

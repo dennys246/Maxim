@@ -8,8 +8,10 @@ configurable per-kind.
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
+import warnings
 from collections import defaultdict, deque
 from typing import Any, Callable
 
@@ -38,7 +40,26 @@ class ReactionBus:
         self,
         history_size: int = 200,
         refractory_overrides: dict[str, float] | None = None,
+        *,
+        _allow_raw: bool = False,
     ) -> None:
+        if not _allow_raw:
+            msg = (
+                "Raw ReactionBus() construction is deprecated; use "
+                "maxim.reactions.bus.build_reaction_bus(...) instead. The builder "
+                "is the canonical construction door — forward-protective for the "
+                "Wave-3 ordering where build_bio_stack constructs a standalone "
+                "ReactionBus and passes it to build_pain_bus(reaction_bus=...). "
+                "ReactionBus has no current production-side silent-no-op bug "
+                "class (PainBus.__init__ constructs it internally with "
+                "_allow_raw=True), but the door is enforced here so the next "
+                "production caller cannot drift. See "
+                "docs/plans/reaction_bus_unification.md. Tests that need a bare "
+                "bus may pass _allow_raw=True. This becomes a hard error in 1.0. "
+                "(C6 deprecation)"
+            )
+            print(f"DeprecationWarning: {msg}", file=sys.stderr)
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
         self._per_kind: dict[str, list[Callable[[Reaction], None]]] = defaultdict(list)
         self._all_subscribers: list[Callable[[Reaction], None]] = []
         self._lock = threading.Lock()
@@ -184,6 +205,7 @@ def build_reaction_bus(
     bus = ReactionBus(
         history_size=history_size,
         refractory_overrides=refractory_overrides,
+        _allow_raw=True,
     )
     if per_kind_subscribers:
         for kind, callbacks in per_kind_subscribers.items():

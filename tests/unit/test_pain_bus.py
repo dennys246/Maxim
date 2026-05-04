@@ -56,7 +56,7 @@ class TestPainBusDirectDispatch:
     """PainBus.publish delivers full context to direct subscribers."""
 
     def test_publish_preserves_full_context(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(received.append)
 
@@ -75,7 +75,7 @@ class TestPainBusDirectDispatch:
 
     def test_publish_also_fires_reaction_bus(self):
         """Direct reaction_bus subscribers see the converted Reaction too."""
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         reactions: list[Reaction] = []
         bus.reaction_bus.subscribe("pain", reactions.append)
 
@@ -87,7 +87,7 @@ class TestPainBusDirectDispatch:
         assert reactions[0].intensity == 0.7
 
     def test_multiple_subscribers_all_fire(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         a: list[PainSignal] = []
         b: list[PainSignal] = []
         bus.subscribe(a.append)
@@ -105,7 +105,7 @@ class TestPainBusDirectDispatch:
         silently absorb the second publish — that would make this test
         pass even if ``unsubscribe`` were a no-op.
         """
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         cb_received: list[PainSignal] = []
 
         def cb(sig: PainSignal) -> None:
@@ -123,7 +123,7 @@ class TestPainBusDirectDispatch:
         assert len(cb_received) == 1
 
     def test_subscriber_exception_does_not_break_others(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
 
         def boom(sig: PainSignal) -> None:
@@ -140,7 +140,7 @@ class TestPainBusFallbackDispatch:
     """Direct Reaction publishes on reaction_bus still reach PainSignal subs."""
 
     def test_direct_reaction_publish_lossy_fallback(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(received.append)
 
@@ -176,7 +176,7 @@ class TestPainBusFallbackDispatch:
         reaction publishes). Without the ``_suppress_bridge`` flag
         the direct subscribers would fire twice.
         """
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(received.append)
 
@@ -189,7 +189,7 @@ class TestPainBusRefractory:
 
     def test_same_entity_same_failure_refractory_gated(self):
         """Two identical publishes within the window collapse to one."""
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(received.append)
 
@@ -209,7 +209,7 @@ class TestPainBusRefractory:
         pain in the same tick collapsed to one dispatch. The new
         ``(entity, failure_mode)`` key on PainBus prevents this.
         """
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(received.append)
 
@@ -222,7 +222,7 @@ class TestPainBusRefractory:
 
     def test_different_failure_mode_NOT_refractory_gated(self):
         """Two different failure modes on the same entity BOTH fire."""
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(received.append)
 
@@ -232,7 +232,7 @@ class TestPainBusRefractory:
         assert len(received) == 2
 
     def test_refractory_clears_after_window(self):
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         received: list[PainSignal] = []
         bus.subscribe(received.append)
 
@@ -244,7 +244,7 @@ class TestPainBusRefractory:
 
     def test_get_stats_counts_direct_subscribers(self):
         """get_stats includes direct PainSignal subscribers in the count."""
-        bus = PainBus()
+        bus = PainBus(_allow_raw=True)
         # Baseline: sim_log_reaction + _bridge_reaction_to_pain_subs are
         # registered on reaction_bus; no direct subscribers yet.
         baseline = bus.get_stats()

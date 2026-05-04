@@ -375,7 +375,7 @@ def test_benchmark_memory_hub_session_start() -> None:
         nac = NAc()
         ec = EntorhinalCortex()
 
-        hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec)
+        hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec, _allow_raw=True)
         hub.connect()
         return hub.on_session_start()
 
@@ -408,7 +408,7 @@ def test_benchmark_memory_hub_plan_outcome() -> None:
     nac = NAc()
     ec = EntorhinalCortex()
 
-    hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec)
+    hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec, _allow_raw=True)
     hub.connect()
     hub.on_session_start()
 

@@ -110,11 +110,13 @@ def _setup_sim_sandbox(
         be ``None`` if creation failed (error logged at WARNING).
     """
     # Build the pain bus first — the sandbox's PainTriggerLayer needs it.
+    # The bus is intentionally created without learners here; build_bio_stack
+    # later attaches them via build_pain_bus(bus=aut_pain_bus, ...).
     aut_pain_bus: Any = None
     try:
-        from maxim.proprioception.pain_bus import PainBus
+        from maxim.proprioception.pain_bus import build_pain_bus
 
-        aut_pain_bus = PainBus()
+        aut_pain_bus = build_pain_bus(hippocampus=None, nac=None)
     except Exception as e:
         logger.debug("AUT PainBus creation deferred: %s", e)
 

@@ -177,7 +177,7 @@ class TestBuildBioStackPreBuiltPainBus:
         from maxim.proprioception.pain_bus import PainBus
         from maxim.runtime.bio_stack import build_bio_stack
 
-        early_bus = PainBus()
+        early_bus = PainBus(_allow_raw=True)
         bio = build_bio_stack(pain_bus=early_bus)
         assert bio.pain_bus is early_bus
 
@@ -185,7 +185,7 @@ class TestBuildBioStackPreBuiltPainBus:
         from maxim.proprioception.pain_bus import PainBus
         from maxim.runtime.bio_stack import build_bio_stack
 
-        early_bus = PainBus()
+        early_bus = PainBus(_allow_raw=True)
         subs_before = len(early_bus._pain_signal_subs)
         build_bio_stack(pain_bus=early_bus)
         # At least hippocampus + nac subscribers added
@@ -195,7 +195,7 @@ class TestBuildBioStackPreBuiltPainBus:
         from maxim.proprioception.pain_bus import PainBus
         from maxim.runtime.bio_stack import build_bio_stack
 
-        early_bus = PainBus()
+        early_bus = PainBus(_allow_raw=True)
         bio = build_bio_stack(pain_bus=early_bus)
         assert bio.reaction_bus is early_bus.reaction_bus
 
@@ -203,7 +203,7 @@ class TestBuildBioStackPreBuiltPainBus:
         from maxim.proprioception.pain_bus import PainBus
         from maxim.runtime.bio_stack import build_bio_stack
 
-        early_bus = PainBus()
+        early_bus = PainBus(_allow_raw=True)
         calls = []
         extra_sub = lambda signal: calls.append(signal)
         bio = build_bio_stack(

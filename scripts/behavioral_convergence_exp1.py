@@ -91,7 +91,7 @@ def make_reaction(
 
 def wire_bio_pipeline(h: Hippocampus, nac: NAc) -> tuple[ReactionBus, None]:
     """Wire a minimal bio-pipeline for the experiment."""
-    bus = ReactionBus()
+    bus = ReactionBus(_allow_raw=True)
     bus.subscribe_all(h.capture_reaction)
 
     def _distribute(reaction: Reaction) -> None:

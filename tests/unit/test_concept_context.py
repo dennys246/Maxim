@@ -391,6 +391,7 @@ class TestMemoryHubIntegration:
             scn=SCN(),
             nac=NAc(),
             ec=EntorhinalCortex(),
+            _allow_raw=True,
         )
         result = hub.build_concept_context(detected_objects=["mug"])
         assert result == []
@@ -412,6 +413,7 @@ class TestMemoryHubIntegration:
             ec=EntorhinalCortex(),
             atl=atl,
             angular_gyrus=ag,
+            _allow_raw=True,
         )
 
         # Create a concept

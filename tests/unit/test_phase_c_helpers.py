@@ -263,6 +263,7 @@ class TestMemoryHubWireHelpers:
             scn=SCN(),
             nac=NAc(),
             ec=EntorhinalCortex(),
+            _allow_raw=True,
         )
         layers = hub._build_layer_map()
         assert "hippocampus" in layers

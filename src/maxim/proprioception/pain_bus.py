@@ -53,8 +53,10 @@ No ContextVar, no nested subscriber, no re-entrancy hazard.
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import time
+import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.proprioception.pain import PainSignal, PainType
@@ -101,10 +103,26 @@ class PainBus:
         self,
         history_size: int = 200,
         pain_refractory_s: float | None = None,
+        *,
+        _allow_raw: bool = False,
     ) -> None:
+        if not _allow_raw:
+            msg = (
+                "Raw PainBus() construction is deprecated; use "
+                "maxim.proprioception.pain_bus.build_pain_bus(hippocampus=..., nac=...) "
+                "instead. The builder enforces required learning-subject wiring "
+                "(see docs/plans/pain_bus_unification.md) — three CLI entry points "
+                "previously forgot to subscribe NAc, silently disabling causal "
+                "learning for out-of-band SEM pain. Tests that need a bare bus "
+                "may pass _allow_raw=True. This becomes a hard error in 1.0. "
+                "(C6 deprecation)"
+            )
+            print(f"DeprecationWarning: {msg}", file=sys.stderr)
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
         self.reaction_bus = ReactionBus(
             history_size=history_size,
             refractory_overrides={"pain": 0.5},
+            _allow_raw=True,
         )
         self._pain_signal_subs: list[Callable[[PainSignal], None]] = []
         self._pain_refractory_s = pain_refractory_s if pain_refractory_s is not None else self.DEFAULT_PAIN_REFRACTORY_S
@@ -504,6 +522,7 @@ def build_pain_bus(
         bus = PainBus(
             history_size=history_size,
             pain_refractory_s=pain_refractory_s,
+            _allow_raw=True,
         )
     if hippocampus is not None:
         bus.subscribe(create_pain_memory_subscriber(hippocampus))
