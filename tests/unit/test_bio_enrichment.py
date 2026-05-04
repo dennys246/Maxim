@@ -69,13 +69,13 @@ def _make_nac(predictions: list | None = None) -> MagicMock:
     nac = MagicMock()
     if predictions is None:
         link = MagicMock()
-        link.event_signature = "rusty_sword_slash"
+        link.event_signature = "tool:rusty_sword_slash"
         link.outcome_signature = "target_hit"
         link.confidence = 0.8
         link.outcome_valence = Valence.POSITIVE
-        nac.get_links_for_event.return_value = [link]
+        nac.scan_links_for_keywords.return_value = [link]
     else:
-        nac.get_links_for_event.return_value = predictions
+        nac.scan_links_for_keywords.return_value = predictions
     return nac
 
 
@@ -133,8 +133,12 @@ class TestBioEnrichmentPipeline:
         pipeline = BioEnrichmentPipeline(nac=nac)
         result = pipeline.enrich("rusty_sword_slash attack", bypass_gate=True)
         assert result is not None
-        # NAc should return predictions for keywords
-        nac.get_links_for_event.assert_called()
+        # NAc should be queried via scan_links_for_keywords (substring
+        # match against compound tool signatures), not the legacy exact
+        # get_links_for_event lookup that was missing every narrative
+        # keyword.
+        nac.scan_links_for_keywords.assert_called()
+        assert any(p.event == "tool:rusty_sword_slash" for p in result.predictions)
 
     def test_component_index_affordances(self):
         index = MagicMock()

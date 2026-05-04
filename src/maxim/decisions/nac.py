@@ -794,6 +794,51 @@ class NAc:
         """Get all causal links originating from an event type."""
         return self._links.get(event_signature, [])
 
+    def scan_links_for_keywords(
+        self,
+        keywords: list[str],
+        *,
+        min_keyword_length: int = 3,
+        min_confidence: float = 0.3,
+        max_matches: int = 10,
+    ) -> list[CausalLink]:
+        """Find causal links whose event_signature contains any keyword.
+
+        Companion to ``get_links_for_event`` for narrative-keyword queries
+        where the caller doesn't know the exact stored signature. Tool
+        events are stored under canonical signatures like
+        ``tool:rusty_sword_slash``; this method lets a query keyword
+        ``rusty`` or ``slash`` find those links via case-insensitive
+        substring containment.
+
+        Returns links sorted by confidence descending, deduplicated by
+        link id, capped at ``max_matches``. Short keywords (below
+        ``min_keyword_length``) are dropped to avoid matching everything
+        — narrative stop-words like "to"/"of" would otherwise hit nearly
+        every signature.
+        """
+        if not keywords:
+            return []
+        kws_lower = [kw.lower() for kw in keywords if kw and len(kw) >= min_keyword_length]
+        if not kws_lower:
+            return []
+        matched: list[CausalLink] = []
+        seen_ids: set[str] = set()
+        with self._lock:
+            for sig, links in self._links.items():
+                sig_lower = sig.lower()
+                if not any(kw in sig_lower for kw in kws_lower):
+                    continue
+                for link in links:
+                    if link.confidence < min_confidence:
+                        continue
+                    if link.id in seen_ids:
+                        continue
+                    seen_ids.add(link.id)
+                    matched.append(link)
+        matched.sort(key=lambda lk: lk.confidence, reverse=True)
+        return matched[:max_matches]
+
     def get_links_for_outcome(self, outcome_signature: str) -> list[CausalLink]:
         """Get all causal links leading to an outcome type."""
         link_ids = self._outcome_index.get(outcome_signature, set())

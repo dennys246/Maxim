@@ -262,14 +262,19 @@ class PlanHistoryBridge:
             if not tool_sequence:
                 return 0.0
 
-            # Query NAc for predictions on each tool
+            from maxim.runtime.tool_dispatch import build_tool_signature
+
+            # Query NAc for predictions on each tool. Must match the
+            # canonical signature shape used by record_plan_outcome /
+            # tool_dispatch / tool_pain_bridge, otherwise predict() does
+            # an exact-match lookup against the wrong key.
             total_confidence = 0.0
             predictions = []
 
             for tool in tool_sequence:
                 prediction = self.nac.predict(
                     event_type="tool",
-                    event_signature=tool,
+                    event_signature=build_tool_signature(tool),
                     context={"goal": goal, **(context or {})},
                 )
                 if prediction:
@@ -358,15 +363,23 @@ class PlanHistoryBridge:
 
         try:
             from maxim.decisions.causal_link import Valence
+            from maxim.runtime.tool_dispatch import build_tool_signature
 
             valence = Valence.POSITIVE if success else Valence.NEGATIVE
             # Convert to seconds; default to 0.1s when caller didn't measure.
             delta_s = max(0.001, execution_time_ms / 1000.0) if execution_time_ms > 0 else 0.1
 
             for tool in tool_sequence:
+                # Use canonical "tool:<name>" signature so plan-outcome
+                # observations land on the same _links bucket as
+                # tool_dispatch + tool_pain_bridge writes. Pre-fix this
+                # bridge wrote bare "<name>", splitting the same logical
+                # tool's CausalLinks across two dict keys and starving
+                # every query path that uses build_tool_signature.
+                sig = build_tool_signature(tool)
                 self.nac.observe(
                     event_type="tool",
-                    event_signature=tool,
+                    event_signature=sig,
                     outcome_type="plan_result",
                     outcome_signature=f"plan:{goal}:{'success' if success else 'failure'}",
                     outcome_valence=valence,

@@ -310,6 +310,28 @@ class TestPlanningBridge:
         stats = memory_hub.nac.stats()
         assert stats["total_observations"] > 0
 
+    def test_record_plan_outcome_uses_canonical_signature(self, memory_hub):
+        """Plan outcomes write under the canonical 'tool:<name>' signature.
+
+        Pre-fix this bridge stored bare tool names ('grasp') while
+        tool_dispatch + tool_pain_bridge stored 'tool:grasp', splitting
+        the same logical tool's CausalLinks across two _links keys and
+        starving every query path that used build_tool_signature.
+        """
+        memory_hub.on_session_start()
+        memory_hub.record_plan_outcome(
+            goal="find mug",
+            tool_sequence=["look_around", "grasp"],
+            success=True,
+        )
+        link_keys = list(memory_hub.nac._links.keys())
+        # Canonical form must be present.
+        assert "tool:look_around" in link_keys
+        assert "tool:grasp" in link_keys
+        # Bare form must NOT be present (the regression we just closed).
+        assert "look_around" not in link_keys
+        assert "grasp" not in link_keys
+
     def test_predicted_success(self, memory_hub):
         """Test success prediction for plans."""
         prediction = memory_hub.get_predicted_success(
