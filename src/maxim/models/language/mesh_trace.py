@@ -128,13 +128,31 @@ class TraceRecord:
 
 
 def emit_trace(record: TraceRecord) -> None:
-    """Emit a trace record to the mesh.trace logger. No-op if no flag enabled."""
+    """Emit a trace record to the mesh.trace logger. No-op if no flag enabled.
+
+    Routes the structured ``record.to_dict()`` payload through Python
+    logging's ``extra={"event": ..., "data": ...}`` channel so the
+    ``StructuredFormatter`` attached to ``MAXIM_LOG_FILE`` captures the
+    GPU/VRAM/server-timing fields as proper JSONL keys instead of
+    JSON-encoded text inside the message string.  The console-readable
+    ``format_compact()`` line stays the human message.
+    """
     if not any_trace_enabled():
         return
+    payload = record.to_dict()
     if lane_trace_enabled():
-        _trace_logger.info(record.format_compact())
+        _trace_logger.info(
+            record.format_compact(),
+            extra={"event": "peer_infer", "data": payload},
+        )
     if peer_log_enabled():
-        _trace_logger.info(json.dumps(record.to_dict()))
+        # Preserve the legacy JSON-in-message console format for backward
+        # compatibility with operators who grep ``mesh.trace`` text logs,
+        # but ALSO attach structured ``extra`` so JSONL gets full fidelity.
+        _trace_logger.info(
+            json.dumps(payload),
+            extra={"event": "peer_infer", "data": payload},
+        )
 
 
 def fetch_leader_debug_status(

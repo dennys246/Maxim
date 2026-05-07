@@ -68,7 +68,15 @@ def configure_logging(
         root.addHandler(file_handler)
 
     def _ensure_jsonl_file_handler(path: str) -> None:
-        """Attach a JSONL handler using StructuredFormatter. MAXIM_LOG_FILE."""
+        """Attach a JSONL handler using StructuredFormatter. MAXIM_LOG_FILE.
+
+        Uses ``RotatingFileHandler`` so long-running peer leaders with
+        ``MAXIM_HTTP_TRACE=1`` / ``MAXIM_BACKEND_TRACE=1`` don't fill disks.
+        Defaults: 100 MB per file, 3 backups (so ~400 MB worst case at the
+        same path).  Override via ``MAXIM_LOG_FILE_MAX_BYTES`` and
+        ``MAXIM_LOG_FILE_BACKUP_COUNT`` env vars when a longer history is
+        wanted (e.g. multi-day leader debugging).
+        """
         if not path:
             return
         abs_path = os.path.abspath(path)
@@ -81,10 +89,30 @@ def configure_logging(
             ):
                 return
         # Lazy import — avoid circular at module-init time.
+        from logging.handlers import RotatingFileHandler
+
         from maxim.utils.structured_logging import StructuredFormatter
 
         os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
-        jsonl_handler = logging.FileHandler(abs_path, mode="a", encoding="utf-8")
+        try:
+            max_bytes = int(os.environ.get("MAXIM_LOG_FILE_MAX_BYTES", "100000000"))
+        except ValueError:
+            max_bytes = 100_000_000
+        try:
+            backup_count = int(os.environ.get("MAXIM_LOG_FILE_BACKUP_COUNT", "3"))
+        except ValueError:
+            backup_count = 3
+        # Clamp to sane range — zero would disable rotation entirely, which
+        # is exactly the bug we're fixing here.
+        max_bytes = max(1_000_000, min(max_bytes, 10_000_000_000))
+        backup_count = max(0, min(backup_count, 50))
+        jsonl_handler = RotatingFileHandler(
+            abs_path,
+            mode="a",
+            encoding="utf-8",
+            maxBytes=max_bytes,
+            backupCount=backup_count,
+        )
         # JSONL file captures DEBUG+ regardless of stdout verbosity — the
         # file is opt-in, noisy is fine, and low-level events are the
         # whole point.
@@ -157,6 +185,78 @@ def warn(message: str, *args: object, logger: Optional[logging.Logger] = None) -
         except Exception:
             formatted = message
         print(f"[WARN] {formatted}")
+
+
+def user_warn(
+    message: str,
+    *,
+    fix: str = "",
+    source: str = "",
+    event: str = "user_warning",
+    data: Optional[dict[str, object]] = None,
+) -> None:
+    """Surface a user-actionable warning across every available channel.
+
+    Routes the warning to whichever sinks are active so users see
+    actionable information regardless of how they're running:
+
+    * Active ``MaximDisplay`` → calls ``display.warn()`` so the line
+      lands in the persistent warnings panel (above the scrolling log).
+    * Python ``logging`` → emits via ``logger.warning`` with a structured
+      ``extra={"event": ..., "data": ...}`` so ``MAXIM_LOG_FILE`` JSONL
+      captures it with full attribution.
+    * Plain ``stderr`` → fallback when neither display nor logging is
+      configured (early-boot path, scripts, CI without ``--interactive``).
+
+    The function NEVER raises — observability code that breaks
+    application flow is worse than silence.
+
+    Args:
+        message: One-line headline the user will read.
+        fix: Optional remediation hint (typically from
+            ``BackendError.fix_hint``).  Rendered after the message.
+        source: Originating subsystem (``"backend"``, ``"leader-boot"``,
+            ``"foundry"``, ...).  Visible in JSONL ``data.source``.
+        event: Structured event tag for log filtering.
+        data: Additional structured context preserved in the JSONL.
+    """
+    full = message if not fix else f"{message}\n  Fix: {fix}"
+
+    # 1. Display path — only when a MaximDisplay is currently active.
+    try:
+        from maxim.simulation.sim_logger import get_active_display
+
+        display = get_active_display()
+        if display is not None and hasattr(display, "warn"):
+            display.warn(full)
+    except Exception:
+        pass
+
+    # 2. Structured logging path — always when Python logging is set up.
+    try:
+        log = logging.getLogger("maxim")
+        payload: dict[str, object] = {
+            "message": message,
+            "fix": fix,
+            "source": source,
+        }
+        if data:
+            payload.update(data)
+        log.warning(full, extra={"event": event, "data": payload})
+    except Exception:
+        pass
+
+    # 3. Stderr fallback — only when neither display nor logging is wired.
+    # The display path doesn't write to stderr, and the logging path's
+    # default StreamHandler IS stderr, so this branch fires only in early
+    # boot before configure_logging has run.
+    try:
+        if not logging.getLogger().handlers:
+            import sys
+
+            print(f"[WARN] {full}", file=sys.stderr)
+    except Exception:
+        pass
 
 
 def info(message: str, *args: object, logger: Optional[logging.Logger] = None) -> None:

@@ -478,7 +478,8 @@ def _run_menu_sim(action: str) -> None:
         pass
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _main_impl(argv: Sequence[str] | None = None) -> int:
+    """Original ``main`` body.  Wrapped by :func:`main` for typed-error surfacing."""
     # Detect Blackwell GPU and apply GStreamer guards BEFORE any CUDA-touching
     # imports.  This was previously at module-import time; moved here so that
     # ``import maxim`` has no subprocess side effects.
@@ -692,17 +693,39 @@ def main(argv: Sequence[str] | None = None) -> int:
                 _api_key = read_key()
             except Exception:
                 # Real leader: surface to operator. See docs/troubleshooting/leader_proxy_debug.md
-                print("[leader-boot] WARNING: could not read API key — proxy will run without auth")
+                from maxim.utils.logging import user_warn
+
+                user_warn(
+                    "Could not read API key — proxy will run without auth",
+                    fix="Run `maxim tunnel setup` to configure auth, or set MAXIM_API_KEY.",
+                    source="leader-boot",
+                    event="leader_boot_no_api_key",
+                )
             _proxy = start_leader_proxy(api_key=_api_key, bind_host=detected_role.bind_host)
             if _proxy is None:
-                print("[leader-boot] WARNING: LeaderProxy failed to start (port in use?)")
+                from maxim.utils.logging import user_warn
+
+                user_warn(
+                    "LeaderProxy failed to start",
+                    fix="Check that the listen port is free (`lsof -i :7077`) or set MAXIM_PROXY_PORT.",
+                    source="leader-boot",
+                    event="leader_boot_proxy_failed",
+                )
     except Exception as _e:
         # Only surface to operators when role resolved to leader. Solo users
         # should never see leader-boot noise.
         if detected_role is not None and detected_role.role == "leader":
+            from maxim.utils.logging import user_warn
+
+            user_warn(
+                f"Early proxy boot failed: {_e}",
+                fix="See traceback above; usually a port conflict or missing CUDA. Run `maxim doctor` for diagnostics.",
+                source="leader-boot",
+                event="leader_boot_exception",
+                data={"exc_type": type(_e).__name__},
+            )
             import traceback as _tb
 
-            print(f"[leader-boot] WARNING: early proxy boot failed: {_e}")
             _tb.print_exc()
         else:
             logging.getLogger(__name__).debug("Early proxy boot skipped: %s", _e)
@@ -2096,6 +2119,48 @@ def main(argv: Sequence[str] | None = None) -> int:
         break
 
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """CLI entrypoint with top-level :class:`BackendError` surfacing.
+
+    The router's typed exception hierarchy (``BackendOverloaded``,
+    ``BackendAuthFailed``, ``BackendModelMissing``, ``BackendDown``, ...)
+    each carries a class-level ``fix_hint`` describing how to remediate.
+    Without this wrapper, BackendErrors that escape an inner ``try``
+    surface as bare Python tracebacks — the actionable fix string was
+    invisible to the user.
+
+    On ``BackendError``: render via ``user_warn`` (display panel + JSONL
+    + stderr) and exit 2.  ``KeyboardInterrupt`` exits cleanly with 130
+    (Ctrl-C convention) so the live display can flush.  Any other
+    exception re-raises — we don't want to swallow bugs.
+    """
+    try:
+        return _main_impl(argv)
+    except KeyboardInterrupt:
+        return 130
+    except Exception as e:
+        try:
+            from maxim.models.language.types import BackendError
+        except Exception:
+            raise
+
+        if isinstance(e, BackendError):
+            from maxim.utils.logging import user_warn
+
+            user_warn(
+                f"{type(e).__name__}: {e}",
+                fix=getattr(e, "fix_hint", "") or "Run `maxim doctor` for diagnostics.",
+                source="backend",
+                event="backend_error_uncaught",
+                data={
+                    "exc_type": type(e).__name__,
+                    "status": getattr(e, "status", None),
+                },
+            )
+            return 2
+        raise
 
 
 life = main
