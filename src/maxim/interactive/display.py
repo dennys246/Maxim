@@ -302,13 +302,28 @@ class MaximDisplay:
             else:
                 markup = f"{agent_prefix}{tag} {message}"
             self._log_lines.append(_LogEntry(agent=agent, markup=markup))
-            # Keep absolute scroll position stable: when scrolled up,
-            # each new line pushes the bottom further away, so bump
-            # the offset to compensate.  Bump ALL view and the matching
-            # agent view (if any).
-            for key in (None, agent):
+            # Keep absolute scroll position stable: when scrolled up, each
+            # new line pushes the bottom further away, so bump the offset
+            # of every view whose filter includes this new entry.  The
+            # filter rule is ``e.agent is None or e.agent == focused``,
+            # so:
+            #   - ALL view (key=None): always sees new entries → always bump.
+            #   - Agent-X view (key=X): sees entry iff entry.agent in (None, X).
+            # Iterating ``(None, agent)`` was wrong on two counts:
+            #   (a) When agent=None, the iteration becomes (None, None) and
+            #       the ALL offset got bumped TWICE per system message.
+            #   (b) None-agent entries appear in EVERY agent's view, but
+            #       only the None offset got bumped — leaving focused
+            #       agent views drifting on system messages.
+            keys_to_bump: set[str | None] = {None}
+            if agent is not None:
+                keys_to_bump.add(agent)
+            else:
+                # System message — visible in every agent-focused view too.
+                keys_to_bump.update(self._agent_roster)
+            for key in keys_to_bump:
                 if self._scroll_offsets.get(key, 0) > 0:
-                    self._scroll_offsets[key] = self._scroll_offsets[key] + 1
+                    self._scroll_offsets[key] += 1
             self._refresh()
 
     def set_status(self, **fields: str) -> None:
@@ -662,16 +677,19 @@ class MaximDisplay:
             "stalled": "grey50",
         }
         status_border = _status_colors.get(self._status_style, "dark_goldenrod")
-        status_parts = [f"{k}: {v}" for k, v in self._status.items()]
-        # Agent focus indicator
+        # Agent focus indicator — FIRST in the status bar with a distinctive
+        # color so flipping focus produces a visible signal.  Mid-line
+        # placement was getting lost on narrow terminals where Rich
+        # truncates the wrapped Text panel to its first line.
         focus_label = self._focused_agent or "ALL"
-        status_parts.append(f"Agent: {focus_label}")
+        focus_part = f"[bright_cyan]Agent: {focus_label}[/bright_cyan]"
+        status_dict_parts = [f"{k}: {v}" for k, v in self._status.items()]
         # Layout preset indicator
         log_r, think_r = self._resize_presets[self._resize_index]
-        status_parts.append(f"Layout: {log_r}:{think_r}")
-        status_text = "  ".join(status_parts)
+        layout_part = f"[dim]Layout: {log_r}:{think_r}[/dim]"
+        status_text = "  ".join([focus_part, *status_dict_parts, layout_part])
         status_panel = Panel(
-            Text(status_text or "Ready", style="bold"),
+            Text.from_markup(status_text or "Ready", style="bold"),
             border_style=status_border,
             height=3,
         )
