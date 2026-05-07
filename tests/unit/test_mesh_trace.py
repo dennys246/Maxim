@@ -176,7 +176,14 @@ class TestEmitTrace:
         assert parsed["request_id"] == "abc"
         assert parsed["provider"] == "p"
 
-    def test_both_flags_emits_both_lines(self, monkeypatch, caplog):
+    def test_both_flags_emits_single_line_with_structured_extra(self, monkeypatch, caplog):
+        # Pre-merge review: the previous double-emission was a bug —
+        # both lines carried the same structured ``extra`` payload, so
+        # JSONL consumers saw duplicate ``peer_infer`` records that
+        # differed only in the human message text.  Now ``emit_trace``
+        # emits exactly one line whose human message is the compact
+        # form (lane trace dominates when both are on), with the full
+        # structured payload attached via ``extra={"event","data"}``.
         monkeypatch.setenv("MAXIM_LANE_TRACE", "1")
         monkeypatch.setenv("MAXIM_PEER_LOG_REQUESTS", "1")
         rec = TraceRecord(
@@ -190,7 +197,16 @@ class TestEmitTrace:
         )
         with caplog.at_level(logging.INFO, logger=TRACE_LOGGER_NAME):
             emit_trace(rec)
-        assert len(caplog.records) == 2
+        assert len(caplog.records) == 1
+        record = caplog.records[0]
+        # Compact human message format
+        assert record.message.startswith("peer_infer")
+        # Structured extra carries the full payload
+        assert getattr(record, "event", None) == "peer_infer"
+        data = getattr(record, "data", None)
+        assert isinstance(data, dict)
+        assert data.get("request_id") == "a"
+        assert data.get("provider") == "p"
 
 
 class TestStartupWarning:

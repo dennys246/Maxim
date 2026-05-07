@@ -2603,8 +2603,11 @@ def start_simulation_mode(
 
     # Emit machine-readable report when --report-json was requested via
     # MAXIM_REPORT_JSON.  Set by cli.py from args.report_json so the env
-    # var is the contract — orchestrator does NOT import argparse.
-    _report_json_path = os.environ.get("MAXIM_REPORT_JSON", "").strip()
+    # var is the contract — orchestrator does NOT import argparse.  Pop
+    # (not just read) so that two back-to-back sims in the menu loop do
+    # not silently overwrite the first sim's report file when only the
+    # first invocation passed --report-json.
+    _report_json_path = os.environ.pop("MAXIM_REPORT_JSON", "").strip()
     if _report_json_path:
         try:
             emit_report_json(report, _report_json_path)

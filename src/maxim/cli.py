@@ -2149,9 +2149,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if isinstance(e, BackendError):
             from maxim.utils.logging import user_warn
 
+            # `BackendError.fix_hint` is class-level static text per the
+            # CLAUDE.md invariant — every subclass declares one.  Direct
+            # attribute access (not getattr default) so a forgotten
+            # subclass-level fix_hint surfaces as a loud AttributeError
+            # instead of silently using a generic fallback string.
             user_warn(
                 f"{type(e).__name__}: {e}",
-                fix=getattr(e, "fix_hint", "") or "Run `maxim doctor` for diagnostics.",
+                fix=e.fix_hint,
                 source="backend",
                 event="backend_error_uncaught",
                 data={

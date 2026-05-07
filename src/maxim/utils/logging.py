@@ -102,17 +102,26 @@ def configure_logging(
             backup_count = int(os.environ.get("MAXIM_LOG_FILE_BACKUP_COUNT", "3"))
         except ValueError:
             backup_count = 3
-        # Clamp to sane range — zero would disable rotation entirely, which
-        # is exactly the bug we're fixing here.
-        max_bytes = max(1_000_000, min(max_bytes, 10_000_000_000))
+        # ``MAXIM_LOG_FILE_MAX_BYTES=0`` is the explicit opt-out for rotation
+        # — use the plain ``FileHandler`` so log shippers / ``tail -F``
+        # consumers that depend on the open-fd-stays-open semantics keep
+        # working.  Any positive value engages rotation; clamp to a sane
+        # range to avoid accidental 1-byte rollovers.  Negative values are
+        # treated as 0 (disabled) rather than silently turning into a tiny
+        # rotation, since "negative" reads as "no, do not rotate".
         backup_count = max(0, min(backup_count, 50))
-        jsonl_handler = RotatingFileHandler(
-            abs_path,
-            mode="a",
-            encoding="utf-8",
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-        )
+        jsonl_handler: logging.FileHandler
+        if max_bytes <= 0:
+            jsonl_handler = logging.FileHandler(abs_path, mode="a", encoding="utf-8")
+        else:
+            max_bytes = max(1_000_000, min(max_bytes, 10_000_000_000))
+            jsonl_handler = RotatingFileHandler(
+                abs_path,
+                mode="a",
+                encoding="utf-8",
+                maxBytes=max_bytes,
+                backupCount=backup_count,
+            )
         # JSONL file captures DEBUG+ regardless of stdout verbosity — the
         # file is opt-in, noisy is fine, and low-level events are the
         # whole point.
@@ -221,6 +230,7 @@ def user_warn(
         data: Additional structured context preserved in the JSONL.
     """
     full = message if not fix else f"{message}\n  Fix: {fix}"
+    debug_log = logging.getLogger(__name__)
 
     # 1. Display path — only when a MaximDisplay is currently active.
     try:
@@ -229,10 +239,14 @@ def user_warn(
         display = get_active_display()
         if display is not None and hasattr(display, "warn"):
             display.warn(full)
-    except Exception:
-        pass
+    except Exception as exc:
+        debug_log.debug("user_warn display sink failed: %s", exc)
 
     # 2. Structured logging path — always when Python logging is set up.
+    # When no handlers are configured, Python's ``lastResort`` handler
+    # fires and writes a minimal warning to stderr; that's our fallback
+    # for early-boot paths (no separate stderr branch needed — adding
+    # one would double-print).
     try:
         log = logging.getLogger("maxim")
         payload: dict[str, object] = {
@@ -243,20 +257,8 @@ def user_warn(
         if data:
             payload.update(data)
         log.warning(full, extra={"event": event, "data": payload})
-    except Exception:
-        pass
-
-    # 3. Stderr fallback — only when neither display nor logging is wired.
-    # The display path doesn't write to stderr, and the logging path's
-    # default StreamHandler IS stderr, so this branch fires only in early
-    # boot before configure_logging has run.
-    try:
-        if not logging.getLogger().handlers:
-            import sys
-
-            print(f"[WARN] {full}", file=sys.stderr)
-    except Exception:
-        pass
+    except Exception as exc:
+        debug_log.debug("user_warn logging sink failed: %s", exc)
 
 
 def info(message: str, *args: object, logger: Optional[logging.Logger] = None) -> None:

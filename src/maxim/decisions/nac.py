@@ -1108,25 +1108,12 @@ class NAc:
                 new_bias,
                 reward,
             )
-
-        # Surface the substrate weight change as a LEARN headline.  Skip
-        # tiny no-op updates (clamped to existing value) to reduce noise.
-        if abs(new_bias - current) >= 1e-4:
-            try:
-                from maxim.simulation.sim_logger import sim_learn
-
-                sim_learn(
-                    f"reward_bias {node_id[:12]}: {current:+.3f} → {new_bias:+.3f}",
-                    detail=f"Δ={new_bias - current:+.3f} (reward={reward:+.2f})",
-                    source="NAc",
-                    agent_id=agent_id or None,
-                    node_id=node_id,
-                    reward=reward,
-                    bias_before=current,
-                    bias_after=new_bias,
-                )
-            except Exception:
-                pass
+        # NOTE: per-node LEARN headlines are emitted by the *batch*
+        # caller (NAc.distribute_reward / TemporalCreditDistributor.
+        # distribute), aggregating across nodes instead of one line
+        # per credit_node call.  A 20-node distribution would otherwise
+        # produce 20 LEARN lines from a single reward arrival, flooding
+        # the sparse-headline channel — pre-merge review caught this.
 
     # -- Goal-level reward bias (bidirectional, for ThoughtGate) ----------
 
@@ -1273,6 +1260,27 @@ class NAc:
                 credit = reward * proportion
                 self.credit_node(aid, nid, credit)
                 credited.append((nid, credit))
+
+        # Emit ONE LEARN headline aggregating the per-node updates,
+        # outside the lock so disk I/O does not block the next reward
+        # arrival.  ``credited`` was populated inside the lock; reading
+        # it here is safe because the loop has exited.
+        if credited:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                top_nid, top_credit = max(credited, key=lambda kv: abs(kv[1]))
+                more = f" +{len(credited) - 1} more" if len(credited) > 1 else ""
+                sim_learn(
+                    f"reward distributed (reward={reward:+.2f}, {len(credited)} nodes)",
+                    detail=f"top: {top_nid[:16]} credit={top_credit:+.3f}{more}",
+                    source="NAc",
+                    agent_id=agent_id or None,
+                    reward=reward,
+                    nodes_credited=len(credited),
+                )
+            except Exception:
+                pass
 
         return credited
 

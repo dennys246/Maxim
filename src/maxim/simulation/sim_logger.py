@@ -42,25 +42,37 @@ _sim_bridge_logger.propagate = False
 
 
 def _ensure_sim_bridge_handlers() -> None:
-    """Mirror MAXIM_LOG_FILE JSONL handlers from root onto the bridge logger.
+    """Reconcile bridge handlers with root's JSONL handlers.
 
-    Called lazily on first sim_log emission and refreshed when no JSONL
-    handler is currently attached. ``configure_logging`` may attach the
-    JSONL handler at any point (subcommand dispatch, sim startup), so we
-    re-check rather than caching attachment state.
+    Called lazily on each sim_log emission.  ``configure_logging(force=True)``
+    closes existing root handlers and attaches new ones (same baseFilename,
+    different FD); without reconciliation the bridge keeps writing through
+    the closed handler's FD and lines silently vanish (or, worse, write
+    into a rotated archive after RotatingFileHandler triggers).  Pre-merge
+    review caught this as a HIGH-severity bug.
+
+    The reconciliation:
+      1. Drop bridge handlers that are no longer present in root (closed).
+      2. Add root handlers tagged ``_maxim_jsonl`` that the bridge lacks.
+
+    Identity match on ``id(handler)`` — same baseFilename with a different
+    handler instance means root rebuilt it; we want to follow.
     """
     root = logging.getLogger()
-    existing_paths = {
-        getattr(h, "baseFilename", None) for h in _sim_bridge_logger.handlers if isinstance(h, logging.FileHandler)
+    root_jsonl = {
+        id(h): h for h in root.handlers if isinstance(h, logging.FileHandler) and getattr(h, "_maxim_jsonl", False)
     }
-    for h in root.handlers:
-        if not isinstance(h, logging.FileHandler):
-            continue
-        if not getattr(h, "_maxim_jsonl", False):
-            continue
-        if getattr(h, "baseFilename", None) in existing_paths:
-            continue
-        _sim_bridge_logger.addHandler(h)
+    bridge_ids = {id(h) for h in _sim_bridge_logger.handlers}
+
+    # Drop stale (closed) handlers — those whose id no longer appears in root.
+    for h in list(_sim_bridge_logger.handlers):
+        if id(h) not in root_jsonl:
+            _sim_bridge_logger.removeHandler(h)
+
+    # Add fresh handlers from root that aren't already on the bridge.
+    for handler_id, h in root_jsonl.items():
+        if handler_id not in bridge_ids:
+            _sim_bridge_logger.addHandler(h)
 
 
 # ContextVar for implicit agent_id threading. The agent loop sets this

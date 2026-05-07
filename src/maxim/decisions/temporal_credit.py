@@ -238,27 +238,15 @@ class TemporalCreditDistributor:
 
             all_eligible = {**eligible, **temporal_eligible}
 
-            # Surface the phase-similarity fallback as a LEARN headline:
-            # the fast-decay trace expired but the SCN temporal anchor
-            # still credited the node.  This is the "I forgot what I was
-            # doing but the time-of-day brought it back" moment — opt-in
-            # learning that crosses a sleep cycle.
+            # Capture phase-fallback summary INSIDE the lock — emit OUTSIDE.
+            # sim_log → MAXIM_LOG_FILE includes disk I/O and (under
+            # RotatingFileHandler) os.rename calls; holding the
+            # distributor lock across that blocks every other consumer
+            # for tens of ms.  Pre-merge review caught this.
+            _phase_summary: tuple[str, float, int] | None = None
             if temporal_eligible:
-                try:
-                    from maxim.simulation.sim_logger import sim_learn
-
-                    top = max(temporal_eligible.items(), key=lambda kv: kv[1])
-                    more = f" +{len(temporal_eligible) - 1}" if len(temporal_eligible) > 1 else ""
-                    sim_learn(
-                        f"phase-fallback credited {top[0][:24]} (strength={top[1]:.3f}){more}",
-                        detail=f"trace decayed; SCN anchor matched (reward={reward:+.2f})",
-                        source="SCN",
-                        agent_id=agent_id,
-                        reward=reward,
-                        nodes_credited=len(temporal_eligible),
-                    )
-                except Exception:
-                    pass
+                top = max(temporal_eligible.items(), key=lambda kv: kv[1])
+                _phase_summary = (top[0], top[1], len(temporal_eligible))
 
             if not all_eligible:
                 # Still credit goal even if no substrate nodes are eligible
@@ -285,7 +273,28 @@ class TemporalCreditDistributor:
                 value=reward, goal_tag=goal_tag, source="temporal_credit"
             )
 
-            return credited
+        # Emit phase-fallback LEARN headline OUTSIDE the lock — sim_log
+        # → MAXIM_LOG_FILE involves disk I/O that should not block other
+        # distributor consumers.  The payload was captured under the
+        # lock (``_phase_summary``) so the read here is safe.
+        if _phase_summary is not None:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                top_nid, top_strength, total_count = _phase_summary
+                more = f" +{total_count - 1}" if total_count > 1 else ""
+                sim_learn(
+                    f"phase-fallback credited {top_nid[:24]} (strength={top_strength:.3f}){more}",
+                    detail=f"trace decayed; SCN anchor matched (reward={reward:+.2f})",
+                    source="SCN",
+                    agent_id=agent_id,
+                    reward=reward,
+                    nodes_credited=total_count,
+                )
+            except Exception:
+                pass
+
+        return credited
 
     @property
     def last_valence_signal(self) -> ValenceSignal | None:

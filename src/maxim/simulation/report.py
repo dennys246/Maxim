@@ -634,11 +634,25 @@ def emit_report_json(report: SimulationReport, path: str = "-") -> None:
         report: Report to serialize.
         path: Destination — ``"-"`` writes to stdout, otherwise treated as
             a file path that will be created with parents.
+
+    File writes are atomic (write-temp + rename) per the project
+    persistence convention and carry ``_format_version`` per the CC1
+    invariant so downstream consumers can detect schema drift.
     """
-    payload = json.dumps(asdict(report), default=str, indent=2)
+    from maxim.utils.format_version import with_format_version
+
+    payload_dict = with_format_version(asdict(report))
+    payload = json.dumps(payload_dict, default=str, indent=2)
     if path in ("-", ""):
         print(payload)
         return
     out = Path(path)
+    if out.is_dir():
+        raise IsADirectoryError(f"emit_report_json: path is a directory: {out!s}. Pass a file path or '-' for stdout.")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(payload, encoding="utf-8")
+    # Atomic write — write to a sibling temp file, then os.replace so a
+    # mid-write crash leaves the previous file intact instead of a
+    # truncated half-JSON the CI pipeline cannot parse.
+    from maxim.utils.atomic_io import atomic_write_text
+
+    atomic_write_text(str(out), payload)

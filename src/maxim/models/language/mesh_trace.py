@@ -136,23 +136,22 @@ def emit_trace(record: TraceRecord) -> None:
     GPU/VRAM/server-timing fields as proper JSONL keys instead of
     JSON-encoded text inside the message string.  The console-readable
     ``format_compact()`` line stays the human message.
+
+    Both flags emit a single record carrying the structured payload —
+    avoid double-emission with two log lines whose ``data`` differs only
+    in the message text (consumers would dedupe on ``event=peer_infer``
+    anyway and silent-double would inflate counts).
     """
     if not any_trace_enabled():
         return
     payload = record.to_dict()
+    # Human message format — compact line if MAXIM_LANE_TRACE; full JSON
+    # for legacy MAXIM_PEER_LOG_REQUESTS consumers who grep the text log.
     if lane_trace_enabled():
-        _trace_logger.info(
-            record.format_compact(),
-            extra={"event": "peer_infer", "data": payload},
-        )
-    if peer_log_enabled():
-        # Preserve the legacy JSON-in-message console format for backward
-        # compatibility with operators who grep ``mesh.trace`` text logs,
-        # but ALSO attach structured ``extra`` so JSONL gets full fidelity.
-        _trace_logger.info(
-            json.dumps(payload),
-            extra={"event": "peer_infer", "data": payload},
-        )
+        msg = record.format_compact()
+    else:
+        msg = json.dumps(payload)
+    _trace_logger.info(msg, extra={"event": "peer_infer", "data": payload})
 
 
 def fetch_leader_debug_status(

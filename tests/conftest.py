@@ -89,6 +89,34 @@ def _isolate_maxim_auto_download_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_log_display_env():
+    """Scrub log/display env vars introduced by feat/log-display-improvements.
+
+    ``MAXIM_REPORT_JSON`` is set by ``cli.py`` when ``--report-json`` is
+    passed and read by the orchestrator at sim-end to emit the report.
+    ``MAXIM_LOG_FILE_MAX_BYTES`` and ``MAXIM_LOG_FILE_BACKUP_COUNT``
+    are read by ``configure_logging`` when attaching the JSONL handler
+    for ``MAXIM_LOG_FILE``.  Per the lessons-learned rule that opt-in
+    env vars in hot startup paths need autouse scrubs (CLAUDE.md),
+    pair every new ``MAXIM_*`` with isolation here so a CLI test that
+    sets one of them does not leak into every later test that calls
+    ``build_primary_router`` or ``configure_logging``.
+
+    Always start each test with the vars unset; restore on the way out
+    so any user-set values survive the test session.
+    """
+    keys = ("MAXIM_REPORT_JSON", "MAXIM_LOG_FILE_MAX_BYTES", "MAXIM_LOG_FILE_BACKUP_COUNT")
+    saved = {k: os.environ.pop(k, None) for k in keys}
+    try:
+        yield
+    finally:
+        for k in keys:
+            os.environ.pop(k, None)
+            if saved[k] is not None:
+                os.environ[k] = saved[k]
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_deep_embodiment():
     """Reset ``resolution._resolved_depth`` + scrub ``MAXIM_DEEP_EMBODIMENT``.
 
