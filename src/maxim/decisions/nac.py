@@ -375,7 +375,7 @@ class NAc:
             List of CausalLinks that were created or updated.
         """
         with self._lock:
-            return self._record_outcome_impl(
+            updated_links = self._record_outcome_impl(
                 outcome_type,
                 outcome_signature,
                 outcome_valence,
@@ -384,6 +384,32 @@ class NAc:
                 attributed_event_id,
                 attributed_event_signature,
             )
+
+        # Surface NOVEL causal-link formations as LEARN headlines OUTSIDE
+        # the lock — first-time observation of an (event_signature →
+        # outcome_signature) pair is a "the agent just learned something
+        # new" moment that belongs in the headline channel.  Subsequent
+        # observations of the same pair stay at BIO tier via the existing
+        # ``sim_nac_learn`` emission below.
+        novel = [link for link in updated_links if link.observation_count == 1]
+        if novel:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                for link in novel:
+                    valence_str = getattr(link.outcome_valence, "value", str(link.outcome_valence))
+                    sim_learn(
+                        f"new causal link: {link.event_signature[:24]} → {link.outcome_signature[:24]}",
+                        detail=f"valence={valence_str}, RPE={link.last_rpe:+.2f}",
+                        source="NAc",
+                        event=link.event_signature,
+                        outcome=link.outcome_signature,
+                        valence=valence_str,
+                    )
+            except Exception:
+                pass
+
+        return updated_links
 
     def _record_outcome_impl(
         self,
@@ -606,7 +632,36 @@ class NAc:
                 )
             except Exception:
                 pass
-            return new_link
+            # Capture new-link payload for the OUTSIDE-the-lock LEARN
+            # headline emission below.  ``observe`` is the direct-observation
+            # API (caller already attributed event → outcome), so any new
+            # link here is a first-time observation that warrants a
+            # CLEAN-tier headline.  ``outcome_valence`` is the ``Valence``
+            # enum — capture its ``.value`` string for display.
+            _new_link_summary: tuple[str, str, str, float] | None = (
+                new_link.event_signature,
+                new_link.outcome_signature,
+                getattr(new_link.outcome_valence, "value", str(new_link.outcome_valence)),
+                new_link.last_rpe,
+            )
+
+        # Outside the lock — surface novel causal links as LEARN headlines.
+        if _new_link_summary is not None:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                event_sig, outcome_sig, valence_str, rpe = _new_link_summary
+                sim_learn(
+                    f"new causal link: {event_sig[:24]} → {outcome_sig[:24]}",
+                    detail=f"valence={valence_str}, RPE={rpe:+.2f}",
+                    source="NAc",
+                    event=event_sig,
+                    outcome=outcome_sig,
+                    valence=valence_str,
+                )
+            except Exception:
+                pass
+        return new_link
 
     # ─────────────────────────────────────────────────────────────────────────
     # PREDICTION
