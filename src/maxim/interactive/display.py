@@ -253,6 +253,11 @@ class MaximDisplay:
             "response": "bold green",
             "action": "bold cyan",
             "info": "dim white",
+            # Substrate-learning headlines (NAc reward bias, tier promotion,
+            # sleep consolidation, anticipatory pre-activation). Bold bright
+            # magenta — visually distinct from every other channel so the
+            # ▲ moments stand out in the scrolling log.
+            "learn": "bold bright_magenta",
             # PFC deliberation — green (matches thinking panel border)
             "thought": "bold green",
             "deliberation": "bold green",
@@ -280,6 +285,8 @@ class MaximDisplay:
             "discovery": "blue",
             "gate": "white",
             "sensor": "cyan",
+            "drive": "yellow",
+            "reflex": "bold red",
         }
         sub_lower = subsystem.lower()
         is_bio = sub_lower in self._BIO_SUBSYSTEMS
@@ -548,6 +555,44 @@ class MaximDisplay:
                 except ValueError:
                     self._focused_agent = None
             self._refresh()
+
+    def focus_agent(self, name: str | None) -> bool:
+        """Set focus to a specific agent by nickname (thread-safe).
+
+        ``name=None`` or ``name in {"", "all", "ALL"}`` restores the
+        ALL view (no filter).  Case-insensitive nickname match — returns
+        ``True`` if focus was applied, ``False`` if the name didn't match
+        any registered agent.
+
+        Provides the portable alternative to Shift+arrow keybindings,
+        which macOS Terminal.app strips before delivery.  See the
+        ``/focus`` slash command in
+        :mod:`maxim.simulation.orchestrator`.
+        """
+        with self._lock:
+            if not name or name.lower() == "all":
+                self._focused_agent = None
+                self._refresh()
+                return True
+            target = name.strip()
+            for agent in self._agent_roster:
+                if agent.lower() == target.lower():
+                    self._focused_agent = agent
+                    self._refresh()
+                    return True
+            return False
+
+    @property
+    def agent_roster(self) -> list[str]:
+        """Snapshot of registered agent nicknames (thread-safe)."""
+        with self._lock:
+            return list(self._agent_roster)
+
+    @property
+    def focused_agent(self) -> str | None:
+        """Currently-focused agent nickname, or ``None`` for ALL."""
+        with self._lock:
+            return self._focused_agent
 
     def _filtered_log_lines(self) -> list[_LogEntry]:
         """Return log lines filtered by focused agent. Caller must hold _lock."""

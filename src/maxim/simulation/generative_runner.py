@@ -32,6 +32,7 @@ from maxim.simulation.arcs import (
     select_arc_for_goal,
 )
 from maxim.simulation.narrator import Narrator
+from maxim.simulation.sim_logger import sim_log
 
 log = logging.getLogger(__name__)
 
@@ -424,6 +425,11 @@ def run_generative_campaign(
                     "AUT went IDLE on turn %d (no action within 30s) — narrator continuing",
                     turn_idx + 1,
                 )
+            elif last_aut_response:
+                # Surface the AUT's textual reply so users can see what the
+                # agent actually said.  Captured into ``last_aut_response``
+                # for the next narrator turn but had no display surface.
+                sim_log("RESPONSE", last_aut_response)
         except Exception as e:
             log.error("Bridge failed at turn %d: %s", turn_idx + 1, e)
             last_aut_response = ""

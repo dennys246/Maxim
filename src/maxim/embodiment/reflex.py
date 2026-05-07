@@ -260,6 +260,22 @@ class ReflexRegistry:
                 )
             )
 
+            # Surface the reflex firing.  Embodiment runs are otherwise
+            # opaque about pre-deliberative responses (thermal withdrawal,
+            # pain wince, startle).  Skip dry-run failures.
+            if dispatch_ok:
+                try:
+                    from maxim.simulation.sim_logger import sim_reflex
+
+                    sim_reflex(
+                        spec.name,
+                        spec.response.tool,
+                        round(effective, 3),
+                        raw_intensity=round(raw_intensity, 3),
+                    )
+                except Exception:
+                    pass
+
         return tuple(firings)
 
     @staticmethod

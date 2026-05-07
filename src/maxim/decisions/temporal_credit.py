@@ -172,6 +172,25 @@ class TemporalCreditDistributor:
             except Exception as e:
                 logger.debug("Anticipatory pre-activation failed: %s", e)
 
+        # Surface the oscillator → eligibility priming as a LEARN headline
+        # — this is the SCN feedback loop closing in real time, the most
+        # "alive-feeling" signal in the bio architecture.
+        if pre_activated:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                top = max(pre_activated, key=lambda p: p[1])
+                more = f" +{len(pre_activated) - 1}" if len(pre_activated) > 1 else ""
+                sim_learn(
+                    f"anticipating {top[0][:24]} (strength={top[1]:.2f}){more}",
+                    detail="oscillator predicts imminent event; eligibility primed",
+                    source="SCN",
+                    agent_id=agent_id,
+                    pre_activated=[(s, round(a, 3)) for s, a in pre_activated[:5]],
+                )
+            except Exception:
+                pass
+
         return pre_activated
 
     def distribute(
@@ -218,6 +237,29 @@ class TemporalCreditDistributor:
                         temporal_eligible[nid] = temporal_strength
 
             all_eligible = {**eligible, **temporal_eligible}
+
+            # Surface the phase-similarity fallback as a LEARN headline:
+            # the fast-decay trace expired but the SCN temporal anchor
+            # still credited the node.  This is the "I forgot what I was
+            # doing but the time-of-day brought it back" moment — opt-in
+            # learning that crosses a sleep cycle.
+            if temporal_eligible:
+                try:
+                    from maxim.simulation.sim_logger import sim_learn
+
+                    top = max(temporal_eligible.items(), key=lambda kv: kv[1])
+                    more = f" +{len(temporal_eligible) - 1}" if len(temporal_eligible) > 1 else ""
+                    sim_learn(
+                        f"phase-fallback credited {top[0][:24]} (strength={top[1]:.3f}){more}",
+                        detail=f"trace decayed; SCN anchor matched (reward={reward:+.2f})",
+                        source="SCN",
+                        agent_id=agent_id,
+                        reward=reward,
+                        nodes_credited=len(temporal_eligible),
+                    )
+                except Exception:
+                    pass
+
             if not all_eligible:
                 # Still credit goal even if no substrate nodes are eligible
                 if goal_tag is not None:

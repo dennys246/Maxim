@@ -1099,14 +1099,34 @@ class NAc:
             updated = current + self.config.reward_bias_alpha * reward
             # Clamp to [0, max_reward_bias] — bias only widens, never inverts
             self._reward_bias[key] = max(0.0, min(updated, self.config.max_reward_bias))
+            new_bias = self._reward_bias[key]
             logger.debug(
                 "NAc credit_node(%s, %s): %.4f → %.4f (reward=%.2f)",
                 agent_id[:8] if agent_id else "?",
                 node_id[:8],
                 current,
-                self._reward_bias[key],
+                new_bias,
                 reward,
             )
+
+        # Surface the substrate weight change as a LEARN headline.  Skip
+        # tiny no-op updates (clamped to existing value) to reduce noise.
+        if abs(new_bias - current) >= 1e-4:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                sim_learn(
+                    f"reward_bias {node_id[:12]}: {current:+.3f} → {new_bias:+.3f}",
+                    detail=f"Δ={new_bias - current:+.3f} (reward={reward:+.2f})",
+                    source="NAc",
+                    agent_id=agent_id or None,
+                    node_id=node_id,
+                    reward=reward,
+                    bias_before=current,
+                    bias_after=new_bias,
+                )
+            except Exception:
+                pass
 
     # -- Goal-level reward bias (bidirectional, for ThoughtGate) ----------
 
