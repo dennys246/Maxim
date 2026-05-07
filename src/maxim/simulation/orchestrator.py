@@ -1727,12 +1727,62 @@ def start_simulation_mode(
                 _emit(f"Display switched to: {tier_name}", "turn")
             else:
                 _emit("Usage: /display clean|bio|debug", "turn")
+        elif line.lower().startswith("/focus"):
+            # Portable agent-focus command — Shift+arrows are stripped on
+            # macOS Terminal.app and several other terminals, so a slash
+            # command guarantees focus switching always works.  Accepts
+            # an explicit nickname, ``all`` to clear, ``next``/``prev``
+            # to cycle, or no argument to show the roster.
+            arg = line[len("/focus") :].strip()
+            display_obj = get_active_display()
+            if display_obj is None:
+                _emit("/focus requires interactive display", "turn")
+            elif not arg:
+                roster = getattr(display_obj, "agent_roster", []) or []
+                cur = getattr(display_obj, "focused_agent", None)
+                _emit(f"Focused: {cur or 'ALL'}", "turn")
+                if roster:
+                    _emit("Agents: ALL, " + ", ".join(roster), "turn")
+                else:
+                    _emit("No agents registered yet", "turn")
+            elif arg.lower() == "next":
+                display_obj.focus_next()
+                _emit(f"Focused: {getattr(display_obj, 'focused_agent', None) or 'ALL'}", "turn")
+            elif arg.lower() == "prev":
+                display_obj.focus_prev()
+                _emit(f"Focused: {getattr(display_obj, 'focused_agent', None) or 'ALL'}", "turn")
+            elif hasattr(display_obj, "focus_agent"):
+                ok = display_obj.focus_agent(arg)
+                if ok:
+                    _emit(f"Focused: {arg if arg.lower() != 'all' else 'ALL'}", "turn")
+                else:
+                    roster = getattr(display_obj, "agent_roster", []) or []
+                    _emit(f"Unknown agent {arg!r}. Known: ALL, {', '.join(roster)}", "turn")
+            else:
+                _emit("Usage: /focus [<name>|all|next|prev]", "turn")
         elif line.lower() == "/help":
+            # macOS Terminal.app strips Shift+arrow modifiers before
+            # delivery, so the Shift+Left/Right keybinding silently
+            # doesn't fire there.  Detect the platform and render a
+            # platform-correct hint, but always advertise /focus as the
+            # portable fallback.
+            import sys as _sys
+
+            _shift_arrows_unreliable = _sys.platform == "darwin" and os.environ.get("TERM_PROGRAM") in (
+                "Apple_Terminal",
+                None,
+            )
             _emit("--- Keybindings ---", "info")
             _emit("  Up/Down         Scroll log (or thinking panel when expanded)", "info")
             _emit("  Left            Page up in log", "info")
             _emit("  Right           Jump to bottom / collapse thinking panel", "info")
-            _emit("  Shift+Left/Right  Cycle agent focus (ALL > AUT > ORCH > NPCs)", "info")
+            if _shift_arrows_unreliable:
+                _emit(
+                    "  Shift+Left/Right  Cycle agent focus — NOT reliable in macOS Terminal.app; use /focus instead",
+                    "info",
+                )
+            else:
+                _emit("  Shift+Left/Right  Cycle agent focus (or use /focus)", "info")
             _emit("  Option+=        Expand thinking panel (arrows switch to it)", "info")
             _emit("  Option+-        Shrink thinking panel (arrows revert to log)", "info")
             _emit("--- Commands ---", "info")
@@ -1742,6 +1792,7 @@ def start_simulation_mode(
             _emit("  /status         Show pipeline state", "info")
             _emit("  /report         Request interim analysis", "info")
             _emit("  /display <tier> Switch display (clean|bio|debug)", "info")
+            _emit("  /focus [name]   Focus agent log filter (portable; works on macOS)", "info")
             _emit("  /help           Show this help", "info")
         else:
             # If the agent is waiting for user input via request_interaction,
@@ -2426,6 +2477,7 @@ def start_simulation_mode(
     # ── Build comprehensive report ──────────────────────────────────────
     from maxim.simulation.report import (
         build_report,
+        emit_report_json,
         save_report,
         save_action_log,
         save_aut_state,
@@ -2549,6 +2601,16 @@ def start_simulation_mode(
     elif llm_router is not None:
         display_status("Skipping LLM roundup (session cost ceiling reached)")
 
+    # Emit machine-readable report when --report-json was requested via
+    # MAXIM_REPORT_JSON.  Set by cli.py from args.report_json so the env
+    # var is the contract — orchestrator does NOT import argparse.
+    _report_json_path = os.environ.get("MAXIM_REPORT_JSON", "").strip()
+    if _report_json_path:
+        try:
+            emit_report_json(report, _report_json_path)
+        except Exception as e:
+            logger.warning("Failed to emit report JSON to %r: %s", _report_json_path, e)
+
     if _is_interactive:
         # Show the report IN the Live panel so the user can scroll it.
         # Reset scroll to bottom first so the report appears at the end,
@@ -2558,7 +2620,8 @@ def start_simulation_mode(
             display.scroll(-999999)  # Jump to bottom before report
 
         log_count_before = display.log_count if display is not None else 0
-        print_report(report)
+        _saved_session_dir = Path(report_dir) / report.session_id
+        print_report(report, session_dir=_saved_session_dir)
         log_count_after = display.log_count if display is not None else 0
         report_lines = log_count_after - log_count_before
 
@@ -2661,7 +2724,7 @@ def start_simulation_mode(
             )
     else:
         # Non-interactive: just print the report
-        print_report(report)
+        print_report(report, session_dir=Path(report_dir) / report.session_id)
 
     # ── Capture detailed data for programmatic access ──────────────────
     # Tool usage stats from the inner executor (before wrappers)

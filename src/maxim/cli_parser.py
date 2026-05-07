@@ -435,6 +435,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write scenario results to a JSON file (requires --sim).",
     )
     sim.add_argument(
+        "--report-json",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Emit the full SimulationReport as JSON. Use '-' for stdout, "
+        "or a file path. Useful for CI / grading pipelines that need a "
+        "structured artifact without parsing the human report.",
+    )
+    sim.add_argument(
         "--seed",
         type=int,
         default=None,

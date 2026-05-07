@@ -784,6 +784,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     if getattr(args, "sim_report", None) and getattr(args, "sim", None) is None:
         print("Error: --sim-report requires --sim.", file=sys.stderr)
         return 1
+    if getattr(args, "report_json", None) and getattr(args, "sim", None) is None:
+        print("Error: --report-json requires --sim.", file=sys.stderr)
+        return 1
+    # --report-json is read by simulation/orchestrator.py via environment
+    # rather than by threading through start_simulation_mode's signature
+    # (which has 5+ invocation sites).  Set it once here and let the
+    # orchestrator emit when it builds the report.
+    _report_json_arg = getattr(args, "report_json", None)
+    if _report_json_arg:
+        os.environ["MAXIM_REPORT_JSON"] = _report_json_arg
 
     # Scenario generation if requested
     gen_description = getattr(args, "generate_simulation", None)

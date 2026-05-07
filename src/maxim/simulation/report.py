@@ -52,6 +52,25 @@ class SimulationReport:
     total_input_tokens: int = 0
     total_output_tokens: int = 0
 
+    # Lane / latency breakdown (from MetricsRegistry — populated when at least
+    # one LLM call landed). Each lane name maps to its snapshot dict
+    # (jobs_completed, p50_latency_ms, p99_latency_ms, etc).  Aggregate
+    # latency fields are computed across lanes weighted by call count.
+    lane_breakdown: dict[str, dict[str, Any]] = field(default_factory=dict)
+    latency_p50_ms: float = 0.0
+    latency_p99_ms: float = 0.0
+
+    # Bio-system event counts (counted from sim_logger records — single
+    # source of truth, no parallel counters to maintain).
+    pain_events_count: int = 0
+    fear_blocks_count: int = 0
+    learn_events_count: int = 0
+
+    # Provider failure attribution — empty dict if no provider had a
+    # consecutive_errors > 0 or last_error set during the session.  Each
+    # entry: provider_key → {consecutive_errors, last_error, backoff_s}.
+    provider_failures: dict[str, dict[str, Any]] = field(default_factory=dict)
+
     # LLM roundup (filled by analyze_simulation)
     llm_summary: str = ""
     llm_issues_found: list[str] = field(default_factory=list)
@@ -201,6 +220,73 @@ def build_report(
         except Exception as e:
             logger.debug("cost/token lookup failed: %s", e)
 
+    # Lane / latency breakdown from MetricsRegistry.  Aggregates p50/p99
+    # weighted by jobs_completed across lanes; the per-lane snapshots stay
+    # in lane_breakdown for forensic inspection.
+    lane_breakdown: dict[str, dict[str, Any]] = {}
+    latency_p50_ms = 0.0
+    latency_p99_ms = 0.0
+    try:
+        from maxim.models.language.lane_metrics import get_metrics_registry
+
+        lane_breakdown = get_metrics_registry().snapshot()
+        if lane_breakdown:
+            total_calls = sum(int(snap.get("jobs_completed", 0) or 0) for snap in lane_breakdown.values())
+            if total_calls > 0:
+                p50_sum = 0.0
+                p99_sum = 0.0
+                for snap in lane_breakdown.values():
+                    n = int(snap.get("jobs_completed", 0) or 0)
+                    if n > 0:
+                        p50_sum += float(snap.get("p50_latency_ms", 0.0) or 0.0) * n
+                        p99_sum += float(snap.get("p99_latency_ms", 0.0) or 0.0) * n
+                latency_p50_ms = round(p50_sum / total_calls, 1)
+                latency_p99_ms = round(p99_sum / total_calls, 1)
+    except Exception as e:
+        logger.debug("lane metrics snapshot failed: %s", e)
+
+    # Bio-system event counts from the sim_logger record buffer.  Counts
+    # subsystems exactly once per emission, so a Reaction that fans out
+    # to PainBus + ReactionBus shows as one PAIN event (the publisher) +
+    # one REACTION event (the typed forward) — both meaningful.
+    pain_events_count = 0
+    fear_blocks_count = 0
+    learn_events_count = 0
+    try:
+        from maxim.simulation.sim_logger import get_sim_records
+
+        for rec in get_sim_records():
+            sub = rec.get("subsystem", "")
+            if sub == "PAIN":
+                pain_events_count += 1
+            elif sub == "BLOCKED":
+                fear_blocks_count += 1
+            elif sub == "LEARN":
+                learn_events_count += 1
+    except Exception as e:
+        logger.debug("sim_log event count failed: %s", e)
+
+    # Provider failure attribution from router._provider_states.  Only
+    # surface providers that actually saw failures during the session —
+    # healthy providers are noise.
+    provider_failures: dict[str, dict[str, Any]] = {}
+    if llm_router is not None:
+        try:
+            states = getattr(llm_router, "_provider_states", {}) or {}
+            now = time.time()
+            for key, state in states.items():
+                errs = int(getattr(state, "consecutive_errors", 0) or 0)
+                last_err = str(getattr(state, "last_error", "") or "")
+                backoff_until = float(getattr(state, "backoff_until", 0.0) or 0.0)
+                if errs > 0 or last_err:
+                    provider_failures[key] = {
+                        "consecutive_errors": errs,
+                        "last_error": last_err[:200],
+                        "backoff_remaining_s": round(max(0.0, backoff_until - now), 1),
+                    }
+        except Exception as e:
+            logger.debug("provider failure snapshot failed: %s", e)
+
     ctx = llm_finish_context or {}
     return SimulationReport(
         session_id=session_id,
@@ -222,6 +308,13 @@ def build_report(
         cost_usd=round(cost_usd, 4),
         total_input_tokens=input_tokens,
         total_output_tokens=output_tokens,
+        lane_breakdown=lane_breakdown,
+        latency_p50_ms=latency_p50_ms,
+        latency_p99_ms=latency_p99_ms,
+        pain_events_count=pain_events_count,
+        fear_blocks_count=fear_blocks_count,
+        learn_events_count=learn_events_count,
+        provider_failures=provider_failures,
         llm_finish_status=str(ctx.get("status", "")),
         llm_finish_reason=str(ctx.get("reason", "")),
         llm_finish_summary=str(ctx.get("summary", "")),
@@ -411,8 +504,18 @@ def _build_roundup_prompt(report: SimulationReport) -> str:
     return "\n".join(lines)
 
 
-def print_report(report: SimulationReport) -> None:
-    """Print a human-readable report to stdout via display_summary()."""
+def print_report(report: SimulationReport, *, session_dir: Path | str | None = None) -> None:
+    """Print a human-readable report to stdout via display_summary().
+
+    Args:
+        report: The simulation report to render.
+        session_dir: Optional path of the saved session directory.  When
+            provided, surfaced as the final line so users can locate
+            ``report.json`` / ``actions.jsonl`` / ``aut_nac.json`` without
+            having to grep startup banners.  Always produced — replaces
+            the previously-conditional ``Report saved: ...`` banner that
+            only fired on certain code paths.
+    """
     from maxim.simulation.sim_logger import display_summary
 
     lines = [
@@ -432,10 +535,63 @@ def print_report(report: SimulationReport) -> None:
             lines.append(f"    Summary:\n      {indented}")
     lines.append(f"  Actions: {report.total_actions} ({report.blocked_actions} blocked)")
     lines.append(f"  AUT Memories: {report.aut_memories_formed} | Causal Links: {report.aut_causal_links}")
+
+    # Bio-system event summary — surfaces what previously only existed in
+    # the JSONL trail.  ``learn_events_count`` is the headline count of
+    # substrate-weight changes / tier promotions / consolidations that
+    # fired during the session.
+    bio_parts = []
+    if report.learn_events_count > 0:
+        bio_parts.append(f"▲ Learn: {report.learn_events_count}")
+    if report.pain_events_count > 0:
+        bio_parts.append(f"Pain: {report.pain_events_count}")
+    if report.fear_blocks_count > 0:
+        bio_parts.append(f"Blocked: {report.fear_blocks_count}")
+    if bio_parts:
+        lines.append("  Bio events: " + " | ".join(bio_parts))
+
     if report.cost_usd > 0:
         lines.append(
             f"  Cost: ${report.cost_usd:.4f} ({report.total_input_tokens + report.total_output_tokens} tokens)"
         )
+
+    # Latency summary — only show when at least one LLM call completed.
+    if report.latency_p50_ms > 0:
+        lines.append(f"  Latency: p50={report.latency_p50_ms:.0f}ms, p99={report.latency_p99_ms:.0f}ms")
+        if report.lane_breakdown:
+            for lane, snap in sorted(report.lane_breakdown.items()):
+                jobs = int(snap.get("jobs_completed", 0) or 0)
+                if jobs == 0:
+                    continue
+                p50 = float(snap.get("p50_latency_ms", 0) or 0)
+                p99 = float(snap.get("p99_latency_ms", 0) or 0)
+                fail = int(snap.get("jobs_failed", 0) or 0)
+                fail_str = f", {fail} failed" if fail > 0 else ""
+                lines.append(f"    {lane}: {jobs} calls, p50={p50:.0f}ms, p99={p99:.0f}ms{fail_str}")
+
+    # Top causal links — already computed for the LLM analysis prompt
+    # but never surfaced to the user before.
+    top_links = report.aut_nac_summary.get("top_links", []) if report.aut_nac_summary else []
+    if top_links:
+        lines.append("")
+        lines.append("  Top Causal Links:")
+        for link in top_links[:5]:
+            lines.append(
+                f"    {link.get('event', '?')} → {link.get('outcome', '?')} "
+                f"(conf={link.get('confidence', 0):.2f}, obs={link.get('observations', 0)})"
+            )
+
+    # Provider failures — silenced/cooled-down providers that the user
+    # might want to know about (auth rejected, model missing, overloaded).
+    if report.provider_failures:
+        lines.append("")
+        lines.append("  Provider Failures:")
+        for provider, info in sorted(report.provider_failures.items()):
+            errs = info.get("consecutive_errors", 0)
+            last = info.get("last_error", "")
+            cooldown = info.get("backoff_remaining_s", 0)
+            cooldown_str = f", cooldown={cooldown:.0f}s" if cooldown > 0 else ""
+            lines.append(f"    {provider}: {errs} errors, last={last!r}{cooldown_str}")
 
     if report.tool_usage:
         lines.append("")
@@ -461,4 +617,28 @@ def print_report(report: SimulationReport) -> None:
         for rec in report.llm_recommendations:
             lines.append(f"    - {rec}")
 
+    # Always surface the saved session location so users can find the
+    # full report.json / actions.jsonl / aut_nac.json artifacts without
+    # having to grep startup banners.
+    if session_dir is not None:
+        lines.append("")
+        lines.append(f"  Session: {session_dir}")
+
     display_summary(lines)
+
+
+def emit_report_json(report: SimulationReport, path: str = "-") -> None:
+    """Emit the full report as JSON for CI / grading pipelines.
+
+    Args:
+        report: Report to serialize.
+        path: Destination — ``"-"`` writes to stdout, otherwise treated as
+            a file path that will be created with parents.
+    """
+    payload = json.dumps(asdict(report), default=str, indent=2)
+    if path in ("-", ""):
+        print(payload)
+        return
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(payload, encoding="utf-8")
