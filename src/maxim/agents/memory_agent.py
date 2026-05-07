@@ -405,6 +405,31 @@ class MemoryAgent(Agent, AgentOutputMixin):
         if self._collector:
             self._collector.complete_trace(run_id)
 
+        # Surface the FORMING → SHORT_TERM transition as a LEARN headline.
+        # This is the more frequent counterpart to the SHORT_TERM →
+        # LONG_TERM headline that fires on use-based promotion: every
+        # outcome-completed episode crosses this boundary, so users see
+        # the substrate "growing" in the headline channel during normal
+        # interactive sessions, not only on rare consolidation events.
+        try:
+            from maxim.simulation.sim_logger import sim_learn
+
+            mem_id = getattr(entry.record, "id", None) or run_id
+            action_name = getattr(entry.record.action, "tool_name", "") or getattr(
+                entry.record.action, "name", "<action>"
+            )
+            success_str = "ok" if outcome.success else "fail"
+            sim_learn(
+                f"memory formed → SHORT_TERM ({mem_id[:8]})",
+                detail=f"{action_name} → {success_str}",
+                source="hippocampus",
+                memory_id=mem_id,
+                action=action_name,
+                success=outcome.success,
+            )
+        except Exception:
+            pass
+
     def _flush_completed_from_pool(self) -> None:
         """Remove completed entries from the forming pool.
 
