@@ -186,7 +186,15 @@ class HeartbeatMonitor:
             parts.append(f"loop: idle={idle:.1f}s state={state}")
 
         if parts:
-            logger.debug("[heartbeat] %s", " | ".join(parts))
+            # Pair the human message with structured ``data`` so
+            # MAXIM_LOG_FILE JSONL captures GPU / VRAM / RAM / loop-idle
+            # fields as proper keys instead of message-string text that
+            # StructuredFormatter would strip down to ``{"e":"log"}``.
+            logger.debug(
+                "[heartbeat] %s",
+                " | ".join(parts),
+                extra={"event": "heartbeat", "data": data},
+            )
 
     def _check_stall(self, data: dict[str, Any]) -> None:
         """Warn if no LLM calls have happened within the stall threshold."""
@@ -217,6 +225,18 @@ class HeartbeatMonitor:
                         int(self._stall_threshold),
                         large.get("p50_latency_ms", "?"),
                         large.get("failure_rate", "?"),
+                        extra={
+                            "event": "heartbeat_stall",
+                            "data": {
+                                "idle_s": idle_s,
+                                "state": loop.get("state"),
+                                "threshold_s": self._stall_threshold,
+                                "p50_latency_ms": large.get("p50_latency_ms"),
+                                "failure_rate": large.get("failure_rate"),
+                                "jobs_completed": large.get("jobs_completed"),
+                                "jobs_failed": large.get("jobs_failed"),
+                            },
+                        },
                     )
 
 

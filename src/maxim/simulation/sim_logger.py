@@ -28,6 +28,53 @@ from typing import Any, Generator
 
 logger = logging.getLogger(__name__)
 
+# Dedicated bridge logger for sim_log → MAXIM_LOG_FILE unification. Configured
+# at module import: never propagates to the root logger (which would double-
+# print to stdout) and accepts DEBUG so the JSONL FileHandler attached to
+# root by ``configure_logging`` captures everything via root.handlers — but
+# only via handlers that opt into traversal. The pattern:
+#  - propagate=False  → no double-printing to the root stdout StreamHandler
+#  - we manually mirror onto root.handlers that are JSONL-tagged
+# This keeps human stdout clean while feeding the unified post-mortem trail.
+_sim_bridge_logger = logging.getLogger("maxim.sim")
+_sim_bridge_logger.setLevel(logging.DEBUG)
+_sim_bridge_logger.propagate = False
+
+
+def _ensure_sim_bridge_handlers() -> None:
+    """Reconcile bridge handlers with root's JSONL handlers.
+
+    Called lazily on each sim_log emission.  ``configure_logging(force=True)``
+    closes existing root handlers and attaches new ones (same baseFilename,
+    different FD); without reconciliation the bridge keeps writing through
+    the closed handler's FD and lines silently vanish (or, worse, write
+    into a rotated archive after RotatingFileHandler triggers).  Pre-merge
+    review caught this as a HIGH-severity bug.
+
+    The reconciliation:
+      1. Drop bridge handlers that are no longer present in root (closed).
+      2. Add root handlers tagged ``_maxim_jsonl`` that the bridge lacks.
+
+    Identity match on ``id(handler)`` — same baseFilename with a different
+    handler instance means root rebuilt it; we want to follow.
+    """
+    root = logging.getLogger()
+    root_jsonl = {
+        id(h): h for h in root.handlers if isinstance(h, logging.FileHandler) and getattr(h, "_maxim_jsonl", False)
+    }
+    bridge_ids = {id(h) for h in _sim_bridge_logger.handlers}
+
+    # Drop stale (closed) handlers — those whose id no longer appears in root.
+    for h in list(_sim_bridge_logger.handlers):
+        if id(h) not in root_jsonl:
+            _sim_bridge_logger.removeHandler(h)
+
+    # Add fresh handlers from root that aren't already on the bridge.
+    for handler_id, h in root_jsonl.items():
+        if handler_id not in bridge_ids:
+            _sim_bridge_logger.addHandler(h)
+
+
 # ContextVar for implicit agent_id threading. The agent loop sets this
 # once per turn via ``sim_agent_context(agent_id)``; all nested sim_log
 # calls within that scope automatically pick it up without requiring
@@ -341,6 +388,13 @@ _COLORS = {
     "RESPONSE": "\033[32;1m",  # Bold green
     "INFO": "\033[37;2m",  # Dim white
     "USER": "\033[32;1m",  # Bold green
+    # Substrate-learning headline events. Bold bright magenta — distinct
+    # from any other channel. These are CLEAN-tier so users see them even
+    # with bio annotations off.
+    "LEARN": "\033[95;1m",
+    # Drive/reflex BIO channels for embodiment runs.
+    "DRIVE": "\033[33;2m",  # Dim yellow
+    "REFLEX": "\033[31;1m",  # Bold red
 }
 _RESET = "\033[0m"
 
@@ -369,6 +423,11 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     "RESPONSE": DisplayTier.CLEAN,
     "SUMMARY": DisplayTier.CLEAN,
     "USER": DisplayTier.CLEAN,
+    # Substrate-learning headline events: reward_bias updates, tier
+    # promotions, sleep consolidation, anticipatory pre-activation.
+    # CLEAN-tier so they surface even when bio annotations are off —
+    # these are the "agent just learned" moments.
+    "LEARN": DisplayTier.CLEAN,
     # Bio-tier: biological subsystem annotations visible at --display bio+.
     "HIPPOCAMPUS": DisplayTier.BIO,
     "NAc": DisplayTier.BIO,
@@ -390,6 +449,8 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     "IMAGINATION": DisplayTier.BIO,
     "DISCOVERY": DisplayTier.BIO,
     "GATE": DisplayTier.BIO,
+    "DRIVE": DisplayTier.BIO,
+    "REFLEX": DisplayTier.BIO,
     # Debug-tier: implementation details, pipeline traces.
     "EXEC": DisplayTier.DEBUG,
     "PIPELINE": DisplayTier.DEBUG,
@@ -751,6 +812,29 @@ def sim_log(
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
 
+    # Bridge into the unified MAXIM_LOG_FILE stream. The sim-session JSONL
+    # above stays the canonical session artifact; this second emission lets
+    # users who set MAXIM_LOG_FILE see bio-system events alongside HTTP /
+    # peer-backend / role events in one post-mortem trail. StructuredFormatter
+    # picks up `event` + `data` from the `extra=` dict; we route through a
+    # dedicated logger with propagate=False so stdout handlers never see
+    # these emissions (they have their own terminal path below).
+    _ensure_sim_bridge_handlers()
+    _sim_bridge_logger.info(
+        message,
+        extra={
+            "event": f"sim_{subsystem.lower()}",
+            "data": {
+                "subsystem": subsystem,
+                "message": message,
+                "elapsed_s": round(elapsed, 3),
+                "agent_id": agent_id,
+                "agent": nickname,
+                **(data or {}),
+            },
+        },
+    )
+
     # Display-tier gate. Each subsystem declares its minimum visible tier via
     # _SUBSYSTEM_TIERS (unknown subsystems default to BIO). _force_debug
     # escalates an event to DEBUG tier regardless of its subsystem's baseline.
@@ -909,6 +993,103 @@ def sim_body_state(entity_count: int, active_failures: int, *, agent_id: str | N
     """Log body state injection into prompt."""
     icon = "🔥" if active_failures > 0 else "🫀"
     sim_log("BODY", f"{icon} State: {entity_count} entities, {active_failures} active failures", agent_id=agent_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEARN — substrate-learning headline events (CLEAN tier).
+# Bold bright magenta + ▲ icon so the "agent just learned" moments stand out
+# even when bio annotations are off.  Producers: NAc.credit_node, hippocampus
+# tier promotion, sleep consolidation, TemporalCreditDistributor phase
+# fallback, SCN anticipatory pre-activation.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def sim_learn(
+    headline: str,
+    detail: str = "",
+    *,
+    source: str = "",
+    agent_id: str | None = None,
+    **kwargs: Any,
+) -> None:
+    """Log a substrate-learning headline event.
+
+    These are the moments that make the bio-inspired architecture feel alive:
+    a reward_bias just changed, a memory just promoted to long-term, a sleep
+    cycle just consolidated, a phase-similarity fallback just credited a node
+    whose eligibility trace had decayed, an oscillator prediction just primed
+    eligibility for an imminent event.
+
+    Routed at CLEAN display tier so users see them by default.
+    """
+    msg = f"▲ {headline}"
+    if detail:
+        msg += f" — {detail}"
+    if source:
+        msg += f" [{source}]"
+    data = {"headline": headline, "detail": detail, "source": source, **kwargs}
+    sim_log("LEARN", msg, data, agent_id=agent_id)
+
+
+def sim_drive(
+    name: str,
+    value: float,
+    set_point: float | None = None,
+    *,
+    pain: float = 0.0,
+    agent_id: str | None = None,
+) -> None:
+    """Log a homeostatic / entropic drive state sample.
+
+    Args:
+        name: Drive name (e.g. "hunger", "thirst", "thermal").
+        value: Current drive value.
+        set_point: Optional homeostatic target (homeostatic drives only).
+        pain: Pain magnitude derived from the drive, if any.
+    """
+    parts = [f"{name}={value:.2f}"]
+    if set_point is not None:
+        parts.append(f"set={set_point:.2f}")
+    if pain > 0:
+        parts.append(f"pain={pain:.2f}")
+    icon = "🔥" if pain > 0.3 else "⚠️" if pain > 0 else "🫀"
+    sim_log(
+        "DRIVE",
+        f"{icon} drive {name}: " + ", ".join(parts),
+        {"name": name, "value": value, "set_point": set_point, "pain": pain},
+        agent_id=agent_id,
+    )
+
+
+def sim_reflex(
+    reflex_name: str,
+    tool: str,
+    intensity: float,
+    *,
+    raw_intensity: float | None = None,
+    agent_id: str | None = None,
+) -> None:
+    """Log an innate reflex firing.
+
+    Reflexes are pre-deliberative responses (thermal withdrawal, pain wince,
+    startle).  Surfacing the firing at BIO tier makes embodiment runs
+    legible — without this users see drive/sensor changes but no signal that
+    the reflex layer is mediating them.
+    """
+    msg = f"⚡ reflex {reflex_name} → {tool} (intensity={intensity:.2f})"
+    if raw_intensity is not None and abs(raw_intensity - intensity) > 0.05:
+        msg += f" raw={raw_intensity:.2f}"
+    sim_log(
+        "REFLEX",
+        msg,
+        {
+            "reflex": reflex_name,
+            "tool": tool,
+            "intensity": intensity,
+            "raw_intensity": raw_intensity,
+        },
+        agent_id=agent_id,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

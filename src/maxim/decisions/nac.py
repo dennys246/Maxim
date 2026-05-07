@@ -1099,14 +1099,21 @@ class NAc:
             updated = current + self.config.reward_bias_alpha * reward
             # Clamp to [0, max_reward_bias] — bias only widens, never inverts
             self._reward_bias[key] = max(0.0, min(updated, self.config.max_reward_bias))
+            new_bias = self._reward_bias[key]
             logger.debug(
                 "NAc credit_node(%s, %s): %.4f → %.4f (reward=%.2f)",
                 agent_id[:8] if agent_id else "?",
                 node_id[:8],
                 current,
-                self._reward_bias[key],
+                new_bias,
                 reward,
             )
+        # NOTE: per-node LEARN headlines are emitted by the *batch*
+        # caller (NAc.distribute_reward / TemporalCreditDistributor.
+        # distribute), aggregating across nodes instead of one line
+        # per credit_node call.  A 20-node distribution would otherwise
+        # produce 20 LEARN lines from a single reward arrival, flooding
+        # the sparse-headline channel — pre-merge review caught this.
 
     # -- Goal-level reward bias (bidirectional, for ThoughtGate) ----------
 
@@ -1253,6 +1260,27 @@ class NAc:
                 credit = reward * proportion
                 self.credit_node(aid, nid, credit)
                 credited.append((nid, credit))
+
+        # Emit ONE LEARN headline aggregating the per-node updates,
+        # outside the lock so disk I/O does not block the next reward
+        # arrival.  ``credited`` was populated inside the lock; reading
+        # it here is safe because the loop has exited.
+        if credited:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                top_nid, top_credit = max(credited, key=lambda kv: abs(kv[1]))
+                more = f" +{len(credited) - 1} more" if len(credited) > 1 else ""
+                sim_learn(
+                    f"reward distributed (reward={reward:+.2f}, {len(credited)} nodes)",
+                    detail=f"top: {top_nid[:16]} credit={top_credit:+.3f}{more}",
+                    source="NAc",
+                    agent_id=agent_id or None,
+                    reward=reward,
+                    nodes_credited=len(credited),
+                )
+            except Exception:
+                pass
 
         return credited
 

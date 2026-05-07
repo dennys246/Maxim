@@ -171,6 +171,31 @@ class ConsolidationMixin:
             results["promoted"],
         )
 
+        # Surface the consolidation summary as a LEARN headline so users
+        # see the "session-end residue" — what crossed to long-term, what
+        # got compressed, what got pruned.  The differentiator from a
+        # transient chat history.
+        if any(results.get(k, 0) > 0 for k in ("promoted", "compressed", "removed")):
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                sim_learn(
+                    "sleep consolidation",
+                    detail=(
+                        f"promoted={results['promoted']}, "
+                        f"compressed={results['compressed']}, "
+                        f"removed={results['removed']}, "
+                        f"preserved={results['preserved']}"
+                    ),
+                    source="hippocampus",
+                    promoted=results["promoted"],
+                    compressed=results["compressed"],
+                    removed=results["removed"],
+                    preserved=results["preserved"],
+                )
+            except Exception:
+                pass
+
         return results
 
     def _compress_memory(self, memory_id: str) -> None:
@@ -356,6 +381,26 @@ class ConsolidationMixin:
 
         self._stats["long_term_count"] = self._stats.get("long_term_count", 0) + 1
         logger.debug("Promoted memory %s to long-term", memory_id[:8])
+
+        # Surface the SHORT_TERM → LONG_TERM crossing as a LEARN headline.
+        # This is the differentiator from "LLM with chat history" — once a
+        # memory crosses to long-term it survives sleep consolidation and
+        # carries forward across sessions.
+        try:
+            from maxim.simulation.sim_logger import sim_learn
+
+            preview = ""
+            content = getattr(record, "content", None) or getattr(record, "summary", None) or ""
+            if isinstance(content, str) and content:
+                preview = content[:60].replace("\n", " ")
+            sim_learn(
+                f"memory promoted → LONG_TERM ({memory_id[:8]})",
+                detail=preview,
+                source="hippocampus",
+                memory_id=memory_id,
+            )
+        except Exception:
+            pass
         return True
 
     def _add_consolidation_candidate(self, memory_id: str) -> None:

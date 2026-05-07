@@ -172,6 +172,25 @@ class TemporalCreditDistributor:
             except Exception as e:
                 logger.debug("Anticipatory pre-activation failed: %s", e)
 
+        # Surface the oscillator → eligibility priming as a LEARN headline
+        # — this is the SCN feedback loop closing in real time, the most
+        # "alive-feeling" signal in the bio architecture.
+        if pre_activated:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                top = max(pre_activated, key=lambda p: p[1])
+                more = f" +{len(pre_activated) - 1}" if len(pre_activated) > 1 else ""
+                sim_learn(
+                    f"anticipating {top[0][:24]} (strength={top[1]:.2f}){more}",
+                    detail="oscillator predicts imminent event; eligibility primed",
+                    source="SCN",
+                    agent_id=agent_id,
+                    pre_activated=[(s, round(a, 3)) for s, a in pre_activated[:5]],
+                )
+            except Exception:
+                pass
+
         return pre_activated
 
     def distribute(
@@ -218,6 +237,17 @@ class TemporalCreditDistributor:
                         temporal_eligible[nid] = temporal_strength
 
             all_eligible = {**eligible, **temporal_eligible}
+
+            # Capture phase-fallback summary INSIDE the lock — emit OUTSIDE.
+            # sim_log → MAXIM_LOG_FILE includes disk I/O and (under
+            # RotatingFileHandler) os.rename calls; holding the
+            # distributor lock across that blocks every other consumer
+            # for tens of ms.  Pre-merge review caught this.
+            _phase_summary: tuple[str, float, int] | None = None
+            if temporal_eligible:
+                top = max(temporal_eligible.items(), key=lambda kv: kv[1])
+                _phase_summary = (top[0], top[1], len(temporal_eligible))
+
             if not all_eligible:
                 # Still credit goal even if no substrate nodes are eligible
                 if goal_tag is not None:
@@ -243,7 +273,28 @@ class TemporalCreditDistributor:
                 value=reward, goal_tag=goal_tag, source="temporal_credit"
             )
 
-            return credited
+        # Emit phase-fallback LEARN headline OUTSIDE the lock — sim_log
+        # → MAXIM_LOG_FILE involves disk I/O that should not block other
+        # distributor consumers.  The payload was captured under the
+        # lock (``_phase_summary``) so the read here is safe.
+        if _phase_summary is not None:
+            try:
+                from maxim.simulation.sim_logger import sim_learn
+
+                top_nid, top_strength, total_count = _phase_summary
+                more = f" +{total_count - 1}" if total_count > 1 else ""
+                sim_learn(
+                    f"phase-fallback credited {top_nid[:24]} (strength={top_strength:.3f}){more}",
+                    detail=f"trace decayed; SCN anchor matched (reward={reward:+.2f})",
+                    source="SCN",
+                    agent_id=agent_id,
+                    reward=reward,
+                    nodes_credited=total_count,
+                )
+            except Exception:
+                pass
+
+        return credited
 
     @property
     def last_valence_signal(self) -> ValenceSignal | None:
