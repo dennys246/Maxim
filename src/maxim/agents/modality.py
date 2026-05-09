@@ -70,7 +70,11 @@ if TYPE_CHECKING:
 # Substrate processing path — coarser than SensoryModality.
 # TEXT covers speech, narrative, abstract (anything EC encodes as language).
 # VISION covers sight (anything EC encodes as spatial/visual features).
-SubstrateModality = Literal["text", "vision"]
+# INTEROCEPTION covers drive + somatosensor patterns (hunger, thermal, pressure)
+# encoded numerically by SensorEncoder for substrate-primary AUT mode. Phase 0
+# of grounded_language_acquisition.md. Kept separate from "text" so sensor
+# embeddings don't collide with linguistic embeddings in EC pattern matching.
+SubstrateModality = Literal["text", "vision", "interoception"]
 
 # SensoryModality → SubstrateModality mapping.  Modalities that don't
 # map cleanly (TOUCH, SMELL, INTEROCEPTION) default to TEXT because

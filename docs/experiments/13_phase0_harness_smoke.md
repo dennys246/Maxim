@@ -54,11 +54,57 @@ End-of-run warning: `Generative campaign failed: 'GenerativeCampaignResult' obje
 
 ## What this does NOT prove
 
-- That the substrate forms persistent EC clusters tied to repeating sensorimotor patterns. EC `node_count` was 0 throughout the run; concept formation didn't fire. That's expected — the substrate's encoding path runs on text percepts via `LinguisticEncoder`, and substrate-primary mode bypasses the percept-text pipeline entirely. Phase 0 validation will need an additional encoding entry point that treats sensor readings as concept inputs. Tracked.
 - That cross-session transfer works. Single 5-turn run.
 - That the harness produces useful Phase 0 measurements. We have telemetry; we don't yet have an analysis script. Roy harness work in 1.1+.
 
-## Files touched
+## Phase 0 sensor-encoding follow-up (2026-05-09, second commit)
+
+The original write-up flagged the EC node-count gap as the next concrete work item. That gap is now closed. `SensorEncoder` in [src/maxim/similarity/encoder.py](../../src/maxim/similarity/encoder.py) hashes the current `{drive_name: value}` dict into a 384-dim embedding and routes it through `EC.pattern_complete_or_separate` with modality `"interoception"`. Wired into [agent_loop.py::propose_via_substrate](../../src/maxim/runtime/agent_loop.py) — fires once per substrate-primary tick before reading drives, fail-soft on encoder errors.
+
+Re-ran the same smoke command at `--sim-max-turns 10`:
+
+| Metric | Pre-encoding (5 turns) | Post-encoding (10 turns) |
+|---|---|---|
+| EC `node_count` (max) | 0 | 1 |
+| EC modalities seen | (none) | `{"interoception": 1}` |
+| Telemetry rows | 195 | 258 |
+| Hunger drift | 0.000 → 0.650 | 0.000 → 0.831 |
+| Thirst drift | (untracked) | 0.000 → 1.000 |
+
+Phase 0 measurement gap is closed: substrate-primary now produces EC nodes, and the cluster-formation analysis the plan calls for has something to count.
+
+### Surprising finding: smooth drive drift collapses to one cluster
+
+Across 258 telemetry rows the run produced exactly **one** EC node, not the multiple-cluster trajectory I expected. Three things compose:
+
+1. **Hash-based bases share structure across snapshots.** Each sensor contributes `(1-v)*basis_low + v*basis_high` where `basis_low`/`basis_high` are independent SHA-derived bases. Sensors that don't move (`arms.thermal`, `arms.pressure`, `head.thermal` stayed at 0.0 the entire run) contribute the *same* `basis_low` to every snapshot, dragging cosine similarity up.
+2. **EC's `pattern_complete_or_separate` running-mean centroid update tracks the trajectory.** Each completion shifts the stored centroid toward the new embedding by `1/(n+1)`. After 250+ completions the centroid sits near the trajectory mean, and any single new sample is closer to the centroid than to either endpoint. Result: one cluster that smoothly drifts.
+3. **The chosen pattern threshold (0.85) plus the embedding geometry put the trajectory inside a single completion basin.** Empirically `cos(zero_baseline, end_of_run) ≈ 0.69` (below threshold, *would* separate against a frozen prototype) — but `cos(centroid_at_step_n, snapshot_at_step_n+1) ≈ 0.99` because centroid tracking keeps the comparison local.
+
+Net: the wiring works, but smooth continuous drift collapses to "one drifting concept" rather than producing discrete clusters. To get cluster differentiation against this embedding + EC, the substrate needs *discrete* state jumps — the agent successfully eating (hunger snaps to 0) or dropping a held entity (pressure goes to 0). The current cradle's only tool is `sense_food_source`, which doesn't reduce hunger, so the trajectory never leaves the smooth-drift regime.
+
+This is consistent with the plan's framing of Phase 0 as a *measurement* phase: the finding "smooth drift produces one cluster, discrete jumps would produce more" is exactly the kind of result Phase 0 is supposed to surface.
+
+### Phase 0+ refinement targets (not in this commit)
+
+- **Disable EC centroid update for `"interoception"` modality** — preserve the original embedding as a fixed prototype so slow drift eventually crosses the threshold and creates a new cluster. Currently EC centroid update is intrinsic to `pattern_complete_or_separate`; modality-conditional behavior is the cleanest way to add this without changing text-path geometry.
+- **Sensor-pattern bookkeeping vs concept formation.** "One drifting concept" may be the right biological model for proprioceptive baseline; "discrete cluster per significant drive transition" may be the right model for events worth memorizing. The split is unclear pre-Roy.
+- **Threshold tuning against a Roy harness baseline.** 0.85 is a guess from offline geometry checks against the cradle's six sensors. Once we have multi-day persistent substrate runs, cluster purity + count over time will tell us whether 0.85, 0.90, or "centroid-update-disabled" is right.
+- **Replace the drive-affinity heuristic with EC-similarity action selection.** Reserved per the plan — depends on knowing whether clusters are forming usefully first.
+
+### Modality choice — `"interoception"` not `"sensor"`
+
+Picked `"interoception"` because it matches `SensoryModality.INTEROCEPTION` in [agents/modality.py](../../src/maxim/agents/modality.py) and the cradle drives it's built for (hunger, thirst, core_temperature, arms.thermal, arms.pressure, head.thermal) are all interoceptive in the bio sense. A future `"sensor"` umbrella for exteroceptive surfaces (audio-as-pattern, raw vision-as-pattern) is a separate concern; keeping interoception distinct prevents the two cluster spaces from polluting each other when both encoders eventually run side by side. Documented in `SubstrateModality` Literal in [agents/modality.py](../../src/maxim/agents/modality.py) — adding `"sensor"` later is a one-line change.
+
+### Files touched (this commit)
+
+- `src/maxim/agents/modality.py` — `SubstrateModality` Literal extended with `"interoception"`
+- `src/maxim/similarity/encoder.py` — new `SensorEncoder` + `_sensor_embed` (low/high basis interpolation, `_normalize_value`, min-delta gate)
+- `src/maxim/runtime/agent_loop.py` — `sensor_encoder=` parameter on `propose_via_substrate`; encoder constructed once per loop in `run_agentic_loop` when `aut_mode == "substrate-primary"` and `memory_hub.ec` is reachable
+- `tests/integration/test_phase0_harness.py` — `TestSensorEncodingIntoEC` class (4 tests)
+- `docs/experiments/13_phase0_harness_smoke.md` — this section
+
+## Files touched (original Phase 0 harness, prior commit)
 
 - `src/maxim/simulation/arcs.py` — `cradle_prelinguistic` arc + exact-name resolution in `select_arc_for_goal`
 - `src/maxim/prompts/motor_only_aut.py` — motor-only percept renderer (no narrative AUT prompt yet wired into the substrate-primary loop; the renderer is here for future hybrid modes)
