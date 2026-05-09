@@ -668,6 +668,7 @@ def propose_via_substrate(
     agent_id: str,
     executor: Any,
     min_confidence: float = 0.3,
+    sensor_encoder: Any | None = None,
 ) -> LLMProposal | None:
     """Build an ``LLMProposal`` from ``NAc.recommend_action`` — no LLM call.
 
@@ -679,6 +680,16 @@ def propose_via_substrate(
     The returned proposal carries ``strategy_used="substrate-primary"`` so
     downstream tracing can distinguish substrate-proposed actions from
     LLM-proposed ones.
+
+    Args:
+        sensor_encoder: Optional :class:`SensorEncoder` (Phase 0 of
+            grounded_language_acquisition.md). When wired, the current
+            drive snapshot is hashed into the substrate via
+            ``encode_sensors`` once per tick *before* reading drives for
+            ``recommend_action``. This lets EC accumulate sensor-pattern
+            nodes during substrate-primary runs — without it the
+            text-only ``LinguisticEncoder`` path is the substrate's only
+            front door, so substrate-primary mode never produces EC nodes.
     """
     if nac is None or executor is None:
         return None
@@ -705,6 +716,16 @@ def propose_via_substrate(
             logger.debug("substrate-primary tick: evaluate_failures raised", exc_info=True)
 
     drives = _read_drive_states(executor)
+
+    # Phase 0 sensor encoding — feed the current drive snapshot to EC
+    # so substrate-primary mode produces nodes the way the LLM-primary
+    # text-percept path does. Fail-soft: encoding errors must not block
+    # the action proposal.
+    if sensor_encoder is not None and drives:
+        try:
+            sensor_encoder.encode_sensors(agent_id=agent_id, sensors=drives)
+        except Exception:
+            logger.debug("substrate-primary tick: sensor encoding raised", exc_info=True)
 
     recommendation = nac.recommend_action(
         agent_id=agent_id,
@@ -949,6 +970,28 @@ def run_agentic_loop(
     # the loop's filesystem-safe agent_name for raw-loop callers
     # that don't construct a MemoryHub.
     _loop_agent_id: str = (getattr(memory_hub, "agent_id", None) if memory_hub is not None else None) or agent_name
+
+    # Phase 0 sensor encoder — built once per loop when substrate-primary
+    # is active and EC is reachable through memory_hub. Without this,
+    # substrate-primary bypasses the LinguisticEncoder text path and EC
+    # node_count stays at zero forever (which is what blocked the Phase 0
+    # smoke run from being a measurement). See
+    # docs/plans/grounded_language_acquisition.md Phase 0 + the
+    # SensorEncoder docstring in similarity/encoder.py.
+    _loop_sensor_encoder: Any | None = None
+    if aut_mode == "substrate-primary" and memory_hub is not None:
+        _ec = getattr(memory_hub, "ec", None)
+        if _ec is not None:
+            try:
+                from maxim.similarity.encoder import SensorEncoder
+
+                _loop_sensor_encoder = SensorEncoder(
+                    ec=_ec,
+                    atl=getattr(memory_hub, "atl", None),
+                    nac=_loop_nac,
+                )
+            except Exception:
+                logger.debug("substrate-primary: SensorEncoder init failed", exc_info=True)
 
     # Initialize bio-system session (MemoryHub + hippocampus capture worker)
     memory_hub_enabled = _start_bio_session(memory_hub=memory_hub, hippocampus=hippocampus)
@@ -2609,6 +2652,7 @@ def run_agentic_loop(
                     nac=_loop_nac,
                     agent_id=_loop_agent_id,
                     executor=executor,
+                    sensor_encoder=_loop_sensor_encoder,
                 )
                 ctrl.last_llm_submit_time = now
                 if substrate_proposal is not None:
