@@ -621,6 +621,102 @@ def _run_deliberation_cycles(
     return None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Substrate-primary action generation (Phase -1 of grounded_language_acquisition.md)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _read_drive_states(executor: Any) -> dict[str, float]:
+    """Extract current drive values from the executor's embodiment.
+
+    Returns ``{drive_name: value in [0, 1]}`` for every drive declared on
+    every entity walked from the embodiment root. Empty dict when no
+    embodiment is wired.
+
+    Used by substrate-primary AUT mode to feed ``NAc.recommend_action``
+    without going through the LLM. Reads the current values directly from
+    ``Entity.vital_metrics`` (entity-level drives) and modulator
+    ``vital_metrics`` (sub-sensor drives like ``arms.thermal``).
+    """
+    embodiment = getattr(executor, "embodiment", None)
+    if embodiment is None or getattr(embodiment, "root", None) is None:
+        return {}
+
+    drives: dict[str, float] = {}
+    for ent in embodiment.root.walk():
+        for ds_name in getattr(ent, "drive_specs", {}):
+            if "." in ds_name:
+                mod_name, sensor_name = ds_name.split(".", 1)
+                mod = ent.modulators.get(mod_name)
+                if mod is None or not hasattr(mod, "vital_metrics"):
+                    continue
+                value = mod.vital_metrics.get(sensor_name)
+            else:
+                value = ent.vital_metrics.get(ds_name)
+            if value is None:
+                continue
+            try:
+                drives[ds_name] = float(value)
+            except (TypeError, ValueError):
+                continue
+    return drives
+
+
+def propose_via_substrate(
+    *,
+    nac: Any,
+    agent_id: str,
+    executor: Any,
+    min_confidence: float = 0.3,
+) -> LLMProposal | None:
+    """Build an ``LLMProposal`` from ``NAc.recommend_action`` — no LLM call.
+
+    Called from the agent loop when ``aut_mode == "substrate-primary"`` in
+    place of ``llm_worker.submit_context``. Returns ``None`` when the
+    substrate has no opinion (no learned bias, no active drive) — the loop
+    treats this as IDLE for that tick rather than proposing randomly.
+
+    The returned proposal carries ``strategy_used="substrate-primary"`` so
+    downstream tracing can distinguish substrate-proposed actions from
+    LLM-proposed ones.
+    """
+    if nac is None or executor is None:
+        return None
+
+    registry = getattr(executor, "registry", None)
+    if registry is None or not hasattr(registry, "list"):
+        return None
+
+    available_tools = list(registry.list())
+    if not available_tools:
+        return None
+
+    drives = _read_drive_states(executor)
+
+    recommendation = nac.recommend_action(
+        agent_id=agent_id,
+        available_tools=available_tools,
+        current_drives=drives or None,
+        min_confidence=min_confidence,
+    )
+    if recommendation is None:
+        return None
+
+    action = {
+        "tool_name": recommendation["tool_name"],
+        "params": recommendation.get("params", {}) or {},
+    }
+    return LLMProposal(
+        request_id=f"substrate-{int(time.time() * 1000)}",
+        action=action,
+        reasoning=recommendation.get("reasoning", ""),
+        strategy_used="substrate-primary",
+        confidence=float(recommendation.get("confidence", min_confidence)),
+        mode_goal_achieved=False,
+        triggering_input="",
+    )
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -652,6 +748,7 @@ def run_agentic_loop(
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
     bio_enrichment_pipeline: Any | None = None,  # BioEnrichmentPipeline for percept enrichment (L1)
     thought_gate: Any | None = None,  # ThoughtGate for PFC deliberation gating
+    aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -2482,7 +2579,35 @@ def run_agentic_loop(
             sim.log(
                 "PIPELINE", f"LLM gate BLOCKED: ctrl.pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}"
             )
-        if llm_worker and ctrl.pending_proposal is None:
+
+        # ─────────────────────────────────────────────────────────────────
+        # Substrate-primary action generation (Phase -1 of grounded
+        # language acquisition). Skips the LLM entirely; calls
+        # NAc.recommend_action() with current drives + tool registry. If
+        # the substrate has no opinion (no learned bias, no active drive),
+        # the tick is IDLE — no random fallback. Mutually exclusive with
+        # the LLM submit branch below.
+        if aut_mode == "substrate-primary" and ctrl.pending_proposal is None:
+            now = time.time()
+            if now - ctrl.last_llm_submit_time > llm_submit_interval:
+                substrate_proposal = propose_via_substrate(
+                    nac=_loop_nac,
+                    agent_id=_loop_agent_id,
+                    executor=executor,
+                )
+                ctrl.last_llm_submit_time = now
+                if substrate_proposal is not None:
+                    ctrl.pending_proposal = substrate_proposal
+                    if sim.is_sim_mode:
+                        sim.log(
+                            "EXEC",
+                            f"substrate-primary proposal: tool="
+                            f"{substrate_proposal.action.get('tool_name') if substrate_proposal.action else None} "
+                            f"confidence={substrate_proposal.confidence:.2f} "
+                            f"reasoning={substrate_proposal.reasoning[:80]}",
+                        )
+
+        if aut_mode != "substrate-primary" and llm_worker and ctrl.pending_proposal is None:
             now = time.time()
             if now - ctrl.last_llm_submit_time > llm_submit_interval:
                 # Cache tool registry snapshot for this submission (avoids 3 redundant traversals)

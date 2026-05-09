@@ -198,6 +198,7 @@ def start_simulation_mode(
     sandbox_image: str = "python:3.12-slim",
     sandbox_network: str = "none",
     aut_model: str | None = None,
+    aut_mode: str = "llm-primary",
     pre_campaign_turns: list[dict[str, Any]] | None = None,
     dm_campaign: Any = None,
     generative: bool = False,
@@ -1480,6 +1481,7 @@ def start_simulation_mode(
                     imagination_trigger=aut_imagination_trigger,
                     bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
                     thought_gate=_aut_thought_gate,
+                    aut_mode=aut_mode,
                 )
         except Exception as e:
             aut_error.append(e)

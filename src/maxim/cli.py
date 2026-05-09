@@ -1209,6 +1209,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
                     sandbox_network=getattr(args, "sandbox_network", "none"),
                     aut_model=getattr(args, "aut_model", None),
+                    aut_mode=getattr(args, "aut_mode", "llm-primary"),
                     max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                     entity_ref=_sim_entity_ref,
                     generative=_use_generative,
@@ -1236,6 +1237,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
                 sandbox_network=getattr(args, "sandbox_network", "none"),
                 aut_model=getattr(args, "aut_model", None),
+                aut_mode=getattr(args, "aut_mode", "llm-primary"),
                 max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                 entity_ref=_sim_entity_ref,
             )
