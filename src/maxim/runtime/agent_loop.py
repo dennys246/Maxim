@@ -2808,6 +2808,17 @@ def run_agentic_loop(
                             except Exception as e:
                                 log_swallowed_exception(e, operation="on_event:inference_start")
 
+                        # EXPERIMENTAL — hallucination-hint feature.
+                        # MAXIM_TOOL_FAILURE_HINTS=0 disables (default on).
+                        # Disable for grounded-language acquisition Phase 0/1.
+                        # See docs/plans/grounded_language_acquisition.md.
+                        _failed_tools: list[str] = []
+                        if os.environ.get("MAXIM_TOOL_FAILURE_HINTS", "0") != "0":
+                            # __getattr__ on wrappers (InstrumentedExecutor,
+                            # PainInterceptorExecutor, FearGatedExecutor) walks
+                            # down to the base Executor where the list lives.
+                            _failed_tools = list(getattr(executor, "_tools_hallucinated", []))
+
                         submitted = llm_worker.submit_context(
                             context=context,
                             mode=mode_info,
@@ -2816,6 +2827,7 @@ def run_agentic_loop(
                             internet_policy_summary=internet_policy_summary,
                             available_tools=available_tools,
                             tool_descriptions=tool_descriptions,
+                            failed_tools=_failed_tools,
                             context_pool_text=context_pool_text,
                             agent_states=agent_states,
                             recent_outcomes=recent_outcomes,

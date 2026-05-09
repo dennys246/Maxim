@@ -150,6 +150,16 @@ class LLMRequest:
     # SEM entity spec dict for entity context injection (E2)
     entity_spec: dict[str, Any] | None = field(default=None, compare=False)
 
+    # EXPERIMENTAL OPT-IN — pretrained-LLM hallucination mitigation. Names of
+    # tools the model previously called that don't exist for this agent.
+    # Surfaced as a negative-instruction prompt section. Gated by env
+    # MAXIM_TOOL_FAILURE_HINTS (default OFF after E4 validation 2026-05-09
+    # showed no benefit and possible backfire on qwen2.5-14B; n=6 per arm).
+    # Set MAXIM_TOOL_FAILURE_HINTS=1 to enable for further experimentation.
+    # Must remain OFF for grounded language acquisition Phase 0/1 — see
+    # docs/plans/grounded_language_acquisition.md.
+    failed_tools: list[str] = field(default_factory=list, compare=False)
+
     def __post_init__(self):
         # Sort by negative priority (higher priority first), then by timestamp
         self.sort_index = (-self.priority, self.timestamp)

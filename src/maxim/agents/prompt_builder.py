@@ -228,6 +228,48 @@ def build_tools_section(request: LLMRequest, mode_name: str = "passive") -> str:
     return result
 
 
+def build_failed_tools_section(request: LLMRequest) -> str:
+    """EXPERIMENTAL — pretrained-LLM hallucination mitigation.
+
+    Surfaces tool names the agent has previously tried to call that don't
+    exist in its registry. Phrased as an observation (not a command) to
+    reduce negative-instruction backfire on smaller models.
+
+    Returns "" when ``request.failed_tools`` is empty so the budgeter sees
+    no section. Caller (agent_loop) is responsible for gating population on
+    the ``MAXIM_TOOL_FAILURE_HINTS`` env var; this function does no gating
+    of its own — empty list IS the off switch.
+
+    NOTE: this is a crutch for pretrained LLM training-prior hallucination.
+    Disable for grounded-language acquisition experiments — see
+    docs/plans/grounded_language_acquisition.md (Phase 0/1 must
+    NOT use this hint; the substrate should learn tool availability from
+    outcomes, not be told).
+    """
+    failed = request.failed_tools
+    if not failed:
+        return ""
+    # Dedupe preserving order, cap at 5 most recent.
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for name in reversed(failed):
+        if name in seen:
+            continue
+        seen.add(name)
+        uniq.append(name)
+        if len(uniq) >= 5:
+            break
+    uniq.reverse()
+    names = ", ".join(repr(n) for n in uniq)
+    return (
+        "=== Tools You've Hallucinated ===\n"
+        f"Note: you previously called {names} and they don't exist for you. "
+        "Use only the tools listed under '=== Available Tools ===' above. "
+        "If you need a capability not listed, call 'sense_tools' to discover "
+        "what's actually available."
+    )
+
+
 def build_tools_section_filtered(
     request: LLMRequest,
     tool_names: list[str],
@@ -959,6 +1001,16 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
+            )
+
+        # EXPERIMENTAL — hallucination-hint section (empty when feature off
+        # or no failures recorded). See build_failed_tools_section docstring.
+        failed_section = build_failed_tools_section(request)
+        if failed_section:
+            budgeter.add(
+                "failed_tools",
+                failed_section,
+                SectionPriority.CRITICAL,
             )
 
         workspace_manifest = build_workspace_manifest(mode_name=mode_name, cwd=effective_cwd)
