@@ -359,28 +359,40 @@
   <section class="space-y-4">
     <h2 id="next-up" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next Up</h2>
 
-    <p class="text-slate-300 leading-relaxed"><strong>All 1.0 gates are closed.</strong> v0.7.0 published. The path forward: B3.2&ndash;B3.3 Acting Coach extensions, I4&ndash;I5 imagination depth (deferred to 0.8), P5 stress persistence, and 1.0 packaging.</p>
+    <div class="rounded-xl bg-gradient-to-br from-purple-700 via-indigo-700 to-purple-800 p-5 text-white shadow-lg">
+      <h3 class="text-base font-semibold mb-2">2026-05-09 architectural pivot</h3>
+      <p class="text-sm leading-relaxed">Maxim is moving toward a <strong>parallel-mode architecture</strong> where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) drives action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing LLM-AUT mode remains the user-facing default; substrate-primary mode ships parallel as opt-in via <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code>. <strong>Phase &minus;1 prototype shipped 2026-05-09</strong> &mdash; <code class="bg-slate-950 px-1 rounded text-xs">NAc.recommend_action()</code> can generate non-reflex actions from learned causal links + drive heuristics with no LLM proposal needed (11 unit tests pass). The federated <strong>Maxim Hivemind + Oasis</strong> layer (in plan, not yet implemented) will let multiple Maxims share distilled bio-substrate across instances. See <a href="/maxim/substrate-primary" class="underline hover:text-indigo-200">Substrate-Primary Mode</a> and <a href="/maxim/hivemind" class="underline hover:text-indigo-200">Maxim Hivemind + Oasis</a>.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The path forward: 1.0 ships with <strong>B5 substrate-primary harness</strong> (Phase &minus;1 + Phase 0 + Hivemind shareability infrastructure, all behind experimental flag) alongside D1&ndash;D3 docs. 1.1 lands substrate-primary AUT mode + first hostable Maxim Oasis. 1.2 ships the full Hivemind P2P protocol.</p>
 
     <div class="space-y-3">
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
-          <h3 class="text-white font-semibold">B3.2&ndash;B3.3 Acting Coach Extensions</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">B3.2: personality scaffolds, speech register, NPC voice consistency. B3.3: DisplayExtension panels for Acting Coach bio-state. Builds on B3.1 meta-prompt infrastructure shipped in 0.7.</p>
+          <h3 class="text-white font-semibold">B5 Substrate-Primary Harness <span class="text-xs text-indigo-400">(v1.0)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Three components, ~1,360 LOC behind experimental flag: <strong>Phase &minus;1</strong> &check; shipped (NAc action proposal + 11 tests). <strong>Phase 0 harness</strong>: <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code> CLI flag + cradle-prelinguistic arc variant + motor-only AUT prompt + per-tick telemetry. <strong>Hivemind shareability infrastructure</strong>: portable substrate-snapshot bundle format + <code class="bg-slate-950 px-1 rounded text-xs">nac.merge()</code> / <code class="bg-slate-950 px-1 rounded text-xs">ec.merge()</code> Bayesian aggregation + provenance tags + identity-bearing concept detection + substrate domains + export/import CLI verbs.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">2</span>
         <div>
-          <h3 class="text-white font-semibold">P5 Stress Persistence + Concept Decomposition S2</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">P5: 10k+ node persistence stress test validates substrate robustness. Concept decomposition Stage 2: role-tagged edges + ConceptExtractor convergence. Both are substrate polish before 1.0.</p>
+          <h3 class="text-white font-semibold">D1&ndash;D3 Documentation Pass <span class="text-xs text-indigo-400">(v1.0, parallel to B5)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Agent memory transfer docs (D1), API/CLI surface review (D2), final docs pass (D3). Runs parallel to B5; 1.0 ships when both complete.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">3</span>
         <div>
-          <h3 class="text-white font-semibold">v1.0 Packaging</h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Cross-session learning + unified embodiment demonstrated. All gates closed. Final packaging: docs, CLI polish, publication on PyPI as <code class="bg-slate-950 px-1 rounded text-xs">pymaxim</code> 1.0.</p>
+          <h3 class="text-white font-semibold">Substrate-Primary AUT Mode + First Maxim Oasis <span class="text-xs text-indigo-400">(v1.1)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Substrate-primary AUT mode lands as opt-in. Phase 0 validation runs (raw substrate, no Hivemind bootstrap). First hostable Maxim Oasis (~800 LOC); LLM-AUT users opt in to contribute via <code class="bg-slate-950 px-1 rounded text-xs">maxim contribute --to oasis://...</code>. Direct Oasis-to-Oasis sync supported.</p>
+        </div>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
+        <span class="text-2xl font-bold text-indigo-500 shrink-0">4</span>
+        <div>
+          <h3 class="text-white font-semibold">Maxim Hivemind P2P Protocol <span class="text-xs text-indigo-400">(v1.2)</span></h3>
+          <p class="text-slate-300 text-sm leading-relaxed">Full peer-to-peer substrate-snapshot exchange (~600 LOC): peer discovery, conflict-resolution semantics (Bayesian confidence aggregation), poison-resistance defenses (multi-source consensus, domain curation, provenance blacklists). Substrate-primary Maxims pull bootstrap from Hivemind, contribute back as they learn.</p>
         </div>
       </div>
     </div>

@@ -1,9 +1,17 @@
 # Mother Maxim Plan
 
-> **Status:** DEFERRED (post-1.0). Design complete. Pre-publication prep (M-0 items) done — store protocols defined, threading fixed, metadata fields added. Implementation (M-1+) not started.
+> **STATUS: SUPERSEDED (2026-05-09).** Replaced by [maxim_hivemind.md](../maxim_hivemind.md), which keeps this plan's good ideas (Mother as a real bio-agent, identity-bearing concept detection, multi-tenant isolation as substrate domains, memory coalescence as substrate distillation) but reframes the architecture for the post-pivot world: peer-to-peer Oases instead of central Mother, distilled bio-substrate snapshots instead of raw episodes, ~2,100 LOC instead of 3,800. The naming shifted: "Mother Maxim" → "Maxim Oasis" (multiple instances, sustaining gathering place metaphor); the implicit collective-network → "Maxim Hivemind" (explicit collective cognition layer).
 >
-> **Revive when:** (1) [substrate_plan.md](../archive/substrate_plan.md) A6 convergence harnesses pass, AND (2) [deferred/pecking_order_graph_plan.md](pecking_order_graph_plan.md) has shipped, AND (3) at least one external user has asked for persistent cross-session memory. Until all three conditions hold, this plan stays parked — its 3,800 LOC scope is a black hole that would swallow 1.0 if revived early.
-> **Goal:** A persistent, public Maxim instance that accumulates collective memory across all users and sessions. Exposed via public URL with database-backed persistence.
+> **Why superseded:** this plan was designed in the LLM-AUT-only world where memories (dialogue + episode traces) were the unit of value. The 2026-05-09 substrate-primary pivot reframed Maxim's headline thesis toward "bio-substrate carries the cognition," which makes the substrate itself the natural unit of sharing — far more privacy-friendly, schema-stable, and aggregatable than raw episodes. This plan's "Mother as central server with REST API + Pecking Order Graph + dual-pass deid pipeline" architecture answers a question we no longer have. See [maxim_hivemind.md](../maxim_hivemind.md) for the new shape.
+>
+> **What was preserved:** Mother-as-full-agent (now: Oasis is a substrate-primary Maxim instance), bio-system identity-bearing concept detection (now: simplified port into B5), substrate-stays-private-episodes-stay-local (now: hippocampus-episodes-never-leave invariant), multi-tenant separation (now: substrate domains + opt-in subscription).
+>
+> **What was dropped:** Pecking Order Graph hierarchy (replaced by flat peer-to-peer mesh), database backend (replaced by portable file-based snapshots), dual-pass deidentification 700-LOC pipeline (collapsed to ~80 LOC because we never ship raw episodes), central Mother-as-server (replaced by multiple peer Oases), REST API (replaced by Hivemind P2P protocol).
+>
+> **Original status (preserved for context below):** DEFERRED (post-1.0). Design complete. Pre-publication prep (M-0 items) done — store protocols defined, threading fixed, metadata fields added. Implementation (M-1+) not started.
+>
+> **Original revival conditions (now obsolete):** (1) [substrate_plan.md](../archive/substrate_plan.md) A6 convergence harnesses pass, AND (2) [deferred/pecking_order_graph_plan.md](../deferred/pecking_order_graph_plan.md) has shipped, AND (3) at least one external user has asked for persistent cross-session memory. Until all three conditions hold, this plan stays parked — its 3,800 LOC scope is a black hole that would swallow 1.0 if revived early.
+> **Original goal:** A persistent, public Maxim instance that accumulates collective memory across all users and sessions. Exposed via public URL with database-backed persistence.
 > **Depends on:** PyPI publication (v1.0.0), foundational buildout complete.
 > **Estimated scope:** ~3,800 LOC across 6 phases + pre-pub prep.
 

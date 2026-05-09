@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block title %}Maxim Hivemind + Oasis — Maxim Docs | Federated Bio-Substrate Layer{% endblock %}
+
+{% block meta_description %}Maxim Hivemind + Oasis — a federated peer-to-peer architecture where multiple Maxim instances share distilled bio-substrate (NAc weights, EC concepts, reflexes) across users. Supersedes the older Mother Maxim plan.{% endblock %}
+
+{% block meta_keywords %}Maxim Hivemind, Maxim Oasis, federated cognition, distributed bio-substrate, peer-to-peer learning, hive mind AI, collective intelligence, substrate sharing{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Maxim Hivemind + Oasis — Federated Bio-Substrate Layer",
+  "description": "Peer-to-peer substrate-sharing architecture for collective Maxim cognition. Multiple Oases coexist; nobody is THE Oasis.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/hivemind",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["Hivemind", "Oasis", "federated cognition", "peer-to-peer", "bio-substrate sharing"]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Maxim Hivemind + Oasis</h1>
+    <p class="text-indigo-400 font-medium">Federated Bio-Substrate Layer for Collective Cognition</p>
+  </header>
+
+  <div class="rounded-xl bg-gradient-to-br from-purple-700 via-indigo-700 to-purple-800 p-6 text-white shadow-lg">
+    <h3 class="text-lg font-semibold mb-2">Status</h3>
+    <p class="leading-relaxed">Design complete (2026-05-09). Implementation phased: shareability infrastructure in v1.0 (B5), Oasis software in v1.1, full Hivemind P2P protocol in v1.2. <strong>Supersedes the older Mother Maxim plan</strong> (2,224 LOC) with a more bio-coherent ~2,100 LOC architecture that's federated, not hierarchical.</p>
+  </div>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#what" class="text-indigo-400 hover:text-indigo-300 no-underline">What this is</a></li>
+      <li><a href="#why" class="text-indigo-400 hover:text-indigo-300 no-underline">Why this exists</a></li>
+      <li><a href="#shareable" class="text-indigo-400 hover:text-indigo-300 no-underline">What's shareable</a></li>
+      <li><a href="#oasis" class="text-indigo-400 hover:text-indigo-300 no-underline">The Oasis</a></li>
+      <li><a href="#hivemind" class="text-indigo-400 hover:text-indigo-300 no-underline">The Hivemind</a></li>
+      <li><a href="#phasing" class="text-indigo-400 hover:text-indigo-300 no-underline">Phasing</a></li>
+      <li><a href="#mother-deprecated" class="text-indigo-400 hover:text-indigo-300 no-underline">What got dropped from Mother Maxim</a></li>
+    </ol>
+  </div>
+
+  <section class="space-y-4">
+    <h2 id="what" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What this is</h2>
+    <p class="text-slate-300 leading-relaxed">The <strong>Maxim Hivemind</strong> is a peer-to-peer substrate-sharing layer that lets multiple Maxim instances exchange learned bio-substrate (NAc causal weights, EC concept centroids, reflex thresholds, Cerebellum forward models, ATL semantic concepts). It is <strong>not</strong> a service &mdash; nobody hosts "the Hivemind." It is a protocol + portable data format + exchange convention.</p>
+    <p class="text-slate-300 leading-relaxed">A <strong>Maxim Oasis</strong> is a persistent, <a href="/maxim/substrate-primary" class="text-indigo-400 hover:text-indigo-300 no-underline">substrate-primary</a> Maxim instance that runs on operator hardware (a Mac Mini, a server, an old laptop, a Raspberry Pi 5 cluster), accepts substrate contributions from connected Maxims, processes those contributions as percepts through her own bio-stack, distills consensus patterns, and broadcasts to the Hivemind. <strong>Multiple Oases coexist; nobody is THE Oasis.</strong> Each Oasis is a real bio-agent in her own right, not a passive database.</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="why" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Why this exists</h2>
+    <p class="text-slate-300 leading-relaxed">The headline insight that motivated promoting the old Mother Maxim plan from deferred to active:</p>
+    <div class="rounded-xl bg-gradient-to-br from-indigo-700 via-purple-700 to-indigo-800 p-5 text-white shadow-lg">
+      <p class="leading-relaxed"><strong>Every LLM-AUT run already trains a bio-substrate as a side effect.</strong> When a user runs <code class="bg-slate-950 px-1 rounded text-xs">maxim --sim "...some D&amp;D campaign..."</code>, the bio-systems are running underneath: NAc forms causal links from tool outcomes, EC clusters concepts, ATL builds semantic structure, Hippocampus captures episodes. The substrate is being trained right now by your existing user base, just by an LLM-driven action selector instead of a substrate-driven one.</p>
+    </div>
+    <p class="text-slate-300 leading-relaxed">That changes the federated-learning calculus radically:</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">1. The Hivemind has rich seed data immediately</h4>
+        <p class="text-sm text-slate-300">It doesn't have to wait for substrate-primary mode to mature. Day-1 contributions come from existing LLM-AUT users.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">2. Substrate-primary Maxims bootstrap from accumulated experience</h4>
+        <p class="text-sm text-slate-300">When substrate-primary mode lands in v1.1, new instances can pull a baseline substrate from the Hivemind rather than starting from zero. Massively accelerates substrate-primary development.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">3. The privacy surface collapses</h4>
+        <p class="text-sm text-slate-300">Distilled bio-substrate doesn't carry the same PII risk as raw episodes. The 700-LOC dual-pass deidentification pipeline from the old plan becomes optional polish rather than load-bearing safety.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-1">4. LLM-AUT mode gets a permanent role</h4>
+        <p class="text-sm text-slate-300">It's not transitional waiting to be replaced; it's the perpetual data-collection mechanism that feeds the Hivemind. Users running D&amp;D campaigns today are inadvertently training tomorrow's substrate-primary cognition.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="shareable" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What's shareable &mdash; and what stays local</h2>
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Substrate component</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Shareability</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Privacy risk</th>
+            <th class="text-left text-indigo-400 pb-2">Hivemind value</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-slate-700"><td class="pr-4 py-2 text-white font-medium">Reflex specs + thresholds</td><td class="pr-4 py-2">Trivial &mdash; pure config</td><td class="pr-4 py-2">Zero</td><td class="py-2">High</td></tr>
+          <tr class="border-t border-slate-700"><td class="pr-4 py-2 text-white font-medium">NAc causal weights</td><td class="pr-4 py-2">High &mdash; Bayesian aggregation</td><td class="pr-4 py-2">Low</td><td class="py-2">Very high</td></tr>
+          <tr class="border-t border-slate-700"><td class="pr-4 py-2 text-white font-medium">EC concept centroids</td><td class="pr-4 py-2">Medium &mdash; encoder-dependent</td><td class="pr-4 py-2">Low (after identity scrub)</td><td class="py-2">High</td></tr>
+          <tr class="border-t border-slate-700"><td class="pr-4 py-2 text-white font-medium">Cerebellum forward models</td><td class="pr-4 py-2">Medium &mdash; parameter snapshots</td><td class="pr-4 py-2">Zero</td><td class="py-2">Medium</td></tr>
+          <tr class="border-t border-slate-700"><td class="pr-4 py-2 text-white font-medium">ATL semantic concepts</td><td class="pr-4 py-2">Medium &mdash; cluster purity</td><td class="pr-4 py-2">Low</td><td class="py-2">Medium</td></tr>
+          <tr class="border-t border-slate-700"><td class="pr-4 py-2 text-white font-medium">Hippocampus episodes</td><td class="pr-4 py-2">LOW &mdash; literal records</td><td class="pr-4 py-2 font-semibold text-red-400">HIGH</td><td class="py-2">Low</td></tr>
+          <tr class="border-t border-slate-700"><td class="pr-4 py-2 text-white font-medium">Working memory</td><td class="pr-4 py-2">None &mdash; ephemeral</td><td class="pr-4 py-2">High</td><td class="py-2">Zero</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-slate-300 leading-relaxed"><strong>Default policy:</strong> ship everything in the top section. <strong>NEVER</strong> ship hippocampus episodes through the Hivemind. Episodes are local-only by construction. The single exception: an Oasis may <em class="text-indigo-400 not-italic font-medium">receive</em> hippocampus episodes from connected Maxims as private contributions to her own substrate (she processes them as percepts), but she never re-broadcasts them. Episodes feed the Oasis's substrate; only the Oasis's distilled substrate ever leaves.</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="oasis" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Oasis</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">What an Oasis does</h4>
+        <ul class="space-y-1 text-sm text-slate-300 list-disc pl-5">
+          <li>Accepts substrate contributions from connected LLM-AUT or substrate-primary Maxims</li>
+          <li>Processes contributions as percepts through her own bio-stack (NAc/EC/ATL/Hippocampus all run continuously)</li>
+          <li>Distills consensus patterns: aggregates NAc links across contributors via Bayesian confidence math</li>
+          <li>Broadcasts her distilled substrate to the Hivemind on a configurable cadence</li>
+          <li>Syncs substrate snapshots from peer Oases and from substrate-primary Maxim instances</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Why "Oasis"?</h4>
+        <p class="text-sm text-slate-300">A bio-coherent metaphor: an oasis is a sustaining gathering place that travelers approach to refresh themselves and that produces life from accumulated water/nutrients. Maxims approach an Oasis to contribute experience and to receive distilled patterns. Multiple oases coexist in a desert ecosystem; no single one is canonical; together they form a network.</p>
+      </div>
+    </div>
+
+    <h3 class="text-xl font-semibold text-white pt-2">Hardware footprint</h3>
+    <p class="text-slate-300 leading-relaxed">A Mac Mini, an old laptop, or a Raspberry Pi 5 cluster is sufficient to run an Oasis IF substrate-primary mode is the operating mode (no LLM, just bio-systems running). During the transitional phase (v1.1) when substrate-primary is still maturing, Oases may need a small LLM (e.g., qwen-7B) to process LLM-AUT contributions. Once substrate-primary works (post-Phase 0/1), Oases can run pure-substrate and Mac-Mini-class hardware suffices.</p>
+
+    <h3 class="text-xl font-semibold text-white pt-2">Multiple Oases, no central authority</h3>
+    <p class="text-slate-300 leading-relaxed">There is no THE Oasis. Each operator runs their own. A natural evolution emerges:</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">🏠</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Personal Oasis</h4>
+        <p class="text-sm text-slate-400">Your Mac Mini, hosting substrate from your own Maxims and friends.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">👥</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Community Oasis</h4>
+        <p class="text-sm text-slate-400">A Discord server or research group running an Oasis their members contribute to.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 text-center">
+        <div class="text-3xl mb-2">🌐</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Public Oasis</h4>
+        <p class="text-sm text-slate-400">Eventual reference instances anyone can connect to.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="hivemind" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Hivemind</h2>
+
+    <h3 class="text-xl font-semibold text-white">Substrate snapshot bundle</h3>
+    <p class="text-slate-300 leading-relaxed">The unit of exchange. A versioned, signed archive containing:</p>
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
+<pre class="text-sm text-slate-300 overflow-x-auto"><code>maxim-substrate-v1.0/
+├── manifest.json           # version, contributor metadata, signature, domain tags
+├── nac.json                # causal links + confidence + provenance tags
+├── ec.json                 # concept centroids + cluster metadata
+├── atl.json                # semantic concepts
+├── reflexes.yaml           # innate response specs
+├── cerebellum/             # forward model parameters (binary)
+└── README.md               # optional human-readable description</code></pre>
+    </div>
+    <p class="text-slate-300 leading-relaxed">Schema-stable, version-aware, scrubbable. Extends the existing <code class="bg-slate-950 px-1 rounded text-xs">_format_version</code> contract per Maxim's v1.0 freeze.</p>
+
+    <h3 class="text-xl font-semibold text-white pt-2">Substrate domains</h3>
+    <p class="text-slate-300 leading-relaxed">Bundles are tagged by <strong>substrate domain</strong> (combat, cooking, medical, fantasy, robotics, conversation, ...). Subscribers opt into specific domains. Two purposes: <strong>relevance</strong> (a medical-AI hobbyist doesn't want combat patterns polluting their substrate) and <strong>curation</strong> (domain maintainers can flag bad patterns).</p>
+
+    <h3 class="text-xl font-semibold text-white pt-2">Conflict resolution</h3>
+    <p class="text-slate-300 leading-relaxed">Two Maxims learn opposite things ("X is good" vs "X is bad"). On merge, the Hivemind uses NAc's existing confidence math:</p>
+    <ul class="space-y-1 text-slate-300 list-disc pl-5">
+      <li><strong>Confidence aggregates Bayesian-style</strong> across contributors</li>
+      <li><strong>Multi-source confirmation</strong> weighted higher than single-source</li>
+      <li><strong>Outcome valence</strong> (positive vs negative) preserved as separate distributions</li>
+      <li><strong>Provenance preserved</strong> &mdash; receivers can selectively trust patterns from specific contributors</li>
+    </ul>
+    <p class="text-slate-300 leading-relaxed">When real conflict persists (e.g., 50 Maxims learned each side), the Hivemind preserves both with full distributions. The local Maxim's behavior remains coherent because it weights its own learning above any single Hivemind pattern.</p>
+
+    <h3 class="text-xl font-semibold text-white pt-2">Poison resistance</h3>
+    <p class="text-slate-300 leading-relaxed">Adversaries trying to corrupt the Hivemind by spreading bad learning are mitigated by:</p>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><strong>Multi-source consensus</strong> &mdash; patterns require N independent contributors before promotion</li>
+      <li><strong>Domain curation</strong> &mdash; domain maintainers can flag specific contributors as untrusted</li>
+      <li><strong>Local provenance tracking</strong> &mdash; every pattern carries source tags; receivers can blacklist sources</li>
+      <li><strong>Outcome correlation check</strong> &mdash; Hivemind patterns that hurt locally are weighted lower over time (the substrate naturally distrusts patterns that hurt it)</li>
+      <li><strong>Identity-bearing concept detection</strong> &mdash; patterns that map to specific named entities are quarantined automatically</li>
+    </ol>
+    <p class="text-slate-300 leading-relaxed">This won't be perfect &mdash; pure peer-to-peer systems with open contribution always have an arms race with abuse. Mitigations are practical, not theoretical.</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="phasing" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Phasing</h2>
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Version</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Substrate-primary</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Oasis</th>
+            <th class="text-left text-indigo-400 pb-2">Hivemind</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">v1.0</td>
+            <td class="pr-4 py-3 text-sm">B5: Phase &minus;1 + Phase 0 harness + shareability infra</td>
+            <td class="pr-4 py-3 text-sm">Format exists. No software runs.</td>
+            <td class="py-3 text-sm">None.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">v1.1</td>
+            <td class="pr-4 py-3 text-sm">Substrate-primary AUT mode lands. Phase 0 validation. Phase 1 starts.</td>
+            <td class="pr-4 py-3 text-sm"><strong>Oasis software ships</strong> (~800 LOC). Mac-Mini hostable. <code class="bg-slate-950 px-1 rounded text-xs">maxim oasis serve</code>.</td>
+            <td class="py-3 text-sm">Direct Oasis-to-Oasis sync only.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">v1.2</td>
+            <td class="pr-4 py-3 text-sm">Phase 1 ships. Substrate-primary Maxims pull bootstrap.</td>
+            <td class="pr-4 py-3 text-sm">Multi-Oasis federation. Curation tools.</td>
+            <td class="py-3 text-sm"><strong>Full Hivemind P2P protocol</strong> (~600 LOC).</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">v1.3+</td>
+            <td class="pr-4 py-3 text-sm">Phase 3 from-scratch sequence model.</td>
+            <td class="pr-4 py-3 text-sm">Pure substrate-primary; no LLM needed.</td>
+            <td class="py-3 text-sm">Cross-version migration; domain ecosystem.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="mother-deprecated" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What got dropped from the old Mother Maxim plan</h2>
+    <p class="text-slate-300 leading-relaxed">The 2,224-line Mother Maxim plan was designed in the LLM-AUT-only world where memories (dialogue + episode traces) were the unit of value. The 2026-05-09 substrate-primary pivot reframed the architecture significantly.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-red-700/50 rounded-xl p-5">
+        <h4 class="text-red-400 font-semibold mb-2">Dropped</h4>
+        <ul class="space-y-1 text-sm text-slate-300 list-disc pl-5">
+          <li><strong>Pecking Order Graph hierarchy</strong> &rarr; flat peer-to-peer mesh</li>
+          <li><strong>Database backend (SQL)</strong> &rarr; portable file-based snapshots</li>
+          <li><strong>Dual-pass deidentification (700 LOC)</strong> &rarr; ~80 LOC identity-bearing detection (no raw episodes shipped)</li>
+          <li><strong>Central Mother server</strong> &rarr; multiple peer Oases</li>
+          <li><strong>REST <code class="bg-slate-950 px-1 rounded text-xs">/v1/contribute</code></strong> &rarr; Hivemind P2P protocol</li>
+          <li><strong>Tenant isolation</strong> &rarr; substrate domains + opt-in subscription</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-emerald-700/50 rounded-xl p-5">
+        <h4 class="text-emerald-400 font-semibold mb-2">Preserved</h4>
+        <ul class="space-y-1 text-sm text-slate-300 list-disc pl-5">
+          <li><strong>Mother-as-full-agent</strong> &rarr; Oasis is a substrate-primary Maxim instance</li>
+          <li><strong>Bio-system identity-bearing concept detection</strong> &rarr; ported into B5</li>
+          <li><strong>Substrate-stays-private invariant</strong> &rarr; hippocampus-episodes-never-leave</li>
+          <li><strong>Multi-tenant separation</strong> &rarr; substrate domains</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer Navigation -->
+  <div class="pt-8 border-t border-slate-700 space-y-6">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/substrate-primary" class="flex-1 max-w-xs bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Substrate-Primary Mode</span>
+      </a>
+      <a href="/maxim/networking" class="flex-1 max-w-xs bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Networking &amp; Mesh</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/substrate-primary" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Substrate-Primary</a>
+        <a href="/maxim/hivemind" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Hivemind + Oasis</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -56,6 +56,23 @@ class NACConfig:
     temporal_credit_weight: float = 0.3
 
 
+# Phase -1 prototype — drive→tool affinity table for cold-start action
+# proposal. Stand-in for proper EC embedding similarity (Phase 0+ replaces).
+# See NAc.recommend_action(). Keys are lowercase drive names; values are
+# substrings to match in tool names (also lowercase).
+_DRIVE_TOOL_AFFINITIES: dict[str, tuple[str, ...]] = {
+    "hunger": ("eat", "pick_up", "food", "consume", "feed"),
+    "thirst": ("drink", "water", "consume"),
+    "fatigue": ("rest", "sleep", "sit", "lie"),
+    "stamina": ("rest", "sleep", "sit", "lie"),
+    "cold": ("warm", "fire", "blanket", "huddle"),
+    "thermal": ("warm", "fire", "blanket", "huddle"),
+    "fear": ("flee", "hide", "retreat", "escape"),
+    "curiosity": ("examine", "look", "sense", "inspect"),
+    "pain": ("rest", "heal", "tend", "withdraw"),
+}
+
+
 class NAc:
     """Nucleus Accumbens - Causal inference and reward prediction engine.
 
@@ -1105,6 +1122,149 @@ class NAc:
         if count:
             logger.debug("NAc: decayed %d imagined links by factor %.2f", count, factor)
         return count
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Phase -1 prototype — substrate-driven action proposal
+    # ─────────────────────────────────────────────────────────────────────────
+    #
+    # See docs/plans/grounded_language_acquisition.md Phase -1 for the gating
+    # Boolean experiment this method enables: can the substrate propose even
+    # one non-reflex action without LLM mediation? The answer determines
+    # whether substrate-primary AUT mode is feasible at all.
+    #
+    # This is a PROTOTYPE. The drive-relevance heuristic is a temporary
+    # stand-in for proper EC embedding similarity (Phase 0+ will replace it).
+    # The method exists to answer the Boolean, not to ship as final API.
+
+    def recommend_action(
+        self,
+        *,
+        agent_id: str,
+        available_tools: "list[str] | set[str] | tuple[str, ...]",
+        current_drives: dict[str, float] | None = None,
+        min_confidence: float = 0.3,
+    ) -> dict[str, Any] | None:
+        """Substrate-driven action proposal — Phase -1 prototype.
+
+        Returns an action dict (compatible with ``Proposal.action``) or
+        ``None`` if no tool meets the confidence threshold. Random
+        selection is explicitly NOT a fallback — substrate must have an
+        opinion (learned bias OR coherent drive signal) to act.
+
+        Algorithm:
+          1. For each available tool, score by learned ``reward_bias``
+             (positive value means the agent has been rewarded for this
+             tool; zero for new agents).
+          2. Augment with drive-relevance heuristic: active drives
+             (value > 0.5) bias scoring toward semantically-related
+             tools via name substring match + a small affinity table.
+             This is a Phase -1 stand-in for EC embedding similarity.
+          3. Return the highest-scoring tool above ``min_confidence``,
+             else ``None``.
+
+        Args:
+            agent_id: Per-agent scoping for ``reward_bias`` lookup.
+                Empty string is rejected (per the multi-agent isolation
+                invariant in CLAUDE.md "Per-agent stash dicts" lesson).
+            available_tools: Tool names the substrate may propose.
+                Order is irrelevant; ties resolved by name sort.
+            current_drives: Optional ``{drive_name: value in [0, 1]}``.
+                Drives with value > 0.5 contribute drive-relevance
+                scoring. ``None`` skips the cold-start heuristic.
+            min_confidence: Threshold below which we return ``None``
+                instead of proposing a low-confidence action. Default
+                ``0.3`` matches ``NACConfig.min_confidence_threshold``.
+
+        Returns:
+            ``{"tool_name", "params", "confidence", "source", "reasoning"}``
+            on success, or ``None`` when nothing scores high enough.
+            ``source`` is always ``"substrate-primary"`` so the executor
+            can distinguish substrate-proposed actions from LLM-proposed.
+        """
+        if not agent_id:
+            raise ValueError("recommend_action requires non-empty agent_id")
+        if not available_tools:
+            return None
+
+        drives = current_drives or {}
+        tool_list = sorted(available_tools)
+
+        scores: dict[str, float] = {}
+        reasoning_parts: dict[str, list[str]] = {}
+
+        for tool_name in tool_list:
+            score = 0.0
+            parts: list[str] = []
+            event_sig = f"tool:{tool_name}"
+
+            # Component 1 (primary learned signal): causal-link confidence.
+            # Positive outcomes contribute their best confidence; negative
+            # outcomes subtract (weighted lower so a single bad outcome
+            # doesn't permanently block exploration).
+            pos_links = self.get_positive_outcomes(event_sig)
+            if pos_links:
+                best_pos = max(link.confidence for link in pos_links)
+                score += best_pos
+                parts.append(f"causal_pos={best_pos:.2f}")
+            neg_links = self.get_negative_outcomes(event_sig)
+            if neg_links:
+                best_neg = max(link.confidence for link in neg_links)
+                score -= best_neg * 0.5
+                parts.append(f"causal_neg={best_neg:.2f}")
+
+            # Component 2 (secondary learned signal): reward bias. Capped at
+            # max_reward_bias (default 0.20) by design — it's a recognition
+            # modulator, not a primary action-selection score. Adds a small
+            # positive nudge when present.
+            bias = self.reward_bias(agent_id, event_sig)
+            if bias > 0:
+                score += bias
+                parts.append(f"reward_bias={bias:.2f}")
+
+            # Component 3: drive-relevance (cold-start heuristic)
+            tool_lower = tool_name.lower()
+            for drive_name, drive_value in drives.items():
+                if drive_value <= 0.5:
+                    continue
+                drive_lower = drive_name.lower()
+
+                # Direct name substring match
+                if drive_lower in tool_lower:
+                    score += drive_value
+                    parts.append(
+                        f"drive:{drive_name}({drive_value:.2f}) name-match"
+                    )
+                    continue
+
+                # Affinity table — semantic stand-in until EC integration
+                affinities = _DRIVE_TOOL_AFFINITIES.get(drive_lower, ())
+                for keyword in affinities:
+                    if keyword in tool_lower:
+                        score += drive_value * 0.7
+                        parts.append(
+                            f"drive:{drive_name}({drive_value:.2f}) →{keyword}"
+                        )
+                        break
+
+            if score > 0:
+                scores[tool_name] = score
+                reasoning_parts[tool_name] = parts
+
+        if not scores:
+            return None
+
+        best_tool = max(scores, key=lambda t: (scores[t], t))
+        best_score = scores[best_tool]
+        if best_score < min_confidence:
+            return None
+
+        return {
+            "tool_name": best_tool,
+            "params": {},
+            "confidence": min(best_score, 1.0),
+            "source": "substrate-primary",
+            "reasoning": "; ".join(reasoning_parts[best_tool]),
+        }
 
     # ─────────────────────────────────────────────────────────────────────────
     # P2: Reward Bias — per-node recognition modulation

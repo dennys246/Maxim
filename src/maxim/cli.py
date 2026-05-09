@@ -1161,7 +1161,12 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         # ── Generative campaign mode (new default for goal strings) ──
         if _is_goal_string and not _is_legacy_agent:
             goal = _explicit_goal or _sim_val
-            if _wants_research:
+            _aut_mode_val = getattr(args, "aut_mode", "llm-primary")
+            # --research with --aut-mode substrate-primary means
+            # "per-tick substrate telemetry on", not "spin up the
+            # multi-agent paper-writing harness". Phase 0 of
+            # docs/plans/grounded_language_acquisition.md.
+            if _wants_research and _aut_mode_val != "substrate-primary":
                 # Generative + research report
                 from maxim.simulation.research_orchestrator import start_research_mode
 
@@ -1209,6 +1214,8 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
                     sandbox_network=getattr(args, "sandbox_network", "none"),
                     aut_model=getattr(args, "aut_model", None),
+                    aut_mode=_aut_mode_val,
+                    research_telemetry=bool(_wants_research),
                     max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                     entity_ref=_sim_entity_ref,
                     generative=_use_generative,
@@ -1236,6 +1243,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                 sandbox_image=getattr(args, "sandbox_image", "python:3.12-slim"),
                 sandbox_network=getattr(args, "sandbox_network", "none"),
                 aut_model=getattr(args, "aut_model", None),
+                aut_mode=getattr(args, "aut_mode", "llm-primary"),
                 max_turns=int(getattr(args, "sim_max_turns", 50) or 50),
                 entity_ref=_sim_entity_ref,
             )

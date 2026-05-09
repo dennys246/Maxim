@@ -253,6 +253,73 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
             },
         ],
     ),
+    "cradle_prelinguistic": _make_builtin(
+        "cradle_prelinguistic",
+        (
+            "Phase 0 of grounded_language_acquisition.md — sensorimotor "
+            "development with NO linguistic supervision. Strips English "
+            "narration so EC/ATL/NAc must form proto-concepts from "
+            "drives + sensor readings + motor primitives only."
+        ),
+        # Phase 0 deliberately strips English from instructions. The
+        # narrator (when present) emits no scripted prose; the AUT runs
+        # in substrate-primary mode and only reads sensor/drive state.
+        # Phases preserve the cradle's developmental scaffolding (drives,
+        # reflexes, world entity activation) but carry empty instruction
+        # strings so the LLM-DM has nothing to narrate from.
+        # See docs/plans/grounded_language_acquisition.md Phase 0.
+        [
+            {
+                "name": "exploration",
+                "act": "neonatal",
+                "turns": (2, 4),
+                "instruction": "",
+                "world_entities": [
+                    "items/cradle_fire_pit",
+                    "items/cradle_food",
+                    "items/cradle_cool_air",
+                ],
+            },
+            {
+                "name": "pain_consequence",
+                "act": "neonatal",
+                "turns": (1, 2),
+                "instruction": "",
+            },
+            {
+                "name": "object_introduction",
+                "act": "primary_circular",
+                "turns": (2, 3),
+                "instruction": "",
+                "world_entities": ["items/cradle_sharp_rock", "items/cradle_blanket"],
+            },
+            {
+                "name": "discrimination",
+                "act": "primary_circular",
+                "turns": (2, 3),
+                "instruction": "",
+            },
+            {
+                "name": "tool_discovery",
+                "act": "secondary_circular",
+                "turns": (3, 5),
+                "instruction": "",
+                "world_entities": ["items/cradle_lever_door", "items/cradle_button"],
+            },
+            {
+                "name": "intentional_action",
+                "act": "secondary_circular",
+                "turns": (2, 3),
+                "instruction": "",
+            },
+            {
+                "name": "recall",
+                "act": "consolidation",
+                "turns": (3, 5),
+                "instruction": "",
+            },
+        ],
+    ),
     "cradle": _make_builtin(
         "cradle",
         "Sensorimotor development through structured neurodevelopmental stages",
@@ -370,11 +437,22 @@ _ARC_KEYWORDS: dict[str, list[str]] = {
 
 
 def select_arc_for_goal(goal: str) -> NarrativeArc | None:
-    """Select the best builtin arc for a goal string. Returns None if no match."""
-    goal_lower = goal.lower()
+    """Select the best builtin arc for a goal string. Returns None if no match.
+
+    Resolution order:
+      1. Exact arc name (case-insensitive) — lets users invoke variants
+         like ``cradle_prelinguistic`` without the keyword-scorer falling
+         back to the broader ``cradle`` arc on the shared ``cradle``
+         substring.
+      2. Keyword scoring against ``_ARC_KEYWORDS``.
+    """
+    goal_lower = goal.lower().strip()
+
+    if goal_lower in BUILTIN_ARCS:
+        return BUILTIN_ARCS[goal_lower]
+
     best_arc = None
     best_score = 0
-
     for arc_name, keywords in _ARC_KEYWORDS.items():
         score = sum(1 for kw in keywords if kw in goal_lower)
         if score > best_score:

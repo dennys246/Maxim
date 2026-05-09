@@ -451,7 +451,7 @@ Edge weights combine perceptual (0.6), goal (0.25), and temporal (0.15) similari
 | `CausalStore` | NAc | Event-to-outcome lookups |
 | `SemanticStore` | ATL | Concept-type filtering |
 
-Default implementations (`FileEpisodicStore`, `FileCausalStore`, `FileSemanticStore`) wrap JSON persistence. Database implementations (PostgreSQL + pgvector) are provided by the `[database]` extra for Mother Maxim.
+Default implementations (`FileEpisodicStore`, `FileCausalStore`, `FileSemanticStore`) wrap JSON persistence. Database implementations (PostgreSQL + pgvector) are provided by the `[database]` extra for the [Maxim Oasis](hivemind.md) — substrate-primary instances that absorb contributions from many users. (The "Mother Maxim" plan was superseded 2026-05-09 by [Maxim Hivemind + Oasis](hivemind.md); the file-based portable substrate-snapshot bundle is the new primary exchange format.)
 
 ---
 

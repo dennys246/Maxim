@@ -172,16 +172,14 @@ python -c "import maxim; print(maxim.__version__)"
 
 ### Week 1-2
 
-4. **Mother Maxim MVP** (~500 LOC) — runner + API + CLI on the RTX 5080 leader
-5. **Client-side deidentification** (M-2a) — bio-system identity map + LLM pass
-6. **`--list-models` CLI flag** — model discovery for new users
+4. **Substrate-primary harness (B5)** (~1,360 LOC) — Phase -1 prototype + Phase 0 cradle-prelinguistic harness + Hivemind shareability infrastructure. See [substrate_primary.md](substrate_primary.md), [hivemind.md](hivemind.md), and [docs/plans/grounded_language_acquisition.md](plans/grounded_language_acquisition.md). NOTE: roadmap pivoted 2026-05-09; the original "Mother Maxim MVP + deidentification" track was superseded by the federated peer-to-peer Hivemind + Oasis architecture (~55% the LOC, more capable). Phase -1 already shipped.
+5. **`--list-models` CLI flag** — model discovery for new users
 
 ### Month 1
 
-7. **Deidentification model benchmark** — determine minimum tier for PII safety
-8. **Security hardening** for Mother public access
-9. **Memory coalescence engine** — Mother starts synthesizing, not just accumulating
-10. **Circadian lifecycle** — Mother develops day/night work patterns
+6. **Maxim Oasis MVP (1.1)** — single-Oasis instance hostable on Mac Mini class hardware. CLI: `maxim oasis serve`. LLM-AUT users opt in to contribute via `maxim contribute --to oasis://...`. ~800 LOC.
+7. **Substrate-primary AUT mode (1.1)** — Phase 0 validation runs (raw substrate, no Hivemind); Phase 1 (vocabulary-constrained) starts.
+8. **Maxim Hivemind P2P protocol (1.2)** — peer discovery, substrate-snapshot exchange, conflict-resolution semantics, poison-resistance defenses. ~600 LOC.
 
 ---
 
@@ -189,11 +187,10 @@ python -c "import maxim; print(maxim.__version__)"
 
 | Version | What |
 |---------|------|
-| 1.0.0 | Current release — foundational buildout, 17 API verbs, multi-agent |
-| 0.2.1 | Patch — fix `maxim.run()`, wire API stubs, error honesty |
-| 0.3.0 | Mother Maxim MVP + deidentification |
-| 0.4.0 | Coalescence + circadian lifecycle |
-| 1.0.0 | Stable API, database backend, full Mother public access |
+| 1.0.0 | Stable API; substrate-primary harness (B5: Phase -1 + Phase 0 + Hivemind shareability infrastructure, all behind experimental flag); D1-D3 docs complete |
+| 1.1.x | Substrate-primary AUT mode lands (`--aut-mode substrate-primary`); first hostable Maxim Oasis; Phase 1 grounded-language work begins |
+| 1.2.x | Full Maxim Hivemind P2P protocol; multi-Oasis federation; substrate-primary Maxims pull bootstrap from Hivemind; Phase 2 (symbol binding) starts |
+| 1.3+ | Phase 3 from-scratch sequence model; substrate-primary becomes default-eligible for end users |
 
 ---
 

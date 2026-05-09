@@ -621,6 +621,115 @@ def _run_deliberation_cycles(
     return None
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Substrate-primary action generation (Phase -1 of grounded_language_acquisition.md)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _read_drive_states(executor: Any) -> dict[str, float]:
+    """Extract current drive values from the executor's embodiment.
+
+    Returns ``{drive_name: value in [0, 1]}`` for every drive declared on
+    every entity walked from the embodiment root. Empty dict when no
+    embodiment is wired.
+
+    Used by substrate-primary AUT mode to feed ``NAc.recommend_action``
+    without going through the LLM. Reads the current values directly from
+    ``Entity.vital_metrics`` (entity-level drives) and modulator
+    ``vital_metrics`` (sub-sensor drives like ``arms.thermal``).
+    """
+    embodiment = getattr(executor, "embodiment", None)
+    if embodiment is None or getattr(embodiment, "root", None) is None:
+        return {}
+
+    drives: dict[str, float] = {}
+    for ent in embodiment.root.walk():
+        for ds_name in getattr(ent, "drive_specs", {}):
+            if "." in ds_name:
+                mod_name, sensor_name = ds_name.split(".", 1)
+                mod = ent.modulators.get(mod_name)
+                if mod is None or not hasattr(mod, "vital_metrics"):
+                    continue
+                value = mod.vital_metrics.get(sensor_name)
+            else:
+                value = ent.vital_metrics.get(ds_name)
+            if value is None:
+                continue
+            try:
+                drives[ds_name] = float(value)
+            except (TypeError, ValueError):
+                continue
+    return drives
+
+
+def propose_via_substrate(
+    *,
+    nac: Any,
+    agent_id: str,
+    executor: Any,
+    min_confidence: float = 0.3,
+) -> LLMProposal | None:
+    """Build an ``LLMProposal`` from ``NAc.recommend_action`` — no LLM call.
+
+    Called from the agent loop when ``aut_mode == "substrate-primary"`` in
+    place of ``llm_worker.submit_context``. Returns ``None`` when the
+    substrate has no opinion (no learned bias, no active drive) — the loop
+    treats this as IDLE for that tick rather than proposing randomly.
+
+    The returned proposal carries ``strategy_used="substrate-primary"`` so
+    downstream tracing can distinguish substrate-proposed actions from
+    LLM-proposed ones.
+    """
+    if nac is None or executor is None:
+        return None
+
+    registry = getattr(executor, "registry", None)
+    if registry is None or not hasattr(registry, "list"):
+        return None
+
+    available_tools = list(registry.list())
+    if not available_tools:
+        return None
+
+    # Substrate-primary mode owns its own clock — without an LLM submit
+    # path there's no other code that calls into the embodiment, so
+    # drive drift would never advance. Ticking evaluate_failures() here
+    # mirrors what EmbodimentPerceptSource.next_percept does on the
+    # llm-primary path: applies wall-clock drift via tick_vital_drift,
+    # then evaluates failures (which publish pain signals to NAc).
+    embodiment = getattr(executor, "embodiment", None)
+    if embodiment is not None:
+        try:
+            embodiment.evaluate_failures()
+        except Exception:
+            logger.debug("substrate-primary tick: evaluate_failures raised", exc_info=True)
+
+    drives = _read_drive_states(executor)
+
+    recommendation = nac.recommend_action(
+        agent_id=agent_id,
+        available_tools=available_tools,
+        current_drives=drives or None,
+        min_confidence=min_confidence,
+    )
+    if recommendation is None:
+        return None
+
+    action = {
+        "tool_name": recommendation["tool_name"],
+        "params": recommendation.get("params", {}) or {},
+    }
+    return LLMProposal(
+        request_id=f"substrate-{int(time.time() * 1000)}",
+        action=action,
+        reasoning=recommendation.get("reasoning", ""),
+        strategy_used="substrate-primary",
+        confidence=float(recommendation.get("confidence", min_confidence)),
+        mode_goal_achieved=False,
+        triggering_input="",
+    )
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -652,6 +761,9 @@ def run_agentic_loop(
     imagination_trigger: Any | None = None,  # ImaginationTrigger for real-time entity design
     bio_enrichment_pipeline: Any | None = None,  # BioEnrichmentPipeline for percept enrichment (L1)
     thought_gate: Any | None = None,  # ThoughtGate for PFC deliberation gating
+    aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
+    substrate_telemetry: Any
+    | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -2482,7 +2594,51 @@ def run_agentic_loop(
             sim.log(
                 "PIPELINE", f"LLM gate BLOCKED: ctrl.pending_proposal={_pp_tool}, new cli_input={str(cli_input)[:40]}"
             )
-        if llm_worker and ctrl.pending_proposal is None:
+
+        # ─────────────────────────────────────────────────────────────────
+        # Substrate-primary action generation (Phase -1 of grounded
+        # language acquisition). Skips the LLM entirely; calls
+        # NAc.recommend_action() with current drives + tool registry. If
+        # the substrate has no opinion (no learned bias, no active drive),
+        # the tick is IDLE — no random fallback. Mutually exclusive with
+        # the LLM submit branch below.
+        if aut_mode == "substrate-primary" and ctrl.pending_proposal is None:
+            now = time.time()
+            if now - ctrl.last_llm_submit_time > llm_submit_interval:
+                substrate_proposal = propose_via_substrate(
+                    nac=_loop_nac,
+                    agent_id=_loop_agent_id,
+                    executor=executor,
+                )
+                ctrl.last_llm_submit_time = now
+                if substrate_proposal is not None:
+                    ctrl.pending_proposal = substrate_proposal
+                    if sim.is_sim_mode:
+                        sim.log(
+                            "EXEC",
+                            f"substrate-primary proposal: tool="
+                            f"{substrate_proposal.action.get('tool_name') if substrate_proposal.action else None} "
+                            f"confidence={substrate_proposal.confidence:.2f} "
+                            f"reasoning={substrate_proposal.reasoning[:80]}",
+                        )
+
+                # Phase 0 telemetry — fires every tick (proposal or
+                # IDLE). Fail-soft: telemetry exceptions never crash
+                # the loop. See simulation/substrate_telemetry.py.
+                if substrate_telemetry is not None:
+                    try:
+                        _ec_ref = getattr(memory_hub, "ec", None) if memory_hub is not None else None
+                        substrate_telemetry.snapshot(
+                            step=step_num,
+                            nac=_loop_nac,
+                            ec=_ec_ref,
+                            executor=executor,
+                            proposal=substrate_proposal,
+                        )
+                    except Exception:
+                        logger.debug("substrate telemetry callback raised", exc_info=True)
+
+        if aut_mode != "substrate-primary" and llm_worker and ctrl.pending_proposal is None:
             now = time.time()
             if now - ctrl.last_llm_submit_time > llm_submit_interval:
                 # Cache tool registry snapshot for this submission (avoids 3 redundant traversals)
@@ -2808,6 +2964,17 @@ def run_agentic_loop(
                             except Exception as e:
                                 log_swallowed_exception(e, operation="on_event:inference_start")
 
+                        # EXPERIMENTAL — hallucination-hint feature.
+                        # MAXIM_TOOL_FAILURE_HINTS=0 disables (default on).
+                        # Disable for grounded-language acquisition Phase 0/1.
+                        # See docs/plans/grounded_language_acquisition.md.
+                        _failed_tools: list[str] = []
+                        if os.environ.get("MAXIM_TOOL_FAILURE_HINTS", "0") != "0":
+                            # __getattr__ on wrappers (InstrumentedExecutor,
+                            # PainInterceptorExecutor, FearGatedExecutor) walks
+                            # down to the base Executor where the list lives.
+                            _failed_tools = list(getattr(executor, "_tools_hallucinated", []))
+
                         submitted = llm_worker.submit_context(
                             context=context,
                             mode=mode_info,
@@ -2816,6 +2983,7 @@ def run_agentic_loop(
                             internet_policy_summary=internet_policy_summary,
                             available_tools=available_tools,
                             tool_descriptions=tool_descriptions,
+                            failed_tools=_failed_tools,
                             context_pool_text=context_pool_text,
                             agent_states=agent_states,
                             recent_outcomes=recent_outcomes,

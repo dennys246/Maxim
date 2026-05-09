@@ -37,8 +37,19 @@ Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). W
 - 1.1-T5 Agent-backed entities revival
 - 1.1-T6 B5 embodiment/narrative separation
 - MCP compatibility (CC9 prereq shipped)
+- **1.1-T7 Substrate-primary AUT mode** — full Phase 0 validation, Phase 1 (vocabulary-constrained), Phase 2 (symbol binding) per [grounded_language_acquisition.md](grounded_language_acquisition.md). Phase -1 + Phase 0 harness ship in 1.0 (see new B5 below); the substrate-primary AUT mode itself ships in 1.1.
+- **1.1-T8 Maxim Oasis** — first hostable Oasis instance per [maxim_hivemind.md](maxim_hivemind.md). Single-Oasis software (~800 LOC); LLM-AUT users opt in to contribute substrate via `maxim contribute --to oasis://...`; direct Oasis-to-Oasis sync supported (no mesh discovery yet). Builds on B5's shareability infrastructure.
+- **1.2 Maxim Hivemind protocol** — peer-to-peer substrate exchange + conflict resolution + poison resistance (~600 LOC). Substrate-primary Maxims pull bootstrap from Hivemind, contribute back as they learn. Multi-Oasis federation goes live.
 
-**Net assessment:** 1.0 substantively done. Path to ship is one 0.9 release carrying C4/C5/C6 deprecation warnings → deprecation window of operator's choosing → 1.0 release flipping warnings to hard errors. D1-D3 docs work proceeds in parallel; B3 Phase 3 is optional polish. No more substrate uncertainty, no more confound risk, no more unshipped invariants.
+**New 1.0 add (parallel to docs work):**
+- **B5. Substrate-primary AUT mode — Phase -1 + Phase 0 harness + Hivemind shareability infrastructure** (see [grounded_language_acquisition.md](grounded_language_acquisition.md) for substrate-primary phases; [maxim_hivemind.md](maxim_hivemind.md) for the Hivemind/Oasis layer that B5's shareability infrastructure enables). Ships under experimental flag (`--aut-mode substrate-primary` or similar). **Three components:**
+  - **Phase -1** (~150 LOC): the gating Boolean — can NAc generate even one non-reflex action without LLM proposal? `NAc.recommend_action(state, available_tools) → ActionProposal | None` + `--aut-mode` CLI flag + single-tick test harness. Boolean outcome; gates the rest of the program.
+  - **Phase 0 harness** (~550 LOC): cradle-prelinguistic arc variant in `simulation/arcs.py` + motor-only AUT prompt template in `prompts/motor_only_aut.py` + per-tick telemetry snapshots (EC activation, NAc reward_bias, sensor readings). Behind `--research` flag.
+  - **Hivemind shareability infrastructure** (~660 LOC): substrate snapshot bundle format (zip + manifest + signature, ~150) + `nac.merge()` / `ec.merge()` Bayesian-aggregation library functions (~200) + provenance tags on NAc links + EC nodes (~100) + identity-bearing concept detection ported from old Mother plan (~80) + substrate domain tagging (~50) + `maxim substrate export` / `maxim substrate import` CLI verbs (~80). Enables the 1.1 Oasis software and the 1.2 Hivemind P2P protocol without retrofitting.
+  - **Total estimated scope:** ~1,360 LOC.
+  - **Doesn't touch user-facing 1.0 surface; doesn't gate D1-D3 docs.** Motivated by the 2026-05-09 audit that found 60-70% of recent engineering effort going to LLM-mitigation scaffolding (~845 LOC of band-aids) rather than substrate work — the parallel-mode architecture is the structural fix to the drift, and baking shareability in from day one means the Maxim Hivemind ships as a 1.2 turn-on rather than a 1.3+ retrofit.
+
+**Net assessment:** 1.0 substantively done. Path to ship is one 0.9 release carrying C4/C5/C6 deprecation warnings → deprecation window of operator's choosing → 1.0 release flipping warnings to hard errors. D1-D3 docs work proceeds in parallel with B5 (substrate-primary harness); B3 Phase 3 is optional polish. No more substrate uncertainty, no more confound risk, no more unshipped invariants. The B5 add accepts a small scope expansion to begin the parallel-architecture pivot; 1.0 still ships when D1-D3 + C4/C5/C6 deprecation cycle complete, regardless of where B5 lands (B5 finishing in 1.0 is preferred but not gating).
 
 ---
 

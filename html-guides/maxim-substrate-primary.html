@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Substrate-Primary Mode — Maxim Docs | Bio-Substrate Action Selection{% endblock %}
+
+{% block meta_description %}Maxim's substrate-primary AUT mode — a parallel architecture where the bio-substrate (NAc, EC, ATL, Hippocampus, Default Network, reflexes) drives action selection without LLM mediation. Phase -1 prototype shipped 2026-05-09.{% endblock %}
+
+{% block meta_keywords %}substrate-primary, Maxim AUT mode, bio-substrate action selection, NAc recommend_action, parallel mode architecture, grounded language acquisition, cradle prelinguistic, LLM-free agent{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Substrate-Primary Mode — Bio-Substrate Action Selection Without LLM Mediation",
+  "description": "Maxim's parallel architecture where the bio-substrate carries action selection. Phase -1 prototype shipped 2026-05-09.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/substrate-primary",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["substrate-primary", "bio-substrate", "action selection", "grounded language acquisition", "parallel mode"]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Substrate-Primary Mode</h1>
+    <p class="text-indigo-400 font-medium">Bio-Substrate Action Selection Without LLM Mediation</p>
+  </header>
+
+  <div class="rounded-xl bg-gradient-to-br from-purple-700 via-indigo-700 to-purple-800 p-6 text-white shadow-lg">
+    <h3 class="text-lg font-semibold mb-2">Status</h3>
+    <p class="leading-relaxed">Phase &minus;1 prototype shipped 2026-05-09 &mdash; <code class="bg-slate-950 px-1 rounded text-xs">NAc.recommend_action()</code> exists with 11 passing unit tests. Phase 0 harness lands in v1.0 (B5). Substrate-primary AUT mode itself ships in v1.1 as opt-in via <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code>. The existing LLM-AUT mode remains the user-facing default indefinitely.</p>
+  </div>
+
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#what" class="text-indigo-400 hover:text-indigo-300 no-underline">What this is</a></li>
+      <li><a href="#why" class="text-indigo-400 hover:text-indigo-300 no-underline">Why this exists</a></li>
+      <li><a href="#parallel" class="text-indigo-400 hover:text-indigo-300 no-underline">Parallel-mode architecture</a></li>
+      <li><a href="#how" class="text-indigo-400 hover:text-indigo-300 no-underline">How action selection works</a></li>
+      <li><a href="#phase-minus-1" class="text-indigo-400 hover:text-indigo-300 no-underline">Phase &minus;1: the gating Boolean</a></li>
+      <li><a href="#dnd" class="text-indigo-400 hover:text-indigo-300 no-underline">D&amp;D as the bidirectional kill criterion</a></li>
+      <li><a href="#confound" class="text-indigo-400 hover:text-indigo-300 no-underline">Raw vs primed substrate</a></li>
+      <li><a href="#crutches" class="text-indigo-400 hover:text-indigo-300 no-underline">Pretrained-LLM crutches to disable</a></li>
+    </ol>
+  </div>
+
+  <section class="space-y-4">
+    <h2 id="what" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What this is</h2>
+    <p class="text-slate-300 leading-relaxed">Maxim has historically used a <strong>language model</strong> as the AUT's action selector &mdash; the LLM proposes the next tool call, the executor dispatches it, the bio-systems learn from the outcome. The bio-substrate (NAc, EC, ATL, Hippocampus, reflexes, Default Network) has been an <em class="text-indigo-400 not-italic font-medium">augmentation layer</em> sitting around the LLM: predicting outcomes, biasing recognition, capturing episodes, providing reactive behaviors.</p>
+    <p class="text-slate-300 leading-relaxed">Substrate-primary mode flips that. <strong>The bio-substrate becomes the action selector.</strong> The LLM is removed from the AUT's decision loop entirely and replaced with <code class="bg-slate-950 px-1 rounded text-xs">NAc.recommend_action()</code> reading from learned causal links, reward biases, and active drive states. The action proposal flows through the same <code class="bg-slate-950 px-1 rounded text-xs">executor.execute()</code> dispatch &mdash; but the proposer is the substrate, not a language model.</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="why" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Why this exists</h2>
+    <p class="text-slate-300 leading-relaxed">Three motivations:</p>
+    <div class="space-y-3">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">1. The "substrate carries cognition" thesis</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Maxim's bio-inspired framing claims the bio-substrate is doing real cognitive work. If the LLM is always the action selector, that claim has an asterisk &mdash; the substrate could be doing nothing useful and the LLM would still drive coherent behavior. Substrate-primary mode is the experimental setup that <em class="text-indigo-400 not-italic font-medium">proves</em> (or disproves) the substrate's role.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">2. The LLM-mitigation drift</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">A 2026-05-09 audit found roughly 60&ndash;70% of recent engineering effort going to LLM-mitigation scaffolding (~845 LOC of band-aids) &mdash; stall detectors, JSON repair pipelines, tool-failure hint sections, identity rewrites for small models, format enforcement for planning mode. Each band-aid is a workaround for the LLM doing something the substrate could in principle handle natively. Substrate-primary mode is the structural fix.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">3. The Hivemind enabler</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Distilled bio-substrate (NAc weights, EC concepts, reflexes) is naturally shareable across instances &mdash; far more privacy-friendly and aggregatable than raw episode/dialogue logs. Substrate-primary mode is the natural client of the <a href="/maxim/hivemind" class="text-indigo-400 hover:text-indigo-300 no-underline">Maxim Hivemind + Oasis</a> layer; the federated cognition story only works if the substrate can drive behavior on its own.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="parallel" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Parallel-mode architecture, not replacement</h2>
+    <p class="text-slate-300 leading-relaxed">Substrate-primary mode runs <strong>in parallel</strong> to the existing LLM-AUT path. The user-facing default does not change. There are now two operating modes for the AUT:</p>
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Mode</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Action selector</th>
+            <th class="text-left text-indigo-400 pb-2">Use case</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium"><code class="bg-slate-950 px-1 rounded text-xs">--aut-mode llm-primary</code> (default)</td>
+            <td class="pr-4 py-3">LLM proposes; bio-substrate learns from outcomes</td>
+            <td class="py-3">All current Maxim workloads &mdash; D&amp;D campaigns, Reachy demos, headless agent runs</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium"><code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code> (opt-in, v1.1+)</td>
+            <td class="pr-4 py-3"><code class="bg-slate-950 px-1 rounded text-xs">NAc.recommend_action()</code> proposes; LLM not invoked at all on the AUT side</td>
+            <td class="py-3">Substrate research; Phase 0/1 grounded-language experiments; eventual user-facing path once mature</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-slate-300 leading-relaxed">The orchestrator, environment NPCs, imagination designer, and Oasis distillation all continue to use LLMs. Substrate-primary mode is specifically about the AUT's action loop.</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="how" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">How action selection works</h2>
+    <p class="text-slate-300 leading-relaxed"><code class="bg-slate-950 px-1 rounded text-xs">NAc.recommend_action()</code> scores each available tool by combining three signals:</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <div class="text-3xl mb-2">🎯</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Causal-link confidence</h4>
+        <p class="text-sm text-slate-400">Primary learned signal. For each candidate tool, NAc looks up positive and negative causal links from <code class="bg-slate-950 px-1 rounded text-xs">tool:X &rarr; outcome:Y</code> records in its causal graph. Positive links contribute their best confidence; negative links subtract (weighted lower so a single bad outcome doesn't permanently block exploration).</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <div class="text-3xl mb-2">⚡</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Reward bias</h4>
+        <p class="text-sm text-slate-400">Secondary learned signal. The per-agent <code class="bg-slate-950 px-1 rounded text-xs">reward_bias[(agent_id, node_id)]</code> map adds a small additional positive nudge for tools the agent has been credited on. Capped at <code class="bg-slate-950 px-1 rounded text-xs">NACConfig.max_reward_bias</code> (default 0.20) by design.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <div class="text-3xl mb-2">💧</div>
+        <h4 class="text-indigo-400 font-semibold mb-1">Drive-relevance heuristic</h4>
+        <p class="text-sm text-slate-400">Cold-start fallback. When no learned signal exists, active drives (<code class="bg-slate-950 px-1 rounded text-xs">drive_value &gt; 0.5</code> for hunger/thirst/fatigue/cold/fear/curiosity/pain) bias selection toward semantically-related tools via a substring + affinity-table match. Phase &minus;1 placeholder for proper EC embedding similarity (Phase 0+ replaces).</p>
+      </div>
+    </div>
+    <p class="text-slate-300 leading-relaxed">The highest-scoring tool above <code class="bg-slate-950 px-1 rounded text-xs">min_confidence</code> (default 0.3) wins. Ties are resolved deterministically by tool name. <strong>If nothing scores high enough, the method returns None</strong> &mdash; substrate-primary mode never falls back to random selection. The substrate must have an opinion to act.</p>
+
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
+<pre class="text-sm text-slate-300 overflow-x-auto"><code>from maxim.decisions.nac import NAc, NACConfig
+
+nac = NAc(NACConfig())
+# ... agent has observed pick_up_food &rarr; satisfaction (positive, several times)
+# ... drives indicate hunger=0.8
+
+action = nac.recommend_action(
+    agent_id="my_infant",
+    available_tools=["pick_up_food", "examine_rock", "rest"],
+    current_drives={"hunger": 0.8},
+)
+# &rarr; {"tool_name": "pick_up_food", "params": {}, "confidence": 0.74,
+#    "source": "substrate-primary",
+#    "reasoning": "causal_pos=0.62; drive:hunger(0.80) name-match"}</code></pre>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The returned dict is compatible with <code class="bg-slate-950 px-1 rounded text-xs">agents.autonomy.Proposal.action</code> and is dispatched through the standard <code class="bg-slate-950 px-1 rounded text-xs">executor.execute()</code> path &mdash; no new dispatcher.</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="phase-minus-1" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Phase &minus;1 &mdash; the gating Boolean (PASSED 2026-05-09)</h2>
+    <p class="text-slate-300 leading-relaxed">The most important question in the entire substrate-primary program: <strong>can the substrate generate even one non-reflex action without LLM proposal?</strong></p>
+    <p class="text-slate-300 leading-relaxed">If yes, the rest of the program is feasible. If no, NAc needs significant extension before substrate-primary mode is viable.</p>
+    <p class="text-slate-300 leading-relaxed">The Phase &minus;1 prototype lands <code class="bg-slate-950 px-1 rounded text-xs">NAc.recommend_action()</code> and 11 unit tests. <strong>All tests pass.</strong> The substrate <em class="text-indigo-400 not-italic font-medium">can</em> generate non-reflex actions from learned causal links + drive heuristics.</p>
+
+    <p class="text-slate-300 leading-relaxed">The next phases (still to ship):</p>
+    <div class="space-y-3">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-white font-semibold mb-1">Phase 0 (v1.0 B5)</h4>
+        <p class="text-slate-300 text-sm leading-relaxed">Wire <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code> end-to-end + cradle-prelinguistic harness with motor-only AUT prompt + per-tick telemetry. Proves substrate-primary works in a real sim.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-white font-semibold mb-1">Phase 1 (v1.1)</h4>
+        <p class="text-slate-300 text-sm leading-relaxed">Vocabulary-constrained mode. The LLM is allowed back as input parser but its output vocabulary is masked to tokens the substrate has bound. Tests how much the LLM was doing beyond I/O.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-white font-semibold mb-1">Phase 2 (v1.1+)</h4>
+        <p class="text-slate-300 text-sm leading-relaxed">Symbol-binding layer. Small online-trained model that binds words to bio-substrate concepts. Enables vocabulary growth from substrate experience.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-white font-semibold mb-1">Phase 3 (v1.2+)</h4>
+        <p class="text-slate-300 text-sm leading-relaxed">From-scratch sequence model trained on Roy long-horizon curriculum with substrate-grounding objective. The headline experiment.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <h4 class="text-white font-semibold mb-1">Phase 4 (v1.3+)</h4>
+        <p class="text-slate-300 text-sm leading-relaxed">Pretrained-vs-grounded A/B comparison. Final validation.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="dnd" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">D&amp;D survival as the bidirectional kill criterion</h2>
+    <p class="text-slate-300 leading-relaxed">A substrate-primary AUT that cannot survive a D&amp;D-style campaign orchestrated by an LLM-DM is a failed bio-substrate. <strong>AND</strong> a simulation environment that no learning substrate can navigate is a failed simulation environment. The convergence test is mutually load-bearing:</p>
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Outcome</th>
+            <th class="text-left text-indigo-400 pb-2">Diagnosis</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Substrate AUT runs the campaign cleanly</td>
+            <td class="py-3">Substrate is real. Project thesis validated.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Substrate AUT fails; LLM-AUT succeeds in same scenario</td>
+            <td class="py-3">Substrate insufficient for non-trivial cognition. Reframe required.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">LLM-AUT also fails the same scenario</td>
+            <td class="py-3">Simulation environment is the failure &mdash; the test isn't measuring what we think.</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Both succeed but substrate is much weaker</td>
+            <td class="py-3">Acceptable interim. Scope clear; LLM remains in user-facing path.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-slate-300 leading-relaxed">D&amp;D was chosen because it has long-horizon temporal structure, novel entities every session, decision-making with delayed reward, role coherence demands, and multi-agent dynamics. Cradle (current sensorimotor learning) is necessary; D&amp;D is sufficient.</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="confound" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Confound discipline: raw vs primed substrate</h2>
+    <p class="text-slate-300 leading-relaxed">Substrate-primary Maxims can either start from a fresh substrate (<strong>raw</strong> &mdash; the headline experimental condition) or bootstrap from accumulated experience via the <a href="/maxim/hivemind" class="text-indigo-400 hover:text-indigo-300 no-underline">Maxim Hivemind</a>. Both are valid, but they answer different questions:</p>
+    <ul class="space-y-2 text-slate-300 list-disc pl-5">
+      <li><strong>Raw substrate</strong> demonstrates "the substrate can develop cognition from zero." Required for Phase 0 + Phase 1 validation.</li>
+      <li><strong>Primed substrate</strong> demonstrates "the substrate can absorb collective experience and operate." End-user convenience path; ships once Hivemind is live.</li>
+    </ul>
+    <p class="text-slate-300 leading-relaxed">Both ship in parallel. The grounded-language plan's Phase 0 and Phase 1 specifically run with the Hivemind disabled so the headline experiment stays clean.</p>
+  </section>
+
+  <section class="space-y-4">
+    <h2 id="crutches" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Pretrained-LLM crutches to disable</h2>
+    <p class="text-slate-300 leading-relaxed">When running substrate-primary mode (or running the LLM-AUT path with the intent of not biasing the substrate's learning), several runtime mitigations should be turned off because they exist specifically to compensate for pretrained LLM behaviors that don't exist in a fresh substrate:</p>
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Crutch</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">What it does</th>
+            <th class="text-left text-indigo-400 pb-2">Disable via</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Tool-failure hint section</td>
+            <td class="pr-4 py-3 text-sm">Adds a <code class="bg-slate-950 px-1 rounded text-xs">=== Tools You've Hallucinated ===</code> block to the prompt listing names the agent previously called that don't exist. E4 validation 2026-05-09 (n=6 per arm) showed no benefit on qwen2.5-14B; default flipped to OFF.</td>
+            <td class="py-3 text-sm"><code class="bg-slate-950 px-1 rounded text-xs">MAXIM_TOOL_FAILURE_HINTS=0</code> (already default)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-slate-300 leading-relaxed">The bio-natural alternative for tool-failure avoidance already exists: NAc records <code class="bg-slate-950 px-1 rounded text-xs">tool:X &rarr; failure:not_registered</code> with negative valence and <code class="bg-slate-950 px-1 rounded text-xs">recommend_action()</code> subtracts that confidence from the tool's score. With the prompt-level hint disabled, the substrate's negative-valence avoidance becomes the only signal &mdash; which is exactly what we want to measure.</p>
+    <p class="text-slate-300 leading-relaxed">The crutch table grows over time. The principle: if a mitigation exists because the pretrained LLM does something the substrate hasn't earned, the substrate-only experiments must turn it off so we measure substrate competence and not the mitigation.</p>
+  </section>
+
+  <!-- Footer Navigation -->
+  <div class="pt-8 border-t border-slate-700 space-y-6">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/operating-modes" class="flex-1 max-w-xs bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Operating Modes</span>
+      </a>
+      <a href="/maxim/hivemind" class="flex-1 max-w-xs bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Maxim Hivemind + Oasis</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/substrate-primary" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Substrate-Primary</a>
+        <a href="/maxim/hivemind" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Hivemind + Oasis</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

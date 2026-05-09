@@ -198,6 +198,8 @@ def start_simulation_mode(
     sandbox_image: str = "python:3.12-slim",
     sandbox_network: str = "none",
     aut_model: str | None = None,
+    aut_mode: str = "llm-primary",
+    research_telemetry: bool = False,
     pre_campaign_turns: list[dict[str, Any]] | None = None,
     dm_campaign: Any = None,
     generative: bool = False,
@@ -1453,6 +1455,24 @@ def start_simulation_mode(
             description=f"{persona} persona | max {max_turns} turns",
         )
 
+    # ── Substrate telemetry (Phase 0) ────────────────────────────────────
+    # When --research is set with --aut-mode substrate-primary, write
+    # per-tick EC/NAc/drive snapshots to a JSONL alongside the regular
+    # sim trace. See docs/plans/grounded_language_acquisition.md Phase 0.
+    aut_substrate_telemetry = None
+    if research_telemetry and aut_mode == "substrate-primary":
+        try:
+            from maxim.simulation.substrate_telemetry import SubstrateTelemetry
+
+            _telem_path = sim_workspace / f"substrate_telemetry_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
+            aut_substrate_telemetry = SubstrateTelemetry(
+                log_path=str(_telem_path),
+                agent_id=getattr(aut_memory_hub, "agent_id", None) or "sim_aut",
+            )
+            logger.info("Phase 0 substrate telemetry: %s", _telem_path)
+        except Exception as e:
+            logger.warning("Failed to enable substrate telemetry: %s", e)
+
     # ── Start AUT thread ─────────────────────────────────────────────────
     aut_error: list[Exception] = []
 
@@ -1480,6 +1500,8 @@ def start_simulation_mode(
                     imagination_trigger=aut_imagination_trigger,
                     bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
                     thought_gate=_aut_thought_gate,
+                    aut_mode=aut_mode,
+                    substrate_telemetry=aut_substrate_telemetry,
                 )
         except Exception as e:
             aut_error.append(e)

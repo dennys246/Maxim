@@ -785,6 +785,7 @@ class LLMWorker:
         skip_exploration: bool = False,
         is_sleeping: bool = False,
         protocol_context: str = "",
+        failed_tools: list[str] | None = None,
     ) -> bool:
         """
         Submit context for LLM processing (non-blocking).
@@ -831,6 +832,7 @@ class LLMWorker:
             protocol_context=protocol_context,
             acting_coach=self.acting_coach,
             entity_spec=self.entity_spec,
+            failed_tools=failed_tools or [],
         )
 
         if self._pool is not None:

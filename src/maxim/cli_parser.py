@@ -379,6 +379,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "Orchestrator/research agents use --language-model.",
     )
     sim.add_argument(
+        "--aut-mode",
+        type=str,
+        default="llm-primary",
+        dest="aut_mode",
+        choices=["llm-primary", "substrate-primary"],
+        metavar="MODE",
+        help="[experimental] AUT action-selection mode. 'llm-primary' (default) "
+        "uses the LLM to propose actions. 'substrate-primary' skips the LLM "
+        "and proposes via NAc.recommend_action() — Phase -1 of the grounded "
+        "language acquisition program. See "
+        "docs/plans/grounded_language_acquisition.md.",
+    )
+    sim.add_argument(
         "--campaign",
         type=str,
         default=None,
