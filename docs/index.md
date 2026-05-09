@@ -2,7 +2,9 @@
 
 Comprehensive documentation for Maxim's systems and subsystems.
 
-**Version:** 1.0.0 | **Last updated:** 2026-04-09
+**Version:** 1.0.0 | **Last updated:** 2026-05-09
+
+> **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The federated **Maxim Hivemind + Oasis** layer (in plan, not yet implemented) lets multiple Maxims share distilled bio-substrate across instances. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the new docs.
 
 ## Quick Links
 
@@ -12,6 +14,8 @@ Comprehensive documentation for Maxim's systems and subsystems.
 - [User Guides](user/index.md) — End-user documentation (install, CLI, API, modes)
 - [Troubleshooting](troubleshooting/index.md) — Runbooks and diagnostics
 - [Plans](plans/README.md) — Active roadmap and future plans
+- **[Substrate-Primary Mode](substrate_primary.md)** — NEW: parallel architecture where the substrate carries action selection without LLM mediation
+- **[Maxim Hivemind + Oasis](hivemind.md)** — NEW: federated bio-substrate layer for cross-instance learning
 
 ---
 
@@ -23,12 +27,19 @@ Comprehensive documentation for Maxim's systems and subsystems.
 |----------|-------------|
 | [Default Network](default_network.md) | Reactive behavior layer, behaviors, thalamic gating |
 | [Memory](memory.md) | Hippocampus, ATL, Angular Gyrus, MemoryHub, store protocols |
-| [Decisions](decisions.md) | NAc causal inference, outcome prediction |
+| [Decisions](decisions.md) | NAc causal inference, outcome prediction, **substrate-primary action recommendation** |
 | [Time](time.md) | SCN temporal indexing, rhythmic patterns |
 | [Embodiment](embodiment_guide.md) | SEM protocol, entity specs, pain, motor learning |
 | [Simulation](simulation.md) | Simulation modes, scenarios, campaigns, benchmarks |
 | [Memory Layer Lifecycle](memory-layer-lifecycle.md) | Tier progression: FORMING -> SHORT_TERM -> LONG_TERM + WorkingMemorySet |
 | [Memory System Interactions](memory-system-interactions.md) | Threading model, RWLock, ContextPool, MemoryHub coordination |
+
+### Architecture & Modes
+
+| Document | Description |
+|----------|-------------|
+| [Substrate-Primary Mode](substrate_primary.md) | NEW (2026-05-09) — parallel AUT mode where bio-substrate selects actions without LLM. Phase -1 prototype shipped; Phase 0 harness in 1.0 (B5). |
+| [Maxim Hivemind + Oasis](hivemind.md) | NEW (2026-05-09) — federated peer-to-peer substrate-sharing layer. Hivemind = collective cognition; Oasis = persistent substrate-primary instance that distills LLM-AUT contributions. Ships 1.1+. |
 
 ### Perception & Attention
 
