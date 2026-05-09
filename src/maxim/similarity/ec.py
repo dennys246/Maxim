@@ -75,6 +75,19 @@ class ECConfig:
     # Tuned via P1 sweep: paraphrase-mpnet-base-v2 @ 0.40 → 93.5% collapse, 3.3% cross-cluster.
     pattern_complete_threshold: float = 0.40
 
+    # Modalities for which pattern_complete_or_separate skips the
+    # running-mean centroid update. Frozen-prototype semantics: the
+    # first embedding to reach a node fixes its centroid, subsequent
+    # matches don't shift it. Required for the "interoception"
+    # modality (Phase 0 of grounded_language_acquisition.md) — without
+    # it the running-mean centroid tracks smooth drive drift through
+    # the trajectory and collapses every snapshot into one cluster
+    # (see docs/experiments/13_phase0_harness_smoke.md "smooth drive
+    # drift collapses to one cluster"). Declared at the EC config
+    # layer, not at the call site, so any future encoder routing
+    # through "interoception" automatically inherits the policy.
+    frozen_centroid_modalities: frozenset[str] = frozenset({"interoception"})
+
 
 @dataclass
 class PatternResult:
@@ -200,6 +213,12 @@ class EntorhinalCortex:
         node (pattern completion). Otherwise creates a new node
         (pattern separation).
 
+        For modalities listed in ``config.frozen_centroid_modalities``
+        (e.g. ``"interoception"``) the matched node's stored embedding
+        is left untouched on completion — the first embedding to reach
+        a node is the prototype. For all other modalities the centroid
+        is updated as a running mean.
+
         Args:
             embedding: Dense vector from LinguisticEncoder.
             modality: Substrate modality ("text" or "vision").
@@ -229,6 +248,13 @@ class EntorhinalCortex:
                 best_node = node_id
 
         if best_node is not None:
+            # Frozen-prototype modalities skip the centroid update —
+            # the first embedding to reach a node fixes the prototype.
+            # See ECConfig.frozen_centroid_modalities for rationale.
+            if modality in self.config.frozen_centroid_modalities:
+                self._substrate_node_counts[best_node] = self._substrate_node_counts.get(best_node, 1) + 1
+                return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
+
             # Update centroid: running mean of all embeddings that completed here.
             # new_centroid = (old_centroid * n + new_embedding) / (n + 1)
             stored_emb, stored_mod = self._substrate_nodes[best_node]
