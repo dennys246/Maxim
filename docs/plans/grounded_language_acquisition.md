@@ -55,9 +55,11 @@ The user's first instinct — "wire microGPT from scratch and let NAc supervise 
 
 So: do the cheap thesis-tests first, then earn the right to the expensive build.
 
-## Phase -1 — Substrate action-generation prototype (~1 week, gate before all other phases)
+## Phase -1 — Substrate action-generation prototype (~1 week, gate before all other phases) — **GATE CLEARED** (2026-05-09)
 
 **Question (the most important one in this plan):** Can the substrate generate even a single non-reflex action without LLM proposal?
+
+**Result:** **YES.** Shipped via PR #228 (commits `75d1112` + `b02a070`). `NAc.recommend_action()` produces an action proposal from causal-link confidence + reward bias + drive-relevance heuristic; `propose_via_substrate()` in [agent_loop.py](../../src/maxim/runtime/agent_loop.py) wraps that into an `LLMProposal` for the executor. 11 unit tests in [tests/unit/test_nac_recommend_action.py](../../tests/unit/test_nac_recommend_action.py) + 11 integration tests in [tests/integration/test_substrate_primary_aut.py](../../tests/integration/test_substrate_primary_aut.py). Phase 0 unblocked.
 
 **Why this comes before Phase 0:** the bio-substrate readiness audit (2026-05-09) scored **2/10 for action selection**. NAc predicts and biases but does not propose. DN does autonomous gaze but no tool invocation. Reflexes cover only 2 thermal cases. **There is no `decision_engine.decide()` that does not go through an LLM proposal today.** Phase 0 strips language from the AUT prompt but leaves the LLM as motor-primitive selector — it does NOT prove the substrate can act on its own. This phase does.
 
@@ -79,7 +81,22 @@ So: do the cheap thesis-tests first, then earn the right to the expensive build.
 
 **Calibration:** this phase is a Boolean. It either produces an action or doesn't. No nuance, no curves, no instrumentation overhead. If it works, Phase 0 proceeds. If it doesn't, the plan stops and refactors.
 
-## Phase 0 — Pre-linguistic cradle baseline (~2 weeks, ships finding regardless)
+## Phase 0 — Pre-linguistic cradle baseline (~2 weeks, ships finding regardless) — **HARNESS SHIPPED** (2026-05-09); validation pending
+
+**Status:** harness shipped via PR #228 (commits `b02a070` + `78d9683`); validation blocked on Roy harness + EC sensor-encoding gap.
+
+**Harness deliverables (shipped):**
+- `cradle_prelinguistic` arc in [simulation/arcs.py](../../src/maxim/simulation/arcs.py) — same developmental scaffolding as `cradle`, all English instructions stripped.
+- Motor-only AUT prompt renderer in [prompts/motor_only_aut.py](../../src/maxim/prompts/motor_only_aut.py) — numeric drives + sensors + bare tool names; English-leak sentinels in tests.
+- Per-tick `SubstrateTelemetry` JSONL writer in [simulation/substrate_telemetry.py](../../src/maxim/simulation/substrate_telemetry.py) — captures EC node count, NAc reward bias, drive states, active proposal. Fail-soft (never crashes the loop).
+- `--research` with `--aut-mode substrate-primary` enables telemetry; routes through `start_simulation_mode` (not the multi-agent paper harness).
+- 13 harness tests in [tests/integration/test_phase0_harness.py](../../tests/integration/test_phase0_harness.py).
+- Smoke run cleared: 38 actions, 61 causal links, hunger drift 0.0 → 0.65 over 5 turns. See [docs/experiments/13_phase0_harness_smoke.md](../experiments/13_phase0_harness_smoke.md).
+
+**Validation gaps (pending):**
+- **EC sensor-encoding entry point** — substrate-primary bypasses `LinguisticEncoder`'s text-percept path, so EC `node_count` stayed at 0 in the smoke run. Phase 0's cluster-formation measurement is currently unmeasurable. Next concrete work item; small (~1-2 sessions).
+- **Roy long-horizon harness** — Phase 0 validation needs sim-years of subjective experience across persistent substrate sessions. Designed but unbuilt; tracked as the gating dependency for Phase 0/1 validation, persona convergence, and D&D survival testing.
+- **Pre-linguistic orchestrator narration** — the LLM-DM still emits English narration percepts the substrate-primary AUT ignores. Phase 0's "no English" goal is met on the AUT side but not the orchestrator side; eventually the orchestrator should produce sensor writes only (or be silenced entirely).
 
 **Question:** Can EC/ATL/NAc form coherent, persistent concepts with zero linguistic supervision?
 
@@ -293,6 +310,38 @@ Phase 4: comparison harness alongside existing Roy machinery; no new core code.
 **1.0 scope add:** Phase -1 + Phase 0 harness (~600-700 LOC across NAc.recommend_action, --aut-mode flag, motor-only AUT prompt template, telemetry snapshots, single-tick test harness). Behind experimental flag; doesn't touch user-facing 1.0 surface; doesn't gate 1.0 docs work.
 
 **Companion change:** `MAXIM_TOOL_FAILURE_HINTS` default flipped to OFF (was ON post-MVP). Validation showed no benefit; opt-in only for further experimentation. Documented in the "Pretrained-LLM crutches" table above.
+
+### 2026-05-09 — Phase -1 GATE CLEARED + Phase 0 harness SHIPPED (PR #228)
+
+Two-session sprint after the 2026-05-09 strategic pivot.
+
+**Phase -1 — substrate action-generation Boolean: PASS.**
+- `NAc.recommend_action(agent_id, available_tools, current_drives) -> dict | None` ([decisions/nac.py](../../src/maxim/decisions/nac.py)) scores each tool by causal-link confidence + reward bias + drive-relevance heuristic (substring + affinity table for cold-start). Returns None below threshold — silent IDLE, never random.
+- `propose_via_substrate()` ([runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py)) wraps the recommendation as an `LLMProposal` with `strategy_used="substrate-primary"` and dispatches via the standard executor path.
+- `--aut-mode {llm-primary,substrate-primary}` plumbed through `cli` → `start_simulation_mode` → `run_agentic_loop`. In substrate-primary mode the LLM submit branch is gated off; no inference call is ever issued.
+- 22 tests across unit + integration. LLMRouter.dispatch tripwire confirms substrate path never touches the LLM.
+
+**Phase 0 — harness shipped:**
+- `cradle_prelinguistic` arc + `select_arc_for_goal` exact-name resolution.
+- Motor-only AUT prompt renderer.
+- `SubstrateTelemetry` JSONL writer wired into the substrate-primary tick.
+- `--research` semantic split: with `--aut-mode substrate-primary` it means "telemetry on" (not the multi-agent paper harness).
+
+**Smoke run cleared the success criterion:**
+```
+maxim --sim cradle_prelinguistic --embodiment bodies/infant_humanoid \
+      --aut-mode substrate-primary --research --interactive false \
+      --sim-max-turns 5
+```
+38 actions, 61 causal links, hunger drift 0.0 → 0.65, 195 telemetry rows. Substrate proposed `sense_food_source` on the cold-start drive-affinity heuristic (food substring matched hunger affinity).
+
+**Surprising findings (full write-up: [13_phase0_harness_smoke.md](../experiments/13_phase0_harness_smoke.md)):**
+1. **Substrate-primary mode owns its own clock.** First smoke run produced 0 actions because nothing was polling the embodiment — the LLM-primary path drives the embodiment via `EmbodimentPerceptSource.next_percept()` → `evaluate_failures()`, but substrate-primary skips that. Fixed by calling `evaluate_failures()` inside `propose_via_substrate`. Documented as a structural property: anything the LLM-primary path implicitly relied on (drive drift, percept polling) needs to be re-wired for substrate-primary.
+2. **Substrate-primary bypasses `LinguisticEncoder`.** EC `node_count` stayed at 0 throughout the smoke run because substrate-primary doesn't feed text percepts through the encoding path. Phase 0's cluster-formation measurement is blocked on a sensor-percept encoding entry point — next work item.
+3. **Drive-affinity heuristic + scene tools.** The infant body's `pick_up` lost to the cradle scene's `sense_food_source` because the affinity table matches "food" substrings. Same mechanism as the test suite caught with `pick_up_food`, just a different tool name. The heuristic is a Phase -1 placeholder; the full plan calls for replacement with EC embedding similarity once Phase 0 sensor-encoding lands.
+4. **Pre-existing AttributeError.** End-of-run warning `'GenerativeCampaignResult' object has no attribute 'turns_completed'` surfaces on every termination path. Pre-existing bug in the generative campaign runner; flagged for future cleanup.
+
+**1.0 implication:** B5's first ~700 LOC ships as planned. Hivemind shareability (~660 LOC) remains pending. The next concrete substrate-primary work item is the EC sensor-encoding entry point (small) — that's the cheapest experiment that converts the harness into an actual Phase 0 measurement.
 
 ---
 

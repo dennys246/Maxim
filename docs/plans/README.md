@@ -24,6 +24,7 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 | **Bio-system stabilization** | Protocol enrichment (freeze-worthy interfaces), SCN oscillator feedback (close the loop), SEM world enrichment Phases 2-3 (rich environments) | Pending |
 | **Sensorimotor grounding** | Cradle of Artificial Civilization (fire hurts, learned through sensors not language) | Pending |
 | **Pipeline completion** | ToolPainBridge temporal migration (~50 LOC), episode semantic shift (Stage 2) | **P1 SHIPPED** (temporal events), P2 pending |
+| **B5 substrate-primary** | Phase -1 + Phase 0 harness + Hivemind shareability | **Phase -1 + Phase 0 harness SHIPPED** (PR #228, 2026-05-09); Hivemind shareability pending |
 | **Cleanup** | Probe shim removal, dead code, DamageEntityTool shim, modulator sensors, health derived, raw constructor enforcement | **C1+C2+C3 SHIPPED** (PR #196, 2026-04-26); C4-C6 pending (0.9 deprecation cycle) |
 | **Docs** | Agent memory transfer, API/CLI review, final docs pass | Pending |
 
@@ -33,12 +34,15 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 - ✅ Behavioral convergence: 41/41 hypotheses, all 3 tiers
 - ✅ Generalizable embodiment (E0): `--embodiment` works with `--sim`
 - ✅ 0.7+0.8 feature completion: all tracks shipped
-- ��� P5 stress persistence: 1.0 gate CLOSED (2026-04-21)
+- ✅ P5 stress persistence: 1.0 gate CLOSED (2026-04-21)
+- ✅ B5 substrate-primary Phase -1 + Phase 0 harness SHIPPED (PR #228, 2026-05-09) — substrate produces non-LLM actions; cradle-prelinguistic harness writes per-tick telemetry
 - **PARTIAL PASS**: Cross-session validation (V1) — 3 memories/turn on resume, predictions/concepts pending
 - Pending: Bio-system protocol enrichment (B1) — interfaces freeze at 1.0
 - Pending: SCN oscillator feedback (B2) — close the last open feedback loop
 - Pending: SEM world enrichment Phases 2-3 (B3) — rich learning environments
 - Pending: Cradle experiment (B4) — sensorimotor learning without language
+- Pending: B5 Phase 0 sensor-encoding entry point — converts the harness into a real Phase 0 measurement (small, ~1-2 sessions)
+- Pending: B5 Hivemind shareability infrastructure (~660 LOC) — substrate snapshot bundle + merge functions + provenance tags
 - Pending: API/CLI surface review + agent memory transfer docs
 
 ## Active (top-level)
@@ -46,6 +50,8 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 Plans on the 1.0 critical path or actively shipping:
 
 - [v1_refinement.md](v1_refinement.md) — **1.0 release plan.** Validation + bio-system stabilization + sensorimotor grounding + pipeline completion + cleanup + docs + contract clarification (Section 7). 1.1 track index is Section 8.
+- [grounded_language_acquisition.md](grounded_language_acquisition.md) — **Phase -1 + Phase 0 harness SHIPPED** (PR #228, 2026-05-09). Substrate-primary AUT mode is real; cradle-prelinguistic harness writes per-tick telemetry. Pending in 1.0: EC sensor-encoding entry point (next concrete work item) + Hivemind shareability infrastructure. Phase 0 *validation* + Phase 1 + Phase 2 are 1.1+ (1.1-T7).
+- [maxim_hivemind.md](maxim_hivemind.md) — Companion to grounded_language_acquisition. Three-layer architecture (LLM-AUT default + Maxim Oasis substrate-primary + Maxim Hivemind P2P). Phase -1 + Phase 0 harness shipped under B5; Hivemind shareability (~660 LOC) pending in 1.0; Oasis software in 1.1; full Hivemind P2P in 1.2.
 - [sem_world_enrichment.md](sem_world_enrichment.md) — **Phases 1+2 SHIPPED.** Phase 3 (composable body archetypes) partial — archetype YAMLs in `_data/components/archetypes/`, no avatar migration yet. 1.0 vs 1.1 scope decision pending.
 - [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) — **Stage 1 SHIPPED** (PR #217, 2026-04-30): additive `--mode` flag + deprecation warnings on `--persona` and `register_persona`. Stages 2-6 (resolve testing strategy, dispatch hook migration, public API migration, hard-delete, docs+memory) are 1.1 deprecation cleanup work.
 - [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) — **Field reservations SHIPPED** (PR #216, 2026-04-30) under V1 Phase A clean-pass branch. Full Stages 0-3 implementation + Stages 4-5 deferred to 1.1+ since substrate alone reproduced V1 cross-session recall.
@@ -86,7 +92,7 @@ Design work preserved in [deferred/](deferred/). Each has an explicit "revive wh
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — Capability-aware routing. Revive when heterogeneous mesh.
 - [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md) — Async router. Revive if head-of-line blocking observed.
 - [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md) — Fair-share scheduling. Revive if rate limiting insufficient.
-- ~~deferred/grounded_language_acquisition.md~~ → **PROMOTED** to [grounded_language_acquisition.md](grounded_language_acquisition.md) (2026-05-09). Status changed: parallel-mode architecture for substrate-primary AUT. Phase -1 (substrate action-generation prototype) + Phase 0 harness scoped into 1.0 as B5 (~600-700 LOC, experimental flag); full Phase 0 validation + Phase 1 + Phase 2 in 1.1+ (1.1-T7). Trigger: 2026-05-09 audit found 60-70% of recent engineering effort going to LLM-mitigation scaffolding (~845 LOC of band-aids) rather than substrate work; the parallel-mode pivot is the structural fix. D&D campaign survival is the bidirectional kill criterion (substrate failure OR simulation-environment failure). The existing LLM-AUT path stays as the user-facing default.
+- ~~deferred/grounded_language_acquisition.md~~ → **PROMOTED** to [grounded_language_acquisition.md](grounded_language_acquisition.md) (2026-05-09). **Phase -1 GATE CLEARED + Phase 0 harness SHIPPED** (PR #228, 2026-05-09): substrate produces non-LLM actions; `cradle_prelinguistic` arc + motor-only AUT prompt + per-tick telemetry; smoke run passed (38 actions, 61 causal links, hunger drift 0.0 → 0.65). Hivemind shareability (~660 LOC) and Phase 0 sensor-encoding entry point remain as 1.0 work; full Phase 0 validation + Phase 1 + Phase 2 in 1.1+ (1.1-T7). Trigger: 2026-05-09 audit found 60-70% of recent engineering effort going to LLM-mitigation scaffolding (~845 LOC of band-aids) rather than substrate work; the parallel-mode pivot is the structural fix. D&D campaign survival is the bidirectional kill criterion (substrate failure OR simulation-environment failure). The existing LLM-AUT path stays as the user-facing default.
 
 ## Archive
 
