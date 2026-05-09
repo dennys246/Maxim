@@ -691,6 +691,19 @@ def propose_via_substrate(
     if not available_tools:
         return None
 
+    # Substrate-primary mode owns its own clock — without an LLM submit
+    # path there's no other code that calls into the embodiment, so
+    # drive drift would never advance. Ticking evaluate_failures() here
+    # mirrors what EmbodimentPerceptSource.next_percept does on the
+    # llm-primary path: applies wall-clock drift via tick_vital_drift,
+    # then evaluates failures (which publish pain signals to NAc).
+    embodiment = getattr(executor, "embodiment", None)
+    if embodiment is not None:
+        try:
+            embodiment.evaluate_failures()
+        except Exception:
+            logger.debug("substrate-primary tick: evaluate_failures raised", exc_info=True)
+
     drives = _read_drive_states(executor)
 
     recommendation = nac.recommend_action(
@@ -749,6 +762,8 @@ def run_agentic_loop(
     bio_enrichment_pipeline: Any | None = None,  # BioEnrichmentPipeline for percept enrichment (L1)
     thought_gate: Any | None = None,  # ThoughtGate for PFC deliberation gating
     aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
+    substrate_telemetry: Any
+    | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -2606,6 +2621,22 @@ def run_agentic_loop(
                             f"confidence={substrate_proposal.confidence:.2f} "
                             f"reasoning={substrate_proposal.reasoning[:80]}",
                         )
+
+                # Phase 0 telemetry — fires every tick (proposal or
+                # IDLE). Fail-soft: telemetry exceptions never crash
+                # the loop. See simulation/substrate_telemetry.py.
+                if substrate_telemetry is not None:
+                    try:
+                        _ec_ref = getattr(memory_hub, "ec", None) if memory_hub is not None else None
+                        substrate_telemetry.snapshot(
+                            step=step_num,
+                            nac=_loop_nac,
+                            ec=_ec_ref,
+                            executor=executor,
+                            proposal=substrate_proposal,
+                        )
+                    except Exception:
+                        logger.debug("substrate telemetry callback raised", exc_info=True)
 
         if aut_mode != "substrate-primary" and llm_worker and ctrl.pending_proposal is None:
             now = time.time()
