@@ -502,6 +502,135 @@ class TestSensorEncodingIntoEC:
         )
 
 
+class TestSubstrateNarrationSuppression:
+    """Track 3 of grounded_language_acquisition.md Phase 0+: when the
+    AUT runs in substrate-primary mode, the SimulationBridge MUST NOT
+    inject orchestrator narration into the AUT's text-percept stream.
+
+    The cradle_prelinguistic arc strips English from
+    ``phase.instruction`` strings, but the orchestrator LLM still
+    composes English into ``send_message`` calls. Track 3 silences
+    that final English path on the AUT side without disturbing the
+    orchestrator's runtime semantics (turn counting, settle window,
+    action observation).
+    """
+
+    def test_bridge_suppresses_inject_cli_in_substrate_primary(self, monkeypatch):
+        """``send_and_wait`` does NOT call ``inject_cli`` when the
+        bridge was constructed with ``aut_mode='substrate-primary'``.
+
+        Spy on the percept source's injection method — the substrate-
+        primary AUT reads sensors directly from ``executor.embodiment``
+        so any text routed through the conversational source would be
+        Phase 0 contamination.
+        """
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(
+            response_timeout=0.5,
+            settle_s=0.1,
+            aut_mode="substrate-primary",
+        )
+
+        injected: list[str] = []
+
+        def _spy(text, salience=0.8, novelty=0.7):  # noqa: ANN001 — match real signature
+            injected.append(text)
+
+        monkeypatch.setattr(bridge.percept_source, "inject_cli", _spy)
+
+        result = bridge.send_and_wait(
+            "You wake to the gentle rustle of leaves overhead. The air is warm.",
+            timeout=0.5,
+            settle_s=0.1,
+        )
+
+        assert injected == [], (
+            f"substrate-primary bridge must NOT inject orchestrator text into "
+            f"the AUT percept stream. inject_cli was called with: {injected!r}"
+        )
+        # Send_and_wait still completed normally so the orchestrator
+        # state machine continues working.
+        assert result["turn"] == 1
+        assert result["timed_out"] is True  # No AUT actions in this test harness
+
+    def test_bridge_default_mode_still_injects(self, monkeypatch):
+        """Regression guard: llm-primary mode is unchanged — narration
+        still reaches the AUT percept stream.
+        """
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(
+            response_timeout=0.5,
+            settle_s=0.1,
+            # Default aut_mode='llm-primary'
+        )
+
+        injected: list[str] = []
+
+        def _spy(text, salience=0.8, novelty=0.7):  # noqa: ANN001
+            injected.append(text)
+
+        monkeypatch.setattr(bridge.percept_source, "inject_cli", _spy)
+
+        bridge.send_and_wait(
+            "You wake to the gentle rustle of leaves overhead.",
+            timeout=0.5,
+            settle_s=0.1,
+        )
+
+        assert len(injected) == 1, (
+            f"llm-primary bridge must inject orchestrator text to drive AUT response. Got {injected!r}"
+        )
+
+    def test_substrate_primary_no_english_sentinel_in_percept_stream(self, monkeypatch):
+        """End-to-end Track 3 contract: after several orchestrator
+        ``send_and_wait`` calls in substrate-primary mode, the AUT's
+        ``ConversationalSource`` percept queue contains no English
+        sentinel words.
+
+        Mirrors ``TestMotorOnlyPrompt::test_compose_percept_has_no_english_narration`` —
+        the same English-leak guard, but on the live percept stream
+        rather than the prompt template.
+        """
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(
+            response_timeout=0.3,
+            settle_s=0.1,
+            aut_mode="substrate-primary",
+        )
+
+        # Drive a few "narration" turns. None should reach the percept
+        # source.
+        for narration in [
+            "You feel the warmth of the cradle wrapping around you.",
+            "The mother hums softly in the distance.",
+            "Light filters through the leaves above.",
+        ]:
+            bridge.send_and_wait(narration, timeout=0.3, settle_s=0.1)
+
+        # Drain whatever percepts the source has buffered. If any
+        # text-modality percept exists, scan for sentinel words.
+        BANNED = ["you", "your", "the", "feel", "warm", "mother", "soft", "light"]
+        leaked: list[str] = []
+        for _ in range(20):  # Bounded drain
+            try:
+                if bridge.percept_source.is_exhausted():
+                    break
+                p = bridge.percept_source.next_percept()
+                if p is None:
+                    break
+                content = (getattr(p, "content", "") or getattr(p, "transcript_chunk", "") or "").lower()
+                for banned in BANNED:
+                    if banned in content:
+                        leaked.append(f"{banned!r} in {content!r}")
+            except Exception:
+                break
+
+        assert leaked == [], f"substrate-primary mode leaked English into percept stream: {leaked!r}"
+
+
 class TestResearchRoutingForSubstratePrimary:
     """``--research --aut-mode substrate-primary`` keeps the regular
     sim path; the multi-agent paper-writing harness is reserved for

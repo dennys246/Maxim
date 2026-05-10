@@ -327,6 +327,7 @@ def start_simulation_mode(
     bridge = SimulationBridge(
         response_timeout=response_timeout,
         stop_event=stop_event,
+        aut_mode=aut_mode,
     )
 
     # ── Wait for LLM to be ready (avoid cold-start stale drops) ────────
