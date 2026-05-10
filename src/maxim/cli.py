@@ -557,6 +557,13 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         from maxim.bench import run_bench_subcommand
 
         return run_bench_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "roy":
+        # Roy harness — persona-convergence crucible utilities.
+        # Currently exposes `roy diff <session_a> <session_b>`, which
+        # delegates to maxim.analysis.substrate_diff.
+        from maxim.roy import run_roy_subcommand
+
+        return run_roy_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "peer":
         # `peer connect/show/forget` go to the peer config module;
         # `peer test` is a diagnostic that lives with `doctor`.
