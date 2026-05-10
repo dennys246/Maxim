@@ -1,0 +1,39 @@
+# Roy curriculum smoke fixture — minimal cradle warmup.
+#
+# Used by docs/plans/grounded_language_acquisition.md "Roy long-horizon
+# harness" smoke runs and tests/integration/test_curriculum_runner.py.
+# Three CLI percepts that nudge the AUT through a brief sensorimotor
+# cycle without invoking a narrator LLM.
+
+name: roy_cradle_warmup
+description: |
+  Tiny pre-linguistic warmup. Three percepts of escalating salience —
+  enough for the substrate to form a few episodes / NAc links, not so
+  many that a smoke run takes minutes.
+
+timing: step_based
+
+percepts:
+  - at: 0
+    source: cli
+    cli_input: "soft fabric brushing your skin."
+    salience: 0.6
+    novelty: 0.7
+    metadata:
+      scenario_tag: warmup_contact
+
+  - at: 1
+    source: cli
+    cli_input: "warm sensation rises in your belly."
+    salience: 0.7
+    novelty: 0.6
+    metadata:
+      scenario_tag: warmup_thermal
+
+  - at: 2
+    source: cli
+    cli_input: "the air around you stills."
+    salience: 0.5
+    novelty: 0.5
+    metadata:
+      scenario_tag: warmup_quiet

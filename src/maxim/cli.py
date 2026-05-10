@@ -1321,6 +1321,31 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
             )
             sys.exit(0 if result.review_verdict != "reject" else 1)
 
+        # ── Auto-detect Roy curriculum YAMLs ──
+        # A curriculum YAML has a top-level ``stages:`` list and chains
+        # multiple sims together with substrate persistence. See
+        # ``simulation/curriculum_runner.py``. Detected BEFORE the DM
+        # path so curriculum + DM never collide on the same file.
+        if _is_yaml:
+            _yaml_path = Path(sim_path).resolve()
+            if _yaml_path.exists():
+                try:
+                    import yaml as _yaml
+
+                    with open(_yaml_path) as _yf:
+                        _curr_raw = _yaml.safe_load(_yf)
+                except Exception:
+                    _curr_raw = None
+                if (
+                    isinstance(_curr_raw, dict)
+                    and isinstance(_curr_raw.get("stages"), list)
+                    and "campaign" not in _curr_raw  # disambiguate from DM
+                ):
+                    from maxim.simulation.curriculum_runner import run_curriculum
+
+                    curriculum_result = run_curriculum(_yaml_path)
+                    sys.exit(0 if curriculum_result.aborted_at is None else 1)
+
         # ── Auto-detect DM campaigns from YAML ──
         # If --sim points to a YAML with 'campaign:' + 'encounters:' keys, it's a DM campaign.
         # Also triggered by --dm flag with a goal string (future: generative DM).
