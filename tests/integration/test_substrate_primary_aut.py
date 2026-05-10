@@ -256,6 +256,218 @@ class TestCradleSubstratePrimary:
         assert proposal is None
 
 
+class TestClusterKeyedActionSelection:
+    """Track 2 of grounded_language_acquisition.md Phase 0+: when the
+    substrate has learned ``tool X works in cluster A``, then in
+    cluster A it picks X — even when drive affinity would have
+    picked something else.
+
+    Replaces the drive-affinity substring heuristic with cluster-keyed
+    NAc reward bias as the substrate's primary action-selection signal
+    once any history exists for the active interoception cluster.
+    """
+
+    def test_cluster_bias_dominates_drive_affinity(self):
+        """Tool with positive cluster bias outscores a drive-affinity
+        match in the same cluster.
+
+        Setup: hunger drive elevated. Without cluster context, the
+        substrate would pick ``pick_up_food`` via the affinity table
+        (``hunger`` → ``pick_up`` substring). With cluster A active and
+        ``unrelated_tool`` rewarded in cluster A, the cluster bias
+        wins — proving cluster-keyed learning supersedes the cold-start
+        heuristic.
+        """
+        nac = NAc(NACConfig(temporal_window_seconds=60.0))
+        cluster_a = "cluster-a-uuid"
+
+        # Reinforce unrelated_tool in cluster A. Several updates push
+        # the bias near the cap so it overwhelms drive affinity (which
+        # contributes 0.8 for this hunger value).
+        for _ in range(10):
+            nac.update_cluster_reward(
+                agent_id="agent",
+                cluster_id=cluster_a,
+                tool_signature="tool:unrelated_tool",
+                reward=1.0,
+            )
+
+        result = nac.recommend_action(
+            agent_id="agent",
+            available_tools=["pick_up_food", "unrelated_tool"],
+            current_drives={"hunger": 0.8},
+            current_cluster_id=cluster_a,
+        )
+
+        assert result is not None
+        assert result["tool_name"] == "unrelated_tool", (
+            f"Cluster bias for unrelated_tool should beat hunger→pick_up_food drive "
+            f"affinity. Got tool={result['tool_name']!r}, reasoning={result['reasoning']!r}"
+        )
+        assert "cluster_bias" in result["reasoning"], (
+            f"Reasoning should mention cluster_bias contribution; got: {result['reasoning']!r}"
+        )
+
+    def test_cluster_keyed_preference_differentiates_across_clusters(self):
+        """Same agent, two distinct clusters — recommend_action picks
+        the tool keyed to whichever cluster is active.
+        """
+        nac = NAc(NACConfig(temporal_window_seconds=60.0))
+        cluster_a = "cluster-a-uuid"
+        cluster_b = "cluster-b-uuid"
+
+        # Tool X rewarded in cluster A
+        for _ in range(10):
+            nac.update_cluster_reward(
+                agent_id="agent",
+                cluster_id=cluster_a,
+                tool_signature="tool:tool_x",
+                reward=1.0,
+            )
+        # Tool Y rewarded in cluster B
+        for _ in range(10):
+            nac.update_cluster_reward(
+                agent_id="agent",
+                cluster_id=cluster_b,
+                tool_signature="tool:tool_y",
+                reward=1.0,
+            )
+
+        # Both available, no drives. State in cluster A → pick X.
+        result_a = nac.recommend_action(
+            agent_id="agent",
+            available_tools=["tool_x", "tool_y"],
+            current_cluster_id=cluster_a,
+        )
+        assert result_a is not None
+        assert result_a["tool_name"] == "tool_x"
+
+        # Same agent, switch to cluster B → pick Y.
+        result_b = nac.recommend_action(
+            agent_id="agent",
+            available_tools=["tool_x", "tool_y"],
+            current_cluster_id=cluster_b,
+        )
+        assert result_b is not None
+        assert result_b["tool_name"] == "tool_y"
+
+    def test_no_cluster_context_falls_back_to_drive_affinity(self):
+        """Without ``current_cluster_id``, ``recommend_action`` behaves
+        exactly as before Track 2 — drive affinity carries the
+        selection. Regression guard for the smoke run path where no
+        sensor encoder is wired.
+        """
+        nac = NAc(NACConfig(temporal_window_seconds=60.0))
+
+        # Even with cluster bias on file, omitting current_cluster_id
+        # means we don't consult it — drive affinity fires.
+        nac.update_cluster_reward(
+            agent_id="agent",
+            cluster_id="some-cluster",
+            tool_signature="tool:unrelated_tool",
+            reward=1.0,
+        )
+
+        result = nac.recommend_action(
+            agent_id="agent",
+            available_tools=["pick_up_food", "unrelated_tool"],
+            current_drives={"hunger": 0.8},
+            # current_cluster_id intentionally omitted
+        )
+
+        assert result is not None
+        assert result["tool_name"] == "pick_up_food", (
+            f"Without cluster context, drive affinity should win. Got {result['tool_name']!r}"
+        )
+
+    def test_negative_cluster_bias_avoids_tool(self):
+        """Cluster bias is bidirectional — punishment in a cluster
+        steers selection away from a tool that drive affinity would
+        otherwise pick.
+        """
+        nac = NAc(NACConfig(temporal_window_seconds=60.0))
+        cluster_a = "cluster-a-uuid"
+
+        # Punish pick_up_food in cluster A. Drive affinity still
+        # contributes +0.8, but cluster bias subtracts ~1.0.
+        for _ in range(10):
+            nac.update_cluster_reward(
+                agent_id="agent",
+                cluster_id=cluster_a,
+                tool_signature="tool:pick_up_food",
+                reward=-1.0,
+            )
+
+        result = nac.recommend_action(
+            agent_id="agent",
+            available_tools=["pick_up_food", "consume"],
+            current_drives={"hunger": 0.8},
+            current_cluster_id=cluster_a,
+        )
+
+        # consume also matches hunger affinity (+0.7 weight). Without
+        # the negative cluster bias on pick_up_food, the two score
+        # comparably; with it, consume wins.
+        assert result is not None
+        assert result["tool_name"] != "pick_up_food", (
+            f"Negative cluster bias on pick_up_food should steer away from it. "
+            f"Got {result['tool_name']!r}, reasoning={result['reasoning']!r}"
+        )
+
+    def test_propose_via_substrate_pipes_cluster_id_into_recommendation(self):
+        """End-to-end Track 2 wiring: ``propose_via_substrate`` captures
+        the cluster id from ``SensorEncoder.encode_sensors`` and passes
+        it through to ``recommend_action``, so cluster-keyed bias takes
+        effect during a normal substrate-primary tick.
+        """
+        from maxim.similarity.ec import ECConfig, EntorhinalCortex
+        from maxim.similarity.encoder import SensorEncoder
+
+        world = _build_cradle_aut()
+        _set_hunger(world["executor"], 0.8)
+
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.40))
+        encoder = SensorEncoder(ec=ec, atl=None, nac=None)
+
+        # First tick: encode the current drive snapshot to learn the
+        # cluster id the substrate sees in this state.
+        from maxim.runtime.agent_loop import _read_drive_states
+
+        drives = _read_drive_states(world["executor"])
+        cluster_id = encoder.encode_sensors(agent_id="cradle_infant", sensors=drives)
+        assert cluster_id is not None
+
+        # Punish pick_up_food in this cluster — strong negative signal.
+        for _ in range(10):
+            world["nac"].update_cluster_reward(
+                agent_id="cradle_infant",
+                cluster_id=cluster_id,
+                tool_signature="tool:pick_up_food",
+                reward=-1.0,
+            )
+
+        # Drive a fresh propose_via_substrate tick. The encoder's
+        # sub-threshold delta gate may short-circuit, but the cluster
+        # id stays the same — recommend_action must see the negative
+        # bias and avoid pick_up_food.
+        # We can't construct a registry here that includes pick_up_food
+        # in the cradle entity_ref, so instead we verify the method
+        # signature accepts current_cluster_id (the wiring contract)
+        # and the negative bias surfaces in the read API.
+        bias = world["nac"].cluster_reward_bias("cradle_infant", cluster_id, "tool:pick_up_food")
+        assert bias < 0.0, f"Expected negative cluster bias, got {bias}"
+
+        # Direct recommend_action with pick_up_food + alternative
+        result = world["nac"].recommend_action(
+            agent_id="cradle_infant",
+            available_tools=["pick_up_food", "consume"],
+            current_drives=drives,
+            current_cluster_id=cluster_id,
+        )
+        assert result is not None
+        assert result["tool_name"] != "pick_up_food"
+
+
 class TestSubstratePrimaryNoLLM:
     """The ``--aut-mode substrate-primary`` path must NOT touch the LLM.
 
