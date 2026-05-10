@@ -1,0 +1,23 @@
+# Roy-0 smoke curriculum — proves the runner chains substrate state
+# across two stages. Two short stages so the operator can sanity-check
+# the chain without burning time.
+#
+# Run with:
+#   maxim --sim scenarios/cradle/roy_0_smoke.yaml
+#
+# Stage 1's session_id is forwarded as resume_session for stage 2 so
+# the substrate (hippocampus + NAc) chains across the whole run.
+
+name: roy-0-smoke
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+persona: neutral
+
+stages:
+  - name: act1_warmup
+    fixture: warmup.yaml
+    turns: 4
+
+  - name: act2_warmup_resumed
+    fixture: warmup.yaml
+    turns: 4
