@@ -48,6 +48,7 @@ class SimulationBridge:
         spinner_prefix: str = "",
         prompt_gate: Any = None,
         max_actions_per_turn: int = 10,
+        aut_mode: str = "llm-primary",
     ) -> None:
         self.percept_source = ConversationalSource()
         self.action_sink = RecordingSink()
@@ -60,6 +61,15 @@ class SimulationBridge:
         self._turn_count = 0
         self._last_observed_action_idx = 0
         self._spinner = Spinner(prefix=spinner_prefix)
+        # Track 3 of grounded_language_acquisition.md Phase 0+: when
+        # the AUT runs in substrate-primary mode, suppress text-percept
+        # injection through send_and_wait. The substrate-primary AUT
+        # reads drive state directly from executor.embodiment via
+        # _read_drive_states; mirroring orchestrator narration into a
+        # text channel the AUT ignores is noise. send_and_wait still
+        # observes AUT-side actions during the settle window so the
+        # orchestrator's campaign timing stays intact.
+        self._aut_mode = aut_mode
         # Early-termination context written by FinishSimulationTool so
         # the orchestrator can distinguish "LLM called finish with
         # status=failed" from a user /cancel or a crash.
@@ -120,13 +130,16 @@ class SimulationBridge:
 
         # Fire percept-level anxiety (Layer 1b) BEFORE the percept reaches
         # the AUT, so the anticipation signal is already in the AUT's
-        # memory when it reasons about the message.
-        if self.percept_anxiety_hook is not None:
-            try:
-                self.percept_anxiety_hook(text)
-            except Exception as e:
-                logger.debug("percept_anxiety_hook failed: %s", e)
-        self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
+        # memory when it reasons about the message. Skipped along with
+        # injection in substrate-primary mode since the AUT never
+        # reasons about the text.
+        if self._aut_mode != "substrate-primary":
+            if self.percept_anxiety_hook is not None:
+                try:
+                    self.percept_anxiety_hook(text)
+                except Exception as e:
+                    logger.debug("percept_anxiety_hook failed: %s", e)
+            self.percept_source.inject_cli(text, salience=salience, novelty=novelty)
         self._turn_count += 1
 
         timeout_s = timeout or self._response_timeout

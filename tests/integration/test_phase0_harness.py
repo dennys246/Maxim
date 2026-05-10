@@ -356,6 +356,81 @@ class TestSensorEncodingIntoEC:
             "requires at least one node to form."
         )
 
+    def test_encoder_produces_multiple_clusters_under_frozen_centroid(self):
+        """Track 1 of feat/phase0-cluster-structure: with the
+        ``"interoception"`` modality skipping EC's running-mean
+        centroid update, a hunger sweep 0.0 → 1.0 must form at least
+        two distinct EC nodes — not collapse to one drifting cluster.
+
+        The smoke run (docs/experiments/13_phase0_harness_smoke.md
+        "smooth drive drift collapses to one cluster") produced
+        node_count=1 across 258 telemetry rows because the centroid
+        tracked the trajectory. Freezing the centroid for
+        interoception means each snapshot compares against the
+        ORIGINAL prototype, so once the embedding has moved far
+        enough cosine drops below ``pattern_threshold`` and a new
+        cluster forms.
+        """
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.40))
+        encoder = SensorEncoder(ec=ec, atl=None, nac=None)
+
+        # Sweep hunger 0.0 → 1.0 in 0.1 steps. The other sensors
+        # stay fixed so the embedding moves along the hunger
+        # low→high axis only — the same trajectory shape as the
+        # smoke run's 0.0 → 0.65 hunger drift.
+        for i in range(11):
+            hunger = i * 0.1
+            encoder.encode_sensors(
+                agent_id="cradle_infant",
+                sensors={"hunger": hunger, "thirst": 0.0, "core_temperature": -0.15},
+            )
+
+        assert ec.substrate_node_count >= 2, (
+            f"Frozen-centroid hunger sweep produced {ec.substrate_node_count} EC nodes; "
+            "Track 1 requires >= 2 (substrate must form multiple clusters as the "
+            "embedding crosses the pattern threshold relative to a fixed prototype)."
+        )
+        # Sanity ceiling — if every snapshot makes a new cluster the
+        # threshold is too tight and the substrate isn't doing pattern
+        # completion at all.
+        assert ec.substrate_node_count <= 11, (
+            f"Frozen-centroid hunger sweep produced {ec.substrate_node_count} EC nodes; "
+            "every snapshot is separating instead of completing. Threshold or geometry "
+            "needs review."
+        )
+
+    def test_text_modality_still_updates_centroid(self):
+        """Regression guard: Track 1 must not change centroid behavior
+        for non-frozen modalities. The text path (``LinguisticEncoder``)
+        relies on the running-mean centroid update for paraphrase
+        collapse — touching it would silently regress P1's 91.7%
+        collapse result.
+        """
+        ec = EntorhinalCortex(ECConfig(pattern_complete_threshold=0.40))
+
+        # Two embeddings close enough to pattern-complete onto the
+        # same node. Use deterministic vectors to keep the test free
+        # of sentence-transformers.
+        emb_a = [1.0, 0.0, 0.0, 0.0]
+        emb_b = [0.9, 0.1, 0.0, 0.0]
+
+        result_a = ec.pattern_complete_or_separate(embedding=emb_a, modality="text")
+        ec.register_substrate_node(result_a.node_id, emb_a, "text")
+        stored_before = list(ec._substrate_nodes[result_a.node_id][0])
+
+        result_b = ec.pattern_complete_or_separate(embedding=emb_b, modality="text")
+        # Pattern-completed onto the same node
+        assert result_b.is_new is False
+        assert result_b.node_id == result_a.node_id
+
+        stored_after = list(ec._substrate_nodes[result_a.node_id][0])
+        # Centroid moved toward emb_b — text modality is NOT in
+        # frozen_centroid_modalities so the running mean still applies.
+        assert stored_after != stored_before, (
+            "Text modality centroid must update on pattern completion. "
+            "If this asserts equal, Track 1 broke the LinguisticEncoder path."
+        )
+
     def test_encoder_min_delta_gate_skips_tiny_moves(self):
         """Sub-threshold sensor movement returns the previous node
         without re-firing EC. Without this gate, EC.pattern_complete
@@ -425,6 +500,135 @@ class TestSensorEncodingIntoEC:
             "across a hunger sweep — Phase 0 wiring did not close the "
             "sensor-encoding gap."
         )
+
+
+class TestSubstrateNarrationSuppression:
+    """Track 3 of grounded_language_acquisition.md Phase 0+: when the
+    AUT runs in substrate-primary mode, the SimulationBridge MUST NOT
+    inject orchestrator narration into the AUT's text-percept stream.
+
+    The cradle_prelinguistic arc strips English from
+    ``phase.instruction`` strings, but the orchestrator LLM still
+    composes English into ``send_message`` calls. Track 3 silences
+    that final English path on the AUT side without disturbing the
+    orchestrator's runtime semantics (turn counting, settle window,
+    action observation).
+    """
+
+    def test_bridge_suppresses_inject_cli_in_substrate_primary(self, monkeypatch):
+        """``send_and_wait`` does NOT call ``inject_cli`` when the
+        bridge was constructed with ``aut_mode='substrate-primary'``.
+
+        Spy on the percept source's injection method — the substrate-
+        primary AUT reads sensors directly from ``executor.embodiment``
+        so any text routed through the conversational source would be
+        Phase 0 contamination.
+        """
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(
+            response_timeout=0.5,
+            settle_s=0.1,
+            aut_mode="substrate-primary",
+        )
+
+        injected: list[str] = []
+
+        def _spy(text, salience=0.8, novelty=0.7):  # noqa: ANN001 — match real signature
+            injected.append(text)
+
+        monkeypatch.setattr(bridge.percept_source, "inject_cli", _spy)
+
+        result = bridge.send_and_wait(
+            "You wake to the gentle rustle of leaves overhead. The air is warm.",
+            timeout=0.5,
+            settle_s=0.1,
+        )
+
+        assert injected == [], (
+            f"substrate-primary bridge must NOT inject orchestrator text into "
+            f"the AUT percept stream. inject_cli was called with: {injected!r}"
+        )
+        # Send_and_wait still completed normally so the orchestrator
+        # state machine continues working.
+        assert result["turn"] == 1
+        assert result["timed_out"] is True  # No AUT actions in this test harness
+
+    def test_bridge_default_mode_still_injects(self, monkeypatch):
+        """Regression guard: llm-primary mode is unchanged — narration
+        still reaches the AUT percept stream.
+        """
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(
+            response_timeout=0.5,
+            settle_s=0.1,
+            # Default aut_mode='llm-primary'
+        )
+
+        injected: list[str] = []
+
+        def _spy(text, salience=0.8, novelty=0.7):  # noqa: ANN001
+            injected.append(text)
+
+        monkeypatch.setattr(bridge.percept_source, "inject_cli", _spy)
+
+        bridge.send_and_wait(
+            "You wake to the gentle rustle of leaves overhead.",
+            timeout=0.5,
+            settle_s=0.1,
+        )
+
+        assert len(injected) == 1, (
+            f"llm-primary bridge must inject orchestrator text to drive AUT response. Got {injected!r}"
+        )
+
+    def test_substrate_primary_no_english_sentinel_in_percept_stream(self, monkeypatch):
+        """End-to-end Track 3 contract: after several orchestrator
+        ``send_and_wait`` calls in substrate-primary mode, the AUT's
+        ``ConversationalSource`` percept queue contains no English
+        sentinel words.
+
+        Mirrors ``TestMotorOnlyPrompt::test_compose_percept_has_no_english_narration`` —
+        the same English-leak guard, but on the live percept stream
+        rather than the prompt template.
+        """
+        from maxim.simulation.bridge import SimulationBridge
+
+        bridge = SimulationBridge(
+            response_timeout=0.3,
+            settle_s=0.1,
+            aut_mode="substrate-primary",
+        )
+
+        # Drive a few "narration" turns. None should reach the percept
+        # source.
+        for narration in [
+            "You feel the warmth of the cradle wrapping around you.",
+            "The mother hums softly in the distance.",
+            "Light filters through the leaves above.",
+        ]:
+            bridge.send_and_wait(narration, timeout=0.3, settle_s=0.1)
+
+        # Drain whatever percepts the source has buffered. If any
+        # text-modality percept exists, scan for sentinel words.
+        BANNED = ["you", "your", "the", "feel", "warm", "mother", "soft", "light"]
+        leaked: list[str] = []
+        for _ in range(20):  # Bounded drain
+            try:
+                if bridge.percept_source.is_exhausted():
+                    break
+                p = bridge.percept_source.next_percept()
+                if p is None:
+                    break
+                content = (getattr(p, "content", "") or getattr(p, "transcript_chunk", "") or "").lower()
+                for banned in BANNED:
+                    if banned in content:
+                        leaked.append(f"{banned!r} in {content!r}")
+            except Exception:
+                break
+
+        assert leaked == [], f"substrate-primary mode leaked English into percept stream: {leaked!r}"
 
 
 class TestResearchRoutingForSubstratePrimary:

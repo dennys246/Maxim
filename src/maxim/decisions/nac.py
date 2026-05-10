@@ -49,6 +49,15 @@ class NACConfig:
     reward_bias_decay_tau: float = 50.0  # Decay timescale (ticks) for reward bias
     max_reward_bias: float = 0.20  # Cap on how much bias can lower EC threshold
 
+    # Track 2 of grounded_language_acquisition.md Phase 0+: cluster-keyed
+    # tool reward bias for substrate-primary action selection. Range
+    # [-max_cluster_reward_bias, +max_cluster_reward_bias]. Larger than
+    # max_reward_bias because cluster bias is a primary action-selection
+    # score (it competes with causal_pos and the cold-start drive-affinity
+    # heuristic, both of which contribute up to ~1.0), not a recognition
+    # modulator like _reward_bias.
+    max_cluster_reward_bias: float = 1.0
+
     # Temporal credit weight for SCN-coupled eligibility (affordance transfer).
     # When fast-decay traces expire, nodes with temporal anchors still receive
     # credit at this fraction of the temporal similarity score.
@@ -173,6 +182,16 @@ class NAc:
         # persisted (wall-clock timestamps go stale across sessions).
         self._temporal_anchors: dict[tuple[str, str], tuple[float, Any]] = {}
         # Maps (agent_id, node_id) → (original_activation, TemporalSignature)
+
+        # Track 2 of grounded_language_acquisition.md Phase 0+: cluster-keyed
+        # reward bias for substrate-primary action selection. Keyed by
+        # (agent_id, cluster_id, tool_signature) → reward in
+        # [-max_cluster_reward_bias, +max_cluster_reward_bias]. Bidirectional
+        # like _goal_reward_bias (positive = "this tool worked here", negative
+        # = "this tool failed here"). Wired by SensorEncoder via
+        # propose_via_substrate, which captures the EC interoception cluster
+        # id once per tick and passes it to recommend_action.
+        self._cluster_reward_bias: dict[tuple[str, str, str], float] = {}
 
         # Goal-level reward bias: tracks whether deliberation under a goal
         # type historically produces good outcomes.  Keyed by goal string.
@@ -1142,6 +1161,7 @@ class NAc:
         agent_id: str,
         available_tools: "list[str] | set[str] | tuple[str, ...]",
         current_drives: dict[str, float] | None = None,
+        current_cluster_id: str | None = None,
         min_confidence: float = 0.3,
     ) -> dict[str, Any] | None:
         """Substrate-driven action proposal — Phase -1 prototype.
@@ -1155,11 +1175,19 @@ class NAc:
           1. For each available tool, score by learned ``reward_bias``
              (positive value means the agent has been rewarded for this
              tool; zero for new agents).
-          2. Augment with drive-relevance heuristic: active drives
+          2. Add ``cluster_reward_bias`` when ``current_cluster_id`` is
+             set — the per-(agent, cluster, tool) signal accumulated by
+             :meth:`update_cluster_reward`. Replaces the drive-affinity
+             substring heuristic as the substrate's primary action-
+             selection signal once any history exists for the active
+             interoception cluster.
+          3. Augment with drive-relevance heuristic: active drives
              (value > 0.5) bias scoring toward semantically-related
              tools via name substring match + a small affinity table.
-             This is a Phase -1 stand-in for EC embedding similarity.
-          3. Return the highest-scoring tool above ``min_confidence``,
+             This is the Phase -1 cold-start fallback — when no cluster
+             history exists for any tool, drive affinity carries the
+             selection.
+          4. Return the highest-scoring tool above ``min_confidence``,
              else ``None``.
 
         Args:
@@ -1171,6 +1199,12 @@ class NAc:
             current_drives: Optional ``{drive_name: value in [0, 1]}``.
                 Drives with value > 0.5 contribute drive-relevance
                 scoring. ``None`` skips the cold-start heuristic.
+            current_cluster_id: Optional EC node id for the active
+                interoception cluster (from
+                ``SensorEncoder.encode_sensors``). When set, tools with
+                positive ``cluster_reward_bias`` in this cluster
+                outscore drive affinity. ``None`` skips cluster-keyed
+                scoring (only path before Track 2 wired this in).
             min_confidence: Threshold below which we return ``None``
                 instead of proposing a low-confidence action. Default
                 ``0.3`` matches ``NACConfig.min_confidence_threshold``.
@@ -1221,6 +1255,18 @@ class NAc:
                 score += bias
                 parts.append(f"reward_bias={bias:.2f}")
 
+            # Component 2b (Track 2 of grounded_language_acquisition.md):
+            # cluster-keyed reward bias. Positive value = this tool worked
+            # in this interoception cluster; negative = it failed here.
+            # Added directly to score (range [-1, +1]) so it competes
+            # with causal_pos and dominates cold-start drive affinity
+            # once any history exists for the active cluster.
+            if current_cluster_id:
+                cluster_bias = self.cluster_reward_bias(agent_id, current_cluster_id, event_sig)
+                if cluster_bias != 0.0:
+                    score += cluster_bias
+                    parts.append(f"cluster_bias={cluster_bias:+.2f}")
+
             # Component 3: drive-relevance (cold-start heuristic)
             tool_lower = tool_name.lower()
             for drive_name, drive_value in drives.items():
@@ -1231,9 +1277,7 @@ class NAc:
                 # Direct name substring match
                 if drive_lower in tool_lower:
                     score += drive_value
-                    parts.append(
-                        f"drive:{drive_name}({drive_value:.2f}) name-match"
-                    )
+                    parts.append(f"drive:{drive_name}({drive_value:.2f}) name-match")
                     continue
 
                 # Affinity table — semantic stand-in until EC integration
@@ -1241,9 +1285,7 @@ class NAc:
                 for keyword in affinities:
                     if keyword in tool_lower:
                         score += drive_value * 0.7
-                        parts.append(
-                            f"drive:{drive_name}({drive_value:.2f}) →{keyword}"
-                        )
+                        parts.append(f"drive:{drive_name}({drive_value:.2f}) →{keyword}")
                         break
 
             if score > 0:
@@ -1329,6 +1371,61 @@ class NAc:
         # per credit_node call.  A 20-node distribution would otherwise
         # produce 20 LEARN lines from a single reward arrival, flooding
         # the sparse-headline channel — pre-merge review caught this.
+
+    # -- Cluster-keyed tool reward bias (Track 2, Phase 0+) ---------------
+
+    def update_cluster_reward(
+        self,
+        agent_id: str,
+        cluster_id: str | None,
+        tool_signature: str,
+        reward: float,
+    ) -> None:
+        """Update cluster-keyed reward bias for a tool.
+
+        Used by substrate-primary action selection (Track 2 of
+        grounded_language_acquisition.md Phase 0+) to record which
+        tools work in which EC interoception clusters. The cluster id
+        comes from SensorEncoder.encode_sensors().
+
+        Args:
+            agent_id: Per-agent scoping (CLAUDE.md per-agent stash
+                invariant). Empty string is rejected.
+            cluster_id: EC node id for the active interoception cluster.
+                ``None`` or empty string is a no-op — without cluster
+                context the substrate cannot key the learning.
+            tool_signature: From ``build_tool_signature(tool_name, params)``.
+                Same shape as the event_signature used by reward_bias.
+            reward: Positive reinforces, negative punishes. Accumulated
+                via the same ``reward_bias_alpha`` as ``_reward_bias`` and
+                clamped to ``[-max_cluster_reward_bias, +max_cluster_reward_bias]``.
+        """
+        if not agent_id:
+            raise ValueError("update_cluster_reward requires non-empty agent_id")
+        if not cluster_id:
+            return
+        with self._lock:
+            key = (agent_id, cluster_id, tool_signature)
+            current = self._cluster_reward_bias.get(key, 0.0)
+            updated = current + self.config.reward_bias_alpha * reward
+            cap = self.config.max_cluster_reward_bias
+            self._cluster_reward_bias[key] = max(-cap, min(updated, cap))
+
+    def cluster_reward_bias(
+        self,
+        agent_id: str,
+        cluster_id: str | None,
+        tool_signature: str,
+    ) -> float:
+        """Read cluster-keyed reward bias.
+
+        Returns 0.0 when ``cluster_id`` is missing/empty (no cluster
+        context to key against) or when no learning exists for the
+        ``(agent_id, cluster_id, tool_signature)`` triple.
+        """
+        if not cluster_id:
+            return 0.0
+        return self._cluster_reward_bias.get((agent_id, cluster_id, tool_signature), 0.0)
 
     # -- Goal-level reward bias (bidirectional, for ThoughtGate) ----------
 

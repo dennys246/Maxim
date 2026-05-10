@@ -720,10 +720,15 @@ def propose_via_substrate(
     # Phase 0 sensor encoding — feed the current drive snapshot to EC
     # so substrate-primary mode produces nodes the way the LLM-primary
     # text-percept path does. Fail-soft: encoding errors must not block
-    # the action proposal.
+    # the action proposal. The returned node_id is the active
+    # interoception cluster — Track 2 of grounded_language_acquisition.md
+    # passes it into recommend_action so cluster-keyed reward bias
+    # (NAc.cluster_reward_bias) competes with the cold-start drive
+    # affinity heuristic for tool selection.
+    cluster_id: str | None = None
     if sensor_encoder is not None and drives:
         try:
-            sensor_encoder.encode_sensors(agent_id=agent_id, sensors=drives)
+            cluster_id = sensor_encoder.encode_sensors(agent_id=agent_id, sensors=drives)
         except Exception:
             logger.debug("substrate-primary tick: sensor encoding raised", exc_info=True)
 
@@ -731,6 +736,7 @@ def propose_via_substrate(
         agent_id=agent_id,
         available_tools=available_tools,
         current_drives=drives or None,
+        current_cluster_id=cluster_id,
         min_confidence=min_confidence,
     )
     if recommendation is None:
