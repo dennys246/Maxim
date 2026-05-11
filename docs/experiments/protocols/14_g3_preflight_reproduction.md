@@ -28,9 +28,11 @@ Each test exercises one branch:
 | `TestRoyPreflight::test_preflight_pass_runs_full_iteration` | Passing probe → all 3 arms run, `aborted_at=None`, `preflight.outcome="ok"` + `latency_ms` recorded. |
 | `TestRoyPreflight::test_preflight_skipped_when_fake_sim_runner_injected` | Fake `sim_runner` + no explicit `preflight_fn` → probe skipped, `result.preflight == {}`, iteration completes. |
 | `TestRoyPreflight::test_preflight_raising_treated_as_failure` | `preflight_fn` raises → treated as preflight failure (no crash), `preflight.outcome="preflight_raised"`. |
-| `TestPreflightHelper::test_skips_when_no_remote_url_configured` | No `MAXIM_LANE_LARGE_REMOTE_URL` → returns `(True, {skipped: True})`. |
-| `TestPreflightHelper::test_probes_when_remote_url_configured` | URL + key + model env vars → helper calls `_MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()` and surfaces the outcome. |
+| `TestPreflightHelper::test_skips_when_no_remote_url_configured` | No env var AND no peer.yml → returns `(True, {skipped: True})`. |
+| `TestPreflightHelper::test_probes_when_remote_url_configured` | URL + key + model env vars → helper calls `_MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()` and surfaces the outcome. `info.source == "env"`. |
 | `TestPreflightHelper::test_auth_rejected_is_soft_pass` | `auth_rejected` outcome → returns `(True, {soft_pass: True})`. |
+| `TestPreflightHelper::test_peer_yml_fallback_when_env_not_set` | No env vars but peer.yml present → reads URL/key/model from peer.yml; `info.source == "peer.yml"`. (Roy-0 re-run fold.) |
+| `TestPreflightHelper::test_env_takes_precedence_over_peer_yml` | Both env and peer.yml present → env wins; `info.source == "env"`. |
 | `TestPreflightHelper::test_health_check_exception_treated_as_failure` | `health_check` raises → returns `(False, {outcome: "probe_error"})`. |
 
 ## B. Live reproduction (unreachable URL, ~3s)

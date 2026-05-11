@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-11
 **Plan:** [persona_convergence_crucible.md](../plans/persona_convergence_crucible.md) (Roy harness § Roy-0 iteration log)
-**Status:** Shipped; unit-verified end-to-end. Empirical "abort in <2s on unreachable URL" check still recommended on first user-driven run.
+**Status:** Shipped + follow-up fold for peer.yml fallback. The G4 Roy-0 re-run on 2026-05-11 surfaced that the original probe was a no-op for the standard peer-with-peer.yml setup (env vars are exported by `apply_peer_config_to_env` only at lane resolution, which happens AFTER `_preflight_llm`); the follow-up reads `~/.config/maxim/peer.yml` directly when env vars are absent.
 **Companion:** [G4 — substrate-primary cluster_id reward wire](15_g4_cluster_reward_wire.md) (the substrate-primary closure that motivated splitting these as paired PRs).
 
 ## What was caught
@@ -30,6 +30,20 @@ Test seam: production path (no fake `sim_runner`) defaults to `_preflight_llm`. 
 | Full fast suite | 6479 passed, 15 skipped, 0 failures attributable to G3 |
 | Pre-existing flake | `test_context_index.py::test_similar_text_found` (unrelated; documented as load-order-dependent) |
 | Failure window | Probe budget ≤ ~3.3s on standard health_check timeouts (first 0.8s + retry 2.5s) |
+
+## Follow-up fold: peer.yml fallback (post-Roy-0)
+
+The 2026-05-11 Roy-0 re-run (G4 empirical validation) revealed that the original probe was silently skipping under the canonical peer-leader setup. `apply_peer_config_to_env` in [runtime/lane_backends.py:1073](../../src/maxim/runtime/lane_backends.py) reads `~/.config/maxim/peer.yml` and exports `MAXIM_LANE_LARGE_REMOTE_*` env vars — but only at lane resolution, which fires AFTER `_preflight_llm`. Operator who runs `maxim roy run` with no env vars exported but a valid `peer.yml` got `result.preflight = {"skipped": True, "reason": "MAXIM_LANE_LARGE_REMOTE_URL not set"}`, leaving the broken-leader failure mode uncaught.
+
+The fix: `_preflight_llm` now reads `peer.yml` directly when env vars are absent, falling back to that config source before deciding to skip. Resolution order:
+
+1. `MAXIM_LANE_LARGE_REMOTE_URL` / `_API_KEY` / `_MODEL` env vars (explicit per-session override).
+2. `~/.config/maxim/peer.yml` via `read_peer_config()` (the canonical peer-leader setup).
+3. Otherwise: skip the probe (local-LLM / cloud-only setups don't have the 10-min grind failure mode).
+
+`result.preflight.source` field records which path was used (`"env"` or `"peer.yml"`) so operators can verify their config was picked up. Env always wins when both are present.
+
+Regression guards: `TestPreflightHelper::test_peer_yml_fallback_when_env_not_set` (asserts URL/key/model are read from peer.yml when env is absent) + `TestPreflightHelper::test_env_takes_precedence_over_peer_yml` (env wins when both present).
 
 ## What this does NOT prove
 

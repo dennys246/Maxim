@@ -814,7 +814,7 @@ class TestPreflightHelper:
     """
 
     def test_skips_when_no_remote_url_configured(self, monkeypatch):
-        """No ``MAXIM_LANE_LARGE_REMOTE_URL`` → skip with reason.
+        """No env var AND no peer.yml → skip with reason.
 
         Local-LLM leader and cloud-only configurations have no peer URL
         to probe; their failure modes surface fast at first dispatch
@@ -824,10 +824,15 @@ class TestPreflightHelper:
         from maxim.simulation.roy_runner import _preflight_llm
 
         monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        # Roy-0 re-measurement folded in the peer.yml fallback — mock the
+        # config reader so this test still exercises the "no config at
+        # all" path even on operator boxes that have a real peer.yml.
+        monkeypatch.setattr("maxim.peer.config.read_peer_config", lambda: None)
+
         ok, info = _preflight_llm()
         assert ok is True
         assert info.get("skipped") is True
-        assert "MAXIM_LANE_LARGE_REMOTE_URL" in info.get("reason", "")
+        assert "peer.yml" in info.get("reason", "")
 
     def test_probes_when_remote_url_configured(self, monkeypatch):
         """When the URL is set, the helper invokes
@@ -909,6 +914,119 @@ class TestPreflightHelper:
         assert ok is True
         assert info["outcome"] == "auth_rejected"
         assert info.get("soft_pass") is True
+
+    def test_peer_yml_fallback_when_env_not_set(self, monkeypatch):
+        """Roy-0 re-measurement (2026-05-11) caught this gap: when the
+        operator's leader is configured via ``~/.config/maxim/peer.yml``
+        (the canonical peer-leader setup) and no env vars are exported,
+        ``apply_peer_config_to_env`` only runs at lane resolution — which
+        happens AFTER ``_preflight_llm``. Without this fallback the
+        preflight is a no-op for that entire setup class.
+        """
+        from maxim.peer.config import PeerConfig
+        from maxim.simulation import roy_runner as _rr
+
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", raising=False)
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_MODEL", raising=False)
+
+        # Patch read_peer_config to return a synthetic config.
+        fake_cfg = PeerConfig(
+            url="https://leader.from.peer.yml",
+            api_key="sk-from-peer-yml",
+            is_cloud=False,
+            model="qwen2.5-14b",
+        )
+
+        def fake_read_peer_config():
+            return fake_cfg
+
+        monkeypatch.setattr("maxim.peer.config.read_peer_config", fake_read_peer_config)
+
+        captured: dict[str, Any] = {}
+
+        class FakeProbeResult:
+            outcome = "ok"
+            detail = ""
+            latency_ms = 25.0
+
+        class FakeBackend:
+            @classmethod
+            def for_url(cls, url, *, api_key=None, model=None):
+                captured["url"] = url
+                captured["api_key"] = api_key
+                captured["model"] = model
+                return cls()
+
+            def health_check(self):
+                return FakeProbeResult()
+
+        import sys
+
+        fake_module = type(sys)("maxim.models.language.maxim_peer_backend")
+        fake_module._MaximPeerBackend = FakeBackend  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "maxim.models.language.maxim_peer_backend", fake_module)
+
+        ok, info = _rr._preflight_llm()
+        assert ok is True
+        assert info["outcome"] == "ok"
+        assert info["url"] == "https://leader.from.peer.yml"
+        assert info.get("source") == "peer.yml"
+        # The peer.yml-sourced values were threaded into the probe.
+        assert captured["url"] == "https://leader.from.peer.yml"
+        assert captured["api_key"] == "sk-from-peer-yml"
+        assert captured["model"] == "qwen2.5-14b"
+
+    def test_env_takes_precedence_over_peer_yml(self, monkeypatch):
+        """When both env vars AND peer.yml are present, env wins
+        (matches ``apply_peer_config_to_env``'s ``_setdefault_nonempty``
+        semantics elsewhere in the runtime — env is the per-session
+        override path).
+        """
+        from maxim.peer.config import PeerConfig
+        from maxim.simulation import roy_runner as _rr
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "https://leader.from.env")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", "sk-from-env")
+
+        def fake_read_peer_config():
+            return PeerConfig(
+                url="https://leader.from.peer.yml",  # should be ignored
+                api_key="sk-from-peer-yml",
+                is_cloud=False,
+                model="qwen2.5-14b",
+            )
+
+        monkeypatch.setattr("maxim.peer.config.read_peer_config", fake_read_peer_config)
+
+        captured: dict[str, Any] = {}
+
+        class FakeProbeResult:
+            outcome = "ok"
+            detail = ""
+            latency_ms = 25.0
+
+        class FakeBackend:
+            @classmethod
+            def for_url(cls, url, *, api_key=None, model=None):
+                captured["url"] = url
+                captured["api_key"] = api_key
+                return cls()
+
+            def health_check(self):
+                return FakeProbeResult()
+
+        import sys
+
+        fake_module = type(sys)("maxim.models.language.maxim_peer_backend")
+        fake_module._MaximPeerBackend = FakeBackend  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "maxim.models.language.maxim_peer_backend", fake_module)
+
+        ok, info = _rr._preflight_llm()
+        assert ok is True
+        assert info.get("source") == "env"
+        assert captured["url"] == "https://leader.from.env"
+        assert captured["api_key"] == "sk-from-env"
 
     def test_health_check_exception_treated_as_failure(self, monkeypatch):
         """If health_check raises (network error, import surprise), the
