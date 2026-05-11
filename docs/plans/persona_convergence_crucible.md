@@ -175,45 +175,63 @@ What we'd change for Roy-2: [specific next steps]
 <!-- roy-iteration:roy-0-smoke -->
 ### Roy-0: Smoke
 
-**Status:** Harness validation — aborted in priming stage 1 after ~145s wall clock. Findings are about the HARNESS, not a persona. Roy-0 was never intended to produce persona results; 50 priming turns is orders of magnitude below the threshold "Roy-1: Adversarial" calls out.
+**Status:** Harness validation — ran end-to-end against a healthy leader (qwen2.5-14b-instruct via cloudflared tunnel), 15 min wall clock, all 5 priming stages + all 3 arms completed. **Findings are about the HARNESS, not a persona.** Roy-0 was never intended to produce persona results; 50 priming turns is orders of magnitude below the threshold "Roy-1: Adversarial" calls out.
 
-> Methodology smoke for the Roy harness (R1 curriculum + R2 diff + R3 three-arm runner + R4 log generator). 50 turns of cradle_prelinguistic priming → 10-turn held-out test across three arms. Deliberately tiny so every code path fires at least once.
+> Methodology smoke for the Roy harness. 50 turns of cradle_prelinguistic
+> priming (5 stages × 10 turns) feeds arm A; arms B and C run the
+> 10-turn held-out test from blank substrate. The test scenario
+> deliberately re-uses cradle_prelinguistic — arm A should show
+> episode/NAc carryover from priming, B and C should not.
 
-**Priming:** 1 of 5 stages started, 0 completed. Final substrate session `<none>` — the priming stage didn't reach session-end (substrate snapshots write on session-end only).
+**Priming:** 5/5 stages completed, final substrate session `20260510_213337`. 23 LLM calls landed (12,410 input / 2,125 output tokens, mean 1.7s latency, 0 fallback, 0 dispatch_exhausted).
 
-**Arms:** none ran. The runner correctly refused to dispatch arms when priming returned `final_session_id=""` — that's R3's `aborted_at="priming"` short-circuit working.
+**Arms:**
 
-**Substrate divergence (pairwise):** not computed (no arm sessions to diff).
+| Arm | Substrate | system_prompt | session_id | turns | finish_reason |
+|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260510_213527` | 3 | cancel |
+| b | blank | You are a hungry infant | `20260510_213707` | 3 | cancel |
+| c | blank | neutral | `20260510_213846` | 3 | cancel |
+
+`turns=3, finish_reason=cancel` for every arm reflects the warmup.yaml fixture (3 percepts) running out; the bridge cancels when the percept source is exhausted. Normal fixture behaviour, not a harness or arm failure.
+
+**Substrate divergence (pairwise):**
+
+- **a_vs_b:**  NAc reward_bias L2 `0.0000` · causal-link Δ **`+133`**  Hippocampus episodes Δ **`+662`** (valence KS `0.000`, p `1.000`)
+- **a_vs_c:**  NAc reward_bias L2 `0.0000` · causal-link Δ **`+133`**  Hippocampus episodes Δ **`+662`** (valence KS `0.000`, p `1.000`)
+- **b_vs_c:**  NAc reward_bias L2 `0.0000` · causal-link Δ `+0`  Hippocampus episodes Δ `+0` (valence KS `0.000`, p `1.000`)
 
 **Honest assessment:**
 
-- **Substrate took:** N/A — no substrate snapshots written. The priming stage's `aut_nac.json` / `aut_hippocampus.json` never landed on disk because the substrate-primary AUT loop didn't produce action proposals during the 145s window (`Loop step N, proposal=none` × 8 heartbeats), and the orchestrator narrator hit static fallback 3× (`dispatch_exhausted` from local LLM `llama_decode returned -3`).
-- **Behavioral expression:** N/A — no actions emitted.
-- **Cross-session persistence:** untested.
-- **Generalization to novel stimuli:** untested.
+- **Substrate took (passive only).** Arm A carries **+133 causal links and +662 episodes** that the blank arms don't have — the R1 resume_session chain through 5 stages threaded priming substrate forward into arm A's test session correctly. This is the first end-to-end evidence the R1→R2→R3 chain works on real bio-system snapshots.
+- **Substrate didn't take (active).** `NAc reward_bias L2 = 0.0000` across every pair; valence-distribution KS = 0 (p=1) across every pair. Reward learning and valence annotation never fired because substrate-primary AUT produced **0 action proposals** across the entire 15-min run (`proposal=none` × hundreds of loop steps). With no actions there are no outcomes; with no outcomes there's no reward_bias to populate and no valence to annotate episodes with.
+- **Prompt-injection arms B-vs-C are identical at the substrate layer.** "You are a hungry infant" vs "neutral" produces **zero substrate divergence** (every pairwise number is 0) — different system prompts don't differentiate substrate state when no actions fire. Once G4 closes and substrate-primary emits proposals, this is the first thing to re-measure: does the prompt-injected arm B's substrate diverge from neutral arm C even slightly?
+- **Cross-session persistence:** untested (would require a session-2 restart with neutral prompt — defer to Roy-1).
+- **Generalization to novel stimuli:** untested (test fixture is the same warmup as priming — Roy-1 needs a held-out fixture with novel + familiar + unrelated stimuli per the methodology).
 
-**What worked first try:**
+**What worked (first try):**
 
 - Spec parsing for inline-priming + 3-arm shape (`--dry-run` clean).
-- Plan auto-detection: `roy-0-*` prefix routed to this doc.
-- Inline-priming materialization + cleanup (R3 wrote the sibling YAML, ran the curriculum, deleted it).
-- Substrate-primary narration suppression in the bridge (no English leaked to the AUT percept queue, per Phase 0's "no English" goal).
-- Artifact dir creation + result.json persistence + protocol/log generation pipeline (R4).
+- Plan auto-detection routed `roy-0-*` to this doc.
+- R1 5-stage curriculum chained `resume_session` correctly through 4 handoffs.
+- Substrate-primary narration suppression on the bridge (no English leaked to AUT percept queue).
+- All 23 LLM calls landed on the leader with status 200; 0 fallback narration.
+- R3 ran 3 arms back-to-back without crashing; result.json + summary.md persisted.
+- R4 generators consumed the real result.json idempotently and re-rendered protocol + this entry.
 
 **What needed fixing (closed in this commit):**
 
-- **G1: Roy runner now forces `interactive=off` process-globally** at the top of `run_roy_iteration`. Without this, the orchestrator's TTY-AUTO mode enabled Rich Live + raw-terminal stdin reader on script-driven runs, polluting captured output and contending with whatever stdin the runner was launched with. Fixed in `src/maxim/simulation/roy_runner.py`. Regression guard: `TestRoyRunnerInvariants::test_run_forces_interactive_off`.
+- **G1: Roy runner forces `interactive=off` process-globally** at the top of `run_roy_iteration`. The orchestrator's TTY-AUTO mode otherwise enabled Rich Live + raw-terminal stdin reader on script-driven runs. Regression guard: `TestRoyRunnerInvariants::test_run_forces_interactive_off`.
 
-**What we'd change before Roy-1 (concrete next steps):**
+**What to change before Roy-1 (concrete next steps, prioritised):**
 
-- **G2:** Gate `simulation/spinner.py` on interactive mode OR `stderr.isatty()`. The spinner's ANSI writes hit captured stderr unconditionally, which pollutes JSONL logs and makes failure-mode triage harder.
-- **G3:** Add a fail-fast LLM pre-flight at the top of `run_roy_iteration` — fire one `LLMRouter.health_check` and abort with `aborted_at="preflight"` if every provider is down. Spending ~10 minutes grinding through static-fallback narration is the worst failure mode the harness can produce, and we hit it on the first real run.
-- **G4 (substrate-primary, not Roy):** `aut_mode=substrate-primary` produced `proposal=none` for the entire 145s. The substrate-primary AUT either (a) needs richer percepts than cradle_prelinguistic's silenced narration provides, or (b) has a missing wire between `EmbodimentPerceptSource.next_percept` and `runtime/agent_loop.py:2654`. Belongs in `grounded_language_acquisition.md` Phase 0, not here.
-- **G5/G6 (environmental, not Roy):** Auto-spawn looked for `claude-sonnet-4-6.Q4_K_M.gguf` despite profile `qwen2.5-14b-instruct` (env-var leak from a prior `--llm claude-sonnet`); `smollm-1.7b-instruct` auto-download blocked by non-TTY. Either pre-download small-lane models or have the Roy runner set `MAXIM_AUTO_DOWNLOAD_MODELS=1` automatically.
+1. **G3 (must close before Roy-1):** Add a fail-fast LLM pre-flight at the top of `run_roy_iteration`. The dev box without a healthy leader silently grinds for ~10 min on static-fallback narration with `dispatch_exhausted` on every call. Roy-1's cost ceiling ($5-15 Claude OR ~1500 local-LLM calls) on that failure mode is unacceptable.
+2. **G4 (substrate-primary, belongs in [grounded_language_acquisition.md](grounded_language_acquisition.md) Phase 0):** substrate-primary AUT produced `proposal=none` for the entire 15-min run even with real LLM narration percepts. Either (a) substrate-primary's proposer needs richer percepts than cradle_prelinguistic's narration provides, (b) the infant body's drive state isn't activating affordances at this point in the arc, or (c) there's a missing wire between `EmbodimentPerceptSource.next_percept` and `runtime/agent_loop.py:2654`. Until G4 closes, the active-substrate measurements (reward_bias L2, valence KS) will always read 0 across every Roy iteration regardless of priming.
+3. **Roy-1 needs a held-out test fixture distinct from the priming arc.** Reusing cradle_prelinguistic warmup for both means the test scenario doesn't actually test generalisation. Hand-author `scenarios/roy/roy_1_holdout.yaml` with novel + familiar + unrelated stimuli per the methodology table.
+4. **G2 (cosmetic):** gate `simulation/spinner.py` on interactive mode or `stderr.isatty()`. Spinner ANSI pollutes JSONL logs during script runs.
+5. **G5/G6 (environmental):** auto-spawn path mismatch (claude-sonnet GGUF vs qwen2.5 profile) and smollm auto-download blocked by non-TTY. Pre-existing, outside Roy code.
 
-**Prerequisite for Roy-1 (adversarial):** G3 must close. Spending the Roy-1 cost ceiling (~$5-15 Claude + ~1500 LLM calls) on a run where every dispatch silently 502s is an unacceptable failure mode.
-
-**Artifacts:** [`result.json`](/Users/dennyschaedig/.maxim/roy/roy-0-smoke/result.json) · protocol [`roy_0_smoke.md`](../experiments/protocols/roy_0_smoke.md) · spec [`roy_0_smoke.yaml`](./roy/roy_0_smoke.yaml)
+**Artifacts:** [`result.json`](/Users/dennyschaedig/.maxim/roy/roy-0-smoke/result.json) · protocol [`roy_0_smoke.md`](../experiments/protocols/roy_0_smoke.md) · spec [`roy_0_smoke.yaml`](./roy/roy_0_smoke.yaml) · LLM trace `/tmp/roy_0_live.jsonl` (23 peer_backend_call events)
 <!-- /roy-iteration:roy-0-smoke -->
 
 Empty until Roy-1 runs.
