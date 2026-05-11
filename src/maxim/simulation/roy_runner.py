@@ -304,14 +304,16 @@ def _preflight_llm() -> tuple[bool, dict[str, Any]]:
     call — the user pays for ~10 min of wall clock to learn the LLM was
     never reachable. This probe makes that failure surface BEFORE priming.
 
-    Resolution:
-      * If ``MAXIM_LANE_LARGE_REMOTE_URL`` is set (peer mode hitting a
-        leader, the canonical Roy setup), probe via the canonical
-        :meth:`_MaximPeerBackend.for_url(...).health_check` entry point.
-      * If the env var is unset (local-LLM leader or cloud-only), skip
-        the probe and return ``ok``: there's no peer URL to probe, and
-        the local llama.cpp / cloud failure modes surface fast enough at
-        first dispatch (no 10-min grind).
+    Resolution (in order):
+      * ``MAXIM_LANE_LARGE_REMOTE_URL`` / ``_API_KEY`` / ``_MODEL`` env
+        vars (the explicit per-session override path).
+      * ``peer.yml`` at ``~/.config/maxim/peer.yml`` (the canonical
+        peer-leader setup; runtime applies it via
+        :func:`apply_peer_config_to_env` at lane resolution, which
+        happens AFTER ``_preflight_llm`` — so we read the file ourselves
+        when the env vars are absent).
+      * Otherwise: skip the probe and return ``ok`` — local llama.cpp /
+        cloud-only setups don't have the 10-min grind failure mode.
 
     The probe is one HTTP call (the health_check method handles its own
     two-stage liveness/readiness budget — do NOT add a retry loop here;
@@ -323,14 +325,38 @@ def _preflight_llm() -> tuple[bool, dict[str, Any]]:
     import os
 
     url = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL") or "").strip()
+    api_key = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY") or "").strip() or None
+    model = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_MODEL") or "").strip() or None
+    source = "env"
+
+    # Roy-0 re-measurement (2026-05-11) surfaced a gap: the standard
+    # peer-with-peer.yml setup doesn't export the env vars at the shell
+    # level — the runtime applies the file via
+    # ``apply_peer_config_to_env`` only when lanes are resolved (in
+    # ``runtime/lane_backends.py``), which happens after this preflight.
+    # Without the fallback here, peer-with-peer.yml users get a no-op
+    # preflight even when the leader is dead. Read peer.yml directly so
+    # the preflight catches that failure mode too.
+    if not url:
+        try:
+            from maxim.peer.config import read_peer_config
+
+            cfg = read_peer_config()
+            if cfg is not None and cfg.url:
+                url = cfg.url.strip()
+                api_key = api_key or (cfg.api_key or None)
+                model = model or (getattr(cfg, "model", None) or None)
+                source = "peer.yml"
+        except Exception as e:  # noqa: BLE001 — peer.yml read must not crash preflight
+            logger.debug("preflight: peer.yml read failed: %s", e, exc_info=True)
+
     if not url:
         return True, {
             "skipped": True,
-            "reason": "MAXIM_LANE_LARGE_REMOTE_URL not set — local/cloud lane, no peer probe applicable",
+            "reason": (
+                "No MAXIM_LANE_LARGE_REMOTE_URL env var and no peer.yml — local/cloud lane, no peer probe applicable"
+            ),
         }
-
-    api_key = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY") or "").strip() or None
-    model = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_MODEL") or "").strip() or None
 
     try:
         from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
@@ -360,6 +386,7 @@ def _preflight_llm() -> tuple[bool, dict[str, Any]]:
         "outcome": outcome,
         "detail": detail,
         "latency_ms": latency_ms,
+        "source": source,  # "env" | "peer.yml" — which config the probe used
     }
 
     # ``ok`` and ``auth_rejected`` both mean the listener is alive.
