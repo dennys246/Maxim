@@ -259,6 +259,40 @@ def _build_smoke_spec(tmp_path: Path, *, inline_priming: bool = True) -> Path:
 # ---------------------------------------------------------------------------
 
 
+class TestRoyRunnerInvariants:
+    """Process-global invariants the Roy runner is responsible for."""
+
+    def test_run_forces_interactive_off(self, isolated_data_home, tmp_path):
+        """R5 Roy-0 finding: the orchestrator's AUTO interactive mode
+        enables Rich Live + raw-terminal stdin reader on TTY launch,
+        which deadlocks when the runner drives five+ sims back-to-back
+        from a YAML spec. The runner must force ``interactive=off``
+        process-globally at entry so all three arms (and the priming
+        curriculum) inherit the non-interactive setting regardless of
+        how the operator invoked the CLI.
+        """
+        from maxim.simulation.sim_logger import (
+            InteractiveMode,
+            get_interactive_mode,
+            set_interactive_mode,
+        )
+
+        # Pre-arm to ON so we can detect the runner forcing it OFF.
+        set_interactive_mode("on")
+        assert get_interactive_mode() == InteractiveMode.ON
+
+        spec_path = _build_smoke_spec(tmp_path)
+        runner = _make_fake_sim_runner()
+        run_roy_iteration(
+            spec_path,
+            sim_runner=runner,
+            artifact_root=tmp_path / "roy",
+        )
+        # After the run, interactive mode is OFF — the runner does NOT
+        # restore the prior mode (see roy_runner.py rationale).
+        assert get_interactive_mode() == InteractiveMode.OFF
+
+
 class TestRoyEndToEnd:
     def test_three_arm_smoke_runs_to_completion(self, isolated_data_home, tmp_path):
         """The full pipeline produces three distinct arm sessions and

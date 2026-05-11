@@ -172,6 +172,50 @@ What we'd change for Roy-2: [specific next steps]
 
 ## Iteration log
 
+<!-- roy-iteration:roy-0-smoke -->
+### Roy-0: Smoke
+
+**Status:** Harness validation — aborted in priming stage 1 after ~145s wall clock. Findings are about the HARNESS, not a persona. Roy-0 was never intended to produce persona results; 50 priming turns is orders of magnitude below the threshold "Roy-1: Adversarial" calls out.
+
+> Methodology smoke for the Roy harness (R1 curriculum + R2 diff + R3 three-arm runner + R4 log generator). 50 turns of cradle_prelinguistic priming → 10-turn held-out test across three arms. Deliberately tiny so every code path fires at least once.
+
+**Priming:** 1 of 5 stages started, 0 completed. Final substrate session `<none>` — the priming stage didn't reach session-end (substrate snapshots write on session-end only).
+
+**Arms:** none ran. The runner correctly refused to dispatch arms when priming returned `final_session_id=""` — that's R3's `aborted_at="priming"` short-circuit working.
+
+**Substrate divergence (pairwise):** not computed (no arm sessions to diff).
+
+**Honest assessment:**
+
+- **Substrate took:** N/A — no substrate snapshots written. The priming stage's `aut_nac.json` / `aut_hippocampus.json` never landed on disk because the substrate-primary AUT loop didn't produce action proposals during the 145s window (`Loop step N, proposal=none` × 8 heartbeats), and the orchestrator narrator hit static fallback 3× (`dispatch_exhausted` from local LLM `llama_decode returned -3`).
+- **Behavioral expression:** N/A — no actions emitted.
+- **Cross-session persistence:** untested.
+- **Generalization to novel stimuli:** untested.
+
+**What worked first try:**
+
+- Spec parsing for inline-priming + 3-arm shape (`--dry-run` clean).
+- Plan auto-detection: `roy-0-*` prefix routed to this doc.
+- Inline-priming materialization + cleanup (R3 wrote the sibling YAML, ran the curriculum, deleted it).
+- Substrate-primary narration suppression in the bridge (no English leaked to the AUT percept queue, per Phase 0's "no English" goal).
+- Artifact dir creation + result.json persistence + protocol/log generation pipeline (R4).
+
+**What needed fixing (closed in this commit):**
+
+- **G1: Roy runner now forces `interactive=off` process-globally** at the top of `run_roy_iteration`. Without this, the orchestrator's TTY-AUTO mode enabled Rich Live + raw-terminal stdin reader on script-driven runs, polluting captured output and contending with whatever stdin the runner was launched with. Fixed in `src/maxim/simulation/roy_runner.py`. Regression guard: `TestRoyRunnerInvariants::test_run_forces_interactive_off`.
+
+**What we'd change before Roy-1 (concrete next steps):**
+
+- **G2:** Gate `simulation/spinner.py` on interactive mode OR `stderr.isatty()`. The spinner's ANSI writes hit captured stderr unconditionally, which pollutes JSONL logs and makes failure-mode triage harder.
+- **G3:** Add a fail-fast LLM pre-flight at the top of `run_roy_iteration` — fire one `LLMRouter.health_check` and abort with `aborted_at="preflight"` if every provider is down. Spending ~10 minutes grinding through static-fallback narration is the worst failure mode the harness can produce, and we hit it on the first real run.
+- **G4 (substrate-primary, not Roy):** `aut_mode=substrate-primary` produced `proposal=none` for the entire 145s. The substrate-primary AUT either (a) needs richer percepts than cradle_prelinguistic's silenced narration provides, or (b) has a missing wire between `EmbodimentPerceptSource.next_percept` and `runtime/agent_loop.py:2654`. Belongs in `grounded_language_acquisition.md` Phase 0, not here.
+- **G5/G6 (environmental, not Roy):** Auto-spawn looked for `claude-sonnet-4-6.Q4_K_M.gguf` despite profile `qwen2.5-14b-instruct` (env-var leak from a prior `--llm claude-sonnet`); `smollm-1.7b-instruct` auto-download blocked by non-TTY. Either pre-download small-lane models or have the Roy runner set `MAXIM_AUTO_DOWNLOAD_MODELS=1` automatically.
+
+**Prerequisite for Roy-1 (adversarial):** G3 must close. Spending the Roy-1 cost ceiling (~$5-15 Claude + ~1500 LLM calls) on a run where every dispatch silently 502s is an unacceptable failure mode.
+
+**Artifacts:** [`result.json`](/Users/dennyschaedig/.maxim/roy/roy-0-smoke/result.json) · protocol [`roy_0_smoke.md`](../experiments/protocols/roy_0_smoke.md) · spec [`roy_0_smoke.yaml`](./roy/roy_0_smoke.yaml)
+<!-- /roy-iteration:roy-0-smoke -->
+
 Empty until Roy-1 runs.
 
 ### Roy-1: Adversarial (planned, unrun)

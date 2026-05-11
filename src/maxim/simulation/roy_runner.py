@@ -408,6 +408,25 @@ def run_roy_iteration(
 
         curriculum_fn = run_curriculum
 
+    # R5 Roy-0 finding: the orchestrator picks up TTY status at boot and
+    # enables Rich Live + raw-terminal stdin reader when AUTO. A Roy
+    # iteration runs five+ sims back-to-back — interactive mode makes
+    # no sense (no human is driving), and the raw-terminal reader
+    # contends with whatever stdin the runner is launched with (CI,
+    # tmux, MCP, ...). Force interactive=off process-globally for the
+    # duration of the iteration. CLAUDE.md §"Running simulations" makes
+    # the same call for any script-driven sim. We intentionally do NOT
+    # restore the prior mode — Roy iterations are terminal operations
+    # in this process; if the caller has a long-running REPL they can
+    # re-arm interactive mode after run_roy_iteration returns.
+    try:
+        from maxim.simulation.sim_logger import set_interactive_mode
+
+        set_interactive_mode("off")
+    except Exception:
+        # Logging plumbing should never sink a Roy run — best effort.
+        logger.debug("Roy: failed to disable interactive mode", exc_info=True)
+
     if artifact_root is None:
         artifact_dir = data_home() / "roy" / spec.name
     else:
