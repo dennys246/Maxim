@@ -110,9 +110,7 @@ class TestSubstrateActionGeneration:
             current_drives={"hunger": 0.8},
         )
 
-        assert result is not None, (
-            "Substrate failed to use active hunger drive to bias action selection."
-        )
+        assert result is not None, "Substrate failed to use active hunger drive to bias action selection."
         # The hunger affinity table includes 'pick_up' and 'food';
         # 'pick_up_food' matches both.
         assert result["tool_name"] == "pick_up_food"
@@ -157,8 +155,7 @@ class TestSubstrateActionGeneration:
 
         assert result is not None
         assert result["tool_name"] == "examine_rock", (
-            f"Expected learned-link winner, got {result['tool_name']} with "
-            f"reasoning: {result['reasoning']}"
+            f"Expected learned-link winner, got {result['tool_name']} with reasoning: {result['reasoning']}"
         )
         assert "causal_pos" in result["reasoning"]
         assert result["source"] == "substrate-primary"
@@ -217,9 +214,7 @@ class TestSubstrateActionGeneration:
             current_drives={"hunger": 0.51},  # 0.51 × 0.7 = 0.357 → just above default 0.3
             min_confidence=0.5,  # Raise threshold
         )
-        assert result is None, (
-            "min_confidence gate failed — low-confidence action proposed"
-        )
+        assert result is None, "min_confidence gate failed — low-confidence action proposed"
 
     def test_returns_action_dict_compatible_with_proposal(self, nac, valence_positive):
         """Returned dict must be compatible with agents.autonomy.Proposal.action.

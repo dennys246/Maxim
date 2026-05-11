@@ -754,6 +754,11 @@ def propose_via_substrate(
         confidence=float(recommendation.get("confidence", min_confidence)),
         mode_goal_achieved=False,
         triggering_input="",
+        # G4: stash the active EC cluster on the proposal so the outcome
+        # path can credit ``NAc._cluster_reward_bias[(agent, cluster, tool)]``
+        # — see record_outcome in tool_dispatch.py. ``None`` when no
+        # sensor encoder was wired or drives produced no cluster.
+        cluster_id=cluster_id,
     )
 
 
@@ -1898,6 +1903,7 @@ def run_agentic_loop(
                                         context_pool=context_pool,
                                         nac=_loop_nac,
                                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                                        cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                                     )
                             else:
                                 # Log rejected action
@@ -2015,6 +2021,7 @@ def run_agentic_loop(
                     context_pool=context_pool,
                     nac=_loop_nac,
                     active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                    cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                 )
 
                 # Queue as a followup for the next LLM call
@@ -2290,6 +2297,7 @@ def run_agentic_loop(
                         nac=_loop_nac,
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         tool_params=action.get("params"),
+                        cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                     )
 
                     # Record plan outcome in MemoryHub for learning
@@ -2429,6 +2437,7 @@ def run_agentic_loop(
                         context_pool=context_pool,
                         nac=_loop_nac,
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                        cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                     )
 
                     # Mark failure in state
@@ -2545,6 +2554,7 @@ def run_agentic_loop(
                         context_pool=context_pool,
                         nac=_loop_nac,
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                        cluster_id=ctrl.pending_proposal.cluster_id,
                     )
                     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
                 ctrl.pending_proposal = None
@@ -2587,6 +2597,7 @@ def run_agentic_loop(
                             context_pool=context_pool,
                             nac=_loop_nac,
                             active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                            cluster_id=proposal.cluster_id,
                         )
 
                         # L2: Reset deliberation state on non-think tool execution
@@ -2627,6 +2638,7 @@ def run_agentic_loop(
                             context_pool=context_pool,
                             nac=_loop_nac,
                             active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
+                            cluster_id=proposal.cluster_id,
                         )
 
         # ─────────────────────────────────────────────────────────────────

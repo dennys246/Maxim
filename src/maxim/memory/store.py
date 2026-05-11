@@ -108,8 +108,7 @@ def _unwrap_items(data: Any, kind: str) -> list[dict]:
         return []
 
     log.warning(
-        "%s payload has unexpected JSON root type %s (expected dict or list); "
-        "treating as empty store",
+        "%s payload has unexpected JSON root type %s (expected dict or list); treating as empty store",
         kind,
         type(data).__name__,
     )

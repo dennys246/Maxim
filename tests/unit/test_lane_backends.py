@@ -459,7 +459,8 @@ class TestBuildPrimaryRouter:
             patch("maxim.models.language.router.LLMRouter"),
             # Force probe to return "ok" so the env-supplied URL flows through.
             patch.object(
-                _MaximPeerBackend, "health_check",
+                _MaximPeerBackend,
+                "health_check",
                 return_value=ProbeResult("http://127.0.0.1:8000/v1", "ok", "HTTP 200", 10.0),
             ),
             # Mock the persisted-model read so the developer's real
