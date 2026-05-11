@@ -1706,6 +1706,16 @@ class NAc:
                 "total_observations": self._total_observations,
                 "reward_bias": {f"{aid}:{nid}": bias for (aid, nid), bias in self._reward_bias.items()},
                 "goal_reward_bias": dict(self._goal_reward_bias),
+                # G4: cluster-keyed tool reward bias (Track 2 of
+                # grounded_language_acquisition.md Phase 0+). Keys join
+                # the (agent_id, cluster_id, tool_signature) triple with
+                # ``\x1f`` (ASCII unit separator) so they can be split
+                # back unambiguously even when tool_signature contains
+                # ``:`` (which ``build_tool_signature`` does for the
+                # ``use`` tool — ``tool:use:dodge``).
+                "cluster_reward_bias": {
+                    f"{aid}\x1f{cid}\x1f{tsig}": bias for (aid, cid, tsig), bias in self._cluster_reward_bias.items()
+                },
             }
 
     def load_state(self, state: dict[str, Any]) -> None:
@@ -1739,6 +1749,16 @@ class NAc:
 
         # Goal-level reward biases (backward-compatible: missing → empty)
         self._goal_reward_bias = dict(state.get("goal_reward_bias", {}))
+
+        # G4: cluster-keyed reward biases. Missing field → empty dict
+        # (backward-compatible: every aut_nac.json written before G4
+        # closure lacks this key, and substrate-primary still works —
+        # ``cluster_reward_bias()`` returns 0.0 for unknown triples).
+        self._cluster_reward_bias = {}
+        for key_str, bias in state.get("cluster_reward_bias", {}).items():
+            parts = key_str.split("\x1f", 2)
+            if len(parts) == 3:
+                self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = bias
 
     def save(self, path: str | None = None) -> None:
         """Save NAc state to JSON file.

@@ -201,6 +201,19 @@ class LLMProposal:
     # bio-enrichment for another round.
     ready_to_act: bool = True
 
+    # Substrate-primary: EC interoception cluster id active at proposal
+    # time. Captured by ``propose_via_substrate`` (Phase 0 / Track 2 of
+    # grounded_language_acquisition.md) so the outcome-recording path
+    # can credit/penalise the right ``(agent, cluster, tool)`` triple
+    # in ``NAc._cluster_reward_bias`` after the action executes.
+    # ``None`` for every LLM-primary proposal and for substrate-primary
+    # ticks where no cluster was active (no sensors / no encoder).
+    # Closes G4 from Roy-0: Track 2 wired ``current_cluster_id`` into
+    # ``recommend_action`` for *selection* but deliberately deferred the
+    # ``record_outcome`` plumbing for *learning*. Without this field the
+    # cluster_id is captured at proposal time and lost before outcome.
+    cluster_id: str | None = None
+
     def get_all_actions(self) -> list[dict[str, Any]]:
         """Get the primary action followed by any next_actions."""
         actions = []

@@ -144,6 +144,13 @@ class NacDiff:
     reward_bias_top_deltas: tuple[tuple[str, float], ...] = ()
     goal_reward_bias_l2: float = 0.0
     goal_reward_bias_top_deltas: tuple[tuple[str, float], ...] = ()
+    # G4: cluster-keyed reward bias divergence (Track 2 of
+    # grounded_language_acquisition.md Phase 0+). Only surfaces when both
+    # sides persisted the ``cluster_reward_bias`` field — pre-G4 snapshots
+    # lack it, which is the normal backward-compat case.
+    cluster_reward_bias_available: bool = False
+    cluster_reward_bias_l2: float = 0.0
+    cluster_reward_bias_top_deltas: tuple[tuple[str, float], ...] = ()
     percept_valence_available: bool = False
     percept_valence_l2: float = 0.0
     percept_valence_top_deltas: tuple[tuple[str, float], ...] = ()
@@ -169,6 +176,15 @@ class NacDiff:
         )
         for key, delta in self.goal_reward_bias_top_deltas[:5]:
             lines.append(f"    {key}: Δ {delta:+.4f}")
+        if self.cluster_reward_bias_available:
+            lines.append(
+                f"  cluster_reward_bias L2: {self.cluster_reward_bias_l2:.4f}  "
+                f"({len(self.cluster_reward_bias_top_deltas)} keys differ)"
+            )
+            for key, delta in self.cluster_reward_bias_top_deltas[:5]:
+                lines.append(f"    {key}: Δ {delta:+.4f}")
+        else:
+            lines.append("  cluster_reward_bias: not persisted (pre-G4 snapshot)")
         if self.percept_valence_available:
             lines.append(
                 f"  percept_valences L2: {self.percept_valence_l2:.4f}  "
@@ -363,6 +379,18 @@ def nac_diff(dir_a: str | Path, dir_b: str | Path) -> NacDiff:
     grb_b: dict[str, float] = {k: float(v) for k, v in state_b.get("goal_reward_bias", {}).items()}
     grb_l2, grb_top = _l2_dict_diff(grb_a, grb_b)
 
+    # G4: cluster-keyed reward bias — only surface if both sides
+    # persisted it (pre-G4 NAc snapshots lack the field).
+    crb_a_raw = state_a.get("cluster_reward_bias")
+    crb_b_raw = state_b.get("cluster_reward_bias")
+    crb_available = isinstance(crb_a_raw, dict) and isinstance(crb_b_raw, dict)
+    crb_l2 = 0.0
+    crb_top: list[tuple[str, float]] = []
+    if crb_available:
+        crb_a = {k: float(v) for k, v in crb_a_raw.items()}
+        crb_b = {k: float(v) for k, v in crb_b_raw.items()}
+        crb_l2, crb_top = _l2_dict_diff(crb_a, crb_b)
+
     # _percept_valences — reserved for 1.1; only surface metrics if both
     # sides actually persisted the field.
     pv_a_raw = state_a.get("percept_valences")
@@ -386,6 +414,9 @@ def nac_diff(dir_a: str | Path, dir_b: str | Path) -> NacDiff:
         reward_bias_top_deltas=tuple(rb_top[:20]),
         goal_reward_bias_l2=grb_l2,
         goal_reward_bias_top_deltas=tuple(grb_top[:20]),
+        cluster_reward_bias_available=crb_available,
+        cluster_reward_bias_l2=crb_l2,
+        cluster_reward_bias_top_deltas=tuple(crb_top[:20]),
         percept_valence_available=pv_available,
         percept_valence_l2=pv_l2,
         percept_valence_top_deltas=tuple(pv_top[:20]),
@@ -574,6 +605,11 @@ def _nac_to_json(d: NacDiff) -> dict[str, Any]:
             "reward_bias_top_deltas": [{"key": k, "delta": v} for k, v in d.reward_bias_top_deltas],
             "goal_reward_bias_l2": d.goal_reward_bias_l2,
             "goal_reward_bias_top_deltas": [{"key": k, "delta": v} for k, v in d.goal_reward_bias_top_deltas],
+            "cluster_reward_bias": {
+                "available": d.cluster_reward_bias_available,
+                "l2": d.cluster_reward_bias_l2,
+                "top_deltas": [{"key": k, "delta": v} for k, v in d.cluster_reward_bias_top_deltas],
+            },
             "percept_valence": {
                 "available": d.percept_valence_available,
                 "l2": d.percept_valence_l2,

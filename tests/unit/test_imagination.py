@@ -1082,9 +1082,7 @@ class TestGenerateSceneManifest:
         from maxim.simulation.narrator import generate_scene_manifest
 
         mock_llm = MagicMock()
-        mock_llm.generate_json.return_value = {
-            "entities": ["a rusty sword", "a large dragon", "a healing potion"]
-        }
+        mock_llm.generate_json.return_value = {"entities": ["a rusty sword", "a large dragon", "a healing potion"]}
 
         result = generate_scene_manifest(mock_llm, "explore a dungeon")
         assert "dragon" in result

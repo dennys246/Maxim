@@ -94,9 +94,9 @@ class TestInstantiation:
         "machine",
         "item",
         "vehicle",
-        "mechanism",    # cradle: lever_door, button
-        "hazard",       # cradle: fire_pit
-        "consumable",   # cradle: food_source
+        "mechanism",  # cradle: lever_door, button
+        "hazard",  # cradle: fire_pit
+        "consumable",  # cradle: food_source
     }
 
     def test_bundled_components_use_known_types(self, registry, component_refs):

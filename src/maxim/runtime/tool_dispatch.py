@@ -68,6 +68,7 @@ def record_outcome(
     elapsed_s: float = 0.0,
     active_goal: str | None = None,
     tool_params: dict[str, Any] | None = None,
+    cluster_id: str | None = None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -150,6 +151,29 @@ def record_outcome(
                 reward = 1.0 if success else -1.0
                 nac.credit_goal(active_goal, reward)
 
+            # G4 closure: cluster-keyed reward bias for substrate-primary
+            # action selection. When the proposer captured an EC
+            # interoception cluster id at proposal time (only fires from
+            # propose_via_substrate today; LLM-primary proposals leave
+            # ``cluster_id`` as None), credit the ``(agent, cluster, tool)``
+            # triple with +1/-1 on success/failure. ``update_cluster_reward``
+            # is a no-op when cluster_id is None/empty, so this is safe to
+            # call unconditionally. See:
+            # docs/plans/grounded_language_acquisition.md § Phase 0 G4.
+            if cluster_id:
+                try:
+                    nac.update_cluster_reward(
+                        agent_id=agent_id,
+                        cluster_id=cluster_id,
+                        tool_signature=sig,
+                        reward=1.0 if success else -1.0,
+                    )
+                except Exception:
+                    # Mirrors the surrounding error policy — cluster
+                    # learning is best-effort; an exception here must
+                    # not crash the agent loop.
+                    logger.debug("update_cluster_reward raised", exc_info=True)
+
             # Sim trace
             try:
                 from maxim.simulation.sim_logger import sim_nac
@@ -199,6 +223,7 @@ def execute_parallel_actions(
     context_pool: Any,
     nac: Any | None = None,
     active_goal: str | None = None,
+    cluster_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Execute a batch of parallel actions with autonomy gating.
 
@@ -297,6 +322,7 @@ def execute_parallel_actions(
             nac=nac,
             active_goal=active_goal,
             tool_params=pr.get("params"),
+            cluster_id=cluster_id,
         )
 
     log_agentic(

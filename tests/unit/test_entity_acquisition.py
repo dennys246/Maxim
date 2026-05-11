@@ -100,7 +100,9 @@ class TestEntityReparent:
             "entity_type": "item",
             "sensors": {"sharpness": {"unit": "ratio", "range": [0, 1], "initial": 0.8}},
             "acquirable": True,
-            "failure_modes": [{"name": "laceration", "trigger": {"field": "sharpness", "op": ">", "value": 0.5, "pain": 0.4}}],
+            "failure_modes": [
+                {"name": "laceration", "trigger": {"field": "sharpness", "op": ">", "value": 0.5, "pain": 0.4}}
+            ],
         }
         body = _parse_entity(body_data)
         rock = _parse_entity(rock_data)
@@ -161,7 +163,11 @@ class TestAcquisitionSideEffects:
         schema = arms_mod.affordances["pick_up"]
 
         tool = ModulatorAffordanceTool(
-            body, arms_mod, "pick_up", schema, "body_pick_up",
+            body,
+            arms_mod,
+            "pick_up",
+            schema,
+            "body_pick_up",
             entity_map=emap,
         )
 
@@ -202,7 +208,11 @@ class TestAcquisitionSideEffects:
         schema = arms_mod.affordances["pick_up"]
 
         tool = ModulatorAffordanceTool(
-            body, arms_mod, "pick_up", schema, "body_pick_up",
+            body,
+            arms_mod,
+            "pick_up",
+            schema,
+            "body_pick_up",
             entity_map=emap,
         )
 
