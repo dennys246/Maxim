@@ -239,6 +239,12 @@ learned_bounds.json
 
 .maxim_workspace
 
+# Roy harness transient artifacts — run_roy_iteration materialises inline
+# priming specs to `.roy_inline_priming_<name>.yaml` next to the iteration
+# spec, then deletes them on exit. If the run is killed externally the
+# file lingers; this ignore prevents it from being committed by accident.
+.roy_inline_priming_*.yaml
+
 # Claude Code
 .claude/
 
