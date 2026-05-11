@@ -686,3 +686,254 @@ class TestRoyCli:
         assert parsed.arms["a"].substrate == "from_priming"
         assert parsed.arms["b"].substrate == "blank"
         assert parsed.arms["c"].substrate == "blank"
+
+
+# ---------------------------------------------------------------------------
+# 5. G3: LLM pre-flight probe — fail fast before priming
+# ---------------------------------------------------------------------------
+
+
+class TestRoyPreflight:
+    """Pre-flight probe (G3) catches dead LLM lanes BEFORE priming.
+
+    Without this, an iteration grinds out ~10 min of static-fallback
+    narration with ``dispatch_exhausted`` on every call when the
+    configured ``large`` lane is unreachable. The probe is one HTTP
+    call (``_MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()``)
+    and aborts with ``aborted_at="preflight"`` on failure.
+    """
+
+    def test_preflight_failure_aborts_before_priming(self, isolated_data_home, tmp_path):
+        """Failing preflight short-circuits: no priming, no arms, no diffs."""
+        spec_path = _build_smoke_spec(tmp_path)
+        runner = _make_fake_sim_runner()
+
+        def failing_preflight():
+            return False, {
+                "url": "https://leader.example.com",
+                "outcome": "connection_refused",
+                "detail": "fake refusal for test",
+                "fix": "start the leader",
+            }
+
+        result = run_roy_iteration(
+            spec_path,
+            sim_runner=runner,
+            preflight_fn=failing_preflight,
+            artifact_root=tmp_path / "roy",
+        )
+
+        assert result.aborted_at == "preflight"
+        assert result.preflight["outcome"] == "connection_refused"
+        assert result.preflight["url"] == "https://leader.example.com"
+        assert "preflight:" in (result.priming.get("error") or "")
+        # No priming, no arms, no diffs were attempted.
+        assert result.arms == {}
+        assert result.pairwise_diffs == {}
+        assert runner.call_log == []  # type: ignore[attr-defined]
+        # Artifact persisted so the operator can inspect.
+        artifact = Path(result.artifact_dir) / "result.json"
+        assert artifact.is_file()
+        payload = json.loads(artifact.read_text())
+        assert payload["aborted_at"] == "preflight"
+        assert payload["preflight"]["outcome"] == "connection_refused"
+
+    def test_preflight_pass_runs_full_iteration(self, isolated_data_home, tmp_path):
+        """Passing preflight lets the iteration proceed normally and
+        records the probe outcome on the result.
+        """
+        spec_path = _build_smoke_spec(tmp_path)
+        runner = _make_fake_sim_runner()
+
+        def passing_preflight():
+            return True, {
+                "url": "https://leader.example.com",
+                "outcome": "ok",
+                "detail": "",
+                "latency_ms": 42.5,
+            }
+
+        result = run_roy_iteration(
+            spec_path,
+            sim_runner=runner,
+            preflight_fn=passing_preflight,
+            artifact_root=tmp_path / "roy",
+        )
+
+        assert result.aborted_at is None
+        assert result.preflight["outcome"] == "ok"
+        assert result.preflight["latency_ms"] == 42.5
+        # All three arms ran.
+        assert all(a.session_id for a in result.arms.values())
+
+    def test_preflight_skipped_when_fake_sim_runner_injected(self, isolated_data_home, tmp_path):
+        """The R3 fake-sim_runner test seam stays clean: when a fake
+        sim_runner is injected and no explicit preflight_fn is passed,
+        the probe is skipped entirely (preflight dict is empty / unset).
+        """
+        spec_path = _build_smoke_spec(tmp_path)
+        runner = _make_fake_sim_runner()
+
+        result = run_roy_iteration(
+            spec_path,
+            sim_runner=runner,
+            artifact_root=tmp_path / "roy",
+        )
+        # No preflight ran, no abort, full iteration completed.
+        assert result.aborted_at is None
+        assert result.preflight == {}
+
+    def test_preflight_raising_treated_as_failure(self, isolated_data_home, tmp_path):
+        """If preflight_fn itself raises, the runner treats that as a
+        preflight failure (does NOT crash the iteration).
+        """
+        spec_path = _build_smoke_spec(tmp_path)
+        runner = _make_fake_sim_runner()
+
+        def crashing_preflight():
+            raise RuntimeError("preflight blew up")
+
+        result = run_roy_iteration(
+            spec_path,
+            sim_runner=runner,
+            preflight_fn=crashing_preflight,
+            artifact_root=tmp_path / "roy",
+        )
+        assert result.aborted_at == "preflight"
+        assert result.preflight["outcome"] == "preflight_raised"
+        assert "preflight blew up" in result.preflight["detail"]
+        assert runner.call_log == []  # type: ignore[attr-defined]
+
+
+class TestPreflightHelper:
+    """Tests for the built-in :func:`_preflight_llm` helper.
+
+    The helper resolves the ``large`` lane URL/key/model from
+    ``MAXIM_LANE_LARGE_REMOTE_*`` env vars and probes via
+    :meth:`_MaximPeerBackend.for_url(...).health_check`.
+    """
+
+    def test_skips_when_no_remote_url_configured(self, monkeypatch):
+        """No ``MAXIM_LANE_LARGE_REMOTE_URL`` → skip with reason.
+
+        Local-LLM leader and cloud-only configurations have no peer URL
+        to probe; their failure modes surface fast at first dispatch
+        without the 10-min grind, so the preflight is intentionally a
+        no-op for them.
+        """
+        from maxim.simulation.roy_runner import _preflight_llm
+
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_URL", raising=False)
+        ok, info = _preflight_llm()
+        assert ok is True
+        assert info.get("skipped") is True
+        assert "MAXIM_LANE_LARGE_REMOTE_URL" in info.get("reason", "")
+
+    def test_probes_when_remote_url_configured(self, monkeypatch):
+        """When the URL is set, the helper invokes
+        ``_MaximPeerBackend.for_url(url, api_key=k, model=m).health_check()``
+        and surfaces the outcome.
+        """
+        from maxim.simulation import roy_runner as _rr
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "https://leader.example.com")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", "sk-test")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_MODEL", "qwen2.5-14b")
+
+        captured: dict[str, Any] = {}
+
+        class FakeProbeResult:
+            outcome = "connection_refused"
+            detail = "ECONNREFUSED"
+            latency_ms = None
+
+        class FakeBackend:
+            @classmethod
+            def for_url(cls, url, *, api_key=None, model=None):
+                captured["url"] = url
+                captured["api_key"] = api_key
+                captured["model"] = model
+                return cls()
+
+            def health_check(self):
+                return FakeProbeResult()
+
+        # Patch the symbol the helper imports (lazy import inside fn).
+        import sys
+
+        fake_module = type(sys)("maxim.models.language.maxim_peer_backend")
+        fake_module._MaximPeerBackend = FakeBackend  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "maxim.models.language.maxim_peer_backend", fake_module)
+
+        ok, info = _rr._preflight_llm()
+        assert ok is False
+        assert info["url"] == "https://leader.example.com"
+        assert info["outcome"] == "connection_refused"
+        assert info["detail"] == "ECONNREFUSED"
+        assert "fix" in info
+        # Confirm the helper threaded URL/key/model through.
+        assert captured["url"] == "https://leader.example.com"
+        assert captured["api_key"] == "sk-test"
+        assert captured["model"] == "qwen2.5-14b"
+
+    def test_auth_rejected_is_soft_pass(self, monkeypatch):
+        """``auth_rejected`` means the listener is alive — the iteration
+        proceeds (auth errors will surface fast and loud during the actual
+        sim calls with their own typed BackendAuthFailed fix_hints).
+        """
+        from maxim.simulation import roy_runner as _rr
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "https://leader.example.com")
+        monkeypatch.delenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", raising=False)
+
+        class FakeProbeResult:
+            outcome = "auth_rejected"
+            detail = "401 Unauthorized"
+            latency_ms = 12.0
+
+        class FakeBackend:
+            @classmethod
+            def for_url(cls, url, *, api_key=None, model=None):
+                return cls()
+
+            def health_check(self):
+                return FakeProbeResult()
+
+        import sys
+
+        fake_module = type(sys)("maxim.models.language.maxim_peer_backend")
+        fake_module._MaximPeerBackend = FakeBackend  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "maxim.models.language.maxim_peer_backend", fake_module)
+
+        ok, info = _rr._preflight_llm()
+        assert ok is True
+        assert info["outcome"] == "auth_rejected"
+        assert info.get("soft_pass") is True
+
+    def test_health_check_exception_treated_as_failure(self, monkeypatch):
+        """If health_check raises (network error, import surprise), the
+        helper returns ``(False, info_with_probe_error)`` rather than
+        re-raising into the runner.
+        """
+        from maxim.simulation import roy_runner as _rr
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "https://leader.example.com")
+
+        class FakeBackend:
+            @classmethod
+            def for_url(cls, url, *, api_key=None, model=None):
+                return cls()
+
+            def health_check(self):
+                raise RuntimeError("synthetic boom")
+
+        import sys
+
+        fake_module = type(sys)("maxim.models.language.maxim_peer_backend")
+        fake_module._MaximPeerBackend = FakeBackend  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "maxim.models.language.maxim_peer_backend", fake_module)
+
+        ok, info = _rr._preflight_llm()
+        assert ok is False
+        assert info["outcome"] == "probe_error"
+        assert "synthetic boom" in info["detail"]

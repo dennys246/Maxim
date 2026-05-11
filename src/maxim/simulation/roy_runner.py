@@ -119,7 +119,13 @@ class RoyIterationResult:
     pairwise_diffs: dict[str, dict[str, Any]] = field(default_factory=dict)
     total_duration_s: float = 0.0
     artifact_dir: str = ""
-    aborted_at: str | None = None  # "priming" | "arm_a" | None
+    # ``aborted_at`` values:
+    # - ``"preflight"`` — LLM pre-flight probe failed before priming started (G3)
+    # - ``"priming"``   — priming curriculum aborted (per-stage error or runner exception)
+    # - ``None``        — iteration ran to completion (possibly with per-arm errors;
+    #                     check ``arms[k].error`` for those)
+    aborted_at: str | None = None
+    preflight: dict[str, Any] = field(default_factory=dict)  # G3 probe outcome (when run)
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +291,104 @@ def _parse_spec(spec_path: Path) -> _IterationSpec:
 
 
 # ---------------------------------------------------------------------------
+# Pre-flight LLM probe (G3)
+# ---------------------------------------------------------------------------
+
+
+def _preflight_llm() -> tuple[bool, dict[str, Any]]:
+    """Probe the configured ``large`` LLM lane before the iteration starts.
+
+    Roy iterations chain ~5 sims back-to-back; each sim makes hundreds of
+    LLM calls. If the lane is dead at startup, the entire iteration grinds
+    out static-fallback narration with ``dispatch_exhausted`` on every
+    call — the user pays for ~10 min of wall clock to learn the LLM was
+    never reachable. This probe makes that failure surface BEFORE priming.
+
+    Resolution:
+      * If ``MAXIM_LANE_LARGE_REMOTE_URL`` is set (peer mode hitting a
+        leader, the canonical Roy setup), probe via the canonical
+        :meth:`_MaximPeerBackend.for_url(...).health_check` entry point.
+      * If the env var is unset (local-LLM leader or cloud-only), skip
+        the probe and return ``ok``: there's no peer URL to probe, and
+        the local llama.cpp / cloud failure modes surface fast enough at
+        first dispatch (no 10-min grind).
+
+    The probe is one HTTP call (the health_check method handles its own
+    two-stage liveness/readiness budget — do NOT add a retry loop here;
+    that violates Plan 3 R2.5's "exactly one HTTP call" invariant).
+
+    Returns ``(ok, info)`` where ``info`` is a JSON-friendly dict with
+    enough detail for the operator to act on (url, outcome, fix hint).
+    """
+    import os
+
+    url = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL") or "").strip()
+    if not url:
+        return True, {
+            "skipped": True,
+            "reason": "MAXIM_LANE_LARGE_REMOTE_URL not set — local/cloud lane, no peer probe applicable",
+        }
+
+    api_key = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY") or "").strip() or None
+    model = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_MODEL") or "").strip() or None
+
+    try:
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+    except ImportError as e:
+        # Probe code unavailable — don't block the iteration; the sim's
+        # own backend resolution will surface the ImportError at dispatch.
+        return True, {
+            "skipped": True,
+            "reason": f"_MaximPeerBackend import failed: {type(e).__name__}: {e}",
+        }
+
+    try:
+        result = _MaximPeerBackend.for_url(url, api_key=api_key, model=model).health_check()
+    except Exception as e:  # noqa: BLE001 — probe must not raise into the runner
+        return False, {
+            "url": url,
+            "outcome": "probe_error",
+            "detail": f"{type(e).__name__}: {e}",
+            "fix": "check leader logs and that maxim is running on the leader",
+        }
+
+    outcome = getattr(result, "outcome", "unknown")
+    detail = getattr(result, "detail", "") or ""
+    latency_ms = getattr(result, "latency_ms", None)
+    info: dict[str, Any] = {
+        "url": url,
+        "outcome": outcome,
+        "detail": detail,
+        "latency_ms": latency_ms,
+    }
+
+    # ``ok`` and ``auth_rejected`` both mean the listener is alive.
+    # auth_rejected is treated as a soft-pass for the preflight (the
+    # leader is up; the iteration's actual LLM calls will surface the
+    # auth error fast and loud, with a useful fix_hint). The user's
+    # primary failure mode is "leader entirely unreachable" — that's
+    # what we're catching here.
+    if outcome == "ok":
+        return True, info
+    if outcome == "auth_rejected":
+        info["fix"] = "rotate API key on the leader and re-paste with `maxim peer key`"
+        info["soft_pass"] = True
+        return True, info
+
+    fix_hints = {
+        "dns_fail": f"Check the hostname in $MAXIM_LANE_LARGE_REMOTE_URL ({url})",
+        "tls_error": "Check the leader's TLS certificate validity",
+        "connection_refused": "Leader not accepting connections — start `maxim` on the leader",
+        "timeout": "Leader did not respond in time — is it cold-loading a model?",
+        "http_5xx": "Leader returned a server error — check `maxim peer logs`",
+        "model_missing": "Configured model is not available on the leader — check `maxim peer llm --status`",
+        "inference_broken": "Leader is up but inference path is broken — check `maxim peer logs`",
+    }
+    info["fix"] = fix_hints.get(outcome, "check `maxim peer logs` on the leader")
+    return False, info
+
+
+# ---------------------------------------------------------------------------
 # Stage helpers
 # ---------------------------------------------------------------------------
 
@@ -371,6 +475,7 @@ def run_roy_iteration(
     sim_runner: Callable[..., Any] | None = None,
     curriculum_fn: Callable[..., Any] | None = None,
     artifact_root: Path | str | None = None,
+    preflight_fn: Callable[[], tuple[bool, dict[str, Any]]] | None = None,
 ) -> RoyIterationResult:
     """Run one Roy three-arm iteration.
 
@@ -391,6 +496,12 @@ def run_roy_iteration(
     artifact_root:
         Override for the iteration artifact directory parent. Defaults
         to ``~/.maxim/roy``. Tests use this to point at a tmp dir.
+    preflight_fn:
+        Injection seam for tests — defaults to :func:`_preflight_llm`
+        when ``sim_runner`` is also unset (production path), and to
+        ``None`` (skip preflight entirely) when a fake ``sim_runner`` is
+        injected. Pass an explicit callable to test the preflight code
+        path against a fake sim_runner.
     """
     from maxim.analysis.substrate_diff import substrate_diff, substrate_diff_to_json
     from maxim.utils.atomic_io import atomic_write_text, atomic_write_json
@@ -399,10 +510,18 @@ def run_roy_iteration(
 
     spec = _parse_spec(Path(spec_path))
 
+    # Production path: no fake sim_runner, no explicit preflight_fn → use
+    # the built-in probe. Test path: a fake sim_runner is injected and the
+    # default preflight is skipped; tests that want to exercise the
+    # preflight branch pass ``preflight_fn=`` directly. This keeps the R3
+    # fake-sim_runner test seam clean while making the production probe
+    # default-on (the whole point of G3).
     if sim_runner is None:
         from maxim.simulation.orchestrator import start_simulation_mode
 
         sim_runner = start_simulation_mode
+        if preflight_fn is None:
+            preflight_fn = _preflight_llm
     if curriculum_fn is None:
         from maxim.simulation.curriculum_runner import run_curriculum
 
@@ -440,6 +559,39 @@ def run_roy_iteration(
         artifact_dir=str(artifact_dir),
     )
     overall_start = time.time()
+
+    # ── Pre-flight LLM probe (G3) ──────────────────────────────────────
+    # Catch dead-LLM-lane configurations BEFORE the priming curriculum
+    # eats ~10 min of wall clock producing static-fallback narration.
+    # Skipped when a fake sim_runner is injected (test path) unless the
+    # caller supplies an explicit preflight_fn.
+    if preflight_fn is not None:
+        try:
+            ok, info = preflight_fn()
+        except Exception as e:  # noqa: BLE001 — preflight must not raise
+            ok, info = (
+                False,
+                {
+                    "outcome": "preflight_raised",
+                    "detail": f"{type(e).__name__}: {e}",
+                    "fix": "investigate preflight_fn implementation",
+                },
+            )
+        result.preflight = info
+        if not ok:
+            result.aborted_at = "preflight"
+            err = info.get("detail") or info.get("outcome") or "unknown preflight failure"
+            result.priming = {"error": f"preflight: {err}"}
+            result.total_duration_s = round(time.time() - overall_start, 2)
+            logger.error(
+                "Roy iteration %r aborted at preflight: outcome=%s detail=%s url=%s",
+                spec.name,
+                info.get("outcome"),
+                info.get("detail"),
+                info.get("url", "<unset>"),
+            )
+            _persist_result(result, artifact_dir, atomic_write_json, atomic_write_text, with_format_version)
+            return result
 
     # ── Priming ────────────────────────────────────────────────────────
     priming_path = _materialise_inline_priming(spec)
@@ -594,6 +746,7 @@ def _result_to_dict(r: RoyIterationResult) -> dict[str, Any]:
         "name": r.name,
         "spec_path": r.spec_path,
         "description": r.description,
+        "preflight": r.preflight,
         "priming": r.priming,
         "arms": {k: _arm_to_dict(v) for k, v in r.arms.items()},
         "pairwise_diffs": r.pairwise_diffs,
@@ -629,6 +782,22 @@ def _format_summary(r: RoyIterationResult) -> str:
     if r.aborted_at:
         lines.append(f"- **aborted_at:** `{r.aborted_at}`")
     lines.append("")
+
+    # Preflight (G3)
+    if r.preflight:
+        lines.append("## Pre-flight")
+        if r.preflight.get("skipped"):
+            lines.append(f"- skipped: `{r.preflight.get('reason', '<no reason>')}`")
+        else:
+            lines.append(f"- url: `{r.preflight.get('url', '<unset>')}`")
+            lines.append(f"- outcome: `{r.preflight.get('outcome', '<unknown>')}`")
+            if r.preflight.get("detail"):
+                lines.append(f"- detail: `{r.preflight['detail']}`")
+            if r.preflight.get("latency_ms") is not None:
+                lines.append(f"- latency_ms: {r.preflight['latency_ms']}")
+            if r.preflight.get("fix"):
+                lines.append(f"- fix: `{r.preflight['fix']}`")
+        lines.append("")
 
     # Priming
     lines.append("## Priming")
