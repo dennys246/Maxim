@@ -13,6 +13,9 @@ Subcommands:
   runner that primes arm A, evaluates all three arms on the same
   test scenario, and writes pairwise substrate diffs to
   ``~/.maxim/roy/<iteration_name>/``.
+- ``log <iteration_id> [--plan <path>] [--dry-run]``: R4. Generate
+  the reproduction-protocol runbook plus an iteration-log entry on
+  the appropriate plan doc from a recorded ``result.json``.
 """
 
 from __future__ import annotations
@@ -140,6 +143,126 @@ def _run_run(argv: Sequence[str]) -> int:
     return 1 if arms_failed == len(result.arms) else 0
 
 
+def _run_log(argv: Sequence[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="maxim roy log",
+        description=(
+            "Generate the reproduction-protocol runbook + iteration-log "
+            "entry for a recorded Roy iteration. Writes "
+            "docs/experiments/protocols/roy_<id>.md and appends to the "
+            "auto-detected plan doc's '## Iteration log' section. "
+            "Both artifacts are drafts — operator review required before commit."
+        ),
+    )
+    parser.add_argument("iteration_id", help="Iteration name (matches ~/.maxim/roy/<id>/)")
+    parser.add_argument(
+        "--plan",
+        help=(
+            "Explicit plan-doc path for the iteration-log append. "
+            "Auto-detected from the iteration name prefix when omitted "
+            "(roy-cradle-* → grounded_language_acquisition.md, "
+            "roy-{0..5,cautious,adversarial,explorer,collector,hider}-* → persona_convergence_crucible.md)."
+        ),
+    )
+    parser.add_argument(
+        "--protocol",
+        help="Explicit protocol output path. Defaults to docs/experiments/protocols/roy_<id>.md.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print both artifacts to stdout instead of writing them.",
+    )
+    parser.add_argument(
+        "--no-log",
+        action="store_true",
+        help="Skip the iteration-log append; only write the protocol runbook.",
+    )
+    parser.add_argument(
+        "--no-protocol",
+        action="store_true",
+        help="Skip the protocol runbook; only append the iteration-log entry.",
+    )
+    parser.add_argument(
+        "--artifact-root",
+        help="Override the artifact root (default ~/.maxim/roy).",
+    )
+    args = parser.parse_args(argv)
+
+    from maxim.analysis.roy_log import (
+        default_protocol_path,
+        detect_plan_path,
+        generate_iteration_log_entry,
+        generate_protocol,
+        load_iteration_result,
+    )
+
+    artifact_root = Path(args.artifact_root).expanduser() if args.artifact_root else None
+    try:
+        loaded = load_iteration_result(args.iteration_id, artifact_root=artifact_root)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    # Resolve protocol path
+    if args.protocol:
+        protocol_path = Path(args.protocol).expanduser()
+    else:
+        protocol_path = default_protocol_path(args.iteration_id)
+        if protocol_path is None and not args.no_protocol:
+            print(
+                "error: cannot locate repo root for default protocol path; pass --protocol <path> or --no-protocol.",
+                file=sys.stderr,
+            )
+            return 2
+
+    # Resolve plan path
+    plan_path: Path | None = None
+    if not args.no_log:
+        if args.plan:
+            plan_path = Path(args.plan).expanduser()
+        else:
+            plan_path = detect_plan_path(args.iteration_id)
+            if plan_path is None:
+                print(
+                    f"error: cannot auto-detect plan doc for iteration {args.iteration_id!r}; "
+                    f"pass --plan <path> or --no-log.",
+                    file=sys.stderr,
+                )
+                return 2
+        if not plan_path.is_file():
+            print(f"error: plan doc not found: {plan_path}", file=sys.stderr)
+            return 2
+
+    # Generate protocol
+    if not args.no_protocol and protocol_path is not None:
+        try:
+            rendered = generate_protocol(loaded, protocol_path, dry_run=args.dry_run)
+        except (FileExistsError, OSError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        if args.dry_run:
+            print(f"--- protocol ({protocol_path}) ---")
+            print(rendered)
+        else:
+            print(f"wrote protocol: {protocol_path}")
+
+    # Generate iteration-log entry
+    if not args.no_log and plan_path is not None:
+        try:
+            block = generate_iteration_log_entry(loaded, plan_path, dry_run=args.dry_run)
+        except (ValueError, FileNotFoundError, OSError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        if args.dry_run:
+            print(f"--- iteration log entry ({plan_path}) ---")
+            print(block)
+        else:
+            print(f"appended iteration-log entry to: {plan_path}")
+
+    return 0
+
+
 def run_roy_subcommand(argv: Sequence[str]) -> int:
     """Dispatch ``maxim roy <subcommand> [args]``."""
     if not argv:
@@ -149,7 +272,9 @@ def run_roy_subcommand(argv: Sequence[str]) -> int:
             "  diff <session_a> <session_b> [--json]   "
             "substrate divergence analysis between two session dirs\n"
             "  run <iteration_spec.yaml> [--dry-run]   "
-            "run a three-arm Roy iteration\n",
+            "run a three-arm Roy iteration\n"
+            "  log <iteration_id> [--plan PATH] [--dry-run]   "
+            "generate protocol runbook + iteration-log entry\n",
             file=sys.stderr,
         )
         return 2
@@ -159,9 +284,11 @@ def run_roy_subcommand(argv: Sequence[str]) -> int:
         return _run_diff(rest)
     if subcommand == "run":
         return _run_run(rest)
+    if subcommand == "log":
+        return _run_log(rest)
 
     print(
-        f"unknown roy subcommand: {subcommand!r}\nknown subcommands: diff, run",
+        f"unknown roy subcommand: {subcommand!r}\nknown subcommands: diff, run, log",
         file=sys.stderr,
     )
     return 2
