@@ -873,6 +873,19 @@ def _format_summary(r: RoyIterationResult) -> str:
                 f"  - NAc: reward_bias L2={nac.get('reward_bias_l2', 0.0):.4f}  "
                 f"causal_link Δ={nac.get('causal_link_count_delta', 0):+d}"
             )
+            # G4: cluster-keyed reward bias (Track 2 of grounded_language
+            # _acquisition.md Phase 0+). Surface this on its own line so
+            # operators reading summary.md see the substrate-primary
+            # learning signal even when reward_bias_l2 is 0 (which it
+            # always is for tool-outcome-driven runs — reward_bias is
+            # populated by credit_node from reaction-driven
+            # distribute_reward, not by tool outcomes).
+            crb = nac.get("cluster_reward_bias", {})
+            if crb.get("available"):
+                lines.append(
+                    f"  - NAc cluster_reward_bias L2={crb.get('l2', 0.0):.4f}  "
+                    f"({len(crb.get('top_deltas', []))} keys differ)"
+                )
         if ec.get("available"):
             lines.append(f"  - EC: nodes Δ={ec.get('node_count_delta', 0):+d}")
         if hipp.get("available"):

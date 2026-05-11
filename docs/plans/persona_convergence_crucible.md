@@ -237,19 +237,49 @@ What we'd change for Roy-2: [specific next steps]
 
   **What this closure proves:** the wire exists and is unit-confirmed. `NAc.update_cluster_reward` will populate `_cluster_reward_bias` on every substrate-primary tool outcome. `aut_nac.json` will carry the dict so Roy iterations can compare it across arms. `substrate_diff` will report non-zero `cluster_reward_bias_l2` between an arm that learned and a blank arm.
 
-  **What this closure does NOT prove:** that Roy-0 re-run will produce non-zero divergence on a fresh leader. A real re-run is the next empirical step — it would confirm the wire fires at sim-time AND surface the next gate (likely the `min_confidence=0.3` threshold in `NAc.recommend_action`, which won't cross from a few cluster updates alone). That re-measurement is a user-driven Roy run, not a precondition for shipping the wire.
+  **What this closure does NOT prove (when shipped):** that Roy-0 re-run will produce non-zero divergence on a fresh leader. **Empirically confirmed below.**
 
   **Implication for Roy-1:** with G4 closed, Roy-1 on substrate-primary is structurally unblocked. The remaining open question for substrate-primary is "how many cluster updates cross the `min_confidence` gate" — measurement, not architecture. LLM-primary remains the validated alternative for persona-convergence methodology validation if substrate-primary's threshold tuning needs more iterations.
 
+**Roy-0 re-measurement (2026-05-11 14:35-14:51 — G4 wire empirically validated):**
+
+Re-ran the same spec against the same healthy leader after merging the G4 wire onto the leader. 926.2s wall (~15.4 min, unchanged from pre-G4). Priming completed 5/5 stages; all 3 arms completed at the warmup fixture's 3-percept exhaustion (`finish_reason=cancel`, unchanged).
+
+| Pair | `reward_bias_l2` | **`cluster_reward_bias_l2`** | `causal_link_count_delta` |
+|---|---|---|---|
+| **a_vs_b** | 0.0 | **2.4587** | +155 |
+| **a_vs_c** | 0.0 | **2.4587** | +155 |
+| b_vs_c | 0.0 | 0.2121 | 0 |
+
+**A-vs-blank top deltas:** 6× `tool:sense_food_source` at the `+1.0` per-key cap (six distinct EC cluster ids accumulated during arm A's 50-turn priming), plus 2× `tool:infant_humanoid_pick_up` at ±0.15 (one positive, one negative — arm A's priming hit a failure case the blank arms didn't). `b_vs_c` shows the stochastic-cluster-id noise floor for blank-vs-blank under this fixture; **A-vs-blank ratio is ~11.6×**, the meaningful signal.
+
+**Pre-G4 → post-G4 comparison:**
+
+| Metric | Pre-G4 (2026-05-10) | Post-G4 (2026-05-11) |
+|---|---|---|
+| `cluster_reward_bias_l2` (a_vs_b) | n/a (field not serialised) | **2.4587** |
+| `cluster_reward_bias.available` | `false` (field absent in JSON) | `true` |
+| `reward_bias_l2` | 0.0 | 0.0 (expected — different code path; G4 doesn't touch `credit_node`) |
+
+The Phase 0 architectural-gap writeup ([grounded_language_acquisition.md](grounded_language_acquisition.md)) and the [G4 experiment outcome doc](../experiments/15_g4_cluster_reward_wire.md) carry the full empirical detail. Reproduction runbook: [protocols/15_g4_cluster_reward_wire_reproduction.md](../experiments/protocols/15_g4_cluster_reward_wire_reproduction.md).
+
+**Two latent issues surfaced by the live run (tracked as follow-ups on the same PRs):**
+
+- **G3 preflight skipped under peer.yml.** Result reports `preflight = {skipped: True, reason: "MAXIM_LANE_LARGE_REMOTE_URL not set"}` despite `~/.config/maxim/peer.yml` carrying a valid leader URL. `apply_peer_config_to_env` in [lane_backends.py](../../src/maxim/runtime/lane_backends.py) only runs at lane resolution — that happens after `_preflight_llm`. Conservative skip protects local/cloud setups; means peer-with-peer.yml users get a no-op preflight. Real broken-leader failure modes are still caught with explicit env-var setup.
+- **`_format_summary` doesn't surface `cluster_reward_bias`.** `summary.md` shows only the old `reward_bias L2 = 0.0000`. JSON has the right data; rendering is the gap. Cosmetic.
+
 **What to change before Roy-1 (concrete next steps, prioritised):**
 
-1. ~~**G4 (blocking — substrate-primary track)**~~ — **CLOSED in this session.** See above.
-2. **Roy-0 re-measurement (recommended next):** rerun `maxim roy run docs/plans/roy/roy_0_smoke.yaml` against the leader to confirm `cluster_reward_bias_l2 > 0` on the A-vs-blank pair (the first empirical proof of the closed wire). Expect `reward_bias_l2` to remain near 0 (that's the per-node ATL recognition bias, populated by reaction-driven `distribute_reward`, not the G4 wire). If cluster_reward_bias_l2 ALSO comes back 0, the next gate is the score threshold at [nac.py:1300](../../src/maxim/decisions/nac.py) — substrate-primary may need a path-specific `min_confidence` lower than 0.3.
-3. **Roy-1 needs a held-out test fixture distinct from the priming arc.** Reusing cradle_prelinguistic warmup for both means the test scenario doesn't actually test generalisation. Hand-author `scenarios/roy/roy_1_holdout.yaml` with novel + familiar + unrelated stimuli per the methodology table.
+1. ~~**G4 (blocking — substrate-primary track)**~~ — **CLOSED + empirically confirmed.** See re-measurement table above.
+2. **Roy-1 needs a held-out test fixture distinct from the priming arc.** Reusing cradle_prelinguistic warmup for both means the test scenario doesn't actually test generalisation. Hand-author `scenarios/roy/roy_1_holdout.yaml` with novel + familiar + unrelated stimuli per the methodology table.
+3. **Cluster monoculture during priming.** Arm A accumulated 6 distinct cluster ids all on `sense_food_source` — single-tool exposure, not the cluster diversity Phase 0 wants. The substrate-primary cold-start regime is picking one drive-affinity tool and looping on it. Diagnostic for the next experiment: does Roy-1 with a diverse fixture produce cross-tool cluster bias, or does it still collapse to one tool?
 4. **G2 (cosmetic):** gate `simulation/spinner.py` on interactive mode or `stderr.isatty()`. Spinner ANSI pollutes JSONL logs during script runs.
 5. **G5/G6 (environmental):** auto-spawn path mismatch (claude-sonnet GGUF vs qwen2.5 profile) and smollm auto-download blocked by non-TTY. Pre-existing, outside Roy code.
 
-**Artifacts:** [`result.json`](/Users/dennyschaedig/.maxim/roy/roy-0-smoke/result.json) · protocol [`roy_0_smoke.md`](../experiments/protocols/roy_0_smoke.md) · spec [`roy_0_smoke.yaml`](./roy/roy_0_smoke.yaml) · LLM trace `/tmp/roy_0_live.jsonl` (23 peer_backend_call events)
+**Artifacts:**
+- Pre-G4 (2026-05-10): `~/.maxim/roy/roy-0-smoke/result.json` (overwritten by the re-measurement; pre-G4 snapshot lives in `~/.maxim/sim_reports/20260510_*` session dirs). LLM trace `/tmp/roy_0_live.jsonl` (23 peer_backend_call events).
+- Post-G4 (2026-05-11): [`result.json`](/Users/dennyschaedig/.maxim/roy/roy-0-smoke/result.json) carries the new `cluster_reward_bias` field. LLM trace `/tmp/roy_g4_live/roy.jsonl`.
+- Protocol: [`roy_0_smoke.md`](../experiments/protocols/roy_0_smoke.md). Spec: [`roy_0_smoke.yaml`](./roy/roy_0_smoke.yaml).
 <!-- /roy-iteration:roy-0-smoke -->
 
 Empty until Roy-1 runs.
