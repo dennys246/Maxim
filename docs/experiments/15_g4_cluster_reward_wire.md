@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-11
 **Plan:** [grounded_language_acquisition.md § Phase 0 G4](../plans/grounded_language_acquisition.md)
-**Status:** Wire shipped; unit-verified end-to-end. Empirical re-measurement on a live Roy-0 run still pending.
+**Status:** Wire shipped; unit-verified end-to-end; **empirically confirmed on a live Roy-0 run (2026-05-11 14:35-14:51)** — `cluster_reward_bias_l2 = 2.4587` on both A-vs-blank pairs, with the expected `sense_food_source` cluster updates at the `+1.0` per-key cap.
 **Companion:** [G3 — Roy preflight probe](14_g3_roy_preflight_probe.md) (paired PRs; G4 branched from G3).
 
 ## What was caught
@@ -70,15 +70,61 @@ The 6 new tests cover the chain end-to-end:
 
 ## What this DOES prove
 
-- The wire exists end-to-end. Substrate-primary tool outcomes now populate `_cluster_reward_bias`.
+- The wire exists end-to-end. Substrate-primary tool outcomes populate `_cluster_reward_bias`.
 - The dict serialises to `aut_nac.json` under the `cluster_reward_bias` JSON key.
 - `substrate_diff` reads the dict and computes L2 + top deltas when both sides have it.
-- Roy `result.json` will carry `nac.cluster_reward_bias.{available, l2, top_deltas}` so operators can read the metric directly.
+- Roy `result.json` carries `nac.cluster_reward_bias.{available, l2, top_deltas}` so operators can read the metric directly.
 
-## What this does NOT prove
+## Live Roy-0 re-measurement (empirical confirmation)
 
-- That a fresh Roy-0 run will actually populate the dict with substantive entries at sim-time. The wire fires per unit test, but the next gate is empirical: with `min_confidence=0.3` on `NAc.recommend_action` and only a few cluster updates per substrate-primary tick, the proposer may still hit the score-threshold gate before cluster bias accumulates. That's a tuning question (path-specific `min_confidence` for substrate-primary?), answered by a real Roy-0 re-measurement.
-- That `reward_bias_l2` (the per-node ATL recognition bias, distinct from cluster_reward_bias) will become non-zero. That dict populates only via `credit_node` from reaction-driven `distribute_reward`, not from tool outcomes — G4 doesn't touch that path.
+Re-ran `maxim roy run docs/plans/roy/roy_0_smoke.yaml` against the same healthy leader Roy-0 (2026-05-10) used. Wall: 926.2s (~15.4 min) — same shape as pre-G4. Priming completed 5/5 stages; all 3 arms completed at the warmup fixture's 3-percept exhaustion (`finish_reason=cancel`), unchanged from pre-G4.
+
+**Headline:**
+
+| Pair | `reward_bias_l2` | `cluster_reward_bias_l2` | `causal_link_count_delta` | `goal_reward_bias_l2` |
+|---|---|---|---|---|
+| **a_vs_b** | 0.0 | **2.4587** | +155 | 0.1918 |
+| **a_vs_c** | 0.0 | **2.4587** | +155 | 0.1918 |
+| b_vs_c | 0.0 | 0.2121 | 0 | 0.1918 |
+
+**Top deltas (`a_vs_b` representative; `a_vs_c` identical shape):**
+
+```
+6× tool:sense_food_source  delta=+1.0  (at the per-key cap `max_cluster_reward_bias=1.0`)
+2× tool:infant_humanoid_pick_up  delta=±0.15  (one positive, one negative — substrate is learning the affordance failed)
+```
+
+The 6 `sense_food_source` updates dominate the L2. Each comes from a distinct EC cluster id (the sensor encoder produces a fresh cluster every time drives shift past the min-delta gate, and arm A had a full 50-turn priming run); the substrate-primary path correctly accumulated cluster-keyed positive bias on the only tool it ever successfully invoked. The two `infant_humanoid_pick_up` entries differentiated because arm A's priming hit a failure case the blank arms didn't see — net signed evidence the wire propagates outcomes faithfully, not just magnitudes.
+
+`b_vs_c` shows `cluster_reward_bias_l2 = 0.21` even though both arms started blank: each arm's 3 test-time turns produced a small number of `infant_humanoid_pick_up` updates that landed on slightly different stochastic cluster ids. Expected stochastic noise floor for blank-vs-blank under this fixture; the A-vs-blank ratio of **11.6×** (2.46 / 0.21) is the meaningful signal.
+
+**What changed vs Roy-0 pre-G4:**
+
+| Metric | Pre-G4 (2026-05-10) | Post-G4 (2026-05-11) |
+|---|---|---|
+| `cluster_reward_bias_l2` (a_vs_b) | n/a (field not serialised) | **2.4587** |
+| `cluster_reward_bias.available` | `false` (field absent) | `true` |
+| `causal_link_count_delta` (a_vs_b) | +133 | +155 |
+| `reward_bias_l2` | 0.0 | 0.0 (expected — different code path) |
+| `goal_reward_bias_l2` | 0.196 | 0.192 |
+| Wall time | ~15 min | 15.4 min |
+
+The `cluster_reward_bias` field is the headline metric the wire was built to make legible to `substrate_diff`. Pre-G4 it didn't exist in `aut_nac.json` at all (`substrate_diff` returned `available=false`); post-G4 it's serialised, populated, and differentiates arm A's primed substrate from blank arms at L2 ≈ 2.46.
+
+## Two latent issues surfaced by the live run
+
+These are minor and tracked as follow-ups on the same PRs:
+
+1. **G3 preflight skipped under peer.yml.** `result.preflight = {"skipped": True, "reason": "MAXIM_LANE_LARGE_REMOTE_URL not set"}` even though `~/.config/maxim/peer.yml` carried a valid leader URL. Cause: `apply_peer_config_to_env` in [runtime/lane_backends.py:1073](../../src/maxim/runtime/lane_backends.py) only runs when lanes are first resolved — that happens after `_preflight_llm`. The preflight is conservative (skip when no URL), which protects local/cloud setups, but it means peer-with-peer.yml users get a no-op preflight. Real broken-leader failure modes are still caught when env vars are exported explicitly.
+2. **`_format_summary` doesn't render `cluster_reward_bias`.** The `summary.md` only shows the old `reward_bias L2 = 0.0000` (correct, but misleading without the new metric next to it). Operators reading `summary.md` instead of `result.json` won't see the headline. Cosmetic fix.
+
+Both follow-ups land on their respective PRs in this same session.
+
+## What this still does NOT prove
+
+- That the wire would still produce non-zero divergence on a held-out test fixture (Roy-0 reuses the priming arc). Roy-1 with a real holdout is the next test.
+- That `min_confidence=0.3` is the right threshold for substrate-primary cold start. The current run had arm A exposing 6 distinct clusters all on `sense_food_source` — that's a single-tool monoculture, not the cluster diversity Phase 0 wants. Tuning question for the next experiment.
+- That `reward_bias_l2` (the per-ATL-node recognition bias from `credit_node`) will become non-zero. That path is reaction-driven via `distribute_reward`, not tool-outcome-driven. G4 doesn't touch it; it stays 0 by design.
 
 ## Reproduction
 
