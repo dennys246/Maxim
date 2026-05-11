@@ -1,0 +1,49 @@
+# Roy-0 three-arm smoke iteration — proves the runner orchestrates
+# priming + three arms + pairwise diff without burning real time.
+# Methodology smoke test, NOT a real persona run — every stage uses
+# the minimal cradle warmup fixture so a smoke invocation finishes
+# in well under five minutes.
+#
+# Run with:
+#   maxim roy run scenarios/roy/roy_0_smoke_iteration.yaml --dry-run
+#   maxim roy run scenarios/roy/roy_0_smoke_iteration.yaml
+#
+# Companion docs:
+#   docs/plans/persona_convergence_crucible.md  (three-arm methodology)
+#   docs/plans/grounded_language_acquisition.md (Roy long-horizon harness)
+
+name: roy-0-smoke
+description: |
+  Methodology smoke test for the Roy three-arm runner. Reuses the
+  cradle warmup fixture for both priming and the held-out test so
+  the iteration finishes in a couple of minutes. Verifies that the
+  runner threads priming → arm A's resume_session correctly and that
+  pairwise substrate diffs are computable across all three arms.
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+
+# Priming pulled inline so the smoke spec is self-contained. Real
+# Roy iterations should reference an external curriculum YAML.
+priming:
+  name: roy-0-smoke-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_warmup
+      fixture: ../cradle/warmup.yaml
+      turns: 4
+    - name: act2_warmup_resumed
+      fixture: ../cradle/warmup.yaml
+      turns: 4
+
+# Held-out test — same fixture every arm. Real Roys swap in a
+# proper scenarios/test_held_out.yaml with novel + familiar +
+# unrelated stimuli per the methodology.
+test_scenario:
+  fixture: ../cradle/warmup.yaml
+  turns: 5
+
+arms:
+  a: { substrate: from_priming, system_prompt: neutral }
+  b: { substrate: blank,        system_prompt: adversarial }
+  c: { substrate: blank,        system_prompt: neutral }
