@@ -87,6 +87,7 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
 | `--sim-interactive` | flag | | Enable human-in-the-loop interaction during simulation |
 | `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
+| `--aut-mode` | str | `llm-primary` | **[experimental]** AUT action-selection mode. `llm-primary` (default) proposes actions via the LLM. `substrate-primary` skips the LLM and proposes via `NAc.recommend_action()` — Phase -1 of the grounded language acquisition program. See [docs/plans/grounded_language_acquisition.md](../plans/grounded_language_acquisition.md) and [substrate_primary.md](../substrate_primary.md). |
 | `--campaign` | str | None | Campaign YAML(s) for research mode. Glob patterns accepted. |
 | `--resume-sim` | str | None | Resume a previous simulation session by ID or date prefix |
 | `--sandbox` | str | `auto` | Sandbox type: `auto` (Docker if available, else tmpdir), `docker`, `tmpdir` |
@@ -219,6 +220,49 @@ nodes:
 
 Schema errors carry a line number (`mesh.yml line 7: url 'ftp://bad/v1' must use http:// or https://`). `self:` validation is load-bearing: startup fails loudly if `self` doesn't match any entry in `nodes:`. Exit-code contract matches `maxim doctor --json`: `fail` → exit 1, `warn` / `ok` → exit 0.
 
+## Roy Harness
+
+Long-horizon persona-convergence iteration runner. One `maxim roy run`
+command primes substrate via a curriculum, runs the same held-out test
+across three arms (substrate-primed neutral / blank persona-injected /
+blank neutral), and reports pairwise substrate divergence (`NAc reward_bias`
++ `cluster_reward_bias` + Hippocampus episodes + ATL concepts). See
+[persona_convergence_crucible.md](../plans/persona_convergence_crucible.md)
+for the methodology and [substrate_diff.py](../../src/maxim/analysis/substrate_diff.py)
+for the metric definitions.
+
+| Command | Description |
+|---------|-------------|
+| `maxim roy run <iteration_spec.yaml> [--dry-run]` | Run a three-arm Roy iteration end-to-end. Includes a fail-fast LLM pre-flight probe (G3) that resolves the `large` lane URL from `MAXIM_LANE_LARGE_REMOTE_URL` env or `~/.config/maxim/peer.yml` and aborts in <3s if the leader is unreachable. `--dry-run` validates the spec only. Persists `result.json` + `summary.md` to `~/.maxim/roy/<iteration_name>/`. |
+| `maxim roy diff <session_a_dir> <session_b_dir> [--json]` | Substrate divergence between two `~/.maxim/sim_reports/<session_id>/` directories. Reads `aut_nac.json`, `aut_hippocampus.json`, `ec.json`, `atl.json` from both sides and reports `reward_bias L2`, `cluster_reward_bias L2`, causal-link / episode / concept deltas. `--json` matches the `result.json` payload shape. |
+| `maxim roy log <iteration_id> [--plan PATH] [--keep-edits] [--dry-run]` | (Re-)generate the iteration's protocol runbook + iteration-log entry from a persisted `result.json`. Idempotent — `--keep-edits` preserves hand edits between HTML-comment markers. |
+
+**Spec shape** (deliberately tiny — see [scenarios/roy/roy_0_smoke_iteration.yaml](../../scenarios/roy/roy_0_smoke_iteration.yaml) for the canonical example):
+
+```yaml
+name: roy-0-smoke
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary     # or llm-primary
+priming:
+  name: roy-0-priming
+  stages:
+    - { name: act1, fixture: scenarios/cradle/warmup.yaml, turns: 10 }
+test_scenario:
+  fixture: scenarios/cradle/warmup.yaml
+  turns: 10
+arms:
+  a: { substrate: from_priming, system_prompt: neutral }
+  b: { substrate: blank,        system_prompt: "You are a hungry infant" }
+  c: { substrate: blank,        system_prompt: neutral }
+```
+
+**Pre-flight probe:** the runner aborts with `aborted_at="preflight"` if the
+configured `large` lane is unreachable before priming starts. Env vars
+(`MAXIM_LANE_LARGE_REMOTE_URL` / `_API_KEY` / `_MODEL`) take precedence; peer.yml
+is the fallback. Local-LLM and cloud-only configurations skip the probe
+with a documented reason (their failure modes surface fast at first
+dispatch). `result.preflight.source` records `"env"` or `"peer.yml"`.
+
 ## Bench Harnesses
 
 Tight-loop benchmarks for measuring LLM path behavior without
@@ -319,6 +363,32 @@ maxim --sim scenarios/campaigns/heist_v1.yaml
 maxim --sim scenarios/campaigns/poisoned_crown_v1.yaml
 maxim --sim scenarios/campaigns/arena_v1.yaml
 maxim --sim scenarios/campaigns/darkened_cavern_v1.yaml
+```
+
+### Substrate-primary AUT (experimental)
+
+```bash
+# Run a cradle sim where the AUT acts without LLM proposal — only NAc
+# recommend_action + reflexes. Phase -1 of grounded language acquisition.
+maxim --sim cradle --embodiment bodies/infant_humanoid \
+  --aut-mode substrate-primary --interactive false --sim-max-turns 10
+```
+
+### Roy three-arm persona iteration
+
+```bash
+# Validate spec without invoking sims
+maxim roy run docs/plans/roy/roy_0_smoke.yaml --dry-run
+
+# Run a real iteration (priming + 3 arms + pairwise substrate diffs)
+maxim roy run docs/plans/roy/roy_0_smoke.yaml
+# → ~/.maxim/roy/roy-0-smoke/result.json + summary.md
+
+# Compare two session dirs directly (no Roy iteration required)
+maxim roy diff ~/.maxim/sim_reports/<session_a> ~/.maxim/sim_reports/<session_b>
+
+# Regenerate protocol + iteration-log entry from an existing result.json
+maxim roy log roy-0-smoke --plan docs/plans/persona_convergence_crucible.md
 ```
 
 ### Debug with subsystem tracing

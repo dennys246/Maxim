@@ -371,7 +371,7 @@
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
           <h3 class="text-white font-semibold">B5 Substrate-Primary Harness <span class="text-xs text-indigo-400">(v1.0)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed">Three components, ~1,360 LOC behind experimental flag: <strong>Phase &minus;1</strong> &check; shipped (NAc action proposal + 11 tests). <strong>Phase 0 harness</strong>: <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code> CLI flag + cradle-prelinguistic arc variant + motor-only AUT prompt + per-tick telemetry. <strong>Hivemind shareability infrastructure</strong>: portable substrate-snapshot bundle format + <code class="bg-slate-950 px-1 rounded text-xs">nac.merge()</code> / <code class="bg-slate-950 px-1 rounded text-xs">ec.merge()</code> Bayesian aggregation + provenance tags + identity-bearing concept detection + substrate domains + export/import CLI verbs.</p>
+          <p class="text-slate-300 text-sm leading-relaxed"><strong>Phase &minus;1</strong> &check; shipped (NAc action proposal + 11 tests). <strong>Phase 0 harness</strong> &check; shipped: <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code> CLI flag + cradle-prelinguistic arc variant + motor-only AUT prompt + per-tick telemetry. <strong>Roy harness</strong> &check; shipped (2026-05-10): R1 curriculum runner + R2 substrate_diff + R3 three-arm iteration runner + R4 idempotent log generator + R5 process-global invariants. <strong>G3 fail-fast LLM preflight</strong> &check; shipped (2026-05-11, PR #235+#238): <code class="bg-slate-950 px-1 rounded text-xs">_MaximPeerBackend.health_check()</code> probe with env-then-peer.yml resolution; aborts in &le;3s on unreachable leader. <strong>G4 cluster_id reward wire</strong> &check; shipped (2026-05-11, PR #236+#237): closes the deferred Track 2 wire — substrate-primary tool outcomes now populate <code class="bg-slate-950 px-1 rounded text-xs">NAc._cluster_reward_bias</code>, persist to <code class="bg-slate-950 px-1 rounded text-xs">aut_nac.json</code>, surface in <code class="bg-slate-950 px-1 rounded text-xs">substrate_diff</code>. Empirically validated: live Roy-0 run produced <code class="bg-slate-950 px-1 rounded text-xs">cluster_reward_bias_l2 = 2.4587</code> on A-vs-blank pairs (~11.6&times; blank-vs-blank noise floor). <strong>Hivemind shareability infrastructure</strong> remains: portable substrate-snapshot bundle format + <code class="bg-slate-950 px-1 rounded text-xs">nac.merge()</code> / <code class="bg-slate-950 px-1 rounded text-xs">ec.merge()</code> Bayesian aggregation + provenance tags + identity-bearing concept detection + substrate domains + export/import CLI verbs.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
@@ -440,22 +440,29 @@
 <span class="text-green-400">v0.3.0</span> — 41/41 behavioral convergence (cross-session learning)
 <span class="text-green-400">v0.5.0</span> — B4 replanning (1.0 GATE CLOSED), P6+P8, F2
 <span class="text-green-400">v0.6.0</span> — E0-E3 generalizable embodiment (1.0 GATE CLOSED)
-<span class="text-green-400">v0.7.0 SHIPPED</span>
-  I1+I2: Imagination system
-  I3: Scene-scoped tools
-  B3.1: Acting Coach
-  F3-F5: AgentFactory migration
-  E2.5: ComponentIndex
-  E3: Auto-Curation
+<span class="text-green-400">v0.7.0</span> — Imagination system (I1+I2+I3), Acting Coach, F3-F5, E2.5+E3
+<span class="text-green-400">v0.8.0 SHIPPED</span>
+  P5 Stress Persistence (final 1.0 gate CLOSED)
+  Cradle sensorimotor (3-layer sensation, drives, 7 stages)
+  Affordance Concept Transfer (substrate-native cross-entity learning)
+  Reflex system (innate body responses)
+  Pre-deliberation (Layer 1 ThoughtGate + bio-enrichment)
+  SCN oscillator (B2 anticipatory pre-activation)
+  Roy harness foundation (R1 curriculum + R2 substrate_diff + R3 iteration runner + R4 idempotent log generator + R5 invariants)
+  │
+  ├──&gt; <span class="text-green-400">2026-05-11</span> Roy-0 harness validated end-to-end on live leader
+  ├──&gt; <span class="text-green-400">2026-05-11</span> G3 fail-fast LLM preflight probe (PR #235 + #238 peer.yml fallback)
+  ├──&gt; <span class="text-green-400">2026-05-11</span> G4 substrate-primary cluster_id reward wire (PR #236 + #237)
+  │                <code>cluster_reward_bias_l2 = 2.4587</code> on Roy-0 A-vs-blank pairs
   │
   ├──&gt; B3.2-B3.3 Acting Coach extensions
-  ├──&gt; P5 Stress Persistence
-  ├──&gt; I4-I5 Imagination depth (deferred to 0.8)
+  ├──&gt; B5 substrate-primary harness flagged (Phase &minus;1 &check;, Phase 0 harness &check;, validation 1.1+)
+  ├──&gt; Hivemind shareability infra (export/import, merge(), provenance — 1.0 reservation)
   │
-  └──&gt; <span class="text-green-400">v1.0</span> — All gates closed. Package + publish.</div>
+  └──&gt; <span class="text-green-400">v1.0</span> — All gates closed. D1-D3 docs + stale-tagging cleanup remain. Package + publish.</div>
     </div>
 
-    <p class="text-slate-300 leading-relaxed">All architectural gates have been closed. The remaining work (B3.2&ndash;B3.3, P5, I4&ndash;I5) is enhancement, not gating. 1.0 is a packaging milestone.</p>
+    <p class="text-slate-300 leading-relaxed">All architectural gates have been closed and v0.8.0 ships P5 (the final gate). The Roy harness shipped 2026-05-10 with G3 + G4 follow-ups landing 2026-05-11, giving 1.0 a working substrate-primary closed-loop validated end-to-end against a live leader. Remaining work is D1&ndash;D3 docs + stale-tagging cleanup; 1.0 is a packaging milestone.</p>
   </section>
 
   <!-- 6. Contributing -->
