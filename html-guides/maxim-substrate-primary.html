@@ -183,6 +183,77 @@ action = nac.recommend_action(
   </section>
 
   <section class="space-y-4">
+    <h2 id="roy" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Roy harness &mdash; how we measure substrate convergence</h2>
+    <p class="text-slate-300 leading-relaxed"><strong>Roy</strong> is the three-arm iteration runner that turns "does the substrate carry the cognition?" into a measurable claim. Each iteration primes a substrate via a multi-stage curriculum, then runs the same held-out test scenario across three arms:</p>
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Arm</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Substrate</th>
+            <th class="text-left text-indigo-400 pb-2">System prompt at test</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">A</td>
+            <td class="pr-4 py-3">Substrate primed for full Roy lifetime</td>
+            <td class="py-3">Neutral</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">B</td>
+            <td class="pr-4 py-3">Blank</td>
+            <td class="py-3">Persona-injected (the old prompt-engineering baseline)</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">C</td>
+            <td class="pr-4 py-3">Blank</td>
+            <td class="py-3">Neutral</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-slate-300 leading-relaxed">The interesting question is not "does arm A look like the target persona at test time" &mdash; both A and B will, because the LLM is good at role-play. The interesting question is: <strong>does arm A diverge from arm B at the substrate level?</strong> If yes, the substrate is doing real work even when behavior looks similar. <code class="bg-slate-950 px-1 rounded text-xs">maxim roy run &lt;spec.yaml&gt;</code> drives all three arms and emits pairwise <code class="bg-slate-950 px-1 rounded text-xs">substrate_diff</code> reports: NAc reward biases, cluster-keyed reward biases, hippocampus episode counts + valence KS, ATL concept Jaccard.</p>
+    <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5">
+      <h3 class="text-white font-semibold mb-2">Roy-0 smoke (2026-05-10 + 2026-05-11 re-measurement)</h3>
+      <p class="text-slate-300 text-sm leading-relaxed mb-3">First end-to-end Roy iteration. 50-turn priming + 3 arms &times; 3 turns of held-out test against a real LLM leader. Methodology-only smoke; not a persona claim.</p>
+      <table class="w-full text-sm text-slate-300">
+        <thead>
+          <tr>
+            <th class="text-left text-indigo-400 pb-2 pr-4">Pair</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">reward_bias_l2</th>
+            <th class="text-left text-indigo-400 pb-2 pr-4">cluster_reward_bias_l2</th>
+            <th class="text-left text-indigo-400 pb-2">causal-link &Delta;</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-2 text-white font-medium">a_vs_b</td>
+            <td class="pr-4 py-2">0.0</td>
+            <td class="pr-4 py-2 text-indigo-300 font-semibold">2.4587</td>
+            <td class="py-2">+155</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-2 text-white font-medium">a_vs_c</td>
+            <td class="pr-4 py-2">0.0</td>
+            <td class="pr-4 py-2 text-indigo-300 font-semibold">2.4587</td>
+            <td class="py-2">+155</td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-2 text-white font-medium">b_vs_c</td>
+            <td class="pr-4 py-2">0.0</td>
+            <td class="pr-4 py-2">0.2121</td>
+            <td class="py-2">0</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="text-slate-300 text-sm leading-relaxed mt-3">A-vs-blank ratio &asymp; <strong>11.6&times;</strong> over the blank-vs-blank stochastic-cluster noise floor &mdash; the first empirical proof the substrate-primary tool-outcome wire fires end-to-end. <code class="bg-slate-950 px-1 rounded text-xs">reward_bias_l2 = 0</code> is the expected per-ATL-node bias from <code class="bg-slate-950 px-1 rounded text-xs">credit_node</code> (a different code path the tool-outcome wire doesn't touch).</p>
+    </div>
+    <p class="text-slate-300 leading-relaxed">Two G-marked gaps were caught + closed in the same session: <strong>G3</strong> (fail-fast LLM preflight probe &mdash; aborts in &le;3s when the leader is unreachable, so Roy doesn't grind for 10 minutes on <code class="bg-slate-950 px-1 rounded text-xs">dispatch_exhausted</code>), and <strong>G4</strong> (the cluster_id reward-feedback wire deferred when cluster-keyed action <em>selection</em> shipped &mdash; substrate-primary tool outcomes now populate <code class="bg-slate-950 px-1 rounded text-xs">NAc._cluster_reward_bias</code>, persist to <code class="bg-slate-950 px-1 rounded text-xs">aut_nac.json</code>, and surface in Roy <code class="bg-slate-950 px-1 rounded text-xs">result.json</code>).</p>
+    <p class="text-slate-300 leading-relaxed">Full Roy methodology + iteration log: <a href="https://github.com/dennys246/Maxim/blob/main/docs/plans/persona_convergence_crucible.md" class="text-indigo-400 hover:text-indigo-300 no-underline">persona_convergence_crucible.md</a>. CLI: <code class="bg-slate-950 px-1 rounded text-xs">maxim roy run &lt;spec.yaml&gt;</code> &mdash; see the <a href="https://github.com/dennys246/Maxim/blob/main/docs/user/cli-reference.md#roy-harness" class="text-indigo-400 hover:text-indigo-300 no-underline">CLI reference</a> for spec shape + subcommands.</p>
+  </section>
+
+  <section class="space-y-4">
     <h2 id="dnd" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">D&amp;D survival as the bidirectional kill criterion</h2>
     <p class="text-slate-300 leading-relaxed">A substrate-primary AUT that cannot survive a D&amp;D-style campaign orchestrated by an LLM-DM is a failed bio-substrate. <strong>AND</strong> a simulation environment that no learning substrate can navigate is a failed simulation environment. The convergence test is mutually load-bearing:</p>
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
