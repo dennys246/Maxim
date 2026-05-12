@@ -1,0 +1,99 @@
+# Roy-1a — methodology-validation iteration on the persona-convergence harness.
+#
+# First "real" Roy iteration after the Roy-0 smoke test. Two axes that
+# differ from Roy-0:
+#
+#   1. aut_mode: llm-primary
+#      Roy-0 ran substrate-primary throughout. Its cold-start regime
+#      produced a single-tool (sense_food_source) cluster monoculture
+#      — useful as a wire-validation but not as a persona experiment.
+#      llm-primary gives the AUT a working proposer so we can ask the
+#      open question persona_convergence_crucible.md flags under
+#      §"Substrate-only priming (load-bearing for affordability)":
+#      "does substrate-only priming produce LLM-readable signal at
+#      test time?"
+#
+#   2. test_scenario.fixture: scenarios/roy/roy_1_holdout.yaml
+#      Roy-0 reused the priming fixture for the test, so the arms
+#      could only be measured on rehearsal — not generalisation. The
+#      held-out fixture covers three percept classes (matching /
+#      novel / unrelated) per the methodology table.
+#
+# Roy-1b will be the same fixture but aut_mode=substrate-primary so
+# we can A/B the two AUT modes on the same priming substrate. That's
+# the next iteration after 1a; the fixture is deliberately written to
+# work for both modes.
+#
+# Run with:
+#   maxim roy run scenarios/roy/roy_1a_iteration.yaml --dry-run  # parse-only
+#   maxim roy run scenarios/roy/roy_1a_iteration.yaml            # real
+#
+# Expected wall: ~20-25 min on the dev laptop (50 priming turns at
+# substrate-primary + 30 test turns at llm-primary against the leader).
+#
+# Companion docs:
+#   docs/plans/persona_convergence_crucible.md  (three-arm methodology + Roy-1a iteration log)
+#   docs/experiments/16_roy_1a.md               (outcome doc — written post-run)
+#   docs/experiments/protocols/16_roy_1a_reproduction.md (reproduction runbook)
+
+name: roy-1a
+description: |
+  First methodology-validation iteration. Substrate-only priming on
+  cradle_prelinguistic (5 stages × 10 turns) feeds arm A; arms B and
+  C run the held-out 10-percept roy_1_holdout fixture from blank
+  substrate. AUT runs llm-primary at test time so the proposer is the
+  validated path — isolating "does substrate-only priming produce
+  LLM-readable signal at test time?". Roy-1b will swap to
+  substrate-primary AUT on the same priming substrate.
+
+embodiment: bodies/infant_humanoid
+aut_mode: llm-primary
+
+# Priming: substrate-primary cradle_prelinguistic (no LLM in the AUT
+# loop on the priming side — the cheap-priming pattern from
+# behavioral_convergence_practice.md Tier 1). Five stages × 10 turns
+# = 50 turns, same shape as Roy-0 priming so divergence-vs-Roy-0 is
+# a single-variable comparison (test-time AUT mode + test fixture).
+priming:
+  name: roy-1a-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_primary_circular_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_primary_circular_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act3_secondary_circular
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Held-out test scenario — distinct from priming arc. 10 turns runs
+# the entire 10-percept fixture exactly once (the bridge cancels
+# when percepts are exhausted).
+test_scenario:
+  fixture: roy_1_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    # Neutral system prompt — arm A's persona (if any) emerges from
+    # substrate carryover, not from prompt injection.
+    system_prompt: neutral
+  b:
+    substrate: blank
+    # Deliberately vague prompt mirroring Roy-0's arm B. Roy-1a is
+    # methodology validation, not adversarial persona convergence —
+    # the carefully-shaped persona prompts arrive at Roy-2.
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral

@@ -1,0 +1,127 @@
+# Roy-1 held-out test fixture — distinct from the priming arc.
+#
+# Used by Roy-1a (aut_mode=llm-primary) and Roy-1b (aut_mode=substrate-primary)
+# as the same held-out test scenario across all three arms (A=primed,
+# B=blank+persona-prompt, C=blank+neutral). Priming runs the
+# cradle_prelinguistic arc (fire pit / cool air / food / sharp rock /
+# blanket / lever / button — pre-linguistic somatosensory). This
+# fixture covers three percept classes per
+# docs/plans/persona_convergence_crucible.md §"Test phase":
+#
+#   matching  — body sensations of the same broad class as priming
+#               (thermal / texture / interoceptive), but NOT the exact
+#               wording from cradle_prelinguistic. Arm A should show
+#               valence carryover here even though the strings differ.
+#   novel     — same somatosensory modality family but stimuli the
+#               priming arc never drilled (vibration, sudden cold,
+#               pressure-on-chest). Tests generalisation.
+#   unrelated — overtly linguistic/social content with no direct body
+#               coupling. Tests whether the persona stays scoped to its
+#               regime or bleeds into unrelated contexts.
+#
+# Size: 10 percepts total. The bridge cancels when the source is
+# exhausted, so test_scenario.turns=10 in the iteration spec runs the
+# whole fixture exactly once.
+
+name: roy_1_holdout
+description: |
+  Held-out three-class test fixture for Roy-1 (and forward). Covers
+  matching / novel / unrelated stimulus classes against the
+  cradle_prelinguistic priming arc.
+
+timing: step_based
+
+percepts:
+  # ─── MATCHING (same class as priming, paraphrased) ────────────────
+  - at: 0
+    source: cli
+    cli_input: "heat blooms across your fingertips."
+    salience: 0.7
+    novelty: 0.4
+    metadata:
+      scenario_tag: holdout_matching_thermal
+      percept_class: matching
+
+  - at: 1
+    source: cli
+    cli_input: "something soft drapes against your cheek."
+    salience: 0.6
+    novelty: 0.4
+    metadata:
+      scenario_tag: holdout_matching_texture
+      percept_class: matching
+
+  - at: 2
+    source: cli
+    cli_input: "fullness settles in your belly."
+    salience: 0.5
+    novelty: 0.3
+    metadata:
+      scenario_tag: holdout_matching_intero
+      percept_class: matching
+
+  # ─── NOVEL (same modality family, stimuli priming never drilled) ──
+  - at: 3
+    source: cli
+    cli_input: "a low vibration hums beneath your back."
+    salience: 0.7
+    novelty: 0.9
+    metadata:
+      scenario_tag: holdout_novel_vibration
+      percept_class: novel
+
+  - at: 4
+    source: cli
+    cli_input: "an abrupt chill grips your shoulders."
+    salience: 0.8
+    novelty: 0.85
+    metadata:
+      scenario_tag: holdout_novel_cold_shock
+      percept_class: novel
+
+  - at: 5
+    source: cli
+    cli_input: "steady pressure presses against your chest."
+    salience: 0.7
+    novelty: 0.8
+    metadata:
+      scenario_tag: holdout_novel_pressure
+      percept_class: novel
+
+  # ─── UNRELATED (linguistic/social — no direct body coupling) ──────
+  - at: 6
+    source: cli
+    cli_input: "a voice nearby asks if you understand."
+    salience: 0.5
+    novelty: 0.7
+    metadata:
+      scenario_tag: holdout_unrelated_question
+      percept_class: unrelated
+
+  - at: 7
+    source: cli
+    cli_input: "two people are arguing in the next room."
+    salience: 0.6
+    novelty: 0.7
+    metadata:
+      scenario_tag: holdout_unrelated_social
+      percept_class: unrelated
+
+  - at: 8
+    source: cli
+    cli_input: "someone reads a list of unfamiliar names aloud."
+    salience: 0.4
+    novelty: 0.6
+    metadata:
+      scenario_tag: holdout_unrelated_speech
+      percept_class: unrelated
+
+  # ─── COOLDOWN ─────────────────────────────────────────────────────
+  - at: 9
+    source: cli
+    cli_input: "the room grows quiet."
+    salience: 0.3
+    novelty: 0.3
+    metadata:
+      scenario_tag: holdout_cooldown
+      percept_class: matching

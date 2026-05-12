@@ -282,7 +282,170 @@ The Phase 0 architectural-gap writeup ([grounded_language_acquisition.md](ground
 - Protocol: [`roy_0_smoke.md`](../experiments/protocols/roy_0_smoke.md). Spec: [`roy_0_smoke.yaml`](./roy/roy_0_smoke.yaml).
 <!-- /roy-iteration:roy-0-smoke -->
 
-Empty until Roy-1 runs.
+<!-- roy-iteration:roy-1a -->
+### Roy-1a: llm-primary on held-out fixture
+
+**Status:** First "real" methodology-validation iteration. Ran end-to-end against the same healthy leader Roy-0 used (qwen2.5-14b-instruct via cloudflared, 2026-05-11 21:03→21:17 local). 830.1s wall (~13.8 min). Single-variable change at test time + held-out fixture isolates two methodology questions Roy-0 conflated.
+
+> Roy-0 left two methodology weaknesses on the table: (a) priming and test
+> shared the same fixture, so arms could only be measured on rehearsal, and
+> (b) test-time AUT ran substrate-primary throughout, whose cold-start regime
+> produced a single-tool cluster monoculture. Roy-1a fixes both. Priming is
+> identical to Roy-0 (5 stages × 10 turns of cradle_prelinguistic at
+> substrate-primary). At test time the AUT switches to llm-primary; arms
+> run a held-out 10-percept fixture covering matching / novel / unrelated
+> percept classes.
+
+**Pre-Roy-1a stress test:** Added `tests/integration/test_multi_agent_attribution_scale.py` with 5 tests at 4 agents × N=500–1000 per agent (20× the load of the original P4 tests). All pass in <1s. Catches per-agent attribution regressions before Roy-1: Adversarial's 1,000-turn priming burn would expose them. See [docs/experiments/16_roy_1a.md § "What was caught"](../experiments/16_roy_1a.md).
+
+**Preflight:** clean. `outcome: ok`, `detail: stage2 HTTP 200`, `latency_ms: 397.6`, `source: peer.yml`. G3's peer.yml fallback (fix shipped post-Roy-0) routed the probe correctly without operator-set env vars.
+
+**Priming:** 5/5 stages completed. final_session_id `20260511_211156`. 50 turns of substrate-primary cradle_prelinguistic — every turn `sense_food_source` × 10 actions (same monoculture as Roy-0, confirming priming is mode-deterministic).
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | finish |
+|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260511_211347` | 10 | cancel |
+| b | blank | "You are a hungry infant" | `20260511_211511` | 10 | cancel |
+| c | blank | neutral | `20260511_211624` | 10 | cancel |
+
+22 `peer_backend_call` events on the leader trace (all status 200), 10 narrator generations, 2 `dispatch_exhausted` warnings on orchestrator probes (cosmetic; arms completed normally).
+
+**Pairwise substrate divergence:**
+
+| Pair | `reward_bias_l2` | **`cluster_reward_bias_l2`** | `goal_reward_bias_l2` | `causal_link_Δ` | `episodes_Δ` | `valence_KS` (p) | `salience_KS` (p) |
+|---|---|---|---|---|---|---|---|
+| **a_vs_b** | 0.0 | **2.4495** | 0.2714 | +156 | +656 | 0.283 (0.402) | **0.879 (2.1e-9)** |
+| **a_vs_c** | 0.0 | **2.4495** | 0.2606 | +150 | +656 | 0.283 (0.402) | (similar) |
+| b_vs_c | 0.0 | 0.0 | 0.2666 | −6 | 0 | 0.000 (1.000) | 0.0 |
+
+**Honest assessment:**
+
+- **Substrate took (structural).** `cluster_reward_bias_l2 = 2.4495` on a-vs-blank — within 0.4% of Roy-0's 2.4587. The substrate-primary priming wire writes through to NAc *identically* across AUT modes. The bias is structurally preserved.
+- **Substrate did NOT express behaviorally.** Arm A's tool distribution at test time contained ZERO `sense_food_source` calls despite +1.0 cluster bias on six EC clusters carried forward from priming. The llm-primary proposer chose `infant_humanoid_pick_up`, `sense`, `respond` — substrate-primary's `recommend_action` is the only consumer of cluster_reward_bias, and llm-primary doesn't invoke it. This is the cleanest separation yet between "substrate state present" and "substrate state expressed."
+- **First strongly-significant Hippocampus divergence.** `salience_KS = 0.879, p = 2.1e-9` between primed arm A and blank arm B. Mean salience: A=0.506, B=0.711. The primed hippocampus, holding 665 prior episodes from the cradle arc, rates test-phase percepts as LOWER salience because they're less novel against its prior. **This is the substrate carryover translating into a quantitative downstream signal the test-time AUT *reads*** — salience is consumed by ThoughtGate + WMS scoring during deliberation. Methodology-positive finding: substrate priming DOES produce LLM-readable signal at test time, just not via the cluster-bias path.
+- **Valence carryover is real-but-marginal.** `valence_KS = 0.283, p = 0.402` between primed and blank arms. Priming substrate carries mean valence -0.088 over 665 episodes (affordance failures during pre-linguistic exploration); blank arms have mean 0.000 over 9 test episodes. Effect size present (KS > 0.28) but sample-dominated — needs ≥4× more episodes or seed pooling to clear α=0.05.
+- **Goal-reward asymmetry.** Arm A's goal `roy:roy-1a:arm_a` accrued +0.181 bias; arm B's goal `roy:roy-1a:arm_b` accrued −0.196. The LLM-AUT in arm A produced more successful tool calls than the prompt-injected blank arm B did — interesting persona-pattern signal but methodology-driven (each arm has its own goal tag, NAc credits per-goal), not a behavioral persona divergence.
+- **Noise floor collapse.** Roy-0's `b_vs_c.cluster_reward_bias_l2 = 0.2121` (stochastic noise from substrate-primary test-arm sense_food_source loops on slightly different cluster ids) vanishes under llm-primary: `b_vs_c = 0.0` exactly. A-vs-blank signal-to-noise jumps from 11.6× to ∞ for cluster bias.
+
+**What this definitively proves (regardless of headline values):**
+
+- The held-out fixture works for llm-primary AUT. 30/30 test-phase turns completed cleanly; zero fixture-shape regressions.
+- The pre-Roy-1 stress test is the right tripwire. 5 attribution-scale tests pass at 4× the agent count and 20× the per-agent N of the original P4 tests. Roy-1: Adversarial (1,000 priming turns) sits within this envelope.
+- G3 preflight + G4 cluster wire are stable across iterations. Roy-0 → Roy-1a single-variable comparison reproduces `cluster_reward_bias_l2` within 0.4%.
+
+**What this still does NOT prove:**
+
+- Substrate priming surviving an llm-primary test as *behavior* — the cluster-reward path is consumer-coupled to substrate-primary's `recommend_action`. Need either (a) hybrid priming, (b) Wire 1's substrate-context annotation into the LLM prompt, or (c) Roy-1b (substrate-primary at test time) to confirm the bias is exploitable when its consumer fires.
+- Cross-session persistence — single-session iteration. Roy-2 will measure this.
+- Persona convergence on a real persona — Roy-1a is methodology validation; arms B and C's `system_prompt` slugs are placeholders matching Roy-0.
+
+**Open questions answered (or partially answered):**
+
+| Open question | Answer from Roy-1a |
+|---|---|
+| Does substrate-only priming produce LLM-readable signal at test time? | **Partial yes.** Strong-and-significant via Hippocampus salience scoring (KS=0.879, p=2.1e-9). Marginal via Hippocampus valence distribution (p=0.402, sample-dominated). Zero via NAc cluster-bias *behavior* under llm-primary (the consumer doesn't fire). |
+| Are decay rates compatible with thousand-turn priming? | Unmeasured by Roy-1a (50-turn priming). Roy-1: Adversarial will surface this. |
+| Multi-agent attribution at scale? | Locked down by `test_multi_agent_attribution_scale.py` — clean at 4 agents × N=1000. |
+| Hybrid Wire 1 sufficient for behavioral expression? | **Negative for cluster-bias path.** Wire 1's substrate-annotates-LLM-context design is not yet wired; the raw priming substrate alone does not behaviorally express under llm-primary. Roy-1b + Wire 1 implementation will refine this. |
+| Cradle scenarios → persona-shaping? | Roy-1a does not yet attempt persona shaping — Roy-2 is the first iteration with that goal. |
+
+**Recommendation for next iteration:** **Roy-1b should run next.** Same fixture, same priming substrate, swap `aut_mode` to `substrate-primary` at test time. Two reasons:
+
+1. The cluster_reward_bias structurally carried forward but didn't express behaviorally under llm-primary because llm-primary doesn't consume that bias. Roy-1b measures whether substrate-primary AUT at test time *does* exploit the priming bias against held-out percepts — the cleanest test of "did priming shape behavior" the harness can pose right now.
+2. The held-out fixture works under llm-primary; re-using it for substrate-primary validates the fixture is mode-agnostic and lets the two iterations diff directly (same priming, same test, single variable = test-time AUT mode).
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-1a/result.json`](/Users/dennyschaedig/.maxim/roy/roy-1a/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-1a/summary.md).
+- LLM trace `/tmp/roy_1a_live.jsonl` (22 peer_backend_call events). Run log `/tmp/roy_1a_run.log`.
+- Outcome doc: [`16_roy_1a.md`](../experiments/16_roy_1a.md). Protocol: [`16_roy_1a_reproduction.md`](../experiments/protocols/16_roy_1a_reproduction.md). Spec: [`roy_1a_iteration.yaml`](../../scenarios/roy/roy_1a_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+<!-- /roy-iteration:roy-1a -->
+
+<!-- roy-iteration:roy-1b -->
+### Roy-1b: substrate-primary on held-out fixture
+
+**Status:** Second methodology-validation iteration. Ran end-to-end against the same healthy leader, 2026-05-11 22:51→23:17 local. **1578.4s wall (~26.3 min) — almost 2× Roy-1a** because substrate-primary at test time spends ~25s per turn on proposer convergence/threshold filtering vs llm-primary's ~6s LLM call.
+
+> Single-variable change vs Roy-1a: test-time AUT mode flips from
+> llm-primary to substrate-primary. Priming, held-out fixture, and arms
+> byte-identical. Directly measures whether the cluster_reward_bias the
+> priming wire writes is exploitable when its consumer (substrate-primary
+> recommend_action) fires at test time.
+
+**Preflight:** clean. `outcome: ok`, `latency_ms: 300.2`, `source: peer.yml`.
+
+**Priming:** 5/5 stages completed. final_session_id `20260511_225939`. Identical priming dynamics to Roy-0/Roy-1a for the first four stages (every turn = 10× sense_food_source). **Stage 5 (`act3_secondary_circular`) broke out** — turns started producing single `infant_humanoid_pick_up` actions taking ~25s each (substrate exploring beyond the food-source loop as priming exposure widens). 284s for stage 5 vs ~70s for stages 1-4.
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | duration_s | finish |
+|---|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260511_230124` | 10 | 312.3 | cancel |
+| b | blank | "You are a hungry infant" | `20260511_230636` | 10 | 335.6 | cancel |
+| c | blank | neutral | `20260511_231212` | 10 | 301.2 | cancel |
+
+25 `peer_backend_call` events (all 200), 10 narrator generations, 0 dispatch_exhausted, 0 tracebacks.
+
+**Pairwise substrate divergence:**
+
+| Pair | `reward_bias_l2` | **`cluster_reward_bias_l2`** | (keys) | `causal_link_Δ` | `episodes_Δ` | **`valence_KS`** (p) | **`salience_KS`** (p) |
+|---|---|---|---|---|---|---|---|
+| **a_vs_b** | 0.0 | **2.4678** | 10 | +157 | +654 | **0.998 (0.006)** | **0.997 (5.5e-5)** |
+| **a_vs_c** | 0.0 | **2.4678** | 10 | +157 | +654 | **0.998 (0.006)** | (similar) |
+| b_vs_c | 0.0 | 0.3000 | 4 | 0 | 0 | 0.000 (1.000) | 0.0 |
+
+**Cluster-reward top deltas (a_vs_b):** 6× `tool:sense_food_source` × +1.0 (priming carryover, identical to Roy-0/Roy-1a) + **4× `tool:infant_humanoid_pick_up` × ±0.15** (NEW — substrate-primary at test created 4 stochastic-cluster updates on `pick_up`, evenly signed between arm A and arm B's own EC clusters). The 4 pick_up entries contribute exactly the b_vs_c noise floor (sqrt(4 × 0.15²) = 0.30).
+
+**Test-phase tool distribution (the headline Roy-1b signal):**
+
+```
+Arm A (substrate-primed, neutral):       2× infant_humanoid_pick_up
+Arm B (blank, "hungry infant"):          2× infant_humanoid_pick_up
+Arm C (blank, neutral):                  2× infant_humanoid_pick_up
+```
+
+**All three arms produce the identical action distribution.** 8 of 10 turns per arm produced ZERO actions (sub-threshold proposals filtered by `min_confidence=0.3`). No `sense_food_source` calls in any arm despite arm A carrying +1.0 cluster_reward_bias for that tool on six EC clusters.
+
+**Honest assessment:**
+
+- **The wire is healthy (structural).** `cluster_reward_bias_l2 = 2.4678` (vs Roy-1a's 2.4495) — substrate-primary at test time consumed the priming wire AND added 4 new cluster updates. The wire works end-to-end across both AUT modes.
+- **The bias does NOT differentiate behavior on held-out percepts (behavioral).** All three arms produced the identical 2 pick_up actions, 8 sub-threshold turns. The priming substrate did NOT bias arm A's recommend_action toward sense_food_source — the held-out fixture's percepts ("heat blooms across your fingertips", "a low vibration hums beneath your back", ...) don't fire the priming-acquired EC clusters, so the +1.0 bias never crossed the threshold.
+- **Roy-1a + Roy-1b together show the structural-vs-behavioral gap is SYMMETRIC across AUT modes.** Neither llm-primary (doesn't consume the bias) nor substrate-primary (consumes it but on EC clusters that don't fire on held-out percepts) behaviorally expresses substrate priming under this fixture.
+- **Salience signal reproduced and strengthened.** Roy-1a's `salience_KS = 0.879 (p=2.1e-9)` is reproduced at Roy-1b's `0.997 (p=5.5e-5)`. **The Hippocampus salience layer is the load-bearing positive finding for the methodology — substrate carryover modulates novelty scoring across both AUT modes regardless of whether the cluster bias drives action selection.** ThoughtGate + WMS consume salience downstream; this is the one cross-AUT-mode signal that "reads" substrate priming.
+- **Valence_KS jump is real-but-sample-driven.** `valence_KS = 0.998 (p=0.006)` clears α=0.05 — but arm B captured only 1 episode total (mean -1.0 from a single pick_up failure) vs arm A's 655 priming episodes. KS detects "distributions differ" but the sample asymmetry isn't a clean persona-convergence signal. Roy-2 with longer test phase or seed pooling will give this a clean read.
+- **Goal_reward_bias collapsed under substrate-primary at test.** Roy-1a's `goal_reward_bias_l2 = 0.2714` (from llm-primary's tool-outcome credit) drops to **0.0011** in Roy-1b because substrate-primary bypasses goal credit (cluster_reward is the substrate-primary credit path; goal_reward_bias is reaction-driven via credit_goal which substrate-primary doesn't invoke from tool outcomes).
+- **Noise floor:** `b_vs_c.cluster_reward_bias_l2 = 0.30` is exactly the 4-pick_up-key stochastic-cluster floor. A-vs-blank signal:noise = 8.2× (vs Roy-0's 11.6× from sense_food_source loops, Roy-1a's ∞ from llm-primary's zero floor).
+
+**What Roy-1b definitively proves:**
+
+- Substrate-primary at test time DOES exploit the cluster wire's consumer path (4 new cluster updates).
+- The cluster wire is rock-solid across iterations (Roy-0 → Roy-1a → Roy-1b: cluster_reward_bias_l2 within 1%).
+- The held-out fixture is mode-agnostic (30/30 test turns clean across both AUT modes).
+- The Hippocampus salience layer reads substrate priming under both AUT modes (KS > 0.87, p < 1e-4 in both iterations).
+
+**What Roy-1b still does NOT prove:**
+
+- That substrate priming would behaviorally express *anywhere* — Roy-1b is a negative behavioral result on this fixture, and no positive control has been run yet.
+- That `min_confidence` tuning alone fixes the symmetric structural-vs-behavioral gap.
+- Cross-session persistence (still single-session).
+
+**What Roy-1b changes for Roy-2 methodology:**
+
+1. **Widen priming arc diversity.** Cradle_prelinguistic's 50 turns produce 6 EC cluster ids all keyed to `sense_food_source` — a single-tool monoculture. Multi-arc priming (cradle_prelinguistic + cradle + a second cradle-flavor arc) would produce a richer EC cluster representation with more pattern-matching surface for held-out percepts.
+2. **Tune `min_confidence`.** Roy-0 flagged this; Roy-1b confirms even primed substrate produces the same default fallback as blank arms when threshold filters out priming-keyed proposals.
+3. **Wire 1 prioritisation.** The Wire 1 design ([bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) — substrate-annotates-LLM-context) is now the strongest empirical argument: neither current AUT mode reads `cluster_reward_bias` on percepts that don't match priming EC clusters. Wire 1 surfaces substrate-derived bias at the LLM-prompt level, where it can be applied across percept regimes the substrate didn't directly drill.
+
+**Recommendation for next iteration:** **Roy-2 with multi-arc priming + the existing held-out fixture.** Cheapest test of whether widening priming alone fixes percept-overlap problem. ~30 min wall. If multi-arc priming produces non-trivial behavioral divergence between primed and blank arms, methodology is unblocked WITHOUT needing Wire 1 yet. If it doesn't, Wire 1 becomes the load-bearing prerequisite for behavioral persona expression.
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-1b/result.json`](/Users/dennyschaedig/.maxim/roy/roy-1b/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-1b/summary.md).
+- LLM trace `/tmp/roy_1b_live.jsonl` (25 peer_backend_call events). Run log `/tmp/roy_1b_run.log`.
+- Outcome doc: [`17_roy_1b.md`](../experiments/17_roy_1b.md). Protocol: [`17_roy_1b_reproduction.md`](../experiments/protocols/17_roy_1b_reproduction.md). Spec: [`roy_1b_iteration.yaml`](../../scenarios/roy/roy_1b_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+<!-- /roy-iteration:roy-1b -->
+
+### Roy-2 (planned, methodology refinement first)
+*Status: Roy-1b ships a methodology decision: widen priming arc diversity, tune min_confidence, OR ship Wire 1 substrate-annotates-LLM-context. Roy-2 awaits a decision among the three.*
 
 ### Roy-1: Adversarial (planned, unrun)
 *Status: design above; awaiting [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) Stages 0-3 to ship in 1.0.*
