@@ -1,0 +1,94 @@
+# Roy-1b — same priming + same fixture as Roy-1a, substrate-primary AUT at test.
+#
+# Companion to roy_1a_iteration.yaml. Single-variable change at test
+# time: aut_mode flips from llm-primary (Roy-1a) to substrate-primary
+# (Roy-1b). Priming is identical. Held-out fixture is identical. Arms
+# are identical.
+#
+# Why this iteration: Roy-1a showed substrate priming writes through
+# to NAc identically across AUT modes (cluster_reward_bias_l2 = 2.4495
+# vs Roy-0's 2.4587), BUT arm A's llm-primary proposer didn't read
+# the cluster bias — zero sense_food_source calls at test time. The
+# cluster_reward_bias path is consumer-coupled to substrate-primary's
+# recommend_action. Roy-1b runs that consumer at test time so we can
+# measure whether the priming bias is actually exploitable when its
+# consumer fires.
+#
+# Direct A/B against Roy-1a:
+#   Roy-1a (aut_mode=llm-primary @ test):
+#     - cluster_reward_bias_l2 = 2.4495 (structural carryover)
+#     - 0 sense_food_source calls in test phase (bias not read)
+#     - salience_KS = 0.879 (p=2.1e-9) — substrate carryover read
+#       via Hippocampus salience scoring
+#   Roy-1b (aut_mode=substrate-primary @ test):
+#     ???  Expected (if priming bias is exploitable):
+#     - substrate-primary's recommend_action invokes sense_food_source
+#       in arm A more than in arms B/C (cluster bias is positive there)
+#     - reward_bias_l2 may still be 0 (credit_node is reaction-driven,
+#       not tool-outcome-driven — same as Roy-0/Roy-1a)
+#     - new test-time cluster updates pile onto priming-acquired clusters
+#       OR land on new clusters from held-out percepts (the cradle
+#       monoculture might or might not survive a novel percept regime)
+#
+# Run with:
+#   maxim roy run scenarios/roy/roy_1b_iteration.yaml --dry-run
+#   maxim roy run scenarios/roy/roy_1b_iteration.yaml
+#
+# Expected wall: ~15-18 min (similar to Roy-0; faster than Roy-1a
+# because substrate-primary test arms don't hit the leader for AUT
+# proposals — only narration goes there).
+#
+# Companion docs:
+#   docs/plans/persona_convergence_crucible.md  (three-arm methodology + Roy-1b iteration log)
+#   docs/experiments/17_roy_1b.md               (outcome doc — written post-run)
+#   docs/experiments/protocols/17_roy_1b_reproduction.md (reproduction runbook)
+#   scenarios/roy/roy_1a_iteration.yaml         (the A/B partner)
+
+name: roy-1b
+description: |
+  Second methodology-validation iteration. Same priming + same held-out
+  fixture as Roy-1a; flips aut_mode at test time to substrate-primary.
+  Measures whether the cluster_reward_bias the priming wire writes is
+  exploitable when its consumer (substrate-primary recommend_action)
+  fires at test time. Direct A/B against Roy-1a.
+
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+
+# Priming: identical to Roy-1a + Roy-0.
+priming:
+  name: roy-1b-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_primary_circular_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_primary_circular_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act3_secondary_circular
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Identical held-out fixture as Roy-1a.
+test_scenario:
+  fixture: roy_1_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    system_prompt: neutral
+  b:
+    substrate: blank
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral
