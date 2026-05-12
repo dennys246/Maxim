@@ -5,6 +5,35 @@ All notable changes to pymaxim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **Note (2026-05-11):** versions 0.6.0 → 0.8.1 shipped to PyPI without
+> matching CHANGELOG entries. The summaries for that window live in
+> [docs/plans/v1_refinement.md](docs/plans/v1_refinement.md) and the
+> [HTML roadmap](html-guides/maxim-roadmap.html). The 0.9.0 entry below
+> picks up the convention again; backfilling 0.6/0.7/0.8 from the
+> roadmap is tracked as documentation debt and can land in a follow-up.
+
+## [0.9.0] - 2026-05-11
+
+### Added
+
+- **Roy three-arm iteration runner (R1–R5).** Long-horizon persona-convergence harness. `maxim roy run <spec.yaml>` primes substrate via a multi-stage curriculum, runs the same held-out test across three arms (substrate-primed neutral / blank persona-injected / blank neutral), and reports pairwise substrate divergence (`reward_bias L2`, `cluster_reward_bias L2`, hippocampus episode + valence deltas, ATL concept Jaccard). Sister subcommands `maxim roy diff <a> <b>` and `maxim roy log <iter>` provide ad-hoc diffs and idempotent protocol/iteration-log regeneration. New modules: `src/maxim/simulation/roy_runner.py`, `src/maxim/simulation/curriculum_runner.py`, `src/maxim/analysis/substrate_diff.py`, `src/maxim/analysis/roy_log.py`, `src/maxim/roy/cli.py`. Methodology: [docs/plans/persona_convergence_crucible.md](docs/plans/persona_convergence_crucible.md).
+- **G3 — fail-fast LLM pre-flight probe** in `run_roy_iteration` (PRs #235, #238). Roy iterations chain ~5 sims back-to-back; if the configured `large` lane is unreachable the iteration grinds out ~10 min of static-fallback narration with `dispatch_exhausted` on every call. Probe resolves `MAXIM_LANE_LARGE_REMOTE_URL` env var first, then `~/.config/maxim/peer.yml`, then skips for local/cloud setups. One HTTP call only (Plan 3 R2.5 invariant); aborts with `result.aborted_at = "preflight"` + persisted `result.json` + `summary.md` in ≤3.3s when the leader is dead. 10 regression tests.
+- **G4 — substrate-primary cluster_id reward-feedback wire** (PRs #236, #237). Closes the wire Track 2 (commit `6d0e4a7`) deliberately deferred: `LLMProposal.cluster_id` field carries the active EC interoception cluster from `propose_via_substrate` to outcome recording; `record_outcome(..., cluster_id=...)` calls `NAc.update_cluster_reward(agent_id, cluster_id, sig, ±1.0)`; all 6 `_record_outcome` call sites + `execute_parallel_actions` thread it through; `NAc.dump`/`load_state` serialise `_cluster_reward_bias` under a new JSON key; `substrate_diff.NacDiff` surfaces `cluster_reward_bias_{available,l2,top_deltas}` so Roy `result.json` carries the headline metric. Empirically validated: live Roy-0 re-run produced `cluster_reward_bias_l2 = 2.4587` on A-vs-blank pairs (≈11.6× blank-vs-blank noise floor). 6 regression tests.
+- **Roy summary rendering of `cluster_reward_bias`.** `roy_runner._format_summary` now emits `NAc cluster_reward_bias L2=… (N keys differ)` on its own line so `summary.md` carries the headline metric, not just the (necessarily 0) `reward_bias_l2`.
+- **CLI documentation refresh** (PR #239). `docs/user/cli-reference.md` gains `--aut-mode` flag entry plus a full "Roy Harness" section documenting `run`/`diff`/`log` subcommands, spec shape, preflight semantics, and examples. `docs/reference.md` adds `src/maxim/analysis/` and `src/maxim/roy/` module entries. `docs/index.md` adds a Roy Harness link to the Architecture & Modes table.
+- **HTML guide refresh** (PR #239). `html-guides/maxim-overview.html` nav now links the 10 previously-orphaned guides (semantic-memory, component-library, deliberation, concept-decomposition, tools, prompt-system, agent-mesh, dm-campaigns, experiments, benchmarks) in a three-row layout. `html-guides/maxim-roadmap.html` "Path to 1.0" ASCII updated through v0.8.0 + Roy + G3/G4 with empirical numbers. `html-guides/maxim-substrate-primary.html` gains a new "Roy harness — how we measure substrate convergence" section with the three-arm methodology table and the Roy-0 empirical results.
+
+### Backward compatibility
+
+- **`LLMProposal.cluster_id: str | None = None`** is an optional dataclass field added at the end of the frozen `LLMProposal` — CC3-compatible non-breaking. LLM-primary proposals leave it `None`.
+- **`aut_nac.json::cluster_reward_bias`** is a new optional JSON key. Pre-G4 snapshots (no field) load to an empty dict; the loader emits no warning. Field key format joins `(agent_id, cluster_id, tool_signature)` with `\x1f` (ASCII unit separator) so tool signatures containing `:` round-trip cleanly.
+- **`record_outcome(..., cluster_id=None)`** is a no-op for the cluster-update path — the LLM-primary tool-outcome path stays bit-identical.
+- **No breaking changes to public API surface.** No deprecation warnings added in this release; C4/C5/C6 deprecation cycle (per `docs/plans/v1_refinement.md`) remains scoped to 1.0.
+
+### Why bump minor
+
+This is a feature release (Roy harness + substrate-primary reward feedback) that's strictly additive to a working v0.8.x install. Per semver and the project's "any change that affects runtime behavior, CLI interface, or peer/leader protocol" guidance, this earns a minor bump rather than a patch.
+
 ## [0.5.0] - 2026-04-19
 
 ### Added
