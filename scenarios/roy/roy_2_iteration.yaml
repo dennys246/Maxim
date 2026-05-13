@@ -1,0 +1,118 @@
+# Roy-2 — multi-arc priming on the same held-out fixture (methodology refinement).
+#
+# Roy-1a + Roy-1b (PR #241) shipped a clean negative behavioral
+# result: substrate priming wrote +1.0 cluster_reward_bias on six
+# distinct EC clusters all keyed to `sense_food_source`, but NEITHER
+# llm-primary (Roy-1a) nor substrate-primary (Roy-1b) at test time
+# differentiated arm A from blank arms B/C. The held-out fixture's
+# percepts ("heat blooms across your fingertips", "a low vibration
+# hums beneath your back", ...) don't pattern-match the priming-
+# acquired EC clusters, so the bias is structurally present but
+# never reads at action-selection time.
+#
+# Roy-1b's three-pointer methodology refinement (persona_convergence
+# _crucible.md §"What Roy-1b changes for Roy-2 methodology"):
+#
+#   (a) Widen priming arc diversity        ← THIS ITERATION
+#   (b) Tune min_confidence                ← Roy-2c if (a) doesn't
+#   (c) Ship Wire 1 (substrate→LLM prompt) ← escalated if (a) doesn't
+#
+# Roy-2 tests path (a) first because it is the cheapest information-
+# per-cost: ~30 min wall + same harness. If multi-arc priming widens
+# the EC cluster representation enough for held-out percepts to fire
+# priming clusters, behavioral divergence appears without needing
+# Wire 1 yet. If it doesn't, Wire 1 becomes the load-bearing
+# prerequisite (Roy-2c can also probe min_confidence as a fallback).
+#
+# Single-variable change vs Roy-1a:
+#
+#   priming arc mix:
+#     Roy-1a/1b: 5 × cradle_prelinguistic  (single-arc monoculture)
+#     Roy-2:     2 × cradle_prelinguistic  (neonatal phases)
+#              + 2 × cradle                 (linguistic-narrated phases)
+#              + 1 × cradle_prelinguistic   (consolidation)
+#
+# Everything else byte-identical to Roy-1a:
+#   - aut_mode: llm-primary at test (cheaper iteration; Roy-2b can
+#     re-run substrate-primary on same priming if behavioral
+#     divergence appears here)
+#   - test_scenario: scenarios/roy/roy_1_holdout.yaml unchanged
+#   - arms: a (from_priming, neutral) / b (blank, "hungry infant") /
+#           c (blank, neutral) unchanged
+#
+# Run with:
+#   maxim roy run scenarios/roy/roy_2_iteration.yaml --dry-run
+#   maxim roy run scenarios/roy/roy_2_iteration.yaml
+#
+# Expected wall: ~25-30 min on dev laptop (50 priming turns at
+# substrate-primary — same shape as Roy-1a — but the cradle stages
+# pull in a richer narrator path, may run slightly slower; 30 test
+# turns at llm-primary against the leader).
+#
+# Companion docs:
+#   docs/plans/persona_convergence_crucible.md  (three-arm methodology + Roy-2 iteration log)
+#   docs/experiments/18_roy_2.md                (outcome doc — written post-run)
+#   docs/experiments/protocols/18_roy_2_reproduction.md (reproduction runbook)
+
+name: roy-2
+description: |
+  Multi-arc priming iteration. Roy-1a/1b cradle_prelinguistic priming
+  produced a single-tool (sense_food_source) cluster monoculture. Roy-2
+  widens priming to 2 × cradle_prelinguistic (neonatal) + 2 × cradle
+  (linguistic narration) + 1 × cradle_prelinguistic (consolidation),
+  same total turns (50). Tests whether multi-arc priming gives the EC
+  cluster representation enough surface to pattern-match the held-out
+  fixture's percepts — the cheapest path through Roy-1b's three-pointer
+  methodology refinement. Test-time AUT mode stays llm-primary for
+  cheap iteration; Roy-2b will swap to substrate-primary if behavioral
+  divergence appears here.
+
+embodiment: bodies/infant_humanoid
+aut_mode: llm-primary
+
+# Priming: widened arc mix, same 50-turn budget as Roy-1a/1b. Order
+# preserves a developmental shape: neonatal exploration first
+# (cradle_prelinguistic), linguistic context layered mid-priming
+# (cradle), and a final consolidation stage back in the prelinguistic
+# regime so the closing substrate state is comparable to Roy-1a/1b's.
+priming:
+  name: roy-2-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Held-out test scenario — identical to Roy-1a/1b. 10 turns runs the
+# entire 10-percept fixture exactly once (the bridge cancels when
+# percepts are exhausted).
+test_scenario:
+  fixture: roy_1_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    # Neutral system prompt — arm A's persona (if any) emerges from
+    # substrate carryover, not from prompt injection.
+    system_prompt: neutral
+  b:
+    substrate: blank
+    # Same vague prompt as Roy-1a/1b for direct A/B continuity.
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral
