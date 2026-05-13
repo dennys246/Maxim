@@ -145,5 +145,4 @@ See [protocols/20_roy_2c_reproduction.md](protocols/20_roy_2c_reproduction.md).
 
 ## PR
 
-<!-- filled when PR opens -->
-TBD
+https://github.com/dennys246/Maxim/pull/244 — bundles Roy-2pc commits because PR #243's stacked-merge target was the Roy-2 branch, not main.
