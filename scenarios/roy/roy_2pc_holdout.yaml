@@ -1,0 +1,165 @@
+# Roy-2pc positive-control held-out fixture — engineered overlap with
+# the priming arc's EC representation.
+#
+# Roy-1a, Roy-1b, and Roy-2 (PRs #241 / #242) shipped a symmetric
+# structural-vs-behavioral gap: substrate priming writes +1.0
+# cluster_reward_bias on six EC clusters all keyed to
+# `tool:sense_food_source`, but neither AUT mode at test time reads
+# that bias into action selection. The standing hypothesis from
+# Roy-1b/Roy-2 is that the held-out fixture's percepts ("heat blooms
+# across your fingertips", "a low vibration hums beneath your back",
+# ...) don't fire the priming-acquired EC clusters at recall time —
+# so the bias is consulted but never crosses the `min_confidence=0.3`
+# gate.
+#
+# Roy-2pc is a positive control: a held-out fixture engineered to
+# DELIBERATELY OVERLAP the priming EC representation. Every test
+# percept evokes food / hunger / eating / sensing-food semantics, so
+# substrate encoding of the percept text via LinguisticEncoder should
+# pattern-complete onto the priming-acquired clusters. The expected
+# behavioral signature under substrate-primary at test:
+#
+#   - Arm A (substrate-primed, neutral): MANY sense_food_source calls
+#     (priming bias fires AND percepts match)
+#   - Arm B (blank, "hungry infant"):    SOME sense_food_source calls
+#     (prompt bias toward food, but no substrate prime — fewer than A)
+#   - Arm C (blank, neutral):            FEW sense_food_source calls
+#     (no prime, no prompt bias; percepts are food-themed so may still
+#     call it, but expected lowest of three)
+#
+# Diagnostic logic:
+#   A > B > C on sense_food_source counts → cluster wire IS healthy
+#       and exploitable; behavioral inertness on Roy-1a/1b/Roy-2 was
+#       a percept-overlap problem, not a wire bug. Wire 1 escalation
+#       is the right next step for *general-percept* persona expression.
+#   A ≈ B ≈ C → cluster wire bug OR min_confidence gate filters even
+#       primed-cluster-matched proposals. Roy-2c (min_confidence tune)
+#       becomes load-bearing before Wire 1.
+#   A < C (negative effect) → priming substrate suppressed
+#       sense_food_source on matching percepts somehow. Unlikely; would
+#       point at a wire defect.
+#
+# Vocabulary alignment notes (designed against the priming arc):
+#   - cradle_food.yaml entity name: food_source → tool: sense_food_source
+#   - cradle_food.yaml sensors: portions (count), freshness (ratio)
+#   - cradle_food.yaml affordance: eat (self_effect: hunger -0.4)
+#   - drives: hunger (entropic, drifts toward deprivation)
+#   - cradle priming arc invokes sense_food_source repeatedly when
+#     hunger drive is elevated and the food entity is in scene
+#
+# Percept text is therefore engineered to evoke: food (entity), portion
+# (sensor), hunger (drive), belly/sense/smell (somatosensory action),
+# nearby/reach (spatial co-presence). Maximum embedding similarity to
+# the priming substrate's WMS contents during sense_food_source success.
+#
+# Size: 10 percepts. The bridge cancels when the source is exhausted,
+# so test_scenario.turns=10 in the iteration spec runs the whole
+# fixture exactly once.
+
+name: roy_2pc_holdout
+description: |
+  Roy-2pc positive-control held-out fixture. Engineered semantic
+  overlap with the cradle priming arc's food/hunger/eating regime.
+  Every test percept evokes the same conceptual cluster the priming
+  arc drilled — diagnostic for whether the cluster_reward_bias wire is
+  exploitable when held-out percepts deliberately fire priming clusters.
+
+timing: step_based
+
+percepts:
+  # ─── ENGINEERED OVERLAP (food/hunger/sensing-food) ────────────────
+  - at: 0
+    source: cli
+    cli_input: "you sense food nearby."
+    salience: 0.7
+    novelty: 0.3
+    metadata:
+      scenario_tag: pc_overlap_sense_food
+      percept_class: matching_engineered
+
+  - at: 1
+    source: cli
+    cli_input: "the smell of food fills the air."
+    salience: 0.7
+    novelty: 0.35
+    metadata:
+      scenario_tag: pc_overlap_smell_food
+      percept_class: matching_engineered
+
+  - at: 2
+    source: cli
+    cli_input: "hunger pulls your attention toward food."
+    salience: 0.75
+    novelty: 0.3
+    metadata:
+      scenario_tag: pc_overlap_hunger_food
+      percept_class: matching_engineered
+
+  - at: 3
+    source: cli
+    cli_input: "a portion of food rests within reach."
+    salience: 0.65
+    novelty: 0.35
+    metadata:
+      scenario_tag: pc_overlap_portion_reach
+      percept_class: matching_engineered
+
+  - at: 4
+    source: cli
+    cli_input: "warm food rises in your belly."
+    salience: 0.7
+    novelty: 0.3
+    metadata:
+      scenario_tag: pc_overlap_warm_belly
+      percept_class: matching_engineered
+
+  - at: 5
+    source: cli
+    cli_input: "the taste of food spreads across your tongue."
+    salience: 0.7
+    novelty: 0.4
+    metadata:
+      scenario_tag: pc_overlap_taste_food
+      percept_class: matching_engineered
+
+  - at: 6
+    source: cli
+    cli_input: "fullness eases the pull of hunger."
+    salience: 0.6
+    novelty: 0.3
+    metadata:
+      scenario_tag: pc_overlap_satiation
+      percept_class: matching_engineered
+
+  - at: 7
+    source: cli
+    cli_input: "a fresh portion sits beside you."
+    salience: 0.6
+    novelty: 0.4
+    metadata:
+      scenario_tag: pc_overlap_fresh_portion
+      percept_class: matching_engineered
+
+  # ─── EMBEDDED CONTROL (off-topic — baseline for A-vs-C check) ─────
+  # Single non-food percept to verify the wire isn't trivially
+  # forcing sense_food_source on every input regardless of content.
+  # If arm A invokes sense_food_source on THIS percept, the wire is
+  # spuriously over-firing, not legitimately pattern-completing.
+  - at: 8
+    source: cli
+    cli_input: "two people are arguing in the next room."
+    salience: 0.6
+    novelty: 0.7
+    metadata:
+      scenario_tag: pc_control_unrelated
+      percept_class: unrelated_control
+
+  # ─── COOLDOWN (food-adjacent but neutral) ─────────────────────────
+  - at: 9
+    source: cli
+    cli_input: "the bowl beside you stays full."
+    salience: 0.4
+    novelty: 0.4
+    metadata:
+      scenario_tag: pc_cooldown_food_adjacent
+      percept_class: matching_engineered

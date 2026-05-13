@@ -1,0 +1,110 @@
+# Roy-2pc — positive-control iteration.
+#
+# Roy-1a + Roy-1b + Roy-2 (PRs #241 / #242) shipped a symmetric
+# structural-vs-behavioral gap: substrate priming writes +1.0
+# cluster_reward_bias on six EC clusters all keyed to
+# `tool:sense_food_source`, but neither AUT mode at test time reads
+# that bias into action selection. Standing hypothesis from
+# Roy-1b/Roy-2: the held-out fixture's percepts don't fire the
+# priming-acquired EC clusters at recall time, so the bias is
+# consulted but never crosses `min_confidence=0.3`.
+#
+# Roy-2pc validates the hypothesis by deliberately constructing the
+# missing percept overlap. Same multi-arc priming as Roy-2 (cradle_pre
+# linguistic × 2 → cradle × 2 → cradle_prelinguistic × 1) — so the
+# priming-side cluster wire and substrate carryover are A/B-comparable.
+# The fixture is engineered: every test percept evokes food / hunger /
+# eating / sensing-food semantics. AUT mode at test is
+# substrate-primary because the cluster_reward_bias path is consumer-
+# coupled to substrate-primary's `recommend_action` — testing wire
+# health requires running that consumer.
+#
+# Diagnostic logic (from the fixture's docstring):
+#   A > B > C on sense_food_source counts → wire IS healthy + exploitable
+#       (Roy-1b/Roy-2 inertness was percept-overlap problem). Wire 1
+#       escalation is the right next step for general-percept persona.
+#   A ≈ B ≈ C → wire bug OR min_confidence gate filters even
+#       primed-cluster-matched proposals. Roy-2c (min_confidence tune)
+#       becomes load-bearing before Wire 1.
+#   A < C → priming suppressed sense_food_source on matching percepts.
+#       Unlikely; would point at a wire defect.
+#
+# Run with:
+#   maxim roy run scenarios/roy/roy_2pc_iteration.yaml --dry-run
+#   maxim roy run scenarios/roy/roy_2pc_iteration.yaml
+#
+# Expected wall: ~25-30 min on the dev laptop (50 priming turns at
+# substrate-primary + 30 test turns at substrate-primary — closer to
+# Roy-1b's 1578s than Roy-2's 883s because substrate-primary test
+# arms are slower per turn).
+#
+# Companion docs:
+#   docs/plans/persona_convergence_crucible.md (three-arm methodology + Roy-2pc iteration log)
+#   docs/experiments/19_roy_2pc.md             (outcome doc — written post-run)
+#   docs/experiments/protocols/19_roy_2pc_reproduction.md (reproduction runbook)
+#   scenarios/roy/roy_2pc_holdout.yaml         (engineered-overlap fixture)
+#   scenarios/roy/roy_2_iteration.yaml         (the priming-side A/B partner)
+
+name: roy-2pc
+description: |
+  Positive-control iteration. Multi-arc priming identical to Roy-2
+  (cradle_prelinguistic × 2 → cradle × 2 → cradle_prelinguistic × 1).
+  Test fixture engineered to deliberately overlap the priming arc's
+  food/hunger/eating regime — every test percept evokes the EC
+  cluster the priming wire drilled. AUT mode at test is
+  substrate-primary so the cluster_reward_bias consumer fires.
+  Diagnostic for wire health: A > B > C on sense_food_source counts
+  → wire is exploitable; A ≈ B ≈ C → wire bug or threshold gate.
+
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+
+# Priming: identical multi-arc mix to Roy-2 (cradle_prelinguistic × 2
+# neonatal + cradle × 2 linguistic-narrated + cradle_prelinguistic × 1
+# consolidation). Same 50-turn budget. Single-variable change vs
+# Roy-2 is the test_scenario.fixture.
+priming:
+  name: roy-2pc-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Engineered-overlap held-out fixture. Distinct from priming arc
+# (still held-out — percepts are not byte-identical to anything the
+# priming arc emitted) but engineered to fire priming-acquired EC
+# clusters at recall time.
+test_scenario:
+  fixture: roy_2pc_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    # Neutral system prompt — arm A's behavioral signature comes
+    # purely from substrate carryover, not from prompt injection.
+    system_prompt: neutral
+  b:
+    substrate: blank
+    # Same vague prompt as Roy-1a/1b/Roy-2 for direct A/B continuity.
+    # The food-themed fixture is expected to interact with this prompt
+    # — arm B has a hunger-context prompt AND food-themed percepts but
+    # no substrate prime, so sits between A and C.
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral
