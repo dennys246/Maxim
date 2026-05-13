@@ -62,6 +62,7 @@ Plans on the 1.0 critical path or actively shipping:
 
 ### 1.1 track (concurrent development)
 
+- [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) — **NEW (2026-05-13).** Hebbian binding edges between EC nodes via temporal co-activation. The structural fix for the LinguisticEncoder→EC alignment gap Roy-2c confirmed (cluster_reward_bias map has right tool keys, wrong cluster keys). Wire-A from 0.9.1 is the interim signal-surfacing fix; this plan teaches the substrate to form proper cross-modal edges over experience. Roy-4 (instrumentation experiment, ships in 0.9.1 Stage 0d) is the prereq that validates the binding rule before 1.1 implementation. Coordinates with grounded_language_acquisition Phase 1 (token-level symbol binding is a special case of the EC-level edges this plan ships).
 - [minecraft_benchmark.md](minecraft_benchmark.md) — Live demo + harness comparison. Stub. 1.1 splash launch.
 - [mcp_compatibility.md](mcp_compatibility.md) — MCP server + client + schema interop. Stub. 1.0 ships CC9 (dual-format Tool schema) as the prerequisite.
 

@@ -695,6 +695,12 @@ Arm C (blank, neutral):                  5× infant_humanoid_pick_up (all FAILED
 ### Roy-3 (planned, 0.9.1 validation)
 *Status: Validation iteration for the 0.9.1 release. Runs after Wires A+1+2+3 ship. Two sub-iterations (Roy-3a llm-primary original holdout, Roy-3b llm-primary engineered overlap) measure whether the annotation pattern produced cross-arm behavioral divergence the cluster-bias path couldn't. Owned by [release_0_9_1.md Stage 5](release_0_9_1.md).*
 
+### Roy-4 (planned, 1.1 cross-modal binding validation prereq)
+*Status: EC-activation instrumentation experiment. Runs once 0.9.1 Stage 0d ships (`MAXIM_EC_TRACE_ACTIVATIONS=1` gate + per-tick `sim_ec_activation` JSONL events). Same priming + fixture + arms as Roy-2c. Single-session experiment with post-hoc co-activation analysis. Pass criteria: at least one test-phase active node has a would-have-bound edge to a priming `sense_food_source` cluster under a proposed Hebbian rule — if pass, [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stages 2-6 are greenlit for 1.1; if fail, encoder alignment is too severe for binding alone and a 1.2+ encoder-replacement direction supersedes. Owned by [release_0_9_1.md Stage 0d](release_0_9_1.md) and [cross_modal_substrate_binding.md Stage 1](cross_modal_substrate_binding.md).*
+
+### Roy-5+ (planned, 1.1 cross-modal binding validation)
+*Status: After [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stages 2-6 ship, Roy-5 re-runs the Roy-2c spec on top of the binding mechanism. Pre-registered diagnostic: arm A produces non-zero `sense_food_source` calls in the test phase (the result Roy-2c could not produce) → binding mechanism closes the gap. Includes a `MAXIM_EC_BINDING_RATE=0.0` ablation to confirm the binding mechanism (not some other code change) is the load-bearing variable. Owned by [cross_modal_substrate_binding.md Stage 7](cross_modal_substrate_binding.md).*
+
 ### Roy-1: Adversarial (planned, unrun)
 *Status: design above; awaiting [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) Stages 0-3 to ship in 1.0.*
 

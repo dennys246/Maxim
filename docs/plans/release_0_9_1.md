@@ -41,20 +41,22 @@ The Roy iteration docs use "Wire 1" loosely to mean the **design pattern**: subs
 | 0a | Roy-2c probe (`min_confidence=0.0`, H1 vs H2 disambiguator) | ~10 | none | none |
 | 0b | Stage 0 telemetry (`agent_id` on action JSONL, NAc snapshot at session-end, entity_class on MOTOR/PERCEPT) | ~150 | `_format_version` bump on action JSONL | none |
 | 0c | `recommend_action` instrumentation (EC activation, proposal confidence, bias consulted per turn) | ~80 | none | none |
+| 0d | Roy-4 EC-activation instrumentation (1.1 cross-modal binding validation prereq) | ~80 | none | none |
 | 1 | **Wire 3** — Embodiment-state → tool filter | ~80 | none | none |
 | 2 | **Wire-A** — Cluster-bias annotation (NEW) | ~150 | none | none |
 | 3 | **Wire 2** — Pavlovian percept aversion | ~250 | new dict on NAc, `_format_version` bump | GatingContext `learned_aversions` add |
 | 4 | **Wire 1** — Risk-sensitive action annotation | ~200 | none | OutcomePrediction `uncertainty_interval` add |
 | 5 | Roy-3 validation iteration on 0.9.1 substrate | ~30 (spec only) | none | none |
-| **Total 0.9.1** | | **~950** | 2 format-version bumps | 2 frozen-dataclass field appends |
+| **Total 0.9.1** | | **~1030** | 2 format-version bumps | 2 frozen-dataclass field appends |
 
 Ordering rationale:
-1. **Stage 0a-c first** because telemetry blocks observation. Roy-2c (one env var) lands before any wire work; Stage 0b-c lands as the structural prerequisite for measuring whether subsequent wires produced behavioral signal.
+1. **Stage 0a-d first** because telemetry blocks observation. Roy-2c (one env var) lands before any wire work; Stage 0b-c lands as the structural prerequisite for measuring whether subsequent wires produced behavioral signal; Stage 0d lands the EC-activation instrumentation needed for Roy-4 (the 1.1 cross-modal binding validation prereq).
 2. **Wire 3 second** (embodiment filter) — smallest, no persistence, demonstrates the framing without risk.
 3. **Wire-A third** — directly addresses Roy-2pc finding, no persistence, ships before Wire 2's persistence change.
 4. **Wire 2 fourth** — only persistence change; lands with full schema discipline. Pre-merge two-lens review must check for the latent-bridge×subscriber trap referenced in [CLAUDE.md](../../CLAUDE.md) (Wave 1 biosystem_unification lesson).
 5. **Wire 1 last** — depends on Wire 2 having generated variance data to weigh.
 6. **Roy-3** — validation iteration with all four wires active. Same priming as Roy-2pc, both AUT modes, both fixtures (original holdout + engineered overlap). Answers "did the annotation pattern produce the cross-arm behavioral divergence the cluster-bias path couldn't"?
+7. **Roy-4** (parallel) — runs once Stage 0d ships. Validates the 1.1 cross-modal binding plan's design before its implementation lands. Can run any time after 0d ships; doesn't block the wire stages.
 
 Per [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md), each Stage 1-4 gets a pre-merge two-lens review (Executor + Architecture lenses). Stage 0a-c can ship under a single review since the changes are observability-only.
 
@@ -92,6 +94,24 @@ Lifted verbatim from [bio_emergent_persona_foundations.md § Stage 0](bio_emerge
 - No persistence change (event stream only).
 - The event MUST emit even when `recommend_action` returns `None` (sub-threshold path). Without this, Roy iterations can't tell whether the gate fired vs the consumer didn't run at all.
 
+## Stage 0d — Roy-4 EC-activation instrumentation (validation prereq for 1.1 cross-modal binding)
+
+**Why:** Roy-2c confirmed H1 (LinguisticEncoder → EC alignment is the block). Wire-A ships as the interim signal-surfacing fix, but the structural fix is [`cross_modal_substrate_binding.md`](cross_modal_substrate_binding.md) (1.1 plan): EC nodes that co-fire across modalities acquire Hebbian binding edges. Before that plan invests in implementation, **Roy-4 validates that priming-cluster ↔ test-cluster pairs WOULD have been linked under a proposed binding rule.** If Roy-4 fails (the pairs genuinely never co-fire), the deeper fix is replacing LinguisticEncoder with an aligned multimodal encoder — a different research direction. Roy-4 is the cheap gate that prevents misallocation.
+
+**Implementation:**
+- New env-var `MAXIM_EC_TRACE_ACTIVATIONS=1` gating a per-tick `sim_ec_activation` JSONL event from [similarity/ec.py::pattern_complete_or_separate](../../src/maxim/similarity/ec.py). Fields: `agent_id`, `tick`, `active_node_id`, `activation_strength`, `modality_tag` (sensor / linguistic / drive — derived from the encoder source).
+- `conftest.py` autouse scrub for the env var per [feedback_opt_in_env_in_hot_paths.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_opt_in_env_in_hot_paths.md).
+- `scenarios/roy/roy_4_iteration.yaml`: same priming + fixture + arms as Roy-2c. Single-variable change: `MAXIM_EC_TRACE_ACTIVATIONS=1` in runner environment.
+- **Analysis (post-run):** compute pairwise co-activation matrix across the priming session JSONL. For each pair `(node_a, node_b)` where both fired in the same tick at least N times during priming, mark them as "would-have-bound." Then check whether any test-phase active nodes are in the would-have-bound neighborhood of a priming `sense_food_source` cluster.
+
+**Pre-registered diagnostic:**
+- **At least one test-phase active node has a would-have-bound edge to a priming cluster** → cross-modal binding plan justified; Stage 2+ of [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) is greenlit for 1.1.
+- **No would-have-bound edges exist between priming and test clusters** → encoder alignment is so severe that even Hebbian binding wouldn't form the link. Cancel the 1.1 binding plan; redirect to a 1.2+ encoder replacement research direction.
+
+**Sizing:** ~50 LOC instrumentation + ~30 LOC analysis script + outcome doc. Single-session experiment.
+
+**Owns:** [docs/experiments/21_roy_4.md](../experiments/21_roy_4.md), [docs/experiments/protocols/21_roy_4_reproduction.md](../experiments/protocols/21_roy_4_reproduction.md), [scenarios/roy/roy_4_iteration.yaml](../../scenarios/roy/roy_4_iteration.yaml).
+
 ## Stage 1 — Wire 3: embodiment-state → tool filter
 
 Lifted from [bio_emergent_persona_foundations.md § Wire 3](bio_emergent_persona_foundations.md). No design changes from the foundations doc; recapped here for self-containment:
@@ -109,7 +129,9 @@ Lifted from [bio_emergent_persona_foundations.md § Wire 3](bio_emergent_persona
 
 ## Stage 2 — Wire-A: cluster-bias annotation (NEW)
 
-**The Roy-2pc-specific fix.** Surfaces `NAc._cluster_reward_bias` to the LLM prompt for currently-active EC clusters, so the LLM proposer can read substrate-acquired bias across percept regimes the substrate didn't directly drill.
+**The Roy-2pc-specific INTERIM fix.** Surfaces `NAc._cluster_reward_bias` to the LLM prompt for currently-active EC clusters, so the LLM proposer can read substrate-acquired bias across percept regimes the substrate didn't directly drill.
+
+**Coexists with the structural fix in 1.1.** Wire-A is *static signal-surfacing* — it renders associations the substrate already encoded (via tool-name keys that survive the encoder gap). The *structural* fix is cross-modal binding ([`cross_modal_substrate_binding.md`](cross_modal_substrate_binding.md)) which lets the substrate learn new cross-modal associations via Hebbian co-activation. Wire-A surfaces tool-level bias *immediately* for the llm-primary path; the binding plan teaches the substrate to form proper cross-modal edges over experience. Both ship; neither supersedes the other. Wire-A remains the llm-primary surface even after binding lands because llm-primary's proposer doesn't call `recommend_action` and therefore doesn't consume bound-edge neighborhoods.
 
 ### What's there today
 - `NAc._cluster_reward_bias: dict[str, dict[str, float]]` (keyed `agent_id → cluster_key → bias`). Existing data structure; no schema change needed.
