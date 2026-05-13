@@ -531,11 +531,97 @@ If Roy-2b shows non-trivial behavioral divergence in arm A under substrate-prima
 - Outcome doc: [`18_roy_2.md`](../experiments/18_roy_2.md). Protocol: [`18_roy_2_reproduction.md`](../experiments/protocols/18_roy_2_reproduction.md). Spec: [`roy_2_iteration.yaml`](../../scenarios/roy/roy_2_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
 <!-- /roy-iteration:roy-2 -->
 
-### Roy-2b (planned, follow-up to Roy-2)
-*Status: Roy-2 produced a clean A-vs-blank-neutral tool-family divergence under llm-primary but did NOT widen the cluster vocabulary. Roy-2b swaps test-time AUT to substrate-primary on the same multi-arc priming to test whether cradle-stage causal/semantic associations (beyond the cluster wire) are exploitable by the substrate-primary `recommend_action` consumer.*
+<!-- roy-iteration:roy-2pc -->
+### Roy-2pc: positive-control on engineered-overlap fixture
 
-### Roy-2c (deferred, min_confidence tuning)
-*Status: Deferred. If Roy-2b reproduces Roy-1b's identical-distribution monoculture, Wire 1 becomes the load-bearing prerequisite and Roy-2c (min_confidence tuning) can wait.*
+**Status:** First positive-control iteration. Two-variable diff vs Roy-2 (fixture: engineered food-semantic overlap + test-AUT-mode: substrate-primary). Ran end-to-end against the same healthy leader, 2026-05-13 08:49→09:14 local. **1502.2s wall (~25.0 min)** — close to Roy-1b's 1578s (substrate-primary test arms slow uniformly because the 30s-per-turn timeout dominates).
+
+> Pre-registered diagnostic logic: A > B > C on sense_food_source counts
+> → wire IS healthy + exploitable (Roy-1b/Roy-2 inertness was a
+> percept-overlap problem); Wire 1 escalation right for general-percept
+> persona. A ≈ B ≈ C → wire bug OR min_confidence gate filters even
+> primed-cluster-matched proposals (Roy-2c min_confidence tune becomes
+> load-bearing). A < C → wire defect.
+
+**Preflight:** clean (after one-shot leader tunnel cold-start retry). `outcome: ok`, `latency_ms: 570.3`, `detail: stage2 HTTP 200`, `source: peer.yml`.
+
+**Priming:** 5/5 stages completed. final_session_id `20260513_085757`. Identical multi-arc shape to Roy-2 (605.5s vs 609.5s — single-seed iterations reproduce priming wall within 1%).
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | duration_s | finish |
+|---|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260513_085942` | 10 | 301.13 | cancel |
+| b | blank | "You are a hungry infant" | `20260513_090443` | 10 | 299.24 | cancel |
+| c | blank | neutral | `20260513_090942` | 10 | 295.33 | cancel |
+
+Arm durations tightly clustered (Δ ≈ 6s) — substrate-primary's 30s/turn timeout dominates wall.
+
+**Pairwise substrate divergence:**
+
+| Pair | `reward_bias_l2` | **`cluster_reward_bias_l2`** | (keys) | `causal_link_Δ` | `episodes_Δ` | **`valence_KS`** (p) | **`salience_KS`** (p) |
+|---|---|---|---|---|---|---|---|
+| **a_vs_b** | 0.0 | **2.4678** | 10 | +155 | +646 | 0.998 (0.006)* | 0.997 (5.6e-5)* |
+| **a_vs_c** | 0.0 | **2.4678** | 10 | +155 | +646 | 0.998 (0.006)* | 0.997 (5.6e-5)* |
+| b_vs_c | 0.0 | 0.3000 | 4 | 0 | 0 | 0.000 (1.000) | (similar) |
+
+`*` = sample-driven (arms B and C each captured exactly 1 hippocampus episode; KS detects "distributions differ" on a 647-vs-1 sample).
+
+**Cluster-reward top deltas (a_vs_b):** Six `tool:sense_food_source` × +1.0 (priming carryover) + 4× `tool:infant_humanoid_pick_up` × ±0.15 (substrate-primary at test wrote 4 stochastic-cluster pick_up keys). **Identical shape to Roy-1b's substrate-primary-test output.** Zero new `sense_food_source` cluster updates from any arm during the test phase despite the engineered-overlap fixture.
+
+**Test-phase tool distribution (the headline Roy-2pc signal):**
+
+```
+Arm A (substrate-primed, neutral):       2× infant_humanoid_pick_up (both FAILED — Missing required input: object)
+Arm B (blank, "hungry infant"):          2× infant_humanoid_pick_up (both FAILED — Missing required input: object)
+Arm C (blank, neutral):                  2× infant_humanoid_pick_up (both FAILED — Missing required input: object)
+```
+
+**All three arms produced the BYTE-IDENTICAL action distribution: 2× FAILED `infant_humanoid_pick_up` with empty params.** Substrate-primary's `recommend_action` fallback chose the same default tool with the same (invalid) params regardless of percept content AND regardless of substrate state. 8-of-10 turns per arm produced zero actions (sub-threshold filtered).
+
+**This is the pre-registered "A ≈ B ≈ C" diagnostic outcome.**
+
+**Honest assessment:**
+
+- **The cluster wire is structurally healthy.** `cluster_reward_bias_l2 = 2.4678` reproduces Roy-1b's substrate-primary-test value exactly. The wire wrote the priming substrate identically AND consumed it at test time (4 new test-phase cluster updates).
+- **The cluster_reward_bias path is BEHAVIORALLY INERT even with maximally-overlapping percepts.** Engineering semantic overlap between test percepts and the priming substrate's food/hunger/eating regime did not produce a single additional `sense_food_source` call across any arm. The behavioral inertness Roy-1b first showed reproduces under direct positive-control conditions.
+- **Two unfalsified hypotheses for WHY (Roy-2pc cannot disambiguate alone):**
+  - **(H1) LinguisticEncoder→EC alignment failure.** The engineered percepts may not pattern-complete onto the priming-acquired EC clusters at recall time — embeddings of "you sense food nearby" may land in a different EC region than the priming substrate's encodings (which came from sensor/drive state + cradle-stage narrator output, NOT explicit "food" tokens). Wire structurally healthy but never consulted on these percepts.
+  - **(H2) `min_confidence=0.3` gate filters primed-cluster-matched proposals.** EC pattern completion may be firing correctly, `recommend_action` may be consulting the +1.0 bias, but the resulting proposal confidence falls below the threshold. Wire would express if the gate were lower or removed.
+- **Substrate-primary's default fallback is fixture-content-independent.** Three arms × two fixtures (Roy-1b's original holdout + Roy-2pc's engineered overlap) → same 2× FAILED `infant_humanoid_pick_up` distribution. The fallback is hardcoded behavior, not substrate-driven.
+
+**What Roy-2pc definitively proves:**
+
+- The cluster wire reproduces fifth iteration in a row (Roy-0 → Roy-1a → Roy-1b → Roy-2 → Roy-2pc, all within 1% on `cluster_reward_bias_l2`).
+- Engineering percept-substrate semantic overlap is INSUFFICIENT to break the structural-vs-behavioral gap under substrate-primary at test.
+- Substrate-primary's recommend_action default fallback is invariant under percept content AND substrate state (byte-identical 2× FAILED pick_up across two fixtures × three arms).
+- **The empirical case for Wire 1 is now nearly bulletproof.** The cluster_reward_bias path has at least one (possibly two) blocking gates between substrate state and action selection under substrate-primary, AND it isn't read at all under llm-primary. Wire 1's substrate-annotates-LLM-context design surfaces bias at the LLM prompt — bypassing the cluster-wire consumer entirely.
+
+**What Roy-2pc still does NOT prove:**
+
+- Which of H1 / H2 (or both) blocks the cluster-bias→action pathway. Disambiguating requires instrumentation OR Roy-2c (`min_confidence=0.0` probe on same fixture).
+- That `recommend_action` is even consulting the priming clusters on the engineered percepts. Verifying requires logging EC cluster activations during test turns.
+- Wire 1 sufficiency (untested).
+- Cross-session persistence (single-session as before).
+
+**What Roy-2pc changes for next-iteration methodology:**
+
+1. **Wire 1 is now load-bearing.** Five iterations of structural-vs-behavioral gap, including a positive-control with engineered overlap, are the empirical floor for the Wire 1 design ([bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) Stages 0-3).
+2. **Roy-2c (`min_confidence=0.0` probe) is the cheap H1-vs-H2 disambiguator.** Same priming as Roy-2 + same engineered fixture as Roy-2pc + flip `min_confidence` via env var. If A > B > C emerges → H2 confirmed; if A ≈ B ≈ C reproduces → H1 confirmed. Cheap because it reuses fixtures and priming.
+3. **`recommend_action` is a black box at the JSONL observability level.** Future iterations should instrument it with per-turn events (EC cluster activations, proposal confidence, cluster_reward_bias consulted per proposal). Without these, single-experiment disambiguation between H1 and H2 is structurally impossible.
+
+**Recommendation for next iteration:** **Escalate Wire 1 (`bio_emergent_persona_foundations.md` Stages 0-3) as the load-bearing 1.0 prerequisite for behavioral persona expression.** Roy-2pc is the empirical floor — substrate carryover writes the cluster wire correctly across five iterations, but the wire's behavioral output is blocked at substrate-primary's consumer-side gates regardless of percept overlap. Wire 1 routes around both blocks.
+
+**Secondary:** ship Roy-2c (`min_confidence=0.0` probe) opportunistically alongside Wire 1 work — it's a one-env-var change with a clean diagnostic, useful to know which gate fired even if the Wire 1 work supersedes the answer.
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-2pc/result.json`](/Users/dennyschaedig/.maxim/roy/roy-2pc/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-2pc/summary.md).
+- LLM trace `/tmp/roy_2pc_live.jsonl`. Run log `/tmp/roy_2pc_run.log`.
+- Outcome doc: [`19_roy_2pc.md`](../experiments/19_roy_2pc.md). Protocol: [`19_roy_2pc_reproduction.md`](../experiments/protocols/19_roy_2pc_reproduction.md). Spec: [`roy_2pc_iteration.yaml`](../../scenarios/roy/roy_2pc_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml).
+<!-- /roy-iteration:roy-2pc -->
+
+### Roy-2c (deferred, min_confidence=0 probe — H1 vs H2 disambiguator)
+*Status: Deferred. Cheap one-env-var follow-up to Roy-2pc — reuse same priming + engineered fixture with `min_confidence=0.0` to distinguish (H1) LinguisticEncoder→EC alignment failure from (H2) threshold-gate filtering. Useful diagnostic but not on the Wire 1 critical path.*
 
 ### Roy-1: Adversarial (planned, unrun)
 *Status: design above; awaiting [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) Stages 0-3 to ship in 1.0.*
