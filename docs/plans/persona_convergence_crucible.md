@@ -444,8 +444,98 @@ Arm C (blank, neutral):                  2× infant_humanoid_pick_up
 - Outcome doc: [`17_roy_1b.md`](../experiments/17_roy_1b.md). Protocol: [`17_roy_1b_reproduction.md`](../experiments/protocols/17_roy_1b_reproduction.md). Spec: [`roy_1b_iteration.yaml`](../../scenarios/roy/roy_1b_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
 <!-- /roy-iteration:roy-1b -->
 
-### Roy-2 (planned, methodology refinement first)
-*Status: Roy-1b ships a methodology decision: widen priming arc diversity, tune min_confidence, OR ship Wire 1 substrate-annotates-LLM-context. Roy-2 awaits a decision among the three.*
+<!-- roy-iteration:roy-2 -->
+### Roy-2: multi-arc priming on held-out fixture
+
+**Status:** Third methodology-validation iteration. Tests path (a) of Roy-1b's three-pointer refinement — does widening priming arc *narration* widen the EC cluster *vocabulary* enough for held-out percepts to fire priming-acquired clusters? Ran end-to-end against the same healthy leader, 2026-05-12 21:26→21:41 local. **882.8s wall (~14.7 min)** — close to Roy-1a's 830s as expected (cradle stages add modest narrator overhead but stay in same envelope).
+
+> Single-variable change vs Roy-1a: priming arc mix widens from 5 ×
+> cradle_prelinguistic to 2 × cradle_prelinguistic (neonatal) + 2 ×
+> cradle (linguistic-narrated) + 1 × cradle_prelinguistic
+> (consolidation). Same 50-turn budget. Held-out fixture, test-time
+> AUT mode (llm-primary), and arms byte-identical to Roy-1a.
+
+**Preflight:** clean. `outcome: ok`, `latency_ms: 246.3`, `detail: stage2 HTTP 200`, `source: peer.yml`.
+
+**Priming:** 5/5 stages completed. final_session_id `20260512_213519`. Stage 1 cold-start was 187s; stages 2-5 each ~105s. The cradle linguistic stages (act2_cradle_a, act2_cradle_b) ran in the same wall envelope as the prelinguistic stages — the LLM narration cost is consumed by the orchestrator, not by substrate-primary AUT, so AUT-side cost is invariant under arc choice.
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | duration_s | finish |
+|---|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260512_213703` | 10 | 99.73 | cancel |
+| b | blank | "You are a hungry infant" | `20260512_213843` | 10 | 95.27 | cancel |
+| c | blank | neutral | `20260512_214018` | 10 | 77.50 | cancel |
+
+23 `peer_backend_call` events (status 200), 1 cosmetic `dispatch_exhausted`, 1 cosmetic `role_divergence` warning, 0 tracebacks.
+
+**Pairwise substrate divergence:**
+
+| Pair | `reward_bias_l2` | **`cluster_reward_bias_l2`** | (keys) | `causal_link_Δ` | `episodes_Δ` | **`valence_KS`** (p) | **`salience_KS`** (p) |
+|---|---|---|---|---|---|---|---|
+| **a_vs_b** | 0.0 | **2.4495** | 6 | +152 | +659 | **0.291 (0.023)** | **0.529 (6.9e-15)** |
+| **a_vs_c** | 0.0 | **2.4495** | 6 | +148 | +658 | **0.291 (0.019)** | **0.471 (3.1e-11)** |
+| b_vs_c | 0.0 | 0.0 | 0 | -4 | -1 | 0.000 (1.000) | 0.058 (1.000) |
+
+**Cluster-reward top deltas (a_vs_b):** Six `tool:sense_food_source` keys at +1.0, all on distinct EC cluster UUIDs from priming. **Zero new tool-keyed entries from the cradle stages.** Multi-arc priming did NOT widen the cluster vocabulary — the cradle linguistic narration is consumed by the orchestrator narrator, not by substrate-primary AUT's tool proposer, so the AUT-side 50-turn cold-start regime stays in the `sense_food_source` monoculture regardless of arc choice.
+
+**Test-phase tool distribution (the load-bearing Roy-2 signal):**
+
+```
+Arm A (substrate-primed, neutral):       17× respond / 3× sense / 2× infant_humanoid_pick_up / 1× say / 1× pick_up / 1× _llm_unavailable
+Arm B (blank, "hungry infant"):          20× respond / 4× sense / 2× _llm_unavailable / 1× say / 1× pick_up / 1× infant_humanoid_pick_up
+Arm C (blank, neutral):                  21× respond / 5× infant_humanoid_look / 1× sense_tools / 1× infant_humanoid_listen / 1× _llm_unavailable
+```
+
+**Tool distributions diverge across arms — the cleanest substrate-only contrast is A vs C** (both neutral prompts, only substrate differs). Arm A uses `sense` (3) + `pick_up` variants (3); arm C uses `infant_humanoid_look` (5) + `infant_humanoid_listen` (1) + `sense_tools` (1) with zero `sense`/`pick_up` calls. Arm A's substrate priming biases the LLM proposer toward the same tool family (`sense`, food-source-adjacent) that the explicit "hungry infant" prompt biases arm B toward — substrate carryover acts like a quiet "hungry infant" prompt at test time. **Subtle and prompt-mediated**, not the cluster_reward_bias→action divergence we were hoping for.
+
+**Honest assessment:**
+
+- **Negative for the structural question (path (a) does NOT widen cluster vocabulary).** `cluster_reward_bias_l2 = 2.4495` is byte-identical to Roy-1a; the 6 keys are all `tool:sense_food_source`. Multi-arc priming at the orchestrator level does NOT shift substrate-primary's cold-start AUT proposer. The cold-start gate is in the AUT proposer, not in orchestrator percept emission.
+- **Partial-positive for the behavioral question (A vs C tool distributions diverge cleanly).** First clean A-vs-blank-neutral tool-family divergence in the Roy harness under llm-primary. The signal is mediated by the LLM proposer reading substrate context indirectly via salience-modulated WMS / hippocampal recall / affordance hints in the prompt — **not** through the cluster_reward_bias path.
+- **First clean valence_KS reading in Roy harness history.** Roy-1a missed α=0.05 (p=0.402); Roy-1b cleared it sample-driven (single-episode blank). Roy-2's `valence_KS = 0.291 (p=0.023)` with 26-episode blank arm vs 685-episode primed arm gives the first methodologically-clean significant valence signal. The substrate priming wrote negative-mean valence (-0.09) onto arm A's episode distribution; held-out percepts on the blank arms fire neutral-mean episodes (0.0). **This is the strongest cross-iteration evidence that substrate carryover propagates to the Hippocampus valence distribution.**
+- **Salience_KS effect size shrinks (Roy-1a 0.879 → Roy-2 0.529)** as priming episode diversity grows. P-value is still highly significant (6.9e-15). Diversity is a quantifiable knob on salience carryover — more diverse priming = smaller novelty gap.
+- **Cluster wire reproduces fourth iteration in a row.** Roy-0 → Roy-1a → Roy-1b → Roy-2: `cluster_reward_bias_l2` within 1% (2.4587 → 2.4495 → 2.4678 → 2.4495).
+
+**What Roy-2 definitively proves:**
+
+- Multi-arc priming at the orchestrator level does NOT shift substrate-primary AUT's cold-start cluster monoculture (path (a) of Roy-1b's three-pointer refinement is ruled out for this turn budget).
+- Substrate carryover produces a subtle but clean tool-family divergence between primed-neutral and blank-neutral arms under llm-primary at test, mediated by the LLM proposer reading substrate context indirectly.
+- Hippocampus valence_KS clears α=0.05 with healthy sample size — first methodologically-clean valence reading in the Roy harness.
+- The cluster wire is rock-solid across four single-seed iterations on two different priming arc configurations.
+
+**What Roy-2 still does NOT prove:**
+
+- Behavioral expression via the `cluster_reward_bias` path (still zero `sense_food_source` calls at test under llm-primary).
+- That Roy-2b (substrate-primary at test on same multi-arc priming) would exploit cradle-stage causal links / ATL chunks the cluster wire doesn't capture.
+- `min_confidence` tuning impact (untested; would require Roy-2c).
+- Wire 1 sufficiency (untested).
+- Cross-session persistence (still single-session).
+
+**What Roy-2 changes for next-iteration methodology:**
+
+1. **The cold-start gate is in the AUT proposer, not the orchestrator.** Roy-1b flagged "tune `min_confidence`"; Roy-2 promotes this to "the structural fix for cluster vocabulary widening must be AUT-side". Either drop `min_confidence` to let primed clusters drive selection on weak matches, OR ship Wire 1 so substrate-derived bias is surfaced at the LLM-prompt level where the AUT proposer reads it.
+2. **Valence_KS is now a load-bearing methodology metric.** The Roy-1a (p=0.402) → Roy-2 (p=0.023) shift with healthy blank-arm samples (26 episodes) makes valence_KS the cleanest cross-iteration signal that doesn't depend on cluster-wire consumer coupling.
+3. **Salience_KS effect size is a diversity knob.** Reportable as a methodology dial — more priming arc diversity = smaller novelty gap. Useful for tuning priming to match expected test-percept regimes.
+
+**Recommendation for next iteration:** **Roy-2b (substrate-primary at test on the same multi-arc priming) should run next.** Two reasons:
+
+1. The cradle stages may have produced richer causal links / ATL chunks (not visible in the cluster wire) that substrate-primary's `recommend_action` could exploit. Roy-1b's negative result was on `cradle_prelinguistic`-only priming; Roy-2b on cradle-mixed priming may show different substrate-primary behavior even with the same cluster wire output. The single-variable change vs Roy-1b is the priming arc mix.
+2. Wire 1 is not yet escalated because Roy-2 DID produce a clean A-vs-blank-neutral tool-family divergence — Wire 1's case strengthens if Roy-2b shows the same `sense_food_source` = 0 monoculture as Roy-1b on cradle-mixed priming. Roy-2b is the cheapest answer to the question "does the cradle priming widen the substrate-primary AUT's exploitable representation beyond what the cluster wire captures?"
+
+If Roy-2b shows non-trivial behavioral divergence in arm A under substrate-primary, the cradle arc stages produced exploitable substrate beyond the cluster wire (good signal for arc-diversity-as-methodology-dial). If Roy-2b reproduces Roy-1b's identical-distribution monoculture, Wire 1 becomes the load-bearing prerequisite for behavioral persona expression.
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-2/result.json`](/Users/dennyschaedig/.maxim/roy/roy-2/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-2/summary.md).
+- LLM trace `/tmp/roy_2_live.jsonl` (23 peer_backend_call events). Run log `/tmp/roy_2_run.log`.
+- Outcome doc: [`18_roy_2.md`](../experiments/18_roy_2.md). Protocol: [`18_roy_2_reproduction.md`](../experiments/protocols/18_roy_2_reproduction.md). Spec: [`roy_2_iteration.yaml`](../../scenarios/roy/roy_2_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+<!-- /roy-iteration:roy-2 -->
+
+### Roy-2b (planned, follow-up to Roy-2)
+*Status: Roy-2 produced a clean A-vs-blank-neutral tool-family divergence under llm-primary but did NOT widen the cluster vocabulary. Roy-2b swaps test-time AUT to substrate-primary on the same multi-arc priming to test whether cradle-stage causal/semantic associations (beyond the cluster wire) are exploitable by the substrate-primary `recommend_action` consumer.*
+
+### Roy-2c (deferred, min_confidence tuning)
+*Status: Deferred. If Roy-2b reproduces Roy-1b's identical-distribution monoculture, Wire 1 becomes the load-bearing prerequisite and Roy-2c (min_confidence tuning) can wait.*
 
 ### Roy-1: Adversarial (planned, unrun)
 *Status: design above; awaiting [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) Stages 0-3 to ship in 1.0.*
