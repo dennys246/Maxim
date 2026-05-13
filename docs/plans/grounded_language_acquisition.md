@@ -188,7 +188,7 @@ This is the cheapest possible test of "the substrate carries the cognition" with
 **Implementation surface:**
 - [models/language/maxim_peer_backend.py](../../src/maxim/models/language/maxim_peer_backend.py) gains an optional `logit_mask_provider` parameter. The peer-backend invariants (one HTTP call, typed failure mapping) stay intact — masking is local pre/post-processing, not an extra request.
 - [decisions/nac.py](../../src/maxim/decisions/nac.py) or [similarity/ec.py](../../src/maxim/similarity/ec.py) exposes a `bound_tokens()` accessor.
-- Co-occurrence learner runs as a passive observer subscribed to the existing percept/action buses; no new orchestrator.
+- Co-occurrence learner runs as a passive observer subscribed to the existing percept/action buses; no new orchestrator. **Coordination note (2026-05-13):** [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) ships the substrate-level binding mechanism (EC nodes binding to EC nodes via Hebbian co-activation) in 1.1. Phase 1's `token_id → ec_node_id` symbol-binding registry is a token-granularity special case of those edges. If the binding plan ships first or in parallel, Phase 1's co-occurrence learner becomes a thin lookup over `EC._binding_edges` rather than duplicate machinery. Phase 1 does not depend on the binding plan — fallback to its own co-occurrence learner if the binding plan slips — but coordinating the two reduces duplicate work.
 
 **Gate / kill criterion:**
 - **Pass:** behavior degrades gracefully with vocabulary size; substrate-bound vocabulary is sufficient for in-distribution task success; out-of-distribution tasks fail in the predicted way.
