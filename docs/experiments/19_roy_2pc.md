@@ -167,5 +167,4 @@ The cluster_reward_bias path has at least one (and possibly two) blocking gates 
 
 ## PR
 
-<!-- filled when PR opens -->
-TBD
+https://github.com/dennys246/Maxim/pull/243 (stacked on PR #242 — Roy-2 base)
