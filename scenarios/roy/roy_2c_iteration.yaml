@@ -1,0 +1,108 @@
+# Roy-2c — H1 vs H2 disambiguator (min_confidence=0.0 probe).
+#
+# Roy-2pc (PR #243) shipped the pre-registered "A ≈ B ≈ C" outcome on
+# substrate-primary + multi-arc priming + engineered-overlap fixture.
+# All three arms produced byte-identical 2× FAILED infant_humanoid_pick_up
+# distributions despite engineering percept-substrate semantic overlap.
+# Two unfalsified hypotheses remain:
+#
+#   H1: LinguisticEncoder → EC alignment failure. Test percept embeddings
+#       of "you sense food nearby" may land in a different EC region than
+#       the priming substrate's encodings (which came from sensor/drive
+#       state + cradle-stage narrator output, NOT explicit "food" tokens).
+#       Wire structurally healthy but never consulted on these percepts.
+#
+#   H2: min_confidence=0.3 gate filters primed-cluster-matched proposals.
+#       EC pattern completion may be firing correctly, recommend_action
+#       may be consulting the +1.0 bias, but proposal confidence falls
+#       below threshold.
+#
+# Both predict the byte-identical 2× FAILED pick_up Roy-2pc observed.
+# Disambiguation requires an experimental knob.
+#
+# Roy-2c flips MAXIM_NAC_MIN_CONFIDENCE=0.0 (env var introduced in
+# release_0_9_1.md Stage 0a). Same priming, same fixture, same arms as
+# Roy-2pc — single-variable change. Diagnostic logic:
+#
+#   A > B > C on sense_food_source counts → H2 confirmed (gate was the
+#       block). Wire-A still ships in 0.9.1; lowering the gate is a
+#       viable interim BUT the gate's safety role for cold-start
+#       monoculture is real and unwarranted relaxation is a regression.
+#       Document the conditional disposition.
+#
+#   A ≈ B ≈ C reproduces → H1 confirmed (LinguisticEncoder→EC alignment
+#       is the block). Wire-A is the only architectural fix because no
+#       gate-tuning can rescue a wire that's never consulted on test
+#       percepts in the first place.
+#
+#   A < C → unexpected (priming suppressed sense_food_source somehow);
+#       investigate before Wire-A design.
+#
+# Run with:
+#   MAXIM_NAC_MIN_CONFIDENCE=0.0 maxim roy run scenarios/roy/roy_2c_iteration.yaml --dry-run
+#   MAXIM_NAC_MIN_CONFIDENCE=0.0 maxim roy run scenarios/roy/roy_2c_iteration.yaml
+#
+# IMPORTANT: the env var must be set in the runner's environment, not
+# in the YAML — the runner reads it at agent_loop._resolve_min_confidence
+# inside propose_via_substrate. The runbook in
+# protocols/20_roy_2c_reproduction.md spells this out.
+#
+# Expected wall: ~25-28 min (same shape as Roy-2pc since the substrate-
+# primary 30s/turn timeout dominates).
+#
+# Companion docs:
+#   docs/plans/release_0_9_1.md                (0.9.1 release plan; Stage 0a)
+#   docs/plans/persona_convergence_crucible.md (Roy iteration log)
+#   docs/experiments/20_roy_2c.md              (outcome doc — written post-run)
+#   docs/experiments/protocols/20_roy_2c_reproduction.md (runbook)
+#   scenarios/roy/roy_2pc_iteration.yaml       (priming-side A/B partner)
+#   scenarios/roy/roy_2pc_holdout.yaml         (engineered-overlap fixture, reused unchanged)
+
+name: roy-2c
+description: |
+  H1 vs H2 disambiguator. Roy-2pc's byte-identical 2× FAILED pick_up
+  across arms cannot distinguish (H1) LinguisticEncoder→EC alignment
+  failure from (H2) min_confidence=0.3 gate filtering primed-cluster-
+  matched proposals. Roy-2c flips MAXIM_NAC_MIN_CONFIDENCE=0.0; same
+  priming + fixture + arms as Roy-2pc. A > B > C → H2; A ≈ B ≈ C → H1.
+
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+
+# Priming: identical multi-arc mix to Roy-2 / Roy-2pc.
+priming:
+  name: roy-2c-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Reuses Roy-2pc's engineered-overlap fixture unchanged.
+test_scenario:
+  fixture: roy_2pc_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    system_prompt: neutral
+  b:
+    substrate: blank
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral

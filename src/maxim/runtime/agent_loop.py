@@ -662,12 +662,40 @@ def _read_drive_states(executor: Any) -> dict[str, float]:
     return drives
 
 
+_DEFAULT_SUBSTRATE_MIN_CONFIDENCE = 0.3
+
+
+def _resolve_min_confidence(explicit: float | None) -> float:
+    """Resolve ``min_confidence`` for ``propose_via_substrate``.
+
+    Precedence: explicit caller argument > ``MAXIM_NAC_MIN_CONFIDENCE`` env
+    var > ``_DEFAULT_SUBSTRATE_MIN_CONFIDENCE`` (0.3). The env var exists for
+    Roy-2c (H1 vs H2 disambiguator) and the Wire-A ablation surface in
+    [docs/plans/release_0_9_1.md](../../docs/plans/release_0_9_1.md). Invalid
+    env values fall back to the default with a warning, not a crash.
+    """
+    if explicit is not None:
+        return explicit
+    raw = os.environ.get("MAXIM_NAC_MIN_CONFIDENCE")
+    if raw is None or raw == "":
+        return _DEFAULT_SUBSTRATE_MIN_CONFIDENCE
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning(
+            "MAXIM_NAC_MIN_CONFIDENCE=%r is not a float; using default %.2f",
+            raw,
+            _DEFAULT_SUBSTRATE_MIN_CONFIDENCE,
+        )
+        return _DEFAULT_SUBSTRATE_MIN_CONFIDENCE
+
+
 def propose_via_substrate(
     *,
     nac: Any,
     agent_id: str,
     executor: Any,
-    min_confidence: float = 0.3,
+    min_confidence: float | None = None,
     sensor_encoder: Any | None = None,
 ) -> LLMProposal | None:
     """Build an ``LLMProposal`` from ``NAc.recommend_action`` — no LLM call.
@@ -732,12 +760,13 @@ def propose_via_substrate(
         except Exception:
             logger.debug("substrate-primary tick: sensor encoding raised", exc_info=True)
 
+    resolved_min_confidence = _resolve_min_confidence(min_confidence)
     recommendation = nac.recommend_action(
         agent_id=agent_id,
         available_tools=available_tools,
         current_drives=drives or None,
         current_cluster_id=cluster_id,
-        min_confidence=min_confidence,
+        min_confidence=resolved_min_confidence,
     )
     if recommendation is None:
         return None
@@ -751,7 +780,7 @@ def propose_via_substrate(
         action=action,
         reasoning=recommendation.get("reasoning", ""),
         strategy_used="substrate-primary",
-        confidence=float(recommendation.get("confidence", min_confidence)),
+        confidence=float(recommendation.get("confidence", resolved_min_confidence)),
         mode_goal_achieved=False,
         triggering_input="",
         # G4: stash the active EC cluster on the proposal so the outcome

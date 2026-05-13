@@ -620,8 +620,80 @@ Arm C (blank, neutral):                  2× infant_humanoid_pick_up (both FAILE
 - Outcome doc: [`19_roy_2pc.md`](../experiments/19_roy_2pc.md). Protocol: [`19_roy_2pc_reproduction.md`](../experiments/protocols/19_roy_2pc_reproduction.md). Spec: [`roy_2pc_iteration.yaml`](../../scenarios/roy/roy_2pc_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml).
 <!-- /roy-iteration:roy-2pc -->
 
-### Roy-2c (deferred, min_confidence=0 probe — H1 vs H2 disambiguator)
-*Status: Deferred. Cheap one-env-var follow-up to Roy-2pc — reuse same priming + engineered fixture with `min_confidence=0.0` to distinguish (H1) LinguisticEncoder→EC alignment failure from (H2) threshold-gate filtering. Useful diagnostic but not on the Wire 1 critical path.*
+<!-- roy-iteration:roy-2c -->
+### Roy-2c: `min_confidence=0.0` probe (H1 vs H2 disambiguator)
+
+**Status:** SHIPPED. H1-vs-H2 disambiguator for Roy-2pc's byte-identical pick_up result. Ran end-to-end against the same healthy leader, 2026-05-13 12:27→12:46 local. **1284.2s wall (~21.4 min)** — faster than Roy-2pc's 25 min because lower gate accepts proposals faster (less wall burned on 30s timeout). Owned by [release_0_9_1.md Stage 0a](release_0_9_1.md).
+
+> Single-variable change vs Roy-2pc: `MAXIM_NAC_MIN_CONFIDENCE=0.0` set
+> in runner environment (new env var introduced in 0.9.1). Same
+> priming, fixture, arms. A > B > C → H2 confirmed (gate was the
+> block); A ≈ B ≈ C → H1 confirmed (LinguisticEncoder→EC alignment).
+
+**Preflight:** clean. `outcome: ok`, `latency_ms: 228.4`, `detail: stage2 HTTP 200`, `source: peer.yml`.
+
+**Priming:** 5/5 stages completed. final_session_id `20260513_123258`. Identical multi-arc shape to Roy-2pc.
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | duration_s | finish |
+|---|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260513_123436` | 10 | 224.93 | cancel |
+| b | blank | "You are a hungry infant" | `20260513_123821` | 10 | 241.82 | cancel |
+| c | blank | neutral | `20260513_124223` | 10 | 238.57 | cancel |
+
+**Pairwise substrate divergence:**
+
+| Pair | `reward_bias_l2` | **`cluster_reward_bias_l2`** | (keys) | `causal_link_Δ` | `episodes_Δ` | `valence_KS` (p) | `salience_KS` (p) |
+|---|---|---|---|---|---|---|---|
+| **a_vs_b** | 0.0 | **2.5661** | 10 | +147 | +664 | 0.994 (1.7e-8)* | 0.826 (6.3e-5) |
+| **a_vs_c** | 0.0 | **2.5661** | 10 | +147 | +664 | 0.994 (1.7e-8)* | (similar) |
+| b_vs_c | 0.0 | 0.7649 | 4 | 0 | 0 | 0.000 (1.000) | (similar) |
+
+`*` Sample asymmetry partially relaxed (4 vs 668 instead of Roy-2pc's 1 vs 647), but blank-arm distribution is still a 4-point spike at valence=-1.0 (replicated single-failure-mode events).
+
+**Cluster-reward top deltas (a_vs_b):** 6× `tool:sense_food_source` × +1.0 (priming carryover, UNCHANGED — priming clusters never touched during test) + 4× `tool:infant_humanoid_pick_up` × {±0.30, ±0.45} (test-phase updates on FOUR NEW EC clusters, **disjoint** from priming's six).
+
+**Test-phase tool distribution (the headline Roy-2c signal):**
+
+```
+Arm A (substrate-primed, neutral):       5× infant_humanoid_pick_up (all FAILED — Missing required input: object)
+Arm B (blank, "hungry infant"):          5× infant_humanoid_pick_up (all FAILED — Missing required input: object)
+Arm C (blank, neutral):                  5× infant_humanoid_pick_up (all FAILED — Missing required input: object)
+```
+
+**Per-arm action count rose 2 → 5 from Roy-2pc, but the tool family is unchanged.** Zero `sense_food_source` calls in any arm under gate=0.0. The gate WAS active (3 additional pick_up proposals per arm crossed the relaxed threshold), but no `sense_food_source` proposal ever crossed even at 0.0.
+
+**H1 confirmed — three independent observables:**
+
+1. Per-arm action count rose 2 → 5 → gate WAS filtering proposals in Roy-2pc.
+2. Newly-accepted proposals are still `infant_humanoid_pick_up`, not `sense_food_source` → recommend_action is not generating `sense_food_source` proposals on these percepts at all.
+3. Test-phase EC clusters are structurally **disjoint** from priming clusters (6 priming at unchanged +1.0; 4 new pick_up clusters at ±0.30/±0.45). If pattern completion had hit priming clusters, the priming +1.0 entries would shift; they don't.
+
+**The structural diagnosis:** LinguisticEncoder embeds priming-substrate WMS contents (sensor/drive state + cradle narrator output) into one EC region. Engineered CLI percepts ("you sense food nearby") embed into a DIFFERENT region, even though humans read the semantic overlap as obvious. The cluster_reward_bias map has the right *tool* keys (`sense_food_source`) but the wrong *cluster* keys.
+
+**H2 cleanly refuted:** zero `sense_food_source` calls under gate=0.0.
+
+**What this means for 0.9.1:** Wire-A's design is **revised** per the finding. Original spec used active-cluster-restricted aggregation (`get_active_cluster_biases(cluster_ids=...)`); Roy-2c shows the active-cluster intersection with priming clusters is empty in the failure mode Wire-A is designed to fix. Revised to **agent-wide aggregation** (`get_agent_tool_biases`) — the priming substrate's tool-level signal ("this agent has experienced strong reward on `sense_food_source`") survives the encoder-alignment gap; the cluster-level signal does not. Wire-A surfaces the surviving granularity. See [release_0_9_1.md Stage 2](release_0_9_1.md).
+
+**What Roy-2c definitively proves:**
+
+- The `min_confidence=0.3` gate WAS filtering proposals in Roy-2pc (per-arm action count rose 2 → 5).
+- Lowering the gate does NOT rescue the cluster wire on engineered-overlap test percepts.
+- Priming-acquired EC clusters and test-phase EC clusters are structurally disjoint under LinguisticEncoder embedding.
+- `MAXIM_NAC_MIN_CONFIDENCE` env-var override works end-to-end.
+- The cluster wire reproduces SIXTH iteration in a row.
+
+**Recommendation:** **0.9.1 plan proceeds unchanged on critical path** with Wire-A's design revision folded in. No further Roy-2 sub-iterations planned. Roy-3 (post-wires, Stage 5 of 0.9.1) is the next harness iteration.
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-2c/result.json`](/Users/dennyschaedig/.maxim/roy/roy-2c/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-2c/summary.md).
+- LLM trace `/tmp/roy_2c_live.jsonl`. Run log `/tmp/roy_2c_run.log`.
+- Outcome doc: [`20_roy_2c.md`](../experiments/20_roy_2c.md). Protocol: [`20_roy_2c_reproduction.md`](../experiments/protocols/20_roy_2c_reproduction.md). Spec: [`roy_2c_iteration.yaml`](../../scenarios/roy/roy_2c_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged).
+<!-- /roy-iteration:roy-2c -->
+
+### Roy-3 (planned, 0.9.1 validation)
+*Status: Validation iteration for the 0.9.1 release. Runs after Wires A+1+2+3 ship. Two sub-iterations (Roy-3a llm-primary original holdout, Roy-3b llm-primary engineered overlap) measure whether the annotation pattern produced cross-arm behavioral divergence the cluster-bias path couldn't. Owned by [release_0_9_1.md Stage 5](release_0_9_1.md).*
 
 ### Roy-1: Adversarial (planned, unrun)
 *Status: design above; awaiting [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) Stages 0-3 to ship in 1.0.*

@@ -392,6 +392,9 @@ MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S=90   # Auto-undrain probe cycle interval (cl
 # Embodiment resolution (component-level damage)
 MAXIM_DEEP_EMBODIMENT=1          # Enable level-3 deep embodiment: sub-sensors exposed, damage_affinities active. Same as --deep-embodiment.
 
+# Substrate-primary action selection (release_0_9_1.md Stage 0a)
+MAXIM_NAC_MIN_CONFIDENCE=0.0     # Override propose_via_substrate's min_confidence threshold. Default 0.3. Set to 0.0 to bypass the cold-start gate for Roy-2c H1-vs-H2 disambiguation and Wire-A ablation. Invalid values fall back to 0.3 with a WARNING.
+
 # Leader proxy admission control
 MAXIM_PROXY_MAX_CONCURRENT=4     # Max in-flight requests to upstream (0=unlimited)
 MAXIM_PROXY_RATE_LIMIT_RPM=0     # Per-peer requests/minute (0=unlimited)

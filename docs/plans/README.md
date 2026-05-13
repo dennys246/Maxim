@@ -1,6 +1,6 @@
 # Maxim Plans
 
-Current version: **0.8.0** (published on PyPI as `pymaxim`).
+Current version: **0.9.0** (published on PyPI as `pymaxim`).
 Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 
 ## Version Roadmap
@@ -10,6 +10,7 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 | **0.6** | **Generalizable embodiment** — E0 sim wiring + E1 Asset Foundry | **Published** |
 | **0.7** | **Self-generating simulations** — Imagination, B3 Acting Coach, E2-E3, F3-F5, SEM discovery, gating, deliberation | **SHIPPED** (2026-04-20) |
 | **0.8** | **Cognitive maturity + embodiment** — WM+Exec, PFC cycle, temporal credit, display overhaul, reflex system, proprioceptive discovery, affordance concept transfer, entity ownership, component damage | **SHIPPED** (2026-04-25) |
+| **0.9.1** | **Substrate-annotates-LLM-context** — Roy-2c probe, Stage 0 telemetry, Wires A+1+2+3, Roy-3 validation | **Active** (plan: [release_0_9_1.md](release_0_9_1.md)) |
 | **1.0** | **Validation + stabilization + grounding** — cross-session proof, bio-system protocol freeze, sensorimotor cradle, SEM world enrichment, SCN feedback loop, cleanup, docs | Target |
 
 **Discipline:** 0.7 was the last major feature version. 0.8 matured cognition and embodiment. 1.0 stabilizes, validates, and grounds — every bio-system fully operational with closed feedback loops, interfaces frozen with future-proof protocols, and the agent demonstrably learns from its own body.
@@ -49,6 +50,7 @@ The unified plan: [v1_refinement.md](v1_refinement.md)
 
 Plans on the 1.0 critical path or actively shipping:
 
+- [release_0_9_1.md](release_0_9_1.md) — **0.9.1 release plan.** Substrate-annotates-LLM-context pattern. Roy-2c probe + Stage 0 telemetry + Wire-A (cluster-bias annotation, NEW) + Wires 1+2+3 from bio_emergent_persona_foundations.md + Roy-3 validation. Supersedes the foundations doc's "deferred to 1.1+" disposition (Roy-2pc shifted the empirical floor).
 - [v1_refinement.md](v1_refinement.md) — **1.0 release plan.** Validation + bio-system stabilization + sensorimotor grounding + pipeline completion + cleanup + docs + contract clarification (Section 7). 1.1 track index is Section 8.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — **Phase -1 + Phase 0 harness SHIPPED** (PR #228, 2026-05-09). Substrate-primary AUT mode is real; cradle-prelinguistic harness writes per-tick telemetry. Pending in 1.0: EC sensor-encoding entry point (next concrete work item) + Hivemind shareability infrastructure. Phase 0 *validation* + Phase 1 + Phase 2 are 1.1+ (1.1-T7).
 - [maxim_hivemind.md](maxim_hivemind.md) — Companion to grounded_language_acquisition. Three-layer architecture (LLM-AUT default + Maxim Oasis substrate-primary + Maxim Hivemind P2P). Phase -1 + Phase 0 harness shipped under B5; Hivemind shareability (~660 LOC) pending in 1.0; Oasis software in 1.1; full Hivemind P2P in 1.2.

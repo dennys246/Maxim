@@ -117,6 +117,27 @@ def _isolate_maxim_log_display_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_nac_min_confidence():
+    """Scrub ``MAXIM_NAC_MIN_CONFIDENCE`` across every test.
+
+    Added in 0.9.1 (release_0_9_1.md Stage 0a). Overrides the
+    ``min_confidence`` threshold in ``propose_via_substrate`` for
+    Roy-2c (H1 vs H2 disambiguator). Per CLAUDE.md "opt-in env vars
+    in hot startup paths need autouse scrubs", pair the env-var
+    reader at agent_loop._resolve_min_confidence with this scrub so
+    a CLI/Roy test that sets the var does not leak into every later
+    test that constructs the agent loop.
+    """
+    saved = os.environ.pop("MAXIM_NAC_MIN_CONFIDENCE", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_NAC_MIN_CONFIDENCE", None)
+        if saved is not None:
+            os.environ["MAXIM_NAC_MIN_CONFIDENCE"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_deep_embodiment():
     """Reset ``resolution._resolved_depth`` + scrub ``MAXIM_DEEP_EMBODIMENT``.
 
