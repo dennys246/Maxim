@@ -383,8 +383,20 @@ def save_aut_state(
     nac: Any | None,
     base_dir: str,
     session_id: str,
+    ec: Any | None = None,
+    atl: Any | None = None,
 ) -> None:
-    """Persist AUT hippocampus and NAc state for post-hoc analysis."""
+    """Persist AUT hippocampus, NAc, EC, and ATL state for post-hoc analysis.
+
+    ``ec`` and ``atl`` are keyword-only with a None default for back-compat
+    with existing callers; pass the live instances (``memory_hub.ec`` /
+    ``memory_hub.atl``) to write ``aut_ec.json`` / ``aut_atl.json``
+    alongside the hippocampus/NAc dumps. Required for substrate-divergence
+    analyzers (``analysis/substrate_diff.py::ec_diff`` and the Roy-5a
+    cosine-localization analyzer) that key off persisted EC centroid
+    state. Missing args silently skip the corresponding file — same shape
+    as hippocampus/NAc handling above.
+    """
     session_dir = Path(base_dir) / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
@@ -403,6 +415,22 @@ def save_aut_state(
             logger.info("AUT NAc saved: %s", nac_path)
         except Exception as e:
             logger.debug("Failed to save AUT NAc: %s", e)
+
+    if ec is not None:
+        try:
+            ec_path = session_dir / "aut_ec.json"
+            ec.save(str(ec_path))
+            logger.info("AUT EC saved: %s", ec_path)
+        except Exception as e:
+            logger.debug("Failed to save AUT EC: %s", e)
+
+    if atl is not None:
+        try:
+            atl_path = session_dir / "aut_atl.json"
+            atl.save(str(atl_path))
+            logger.info("AUT ATL saved: %s", atl_path)
+        except Exception as e:
+            logger.debug("Failed to save AUT ATL: %s", e)
 
 
 def analyze_simulation(

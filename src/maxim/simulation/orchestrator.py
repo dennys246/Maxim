@@ -580,6 +580,8 @@ def start_simulation_mode(
         prev_dir = _sim_reports_dir() / resume_session
         hippo_path = prev_dir / "aut_hippocampus.json"
         nac_path = prev_dir / "aut_nac.json"
+        ec_path = prev_dir / "aut_ec.json"
+        atl_path = prev_dir / "aut_atl.json"
         if aut_hippocampus is not None and hippo_path.exists():
             try:
                 aut_hippocampus.load(str(hippo_path))
@@ -593,6 +595,20 @@ def start_simulation_mode(
                 logger.info("Restored AUT NAc from %s (%d links)", nac_path, nac_links)
             except Exception as e:
                 logger.debug("Failed to restore AUT NAc: %s", e)
+        _aut_ec = aut_memory_hub.ec if aut_memory_hub is not None else None
+        if _aut_ec is not None and ec_path.exists():
+            try:
+                _aut_ec.load(str(ec_path))
+                logger.info("Restored AUT EC from %s (%d substrate nodes)", ec_path, len(_aut_ec._substrate_nodes))
+            except Exception as e:
+                logger.debug("Failed to restore AUT EC: %s", e)
+        _aut_atl = aut_memory_hub.atl if aut_memory_hub is not None else None
+        if _aut_atl is not None and atl_path.exists():
+            try:
+                _aut_atl.load(str(atl_path))
+                logger.info("Restored AUT ATL from %s", atl_path)
+            except Exception as e:
+                logger.debug("Failed to restore AUT ATL: %s", e)
 
     # Attach bio-system tracers based on --debug flags / env vars
     def _env_trace(var: str) -> bool:
@@ -2591,6 +2607,8 @@ def start_simulation_mode(
         nac=aut_nac,
         base_dir=report_dir,
         session_id=report.session_id,
+        ec=aut_memory_hub.ec if aut_memory_hub is not None else None,
+        atl=aut_memory_hub.atl if aut_memory_hub is not None else None,
     )
 
     # Copy experiment log to report directory (if any experiments were recorded)
