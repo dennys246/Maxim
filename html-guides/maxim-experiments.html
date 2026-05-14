@@ -2,9 +2,9 @@
 
 {% block title %}Experiments &amp; Results — Maxim Docs | Bio-Inspired Cognitive Architecture{% endblock %}
 
-{% block meta_description %}Experiments proving Maxim's bio-inspired learning pipeline works without LLM fine-tuning. 41/41 hypotheses across 3 tiers: substrate learning (Tier 1), LLM acts on learning (Tier 2), and organic LLM learning (Tier 3). Cross-session affective memory, energy-driven consumable learning, valence annotation, and SEM learning loop.{% endblock %}
+{% block meta_description %}Experiments proving Maxim's bio-inspired learning pipeline works without LLM fine-tuning. 41/41 hypotheses across 3 tiers plus 7 Roy persona-convergence iterations (2026-05) localizing the LinguisticEncoder &rarr; EC alignment gap. Cross-session affective memory, energy-driven consumable learning, valence annotation, SEM learning loop, and the Roy-4 cheap-gate experiment that cancelled the 1.1 Hebbian binding plan.{% endblock %}
 
-{% block meta_keywords %}Maxim experiments, substrate testing, cross-session learning, affective memory, consumable learning, valence annotation, SEM learning loop, bio-inspired AI, organic learning, cognitive architecture validation, Tier 3 learning{% endblock %}
+{% block meta_keywords %}Maxim experiments, substrate testing, cross-session learning, affective memory, consumable learning, valence annotation, SEM learning loop, bio-inspired AI, organic learning, cognitive architecture validation, Tier 3 learning, Roy harness, persona convergence, substrate-primary AUT, encoder alignment{% endblock %}
 
 {% block meta_author %}Maxim Project{% endblock %}
 {% block og_site_name %}Maxim{% endblock %}
@@ -46,12 +46,266 @@
     <p class="text-indigo-400 font-medium">Deterministic Validation of the Bio-Inspired Learning Pipeline</p>
   </header>
 
-  <p class="text-slate-300 leading-relaxed"><strong>41/41 hypotheses confirmed across 3 testing tiers, plus 3 additional validation experiments (B4 replanning, P6 extinction, P8 sleep replay) shipped in v0.5.0.</strong> Tier 1 experiments run on the substrate layer alone (deterministic, no LLM). Tier 2 uses scripted training with real LLM decisions. Tier 3 is the ultimate proof: fully organic LLM-driven training and testing with no scripted reactions. B4 replanning closes the last 1.0 gate besides embodiment. Each hypothesis is stated falsifiably, each result is a pass/fail count, and each experiment includes a reproduction command.</p>
+  <p class="text-slate-300 leading-relaxed"><strong>41/41 hypotheses confirmed across 3 testing tiers, plus 3 additional v0.5.0 validation experiments (B4 replanning, P6 extinction, P8 sleep replay), plus 7 Roy persona-convergence iterations (2026-05).</strong> Tier 1 experiments run on the substrate layer alone (deterministic, no LLM). Tier 2 uses scripted training with real LLM decisions. Tier 3 is the ultimate proof: fully organic LLM-driven training and testing with no scripted reactions. The 2026-05 Roy iteration arc extends the surface to "the substrate's learning translates to behavioral divergence under substrate-primary action selection" &mdash; seven iterations established the cluster-keyed reward wire is structurally healthy and localized the failing layer to LinguisticEncoder &rarr; EC alignment (Roy-2c). Roy-4 cancelled the 1.1 Hebbian binding plan via a pre-registered cheap-gate experiment; Roy-5a (queued) is the disambiguator that scopes the actual fix.</p>
 
   <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
     <h3 class="text-lg font-semibold text-indigo-400 mb-2">Three Testing Tiers</h3>
     <p class="text-slate-300 text-sm"><strong>Tier 1</strong> (deterministic, no LLM): isolates the bio-pipeline's learning signal from LLM variance. <strong>Tier 2</strong> (scripted training, LLM test): proves the LLM acts on bio-system learning with masked entity names to prevent language priors. <strong>Tier 3</strong> (organic LLM training + test): the ultimate proof &mdash; the agent learns from its own actions with no scripted reactions, and a fresh control agent fails the same scenario.</p>
   </div>
+
+  <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-amber-400 mb-2">Roy iteration arc (2026-05) &mdash; persona convergence under substrate-primary AUT</h3>
+    <p class="text-slate-300 text-sm">The 2026-05 Roy harness iterations (Roy-0 through Roy-4, summarized below) extend the validation surface from "the substrate learns" to "the substrate's learning translates to behavioral divergence under substrate-primary action selection". Seven iterations established that the cluster-keyed reward wire is structurally healthy and the gap is at the encoder-alignment layer; Roy-4 cancelled the 1.1 Hebbian binding plan; Roy-5a (queued) is the cheap disambiguator that scopes the actual fix.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <!--  ROY ITERATION ARC (2026-05)                                  -->
+  <!-- ============================================================ -->
+
+  <section class="space-y-4">
+    <h2 id="roy-iterations" class="text-2xl font-semibold text-white border-b border-amber-500/50 pb-2 scroll-mt-32">Roy Iteration Arc <span class="text-amber-400 text-lg">(2026-05, persona convergence)</span></h2>
+
+    <div class="flex items-center gap-3 mb-4">
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-amber-500/20 text-amber-400">7 iterations shipped</span>
+      <span class="px-3 py-1 rounded-full text-sm font-bold bg-indigo-500/20 text-indigo-400">Substrate-primary AUT</span>
+      <span class="text-slate-400 text-sm">2026-05-10 &rarr; 2026-05-13</span>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The Roy harness is the long-running persona-convergence experiment: a three-arm runner (A = primed substrate, neutral prompt; B = blank substrate, persona-injected prompt; C = blank substrate, neutral prompt) that asks whether substrate-acquired bias translates to behavioral divergence under substrate-primary action selection. Earlier experiments (Exp 1&ndash;4 below) proved the substrate learns; Roy iterations measure whether that learning <em>changes which action the agent picks</em> on percepts the priming arc didn't directly drill.</p>
+
+    <p class="text-slate-300 leading-relaxed">Seven iterations have shipped against a live LLM leader (qwen2.5-14b-instruct via cloudflared tunnel). Each iteration is a single-variable change vs the previous; each ships a YAML spec, a held-out fixture, an outcome doc, a reproduction protocol, and an iteration log entry on <code class="bg-slate-950 px-1 rounded text-xs">persona_convergence_crucible.md</code>.</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h3 class="text-white font-semibold mb-3">Iteration summary &mdash; the cluster wire reproduces seven times in a row</h3>
+      <div class="bg-slate-950 rounded-lg p-5 overflow-x-auto">
+        <table class="w-full text-sm text-slate-300">
+          <thead>
+            <tr>
+              <th class="text-left text-indigo-400 pb-2 pr-4">Iteration</th>
+              <th class="text-left text-indigo-400 pb-2 pr-4">Date</th>
+              <th class="text-left text-indigo-400 pb-2 pr-4">Variable</th>
+              <th class="text-left text-indigo-400 pb-2 pr-4"><code class="text-xs">cluster_reward_bias_l2</code> (a_vs_b)</th>
+              <th class="text-left text-indigo-400 pb-2">Headline finding</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-medium">Roy-0</td>
+              <td class="pr-4 py-2 text-slate-400 font-mono">2026-05-10</td>
+              <td class="pr-4 py-2 text-slate-300">substrate-primary smoke</td>
+              <td class="pr-4 py-2 text-indigo-300 font-mono font-semibold">2.4587</td>
+              <td class="py-2">First end-to-end Roy. Cluster wire fires; A &asymp; 11.6&times; blank-vs-blank noise floor.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-medium">Roy-1a</td>
+              <td class="pr-4 py-2 text-slate-400 font-mono">2026-05-11</td>
+              <td class="pr-4 py-2 text-slate-300">llm-primary at test, original holdout</td>
+              <td class="pr-4 py-2 text-indigo-300 font-mono font-semibold">2.4671</td>
+              <td class="py-2">Wire structurally preserved but behaviorally inert: LLM proposer doesn't consume cluster bias.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-medium">Roy-1b</td>
+              <td class="pr-4 py-2 text-slate-400 font-mono">2026-05-12</td>
+              <td class="pr-4 py-2 text-slate-300">substrate-primary at test, original holdout</td>
+              <td class="pr-4 py-2 text-indigo-300 font-mono font-semibold">2.4632</td>
+              <td class="py-2">Wire consumed but held-out percepts don't fire priming clusters.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-medium">Roy-2</td>
+              <td class="pr-4 py-2 text-slate-400 font-mono">2026-05-12</td>
+              <td class="pr-4 py-2 text-slate-300">llm-primary + multi-arc priming</td>
+              <td class="pr-4 py-2 text-indigo-300 font-mono font-semibold">2.4708</td>
+              <td class="py-2">Multi-arc priming did NOT widen cluster vocabulary. Clean tool-family divergence (17/3/2 vs 21/5/1/1) via salience-mediated LLM-prompt path only.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-medium">Roy-2pc</td>
+              <td class="pr-4 py-2 text-slate-400 font-mono">2026-05-13</td>
+              <td class="pr-4 py-2 text-slate-300">substrate-primary + engineered-overlap fixture</td>
+              <td class="pr-4 py-2 text-indigo-300 font-mono font-semibold">2.4678</td>
+              <td class="py-2">Byte-identical 2&times; FAILED <code class="text-xs">infant_humanoid_pick_up</code> across all 3 arms. Engineering semantic overlap is insufficient.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-medium">Roy-2c</td>
+              <td class="pr-4 py-2 text-slate-400 font-mono">2026-05-13</td>
+              <td class="pr-4 py-2 text-slate-300"><code class="text-xs">min_confidence=0.0</code> probe (H1 vs H2)</td>
+              <td class="pr-4 py-2 text-indigo-300 font-mono font-semibold">2.5661</td>
+              <td class="py-2"><strong>H1 confirmed</strong>: LinguisticEncoder &rarr; EC alignment is the block. Gate-tuning does NOT rescue the wire (zero <code class="text-xs">sense_food_source</code> calls even at gate=0.0). Wire-A is the architectural fix.</td>
+            </tr>
+            <tr class="border-t border-slate-700 bg-red-950/20">
+              <td class="pr-4 py-2 text-white font-medium">Roy-4</td>
+              <td class="pr-4 py-2 text-slate-400 font-mono">2026-05-13</td>
+              <td class="pr-4 py-2 text-slate-300">EC-activation instrumentation + Hebbian rule sweep</td>
+              <td class="pr-4 py-2 text-indigo-300 font-mono font-semibold">2.4678</td>
+              <td class="py-2"><strong>FAIL</strong>: zero priming&harr;test bound edges at every sweep point. Cancels <code class="text-xs">cross_modal_substrate_binding.md</code> Stages 2&ndash;6.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-slate-400 text-xs mt-3">Pairwise <code class="text-xs">cluster_reward_bias_l2</code> reproduces within 5% across all seven iterations on the same priming &mdash; the substrate-primary tool-outcome wire is rock-solid. The failing signal is which <em>cluster ID</em> the bias attaches to, not whether the bias forms.</p>
+    </div>
+
+    <div class="bg-amber-500/10 border-l-4 border-amber-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-amber-400 mb-2">The cross-Roy pattern: two identity schemes for one concept</h3>
+      <p class="text-slate-300 text-sm leading-relaxed">Across every iteration the surviving signal is always <strong>tool name</strong> &mdash; NAc's <code class="bg-slate-950 px-1 rounded text-xs">cluster_reward_bias</code> map has the right tool keys (the priming <code class="bg-slate-950 px-1 rounded text-xs">sense_food_source</code> reward survives all seven iterations). The failing signal is always <strong>EC cluster identity</strong> &mdash; the priming cluster UUIDs are never the active cluster on test percepts that ought to be semantically similar. The substrate is using two different identity schemes for the same concept: a coarse-grained tool-symbol scheme that's stable across encoder drift, AND a fine-grained EC-cluster scheme that's susceptible to it. Wire-A in the 0.9.1 release exploits the surviving granularity by surfacing tool-level bias at the LLM prompt; the architectural fix at the cluster layer needs encoder work, not signal-surfacing.</p>
+    </div>
+
+    <!-- Roy-4 deep dive -->
+
+    <section class="space-y-4 pt-4">
+      <h3 id="roy-4-deep" class="text-xl font-semibold text-white border-b border-red-500/50 pb-2 scroll-mt-32">Roy-4 deep dive &mdash; cross-modal binding plan cancelled</h3>
+
+      <div class="flex items-center gap-3 mb-4">
+        <span class="px-3 py-1 rounded-full text-sm font-bold bg-red-500/20 text-red-400">FAIL (pre-registered)</span>
+        <span class="px-3 py-1 rounded-full text-sm font-bold bg-indigo-500/20 text-indigo-400">Cancels 1.1 plan</span>
+        <span class="text-slate-400 text-sm">2026-05-13 &mdash; 1547s wall</span>
+      </div>
+
+      <p class="text-slate-300 leading-relaxed">Roy-4 was the cheap experimental gate for <code class="bg-slate-950 px-1 rounded text-xs">cross_modal_substrate_binding.md</code>'s proposed Hebbian binding rule: <em>EC nodes that activate in the same tick window across modalities acquire a binding edge</em>. Validates the 1.1 design BEFORE the implementation is built. Same priming + fixture + arms as Roy-2c with one structural change: <code class="bg-slate-950 px-1 rounded text-xs">MAXIM_EC_TRACE_ACTIVATIONS=1</code> in the runner environment emits per-tick <code class="bg-slate-950 px-1 rounded text-xs">sim_ec_activation</code> JSONL events from <code class="bg-slate-950 px-1 rounded text-xs">EntorhinalCortex.pattern_complete_or_separate</code>. Post-hoc analyzer (<code class="bg-slate-950 px-1 rounded text-xs">scripts/analyze_roy_4_coactivation.py</code>) computes pairwise co-activation matrix + applies the proposed Hebbian rule.</p>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-3">Pre-registered diagnostic</h4>
+        <div class="bg-slate-950 rounded-lg p-5 overflow-x-auto">
+          <table class="w-full text-sm text-slate-300">
+            <thead>
+              <tr>
+                <th class="text-left text-indigo-400 pb-2 pr-6">Outcome</th>
+                <th class="text-left text-indigo-400 pb-2">Diagnosis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-t border-slate-700">
+                <td class="pr-6 py-2 text-white font-medium">At least one test-phase node has a would-have-bound edge to a priming <code class="text-xs">sense_food_source</code> cluster</td>
+                <td class="py-2 text-green-400">PASS &mdash; binding mechanism would have closed Roy-2c. Greenlight 1.1 Stages 2&ndash;6.</td>
+              </tr>
+              <tr class="border-t border-slate-700 bg-red-950/20">
+                <td class="pr-6 py-2 text-white font-medium">No would-have-bound edges between priming and test clusters under the proposed rule</td>
+                <td class="py-2 text-red-400"><strong>FAIL</strong> &mdash; encoder alignment is too severe for Hebbian binding alone. Cancel Stages 2&ndash;6; redirect to 1.2+ encoder-replacement direction.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-3">Result: structural disjointness reproduces at per-tick EC resolution</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-slate-950 rounded-lg p-5">
+            <p class="text-xs uppercase tracking-wider text-indigo-400 mb-2">Node-set overlap</p>
+            <p class="text-slate-300 text-sm leading-relaxed">37 priming nodes vs 10 / 13 / 9 nodes per arm (A/B/C). <strong class="text-red-400">Zero EC node-ID overlap</strong> between priming and any test arm. Both linguistic and drive modalities reproduce the disjointness &mdash; not a channel-mismatch artifact.</p>
+          </div>
+          <div class="bg-slate-950 rounded-lg p-5">
+            <p class="text-xs uppercase tracking-wider text-indigo-400 mb-2">Food-cluster co-firing</p>
+            <p class="text-slate-300 text-sm leading-relaxed">61 priming ticks where any of the 6 food clusters fired. <strong class="text-red-400">Only 1</strong> tick had a non-food co-firing partner. Of the 7 partner nodes during priming, zero appear in arm A's test-phase active set.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-white font-semibold mb-3">Parameter sweep &mdash; FAIL across the entire reasonable range</h4>
+        <div class="bg-slate-950 rounded-lg p-5 overflow-x-auto">
+          <table class="w-full text-sm text-slate-300">
+            <thead>
+              <tr>
+                <th class="text-left text-indigo-400 pb-2 pr-6"><code class="text-xs">min_cofire</code></th>
+                <th class="text-left text-indigo-400 pb-2 pr-6"><code class="text-xs">min_weight</code></th>
+                <th class="text-left text-indigo-400 pb-2 pr-6">Priming would-have-bound edges</th>
+                <th class="text-left text-indigo-400 pb-2">Matching priming&harr;test edges</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-t border-slate-700">
+                <td class="pr-6 py-2 text-white font-mono">1</td>
+                <td class="pr-6 py-2 text-white font-mono">0.01</td>
+                <td class="pr-6 py-2 text-slate-300 font-mono">256</td>
+                <td class="py-2 text-red-400 font-mono font-bold">0</td>
+              </tr>
+              <tr class="border-t border-slate-700">
+                <td class="pr-6 py-2 text-white font-mono">2</td>
+                <td class="pr-6 py-2 text-white font-mono">0.01</td>
+                <td class="pr-6 py-2 text-slate-300 font-mono">5</td>
+                <td class="py-2 text-red-400 font-mono font-bold">0</td>
+              </tr>
+              <tr class="border-t border-slate-700">
+                <td class="pr-6 py-2 text-white font-mono">3</td>
+                <td class="pr-6 py-2 text-white font-mono">0.01</td>
+                <td class="pr-6 py-2 text-slate-300 font-mono">3</td>
+                <td class="py-2 text-red-400 font-mono font-bold">0</td>
+              </tr>
+              <tr class="border-t border-slate-700">
+                <td class="pr-6 py-2 text-white font-mono">5 (default)</td>
+                <td class="pr-6 py-2 text-white font-mono">0.5 (default)</td>
+                <td class="pr-6 py-2 text-slate-300 font-mono">2</td>
+                <td class="py-2 text-red-400 font-mono font-bold">0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-slate-400 text-xs mt-3">The most permissive rule (<code class="text-xs">min_cofire=1, min_weight=0.01</code> &mdash; "any two nodes that fired in the same tick, ever, with vanishing weight floor") yields 256 priming bound edges. <strong>Zero</strong> connect a priming food cluster to a test-phase node. The temporal-coincidence signal the binding rule depends on does not exist in the priming trajectory.</p>
+      </div>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
+        <p class="text-slate-400 text-xs font-medium mb-1">Reproduce</p>
+        <code class="text-indigo-400 text-sm">MAXIM_EC_TRACE_ACTIVATIONS=1 MAXIM_LOG_FILE=/tmp/roy_4_ec_trace.jsonl maxim roy run scenarios/roy/roy_4_iteration.yaml</code>
+      </div>
+
+      <p class="text-slate-400 text-sm">Outcome doc: <a href="https://github.com/dennys246/Maxim/blob/main/docs/experiments/21_roy_4.md" class="text-indigo-400 hover:text-indigo-300 no-underline">21_roy_4.md</a> &mdash; Cancelled plan: <a href="https://github.com/dennys246/Maxim/blob/main/docs/plans/cross_modal_substrate_binding.md" class="text-indigo-400 hover:text-indigo-300 no-underline">cross_modal_substrate_binding.md</a> &mdash; Supersession: <a href="https://github.com/dennys246/Maxim/blob/main/docs/plans/roy_5_encoder_alignment_disambiguator.md" class="text-indigo-400 hover:text-indigo-300 no-underline">roy_5_encoder_alignment_disambiguator.md</a></p>
+    </section>
+
+    <!-- Next step: Roy-5 -->
+
+    <section class="space-y-4 pt-4">
+      <h3 id="roy-5-next" class="text-xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Next: Roy-5a disambiguator (queued)</h3>
+
+      <div class="flex items-center gap-3 mb-4">
+        <span class="px-3 py-1 rounded-full text-sm font-bold bg-yellow-500/20 text-yellow-400">Plan SHIPPED, Stage 1 queued</span>
+        <span class="text-slate-400 text-sm">PR #247</span>
+      </div>
+
+      <p class="text-slate-300 leading-relaxed">After Roy-4 cancelled the Hebbian binding plan, the user proposed a "linguistic funneling + lexicon" direction. Two parallel pre-merge reviews (architecture lens + bio-fidelity lens) <strong>independently rejected</strong> the lexicon-as-central-module shape, citing that (a) hand-curated lexicons have no biological warrant when <code class="bg-slate-950 px-1 rounded text-xs">ComponentIndex</code> / <code class="bg-slate-950 px-1 rounded text-xs">ATL.find_or_create</code> / <code class="bg-slate-950 px-1 rounded text-xs">AffordanceDecompositionStrategy</code> already implement per-domain lookup, and (b) the lexicon doesn't actually solve Roy-2c &mdash; there are no surface tokens to normalize between cradle sensor/drive snapshots and CLI fixture text.</p>
+
+      <p class="text-slate-300 leading-relaxed">The reframed plan ships a diagnostic-first ladder. <strong>Roy-5a</strong> &mdash; Stage 1 &mdash; computes the priming&harr;arm-A cosine matrices on existing Roy-4 data (zero new sim runs, hours of work) to localize Roy-2c's gap to one of three sub-hypotheses:</p>
+
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+        <table class="w-full text-sm text-slate-300">
+          <thead>
+            <tr>
+              <th class="text-left text-indigo-400 pb-2 pr-4">ID</th>
+              <th class="text-left text-indigo-400 pb-2 pr-4"><code class="text-xs">max(M_tt)</code></th>
+              <th class="text-left text-indigo-400 pb-2 pr-4">Hypothesis</th>
+              <th class="text-left text-indigo-400 pb-2 pr-4">Fix shape</th>
+              <th class="text-left text-indigo-400 pb-2">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-mono font-medium">H1c</td>
+              <td class="pr-4 py-2 text-slate-300 font-mono">&ge; 0.40</td>
+              <td class="pr-4 py-2">Text close, EC threshold + centroid drift miss the completion</td>
+              <td class="pr-4 py-2">Threshold/centroid sweep</td>
+              <td class="py-2 text-green-400">~80 LOC, days</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-mono font-medium">H1b</td>
+              <td class="pr-4 py-2 text-slate-300 font-mono">0.20 &ndash; 0.40</td>
+              <td class="pr-4 py-2">Wrong encoder model for substrate-relevant phrasing</td>
+              <td class="pr-4 py-2">Encoder A/B</td>
+              <td class="py-2 text-yellow-400">~200 LOC, weeks</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-4 py-2 text-white font-mono font-medium">H1a</td>
+              <td class="pr-4 py-2 text-slate-300 font-mono">&lt; 0.20</td>
+              <td class="pr-4 py-2">Sensor-drive and text live in incomparable subspaces</td>
+              <td class="pr-4 py-2">Stage 3 cradle-arc redesign &rarr; then resurrect binding OR promote encoder replacement to 1.2+</td>
+              <td class="py-2 text-red-400">Months (if needed)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="text-slate-400 text-sm">Plan: <a href="https://github.com/dennys246/Maxim/blob/main/docs/plans/roy_5_encoder_alignment_disambiguator.md" class="text-indigo-400 hover:text-indigo-300 no-underline">roy_5_encoder_alignment_disambiguator.md</a> &mdash; The plan's "explicit non-introductions" section names what's <em>out</em> of scope: no central lexicon module, no <code class="bg-slate-950 px-1 rounded text-xs">LinguisticFactory</code> class, no commitment to any sub-hypothesis fix before the diagnostic verdict. Same framing rule that saved months via Roy-4: cheap experimental gate, then implementation scoped by outcome.</p>
+    </section>
+
+  </section>
 
   <!-- ============================================================ -->
   <!--  EXPERIMENT 4: ORGANIC LLM LEARNING (TIER 3)                 -->
