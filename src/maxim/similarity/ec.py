@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -48,6 +49,115 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
     return dot / (norm_a * norm_b)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Roy-4 EC-activation instrumentation (Stage 0d of release_0_9_1.md)
+#
+# Per-tick `sim_ec_activation` JSONL events from every
+# `pattern_complete_or_separate` call. Gated by
+# `MAXIM_EC_TRACE_ACTIVATIONS=1`. Used by the post-hoc co-activation
+# analyzer (scripts/analyze_roy_4_coactivation.py) to validate the
+# proposed Hebbian binding rule of cross_modal_substrate_binding.md
+# BEFORE the 1.1 implementation lands.
+#
+# Emission is intentionally opt-in — pair the env var with the autouse
+# scrub fixture `_isolate_maxim_ec_trace_env` in tests/conftest.py per
+# CLAUDE.md "opt-in env vars in hot startup paths need autouse scrubs".
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Map the EC modality string to the Roy-4 modality_tag category
+# (sensor / linguistic / drive). The plan spec names these three
+# categories explicitly; anything else falls into ``sensor`` as the
+# catch-all for non-linguistic substrate inputs.
+_EC_TRACE_MODALITY_TAG_MAP: dict[str, str] = {
+    "text": "linguistic",
+    "interoception": "drive",
+    "vision": "sensor",
+}
+
+
+def _ec_trace_enabled() -> bool:
+    """Read ``MAXIM_EC_TRACE_ACTIVATIONS`` each call.
+
+    Cheap (a single ``os.environ.get`` lookup). Read-per-call (not
+    cached at module load) so Roy-4 runner environments that set the
+    var before invoking ``maxim roy run`` pick it up without process
+    restart, and so the conftest scrub fixture can deterministically
+    enable/disable per-test.
+    """
+    raw = os.environ.get("MAXIM_EC_TRACE_ACTIVATIONS")
+    if raw is None:
+        return False
+    return raw.strip().lower() not in ("", "0", "false", "no", "off")
+
+
+def _emit_ec_activation(
+    *,
+    node_id: str,
+    similarity: float,
+    is_new: bool,
+    modality: str,
+) -> None:
+    """Emit a ``sim_ec_activation`` event when EC instrumentation is on.
+
+    Bound exactly to the two return paths in
+    ``EntorhinalCortex.pattern_complete_or_separate``. Caller passes:
+
+    - ``node_id``: the active EC node ID for this call (existing on
+      pattern completion, freshly allocated on pattern separation).
+    - ``similarity``: cosine score against the matched node; 0.0 on
+      separation paths.
+    - ``is_new``: True on separation (the node is allocated but not yet
+      registered — the encoder registers it via
+      ``register_substrate_node`` after this call returns).
+    - ``modality``: the EC modality string passed in by the caller.
+
+    The function is a no-op when ``MAXIM_EC_TRACE_ACTIVATIONS`` is unset
+    OR ``sim_log`` is not active. It MUST emit events even on cold-start
+    when ``active_node_id`` is freshly allocated — the analyzer needs
+    pattern-separation events to compute co-activation when both members
+    of a pair are new nodes.
+    """
+    if not _ec_trace_enabled():
+        return
+    try:
+        # Lazy import — keeps EC importable in environments where
+        # sim_logger / its transitive deps are not loaded (raw library
+        # use). The Roy runner always enables sim logging before calling
+        # into the agent loop so this import is satisfied in practice.
+        from maxim.simulation import sim_logger as _sl
+
+        if not getattr(_sl, "_sim_active", False):
+            return
+        import time as _time
+
+        elapsed_s = _time.time() - _sl._sim_start
+        # ``tick`` is a coarse 1-second integer bucket — sufficient for
+        # the analyzer's "did these two nodes co-fire in the same tick
+        # window" question. The continuous ``elapsed_s`` is preserved by
+        # sim_log itself as the top-level ``t`` field so the analyzer
+        # can rebucket at finer or coarser resolution if needed.
+        tick = int(elapsed_s)
+        activation_strength = 1.0 if is_new else float(similarity)
+        agent_id = _sl._current_agent_id.get(None)
+        modality_tag = _EC_TRACE_MODALITY_TAG_MAP.get(modality, "sensor")
+        _sl.sim_log(
+            "EC_TRACE",
+            f"node={node_id[:8]} mod={modality} sim={similarity:.3f}{' NEW' if is_new else ''}",
+            {
+                "tick": tick,
+                "active_node_id": node_id,
+                "activation_strength": activation_strength,
+                "modality_tag": modality_tag,
+                "modality": modality,
+                "is_new": is_new,
+            },
+            agent_id=agent_id,
+        )
+    except Exception:
+        # Instrumentation must never crash the substrate path.
+        logger.debug("EC trace emission raised", exc_info=True)
 
 
 @dataclass
@@ -253,6 +363,12 @@ class EntorhinalCortex:
             # See ECConfig.frozen_centroid_modalities for rationale.
             if modality in self.config.frozen_centroid_modalities:
                 self._substrate_node_counts[best_node] = self._substrate_node_counts.get(best_node, 1) + 1
+                _emit_ec_activation(
+                    node_id=best_node,
+                    similarity=best_sim,
+                    is_new=False,
+                    modality=modality,
+                )
                 return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
 
             # Update centroid: running mean of all embeddings that completed here.
@@ -262,6 +378,12 @@ class EntorhinalCortex:
             updated = [(s * n + e) / (n + 1) for s, e in zip(stored_emb, embedding)]
             self._substrate_nodes[best_node] = (updated, stored_mod)
             self._substrate_node_counts[best_node] = n + 1
+            _emit_ec_activation(
+                node_id=best_node,
+                similarity=best_sim,
+                is_new=False,
+                modality=modality,
+            )
             return PatternResult(node_id=best_node, similarity=best_sim, is_new=False)
 
         # Separation — allocate a new node ID but don't register yet.
@@ -270,6 +392,12 @@ class EntorhinalCortex:
         # separation path and allows the test harness to inspect without
         # side effects.
         new_id = str(uuid4())
+        _emit_ec_activation(
+            node_id=new_id,
+            similarity=0.0,
+            is_new=True,
+            modality=modality,
+        )
         return PatternResult(node_id=new_id, similarity=0.0, is_new=True)
 
     def register_substrate_node(

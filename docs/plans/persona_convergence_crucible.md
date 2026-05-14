@@ -695,11 +695,87 @@ Arm C (blank, neutral):                  5× infant_humanoid_pick_up (all FAILED
 ### Roy-3 (planned, 0.9.1 validation)
 *Status: Validation iteration for the 0.9.1 release. Runs after Wires A+1+2+3 ship. Two sub-iterations (Roy-3a llm-primary original holdout, Roy-3b llm-primary engineered overlap) measure whether the annotation pattern produced cross-arm behavioral divergence the cluster-bias path couldn't. Owned by [release_0_9_1.md Stage 5](release_0_9_1.md).*
 
-### Roy-4 (planned, 1.1 cross-modal binding validation prereq)
-*Status: EC-activation instrumentation experiment. Runs once 0.9.1 Stage 0d ships (`MAXIM_EC_TRACE_ACTIVATIONS=1` gate + per-tick `sim_ec_activation` JSONL events). Same priming + fixture + arms as Roy-2c. Single-session experiment with post-hoc co-activation analysis. Pass criteria: at least one test-phase active node has a would-have-bound edge to a priming `sense_food_source` cluster under a proposed Hebbian rule — if pass, [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stages 2-6 are greenlit for 1.1; if fail, encoder alignment is too severe for binding alone and a 1.2+ encoder-replacement direction supersedes. Owned by [release_0_9_1.md Stage 0d](release_0_9_1.md) and [cross_modal_substrate_binding.md Stage 1](cross_modal_substrate_binding.md).*
+<!-- roy-iteration:roy-4 -->
+### Roy-4: EC-activation co-activation instrumentation (1.1 binding plan gate)
 
-### Roy-5+ (planned, 1.1 cross-modal binding validation)
-*Status: After [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stages 2-6 ship, Roy-5 re-runs the Roy-2c spec on top of the binding mechanism. Pre-registered diagnostic: arm A produces non-zero `sense_food_source` calls in the test phase (the result Roy-2c could not produce) → binding mechanism closes the gap. Includes a `MAXIM_EC_BINDING_RATE=0.0` ablation to confirm the binding mechanism (not some other code change) is the load-bearing variable. Owned by [cross_modal_substrate_binding.md Stage 7](cross_modal_substrate_binding.md).*
+**Status:** SHIPPED. Cross-modal-binding validation prereq for [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stage 1. Ran end-to-end against the same healthy leader, 2026-05-13 18:00→18:26 local. **1547.5s wall (~25.8 min)** — same shape as Roy-2c since the substrate-primary 30s/turn timeout dominates. Owned by [release_0_9_1.md Stage 0d](release_0_9_1.md).
+
+> Single-variable change vs Roy-2c: `MAXIM_EC_TRACE_ACTIVATIONS=1` set
+> in the runner environment (new env var introduced in 0.9.1 Stage 0d).
+> Same priming, fixture, arms. Pre-registered diagnostic: at least one
+> test-phase active node has a would-have-bound edge to a priming
+> `sense_food_source` cluster → PASS, greenlight 1.1 Stages 2-6; no
+> would-have-bound edges between priming and test clusters → FAIL,
+> cancel binding plan and redirect to 1.2+ encoder replacement.
+
+**Preflight:** clean. `outcome: ok`, `latency_ms: 235.9`, `detail: stage2 HTTP 200`.
+
+**Priming:** 5/5 stages completed. final_session_id `20260513_180901`.
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | duration_s | finish |
+|---|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260513_181049` | 10 | 307.38 | cancel |
+| b | blank | "You are a hungry infant" | `20260513_181557` | 10 | 321.87 | cancel |
+| c | blank | neutral | `20260513_182119` | 10 | 307.24 | cancel |
+
+**Pairwise substrate divergence (cluster wire reproduces SEVENTH iteration in a row):**
+
+| Pair | `cluster_reward_bias_l2` | (keys) | `causal_link_Δ` | `episodes_Δ` | `valence_KS` (p) |
+|---|---|---|---|---|---|
+| **a_vs_b** | **2.4678** | 10 | +151 | +650 | 0.998 (0.006) |
+| **a_vs_c** | **2.4678** | 10 | +151 | +650 | 0.998 (0.006) |
+| b_vs_c | 0.3000 | 4 | 0 | 0 | 0.000 (1.000) |
+
+**EC instrumentation capture:** 306 `sim_ec_activation` events total — 148 priming (5 sessions × ~30 events each) + 47 arm A + 69 arm B + 42 arm C. Both linguistic (LinguisticEncoder) and drive (SensorEncoder) modalities fire in every phase.
+
+**Node-set overlap (the load-bearing structural finding):**
+
+| Phase | Unique nodes | Overlap with priming | Overlap with 6 priming food clusters |
+|---|---|---|---|
+| Priming | 37 | — | 6 / 6 |
+| Arm A | 10 | **0** | **0** |
+| Arm B | 13 | **0** | **0** |
+| Arm C | 9 | **0** | **0** |
+
+**Zero EC node ID is shared between priming and any test arm.** Roy-2c inferred this from cluster-key differences in NAc's `cluster_reward_bias`; Roy-4 confirms it at the per-tick EC instrumentation level. The priming substrate's EC region (37 nodes) and the test-phase EC regions (10/13/9 nodes per arm) are structurally separate populations.
+
+**Food-cluster co-firing analysis:** 61 ticks during priming where any food cluster fired; only **1** of those 61 ticks had a non-food node co-firing in the same tick window. Of the 7 unique non-food co-firing partners observed during priming, **zero** appear in arm A's test-phase active set. **The temporal-coincidence signal the Hebbian binding rule depends on does not exist in the priming trajectory.**
+
+**Parameter sweep — FAIL across the entire reasonable range:**
+
+| `min_cofire` | `min_weight` | Priming would-have-bound edges | Matching priming↔test edges |
+|---|---|---|---|
+| 1 | 0.01 | 256 | **0** |
+| 1 | 0.1 | 256 | **0** |
+| 2 | 0.01 | 5 | **0** |
+| 3 | 0.01 | 3 | **0** |
+| 5 (default) | 0.5 (default) | 2 | **0** |
+
+The most permissive rule (`min_cofire=1, min_weight=0.01`) yields 256 priming bound edges; **at every sweep point, zero of those edges connect a priming food cluster to a test-phase active node.** No reasonable parameter tuning rescues the binding hypothesis.
+
+**Pre-registered FAIL outcome confirmed.** Per [cross_modal_substrate_binding.md § Risk register](cross_modal_substrate_binding.md):
+
+> **Roy-4 fails (pairs don't co-fire even at instrumentation level)** — Cancel Stage 2. The deeper fix is replacing LinguisticEncoder with an aligned multimodal encoder — a 1.2+ research direction. Roy-4 is the cheap gate that prevents this misallocation.
+
+**What Roy-4 definitively proves:**
+
+- The instrumentation hook fires end-to-end across all 8 sessions of a Roy iteration in both pattern-completion and pattern-separation branches.
+- Roy-2c's cluster-disjointness finding reproduces at per-tick EC resolution.
+- Zero priming-cluster ↔ test-cluster edges form under any reasonable Hebbian binding rule. The rule cannot close the Roy-2c gap on this priming + fixture pair.
+- Both linguistic and drive modality channels reproduce the disjointness — not an artifact of channel mismatch.
+
+**Recommendation:** **Cancel [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stages 2-6.** Archive the plan with a "superseded by Roy-4 FAIL" note. Promote encoder replacement to the 1.2+ research-direction priority (the natural carrier is [grounded_language_acquisition.md](grounded_language_acquisition.md), whose Phase 1 was originally scoped to consume binding edges this experiment was meant to validate). Keep the Roy-4 instrumentation surface (`MAXIM_EC_TRACE_ACTIVATIONS` + analyzer) — it's reusable for future substrate-dynamics characterization at zero runtime cost when off. **Roy-5 is cancelled** (it was the post-implementation validation for the binding mechanism that's now off the table). No 0.9.1 plan changes required — Wire-A is unaffected and Roy-3 remains the next harness iteration.
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-4/result.json`](/Users/dennyschaedig/.maxim/roy/roy-4/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-4/summary.md).
+- EC trace `/tmp/roy_4_ec_trace.jsonl` (306 `sim_ec_activation` events). Run log `/tmp/roy_4_run.log`. Per-session partitions `/tmp/roy_4_{priming,arm_a,arm_b,arm_c}_ec.jsonl`. Analysis bundle `/tmp/roy_4_analysis.json`.
+- Outcome doc: [`21_roy_4.md`](../experiments/21_roy_4.md). Protocol: [`21_roy_4_reproduction.md`](../experiments/protocols/21_roy_4_reproduction.md). Spec: [`roy_4_iteration.yaml`](../../scenarios/roy/roy_4_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged). Analyzer: [`scripts/analyze_roy_4_coactivation.py`](../../scripts/analyze_roy_4_coactivation.py).
+<!-- /roy-iteration:roy-4 -->
+
+### Roy-5 — CANCELLED (was binding-mechanism validation)
+*Cancelled by Roy-4 FAIL. Was scoped as the post-implementation validation iteration for [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stages 2-6, which Roy-4 cancelled. A future Roy iteration on the 1.2+ encoder-replacement track may inherit the Roy-5 name; until that direction is scoped, the slot is reserved.*
 
 ### Roy-1: Adversarial (planned, unrun)
 *Status: design above; awaiting [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) Stages 0-3 to ship in 1.0.*

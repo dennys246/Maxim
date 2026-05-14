@@ -138,6 +138,30 @@ def _isolate_maxim_nac_min_confidence():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_ec_trace_env():
+    """Scrub ``MAXIM_EC_TRACE_ACTIVATIONS`` across every test.
+
+    Added in 0.9.1 (release_0_9_1.md Stage 0d). Gates per-tick
+    ``sim_ec_activation`` JSONL emission from
+    ``EntorhinalCortex.pattern_complete_or_separate``. The Roy-4
+    iteration sets this in the runner environment to capture the
+    co-activation matrix for the proposed cross-modal Hebbian binding
+    rule validation. Per CLAUDE.md "opt-in env vars in hot startup
+    paths need autouse scrubs", pair the env-var reader at
+    ``similarity/ec.py::_ec_trace_enabled`` with this scrub so a test
+    that sets the var does not leak emission events into every later
+    test that constructs an EC.
+    """
+    saved = os.environ.pop("MAXIM_EC_TRACE_ACTIVATIONS", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_EC_TRACE_ACTIVATIONS", None)
+        if saved is not None:
+            os.environ["MAXIM_EC_TRACE_ACTIVATIONS"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_deep_embodiment():
     """Reset ``resolution._resolved_depth`` + scrub ``MAXIM_DEEP_EMBODIMENT``.
 
