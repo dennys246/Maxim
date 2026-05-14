@@ -250,7 +250,75 @@ action = nac.recommend_action(
       <p class="text-slate-300 text-sm leading-relaxed mt-3">A-vs-blank ratio &asymp; <strong>11.6&times;</strong> over the blank-vs-blank stochastic-cluster noise floor &mdash; the first empirical proof the substrate-primary tool-outcome wire fires end-to-end. <code class="bg-slate-950 px-1 rounded text-xs">reward_bias_l2 = 0</code> is the expected per-ATL-node bias from <code class="bg-slate-950 px-1 rounded text-xs">credit_node</code> (a different code path the tool-outcome wire doesn't touch).</p>
     </div>
     <p class="text-slate-300 leading-relaxed">Two G-marked gaps were caught + closed in the same session: <strong>G3</strong> (fail-fast LLM preflight probe &mdash; aborts in &le;3s when the leader is unreachable, so Roy doesn't grind for 10 minutes on <code class="bg-slate-950 px-1 rounded text-xs">dispatch_exhausted</code>), and <strong>G4</strong> (the cluster_id reward-feedback wire deferred when cluster-keyed action <em>selection</em> shipped &mdash; substrate-primary tool outcomes now populate <code class="bg-slate-950 px-1 rounded text-xs">NAc._cluster_reward_bias</code>, persist to <code class="bg-slate-950 px-1 rounded text-xs">aut_nac.json</code>, and surface in Roy <code class="bg-slate-950 px-1 rounded text-xs">result.json</code>).</p>
-    <p class="text-slate-300 leading-relaxed">Full Roy methodology + iteration log: <a href="https://github.com/dennys246/Maxim/blob/main/docs/plans/persona_convergence_crucible.md" class="text-indigo-400 hover:text-indigo-300 no-underline">persona_convergence_crucible.md</a>. CLI: <code class="bg-slate-950 px-1 rounded text-xs">maxim roy run &lt;spec.yaml&gt;</code> &mdash; see the <a href="https://github.com/dennys246/Maxim/blob/main/docs/user/cli-reference.md#roy-harness" class="text-indigo-400 hover:text-indigo-300 no-underline">CLI reference</a> for spec shape + subcommands.</p>
+
+    <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-5">
+      <h3 class="text-white font-semibold mb-2">Iteration arc through 2026-05-13 &mdash; cluster wire reproduces 7&times;, gap localized to encoder alignment</h3>
+      <p class="text-slate-300 text-sm leading-relaxed mb-3">After Roy-0 proved the wire fires, six follow-up iterations probed whether the substrate-acquired bias actually changes behavior at test time. Across every iteration the priming-side <code class="bg-slate-950 px-1 rounded text-xs">cluster_reward_bias_l2</code> reproduces within ~5% (the substrate-primary tool-outcome wire is rock-solid). The failing signal is always which <em>cluster ID</em> the bias attaches to &mdash; priming-acquired UUIDs are never the active cluster on test percepts.</p>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-slate-300">
+          <thead>
+            <tr>
+              <th class="text-left text-indigo-400 pb-2 pr-3">Iter</th>
+              <th class="text-left text-indigo-400 pb-2 pr-3">Date</th>
+              <th class="text-left text-indigo-400 pb-2 pr-3">Variable</th>
+              <th class="text-left text-indigo-400 pb-2 pr-3"><code class="text-xs">cluster_l2</code> a_vs_b</th>
+              <th class="text-left text-indigo-400 pb-2">Finding</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-t border-slate-700">
+              <td class="pr-3 py-2 text-white font-medium">Roy-1a</td>
+              <td class="pr-3 py-2 font-mono text-xs">2026-05-11</td>
+              <td class="pr-3 py-2 text-xs">llm-primary at test</td>
+              <td class="pr-3 py-2 text-indigo-300 font-mono">2.4671</td>
+              <td class="py-2">Wire structurally preserved, behaviorally inert &mdash; LLM proposer doesn't consume cluster bias.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-3 py-2 text-white font-medium">Roy-1b</td>
+              <td class="pr-3 py-2 font-mono text-xs">2026-05-12</td>
+              <td class="pr-3 py-2 text-xs">substrate-primary at test</td>
+              <td class="pr-3 py-2 text-indigo-300 font-mono">2.4632</td>
+              <td class="py-2">Wire consumed but held-out percepts don't fire priming clusters.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-3 py-2 text-white font-medium">Roy-2</td>
+              <td class="pr-3 py-2 font-mono text-xs">2026-05-12</td>
+              <td class="pr-3 py-2 text-xs">multi-arc priming</td>
+              <td class="pr-3 py-2 text-indigo-300 font-mono">2.4708</td>
+              <td class="py-2">Multi-arc priming did NOT widen cluster vocabulary. Tool-family divergence via salience-mediated path only.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-3 py-2 text-white font-medium">Roy-2pc</td>
+              <td class="pr-3 py-2 font-mono text-xs">2026-05-13</td>
+              <td class="pr-3 py-2 text-xs">engineered-overlap fixture</td>
+              <td class="pr-3 py-2 text-indigo-300 font-mono">2.4678</td>
+              <td class="py-2">Byte-identical action distributions across all 3 arms even with engineered semantic overlap.</td>
+            </tr>
+            <tr class="border-t border-slate-700">
+              <td class="pr-3 py-2 text-white font-medium">Roy-2c</td>
+              <td class="pr-3 py-2 font-mono text-xs">2026-05-13</td>
+              <td class="pr-3 py-2 text-xs"><code class="text-xs">min_confidence=0.0</code> probe</td>
+              <td class="pr-3 py-2 text-indigo-300 font-mono">2.5661</td>
+              <td class="py-2"><strong>H1 confirmed</strong> &mdash; LinguisticEncoder &rarr; EC alignment is the block. Gate-tuning does not rescue the wire.</td>
+            </tr>
+            <tr class="border-t border-slate-700 bg-red-950/20">
+              <td class="pr-3 py-2 text-white font-medium">Roy-4</td>
+              <td class="pr-3 py-2 font-mono text-xs">2026-05-13</td>
+              <td class="pr-3 py-2 text-xs">EC trace + Hebbian sweep</td>
+              <td class="pr-3 py-2 text-indigo-300 font-mono">2.4678</td>
+              <td class="py-2"><strong>FAIL</strong> &mdash; zero priming&harr;test bound edges across the full parameter sweep. Cancels the 1.1 cross-modal binding plan.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-slate-300 text-sm leading-relaxed mt-3">Cross-iteration pattern: <strong>tool name survives, cluster identity doesn't</strong>. NAc's <code class="bg-slate-950 px-1 rounded text-xs">cluster_reward_bias</code> map has the right tool keys (priming <code class="bg-slate-950 px-1 rounded text-xs">sense_food_source</code> reward survives all seven iterations) but the wrong cluster keys. The substrate is using two different identity schemes for the same concept &mdash; coarse tool-symbol (stable) AND fine EC-cluster (encoder-drift-susceptible). Wire-A in the 0.9.1 release exploits the surviving granularity by surfacing tool-level bias to the LLM prompt; the architectural fix at the cluster layer needs encoder work.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Roy-4 ran the pre-registered cheap-gate experiment for the proposed Hebbian binding rule from <code class="bg-slate-950 px-1 rounded text-xs">cross_modal_substrate_binding.md</code>. Result: zero EC node-ID overlap between priming (37 nodes) and any test arm (10/13/9); priming food clusters fired 61 ticks with only 1 non-food co-firing partner; the most permissive parameter setting (<code class="bg-slate-950 px-1 rounded text-xs">min_cofire=1, min_weight=0.01</code>) yielded 256 priming bound edges but zero priming&harr;test connections. The temporal-coincidence signal the binding rule depends on doesn't exist in the priming trajectory. Outcome doc: <a href="https://github.com/dennys246/Maxim/blob/main/docs/experiments/21_roy_4.md" class="text-indigo-400 hover:text-indigo-300 no-underline">21_roy_4.md</a>.</p>
+
+    <p class="text-slate-300 leading-relaxed">The 1.1 plan that supersedes the cancelled binding work is <a href="https://github.com/dennys246/Maxim/blob/main/docs/plans/roy_5_encoder_alignment_disambiguator.md" class="text-indigo-400 hover:text-indigo-300 no-underline">roy_5_encoder_alignment_disambiguator.md</a> &mdash; a diagnostic-first reframe written after two parallel pre-merge reviews (architecture + bio-fidelity) independently rejected a user-proposed "central lexicon" direction. Stage 1 (Roy-5a) computes priming&harr;arm-A cosine matrices on existing Roy-4 data with zero new sim runs; the max cosine value decodes to one of three sub-hypotheses (threshold tuning vs encoder A/B vs cradle-arc redesign) that scopes the implementation.</p>
+
+    <p class="text-slate-300 leading-relaxed">Full Roy methodology + iteration log: <a href="https://github.com/dennys246/Maxim/blob/main/docs/plans/persona_convergence_crucible.md" class="text-indigo-400 hover:text-indigo-300 no-underline">persona_convergence_crucible.md</a>. CLI: <code class="bg-slate-950 px-1 rounded text-xs">maxim roy run &lt;spec.yaml&gt;</code> &mdash; see the <a href="https://github.com/dennys246/Maxim/blob/main/docs/user/cli-reference.md#roy-harness" class="text-indigo-400 hover:text-indigo-300 no-underline">CLI reference</a> for spec shape + subcommands. Detailed experiment writeups for every iteration: <a href="/maxim/experiments#roy-iterations" class="text-indigo-400 hover:text-indigo-300 no-underline">Experiments &amp; Results &mdash; Roy iteration arc</a>.</p>
   </section>
 
   <section class="space-y-4">
