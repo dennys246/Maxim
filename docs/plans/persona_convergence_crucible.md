@@ -817,7 +817,7 @@ The most permissive rule (`min_cofire=1, min_weight=0.01`) yields 256 priming bo
 | **`M_dt`** | priming interoception × arm A text | 2 × 0 | n/a (arm A has zero text-modality nodes) |
 | **`M_dd`** | priming interoception × arm A interoception | 2 × 2 | **1.0000 (identical centroids)** |
 
-**Verdict: H1a — encoder subspace incompatibility.** `max(M_tt food-bearing) = n/a` → -inf → H1a per `decode_verdict`. The verdict triggers via the **"no text-modality food clusters exist"** path rather than the **"text food clusters exist but are far from arm A text"** path the plan modeled — a stronger condition.
+**Verdict: H1a — encoder subspace incompatibility** (via the n/a / empty-matrix path, not low-cosine path). `max(M_tt food-bearing) = n/a` → -inf → H1a per `decode_verdict`. The verdict triggers via the **"no text-modality food centroids exist in this run"** path rather than the **"text food clusters exist but are far from arm A text"** path the plan modeled. **Caveat:** Roy-4 on the identical priming spec produced 154 text-modality EC fires, so the load-bearing claim is "on Roy-5a's run no text-modality food centroids were allocated", not "they can never form during cradle priming" — see § Recommended next step.
 
 **Cross-arm M_dd sanity check** (the surviving "interoception identity" scheme):
 

@@ -161,11 +161,24 @@ def load_ec_centroids(ec_dump_path: Path) -> list[Centroid]:
         mod = ndata.get("modality")
         if not isinstance(emb, list) or not isinstance(mod, str):
             continue
-        try:
-            vec = tuple(float(x) for x in emb)
-        except (TypeError, ValueError):
+        # Strict numeric check: reject bool (which is an int subclass),
+        # strings ("nan"), and any other non-numeric. NaN floats fall
+        # through the isinstance check; reject them too because NaN
+        # cosines silently mis-decode the H1a/H1b/H1c boundary.
+        valid = True
+        clean: list[float] = []
+        for x in emb:
+            if isinstance(x, bool) or not isinstance(x, (int, float)):
+                valid = False
+                break
+            fx = float(x)
+            if math.isnan(fx) or math.isinf(fx):
+                valid = False
+                break
+            clean.append(fx)
+        if not valid:
             continue
-        out.append(Centroid(node_id=str(nid), embedding=vec, modality=mod))
+        out.append(Centroid(node_id=str(nid), embedding=tuple(clean), modality=mod))
     return out
 
 
@@ -174,46 +187,67 @@ def load_ec_centroids(ec_dump_path: Path) -> list[Centroid]:
 # ─────────────────────────────────────────────────────────────────────────
 
 
+# Roy-4's analyzer ships the canonical ``load_priming_food_clusters``
+# implementation. Re-export here so the two analyzers cannot drift on
+# the 3-field UTS-separator compound-key semantics — Stage 2
+# implementations key NAc lookups by these cluster IDs, so a silent
+# divergence between Roy-4 and Roy-5 would mis-route the wrong NAc
+# entries through Stage 2's threshold sweep / encoder A/B. The function
+# is loaded lazily so the script remains runnable from any working
+# directory (the Roy-4 analyzer lives in the same ``scripts/`` dir).
+
+
+def _load_roy_4_food_cluster_loader():
+    """Import ``analyze_roy_4_coactivation.load_priming_food_clusters``.
+
+    Lazy import keeps the script standalone (no hard dependency on
+    Roy-4's analyzer being importable at module load time) AND ensures
+    the two analyzers consume identical NAc compound-key parsing. The
+    test surface (``TestFoodClusterExtraction``) pins this re-exported
+    function so any drift on the Roy-4 side trips test failures here.
+
+    The module is registered in ``sys.modules`` before ``exec_module``
+    so ``@dataclass`` decorators inside the Roy-4 analyzer resolve
+    their ``cls.__module__`` correctly — otherwise dataclass
+    decoration raises ``AttributeError`` at import time.
+    """
+    import importlib.util
+
+    mod_name = "analyze_roy_4_coactivation"
+    cached = sys.modules.get(mod_name)
+    if cached is not None and hasattr(cached, "load_priming_food_clusters"):
+        return cached.load_priming_food_clusters
+
+    roy_4_path = Path(__file__).resolve().parent / "analyze_roy_4_coactivation.py"
+    spec = importlib.util.spec_from_file_location(mod_name, roy_4_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load Roy-4 analyzer at {roy_4_path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        sys.modules.pop(mod_name, None)
+        raise
+    return mod.load_priming_food_clusters
+
+
 def load_priming_food_clusters(nac_path: Path) -> set[str]:
     """Return EC cluster IDs keyed to sense_food_source bias in priming.
 
-    The flat compound shape current ``NAc.to_dict`` writes is::
+    Delegates to ``analyze_roy_4_coactivation.load_priming_food_clusters``
+    so the two analyzers cannot silently diverge on the 3-field
+    UTS-separator compound-key parsing that downstream Stage 2
+    implementations consume.
+
+    Schema reference (canonical NAc compound shape):
 
         ``"{agent_id}\\x1f{cluster_id}\\x1f{tool:sense_food_source}": <bias>``
 
-    The middle field is the EC cluster UUID. The 3-field UTS-separator
-    pattern is identical to ``analyze_roy_4_coactivation.py``; tests
-    pin this so the two analyzers cannot drift on extraction semantics.
-
-    A legacy nested shape (``_cluster_reward_bias``) is also accepted as
-    a fallback for synthetic test fixtures and any future NAc dump
-    variant.
+    A legacy nested shape (``_cluster_reward_bias``) is accepted by the
+    Roy-4 loader as a fallback for synthetic test fixtures.
     """
-    if not nac_path.exists():
-        return set()
-    with nac_path.open("r", encoding="utf-8") as f:
-        data = json.load(f)
-    food_clusters: set[str] = set()
-
-    flat = data.get("cluster_reward_bias")
-    if isinstance(flat, dict) and flat:
-        for compound_key in flat.keys():
-            parts = str(compound_key).split("\x1f")
-            if len(parts) == 3 and parts[2].endswith("sense_food_source"):
-                food_clusters.add(parts[1])
-        if food_clusters:
-            return food_clusters
-
-    nested = data.get("_cluster_reward_bias", {})
-    if isinstance(nested, dict):
-        for agent_or_cluster, inner in nested.items():
-            if isinstance(inner, dict):
-                for cluster_id, tool_map in inner.items():
-                    if isinstance(tool_map, dict) and "sense_food_source" in tool_map:
-                        food_clusters.add(str(cluster_id))
-                if "sense_food_source" in inner and isinstance(inner.get("sense_food_source"), (int, float)):
-                    food_clusters.add(str(agent_or_cluster))
-    return food_clusters
+    return _load_roy_4_food_cluster_loader()(nac_path)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -273,6 +307,20 @@ def _compute_matrix(
             cols_modality=cols_modality,
             values=(),
             max_over_rows=(),
+        )
+    # Dimension-mismatch detection: a different encoder model loaded
+    # between priming and arm sessions (e.g., the Stage 2b encoder A/B
+    # branch) would produce different embedding dimensions. ``_cosine``
+    # returns 0.0 on length mismatch silently, which masquerades as
+    # H1a in the verdict. Surface it as a single warning per matrix.
+    row_dims = {len(r.embedding) for r in rows}
+    col_dims = {len(c.embedding) for c in cols}
+    if row_dims | col_dims and len(row_dims | col_dims) > 1:
+        print(
+            f"WARNING: embedding dimension mismatch in {rows_modality}×{cols_modality} matrix: "
+            f"row dims={sorted(row_dims)} col dims={sorted(col_dims)} — cosines on mismatched "
+            f"vectors will silently return 0.0, masquerading as H1a in the verdict.",
+            file=sys.stderr,
         )
     values: list[tuple[float, ...]] = []
     max_per_row: list[float] = []
@@ -508,9 +556,14 @@ def _arm_to_dict(r: ArmResult) -> dict[str, Any]:
         "arm_interoception_count": r.arm_interoception_count,
         "food_cluster_count": r.food_cluster_count,
         "food_in_text_modality_count": r.food_in_text_modality_count,
+        # Mirror the verdict-level _is_na flag pattern so cross-arm
+        # consumers can branch on the n/a case without rederiving it.
         "max_food_cosine_tt": (None if r.max_food_cosine_tt == float("-inf") else round(r.max_food_cosine_tt, 6)),
+        "max_food_cosine_tt_is_na": r.max_food_cosine_tt == float("-inf"),
         "max_food_cosine_dt": (None if r.max_food_cosine_dt == float("-inf") else round(r.max_food_cosine_dt, 6)),
+        "max_food_cosine_dt_is_na": r.max_food_cosine_dt == float("-inf"),
         "max_food_cosine_dd": (None if r.max_food_cosine_dd == float("-inf") else round(r.max_food_cosine_dd, 6)),
+        "max_food_cosine_dd_is_na": r.max_food_cosine_dd == float("-inf"),
         "M_tt": _matrix_to_dict(r.M_tt),
         "M_dt": _matrix_to_dict(r.M_dt),
         "M_dd": _matrix_to_dict(r.M_dd),
@@ -568,6 +621,22 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  EC centroids:      {len(priming_centroids)} from {priming_ec_path}")
     print(f"  Food-bearing clusters: {len(food_clusters)} from {priming_nac_path}")
 
+    # Surface modalities outside {text, interoception} that the verdict
+    # logic doesn't account for. The cradle priming arc doesn't fire
+    # vision; future iterations may. A silent vision-modality drop is
+    # the kind of regression that's invisible until Stage 2/3.
+    priming_modalities = {c.modality for c in priming_centroids}
+    handled_modalities = {"text", "interoception"}
+    unhandled = priming_modalities - handled_modalities
+    if unhandled:
+        unhandled_counts = {m: sum(1 for c in priming_centroids if c.modality == m) for m in unhandled}
+        print(
+            f"WARNING: priming has centroids in modalities outside {sorted(handled_modalities)}: "
+            f"{unhandled_counts} — these are NOT included in M_tt/M_dt/M_dd. The verdict only "
+            f"considers text + interoception per the pre-registered decoding.",
+            file=sys.stderr,
+        )
+
     if not priming_centroids:
         print(
             "\nERROR: priming session has no EC centroids. Confirm PR #248 was "
@@ -613,6 +682,25 @@ def main(argv: list[str] | None = None) -> int:
         print("ERROR: no arm A result; cannot decode verdict.", file=sys.stderr)
         return 2
 
+    # Empty-matrix-in-every-modality is a distinct failure mode from
+    # the H1a "verdict via -inf" case — H1a is meaningful when M_dd
+    # still has centroids (the food concept exists somewhere in arm A);
+    # all-three-empty means arm A has zero centroids of any modality,
+    # which means the run produced no usable signal. Surface this as
+    # rc=1 BEFORE decoding, otherwise H1a is reported for a degenerate
+    # input. The docstring + reproduction protocol document rc=1 for
+    # this case.
+    no_arm_a_signal = arm_a.M_tt.is_empty and arm_a.M_dt.is_empty and arm_a.M_dd.is_empty
+    if no_arm_a_signal:
+        print(
+            "\nWARNING: arm A produced no centroids in any modality (text + interoception). "
+            "All three matrices (M_tt / M_dt / M_dd) are empty — Roy-5a verdict cannot be "
+            "decoded against this data. Re-run with --debug or inspect arm A's session "
+            "for missing EC persistence.",
+            file=sys.stderr,
+        )
+        return 1
+
     verdict = decode_verdict(arm_a.max_food_cosine_tt)
 
     print("\n" + "=" * 70)
@@ -632,12 +720,17 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── Optional JSON output ──────────────────────────────────────────
     if args.output_json is not None:
+        # The `_is_na` flags are load-bearing for any downstream consumer
+        # that does `bundle["verdict"]["max_food_cosine_tt"] < 0.20` —
+        # `None` (JSON null) would raise TypeError on that comparison.
+        # The flag lets consumers branch cleanly without re-deriving
+        # the n/a semantics from -inf vs None vs missing key.
+        verdict_tt_is_na = verdict.max_food_cosine_tt == float("-inf")
         bundle = {
             "verdict": {
                 "sub_hypothesis": verdict.sub_hypothesis,
-                "max_food_cosine_tt": round(verdict.max_food_cosine_tt, 6)
-                if verdict.max_food_cosine_tt != float("-inf")
-                else None,
+                "max_food_cosine_tt": None if verdict_tt_is_na else round(verdict.max_food_cosine_tt, 6),
+                "max_food_cosine_tt_is_na": verdict_tt_is_na,
                 "next_stage": verdict.next_stage,
                 "description": verdict.description,
             },

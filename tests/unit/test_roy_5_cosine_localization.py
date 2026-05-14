@@ -457,3 +457,236 @@ class TestEndToEndSmoke:
             ]
         )
         assert rc == 2
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Review-fold tests — added after architecture + bio-fidelity reviews
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestNaNAndBoolRejection:
+    """Strict numeric guards on the embedding loader. NaN / inf / bool
+    silently flowing through ``_cosine`` mis-decode the H1c/H1b/H1a
+    boundary — masquerading as H1a or H1c depending on direction.
+    Architecture review #3.
+    """
+
+    def test_nan_embedding_skipped(self, tmp_path: Path) -> None:
+        ec_dump = {
+            "substrate_nodes": {
+                "nan-node": {"embedding": [1.0, float("nan"), 0.0], "modality": "text", "count": 1},
+                "ok-node": {"embedding": [1.0, 0.0, 0.0], "modality": "text", "count": 1},
+            }
+        }
+        ec_path = tmp_path / "aut_ec.json"
+        ec_path.write_text(json.dumps(ec_dump))
+        centroids = a5.load_ec_centroids(ec_path)
+        # Only the ok-node survives; the NaN-bearing one is skipped.
+        assert len(centroids) == 1
+        assert centroids[0].node_id == "ok-node"
+
+    def test_inf_embedding_skipped(self, tmp_path: Path) -> None:
+        ec_dump = {
+            "substrate_nodes": {
+                "inf-node": {"embedding": [float("inf"), 0.0], "modality": "text", "count": 1},
+            }
+        }
+        ec_path = tmp_path / "aut_ec.json"
+        ec_path.write_text("{}")
+        # NaN/inf serialize to JSON as the JS literal `NaN` / `Infinity`,
+        # which standard json.loads rejects. Write the embedding via
+        # Python and re-serialize through allow_nan=True for the test.
+        with ec_path.open("w") as f:
+            json.dump(ec_dump, f, allow_nan=True)
+        centroids = a5.load_ec_centroids(ec_path)
+        assert centroids == []
+
+    def test_bool_embedding_skipped(self, tmp_path: Path) -> None:
+        """Python bool is an int subclass; ``isinstance(True, int)`` is
+        True. The strict numeric guard MUST reject bool to prevent a
+        bool-valued embedding from being silently coerced to [1.0, 0.0]."""
+        ec_dump = {
+            "substrate_nodes": {
+                "bool-node": {"embedding": [True, False], "modality": "text", "count": 1},
+            }
+        }
+        ec_path = tmp_path / "aut_ec.json"
+        ec_path.write_text(json.dumps(ec_dump))
+        centroids = a5.load_ec_centroids(ec_path)
+        assert centroids == []
+
+
+class TestDimensionMismatch:
+    """Architecture review #6 — embedding dimension mismatch between
+    priming and arm silently produces 0.0 cosines, masquerading as H1a.
+    The Stage 2b encoder A/B branch is exactly the situation that would
+    introduce this (different sentence-transformer model with different
+    embedding dimension), so it needs a loud warning.
+    """
+
+    def test_dimension_mismatch_warns_on_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
+        priming = [_make_centroid("p_text_1", "text", 1.0, 0.0, 0.0)]  # 3D
+        arm = [_make_centroid("a_text_1", "text", 1.0, 0.0)]  # 2D — mismatch
+        a5._compute_matrix(priming, arm, rows_modality="text", cols_modality="text")
+        captured = capsys.readouterr()
+        assert "dimension mismatch" in captured.err
+        assert "0.0" in captured.err  # references the silent-failure mechanism
+
+    def test_same_dimensions_no_warning(self, capsys: pytest.CaptureFixture[str]) -> None:
+        priming = [_make_centroid("p_text_1", "text", 1.0, 0.0)]
+        arm = [_make_centroid("a_text_1", "text", 0.5, 0.5)]
+        a5._compute_matrix(priming, arm, rows_modality="text", cols_modality="text")
+        captured = capsys.readouterr()
+        assert "dimension mismatch" not in captured.err
+
+
+class TestJsonBundleFlags:
+    """Architecture review #7 — the JSON bundle's ``_is_na`` flags let
+    downstream Stage 2 consumers branch cleanly on the n/a case without
+    derserializing -inf or guessing from None vs missing key."""
+
+    def test_bundle_carries_is_na_flag_at_verdict_level(self, tmp_path: Path) -> None:
+        """When max_food_cosine_tt is -inf (the H1a-via-empty path),
+        the bundle must carry max_food_cosine_tt_is_na: True so
+        downstream consumers can branch without TypeError on null < 0.20."""
+        priming_dir = tmp_path / "priming"
+        arm_a_dir = tmp_path / "arm_a"
+        priming_dir.mkdir()
+        arm_a_dir.mkdir()
+        # Priming has interoception food cluster only (the Roy-5a actual case)
+        (priming_dir / "aut_ec.json").write_text(
+            json.dumps(
+                {
+                    "substrate_nodes": {
+                        "food-intero-1": {"embedding": [1.0, 0.0], "modality": "interoception", "count": 1}
+                    }
+                }
+            )
+        )
+        (priming_dir / "aut_nac.json").write_text(
+            json.dumps({"cluster_reward_bias": {"sim_aut\x1ffood-intero-1\x1ftool:sense_food_source": 0.5}})
+        )
+        (arm_a_dir / "aut_ec.json").write_text(
+            json.dumps(
+                {
+                    "substrate_nodes": {
+                        "arm-intero-1": {"embedding": [1.0, 0.0], "modality": "interoception", "count": 1}
+                    }
+                }
+            )
+        )
+        output = tmp_path / "analysis.json"
+        rc = a5.main(
+            [
+                "--priming-dir",
+                str(priming_dir),
+                "--arm-a-dir",
+                str(arm_a_dir),
+                "--output-json",
+                str(output),
+            ]
+        )
+        assert rc == 0
+        bundle = json.loads(output.read_text())
+        # Verdict-level flag
+        assert bundle["verdict"]["sub_hypothesis"] == "H1a"
+        assert bundle["verdict"]["max_food_cosine_tt"] is None
+        assert bundle["verdict"]["max_food_cosine_tt_is_na"] is True
+        # Arm-level flags (mirror the verdict shape per consumer expectation)
+        assert bundle["arms"]["a"]["max_food_cosine_tt_is_na"] is True
+        assert bundle["arms"]["a"]["max_food_cosine_dd_is_na"] is False  # M_dd is non-empty
+
+
+class TestExitCodeOneOnNoArmASignal:
+    """Architecture review #4 — empty-matrix-in-every-modality is rc=1
+    (no usable signal), not rc=0 with an H1a verdict. The pre-fold
+    order was wrong: decode_verdict ran first and returned 0 before
+    the empty-matrix check could fire."""
+
+    def test_arm_a_zero_centroids_returns_one(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        priming_dir = tmp_path / "priming"
+        arm_a_dir = tmp_path / "arm_a"
+        priming_dir.mkdir()
+        arm_a_dir.mkdir()
+        (priming_dir / "aut_ec.json").write_text(
+            json.dumps(
+                {"substrate_nodes": {"food-1": {"embedding": [1.0, 0.0], "modality": "interoception", "count": 1}}}
+            )
+        )
+        (priming_dir / "aut_nac.json").write_text(
+            json.dumps({"cluster_reward_bias": {"sim_aut\x1ffood-1\x1ftool:sense_food_source": 0.5}})
+        )
+        # arm A has the file but with zero centroids
+        (arm_a_dir / "aut_ec.json").write_text(json.dumps({"substrate_nodes": {}}))
+        rc = a5.main(["--priming-dir", str(priming_dir), "--arm-a-dir", str(arm_a_dir)])
+        assert rc == 1
+        captured = capsys.readouterr()
+        assert "no centroids in any modality" in captured.err
+
+
+class TestVisionModalityWarning:
+    """Architecture review #5 — modalities outside {text, interoception}
+    are silently dropped. Surface a warning so future iterations that
+    fire vision-modality nodes don't have their signal invisible."""
+
+    def test_vision_modality_in_priming_warns(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        priming_dir = tmp_path / "priming"
+        arm_a_dir = tmp_path / "arm_a"
+        priming_dir.mkdir()
+        arm_a_dir.mkdir()
+        (priming_dir / "aut_ec.json").write_text(
+            json.dumps(
+                {
+                    "substrate_nodes": {
+                        "food-1": {"embedding": [1.0, 0.0], "modality": "interoception", "count": 1},
+                        "vision-1": {"embedding": [0.5, 0.5], "modality": "vision", "count": 1},
+                    }
+                }
+            )
+        )
+        (priming_dir / "aut_nac.json").write_text(
+            json.dumps({"cluster_reward_bias": {"sim_aut\x1ffood-1\x1ftool:sense_food_source": 0.5}})
+        )
+        (arm_a_dir / "aut_ec.json").write_text(
+            json.dumps(
+                {
+                    "substrate_nodes": {
+                        "arm-intero-1": {"embedding": [1.0, 0.0], "modality": "interoception", "count": 1}
+                    }
+                }
+            )
+        )
+        a5.main(["--priming-dir", str(priming_dir), "--arm-a-dir", str(arm_a_dir)])
+        captured = capsys.readouterr()
+        assert "modalities outside" in captured.err
+        assert "vision" in captured.err
+
+
+class TestRoy4Roy5FoodClusterParity:
+    """Architecture review #1 — drift between Roy-4 and Roy-5 food-cluster
+    extraction would mis-route NAc lookups in Stage 2 implementations.
+    PR #248 fold replaced Roy-5's local implementation with a delegating
+    import to Roy-4's loader, so the two analyzers now share one source
+    of truth. This test pins the delegation."""
+
+    def test_roy_5_delegates_to_roy_4_loader(self, tmp_path: Path) -> None:
+        nac = {
+            "cluster_reward_bias": {
+                "sim_aut\x1fcluster-X\x1ftool:sense_food_source": 0.5,
+                "sim_aut\x1fcluster-Y\x1ftool:sense_water_source": 0.3,
+            }
+        }
+        nac_path = tmp_path / "aut_nac.json"
+        nac_path.write_text(json.dumps(nac))
+        # Load via Roy-5's analyzer
+        roy_5_result = a5.load_priming_food_clusters(nac_path)
+        # Load via Roy-4's analyzer directly
+        import importlib.util
+
+        roy_4_path = Path(__file__).resolve().parents[2] / "scripts" / "analyze_roy_4_coactivation.py"
+        spec = importlib.util.spec_from_file_location("analyze_roy_4_coactivation", roy_4_path)
+        assert spec is not None and spec.loader is not None
+        roy_4_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(roy_4_mod)
+        roy_4_result = roy_4_mod.load_priming_food_clusters(nac_path)
+        assert roy_5_result == roy_4_result == {"cluster-X"}
