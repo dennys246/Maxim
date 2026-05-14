@@ -1,0 +1,122 @@
+# Roy-4 — Cross-modal binding validation prereq (1.1 design gate).
+#
+# Roy-2c (PR #244, docs/experiments/20_roy_2c.md) confirmed H1: the
+# LinguisticEncoder → EC alignment failure is the load-bearing block
+# on the cluster_reward_bias path. The priming substrate's WMS contents
+# (sensor/drive state + cradle-narrator output) embed into one EC region;
+# CLI fixture percepts ("you sense food nearby") embed into a structurally
+# disjoint EC region. Wire-A (0.9.1 Stage 2) routes around this with
+# prompt-level annotation. The structural fix in 1.1 is
+# cross_modal_substrate_binding.md — Hebbian binding edges between EC
+# nodes via temporal co-activation.
+#
+# Roy-4 is the cheap experimental gate that validates the 1.1 design
+# BEFORE Stage 2-6 implementation work begins. It re-runs the same
+# priming + fixture + arms as Roy-2c with ONE structural change:
+# MAXIM_EC_TRACE_ACTIVATIONS=1 set in the runner environment, which
+# emits per-tick sim_ec_activation JSONL events from
+# similarity/ec.py::pattern_complete_or_separate (release_0_9_1.md
+# Stage 0d).
+#
+# Post-hoc analysis (scripts/analyze_roy_4_coactivation.py):
+#   1. Read the priming session's sim_ec_activation events.
+#   2. Compute pairwise co-activation matrix per agent_id —
+#      count of ticks where both nodes fired.
+#   3. Apply a proposed Hebbian rule: min co-firing count >= 5,
+#      salience-weighted by min activation strength. Output the
+#      would-have-bound edge list.
+#   4. Read the test arms' sim_ec_activation events. For each
+#      test-phase active node, check whether it has a would-have-bound
+#      edge to a priming sense_food_source cluster.
+#
+# Pre-registered diagnostic (from cross_modal_substrate_binding.md
+# Stage 1):
+#
+#   PASS — at least one test-phase active node has a would-have-bound
+#       edge to a priming sense_food_source cluster. Cross-modal binding
+#       plan is greenlit for 1.1; document the binding rule that worked.
+#
+#   FAIL — no would-have-bound edges between priming and test clusters
+#       under the proposed rule. Encoder-alignment gap is too severe
+#       for Hebbian binding alone. Cancel Stages 2-6 of
+#       cross_modal_substrate_binding.md; redirect to a 1.2+ encoder-
+#       replacement research direction. Document the negative result
+#       with the same rigor as a positive one.
+#
+# IMPORTANT: MAXIM_EC_TRACE_ACTIVATIONS must be set in the RUNNER
+# environment, not in the YAML — the env-var reader at
+# similarity/ec.py::_ec_trace_enabled is called from inside the agent
+# loop. Pair with MAXIM_LOG_FILE to capture the events into a JSONL
+# file the analyzer can read after the run completes. The reproduction
+# runbook (protocols/21_roy_4_reproduction.md) spells this out.
+#
+# Run with:
+#   MAXIM_EC_TRACE_ACTIVATIONS=1 \
+#   MAXIM_LOG_FILE=/tmp/roy_4_ec_trace.jsonl \
+#       maxim roy run scenarios/roy/roy_4_iteration.yaml
+#
+# Expected wall: ~25-28 min (same shape as Roy-2c since the substrate-
+# primary 30s/turn timeout dominates).
+#
+# Companion docs:
+#   docs/plans/release_0_9_1.md                       (0.9.1 release plan; Stage 0d)
+#   docs/plans/cross_modal_substrate_binding.md       (1.1 plan; Roy-4 is Stage 1)
+#   docs/plans/persona_convergence_crucible.md        (Roy iteration log)
+#   docs/experiments/21_roy_4.md                      (outcome doc — written post-run)
+#   docs/experiments/protocols/21_roy_4_reproduction.md (runbook)
+#   scenarios/roy/roy_2c_iteration.yaml               (priming + fixture + arms partner)
+#   scenarios/roy/roy_2pc_holdout.yaml                (engineered-overlap fixture, reused unchanged)
+
+name: roy-4
+description: |
+  Cross-modal binding validation prereq for the 1.1 implementation gate
+  (cross_modal_substrate_binding.md). Same priming + fixture + arms as
+  Roy-2c. Single-variable change: MAXIM_EC_TRACE_ACTIVATIONS=1 in the
+  runner environment emits per-tick sim_ec_activation JSONL events from
+  EntorhinalCortex.pattern_complete_or_separate. Post-hoc analysis
+  (scripts/analyze_roy_4_coactivation.py) computes pairwise co-activation
+  + applies a proposed Hebbian rule to determine whether priming-cluster
+  ↔ test-cluster pairs would have been linked. PASS → greenlight 1.1
+  Stages 2-6; FAIL → cancel binding plan and redirect to 1.2+ encoder
+  replacement.
+
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+
+# Priming: identical multi-arc mix to Roy-2c.
+priming:
+  name: roy-4-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Reuses Roy-2pc/Roy-2c's engineered-overlap fixture unchanged.
+test_scenario:
+  fixture: roy_2pc_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    system_prompt: neutral
+  b:
+    substrate: blank
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral
