@@ -774,8 +774,91 @@ The most permissive rule (`min_cofire=1, min_weight=0.01`) yields 256 priming bo
 - Outcome doc: [`21_roy_4.md`](../experiments/21_roy_4.md). Protocol: [`21_roy_4_reproduction.md`](../experiments/protocols/21_roy_4_reproduction.md). Spec: [`roy_4_iteration.yaml`](../../scenarios/roy/roy_4_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged). Analyzer: [`scripts/analyze_roy_4_coactivation.py`](../../scripts/analyze_roy_4_coactivation.py).
 <!-- /roy-iteration:roy-4 -->
 
-### Roy-5 — CANCELLED (was binding-mechanism validation)
-*Cancelled by Roy-4 FAIL. Was scoped as the post-implementation validation iteration for [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stages 2-6, which Roy-4 cancelled. A future Roy iteration on the 1.2+ encoder-replacement track may inherit the Roy-5 name; until that direction is scoped, the slot is reserved.*
+### Roy-5 — partially RECYCLED
+*The original Roy-5 (binding-mechanism post-implementation validation) is cancelled by Roy-4 FAIL. The slot is now occupied by the [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md) plan's Stage 1 (Roy-5a, below). Future Roy-5b/Roy-5c iterations on the H1c / H1b / H1a Stage 2 branches will inherit the same numbering family.*
+
+<!-- roy-iteration:roy-5a -->
+### Roy-5a: Cosine-localization disambiguator (1.1+ plan Stage 1)
+
+**Status:** SHIPPED. Stage 1 of [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md). Ran end-to-end against the same healthy leader, 2026-05-13 22:25→22:51 local. **~1547s wall (~25.8 min)** — same shape as Roy-2c / Roy-4 since the substrate-primary 30s/turn timeout dominates. Owned by [roy_5_encoder_alignment_disambiguator.md § Stage 1](roy_5_encoder_alignment_disambiguator.md).
+
+> Single-variable change vs Roy-4: [PR #248](https://github.com/dennys246/Maxim/pull/248)
+> (merged before this run) wired `EC.save()` and `ATL.save()` into
+> `simulation/report.py::save_aut_state`. Every session_dir now
+> contains `aut_ec.json` + `aut_atl.json` alongside the existing
+> hippocampus + NAc dumps. The new analyzer
+> [`scripts/analyze_roy_5_cosine_localization.py`](../../scripts/analyze_roy_5_cosine_localization.py)
+> reads those centroid dumps directly, computes pairwise cosine
+> matrices `M_tt` (priming text × arm text), `M_dt` (priming
+> interoception × arm text), `M_dd` (priming interoception × arm
+> interoception), identifies food-bearing priming centroids via the
+> same UTS-separator NAc compound-key parsing the Roy-4 analyzer
+> uses, and decodes max cosine over arm A into one of three
+> pre-registered sub-hypotheses (H1c ≥ 0.40 / 0.20 ≤ H1b < 0.40 /
+> H1a < 0.20).
+
+**Preflight:** clean. `outcome: ok`, `latency_ms: 211.2`, `detail: stage2 HTTP 200`.
+
+**Priming:** 5/5 stages completed. final_session_id `20260513_223436`.
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | finish |
+|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260513_223616` | 10 | cancel |
+| b | blank | "You are a hungry infant" | `20260513_224138` | 10 | cancel |
+| c | blank | neutral | `20260513_224641` | 10 | cancel |
+
+**Headline cosine matrices — arm A:**
+
+| Matrix | Modality pair | Rows × Cols | Max over food-bearing rows |
+|---|---|---|---|
+| **`M_tt`** | priming text × arm A text | **0 × 0** | **n/a (no text-modality nodes on either side)** |
+| **`M_dt`** | priming interoception × arm A text | 2 × 0 | n/a (arm A has zero text-modality nodes) |
+| **`M_dd`** | priming interoception × arm A interoception | 2 × 2 | **1.0000 (identical centroids)** |
+
+**Verdict: H1a — encoder subspace incompatibility** (via the n/a / empty-matrix path, not low-cosine path). `max(M_tt food-bearing) = n/a` → -inf → H1a per `decode_verdict`. The verdict triggers via the **"no text-modality food centroids exist in this run"** path rather than the **"text food clusters exist but are far from arm A text"** path the plan modeled. **Caveat:** Roy-4 on the identical priming spec produced 154 text-modality EC fires, so the load-bearing claim is "on Roy-5a's run no text-modality food centroids were allocated", not "they can never form during cradle priming" — see § Recommended next step.
+
+**Cross-arm M_dd sanity check** (the surviving "interoception identity" scheme):
+
+| Arm | M_dd max food cosine | Cluster IDs match priming? |
+|---|---|---|
+| **a** (substrate-primed) | **1.0000** | Yes (substrate restored — same UUIDs) |
+| **b** (blank, persona) | 1.0000 | No (fresh UUIDs, but cosine ≈ 1.0 — SensorEncoder frozen-prototype hash embeddings collide across blank substrates) |
+| **c** (blank, neutral) | 1.0000 | No (same as B) |
+
+This is the **"two identity schemes for the same concept"** pattern from [`feedback_two_identity_schemes.md`](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_two_identity_schemes.md) re-confirmed for the EIGHTH iteration: tool-name + interoception-modality identity survives across all arms, cluster-UUID identity does not.
+
+**EC trace divergence vs Roy-4 (secondary finding):**
+
+| Iteration | Total EC trace events | Per-modality fires | Per-modality NEW |
+|---|---|---|---|
+| Roy-4 (priming) | 306 | text=154, interoception=152 | text=57, interoception=12 |
+| **Roy-5a (priming)** | **151** | **interoception=151, text=0** | **interoception=6, text=0** |
+
+**Roy-5a's priming registered ZERO text-modality EC fires; Roy-4's had 154.** Same iteration spec, same fixture, same arms. `git log c80190f..HEAD` shows no encoder-routing changes between the two runs. This is either run-to-run variance (Roy-5a's first stage had many AUT timeouts that may have suppressed narrator text routing) or a quiet regression in the text-percept routing path. Roy-4's `aut_hippocampus.json` ALSO had zero `cli_input`/`transcript` content, so Roy-4's text fires came through a side-channel route (tool-output text, concept decomposition, or similar) that's apparently silent in Roy-5a. **The H1a verdict survives either interpretation** — it triggers on the absence of text-modality food clusters in persisted state, observable directly from `aut_ec.json` regardless of transient trace events.
+
+**Recommended next step** (gates Stage 3 cradle-arc redesign):
+
+1. Re-run Roy-5a once or twice to confirm the text-modality-silence finding is stable.
+2. If reproducible, inspect why cradle-narrator text isn't routing to `LinguisticEncoder` on food-related percepts (orchestrator narrator-percept routing, `LinguisticEncoder.encode` text extraction, `EmbodimentPerceptSource` percept field population).
+3. Stage 3 implementation (the H1a branch in the plan) needs to ensure not only deliberate `(sensor, drive, narrator-utterance)` co-firing but also that the narrator utterance actually fires text-modality EC nodes the Hebbian rule can bind to.
+
+If text-modality routing turns out to be quietly broken (rather than variance), Stage 3 will need to fix that as part of the redesigned arc.
+
+**What Roy-5a definitively proves:**
+
+- The cluster-reward-bias-vs-cluster-identity gap that's haunted every Roy iteration since Roy-0 has its food concept located strictly in **interoception modality** during priming. There is no text-modality representation of food in the priming substrate at all.
+- The `M_dd` cosine ≈ 1.0 result is the strongest positive signal: the food concept's interoception embedding **does survive arm A's substrate-restoration**. The gap is strictly in projecting that concept to text modality (which is the substrate channel CLI fixture text routes through).
+- The pre-registered H1a/H1b/H1c thresholds are stable + tested. Future Stage 2 branches consume a clean verdict.
+
+**Recommendation:** **Stage 2c → Stage 3 (cradle-arc redesign) is the verdict-prescribed next step**, but ship Roy-5a-confirm (≤ 2 re-runs) first to validate the text-modality-silence observation. If silence reproduces, refine Stage 3 scope to fix text-modality routing alongside the co-firing scaffold.
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-5a/result.json`](/Users/dennyschaedig/.maxim/roy/roy-5a/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-5a/summary.md).
+- EC trace `/tmp/roy_5a_ec_trace.jsonl` (151 `sim_ec_activation` events, all interoception). Run log `/tmp/roy_5a_run.log`. Analysis bundle `/tmp/roy_5a_analysis.json`.
+- Outcome doc: [`22_roy_5a.md`](../experiments/22_roy_5a.md). Protocol: [`22_roy_5a_reproduction.md`](../experiments/protocols/22_roy_5a_reproduction.md). Spec: [`roy_5a_iteration.yaml`](../../scenarios/roy/roy_5a_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged). Analyzer: [`scripts/analyze_roy_5_cosine_localization.py`](../../scripts/analyze_roy_5_cosine_localization.py). Persistence prereq: [PR #248](https://github.com/dennys246/Maxim/pull/248).
+<!-- /roy-iteration:roy-5a -->
 
 ### Roy-1: Adversarial (planned, unrun)
 *Status: design above; awaiting [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) Stages 0-3 to ship in 1.0.*

@@ -1,0 +1,130 @@
+# Roy-5a — Cosine-localization disambiguator for H1c/H1b/H1a.
+#
+# Roy-4 (PR #246, docs/experiments/21_roy_4.md) FAILED: zero priming
+# ↔ test bound edges under the proposed Hebbian rule across the full
+# parameter sweep. The structural finding was specific — zero EC
+# node-ID overlap between priming (37 nodes) and any test arm (10/13/9),
+# priming food clusters firing in near-isolation, zero co-firing
+# partners shared between phases. This refuted cross_modal_substrate_
+# binding.md Stages 2-6 (the Hebbian binding mechanism is dead even at
+# the most permissive thresholds), but did NOT disambiguate WHY the
+# encoder alignment fails so completely. Three sub-hypotheses live
+# inside Roy-2c's H1 (docs/plans/roy_5_encoder_alignment_disambiguator.md):
+#
+#   H1c — text *is* close in embedding space but EC's
+#       pattern_complete_threshold=0.40 + frozen-prototype + running-mean
+#       centroid drift make pattern completion miss. Fix: ~50 LOC
+#       threshold/centroid sweep.
+#
+#   H1b — text is at moderate cosine (0.20-0.40); a different encoder
+#       model would close it. Fix: ~150 LOC encoder A/B sweep,
+#       LinguisticEncoder accepts explicit model_name.
+#
+#   H1a — sensor-drive and text embeddings live in structurally
+#       incomparable EC subspaces (max cosine <0.20). Fix: redirect to
+#       Stage 3 cradle-arc redesign + Hebbian retest; encoder
+#       replacement promoted to 1.2+ if Stage 3 fails.
+#
+# Roy-5a is the cheap experimental disambiguator. Same priming + fixture
+# + arms as Roy-2c/Roy-4. Single structural change from Roy-4: PR #248
+# wired EC.save() + ATL.save() into save_aut_state so aut_ec.json and
+# aut_atl.json now land in every session_dir. The Roy-5a analyzer
+# reads those centroid dumps directly — no re-embedding, no
+# approximation.
+#
+# Post-hoc analysis (scripts/analyze_roy_5_cosine_localization.py):
+#   1. Read priming session's aut_ec.json — EC._substrate_nodes keyed
+#      by node_id → (centroid_embedding, modality).
+#   2. Read each arm's aut_ec.json.
+#   3. Identify food-bearing priming centroids — the 6 cluster IDs
+#      keyed by sense_food_source in priming's aut_nac.json (same
+#      UTS-separator extraction as analyze_roy_4_coactivation.py).
+#   4. For arm A, compute three matrices:
+#        M_tt — priming text vs arm-A text (pairwise cosine).
+#        M_dt — priming interoception vs arm-A text (cross-modality).
+#        M_dd — priming interoception vs arm-A interoception.
+#   5. Report max cosine per matrix for food-bearing priming centroids.
+#
+# Pre-registered decoding (in code AND in the printed summary):
+#   max(M_tt food-bearing) ≥ 0.40 → H1c — threshold/centroid tuning
+#   0.20 ≤ max < 0.40            → H1b — encoder model fit
+#   max < 0.20                   → H1a — encoder subspace incompatibility;
+#                                  redirect to Stage 3 cradle-arc redesign
+#
+# Exit code 0 on a clean H1c/H1b/H1a verdict; non-zero on indeterminate /
+# error.
+#
+# IMPORTANT: MAXIM_EC_TRACE_ACTIVATIONS=1 is no longer required for
+# Roy-5a's verdict (the analyzer reads centroids from disk, not from
+# JSONL trace events). It's still set in the reproduction runbook for
+# parity with Roy-4 — the per-tick traces remain useful as a
+# cross-check on which priming nodes fired in which test ticks.
+#
+# Run with:
+#   MAXIM_EC_TRACE_ACTIVATIONS=1 \
+#   MAXIM_LOG_FILE=/tmp/roy_5a_ec_trace.jsonl \
+#       maxim roy run scenarios/roy/roy_5a_iteration.yaml
+#
+# Expected wall: ~25-28 min (same shape as Roy-2c/Roy-4 since the
+# substrate-primary 30s/turn timeout dominates).
+#
+# Companion docs:
+#   docs/plans/roy_5_encoder_alignment_disambiguator.md  (1.1+ plan; Roy-5a is Stage 1)
+#   docs/plans/persona_convergence_crucible.md           (Roy iteration log)
+#   docs/experiments/22_roy_5a.md                        (outcome doc — written post-run)
+#   docs/experiments/protocols/22_roy_5a_reproduction.md (runbook)
+#   scenarios/roy/roy_4_iteration.yaml                   (structural parent; same priming + fixture + arms)
+#   scenarios/roy/roy_2pc_holdout.yaml                   (engineered-overlap fixture, reused unchanged)
+
+name: roy-5a
+description: |
+  Cosine-localization disambiguator for the three H1 sub-hypotheses
+  (H1c threshold tuning / H1b encoder A-B / H1a encoder subspace
+  incompatibility). Same priming + fixture + arms as Roy-2c/Roy-4.
+  Single structural change from Roy-4: PR #248 wired EC.save() into
+  save_aut_state so aut_ec.json now lands in every session_dir. The
+  Roy-5a analyzer reads those centroid dumps directly and decodes
+  max cosine over food-bearing priming centroids vs arm A into one
+  of the three pre-registered sub-hypotheses, which scopes the
+  Stage 2 implementation branch.
+
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+
+# Priming: identical multi-arc mix to Roy-2c/Roy-4.
+priming:
+  name: roy-5a-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Reuses Roy-2pc/Roy-2c/Roy-4's engineered-overlap fixture unchanged.
+test_scenario:
+  fixture: roy_2pc_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    system_prompt: neutral
+  b:
+    substrate: blank
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral
