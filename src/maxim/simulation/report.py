@@ -351,13 +351,35 @@ def save_report(report: SimulationReport, base_dir: str | None = None) -> Path:
 
 
 def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
-    """Save all action records as JSONL for post-hoc analysis."""
+    """Save all action records as JSONL for post-hoc analysis.
+
+    The first line is a header record carrying ``_format_version`` per
+    CLAUDE.md CC1 (Stage 0b, release_0_9_1.md). Per-action records
+    follow, one per line. Each carries Stage 0b telemetry fields
+    (``agent_id``, ``session_id``, ``entity_class``) populated by
+    ``InstrumentedExecutor`` from the bound ``RequestContext`` —
+    ``None`` when the context was unbound at execution time (e.g.,
+    pre-0b sims, headless API runs).
+
+    Format-version evolution rule: appending optional fields to the
+    per-action record is back-compat (existing parsers ignore unknown
+    keys); removing or renaming fields requires a major bump.
+    """
     session_dir = Path(base_dir) / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
 
     log_path = session_dir / "actions.jsonl"
     try:
         with open(str(log_path), "w", encoding="utf-8") as f:
+            # Stage 0b: format-version header (one-line schema marker
+            # at the top of the JSONL — existing per-record parsers
+            # ignore unknown top-level keys, so this is back-compat).
+            header = {
+                "_format_version": "1.0",
+                "_record_kind": "header",
+                "session_id": session_id,
+            }
+            f.write(json.dumps(header) + "\n")
             for a in bridge.get_all_actions():
                 entry = {
                     "timestamp": a.timestamp,
@@ -368,6 +390,12 @@ def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
                     "error": a.result_error,
                     "blocked": a.blocked,
                     "block_reason": a.block_reason,
+                    # Stage 0b telemetry — None when RequestContext was unbound
+                    # (pre-0b sims, headless API) or entity_class couldn't be
+                    # derived from tool_args.
+                    "agent_id": a.agent_id,
+                    "session_id": a.session_id,
+                    "entity_class": a.entity_class,
                 }
                 f.write(json.dumps(entry, default=str) + "\n")
         logger.info("Action log saved: %s (%d records)", log_path, len(bridge.get_all_actions()))

@@ -1494,6 +1494,18 @@ def start_simulation_mode(
     aut_error: list[Exception] = []
 
     def _aut_worker() -> None:
+        # Stage 0b (release_0_9_1.md): bind RequestContext on the AUT
+        # thread so InstrumentedExecutor.execute(), recommend_action's
+        # sim_recommend_action emitter, and any other downstream code
+        # reading utils/http.py::current_context() see the right
+        # agent_id + session_id pair. ContextVars are per-thread; the
+        # main-thread binding doesn't reach here without copy_context.
+        # Bound BEFORE sim_agent_context so the typed RequestContext
+        # and the sim_logger contextvar agree on agent identity.
+        from maxim.utils.http import new_request_context, reset_context, set_context
+
+        _aut_request_ctx = new_request_context(agent_id="sim_aut", session_id=session_id)
+        _aut_request_token = set_context(_aut_request_ctx)
         try:
             with sim_agent_context("sim_aut"):
                 run_agentic_loop(
@@ -1523,6 +1535,8 @@ def start_simulation_mode(
         except Exception as e:
             aut_error.append(e)
             logger.error("AUT loop failed: %s", e)
+        finally:
+            reset_context(_aut_request_token)
 
     aut_thread = threading.Thread(target=_aut_worker, name="sim.aut", daemon=True)
     aut_thread.start()
@@ -2371,6 +2385,18 @@ def start_simulation_mode(
     # so there's only one spinner managing the terminal line.
     bridge._spinner.start("Orchestrator planning first probe...")
 
+    # Stage 0b: bind RequestContext on the orchestrator thread so
+    # orch-side action records (rare — most actions land on the AUT
+    # sink, but orchestrator tools still execute) carry agent_id +
+    # session_id. Symmetric with the AUT thread binding above. Runs
+    # on the main thread; the reset in `finally` keeps the bind
+    # scoped to the sim run.
+    from maxim.utils.http import new_request_context as _new_ctx
+    from maxim.utils.http import reset_context as _reset_ctx
+    from maxim.utils.http import set_context as _set_ctx
+
+    _orch_request_ctx = _new_ctx(agent_id="sim_orchestrator", session_id=session_id)
+    _orch_request_token = _set_ctx(_orch_request_ctx)
     try:
         with sim_agent_context("sim_orchestrator"):
             run_agentic_loop(
@@ -2398,6 +2424,7 @@ def start_simulation_mode(
         orch_error.append(e)
         logger.error("Orchestrator loop failed: %s", e)
     finally:
+        _reset_ctx(_orch_request_token)
         # Always clean up, even on interrupt
         bridge._spinner.stop()
 
