@@ -1,0 +1,84 @@
+# Roy-5a-confirm — Stability re-run of Roy-5a.
+#
+# Roy-5a (PR #249, docs/experiments/22_roy_5a.md) returned VERDICT: H1a
+# but via an unexpected mechanism — text-modality EC fires were ZERO
+# in priming, while Roy-4 on the identical spec produced 154 text fires.
+# The bio-fidelity pre-merge review and the outcome doc both recommend
+# re-running Roy-5a once or twice to disambiguate variance from
+# structural regression in text-percept routing.
+#
+# Roy-5a-confirm is the variance check. IDENTICAL spec to Roy-5a (same
+# 5 priming stages × 10 turns + roy_2pc_holdout fixture + same 3 arms).
+# Single structural change: the iteration name, so artifacts land in
+# ~/.maxim/roy/roy-5a-confirm/ without overwriting the original.
+#
+# Post-run analysis:
+#   1. Count text-modality EC fires in /tmp/roy_5a_confirm_ec_trace.jsonl.
+#      Roy-4 baseline: 154 text fires in priming.
+#      Roy-5a: 0 text fires in priming.
+#   2. If Roy-5a-confirm produces ≥ ~50 text fires → variance, Roy-5a
+#      was anomalous, Stage 3 proceeds per the plan.
+#   3. If Roy-5a-confirm produces 0 text fires → structural; the
+#      text-percept routing path is broken in current code state.
+#      Stage 3 needs to fix text-modality routing alongside the
+#      co-firing scaffold redesign.
+#
+# Companion docs:
+#   docs/plans/roy_5_encoder_alignment_disambiguator.md       (Stage 1)
+#   docs/plans/persona_convergence_crucible.md                (iteration log)
+#   docs/experiments/22_roy_5a.md                             (the run we're confirming)
+#   scenarios/roy/roy_5a_iteration.yaml                       (the original; structurally identical)
+#
+# Run with:
+#   MAXIM_EC_TRACE_ACTIVATIONS=1 \
+#   MAXIM_LOG_FILE=/tmp/roy_5a_confirm_ec_trace.jsonl \
+#       maxim roy run scenarios/roy/roy_5a_confirm_iteration.yaml
+#
+# Expected wall: ~25-28 min (same shape as Roy-2c / Roy-4 / Roy-5a).
+
+name: roy-5a-confirm
+description: |
+  Stability re-run of Roy-5a. Identical priming + fixture + arms;
+  separate artifact dir so the original Roy-5a result.json is
+  preserved. The variance question for the text-modality-silence
+  observation that triggered the H1a verdict via the n/a /
+  empty-matrix path rather than the low-cosine path.
+
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+
+priming:
+  name: roy-5a-confirm-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+test_scenario:
+  fixture: roy_2pc_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    system_prompt: neutral
+  b:
+    substrate: blank
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral
