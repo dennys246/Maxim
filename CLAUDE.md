@@ -398,6 +398,9 @@ MAXIM_NAC_MIN_CONFIDENCE=0.0     # Override propose_via_substrate's min_confiden
 # EC activation instrumentation (release_0_9_1.md Stage 0d, cross_modal_substrate_binding.md Stage 1)
 MAXIM_EC_TRACE_ACTIVATIONS=1     # Gate per-tick `sim_ec_activation` JSONL events from EntorhinalCortex.pattern_complete_or_separate. Fields: agent_id, tick (int second bucket), active_node_id, activation_strength, modality_tag (linguistic/drive/sensor), modality, is_new. Off by default — Roy-4 sets it in the runner environment for the cross-modal binding pre-implementation validation experiment (scripts/analyze_roy_4_coactivation.py is the post-hoc analyzer). Falsy values ("0", "false", "no", "off", empty) disable. The instrumentation fires even on cold-start when active_node_id is freshly allocated, so pattern-separation events are visible in the co-activation matrix.
 
+# Wire-A cluster-bias annotation (release_0_9_1.md Stage 2)
+MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1  # Disable Wire-A's cluster-bias annotation prompt section. Default OFF (annotation ON in 0.9.1 by design). Set this to "1" / "true" / "yes" / "on" in the Roy-3 ablation arm to compare annotation-on vs annotation-off on the engineered-overlap fixture. The agent-loop producer site at runtime/agent_loop.py reads the var per LLM submission; absent / empty → annotation populated. The PromptBuilder helper renders unconditionally — disabling at the producer keeps the prompt-builder unit tests env-var-free.
+
 # Leader proxy admission control
 MAXIM_PROXY_MAX_CONCURRENT=4     # Max in-flight requests to upstream (0=unlimited)
 MAXIM_PROXY_RATE_LIMIT_RPM=0     # Per-peer requests/minute (0=unlimited)

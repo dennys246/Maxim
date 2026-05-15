@@ -2764,6 +2764,27 @@ def run_agentic_loop(
                     if context is not None and _auto_sense_text:
                         context.auto_sense_context = _auto_sense_text
 
+                    # Wire-A (release_0_9_1.md Stage 2): cluster-bias annotation.
+                    # Surface NAc agent-wide tool-bias to the LLM proposer so it
+                    # can read substrate-acquired signal across percept regimes
+                    # the substrate didn't directly drill (Roy-2c finding). The
+                    # env var MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1 disables
+                    # the read for the Roy-3 ablation; absence → on by default.
+                    if (
+                        context is not None
+                        and _loop_nac is not None
+                        and os.environ.get("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION", "").strip().lower()
+                        not in ("1", "true", "t", "yes", "y", "on")
+                    ):
+                        try:
+                            context.cluster_bias_annotations = _loop_nac.get_agent_tool_biases(
+                                agent_id=_loop_agent_id,
+                                top_n=5,
+                            )
+                        except Exception as e:
+                            logger.debug("Wire-A cluster_bias_annotation read failed: %s", e)
+                            context.cluster_bias_annotations = None
+
                     # Check if there's something meaningful to react to
                     # Only submit to LLM if we have:
                     # 1. New CLI input with "maxim" keyword - not already processed
