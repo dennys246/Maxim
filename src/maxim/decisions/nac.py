@@ -1537,6 +1537,39 @@ class NAc:
                 del self._goal_reward_bias[goal]
         return pruned
 
+    def decay_cluster_reward_biases(self) -> int:
+        """Decay cluster-keyed reward biases toward zero.
+
+        Called per-tick alongside ``decay_reward_biases()`` and
+        ``decay_goal_reward_biases()``. Without per-tick decay the
+        cluster-bias map accumulates indefinitely; Wire-A
+        (release_0_9_1.md Stage 2) reads this map at every LLM
+        submission and renders it as the substrate's "felt familiarity"
+        annotation, so stale-forever biases would silently lie about
+        being "from prior experience" when they're actually "from
+        forever ago."
+
+        Uses same decay tau as node and goal biases (bidirectional —
+        absolute-value prune below 0.001, mirroring
+        ``decay_goal_reward_biases``). Returns count pruned.
+        """
+        if not self._cluster_reward_bias:
+            return 0
+        decay_factor = 1.0 / self.config.reward_bias_decay_tau
+        pruned = 0
+        with self._lock:
+            to_remove = []
+            for key, bias in self._cluster_reward_bias.items():
+                new_bias = bias * (1.0 - decay_factor)
+                if abs(new_bias) < 0.001:
+                    to_remove.append(key)
+                    pruned += 1
+                else:
+                    self._cluster_reward_bias[key] = new_bias
+            for key in to_remove:
+                del self._cluster_reward_bias[key]
+        return pruned
+
     def update_eligibility(
         self,
         agent_id: str,

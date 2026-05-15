@@ -26,6 +26,31 @@ docs/plans/cross_modal_substrate_binding.md) (cancelled by Roy-4) or
 fix eventually ships; the llm-primary proposer doesn't consume
 bound-edge neighborhoods anyway, so Wire-A remains the llm-primary
 read surface even after the structural fix lands.
+
+**Why hand-coded bias bands are bio-defensible:** the 5 thresholds
+(0.5 / 0.1 / -0.1 / -0.5) are *display-layer translation* for the LLM
+consumer, not substrate encoding. Specifically:
+
+(a) The bias **values** are 100% substrate-earned via
+``NAc.update_cluster_reward``'s ``reward_bias_alpha`` accumulation
+over Roy-priming reward signals. No human picks them.
+
+(b) The band **labels** map those numeric values to phrases the LLM
+proposer can read. The substrate didn't earn the word "strongly
+rewarding" — humans picked it as the most evocative gloss for
+``bias >= 0.5``.
+
+(c) No band-derived signal flows back into encoders, EC, NAc state, or
+any other substrate write path. The bands are pure I/O.
+
+Per [feedback_interim_contamination.md](
+.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_interim_contamination.md),
+the canonical contamination pattern is "hand-curated decisions
+UPSTREAM of substrate encoding." Wire-A's bands are downstream of
+encoding — the substrate produces the bias, the bands narrate it.
+This is the same shape as ``decision_engine`` rendering numeric
+confidences as text for log lines: the rendering layer adds nothing
+substrate didn't already say.
 """
 
 from __future__ import annotations
@@ -36,6 +61,29 @@ _BAND_STRONG_REWARDING = 0.5
 _BAND_MILD_REWARDING = 0.1
 _BAND_NEUTRAL_LOWER = -0.1
 _BAND_MILD_AVERSIVE = -0.5
+
+# Truthy values that disable Wire-A's annotation at the agent-loop
+# producer site. Shared with the conftest scrub and the test suite
+# so a future env-var divergence here would be caught by tests AND
+# match the producer's actual parsing. Matches the spelling pattern
+# the rest of 0.9.1's opt-in env-var gates use (e.g.,
+# similarity/ec.py::_ec_trace_enabled inverts this with a falsy-set
+# for opt-in semantics).
+TRUTHY_DISABLE_VALUES: frozenset[str] = frozenset({"1", "true", "t", "yes", "y", "on"})
+
+
+def annotation_disabled_via_env(raw: str | None) -> bool:
+    """Return True when the env-var value matches a disable signal.
+
+    Centralized parser so the producer (``agent_loop.py``), the
+    conftest scrub, and the test suite all consult one truthy-set
+    definition. Case-insensitive; whitespace-tolerant. ``None`` /
+    empty / unrecognized values return False (annotation stays ON,
+    matching the 0.9.1 default).
+    """
+    if not raw:
+        return False
+    return raw.strip().lower() in TRUTHY_DISABLE_VALUES
 
 
 def bias_to_band(bias: float) -> str:
@@ -115,8 +163,12 @@ def compose_cluster_bias_annotation_section(
 
     lines: list[str] = ["=== Substrate associations from prior experience ==="]
     # Compute the max tool-name width for column-aligned annotations.
+    # ``default=0`` defends against a future predicate filtering rendered
+    # to empty after the upstream non-empty guards passed — current code
+    # paths can't reach this, but max([]) raises ValueError and that's
+    # a silent-noise failure under a future caller addition.
     rendered = [(_strip_tool_prefix(tool), bias) for tool, bias in biases]
-    max_name_len = max(len(name) for name, _ in rendered)
+    max_name_len = max((len(name) for name, _ in rendered), default=0)
     for name, bias in rendered:
         band = bias_to_band(bias)
         if band == "neutral / mixed":
@@ -129,6 +181,8 @@ def compose_cluster_bias_annotation_section(
 
 
 __all__ = [
+    "TRUTHY_DISABLE_VALUES",
+    "annotation_disabled_via_env",
     "bias_to_band",
     "compose_cluster_bias_annotation_section",
 ]

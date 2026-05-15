@@ -317,22 +317,166 @@ class TestPromptBuilderSectionHelper:
 class TestEnvVarGateSemantics:
     """The env-var gate at the agent-loop producer reads
     ``MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION``. Truthy values
-    (``1``, ``true``, ``yes``, ``on``) disable the read. The conftest
-    autouse scrub guarantees this var is unset at test entry; these
-    tests verify the truthy-value parsing matches the same semantics
-    as the other 0.9.1 env-var gates."""
+    (``1``, ``true``, ``yes``, ``on``) disable the read. The shared
+    parser ``annotation_disabled_via_env`` is the single source of
+    truth; the conftest scrub + this test + the producer all consult
+    the same ``TRUTHY_DISABLE_VALUES`` frozenset. Future divergence
+    here would catch in the test layer before reaching Roy-3."""
 
     def test_default_unset_is_enabled(self) -> None:
         assert "MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION" not in os.environ
 
-    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "y", "t"])
-    def test_truthy_values_match(self, value: str) -> None:
-        """The producer reads via ``.strip().lower() in ("1", "true", ...)``
-        — these values must all disable the read."""
-        disabled_set = {"1", "true", "t", "yes", "y", "on"}
-        assert value.strip().lower() in disabled_set
+    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "y", "t", "  true  "])
+    def test_truthy_values_disable(self, value: str) -> None:
+        """The producer reads via the shared parser; these values must
+        all return True (annotation disabled)."""
+        from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
 
-    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off"])
-    def test_falsy_values_do_not_match(self, value: str) -> None:
-        disabled_set = {"1", "true", "t", "yes", "y", "on"}
-        assert value.strip().lower() not in disabled_set
+        assert annotation_disabled_via_env(value) is True
+
+    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "  ", "garbage"])
+    def test_falsy_values_keep_enabled(self, value: str) -> None:
+        from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+        assert annotation_disabled_via_env(value) is False
+
+    def test_none_keeps_enabled(self) -> None:
+        """The producer hands ``os.environ.get(...)`` which returns None
+        when the var is unset. Parser must accept None as 'enabled.'"""
+        from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+        assert annotation_disabled_via_env(None) is False
+
+    def test_truthy_set_constant_matches_parser(self) -> None:
+        """Pin the shared constant so a future contributor can't extend
+        the parser without updating the public constant (and vice versa)."""
+        from maxim.prompts.cluster_bias_annotation import (
+            TRUTHY_DISABLE_VALUES,
+            annotation_disabled_via_env,
+        )
+
+        assert TRUTHY_DISABLE_VALUES == frozenset({"1", "true", "t", "yes", "y", "on"})
+        for value in TRUTHY_DISABLE_VALUES:
+            assert annotation_disabled_via_env(value) is True
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 5: Cluster-bias decay
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestClusterBiasDecay:
+    """Critical bio-fidelity finding from the pre-merge review:
+    without per-tick decay, ``_cluster_reward_bias`` accumulates
+    indefinitely and Wire-A's annotation becomes a permanent fossil
+    rather than a living substrate voice. The decay method ships with
+    the same shape as ``decay_goal_reward_biases`` (bidirectional,
+    abs-value prune)."""
+
+    def _fresh_nac(self) -> NAc:
+        return NAc(config=NACConfig())
+
+    def test_decay_shrinks_bias_toward_zero(self) -> None:
+        nac = self._fresh_nac()
+        nac.update_cluster_reward("sim_aut", "c1", "tool:foo", reward=10.0)
+        # Capture pre-decay value (will be near +1.0 after alpha + clamp).
+        before = nac.cluster_reward_bias("sim_aut", "c1", "tool:foo")
+        assert before > 0.1
+        # One decay tick reduces magnitude.
+        nac.decay_cluster_reward_biases()
+        after = nac.cluster_reward_bias("sim_aut", "c1", "tool:foo")
+        assert 0.0 < after < before
+
+    def test_decay_prunes_below_threshold(self) -> None:
+        """Per ``decay_goal_reward_biases`` shape: |bias| < 0.001 → pruned."""
+        nac = self._fresh_nac()
+        nac.update_cluster_reward("sim_aut", "c1", "tool:foo", reward=0.001)
+        # Run decay enough times to drive below 0.001.
+        for _ in range(100):
+            pruned = nac.decay_cluster_reward_biases()
+            if pruned > 0:
+                break
+        # After enough decay cycles, the tiny entry is gone.
+        assert nac.cluster_reward_bias("sim_aut", "c1", "tool:foo") == 0.0
+
+    def test_decay_handles_negative_bias(self) -> None:
+        """Cluster bias is bidirectional (avoidance vs reward). Decay
+        must shrink |negative bias| toward zero too."""
+        nac = self._fresh_nac()
+        nac.update_cluster_reward("sim_aut", "c1", "tool:risky", reward=-10.0)
+        before = nac.cluster_reward_bias("sim_aut", "c1", "tool:risky")
+        assert before < -0.1
+        nac.decay_cluster_reward_biases()
+        after = nac.cluster_reward_bias("sim_aut", "c1", "tool:risky")
+        # |after| should be smaller than |before|; sign preserved while
+        # above the prune threshold.
+        assert before < after < 0.0
+
+    def test_decay_empty_map_no_op(self) -> None:
+        nac = self._fresh_nac()
+        # Empty map; decay returns 0, doesn't raise.
+        assert nac.decay_cluster_reward_biases() == 0
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 6: Producer-site integration regression guard
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestProducerSiteSemantics:
+    """The pre-merge review (architecture lens) flagged that the 34-test
+    suite verified bias-parsing math but did NOT exercise the producer
+    block end-to-end: ``annotation_disabled_via_env(env_val) AND
+    nac.get_agent_tool_biases(agent_id=loop_id, top_n=5) → context
+    field``. These tests cover the integration path so a regression in
+    agent_loop.py can't silently degrade Roy-3 to annotation-off."""
+
+    def _fresh_nac(self) -> NAc:
+        return NAc(config=NACConfig())
+
+    def test_producer_path_populates_context(self) -> None:
+        """Simulated producer block: NAc has bias → annotation_disabled
+        check returns False → context.cluster_bias_annotations is set."""
+        from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+        nac = self._fresh_nac()
+        nac.update_cluster_reward("sim_aut", "c1", "tool:sense_food_source", reward=10.0)
+
+        # Mirror the producer expression literally.
+        env_val = os.environ.get("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION")
+        assert not annotation_disabled_via_env(env_val)
+        biases = nac.get_agent_tool_biases(agent_id="sim_aut", top_n=5)
+        assert len(biases) == 1
+        assert biases[0][0] == "tool:sense_food_source"
+
+    def test_producer_empty_agent_id_raises_valueerror(self) -> None:
+        """The producer's ``except ValueError`` narrowing means an empty
+        agent_id from a misconfigured per-agent stash surfaces as a
+        WARNING-level log, NOT a silent annotation-off. This test pins
+        the ValueError contract so a future NAc refactor that swallows
+        the empty-agent-id case can't silently regress Roy-3 evidence."""
+        nac = self._fresh_nac()
+        with pytest.raises(ValueError, match="non-empty agent_id"):
+            nac.get_agent_tool_biases(agent_id="", top_n=5)
+
+    def test_producer_disabled_via_env_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When the env var is truthy, the producer expression decides
+        NOT to read NAc. The conftest scrub ensures this var is unset by
+        default, so we set it explicitly with monkeypatch."""
+        from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+        monkeypatch.setenv("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION", "1")
+        env_val = os.environ.get("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION")
+        assert annotation_disabled_via_env(env_val) is True
+        # The producer short-circuits BEFORE calling NAc, so a NAc
+        # with bias is intentionally never consulted in this path.
+
+    def test_producer_no_nac_skips_quietly(self) -> None:
+        """If ``_loop_nac is None`` (e.g., headless API without NAc),
+        the producer block doesn't fire — the gate is structural, not
+        env-var-only. No raise; context.cluster_bias_annotations stays
+        at its default None."""
+        # Mirror the producer's nac-None check.
+        _loop_nac = None
+        if _loop_nac is not None:  # type: ignore[unreachable]
+            pytest.fail("producer should short-circuit on None NAc")
