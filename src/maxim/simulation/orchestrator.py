@@ -1494,32 +1494,57 @@ def start_simulation_mode(
     aut_error: list[Exception] = []
 
     def _aut_worker() -> None:
+        # Stage 0b (release_0_9_1.md): bind RequestContext on the AUT
+        # thread via context_scope() so InstrumentedExecutor.execute(),
+        # recommend_action's sim_recommend_action emitter, and any
+        # other downstream code reading utils/http.py::current_context()
+        # see the right agent_id + session_id pair. ContextVars are
+        # per-thread; the main-thread binding doesn't reach here
+        # without copy_context. context_scope is a context manager —
+        # its __exit__ resets the binding even on exception, which is
+        # what the pre-merge review (architecture lens I5) recommended
+        # over manual set_context/reset_context in try/finally so
+        # future sim entry points cannot forget the reset.
+        # Bound BEFORE sim_agent_context so the typed RequestContext
+        # and the sim_logger contextvar agree on agent identity.
+        #
+        # NOTE: this binding is correct for the current sim topology
+        # (one AUT, one orch, no AgentFactory sub-agents in the sim
+        # path). If NPCs spawned via AgentFactory start producing
+        # ActionRecords in this orchestrator session, every record
+        # will carry agent_id="sim_aut" instead of the NPC's per-agent
+        # stash id. Bio-lens nice-to-have: per-spawn context_scope
+        # inside the NPC's tool-dispatch boundary would be the fix
+        # when that surface ships.
+        from maxim.utils.http import context_scope, new_request_context
+
         try:
-            with sim_agent_context("sim_aut"):
-                run_agentic_loop(
-                    aut_agent,
-                    aut_env,
-                    aut_state,
-                    aut_memory,
-                    aut_decision_engine,
-                    aut_executor,
-                    autonomy_controller=aut_autonomy,
-                    llm_worker=aut_llm_worker,
-                    default_network=aut_default_network,
-                    hippocampus=aut_hippocampus,
-                    memory_hub=aut_memory_hub,
-                    max_steps=0,  # unlimited — AUT stops when bridge.finish() is called
-                    stop_event=stop_event,
-                    target_hz=2.0,
-                    percept_source=bridge.percept_source,
-                    action_sink=bridge.action_sink,
-                    pain_bus=aut_pain_bus,
-                    imagination_trigger=aut_imagination_trigger,
-                    bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
-                    thought_gate=_aut_thought_gate,
-                    aut_mode=aut_mode,
-                    substrate_telemetry=aut_substrate_telemetry,
-                )
+            with context_scope(new_request_context(agent_id="sim_aut", session_id=session_id)):
+                with sim_agent_context("sim_aut"):
+                    run_agentic_loop(
+                        aut_agent,
+                        aut_env,
+                        aut_state,
+                        aut_memory,
+                        aut_decision_engine,
+                        aut_executor,
+                        autonomy_controller=aut_autonomy,
+                        llm_worker=aut_llm_worker,
+                        default_network=aut_default_network,
+                        hippocampus=aut_hippocampus,
+                        memory_hub=aut_memory_hub,
+                        max_steps=0,  # unlimited — AUT stops when bridge.finish() is called
+                        stop_event=stop_event,
+                        target_hz=2.0,
+                        percept_source=bridge.percept_source,
+                        action_sink=bridge.action_sink,
+                        pain_bus=aut_pain_bus,
+                        imagination_trigger=aut_imagination_trigger,
+                        bio_enrichment_pipeline=aut_bio_enrichment_pipeline,
+                        thought_gate=_aut_thought_gate,
+                        aut_mode=aut_mode,
+                        substrate_telemetry=aut_substrate_telemetry,
+                    )
         except Exception as e:
             aut_error.append(e)
             logger.error("AUT loop failed: %s", e)
@@ -2371,27 +2396,39 @@ def start_simulation_mode(
     # so there's only one spinner managing the terminal line.
     bridge._spinner.start("Orchestrator planning first probe...")
 
+    # Stage 0b: bind RequestContext on the orchestrator thread so
+    # orch-side action records (rare — most actions land on the AUT
+    # sink, but orchestrator tools still execute) carry agent_id +
+    # session_id. Symmetric with the AUT thread binding above. Runs
+    # on the main thread; context_scope's __exit__ resets the bind
+    # on normal return AND on exception, so the bind is scoped to
+    # exactly the run_agentic_loop window. Per pre-merge review
+    # architecture lens I5, this replaces a manual set_context /
+    # reset_context try/finally with the canonical helper.
+    from maxim.utils.http import context_scope, new_request_context
+
     try:
-        with sim_agent_context("sim_orchestrator"):
-            run_agentic_loop(
-                orch_agent,
-                orch_env,
-                orch_state,
-                orch_memory,
-                orch_decision_engine,
-                orch_executor,
-                autonomy_controller=orch_autonomy,
-                llm_worker=orch_llm_worker,
-                # NOTE: orchestrator hippocampus disabled for now — it captures
-                # every tool call as an episodic memory, which is noisy.
-                # Re-enable when cross-session learning (Phase 3) is tuned.
-                # hippocampus=orch_hippocampus,
-                # memory_hub=orch_memory_hub,
-                max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
-                stop_event=stop_event,
-                target_hz=2.0,
-                percept_source=orchestrator_source,
-            )
+        with context_scope(new_request_context(agent_id="sim_orchestrator", session_id=session_id)):
+            with sim_agent_context("sim_orchestrator"):
+                run_agentic_loop(
+                    orch_agent,
+                    orch_env,
+                    orch_state,
+                    orch_memory,
+                    orch_decision_engine,
+                    orch_executor,
+                    autonomy_controller=orch_autonomy,
+                    llm_worker=orch_llm_worker,
+                    # NOTE: orchestrator hippocampus disabled for now — it captures
+                    # every tool call as an episodic memory, which is noisy.
+                    # Re-enable when cross-session learning (Phase 3) is tuned.
+                    # hippocampus=orch_hippocampus,
+                    # memory_hub=orch_memory_hub,
+                    max_steps=0,  # unlimited — stops via FinishSimulationTool or /cancel
+                    stop_event=stop_event,
+                    target_hz=2.0,
+                    percept_source=orchestrator_source,
+                )
     except KeyboardInterrupt:
         display_summary(["Simulation stopped by user"])
     except Exception as e:

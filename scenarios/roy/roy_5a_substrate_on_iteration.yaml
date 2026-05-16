@@ -1,0 +1,91 @@
+# Roy-5a-substrate-on — Re-run Roy-5a with MAXIM_SUBSTRATE_PATH=1.
+#
+# Roy-5a and Roy-5a-confirm both observed ZERO text-modality EC fires
+# during priming, while Roy-4 (identical iteration spec) produced 154.
+# Root cause: MemoryHub._encoder is only wired when MAXIM_SUBSTRATE_PATH=1
+# is set in the runner environment (memory_hub.py:247). Without that
+# env var:
+#   - memory_hub._encoder = None
+#   - BioEnrichmentPipeline receives encoder=None
+#   - BioEnrichmentPipeline's text-modality EC fire (bio_enrichment.py:576)
+#     short-circuits on `if self._encoder is not None and ...`
+#   - Result: zero text-modality EC fires, M_tt empty, verdict triggers
+#     via the n/a / empty-matrix path
+#
+# Roy-4 inherited MAXIM_SUBSTRATE_PATH=1 from the shell at run-time;
+# Roy-5a + Roy-5a-confirm did not. This is a process gap, not a
+# code regression.
+#
+# Roy-5a-substrate-on closes the gap by explicitly setting
+# MAXIM_SUBSTRATE_PATH=1 in the runner environment. This is the
+# proper Stage 1 disambiguation — with the substrate path active,
+# text-modality nodes form during priming and the M_tt matrix is
+# populated; the analyzer can decode H1a / H1b / H1c on real text
+# cosines rather than the "no text nodes exist" degenerate case.
+#
+# Companion docs:
+#   docs/plans/roy_5_encoder_alignment_disambiguator.md       (Stage 1)
+#   docs/plans/persona_convergence_crucible.md                (iteration log)
+#   docs/experiments/22_roy_5a.md                             (Roy-5a outcome — the n/a-path verdict)
+#   scenarios/roy/roy_5a_iteration.yaml                       (original; structurally identical)
+#   scenarios/roy/roy_5a_confirm_iteration.yaml               (variance check; reproduced silence)
+#
+# Run with:
+#   MAXIM_SUBSTRATE_PATH=1 \
+#   MAXIM_EC_TRACE_ACTIVATIONS=1 \
+#   MAXIM_LOG_FILE=/tmp/roy_5a_substrate_on_ec_trace.jsonl \
+#       maxim roy run scenarios/roy/roy_5a_substrate_on_iteration.yaml
+#
+# Expected wall: ~25-28 min (same shape as Roy-2c / Roy-4 / Roy-5a /
+# Roy-5a-confirm). Text-modality EC fire count expected ≥ ~50
+# (Roy-4 baseline was 154). If silence STILL reproduces with
+# MAXIM_SUBSTRATE_PATH=1 set, the regression is genuinely structural
+# at a layer below the env-var gate.
+
+name: roy-5a-substrate-on
+description: |
+  Roy-5a re-run with MAXIM_SUBSTRATE_PATH=1 set in the runner
+  environment, so MemoryHub._encoder is wired and
+  BioEnrichmentPipeline produces text-modality EC fires.
+  Identical priming + fixture + arms to Roy-5a / Roy-5a-confirm —
+  the only structural change is the env var, which is the difference
+  between Roy-4 (154 text fires) and Roy-5a (0 text fires).
+
+embodiment: bodies/infant_humanoid
+aut_mode: substrate-primary
+
+priming:
+  name: roy-5a-substrate-on-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+test_scenario:
+  fixture: roy_2pc_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    system_prompt: neutral
+  b:
+    substrate: blank
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral

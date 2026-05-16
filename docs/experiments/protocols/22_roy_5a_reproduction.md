@@ -54,16 +54,29 @@ curl -si --max-time 10 \
 # Kill any stale sims first.
 pkill -f "maxim.*sim" 2>/dev/null
 
-# IMPORTANT: MAXIM_EC_TRACE_ACTIVATIONS=1 is NOT load-bearing for the
-# Roy-5a verdict (the analyzer reads centroids from disk, not from
-# JSONL trace events). It's still set here for parity with Roy-4 — the
-# per-tick traces remain useful as a cross-check on which priming
-# nodes fired in which test ticks (see the EC-trace capture table in
-# 22_roy_5a.md § Result).
+# IMPORTANT — load-bearing env vars:
+#
+# MAXIM_SUBSTRATE_PATH=1   (LOAD-BEARING for the analyzer's verdict)
+#   Gates MemoryHub._encoder wiring. Without this set, BioEnrichmentPipeline's
+#   text-modality EC fire (bio_enrichment.py:576) short-circuits on
+#   encoder=None. The initial Roy-5a run did NOT set this and produced
+#   the n/a / empty-matrix path; Roy-5a-substrate-on added it explicitly
+#   and produced the structurally clean H1a verdict. ALWAYS SET THIS for
+#   any Roy iteration that expects text-modality cosine matrices to be
+#   meaningful. (Wire-A in release_0_9_1.md will flip the default once
+#   it ships; until then, this is opt-in per release_0_9_1.md Stage 2.)
+#
+# MAXIM_EC_TRACE_ACTIVATIONS=1   (not load-bearing for verdict, useful for cross-check)
+#   The analyzer reads centroids from disk (aut_ec.json), not from JSONL
+#   trace events. But the per-tick traces remain useful as a cross-check
+#   on which priming nodes fired in which test ticks — and on whether
+#   text-modality routing is firing at all (zero text fires in the
+#   trace JSONL is the signal that MAXIM_SUBSTRATE_PATH wasn't set).
 #
 # The load-bearing artifact is the per-session aut_ec.json, written
 # automatically since PR #248.
 
+MAXIM_SUBSTRATE_PATH=1 \
 MAXIM_EC_TRACE_ACTIVATIONS=1 \
 MAXIM_LOG_FILE=/tmp/roy_5a_ec_trace.jsonl \
   maxim roy run scenarios/roy/roy_5a_iteration.yaml > /tmp/roy_5a_run.log 2>&1

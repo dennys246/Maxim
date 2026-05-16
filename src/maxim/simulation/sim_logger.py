@@ -934,12 +934,35 @@ def sim_fear(tool: str, allowed: bool, reason: str = "", *, agent_id: str | None
         sim_log("BLOCKED", f"🚫 BLOCKED: {tool} — {reason}", agent_id=agent_id)
 
 
-def sim_action(tool: str, success: bool, summary: str = "", *, agent_id: str | None = None) -> None:
-    """Log a tool execution."""
+def sim_action(
+    tool: str,
+    success: bool,
+    summary: str = "",
+    *,
+    agent_id: str | None = None,
+    entity_class: str | None = None,
+    **kwargs: Any,
+) -> None:
+    """Log a tool execution.
+
+    Stage 0b (release_0_9_1.md): accepts ``entity_class`` for
+    exposure-count normalization in Roy-3 analysis. Falls into the
+    structured ``data`` dict alongside any other kwargs. None → field
+    omitted from the persisted record. The plain ``sim_action(tool,
+    success)`` call shape from earlier callers continues to work
+    unchanged (entity_class defaults to None and is dropped before
+    the dict is passed to sim_log).
+    """
     icon = "⚔️" if success else "❌"
     status = "OK" if success else "FAIL"
+    data: dict[str, Any] = dict(kwargs)
+    if entity_class is not None:
+        data["entity_class"] = entity_class
     sim_log(
-        "MOTOR", f"{icon} [{status}] {tool}: {summary}" if summary else f"{icon} [{status}] {tool}", agent_id=agent_id
+        "MOTOR",
+        f"{icon} [{status}] {tool}: {summary}" if summary else f"{icon} [{status}] {tool}",
+        data if data else None,
+        agent_id=agent_id,
     )
 
 
