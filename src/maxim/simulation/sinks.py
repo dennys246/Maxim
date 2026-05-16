@@ -38,7 +38,23 @@ from typing import Any, Protocol, runtime_checkable
 
 @dataclass(frozen=True)
 class ActionRecord:
-    """Captured output action from the agent pipeline."""
+    """Captured output action from the agent pipeline.
+
+    SHAPE-FROZEN at 1.0 (CC3) — appending optional fields at the end
+    with sensible defaults is the only allowed evolution. Required
+    fields, type changes, and field reorderings are major-version
+    bumps. The fields are observability-focused; no isolation-hygiene
+    rule applies, so an ``extra`` escape hatch is unnecessary —
+    add purpose-specific fields here as new telemetry needs surface.
+
+    Stage 0b additions (release_0_9_1.md): ``agent_id`` /
+    ``session_id`` thread through from the ``RequestContext`` ContextVar
+    bound at the sim orchestrator entry; ``entity_class`` carries the
+    target entity classification (food, weapon, body-part, etc.) for
+    pain-aversion exposure normalization in Roy-3 analysis. All three
+    are optional ``None`` defaults so existing test fixtures and
+    third-party ``ActionSink`` implementations keep working.
+    """
 
     timestamp: float
     tool_name: str
@@ -48,6 +64,13 @@ class ActionRecord:
     result_error: str | None = None
     blocked: bool = False
     block_reason: str | None = None
+    # Stage 0b (release_0_9_1.md): per-record agent + session attribution.
+    # Populated by InstrumentedExecutor from utils/http.py::current_context().
+    agent_id: str | None = None
+    session_id: str | None = None
+    # Stage 0b: entity classification for exposure-count normalization.
+    # Best-effort — derived from tool_args target where present.
+    entity_class: str | None = None
 
 
 @runtime_checkable
@@ -105,6 +128,13 @@ class RecordingSink:
                     result_error=rec.result_error[:100] if rec.result_error else None,
                     blocked=rec.blocked,
                     block_reason=rec.block_reason,
+                    # Stage 0b telemetry fields are kept through compression —
+                    # they're tiny and the whole point of 0b is post-hoc
+                    # attribution analysis across the full action stream,
+                    # which would break if compressed records dropped them.
+                    agent_id=rec.agent_id,
+                    session_id=rec.session_id,
+                    entity_class=rec.entity_class,
                 )
             )
         self._actions = compressed + self._actions[half:]

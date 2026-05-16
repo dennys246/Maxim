@@ -29,6 +29,71 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _emit_recommend_action_event(
+    *,
+    agent_id: str,
+    current_cluster_id: str | None,
+    cluster_reward_bias_consulted: float | None,
+    best_tool: str | None,
+    best_score: float,
+    min_confidence: float,
+    passed_gate: bool,
+) -> None:
+    """Emit a ``sim_recommend_action`` event for Stage 0c telemetry.
+
+    Per release_0_9_1.md Stage 0c, every ``recommend_action`` call MUST
+    emit exactly one event — even the early-return paths (empty
+    available_tools, empty scores, sub-threshold) — so Roy-3 measurement
+    can distinguish "gate fired but consumer did nothing" from
+    "consumer ran and proposed nothing."
+
+    The event lands on the ``sim_log("NAc_RECOMMEND", ...)`` channel,
+    which routes through the standard sim_log JSONL writer + the
+    MAXIM_LOG_FILE bridge.
+
+    **Tick alignment with Stage 0d (CRITICAL):** the ``tick`` field
+    matches Stage 0d's ``sim_ec_activation`` tick space —
+    ``int(time.time() - sim_logger._sim_start)``, NOT raw epoch seconds.
+    Without this alignment Roy-3 cannot left-join the two channels
+    on tick (a 1e9 offset returns zero matches every time). For
+    sub-second ordering use the sim_log JSONL's top-level ``t`` field,
+    which sim_log auto-attaches with millisecond resolution from the
+    same ``_sim_start`` reference.
+
+    The emission is fail-soft: ``ImportError`` (non-sim runtime where
+    sim_logger isn't importable at all) is swallowed silently. Any
+    other exception propagates — a real sim_logger bug should surface
+    rather than masquerade as silent annotation-off.
+    """
+    try:
+        from maxim.simulation import sim_logger as _sl
+
+        tick = int(time.time() - _sl._sim_start) if _sl._sim_start > 0.0 else 0
+        _sl.sim_log(
+            "NAc_RECOMMEND",
+            f"recommend_action: passed_gate={passed_gate}",
+            {
+                "tick": tick,
+                "current_cluster_id": current_cluster_id,
+                "cluster_reward_bias_consulted": cluster_reward_bias_consulted,
+                "best_tool": best_tool,
+                "best_score": round(best_score, 4),
+                "min_confidence": min_confidence,
+                "passed_gate": passed_gate,
+            },
+            agent_id=agent_id,
+        )
+    except ImportError:
+        # Non-sim runtime: sim_logger isn't importable at all (e.g.,
+        # headless API without the simulation extras). Stage 0c is
+        # observability only, not load-bearing for correctness —
+        # swallow silently. Any OTHER exception (a real sim_logger
+        # bug, an attribute error from a broken refactor) propagates
+        # so we don't silently disable telemetry the Roy-3 measurement
+        # arm depends on.
+        pass
+
+
 @dataclass(frozen=True)
 class NACConfig:
     """Configuration for Nucleus Accumbens."""
@@ -1218,6 +1283,19 @@ class NAc:
         if not agent_id:
             raise ValueError("recommend_action requires non-empty agent_id")
         if not available_tools:
+            # Stage 0c: empty available_tools is a legitimate early return
+            # (e.g., the scene_actor filter trimmed the executor's tool set
+            # to nothing). Still emit so Roy-3 can distinguish "no tools
+            # available" from "no tools scored above gate."
+            _emit_recommend_action_event(
+                agent_id=agent_id,
+                current_cluster_id=current_cluster_id,
+                cluster_reward_bias_consulted=None,
+                best_tool=None,
+                best_score=0.0,
+                min_confidence=min_confidence,
+                passed_gate=False,
+            )
             return None
 
         drives = current_drives or {}
@@ -1292,14 +1370,67 @@ class NAc:
                 scores[tool_name] = score
                 reasoning_parts[tool_name] = parts
 
+        # Stage 0c (release_0_9_1.md): emit `sim_recommend_action` for
+        # post-hoc Roy-3 measurement. Every recommend_action call emits
+        # exactly one event — even on the early-return paths (no scores,
+        # sub-threshold) — so Roy iterations can distinguish "gate fired
+        # but consumer didn't run" from "consumer ran and proposed
+        # nothing." Per the plan: "the event MUST emit even when
+        # recommend_action returns None."
         if not scores:
+            # Bio-fidelity review fold: distinguish "cluster known, no
+            # tool scored" (0.0 sentinel — agent had context but nothing
+            # rewarded) from "cluster unknown" (None — no
+            # current_cluster_id at all). Roy-3 needs this distinction
+            # to expose the Wire-A vs recommend_action gap; collapsing
+            # both into None would elide the H1 signal.
+            _consulted_on_empty: float | None = 0.0 if current_cluster_id else None
+            _emit_recommend_action_event(
+                agent_id=agent_id,
+                current_cluster_id=current_cluster_id,
+                cluster_reward_bias_consulted=_consulted_on_empty,
+                best_tool=None,
+                best_score=0.0,
+                min_confidence=min_confidence,
+                passed_gate=False,
+            )
             return None
 
         best_tool = max(scores, key=lambda t: (scores[t], t))
         best_score = scores[best_tool]
+
+        # Record the cluster_reward_bias consulted for the best tool —
+        # informative for Roy-3 because Wire-A renders aggregate biases
+        # across all clusters, but recommend_action only consults the
+        # active-cluster value. Mismatch between rendered Wire-A signal
+        # and consulted recommend_action signal is the failure mode the
+        # H1 sub-hypothesis branches (cross_modal_substrate_binding.md /
+        # jepa_cross_modal_alignment.md) eventually address.
+        consulted_bias: float | None = None
+        if current_cluster_id:
+            consulted_bias = self.cluster_reward_bias(agent_id, current_cluster_id, f"tool:{best_tool}")
+
         if best_score < min_confidence:
+            _emit_recommend_action_event(
+                agent_id=agent_id,
+                current_cluster_id=current_cluster_id,
+                cluster_reward_bias_consulted=consulted_bias,
+                best_tool=best_tool,
+                best_score=best_score,
+                min_confidence=min_confidence,
+                passed_gate=False,
+            )
             return None
 
+        _emit_recommend_action_event(
+            agent_id=agent_id,
+            current_cluster_id=current_cluster_id,
+            cluster_reward_bias_consulted=consulted_bias,
+            best_tool=best_tool,
+            best_score=best_score,
+            min_confidence=min_confidence,
+            passed_gate=True,
+        )
         return {
             "tool_name": best_tool,
             "params": {},
