@@ -2764,6 +2764,53 @@ def run_agentic_loop(
                     if context is not None and _auto_sense_text:
                         context.auto_sense_context = _auto_sense_text
 
+                    # Wire-A (release_0_9_1.md Stage 2): cluster-bias annotation.
+                    # Surface NAc agent-wide tool-bias to the LLM proposer so it
+                    # can read substrate-acquired signal across percept regimes
+                    # the substrate didn't directly drill (Roy-2c finding).
+                    #
+                    # The env var MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1 disables
+                    # the read for the Roy-3 ablation; absence → on by default.
+                    # Truthy-value parsing is shared with the conftest scrub +
+                    # test suite via ``annotation_disabled_via_env`` so a future
+                    # divergence here trips the test layer.
+                    #
+                    # ValueError narrowing per pre-merge review (architecture
+                    # lens): a misconfigured per-agent stash (empty agent_id)
+                    # MUST surface loudly via the WARNING log so the Roy-3
+                    # measurement arm doesn't silently degrade to
+                    # annotation-off behavior. Other exceptions propagate —
+                    # the producer is on the LLM-submission hot path; a real
+                    # bug here is correctness-critical (Roy-3 evidence
+                    # integrity), not a recoverable nuisance.
+                    #
+                    # NOTE: the deliberation cycle re-submits the same context
+                    # object without re-running this hook, so biases captured
+                    # here are the snapshot at first submission. Bias change
+                    # within a 1-tick deliberation cycle is bounded by
+                    # ``reward_bias_alpha`` per call (~0.15); the stale-by-one-
+                    # tick read is acceptable, and avoiding per-cycle re-reads
+                    # keeps NAc lock contention bounded.
+                    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+                    if (
+                        context is not None
+                        and _loop_nac is not None
+                        and not annotation_disabled_via_env(os.environ.get("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION"))
+                    ):
+                        try:
+                            context.cluster_bias_annotations = _loop_nac.get_agent_tool_biases(
+                                agent_id=_loop_agent_id,
+                                top_n=5,
+                            )
+                        except ValueError as e:
+                            logger.warning(
+                                "Wire-A annotation skipped due to invalid agent_id (%s); "
+                                "Roy-3 measurement integrity may be affected.",
+                                e,
+                            )
+                            context.cluster_bias_annotations = None
+
                     # Check if there's something meaningful to react to
                     # Only submit to LLM if we have:
                     # 1. New CLI input with "maxim" keyword - not already processed
@@ -3249,6 +3296,7 @@ def run_agentic_loop(
                 _loop_nac.decay_eligibility()
                 _loop_nac.decay_reward_biases()
                 _loop_nac.decay_goal_reward_biases()
+                _loop_nac.decay_cluster_reward_biases()
             except Exception as e:
                 log_swallowed_exception(e, operation="nac_per_tick_decay")
 

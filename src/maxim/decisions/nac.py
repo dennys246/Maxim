@@ -1558,6 +1558,62 @@ class NAc:
             return 0.0
         return self._cluster_reward_bias.get((agent_id, cluster_id, tool_signature), 0.0)
 
+    def get_agent_tool_biases(
+        self,
+        *,
+        agent_id: str,
+        top_n: int = 5,
+    ) -> list[tuple[str, float]]:
+        """Aggregate per-tool reward bias across all clusters for one agent.
+
+        Used by Wire-A (release_0_9_1.md Stage 2) to surface substrate-
+        acquired tool-level reward signal to the LLM prompt. The
+        aggregation is **agent-wide** (no active-cluster filter) because
+        Roy-2c confirmed the encoder-alignment gap makes priming clusters
+        structurally disjoint from test-fixture clusters — restricting
+        rendering to active-cluster intersection reproduces the exact
+        bug Wire-A exists to fix.
+
+        For each unique ``tool_signature`` under ``agent_id``, takes the
+        bias whose absolute value is largest across all clusters. This
+        treats a strong negative (avoidance) and a strong positive
+        (attraction) as equally diagnostic of substrate-acquired signal,
+        and surfaces whichever is stronger. The sign is preserved in the
+        returned bias so the caller can render aversion vs reward
+        distinctly.
+
+        Args:
+            agent_id: Per-agent scoping (CLAUDE.md per-agent stash
+                invariant). Empty string is rejected.
+            top_n: Maximum number of (tool, bias) pairs to return.
+                Sorted by ``abs(bias)`` descending; ties broken by
+                ``tool_signature`` ascending for stable output.
+
+        Returns:
+            List of ``(tool_signature, bias)`` tuples. Empty list when
+            ``agent_id`` has no entries in ``_cluster_reward_bias`` (a
+            cold-start agent OR an agent that has never run a
+            substrate-primary tick).
+        """
+        if not agent_id:
+            raise ValueError("get_agent_tool_biases requires non-empty agent_id")
+        # Aggregate per tool_signature: keep the bias with the largest
+        # |bias| seen across all (agent_id, cluster_id, tool_signature)
+        # entries matching agent_id.
+        per_tool: dict[str, float] = {}
+        with self._lock:
+            for (aid, _cid, tool_sig), bias in self._cluster_reward_bias.items():
+                if aid != agent_id:
+                    continue
+                existing = per_tool.get(tool_sig)
+                if existing is None or abs(bias) > abs(existing):
+                    per_tool[tool_sig] = bias
+        if not per_tool:
+            return []
+        # Sort by |bias| desc, tool_signature asc (stable tiebreaker).
+        items = sorted(per_tool.items(), key=lambda kv: (-abs(kv[1]), kv[0]))
+        return items[: max(0, top_n)]
+
     # -- Goal-level reward bias (bidirectional, for ThoughtGate) ----------
 
     def credit_goal(self, goal_tag: str | None, reward: float) -> None:
@@ -1610,6 +1666,39 @@ class NAc:
                     self._goal_reward_bias[goal] = new_bias
             for goal in to_remove:
                 del self._goal_reward_bias[goal]
+        return pruned
+
+    def decay_cluster_reward_biases(self) -> int:
+        """Decay cluster-keyed reward biases toward zero.
+
+        Called per-tick alongside ``decay_reward_biases()`` and
+        ``decay_goal_reward_biases()``. Without per-tick decay the
+        cluster-bias map accumulates indefinitely; Wire-A
+        (release_0_9_1.md Stage 2) reads this map at every LLM
+        submission and renders it as the substrate's "felt familiarity"
+        annotation, so stale-forever biases would silently lie about
+        being "from prior experience" when they're actually "from
+        forever ago."
+
+        Uses same decay tau as node and goal biases (bidirectional —
+        absolute-value prune below 0.001, mirroring
+        ``decay_goal_reward_biases``). Returns count pruned.
+        """
+        if not self._cluster_reward_bias:
+            return 0
+        decay_factor = 1.0 / self.config.reward_bias_decay_tau
+        pruned = 0
+        with self._lock:
+            to_remove = []
+            for key, bias in self._cluster_reward_bias.items():
+                new_bias = bias * (1.0 - decay_factor)
+                if abs(new_bias) < 0.001:
+                    to_remove.append(key)
+                    pruned += 1
+                else:
+                    self._cluster_reward_bias[key] = new_bias
+            for key in to_remove:
+                del self._cluster_reward_bias[key]
         return pruned
 
     def update_eligibility(

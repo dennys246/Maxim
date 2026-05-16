@@ -162,6 +162,29 @@ def _isolate_maxim_ec_trace_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_disable_cluster_bias_annotation():
+    """Scrub ``MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION`` across every test.
+
+    Added in 0.9.1 (release_0_9_1.md Stage 2). Gates Wire-A's
+    cluster-bias annotation read at the agent-loop LLM-submission site.
+    Default OFF (annotation ON) per the release plan; the Roy-3
+    ablation iteration sets this to ``1`` to compare annotation-on
+    vs annotation-off arms. Per CLAUDE.md "opt-in env vars in hot
+    startup paths need autouse scrubs", pair the env-var reader at
+    ``runtime/agent_loop.py`` with this scrub so a Roy-3 ablation test
+    does not leak annotation-disabled state into every later test
+    that constructs the agent loop.
+    """
+    saved = os.environ.pop("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION", None)
+        if saved is not None:
+            os.environ["MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_deep_embodiment():
     """Reset ``resolution._resolved_depth`` + scrub ``MAXIM_DEEP_EMBODIMENT``.
 

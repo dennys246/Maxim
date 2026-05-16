@@ -606,6 +606,16 @@ class StructuredContext:
     # Populated by BioEnrichmentPipeline when a novel percept passes the gate.
     bio_enrichment_context: str = ""
 
+    # Cluster-bias annotations (Wire-A, 0.9.1 Stage 2): top-N (tool, bias)
+    # pairs from NAc._cluster_reward_bias aggregated agent-wide via
+    # NAc.get_agent_tool_biases. Surfaces substrate-acquired tool-level
+    # reward signal to the LLM proposer so it can read priming-acquired
+    # bias even on percepts the substrate didn't directly drill (the
+    # Roy-2c finding fix). Populated by agent_loop.py at LLM submission;
+    # rendered by PromptBuilder._add_cluster_bias_annotation_section.
+    # None == disabled (env var off, no NAc wired, or cold-start agent).
+    cluster_bias_annotations: list[tuple[str, float]] | None = None
+
     # Auto-sense: passive perception results (exteroception + interoception).
     # Populated by the agent loop's auto-sense sweep (section 1.15) on each
     # new percept.  Contains sense_presence output (visible entities +

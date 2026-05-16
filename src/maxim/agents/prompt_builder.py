@@ -887,6 +887,7 @@ class PromptBuilder:
         self._add_pfc_preamble_section(budgeter, request)
         self._add_acting_coach_section(budgeter, request)
         self._add_entity_context_section(budgeter, request)
+        self._add_cluster_bias_annotation_section(budgeter, request)
         self._add_guidance_sections(budgeter, request, date_str, time_str)
         self._add_context_sections(budgeter, request, question_text)
         self._add_perception_sections(budgeter, request)
@@ -1118,6 +1119,46 @@ class PromptBuilder:
         if text:
             budgeter.add(
                 "entity_context",
+                text,
+                SectionPriority.IMPORTANT,
+            )
+
+    @staticmethod
+    def _add_cluster_bias_annotation_section(
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+    ) -> None:
+        """Cluster-bias annotation (Wire-A, 0.9.1 Stage 2).
+
+        Renders agent-wide aggregated NAc reward bias per tool as a
+        structured prompt block, so the LLM proposer can read
+        substrate-acquired signal across percept regimes the substrate
+        didn't directly drill. The interim signal-surfacing fix for
+        the Roy-2c finding (cluster wire has right tool keys, wrong
+        cluster keys).
+
+        Populated upstream by the agent loop at LLM-submission time
+        (``StructuredContext.cluster_bias_annotations``). This helper
+        only renders; it does NOT call NAc directly. Empty / None
+        context skips the section silently.
+
+        Env-var gate ``MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1`` (read
+        at the agent-loop producer site, not here) disables population,
+        which manifests here as a None field and the section is
+        skipped. This indirection means the prompt-builder unit tests
+        don't need env-var fixtures — they just exercise the section
+        composer with a populated list.
+        """
+        biases = getattr(request.context, "cluster_bias_annotations", None)
+        if not biases:
+            return
+
+        from maxim.prompts.cluster_bias_annotation import compose_cluster_bias_annotation_section
+
+        text = compose_cluster_bias_annotation_section(biases)
+        if text:
+            budgeter.add(
+                "cluster_bias_annotations",
                 text,
                 SectionPriority.IMPORTANT,
             )
