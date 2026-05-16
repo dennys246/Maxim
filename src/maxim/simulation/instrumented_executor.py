@@ -25,25 +25,43 @@ from maxim.utils.http import current_context
 def _derive_entity_class(tool_name: str, params: dict[str, Any]) -> str | None:
     """Best-effort entity-class extraction for Stage 0b telemetry.
 
-    Roy-3 analysis normalizes pain-aversion counts per entity_class —
-    knowing the agent encountered "food" 50 times but felt pain 3 times
-    matters very differently from encountering "food" 5 times and feeling
-    pain 3 times. The exact derivation is fuzzy because Maxim's tool
-    surface mixes verb-only tools (``respond``, ``examine``) with
-    entity-bound tools (``infant_humanoid_pick_up``, ``sense_food_source``).
+    **DO NOT consume this field from any substrate write path** (NAc,
+    EC, ATL, Hippocampus, PainBus). It exists for Roy-3 post-hoc
+    exposure-count normalization and the Roy harness's per-class
+    plotting. Substrate consumers must derive entity identity from
+    the percept text + EC pattern completion, NEVER from this field.
+    The bio-fidelity guardrail in the bio-lens review: this field is
+    walled off from the substrate so it can stay a best-effort
+    heuristic without contaminating the 1.0 thesis ("substrate carries
+    cognition; language is I/O").
 
-    Heuristics (lowest-cost-to-highest):
-    1. ``params["entity_class"]`` — explicit caller override (highest fidelity).
+    **Strict opt-in derivation:** ships explicit-param-only at 0.9.1
+    after the pre-merge review caught the verb-strip heuristic
+    producing noisy buckets on non-entity tools (``get_status`` →
+    ``"status"``, ``set_entity_sensor`` → ``"entity_sensor"``,
+    ``do_something_clever`` → ``"something_clever"``). Roy-3
+    normalization explicitly skips ``None``, so being conservative is
+    strictly safer than producing wrong buckets — silent miscount is
+    worse than missing data.
+
+    Heuristics in priority order:
+    1. ``params["entity_class"]`` — explicit caller override.
     2. ``params["target"]`` / ``params["entity"]`` / ``params["object"]`` —
        the conventional param names entity-binding tools use.
-    3. Tool-name prefix split — ``infant_humanoid_pick_up`` → ``infant_humanoid``;
-       ``sense_food_source`` → ``food`` (heuristic: skip leading verb token).
 
-    Returns ``None`` when nothing in the action surface looks
-    entity-bound (e.g., ``respond``, ``examine``, sleep tools). The
-    field is best-effort metadata, never load-bearing for correctness;
-    Roy-3 analysis aggregates with ``None`` skipped from
-    exposure-count normalization.
+    Returns ``None`` when neither (1) nor (2) is present, including
+    for tools whose name suggests an entity binding but didn't pass
+    one through params (``infant_humanoid_pick_up`` with no target →
+    None). The field is best-effort metadata.
+
+    TODO (1.1): replace this opt-in heuristic with a declared
+    ``Tool.entity_class: str | None`` field on the Tool ABC, so tool
+    authors can opt their tools into Roy-3 attribution explicitly
+    without participating in this derivation logic at all. Tracks
+    the same surface as ``feedback_two_identity_schemes.md`` — the
+    substrate already uses tool-name AND EC-cluster identity for one
+    concept; declared ``entity_class`` would be a third explicit
+    handle that tooling can rely on.
     """
     if not isinstance(params, dict):
         return None
@@ -56,25 +74,9 @@ def _derive_entity_class(tool_name: str, params: dict[str, Any]) -> str | None:
         val = params.get(key)
         if isinstance(val, str) and val:
             return val
-    # 3. Tool-name heuristic. Strip leading verb tokens.
-    if "_" in tool_name:
-        parts = tool_name.split("_")
-        # Common verb prefixes that tools start with — these are NOT
-        # the entity class.
-        verb_prefixes = {"sense", "use", "do", "get", "set", "make", "go", "look", "examine"}
-        if parts and parts[0].lower() in verb_prefixes:
-            remainder = "_".join(parts[1:])
-            if remainder:
-                # ``sense_food_source`` → ``food_source`` after strip;
-                # further trim trailing role tokens like ``_source`` /
-                # ``_target`` so the bucket reads as ``food``.
-                role_suffixes = {"source", "target", "object"}
-                tail_parts = remainder.split("_")
-                while tail_parts and tail_parts[-1].lower() in role_suffixes:
-                    tail_parts.pop()
-                if tail_parts:
-                    return "_".join(tail_parts)
-                return remainder
+    # No verb-strip path: pre-merge review showed it produced noise
+    # on non-entity tools that Roy-3 normalization would silently
+    # mis-attribute. Future work tracked in the docstring TODO.
     return None
 
 

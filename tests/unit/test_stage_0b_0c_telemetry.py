@@ -96,13 +96,20 @@ class TestEntityClassDerivation:
         """params["entity_class"] beats params["target"] when both present."""
         assert _derive_entity_class("any_tool", {"entity_class": "food", "target": "drink"}) == "food"
 
-    def test_tool_name_verb_prefix_stripped(self) -> None:
-        """``sense_food_source`` → strip 'sense' verb + 'source' role suffix → 'food'."""
-        assert _derive_entity_class("sense_food_source", {}) == "food"
+    def test_tool_name_alone_does_not_derive(self) -> None:
+        """Pre-merge review fold: the verb-strip heuristic was dropped
+        as too noisy. Tools whose name suggests an entity binding
+        (``sense_food_source``, ``infant_humanoid_pick_up``) but don't
+        pass an entity param through the call now return None.
 
-    def test_tool_name_no_role_suffix(self) -> None:
-        """``use_weapon`` → strip 'use' verb → 'weapon'."""
-        assert _derive_entity_class("use_weapon", {}) == "weapon"
+        Roy-3 normalization explicitly skips None, so being conservative
+        is strictly safer than producing wrong buckets — silent miscount
+        is worse than missing data. The future fix (1.1 TODO in the
+        derivation docstring) declares ``Tool.entity_class`` on the
+        Tool ABC so authors opt in explicitly."""
+        assert _derive_entity_class("sense_food_source", {}) is None
+        assert _derive_entity_class("infant_humanoid_pick_up", {}) is None
+        assert _derive_entity_class("use_weapon", {}) is None
 
     def test_verb_only_tools_return_none(self) -> None:
         """``respond`` / ``examine`` / no underscore → None (not entity-bound)."""
@@ -110,9 +117,30 @@ class TestEntityClassDerivation:
         assert _derive_entity_class("examine", {}) is None
         assert _derive_entity_class("examine", {"target": ""}) is None
 
+    def test_non_entity_tools_with_underscores_return_none(self) -> None:
+        """Architecture lens I3 regression guard. The pre-fold verb-strip
+        heuristic produced noise on these tools — Roy-3 would have
+        attributed pain events to ``"status"`` or ``"entity_sensor"``
+        as if they were real entity classes. With the heuristic dropped,
+        these all return None."""
+        assert _derive_entity_class("get_status", {}) is None
+        assert _derive_entity_class("set_entity_sensor", {}) is None
+        assert _derive_entity_class("do_something_clever", {}) is None
+        assert _derive_entity_class("make_recommendation", {}) is None
+        assert _derive_entity_class("look_around", {}) is None
+
     def test_non_dict_params_returns_none(self) -> None:
         """Defensive — params might be None or something weird in some paths."""
         assert _derive_entity_class("any_tool", None) is None  # type: ignore[arg-type]
+
+    def test_entity_param_with_underscore_tool_name_wins(self) -> None:
+        """Even when the tool name has underscores, an explicit
+        entity-class param wins. This is the supported path tool
+        authors use to opt into Roy-3 attribution today (until 1.1
+        ships the ``Tool.entity_class`` declared field)."""
+        # Old verb-strip would have stripped "sense" → "food" too,
+        # but the param is the authoritative source either way.
+        assert _derive_entity_class("sense_food_source", {"target": "apple"}) == "apple"
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -134,13 +162,20 @@ class TestInstrumentedExecutorTelemetry:
         ctx = new_request_context(agent_id="sim_aut", session_id="20260515_120000")
         token = set_context(ctx)
         try:
-            executor.execute({"tool_name": "sense_food_source", "params": {}})
+            # Tool author opts into Roy-3 attribution via the
+            # explicit ``entity_class`` param (the only path the
+            # post-fold heuristic accepts).
+            executor.execute(
+                {
+                    "tool_name": "sense_food_source",
+                    "params": {"entity_class": "food"},
+                }
+            )
         finally:
             reset_context(token)
         rec = sink.actions[-1]
         assert rec.agent_id == "sim_aut"
         assert rec.session_id == "20260515_120000"
-        # entity_class derived from tool name via verb-prefix strip.
         assert rec.entity_class == "food"
 
     def test_no_context_bound_yields_none_fields(self) -> None:
@@ -228,7 +263,7 @@ class TestSaveActionLog:
     schema evolution."""
 
     def test_writes_format_version_header(self, tmp_path: Path) -> None:
-        from maxim.simulation.report import save_action_log
+        from maxim.simulation.report import _ACTIONS_JSONL_FORMAT_VERSION, save_action_log
 
         bridge = MagicMock()
         bridge.get_all_actions.return_value = [
@@ -238,9 +273,45 @@ class TestSaveActionLog:
         assert log_path is not None
         lines = log_path.read_text().splitlines()
         header = json.loads(lines[0])
-        assert header["_format_version"] == "1.0"
+        # Plan release_0_9_1.md § "Cross-cutting: persistence schema"
+        # pins this at "1.1" — minor bump from pre-0b unversioned ("0.x").
+        assert _ACTIONS_JSONL_FORMAT_VERSION == "1.1"
+        assert header["_format_version"] == "1.1"
         assert header["_record_kind"] == "header"
         assert header["session_id"] == "sid"
+
+    def test_consumer_can_skip_header_line(self, tmp_path: Path) -> None:
+        """Architecture lens I4 regression guard. The header-line is a
+        schema change for actions.jsonl consumers — third-party tooling
+        iterating the file as "every line is a record" needs to skip
+        ``_record_kind == "header"``. The docstring contract is
+        load-bearing; this test pins it as a real reader pattern."""
+        from maxim.simulation.report import save_action_log
+
+        bridge = MagicMock()
+        bridge.get_all_actions.return_value = [
+            ActionRecord(
+                timestamp=1.0,
+                tool_name="sense_food_source",
+                agent_id="sim_aut",
+                session_id="sid",
+                entity_class="food",
+            ),
+            ActionRecord(timestamp=2.0, tool_name="respond", agent_id="sim_aut", session_id="sid"),
+        ]
+        log_path = save_action_log(bridge, base_dir=str(tmp_path), session_id="sid")
+        assert log_path is not None
+        # Simulate the documented reader pattern:
+        records = []
+        with log_path.open() as f:
+            for line in f:
+                obj = json.loads(line)
+                if obj.get("_record_kind") == "header":
+                    continue
+                records.append(obj)
+        assert len(records) == 2
+        assert records[0]["tool"] == "sense_food_source"
+        assert records[1]["tool"] == "respond"
 
     def test_writes_telemetry_fields_per_record(self, tmp_path: Path) -> None:
         from maxim.simulation.report import save_action_log
@@ -275,7 +346,7 @@ class TestSaveActionLog:
         assert log_path is not None
         lines = log_path.read_text().splitlines()
         assert len(lines) == 1
-        assert json.loads(lines[0])["_format_version"] == "1.0"
+        assert json.loads(lines[0])["_format_version"] == "1.1"
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -467,6 +538,98 @@ class TestRecommendActionEmission:
         )
         assert result is not None
         assert result["tool_name"] == "foo"
+
+    def test_emission_on_empty_available_tools_path(self, tmp_path: Path) -> None:
+        """Architecture lens C3 regression guard. Pre-fold,
+        ``available_tools=[]`` short-circuited before emitting,
+        leaving Roy-3 unable to distinguish "no tools available"
+        from "no tools scored above gate." Post-fold, this path
+        emits with best_tool=None, best_score=0.0, passed_gate=False."""
+        from maxim.simulation.sim_logger import disable_sim_logging, enable_sim_logging
+
+        log_path = tmp_path / "sim_log.jsonl"
+        enable_sim_logging(log_path=str(log_path))
+        try:
+            nac = self._fresh_nac()
+            result = nac.recommend_action(agent_id="sim_aut", available_tools=[])
+        finally:
+            disable_sim_logging()
+
+        assert result is None
+        recs = self._read_recommend_records(log_path)
+        assert len(recs) == 1
+        data = recs[0]["data"]
+        assert data["passed_gate"] is False
+        assert data["best_tool"] is None
+        assert data["best_score"] == 0.0
+
+    def test_tick_aligned_with_sim_logger_start(self, tmp_path: Path) -> None:
+        """Architecture lens C1 regression guard. Pre-fold, tick was
+        ``int(time.time())`` (raw epoch ~1.7e9), while Stage 0d's
+        ``sim_ec_activation`` uses ``int(time.time() - _sim_start)``
+        (elapsed seconds, 0..N). A 1e9 offset means Roy-3 left-joins
+        on tick return zero matches every time. Post-fold, both
+        channels emit comparable tick values from the same _sim_start
+        reference — a tick within ~1s of sim start is a small int,
+        not an epoch."""
+        from maxim.simulation.sim_logger import disable_sim_logging, enable_sim_logging
+
+        log_path = tmp_path / "sim_log.jsonl"
+        enable_sim_logging(log_path=str(log_path))
+        try:
+            nac = self._fresh_nac()
+            nac.update_cluster_reward("sim_aut", "c1", "tool:foo", reward=10.0)
+            nac.recommend_action(
+                agent_id="sim_aut",
+                available_tools=["foo"],
+                current_cluster_id="c1",
+            )
+        finally:
+            disable_sim_logging()
+
+        recs = self._read_recommend_records(log_path)
+        assert len(recs) == 1
+        tick = recs[0]["data"]["tick"]
+        # Elapsed-seconds tick within a fresh sim should be tiny.
+        # If we accidentally regress to raw epoch, this would be ~1.7e9.
+        assert 0 <= tick < 60, f"tick={tick} looks like raw epoch (regression to int(time.time()))"
+
+    def test_empty_scores_sentinel_distinguishes_cluster_known_vs_unknown(self, tmp_path: Path) -> None:
+        """Bio-fidelity I3 regression guard. On the empty-scores path:
+          - cluster_id known but no tool scored → 0.0 sentinel
+          - cluster_id absent → None
+        Roy-3 disambiguation depends on this — otherwise "agent had no
+        active cluster" and "agent had a cluster but no tools scored"
+        collapse into the same record."""
+        from maxim.simulation.sim_logger import disable_sim_logging, enable_sim_logging
+
+        log_path = tmp_path / "sim_log.jsonl"
+        enable_sim_logging(log_path=str(log_path))
+        try:
+            nac = self._fresh_nac()
+            # Path A: cluster known, no tool scored (no bias seeded).
+            nac.recommend_action(
+                agent_id="sim_aut",
+                available_tools=["foo"],
+                current_cluster_id="c1",
+            )
+            # Path B: cluster unknown.
+            nac.recommend_action(
+                agent_id="sim_aut",
+                available_tools=["foo"],
+                current_cluster_id=None,
+            )
+        finally:
+            disable_sim_logging()
+
+        recs = self._read_recommend_records(log_path)
+        assert len(recs) == 2
+        # Order matches call order.
+        path_a, path_b = recs[0]["data"], recs[1]["data"]
+        assert path_a["current_cluster_id"] == "c1"
+        assert path_a["cluster_reward_bias_consulted"] == 0.0  # known but no signal
+        assert path_b["current_cluster_id"] is None
+        assert path_b["cluster_reward_bias_consulted"] is None  # truly absent
 
 
 # ─────────────────────────────────────────────────────────────────────

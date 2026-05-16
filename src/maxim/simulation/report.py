@@ -350,16 +350,32 @@ def save_report(report: SimulationReport, base_dir: str | None = None) -> Path:
     return report_path
 
 
+_ACTIONS_JSONL_FORMAT_VERSION = "1.1"
+"""actions.jsonl ``_format_version``. Per release_0_9_1.md Stage 0b
+("Cross-cutting: persistence schema"), this file ships at "1.1" — the
+addition of the header line + ``agent_id`` / ``session_id`` /
+``entity_class`` per-record fields is a minor bump from the pre-0b
+unversioned ("0.x" per CC1) format. A future change that requires
+readers to handle a removed field is a major bump."""
+
+
 def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
     """Save all action records as JSONL for post-hoc analysis.
 
-    The first line is a header record carrying ``_format_version`` per
-    CLAUDE.md CC1 (Stage 0b, release_0_9_1.md). Per-action records
-    follow, one per line. Each carries Stage 0b telemetry fields
-    (``agent_id``, ``session_id``, ``entity_class``) populated by
+    **Reader contract (Stage 0b):** the first line is a header record
+    carrying ``_format_version`` per CLAUDE.md CC1. Consumers MUST
+    skip any line where ``_record_kind == "header"`` before
+    interpreting per-action fields. Roy analyzers shipped in 0.9.1+
+    already follow this rule; third-party tooling that iterated the
+    file assuming every line is a record needs a one-line filter
+    update.
+
+    Per-action records carry Stage 0b telemetry fields (``agent_id``,
+    ``session_id``, ``entity_class``) populated by
     ``InstrumentedExecutor`` from the bound ``RequestContext`` —
     ``None`` when the context was unbound at execution time (e.g.,
-    pre-0b sims, headless API runs).
+    pre-0b sims, headless API runs) or when ``entity_class`` couldn't
+    be derived from tool params.
 
     Format-version evolution rule: appending optional fields to the
     per-action record is back-compat (existing parsers ignore unknown
@@ -372,10 +388,11 @@ def save_action_log(bridge: Any, base_dir: str, session_id: str) -> Path | None:
     try:
         with open(str(log_path), "w", encoding="utf-8") as f:
             # Stage 0b: format-version header (one-line schema marker
-            # at the top of the JSONL — existing per-record parsers
-            # ignore unknown top-level keys, so this is back-compat).
+            # at the top of the JSONL). Consumers MUST skip lines
+            # where _record_kind=="header"; the docstring contract
+            # above is the single source of truth.
             header = {
-                "_format_version": "1.0",
+                "_format_version": _ACTIONS_JSONL_FORMAT_VERSION,
                 "_record_kind": "header",
                 "session_id": session_id,
             }

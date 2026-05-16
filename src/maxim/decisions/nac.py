@@ -42,24 +42,38 @@ def _emit_recommend_action_event(
     """Emit a ``sim_recommend_action`` event for Stage 0c telemetry.
 
     Per release_0_9_1.md Stage 0c, every ``recommend_action`` call MUST
-    emit exactly one event — even the early-return paths (empty scores,
-    sub-threshold) — so Roy-3 measurement can distinguish "gate fired
-    but consumer did nothing" from "consumer ran and proposed nothing."
+    emit exactly one event — even the early-return paths (empty
+    available_tools, empty scores, sub-threshold) — so Roy-3 measurement
+    can distinguish "gate fired but consumer did nothing" from
+    "consumer ran and proposed nothing."
 
     The event lands on the ``sim_log("NAc_RECOMMEND", ...)`` channel,
     which routes through the standard sim_log JSONL writer + the
-    MAXIM_LOG_FILE bridge. The emission is fail-soft: any import or
-    sim-log error returns silently so a NAc decision in a non-sim
-    process never crashes on missing telemetry plumbing.
+    MAXIM_LOG_FILE bridge.
+
+    **Tick alignment with Stage 0d (CRITICAL):** the ``tick`` field
+    matches Stage 0d's ``sim_ec_activation`` tick space —
+    ``int(time.time() - sim_logger._sim_start)``, NOT raw epoch seconds.
+    Without this alignment Roy-3 cannot left-join the two channels
+    on tick (a 1e9 offset returns zero matches every time). For
+    sub-second ordering use the sim_log JSONL's top-level ``t`` field,
+    which sim_log auto-attaches with millisecond resolution from the
+    same ``_sim_start`` reference.
+
+    The emission is fail-soft: ``ImportError`` (non-sim runtime where
+    sim_logger isn't importable at all) is swallowed silently. Any
+    other exception propagates — a real sim_logger bug should surface
+    rather than masquerade as silent annotation-off.
     """
     try:
-        from maxim.simulation.sim_logger import sim_log
+        from maxim.simulation import sim_logger as _sl
 
-        sim_log(
+        tick = int(time.time() - _sl._sim_start) if _sl._sim_start > 0.0 else 0
+        _sl.sim_log(
             "NAc_RECOMMEND",
             f"recommend_action: passed_gate={passed_gate}",
             {
-                "tick": int(time.time()),
+                "tick": tick,
                 "current_cluster_id": current_cluster_id,
                 "cluster_reward_bias_consulted": cluster_reward_bias_consulted,
                 "best_tool": best_tool,
@@ -69,10 +83,14 @@ def _emit_recommend_action_event(
             },
             agent_id=agent_id,
         )
-    except Exception:
-        # sim_logger may not be available (non-sim runtime) or sim
-        # logging may not be active — Stage 0c is observability only,
-        # not load-bearing for correctness. Swallow silently.
+    except ImportError:
+        # Non-sim runtime: sim_logger isn't importable at all (e.g.,
+        # headless API without the simulation extras). Stage 0c is
+        # observability only, not load-bearing for correctness —
+        # swallow silently. Any OTHER exception (a real sim_logger
+        # bug, an attribute error from a broken refactor) propagates
+        # so we don't silently disable telemetry the Roy-3 measurement
+        # arm depends on.
         pass
 
 
@@ -1265,6 +1283,19 @@ class NAc:
         if not agent_id:
             raise ValueError("recommend_action requires non-empty agent_id")
         if not available_tools:
+            # Stage 0c: empty available_tools is a legitimate early return
+            # (e.g., the scene_actor filter trimmed the executor's tool set
+            # to nothing). Still emit so Roy-3 can distinguish "no tools
+            # available" from "no tools scored above gate."
+            _emit_recommend_action_event(
+                agent_id=agent_id,
+                current_cluster_id=current_cluster_id,
+                cluster_reward_bias_consulted=None,
+                best_tool=None,
+                best_score=0.0,
+                min_confidence=min_confidence,
+                passed_gate=False,
+            )
             return None
 
         drives = current_drives or {}
@@ -1347,10 +1378,17 @@ class NAc:
         # nothing." Per the plan: "the event MUST emit even when
         # recommend_action returns None."
         if not scores:
+            # Bio-fidelity review fold: distinguish "cluster known, no
+            # tool scored" (0.0 sentinel — agent had context but nothing
+            # rewarded) from "cluster unknown" (None — no
+            # current_cluster_id at all). Roy-3 needs this distinction
+            # to expose the Wire-A vs recommend_action gap; collapsing
+            # both into None would elide the H1 signal.
+            _consulted_on_empty: float | None = 0.0 if current_cluster_id else None
             _emit_recommend_action_event(
                 agent_id=agent_id,
                 current_cluster_id=current_cluster_id,
-                cluster_reward_bias_consulted=None,
+                cluster_reward_bias_consulted=_consulted_on_empty,
                 best_tool=None,
                 best_score=0.0,
                 min_confidence=min_confidence,
