@@ -3031,6 +3031,31 @@ def run_agentic_loop(
 
                         # Get available tools for this mode
                         available_tools = mode_info.get_available_tools(_all_tools)
+
+                        # Wire 3 (release_0_9_1.md Stage 1): filter tools
+                        # routed through critically-damaged components and
+                        # collect degraded-affordance annotations. Pulls
+                        # from Embodiment.get_disabled_affordances() /
+                        # .get_degraded_affordances() which read each
+                        # modulator's compute_integrity(). Default
+                        # thresholds: integrity < 0.3 → disabled
+                        # (filtered out); 0.3 <= integrity < 0.6 →
+                        # annotated with "[DAMAGED: integrity 0.X]" so
+                        # the LLM proposer sees the cost of using the
+                        # affordance. Fail-open: no embodiment, no
+                        # modulators, missing compute_integrity →
+                        # the filter is a no-op.
+                        _wire3_embodiment = getattr(executor, "embodiment", None)
+                        _wire3_degraded: dict[str, float] = {}
+                        if _wire3_embodiment is not None:
+                            try:
+                                _wire3_disabled = _wire3_embodiment.get_disabled_affordances()
+                                if _wire3_disabled:
+                                    available_tools = [t for t in available_tools if t not in _wire3_disabled]
+                                _wire3_degraded = _wire3_embodiment.get_degraded_affordances()
+                            except Exception as e:
+                                logger.debug("Wire 3 filter skipped: %s", e)
+                                _wire3_degraded = {}
                         last_surfaced_tools = list(available_tools)
 
                         # Get full tool info for prompt (description, params, example).
@@ -3070,6 +3095,31 @@ def run_agentic_loop(
                                     }
                                 except (KeyError, Exception):
                                     pass
+
+                        # Wire 3: annotate degraded tools' descriptions in
+                        # place. The annotation lives at the end of the
+                        # description string so the LLM sees the cost of
+                        # using a partially-damaged component WITHOUT
+                        # losing the tool's normal capability blurb. Uses
+                        # the per-tool entry's structure (dict for dynamic
+                        # tools, TOOL_DESCRIPTIONS dict for builtin); skips
+                        # any tool whose description shape we don't
+                        # recognise, fail-open.
+                        if _wire3_degraded:
+                            for name, integrity in _wire3_degraded.items():
+                                entry = tool_descriptions.get(name)
+                                if not isinstance(entry, dict):
+                                    continue
+                                base_desc = entry.get("description", "")
+                                if not isinstance(base_desc, str):
+                                    continue
+                                annotation = f" [DAMAGED: integrity {integrity:.1f}]"
+                                if annotation not in base_desc:
+                                    # Copy-on-write — TOOL_DESCRIPTIONS is
+                                    # a shared module-level dict; mutating
+                                    # it would poison the description for
+                                    # future calls (and other agents).
+                                    tool_descriptions[name] = {**entry, "description": base_desc + annotation}
 
                         # Get context pool text
                         context_pool_text = context_pool.get_context_text(

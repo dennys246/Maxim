@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from collections.abc import Iterable
 from typing import Any
 
 from maxim.embodiment.sem import Entity, FailureMode, SensorReading
@@ -573,6 +574,104 @@ class Embodiment:
     @property
     def failure_history(self) -> list[FailureEvent]:
         return list(self._failure_history)
+
+    # -- Wire 3: embodiment-state → action filter (release_0_9_1.md Stage 1) -
+    # Default thresholds (also documented in
+    # docs/plans/bio_emergent_persona_foundations.md § Wire 3).
+    # An agent_loop hook reads these via getattr() so a non-default
+    # threshold pair can ship in a future tuning experiment without
+    # touching call sites.
+
+    _WIRE_3_DISABLE_THRESHOLD: float = 0.3
+    _WIRE_3_DEGRADE_THRESHOLD: float = 0.6
+
+    def _iter_modulator_affordance_pairs(
+        self,
+    ) -> Iterable[tuple[str, float]]:
+        """Yield ``(base_tool_name, integrity)`` for every modulator
+        affordance on the entity tree.
+
+        ``base_tool_name`` is the ``{entity.name}_{affordance_name}``
+        form ``tool_bridge.generate_tools_for_entity`` uses BEFORE
+        ``_resolve_tool_name`` disambiguates against the registry.
+        On the common single-body topology (Roy / cradle / Reachy)
+        there are no name collisions, so the registered tool name
+        equals the base name and Wire 3 matches cleanly. The
+        agent_loop hook compares against the live tool list — if a
+        collision did rename a tool to ``{ancestor}_{base_name}``,
+        the integrity filter fails open (the tool stays available)
+        rather than silently mis-gating.
+
+        Modulators without a ``compute_integrity`` method (older
+        SpecModulator-shaped types, capability-only modulators) yield
+        ``1.0`` — equivalent to "not damaged", per the same
+        backward-compat convention ``SpecModulator.compute_integrity``
+        uses when ``vital_metrics`` is empty.
+        """
+        for ent in self.root.walk():
+            for mod in ent.modulators.values():
+                if hasattr(mod, "compute_integrity"):
+                    try:
+                        integrity = float(mod.compute_integrity())
+                    except Exception:
+                        integrity = 1.0
+                else:
+                    integrity = 1.0
+                if not hasattr(mod, "affordances"):
+                    continue
+                for aff_name in mod.affordances.keys():
+                    yield f"{ent.name}_{aff_name}", integrity
+
+    def get_disabled_affordances(self, *, threshold: float | None = None) -> set[str]:
+        """Affordances routed through critically-damaged components.
+
+        Returns the set of base tool names (``{entity.name}_{affordance_name}``)
+        whose owning modulator's ``compute_integrity()`` is **strictly
+        below** the disable threshold (default ``0.3``). The agent_loop
+        hook filters these from the per-tick available-tools list
+        BEFORE the LLM prompt sees them — a damaged-arm agent stops
+        attempting arm-routed affordances without any prompt-injection
+        scaffolding, the cleanest emergent "trait" demonstration in
+        bio_emergent_persona_foundations.md § Wire 3.
+
+        See ``_iter_modulator_affordance_pairs`` for the base-name
+        derivation contract; failures match cleanly on Roy's
+        single-body topology and fail-open under name collisions.
+
+        Args:
+            threshold: Override ``_WIRE_3_DISABLE_THRESHOLD`` (0.3).
+                Below this integrity, the affordance is disabled.
+        """
+        cutoff = float(threshold) if threshold is not None else self._WIRE_3_DISABLE_THRESHOLD
+        return {name for name, integrity in self._iter_modulator_affordance_pairs() if integrity < cutoff}
+
+    def get_degraded_affordances(
+        self,
+        *,
+        disable_threshold: float | None = None,
+        degrade_threshold: float | None = None,
+    ) -> dict[str, float]:
+        """Affordances on partially-damaged components.
+
+        Returns ``{base_tool_name: integrity}`` for every modulator
+        affordance whose owning modulator's integrity is in the
+        ``[disable_threshold, degrade_threshold)`` range — damaged
+        but not disabled. The agent_loop hook annotates these tools'
+        descriptions with ``[DAMAGED: integrity 0.X]`` so the LLM
+        proposer sees the cost of using them; learning is post-hoc
+        via the standard reward path (damaged-tool use → likelier
+        failure → NAc credit).
+
+        Args:
+            disable_threshold: Below this integrity, the affordance
+                is in ``get_disabled_affordances`` instead and is NOT
+                in this map. Default 0.3.
+            degrade_threshold: At or above this integrity, the
+                affordance is healthy and NOT in this map. Default 0.6.
+        """
+        lo = float(disable_threshold) if disable_threshold is not None else self._WIRE_3_DISABLE_THRESHOLD
+        hi = float(degrade_threshold) if degrade_threshold is not None else self._WIRE_3_DEGRADE_THRESHOLD
+        return {name: integrity for name, integrity in self._iter_modulator_affordance_pairs() if lo <= integrity < hi}
 
     # -- failure persistence -------------------------------------------------
 
