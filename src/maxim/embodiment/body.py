@@ -576,11 +576,25 @@ class Embodiment:
         return list(self._failure_history)
 
     # -- Wire 3: embodiment-state → action filter (release_0_9_1.md Stage 1) -
+    #
+    # **I/O-layer boundary, not substrate contamination.** The thresholds
+    # gate the LLM proposer's tool surface, NOT substrate encoding.
+    # EC clusters, NAc reward_bias, and the natural failure → pain →
+    # NAc learning chain are untouched. This is the same downstream-of-
+    # encoding exemption Wire-A's bias-band labels operate under (per
+    # bio-fidelity pre-merge review).
+    #
     # Default thresholds (also documented in
     # docs/plans/bio_emergent_persona_foundations.md § Wire 3).
-    # An agent_loop hook reads these via getattr() so a non-default
-    # threshold pair can ship in a future tuning experiment without
-    # touching call sites.
+    # The agent_loop hook reads these via the method signature so a
+    # non-default threshold pair can ship in a future tuning experiment
+    # without touching call sites.
+    #
+    # **Band semantics (pinned in tests at the strict-vs-inclusive split):**
+    # - ``integrity < 0.3``         → disabled (filtered from prompt)
+    # - ``0.3 <= integrity < 0.6``  → degraded (annotated in prompt)
+    # - ``integrity >= 0.6``        → healthy (no annotation)
+    # The bands partition [0, 1] cleanly — no overlap, no gap.
 
     _WIRE_3_DISABLE_THRESHOLD: float = 0.3
     _WIRE_3_DEGRADE_THRESHOLD: float = 0.6
@@ -613,7 +627,22 @@ class Embodiment:
                 if hasattr(mod, "compute_integrity"):
                     try:
                         integrity = float(mod.compute_integrity())
-                    except Exception:
+                    except Exception as e:
+                        # Bio-fidelity fold (Wire 3 review): a broken
+                        # integrity calc is itself a signal the body's
+                        # self-monitoring is failing. Currently fail-open
+                        # to integrity=1.0 (preserves loop stability)
+                        # but surface as WARNING so the broken modulator
+                        # is visible in operator review / Roy-3 logs.
+                        # Treat-as-disabled (more cautious) is the bio-
+                        # faithful alternative, deferred to a future
+                        # tuning experiment.
+                        log.warning(
+                            "Wire 3: compute_integrity() raised on %s/%s — treating as healthy (1.0): %s",
+                            ent.name,
+                            getattr(mod, "name", "?"),
+                            e,
+                        )
                         integrity = 1.0
                 else:
                     integrity = 1.0
@@ -644,6 +673,34 @@ class Embodiment:
         """
         cutoff = float(threshold) if threshold is not None else self._WIRE_3_DISABLE_THRESHOLD
         return {name for name, integrity in self._iter_modulator_affordance_pairs() if integrity < cutoff}
+
+    @staticmethod
+    def integrity_to_felt_phrase(integrity: float) -> str:
+        """Map a degraded-band integrity value to a felt-sensation phrase.
+
+        Per bio-fidelity pre-merge review (Wire 3 fold), the prompt-
+        visible annotation reads as proprioceptive percept ("feels
+        strained", "feels weakened") rather than as a system advisor
+        ("DAMAGED: integrity 0.4"). The numeric integrity stays in the
+        ``sim_log("WIRE_3_FILTER", ...)`` JSONL event for post-hoc
+        Roy-3 analysis; the LLM sees the qualitative phrase only.
+
+        Mirrors Wire-A's ``bias_to_band`` 5-band approach but with
+        2 bands inside the narrower degraded range [0.3, 0.6):
+
+        - ``0.45 <= integrity < 0.6``  → ``"feels strained"``
+        - ``0.3 <= integrity < 0.45``  → ``"feels weakened, prone to failing"``
+
+        Values outside the degraded range return ``""`` (the caller
+        is the agent_loop hook, which only invokes this method on
+        values it knows are in the degraded band; the empty-string
+        case is defensive — never happens via the documented flow).
+        """
+        if integrity >= 0.45 and integrity < 0.6:
+            return "feels strained"
+        if integrity >= 0.3 and integrity < 0.45:
+            return "feels weakened, prone to failing"
+        return ""
 
     def get_degraded_affordances(
         self,
