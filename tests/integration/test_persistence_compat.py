@@ -177,7 +177,14 @@ class TestBioSystemPreV1Compat:
         out = tmp_path / "nac_resaved.json"
         nac.save(str(out))
         on_disk = json.loads(out.read_text())
-        assert on_disk["_format_version"] == FORMAT_VERSION
+        # NAc bumped to 1.1 in Wire 2 (release_0_9_1.md Stage 3) for the
+        # new ``percept_valences`` field. Other systems still write at
+        # FORMAT_VERSION ("1.0"); NAc is the first file with a non-1.0
+        # ``_format_version`` and the back-compat reader handles the
+        # missing-field default by returning empty dict.
+        from maxim.decisions.nac import _NAC_FORMAT_VERSION
+
+        assert on_disk["_format_version"] == _NAC_FORMAT_VERSION
 
     def test_scn_loads_pre_v1_file(self, tmp_path, caplog) -> None:
         from maxim.time.scn import SCN
@@ -504,7 +511,7 @@ class TestCapturedPreV1Fixtures:
         assert on_disk["_format_version"] == FORMAT_VERSION
 
     def test_captured_nac_loads_and_resaves(self, tmp_path, caplog) -> None:
-        from maxim.decisions.nac import NACConfig, NAc
+        from maxim.decisions.nac import NACConfig, NAc, _NAC_FORMAT_VERSION
 
         src = self.FIXTURE_DIR / "nac_0_8.json"
         working = tmp_path / "nac.json"
@@ -520,7 +527,8 @@ class TestCapturedPreV1Fixtures:
         out = tmp_path / "nac_resaved.json"
         nac.save(str(out))
         on_disk = json.loads(out.read_text())
-        assert on_disk["_format_version"] == FORMAT_VERSION
+        # NAc bumped to 1.1 in Wire 2.
+        assert on_disk["_format_version"] == _NAC_FORMAT_VERSION
 
     def test_captured_fixtures_warn_once_per_file_type(self, tmp_path, caplog) -> None:
         # Loading the same fixture twice in one process emits exactly

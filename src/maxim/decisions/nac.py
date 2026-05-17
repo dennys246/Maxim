@@ -29,6 +29,15 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Wire 2 (release_0_9_1.md Stage 3) — NAc persistence schema version.
+# Bumped from the global ``FORMAT_VERSION`` ("1.0") because the dump
+# payload now carries the ``percept_valences`` key. Older 1.0 payloads
+# load cleanly: ``load_state`` reads ``state.get("percept_valences", {})``.
+# The schema-version coexistence convention is documented in
+# CLAUDE.md ("Persistence-format contract").
+_NAC_FORMAT_VERSION: str = "1.1"
+
+
 def _emit_recommend_action_event(
     *,
     agent_id: str,
@@ -122,6 +131,23 @@ class NACConfig:
     # heuristic, both of which contribute up to ~1.0), not a recognition
     # modulator like _reward_bias.
     max_cluster_reward_bias: float = 1.0
+
+    # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
+    # Per-agent, per-(entity_class, failure_mode) valence accumulated by the
+    # PainBus subscriber. Range [-1.0, +1.0] — wider than max_reward_bias
+    # because this is a salience modulator on the gating path (text scorer)
+    # rather than a recognition-threshold modulator.  Accumulated via
+    # ``percept_valence_alpha``; decayed per-tick via the same tau as
+    # the other reward-bias decay cycles.
+    max_percept_valence: float = 1.0
+    percept_valence_alpha: float = 0.20  # learning rate for record_percept_valence
+
+    # Wire 2 minimum |bias| reported by ``get_percept_aversions`` so that
+    # decayed-to-noise entries don't bleed back into the salience scorer
+    # as ghost aversions.  Mirrors the 0.001 prune floor used by
+    # ``decay_*`` methods but kept separate so the read-side floor can be
+    # tuned without changing prune semantics.
+    percept_aversion_floor: float = 0.05
 
     # Temporal credit weight for SCN-coupled eligibility (affordance transfer).
     # When fast-decay traces expire, nodes with temporal anchors still receive
@@ -266,26 +292,32 @@ class NAc:
         # threshold, skip deliberation).  Persisted across sessions.
         self._goal_reward_bias: dict[str, float] = {}
 
-        # Reserved for 1.1 (bio_emergent_persona_foundations Wire 2): per-agent
-        # percept-level valence keyed by (agent_id, entity_class, failure_mode)
-        # → float in [-1.0, +1.0].  Lives on NAc because the *learning source*
-        # is NAc-adjacent: the PainBus subscriber feeding it would mirror
-        # `create_pain_nac_subscriber`, and the per-tick decay would extend the
-        # existing `decay_reward_biases` / `decay_goal_reward_biases` cycle
-        # in agent_loop.py section 8.5.  (The cross-bio-system valence scalar
-        # — Episode.valence, ValenceSignal — justifies the *type*, not the
-        # *placement*; placement is justified by learning-source proximity.)
-        # Flat-tuple keying matches `_reward_bias`'s shape so persistence
-        # (1.1: ``f"{aid}:{ec}:{fm}"`` join, mirroring `_reward_bias`'s
-        # ``f"{aid}:{nid}"``) reuses the same dump/load idiom.  1.0 reserves
-        # the attribute name + placement + shape only; no methods, no
-        # persistence, no read sites.  Consumer-side concerns (per-agent
-        # scoping on the GatingContext path, JSON-key encoding for keys
-        # containing ':') are deferred to 1.1 design with Crucible data.
-        # See docs/plans/bio_emergent_persona_foundations.md and
-        # docs/experiments/12_v1_phased_attribution.md (Phase A clean pass —
-        # substrate sufficient for V1 cross-session recall; persona-divergence
-        # wires deferred pending Crucible findings).
+        # Wire 2 (release_0_9_1.md Stage 3, lifted from
+        # bio_emergent_persona_foundations.md § Wire 2): per-agent
+        # percept-level valence keyed by ``(agent_id, entity_class,
+        # failure_mode)`` → float in ``[-max_percept_valence,
+        # +max_percept_valence]``.  Pavlovian fear conditioning — a
+        # percept (independent of action context) acquires learned
+        # valence by being co-present at the moment a pain signal fires.
+        # The PainBus subscriber ``create_percept_valence_subscriber``
+        # writes here; ``TextSalienceScorer._compute_salience`` reads
+        # ``get_percept_aversions`` to modulate salience.
+        #
+        # Disjoint from ``_cluster_reward_bias`` (Wire-A) by construction:
+        # Wire-A writes on ``(agent_id, cluster_id, tool_signature)`` via
+        # ``update_cluster_reward`` from ``record_outcome``; Wire 2 writes
+        # on ``(agent_id, entity_class, failure_mode)`` via the new
+        # subscriber.  Different maps, different key shapes — pre-merge
+        # review verified no double-attribution.  (See
+        # ``docs/plans/pain_bus_unification.md`` for the latent-bridge ×
+        # subscriber trap reference.)
+        #
+        # Persistence: ``f"{aid}\x1f{ec}\x1f{fm}"`` join mirrors
+        # ``_cluster_reward_bias``'s ASCII unit-separator encoding so
+        # entity_class / failure_mode values containing ``:`` (drive
+        # spec names like ``drive:hunger``) round-trip cleanly.
+        # ``_format_version`` bumped from 1.0 → 1.1 on the NAc dump;
+        # backward-compat reader returns empty dict for older payloads.
         self._percept_valences: dict[tuple[str, str, str], float] = {}
 
         # Stats
@@ -1701,6 +1733,167 @@ class NAc:
                 del self._cluster_reward_bias[key]
         return pruned
 
+    # -- Wire 2: Pavlovian percept aversion ------------------------------
+
+    def record_percept_valence(
+        self,
+        entity_class: str,
+        failure_mode: str,
+        valence: float,
+        *,
+        agent_id: str,
+    ) -> None:
+        """Accumulate Pavlovian percept valence for an (entity_class, failure_mode) pair.
+
+        Called by the PainBus subscriber ``create_percept_valence_subscriber``
+        when a pain signal carries enough cause-description metadata to
+        attribute valence to a percept *class* (independent of action
+        context). Unlike ``record_outcome`` which attributes to a specific
+        pending action event, this attributes to the *percept itself* —
+        a dragon that burned the agent once now carries elevated aversion
+        for *all* dragon percepts in future, even before any action choice.
+
+        The salience-side read happens through
+        ``TextSalienceScorer._compute_salience`` via
+        ``GatingContext.learned_aversions``.
+
+        Args:
+            entity_class: Coarse entity category (e.g., ``"dragon"``,
+                ``"fire"``, ``"infant_humanoid"``).  Derived from
+                ``PainSignal.context["entity_type"]`` in the subscriber.
+                Empty string is rejected.
+            failure_mode: Failure-mode key (e.g., ``"burn"``, ``"crush"``,
+                ``"drive:hunger"``).  From ``signal.context["failure_mode"]``.
+                Empty string is rejected.
+            valence: Signed reinforcement.  Pain → negative
+                (typical magnitude ``-signal.intensity``); positive
+                valences are reserved for future ventral-striatal positive
+                conditioning (no producer in 0.9.1).
+            agent_id: Per-agent scoping per the CLAUDE.md per-agent stash
+                rule.  Required keyword-only.  Empty string is rejected
+                (silent collision class — every "agent" merging through
+                one shared key is exactly the bug per-agent stash
+                discipline closes).
+
+        Raises:
+            ValueError: ``agent_id``, ``entity_class``, or ``failure_mode``
+                is empty.
+        """
+        if not agent_id:
+            raise ValueError("record_percept_valence requires non-empty agent_id")
+        if not entity_class:
+            raise ValueError("record_percept_valence requires non-empty entity_class")
+        if not failure_mode:
+            raise ValueError("record_percept_valence requires non-empty failure_mode")
+        with self._lock:
+            key = (agent_id, entity_class, failure_mode)
+            current = self._percept_valences.get(key, 0.0)
+            updated = current + self.config.percept_valence_alpha * valence
+            cap = self.config.max_percept_valence
+            self._percept_valences[key] = max(-cap, min(updated, cap))
+
+    def get_percept_valence(
+        self,
+        entity_class: str,
+        failure_mode: str,
+        *,
+        agent_id: str,
+    ) -> float:
+        """Read accumulated Pavlovian valence for an (entity_class, failure_mode) pair.
+
+        Returns 0.0 when ``agent_id`` is empty, when ``entity_class`` /
+        ``failure_mode`` is empty, or when no learning exists for the
+        triple (cold-start agent or never-encountered failure mode).
+        """
+        if not agent_id or not entity_class or not failure_mode:
+            return 0.0
+        return self._percept_valences.get((agent_id, entity_class, failure_mode), 0.0)
+
+    def get_percept_aversions(
+        self,
+        *,
+        agent_id: str,
+    ) -> dict[str, float]:
+        """Aggregate per-entity_class aversion magnitude for one agent.
+
+        Used by ``TextSalienceScorer`` (via ``GatingContext.learned_aversions``)
+        to modulate salience when a percept's text overlaps a known
+        aversive entity_class.  Aggregation is **agent-wide** (no
+        active-cluster filter) and across all failure modes: for each
+        ``entity_class`` under ``agent_id``, takes the most-negative
+        valence across all failure modes and returns its absolute value.
+        Positive valences are treated as zero (this surface is the
+        aversion-side read; positive-conditioning surfaces — when they
+        ship — get a separate ``get_percept_attractions``).
+
+        Entries below ``percept_aversion_floor`` are dropped so that
+        decayed-to-noise valences don't bleed back into the scorer as
+        ghost aversions.
+
+        Args:
+            agent_id: Per-agent scoping. Required keyword-only.
+                Empty string raises ``ValueError``.
+
+        Returns:
+            Dict mapping ``entity_class`` → aversion magnitude in
+            ``(0.0, max_percept_valence]``.  Empty dict when the agent
+            has no aversive entries.
+        """
+        if not agent_id:
+            raise ValueError("get_percept_aversions requires non-empty agent_id")
+        floor = self.config.percept_aversion_floor
+        # Most-negative valence per entity_class for this agent.
+        per_class: dict[str, float] = {}
+        with self._lock:
+            for (aid, entity_class, _fm), valence in self._percept_valences.items():
+                if aid != agent_id:
+                    continue
+                if valence >= 0.0:
+                    continue  # aversion-side read only
+                existing = per_class.get(entity_class)
+                if existing is None or valence < existing:
+                    per_class[entity_class] = valence
+        result: dict[str, float] = {}
+        for entity_class, valence in per_class.items():
+            magnitude = abs(valence)
+            if magnitude < floor:
+                continue
+            result[entity_class] = magnitude
+        return result
+
+    def decay_percept_valences(self) -> int:
+        """Decay per-(agent, entity_class, failure_mode) valences toward zero.
+
+        Called per-tick alongside ``decay_reward_biases()``,
+        ``decay_goal_reward_biases()``, and ``decay_cluster_reward_biases()``.
+        Without per-tick decay the percept-valence map accumulates
+        indefinitely; ``TextSalienceScorer`` reads aversion magnitudes
+        on every percept arrival and would silently treat
+        "burned-by-dragon once, six sessions ago" as equally salient
+        to "burned-by-dragon last tick."
+
+        Uses the same decay tau as the other reward-bias decay cycles
+        (bidirectional — ``abs(new_value) < 0.001`` prune, mirroring
+        ``decay_goal_reward_biases`` and ``decay_cluster_reward_biases``).
+        Returns count pruned.
+        """
+        if not self._percept_valences:
+            return 0
+        decay_factor = 1.0 / self.config.reward_bias_decay_tau
+        pruned = 0
+        with self._lock:
+            to_remove = []
+            for key, valence in self._percept_valences.items():
+                new_valence = valence * (1.0 - decay_factor)
+                if abs(new_valence) < 0.001:
+                    to_remove.append(key)
+                    pruned += 1
+                else:
+                    self._percept_valences[key] = new_valence
+            for key in to_remove:
+                del self._percept_valences[key]
+        return pruned
+
     def update_eligibility(
         self,
         agent_id: str,
@@ -1916,6 +2109,12 @@ class NAc:
 
         P3.5 Stage 1 — BioSystemSnapshot Protocol conformance. Acquires
         the same mutex the pre-refactor save() body held.
+
+        Wire 2 (release_0_9_1.md Stage 3): adds ``percept_valences``.
+        The envelope-level ``_format_version`` stamped by
+        ``save()`` is ``_NAC_FORMAT_VERSION = "1.1"``; backward-compat
+        readers (``load_state``) handle a missing ``percept_valences``
+        key by returning an empty dict.
         """
         with self._lock:
             return {
@@ -1935,6 +2134,14 @@ class NAc:
                 # ``use`` tool — ``tool:use:dodge``).
                 "cluster_reward_bias": {
                     f"{aid}\x1f{cid}\x1f{tsig}": bias for (aid, cid, tsig), bias in self._cluster_reward_bias.items()
+                },
+                # Wire 2 (release_0_9_1.md Stage 3): per-agent Pavlovian
+                # percept valences.  Same ``\x1f`` separator as
+                # ``cluster_reward_bias`` so entity_class / failure_mode
+                # values containing ``:`` (drive specs like
+                # ``drive:hunger``) round-trip cleanly.
+                "percept_valences": {
+                    f"{aid}\x1f{ec}\x1f{fm}": valence for (aid, ec, fm), valence in self._percept_valences.items()
                 },
             }
 
@@ -1980,11 +2187,27 @@ class NAc:
             if len(parts) == 3:
                 self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = bias
 
+        # Wire 2 (release_0_9_1.md Stage 3): per-agent percept valences.
+        # Missing field → empty dict (backward-compat: any ``aut_nac.json``
+        # written by a 1.0 ``_format_version`` build lacks this key and
+        # ``get_percept_valence`` / ``get_percept_aversions`` return
+        # empty for unknown triples).
+        self._percept_valences = {}
+        for key_str, valence in state.get("percept_valences", {}).items():
+            parts = key_str.split("\x1f", 2)
+            if len(parts) == 3:
+                self._percept_valences[(parts[0], parts[1], parts[2])] = valence
+
     def save(self, path: str | None = None) -> None:
         """Save NAc state to JSON file.
 
         If ``path`` is omitted, falls back to ``self.config.persistence_path``.
         Raises ``ValueError`` if neither is set.
+
+        Wire 2 (release_0_9_1.md Stage 3): stamps ``_format_version`` at
+        ``_NAC_FORMAT_VERSION`` (``"1.1"``).  Backward-compat reader
+        accepts older 1.0 payloads (``percept_valences`` field absent →
+        empty dict).
         """
         path = path or self.config.persistence_path
         if path is None:
@@ -1993,7 +2216,7 @@ class NAc:
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, with_format_version(self.dump()))
+        atomic_write_json(path, with_format_version(self.dump(), version=_NAC_FORMAT_VERSION))
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 
     def load(self, path: str | None = None) -> None:

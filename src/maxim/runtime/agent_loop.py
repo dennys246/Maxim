@@ -3433,6 +3433,12 @@ def run_agentic_loop(
                 _loop_nac.decay_reward_biases()
                 _loop_nac.decay_goal_reward_biases()
                 _loop_nac.decay_cluster_reward_biases()
+                # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept
+                # aversion. Without per-tick decay, ``_percept_valences``
+                # ages into permanent fossils — ``TextSalienceScorer``
+                # would silently treat "burned-by-dragon six sessions
+                # ago" as equally salient to "burned-by-dragon last tick."
+                _loop_nac.decay_percept_valences()
             except Exception as e:
                 log_swallowed_exception(e, operation="nac_per_tick_decay")
 

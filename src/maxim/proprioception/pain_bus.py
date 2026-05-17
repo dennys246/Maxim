@@ -383,6 +383,87 @@ def create_pain_memory_subscriber(
     return _on_pain
 
 
+def create_percept_valence_subscriber(
+    nac: Any,
+    intensity_threshold: float = 0.3,
+) -> Callable[[PainSignal], None]:
+    """Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion subscriber.
+
+    Writes ``nac._percept_valences`` keyed by
+    ``(agent_id, entity_class, failure_mode)``. Aligned with
+    ``create_pain_nac_subscriber`` (which writes
+    ``_links`` via ``record_outcome_full``) but on a DIFFERENT map with a
+    DIFFERENT key shape — pre-merge review verified no double-attribution
+    risk against the bridge×subscriber trap referenced in
+    ``docs/plans/pain_bus_unification.md``.  Wire-A's read (the
+    ``_cluster_reward_bias`` annotation) is also disjoint by construction:
+    Wire-A's *write* path is ``record_outcome``-driven and keys on
+    ``(agent_id, cluster_id, tool_signature)``, NOT this subscriber.
+
+    Attribution policy:
+    - Negative valence proportional to ``-signal.intensity``.  The Pavlovian
+      learning rate is ``NACConfig.percept_valence_alpha`` (independent of
+      ``reward_bias_alpha``).
+    - Empty ``agent_id`` / ``entity_class`` / ``failure_mode`` → silent
+      no-op (the producer ``body.py::_publish_pain`` always populates all
+      three, so an empty value indicates an out-of-spec producer worth
+      logging at DEBUG but not raising).
+    - During interactive mode the subscriber is gated off, mirroring
+      ``create_pain_nac_subscriber``: human-directed actions would
+      corrupt the Pavlovian map the same way they corrupt the causal map.
+
+    Args:
+        nac: NAc instance to write percept valences into.
+        intensity_threshold: Minimum signal intensity to trigger learning.
+            Default matches ``create_pain_nac_subscriber`` so any tuning
+            applied to that subscriber stays in lock-step.
+
+    Returns:
+        Callback compatible with ``PainBus.subscribe``.
+    """
+
+    def _on_pain(signal: PainSignal) -> None:
+        if signal.intensity < intensity_threshold:
+            return
+
+        # Interactive-mode gate: mirror create_pain_nac_subscriber to
+        # avoid contaminating the Pavlovian map with human-directed
+        # action context. See plans/README.md "Interactive NAc
+        # attribution".
+        try:
+            from maxim.simulation.sim_logger import InteractiveMode, get_interactive_mode
+
+            if get_interactive_mode() == InteractiveMode.ON:
+                return
+        except Exception:
+            pass
+
+        context = signal.context or {}
+        agent_id = str(context.get("agent_id") or "")
+        entity_class = str(context.get("entity_type") or "")
+        failure_mode = str(context.get("failure_mode") or signal.pain_type.name)
+        if not agent_id or not entity_class or not failure_mode:
+            logger.debug(
+                "percept_valence subscriber: skipping pain signal with empty "
+                "agent_id/entity_type/failure_mode (intensity=%.2f, source=%s)",
+                signal.intensity,
+                context.get("source"),
+            )
+            return
+
+        try:
+            nac.record_percept_valence(
+                entity_class=entity_class,
+                failure_mode=failure_mode,
+                valence=-float(signal.intensity),
+                agent_id=agent_id,
+            )
+        except Exception:
+            logger.exception("pain→percept_valence recording failed")
+
+    return _on_pain
+
+
 def create_pain_nac_subscriber(
     nac: Any,
     intensity_threshold: float = 0.3,
@@ -569,6 +650,16 @@ def build_pain_bus(
         bus.subscribe(create_pain_memory_subscriber(hippocampus))
     if nac is not None:
         bus.subscribe(create_pain_nac_subscriber(nac))
+        # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
+        # Auto-wired when ``nac is not None`` so forgetting it on a new
+        # production entry point is structurally impossible — same shape
+        # as the ``create_pain_nac_subscriber`` invariant this builder
+        # closed for the audited three-CLI-site bug class.  Writes
+        # ``nac._percept_valences`` on (agent_id, entity_class,
+        # failure_mode) keys, disjoint from both the bridge's direct
+        # attribution map (_links via record_outcome) and Wire-A's
+        # cluster-keyed reward bias (_cluster_reward_bias).
+        bus.subscribe(create_percept_valence_subscriber(nac))
     for sub in additional_subscribers:
         bus.subscribe(sub)
     return bus

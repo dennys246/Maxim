@@ -196,7 +196,19 @@ class BioEnrichmentPipeline:
 
         # Novelty gate (unless bypassed for explicit think calls)
         if not bypass_gate and self._scorer is not None:
-            score = self._scorer.score(text, ctx.to_gating_context())
+            gating_ctx = ctx.to_gating_context()
+            # Wire 2 (release_0_9_1.md Stage 3): inject the per-agent
+            # Pavlovian aversion snapshot.  The scorer will not call
+            # NAc — the read happens here so the snapshot stays
+            # consistent across the (potentially slow) scoring call.
+            # Per-agent isolation: ``self._agent_id`` was bound at
+            # pipeline construction (AgentFactory wires per-agent).
+            aversions = self._snapshot_learned_aversions()
+            if aversions:
+                from dataclasses import replace as _replace
+
+                gating_ctx = _replace(gating_ctx, learned_aversions=aversions)
+            score = self._scorer.score(text, gating_ctx)
             if score.combined < self._novelty_threshold:
                 return None
 
@@ -478,6 +490,25 @@ class BioEnrichmentPipeline:
             return summaries
         except Exception:
             return []
+
+    def _snapshot_learned_aversions(self) -> dict[str, float] | None:
+        """Snapshot ``NAc.get_percept_aversions`` for the gating-context inject.
+
+        Wire 2 (release_0_9_1.md Stage 3).  Returns ``None`` when no NAc
+        is wired, when no agent_id is set, or when NAc raises.  The
+        scorer treats ``None`` and an empty dict as identical opt-out
+        signals.  Failures are logged at DEBUG (not WARNING) to keep
+        the salience hot path quiet; this surface is purely
+        informational and a temporary NAc read failure must not break
+        text scoring.
+        """
+        if self._nac is None or not self._agent_id:
+            return None
+        try:
+            return self._nac.get_percept_aversions(agent_id=self._agent_id)
+        except Exception as exc:
+            log.debug("Wire 2 aversion snapshot failed: %s", exc)
+            return None
 
     def _extract_keywords(self, text: str) -> list[str]:
         """Extract meaningful keywords from text for bio-system queries."""
