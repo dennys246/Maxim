@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import itertools
 import logging
 import os
+import re
 import time
-import itertools
 from typing import TYPE_CHECKING, Any
 
 from maxim.evaluation.base import Evaluator
@@ -46,6 +47,18 @@ except ImportError:
     MemoryHub = None  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+
+# Wire 3 (release_0_9_1.md Stage 1): regex matching the felt-sensation
+# annotations Embodiment.integrity_to_felt_phrase produces. The agent_loop
+# hook uses this to strip a stale annotation before re-applying the
+# current-tick one — guards against multi-tick integrity drift accumulating
+# multiple suffixes (e.g., integrity 0.55 → ``(feels strained)``, then 0.40
+# → ``(feels weakened, prone to failing)``; without the strip, both would
+# coexist in the description). The phrases are pinned in tests so a future
+# additional band must update both this regex AND
+# ``Embodiment.integrity_to_felt_phrase`` together.
+_WIRE3_PHRASE_RE = re.compile(r" \((?:feels strained|feels weakened, prone to failing)\)$")
 
 
 from maxim.runtime.loop_state import (
@@ -3031,6 +3044,85 @@ def run_agentic_loop(
 
                         # Get available tools for this mode
                         available_tools = mode_info.get_available_tools(_all_tools)
+
+                        # Wire 3 (release_0_9_1.md Stage 1): filter tools
+                        # routed through critically-damaged components and
+                        # collect degraded-affordance annotations. Pulls
+                        # from Embodiment.get_disabled_affordances() /
+                        # .get_degraded_affordances() which read each
+                        # modulator's compute_integrity(). Default
+                        # thresholds: integrity < 0.3 → disabled
+                        # (filtered out); 0.3 <= integrity < 0.6 →
+                        # annotated with a felt-sensation phrase
+                        # ("feels strained" / "feels weakened, prone to
+                        # failing") so the LLM proposer reads the
+                        # affordance's cost in proprioceptive voice
+                        # rather than as a system advisor (bio-fidelity
+                        # fold). Fail-open at the narrowed exception
+                        # surface (no embodiment, missing methods, broken
+                        # modulator shape) — the filter is a no-op but
+                        # the WARNING surfaces operator-visible signal.
+                        #
+                        # NOTE on `last_surfaced_tools`: post-filter is
+                        # intentional. The learned tool-relevance index
+                        # at line ~1700 calls `record_surfaced_but_unused`
+                        # — disabled tools weren't surfaced, so they
+                        # don't decay. Future: if a disabled tool
+                        # recovers, the relevance index resumes decay
+                        # the next tick the tool surfaces again.
+                        _wire3_embodiment = getattr(executor, "embodiment", None)
+                        _wire3_degraded: dict[str, float] = {}
+                        _wire3_disabled: set[str] = set()
+                        if _wire3_embodiment is not None:
+                            try:
+                                _wire3_disabled = _wire3_embodiment.get_disabled_affordances()
+                                if _wire3_disabled:
+                                    available_tools = [t for t in available_tools if t not in _wire3_disabled]
+                                _wire3_degraded = _wire3_embodiment.get_degraded_affordances()
+                            except (AttributeError, TypeError) as e:
+                                # Narrowed from broad Exception per
+                                # arch-lens A4: the inner body.py guard
+                                # already swallows compute_integrity
+                                # raises with a WARNING. Outer surface
+                                # failures here are method-shape
+                                # mismatches (non-Embodiment object
+                                # plugged into executor.embodiment) —
+                                # WARN so operator review catches it.
+                                logger.warning(
+                                    "Wire 3: get_disabled/degraded_affordances shape mismatch — filter no-op: %s",
+                                    e,
+                                )
+                                _wire3_degraded = {}
+                                _wire3_disabled = set()
+                            # Emit Roy-3 disambiguator (bio-fidelity B2):
+                            # without this, "Wire 3 hid the tool" and
+                            # "substrate learned avoidance" are
+                            # indistinguishable post-hoc. The event
+                            # lists which affordances were filtered /
+                            # annotated each LLM submission so Roy-3
+                            # can quantify Wire 3's effect surface.
+                            if _wire3_disabled or _wire3_degraded:
+                                try:
+                                    from maxim.simulation import sim_logger as _sl_w3
+
+                                    _w3_tick = int(time.time() - _sl_w3._sim_start) if _sl_w3._sim_start > 0.0 else 0
+                                    _sl_w3.sim_log(
+                                        "WIRE_3_FILTER",
+                                        f"wire_3: disabled={len(_wire3_disabled)} degraded={len(_wire3_degraded)}",
+                                        {
+                                            "tick": _w3_tick,
+                                            "disabled_tools": sorted(_wire3_disabled),
+                                            # Pass integrity floats only here — the LLM
+                                            # sees the felt phrases above.
+                                            "degraded_integrities": {
+                                                name: round(integrity, 4) for name, integrity in _wire3_degraded.items()
+                                            },
+                                        },
+                                    )
+                                except ImportError:
+                                    # Non-sim runtime — observability
+                                    # is optional, never load-bearing.
+                                    pass
                         last_surfaced_tools = list(available_tools)
 
                         # Get full tool info for prompt (description, params, example).
@@ -3070,6 +3162,50 @@ def run_agentic_loop(
                                     }
                                 except (KeyError, Exception):
                                     pass
+
+                        # Wire 3: annotate degraded tools' descriptions in
+                        # place with a felt-sensation phrase (bio-fidelity
+                        # fold). The annotation lives at the end of the
+                        # description string so the LLM reads the body's
+                        # state in proprioceptive voice without losing
+                        # the tool's normal capability blurb. Uses the
+                        # per-tool entry's structure (dict for dynamic
+                        # tools, TOOL_DESCRIPTIONS dict for builtin);
+                        # skips any tool whose description shape we don't
+                        # recognise, fail-open.
+                        #
+                        # Idempotency under integrity drift (arch A1):
+                        # if integrity ticks 0.5 → 0.4 → 0.5 across a
+                        # session, the felt phrase changes per band.
+                        # The regex strip removes any existing
+                        # ``(feels …)`` Wire 3 annotation before
+                        # appending the current one so phrases don't
+                        # accumulate. Healthy / disabled affordances
+                        # never enter this loop, so the only way to
+                        # have an annotation present is via a prior
+                        # Wire 3 pass.
+                        if _wire3_degraded:
+                            for name, integrity in _wire3_degraded.items():
+                                entry = tool_descriptions.get(name)
+                                if not isinstance(entry, dict):
+                                    continue
+                                base_desc = entry.get("description", "")
+                                if not isinstance(base_desc, str):
+                                    continue
+                                phrase = _wire3_embodiment.integrity_to_felt_phrase(integrity)
+                                if not phrase:
+                                    continue
+                                annotation = f" ({phrase})"
+                                # Strip any prior felt annotation pinned
+                                # by Embodiment.integrity_to_felt_phrase
+                                # — the two bands give two distinct
+                                # suffixes which could otherwise stack.
+                                stripped = _WIRE3_PHRASE_RE.sub("", base_desc)
+                                # Copy-on-write — TOOL_DESCRIPTIONS is
+                                # a shared module-level dict; mutating
+                                # it would poison the description for
+                                # future calls (and other agents).
+                                tool_descriptions[name] = {**entry, "description": stripped + annotation}
 
                         # Get context pool text
                         context_pool_text = context_pool.get_context_text(
