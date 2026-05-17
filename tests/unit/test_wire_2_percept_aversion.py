@@ -303,9 +303,19 @@ class TestDecayPerceptValences:
 class TestNacPersistence:
     """``_format_version`` bump + percept_valences round-trip + back-compat."""
 
-    def test_format_version_is_1_1(self) -> None:
-        """Plan release_0_9_1.md: NAc dump bumps to 1.1."""
-        assert _NAC_FORMAT_VERSION == "1.1"
+    def test_format_version_is_at_least_1_1(self) -> None:
+        """Plan release_0_9_1.md: NAc dump bumped to 1.1 in Wire 2 (this
+        wire). Subsequent stages have bumped further (Wire 1 → 1.2);
+        what this test pins is that Wire 2's percept_valences key
+        ships AT a version >= 1.1 so older 1.0 readers know the
+        schema changed. The exact current value lives in
+        ``_NAC_FORMAT_VERSION`` and ratchets forward with each
+        additive schema change."""
+        # Compare as (major, minor) ints — semver-style lexicographic
+        # would be misleading once a "1.10" lands. For 0.9.1 every
+        # bump is a minor.
+        major, minor = (int(x) for x in _NAC_FORMAT_VERSION.split("."))
+        assert (major, minor) >= (1, 1), f"NAc format version regressed below 1.1: {_NAC_FORMAT_VERSION}"
 
     def test_dump_includes_percept_valences_key(self) -> None:
         nac = _fresh_nac()
@@ -345,7 +355,7 @@ class TestNacPersistence:
 
         # File on disk carries _format_version=1.1
         data = json.loads(save_path.read_text())
-        assert data["_format_version"] == "1.1"
+        assert data["_format_version"] == _NAC_FORMAT_VERSION
         assert "percept_valences" in data
 
         nac2 = _fresh_nac()
@@ -403,7 +413,7 @@ class TestNacPersistence:
 
         # File still parses cleanly.
         data = json.loads(save_path.read_text())
-        assert data["_format_version"] == "1.1"
+        assert data["_format_version"] == _NAC_FORMAT_VERSION
         assert "percept_valences" in data
 
 

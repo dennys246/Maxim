@@ -60,6 +60,55 @@ logger = logging.getLogger(__name__)
 # ``Embodiment.integrity_to_felt_phrase`` together.
 _WIRE3_PHRASE_RE = re.compile(r" \((?:feels strained|feels weakened, prone to failing)\)$")
 
+# Wire 1 (release_0_9_1.md Stage 4): regex matching the experience-voice
+# annotations the variance-annotation hook produces. Same shape rationale as
+# the Wire 3 regex above — strip stale annotation before re-applying the
+# current-tick one so the description doesn't accumulate suffixes across
+# observations.
+#
+# **Register choice (bio-fidelity fold from pre-merge review):** Wire 3's
+# phrases ("feels strained" / "feels weakened, prone to failing") carry a
+# SOMATIC voice — they describe proprioceptive body-state. Wire 1's signal
+# is METACOGNITIVE — variance over outcome reliability is "what experience
+# has taught me about this action", not "what my body senses right now".
+# Reusing the "feels X" stem for both collapsed two distinct bio-system
+# registers (somatic vs experience-acquired) into one indistinguishable
+# surface, so the LLM could not separate "I will fail because the body
+# is broken" from "I will fail because the outcome is stochastic". The
+# experience-voice phrasing "(unpredictable from prior experience)" /
+# "(reliable from prior experience)" aligns with Wire-A's
+# "[... from prior experience]" prompt-section register (the only other
+# substrate surface that exposes learned variability to the LLM), keeping
+# the experience-acquired signals coherent across wires while Wire 3 owns
+# the somatic surface alone.
+#
+# Two phrases match the two bands (high variance / reliable); the middle
+# band emits no annotation. Wire 1 annotation appears AFTER any Wire 3
+# annotation in the description, so the regex is anchored at end-of-
+# string and Wire 3's strip runs first (the two suffixes can co-occur on
+# one tool — physical-damage + outcome-variance signals are orthogonal).
+_WIRE1_PHRASE_RE = re.compile(r" \((?:unpredictable|reliable) from prior experience\)$")
+
+# Wire 1 thresholds. Bernoulli variance on binary {0, 1} reward maxes at 0.25
+# (p = 0.5). The bands are pre-registered in release_0_9_1.md Stage 4:
+#   variance >= 0.15 → "(unpredictable from prior experience)"  — ~30/70 or worse
+#   variance <  0.05 → "(reliable from prior experience)"       — ~94/6 or better
+#   otherwise        → no annotation (middle band)
+# Min observation count guards against single-sample noise — Welford variance
+# stabilises around n ~= 5 for binary signals.
+_WIRE1_HIGH_VARIANCE_THRESHOLD = 0.15
+_WIRE1_LOW_VARIANCE_THRESHOLD = 0.05
+_WIRE1_MIN_OBSERVATIONS = 5
+
+# Wire 1 ablation gate. Reuses Wire-A's canonical
+# ``annotation_disabled_via_env`` parser so the truthy-value set is a single
+# source of truth across 0.9.1's two annotation gates. Default OFF
+# (annotation ON in 0.9.1 by design). Roy-3 may set this for variance-
+# annotation-off arms; the conftest scrub clears it between tests.
+_WIRE1_DISABLE_ENV = "MAXIM_DISABLE_VARIANCE_ANNOTATION"
+_WIRE1_HIGH_PHRASE = "unpredictable from prior experience"
+_WIRE1_LOW_PHRASE = "reliable from prior experience"
+
 
 from maxim.runtime.loop_state import (
     _persist_state_json,
@@ -3206,6 +3255,181 @@ def run_agentic_loop(
                                 # it would poison the description for
                                 # future calls (and other agents).
                                 tool_descriptions[name] = {**entry, "description": stripped + annotation}
+
+                        # Wire 1 (release_0_9_1.md Stage 4): annotate
+                        # tools with outcome-variance experience phrasing.
+                        # Runs AFTER Wire 3 so an integrity-degraded tool
+                        # that is ALSO outcome-variable gets both
+                        # annotations (orthogonal signals: somatic body
+                        # damage vs. experience-acquired unpredictability).
+                        # The hybrid bio-system + LLM caveat is documented
+                        # in docs/plans/bio_emergent_persona_foundations.md
+                        # § Wire 1 — variance reaches the LLM through
+                        # description text, not a pre-filter ranker.
+                        # A cleaner post-1.0 design would pre-rank tools
+                        # before the LLM sees them.
+                        #
+                        # Idempotency: _WIRE1_PHRASE_RE strips the prior
+                        # annotation before the current one is appended
+                        # so the description does not accumulate suffixes
+                        # across observations. Wire 3 (somatic
+                        # "feels strained" / "feels weakened, prone to
+                        # failing") and Wire 1 (experience-voice
+                        # "unpredictable from prior experience" /
+                        # "reliable from prior experience") use distinct
+                        # phrases so the two regexes do not conflict.
+                        _wire1_annotated_high: list[str] = []
+                        _wire1_annotated_low: list[str] = []
+                        _wire1_middle_band: list[tuple[str, float]] = []
+                        _wire1_felt_phrases: dict[str, str] = {}
+                        # Gate on bio-system + tool list FIRST so cold-start
+                        # agents skip the env-var read entirely (one fewer
+                        # os.environ lookup per submission). The ablation
+                        # parser is Wire-A's canonical helper — single
+                        # source of truth across 0.9.1's two gates.
+                        _risk_profile: dict[str, float] = {}
+                        if _loop_nac is not None and available_tools:
+                            from maxim.prompts.cluster_bias_annotation import (
+                                annotation_disabled_via_env,
+                            )
+
+                            _wire1_disabled_via_env = annotation_disabled_via_env(os.environ.get(_WIRE1_DISABLE_ENV))
+                            if not _wire1_disabled_via_env:
+                                try:
+                                    _risk_profile = _loop_nac.get_action_risk_profile(
+                                        agent_id=_loop_agent_id,
+                                        min_observations=_WIRE1_MIN_OBSERVATIONS,
+                                    )
+                                except (ValueError, AttributeError) as e:
+                                    # ValueError: empty agent_id (defensive —
+                                    # _loop_agent_id is non-empty by construction
+                                    # at line ~1025, but a future refactor could
+                                    # introduce a regression here). AttributeError:
+                                    # _loop_nac is something other than an NAc
+                                    # (test stubs / forward-compat). Either case:
+                                    # WARN so operators notice + no-op the wire.
+                                    logger.warning("Wire 1: risk profile fetch failed — annotation no-op: %s", e)
+                                    _risk_profile = {}
+                            # _risk_profile keys are "tool:<name>" (or
+                            # "tool:use:<action>" for the generic use
+                            # tool); available_tools entries are bare
+                            # names. Strip the "tool:" prefix to match.
+                            for event_sig, variance in _risk_profile.items():
+                                if event_sig.startswith("tool:use:"):
+                                    # The compound generic-use signature
+                                    # doesn't map back to a bare tool
+                                    # name in available_tools — the
+                                    # available_tools entry is "use".
+                                    # Skip; Wire 1 doesn't annotate at
+                                    # the action-arg level (no separate
+                                    # description per use:<action>).
+                                    continue
+                                tool_name = event_sig[len("tool:") :] if event_sig.startswith("tool:") else event_sig
+                                if tool_name not in available_tools:
+                                    continue
+                                if variance >= _WIRE1_HIGH_VARIANCE_THRESHOLD:
+                                    phrase = _WIRE1_HIGH_PHRASE
+                                    _wire1_annotated_high.append(tool_name)
+                                    _wire1_felt_phrases[tool_name] = phrase
+                                elif variance < _WIRE1_LOW_VARIANCE_THRESHOLD:
+                                    phrase = _WIRE1_LOW_PHRASE
+                                    _wire1_annotated_low.append(tool_name)
+                                    _wire1_felt_phrases[tool_name] = phrase
+                                else:
+                                    # Middle band: no annotation. Strip
+                                    # any prior annotation so an LLM
+                                    # cannot read stale signal after the
+                                    # tool's variance has decayed back
+                                    # to the neutral band.
+                                    _wire1_middle_band.append((tool_name, variance))
+                                    entry = tool_descriptions.get(tool_name)
+                                    if isinstance(entry, dict):
+                                        base_desc = entry.get("description", "")
+                                        if isinstance(base_desc, str) and _WIRE1_PHRASE_RE.search(base_desc):
+                                            tool_descriptions[tool_name] = {
+                                                **entry,
+                                                "description": _WIRE1_PHRASE_RE.sub("", base_desc),
+                                            }
+                                    continue
+                                entry = tool_descriptions.get(tool_name)
+                                if not isinstance(entry, dict):
+                                    continue
+                                base_desc = entry.get("description", "")
+                                if not isinstance(base_desc, str):
+                                    continue
+                                stripped = _WIRE1_PHRASE_RE.sub("", base_desc)
+                                tool_descriptions[tool_name] = {
+                                    **entry,
+                                    "description": f"{stripped} ({phrase})",
+                                }
+                            # Emit Roy-3 disambiguator (bio-fidelity
+                            # measurability): without this event,
+                            # "Wire 1 annotated the tool" and "LLM
+                            # ignored the annotation" are
+                            # indistinguishable post-hoc. Mirrors the
+                            # Wire 3 WIRE_3_FILTER shape so Roy-3 can
+                            # count annotation effects uniformly.
+                            # Payload carries:
+                            #   - agent_id          (multi-agent attribution)
+                            #   - high_variance_tools, reliable_tools
+                            #   - felt_phrases      (exact strings the LLM saw)
+                            #   - annotated_variances (numeric float per annotated tool)
+                            #   - middle_band       (tool, variance) tuples for
+                            #                       counterfactual Roy-3 analysis
+                            if _wire1_annotated_high or _wire1_annotated_low or _wire1_middle_band:
+                                try:
+                                    from maxim.simulation import sim_logger as _sl_w1
+
+                                    _w1_tick = int(time.time() - _sl_w1._sim_start) if _sl_w1._sim_start > 0.0 else 0
+                                    _sl_w1.sim_log(
+                                        "WIRE_1_ANNOTATION",
+                                        f"wire_1: high_variance={len(_wire1_annotated_high)} "
+                                        f"reliable={len(_wire1_annotated_low)} "
+                                        f"middle={len(_wire1_middle_band)}",
+                                        {
+                                            "tick": _w1_tick,
+                                            "agent_id": _loop_agent_id,
+                                            "high_variance_tools": sorted(_wire1_annotated_high),
+                                            "reliable_tools": sorted(_wire1_annotated_low),
+                                            # felt_phrases is the LLM-visible
+                                            # text — Roy-3 reads this to
+                                            # decide what the prompt actually
+                                            # contained (vs reconstructing
+                                            # from thresholds + variances).
+                                            "felt_phrases": dict(_wire1_felt_phrases),
+                                            # Numeric variance for each
+                                            # annotated tool — LLM does NOT
+                                            # see these floats, only the
+                                            # felt phrase above.
+                                            "annotated_variances": {
+                                                (
+                                                    event_sig[len("tool:") :]
+                                                    if event_sig.startswith("tool:")
+                                                    else event_sig
+                                                ): round(variance, 4)
+                                                for event_sig, variance in _risk_profile.items()
+                                                if not event_sig.startswith("tool:use:")
+                                                and (
+                                                    event_sig[len("tool:") :]
+                                                    if event_sig.startswith("tool:")
+                                                    else event_sig
+                                                )
+                                                in (_wire1_annotated_high + _wire1_annotated_low)
+                                            },
+                                            # Middle-band tools: present
+                                            # in the profile but not
+                                            # annotated. The counterfactual
+                                            # for Roy-3 ablation analysis
+                                            # ("substrate produced variance
+                                            # in this band but no
+                                            # annotation reached the LLM").
+                                            "middle_band_variances": {
+                                                name: round(var, 4) for name, var in _wire1_middle_band
+                                            },
+                                        },
+                                    )
+                                except ImportError:
+                                    pass
 
                         # Get context pool text
                         context_pool_text = context_pool.get_context_text(
