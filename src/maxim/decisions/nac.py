@@ -31,13 +31,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Wire 2 (release_0_9_1.md Stage 3) — NAc persistence schema version.
-# Bumped from the global ``FORMAT_VERSION`` ("1.0") because the dump
-# payload now carries the ``percept_valences`` key. Older 1.0 payloads
-# load cleanly: ``load_state`` reads ``state.get("percept_valences", {})``.
-# The schema-version coexistence convention is documented in
-# CLAUDE.md ("Persistence-format contract").
-_NAC_FORMAT_VERSION: str = "1.1"
+# NAc persistence schema version.
+#
+# - 1.0 → 1.1 (Wire 2, release_0_9_1.md Stage 3): added ``percept_valences``.
+# - 1.1 → 1.2 (Wire 1, release_0_9_1.md Stage 4): added
+#   ``event_outcome_welford`` top-level key carrying per-(agent_id,
+#   event_signature) Welford variance state.
+#
+# Both upgrades are additive: ``load_state`` reads missing keys as empty
+# dicts so older payloads (1.0 / 1.1) load cleanly. The bumped version
+# gives a ``check_format_version`` drift-warning surface that the file
+# was written by a different schema generation. The schema-version
+# coexistence convention is documented in CLAUDE.md
+# ("Persistence-format contract").
+_NAC_FORMAT_VERSION: str = "1.2"
 
 
 def _emit_recommend_action_event(
@@ -345,20 +352,56 @@ class NAc:
 
         # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id, event_signature)
         # Welford online variance state for the reward signal across
-        # outcomes. The plan originally placed variance on CausalLink, but
-        # ``_generate_link_id`` keys on ``outcome_signature`` (which embeds
-        # valence), so each (event, outcome_valence) pair becomes a
-        # separate link and per-link variance is structurally 0 for
-        # binary success/failure — useless as a "is this tool reliable"
-        # signal. Moving variance one level up captures cross-link
-        # outcome heterogeneity, which is what Wire 1 actually needs.
-        # Value shape: ``{"mean": float, "m2": float, "n": int}`` with
-        # ``variance = m2 / n``. Updated in ``_record_outcome_impl`` once
-        # per outcome (NOT per eligibility-trace credit-distribution
-        # event — that path goes through ``distribute_reward`` which
-        # touches ``_reward_bias``, not this state). Read by
-        # ``get_action_risk_profile`` and ``_predict_impl`` for
-        # ``OutcomePrediction.uncertainty_interval``.
+        # outcomes. Variance lives here, NOT on CausalLink: link IDs key
+        # on ``outcome_signature`` (which embeds valence), so each
+        # (event, outcome_valence) pair allocates a separate link and
+        # per-link variance is structurally 0 for binary success/failure
+        # — the "is this tool reliable" signal Wire 1 surfaces requires
+        # variance over the cross-link outcome distribution. See the
+        # ``CausalLink`` class docstring and the CLAUDE.md lesson
+        # "Key-embedded values produce structurally-degenerate
+        # statistics" for the generalised rule.
+        #
+        # Value shape: ``{"mean": float, "m2": float, "n": float}`` with
+        # ``variance = m2 / n``. ``n`` is float-typed (not int) so the
+        # in-place ``+= 1.0`` update keeps the dict's value type uniform
+        # across every entry — load_state then needs one coerce path,
+        # not two. The accumulator is lifetime-cumulative: there is NO
+        # decay surface today (in contrast to ``_reward_bias`` which has
+        # ``decay_reward_biases``). Across a long-lived NAc the count
+        # grows monotonically; float64 precision holds variance stable
+        # well past 10⁹ samples on binary {0, 0.5, 1} rewards. If a
+        # forgetting curve is wanted post-1.0, the per-tick hook in
+        # ``agent_loop.py`` section 8.5 is the place to add a decay
+        # call.
+        #
+        # Update site: ``_record_outcome_impl`` runs the Welford update
+        # exactly once per outcome under ``self._lock``. The
+        # eligibility-trace credit-distribution path
+        # (``distribute_reward``) operates on ``_reward_bias`` and does
+        # NOT touch this state. Read sites
+        # (``get_action_risk_profile``, ``_predict_impl`` /
+        # ``predict_all_outcomes`` for ``OutcomePrediction.uncertainty_interval``)
+        # acquire ``self._lock`` before reading ``state["m2"] /
+        # state["n"]``. **The dict value is mutated in-place under the
+        # lock — a future refactor that replaces
+        # ``state["n"] += 1.0`` with ``self._event_outcome_welford[key]
+        # = state.copy()`` would silently lose updates between getter
+        # and setter if the lock is held across only one of the two
+        # operations.** Keep the read-modify-write tight.
+        #
+        # **Producer entry-point asymmetry (Wire 1 SCOPE):** outcome
+        # observations that flow through ``record_outcome`` /
+        # ``record_outcome_full`` update Welford; observations that go
+        # through ``observe()`` (the direct-attribution API used by
+        # planner-style consumers) DO NOT. The asymmetry is documented
+        # on ``observe()``'s docstring and pinned by a regression test
+        # ``test_observe_path_does_not_update_welford`` —  if a future
+        # consumer relies on ``get_action_risk_profile`` after calling
+        # only ``observe()``, the variance map will be empty and the
+        # test catches the divergence at import time. Unifying the two
+        # entry points is post-1.0 cleanup (touch the Welford update
+        # site once instead of factoring it into a helper).
         #
         # Per-agent stash discipline (CC4): required ``agent_id`` key
         # comes from ``event_context.get("agent_id")``. Outcomes whose
@@ -366,11 +409,22 @@ class NAc:
         # the silent-no-op shape this codebase pushes structurally
         # elsewhere (e.g. ``build_executor(pain_bus=...)``) is
         # protected here by the test
-        # ``test_links_missing_agent_id_in_context_are_skipped`` in
-        # tests/unit/test_wire_1_risk_annotation.py: if future code
-        # forgets to tag agent_id at the outcome producer site, the
-        # variance stops updating but the rest of NAc keeps working,
-        # and the test pins the contract.
+        # ``test_record_outcome_without_agent_id_skips_welford`` in
+        # tests/unit/test_wire_1_risk_annotation.py.
+        #
+        # **CONTEXT-AVERAGING THESIS CAVEAT:** the key is
+        # ``(agent_id, event_signature)`` — NOT
+        # ``(agent_id, event_signature, context_hash)``. This averages
+        # variance across all contexts the agent has used the tool in.
+        # A substrate that genuinely encoded context-conditioned
+        # outcome predictability would route through
+        # ``(agent_id, event_signature, context_hash)`` so a tool that
+        # is reliable against straw dummies but erratic against
+        # armored knights surfaces as TWO distinct entries the LLM can
+        # read separately. Wire 1 ships the context-averaged version
+        # to keep the 0.9.1 surface narrow; the context-conditioned
+        # version is post-1.0 cleanup if Roy-3 finds the averaged
+        # surface insufficient.
         self._event_outcome_welford: dict[tuple[str, str], dict[str, float]] = {}
 
         # Stats
@@ -520,7 +574,16 @@ class NAc:
             event_type: Type of event
             event_id: Event signature (e.g., tool name)
             outcome_valence: Quality of outcome
-            context: Current context
+            context: Current context. **Tag with ``"agent_id"`` to
+                feed Wire 1's outcome-variance accumulator**
+                (``_event_outcome_welford``) — outcomes without
+                ``context["agent_id"]`` silently skip the Welford
+                update per the CC4 stash rule, so
+                ``get_action_risk_profile`` returns an empty profile
+                for an agent whose producers forgot the tag. The
+                regression test
+                ``test_record_outcome_without_agent_id_skips_welford``
+                pins this contract.
             memory_id: Hippocampus memory ID if available
 
         Returns:
@@ -779,6 +842,20 @@ class NAc:
         :meth:`record_outcome`, this does NOT require the event to have
         been previously enqueued in ``_pending_events``; it creates the
         causal link directly.
+
+        **Wire 1 divergence (release_0_9_1.md Stage 4):** this entry
+        point does NOT update ``_event_outcome_welford``. Outcomes
+        recorded via ``observe()`` are invisible to
+        ``get_action_risk_profile``; ``OutcomePrediction.uncertainty_interval``
+        reverts to the ``(0.0, 0.0)`` sentinel for events whose only
+        history flowed through here. Production tool dispatch goes
+        through ``record_outcome`` so the asymmetry is invisible
+        in-band; the planner-style direct-attribution callers that
+        prefer ``observe()`` are the surface where this matters. The
+        regression test ``test_observe_path_does_not_update_welford``
+        pins the divergence so a future consumer notices the gap. Post-
+        1.0 cleanup is to factor the Welford update into a helper that
+        both entry points share.
         """
         context = context or {}
         ctx_hash = self._hash_context(context)
@@ -1003,26 +1080,6 @@ class NAc:
         contributing_ids = [link.id for link, _ in scored_links[:5]]
         expected_delay, lower, upper = best_link.temporal_delta.predict_delay()
 
-        # Wire 1 (release_0_9_1.md Stage 4): populate uncertainty_interval
-        # from NAc-level Welford variance on the (agent_id, event_sig)
-        # outcome distribution. ``n < 2`` keeps the (0.0, 0.0) sentinel —
-        # variance is undefined for one sample, and pre-Wire-1 readers
-        # got the same sentinel so this is contract-compatible. Bounds
-        # clamped to [0, 1] to match predicted_value's range. When
-        # context lacks an agent_id (raw-loop callers / tests), variance
-        # is unavailable and the sentinel is returned.
-        uncertainty: tuple[float, float] = (0.0, 0.0)
-        agent_id_for_uncertainty = context.get("agent_id")
-        if agent_id_for_uncertainty:
-            welford = self._event_outcome_welford.get((agent_id_for_uncertainty, event_signature))
-            if welford is not None and welford["n"] >= 2:
-                variance = welford["m2"] / welford["n"]
-                if variance > 0.0:
-                    std = math.sqrt(variance)
-                    u_lower = max(0.0, best_link.predicted_value - std)
-                    u_upper = min(1.0, best_link.predicted_value + std)
-                    uncertainty = (u_lower, u_upper)
-
         return OutcomePrediction(
             event_signature=event_signature,
             predicted_outcome=best_link.outcome_signature,
@@ -1033,8 +1090,44 @@ class NAc:
             confidence=best_score,
             contributing_links=contributing_ids,
             context_match=best_ctx_match,
-            uncertainty_interval=uncertainty,
+            uncertainty_interval=self._uncertainty_for(event_signature, best_link.predicted_value, context),
         )
+
+    def _uncertainty_for(
+        self,
+        event_signature: str,
+        predicted_value: float,
+        context: dict[str, Any] | None,
+    ) -> tuple[float, float]:
+        """Compute Wire 1 uncertainty interval for an OutcomePrediction.
+
+        Single source of truth shared by ``_predict_impl`` and
+        ``predict_all_outcomes`` so the two sibling methods cannot
+        diverge silently. Returns ``(predicted_value − std,
+        predicted_value + std)`` clamped to ``[0, 1]`` where
+        ``std = sqrt(NAc._event_outcome_welford[(agent_id, event_signature)] m2 / n)``.
+
+        Returns the ``(0.0, 0.0)`` sentinel when:
+          - the prediction context lacks ``agent_id``
+            (no per-agent stash key can be formed),
+          - no Welford state exists for the (agent_id, event_signature)
+            pair (cold-start, OR producer used ``observe()`` which
+            doesn't update Welford — see ``observe()`` docstring),
+          - ``n < 2`` (variance undefined for one sample),
+          - ``variance == 0`` (all observations identical reward).
+        """
+        ctx = context or {}
+        agent_id = ctx.get("agent_id")
+        if not agent_id:
+            return (0.0, 0.0)
+        welford = self._event_outcome_welford.get((agent_id, event_signature))
+        if welford is None or welford["n"] < 2:
+            return (0.0, 0.0)
+        variance = welford["m2"] / welford["n"]
+        if variance <= 0.0:
+            return (0.0, 0.0)
+        std = math.sqrt(variance)
+        return (max(0.0, predicted_value - std), min(1.0, predicted_value + std))
 
     def predict_all_outcomes(
         self,
@@ -1071,6 +1164,9 @@ class NAc:
                     confidence=score,
                     contributing_links=[link.id],
                     context_match=ctx_sim,
+                    # Wire 1: shared helper with _predict_impl so both
+                    # sibling methods populate uncertainty consistently.
+                    uncertainty_interval=self._uncertainty_for(event_signature, link.predicted_value, context),
                 )
             )
             seen_outcomes.add(link.outcome_signature)
@@ -1763,7 +1859,7 @@ class NAc:
         agent_id: str,
         min_observations: int = 5,
     ) -> dict[str, float]:
-        """Return ``{event_signature → variance_estimate}`` for one agent.
+        """Return ``{event_signature → variance}`` for one agent.
 
         Wire 1 (release_0_9_1.md Stage 4). Reads
         ``self._event_outcome_welford[(agent_id, event_sig)]`` and returns
@@ -1776,12 +1872,17 @@ class NAc:
         AND uses the ``(agent_id, event_sig)`` composite key so two agents
         sharing one NAc instance write to disjoint slots.
 
-        The variance accumulator lives at the NAc level rather than on
-        ``CausalLink`` because each (event, outcome_valence) pair gets
-        its own link via ``_generate_link_id``, so per-link variance is
-        structurally 0 for binary outcomes. The cross-link aggregation
-        at the NAc level captures the "this tool sometimes works,
-        sometimes doesn't" signal Wire 1 actually needs.
+        **SCOPE CAVEAT (hybrid bio + LLM, not pure substrate-primary):**
+        this method exposes variance for *annotation*, not for
+        *pre-filtering*. The consumer at ``runtime/agent_loop.py`` reads
+        the profile and appends felt-sensation phrases to tool
+        descriptions; the LLM then reads those phrases as input to its
+        next-action choice. A pure substrate-primary design would gate
+        or re-rank tools before the LLM constructs its choice set
+        (post-1.0 cleanup if Roy-3 finds the annotation surface
+        insufficient). Wire 1 ships the hybrid version to keep 0.9.1
+        scope tight. See ``docs/plans/release_0_9_1.md`` § Stage 4 and
+        ``docs/plans/bio_emergent_persona_foundations.md`` § Wire 1.
 
         Args:
             event_sig: Optional event_signature filter. When provided,
@@ -2286,10 +2387,13 @@ class NAc:
         the same mutex the pre-refactor save() body held.
 
         Wire 2 (release_0_9_1.md Stage 3): adds ``percept_valences``.
-        The envelope-level ``_format_version`` stamped by
-        ``save()`` is ``_NAC_FORMAT_VERSION = "1.1"``; backward-compat
-        readers (``load_state``) handle a missing ``percept_valences``
-        key by returning an empty dict.
+        Wire 1 (release_0_9_1.md Stage 4): adds
+        ``event_outcome_welford``. The envelope-level
+        ``_format_version`` stamped by ``save()`` is
+        ``_NAC_FORMAT_VERSION = "1.2"``; backward-compat readers
+        (``load_state``) handle missing ``percept_valences`` /
+        ``event_outcome_welford`` keys by returning empty dicts so
+        pre-Wire-1 (1.0 / 1.1) payloads still load.
         """
         with self._lock:
             return {
@@ -2415,10 +2519,13 @@ class NAc:
         If ``path`` is omitted, falls back to ``self.config.persistence_path``.
         Raises ``ValueError`` if neither is set.
 
-        Wire 2 (release_0_9_1.md Stage 3): stamps ``_format_version`` at
-        ``_NAC_FORMAT_VERSION`` (``"1.1"``).  Backward-compat reader
-        accepts older 1.0 payloads (``percept_valences`` field absent →
-        empty dict).
+        Stamps ``_format_version`` at ``_NAC_FORMAT_VERSION``
+        (``"1.2"`` as of Wire 1, release_0_9_1.md Stage 4).
+        Backward-compat reader accepts older payloads:
+            - 1.0: ``percept_valences`` + ``event_outcome_welford`` absent
+            - 1.1 (Wire 2): ``event_outcome_welford`` absent
+        Both missing keys deserialise to empty dicts; the version drift
+        is surfaced once per process via ``check_format_version``.
         """
         path = path or self.config.persistence_path
         if path is None:

@@ -13,8 +13,10 @@ The wire ships four surfaces:
    ``NAc._predict_impl`` from the NAc-level Welford state.
 3. ``NAc.get_action_risk_profile(*, agent_id, min_observations=N)`` returning
    ``{event_signature → variance}`` for one agent's qualifying events.
-4. agent_loop.py hook appends ``(feels unpredictable)`` /
-   ``(feels predictable)`` annotations to tool descriptions.
+4. agent_loop.py hook appends ``(unpredictable from prior experience)`` /
+   ``(reliable from prior experience)`` annotations to tool descriptions
+   (post-bio-fold experience-voice phrasing — see the regex in
+   ``runtime/agent_loop.py`` for the rationale).
 
 Tests cover Welford correctness across N, once-per-outcome firing,
 zero-observation sentinel, persistence round-trip, per-agent isolation,
@@ -25,7 +27,6 @@ and env-var ablation gate.
 from __future__ import annotations
 
 import math
-import re
 
 import pytest
 
@@ -296,6 +297,14 @@ class TestGetActionRiskProfile:
         _seed(nac, *([Valence.POSITIVE] * 3))  # < default 5
         assert nac.get_action_risk_profile(agent_id="a") == {}
 
+    def test_min_observations_exclusive_boundary(self):
+        # Per Exec N3: pin the EXCLUSIVE boundary (n=4 → empty), not
+        # just the inclusive one. Catches a future off-by-one drift
+        # from ``<`` to ``<=`` in the filter.
+        nac = NAc(config=NACConfig(temporal_window_seconds=60))
+        _seed(nac, *([Valence.POSITIVE] * 4))  # exactly one below default min=5
+        assert nac.get_action_risk_profile(agent_id="a") == {}
+
     def test_min_observations_threshold_inclusive(self):
         nac = NAc(config=NACConfig(temporal_window_seconds=60))
         _seed(
@@ -373,15 +382,28 @@ class TestGetActionRiskProfile:
 
 
 class TestAnnotationAssemblyExpression:
-    HIGH_VARIANCE_THRESHOLD = 0.15
-    LOW_VARIANCE_THRESHOLD = 0.05
-    WIRE1_RE = re.compile(r" \((?:feels unpredictable|feels predictable)\)$")
+    """Mirror the agent_loop annotation assembly directly so the regex,
+    band classification, and phrase composition are pinned independently
+    of the runtime spin-up. Imports the runtime constants so phrasing
+    drift is caught at test-collection time, not runtime.
+    """
+
+    # Import the production constants — if Bio fold changes the phrases
+    # again, these tests fail at module load with a clean ImportError,
+    # not a silent green run on stale strings.
+    from maxim.runtime.agent_loop import (
+        _WIRE1_HIGH_PHRASE,
+        _WIRE1_HIGH_VARIANCE_THRESHOLD,
+        _WIRE1_LOW_PHRASE,
+        _WIRE1_LOW_VARIANCE_THRESHOLD,
+        _WIRE1_PHRASE_RE,
+    )
 
     def _classify_phrase(self, variance: float) -> str | None:
-        if variance >= self.HIGH_VARIANCE_THRESHOLD:
-            return "feels unpredictable"
-        if variance < self.LOW_VARIANCE_THRESHOLD:
-            return "feels predictable"
+        if variance >= self._WIRE1_HIGH_VARIANCE_THRESHOLD:
+            return self._WIRE1_HIGH_PHRASE
+        if variance < self._WIRE1_LOW_VARIANCE_THRESHOLD:
+            return self._WIRE1_LOW_PHRASE
         return None
 
     def _annotate(self, descs: dict[str, dict], profile: dict[str, float]) -> dict[str, dict]:
@@ -395,7 +417,7 @@ class TestAnnotationAssemblyExpression:
             phrase = self._classify_phrase(variance)
             entry = out[tool_name]
             base_desc = entry.get("description", "")
-            stripped = self.WIRE1_RE.sub("", base_desc)
+            stripped = self._WIRE1_PHRASE_RE.sub("", base_desc)
             if phrase is None:
                 if stripped != base_desc:
                     out[tool_name] = {**entry, "description": stripped}
@@ -406,53 +428,73 @@ class TestAnnotationAssemblyExpression:
     def test_high_variance_gets_unpredictable_phrase(self):
         descs = {"strike": {"description": "Strike the target.", "params": {}}}
         result = self._annotate(descs, {"tool:strike": 0.22})
-        assert "(feels unpredictable)" in result["strike"]["description"]
-        assert result["strike"]["description"] == "Strike the target. (feels unpredictable)"
+        assert "(unpredictable from prior experience)" in result["strike"]["description"]
+        assert result["strike"]["description"] == "Strike the target. (unpredictable from prior experience)"
 
     def test_low_variance_gets_predictable_phrase(self):
         descs = {"strike": {"description": "Strike the target.", "params": {}}}
         result = self._annotate(descs, {"tool:strike": 0.01})
-        assert "(feels predictable)" in result["strike"]["description"]
+        assert "(reliable from prior experience)" in result["strike"]["description"]
 
     def test_middle_band_gets_no_annotation(self):
         descs = {"strike": {"description": "Strike the target.", "params": {}}}
         result = self._annotate(descs, {"tool:strike": 0.08})
-        assert "(feels" not in result["strike"]["description"]
+        assert "from prior experience" not in result["strike"]["description"]
 
     def test_idempotent_across_observations(self):
         descs = {"strike": {"description": "Strike the target.", "params": {}}}
         once = self._annotate(descs, {"tool:strike": 0.22})
         twice = self._annotate(once, {"tool:strike": 0.22})
-        assert twice["strike"]["description"].count("(feels unpredictable)") == 1
+        assert twice["strike"]["description"].count("(unpredictable from prior experience)") == 1
 
     def test_middle_band_strips_stale_annotation(self):
         # Decayed back to middle band — strip prior annotation
-        descs = {"strike": {"description": "Strike the target. (feels unpredictable)", "params": {}}}
+        descs = {
+            "strike": {
+                "description": "Strike the target. (unpredictable from prior experience)",
+                "params": {},
+            }
+        }
         result = self._annotate(descs, {"tool:strike": 0.08})
-        assert "(feels" not in result["strike"]["description"]
+        assert "from prior experience" not in result["strike"]["description"]
         assert result["strike"]["description"] == "Strike the target."
 
     def test_band_transition_strips_then_reannotates(self):
-        descs = {"strike": {"description": "Strike the target. (feels unpredictable)", "params": {}}}
+        descs = {
+            "strike": {
+                "description": "Strike the target. (unpredictable from prior experience)",
+                "params": {},
+            }
+        }
         result = self._annotate(descs, {"tool:strike": 0.01})
         desc = result["strike"]["description"]
-        assert desc.count("(feels unpredictable)") == 0
-        assert desc.count("(feels predictable)") == 1
+        assert desc.count("(unpredictable from prior experience)") == 0
+        assert desc.count("(reliable from prior experience)") == 1
 
     def test_tool_use_compound_signature_skipped(self):
         descs = {"use": {"description": "Generic action tool.", "params": {}}}
         result = self._annotate(descs, {"tool:use:dodge": 0.22})
-        assert "(feels" not in result["use"]["description"]
+        assert "from prior experience" not in result["use"]["description"]
+
+    def test_multiple_tool_use_compound_signatures_skipped(self):
+        # Per Exec N6: multiple tool:use:X entries pin the skip-loop
+        # doesn't accidentally mutate the bare "use" description.
+        descs = {"use": {"description": "Generic action tool.", "params": {}}}
+        result = self._annotate(descs, {"tool:use:dodge": 0.22, "tool:use:strike": 0.01})
+        assert result == descs
 
     def test_wire3_and_wire1_annotations_coexist(self):
         # Wire 1 regex only matches its own phrases — a prior Wire 3 phrase
-        # is preserved, and the Wire 1 phrase is appended after it.
+        # is preserved, and the Wire 1 phrase is appended after it. The
+        # two registers (somatic body-state vs. experience-acquired
+        # variability) are deliberately distinct phrasings so the LLM
+        # can disambiguate the two signal sources.
         descs = {"strike": {"description": "Strike. (feels strained)", "params": {}}}
         result = self._annotate(descs, {"tool:strike": 0.22})
         desc = result["strike"]["description"]
         assert "(feels strained)" in desc
-        assert "(feels unpredictable)" in desc
-        assert desc.endswith("(feels unpredictable)")
+        assert "(unpredictable from prior experience)" in desc
+        assert desc.endswith("(unpredictable from prior experience)")
 
     def test_unknown_tool_in_profile_ignored(self):
         descs = {"strike": {"description": "Strike.", "params": {}}}
@@ -465,20 +507,32 @@ class TestAnnotationAssemblyExpression:
 # ─────────────────────────────────────────────────────────────────────
 
 
-class TestEnvAblationGate:
-    """Producer site reads ``os.environ.get(...).strip().lower()`` and
-    tests membership in the truthy frozenset. Verify the parser shape.
-    """
+from maxim.prompts.cluster_bias_annotation import (
+    TRUTHY_DISABLE_VALUES,
+    annotation_disabled_via_env,
+)
 
-    TRUTHY = {"1", "true", "t", "yes", "y", "on"}
+
+class TestEnvAblationGate:
+    """Wire 1 reuses Wire-A's canonical ``annotation_disabled_via_env``
+    parser so the truthy-value set is single-sourced. The agent_loop hook
+    imports it and the conftest scrub fixture clears
+    ``MAXIM_DISABLE_VARIANCE_ANNOTATION`` between tests.
+    """
 
     @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "Y", "on", "ON"])
     def test_truthy_values_disable(self, value: str):
-        assert value.strip().lower() in self.TRUTHY
+        assert annotation_disabled_via_env(value) is True
 
-    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "  ", "anything"])
-    def test_falsy_values_keep_enabled(self, value: str):
-        assert value.strip().lower() not in self.TRUTHY
+    @pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "  ", "anything", None])
+    def test_falsy_values_keep_enabled(self, value):
+        assert annotation_disabled_via_env(value) is False
+
+    def test_canonical_truthy_set_is_shared(self):
+        # If Wire-A's TRUTHY set ever changes, Wire 1 inherits the change
+        # via the import. Pin the current shape so a future delta is
+        # at least visible at test-collection time.
+        assert TRUTHY_DISABLE_VALUES == frozenset({"1", "true", "t", "yes", "y", "on"})
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -520,3 +574,109 @@ class TestEndToEnd:
         profile = nac.get_action_risk_profile(agent_id="a")
         variance = profile.get("tool:erratic", 0.0)
         assert variance >= self.HIGH, f"expected unpredictable-band, got variance {variance}"
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 8. observe() Welford-skip divergence — pre-merge fold (Exec G3)
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestObservePathSkipsWelford:
+    """``NAc.observe()`` is the direct-attribution entry point used by
+    planner-style consumers. Its docstring documents that it does NOT
+    update ``_event_outcome_welford``; this test pins the divergence
+    so a future consumer relying on ``get_action_risk_profile`` after
+    only calling ``observe()`` notices the empty profile at import time.
+    """
+
+    def test_observe_path_does_not_update_welford(self):
+        nac = NAc(config=NACConfig(temporal_window_seconds=60))
+        # 10 observations via observe() — should NOT show up in the
+        # variance accumulator.
+        for v in [Valence.POSITIVE, Valence.NEGATIVE] * 5:
+            nac.observe(
+                event_type="tool",
+                event_signature="tool:planner",
+                outcome_type="tool_result",
+                outcome_signature=f"x:{v.value}",
+                outcome_valence=v,
+                delta_seconds=0.1,
+                context={"agent_id": "a"},
+            )
+        assert nac._event_outcome_welford == {}
+        assert nac.get_action_risk_profile(agent_id="a") == {}
+
+    def test_record_outcome_after_observe_starts_welford_fresh(self):
+        # After observe() ignored outcomes, record_outcome() bootstraps
+        # the accumulator cleanly without any "n adjusted for prior
+        # observe() calls" subtlety.
+        nac = NAc(config=NACConfig(temporal_window_seconds=60))
+        for v in [Valence.POSITIVE, Valence.NEGATIVE] * 3:
+            nac.observe(
+                event_type="tool",
+                event_signature="tool:planner",
+                outcome_type="tool_result",
+                outcome_signature=f"x:{v.value}",
+                outcome_valence=v,
+                delta_seconds=0.1,
+                context={"agent_id": "a"},
+            )
+        _seed(nac, Valence.POSITIVE, event_sig="tool:planner")
+        state = nac._event_outcome_welford[("a", "tool:planner")]
+        assert state["n"] == 1.0  # only the record_outcome call counted
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 9. _uncertainty_for helper + predict_all_outcomes parity (Exec S3 / G6)
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestUncertaintyHelperParity:
+    """``_predict_impl`` and ``predict_all_outcomes`` share
+    ``_uncertainty_for`` so they cannot diverge silently on
+    ``OutcomePrediction.uncertainty_interval`` population.
+    """
+
+    def test_predict_all_outcomes_populates_uncertainty(self):
+        nac = NAc(config=NACConfig(temporal_window_seconds=60, min_confidence_threshold=0.0))
+        # Seed enough alternation for n >= 2 and non-zero variance
+        for _ in range(5):
+            _seed(nac, Valence.POSITIVE, Valence.NEGATIVE, event_sig="tool:multi")
+        preds = nac.predict_all_outcomes("tool", "tool:multi", context={"agent_id": "a"})
+        assert preds, "expected at least one prediction"
+        # Every prediction's uncertainty_interval centers on its own
+        # link's predicted_value (the per-link RW estimate); the
+        # bounds therefore differ across sibling predictions while
+        # all reflect the SAME underlying NAc-level Welford variance.
+        # The Wire 1 contract pinned here: no sibling prediction
+        # falls back to the (0.0, 0.0) sentinel when Welford state
+        # exists for the (agent_id, event_sig) pair.
+        for p in preds:
+            assert p.uncertainty_interval != (0.0, 0.0), (
+                f"sibling prediction {p.predicted_outcome} fell back to sentinel"
+            )
+            lower, upper = p.uncertainty_interval
+            assert 0.0 <= lower <= upper <= 1.0
+
+    def test_predict_all_outcomes_no_agent_id_returns_sentinel(self):
+        nac = NAc(config=NACConfig(temporal_window_seconds=60, min_confidence_threshold=0.0))
+        for _ in range(5):
+            _seed(nac, Valence.POSITIVE, Valence.NEGATIVE, event_sig="tool:multi")
+        # Context lacks agent_id → sentinel
+        preds = nac.predict_all_outcomes("tool", "tool:multi", context={})
+        for p in preds:
+            assert p.uncertainty_interval == (0.0, 0.0)
+
+    def test_predict_helper_with_prediction_context(self):
+        # Exec G4: integration pin through the predict() API with the
+        # documented prediction_context parameter to catch any future
+        # signature drift that bypasses the helper.
+        nac = NAc(config=NACConfig(temporal_window_seconds=60, min_confidence_threshold=0.0))
+        for _ in range(10):
+            _seed(nac, Valence.POSITIVE, Valence.NEGATIVE, event_sig="tool:flaky")
+        # predict() takes a context dict (carrying agent_id) and an
+        # optional prediction_context. The helper reads agent_id from
+        # context, not prediction_context — pin that semantics.
+        pred = nac.predict("tool", "tool:flaky", context={"agent_id": "a"})
+        assert pred is not None
+        assert pred.uncertainty_interval != (0.0, 0.0)

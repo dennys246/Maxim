@@ -145,18 +145,22 @@ class CausalLink:
         last_observed: Timestamp of last observation
         memory_ids: Hippocampus memory IDs where observed
 
-    Wire 1 design note (release_0_9_1.md Stage 4): the plan originally
-    placed ``variance_estimate`` on this class. During implementation we
-    found the architecture splits each (event_sig, outcome_valence) pair
-    into a separate ``CausalLink`` (because ``outcome_signature`` embeds
-    valence into ``_generate_link_id``), so per-link reward variance is
-    structurally 0 for binary success/failure observations and useless
-    for the "is this tool reliable" signal Wire 1 needs. The variance
-    accumulator moved one level up to ``NAc._event_outcome_welford``
-    keyed by ``(agent_id, event_signature)`` — that level captures the
-    cross-link heterogeneity that drives tool annotation. The plan
-    deviation is documented in the PR body and called out in the bio
-    review prompt.
+    Wire 1 architecture (release_0_9_1.md Stage 4): outcome-reward
+    variance lives on ``NAc._event_outcome_welford`` keyed by
+    ``(agent_id, event_signature)``, NOT on this class. The split is
+    structural: ``_generate_link_id`` makes ``outcome_signature`` part
+    of the link key (and ``outcome_signature`` embeds valence), so each
+    ``(event_sig, outcome_valence)`` pair allocates a separate
+    ``CausalLink``. Reward variance per individual link is therefore
+    always 0 for binary success/failure observations — the "is this
+    tool reliable" signal Wire 1 surfaces requires variance over the
+    cross-link outcome distribution, which is the NAc-level
+    aggregation. The earlier plan draft placed variance on
+    ``CausalLink``; per the no-band-aid-fixes rule the architecture
+    moved one level up to the place where the statistic carries signal.
+    See ``NAc._event_outcome_welford`` and CLAUDE.md "Key-embedded
+    values produce structurally-degenerate statistics" for the
+    generalised lesson.
     """
 
     id: str
@@ -416,11 +420,22 @@ class OutcomePrediction:
     contributing_links: list[str]  # CausalLink IDs that informed this
     context_match: float  # How well current context matches learned context
     # Wire 1 (release_0_9_1.md Stage 4): (lower, upper) bounds on
-    # predicted_value from CausalLink.variance_estimate. Default
-    # (0.0, 0.0) is the "no uncertainty data yet" sentinel returned
-    # when observation_count < 2. In-memory only; not serialized in
+    # predicted_value from ``NAc._event_outcome_welford[(agent_id,
+    # event_signature)]``. Default (0.0, 0.0) is the "no uncertainty
+    # data yet" sentinel returned when ``n < 2`` OR when the prediction
+    # context lacks ``agent_id``. In-memory only; not serialized in
     # to_dict until 1.1+ picks the representation shape (bounds tuple
     # vs. {lower, upper, std} dict).
+    #
+    # SCOPE CAVEAT: this field is the consumer side of a HYBRID bio +
+    # LLM design. The producer is substrate-driven (Welford variance on
+    # the binary reward signal); the consumer wiring presents the
+    # bounds to the LLM via tool-description annotation rather than
+    # pre-filtering / re-ranking the agent's action choices. A pure
+    # substrate-primary design (post-1.0) would gate or re-rank tools
+    # before the LLM constructs its choice set. Wire 1 ships the
+    # hybrid version to keep 0.9.1 scope tight; see
+    # release_0_9_1.md § Stage 4.
     uncertainty_interval: tuple[float, float] = (0.0, 0.0)
 
     def to_dict(self) -> dict:
