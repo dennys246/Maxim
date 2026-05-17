@@ -460,11 +460,16 @@ class TestBuildPainBus:
         assert hippo.capture.call_count == 1
 
     def test_nac_only_subscribes_nac_subscriber(self):
-        """Passing nac wires create_pain_nac_subscriber."""
+        """Passing nac wires create_pain_nac_subscriber AND (Wire 2)
+        create_percept_valence_subscriber — both NAc subscribers are
+        auto-wired by the canonical door.
+        """
         nac = self._nac()
         bus = build_pain_bus(hippocampus=None, nac=nac)
 
-        assert bus.get_stats()["direct_pain_subscribers"] == 1
+        # Wire 2 (release_0_9_1.md Stage 3) adds a second NAc subscriber
+        # (create_percept_valence_subscriber) — total 2 direct subs.
+        assert bus.get_stats()["direct_pain_subscribers"] == 2
 
         # Record a pending action that the pain context will match.
         nac.record_event(
@@ -482,13 +487,17 @@ class TestBuildPainBus:
         assert len(nac._links.get("slash:rusty_sword", [])) == 1
 
     def test_both_learners_subscribe_both(self):
-        """The standard production shape: both subjects wired."""
+        """The standard production shape: both subjects wired.
+
+        Three direct subscribers when both hippocampus and nac are
+        provided: memory, causal-NAc, and Wire 2 percept-valence.
+        """
         hippo = MagicMock()
         hippo.capture = MagicMock()
         nac = self._nac()
         bus = build_pain_bus(hippocampus=hippo, nac=nac)
 
-        assert bus.get_stats()["direct_pain_subscribers"] == 2
+        assert bus.get_stats()["direct_pain_subscribers"] == 3
 
         nac.record_event(
             event_type="action",

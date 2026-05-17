@@ -70,6 +70,20 @@ class GatingContext:
 
     Carries goal, energy, processing load — information that influences
     gating decisions across all modalities.
+
+    **Wire 2 audit gate (CC3 frozen-contract review, release_0_9_1.md
+    Stage 3):** ``learned_aversions`` is an additive optional field with a
+    sensible default and lives at the end of the field list, per the CC3
+    shape-frozen contract rules.  The field surfaces NAc's per-agent
+    Pavlovian aversion map (``NAc.get_percept_aversions``) into
+    ``TextSalienceScorer`` so substrate-acquired aversion (a dragon that
+    burned the agent once) raises salience for matching percepts.
+    Reading does not consume — the scorer is a pure read against this
+    snapshot; writes happen on the ``create_percept_valence_subscriber``
+    PainBus subscriber.  Producer-consumer key alignment: the producer
+    (NAc subscriber) keys on ``entity_class``; the consumer
+    (``TextSalienceScorer``) matches percept words against
+    ``entity_class`` keys, so both ends agree.
     """
 
     active_goal: str | None = None
@@ -80,6 +94,13 @@ class GatingContext:
     # Drive states for salience modulation (1.0 interface — scoring impl deferred)
     # Keys are drive sensor names, values are current levels (e.g., {"hunger": 0.72})
     drive_states: dict[str, float] | None = None
+    # Wire 2 (release_0_9_1.md Stage 3): per-agent learned aversion map.
+    # Keys are ``entity_class`` strings, values are aversion magnitudes
+    # in ``(0.0, max_percept_valence]`` — already absolute-valued by
+    # ``NAc.get_percept_aversions`` so consumers don't have to branch
+    # on sign.  ``None`` is the explicit opt-out (no NAc wired, or
+    # scorer running before the subscriber populated anything).
+    learned_aversions: dict[str, float] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -477,24 +498,42 @@ class TextSalienceScorer:
             return 1.0 - avg_overlap  # High overlap = low novelty
 
     def _compute_salience(self, words: set[str], context: GatingContext) -> float:
-        """How salient is this text? NAc reward history for recognized words."""
-        if self._nac is None:
-            return 0.5  # Neutral if no NAc
+        """How salient is this text? NAc reward history + learned aversion.
 
-        # Check if any words match known rewarding event signatures
-        salience_signals = []
-        for word in words:
-            try:
-                links = self._nac.get_links_for_event(word)
-                if links:
-                    best = max(links, key=lambda lk: lk.confidence)
-                    salience_signals.append(best.confidence)
-            except Exception:
-                continue
+        Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion
+        amplifies salience for percepts overlapping an aversive entity
+        class.  ``context.learned_aversions`` is a snapshot of
+        ``NAc.get_percept_aversions(agent_id=...)`` populated by the
+        ``BioEnrichmentPipeline``; the scorer is a pure reader, never
+        consumes or mutates it.
+        """
+        base = 0.5  # Neutral default
+        if self._nac is not None:
+            # Check if any words match known rewarding event signatures
+            salience_signals = []
+            for word in words:
+                try:
+                    links = self._nac.get_links_for_event(word)
+                    if links:
+                        best = max(links, key=lambda lk: lk.confidence)
+                        salience_signals.append(best.confidence)
+                except Exception:
+                    continue
+            if salience_signals:
+                base = min(1.0, 0.5 + max(salience_signals) * 0.5)
 
-        if not salience_signals:
-            return 0.5
-        return min(1.0, 0.5 + max(salience_signals) * 0.5)
+        # Wire 2: Pavlovian aversion modulation. Aversive entity classes
+        # raise salience proportionally — a dragon that burned the agent
+        # once now fires the scorer harder on subsequent dragon percepts.
+        aversion, _matched_class = _match_learned_aversion(words, context.learned_aversions)
+        if aversion > 0.0:
+            # Saturating mix toward 1.0: a strong aversion (magnitude
+            # near max_percept_valence) lifts base salience by up to
+            # (1.0 - base). Bounded so multiple aversion matches can't
+            # exceed 1.0 in one pass.
+            base = base + (1.0 - base) * min(1.0, aversion)
+
+        return min(1.0, max(0.0, base))
 
     def _compute_goal_relevance(self, words: set[str], context: GatingContext) -> float:
         """How relevant is this text to the current goal?"""
@@ -510,3 +549,59 @@ class TextSalienceScorer:
         """Clear recent text history."""
         with self._lock:
             self._recent_texts.clear()
+
+
+# Wire 2 helper — module-level so unit tests can pin the matching shape
+# independent of the scorer's NAc wiring.
+def _match_learned_aversion(
+    words: set[str],
+    aversions: dict[str, float] | None,
+) -> tuple[float, str | None]:
+    """Return the strongest aversion magnitude that intersects ``words``.
+
+    The aversion map is keyed by ``entity_class`` strings produced by
+    ``NAc.get_percept_aversions`` — produced from SEM component YAML
+    (``entity.name``, the noun like ``"dragon"`` or ``"rusty_sword"``;
+    with fallback to ``entity.entity_type`` for legacy producers).
+    Pre-merge architecture review C1 fold: the producer now publishes
+    ``entity_name`` so the substrate keys on the noun rather than the
+    category — without that fix, the fragment-match here would never
+    fire on production percept text.  This helper:
+
+    1. Splits each entity_class key on ``_``, ``-``, ``:``, and whitespace.
+    2. Lower-cases each fragment.
+    3. Matches if the percept's word set intersects the fragment set.
+    4. Returns ``(best_magnitude, matched_class)`` across matching keys.
+
+    Returns ``(0.0, None)`` when ``aversions`` is empty / None or no
+    key matches.  The fragment-match lets a percept "a dragon roars"
+    match aversions keyed ``"dragon"`` (single-token) AND
+    ``"dragon_whelp"`` (split into ``{"dragon", "whelp"}``).  This is
+    intentional: the felt wariness of any dragon-shaped entity should
+    fire on a generic dragon mention.
+
+    Hyphen support (pre-merge architecture review N1 fold): some
+    LLM-generated entity names use ``"dragon-whelp"`` style; the
+    split now handles all three connector characters.
+
+    The ``matched_class`` return is the entity_class string for the
+    aversion producing the winning magnitude.  Used by Wire 2's
+    ``WIRE_2_AVERSION`` sim_log emission for Roy-3 disambiguation.
+    """
+    if not aversions:
+        return 0.0, None
+    best = 0.0
+    best_class: str | None = None
+    for entity_class, magnitude in aversions.items():
+        if magnitude <= 0.0:
+            continue
+        fragments = {
+            frag.lower() for frag in entity_class.replace("-", " ").replace("_", " ").replace(":", " ").split() if frag
+        }
+        if not fragments:
+            continue
+        if fragments & words:
+            if magnitude > best:
+                best = magnitude
+                best_class = entity_class
+    return best, best_class

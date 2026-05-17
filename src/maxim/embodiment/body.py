@@ -301,7 +301,11 @@ class Embodiment:
                 context={
                     "source": f"drive:{drive_name}",
                     "entity": entity.full_path,
+                    # See _publish_pain for the entity_type vs
+                    # entity_name distinction — drive pain ships both
+                    # for parity with embodiment-failure pain.
                     "entity_type": entity.entity_type,
+                    "entity_name": entity.name,
                     "failure_mode": f"drive:{drive_name}",
                     "sensor_readings": {k: v for k, v in readings.items() if isinstance(v, (int, float))},
                     "entity_path": entity.full_path,
@@ -364,7 +368,17 @@ class Embodiment:
                 context={
                     "source": "embodiment",
                     "entity": entity.full_path,
+                    # entity_type is the YAML CATEGORY ("creature",
+                    # "weapon", "body") — coarser than needed for
+                    # Pavlovian percept aversion (Wire 2 needs noun-
+                    # level discrimination so dragon-pain doesn't
+                    # generalize to wolf-pain).  entity_name is the
+                    # YAML noun ("dragon", "rusty_sword") and is the
+                    # canonical Wire 2 percept-aversion key.  Both
+                    # fields ship; consumers pick based on the
+                    # abstraction level they need.
                     "entity_type": entity.entity_type,
+                    "entity_name": entity.name,
                     "failure_mode": failure.name,
                     "composes": list(failure.composes or []),
                     "sensor_readings": dict(readings),
