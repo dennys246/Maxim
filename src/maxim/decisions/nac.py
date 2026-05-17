@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -20,6 +21,7 @@ from maxim.decisions.causal_link import (
     OutcomePrediction,
     TemporalDelta,
     Valence,
+    _VALENCE_TO_REWARD,
 )
 
 if TYPE_CHECKING:
@@ -340,6 +342,36 @@ class NAc:
         # ``_format_version`` bumped from 1.0 → 1.1 on the NAc dump;
         # backward-compat reader returns empty dict for older payloads.
         self._percept_valences: dict[tuple[str, str, str], float] = {}
+
+        # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id, event_signature)
+        # Welford online variance state for the reward signal across
+        # outcomes. The plan originally placed variance on CausalLink, but
+        # ``_generate_link_id`` keys on ``outcome_signature`` (which embeds
+        # valence), so each (event, outcome_valence) pair becomes a
+        # separate link and per-link variance is structurally 0 for
+        # binary success/failure — useless as a "is this tool reliable"
+        # signal. Moving variance one level up captures cross-link
+        # outcome heterogeneity, which is what Wire 1 actually needs.
+        # Value shape: ``{"mean": float, "m2": float, "n": int}`` with
+        # ``variance = m2 / n``. Updated in ``_record_outcome_impl`` once
+        # per outcome (NOT per eligibility-trace credit-distribution
+        # event — that path goes through ``distribute_reward`` which
+        # touches ``_reward_bias``, not this state). Read by
+        # ``get_action_risk_profile`` and ``_predict_impl`` for
+        # ``OutcomePrediction.uncertainty_interval``.
+        #
+        # Per-agent stash discipline (CC4): required ``agent_id`` key
+        # comes from ``event_context.get("agent_id")``. Outcomes whose
+        # context lacks the tag (raw-loop test callers) are skipped —
+        # the silent-no-op shape this codebase pushes structurally
+        # elsewhere (e.g. ``build_executor(pain_bus=...)``) is
+        # protected here by the test
+        # ``test_links_missing_agent_id_in_context_are_skipped`` in
+        # tests/unit/test_wire_1_risk_annotation.py: if future code
+        # forgets to tag agent_id at the outcome producer site, the
+        # variance stops updating but the rest of NAc keeps working,
+        # and the test pins the contract.
+        self._event_outcome_welford: dict[tuple[str, str], dict[str, float]] = {}
 
         # Stats
         self._total_observations = 0
@@ -662,6 +694,40 @@ class NAc:
 
             self._total_observations += 1
 
+        # Wire 1 (release_0_9_1.md Stage 4): NAc-level Welford on the
+        # reward signal, keyed by (agent_id, event_signature). Fires
+        # EXACTLY ONCE per outcome regardless of how many links were
+        # touched in the loop above (events_to_link can contain
+        # multiple pending events that all map to the same outcome —
+        # the variance signal at the agent×tool grain should not
+        # double-count them). The Welford state is updated under the
+        # same self._lock that wraps record_outcome_full's call to
+        # _record_outcome_impl, so reads from get_action_risk_profile
+        # see a consistent snapshot. Skips when agent_id is absent
+        # (CC4 silent-no-op trade-off — tagged in the docstring +
+        # protected by a regression test).
+        agent_id = context.get("agent_id")
+        if agent_id and events_to_link:
+            # Pick the event_signature from the first linked event. When
+            # the outcome attributes to multiple events with different
+            # event_signatures (a possibility under context-similarity
+            # attribution), we accumulate variance per the FIRST event_sig
+            # to avoid over-counting. The downstream consumer (tool
+            # annotation) iterates events one at a time anyway.
+            event_sig_for_welford = events_to_link[0][0]["signature"]
+            reward = _VALENCE_TO_REWARD.get(outcome_valence, 0.5)
+            key = (agent_id, event_sig_for_welford)
+            state = self._event_outcome_welford.get(key)
+            if state is None:
+                state = {"mean": 0.0, "m2": 0.0, "n": 0.0}
+                self._event_outcome_welford[key] = state
+            state["n"] += 1.0
+            n = state["n"]
+            delta = reward - state["mean"]
+            state["mean"] += delta / n
+            delta2 = reward - state["mean"]
+            state["m2"] += delta * delta2
+
         self._enforce_limits()
 
         # Log causal learning activity (P3g — Tier 2)
@@ -937,6 +1003,26 @@ class NAc:
         contributing_ids = [link.id for link, _ in scored_links[:5]]
         expected_delay, lower, upper = best_link.temporal_delta.predict_delay()
 
+        # Wire 1 (release_0_9_1.md Stage 4): populate uncertainty_interval
+        # from NAc-level Welford variance on the (agent_id, event_sig)
+        # outcome distribution. ``n < 2`` keeps the (0.0, 0.0) sentinel —
+        # variance is undefined for one sample, and pre-Wire-1 readers
+        # got the same sentinel so this is contract-compatible. Bounds
+        # clamped to [0, 1] to match predicted_value's range. When
+        # context lacks an agent_id (raw-loop callers / tests), variance
+        # is unavailable and the sentinel is returned.
+        uncertainty: tuple[float, float] = (0.0, 0.0)
+        agent_id_for_uncertainty = context.get("agent_id")
+        if agent_id_for_uncertainty:
+            welford = self._event_outcome_welford.get((agent_id_for_uncertainty, event_signature))
+            if welford is not None and welford["n"] >= 2:
+                variance = welford["m2"] / welford["n"]
+                if variance > 0.0:
+                    std = math.sqrt(variance)
+                    u_lower = max(0.0, best_link.predicted_value - std)
+                    u_upper = min(1.0, best_link.predicted_value + std)
+                    uncertainty = (u_lower, u_upper)
+
         return OutcomePrediction(
             event_signature=event_signature,
             predicted_outcome=best_link.outcome_signature,
@@ -947,6 +1033,7 @@ class NAc:
             confidence=best_score,
             contributing_links=contributing_ids,
             context_match=best_ctx_match,
+            uncertainty_interval=uncertainty,
         )
 
     def predict_all_outcomes(
@@ -1667,6 +1754,70 @@ class NAc:
         items = sorted(per_tool.items(), key=lambda kv: (-abs(kv[1]), kv[0]))
         return items[: max(0, top_n)]
 
+    # -- Wire 1: risk-sensitive action profile (release_0_9_1.md Stage 4) -
+
+    def get_action_risk_profile(
+        self,
+        event_sig: str | None = None,
+        *,
+        agent_id: str,
+        min_observations: int = 5,
+    ) -> dict[str, float]:
+        """Return ``{event_signature → variance_estimate}`` for one agent.
+
+        Wire 1 (release_0_9_1.md Stage 4). Reads
+        ``self._event_outcome_welford[(agent_id, event_sig)]`` and returns
+        the variance (= ``m2 / n``) for entries whose observation count
+        meets ``min_observations``. Variance is over the binary {0, 0.5,
+        1} reward signal that ``_VALENCE_TO_REWARD`` maps from outcome
+        valence. Max value 0.25 (Bernoulli p=0.5).
+
+        The per-agent stash is filterable by ``agent_id`` (the CC4 rule)
+        AND uses the ``(agent_id, event_sig)`` composite key so two agents
+        sharing one NAc instance write to disjoint slots.
+
+        The variance accumulator lives at the NAc level rather than on
+        ``CausalLink`` because each (event, outcome_valence) pair gets
+        its own link via ``_generate_link_id``, so per-link variance is
+        structurally 0 for binary outcomes. The cross-link aggregation
+        at the NAc level captures the "this tool sometimes works,
+        sometimes doesn't" signal Wire 1 actually needs.
+
+        Args:
+            event_sig: Optional event_signature filter. When provided,
+                returns at most one entry (the matching key); when None
+                (default), returns all entries for the agent.
+            agent_id: Per-agent scoping per the CLAUDE.md CC4 stash rule.
+                Required keyword-only. Empty string raises ``ValueError``.
+            min_observations: Minimum ``n`` (observation count) for a
+                state to appear in the profile. Default 5 — under this
+                floor Welford variance is too noisy to drive LLM
+                annotation.
+
+        Returns:
+            Dict mapping ``event_signature → variance`` in ``[0.0, 0.25]``.
+            Empty dict when no qualifying states exist (cold-start agent
+            OR all states below ``min_observations``).
+
+        Raises:
+            ValueError: ``agent_id`` is empty.
+        """
+        if not agent_id:
+            raise ValueError("get_action_risk_profile requires non-empty agent_id")
+
+        per_event: dict[str, float] = {}
+        with self._lock:
+            for (aid, evt_sig), state in self._event_outcome_welford.items():
+                if aid != agent_id:
+                    continue
+                if event_sig is not None and evt_sig != event_sig:
+                    continue
+                n = state["n"]
+                if n < min_observations:
+                    continue
+                per_event[evt_sig] = state["m2"] / n if n > 0 else 0.0
+        return per_event
+
     # -- Goal-level reward bias (bidirectional, for ThoughtGate) ----------
 
     def credit_goal(self, goal_tag: str | None, reward: float) -> None:
@@ -2167,6 +2318,18 @@ class NAc:
                 "percept_valences": {
                     f"{aid}\x1f{ec}\x1f{fm}": valence for (aid, ec, fm), valence in self._percept_valences.items()
                 },
+                # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id,
+                # event_signature) Welford state for outcome variance.
+                # ``\x1f`` separator joins the composite key so a future
+                # event_signature containing ``:`` (e.g. ``tool:use:dodge``)
+                # round-trips unambiguously. The value is a JSON-serializable
+                # 3-tuple dict ``{"mean": float, "m2": float, "n": float}``;
+                # ``n`` stays float-typed because it's only used for
+                # division and that avoids an int/float JSON round-trip
+                # issue under some loaders.
+                "event_outcome_welford": {
+                    f"{aid}\x1f{evt_sig}": dict(state) for (aid, evt_sig), state in self._event_outcome_welford.items()
+                },
             }
 
     def load_state(self, state: dict[str, Any]) -> None:
@@ -2221,6 +2384,30 @@ class NAc:
             parts = key_str.split("\x1f", 2)
             if len(parts) == 3:
                 self._percept_valences[(parts[0], parts[1], parts[2])] = valence
+
+        # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id, event_signature)
+        # Welford state. Missing field → empty dict (backward-compat: any
+        # ``aut_nac.json`` written before Wire 1 lacks this key and
+        # ``get_action_risk_profile`` returns ``{}`` for cold-start until
+        # the first new outcome refreshes the state).
+        self._event_outcome_welford = {}
+        for key_str, raw_state in state.get("event_outcome_welford", {}).items():
+            parts = key_str.split("\x1f", 1)
+            if len(parts) != 2:
+                continue
+            if not isinstance(raw_state, dict):
+                continue
+            # Coerce to float for the divisions in get_action_risk_profile;
+            # JSON loaders may surface int for n if it was a whole number.
+            try:
+                self._event_outcome_welford[(parts[0], parts[1])] = {
+                    "mean": float(raw_state.get("mean", 0.0)),
+                    "m2": float(raw_state.get("m2", 0.0)),
+                    "n": float(raw_state.get("n", 0.0)),
+                }
+            except (TypeError, ValueError):
+                # Corrupt entry — skip; tests assert this doesn't crash load.
+                continue
 
     def save(self, path: str | None = None) -> None:
         """Save NAc state to JSON file.

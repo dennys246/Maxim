@@ -185,6 +185,30 @@ def _isolate_maxim_disable_cluster_bias_annotation():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_disable_variance_annotation():
+    """Scrub ``MAXIM_DISABLE_VARIANCE_ANNOTATION`` across every test.
+
+    Added in 0.9.1 (release_0_9_1.md Stage 4 — Wire 1). Gates the
+    risk-sensitive variance annotation read at the agent-loop
+    LLM-submission site (mirrors Wire-A's ablation gate above).
+    Default OFF (annotation ON) per the release plan; Roy-3 may
+    set this to ``1`` to compare variance-annotation-on vs -off
+    arms. Per CLAUDE.md "opt-in env vars in hot startup paths
+    need autouse scrubs", pair the env-var reader at
+    ``runtime/agent_loop.py`` with this scrub so a Roy-3 ablation
+    test does not leak annotation-disabled state into every later
+    test that constructs the agent loop.
+    """
+    saved = os.environ.pop("MAXIM_DISABLE_VARIANCE_ANNOTATION", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_DISABLE_VARIANCE_ANNOTATION", None)
+        if saved is not None:
+            os.environ["MAXIM_DISABLE_VARIANCE_ANNOTATION"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_deep_embodiment():
     """Reset ``resolution._resolved_depth`` + scrub ``MAXIM_DEEP_EMBODIMENT``.
 

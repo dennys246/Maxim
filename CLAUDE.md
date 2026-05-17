@@ -401,6 +401,9 @@ MAXIM_EC_TRACE_ACTIVATIONS=1     # Gate per-tick `sim_ec_activation` JSONL event
 # Wire-A cluster-bias annotation (release_0_9_1.md Stage 2)
 MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1  # Disable Wire-A's cluster-bias annotation prompt section. Default OFF (annotation ON in 0.9.1 by design). Set this to "1" / "true" / "yes" / "on" in the Roy-3 ablation arm to compare annotation-on vs annotation-off on the engineered-overlap fixture. The agent-loop producer site at runtime/agent_loop.py reads the var per LLM submission; absent / empty → annotation populated. The PromptBuilder helper renders unconditionally — disabling at the producer keeps the prompt-builder unit tests env-var-free.
 
+# Wire 1 risk-sensitive variance annotation (release_0_9_1.md Stage 4)
+MAXIM_DISABLE_VARIANCE_ANNOTATION=1  # Disable Wire 1's variance-band felt-sensation annotation on tool descriptions. Default OFF (annotation ON in 0.9.1 by design). Mirrors MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION's parser. Set this to "1" / "true" / "yes" / "on" in the Roy-3 ablation arm to compare variance-annotation-on vs -off arms. The agent-loop producer site at runtime/agent_loop.py reads the var per LLM submission; absent / empty → annotation populated. Variance comes from CausalLink.variance_estimate (Welford online algorithm on the binary reward signal) via NAc.get_action_risk_profile.
+
 # Leader proxy admission control
 MAXIM_PROXY_MAX_CONCURRENT=4     # Max in-flight requests to upstream (0=unlimited)
 MAXIM_PROXY_RATE_LIMIT_RPM=0     # Per-peer requests/minute (0=unlimited)

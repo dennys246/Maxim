@@ -21,6 +21,18 @@ class Valence(Enum):
     UNKNOWN = "unknown"  # Not yet classified
 
 
+# Canonical reward-value mapping. Reused by Welford online variance
+# (Wire 1) and by ``CausalLink.update_prediction_rw``. Unknown/neutral
+# midpoint (0.5) matches the Rescorla-Wagner prior; binary {0, 1}
+# success/failure makes Bernoulli variance the natural risk metric.
+_VALENCE_TO_REWARD: dict[Valence, float] = {
+    Valence.POSITIVE: 1.0,
+    Valence.NEGATIVE: 0.0,
+    Valence.NEUTRAL: 0.5,
+    Valence.UNKNOWN: 0.5,
+}
+
+
 @dataclass(frozen=True, slots=True)
 class TemporalDelta:
     """Learned temporal relationship between event and outcome.
@@ -132,6 +144,19 @@ class CausalLink:
         confidence: Confidence in this link (0.0-1.0)
         last_observed: Timestamp of last observation
         memory_ids: Hippocampus memory IDs where observed
+
+    Wire 1 design note (release_0_9_1.md Stage 4): the plan originally
+    placed ``variance_estimate`` on this class. During implementation we
+    found the architecture splits each (event_sig, outcome_valence) pair
+    into a separate ``CausalLink`` (because ``outcome_signature`` embeds
+    valence into ``_generate_link_id``), so per-link reward variance is
+    structurally 0 for binary success/failure observations and useless
+    for the "is this tool reliable" signal Wire 1 needs. The variance
+    accumulator moved one level up to ``NAc._event_outcome_welford``
+    keyed by ``(agent_id, event_signature)`` — that level captures the
+    cross-link heterogeneity that drives tool annotation. The plan
+    deviation is documented in the PR body and called out in the bio
+    review prompt.
     """
 
     id: str
@@ -271,13 +296,8 @@ class CausalLink:
         Returns:
             Prediction error (for logging/analysis)
         """
-        # Convert valence to reward value
-        actual_reward = {
-            Valence.POSITIVE: 1.0,
-            Valence.NEGATIVE: 0.0,
-            Valence.NEUTRAL: 0.5,
-            Valence.UNKNOWN: 0.5,
-        }.get(actual_valence, 0.5)
+        # Convert valence to reward value (canonical mapping at module scope)
+        actual_reward = _VALENCE_TO_REWARD.get(actual_valence, 0.5)
 
         # Adaptive learning rate based on novelty
         min_lr = 0.05
@@ -368,19 +388,22 @@ class CausalLink:
 class OutcomePrediction:
     """A prediction about what will happen if an event occurs.
 
-    Forward-compat reservation (1.0, bio_emergent_persona_foundations Wire 1):
-        ``uncertainty_interval`` is a 1.1 reservation slot for risk-sensitive
-        action selection.  The 1.1 implementation will populate this from a
-        Welford online-variance estimator on ``CausalLink.observation_count``
-        outcomes; the agent_loop tool description assembler will read it to
-        annotate tools with ``[high variance]`` / ``[reliable]`` tags.
-        Default ``(0.0, 0.0)`` is the "no uncertainty data yet" sentinel.
-        Field is in-memory only in 1.0 — deliberately omitted from
-        ``to_dict()`` until 1.1 has a consumer, so the serialization shape
-        is not committed before the representation choice (bounds tuple vs.
-        ``{lower, upper, std}`` dict) is settled.  Additive default-having
-        field at the end of the field list; no contract risk.
-        See docs/plans/bio_emergent_persona_foundations.md.
+    Wire 1 (release_0_9_1.md Stage 4, 2026-05-17): ``uncertainty_interval``
+    is WIRED in 0.9.1 as ``(predicted_value − std, predicted_value + std)``
+    clamped to ``[0.0, 1.0]``, where ``std = sqrt(variance)`` and
+    ``variance = NAc._event_outcome_welford[(agent_id, event_sig)]["m2"] / n``.
+    Variance is updated by Welford's online algorithm at the NAc level
+    (not per-CausalLink — see CausalLink docstring for the design note
+    on why per-link variance is structurally 0 for binary outcomes).
+    The ``n < 2`` cold-start case returns ``(0.0, 0.0)`` — the same
+    sentinel pre-0.9.1 callers got, so absence-of-data reads unchanged.
+    When the prediction context lacks ``agent_id`` (raw-loop test callers),
+    the sentinel is returned because the per-agent stash key cannot be
+    formed. Field stays in-memory only — deliberately omitted from
+    ``to_dict()`` so the serialization shape is not committed before 1.1+
+    picks the representation (bounds tuple vs. ``{lower, upper, std}`` dict).
+    See docs/plans/bio_emergent_persona_foundations.md § Wire 1 and
+    docs/plans/release_0_9_1.md § Stage 4.
     """
 
     event_signature: str
@@ -392,10 +415,12 @@ class OutcomePrediction:
     confidence: float  # How confident in this prediction
     contributing_links: list[str]  # CausalLink IDs that informed this
     context_match: float  # How well current context matches learned context
-    # Reserved for 1.1 (Wire 1): (lower, upper) bounds on predicted_value
-    # from variance estimator.  Default (0.0, 0.0) == "no uncertainty data".
-    # In-memory only; not serialized in to_dict until 1.1 picks the
-    # representation shape (bounds tuple vs. {lower, upper, std} dict).
+    # Wire 1 (release_0_9_1.md Stage 4): (lower, upper) bounds on
+    # predicted_value from CausalLink.variance_estimate. Default
+    # (0.0, 0.0) is the "no uncertainty data yet" sentinel returned
+    # when observation_count < 2. In-memory only; not serialized in
+    # to_dict until 1.1+ picks the representation shape (bounds tuple
+    # vs. {lower, upper, std} dict).
     uncertainty_interval: tuple[float, float] = (0.0, 0.0)
 
     def to_dict(self) -> dict:
