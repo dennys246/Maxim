@@ -400,6 +400,21 @@ def create_percept_valence_subscriber(
     Wire-A's *write* path is ``record_outcome``-driven and keys on
     ``(agent_id, cluster_id, tool_signature)``, NOT this subscriber.
 
+    **Key derivation (load-bearing — pre-merge architecture review C1):**
+    ``entity_class`` reads ``signal.context["entity_name"]`` (the YAML
+    *noun* — ``"dragon"``, ``"rusty_sword"``) with fallback to
+    ``signal.context["entity_type"]`` (the YAML *category* —
+    ``"creature"``, ``"weapon"``).  The first ship of Wire 2 keyed on
+    ``entity_type`` alone; the architecture review caught that the
+    salience scorer's fragment-match never lifts on percept text
+    containing ``"dragon"`` when aversion is stored under
+    ``"creature"`` — the whole wire would have been dead in
+    production.  ``body.py::_publish_pain`` and ``_publish_drive_pain``
+    now publish BOTH fields; this subscriber prefers the noun.
+    Legacy producers that only populate ``entity_type`` still work
+    (category-grained aversion) but lose the dragon-vs-wolf
+    discrimination Wire 2's bio thesis depends on.
+
     Attribution policy:
     - Negative valence proportional to ``-signal.intensity``.  The Pavlovian
       learning rate is ``NACConfig.percept_valence_alpha`` (independent of
@@ -440,12 +455,15 @@ def create_percept_valence_subscriber(
 
         context = signal.context or {}
         agent_id = str(context.get("agent_id") or "")
-        entity_class = str(context.get("entity_type") or "")
+        # Prefer the YAML noun (entity.name) over the category
+        # (entity_type) — see docstring "Key derivation" note for the
+        # bio thesis.  Pre-merge architecture review C1 fold.
+        entity_class = str(context.get("entity_name") or context.get("entity_type") or "")
         failure_mode = str(context.get("failure_mode") or signal.pain_type.name)
         if not agent_id or not entity_class or not failure_mode:
             logger.debug(
                 "percept_valence subscriber: skipping pain signal with empty "
-                "agent_id/entity_type/failure_mode (intensity=%.2f, source=%s)",
+                "agent_id/entity_name/failure_mode (intensity=%.2f, source=%s)",
                 signal.intensity,
                 context.get("source"),
             )

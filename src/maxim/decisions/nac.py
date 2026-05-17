@@ -136,11 +136,32 @@ class NACConfig:
     # Per-agent, per-(entity_class, failure_mode) valence accumulated by the
     # PainBus subscriber. Range [-1.0, +1.0] — wider than max_reward_bias
     # because this is a salience modulator on the gating path (text scorer)
-    # rather than a recognition-threshold modulator.  Accumulated via
-    # ``percept_valence_alpha``; decayed per-tick via the same tau as
-    # the other reward-bias decay cycles.
+    # rather than a recognition-threshold modulator.
     max_percept_valence: float = 1.0
-    percept_valence_alpha: float = 0.20  # learning rate for record_percept_valence
+
+    # Learning rate for ``record_percept_valence``.  Bio-fidelity tune
+    # (pre-merge bio-fidelity review B3 fold): raised from 0.20 → 0.35
+    # so that a single moderate pain (intensity = 0.3, the subscriber's
+    # default ``intensity_threshold``) writes magnitude 0.105 —
+    # comfortably above ``percept_aversion_floor`` (0.05) with ~2x
+    # margin.  Pavlovian fear conditioning is one of the few learning
+    # classes for which single-trial bio-realism is well-attested; the
+    # initial 0.20 left a single mild pain only one tick above the
+    # floor, which contradicts the wire's thesis ("burned-by-dragon
+    # once → wary of dragons").
+    percept_valence_alpha: float = 0.35
+
+    # Decay timescale for Pavlovian percept valence.  Bio-fidelity tune
+    # (pre-merge bio-fidelity review B2 fold): decoupled from
+    # ``reward_bias_decay_tau`` (50.0) because Pavlovian fear
+    # conditioning is biologically slower-extincting than action-outcome
+    # reward bias.  200.0 ticks ≈ 4x slower; lets a single moderate
+    # pain persist for ~200-300 ticks before falling below the aversion
+    # floor, matching the "burned-by-dragon once → wary of dragons for
+    # the session" behavioral signal Wire 2 exists to produce.  Still
+    # bidirectional — positive percept valence (when a positive-
+    # conditioning producer ships post-1.0) decays at the same rate.
+    percept_valence_decay_tau: float = 200.0
 
     # Wire 2 minimum |bias| reported by ``get_percept_aversions`` so that
     # decayed-to-noise entries don't bleed back into the salience scorer
@@ -1872,14 +1893,17 @@ class NAc:
         "burned-by-dragon once, six sessions ago" as equally salient
         to "burned-by-dragon last tick."
 
-        Uses the same decay tau as the other reward-bias decay cycles
-        (bidirectional — ``abs(new_value) < 0.001`` prune, mirroring
-        ``decay_goal_reward_biases`` and ``decay_cluster_reward_biases``).
+        Uses ``NACConfig.percept_valence_decay_tau`` (default 200.0,
+        ~4x slower than ``reward_bias_decay_tau``).  Pavlovian fear
+        conditioning is biologically slower-extincting than action-
+        outcome reward bias; the separate tau preserves that asymmetry.
+        Bidirectional — ``abs(new_value) < 0.001`` prune, mirroring
+        ``decay_goal_reward_biases`` and ``decay_cluster_reward_biases``.
         Returns count pruned.
         """
         if not self._percept_valences:
             return 0
-        decay_factor = 1.0 / self.config.reward_bias_decay_tau
+        decay_factor = 1.0 / self.config.percept_valence_decay_tau
         pruned = 0
         with self._lock:
             to_remove = []

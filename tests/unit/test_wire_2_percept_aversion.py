@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -63,10 +64,17 @@ def _make_pain_signal(
     *,
     intensity: float,
     agent_id: str = "agent_1",
-    entity_type: str = "dragon",
+    entity_name: str = "dragon",
+    entity_type: str = "creature",
     failure_mode: str = "burn",
     source: str = "embodiment",
 ) -> PainSignal:
+    """Construct a pain signal matching the post-C1-fold production shape.
+
+    ``body.py::_publish_pain`` now publishes BOTH ``entity_name`` (the
+    YAML noun — ``"dragon"``) and ``entity_type`` (the YAML category —
+    ``"creature"``).  The subscriber prefers ``entity_name``.
+    """
     return PainSignal(
         pain_type=PainType.EXTERNAL_SIGNAL,
         intensity=intensity,
@@ -74,6 +82,7 @@ def _make_pain_signal(
         context={
             "source": source,
             "entity": "scene.dragon_1",
+            "entity_name": entity_name,
             "entity_type": entity_type,
             "failure_mode": failure_mode,
             "agent_id": agent_id,
@@ -92,16 +101,16 @@ class TestRecordPerceptValence:
     def test_initial_record_writes_alpha_scaled_value(self) -> None:
         nac = _fresh_nac()
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
-        # alpha = 0.20 → -0.20
-        assert nac.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.20)
+        # alpha = 0.35 (raised from 0.20 in pre-merge bio-fidelity B3
+        # fold) → -0.35
+        assert nac.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.35)
 
     def test_repeated_records_accumulate(self) -> None:
         nac = _fresh_nac()
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
-        nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
-        # 3 × 0.20 × -1.0 = -0.60
-        assert nac.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.60)
+        # 2 × 0.35 × -1.0 = -0.70 (3rd would clamp at -1.0)
+        assert nac.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.70)
 
     def test_clamp_at_max_percept_valence(self) -> None:
         """Cap at ``-max_percept_valence`` no matter how many signals fire."""
@@ -122,9 +131,9 @@ class TestRecordPerceptValence:
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
         nac.record_percept_valence("dragon", "crush", -1.0, agent_id="a")
         nac.record_percept_valence("rusty_sword", "burn", -1.0, agent_id="a")
-        assert nac.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.20)
-        assert nac.get_percept_valence("dragon", "crush", agent_id="a") == pytest.approx(-0.20)
-        assert nac.get_percept_valence("rusty_sword", "burn", agent_id="a") == pytest.approx(-0.20)
+        assert nac.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.35)
+        assert nac.get_percept_valence("dragon", "crush", agent_id="a") == pytest.approx(-0.35)
+        assert nac.get_percept_valence("rusty_sword", "burn", agent_id="a") == pytest.approx(-0.35)
 
     def test_per_agent_isolation(self) -> None:
         """Two agents on ONE NAc instance get separate keys (CC4 rule)."""
@@ -132,8 +141,8 @@ class TestRecordPerceptValence:
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="b")
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="b")
-        assert nac.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.20)
-        assert nac.get_percept_valence("dragon", "burn", agent_id="b") == pytest.approx(-0.40)
+        assert nac.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.35)
+        assert nac.get_percept_valence("dragon", "burn", agent_id="b") == pytest.approx(-0.70)
 
     def test_empty_agent_id_raises(self) -> None:
         nac = _fresh_nac()
@@ -177,15 +186,14 @@ class TestGetPerceptAversions:
     def test_aggregates_across_failure_modes_per_entity_class(self) -> None:
         """Most-negative valence wins; absolute value returned."""
         nac = _fresh_nac()
-        # 1 hit (alpha=0.2): magnitude=0.20
+        # 1 hit (alpha=0.35): magnitude=0.35
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
-        # 3 hits: magnitude=0.60
-        nac.record_percept_valence("dragon", "crush", -1.0, agent_id="a")
+        # 2 hits: magnitude=0.70 (the most-negative across failure modes wins)
         nac.record_percept_valence("dragon", "crush", -1.0, agent_id="a")
         nac.record_percept_valence("dragon", "crush", -1.0, agent_id="a")
         result = nac.get_percept_aversions(agent_id="a")
         assert "dragon" in result
-        assert result["dragon"] == pytest.approx(0.60)
+        assert result["dragon"] == pytest.approx(0.70)
 
     def test_positive_valences_excluded_from_aversion_read(self) -> None:
         """Only negative-valence entries contribute to the aversion map."""
@@ -199,10 +207,24 @@ class TestGetPerceptAversions:
     def test_below_floor_pruned(self) -> None:
         """Aversion magnitudes below the floor are dropped from the read."""
         nac = _fresh_nac()
-        # Single small hit: magnitude=0.04 (alpha=0.20, valence=-0.20)
-        nac.record_percept_valence("dragon", "burn", -0.20, agent_id="a")
-        # 0.04 < default floor 0.05 → pruned
+        # Small hit: magnitude=0.35×0.1=0.035 (alpha=0.35, valence=-0.10)
+        nac.record_percept_valence("dragon", "burn", -0.10, agent_id="a")
+        # 0.035 < default floor 0.05 → pruned
         assert nac.get_percept_aversions(agent_id="a") == {}
+
+    def test_single_moderate_pain_stays_above_floor(self) -> None:
+        """Pre-merge bio-fidelity B3 fold regression guard: a single
+        intensity=0.3 pain (the subscriber's default threshold) must
+        write magnitude 0.105 — comfortably above the 0.05 floor.
+        Without the alpha=0.35 tune, magnitude was 0.06 — only one
+        tick of margin, which contradicted the wire's bio thesis.
+        """
+        nac = _fresh_nac()
+        # Magnitude: alpha=0.35 × |-0.3| = 0.105
+        nac.record_percept_valence("dragon", "burn", -0.3, agent_id="a")
+        aversions = nac.get_percept_aversions(agent_id="a")
+        assert "dragon" in aversions
+        assert aversions["dragon"] == pytest.approx(0.105)
 
     def test_per_agent_isolation_in_aversion_read(self) -> None:
         nac = _fresh_nac()
@@ -240,13 +262,30 @@ class TestDecayPerceptValences:
         nac.decay_percept_valences()
         after = nac.get_percept_valence("dragon", "burn", agent_id="a")
         assert abs(after) < abs(before)
-        # Magnitude reduced by 1/reward_bias_decay_tau (default 50.0).
-        assert after == pytest.approx(before * (1.0 - 1.0 / 50.0))
+        # Pre-merge bio-fidelity B2 fold: decoupled from
+        # reward_bias_decay_tau (50.0) to percept_valence_decay_tau
+        # (200.0), so a single tick decays by only 1/200 — slower than
+        # the action-outcome reward bias, matching Pavlovian
+        # fear-conditioning persistence.
+        assert after == pytest.approx(before * (1.0 - 1.0 / 200.0))
+
+    def test_decay_uses_separate_tau_from_reward_biases(self) -> None:
+        """Pre-merge bio-fidelity B2 fold regression guard.
+
+        Pavlovian percept valence MUST decay at its own (slower) tau,
+        not at reward_bias_decay_tau.  A future change that shares
+        tau again would re-introduce the "burned-by-dragon once →
+        forgotten in 75 ticks" bug.
+        """
+        nac = _fresh_nac()
+        # percept_valence_decay_tau (200.0) > reward_bias_decay_tau (50.0)
+        assert nac.config.percept_valence_decay_tau > nac.config.reward_bias_decay_tau
 
     def test_many_ticks_prune_below_threshold(self) -> None:
         nac = _fresh_nac()
-        nac.record_percept_valence("dragon", "burn", -0.10, agent_id="a")
-        # Starting magnitude=0.02; decay tau=50; needs many ticks to fall below 0.001
+        nac.record_percept_valence("dragon", "burn", -0.05, agent_id="a")
+        # Starting magnitude=0.35×0.05=0.0175; decay tau=200; needs
+        # many ticks to fall below 0.001.
         pruned_total = 0
         for _ in range(2000):
             pruned_total += nac.decay_percept_valences()
@@ -311,7 +350,8 @@ class TestNacPersistence:
 
         nac2 = _fresh_nac()
         nac2.load(str(save_path))
-        assert nac2.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.20)
+        # alpha=0.35 × -1.0 = -0.35
+        assert nac2.get_percept_valence("dragon", "burn", agent_id="a") == pytest.approx(-0.35)
 
     def test_backward_compat_load_1_0_payload(self) -> None:
         """1.0 payloads (no ``percept_valences`` field) load to empty dict."""
@@ -340,7 +380,31 @@ class TestNacPersistence:
         state = nac1.dump()
         nac2 = _fresh_nac()
         nac2.load_state(state)
-        assert nac2.get_percept_valence("infant_humanoid", "drive:hunger", agent_id="a") == pytest.approx(-0.20)
+        assert nac2.get_percept_valence("infant_humanoid", "drive:hunger", agent_id="a") == pytest.approx(-0.35)
+
+    def test_load_modify_save_round_trip(self, tmp_path: Path) -> None:
+        """Pre-merge architecture review I1 fold: a load-mutate-save
+        cycle MUST NOT raise.  ``with_format_version`` raises on a
+        pre-existing ``_format_version`` that doesn't match the writer's
+        version; the previous code path bypassed this only because
+        ``dump()`` didn't carry the field.  This regression guard pins
+        the contract.
+        """
+        nac1 = _fresh_nac()
+        nac1.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
+        save_path = tmp_path / "nac.json"
+        nac1.save(str(save_path))
+
+        # Load, mutate, save back.
+        nac2 = _fresh_nac()
+        nac2.load(str(save_path))
+        nac2.record_percept_valence("dragon", "crush", -1.0, agent_id="a")
+        nac2.save(str(save_path))  # MUST NOT raise
+
+        # File still parses cleanly.
+        data = json.loads(save_path.read_text())
+        assert data["_format_version"] == "1.1"
+        assert "percept_valences" in data
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -361,8 +425,48 @@ class TestPerceptValenceSubscriber:
         nac = _fresh_nac()
         sub = create_percept_valence_subscriber(nac)
         sub(_make_pain_signal(intensity=0.7))
-        # Negative valence = pain. alpha=0.20 × -0.7 = -0.14.
-        assert nac.get_percept_valence("dragon", "burn", agent_id="agent_1") == pytest.approx(-0.14)
+        # Negative valence = pain. alpha=0.35 × -0.7 = -0.245.
+        # Subscriber prefers entity_name="dragon" over entity_type="creature".
+        assert nac.get_percept_valence("dragon", "burn", agent_id="agent_1") == pytest.approx(-0.245)
+
+    def test_subscriber_prefers_entity_name_over_entity_type(self) -> None:
+        """Post-C1-fold regression guard: the subscriber MUST key on
+        the YAML noun (``entity_name``), not the category
+        (``entity_type``).  This is the production wire-shape bug the
+        architecture review caught — keying on ``entity_type`` alone
+        meant a dragon attack would store aversion on ``"creature"``,
+        which the fragment-match scorer never lifts on percept text
+        containing "dragon".
+        """
+        nac = _fresh_nac()
+        sub = create_percept_valence_subscriber(nac)
+        sub(_make_pain_signal(intensity=0.7, entity_name="dragon", entity_type="creature"))
+        # Key MUST be the noun, not the category.
+        assert nac.get_percept_valence("dragon", "burn", agent_id="agent_1") != 0.0
+        assert nac.get_percept_valence("creature", "burn", agent_id="agent_1") == 0.0
+
+    def test_subscriber_falls_back_to_entity_type_when_name_missing(self) -> None:
+        """Legacy producers that only populate ``entity_type`` (pre-C1
+        body.py paths, third-party producers) still write to the map
+        — at category granularity.  Loses noun-level discrimination
+        but doesn't lose the data entirely."""
+        nac = _fresh_nac()
+        sub = create_percept_valence_subscriber(nac)
+        sig = PainSignal(
+            pain_type=PainType.EXTERNAL_SIGNAL,
+            intensity=0.7,
+            timestamp=0.0,
+            context={
+                "source": "embodiment",
+                "agent_id": "agent_1",
+                "entity_type": "creature",
+                # NO entity_name — legacy producer
+                "failure_mode": "burn",
+            },
+        )
+        sub(sig)
+        # Falls back to entity_type as the key.
+        assert nac.get_percept_valence("creature", "burn", agent_id="agent_1") != 0.0
 
     def test_missing_agent_id_silent_no_op(self) -> None:
         nac = _fresh_nac()
@@ -373,7 +477,8 @@ class TestPerceptValenceSubscriber:
             timestamp=0.0,
             context={
                 "source": "embodiment",
-                "entity_type": "dragon",
+                "entity_name": "dragon",
+                "entity_type": "creature",
                 "failure_mode": "burn",
                 # NO agent_id
             },
@@ -382,7 +487,7 @@ class TestPerceptValenceSubscriber:
         # No writes happened.
         assert not nac._percept_valences
 
-    def test_missing_entity_type_silent_no_op(self) -> None:
+    def test_missing_entity_name_and_type_silent_no_op(self) -> None:
         nac = _fresh_nac()
         sub = create_percept_valence_subscriber(nac)
         sig = PainSignal(
@@ -393,7 +498,7 @@ class TestPerceptValenceSubscriber:
                 "source": "embodiment",
                 "agent_id": "agent_1",
                 "failure_mode": "burn",
-                # NO entity_type
+                # NO entity_name AND NO entity_type
             },
         )
         sub(sig)
@@ -457,8 +562,8 @@ class TestBuildPainBusAutoWires:
         nac = _fresh_nac()
         bus = build_pain_bus(hippocampus=None, nac=nac)
         bus.publish(_make_pain_signal(intensity=0.7))
-        # alpha=0.20 × -0.7 = -0.14
-        assert nac.get_percept_valence("dragon", "burn", agent_id="agent_1") == pytest.approx(-0.14)
+        # alpha=0.35 × -0.7 = -0.245; key on entity_name="dragon".
+        assert nac.get_percept_valence("dragon", "burn", agent_id="agent_1") == pytest.approx(-0.245)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -548,38 +653,61 @@ class TestGatingContextLearnedAversions:
         assert ctx.learned_aversions is None
 
     def test_no_aversions_returns_zero_match(self) -> None:
-        assert _match_learned_aversion({"dragon"}, None) == 0.0
-        assert _match_learned_aversion({"dragon"}, {}) == 0.0
+        assert _match_learned_aversion({"dragon"}, None) == (0.0, None)
+        assert _match_learned_aversion({"dragon"}, {}) == (0.0, None)
 
-    def test_simple_match(self) -> None:
+    def test_simple_match_returns_class(self) -> None:
         aversions = {"dragon": 0.5}
-        assert _match_learned_aversion({"dragon", "roars"}, aversions) == pytest.approx(0.5)
+        magnitude, matched = _match_learned_aversion({"dragon", "roars"}, aversions)
+        assert magnitude == pytest.approx(0.5)
+        assert matched == "dragon"
 
     def test_underscore_split_match(self) -> None:
         """``rusty_sword`` should split into {rusty, sword} and match
         a percept containing either word."""
         aversions = {"rusty_sword": 0.6}
-        assert _match_learned_aversion({"the", "rusty", "blade"}, aversions) == pytest.approx(0.6)
-        assert _match_learned_aversion({"the", "sword", "swings"}, aversions) == pytest.approx(0.6)
+        magnitude, matched = _match_learned_aversion({"the", "rusty", "blade"}, aversions)
+        assert magnitude == pytest.approx(0.6)
+        assert matched == "rusty_sword"
+        magnitude2, matched2 = _match_learned_aversion({"the", "sword", "swings"}, aversions)
+        assert magnitude2 == pytest.approx(0.6)
+        assert matched2 == "rusty_sword"
+
+    def test_hyphen_split_match(self) -> None:
+        """``dragon-whelp`` (LLM-generated style) splits on ``-``.
+
+        Pre-merge architecture review N1 fold: some LLM-generated
+        entity names use hyphenation; without the hyphen split, a
+        percept "a dragon roars" wouldn't match aversion keyed
+        ``dragon-whelp``.
+        """
+        aversions = {"dragon-whelp": 0.6}
+        magnitude, matched = _match_learned_aversion({"a", "dragon", "roars"}, aversions)
+        assert magnitude == pytest.approx(0.6)
+        assert matched == "dragon-whelp"
 
     def test_drive_colon_split_match(self) -> None:
         """``drive:hunger`` (as part of an entity_class) splits on
         ``:`` for fragment matching."""
         aversions = {"drive:hunger": 0.4}
-        assert _match_learned_aversion({"hunger", "pangs"}, aversions) == pytest.approx(0.4)
+        magnitude, matched = _match_learned_aversion({"hunger", "pangs"}, aversions)
+        assert magnitude == pytest.approx(0.4)
+        assert matched == "drive:hunger"
 
     def test_strongest_aversion_wins(self) -> None:
         """When multiple keys match, the strongest magnitude wins."""
         aversions = {"dragon": 0.3, "fire": 0.7}
-        assert _match_learned_aversion({"dragon", "fire", "breath"}, aversions) == pytest.approx(0.7)
+        magnitude, matched = _match_learned_aversion({"dragon", "fire", "breath"}, aversions)
+        assert magnitude == pytest.approx(0.7)
+        assert matched == "fire"
 
     def test_zero_magnitude_ignored(self) -> None:
         aversions = {"dragon": 0.0}
-        assert _match_learned_aversion({"dragon"}, aversions) == 0.0
+        assert _match_learned_aversion({"dragon"}, aversions) == (0.0, None)
 
     def test_no_word_overlap_returns_zero(self) -> None:
         aversions = {"dragon": 0.5}
-        assert _match_learned_aversion({"flower", "blooms"}, aversions) == 0.0
+        assert _match_learned_aversion({"flower", "blooms"}, aversions) == (0.0, None)
 
 
 class TestTextSalienceScorerAversion:
@@ -668,10 +796,10 @@ class TestBioEnrichmentSnapshot:
         nac = _fresh_nac()
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
         nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
-        nac.record_percept_valence("dragon", "burn", -1.0, agent_id="a")
+        # 2 × 0.35 × -1.0 = -0.70; magnitude=0.70
         pipeline = self._make_pipeline(nac=nac, agent_id="a")
         snap = pipeline._snapshot_learned_aversions()
-        assert snap == {"dragon": pytest.approx(0.60)}
+        assert snap == {"dragon": pytest.approx(0.70)}
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -692,15 +820,16 @@ class TestMultiAgentIsolation:
         nac = _fresh_nac()
         bus = build_pain_bus(hippocampus=None, nac=nac)
 
-        # Agent A's pain event.
+        # Agent A's pain event — entity_name is the noun (post-C1 fold).
         sig_a = PainSignal(
             pain_type=PainType.EXTERNAL_SIGNAL,
             intensity=0.7,
             timestamp=0.0,
             context={
                 "source": "embodiment",
-                "entity": "scene.agent_a.body.arm",  # different entity_path
-                "entity_type": "dragon",
+                "entity": "scene.agent_a.body.arm",
+                "entity_name": "dragon",
+                "entity_type": "creature",
                 "failure_mode": "burn",
                 "agent_id": "agent_a",
             },
@@ -716,7 +845,8 @@ class TestMultiAgentIsolation:
             context={
                 "source": "embodiment",
                 "entity": "scene.agent_b.body.arm",
-                "entity_type": "fire",
+                "entity_name": "fire",
+                "entity_type": "environment",
                 "failure_mode": "burn",
                 "agent_id": "agent_b",
             },
@@ -730,3 +860,225 @@ class TestMultiAgentIsolation:
         # Neither agent sees the other's aversion.
         assert "fire" not in a_aversions
         assert "dragon" not in b_aversions
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 11: Production wire shape end-to-end (pre-merge arch C1 fold)
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestProductionWireShape:
+    """End-to-end with the REAL production wire shape.
+
+    Pre-merge architecture review C1 caught that the first ship of
+    Wire 2 keyed on ``entity_type`` (the YAML category — "creature",
+    "weapon") rather than ``entity_name`` (the YAML noun — "dragon",
+    "rusty_sword").  In production, dragon YAML has ``entity_type:
+    creature``, so an aversion stored under "creature" would never lift
+    salience on the percept text "a dragon roars" (no word overlap).
+    These tests pin the post-fold wire shape using producer-realistic
+    fixtures so a future regression can't silently revert.
+    """
+
+    def test_dragon_pain_lifts_salience_on_dragon_percept(self) -> None:
+        """The bio thesis: burned-by-dragon once → wary of dragons.
+
+        Walks the full pipeline:
+        1. Producer (body.py-shaped) publishes pain with entity_name=dragon,
+           entity_type=creature.
+        2. Subscriber writes _percept_valences["agent_1", "dragon", "burn"].
+        3. Scorer reads context.learned_aversions={"dragon": magnitude}.
+        4. Percept "a dragon roars" lifts salience above neutral 0.5.
+        """
+        nac = _fresh_nac()
+        bus = build_pain_bus(hippocampus=None, nac=nac)
+        # One moderate-intensity dragon attack.
+        bus.publish(
+            PainSignal(
+                pain_type=PainType.EXTERNAL_SIGNAL,
+                intensity=0.7,
+                timestamp=0.0,
+                context={
+                    "source": "embodiment",
+                    "entity": "scene.dragon_1.fire_breath",
+                    "entity_name": "dragon",  # YAML noun
+                    "entity_type": "creature",  # YAML category
+                    "failure_mode": "burn",
+                    "agent_id": "agent_1",
+                },
+            )
+        )
+        # Aversion stored under the noun, not the category.
+        aversions = nac.get_percept_aversions(agent_id="agent_1")
+        assert "dragon" in aversions
+        assert "creature" not in aversions
+
+        # Scorer lifts salience on dragon-mentioning percept.
+        scorer = TextSalienceScorer(ec=None, nac=None)
+        ctx = GatingContext(learned_aversions=aversions)
+        score = scorer.score("a dragon roars in the distance", ctx)
+        assert score.salience > 0.5
+
+    def test_legacy_entity_type_only_still_works_at_category_grain(self) -> None:
+        """A producer that only populates ``entity_type`` (legacy, or
+        third-party) MUST still write to the map — at category
+        granularity.  Loses dragon-vs-wolf discrimination but doesn't
+        lose the data."""
+        nac = _fresh_nac()
+        bus = build_pain_bus(hippocampus=None, nac=nac)
+        bus.publish(
+            PainSignal(
+                pain_type=PainType.EXTERNAL_SIGNAL,
+                intensity=0.7,
+                timestamp=0.0,
+                context={
+                    "source": "embodiment",
+                    "entity": "scene.something.attack",
+                    # NO entity_name — legacy producer
+                    "entity_type": "creature",
+                    "failure_mode": "burn",
+                    "agent_id": "agent_1",
+                },
+            )
+        )
+        aversions = nac.get_percept_aversions(agent_id="agent_1")
+        assert "creature" in aversions
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 12: Latent-bridge × subscriber trap — invariant pin (I3 fold)
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestPerceptValenceCallCount:
+    """Pre-merge architecture review I3 fold: pin the call-count
+    invariant so a future refactor that lifts ``record_percept_valence``
+    into ``ToolPainBridge._on_embodiment_pain`` re-opens the trap
+    LOUDLY rather than silently double-counting.
+    """
+
+    def test_record_percept_valence_called_exactly_once_per_pain(self) -> None:
+        """build_pain_bus subscribes EXACTLY ONE writer for the
+        Pavlovian map.  If a future refactor wires a second writer
+        (bridge or duplicate subscriber on the same bus), this fails.
+
+        Uses a real NAc with a spy wrapping ``record_percept_valence``
+        so the bus publish path exercises the real subscriber + bus
+        dispatch with no MagicMock-shape surprises.
+        """
+        nac = _fresh_nac()
+        bus = build_pain_bus(hippocampus=None, nac=nac)
+
+        call_count = {"n": 0}
+        original = nac.record_percept_valence
+
+        def counting_record(*args, **kwargs):
+            call_count["n"] += 1
+            return original(*args, **kwargs)
+
+        nac.record_percept_valence = counting_record  # type: ignore[method-assign]
+
+        bus.publish(_make_pain_signal(intensity=0.7))
+        # EXACTLY one write: the subscriber.  No bridge, no duplicate.
+        assert call_count["n"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Layer 13: WIRE_2_AVERSION JSONL emission (pre-merge bio B1 fold)
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestWire2AversionEmission:
+    """Pre-merge bio-fidelity review B1 fold: pin the JSONL emission
+    so Roy-3 can disambiguate "Pavlovian aversion lifted salience"
+    from "percept was inherently salient."  Mirrors Wire 3's
+    ``WIRE_3_FILTER`` emission shape.
+    """
+
+    def test_emission_when_aversion_matches(self) -> None:
+        """An aversion match fires a WIRE_2_AVERSION sim_log event."""
+        from maxim.integration.bio_enrichment import (
+            BioEnrichmentPipeline,
+            EnrichmentContext,
+        )
+
+        nac = _fresh_nac()
+        # Seed an aversion via direct write.
+        nac.record_percept_valence("dragon", "burn", -1.0, agent_id="agent_1")
+        scorer = TextSalienceScorer(ec=None, nac=None)
+        pipeline = BioEnrichmentPipeline(
+            scorer=scorer,
+            hippocampus=None,
+            nac=nac,
+            atl=None,
+            ec=None,
+            agent_id="agent_1",
+            novelty_threshold=0.0,
+        )
+
+        events: list[tuple[str, str, dict[str, Any] | None]] = []
+
+        def fake_sim_log(subsystem, message, data=None, *, agent_id=None, _force_debug=False):
+            events.append((subsystem, message, data))
+
+        from maxim.simulation import sim_logger as _sl
+
+        old_active = _sl._sim_active
+        old_func = _sl.sim_log
+        _sl._sim_active = True
+        _sl.sim_log = fake_sim_log
+        try:
+            pipeline.enrich("a dragon roars in the distance", context=EnrichmentContext())
+        finally:
+            _sl.sim_log = old_func
+            _sl._sim_active = old_active
+
+        aversion_events = [e for e in events if e[0] == "WIRE_2_AVERSION"]
+        assert len(aversion_events) == 1
+        subsystem, message, data = aversion_events[0]
+        assert "dragon" in message
+        assert data is not None
+        assert data["matched_entity_class"] == "dragon"
+        assert data["aversion_magnitude"] > 0.0
+
+    def test_no_emission_when_no_aversion_matches(self) -> None:
+        """Cold-start (no aversions) emits nothing.  Roy-3 baseline
+        depends on this — a zero-event session means "no Pavlovian
+        signal was available," not "the wire failed silently."
+        """
+        from maxim.integration.bio_enrichment import (
+            BioEnrichmentPipeline,
+            EnrichmentContext,
+        )
+
+        nac = _fresh_nac()  # No aversions seeded.
+        scorer = TextSalienceScorer(ec=None, nac=None)
+        pipeline = BioEnrichmentPipeline(
+            scorer=scorer,
+            hippocampus=None,
+            nac=nac,
+            atl=None,
+            ec=None,
+            agent_id="agent_1",
+            novelty_threshold=0.0,
+        )
+
+        events: list[tuple[str, str, dict[str, Any] | None]] = []
+
+        def fake_sim_log(subsystem, message, data=None, *, agent_id=None, _force_debug=False):
+            events.append((subsystem, message, data))
+
+        from maxim.simulation import sim_logger as _sl
+
+        old_active = _sl._sim_active
+        old_func = _sl.sim_log
+        _sl._sim_active = True
+        _sl.sim_log = fake_sim_log
+        try:
+            pipeline.enrich("a dragon roars", context=EnrichmentContext())
+        finally:
+            _sl.sim_log = old_func
+            _sl._sim_active = old_active
+
+        aversion_events = [e for e in events if e[0] == "WIRE_2_AVERSION"]
+        assert aversion_events == []

@@ -525,7 +525,7 @@ class TextSalienceScorer:
         # Wire 2: Pavlovian aversion modulation. Aversive entity classes
         # raise salience proportionally — a dragon that burned the agent
         # once now fires the scorer harder on subsequent dragon percepts.
-        aversion = _match_learned_aversion(words, context.learned_aversions)
+        aversion, _matched_class = _match_learned_aversion(words, context.learned_aversions)
         if aversion > 0.0:
             # Saturating mix toward 1.0: a strong aversion (magnitude
             # near max_percept_valence) lifts base salience by up to
@@ -556,38 +556,52 @@ class TextSalienceScorer:
 def _match_learned_aversion(
     words: set[str],
     aversions: dict[str, float] | None,
-) -> float:
+) -> tuple[float, str | None]:
     """Return the strongest aversion magnitude that intersects ``words``.
 
     The aversion map is keyed by ``entity_class`` strings produced by
-    ``NAc.get_percept_aversions`` — they come from SEM component YAML
-    (``entity.entity_type``) and are typically underscore-separated
-    multi-word identifiers (``"infant_humanoid"``, ``"rusty_sword"``,
-    ``"drive:hunger"``).  This helper:
+    ``NAc.get_percept_aversions`` — produced from SEM component YAML
+    (``entity.name``, the noun like ``"dragon"`` or ``"rusty_sword"``;
+    with fallback to ``entity.entity_type`` for legacy producers).
+    Pre-merge architecture review C1 fold: the producer now publishes
+    ``entity_name`` so the substrate keys on the noun rather than the
+    category — without that fix, the fragment-match here would never
+    fire on production percept text.  This helper:
 
-    1. Splits each entity_class key on ``_`` and ``:`` and whitespace.
+    1. Splits each entity_class key on ``_``, ``-``, ``:``, and whitespace.
     2. Lower-cases each fragment.
     3. Matches if the percept's word set intersects the fragment set.
-    4. Returns the largest aversion magnitude across all matching keys.
+    4. Returns ``(best_magnitude, matched_class)`` across matching keys.
 
-    Returns 0.0 when ``aversions`` is empty / None or no key matches.
-    The fragment-match semantics let a percept like
-    ``"a dragon roars in the distance"`` match an aversion keyed
-    ``"dragon"`` (single-token) AND an aversion keyed
+    Returns ``(0.0, None)`` when ``aversions`` is empty / None or no
+    key matches.  The fragment-match lets a percept "a dragon roars"
+    match aversions keyed ``"dragon"`` (single-token) AND
     ``"dragon_whelp"`` (split into ``{"dragon", "whelp"}``).  This is
-    intentional: the bio-grounded "felt fear" of any dragon-shaped
-    entity should fire on a generic dragon mention.
+    intentional: the felt wariness of any dragon-shaped entity should
+    fire on a generic dragon mention.
+
+    Hyphen support (pre-merge architecture review N1 fold): some
+    LLM-generated entity names use ``"dragon-whelp"`` style; the
+    split now handles all three connector characters.
+
+    The ``matched_class`` return is the entity_class string for the
+    aversion producing the winning magnitude.  Used by Wire 2's
+    ``WIRE_2_AVERSION`` sim_log emission for Roy-3 disambiguation.
     """
     if not aversions:
-        return 0.0
+        return 0.0, None
     best = 0.0
+    best_class: str | None = None
     for entity_class, magnitude in aversions.items():
         if magnitude <= 0.0:
             continue
-        fragments = {frag.lower() for frag in entity_class.replace(":", " ").replace("_", " ").split() if frag}
+        fragments = {
+            frag.lower() for frag in entity_class.replace("-", " ").replace("_", " ").replace(":", " ").split() if frag
+        }
         if not fragments:
             continue
         if fragments & words:
             if magnitude > best:
                 best = magnitude
-    return best
+                best_class = entity_class
+    return best, best_class

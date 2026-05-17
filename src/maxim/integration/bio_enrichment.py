@@ -209,6 +209,20 @@ class BioEnrichmentPipeline:
 
                 gating_ctx = _replace(gating_ctx, learned_aversions=aversions)
             score = self._scorer.score(text, gating_ctx)
+
+            # Wire 2 JSONL emission (pre-merge bio-fidelity review B1
+            # fold): emit a structured ``WIRE_2_AVERSION`` event when
+            # an aversion match would lift salience.  This mirrors
+            # Wire 3's ``WIRE_3_FILTER`` emission — Roy-3 analyses
+            # need to distinguish "Pavlovian aversion did the work"
+            # from "the percept was inherently salient via the NAc
+            # link signal."  Without this, the wire's behavioral
+            # contribution is structurally unmeasurable in post-hoc
+            # JSONL.  Emit only when an aversion DID match (zero-cost
+            # for cold-start agents).
+            if aversions:
+                self._emit_wire_2_aversion_event(text, aversions, score)
+
             if score.combined < self._novelty_threshold:
                 return None
 
@@ -509,6 +523,52 @@ class BioEnrichmentPipeline:
         except Exception as exc:
             log.debug("Wire 2 aversion snapshot failed: %s", exc)
             return None
+
+    def _emit_wire_2_aversion_event(
+        self,
+        text: str,
+        aversions: dict[str, float],
+        score: Any,
+    ) -> None:
+        """Emit ``WIRE_2_AVERSION`` sim_log event for Roy-3 disambiguation.
+
+        Wire 2 (release_0_9_1.md Stage 3), pre-merge bio-fidelity review
+        B1 fold.  Mirrors Wire 3's ``WIRE_3_FILTER`` emission shape:
+        post-hoc JSONL analysis needs to distinguish "Pavlovian aversion
+        lifted salience" from "the percept fired high salience via the
+        existing NAc link signal."  Without this event the wire's
+        behavioral contribution is structurally unmeasurable.
+
+        Emits only when an aversion DID match the percept; cold-start
+        agents and percept-vocab disjoint percepts produce no event.
+        Best-effort — sim_log import failures swallow silently (the
+        salience hot path must not break on observability failures).
+        """
+        try:
+            from maxim.runtime.gating import _match_learned_aversion
+            from maxim.simulation.sim_logger import sim_log
+        except Exception:
+            return
+        words = {w for w in text.strip().lower().replace("_", " ").split() if w}
+        magnitude, matched_class = _match_learned_aversion(words, aversions)
+        if magnitude <= 0.0 or matched_class is None:
+            return
+        try:
+            sim_log(
+                "WIRE_2_AVERSION",
+                f"wire_2: aversion={magnitude:.2f} entity_class={matched_class}",
+                {
+                    "matched_entity_class": matched_class,
+                    "aversion_magnitude": round(magnitude, 4),
+                    "salience_combined": round(getattr(score, "combined", 0.0), 4),
+                    "salience_base": round(getattr(score, "salience", 0.0), 4),
+                    "percept_words_sample": sorted(words)[:8],
+                    "n_aversions": len(aversions),
+                },
+                agent_id=self._agent_id or None,
+            )
+        except Exception as exc:
+            log.debug("WIRE_2_AVERSION emit failed: %s", exc)
 
     def _extract_keywords(self, text: str) -> list[str]:
         """Extract meaningful keywords from text for bio-system queries."""
