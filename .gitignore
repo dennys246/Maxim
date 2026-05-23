@@ -232,6 +232,7 @@ data/*
 !data/motion/default_poses.json
 !data/util/
 !data/util/key_responses.json
+!data/roy_paraphrase_pairs.json
 
 adaptive_thresholds.json
 focus_learner.json
