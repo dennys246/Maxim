@@ -692,8 +692,160 @@ Arm C (blank, neutral):                  5× infant_humanoid_pick_up (all FAILED
 - Outcome doc: [`20_roy_2c.md`](../experiments/20_roy_2c.md). Protocol: [`20_roy_2c_reproduction.md`](../experiments/protocols/20_roy_2c_reproduction.md). Spec: [`roy_2c_iteration.yaml`](../../scenarios/roy/roy_2c_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged).
 <!-- /roy-iteration:roy-2c -->
 
-### Roy-3 (planned, 0.9.1 validation)
-*Status: Validation iteration for the 0.9.1 release. Runs after Wires A+1+2+3 ship. Two sub-iterations (Roy-3a llm-primary original holdout, Roy-3b llm-primary engineered overlap) measure whether the annotation pattern produced cross-arm behavioral divergence the cluster-bias path couldn't. Owned by [release_0_9_1.md Stage 5](release_0_9_1.md).*
+<!-- roy-iteration:roy-3a -->
+### Roy-3a: 0.9.1 annotation-pattern validation on original holdout
+
+**Status:** SHIPPED. First post-all-wires iteration. Wires A+1+2+3 (PRs #253 / #254 / #255 / #256 / #257) all active. Multi-arc priming identical to Roy-2 / Roy-2c / Roy-4 / Roy-5a; llm-primary at test against `roy_1_holdout.yaml`. Ran end-to-end against the same healthy leader, 2026-05-23 11:37→11:53 local. **952.5s wall (~15.9 min)** — +8% vs Roy-2's 883s (annotation rendering adds modest per-prompt overhead). Owned by [release_0_9_1.md Stage 5](release_0_9_1.md).
+
+> Pre-registered diagnostic logic: Arm A > C on tool-family divergence
+> (richer than Roy-2's 17/3/2 vs 21/5/1/1) → Wire 1 + Wire 2 compound
+> the salience-mediated signal Roy-2 surfaced. Arm A ≈ B ≈ C →
+> annotation pattern alone insufficient; investigate prompt rendering
+> / priming-side regressions.
+
+**Preflight:** clean. `outcome: ok`, `latency_ms: 353.6`, `detail: stage2 HTTP 200`, `source: peer.yml`.
+
+**Priming:** 5/5 stages completed. final_session_id `20260523_114722`. Identical multi-arc shape to Roy-2 / Roy-2c.
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | duration_s | finish |
+|---|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260523_114915` | 10 | 119.5 | cancel |
+| b | blank | "You are a hungry infant" | `20260523_115114` | 10 | 90.7 | cancel |
+| c | blank | neutral | `20260523_115245` | 10 | 97.5 | cancel |
+
+**Pairwise substrate divergence:**
+
+| Pair | `reward_bias_l2` | `cluster_reward_bias_l2` | (keys) | `causal_link_Δ` | `episodes_Δ` | `valence_KS` (p) | ATL jaccard |
+|---|---|---|---|---|---|---|---|
+| a_vs_b | 0.0 | **0.0370** | 2 | +340 | +702 | 0.294 (0.077) | 0.047 |
+| a_vs_c | 0.0 | **0.0370** | 2 | +330 | +694 | 0.294 (0.020) | 0.054 |
+| b_vs_c | 0.0 | 0.0 | 0 | −10 | −8 | 0.000 (1.000) | 0.652 |
+
+**Priming-side cluster_reward_bias (the structural anomaly):** priming session NAc holds **2 entries** at `sense_food_source` × {+0.18, +0.98} — vs Roy-2 / Roy-2c / Roy-4 / Roy-5a all writing **6 entries at +1.0**. Same multi-arc priming, same 50-turn budget, same substrate-primary AUT mode — structurally fewer + weaker cluster keys post-2026-05-22. The five wire merges in the 5/13→5/22 window correlate with this regression.
+
+**Test-phase tool distribution (the headline Roy-3a behavioral signal):**
+
+```
+Arm A (substrate-primed, neutral):    46× respond, 4× _llm_unavailable, 2× pick_up,
+                                       1× sense, 1× sense_tools, 1× infant_humanoid_listen, 1× <no-tool>
+Arm B (blank, "hungry infant"):       11× respond, 3× sense, 2× pick_up,
+                                       1× examine, 1× say, 1× sense_presence, 1× <no-tool>
+Arm C (blank, neutral):               21× respond, 3× sense, 2× pick_up,
+                                       2× _llm_unavailable, 1× sense_tools, 1× <no-tool>
+```
+
+**Zero `sense_food_source` calls in any arm.** Roy-2's clean A-vs-C divergence (A used `sense`/`pick_up` family, C used `look`/`listen`) is *weakened*: both arms now run on the same `sense`/`pick_up` family. Arm A's `respond` count rose 17 → 46, shifting toward narrative-verbal responses rather than action verbs.
+
+**Wire-A annotation render at arm A:** `max(|bias|)` = 0.036 after test-phase decay → renders as `sense_food_source [neutral / mixed]`. The annotation IS attached to the StructuredContext at LLM-submission time (Wire-A producer site runs unconditionally with `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION` unset), but the rendered band conveys no actionable signal.
+
+**JSONL emission counts:** 974× `NAc_RECOMMEND` total (811 passed_gate=True best_tool=`sense_food_source` from substrate-primary priming; 163 sub-threshold). 0× `WIRE_3_FILTER` (intact body, as expected). 292× linguistic + 83× drive EC_TRACE — text-modality routing confirmed active.
+
+**Honest assessment:**
+
+- The annotation surface is wired end-to-end at the producer + composer level.
+- The annotation's signal value is null at test time because the priming-side cluster bias decays below the "mildly rewarding" 0.1 floor during the 10-turn test phase.
+- Roy-2's salience-mediated A-vs-C divergence is weakened under annotation overhead, not augmented.
+- `valence_KS` (a_vs_c) cleanly reproduces below α=0.05 (p=0.020) — the valence carryover signal Roy-2 first established remains observable.
+
+**What Roy-3a definitively proves:**
+
+- Identical multi-arc priming + identical substrate-primary AUT + identical turn budget across Roy-2 → Roy-3a produces structurally different `cluster_reward_bias` outputs (6 saturated → 2 partially-saturated). Single-seed cluster wire output was stable across Roy-2 / Roy-2c / Roy-4 / Roy-5a and changed only after 2026-05-22 wire merges.
+- The Stage 0c `sim_recommend_action` JSONL emissions fire on every `recommend_action` call (974 events including sub-threshold), as designed.
+- Wire 3's `WIRE_3_FILTER` emission surface is present and silent under an intact body.
+
+**What Roy-3a still does NOT prove:**
+
+- That the priming-side regression is harmful in production. The two clusters (0.18 / 0.98) still carry usable substrate-acquired bias during the priming session; the harm is specifically on Wire-A's read window at llm-primary test time.
+- Which of Wire 1 / Wire 2 / interaction caused the regression. Determining this requires bisecting the 5/13→5/22 PR window.
+- Persona convergence at any level (single-session as before).
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-3a/result.json`](/Users/dennyschaedig/.maxim/roy/roy-3a/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-3a/summary.md).
+- JSONL trace `/tmp/roy_3a_ec_trace.jsonl` (7.9 MB). Run log `/tmp/roy_3a_run.log`.
+- Outcome doc: [`23_roy_3.md`](../experiments/23_roy_3.md) (covers 3a + 3b). Protocol: [`23_roy_3_reproduction.md`](../experiments/protocols/23_roy_3_reproduction.md). Spec: [`roy_3a_iteration.yaml`](../../scenarios/roy/roy_3a_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+<!-- /roy-iteration:roy-3a -->
+
+<!-- roy-iteration:roy-3b -->
+### Roy-3b: 0.9.1 annotation-pattern validation on engineered overlap
+
+**Status:** SHIPPED. Wire-A-specific behavioral test on the engineered overlap fixture. Same wires + priming as Roy-3a; llm-primary at test against `roy_2pc_holdout.yaml` (every percept evokes food / hunger / eating semantics). Ran end-to-end against the same healthy leader, 2026-05-23 12:25→12:39 local. **879.9s wall (~14.7 min)** — close to Roy-3a's 953s (same shape, slightly faster). Owned by [release_0_9_1.md Stage 5](release_0_9_1.md).
+
+> Pre-registered diagnostic logic: Arm A `sense_food_source` count >
+> Arm B AND > Arm C → Wire-A annotation reached LLM proposer's
+> decision pathway on engineered overlap; pattern works.  A ≈ B ≈ C
+> → annotation didn't reach the proposer's decision pathway;
+> investigate prompt rendering / priming-side regressions.
+
+**Preflight:** clean. `outcome: ok`, `latency_ms: 293.0`, `detail: stage2 HTTP 200`, `source: peer.yml`.
+
+**Priming:** 5/5 stages completed. final_session_id `20260523_123334`. Identical multi-arc shape to Roy-3a.
+
+**Arms:**
+
+| Arm | Substrate | system_prompt | session_id | turns | duration_s | finish |
+|---|---|---|---|---|---|---|
+| a | from_priming | neutral | `20260523_123525` | 10 | 108.5 | cancel |
+| b | blank | "You are a hungry infant" | `20260523_123713` | 10 | 82.6 | cancel |
+| c | blank | neutral | `20260523_123836` | 10 | 82.9 | cancel |
+
+**Pairwise substrate divergence:**
+
+| Pair | `reward_bias_l2` | `cluster_reward_bias_l2` | (keys) | `causal_link_Δ` | `episodes_Δ` | `valence_KS` (p) | ATL jaccard |
+|---|---|---|---|---|---|---|---|
+| a_vs_b | 0.0 | **0.1002** | 2 | +302 | +685 | 0.117 (0.998) | 0.047 |
+| a_vs_c | 0.0 | **0.1002** | 2 | +303 | +685 | 0.168 (0.928) | 0.043 |
+| b_vs_c | 0.0 | 0.0 | 0 | +1 | +0 | 0.111 (1.000) | 0.667 |
+
+**Priming-side cluster_reward_bias:** 2 entries `sense_food_source` × {+0.21, +0.98}. Reproduces the Roy-3a regression — same shape, slightly higher bias on the smaller cluster (+0.21 vs +0.18). The regression is iteration-stable post-wires.
+
+**Test-phase tool distribution (the headline Roy-3b behavioral signal):**
+
+```
+Arm A (substrate-primed, neutral):    28× respond, 3× use, 2× pick_up, 2× _llm_unavailable,
+                                       1× infant_humanoid_use, 1× sense_presence, 1× <no-tool>
+Arm B (blank, "hungry infant"):        4× pick_up, 2× use, 2× infant_humanoid_use,
+                                       1× sense_tools, 1× respond, 1× _llm_unavailable, 1× <no-tool>
+Arm C (blank, neutral):                4× examine, 3× pick_up, 2× eat,
+                                       1× respond, 1× _llm_unavailable, 1× <no-tool>
+```
+
+**Zero `sense_food_source` calls in any arm.** This is the pre-registered "A ≈ B ≈ C" outcome — Wire-A annotation did NOT drive arm A toward `sense_food_source` on food-themed percepts. Notable cross-arm differences: arm A dominated by `respond` (28×, narrative-verbal); arm B dominated by `pick_up` + `use` (task-oriented action under the persona prompt); arm C is the *most food-engaged* arm with 2× `eat` affordance calls — the opposite direction Wire-A was designed to produce.
+
+**Wire-A annotation render at arm A:** `max(|bias|)` = 0.098 after test-phase decay → renders as `sense_food_source [neutral / mixed]` (still below the 0.1 "mildly rewarding" floor by 0.002). Same null-signal pattern as Roy-3a.
+
+**JSONL emission counts:** 963× `NAc_RECOMMEND` total (800 passed_gate=True best_tool=`sense_food_source` from substrate-primary priming; 163 sub-threshold). 0× `WIRE_3_FILTER`. 186× linguistic + 81× drive EC_TRACE.
+
+**Honest assessment:**
+
+- The annotation-pattern thesis (substrate-annotates-LLM-context surfaces signal the cluster-wire consumer cannot) is **not directly falsified** — the test conditions never gave the LLM a meaningfully-non-null annotation to bias on.
+- Roy-2pc's null behavioral signal on the engineered overlap fixture reproduces under llm-primary + annotation. The fixture isn't fixable from the LLM-proposer side when the annotation conveys no signal.
+- `valence_KS` p-values for a_vs_b (0.998) and a_vs_c (0.928) are far above α=0.05 — the valence-distribution divergence Roy-2 surfaced (p=0.023) is GONE under the annotation overhead on this fixture. The wires shipped close architectural gaps but appear to weaken the salience-mediated signal that was Roy-2's most legible cross-arm divergence.
+
+**What Roy-3b definitively proves:**
+
+- The substrate-primary priming proposer fires `sense_food_source` proposals during priming (800 passed_gate=True), correctly landing on cluster keys for that tool. The wire is healthy at the priming-side consumer level.
+- Engineering test-percept semantic overlap is INSUFFICIENT to drive `sense_food_source` selection under llm-primary + annotation, when the annotation conveys a null signal.
+- Arm C's `eat` affordance calls (2×) on the engineered overlap fixture demonstrate the LLM can read food-themed percepts and choose food-aware actions independently of substrate priming.
+
+**What Roy-3b still does NOT prove:**
+
+- Whether Wire-A would produce cross-arm divergence if the annotation rendered "strongly rewarding" instead of "neutral / mixed". Requires a Roy iteration where the priming substrate saturates above 0.5 OR a Wire-A design tweak that defers to the priming session-end snapshot rather than the post-decay arm-A snapshot.
+- Cross-session persistence.
+
+**What Roy-3b changes for next-iteration methodology:**
+
+1. **Bisect the priming-side `cluster_reward_bias` regression** (Wire 1 vs Wire 2 vs interaction). Roy-2-shaped iteration per intermediate commit between 5/13 and 5/22. Required diagnostic work before 1.0 ships.
+2. **Decide whether Wire-A's render needs a session-end raw priming snapshot floor** rather than the post-decay snapshot. Trade-off: persistent bias vs cleanly extinguishing aversions. Worth deciding before 1.0.
+
+**Recommendation:** **0.9.1 ships unchanged** per the [foundations doc framing rule](bio_emergent_persona_foundations.md) — the wires close architectural gaps regardless of persona behavior. The four wires are now load-bearing surface area for 1.1+ work that depends on substrate-annotates-LLM-context infrastructure. Roy-3 is a clean negative result on the annotation-pattern's behavioral expression for persona convergence; the diagnostic correctly decodes as "the test conditions did not give the LLM a non-null annotation to bias on", not "the wires are wrong".
+
+**Artifacts:**
+- [`~/.maxim/roy/roy-3b/result.json`](/Users/dennyschaedig/.maxim/roy/roy-3b/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-3b/summary.md).
+- JSONL trace `/tmp/roy_3b_ec_trace.jsonl` (7.4 MB). Run log `/tmp/roy_3b_run.log`.
+- Outcome doc: [`23_roy_3.md`](../experiments/23_roy_3.md) (covers 3a + 3b). Protocol: [`23_roy_3_reproduction.md`](../experiments/protocols/23_roy_3_reproduction.md). Spec: [`roy_3b_iteration.yaml`](../../scenarios/roy/roy_3b_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged from Roy-2pc / Roy-2c / Roy-4 / Roy-5a).
+<!-- /roy-iteration:roy-3b -->
 
 <!-- roy-iteration:roy-4 -->
 ### Roy-4: EC-activation co-activation instrumentation (1.1 binding plan gate)
