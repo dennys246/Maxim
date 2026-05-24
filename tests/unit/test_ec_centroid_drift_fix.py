@@ -58,13 +58,16 @@ def test_pattern_complete_threshold_default_is_0_44() -> None:
 
 
 def test_nac_threshold_override_base_tracks_ec_default() -> None:
-    """The NAc ``get_threshold_overrides`` ``base`` constant has a
-    hardcoded copy of the EC default at
-    src/maxim/decisions/nac.py:get_threshold_overrides. The comment
-    there says "matches ECConfig.pattern_complete_threshold default" —
-    this test inspects the actual override math to verify the constants
-    track. When a rewarded node has reward bias ``b``, the override
-    should equal ``ECConfig().pattern_complete_threshold - b``.
+    """The NAc ``get_threshold_overrides`` fallback constant (used
+    when ``base_threshold`` is not passed) has a hardcoded copy of the
+    EC default at src/maxim/decisions/nac.py:get_threshold_overrides.
+    Phase 3.5 parameterized the method — production callers
+    (LinguisticEncoder) pass ``ec.config.pattern_complete_threshold``
+    so the override always tracks the LIVE EC threshold, but the
+    fallback is kept for legacy callers that lack an EC reference.
+    This test verifies the fallback (None → 0.44) still matches the
+    EC default. When a rewarded node has reward bias ``b``, the
+    fallback override should equal ``ECConfig().pattern_complete_threshold - b``.
     """
     from maxim.decisions.nac import NAc
 
@@ -79,9 +82,58 @@ def test_nac_threshold_override_base_tracks_ec_default() -> None:
     assert node_id in overrides, "override missing for rewarded node"
     expected = ECConfig().pattern_complete_threshold - 0.05
     assert math.isclose(overrides[node_id], expected, abs_tol=1e-9), (
-        f"NAc override base mismatched EC default: got {overrides[node_id]}, "
+        f"NAc override fallback base mismatched EC default: got {overrides[node_id]}, "
         f"expected ECConfig.pattern_complete_threshold "
         f"({ECConfig().pattern_complete_threshold}) - 0.05"
+    )
+
+
+def test_nac_threshold_override_accepts_base_threshold_parameter() -> None:
+    """Phase 3.5: ``get_threshold_overrides`` accepts a
+    ``base_threshold`` keyword argument. When passed, the override
+    formula is ``base_threshold - reward_bias`` instead of the
+    hardcoded fallback. Production callers (LinguisticEncoder at
+    src/maxim/similarity/encoder.py:_get_reward_overrides + line 262)
+    pass ``self.ec.config.pattern_complete_threshold`` so the override
+    tracks the live EC threshold, not the hardcoded fallback. This
+    matters at non-default EC thresholds — e.g., P2 validation sweep
+    uses 0.80 and would otherwise get a 0.46-cosine-units recognition
+    radius widening artifact from the pre-Phase-3.5 hardcoded base.
+    """
+    from maxim.decisions.nac import NAc
+
+    nac = NAc()
+    agent_id = "test-agent"
+    node_id = "node-1"
+    nac._reward_bias[(agent_id, node_id)] = 0.05  # type: ignore[attr-defined]
+
+    # Pass a non-default base_threshold — override should use it.
+    overrides = nac.get_threshold_overrides(agent_id, base_threshold=0.80)
+    assert math.isclose(overrides[node_id], 0.75, abs_tol=1e-9), (
+        f"base_threshold=0.80, bias=0.05 → expected 0.75, got {overrides[node_id]}"
+    )
+
+    # Pass base_threshold equal to EC default — same as fallback path.
+    ec_default = ECConfig().pattern_complete_threshold
+    overrides_default = nac.get_threshold_overrides(agent_id, base_threshold=ec_default)
+    assert math.isclose(overrides_default[node_id], ec_default - 0.05, abs_tol=1e-9)
+
+
+def test_nac_threshold_override_clamps_to_floor_at_high_bias() -> None:
+    """Clamp floor of 0.10 prevents degenerate matching even at extreme
+    bias. Verified independently from the base parameterization
+    because the clamp is a separate invariant in the override formula.
+    """
+    from maxim.decisions.nac import NAc
+
+    nac = NAc()
+    agent_id = "test-agent"
+    node_id = "node-1"
+    # Bias of 0.40 with default base 0.44 would yield 0.04 — should clamp.
+    nac._reward_bias[(agent_id, node_id)] = 0.40  # type: ignore[attr-defined]
+    overrides = nac.get_threshold_overrides(agent_id)
+    assert math.isclose(overrides[node_id], 0.10, abs_tol=1e-9), (
+        f"high-bias override should clamp to floor 0.10, got {overrides[node_id]}"
     )
 
 
