@@ -2339,17 +2339,52 @@ class NAc:
                     if age > temporal_window:
                         del self._temporal_anchors[key]
 
-    def get_threshold_overrides(self, agent_id: str) -> dict[str, float]:
+    def get_threshold_overrides(
+        self,
+        agent_id: str,
+        *,
+        base_threshold: float | None = None,
+    ) -> dict[str, float]:
         """Build EC threshold overrides from reward biases for an agent.
 
         Returns a dict of node_id → adjusted_threshold suitable for
         EC.pattern_complete_or_separate(threshold_override=...).
 
-        Formula: threshold_override = base - α × reward_bias(agent_id, node)
+        Formula: threshold_override = base - reward_bias(agent_id, node)
         Clamped to [0.1, base] to prevent degenerate matching.
+
+        Args:
+            agent_id: Agent whose reward biases drive the overrides.
+            base_threshold: The EC pattern-complete threshold the
+                overrides subtract bias from. Production callers
+                (LinguisticEncoder) hold a reference to the live EC
+                config and MUST pass
+                ``ec.config.pattern_complete_threshold`` so the override
+                tracks whatever threshold the matching EC instance is
+                using. ``None`` falls back to ``0.44`` — the
+                ECConfig.pattern_complete_threshold default — preserved
+                for legacy callers that lack an EC reference (the few
+                isolated unit tests at
+                tests/substrate/test_p2_reward_modulation.py::TestP2Mechanism::test_per_agent_isolation,
+                tests/unit/test_ec_centroid_drift_fix.py::test_nac_threshold_override_base_tracks_ec_default,
+                and tests/unit/test_substrate_recognition.py that
+                exercise the NAc directly). The fallback is pinned to
+                the EC default by
+                ``test_nac_threshold_override_base_tracks_ec_default``.
+
+        Phase 3.5 of docs/plans/ec_centroid_drift_fix.md (2026-05-23)
+        replaced a hardcoded ``base = 0.44`` with this parameterized
+        form. At non-default EC thresholds (e.g., 0.80 in the P2
+        validation sweep) the hardcoded form produced a coupling
+        artifact: the override widened recognition by 0.46 in cosine
+        space (= 0.80 - 0.44 + bias) instead of the bio-correct
+        bias-magnitude widening (0.20 with reward 2.0).
         """
         overrides: dict[str, float] = {}
-        base = 0.44  # matches ECConfig.pattern_complete_threshold default (Phase 3 of docs/plans/ec_centroid_drift_fix.md, 2026-05-23 — was 0.40)
+        # Fallback pinned to ECConfig().pattern_complete_threshold; the
+        # coupling test in tests/unit/test_ec_centroid_drift_fix.py
+        # asserts both move together.
+        base = 0.44 if base_threshold is None else base_threshold
         with self._lock:
             for (aid, nid), bias in self._reward_bias.items():
                 if aid != agent_id or bias < 0.001:

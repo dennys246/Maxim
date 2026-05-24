@@ -259,7 +259,10 @@ class LinguisticEncoder:
 
         threshold_override = None
         if self._nac is not None:
-            overrides = self._nac.get_threshold_overrides(agent_id)
+            overrides = self._nac.get_threshold_overrides(
+                agent_id,
+                base_threshold=self.ec.config.pattern_complete_threshold,
+            )
             threshold_override = overrides if overrides else None
 
         node_ids: list[str] = []
@@ -343,7 +346,10 @@ class LinguisticEncoder:
         if percept.context is not None and hasattr(percept.context, "agent_id"):
             agent_id = percept.context.agent_id or ""
 
-        overrides = self._nac.get_threshold_overrides(agent_id)
+        overrides = self._nac.get_threshold_overrides(
+            agent_id,
+            base_threshold=self.ec.config.pattern_complete_threshold,
+        )
         return overrides if overrides else None
 
     @property
