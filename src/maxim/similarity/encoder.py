@@ -458,7 +458,7 @@ class SensorEncoderConfig:
     # default is conservative (5% of a [0,1] drive range).
     min_delta: float = 0.05
     # Cosine-similarity threshold for the interoception modality.
-    # Higher than EC.pattern_complete_threshold (0.40, tuned for
+    # Higher than EC.pattern_complete_threshold (0.44, tuned for
     # paraphrase-mpnet text embeddings) because the SHA-derived
     # low/high bases produce embeddings where a single-sensor swing
     # from 0→1 still leaves cos≈0.83 with the baseline (the other

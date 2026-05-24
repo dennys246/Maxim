@@ -72,10 +72,12 @@ class TestVerdictDecoding:
         assert v.sub_hypothesis == "H1b"
 
     def test_exactly_h1c_lower_bound_decodes_h1c(self) -> None:
-        """0.40 is INCLUSIVE on the H1c side — boundary is `>= 0.40`,
-        and 0.40 is EC's current pattern_complete_threshold so the
-        verdict "the encoder DOES see them as similar, EC threshold
-        misses" must trigger exactly at this floor."""
+        """0.40 is INCLUSIVE on the H1c side — boundary is `>= 0.40`.
+        0.40 was EC's pattern_complete_threshold at the time Roy-5 shipped;
+        the EC default moved to 0.44 in Phase 3 of
+        docs/plans/ec_centroid_drift_fix.md but this Roy-5 boundary stays
+        at 0.40 for verdict-stability of historical Roy-2c decodings.
+        See the H1C_LOWER_BOUND module docstring for rationale."""
         v = a5.decode_verdict(0.40)
         assert v.sub_hypothesis == "H1c"
         assert "threshold" in v.next_stage.lower()

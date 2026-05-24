@@ -2349,7 +2349,7 @@ class NAc:
         Clamped to [0.1, base] to prevent degenerate matching.
         """
         overrides: dict[str, float] = {}
-        base = 0.40  # matches ECConfig.pattern_complete_threshold default
+        base = 0.44  # matches ECConfig.pattern_complete_threshold default (Phase 3 of docs/plans/ec_centroid_drift_fix.md, 2026-05-23 — was 0.40)
         with self._lock:
             for (aid, nid), bias in self._reward_bias.items():
                 if aid != agent_id or bias < 0.001:

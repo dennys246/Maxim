@@ -362,11 +362,20 @@ def _max_over_food_clusters(matrix: CosineMatrix, food_clusters: set[str]) -> fl
 # ─────────────────────────────────────────────────────────────────────────
 
 
-# H1c lower bound is the current ECConfig.pattern_complete_threshold
-# (P1-tuned, paraphrase-mpnet@0.40). H1b lower bound is a conservative
-# floor below which "the encoder doesn't even see these as related" is
-# the parsimonious explanation. These constants are the public contract
-# of this analyzer — tests pin the exact boundary semantics.
+# H1c lower bound was set to ECConfig.pattern_complete_threshold's value
+# at the time Roy-5 shipped (P1-tuned, paraphrase-mpnet@0.40). EC default
+# moved to 0.44 in Phase 3 of docs/plans/ec_centroid_drift_fix.md (2026-05-23)
+# but H1C_LOWER_BOUND deliberately STAYS at 0.40 here for verdict-stability:
+# the Roy-5 decoder maps Roy-2c's existing cosine data to {H1a, H1b, H1c}
+# verdicts, and the cosine distribution didn't change. The verdict semantics
+# ("the encoder DOES see them as similar at the *historical* threshold floor")
+# still applies; updating to 0.44 would retroactively re-decode prior Roy-5
+# runs, which is not the purpose of the EC default change.
+#
+# H1b lower bound is a conservative floor below which "the encoder doesn't
+# even see these as related" is the parsimonious explanation. These constants
+# are the public contract of this analyzer — tests pin the exact boundary
+# semantics.
 H1C_LOWER_BOUND: float = 0.40
 H1B_LOWER_BOUND: float = 0.20
 
