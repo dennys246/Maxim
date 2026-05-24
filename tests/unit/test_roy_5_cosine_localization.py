@@ -68,22 +68,34 @@ class TestVerdictDecoding:
         assert "encoder A/B" in v.next_stage
 
     def test_within_h1b_band_decodes_h1b(self) -> None:
+        """0.39 sits in the middle of the H1b band [0.20, 0.44)."""
         v = a5.decode_verdict(0.39)
         assert v.sub_hypothesis == "H1b"
 
+    def test_just_below_h1c_lower_bound_decodes_h1b(self) -> None:
+        """0.43 is just below the H1c boundary (0.44); still H1b.
+
+        Regression guard against off-by-one drift in the boundary
+        semantics when EC default tracks downward in the future.
+        """
+        v = a5.decode_verdict(0.43)
+        assert v.sub_hypothesis == "H1b"
+
     def test_exactly_h1c_lower_bound_decodes_h1c(self) -> None:
-        """0.40 is INCLUSIVE on the H1c side — boundary is `>= 0.40`.
-        0.40 was EC's pattern_complete_threshold at the time Roy-5 shipped;
-        the EC default moved to 0.44 in Phase 3 of
-        docs/plans/ec_centroid_drift_fix.md but this Roy-5 boundary stays
-        at 0.40 for verdict-stability of historical Roy-2c decodings.
-        See the H1C_LOWER_BOUND module docstring for rationale."""
-        v = a5.decode_verdict(0.40)
+        """0.44 is INCLUSIVE on the H1c side — boundary is `>= 0.44`,
+        and 0.44 is EC's current ``pattern_complete_threshold`` default
+        (Phase 3 of docs/plans/ec_centroid_drift_fix.md, 2026-05-23 —
+        previously 0.40). The verdict "the encoder DOES see them as
+        similar, EC threshold misses" must trigger exactly at the
+        current EC threshold floor — see test_h1c_lower_bound_tracks_ec_default
+        for the structural coupling guard."""
+        v = a5.decode_verdict(0.44)
         assert v.sub_hypothesis == "H1c"
         assert "threshold" in v.next_stage.lower()
 
     def test_above_h1c_lower_bound_decodes_h1c(self) -> None:
-        v = a5.decode_verdict(0.41)
+        """0.45 is above the H1c boundary (0.44)."""
+        v = a5.decode_verdict(0.45)
         assert v.sub_hypothesis == "H1c"
 
     def test_negative_infinity_decodes_h1a(self) -> None:
@@ -96,8 +108,31 @@ class TestVerdictDecoding:
     def test_constants_are_public_contract(self) -> None:
         """The two threshold constants are the public contract. If they
         drift, Stage 2 implementation branches mis-fire — pin them."""
-        assert a5.H1C_LOWER_BOUND == 0.40
+        assert a5.H1C_LOWER_BOUND == 0.44
         assert a5.H1B_LOWER_BOUND == 0.20
+
+    def test_h1c_lower_bound_tracks_ec_default(self) -> None:
+        """Structural coupling guard: H1C_LOWER_BOUND must equal the
+        current ``ECConfig.pattern_complete_threshold`` default.
+
+        The H1c verdict means "the encoder DOES see them as similar at
+        the EC threshold floor." That floor is wherever EC currently
+        lives, not a stale historical value. If EC's default moves,
+        this analyzer's H1c boundary moves in lockstep — both pin the
+        same semantic claim.
+
+        Mirrors the test_nac_threshold_override_base_tracks_ec_default
+        coupling test in tests/unit/test_ec_centroid_drift_fix.py.
+        """
+        from maxim.similarity.ec import ECConfig
+
+        assert a5.H1C_LOWER_BOUND == ECConfig().pattern_complete_threshold, (
+            f"H1C_LOWER_BOUND ({a5.H1C_LOWER_BOUND}) drifted from "
+            f"ECConfig().pattern_complete_threshold "
+            f"({ECConfig().pattern_complete_threshold}). Bump both in "
+            f"lockstep — see scripts/analyze_roy_5_cosine_localization.py "
+            f"H1C_LOWER_BOUND docstring."
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────
