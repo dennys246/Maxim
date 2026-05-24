@@ -182,8 +182,20 @@ class ECConfig:
     semantic_hash_bits: int = 16  # Number of bits for semantic LSH hash
 
     # Substrate (P1): pattern completion threshold for cosine similarity.
-    # Tuned via P1 sweep: paraphrase-mpnet-base-v2 @ 0.40 → 93.5% collapse, 3.3% cross-cluster.
-    pattern_complete_threshold: float = 0.40
+    # Originally tuned at 0.40 via P1 sweep — paraphrase-mpnet-base-v2 @ 0.40
+    # → 91.7% collapse / 3.1% cross-cluster on tests/substrate/paraphrase_clusters.yaml.
+    # Refined to 0.44 by docs/experiments/26_ec_drift_phase_2_regression.md after
+    # the paraphrase-collapse diagnostic (docs/experiments/24+25_*.md) surfaced
+    # sequential text-modality centroid drift at 0.40 — successive low-but-above-
+    # threshold matches (cosine 0.42-0.45) pulled the running-mean centroid toward
+    # a generic "second-person body sensation" prototype that admitted everything,
+    # collapsing 19 of 20 unique strings into one mega-node on the Roy fixture.
+    # The 0.01 fine sweep (scripts/fine_sweep_phase_2.py) named 0.44 as the sweet
+    # spot: P1 collapse 92.3% (improved from 91.7%, only threshold with 10-of-10
+    # seeds passing the strict P1 gate, tightest variance), Roy at the ceiling
+    # (100% pair / 0% distractor / 6 distinct EC nodes). NAc's get_threshold_overrides
+    # has a coupled hardcoded copy at src/maxim/decisions/nac.py — change in lockstep.
+    pattern_complete_threshold: float = 0.44
 
     # Modalities for which pattern_complete_or_separate skips the
     # running-mean centroid update. Frozen-prototype semantics: the

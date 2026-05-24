@@ -18,8 +18,9 @@ deterministic seeding. The shape is "cluster-aware paired centroids":
 - Each pair has K_text text samples and K_vision vision samples, all
   drawn from ``centroid + small_noise`` where ``small_noise`` is
   scaled so that within-pair cosine similarity stays well above the
-  EC ``pattern_complete_threshold`` (0.40) and between-pair cosine
-  similarity stays below it.
+  EC ``pattern_complete_threshold`` (0.44 as of Phase 3 of
+  docs/plans/ec_centroid_drift_fix.md; was 0.40 prior) and between-
+  pair cosine similarity stays below it.
 
 This guarantees:
 
@@ -113,8 +114,10 @@ def make_cluster_aware_pairs(
     This is the Round 2 Arch-lens fold: an earlier draft used a bare
     ``noise_std`` parameter that scaled with ``dim`` — a Stage 2
     caller picking CLIP's native 512-d space with the old default
-    would produce within-pair similarity near 0.44, right at EC's
-    0.40 threshold, silently breaking the cluster-aware guarantee.
+    would produce within-pair similarity near 0.44, AT EC's current
+    ``pattern_complete_threshold`` floor of 0.44 (and above the
+    historical 0.40 floor by a margin), silently breaking the
+    cluster-aware guarantee at either default.
     The dim-invariant form lets any reasonable ``dim`` (64, 128, 384,
     512, 768) produce the same within-pair similarity band so future
     callers do not have to re-tune the parameter.
