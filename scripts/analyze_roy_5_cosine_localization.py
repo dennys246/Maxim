@@ -28,8 +28,8 @@ Pre-registered decoding (in this file AND in the printed summary):
 ================================  ============================================  ============================================================
 ``max(M_tt food-bearing)``        Verdict                                       Stage 2 next step
 ================================  ============================================  ============================================================
-``>= 0.40``                       H1c — threshold/centroid tuning               2a — ``MAXIM_EC_PATTERN_THRESHOLD_TEXT`` / ``MAXIM_EC_FROZEN_TEXT`` sweep
-``0.20 <= max < 0.40``            H1b — encoder model fit                       2b — kill ``LinguisticEncoder._get_encoder`` singleton, A/B alternative ST models
+``>= 0.44``                       H1c — threshold/centroid tuning               2a — ``MAXIM_EC_PATTERN_THRESHOLD_TEXT`` / ``MAXIM_EC_FROZEN_TEXT`` sweep
+``0.20 <= max < 0.44``            H1b — encoder model fit                       2b — kill ``LinguisticEncoder._get_encoder`` singleton, A/B alternative ST models
 ``< 0.20``                        H1a — encoder subspace incompatibility        2c → Stage 3 cradle-arc redesign + Hebbian retest
 ================================  ============================================  ============================================================
 
@@ -362,21 +362,21 @@ def _max_over_food_clusters(matrix: CosineMatrix, food_clusters: set[str]) -> fl
 # ─────────────────────────────────────────────────────────────────────────
 
 
-# H1c lower bound was set to ECConfig.pattern_complete_threshold's value
-# at the time Roy-5 shipped (P1-tuned, paraphrase-mpnet@0.40). EC default
-# moved to 0.44 in Phase 3 of docs/plans/ec_centroid_drift_fix.md (2026-05-23)
-# but H1C_LOWER_BOUND deliberately STAYS at 0.40 here for verdict-stability:
-# the Roy-5 decoder maps Roy-2c's existing cosine data to {H1a, H1b, H1c}
-# verdicts, and the cosine distribution didn't change. The verdict semantics
-# ("the encoder DOES see them as similar at the *historical* threshold floor")
-# still applies; updating to 0.44 would retroactively re-decode prior Roy-5
-# runs, which is not the purpose of the EC default change.
+# H1c lower bound tracks the current ECConfig.pattern_complete_threshold
+# default. The H1c verdict means "the encoder DOES see them as similar at
+# the EC threshold floor" — that floor is wherever EC currently lives, not
+# a stale historical value. Phase 3 of docs/plans/ec_centroid_drift_fix.md
+# (2026-05-23) moved both the EC default and this boundary 0.40 → 0.44.
+# No past Roy run is affected (Roy-5a decoded to H1a via max = -inf, which
+# is independent of the H1c boundary; Roy-1a..Roy-4 didn't run this analyzer).
+# The coupling is enforced by tests/unit/test_roy_5_cosine_localization.py
+# ::test_h1c_lower_bound_tracks_ec_default — bump both in lockstep.
 #
 # H1b lower bound is a conservative floor below which "the encoder doesn't
-# even see these as related" is the parsimonious explanation. These constants
-# are the public contract of this analyzer — tests pin the exact boundary
-# semantics.
-H1C_LOWER_BOUND: float = 0.40
+# even see these as related" is the parsimonious explanation. NOT coupled
+# to the EC default — represents an encoder-quality signal, not a threshold
+# admission boundary.
+H1C_LOWER_BOUND: float = 0.44
 H1B_LOWER_BOUND: float = 0.20
 
 
@@ -394,13 +394,13 @@ def decode_verdict(max_food_tt: float) -> Verdict:
     """Pre-registered H1c/H1b/H1a decoding for arm A's M_tt food cosine.
 
     Boundary semantics (verified by the unit tests):
-    - ``max >= 0.40`` → H1c
-    - ``0.20 <= max < 0.40`` → H1b
-    - ``max < 0.20`` → H1a (includes ``-inf`` "no food-bearing rows in
-      M_tt", which is itself diagnostic of the H1a "structurally
-      incompatible subspaces" case — food clusters either don't exist
-      in text modality at all, or they're so dissimilar to arm A's text
-      that no row contributes a non-trivial max)
+    - ``max >= H1C_LOWER_BOUND`` (currently 0.44 — tracks EC default) → H1c
+    - ``H1B_LOWER_BOUND <= max < H1C_LOWER_BOUND`` (0.20 - 0.44) → H1b
+    - ``max < H1B_LOWER_BOUND`` (< 0.20) → H1a (includes ``-inf`` "no
+      food-bearing rows in M_tt", which is itself diagnostic of the H1a
+      "structurally incompatible subspaces" case — food clusters either
+      don't exist in text modality at all, or they're so dissimilar to
+      arm A's text that no row contributes a non-trivial max)
 
     The "no food-bearing priming centroids in priming's NAc dump"
     case is handled upstream (the caller short-circuits to
@@ -412,13 +412,13 @@ def decode_verdict(max_food_tt: float) -> Verdict:
             max_food_cosine_tt=max_food_tt,
             next_stage="Stage 2a — threshold/centroid tuning sweep",
             description=(
-                "Text embeddings are within EC's pattern_complete_threshold "
-                "of 0.40 — the encoder DOES see priming food clusters and "
-                "arm-A test text as similar. Pattern completion misses "
-                "because of frozen-prototype or running-mean drift "
-                "interactions, not encoder fit. Ship Stage 2a: "
-                "MAXIM_EC_PATTERN_THRESHOLD_TEXT + MAXIM_EC_FROZEN_TEXT "
-                "env-var sweep against the Roy-2c fixture."
+                f"Text embeddings are within EC's pattern_complete_threshold "
+                f"of {H1C_LOWER_BOUND} — the encoder DOES see priming food "
+                f"clusters and arm-A test text as similar. Pattern completion "
+                f"misses because of frozen-prototype or running-mean drift "
+                f"interactions, not encoder fit. Ship Stage 2a: "
+                f"MAXIM_EC_PATTERN_THRESHOLD_TEXT + MAXIM_EC_FROZEN_TEXT "
+                f"env-var sweep against the Roy-2c fixture."
             ),
         )
     if max_food_tt >= H1B_LOWER_BOUND:
@@ -427,11 +427,11 @@ def decode_verdict(max_food_tt: float) -> Verdict:
             max_food_cosine_tt=max_food_tt,
             next_stage="Stage 2b — encoder A/B sweep",
             description=(
-                "Text embeddings are moderately close (0.20-0.40) but below "
-                "EC's completion threshold. The encoder MIGHT close the gap "
-                "with a different sentence-transformer model. Ship Stage 2b: "
-                "kill the LinguisticEncoder._get_encoder process-wide "
-                "singleton, A/B 2-3 alternative models against the Roy-2c "
+                f"Text embeddings are moderately close ({H1B_LOWER_BOUND}-{H1C_LOWER_BOUND}) "
+                f"but below EC's completion threshold. The encoder MIGHT close the "
+                f"gap with a different sentence-transformer model. Ship Stage 2b: "
+                f"kill the LinguisticEncoder._get_encoder process-wide "
+                f"singleton, A/B 2-3 alternative models against the Roy-2c "
                 "fixture."
             ),
         )
