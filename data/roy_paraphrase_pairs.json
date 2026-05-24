@@ -1,0 +1,124 @@
+{
+  "_meta": {
+    "purpose": "Hand-curated paraphrase-collapse diagnostic input for scripts/diagnose_roy_paraphrase_collapse.py. Each pair is two CLI-style percept strings drawn from (or designed to match the register of) scenarios/roy/roy_1_holdout.yaml and scenarios/roy/roy_2pc_holdout.yaml. A pair is semantically equivalent to a human reader. A distractor is two strings that are semantically distant and SHOULD NOT collapse to the same EC node. The diagnostic walks both halves of every entry through LinguisticEncoder + EC.pattern_complete_or_separate (modality='text', default threshold 0.40) and asks: do the strings share an active_node_id?",
+    "source_fixtures": [
+      "scenarios/roy/roy_1_holdout.yaml",
+      "scenarios/roy/roy_2pc_holdout.yaml"
+    ],
+    "encoder": "paraphrase-mpnet-base-v2",
+    "ec_threshold": 0.40,
+    "decision_thresholds": {
+      "pair_collapse_min": 0.70,
+      "distractor_collapse_max": 0.30
+    }
+  },
+  "pairs": [
+    {
+      "id": "pair_01_food_detect",
+      "class": "food_overlap_2pc",
+      "a": "you sense food nearby.",
+      "b": "the smell of food fills the air.",
+      "rationale": "Both percepts describe detecting food via sensory channels (proximity / olfactory). The 2pc fixture encodes both as engineered-overlap matching_engineered."
+    },
+    {
+      "id": "pair_02_food_within_reach",
+      "class": "food_overlap_2pc",
+      "a": "a portion of food rests within reach.",
+      "b": "a fresh portion sits beside you.",
+      "rationale": "Both describe a food portion available in immediate spatial vicinity. Direct paraphrase from the 2pc fixture (pc_overlap_portion_reach + pc_overlap_fresh_portion)."
+    },
+    {
+      "id": "pair_03_satiety_belly",
+      "class": "food_overlap_2pc",
+      "a": "warm food rises in your belly.",
+      "b": "fullness settles in your belly.",
+      "rationale": "Both describe interoceptive satiety localized to the belly. Cross-fixture pair: 2pc 'warm food' + Roy-1 'fullness settles'."
+    },
+    {
+      "id": "pair_04_hunger_satiation",
+      "class": "food_overlap_2pc",
+      "a": "fullness eases the pull of hunger.",
+      "b": "your stomach feels satisfied.",
+      "rationale": "Both describe satiation easing hunger drive. 2pc native + designed-paraphrase variant."
+    },
+    {
+      "id": "pair_05_hand_warmth",
+      "class": "matching_thermal_roy1",
+      "a": "heat blooms across your fingertips.",
+      "b": "warmth spreads through your fingers.",
+      "rationale": "Both describe thermal sensation localized to the hand. Roy-1 native + designed-paraphrase variant. Tests whether 'heat/warmth' + 'fingertips/fingers' synonymy collapses."
+    },
+    {
+      "id": "pair_06_cold_shock_shoulder",
+      "class": "novel_cold_shock_roy1",
+      "a": "an abrupt chill grips your shoulders.",
+      "b": "sudden cold seizes your shoulders.",
+      "rationale": "Both describe an abrupt cold-shock at the shoulders. Roy-1 native + designed-paraphrase variant with synonym substitution (abrupt/sudden, chill/cold, grips/seizes)."
+    },
+    {
+      "id": "pair_07_cheek_soft",
+      "class": "matching_texture_roy1",
+      "a": "something soft drapes against your cheek.",
+      "b": "soft fabric brushes your cheek.",
+      "rationale": "Both describe a soft texture in contact with the cheek. Roy-1 native + paraphrase tightening 'something soft' → 'soft fabric'."
+    },
+    {
+      "id": "pair_08_chest_pressure",
+      "class": "novel_pressure_roy1",
+      "a": "steady pressure presses against your chest.",
+      "b": "firm weight rests on your chest.",
+      "rationale": "Both describe sustained mechanical pressure on the chest. Roy-1 native + designed-paraphrase variant (steady/firm, pressure/weight, presses-against/rests-on)."
+    },
+    {
+      "id": "pair_09_back_vibration",
+      "class": "novel_vibration_roy1",
+      "a": "a low vibration hums beneath your back.",
+      "b": "a faint tremor runs beneath your back.",
+      "rationale": "Both describe subtle vibration sensed at the back. Roy-1 native + designed-paraphrase variant (low/faint, vibration/tremor, hums/runs)."
+    },
+    {
+      "id": "pair_10_social_question",
+      "class": "unrelated_social_roy1",
+      "a": "a voice nearby asks if you understand.",
+      "b": "someone close by asks if you follow.",
+      "rationale": "Both describe a social-linguistic question from a proximate speaker. Roy-1 native + designed-paraphrase variant (voice-nearby/someone-close-by, understand/follow). Tests collapse in the unrelated/social class — distinct from the somatosensory clusters."
+    }
+  ],
+  "distractors": [
+    {
+      "id": "dist_01_thermal_vs_social",
+      "class": "cross_modality_distractor",
+      "a": "heat blooms across your fingertips.",
+      "b": "two people are arguing in the next room.",
+      "rationale": "Thermal somatosensory vs social-linguistic. Should NOT collapse."
+    },
+    {
+      "id": "dist_02_food_vs_cold_shock",
+      "class": "cross_class_distractor",
+      "a": "you sense food nearby.",
+      "b": "an abrupt chill grips your shoulders.",
+      "rationale": "Food-detection (interoceptive/olfactory) vs cold-shock (exteroceptive thermal). Different drive and sensory channels."
+    },
+    {
+      "id": "dist_03_intero_vs_social",
+      "class": "cross_modality_distractor",
+      "a": "fullness settles in your belly.",
+      "b": "a voice nearby asks if you understand.",
+      "rationale": "Interoceptive satiety vs social-linguistic. Should NOT collapse."
+    },
+    {
+      "id": "dist_04_food_vs_vibration",
+      "class": "cross_class_distractor",
+      "a": "the smell of food fills the air.",
+      "b": "a low vibration hums beneath your back.",
+      "rationale": "Olfactory food-detection vs vibratory back-sensation. Different sensory channels."
+    },
+    {
+      "id": "dist_05_satiety_vs_ambient",
+      "class": "cross_class_distractor",
+      "a": "warm food rises in your belly.",
+      "b": "the room grows quiet.",
+      "rationale": "Interoceptive satiety vs ambient-quiet (Roy-1 cooldown percept). Should NOT collapse."
+    }
+  ]
+}
