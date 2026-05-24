@@ -1,0 +1,136 @@
+# Roy-3b — 0.9.1 annotation-pattern validation on the ENGINEERED OVERLAP fixture.
+#
+# Companion to roy_3a_iteration.yaml. Roy-3b is the substrate-annotation
+# read-chance test: same priming as Roy-2/Roy-2pc/Roy-2c, same engineered
+# overlap fixture as Roy-2pc/Roy-2c (every test percept evokes
+# food/hunger/eating semantics so Wire-A's `sense_food_source [strongly
+# rewarding from prior experience]` annotation has best read-chance from
+# the LLM proposer), but llm-primary at test so the annotation actually
+# reaches the LLM proposer's decision pathway (vs substrate-primary
+# where the LLM never sees the prompt).
+#
+# Single-variable change vs Roy-2pc / Roy-2c:
+#   Roy-2pc: substrate-primary at test, engineered overlap, gate=0.3,
+#            PRE-annotation → byte-identical 2× FAILED pick_up.
+#   Roy-2c:  substrate-primary at test, engineered overlap, gate=0.0,
+#            PRE-annotation → byte-identical 5× FAILED pick_up
+#            (refuted H2 cleanly).
+#   Roy-3b: LLM-primary at test, engineered overlap, gate=0.3 (default),
+#            POST-annotation (all four wires). Tests whether Wire-A's
+#            agent-wide cluster_reward_bias surface reaches the LLM
+#            proposer and drives arm A toward `sense_food_source` on
+#            food-themed percepts.
+#
+# This is the Wire-A specific question:
+# Does surfacing the cluster_reward_bias map at the LLM prompt rescue
+# the wire from the LinguisticEncoder→EC alignment gap that Roy-2c
+# confirmed (H1)? The cluster wire writes the substrate correctly but
+# the `recommend_action` consumer cannot read the bias on percepts that
+# activate disjoint EC clusters from priming. Wire-A bypasses the EC
+# retrieval path entirely.
+#
+# Pre-registered diagnostic outcomes (from release_0_9_1.md Stage 5 +
+# Stage 2 Wire-A behavioral signal):
+#
+#   Arm A `sense_food_source` count > Arm B AND > Arm C →
+#     Wire-A annotation reached LLM proposer's decision pathway; the
+#     pattern works on engineered overlap. Wire-A clearly justified.
+#     0.9.1 ships and the four-wire annotation pattern proves out as
+#     the architectural fix the cluster-bias path could not deliver.
+#
+#   Arm A ≈ Arm B ≈ Arm C →
+#     Annotation didn't reach the proposer's decision pathway; either
+#     prompt-budget eviction or the LLM didn't bias on the hint. Investigate
+#     prompt rendering. Re-check Stage 0b/0c emission data first to
+#     disambiguate annotation-reaches-LLM vs LLM-reads-but-ignores. If
+#     emissions show annotation block present in prompt under all turns
+#     but tool-family distribution is unchanged, escalate to post-1.0
+#     pre-filter ranker design.
+#
+#   Arm A ≈ Arm B > Arm C → "hungry infant" persona prompt and substrate
+#     prime produce comparable food-sourcing behavior, both above the
+#     neutral-blank baseline. Wire-A's surface signal reproduces the
+#     persona-prompt's effect. Useful corroborating signal even if it
+#     doesn't establish Wire-A as additive to prompts.
+#
+# LOAD-BEARING runner env (mirrors Roy-3a):
+#
+#   MAXIM_SUBSTRATE_PATH=1
+#   MAXIM_EC_TRACE_ACTIVATIONS=1
+#   MAXIM_LOG_FILE=/tmp/roy_3b_ec_trace.jsonl
+#
+# Run with:
+#   maxim roy run scenarios/roy/roy_3b_iteration.yaml --dry-run  # parse-only
+#   MAXIM_SUBSTRATE_PATH=1 MAXIM_EC_TRACE_ACTIVATIONS=1 \
+#     MAXIM_LOG_FILE=/tmp/roy_3b_ec_trace.jsonl \
+#     maxim roy run scenarios/roy/roy_3b_iteration.yaml
+#
+# Expected wall: ~25-30 min (llm-primary at test runs faster than
+# substrate-primary; Roy-2's 883s is the relevant comparable).
+#
+# Companion docs:
+#   docs/plans/release_0_9_1.md                (0.9.1 release plan; Stage 5)
+#   docs/plans/persona_convergence_crucible.md (Roy iteration log; Roy-3b entry)
+#   docs/experiments/23_roy_3.md               (outcome doc — written post-run; covers 3a + 3b)
+#   docs/experiments/protocols/23_roy_3_reproduction.md (runbook — covers 3a + 3b)
+#   scenarios/roy/roy_3a_iteration.yaml        (original-holdout partner)
+#   scenarios/roy/roy_2pc_holdout.yaml         (engineered-overlap fixture, reused unchanged)
+#   scenarios/roy/roy_2c_iteration.yaml        (gate=0.0 substrate-primary A/B partner on this fixture)
+#   scenarios/roy/roy_2pc_iteration.yaml       (gate=0.3 substrate-primary A/B partner on this fixture)
+
+name: roy-3b
+description: |
+  0.9.1 annotation-pattern validation on the engineered overlap fixture.
+  Wires A+1+2+3 all active on the 0.9.1 codebase; multi-arc priming
+  identical to Roy-2pc/Roy-2c; llm-primary at test against
+  roy_2pc_holdout.yaml. Wire-A specifically: does surfacing the
+  cluster_reward_bias map at the LLM prompt drive arm A toward
+  sense_food_source on food-themed percepts (vs Roy-2c's confirmed-H1
+  failure to differentiate under substrate-primary)?
+
+embodiment: bodies/infant_humanoid
+aut_mode: llm-primary
+
+# Priming: identical multi-arc mix to Roy-2 / Roy-2pc / Roy-2c / Roy-3a.
+# Single locked baseline so the Roy-3a-vs-Roy-3b comparison isolates
+# only the test fixture variable.
+priming:
+  name: roy-3b-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Engineered overlap fixture (Roy-2pc / Roy-2c fixture). 10 turns runs
+# the entire 10-percept fixture exactly once.
+test_scenario:
+  fixture: roy_2pc_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    # Neutral system prompt — arm A's persona (if any) emerges from
+    # substrate carryover surfaced via the annotation wires.
+    system_prompt: neutral
+  b:
+    substrate: blank
+    # Same persona prompt as Roy-2pc/Roy-2c for direct A/B continuity.
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral

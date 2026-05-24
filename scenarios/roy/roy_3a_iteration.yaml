@@ -1,0 +1,135 @@
+# Roy-3a — 0.9.1 annotation-pattern validation on the ORIGINAL holdout fixture.
+#
+# Roy-3 is the Stage 5 validation iteration for release_0_9_1.md. It
+# measures whether the four annotation wires shipped in 0.9.1 (Wire-A
+# cluster-bias annotation, Wire 1 risk-sensitive variance annotation,
+# Wire 2 Pavlovian percept aversion, Wire 3 embodiment-state tool
+# filter) produce the cross-arm behavioral divergence that the bare
+# cluster_reward_bias path could not under Roy-1a/Roy-2/Roy-2pc/Roy-2c.
+#
+# Two sub-iterations cover both fixture regimes:
+#
+#   - Roy-3a (THIS spec):  llm-primary at test, ORIGINAL holdout fixture
+#                          (roy_1_holdout.yaml — thermal / texture /
+#                          intero matching + vibration / cold-shock /
+#                          pressure novel + linguistic-social unrelated).
+#                          Roy-1a replay shape with all four wires.
+#   - Roy-3b:              llm-primary at test, ENGINEERED OVERLAP
+#                          fixture (roy_2pc_holdout.yaml under
+#                          llm-primary so Wire-A's cluster-bias
+#                          annotation has best read-chance).
+#
+# Single-variable change vs Roy-2 (the closest comparison):
+#   Roy-2: llm-primary, multi-arc priming, original holdout,
+#          PRE-annotation (0.9.0 codebase).
+#   Roy-3a: llm-primary, multi-arc priming, original holdout,
+#          POST-annotation (0.9.1 codebase with all four wires active).
+#
+# Pre-registered diagnostic outcomes (from release_0_9_1.md Stage 5):
+#
+#   Arm A > C on tool-family divergence (richer than Roy-2's 17/3/2 vs
+#     21/5/1/1 distribution) → Pavlovian aversion (Wire 2) + risk
+#     annotation (Wire 1) compound the existing salience-mediated signal
+#     Roy-2 surfaced. Annotation pattern materially augments persona
+#     expression on the original holdout.
+#
+#   Arm A ≈ B ≈ C on tool-family divergence → annotations are present
+#     in prompts but the LLM proposer is not biasing on them. Investigate
+#     prompt-budget eviction or render-shape issues. Re-check Stage 0b/0c
+#     JSONL emissions first to disambiguate annotation-reaches-LLM vs
+#     LLM-reads-but-ignores.
+#
+#   Arm A regression below Roy-2's signal → annotation overhead is
+#     evicting the salience-mediated signal that worked. Unlikely; would
+#     point at prompt-budget pressure under all four wires firing at
+#     once. Pre-merge review for the wires flagged this as a risk.
+#
+# LOAD-BEARING runner env per feedback_substrate_path_env_var_for_roy:
+#
+#   MAXIM_SUBSTRATE_PATH=1
+#   MAXIM_EC_TRACE_ACTIVATIONS=1
+#   MAXIM_LOG_FILE=/tmp/roy_3a_ec_trace.jsonl
+#
+# Without MAXIM_SUBSTRATE_PATH=1, BioEnrichmentPipeline's text-modality
+# EC fire (bio_enrichment.py:576) short-circuits on encoder=None and
+# Wire-A's annotation is rendered against a stale agent-wide bias map.
+# MAXIM_LOG_FILE is what makes Wire-A's prompt render, Wire 3's
+# WIRE_3_FILTER events, and Stage 0c's sim_recommend_action emissions
+# inspectable post-hoc.
+#
+# Run with:
+#   maxim roy run scenarios/roy/roy_3a_iteration.yaml --dry-run  # parse-only
+#   MAXIM_SUBSTRATE_PATH=1 MAXIM_EC_TRACE_ACTIVATIONS=1 \
+#     MAXIM_LOG_FILE=/tmp/roy_3a_ec_trace.jsonl \
+#     maxim roy run scenarios/roy/roy_3a_iteration.yaml
+#
+# Expected wall: ~25-30 min (same shape as Roy-2's 883s; the wires add
+# ~150-300 LOC of per-tick observation + annotation rendering with no
+# new LLM calls. Roy-3b's wall is closer to ~25 min as well since both
+# use llm-primary at test.).
+#
+# Companion docs:
+#   docs/plans/release_0_9_1.md                (0.9.1 release plan; Stage 5)
+#   docs/plans/persona_convergence_crucible.md (Roy iteration log; Roy-3a entry)
+#   docs/experiments/23_roy_3.md               (outcome doc — written post-run; covers 3a + 3b)
+#   docs/experiments/protocols/23_roy_3_reproduction.md (runbook — covers 3a + 3b)
+#   scenarios/roy/roy_3b_iteration.yaml        (engineered-overlap partner)
+#   scenarios/roy/roy_1_holdout.yaml           (ORIGINAL holdout fixture, reused unchanged)
+#   scenarios/roy/roy_2_iteration.yaml         (pre-annotation A/B partner on this fixture)
+
+name: roy-3a
+description: |
+  0.9.1 annotation-pattern validation on the original holdout fixture.
+  Wires A+1+2+3 all active on the 0.9.1 codebase; multi-arc priming
+  identical to Roy-2/Roy-2pc/Roy-2c; llm-primary at test against
+  roy_1_holdout.yaml. Tests whether substrate-annotates-LLM-context
+  augments Roy-2's salience-mediated A-vs-C tool-family divergence on
+  general (non-engineered) test percepts.
+
+embodiment: bodies/infant_humanoid
+aut_mode: llm-primary
+
+# Priming: identical multi-arc mix to Roy-2 / Roy-2pc / Roy-2c. This
+# locks the priming side of the comparison so Roy-3a's divergence-vs-
+# Roy-2 isolates the annotation wires.
+priming:
+  name: roy-3a-priming
+  embodiment: bodies/infant_humanoid
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Original holdout (Roy-1a / Roy-2 fixture). 10 turns runs the entire
+# 10-percept fixture exactly once.
+test_scenario:
+  fixture: roy_1_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    # Neutral system prompt — arm A's persona (if any) emerges from
+    # substrate carryover surfaced via the annotation wires, not from
+    # prompt injection.
+    system_prompt: neutral
+  b:
+    substrate: blank
+    # Same vague prompt as Roy-1a/Roy-2 for direct A/B continuity.
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral
