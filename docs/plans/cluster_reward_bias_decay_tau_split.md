@@ -82,7 +82,26 @@ Cross-check against Wire 2's `percept_valence_decay_tau = 200.0`: cluster reward
 
 **`cluster_reward_bias_decay_tau: float = 300.0`** — sits at the lower end of the calibration range; conservative but defensible. The math says 325-334 is the threshold to keep both classes of cluster expressive at mid-test-arm; rounding down to 300 gives a clean default with a small bias toward shorter timescales for biological caution about indefinite associative persistence.
 
-Open to higher values (400, 500) if Phase 3 validation shows 300 is still too aggressive for Roy-3-retry's specific test-arm length. Phase 1's matrix surface naturally exposes this.
+**The 300.0 value is the starting calibration, not a permanently-correct tune.** It's the single point we're confident enough to ship on the math + the bio-plausibility cross-check against Wire 2's `percept_valence_decay_tau=200.0`. If future Roy iterations show decay too slow (cluster biases persisting across sessions in ways that hurt extinction) OR too fast (Wire-A's annotation goes neutral mid-test-arm again), **this field is where to look first**. The `nac.py` docstring carries the same callout so future readers can navigate from "decay feels wrong" → "this is the knob to turn."
+
+Open to higher values (400, 500) if Phase 3 validation shows 300 is still too aggressive for Roy-3-retry's specific test-arm length. Phase 1's matrix surface naturally exposes this. Open to lower values (200, matching `percept_valence_decay_tau`) if cross-session extinction proves slow in production.
+
+## Known limitation: decay is tick-anchored, not SCN-tied (separate follow-up)
+
+The `decay_*_reward_biases()` functions in `nac.py` fire **once per `agent_loop` tick** (from section 8.5 at [`agent_loop.py:3657-3659`](../../src/maxim/runtime/agent_loop.py)). The tick rate is bounded by `idle_sleep_s=0.25` on idle ticks but by action latency on busy ticks. Net effect: **effective decay-per-wall-second is hardware-dependent.**
+
+| Hardware | Busy-tick rate | Effective decay per wall-second |
+|---|---|---|
+| Fast GPU + fast local LLM | ~10-15 Hz | 10-15× faster |
+| Slow CPU + cloud LLM with latency | ~1-2 Hz | 1-2× slower |
+
+Biologically, associative-memory extinction is wall-clock anchored — extinction happens on timescales of minutes to hours regardless of how fast the agent is thinking. Maxim's tick-anchored decay is bio-implausible at this level.
+
+**SCN is the right home for wall-clock-anchored time signals.** SCN already does phase tracking, is already integrated with NAc for anticipatory pre-activation (B2, PR #198, [`project_b2_scn_oscillator_shipped.md`](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_b2_scn_oscillator_shipped.md)), and is the natural place to anchor extinction timescales. Tying all three NAc decay functions (`decay_reward_biases`, `decay_goal_reward_biases`, `decay_cluster_reward_biases`) plus `decay_eligibility` and `decay_percept_valences` to SCN ticks (wall-clock-derived) would make decay rate hardware-independent and bio-plausible.
+
+**This is a separate plan, not part of the tau split.** Tying decay to SCN touches ALL FIVE decay parameters; the tau split affects only `cluster_reward_bias`. Sequencing: ship the tau split first (closes Roy-3 follow-up item 2, validates Wire-A behaviorally), then the SCN-tying work can ship independently without invalidating the tuned tau value — `tau=300 ticks` becomes `tau=300 SCN-anchored time units` and the calibration math is preserved at whatever SCN tick rate becomes the default.
+
+Tracked as a candidate follow-up plan in memory: [`feedback_decay_is_tick_anchored_not_wall_clock.md`](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_decay_is_tick_anchored_not_wall_clock.md). Revisit when the tau-split work lands or when a multi-hardware deployment surfaces the symptom.
 
 ## What this does NOT do
 
@@ -185,6 +204,25 @@ The null result (Arm A still zero `sense_food_source`) means:
 
 Phase 3 disambiguates which.
 
+### Phase 3 log vigilance (n=1 mitigation)
+
+Per [`feedback_n3_minimum_for_partial_vs_saturated`](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_n3_minimum_for_partial_vs_saturated.md), n=1 is normally too thin to name a cause when the pass criterion involves partial-vs-saturated magnitude. Phase 3's pass criterion is a count comparison (Arm A `sense_food_source` ≥ 1), which is more robust to single-run noise, so n=1 is acceptable IF the log surface confirms the mechanism is firing as expected. Concrete logs to inspect on every Phase 3 run:
+
+1. **Stage 0c `sim_recommend_action` JSONL events** — every test-arm LLM call shows the Wire-A annotation snapshot the prompt actually rendered. Expected at mid-test-arm (turn ~5 of 10 per arm, ~150 decay ticks in):
+   - At least one cluster bias entry above the 0.5 "strongly rewarding" band, OR
+   - At least one entry above the 0.1 "mildly rewarding" floor with a non-neutral band label.
+   If the entries are still all neutral/mixed at mid-test-arm, tau=300 is still too aggressive — lift and retry.
+
+2. **`cluster_reward_bias` decay trajectory across the test arm** — the priming-end +0.98 cluster should decay to ≥0.5 at tick 225 (mid-test-arm) and ≥0.3 at tick 450 (end-test-arm). Trace by diffing the `aut_nac.json` snapshots between priming session and arm-A session.
+
+3. **Cross-arm tool call distribution sanity check** — if Arm A produces 0 `sense_food_source` but Arms B and C ALSO produce 0 (matching Roy-3a baseline), the null result is consistent with the annotation-pattern-doesn't-bias-LLM hypothesis. If Arm A is 0 but Arms B/C produce some, the LLM is biasing on something other than Wire-A — different failure mode worth surfacing immediately.
+
+4. **`Concept reinforced: "sense_food_source"` events in `MAXIM_LOG_FILE` JSONL** — the substrate-internal text encoding pipeline. Confirms the tool surface is being kept fresh in EC text encoding (sanity check; failure here would indicate a separate substrate-encoding bug, not a tau-split issue).
+
+If any of items 1-2 deviate from expected, n=1 result is suspect and the run should be repeated (with the deviation as a documented diagnostic anomaly). Items 3-4 are sanity checks that surface mechanism-level bugs orthogonal to the tau choice.
+
+Run Phase 3 with `MAXIM_LOG_FILE=/tmp/roy_3a_tau_validation.jsonl MAXIM_SUBSTRATE_PATH=1` at minimum so the diagnostic surface above is captured.
+
 ## Phase 4 — Companion experiment doc
 
 `docs/experiments/30_wire_a_tau_validation.md` with:
@@ -216,8 +254,8 @@ Per CLAUDE.md sims-from-Claude-Code discipline, Phase 3's runner pass needs `--i
 - General persona convergence (Roy-3 was never designed to close it). This plan closes the specific Wire-A-can't-be-expressive sub-question; the broader persona-convergence research question is owned by [persona_convergence_crucible.md](persona_convergence_crucible.md) and depends on Phase 3's outcome.
 - EC drift fix Phase-X retests at 0.44. The bisect closed the priming-regression confound that was blocking that retest; this plan is independent of EC threshold and runs at whatever EC default is current at Phase 3 time.
 
-## Open questions for review
+## Open questions — resolved 2026-05-25
 
-1. Is **tau=300** the right default, or should the conservative starting point be lower (200, matching percept_valence) for tighter coupling between aversion and reward decay timescales?
-2. Should the env override allow values **below 50** (the inherited default)? Defensible to clamp at floor=50 since lower values reproduce the original problem; defensible to allow lower for diagnostic A/B testing. Current plan clamps at 50 lower, 1000 upper.
-3. Does Phase 3's single-Roy-3a-retry run need n=3 per [feedback_n3_minimum_for_partial_vs_saturated](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_n3_minimum_for_partial_vs_saturated.md)? The pass criterion is a count comparison (Arm A `sense_food_source` ≥ 1), not a partial-vs-saturated magnitude, so n=1 may be sufficient. Worth deciding before Phase 3 fires.
+1. **tau=300 default — RESOLVED.** User confirmed 300 as the starting calibration. Plan + `nac.py` docstring + memory entry all carry the "subject to change" framing so future readers know this is the knob to turn if decay feels wrong.
+2. **Env override clamp — RESOLVED at [50, 1000] for this plan.** User raised the deeper bio-fidelity question: should decay be wall-clock-anchored or SCN-tied rather than per-tick? Yes — that's the proper fix, but it's separate from the tau split and touches all five NAc decay parameters. Tracked in the "Known limitation" section above + memory entry [`feedback_decay_is_tick_anchored_not_wall_clock.md`](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_decay_is_tick_anchored_not_wall_clock.md). The tau-split clamp stays at [50, 1000] since hardware-dependent decay rate is a separate concern from the calibration-knob concern this plan addresses.
+3. **n=1 for Phase 3 — RESOLVED.** User confirmed n=1 with extra log vigilance. See "Phase 3 log vigilance" subsection above for the four concrete logs to inspect on every Phase 3 run.
