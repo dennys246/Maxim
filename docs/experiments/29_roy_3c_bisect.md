@@ -193,15 +193,14 @@ wire-introduced bug:
 The bisect changes the routing for all three:
 
 1. **Affordance-replay bridge is no longer load-bearing for the
-   priming-side count.** The 6→2 drop is environmental (originally
-   hypothesised as `MAXIM_SUBSTRATE_PATH=1`, but A1 below refutes that
-   specific suspect — see "Disambiguating diagnostics" section. The
-   updated suspect is LLM narrator drift on the leader between 5/13
-   and 5/23). Either way, not a learning-rate problem. Building a
-   replay bridge to re-saturate biases would be addressing a symptom
-   of a fix-time decay rule, not a real cross-session learning gap.
-   The bridge stays a 1.1+ candidate only if a separate diagnostic
-   demonstrates a real text-modality cluster-reward gap.
+   priming-side count.** The 6→2 drop is non-code environmental drift
+   in the encoder layer (env-var refuted by A1, narrator drift refuted
+   by A3 — see "Disambiguating diagnostics" section). Not a
+   learning-rate problem. Building a replay bridge to re-saturate
+   biases would be addressing a symptom of a fix-time decay rule, not
+   a real cross-session learning gap. The bridge stays a 1.1+
+   candidate only if a separate diagnostic demonstrates a real
+   text-modality cluster-reward gap.
 2. **The "strongly rewarding" render floor question reframes from
    "biases regressed below threshold" to "given per-tick decay, what
    priming repetition / reward magnitude / decay-rate balance keeps
@@ -246,18 +245,10 @@ text-modality cluster is ever food-bearing under this priming, per PR
 EC encoding but is NOT the cause of the cluster_reward_bias key-count
 gap.
 
-**Revised hypothesis for the key-count axis:** the 6→2 drop must be
-attributable to environmental drift in the cradle narrator's LLM
-output. The narrator is LLM-driven (qwen2.5-14b on the user's leader
-per CLAUDE.md hardware notes) and produces variable cradle scene
-content per run. If the leader's LLM model state shifted between the
-5/12-5/13 historical baseline runs and the 5/23-5/24 runs (model
-swap, weights cache refresh, sampler config change, prompt template
-tweak), the narrator would generate different food-bearing percept
-strings, producing different EC clusters, producing different reward
-attribution. **This is testable by snapshotting the cradle narrator
-output across runs and diffing.** The bisect doesn't disambiguate
-this further because the bisect varies code, not LLM state.
+**Working hypothesis at this stage was LLM narrator drift.** It was
+testable by capturing the percept stream and diffing against historical.
+A3 (below) ran this test and **refuted** it. The 6→2 cause is narrower
+than narrator drift — see A3 + the post-A3 synthesis section.
 
 ### A2 — magnitude axis (Wire-A decay CONFIRMED)
 
@@ -284,19 +275,72 @@ across 10 independent runs. **Wire-A's bee42ca fold introducing
 `NAc.decay_cluster_reward_biases()` is the causal mechanism for the
 magnitude axis.**
 
-### What's still open after A1+A2
+### A3 — narrator-drift hypothesis (also REFUTED)
 
-- **Key-count axis cause is now narrower but still un-pinpointed.** Not
-  env var, not wire merges, not in-window code changes, not arc
-  definitions. Most likely LLM narrator drift on the leader between
-  5/13 and 5/23. Confirmation requires either (a) snapshotting cradle
-  narrator outputs across the historical and current runs, OR (b)
-  reverting the leader's LLM config to its 5/12 state and re-running.
-  Both are out of scope for the bisect.
-- **Magnitude axis is fully closed.** Wire-A's decay does what its
-  fold commit description said it does. The partial-bias observation
-  in Roy-3a/3b is the intentional bio-fidelity correction surfaced
-  by the decay rule.
+Re-ran Roy-2 priming at cd51be5 with `MAXIM_LOG_FILE=/tmp/roy_3c_narrator_capture.jsonl`
+to capture the structured event stream. Three observations from the 39,121-event log:
+
+1. **There is no narrator scene text reaching the AUT during cradle priming.** Every
+   tick the SEM trace logs `Imagination skipped: no percept_text (obs keys: [])` —
+   the observation dict the AUT is handed during cradle priming has no `percept_text`
+   field, no scene description, nothing of that shape. Substrate-primary AUT in the
+   cradle priming arcs does not consume narrator-generated text.
+
+2. **The 12 text-modality EC nodes come from substrate-internal state strings, not
+   narrator output.** Confirmed via the `Concept reinforced` event stream: the text
+   content getting decomposed and encoded is things like `drive:hunger(0.51)`,
+   `bias=+1.00`, `causal`, `cluster`, `pos=0.99`, `→food`, `sense_food_source`. These
+   are deterministically generated from the substrate's own causal-link `active_goal`
+   text every tick, not from any LLM call.
+
+3. **AUT behavior is byte-identical between historical and current.** Cross-comparing
+   the 5/12 Roy-2 and current Step 0 sessions:
+
+   | Metric | 5/12 historical | 5/24 Step 0 |
+   |---|---:|---:|
+   | Tool calls | 138 `sense_food_source` | 139 `sense_food_source` |
+   | Tool output (every call) | `{'portions': 5.0, 'freshness': 0.9}` | identical |
+   | Distinct tool outputs | 1 | 1 |
+   | Hippocampus memories | 667 | 664 |
+   | NAc total_observations | 2001 | 1992 |
+   | Memories at cluster_bias=+1.00 | 625 | 650 |
+   | `cluster_reward_bias` keys | **6** | **2** |
+
+   The agent does the exact same activity volume with the exact same byte-level
+   tool outputs. Only the EC cluster attribution differs. The 6→2 gap cannot be
+   "the narrator told the agent to do different things" because the agent did
+   the same things.
+
+### What's still open after A1+A2+A3
+
+- **Key-count axis cause is now narrowed to "non-code environmental drift in the
+  encoder layer."** Ruled out: wire merges (bisect), env var (A1), narrator drift
+  (A3), AUT behavior shift (A3). Across 4 cd51be5 runs today, interoception EC
+  count is rock-stable at 2 (text varies 10-13, but the reward-bias keys are
+  interoception-modality). Historical 5/12-5/13 produced 6 interoception clusters
+  for the same priming activity. With no clustering-affecting code change between
+  5/12 and 5/14 (only PR #246 EC instrumentation, PR #248 sim_reports persistence,
+  PR #251 docs), the remaining suspects are all environmental:
+
+  - **paraphrase-mpnet weight state** — if HuggingFace served a different model
+    revision between the historical run's first download and today's, embeddings
+    would shift enough to change cluster boundaries at threshold 0.40.
+  - **`SensorEncoder` SHA-basis state** — PR #251's analysis noted it produces
+    "384-dim SHA-basis embeddings." If the SHA basis derivation depends on
+    process-startup state (PYTHONHASHSEED, numpy random state, etc.), the
+    embeddings would deterministically differ across process invocations on
+    different OS / Python state.
+  - **Persistent state in `~/.maxim/`** that the encoder layer warms up against.
+  - **CPU/numpy floating-point determinism** between the historical run's
+    machine state and today's.
+
+  All four are non-code; the bisect cannot reach them. Snapshotting the historical
+  encoder behavior is the only path to closing this axis, and that snapshot
+  doesn't exist.
+
+- **Magnitude axis is fully closed.** Wire-A's decay does what its fold commit
+  description said it does. The partial-bias observation in Roy-3a/3b is the
+  intentional bio-fidelity correction surfaced by the decay rule.
 
 ### The user's "latent issue surfaced by the fix" hypothesis (post-mortem)
 
@@ -368,13 +412,17 @@ jq '.cluster_reward_bias | length' ~/.maxim/sim_reports/$sid/aut_nac.json
 jq '.cluster_reward_bias' ~/.maxim/sim_reports/$sid/aut_nac.json
 ```
 
-## Verdict summary (one-line headline, A1+A2 refined)
+## Verdict summary (one-line headline, A1+A2+A3 refined)
 
 **The 0.9.1 wire merges did not introduce the Roy-3 priming-side
-"regression." The 6→2 key-count drop is environmental and (per A1's
-refutation of the env-var hypothesis) most likely LLM narrator drift
-on the leader between 5/13 and 5/23, NOT the `MAXIM_SUBSTRATE_PATH=1`
-regime change. The saturated→partial magnitude shift is Wire-A's
+"regression." The 6→2 key-count drop is non-code environmental drift
+in the encoder layer (`MAXIM_SUBSTRATE_PATH=1` refuted by A1, LLM
+narrator drift refuted by A3 — AUT behavior is byte-identical between
+historical and current; only EC clustering of identical activity
+differs). The saturated→partial magnitude shift is Wire-A's
 intentional bio-fidelity decay correction (`bee42ca`,
 `NAc.decay_cluster_reward_biases()`), confirmed behaviorally by A2 —
-not a regression.**
+not a regression. The count axis cannot be closed further by bisect;
+remaining suspects (paraphrase-mpnet weights, SHA-basis encoder state,
+~/.maxim/ persistent state, CPU/numpy float determinism) are all
+non-code and require historical encoder-output snapshots to test.**
