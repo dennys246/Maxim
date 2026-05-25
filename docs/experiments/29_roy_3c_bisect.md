@@ -109,24 +109,27 @@ PR #251 is also docs (it just *documents* `MAXIM_SUBSTRATE_PATH=1` as
 load-bearing). **No runtime code change in the window can explain the
 key-count drop.**
 
-**Primary suspect: the `MAXIM_SUBSTRATE_PATH=1` env-var regime change
-itself.** PR #251 documented it as load-bearing on 5/14, *after* the
-historical 5/12 Roy-2 baseline. The 5/12 baseline almost certainly ran
-*without* the env var (the documentation didn't exist yet to remind the
-runner to set it). Without the env var, per
-[feedback_substrate_path_env_var_for_roy.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_substrate_path_env_var_for_roy.md):
-"text-modality routing is silently disabled and analyzers produce
-degenerate verdicts."
+**Initial suspect (REFUTED by A1):** the `MAXIM_SUBSTRATE_PATH=1`
+env-var regime change. PR #251 documented it as load-bearing on 5/14,
+after the historical 5/12 Roy-2 baseline. Plausible on paper: the
+5/12 baseline almost certainly ran *without* the env var, and the env
+var changes what gets EC-encoded.
 
-The 6-key historical baseline likely came from a different substrate
-routing regime in which more clusters were active for reward
-attribution. Today's 2-key bisect runs (with the env var on) carry
-only the 2 interoception clusters into NAc reward attribution. The
-12 text-modality nodes exist but are not food-bearing — also matching
-PR #251's analysis.
+**A1 ran this hypothesis (see "Disambiguating diagnostics" section
+below) and refuted it.** Roy-2 at cd51be5 with the env var explicitly
+removed still produces 2 saturated reward-bias keys. The env var DOES
+add 12 text-modality EC nodes (vs only 2 interoception nodes with it
+off), but NAc reward attribution lands on the same 2 interoception
+clusters either way — because no text-modality cluster is ever
+food-bearing in this priming sequence.
 
-**Confirmation cost:** one-shot re-run of Roy-2 at cd51be5 *without*
-`MAXIM_SUBSTRATE_PATH=1`. If it produces 6 keys, hypothesis confirmed.
+**Revised suspect (post-A1): LLM narrator drift on the leader between
+5/13 and 5/23.** The cradle narrator is LLM-driven (qwen2.5-14b on
+the user's leader per CLAUDE.md hardware notes). Different narrator
+output → different food-bearing percept strings → different EC
+clusters → different reward attribution. Not testable by code bisect;
+testable by snapshotting cradle narrator outputs across historical
+and current runs and diffing the content.
 
 ### Axis 2 — bias magnitude (saturated → partial): Wire-A's intentional bio-fidelity fix
 
@@ -135,6 +138,13 @@ shift appears. Steps 3, 4, 5 hold the pattern; the partial values
 (+0.12 / +0.16 / +0.15) all fall within run-to-run variance from
 LLM-driven cradle narrator content (the priming uses substrate-primary
 AUT but the narrator is LLM-driven).
+
+A2 (see "Disambiguating diagnostics" section) ran each of cd51be5 /
+242235a / 629745a 3 times. Pre-decay commits cd51be5 + 242235a
+produce saturated `+1.0/+1.0` across all 7 runs (4+3); post-decay
+629745a produces `{partial, +0.98}` across all 3 runs (partial value
++0.15 / +0.21 / +0.22). Zero overlap between the pre- and post-decay
+magnitude distributions over 10 independent runs.
 
 **This is not a regression. It is the intended bio-fidelity correction
 added by Wire-A's pre-merge fold commit (`bee42ca`).**
@@ -183,8 +193,11 @@ wire-introduced bug:
 The bisect changes the routing for all three:
 
 1. **Affordance-replay bridge is no longer load-bearing for the
-   priming-side count.** The 6→2 drop is environmental
-   (`MAXIM_SUBSTRATE_PATH=1`), not a learning-rate problem. Building a
+   priming-side count.** The 6→2 drop is environmental (originally
+   hypothesised as `MAXIM_SUBSTRATE_PATH=1`, but A1 below refutes that
+   specific suspect — see "Disambiguating diagnostics" section. The
+   updated suspect is LLM narrator drift on the leader between 5/13
+   and 5/23). Either way, not a learning-rate problem. Building a
    replay bridge to re-saturate biases would be addressing a symptom
    of a fix-time decay rule, not a real cross-session learning gap.
    The bridge stays a 1.1+ candidate only if a separate diagnostic
@@ -204,25 +217,110 @@ The bisect changes the routing for all three:
    substrate-voice signal effectively given this state shape?" — which
    is a prompt-render question, not a substrate-fix question.
 
-## Disambiguating diagnostics (cheap, optional)
+## Disambiguating diagnostics (RAN — see results below)
 
-If the user wants stronger confirmation before acting on the verdict:
+Both A1 and A2 were executed against the initial verdict. **A1 refuted
+the env-var hypothesis on the key-count axis. A2 confirmed Wire-A's
+decay as the magnitude-axis cause.**
 
-- **A1 confirm key-count cause:** re-run Roy-2 at cd51be5 *without*
-  `MAXIM_SUBSTRATE_PATH=1`. If 6 keys appear, the env-var hypothesis
-  is confirmed and the historical baseline is fully reconciled. ~20
-  min wall.
-- **A2 confirm magnitude cause:** re-run Steps 0/1 (cd51be5 / 242235a)
-  3 times each to bound run-to-run variance, then re-run Step 2
-  (629745a) 3 times. If Steps 0/1 stay at `{+1.0, +1.0}` across
-  repetitions and Step 2 stays at `{partial, ~+0.98}` across
-  repetitions, the Wire-A fold's decay introduction is causally
-  named. ~3 hours wall. (The bisect already provides circumstantial
-  evidence via the bee42ca commit description; this confirms
-  behaviorally.)
+### A1 — env-var hypothesis (REFUTED)
 
-Neither is required for the verdict to stand on the evidence already
-gathered.
+Re-ran Roy-2 at cd51be5 with `MAXIM_SUBSTRATE_PATH` removed from the
+environment (via `env -u MAXIM_SUBSTRATE_PATH`):
+
+| Run | env var | key_count | values |
+|---|---|---:|---|
+| Step 0 (original) | ON | 2 | +1.0, +1.0 |
+| **A1** | **OFF** | **2** | **+1.0, +1.0** |
+
+The env-var removal did NOT restore the 6-key count. Both runs produce
+exactly 2 saturated reward-bias keys on the same 2 interoception EC
+clusters.
+
+The env-var WAS confirmed to affect the EC substrate shape — with the
+env var ON, 12 text-modality nodes are added to substrate_nodes; with
+it OFF, only the 2 interoception nodes exist. But NAc reward
+attribution lands on the 2 interoception clusters in both cases (no
+text-modality cluster is ever food-bearing under this priming, per PR
+#251's earlier analysis). So the env var is necessary for text-modality
+EC encoding but is NOT the cause of the cluster_reward_bias key-count
+gap.
+
+**Revised hypothesis for the key-count axis:** the 6→2 drop must be
+attributable to environmental drift in the cradle narrator's LLM
+output. The narrator is LLM-driven (qwen2.5-14b on the user's leader
+per CLAUDE.md hardware notes) and produces variable cradle scene
+content per run. If the leader's LLM model state shifted between the
+5/12-5/13 historical baseline runs and the 5/23-5/24 runs (model
+swap, weights cache refresh, sampler config change, prompt template
+tweak), the narrator would generate different food-bearing percept
+strings, producing different EC clusters, producing different reward
+attribution. **This is testable by snapshotting the cradle narrator
+output across runs and diffing.** The bisect doesn't disambiguate
+this further because the bisect varies code, not LLM state.
+
+### A2 — magnitude axis (Wire-A decay CONFIRMED)
+
+Re-ran cd51be5 / 242235a / 629745a 2 more times each (n=3 per step,
+all with `MAXIM_SUBSTRATE_PATH=1`):
+
+| Commit | Wire-A decay | Runs | All key counts | All magnitudes |
+|---|---|---:|---|---|
+| cd51be5 (Step 0 + A1 + r2 + r3) | OFF | 4 | all 2 | all +1.0, +1.0 |
+| 242235a (Step 1 + r2 + r3) | OFF | 3 | all 2 | all +1.0, +1.0 |
+| 629745a (Step 2 + r2 + r3) | **ON** | 3 | all 2 | **all {partial, +0.98}** |
+
+Pre-decay (4+3 = 7 runs at commits cd51be5/242235a) produce saturated
+`+1.0/+1.0` every time. Post-decay (3 runs at 629745a) produce
+`{partial, ~+0.98}` every time, with the partial value varying
++0.15 / +0.21 / +0.22 (run-to-run narrator variance changes which
+cluster gets the last reward + how recently the secondary cluster
+was rewarded; the saturated +0.98 is stable because by-construction
+it's the cluster rewarded just before priming ends — minimal decay
+window).
+
+Zero overlap between pre-decay and post-decay magnitude distributions
+across 10 independent runs. **Wire-A's bee42ca fold introducing
+`NAc.decay_cluster_reward_biases()` is the causal mechanism for the
+magnitude axis.**
+
+### What's still open after A1+A2
+
+- **Key-count axis cause is now narrower but still un-pinpointed.** Not
+  env var, not wire merges, not in-window code changes, not arc
+  definitions. Most likely LLM narrator drift on the leader between
+  5/13 and 5/23. Confirmation requires either (a) snapshotting cradle
+  narrator outputs across the historical and current runs, OR (b)
+  reverting the leader's LLM config to its 5/12 state and re-running.
+  Both are out of scope for the bisect.
+- **Magnitude axis is fully closed.** Wire-A's decay does what its
+  fold commit description said it does. The partial-bias observation
+  in Roy-3a/3b is the intentional bio-fidelity correction surfaced
+  by the decay rule.
+
+### The user's "latent issue surfaced by the fix" hypothesis (post-mortem)
+
+The user asked during execution whether the bio-fidelity decay could
+have surfaced a pre-existing under-reinforcement issue rather than
+introduced new behavior. A2's data answers this directly for both
+axes:
+
+- **Count axis: NO.** Steps 0/1 run on the codebase BEFORE decay was
+  wired and still produce 2 keys (n=7 runs). Decay can't be what's
+  pruning 6 down to 2 — without decay, the count is also 2. The
+  6→2 gap is environmental.
+- **Magnitude axis: YES.** Without decay (Steps 0/1), every rewarded
+  cluster sits at +1.0 forever — including clusters that were
+  rewarded ONCE at turn 5 and never again. Decay makes visible the
+  fact that priming under-reinforces most clusters: clusters rewarded
+  once mid-priming decay back toward zero by the time priming ends.
+  The partial-bias clusters are the substrate honestly representing
+  "I saw this cluster once 40 turns ago and it hasn't fired since"
+  rather than "this cluster is currently +1.0 strong." That IS new
+  visible information that no-decay was hiding. Whether this counts
+  as "surfacing a latent issue" or "the substrate finally telling
+  the truth" is a framing question; either way the partial values
+  are bio-correct and should be preserved.
 
 ## What this bisect does NOT decide
 
@@ -270,11 +368,13 @@ jq '.cluster_reward_bias | length' ~/.maxim/sim_reports/$sid/aut_nac.json
 jq '.cluster_reward_bias' ~/.maxim/sim_reports/$sid/aut_nac.json
 ```
 
-## Verdict summary (one-line headline)
+## Verdict summary (one-line headline, A1+A2 refined)
 
 **The 0.9.1 wire merges did not introduce the Roy-3 priming-side
-"regression." The 6→2 key-count drop is environmental
-(`MAXIM_SUBSTRATE_PATH=1` regime change between 5/12 and 5/14, outside
-the bisect window). The saturated→partial magnitude shift is Wire-A's
+"regression." The 6→2 key-count drop is environmental and (per A1's
+refutation of the env-var hypothesis) most likely LLM narrator drift
+on the leader between 5/13 and 5/23, NOT the `MAXIM_SUBSTRATE_PATH=1`
+regime change. The saturated→partial magnitude shift is Wire-A's
 intentional bio-fidelity decay correction (`bee42ca`,
-`NAc.decay_cluster_reward_biases()`), not a regression.**
+`NAc.decay_cluster_reward_biases()`), confirmed behaviorally by A2 —
+not a regression.**
