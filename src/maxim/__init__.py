@@ -13,7 +13,7 @@ Public API (verb-based):
     maxim.introspect("causal")   # alias for observe
 """
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 # Verb-based public API — lazy-loaded to keep ``import maxim`` fast.
 _API_VERBS = frozenset(
