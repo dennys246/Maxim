@@ -403,6 +403,24 @@ def _isolate_maxim_nac_temporal_credit_weight_env():
             os.environ["MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT"] = saved
 
 
+@pytest.fixture(autouse=True)
+def _isolate_maxim_nac_cluster_reward_bias_decay_tau_env():
+    """Scrub ``MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU`` across every test.
+
+    NAc.__init__ reads this env var to override the Wire-A cluster-keyed
+    reward-bias decay timescale. A test that sets a custom tau would leak
+    into every later test that constructs a NAc instance and silently
+    change cluster bias decay rates project-wide.
+    """
+    saved = os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+        if saved is not None:
+            os.environ["MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU"] = saved
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Memory Types Fixtures
 # ─────────────────────────────────────────────────────────────────────────────
