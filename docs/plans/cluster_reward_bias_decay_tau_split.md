@@ -86,6 +86,10 @@ Cross-check against Wire 2's `percept_valence_decay_tau = 200.0`: cluster reward
 
 Open to higher values (400, 500) if Phase 3 validation shows 300 is still too aggressive for Roy-3-retry's specific test-arm length. Phase 1's matrix surface naturally exposes this. Open to lower values (200, matching `percept_valence_decay_tau`) if cross-session extinction proves slow in production.
 
+## Downstream: calibration-by-simulation framework (1.1+)
+
+After this plan ships + SCN-anchoring ships, the natural next step is the [decay_consolidation_calibration_plan.md](decay_consolidation_calibration_plan.md) framework — tier-transition-driven calibration replaces hand-picked tau defaults. The 300 value this plan ships becomes a *baseline data point* for the calibration framework, not a permanent value. If the framework converges on a different value for `cluster_reward_bias_decay_tau`, that becomes the new default via a follow-up config-update PR.
+
 ## Known limitation: decay is tick-anchored, not SCN-tied (separate follow-up)
 
 The `decay_*_reward_biases()` functions in `nac.py` fire **once per `agent_loop` tick** (from section 8.5 at [`agent_loop.py:3657-3659`](../../src/maxim/runtime/agent_loop.py)). The tick rate is bounded by `idle_sleep_s=0.25` on idle ticks but by action latency on busy ticks. Net effect: **effective decay-per-wall-second is hardware-dependent.**
