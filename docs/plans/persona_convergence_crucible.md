@@ -765,6 +765,12 @@ Arm C (blank, neutral):               21× respond, 3× sense, 2× pick_up,
 - [`~/.maxim/roy/roy-3a/result.json`](/Users/dennyschaedig/.maxim/roy/roy-3a/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-3a/summary.md).
 - JSONL trace `/tmp/roy_3a_ec_trace.jsonl` (7.9 MB). Run log `/tmp/roy_3a_run.log`.
 - Outcome doc: [`23_roy_3.md`](../experiments/23_roy_3.md) (covers 3a + 3b). Protocol: [`23_roy_3_reproduction.md`](../experiments/protocols/23_roy_3_reproduction.md). Spec: [`roy_3a_iteration.yaml`](../../scenarios/roy/roy_3a_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+
+**Roy-3a-retry (2026-05-25):** [`30_wire_a_tau_validation.md`](../experiments/30_wire_a_tau_validation.md). Re-ran Roy-3a unchanged with `cluster_reward_bias_decay_tau=300.0` (PR #267). Wire-A's annotation rendered `[strongly rewarding]` (max\|bias\| 0.753-0.997) throughout the test arm — tau split structurally validated. PRIMARY criterion (Arm A ≥1 `sense_food_source`) still failed because of two downstream gaps:
+1. SEM-derived tool absent from active scene roster (no food entity in Roy-1 holdout). New plan: [`sense_tool_registry.md`](sense_tool_registry.md).
+2. Imagination is substrate-blind — can't dream up the missing entity from Wire-A signals. New plan: [`imagination_substrate_signals.md`](imagination_substrate_signals.md).
+
+**Methodology note (Wire-A tunability):** Wire-A's `cluster_reward_bias_decay_tau` is now a tunable parameter (env var `MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU`, clamped `[50, 1000]`). The next persona iteration owns the sweep ownership if 300 proves brittle on a different test-arm length. The Roy-3a-retry validated 300 produces strongly-rewarding renders across a 10-turn arm; longer arms (e.g. 30-turn) may want a higher default.
 <!-- /roy-iteration:roy-3a -->
 
 <!-- roy-iteration:roy-3b -->

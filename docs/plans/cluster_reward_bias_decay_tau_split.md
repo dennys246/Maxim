@@ -238,6 +238,22 @@ Run Phase 3 with `MAXIM_LOG_FILE=/tmp/roy_3a_tau_validation.jsonl MAXIM_SUBSTRAT
 - **v1_refinement.md**: same — remove the open Roy-3 follow-up item 2 from the 1.0 closing list; the verdict here determines whether the 1.0 plan needs the alternative-mechanism branch.
 - **persona_convergence_crucible.md**: add a methodology note that Wire-A's tau is now a tunable parameter; the next persona iteration owns the tuning sweep if Phase 3's single-point default proves brittle.
 
+### Phase 5 outcome (2026-05-26)
+
+Phase 3 ran ([30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md)). Verdict: **tau split structurally validated** (annotation rendered `[strongly rewarding]` throughout the test arm; decay trajectory fit the model within 0.3%), but the **PRIMARY criterion (Arm A ≥1 `sense_food_source` call) failed** for a third reason the kickoff didn't anticipate.
+
+Wire-A's annotation reached the LLM with the right magnitude; the LLM could not act on it because:
+1. `sense_food_source` is a SEM-modulator-derived tool absent from the test scene's active roster, and the LLM has no signal that the tool exists elsewhere.
+2. Imagination's trigger is percept-text-bound and substrate-blind, so it can't dream up the missing entity into scene when Wire-A signals strong reward for an absent tool.
+
+Two new 1.1+ plan docs capture the downstream gaps:
+- [sense_tool_registry.md](sense_tool_registry.md) — adds grayscale visibility for SEM-derived inactive tools.
+- [imagination_substrate_signals.md](imagination_substrate_signals.md) — hooks NAc/Wire-A signals into imagination's input.
+
+Either could close the Roy-3a gap independently; both together is the robust fix.
+
+The bias-magnitude side of Wire-A is no longer the bottleneck. Roy-3 follow-up item 2 is CLOSED via tau-split; the next persona iteration owns the downstream-gap question.
+
 ## Framing rule
 
 **The tau split is not a "fix" — it's a tune that splits a parameter that was wearing two hats.** The `bee42ca` decay introduction was correctly motivated; only the inherited tau value was wrong for the new use case. This plan preserves the bio-fidelity correction (decay still runs) AND respects Wire-A's actual timescale.
@@ -259,3 +275,7 @@ Per CLAUDE.md sims-from-Claude-Code discipline, Phase 3's runner pass needs `--i
 1. **tau=300 default — RESOLVED.** User confirmed 300 as the starting calibration. Plan + `nac.py` docstring + memory entry all carry the "subject to change" framing so future readers know this is the knob to turn if decay feels wrong.
 2. **Env override clamp — RESOLVED at [50, 1000] for this plan.** User raised the deeper bio-fidelity question: should decay be wall-clock-anchored or SCN-tied rather than per-tick? Yes — that's the proper fix, but it's separate from the tau split and touches all five NAc decay parameters. Tracked in the "Known limitation" section above + memory entry [`feedback_decay_is_tick_anchored_not_wall_clock.md`](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_decay_is_tick_anchored_not_wall_clock.md). The tau-split clamp stays at [50, 1000] since hardware-dependent decay rate is a separate concern from the calibration-knob concern this plan addresses.
 3. **n=1 for Phase 3 — RESOLVED.** User confirmed n=1 with extra log vigilance. See "Phase 3 log vigilance" subsection above for the four concrete logs to inspect on every Phase 3 run.
+
+## Open questions — surfaced by Phase 3 bio-fidelity review (2026-05-26)
+
+4. **Four-tau topology bio-coherence audit (OPEN, post-1.0).** Phase 3 bio-fidelity review flagged that the four NAc decay timescales (`reward_bias_decay_tau=50.0`, `goal_reward_bias_decay_tau`=tracks reward_bias, `percept_valence_decay_tau=200.0`, `cluster_reward_bias_decay_tau=300.0`) lack an explicit bio-coherence justification for their relative ordering. Specifically: in biology, goal-value extinction (learning "this incentive no longer rewards") is generally *slower* than percept-aversion extinction (learning "this stimulus no longer predicts pain") — but the current topology has goal decay at 50 ticks and percept decay at 200 ticks, inverting the biology. This wasn't load-bearing for the tau-split (which only touches cluster decay), but it's flagged for a future bio-coherence audit. Audit owner: future persona iteration or 1.1 cleanup pass. Not gating any current work.
