@@ -1,0 +1,96 @@
+# Sense tool registry / factory unification
+
+**Status:** DRAFT (2026-05-26). Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 2.
+**Trigger:** Roy-3a-retry NULL outcome — Wire-A annotated `sense_food_source [strongly rewarding from prior experience]` but the tool was silently absent from arm A's active tool roster because the test fixture had no food entity. The LLM had no signal that the tool exists elsewhere.
+**Target:** 1.1+ (post-1.0). Not a 1.0 gate.
+
+## Why this plan exists
+
+The sense* tool family has accumulated heterogeneity over three independent design moments (universal-sense was a Phase 0 add, auto-sense was a perception-hygiene fix, SEM-derived sense came with embodiment). Each is correct in isolation; together they produce an LLM-facing surface where conceptually-similar tools behave very differently:
+
+| Group | Examples | Where registered | Auto-fire? | LLM-visible when inactive? |
+|---|---|---|---|---|
+| Universal/core | `sense`, `sense_tools` | [orchestrator.py:754-830](../../src/maxim/simulation/orchestrator.py) once at boot | No | n/a (always active) |
+| Auto-discovery | `sense_presence` | [orchestrator.py:754-830](../../src/maxim/simulation/orchestrator.py) once at boot | **Yes** ([agent_loop.py:1292](../../src/maxim/runtime/agent_loop.py) executor bypass) | n/a |
+| SEM-modulator-derived | `sense_<entity>`, `read_<entity>_<sensor>`, `sense_food_source` | [tool_bridge.py:405](../../src/maxim/embodiment/tool_bridge.py) per-entity on scene load | No | **No — silently invisible** |
+
+The Roy-3a-retry symptom: `sense_food_source` was registered + invoked 135× during priming (food entity in scene), then silently vanished at test time because the Roy-1 holdout fixture has no food entity. Arm A's logged active tool roster contains the three universal/auto sense tools but no SEM-derived ones. **Wire-A correctly annotated the tool as substrate-rewarding; the LLM had no way to call it because the LLM-facing tool list doesn't include inactive-but-knowable tools.**
+
+## The architectural smell
+
+Two registration regimes for the same conceptual category isn't itself a bug — it's how the codebase grew. The smell is at the **LLM-facing layer**:
+
+- The LLM prompt's `tools_block` lists active tools without distinguishing universal-always-available from scene-scoped-might-not-be-here-now.
+- When a SEM-derived tool is unavailable, there's no operator-visible signal to the LLM that it could exist elsewhere (in a prior scene, in a future scene, in a dream).
+- The LLM cannot reason about a tool it can't see, even when Wire-A is rendering "this tool was strongly rewarding."
+
+A unified Sense Registry / Factory could close this by:
+- Formalizing the auto-fire vs LLM-callable distinction as **tool metadata** rather than implicit-in-dispatch-path behavior.
+- Adding **grayscale visibility**: inactive scene-scoped tools appear in the tools_block with an `[not in current location]` tag so the LLM knows they exist.
+- Routing auto-sense to a **separate sensory event log** (not actions.jsonl) so NAc can learn "in context X, state Y is likely" predictively without polluting causal action links.
+
+## Load-bearing invariants (DO NOT BREAK)
+
+Surfaced by the architecture review in [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md):
+
+1. **Auto-sense must not log to `actions.jsonl`.** Auto-fired sense_presence + self-sense are passive perception, not chosen actions. Logging them as actions would corrupt NAc's causal model with phantom links. The current executor bypass at [agent_loop.py:1292](../../src/maxim/runtime/agent_loop.py) is correct *by intent*; the smell is that the bypass is implicit in the dispatcher path. Any unification must keep auto-sense out of `actions.jsonl` while making the bypass declarative on the tool (e.g., `auto_fire=True` metadata).
+
+2. **SEM-derived tools must stay scene-scoped at execution time.** A `dragon_slash` tool in a forest with no dragons is wrong to *invoke*. But scene-scoping at *invocation* is different from scene-scoping at *visibility* — the unification adds grayscale visibility for inactive tools (LLM can see them) while preserving the invocation guard (LLM can't successfully call them when target entity is absent).
+
+3. **LRU eviction must apply to scene tools only, not core tools.** Already enforced at [discovery.py:67](../../src/maxim/tools/discovery.py). Don't regress.
+
+4. **ModulatorAffordanceTool sensor-delta feedback must survive.** [tool_bridge.py:297-313](../../src/maxim/embodiment/tool_bridge.py) wires sensor deltas into the cerebellum forward model + pain bridge. Unification cannot disrupt this — it's the substrate's primary motor-learning channel.
+
+5. **Per-phrase design guard + shared energy budget are race-safety, not load-irrelevant.** Cross-referenced with [imagination_substrate_signals.md](imagination_substrate_signals.md)'s DO-NOT-TOUCH section.
+
+## Sketch of the contract surface
+
+(Not a code proposal — just the contract pieces a unification would need to nail down.)
+
+**Tool metadata:**
+- `auto_fire: bool` — fires every tick automatically, bypassing executor / actions.jsonl.
+- `scene_scoped: bool` — registered/unregistered as scene entities enter/exit.
+- `grayscale_when_inactive: bool` — appears in LLM tools_block with `[not in current location]` tag instead of being hidden entirely.
+- `sensory_event_log: bool` — auto-fired output routes to a separate `sensory_events.jsonl` instead of `actions.jsonl`.
+
+**Registration interface:**
+- Single registry entry point that accepts the metadata above + classifies tool into one of {core-universal, auto-discovery, scene-scoped, sem-modulator-derived}.
+- Each classification is a *combination* of metadata flags, not its own code path.
+
+**Visibility interface:**
+- The prompt builder's tools_block renderer reads each registered tool's `grayscale_when_inactive` flag and renders either active-list, grayscale-list, or hidden.
+- The LLM gets one combined list, with structure: `[ACTIVE] sense(entity_name) — read all sensors on an entity / [GRAYSCALE] sense_food_source — was strongly rewarding in prior scenes`.
+
+**Execution interface:**
+- All sense tools dispatch via the executor (uniform path), EXCEPT for the auto-fire bypass which is gated on `auto_fire=True` metadata read at dispatch time.
+- Auto-fire writes to `sensory_events.jsonl` for NAc predictive-learning consumption; never writes to `actions.jsonl`.
+
+**NAc attribution:**
+- Auto-fire outcomes are typed `predicate_outcome` (predictive), distinct from `tool_outcome` (causal).
+- This separation lets NAc learn "in environment X, state Y is likely" without confusing it with "I chose action Z and outcome Y occurred."
+
+## Phasing
+
+Not detailed at this DRAFT stage. The natural shape is:
+
+- **Phase 0** — design pass + this plan refinement. Validate the contract surface against all 7 sense tools + the load-bearing invariants. Estimate LOC.
+- **Phase 1** — tool metadata + registry refactor. Migrate existing tools to declare their metadata; keep behavior identical. Regression-test suite + bio-pipeline integration tests.
+- **Phase 2** — grayscale visibility in `tools_block`. New prompt section + LLM-side prompt engineering. Validate with a small sim showing the LLM responding to grayscale tools sensibly (and not hallucinating they're invokable).
+- **Phase 3** — `sensory_events.jsonl` + NAc predicate-outcome wiring. Auto-sense outputs route to the new log; NAc subscribes for predictive learning.
+- **Phase 4** — re-run Roy-3a with grayscale visibility for `sense_food_source`. Measure whether the LLM uses the grayscale signal to reach for related active sensing tools (e.g., asking `sense_tools("food")` to find an equivalent).
+
+## What this NOT solves
+
+- Imagination substrate-blindness (the other half of the Roy-3a verdict). That's [imagination_substrate_signals.md](imagination_substrate_signals.md). The two plans are complementary: this one lets the LLM *see* what's not in scene; that one lets the substrate dream the missing entity into scene.
+- The tick-anchored decay bio-fidelity gap. That's the planned `scn_decay_anchoring.md` (Phase C of the tau-split kickoff, not yet drafted).
+- ModulatorAffordanceTool's universal-parametric-vs-per-affordance split (a separate move-family standardization question surfaced by the architecture review but not load-bearing for Roy-3a).
+
+## Authorization gate
+
+Drafted as `feat/wire-a-tau-split-phase-3-validation` branch fold. Phase 0 design pass starts on explicit user authorization; not currently a 1.0 gate. If the user prioritizes this over imagination-substrate-signals, the Phase 0 design pass should land first since the visibility side is the cheaper proof-of-value.
+
+## Open questions
+
+1. Should grayscale visibility include ALL inactive SEM-derived tools, or only those that have Wire-A annotation (i.e., the substrate cares about them)? The latter is cheaper at prompt-budget but means the cold-start agent never sees the surface. The former gives the agent more affordance awareness but blows up prompt size in busy scenes.
+2. Does the `sensory_events.jsonl` separation require schema-version migration on existing NAc snapshots? Probably no (it's a new outcome type), but verify.
+3. What's the migration story for third-party tool authors who subclass `Tool` directly? The metadata additions need defaults that preserve current behavior so external tools don't break silently.
