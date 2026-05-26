@@ -21,6 +21,67 @@ A multi-hardware deployment (some agents on the user's RTX 5080 leader, others o
 
 **Naming caveat (bio-fidelity clarification):** Maxim's `SCN` class is named after the biological Suprachiasmatic Nucleus, which drives **circadian rhythms (24-hour periods)**, not millisecond/second timescales. Reusing the SCN class as the home for second-scale decay callbacks is **engineering convenience** (it's already the wall-clock infrastructure hub), not a bio-fidelity mapping. The biological SCN does not modulate eligibility-trace decay at 10 Hz or reward-bias decay at 1 Hz. If a future reader infers "1 Hz decay ticks are bio-grounded to the SCN organ," they're reading the engineering choice as a biological claim — it isn't. Phase 0 design should consider whether the clock surface lives on `SCN` (engineering reuse) or on a sibling `time/decay_clock.py` module (cleaner separation of concerns); both options are surfaced in Open Question §2.
 
+## Working principles applied (CLAUDE.md "Working principles for new mechanisms")
+
+The four CLAUDE.md working principles for new mechanisms govern *how this plan enters the codebase*. Each is applied below.
+
+### Principle 1 — Two-tier invariant tracking ([engineering] vs [behavioral])
+
+This plan introduces **`[engineering]` invariants only**. None are `[behavioral]` yet — Phase 3's Roy-3a-retry on the SCN-tied path is the experiment that would graduate any of them to `[behavioral]`, and only if the cross-hardware claim measurably holds. The DO-NOT-BREAK section below pre-tags each invariant as `[engineering]` so the migration into CLAUDE.md (post-merge of Phase 4) is straightforward.
+
+| Invariant | Tag | Reason |
+|---|---|---|
+| SCN persistence schema stays shape-frozen at v1 | `[engineering]` | Code breaks loudly via schema_version mismatch |
+| `log_swallowed_exception` wrapper must survive on the SCN clock path | `[engineering]` | Loud failure ensures decay outages surface, not silent skip |
+| Test-time direct `nac.decay_*` callers stay public | `[engineering]` | Existing test suite would break loudly otherwise |
+| Phase A tau-split + env override preserved unchanged | `[engineering]` | Phase A code is load-bearing and tested |
+| Multi-rate clock topology (associative 1Hz + eligibility 10Hz) | `[engineering]` (Phase 1) → potentially `[behavioral]` after Phase 3 | Phase 3's substrate-primary action-selection sanity check could earn this `[behavioral]` if regression is absent vs the per-tick baseline |
+
+Bio-inspired naming (`SCN`) is load-bearing for the mental model but does NOT count as behavioral validation — calling the clock surface `SCN.register_periodic_callback` doesn't validate that 1Hz decay is what the biological SCN does. See "Naming caveat" above.
+
+### Principle 2 — Dormancy over deletion
+
+**`TemporalCreditDistributor.anticipatory_pre_activate()` is dormant infrastructure.** Defined at [`temporal_credit.py:127`](../../src/maxim/decisions/temporal_credit.py) with a full implementation and docstring claiming it "primes NAc eligibility traces for oscillator-predicted imminent events," but the production agent loop never calls it. CLAUDE.md's B2-shipped lesson ("Anticipatory pre-activation: TemporalCreditDistributor.anticipatory_pre_activate(agent_id) primes NAc eligibility traces… call once per tick before distribute()") describes the docstring's intent, not the current wiring.
+
+Per Principle 2, this plan does NOT propose deleting the method. Two paths:
+
+- **Stay dormant (default for Phase 1):** the SCN clock surface ships without subscribing `anticipatory_pre_activate`. Method stays defined, callable from test code, available for future revival. Phase 0 design pass would add a `Dormant since 2026-05-26: B2 closed the loop in distributor class but the production agent loop never registered it; awaits new experiment that earns its behavioral weight` marker to the method's docstring.
+- **Revive as a subscriber (bonus value during Phase 1):** the SCN clock surface subscribes `anticipatory_pre_activate` at the eligibility tier (10Hz). This actually closes the B2 feedback loop CLAUDE.md describes for the first time. Marks the method as no-longer-dormant. Adds one behavioral assertion to Phase 3: substrate-primary cradle harness shows oscillator-driven pre-activation traces in NAc.
+
+Phase 0 design pass picks one. Recommendation: revive — the SCN clock surface makes the wiring trivial, and B2's docstring-described loop genuinely closing is non-trivial behavioral value the plan unlocks at near-zero added cost.
+
+### Principle 3 — Front-gate scope pressure
+
+**Question forced at design time:** does this need to be its own mechanism (a new SCN clock surface + new register_periodic_callback API), or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient |
+|---|---|
+| `agent_loop.py` section 8.5 (current per-tick caller) | Tick rate is the problem; can't fix by changing who calls it |
+| `OscillatorNetwork.step(dt)` ([`oscillator.py:99`](../../src/maxim/time/oscillator.py)) | Event-driven (called from `observe()`), not periodic. Would require adding a periodic caller — same scope as this plan |
+| `TemporalCreditDistributor.anticipatory_pre_activate` (dormant, see Principle 2) | Already infrastructure that *consumes* an eligibility-tier clock, not provides one |
+| `WorkerPool` periodic background threads | Tied to LLM lane assignment; semantically wrong for bio-pipeline decay |
+| `Hippocampus.capture` thread | Single-purpose (capture); wrong abstraction layer |
+| Python `threading.Timer` per decay function | Per-callback Timer reuse semantics are awkward; would still need a registry to coordinate |
+
+**Verdict:** yes-it-needs-to-be-its-own. **Specific reason named in plan's motivation section:** *"No existing surface in `src/maxim/time/` or `src/maxim/runtime/` provides wall-clock-anchored periodic callback registration. The closest infrastructure (`OscillatorNetwork.step`) is event-driven, not periodic. The new `register_periodic_callback` surface is the smallest unit of new code that solves the hardware-dependent tick-rate problem."*
+
+The plan also rejects the would-be-elegant choice of **adding a generic event bus** for periodic callbacks (the codebase already has `ReactionBus` and `PainBus`; a third would be scope creep). Instead the clock surface lives on SCN (engineering reuse of existing infrastructure that has wall-clock semantics).
+
+### Principle 4 — Cycle convergence vs divergence
+
+The tau-split kickoff chain to date (Roy-3 → Roy-3c-bisect → Phase A tau-split → Phase B Roy-3a-retry → this plan as Phase C) has Roy-3a-retry showing a **mixed convergence/divergence signal** that warrants explicit framing:
+
+- **Convergence axis** (mechanism narrowing): tau-split structurally validated by decay trajectory + annotation render. The mechanism Phase A introduced is settling and behaving as designed.
+- **Divergence axis** (new failure modes per iteration): Roy-3a-retry surfaced TWO new downstream failure modes — substrate-scene-tool-availability gap + imagination substrate-blindness — that earlier Roy iterations did not name.
+
+Phase B's verdict honestly framed this as "the bias-magnitude side is no longer the bottleneck; the gap moved downstream." That's the convergence reading — Wire-A's mechanism is now the right size, the next narrowing happens at adjacent layers (sense tools, imagination), each with its own plan doc.
+
+**Phase C is on the convergence axis for the decay-timing concern, not Wire-A.** This plan addresses the tick-anchoring side of the original tau-split decision — a directly-named "Known limitation" of Phase A's plan, not a new failure mode surfaced by Roy. There is no divergence cycle being papered over here.
+
+**The next Roy iteration on Wire-A IS the divergence-trigger watchpoint.** If the next Wire-A-targeted iteration (whichever of [sense_tool_registry.md](sense_tool_registry.md) or [imagination_substrate_signals.md](imagination_substrate_signals.md) ships first and ships a Roy validation) surfaces ANOTHER new failure mode that isn't either of the two named in Phase B's diagnostic, that's two-divergence-in-a-row per Principle 4 — the trigger to step back to a bird's-eye view and bisect for outside causes (encoder drift, library version shifts, env-var defaults, narrator state). Phase C does not change this watchpoint.
+
 ## The five decay functions and their current call sites
 
 All five fire from [`agent_loop.py:3650-3666`](../../src/maxim/runtime/agent_loop.py) section 8.5 ("BIO-SYSTEM PER-TICK MAINTENANCE"):
@@ -175,15 +236,19 @@ Estimated phases:
 
 ## DO NOT BREAK (load-bearing invariants)
 
-1. **SCN persistence schema is shape-frozen at v1.0.** Adding clock-state fields to the persisted snapshot requires schema-version bump (currently `schema_version: ClassVar[int] = 1` per [scn.py:201](../../src/maxim/time/scn.py)). The clock subscription registry itself should be ephemeral (re-subscribed at session start by bootstrap) and NOT persisted.
+Each invariant is tagged per CLAUDE.md Principle 1 (two-tier invariant tracking). All five start as `[engineering]`; Phase 3's behavioral validation could earn `[behavioral]` tags for those measurably gated by cross-hardware Roy results.
 
-2. **`TemporalCreditDistributor.anticipatory_pre_activate` is defined as infrastructure but NOT currently wired into the production agent loop.** [`temporal_credit.py:127`](../../src/maxim/decisions/temporal_credit.py) defines the method; grep shows zero callers from `agent_loop.py` or anywhere else outside the file itself. The B2 SCN→NAc feedback loop is partial: the `TemporalCreditDistributor` is wired at [`bio_stack.py:303`](../../src/maxim/runtime/bio_stack.py) and `distribute()` is invoked by the reward subscriber, but `anticipatory_pre_activate()` itself has no production caller (CLAUDE.md's claim that it "primes NAc eligibility traces" describes the docstring's intent, not the current wiring). Phase 0 design decision: either (a) leave it un-wired (current state, plan is a no-op for this method), or (b) wire it into the SCN clock as a new subscriber at the same Hz as eligibility decay — which would actually close the B2 feedback loop CLAUDE.md describes. Option (b) is bonus value the SCN clock surface enables for free. Either way, no collision risk exists today because there's no current caller to collide with.
+1. `[engineering]` **SCN persistence schema is shape-frozen at v1.0.** Adding clock-state fields to the persisted snapshot requires schema-version bump (currently `schema_version: ClassVar[int] = 1` per [scn.py:201](../../src/maxim/time/scn.py)). The clock subscription registry itself should be ephemeral (re-subscribed at session start by bootstrap) and NOT persisted.
 
-3. **The `log_swallowed_exception` wrapper around the decay block** exists because decay failures must not crash the agent loop. The SCN clock's per-callback exception handler must do the same — swallow + log, don't propagate.
+2. `[engineering]` **`TemporalCreditDistributor.anticipatory_pre_activate` is currently DORMANT** (per CLAUDE.md Principle 2). [`temporal_credit.py:127`](../../src/maxim/decisions/temporal_credit.py) defines the method; grep shows zero callers from `agent_loop.py` or anywhere else outside the file itself. The B2 SCN→NAc feedback loop is partial: the `TemporalCreditDistributor` is wired at [`bio_stack.py:303`](../../src/maxim/runtime/bio_stack.py) and `distribute()` is invoked by the reward subscriber, but `anticipatory_pre_activate()` itself has no production caller. The method stays defined per Principle 2's dormancy rule — do not delete. Phase 0 design decision: either (a) leave dormant + add the explicit `Dormant since <date>: <reason>` docstring marker, or (b) revive as a subscriber to the SCN clock at the eligibility tier, which closes the B2 loop CLAUDE.md describes. Option (b) is the recommended path (see "Working principles applied" §Principle 2 above). Either way, no collision risk exists today.
 
-4. **Test-time `nac.decay_*` direct callers must still work.** Many unit tests call `decay_cluster_reward_biases()` directly to verify behavior deterministically. The methods stay public + callable directly; the SCN subscription is an ADDITIONAL caller, not the only one.
+3. `[engineering]` **The `log_swallowed_exception` wrapper around the decay block** exists because decay failures must not crash the agent loop. The SCN clock's per-callback exception handler must do the same — swallow + log, don't propagate. This is the loud-failure discipline from CLAUDE.md's "Push silent-no-op invariants into types, not helpers" lesson — failing-but-logged is acceptable; silent-skip is not.
 
-5. **The Phase A tau-split + env override (`MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU`) is preserved untouched.** The SCN-tying changes WHO calls `decay_cluster_reward_biases()` and HOW OFTEN; the tau value itself is unchanged.
+4. `[engineering]` **Test-time `nac.decay_*` direct callers must still work.** Many unit tests call `decay_cluster_reward_biases()` directly to verify behavior deterministically. The methods stay public + callable directly; the SCN subscription is an ADDITIONAL caller, not the only one.
+
+5. `[engineering]` **The Phase A tau-split + env override (`MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU`) is preserved untouched.** The SCN-tying changes WHO calls `decay_cluster_reward_biases()` and HOW OFTEN; the tau value itself is unchanged. The `MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU` env override + the [50, 1000] clamp + the conftest autouse scrub all carry forward intact.
+
+6. `[engineering]` (Phase 1) → `[behavioral]` (after Phase 3 if cross-hardware claim holds) **Multi-rate clock topology** (`ASSOCIATIVE_DECAY_HZ=1.0` + `ELIGIBILITY_DECAY_HZ=10.0`). The two-tier partition is load-bearing because a single-rate clock mis-models eligibility by 100-1000×. Adding a third tier (e.g., a faster eligibility tier at 30Hz) is a Phase 5+ concern but the API surface should support it without re-architecture. Phase 3's substrate-primary action-selection sanity check on the cradle harness is the experiment that could graduate this to `[behavioral]`.
 
 ## What this plan does NOT do
 
