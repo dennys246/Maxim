@@ -172,6 +172,39 @@ class NACConfig:
     # conditioning producer ships post-1.0) decays at the same rate.
     percept_valence_decay_tau: float = 200.0
 
+    # Wire-A cluster-reward-bias annotation decay timescale (release_0_9_1.md
+    # Stage 2 + cluster_reward_bias_decay_tau_split.md Phase 1).
+    #
+    # Wire-A's prompt annotation reads ``_cluster_reward_bias`` at every LLM
+    # submission and renders it as the substrate's "felt familiarity" voice.
+    # Pre-merge bio-fidelity review B2 already established the precedent for
+    # splitting decay timescales by use case: ``percept_valence_decay_tau``
+    # (200.0) was decoupled from ``reward_bias_decay_tau`` (50.0) because
+    # per-tick threshold modulation and multi-turn substrate-voice rendering
+    # need different timescales. Wire-A's cluster-keyed read shares Wire 2's
+    # multi-turn-rendering use case, not the original reward_bias's
+    # per-tick threshold-modulation use case, so the cluster decay needs its
+    # own tau too.
+    #
+    # Calibration (see cluster_reward_bias_decay_tau_split.md):
+    # at tau=300, the priming-end +0.98 bias decays to ~+0.51 at 225 ticks
+    # (mid-test-arm in Roy-3-shape iterations) — just above the 0.5
+    # "strongly rewarding" band. The partial-bias +0.20 cluster decays to
+    # ~+0.10 — at the 0.1 "mildly rewarding" floor. Both classes stay
+    # expressive at Wire-A's render time without becoming permanent
+    # fossils across sessions.
+    #
+    # Subject to retune if decay feels wrong. See
+    # ``feedback_nac_decay_tau_is_calibration_knob.md`` for the framing rule
+    # and ``docs/plans/cluster_reward_bias_decay_tau_split.md`` for the
+    # full calibration math. Currently tick-anchored per agent_loop section
+    # 8.5; SCN-tying is a separate follow-up tracked in
+    # ``docs/plans/scn_decay_anchoring.md`` (TBD).
+    #
+    # Override: MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU
+    # (numeric, clamped [50, 1000]; out-of-range or invalid → default + WARN).
+    cluster_reward_bias_decay_tau: float = 300.0
+
     # Wire 2 minimum |bias| reported by ``get_percept_aversions`` so that
     # decayed-to-noise entries don't bleed back into the salience scorer
     # as ghost aversions.  Mirrors the 0.001 prune floor used by
@@ -261,6 +294,34 @@ class NAc:
                 config = replace(config, temporal_credit_weight=tcw)
             except (ValueError, TypeError):
                 pass
+        # Apply env-var override for cluster_reward_bias_decay_tau if set.
+        # Stricter than the temporal_credit_weight clamp pattern: invalid or
+        # out-of-range values fall back to the default + emit a WARNING,
+        # because the tau is a deliberately-tuned calibration knob (see
+        # plan doc cluster_reward_bias_decay_tau_split.md) and silently
+        # clamping to a bound would hide an operator misconfiguration.
+        cluster_tau_env = os.environ.get("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU")
+        if cluster_tau_env is not None and cluster_tau_env.strip():
+            from dataclasses import replace
+
+            try:
+                cluster_tau = float(cluster_tau_env)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU=%r is not numeric; falling back to default %.1f",
+                    cluster_tau_env,
+                    config.cluster_reward_bias_decay_tau,
+                )
+            else:
+                if 50.0 <= cluster_tau <= 1000.0:
+                    config = replace(config, cluster_reward_bias_decay_tau=cluster_tau)
+                else:
+                    logger.warning(
+                        "MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU=%s out of range "
+                        "[50, 1000]; falling back to default %.1f",
+                        cluster_tau,
+                        config.cluster_reward_bias_decay_tau,
+                    )
         self.config = config
 
         # Thread safety: RLock for concurrent access from multi-agent party mode
@@ -1985,13 +2046,22 @@ class NAc:
         being "from prior experience" when they're actually "from
         forever ago."
 
-        Uses same decay tau as node and goal biases (bidirectional —
-        absolute-value prune below 0.001, mirroring
-        ``decay_goal_reward_biases``). Returns count pruned.
+        Uses ``NACConfig.cluster_reward_bias_decay_tau`` (default 300.0,
+        ~6x slower than ``reward_bias_decay_tau``). The cluster decay
+        timescale is decoupled from the per-tick threshold-modulation
+        timescale because Wire-A's substrate-voice annotation needs to
+        survive a multi-turn test phase to be expressive — the same
+        rationale that decoupled ``percept_valence_decay_tau`` from
+        ``reward_bias_decay_tau`` in Wire 2 (B2 fold). See
+        ``docs/plans/cluster_reward_bias_decay_tau_split.md`` for the
+        calibration math.
+
+        Bidirectional (mirrors ``decay_goal_reward_biases``); prunes
+        when ``|bias| < 0.001``. Returns count pruned.
         """
         if not self._cluster_reward_bias:
             return 0
-        decay_factor = 1.0 / self.config.reward_bias_decay_tau
+        decay_factor = 1.0 / self.config.cluster_reward_bias_decay_tau
         pruned = 0
         with self._lock:
             to_remove = []

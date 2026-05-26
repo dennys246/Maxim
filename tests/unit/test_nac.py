@@ -995,3 +995,161 @@ class TestContextSimilarity:
         links = nac._links.get("slash:rusty_sword", [])
         assert len(links) == 1, f"rich-context outcome failed to link: {dict(nac._links)}"
         assert links[0].outcome_valence == valence_negative
+
+
+class TestClusterRewardBiasDecayTauSplit:
+    """Phase 1 of cluster_reward_bias_decay_tau_split.md.
+
+    Pins the split between ``reward_bias_decay_tau`` (per-tick threshold
+    modulation, default 50.0) and ``cluster_reward_bias_decay_tau``
+    (Wire-A substrate-voice annotation, default 300.0). Before the split
+    both decay paths shared a single tau, which made Wire-A's
+    annotation decay too aggressively to be expressive at test time
+    (Roy-3c-bisect A2 confirmation).
+    """
+
+    def test_decay_uses_dedicated_tau_not_reward_bias_tau(self):
+        """``decay_cluster_reward_biases`` reads
+        ``cluster_reward_bias_decay_tau``, NOT ``reward_bias_decay_tau``.
+
+        Set the two taus to visibly different values and confirm the
+        cluster bias decays per the cluster-specific tau. With
+        reward_bias_decay_tau=10 (fast) and
+        cluster_reward_bias_decay_tau=200 (slow), one decay tick
+        shrinks the bias by ~1/200 = 0.5% — far less than the ~10%
+        that a tau=10 decay would produce.
+        """
+        from maxim.decisions.nac import NAc, NACConfig
+
+        config = NACConfig(
+            reward_bias_decay_tau=10.0,
+            cluster_reward_bias_decay_tau=200.0,
+        )
+        nac = NAc(config=config)
+        nac.update_cluster_reward("agent", "c1", "tool:foo", reward=10.0)
+        before = nac.cluster_reward_bias("agent", "c1", "tool:foo")
+        assert before > 0.5  # Should be clamped near +1.0.
+
+        nac.decay_cluster_reward_biases()
+        after = nac.decay_cluster_reward_biases()  # noqa: F841
+        # The cluster bias used tau=200 — after two ticks the bias
+        # should still be > 99% of the start (decay factor 0.005/tick).
+        observed = nac.cluster_reward_bias("agent", "c1", "tool:foo")
+        expected_per_tick = 1.0 - (1.0 / 200.0)
+        expected_after_two = before * (expected_per_tick**2)
+        # Tight bound: within 1% of the cluster-tau-based prediction.
+        assert observed == pytest.approx(expected_after_two, rel=0.01)
+        # Sanity: if decay had used reward_bias_decay_tau=10, the bias
+        # would be down to ~before * 0.81 after two ticks — observed
+        # must be far above that.
+        wrong_per_tick = 1.0 - (1.0 / 10.0)
+        wrong_after_two = before * (wrong_per_tick**2)
+        assert observed > wrong_after_two * 1.1
+
+    def test_default_is_300(self):
+        """Pin the default so a future re-tune is a reviewed change.
+
+        The 300 value comes from the Phase 1 calibration math in
+        cluster_reward_bias_decay_tau_split.md and was confirmed by
+        the user 2026-05-26. Changing this default ships a behavioral
+        shift to every NAc consumer; require an explicit reviewed PR.
+        """
+        from maxim.decisions.nac import NACConfig
+
+        assert NACConfig().cluster_reward_bias_decay_tau == 300.0
+
+    def test_env_override_applied(self):
+        """``MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU`` overrides config.
+
+        Mirrors the temporal_credit_weight env override pattern, but
+        with stricter semantics: invalid/out-of-range values fall back
+        to the default + WARN rather than silently clamping (see
+        nac.py NAc.__init__ docstring + plan doc).
+        """
+        import os
+
+        from maxim.decisions.nac import NAc, NACConfig
+
+        os.environ["MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU"] = "500.0"
+        try:
+            nac = NAc(config=NACConfig())
+            assert nac.config.cluster_reward_bias_decay_tau == pytest.approx(500.0)
+        finally:
+            os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+
+    def test_env_override_out_of_range_warns(self, caplog):
+        """Out-of-range env values fall back to default and emit WARNING.
+
+        Calibration knob: clamping silently to a bound would hide an
+        operator misconfiguration, so we keep the default and surface
+        the issue in logs.
+        """
+        import logging
+        import os
+
+        from maxim.decisions.nac import NAc, NACConfig
+
+        # Out of range — too low (under 50).
+        os.environ["MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU"] = "10.0"
+        try:
+            with caplog.at_level(logging.WARNING, logger="maxim.decisions.nac"):
+                nac = NAc(config=NACConfig())
+            assert nac.config.cluster_reward_bias_decay_tau == pytest.approx(300.0)
+            assert any("out of range" in rec.message for rec in caplog.records if rec.levelno == logging.WARNING)
+        finally:
+            os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+            caplog.clear()
+
+        # Out of range — too high (over 1000).
+        os.environ["MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU"] = "5000.0"
+        try:
+            with caplog.at_level(logging.WARNING, logger="maxim.decisions.nac"):
+                nac = NAc(config=NACConfig())
+            assert nac.config.cluster_reward_bias_decay_tau == pytest.approx(300.0)
+            assert any("out of range" in rec.message for rec in caplog.records if rec.levelno == logging.WARNING)
+        finally:
+            os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+            caplog.clear()
+
+        # Non-numeric — falls back + WARN.
+        os.environ["MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU"] = "not_a_number"
+        try:
+            with caplog.at_level(logging.WARNING, logger="maxim.decisions.nac"):
+                nac = NAc(config=NACConfig())
+            assert nac.config.cluster_reward_bias_decay_tau == pytest.approx(300.0)
+            assert any("not numeric" in rec.message for rec in caplog.records if rec.levelno == logging.WARNING)
+        finally:
+            os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+            caplog.clear()
+
+        # Boundary values (50 and 1000) — in range, no WARN.
+        os.environ["MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU"] = "50.0"
+        try:
+            with caplog.at_level(logging.WARNING, logger="maxim.decisions.nac"):
+                nac = NAc(config=NACConfig())
+            assert nac.config.cluster_reward_bias_decay_tau == pytest.approx(50.0)
+            assert not any(rec.levelno == logging.WARNING for rec in caplog.records)
+        finally:
+            os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+            caplog.clear()
+
+        os.environ["MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU"] = "1000.0"
+        try:
+            with caplog.at_level(logging.WARNING, logger="maxim.decisions.nac"):
+                nac = NAc(config=NACConfig())
+            assert nac.config.cluster_reward_bias_decay_tau == pytest.approx(1000.0)
+            assert not any(rec.levelno == logging.WARNING for rec in caplog.records)
+        finally:
+            os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+            caplog.clear()
+
+        # Empty string — silent fall-back to default (matches missing env).
+        os.environ["MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU"] = ""
+        try:
+            with caplog.at_level(logging.WARNING, logger="maxim.decisions.nac"):
+                nac = NAc(config=NACConfig())
+            assert nac.config.cluster_reward_bias_decay_tau == pytest.approx(300.0)
+            assert not any(rec.levelno == logging.WARNING for rec in caplog.records)
+        finally:
+            os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
+            caplog.clear()
