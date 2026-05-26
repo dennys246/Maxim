@@ -223,6 +223,15 @@ After Wires A+1+2+3 ship, Roy-3 runs against the same multi-arc priming + held-o
 
 Roy-3 is also the first Roy iteration with full Stage 0c `recommend_action` instrumentation, so disambiguation between annotation-reaches-LLM vs LLM-reads-but-ignores becomes structurally possible.
 
+### Stage 5 outcome (2026-05-24/25)
+
+Roy-3 shipped ([23_roy_3.md](../experiments/23_roy_3.md), [PR #258](https://github.com/dennys246/Maxim/pull/258)). Pre-registered "A ≈ B ≈ C across both fixtures" reproduced — annotation was wired end-to-end but the LLM saw `[neutral / mixed]` at test time (max(|bias|) = 0.036 in Roy-3a, 0.098 in Roy-3b, both below the 0.1 "mildly rewarding" floor). The two Roy-3 follow-up items:
+
+1. **Bisect the priming-side regression** (Wire 1 vs Wire 2 vs interaction): **CLOSED** by Roy-3c-bisect ([29_roy_3c_bisect.md](../experiments/29_roy_3c_bisect.md), [PR #266](https://github.com/dennys246/Maxim/pull/266)). Verdict: the wires did NOT cause the regression. Two axes, two outside causes: (a) key count 6→2 is non-code environmental drift in the encoder layer (env-var refuted by A1, narrator drift refuted by A3); (b) bias magnitude saturated→partial→decayed-to-neutral is Wire-A's intentional bio-fidelity decay correction (bee42ca), confirmed behaviorally by A2.
+2. **"Decide whether Wire-A's render needs a raw priming snapshot floor"**: **SUPERSEDED** by [cluster_reward_bias_decay_tau_split.md](cluster_reward_bias_decay_tau_split.md). The bisect's magnitude-axis finding surfaced that Wire-A's tau was inherited by accident from `reward_bias_decay_tau=50.0` (sized for EC threshold modulation, NOT multi-turn substrate-voice annotation). Splitting the tau and tuning it to ~300 (the same pattern Wire 2's `percept_valence_decay_tau=200.0` already used) is the bio-fidelity-respecting fix — preserves the decay correction the bee42ca fold shipped, and lets Wire-A's annotation be expressive at test time without a separate "raw snapshot" mechanism. Phase 3 is a Roy-3a-retry validating the tune.
+
+**0.9.1 release status:** ships unchanged per Roy-3's original recommendation. The tau-split work is independent of 0.9.1's shipped surface and is a 0.9.2 / 1.0 follow-up.
+
 ## Cross-cutting: persistence schema
 
 Two format-version bumps:
