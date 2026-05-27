@@ -145,6 +145,12 @@ class SensePresenceTool(Tool):
         "each entity can do. Use this when you arrive somewhere new or want "
         "to know what you can interact with."
     )
+    # Auto-fired every tick on new percepts; result is injected into the
+    # next prompt as passive perception rather than a chosen action. The
+    # executor bypass at agent_loop.py reads ``auto_fire`` and routes
+    # around actions.jsonl. See [docs/plans/sense_tool_registry.md].
+    auto_fire = True
+    kind = "auto-discovery"
     # Authored as JSONSchema (not the legacy description-as-value form) so
     # ``context`` is correctly marked optional in the export — strict MCP /
     # Anthropic clients reject calls that omit a "required" param, but

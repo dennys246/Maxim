@@ -4,7 +4,37 @@ import copy
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
+
+# Registration-time classifier for tool provenance / lifecycle. The four
+# kinds correspond to the three independent registration regimes the
+# sense* tool family grew under (per ``docs/plans/sense_tool_registry.md``)
+# plus a default for everything else.
+#
+# - ``core-universal``  — registered once at boot via ``ToolRegistry.register``;
+#                         always active, exempt from scene-scope and LRU.
+# - ``auto-discovery``  — registered like core-universal but fires implicitly
+#                         every tick alongside the agent's chosen action
+#                         (``auto_fire=True``). Used for passive perception
+#                         tools whose output the LLM reads but does not
+#                         choose to invoke. Their dispatch bypasses the
+#                         executor's actions.jsonl log.
+# - ``scene-scoped``    — registered via ``ToolRegistry.register_scene_tools``
+#                         when a scene loads; deactivated/re-activated as
+#                         the active roster cycles. Counts toward the
+#                         active scene-tool cap; eligible for LRU eviction.
+# - ``sem-modulator-derived`` — a more specific flavor of scene-scoped,
+#                         generated from an Entity's modulators/affordances
+#                         in ``embodiment/tool_bridge.py``. Identified
+#                         separately so the prompt-builder can grayscale
+#                         these (and only these) when inactive but
+#                         substrate-biased.
+ToolKind = Literal[
+    "core-universal",
+    "auto-discovery",
+    "scene-scoped",
+    "sem-modulator-derived",
+]
 
 
 class ToolErrorKind(Enum):
@@ -277,6 +307,21 @@ class Tool(ABC):
     description: str = ""
     input_schema: dict[str, Any] = {}
     timeout: float = 30.0  # per-tool timeout declaration (seconds)
+
+    # ── Tool metadata (W1 sense_tool_registry MVP) ───────────────────────
+    # ``auto_fire`` — when True, the agent loop dispatches this tool every
+    # tick (alongside the LLM-chosen action) and does NOT log the call to
+    # ``actions.jsonl``. Default False keeps existing tools unchanged.
+    # Used today only by ``SensePresenceTool`` (auto-discovery scan).
+    # See [docs/plans/sense_tool_registry.md] § "Tool metadata" and
+    # ``runtime/agent_loop.py`` auto-sense dispatch.
+    auto_fire: bool = False
+    # ``kind`` — registration-time classifier. Default ``"core-universal"``
+    # preserves the historical semantics of plain ``ToolRegistry.register``.
+    # Scene-scoped factories (``embodiment/tool_bridge.py``) override to
+    # ``"sem-modulator-derived"``; ``SensePresenceTool`` to
+    # ``"auto-discovery"``.
+    kind: ToolKind = "core-universal"
 
     def __init__(self) -> None:
         if not getattr(self, "name", ""):

@@ -616,6 +616,18 @@ class StructuredContext:
     # None == disabled (env var off, no NAc wired, or cold-start agent).
     cluster_bias_annotations: list[tuple[str, float]] | None = None
 
+    # Grayscale tool annotations (W1 sense_tool_registry MVP). List of
+    # (tool_name, bias, description) for SEM-derived tools the substrate
+    # has accumulated a non-zero reward bias for but that are NOT in the
+    # active scene roster. Surfaces "knowable but absent" tools so the
+    # LLM can reason about reaching for an equivalent active tool. Empty
+    # list / None means no grayscale candidates this tick (either no
+    # substrate bias or every biased tool is already active). Populated
+    # by agent_loop.py at LLM submission; rendered by
+    # PromptBuilder._add_grayscale_tools_section. See
+    # [docs/plans/sense_tool_registry.md] § "Phase 3".
+    grayscale_tool_annotations: list[tuple[str, float, str]] | None = None
+
     # Auto-sense: passive perception results (exteroception + interoception).
     # Populated by the agent loop's auto-sense sweep (section 1.15) on each
     # new percept.  Contains sense_presence output (visible entities +

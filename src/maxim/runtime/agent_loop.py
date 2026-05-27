@@ -1277,36 +1277,66 @@ def run_agentic_loop(
                 if _tool_reg is not None:
                     _auto_sense_parts = []
 
-                    # Exteroception: sense_presence (what entities are around me?)
-                    # KeyError = tool not registered (agent has no exteroception
-                    # by config); other exceptions are real failures and get
-                    # logged so silent blindness can't hide a bug.
-                    _presence = None
+                    # Exteroception: dispatch every auto_fire tool with no
+                    # arguments. Pre-W1 this hardcoded ``sense_presence``;
+                    # the declarative ``auto_fire=True`` metadata on
+                    # ``SensePresenceTool`` (and any future auto-discovery
+                    # tool) drives this loop now. The
+                    # ``get_auto_fire_tools()`` helper preserves the
+                    # bypass invariant: results are injected into the
+                    # next prompt as passive perception, never logged to
+                    # ``actions.jsonl``. See
+                    # [docs/plans/sense_tool_registry.md] § "Phase 2".
+                    _presence_tool = None  # canonical sense_presence instance, for entity_map handoff
+                    _auto_fire_tools = []
                     try:
-                        _presence = _tool_reg.get("sense_presence")
-                    except KeyError:
-                        pass
-                    if _presence is not None:
+                        _auto_fire_tools = _tool_reg.get_auto_fire_tools()
+                    except AttributeError:
+                        # Older registries without the helper — fall back
+                        # to the legacy by-name lookup so out-of-tree
+                        # ToolRegistry subclasses keep working.
                         try:
-                            _presence_result = _presence.execute()
-                            if _presence_result.success and _presence_result.output:
-                                _auto_sense_parts.append(str(_presence_result.output))
+                            _auto_fire_tools = [_tool_reg.get("sense_presence")]
+                        except KeyError:
+                            _auto_fire_tools = []
+                    for _af_tool in _auto_fire_tools:
+                        if _af_tool is None:
+                            continue
+                        try:
+                            _af_result = _af_tool.execute()
+                            if _af_result.success and _af_result.output:
+                                _auto_sense_parts.append(str(_af_result.output))
                         except Exception as _exc:
                             log_swallowed_exception(
                                 _exc,
-                                operation="auto_sense_presence",
+                                operation=f"auto_fire:{_af_tool.name}",
                                 context={"step": step_num},
                             )
+                        # Capture the sense_presence instance so the
+                        # interoception block below can reuse its
+                        # entity_map handoff — preserves the existing
+                        # behavior where body-state self-sense reads
+                        # the same entity tree the presence scan saw.
+                        if _af_tool.name == "sense_presence":
+                            _presence_tool = _af_tool
 
-                    # Interoception: sense self-entity (health, stamina, hunger)
+                    # Interoception: sense self-entity (health, stamina,
+                    # hunger). This is NOT auto_fire today — it's a
+                    # special dispatch path that needs to be called
+                    # once per self-entity with the entity name. The
+                    # underlying ``sense`` tool stays LLM-callable
+                    # (``kind="core-universal"``, ``auto_fire=False``)
+                    # so the agent can also invoke it explicitly.
+                    # Deferring the metadata-fication of this loop to
+                    # 1.1+ (multi-arg auto_fire is out of MVP scope).
                     _sense = None
                     try:
                         _sense = _tool_reg.get("sense")
                     except KeyError:
                         pass
-                    if _sense is not None and _presence is not None:
+                    if _sense is not None and _presence_tool is not None:
                         try:
-                            _emap = getattr(_presence, "_entity_map", None)
+                            _emap = getattr(_presence_tool, "_entity_map", None)
                             if _emap is not None:
                                 _self_ents = _emap.list_self_entities()
                                 for _se in _self_ents:
@@ -2872,6 +2902,66 @@ def run_agentic_loop(
                                 e,
                             )
                             context.cluster_bias_annotations = None
+
+                    # W1 sense_tool_registry MVP (grayscale visibility).
+                    # Build the grayscale candidate list: SEM-derived
+                    # tools registered but NOT in the active roster, for
+                    # which the substrate has accumulated reward bias.
+                    # Surfaces "knowable but absent" tools to the LLM so
+                    # it can reason about reaching for an equivalent
+                    # active tool — the Roy-3a-retry gap.
+                    #
+                    # Reuses ``cluster_bias_annotations`` populated above
+                    # to avoid a second ``get_agent_tool_biases`` call
+                    # (the producer is on the LLM-submission hot path;
+                    # one NAc lock acquisition per submission is the
+                    # budget). Falls back to a direct NAc call only if
+                    # Wire-A is disabled via env, since the two features
+                    # share the same upstream data.
+                    if context is not None and _loop_nac is not None and executor is not None:
+                        try:
+                            _gs_registry = getattr(executor, "_registry", None) or getattr(executor, "registry", None)
+                            if _gs_registry is not None and hasattr(_gs_registry, "get_tools_by_kind"):
+                                _gs_biases = context.cluster_bias_annotations
+                                if _gs_biases is None:
+                                    try:
+                                        _gs_biases = _loop_nac.get_agent_tool_biases(
+                                            agent_id=_loop_agent_id,
+                                            top_n=5,
+                                        )
+                                    except ValueError:
+                                        _gs_biases = []
+                                if _gs_biases:
+                                    _gs_active = set(_gs_registry.list())
+                                    _gs_sem_names = {
+                                        t.name for t in _gs_registry.get_tools_by_kind("sem-modulator-derived")
+                                    }
+                                    _gs_annotations: list[tuple[str, float, str]] = []
+                                    for tool_name, bias in _gs_biases:
+                                        if tool_name in _gs_active:
+                                            continue  # active → renders in the normal tools block
+                                        if tool_name not in _gs_sem_names:
+                                            continue  # core / non-SEM tools don't grayscale (they're always active)
+                                        try:
+                                            _gs_tool = _gs_registry.get(tool_name)
+                                            _gs_desc = getattr(_gs_tool, "description", "") or ""
+                                        except KeyError:
+                                            _gs_desc = ""
+                                        _gs_annotations.append((tool_name, bias, _gs_desc))
+                                    # Cap at top-N — bounds the section to
+                                    # roughly the same prompt budget as
+                                    # Wire-A. The producer's top_n=5 above
+                                    # already capped the biases list; this
+                                    # is a defensive ceiling.
+                                    if _gs_annotations:
+                                        context.grayscale_tool_annotations = _gs_annotations[:5]
+                        except Exception as e:
+                            # Fail-open: a broken registry attribute or
+                            # NAc transient should not block the LLM
+                            # submission. Log and continue with no
+                            # grayscale section this tick.
+                            logger.warning("Grayscale tools annotation skipped: %s", e)
+                            context.grayscale_tool_annotations = None
 
                     # Check if there's something meaningful to react to
                     # Only submit to LLM if we have:
