@@ -268,3 +268,16 @@ jobs:
             exit 1
           fi
           echo "CI grep invariants clean"
+
+      - name: CLAUDE.md invariant regression-guard lint (Principle 5)
+        run: |
+          # Phase C of the regression-guard discipline. Walks CLAUDE.md's
+          # "Lessons learned" + "Architectural invariants" sections and
+          # enforces that every [engineering] invariant carries a
+          # "Regression guard:" reference and every [behavioral] invariant
+          # carries a "Roy experiment:" reference. Missing field = visible
+          # coverage gap by design — fails CI with line + tag + title.
+          #
+          # See CLAUDE.md "Working principles for new mechanisms" Principle 5
+          # for the format convention.
+          python3 scripts/lint_claude_md_invariants.py
