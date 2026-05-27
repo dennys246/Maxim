@@ -77,6 +77,7 @@ def agent_pair(tmp_path: Path) -> tuple[Any, Any]:
         reset_agent_stash(aid)
 
 
+@pytest.mark.multi_agent_modes
 class TestMultiAgentNacAttribution:
     """Two AgentFactory agents call record_outcome concurrently — their
     persisted nac.json files must contain NON-OVERLAPPING causal links,
@@ -185,6 +186,7 @@ class TestMultiAgentNacAttribution:
                 )
 
 
+@pytest.mark.multi_agent_modes
 class TestSharedNacIsolation:
     """Pre-merge review N1: when two agents share ONE NAc instance,
     causal links must be partitionable by ``event_context["agent_id"]``.
@@ -250,6 +252,7 @@ class TestSharedNacIsolation:
         assert alpha_sigs.isdisjoint(bravo_sigs)
 
 
+@pytest.mark.multi_agent_modes
 class TestEmptyAgentIdRejected:
     """Pre-merge review C2: empty-string agent_id is the same band-aid
     pattern P4 was supposed to eliminate.  Reject it loudly."""
@@ -288,6 +291,7 @@ class TestEmptyAgentIdRejected:
             observe_episode(hippocampus=MagicMock(), agent_id="")
 
 
+@pytest.mark.multi_agent_modes
 class TestBackwardCompatibilityNacJson:
     """Pre-merge review I4: pre-P4 nac.json has no ``agent_id`` in
     event_context.  Loading old data must not crash; missing values
@@ -322,6 +326,7 @@ class TestBackwardCompatibilityNacJson:
         assert link.event_context.get("agent_id") is None  # gracefully None
 
 
+@pytest.mark.multi_agent_modes
 class TestBioIntegrationStashIsolation:
     """The bio_integration substrate-node + pain-intensity stash must
     survive concurrent producers/consumers across two agents without

@@ -17,6 +17,11 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+# Multi-agent isolation fixture (P4 rule, CLAUDE.md L43). Importing
+# the module is enough to register the `multi_agent_modes` fixture for
+# all tests via the `pytest_plugins` mechanism below.
+pytest_plugins = ["tests.multi_agent_fixtures"]
+
 
 @pytest.fixture(autouse=True)
 def _isolate_maxim_llm_profile_env():

@@ -190,6 +190,8 @@ markers = [
     "learning: marks learning/convergence tests that verify ML algorithms",
     "integration: marks tests requiring multiple subsystems",
     "robot: marks tests requiring Reachy hardware",
+    "multi_agent_modes: auto-parametrize over single_agent / two_agents_shared_instance / two_agents_isolated_instances (P4 multi-agent rule; see tests/multi_agent_fixtures.py)",
+    "single_agent_only: explicit opt-out of multi_agent_modes parametrization for tests that are genuinely single-agent",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

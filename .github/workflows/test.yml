@@ -281,3 +281,22 @@ jobs:
           # See CLAUDE.md "Working principles for new mechanisms" Principle 5
           # for the format convention.
           python3 scripts/lint_claude_md_invariants.py
+
+      - name: Multi-agent marker lint (Stage 3 of structural invariant tests)
+        run: |
+          # Diff-scoped lint per docs/plans/structural_invariant_tests.md
+          # Stage 3. For each NEW test function on this branch in
+          # tests/unit/test_nac*.py / tests/unit/test_hippocampus*.py /
+          # tests/integration/test_memory_hub.py (or any test file whose
+          # body references per-agent stash fields), require ONE of:
+          #   @pytest.mark.multi_agent_modes      # opts into 3-mode parametrization
+          #   @pytest.mark.single_agent_only      # explicit opt-out
+          # The fixture + tripwire warning live in tests/multi_agent_fixtures.py.
+          # See CLAUDE.md L43 (P4 multi-agent rule) for the underlying
+          # invariant.
+          #
+          # The lint is diff-scoped (compares against origin/main) so
+          # existing tests are grandfathered; migration is done in a
+          # focused sweep, not as a side effect of unrelated PRs.
+          git fetch origin main --depth=1 || true
+          python3 scripts/lint_multi_agent_marker.py
