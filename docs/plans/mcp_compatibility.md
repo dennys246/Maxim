@@ -7,6 +7,28 @@
 
 ---
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `Tool` ABC + `ToolRegistry` ([tools/base.py](../../src/maxim/tools/base.py)) | **Already the right tool abstraction** — `MCPToolBridge` adapts MCP tools to this existing ABC. Riding on existing |
+| `Tool.to_json_schema()` (CC9, shipped PR #204) | **Already the right wire format** — CC9 dual-format schema is the 1.0 prerequisite that opens the door. Any tool authored in either format converts cleanly. No new schema mechanism needed |
+| `Tool.input_schema` auto-detect (CC9) | Already accepts JSONSchema or custom format. MCP-strict ingestion just sets the strict-mode toggle that CC9 already exposed |
+| `ToolOutput.side_effects` typed channel (CLAUDE.md L82) | **Already the right bio-pipeline signal channel** — MCP tool outputs route through the same channel as local tools. Bio-pipeline learns external-tool affordances the same way it learns local ones |
+| `mesh.yml` + `~/.maxim/util/` split | Wrong layer — declarative topology vs MCP server config. New file `~/.maxim/mcp_servers.yaml` is configuration, not a new mechanism |
+| `_MaximPeerBackend` for transport | Wrong layer — LLM inference proxy, not MCP-protocol transport |
+| MCP SDK (external dependency) | Provides the protocol-level wire format and server/client primitives — Maxim wraps via `MCPToolBridge` adapter |
+
+**Verdict:** could-ride-on-existing. The bulk of MCP work is **adapters**: M1 wraps external MCP tools in Maxim's `Tool` ABC; M2 exposes Maxim's `Tool` instances behind an MCP server interface. Neither introduces new substrate mechanism — the bio-pipeline is unaware of the transport boundary.
+
+**Specific reason:** CC9 shipped in 1.0 explicitly to keep MCP work additive (the dual-format schema is the prerequisite). With the schema door open, MCP compatibility is two external-protocol adapter modules + one config file — no new bus, bridge, registry, or substrate mechanism. The `_resolve_property_type` strict-mode toggle for external schemas is also already designed (CC9 carries it).
+
 ## Goal
 
 Make Maxim a first-class citizen in the MCP ecosystem: expose Maxim's tools to other MCP clients, consume MCP servers' tools as Maxim tools, share resources and prompts. Three usage patterns:

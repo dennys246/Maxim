@@ -8,6 +8,30 @@
 
 ---
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient |
+|---|---|
+| `LinguisticEncoder` (768-dim paraphrase-mpnet) | Produces text embeddings only; cannot bridge to sensor-modality 384-dim space. Cross-modality cosine is mathematically undefined across different-dimensional spaces |
+| `SensorEncoder` (384-dim hash-basis) | Symmetric problem — interoception-modality only |
+| `EC.pattern_complete_or_separate` with `frozen_centroid_modalities` | Operates within-modality on raw encoder output; cannot align two different-dimensional spaces without a projection layer |
+| `cross_modal_substrate_binding.md` Hebbian binding edges (CANCELLED) | Roy-4 confirmed binding rule cannot fire across modalities because raw cosine is undefined. Cancellation is exactly the evidence that *some* projection layer is structurally required |
+| `ComponentIndex` two-layer discovery (alias + embedding) | Solves within-modality entity name lookup. Wrong abstraction layer for cross-modal alignment |
+| `ATL.find_or_create` semantic store | Cross-modality lookup via natural language; bypasses the alignment problem at the symbol level. Useful but doesn't solve the underlying embedding-space gap |
+| Pretrained CLIP / ImageBind / multi-modal pretrained projections | Explicitly rejected by the plan's "What this does NOT do" section — thesis depends on alignment being **learned from substrate experience**, not imported |
+
+**Verdict:** yes-it-needs-to-be-its-own. The projection layer is a genuinely new mechanism — no existing surface bridges different-dimensional encoder outputs into a shared latent.
+
+**Specific reason:** Roy-5a-substrate-on's structural finding — `SensorEncoder` (384-dim) and `LinguisticEncoder` (768-dim) live in *different-dimensional* spaces, not just "far apart" — proves the gap cannot be closed by parameter tuning or by adding edges in raw encoder space. A learned projection into a shared K-dim latent (K=256 proposed) is the smallest unit of new code that makes cross-modal binding mathematically defined. The two-headed JEPA architecture is the bio-defensible answer because it lets the projection learn from the substrate's own emergent paired data rather than importing a pretrained alignment.
+
+**Tightly-scoped:** the projection is **additive** (encoder outputs unchanged; existing same-modality call sites untouched). It does NOT replace SensorEncoder or LinguisticEncoder. It does NOT replace Hebbian binding (which can ride on the shared latent if revived). The new-mechanism surface is exactly one MLP per encoder + a training pipeline + a persistence sidecar.
+
 ## Why this plan exists
 
 Roy-5a-substrate-on ([docs/experiments/22_roy_5a.md](../experiments/22_roy_5a.md)) surfaced a structural finding the plan it was meant to resolve did not model:

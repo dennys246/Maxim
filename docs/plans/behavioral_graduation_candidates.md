@@ -5,6 +5,27 @@
 **Sibling doc:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — "does the agent get better" (system-level, ongoing). This doc — "do specific bio-mechanisms carry the load they claim" (mechanism-level, experiment-driven).
 **Triggered by:** CLAUDE.md tagging audit (PR #272, 2026-05-26) revealed 67 `[engineering]` vs 4 `[behavioral]` — a 5.6% behavioral ratio. Honest read: many bio-mechanisms in CLAUDE.md claim behavioral weight but haven't yet earned a cited experiment. The Roy harness was the prerequisite for earning them; it is just now mature enough to start producing graduations at scale.
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this discipline need to be its own artifact, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| CLAUDE.md "Architectural invariants (do not break without discussion)" section | **Wrong type of artifact** — that section enumerates code rules that break loudly. The behavioral analog (mechanism claims that can silently regress) needs experiment citations + status lifecycle (`Pending` / `Earned` / `Stale` / `Broken`), neither of which the engineering-invariants section models |
+| CLAUDE.md two-tier invariant tagging (`[engineering]` vs `[behavioral]`) | **Provides the type signal** — and revealed the 5.6% behavioral ratio that triggered this discipline — but lacks lifecycle tracking. An invariant can be tagged `[behavioral]` and still silently regress without re-validation |
+| Regression-guard convention (Principle 5, paths/grep/structural-enforcement citations) | **Provides the format** — this doc's Earned entries use the same `Regression guard:` field so one grep audits both surfaces. But applies to engineering only; doesn't address experiment re-runs |
+| [behavioral_convergence_practice.md](behavioral_convergence_practice.md) | System-level "does the agent get better" living doc. Different scope: this one is mechanism-level "does this specific bio-claim hold" |
+| [memory_consolidation_practice.md](memory_consolidation_practice.md) | Same shape as the above — single-mechanism living doc. Not a meta-list across all behavioral claims |
+| Trigger-event-driven CI re-run of Roy iterations | Plausible 1.2+ structural enforcement, but adds infrastructure + cost the discipline can survive without. Cheaper to track manually as a living doc; CI hook is a future-proofing add |
+
+**Verdict:** yes-needs-own (small but real). The discipline is the **list itself** + the **lifecycle status states** + the **trigger-event re-run convention** — none of which fit inside CLAUDE.md's existing sections.
+
+**Specific reason:** CLAUDE.md's engineering-invariants section explicitly lists code rules; this list is meta — it tracks which claims need experiment validation, what their current status is, and when they need re-running. The discipline is one new artifact, not a new code mechanism.
+
 ## Why this is a living gate (not a one-shot 1.0 milestone)
 
 This doc serves **two phases of the same discipline**:

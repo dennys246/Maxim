@@ -6,6 +6,34 @@
 
 ---
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Note:** this is a **1.0 release coordination doc** spanning multiple sub-plans, not a single-mechanism plan. Per the kickoff rule "do the front-gate analysis per-mechanism, not per-plan" for multi-mechanism plans, the analyses for individual mechanisms referenced here live in their respective sub-plans:
+
+- B5 substrate-primary AUT + Hivemind shareability → [grounded_language_acquisition.md](grounded_language_acquisition.md) + [maxim_hivemind.md](maxim_hivemind.md)
+- B3 SEM world enrichment → [sem_world_enrichment.md](sem_world_enrichment.md)
+- bio_emergent_persona_foundations wires → [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md)
+- scene_actor_affordances → [scene_actor_affordances.md](scene_actor_affordances.md)
+- persona_cleanup → [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md)
+- ec_centroid_drift_fix (V1 substrate prerequisite) → [ec_centroid_drift_fix.md](ec_centroid_drift_fix.md)
+
+**For the 1.0 work owned directly by this plan (Section 3 cleanup C4-C6, Section 6 docs D1-D3, Section 7 contract clarification):**
+
+| Item | Front-gate verdict |
+|---|---|
+| C4-C6 deprecation cycle (raw constructor enforcement, hard-error flip) | Pure removal / hardening of existing surface. No new mechanism — flips already-shipped deprecation warnings to hard errors |
+| D1-D3 docs passes | Documentation only. Not a mechanism |
+| Section 7 contract clarification | Documentation + clarification of existing contracts. Not a mechanism |
+| V1 cross-session validation | Experiment, not a mechanism |
+
+**Verdict aggregate:** v1_refinement.md as a release plan doesn't introduce new mechanisms of its own. All mechanism-bearing sub-plans now carry their own front-gate analyses per Principle 3.
+
+**Specific reason this plan exists without new mechanism:** the 1.0 release is **stabilization + validation + cleanup**, not a feature release. The substrate work is shipped; what remains is hardening (C4-C6), documenting (D1-D3), proving the claim (V1), and shipping the experimental substrate-primary harness (B5, scoped in sub-plans). New mechanisms enter through sub-plans with their own scope-pressure discipline.
+
+---
+
 ## Motivation
 
 1.0 claims "cross-session learning without fine-tuning." All substrate gates are closed (P1-P8, B4, behavioral convergence 41/41). What remains is:

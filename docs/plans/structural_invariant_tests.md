@@ -3,6 +3,26 @@
 **Status:** Drafted 2026-05-27. Ships as three separate PRs in stage order. Companion plan to the [behavioral graduation candidates](behavioral_graduation_candidates.md) discipline.
 **Triggered by:** the regression-guard convention work (PRs #274/#275/#276/#277) made invariants auditable by grep. Three classes of bug shape are still only caught after-the-fact (e.g., Wire 1 statistic degeneracy, P4 multi-agent silent-merge, sequential drift across operations). Lifting them into the test suite turns "remember to test this" into structural enforcement.
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `tests/unit/` + `tests/substrate/` + `tests/integration/` | **Already the right home** — Stages 1/2/3 each land in one of these existing directories. The new pieces are *test classes + a marker + a CI lint*, not new test infrastructure |
+| Existing regression-guard CI grep lint ([.github/workflows/test.yml](../../.github/workflows/test.yml)) | **Already the right lint mechanism** — Stage 3's multi-agent marker lint rides on the existing CI lint job alongside the regression-guard lint |
+| `pytest.mark` registration in `pyproject.toml` | **Already the right marker registration site** — Stage 3 adds `multi_agent_modes` + `single_agent_only` to the existing `[tool.pytest.ini_options].markers` table |
+| Roy harness | Catches the *result* of these bug classes (behavioral regression) but is expensive and slow. Structural unit tests catch the *cause* cheaply. Complementary, not duplicative |
+| Property-based testing (Hypothesis) | Plausible expansion, but adds a dependency and authoring overhead. Stage 1's parametrized cases are simpler and directly maps to the Wire 1 lesson |
+
+**Verdict:** could-ride-on-existing — the discipline rides entirely on existing infrastructure. Tests are *content* within an existing test framework, not new mechanism in the Principle 3 sense. The three stages add net-new test cases, a marker, and a CI lint — all plumbed through existing pytest + CI + marker-registration surfaces.
+
+**Specific reason:** the gap is content (these three classes of structural check have no current test surface), not infrastructure. Pytest + CI + marker system already handle every plumbing concern. Tying tests to existing directories + workflows minimizes the surface area of the discipline.
+
 ## Why these three, in this order
 
 | Stage | Catches | Cost | Specificity | Why this order |

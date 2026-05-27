@@ -5,6 +5,26 @@
 **Owns:** `scripts/diagnose_roy_paraphrase_collapse.py` (extend), `data/roy_paraphrase_pairs.json` (reuse), `src/maxim/similarity/ec.py` (Phase 3 change), `docs/experiments/24_roy_paraphrase_diagnostic.md` (companion update).
 **Companion plans:** [release_0_9_1.md](release_0_9_1.md) (0.9.1 Roy-3 ships independently; this can land alongside or in 1.0), [v1_refinement.md](v1_refinement.md) (V1 cross-session validation silently depends on this fix), [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md) (Roy-5 / JEPA direction stays a separate gap, but downstream of this fix), [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) (1.2+ research; same downstream relationship).
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3. Analysis preserved post-shipment as historical documentation since the plan completed all five phases (PRs #259-#264).
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `ECConfig.frozen_centroid_modalities` | **Already the right knob** for frozen-prototype semantics. Currently freezes `"interoception"` only. Adding `"text"` is one config change |
+| `ECConfig.pattern_complete_threshold` | **Already the right knob** for tightening the recognition band. The 0.40 default was tuned for P1 paraphrase; the fix bumps to 0.44 |
+| Member-count cap on centroids (proposed but not chosen) | Would add a new mechanism (cluster size limits). The matrix sweep showed parameter tuning sufficed |
+| Sparse coding (proposed but not chosen) | Same — would add a new mechanism. Sweep showed simpler fix works |
+| `NAc.get_threshold_overrides` (`base_threshold` parameter, Phase 3.5) | **Already parameterized** in shape — Phase 3.5 threaded the live EC threshold from `LinguisticEncoder` so the override tracks whatever threshold the matching EC instance is using. Additive — existing callers unaffected |
+
+**Verdict:** could-ride-on-existing. The fix is **pure parameter tuning** + one additive parameterization (NAc override base). No new mechanism — the matrix sweep was explicitly designed to find the smallest config change that closes the bug.
+
+**Specific reason:** the framing rule of the plan ("run all configurations as ONE matrix experiment, not three sequential PRs") encodes the front-gate discipline implicitly — by sweeping the existing knobs first, the plan never had to introduce a new mechanism. The 0.05 → 0.01 sampling-granularity finding (sweet spot missed at coarse resolution, named at fine) is itself a lesson about scope pressure: better tuning beats new mechanism.
+
 ## Why this plan exists
 
 The 24 paraphrase diagnostic shipped one finding and dismissed two worries:
