@@ -1312,12 +1312,18 @@ def run_agentic_loop(
                                 operation=f"auto_fire:{_af_tool.name}",
                                 context={"step": step_num},
                             )
-                        # Capture the sense_presence instance so the
-                        # interoception block below can reuse its
-                        # entity_map handoff — preserves the existing
-                        # behavior where body-state self-sense reads
-                        # the same entity tree the presence scan saw.
-                        if _af_tool.name == "sense_presence":
+                        # Capture an entity-map source so the
+                        # interoception block below can reuse the same
+                        # entity tree the auto-fire scan saw. Pre-fold,
+                        # this keyed on the literal name "sense_presence"
+                        # — re-introducing the implicit-by-name coupling
+                        # Phase 2 set out to retire. Capturing by
+                        # attribute presence (any auto-fire tool that
+                        # exposes ``_entity_map``) keeps the loop name-
+                        # agnostic: a future auto-discovery tool that
+                        # carries an entity map participates without
+                        # needing a hardcoded branch here.
+                        if _presence_tool is None and hasattr(_af_tool, "_entity_map"):
                             _presence_tool = _af_tool
 
                     # Interoception: sense self-entity (health, stamina,
@@ -1349,6 +1355,16 @@ def run_agentic_loop(
                                 operation="auto_sense_self",
                                 context={"step": step_num},
                             )
+                    elif _sense is not None and _presence_tool is None and _auto_fire_tools:
+                        # Observable signal that interoception was
+                        # skipped despite ``sense`` being registered.
+                        # Avoids the silent-no-op that the architecture
+                        # review flagged if a future auto-fire tool
+                        # roster doesn't expose an entity_map.
+                        logger.debug(
+                            "auto-sense interoception skipped: no auto-fire tool exposes _entity_map "
+                            "(sense tool present but cannot be dispatched per-entity)",
+                        )
 
                     if _auto_sense_parts:
                         _auto_sense_text = "\n".join(_auto_sense_parts)
@@ -2904,62 +2920,65 @@ def run_agentic_loop(
                             context.cluster_bias_annotations = None
 
                     # W1 sense_tool_registry MVP (grayscale visibility).
-                    # Build the grayscale candidate list: SEM-derived
-                    # tools registered but NOT in the active roster, for
-                    # which the substrate has accumulated reward bias.
-                    # Surfaces "knowable but absent" tools to the LLM so
-                    # it can reason about reaching for an equivalent
-                    # active tool — the Roy-3a-retry gap.
+                    # Surfaces SEM-derived tools the substrate has a
+                    # non-zero reward bias for but that are NOT in the
+                    # active scene roster — the Roy-3a-retry gap. The
+                    # full filter (strip ``tool:`` prefix, exclude
+                    # active, require SEM kind, cap at top-N) lives in
+                    # ``prompts/grayscale_tools_annotation.py`` so it
+                    # can be unit-tested against realistic NAc-shaped
+                    # input — the pre-merge bio-fidelity review caught
+                    # a silent prefix mismatch the in-line producer
+                    # would have hidden in production.
                     #
-                    # Reuses ``cluster_bias_annotations`` populated above
-                    # to avoid a second ``get_agent_tool_biases`` call
-                    # (the producer is on the LLM-submission hot path;
-                    # one NAc lock acquisition per submission is the
-                    # budget). Falls back to a direct NAc call only if
-                    # Wire-A is disabled via env, since the two features
-                    # share the same upstream data.
-                    if context is not None and _loop_nac is not None and executor is not None:
+                    # Reuses ``cluster_bias_annotations`` populated by
+                    # the Wire-A block above so the producer makes ONE
+                    # NAc call per submission, not two.
+                    #
+                    # Shares Wire-A's env-var kill switch
+                    # (MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1). The two
+                    # sections are different surfaces of the same
+                    # substrate signal; disabling one without the other
+                    # leaks the signal under a different header and
+                    # pollutes Roy ablation evidence.
+                    if (
+                        context is not None
+                        and _loop_nac is not None
+                        and executor is not None
+                        and not annotation_disabled_via_env(os.environ.get("MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION"))
+                    ):
                         try:
                             _gs_registry = getattr(executor, "_registry", None) or getattr(executor, "registry", None)
-                            if _gs_registry is not None and hasattr(_gs_registry, "get_tools_by_kind"):
-                                _gs_biases = context.cluster_bias_annotations
-                                if _gs_biases is None:
-                                    try:
-                                        _gs_biases = _loop_nac.get_agent_tool_biases(
-                                            agent_id=_loop_agent_id,
-                                            top_n=5,
-                                        )
-                                    except ValueError:
-                                        _gs_biases = []
-                                if _gs_biases:
-                                    _gs_active = set(_gs_registry.list())
-                                    _gs_sem_names = {
-                                        t.name for t in _gs_registry.get_tools_by_kind("sem-modulator-derived")
-                                    }
-                                    _gs_annotations: list[tuple[str, float, str]] = []
-                                    for tool_name, bias in _gs_biases:
-                                        if tool_name in _gs_active:
-                                            continue  # active → renders in the normal tools block
-                                        if tool_name not in _gs_sem_names:
-                                            continue  # core / non-SEM tools don't grayscale (they're always active)
-                                        try:
-                                            _gs_tool = _gs_registry.get(tool_name)
-                                            _gs_desc = getattr(_gs_tool, "description", "") or ""
-                                        except KeyError:
-                                            _gs_desc = ""
-                                        _gs_annotations.append((tool_name, bias, _gs_desc))
-                                    # Cap at top-N — bounds the section to
-                                    # roughly the same prompt budget as
-                                    # Wire-A. The producer's top_n=5 above
-                                    # already capped the biases list; this
-                                    # is a defensive ceiling.
-                                    if _gs_annotations:
-                                        context.grayscale_tool_annotations = _gs_annotations[:5]
-                        except Exception as e:
-                            # Fail-open: a broken registry attribute or
-                            # NAc transient should not block the LLM
-                            # submission. Log and continue with no
-                            # grayscale section this tick.
+                            # Reuse Wire-A's biases when present; the
+                            # env-var gate above means the only way
+                            # ``cluster_bias_annotations`` is None here
+                            # is the Wire-A ValueError branch (invalid
+                            # agent_id), in which case grayscale would
+                            # hit the same error — skip rather than
+                            # double-log.
+                            _gs_biases = context.cluster_bias_annotations
+                            if _gs_biases:
+                                from maxim.prompts.grayscale_tools_annotation import (
+                                    build_grayscale_annotations,
+                                )
+
+                                _gs_annotations = build_grayscale_annotations(
+                                    _gs_biases,
+                                    _gs_registry,
+                                    top_n=5,
+                                )
+                                if _gs_annotations:
+                                    context.grayscale_tool_annotations = _gs_annotations
+                        except (AttributeError, ValueError) as e:
+                            # Narrowed per architecture-lens review:
+                            # AttributeError catches broken executor /
+                            # registry shape (out-of-tree subclass
+                            # without the new helpers); ValueError
+                            # mirrors Wire-A's discipline. Other
+                            # exceptions propagate — the producer is on
+                            # the LLM-submission hot path and a real
+                            # bug here is correctness-critical, not a
+                            # recoverable nuisance.
                             logger.warning("Grayscale tools annotation skipped: %s", e)
                             context.grayscale_tool_annotations = None
 

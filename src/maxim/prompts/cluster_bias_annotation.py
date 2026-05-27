@@ -185,4 +185,12 @@ __all__ = [
     "annotation_disabled_via_env",
     "bias_to_band",
     "compose_cluster_bias_annotation_section",
+    "strip_tool_prefix",
 ]
+
+
+# Public alias for the prefix-stripper. W1's grayscale producer needs the
+# same prefix discipline, so the helper is exported rather than copied.
+# Keeping the underscored name for backward compatibility with any
+# in-module callers.
+strip_tool_prefix = _strip_tool_prefix

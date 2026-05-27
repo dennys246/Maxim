@@ -87,13 +87,20 @@ class ToolRegistry:
         and are always active (the historical "core tool" semantics).
         Scene-scoped lifecycle is handled separately via
         ``register_scene_tools``.
+
+        The override uses ``object.__setattr__`` so frozen-dataclass
+        third-party ``Tool`` subclasses (rare today but possible per
+        the plan's Open Question #3) survive the assignment. Plain
+        ``tool.kind = kind`` would raise ``FrozenInstanceError`` on a
+        ``@dataclass(frozen=True)`` subclass.
         """
         with self._lock:
             if kind is not None:
                 # Override the instance's kind — useful when a registration
                 # site has more authoritative provenance than the tool's
-                # class default.
-                tool.kind = kind  # type: ignore[assignment]
+                # class default. Use object.__setattr__ for frozen-
+                # subclass safety.
+                object.__setattr__(tool, "kind", kind)
             self._tools[tool.name] = tool
 
     def get(self, name: str) -> Tool:
