@@ -1,7 +1,22 @@
 # SCN decay anchoring — wall-clock-tying the five NAc decay functions
 
-**Target version:** 1.0 or 1.1 (decision in Open Questions §1 below).
+**Target version:** **1.0 nice-to-have / 1.1 acceptable** (resolved 2026-05-27 — see "1.0 scope decision" below; supersedes Open Question §1).
 **Status:** Draft. Plan written 2026-05-26 as Phase C of the [cluster_reward_bias_decay_tau_split](cluster_reward_bias_decay_tau_split.md) kickoff sequence.
+
+## 1.0 scope decision (2026-05-27)
+
+Originally targeted as "1.0 or 1.1" with author recommendation 1.1 deferral. Post-Phase-C strategic discussion confirmed the 1.1-leaning read: **SCN-anchoring is NOT on the 1.0 critical path the way the other two cycle-C plans ([sense_tool_registry.md](sense_tool_registry.md) + [imagination_substrate_signals.md](imagination_substrate_signals.md)) are.**
+
+The distinction matters because:
+- The substrate→action conversion question (the 1.0 thesis bottleneck) is addressed by sense_tool_registry + imagination_substrate_signals. SCN-anchoring does not touch that pathway.
+- SCN-anchoring's value is *hardware portability* of decay timescales. That only bites if (a) 1.0 benchmarking is run on multiple machines for reproducibility, OR (b) the decay_consolidation_calibration framework ships in 1.0.
+- Neither is currently a 1.0 benchmarking requirement — the user's RTX 5080 leader is the consistent baseline for Roy iterations, and the calibration framework targets 1.1+.
+
+**Resolved status:**
+- **1.0 nice-to-have:** ship if Roy outcome creates a portability need (e.g., a Mac peer is added as a co-benchmarking baseline).
+- **1.1 acceptable** otherwise.
+
+The plan stays drafted and ready to go; the implementation kickoff just isn't sequenced into the immediate 1.0 push. Open Question §1 below remains for reader context but the resolution is captured here at the top of the doc.
 **Owns:** [`src/maxim/time/scn.py`](../../src/maxim/time/scn.py) (new clock-driven surface), [`src/maxim/decisions/nac.py`](../../src/maxim/decisions/nac.py) (decay-function callers), [`src/maxim/runtime/agent_loop.py`](../../src/maxim/runtime/agent_loop.py) section 8.5 (per-tick decay calls migrated to SCN subscription).
 **Companion plans:** [cluster_reward_bias_decay_tau_split.md](cluster_reward_bias_decay_tau_split.md) (Phase A prerequisite — tau split landed via [PR #267](https://github.com/dennys246/Maxim/pull/267)), [decay_consolidation_calibration_plan.md](decay_consolidation_calibration_plan.md) (downstream framework that consumes the SCN-anchored output as input).
 

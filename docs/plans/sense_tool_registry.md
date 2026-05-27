@@ -1,8 +1,26 @@
 # Sense tool registry / factory unification
 
-**Status:** DRAFT (2026-05-26). Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 2.
+**Status:** DRAFT (2026-05-26). Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 2. Reframed 2026-05-27 — see "1.0 scope reframe" below.
 **Trigger:** Roy-3a-retry NULL outcome — Wire-A annotated `sense_food_source [strongly rewarding from prior experience]` but the tool was silently absent from arm A's active tool roster because the test fixture had no food entity. The LLM had no signal that the tool exists elsewhere.
-**Target:** 1.1+ (post-1.0). Not a 1.0 gate.
+**Target:** **1.0 (MVP-scoped)** + 1.1+ (full plan). See "1.0 scope reframe" below.
+
+## 1.0 scope reframe (2026-05-27)
+
+Originally targeted as 1.1+. Reframed during the post-Phase-C strategic discussion: **this plan is 1.0 critical path because the substrate→action conversion question is the 1.0 thesis bottleneck.** Roy-3a-retry showed Wire-A annotation reaches the LLM with strong magnitude but cannot convert to action because the substrate-favored tool isn't in the active scene roster. Until that gap closes, Roy iterations stay structurally capped at "annotation is present" findings.
+
+**1.0 MVP scope (smallest unit that closes the Roy-3a gap):**
+
+- **Grayscale visibility minimum** — `tools_block` rendering distinguishes always-active core tools from SEM-derived inactive tools, with `[not in current location]` tag for the latter. Inactive SEM tools the substrate has accumulated bias for (per `NAc.get_agent_tool_biases`) appear in the LLM-facing list.
+- **Tool metadata foundation** — `auto_fire: bool` field on the Tool dataclass (declarative replacement for the implicit executor bypass at [agent_loop.py:1292](../../src/maxim/runtime/agent_loop.py)). No behavior change for existing tools; the bypass discipline becomes explicit.
+- **Registration-time classifier** — single `ToolRegistry.register(tool, kind=...)` accepting one of `{core-universal, auto-discovery, scene-scoped, sem-modulator-derived}` with sensible defaults for existing call sites.
+
+**Deferred to 1.1+ (full plan, post-Roy-iteration verdict):**
+- `sensory_events.jsonl` separation from `actions.jsonl`.
+- LRU eviction tuning.
+- NAc predicate-outcome typing (auto-sense → predictive learning channel).
+- Description unifier for SEM affordance descriptions.
+
+The MVP is ~150-200 LOC + ~150 tests; full plan was sized ~400 LOC. Phase 4 of the original plan (Roy-3a re-run) becomes the integration test for the 1.0 MVP.
 
 ## Front-gate scope pressure (retroactive)
 
