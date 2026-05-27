@@ -1,20 +1,29 @@
-# Behavioral Graduation Candidates — Path to 1.0
+# Behavioral Graduation Candidates — Living Behavioral-Regression Discipline
 
-**Status:** Active. Pairs alongside benchmarking as one of two 1.0 gates.
+**Status:** Living artifact. Pairs alongside benchmarking as one of two 1.0 gates AND persists post-1.0 as the behavioral-regression discipline — the behavioral analog to CLAUDE.md's "Architectural invariants (do not break without discussion)" section.
 **Created:** 2026-05-27.
 **Sibling doc:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — "does the agent get better" (system-level, ongoing). This doc — "do specific bio-mechanisms carry the load they claim" (mechanism-level, experiment-driven).
 **Triggered by:** CLAUDE.md tagging audit (PR #272, 2026-05-26) revealed 67 `[engineering]` vs 4 `[behavioral]` — a 5.6% behavioral ratio. Honest read: many bio-mechanisms in CLAUDE.md claim behavioral weight but haven't yet earned a cited experiment. The Roy harness was the prerequisite for earning them; it is just now mature enough to start producing graduations at scale.
 
-## Why this is a 1.0 gate
+## Why this is a living gate (not a one-shot 1.0 milestone)
 
-1.0 has **two orthogonal gates**, not one:
+This doc serves **two phases of the same discipline**:
+
+**Pre-1.0 (the graduation push).** 1.0 has two orthogonal gates, not one:
 
 - **Benchmarking** — agent performance on tasks (does it solve the thing).
 - **Behavioral graduation** — mechanism validation (does the bio-pipeline carry the load it claims).
 
 Both gate 1.0. They are siblings, not nested. A passing benchmark with unbacked bio-claims still leaves the bio-inspired-LLM-harness framing exposed. A failing benchmark with strong mechanism validation is not 1.0-shippable either.
 
-This doc tracks the second axis. Each entry below is an engineering invariant (or family of invariants) from CLAUDE.md whose bio-flavored framing makes an implicit behavioral claim. By 1.0 each entry resolves to one of: (a) **Earned** by a cited Roy/equivalent experiment, (b) **Downgraded** to scaffolding-only with no apology, or (c) **Dormant** per [Principle 2](../../CLAUDE.md#working-principles-for-new-mechanisms).
+**Post-1.0 (the regression discipline).** Earned behavioral invariants can silently regress under major architectural changes — and CLAUDE.md's existing regression-guard discipline only covers engineering (CI grep allowlists, unit tests pinning constants). Behavioral claims have no equivalent forcing function today. The Roy-3c bisect is the canonical lesson: a non-code encoder drift broke a previously-settled mechanism without anyone noticing for weeks ([feedback_cycle_divergence_triggers_bird_eye.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_cycle_divergence_triggers_bird_eye.md)). A trigger-event-driven re-validation loop would have caught it.
+
+The behavioral analog frame: **CLAUDE.md's "Architectural invariants" lists code rules that can't break. This doc lists behavioral claims that can't silently regress.** Same discipline, different evidence type.
+
+Each entry below is an engineering invariant (or family) from CLAUDE.md whose bio-flavored framing makes an implicit behavioral claim. The entry's lifecycle:
+
+1. **Pre-1.0 path:** `Pending` → graduate via cited Roy/equivalent experiment → `Earned <date>`. By 1.0, Tier 1 must be 100% Earned; Tier 3 entries that can't be earned get explicit dispositions (downgrade or [Dormant per Principle 2](../../CLAUDE.md#working-principles-for-new-mechanisms)).
+2. **Post-1.0 path:** `Earned` → re-validated on triggering events → `Maintained <last_validated>`. If a trigger fires and the entry isn't re-run, it goes `Stale` (blocks next release until validated). If a re-run fails, `Broken (regression detected <date>)` (must fix or downgrade before release). When a mechanism is removed from the codebase, the entry goes `Retired <date>` but stays in the table as historical record.
 
 ## Three-tier scope
 
@@ -57,16 +66,44 @@ Representative examples (not exhaustive — see CLAUDE.md "Architectural invaria
 
 These are the mechanisms where the bio-flavored framing in CLAUDE.md (or in the shipping commit messages / experiments / plans) makes an implicit behavioral claim that isn't yet cited. Each gets a graduation predicate or an explicit "can't predicate yet — claim fuzzy" flag.
 
-**Status conventions:**
+**Status conventions** (split between pre-graduation and post-graduation lifecycle):
+
+Pre-graduation (1.0 path):
 
 - **Pending — predicate written.** Setup + metric + checkpoint named below. Ready to run when fixture lands.
 - **Pending — needs fixture design.** Experimental shape is clear but fixture / metric threshold need design work.
 - **Pending — can't predicate yet.** Multi-confound or "what counts as the dependent variable is partially the experiment." These are the most honest finding — flagged so they're visible, not hidden.
-- **Earned — `<date>`.** Cited experiment ships; CLAUDE.md tag flipped (or scheduled).
-- **Dropped.** Couldn't earn it by checkpoint. Either bio-framing pulled (stays `[engineering]` no apology) or marked Dormant per [Principle 2](../../CLAUDE.md#working-principles-for-new-mechanisms).
 - **Borderline scaffolding.** On reflection this probably belongs in Tier 2; surface for decision rather than predicate.
 
-#### Initial seed table (v0.1 — expand iteratively as candidates surface)
+Post-graduation (regression-discipline path):
+
+- **Earned `<date>`.** Cited experiment shipped; CLAUDE.md tag flipped (or scheduled). Entry now lists **Re-run on:** trigger events and **Regression guard:** path to the experiment / test that re-validates it.
+- **Maintained `<last-validated-date>`.** Was Earned, has been re-validated on a triggering event without regression. Same fields as Earned.
+- **Stale.** Triggering event fired (encoder swap, bio-system refactor in scope, etc.) without re-run completing. **Blocks next release.** Convert to `Maintained` by re-running, or to `Broken` if re-run fails.
+- **Broken (regression detected `<date>`).** Re-run failed. Either fix the regression OR explicitly downgrade the mechanism (with bio-framing pulled in release notes). **Blocks next release.**
+- **Retired `<date>`.** Mechanism removed from the codebase. Entry stays in the table as historical record so future readers can see why the claim no longer needs validating. Often pairs with a `Dormant` marker on the mechanism per Principle 2.
+- **Dropped.** Couldn't earn the predicate by checkpoint and the bio-framing got pulled. Mechanism stays as engineering scaffolding with no apology. Different from Retired — the code still exists, just doesn't carry a behavioral claim.
+
+## Trigger events for re-validation
+
+Not every architectural change should trigger every re-run — maintenance cost would be prohibitive. **Triggers are category-scoped**: only entries depending on the changed category re-run.
+
+| Trigger | Categories that must re-run |
+|---|---|
+| **Encoder model swap** (sentence-transformers / paraphrase-mpnet / etc.) | All entries citing cosine thresholds or substrate encoding: Tier 1 (EC pattern completion, affordance concept transfer), Tier 3 #1, #5, possibly #10 |
+| **Bio-system refactor** touching module M | Entries referencing M's behavior. Cross-check via grep of the regression-guard path against M's source files. |
+| **Substrate-pipeline change** (LinguisticEncoder, EC, NAc, ATL, SCN — anything in the dual-write path) | All Tier 1 + substrate-bearing Tier 3 entries (#1, #2, #3, #4, #5, #7, #8) |
+| **LLM model swap / prompt-builder change** | LLM-dependent entries only: Tier 3 #11 (Acting Coach), #12 (pre-deliberation). Substrate-primary entries (Tier 1 #5, B5-derived) are by-design LLM-independent and DO NOT re-run on this trigger. |
+| **PainBus / ReactionBus / NAc reward pipeline change** | SEM cascade entries (Tier 1 #3, Tier 3 #10, #15) |
+| **Cradle / drive / SEM body change** | Drive + reflex entries (Tier 3 #6, #9, #10, #15) |
+| **Minor-version heartbeat** (each `0.X+1` release pre-1.0; each `1.X+1` release post-1.0) | Walk all `Earned` Tier 1 entries, confirm Maintained or schedule re-run. Tier 3 walks are opportunistic. |
+| **Major-version cut** (1.0 → 2.0, etc.) | Walk the entire table top to bottom; explicit dispositions on every entry. |
+
+**Discipline:** triggers go in the entry's **Re-run on:** field at graduation time, not retroactively. When you graduate an invariant, you're committing to a re-validation contract — naming the triggers is part of earning the tag.
+
+**Catching the "non-code drift" class:** triggers above are mostly code-change events. The Roy-3c bisect showed that non-code drift (encoder weight changes, library version bumps, pip-resolved transitive dependency shifts) can break behavioral claims without any code-side trigger firing. The minor-version heartbeat is the safety net — it re-runs Tier 1 even if no specific trigger fired, catching slow drift.
+
+## Initial seed table — Tier 3 candidates (v0.1, expand iteratively)
 
 | # | CLAUDE.md ref | Mechanism | Bio-claim | Graduation predicate | Status |
 |---|---|---|---|---|---|
@@ -78,7 +115,7 @@ These are the mechanisms where the bio-flavored framing in CLAUDE.md (or in the 
 | 6 | L163 (drive protocol) | HomeostaticDriveSpec / EntropicDriveSpec → behavior | Drive deviation beyond `comfort_band` shifts action selection toward corrective affordances | **Setup:** Cradle scenario with thermal / hunger perturbation; measure action selection on corrective vs distractor affordances. **Metric:** corrective preference rate > random + significance threshold when drive deviation > `comfort_band`. **Checkpoint:** 1.0 — cradle B4 is the natural test bed | Pending — predicate written; covered by [v1_refinement.md](v1_refinement.md) cradle work |
 | 7 | L156-157 (valence on edges) | `spreading_activation(propagate_valence=True)` + `apply_hebbian_on_close` + `salience_spike_rule` | Negative-valence-tagged paths attenuate spreading activation; positive amplify | **Setup:** synthetic episode graph with valence-tagged edges; measure recall preference distribution. **Metric:** recall probability for negative-valence path < random baseline; positive > baseline. **Checkpoint:** 1.0 | Pending — needs fixture design |
 | 8 | L159 (NAc per-tick decay wired) | `decay_eligibility` + `decay_reward_biases` per agent_loop tick | Decay enables credit to track recency; without decay, traces stay forever and disrupt new learning | **Setup:** two arms — decay-on vs decay-disabled — running affordance learning across N tasks. **Metric:** decay-on arm shows faster convergence on later tasks (less interference from earlier reward biases). **Checkpoint:** 1.0 | Pending — needs fixture design |
-| 9 | Reflex system (per `project_percept_reflex_system_shipped` memory) | Innate body reflexes (e.g., infant thermal contact) | Reflexes fire below deliberation; shape learned avoidance over repeated exposure | **Setup:** already validated per [Experiment 09](../experiments/09_percept_reflex.md) — infant thermal contact reflex. **Metric:** reflex fires at contact + learned-avoidance trajectory measured. | **EARNED — Experiment 09** (CLAUDE.md citation update pending) |
+| 9 | Reflex system (per `project_percept_reflex_system_shipped` memory) | Innate body reflexes (e.g., infant thermal contact) | Reflexes fire below deliberation; shape learned avoidance over repeated exposure | **Setup:** already validated per [Experiment 09](../experiments/09_percept_reflex.md) — infant thermal contact reflex. **Metric:** reflex fires at contact + learned-avoidance trajectory measured. **Re-run on:** Cradle / drive / SEM body change; PainBus / ReactionBus / NAc reward pipeline change; minor-version heartbeat. **Regression guard:** [docs/experiments/09_percept_reflex.md](../experiments/09_percept_reflex.md) + reflex YAMLs in `_data/reflexes/`. | **EARNED — Experiment 09** (CLAUDE.md citation update pending) |
 | 10 | L164 (entity acquisition) | `entity_acquired` / `entity_released` contact sensation | Acquired entities contribute sensors to body damage model while equipped; behavioral effect of contact persists | **Setup:** cradle / sim scenario with damaging vs benign acquired entity. **Metric:** damage propagation through acquired entity sensors validated end-to-end; behavioral preference shift over N pickups. **Checkpoint:** 1.0 | Pending — predicate written; partial coverage from component damage work |
 | 11 | B3 Acting Coach (per `project_07_r0_b3_shipped` memory) | Acting Coach prompt with bio-system modulation (NAc caution, pain anticipation, cerebellum predictions) | Substrate-informed meta-prompt steers affordance exploration toward salient/cautious actions per NAc state | **Setup:** generative sim with Acting Coach on vs off; measure exploration breadth + caution markers. **Metric:** caution rate scales with NAc reward bias magnitude in on-arm. **Checkpoint:** 1.0 | Pending — **can't predicate cleanly yet** (multi-confound: LLM stylistic variation + Acting Coach effect entangled; needs ablation design that isolates substrate-modulation from prompt-tone changes) |
 | 12 | Pre-deliberation (per `project_pre_deliberation_shipped`) | ThoughtGate + BioEnrichment Layer 1 pre-LLM | Bio-enrichment of pre-deliberation thought stream improves downstream action selection | **Setup:** comparative arms — pre-deliberation on vs off — on a benchmark task. **Metric:** task success rate or action coherence delta. **Checkpoint:** 1.0 | Pending — **can't predicate cleanly yet** (multi-confound; entangles with prompt construction in non-trivial ways) |
@@ -91,7 +128,7 @@ These are the mechanisms where the bio-flavored framing in CLAUDE.md (or in the 
 | 19 | L157 (NAc `_reward_bias` clamping) | `_reward_bias` clamps to `[0, max_reward_bias]`; negative rewards handled via valence-on-edges | Bias only widens EC recognition, never narrows; pain avoidance routed via valence path not bias narrowing | **Setup:** compare arms — negative-clamped-to-zero vs negative-narrows-recognition. **Metric:** clamping arm shows pain-avoidance via valence; non-clamping arm shows narrowing artifacts. **Checkpoint:** N/A | Pending — **architectural choice; predicate fuzzy.** The alternative would require reimplementing the bias formula. Strong candidate to drop to Tier 2 if no predicate emerges. |
 | 20 | L85 (PainBus refractory gate) | `(entity, failure_mode)` refractory dedup | Fine-grained refractory prevents within-tick duplicate dispatch while preserving distinct entities | **Setup:** multi-entity pain-burst fixture (two distinct entities fire same-tick). **Metric:** 2 distinct dispatches preserved; same-entity-same-failure collapsed to 1. **Checkpoint:** N/A | **Borderline scaffolding** — correctness property already pinned by regression test, not a behavioral claim. Surface for decision: belongs in Tier 2. |
 
-#### Honest accounting of the v0.1 seed
+### Honest accounting of the v0.1 seed
 
 20 candidates above resolve as:
 
@@ -107,9 +144,23 @@ These are the mechanisms where the bio-flavored framing in CLAUDE.md (or in the 
 
 ## Status check cadence
 
-- **0.9.x checkpoint** (each minor release): walk the table, flip `Earned` tags, drop entries that didn't earn predicates, fold borderline-scaffolding entries down to Tier 2.
-- **1.0 readiness review:** Tier 1 must be 100% `Earned`. Tier 3 entries that can't be earned have explicit dispositions: scaffolding-downgrade, dormant per Principle 2, or 1.1+ deferral.
-- **Post-1.0:** this becomes a living doc like [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — new bio-mechanisms entering 1.x+ track here from inception, not retroactively.
+The cadence has two layers: **scheduled walks** (heartbeat) and **event-driven re-runs** (triggers above).
+
+**Scheduled walks:**
+
+- **0.9.x checkpoint** (each minor release pre-1.0): walk the full table. Flip `Earned` tags as experiments ship. Drop entries that didn't earn predicates. Fold borderline-scaffolding entries down to Tier 2. Add new bio-mechanisms shipped this minor as fresh Pending entries.
+- **1.0 readiness review:** Tier 1 must be 100% `Earned`. Tier 3 entries that can't be earned have explicit dispositions: scaffolding-downgrade, dormant per Principle 2, or 1.1+ deferral. No `Stale` or `Broken` entries allowed.
+- **1.X minor heartbeat** (each minor release post-1.0): walk all `Earned` Tier 1 entries. For each, confirm `Maintained` or schedule a re-run. Opportunistic walks of Tier 3.
+- **Major-version cut** (1.0 → 2.0 etc.): walk the entire table top to bottom; explicit disposition on every entry.
+
+**Event-driven re-runs:** any trigger in the table above fires a re-run of the entries it covers. The re-run flips status `Earned → Maintained` (pass) or `Earned → Broken` (fail). If a trigger fires and the affected entries haven't been re-run, they go `Stale` and **block the next release**.
+
+**Release gates:**
+
+- **No release ships with `Stale` or `Broken` entries.** Either re-run (Stale → Maintained) or explicitly disposition (Broken → fix-or-downgrade).
+- **The minor-version heartbeat catches slow non-code drift** (encoder weight shifts, library version bumps, transitive dependency drift) that wouldn't fire a code-change trigger. This is the safety net for the Roy-3c-class regressions.
+
+**This is a living doc, not a one-shot.** New bio-mechanisms entering at any version track here from inception, not retroactively. The seed table below is v0.1; expect it to grow with each minor release.
 
 ## Cross-references
 
@@ -123,7 +174,8 @@ These are the mechanisms where the bio-flavored framing in CLAUDE.md (or in the 
 
 ## What this doc is NOT
 
-- **Not a substitute for individual experiment plans.** Predicates here are seeds; full experimental designs live in `docs/experiments/` once they're being run.
+- **Not a substitute for individual experiment plans.** Predicates here are seeds; full experimental designs live in `docs/experiments/` once they're being run. The **Regression guard** field on Earned entries points back to the experiment doc.
 - **Not a wish list.** Entries without predicates after the 0.9.x checkpoint cycle drop or downgrade — they don't sit indefinitely as aspirations.
-- **Not exhaustive.** v0.1 seeds 20 candidates; expand iteratively as new bio-mechanisms ship or audits surface more.
+- **Not exhaustive at any point in time.** v0.1 seeds 20 candidates; expect the table to grow with each minor release as new bio-mechanisms ship. The table being incomplete is normal; the table being stagnant is the failure mode.
 - **Not the 1.0 release gate by itself.** Benchmarking is the sibling gate; both must pass.
+- **Not just a 1.0 artifact.** The discipline persists indefinitely — Earned invariants get re-run on triggering events post-1.0, and `Stale` / `Broken` entries block subsequent releases.
