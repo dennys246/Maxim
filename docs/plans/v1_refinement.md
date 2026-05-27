@@ -312,6 +312,50 @@ Pre-merge two-lens review: 5 findings folded (ReactionBus message clarification,
 
 1.0 flip is tracked in §1.1-T4: change the default warning to a `TypeError` (or remove the parameter and require the builder).
 
+### C7. Dormancy audit follow-up — broader cleanup candidate list (1.0 cleanup track)
+
+**Surfaced by:** PR #282 (2026-05-26) — CLAUDE.md Principle 2 dormancy markers for four canonical mechanisms. PR #282 also ran a parallel Explore-subagent sweep across `imagination/`, `memory/`, `simulation/`, `tools/`, `models/language/`, `reactions/`, `proprioception/`, `embodiment/`, `runtime/` that surfaced **27+ additional candidates** — over the kickoff's 20-threshold which says "something larger is going on (dead-code accumulation, refactor leftovers)."
+
+**False-positive lesson from PR #282 spot-check:** an early subagent flagged all 6 `*_from_snapshot` helpers in [memory/snapshot.py:406-446](../../src/maxim/memory/snapshot.py#L406-L446) as dormant, but those are production-used via an internal dispatch table at lines 608-613. Grep-only sweeps produce noise; **every candidate needs hand-validation against indirect-dispatch patterns** (dispatch tables, plugin discovery, reflection, duck typing) before marking.
+
+**Candidates to triage before 1.0** (sorted by suspicion strength from PR #282's spot-check; verify each independently):
+
+- `memory/atl.py:576` — `get_by_modality` — retrieval by sensory modality; only definition site
+- `memory/atl.py:621` — `propose_relationship_type` — semantic relationship proposal; only definition site
+- `memory/semantics.py:269,278` — `save_registry` / `load_registry` — registry persistence helpers; only definition sites
+- `memory/hippocampus.py:1089` — `get_memories_by_index` — index-key lookup; only definition site
+- `memory/hippocampus.py:1179` — `repair_consistency` — internal consistency maintenance; only definition site
+- `memory/hippocampus_retrieval.py:367` — `get_associated_ids` — associated-memory id lookup
+- `memory/spatial.py:19` — `SpatialContext` dataclass — forward-compat type per module docstring
+- `memory/hippo_tracer.py:145,177` — `traced_recall` / `traced_recall_associated` nested functions in tracer
+- `imagination/cache.py:75` — `mention_count` — phrase mention-count accessor
+- `imagination/trigger.py:1052` — `clear_session` — session-cache clear (verify session-end indirection)
+- `tools/learned_index.py:165` — `register_manual_keywords`
+- `tools/discovery.py:53` — `evict_stale_discoveries`
+- `tools/mode_switch.py:123` — `get_switch_history`
+- `proprioception/pain_bus.py:284` — `recent_by_type` — bus history accessor
+- `embodiment/cerebellum.py:539` — `observe_action_sequence` — motor program crystallization
+- `embodiment/cerebellum.py:553` — `find_programs_for_goal` — goal-keyed program query
+- `embodiment/cerebellum.py:661` — `query_engrams` — engram retrieval
+- `embodiment/reflex.py:150` — `reset_state` — reflex-registry state clear
+- `simulation/arcs.py:51,74` — `turn_range` / `phase_names` — narrative-arc accessors
+- `simulation/campaign_runner.py:63` — `run_dm_campaign`
+- `simulation/conversational_source.py:130` — `inject_sensor`
+- `simulation/dm_runtime.py:882` — `get_active_entity`
+- `simulation/entity_designer.py:166,202` — `design_npc` / `design_item`
+
+**Separately flagged for deeper investigation:** the `simulation/` subsystem subagent reported "30+ additional dormant methods in logging, validation, foundry, experiment introspection, and tool modules" beyond the 7 surfaced above. That magnitude is a **dead-code-accumulation signal**, not individual-mechanism dormancy — treat as a distinct audit pass (closer to P3's energy-code hard-remove shape than C7's per-method marker shape).
+
+**Approach for the 1.0 cleanup track:**
+1. **Per-candidate hand-validation** against indirect-dispatch patterns (~2-3 minutes per candidate; cap at the ~23 atomic candidates above).
+2. **For true-positive dormant mechanisms** (no production caller, no bio-thesis claim attached): apply the `Dormant since <date>: <reason>` marker per CLAUDE.md Principle 2.
+3. **For true-dead-code** (no production caller AND no scoped revival path AND no future-proofing rationale): hard-remove following P3's pattern. Bias toward dormancy when ambiguous — cascade-deletion risk is documented in CLAUDE.md.
+4. **Simulation-subsystem mass cleanup** is its own audit; not bundled into this candidate list.
+
+**Cost ceiling:** ~3-4 hours wall to triage the 23 atomic candidates above; the simulation-subsystem sweep is open-ended and scoped separately.
+
+**Why a follow-up rather than blocking 1.0:** PR #282's canonical 4 markers carry the principle's hard-shipped form. The broader candidates need per-mechanism validation that doesn't fit a single PR's review surface. Cross-confirmed false-positive rate (1-of-7 sample) means the discipline must be hand-validation, not subagent-trust.
+
 ---
 
 ## Section 6: Docs

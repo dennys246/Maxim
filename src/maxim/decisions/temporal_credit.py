@@ -125,7 +125,13 @@ class TemporalCreditDistributor:
                     self._deliberation_events[goal] = event
 
     def anticipatory_pre_activate(self, agent_id: str) -> list[tuple[str, float]]:
-        """Pre-activate eligibility traces for events the oscillator predicts.
+        """Dormant since 2026-05-26: B2 closed the loop in the distributor
+        class but the production agent loop never registered the per-tick
+        caller. Awaits a new experiment that earns the behavioral weight.
+        See ``docs/plans/scn_decay_anchoring.md`` Principle 2 fold for the
+        path to revive (subscribe to SCN clock at the eligibility tier).
+
+        Pre-activate eligibility traces for events the oscillator predicts.
 
         Called once per tick (before distribute) to prime the fast-decay
         path.  When the predicted event actually fires and a reward

@@ -233,17 +233,19 @@ class SCN:
         clock_estimator: Any,
         significance: float = 0.5,
     ) -> None:
-        """Register a memory from a peer with clock skew correction.
+        """Dormant since 2026-05-26: the mesh clock-estimator this method
+        was designed for was deleted as dead code in R0 of
+        ``archive/llm_path_foundation.md`` (2026-04-12). Grep shows zero
+        callers anywhere in src/ or tests/. Awaits a new experiment that
+        earns a clock-sync layer back into the codebase.
+
+        Register a memory from a peer with clock skew correction.
 
         Corrects the TemporalSignature using a clock-estimator duck type
         before registering, so bins align with local time. If no clock
         estimate is available yet, registers with the uncorrected signature.
-
-        Note: this method is currently unused (the mesh clock-estimator it
-        was designed for was deleted as dead code in R0 of
-        archive/llm_path_foundation.md — 2026-04-12). Kept as a hook for a future
-        clock-sync layer. ``clock_estimator`` is duck-typed: any object with
-        a ``correct_signature(peer_id, signature) -> TemporalSignature``
+        ``clock_estimator`` is duck-typed: any object with a
+        ``correct_signature(peer_id, signature) -> TemporalSignature``
         method works.
 
         Args:
