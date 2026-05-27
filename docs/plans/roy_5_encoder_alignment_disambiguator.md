@@ -5,6 +5,44 @@
 **Owns:** `scripts/analyze_roy_5_cosine_localization.py` (new), `scenarios/roy/roy_5a_*.yaml` (post-hoc analysis spec), `scenarios/roy/roy_5b_*.yaml` (conditional cradle-arc redesign + Hebbian retest), `docs/experiments/22_roy_5*.md`, `_data/components/bodies/infant_humanoid_*.yaml` (conditional cradle-arc edits), `prompts/cradle_narrator.py` (conditional naming-event scaffolding).
 **Companion plans:** [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy iteration log) · [release_0_9_1.md](release_0_9_1.md) (Wire-A interim is unchanged by this plan) · [grounded_language_acquisition.md](grounded_language_acquisition.md) (Phase 1's `token_id → ec_node_id` registry consumes whichever populator this plan validates) · [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) (cancelled by Roy-4; may resurrect with corrected scaffold per Stage 3)
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this diagnostic + branched-implementation plan need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Note:** Stage 1 is **diagnostic only** (analyzer script consuming existing logs); no front-gate question at all — pure measurement. The front-gate question bites only for the branched implementation stages (2a/2b/2c → 3 → 4a/4b).
+
+**Existing infrastructure surveyed (Stage 2a — H1c threshold/centroid sweep):**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `ECConfig.pattern_complete_threshold` + `frozen_centroid_modalities` | **Already the right knobs** — H1c branch is pure parameter tuning, no new code |
+| Existing `scripts/diagnose_*` matrix sweep pattern ([scripts/diagnose_roy_paraphrase_collapse.py](../../scripts/diagnose_roy_paraphrase_collapse.py)) | **Already the right sweep harness** — Stage 2a reuses |
+
+**Verdict (Stage 2a):** could-ride-on-existing entirely. No new mechanism.
+
+**Existing infrastructure surveyed (Stage 2b — H1b encoder A/B):**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `LinguisticEncoder._get_encoder` singleton | **The bug** — process-wide singleton blocks A/B. Stage 2b kills the singleton, adds per-call-site factory accepting explicit model name. Additive — existing zero-arg form still works |
+| Existing `LinguisticEncoder` infrastructure | Otherwise unchanged — Stage 2b is one signature change |
+
+**Verdict (Stage 2b):** could-ride-on-existing with one additive API shape change (the existing singleton becomes a default for the new factory).
+
+**Existing infrastructure surveyed (Stages 3-4 — H1a + cradle redesign + binding/encoder branches):**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| Cradle arc YAML ([_data/components/bodies/infant_humanoid.yaml](../../src/maxim/_data/components/bodies/infant_humanoid.yaml)) + narrator scaffold | **Already the right modification targets** — Stage 3 adds deliberate naming events to existing arc structure |
+| `cross_modal_substrate_binding.md` Hebbian binding | Resurrected on Stage 4a PASS — the new mechanism is *already-designed elsewhere* |
+| `jepa_cross_modal_alignment.md` projection layer | Promoted on Stage 4a-rescue-fails — the new mechanism is *designed elsewhere* |
+
+**Verdict (Stages 3-4):** the implementation branches both **point at separate plans** for their new-mechanism scope. This plan's diagnostic-first reframe is the front-gate discipline itself — defer the new-mechanism decision until measurement names which branch is needed.
+
+**Verdict aggregate:** this plan is **largely diagnostic-only with branched parameter tuning**. The expensive new mechanisms (binding edges, JEPA projection) are deferred to dependent plans. Specific reason: per the two-lens review convergence cited below, "audit before building + diagnose before implementing" prevents committing to a new mechanism before data names which one is required.
+
 ## Why this plan exists
 
 Roy-4 (PR #246, [docs/experiments/21_roy_4.md](../experiments/21_roy_4.md)) cancelled `cross_modal_substrate_binding.md` Stages 2-6 because the proposed Hebbian binding rule found zero priming↔test bound edges across the full reasonable parameter sweep. The empirical finding was specific:

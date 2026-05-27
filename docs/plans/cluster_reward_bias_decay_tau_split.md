@@ -5,6 +5,25 @@
 **Owns:** [`src/maxim/decisions/nac.py`](../../src/maxim/decisions/nac.py) (`NACConfig` field add + `decay_cluster_reward_biases` consumer change), [`tests/unit/test_nac.py`](../../tests/unit/test_nac.py) (regression guards for the new field), [`docs/experiments/30_wire_a_tau_validation.md`](../experiments/30_wire_a_tau_validation.md) (companion write-up, created during Phase 3).
 **Companion plans:** [release_0_9_1.md](release_0_9_1.md) (this is the substantive Tier 2 work the Roy-3 writeup teed up), [v1_refinement.md](v1_refinement.md) (Roy-3 follow-up item 2 — "decide whether Wire-A's render needs a raw priming snapshot floor" — supersedes that decision with a cleaner tune), [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy-3 retry that depends on this lands here).
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| Reuse `reward_bias_decay_tau=50.0` for `_cluster_reward_bias` | **The status-quo riding-on-existing path — and it's the bug.** 50.0 was sized for EC threshold modulation; Wire-A needs ~300-400 for multi-turn substrate-voice annotation. Same field, wrong use case |
+| Reuse `percept_valence_decay_tau=200.0` | Wire 2's tune; cluster_reward_bias is associative-memory (longer timescale) than per-event Pavlovian aversion. 200 is in the right ballpark but is the wrong field by use-case discipline |
+| Add a global `bio_decay_scale` factor | A multiplier across all decays would break Wire 2's deliberate decoupling and re-introduce the same use-case-collision the plan is trying to fix |
+| Per-cluster learnable decay | Would solve the static-default problem but is a Phase 6+ scope expansion (per [decay_consolidation_calibration_plan.md](decay_consolidation_calibration_plan.md) Q12). Wrong scale for this fix |
+
+**Verdict:** could-ride-on-existing but the existing path is the bug. The minimum-viable fix is **a new `NACConfig` field** (`cluster_reward_bias_decay_tau`) — riding on the existing `NACConfig` dataclass pattern (Wire 2 already established the per-use-case split precedent).
+
+**Specific reason:** Wire 2's earlier `percept_valence_decay_tau` split established the rule "when a tau gets reused for a new use case with a different timescale, split it." This plan applies that established pattern to cluster_reward_bias. The new field is the smallest unit that satisfies the calibration math without breaking Wire 2's existing tune.
+
 ## Why this plan exists
 
 Roy-3 ([23_roy_3.md](../experiments/23_roy_3.md)) shipped the four 0.9.1 wires and ran the pre-registered annotation-pattern validation. The pre-registered outcome ("A ≈ B ≈ C across both fixtures") reproduced. Wire-A's annotation was wired correctly end-to-end, but the LLM saw `[neutral / mixed]` at test time (max(|bias|) = 0.036 in Roy-3a, 0.098 in Roy-3b — both below the 0.1 "mildly rewarding" floor). The annotation was present but said nothing.

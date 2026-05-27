@@ -7,6 +7,32 @@
 
 ---
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3. Analyzed per-layer because Oasis and Hivemind ship as distinct mechanisms.
+
+**Question per layer:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**B5 shareability infrastructure (1.0 prerequisite, ~660 LOC):**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `maxim.utils.atomic_io.atomic_write_json` + bio-system `save()` / `load()` | **Provides per-system serialization** but not bundle composition. Need a wrapper that bundles NAc + EC + ATL + reflexes + manifest + signature into one shareable artifact |
+| `_format_version` contract (CC1) | Provides the versioning rule but doesn't compose across files into a bundle |
+| `mesh.yml` parser (frozen at 1.0) | Wrong scope — declarative topology, not data exchange |
+| `_MaximPeerBackend` for transport | Wrong layer — handles LLM inference proxying, not substrate-bundle transport |
+| Existing identity-bearing concept detection (ported from old Mother plan ~80 LOC) | Already designed; this plan reuses |
+
+**Verdict (B5):** yes-needs-own. Bundle format + merge functions + provenance tags + domain tagging are all genuinely new — no current code composes across bio-systems into a single artifact.
+
+**Oasis software (1.1, ~800 LOC):** **split verdict** — bio-stack + percept pipeline rides-on (~400 LOC); substrate-bundle ingestion contract is yes-needs-own (~400 LOC, small but real). Reuses `build_bio_stack` for the agent layer. Specific reason: the substrate-bundle-ingestion path is **not** a PerceptSource — it calls B5's merge functions, routes through NAc/EC/ATL merge semantics, honors provenance tags, and runs substrate-domain subscriptions that other modules will depend on. Per Principle 3's "additive method that introduces new semantics other modules depend on is functionally a new mechanism" test, the ingestion adapter is genuinely new contract surface, not peripheral conversion. The Maxim-instance shell rides on existing infrastructure; the ingestion side does not.
+
+**Hivemind P2P protocol (1.2, ~600 LOC):** yes-needs-own. No existing peer-to-peer surface in Maxim — mesh layer is leader/peer hierarchical, not P2P. Specific reason: substrate-bundle exchange needs conflict resolution, poison resistance, gossip propagation — none of which the existing mesh layer models. Existing `_MaximPeerBackend` handles inference proxying only.
+
+**Verdict aggregate:** B5 (bundle format + merge functions), Oasis ingestion contract (substrate-bundle → bio-pipeline integration), and Hivemind P2P (peer protocol + conflict resolution) all introduce genuinely new mechanisms. Only the Oasis agent shell rides on the existing bio-stack. The phasing (B5 in 1.0 → Oasis in 1.1 → P2P in 1.2) keeps each new-mechanism slice tractable.
+
+**Specific reason for new mechanisms:** the old Mother Maxim plan tried to store and redistribute *user memories* (episodes, dialogue); the substrate-primary pivot reframed shareability around *distilled bio-substrate* (NAc weights, EC centroids). No current code composes across bio-systems into a single bundle, and no current code does P2P substrate exchange — both are net-new at the system layer.
+
 ## Vision
 
 Two complementary layers form the federated cognition fabric:

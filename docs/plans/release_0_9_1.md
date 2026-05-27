@@ -5,6 +5,24 @@
 **Owns:** [decisions/nac.py](../../src/maxim/decisions/nac.py), [runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py), [runtime/gating.py](../../src/maxim/runtime/gating.py), [embodiment/](../../src/maxim/embodiment/), [proprioception/pain_bus.py](../../src/maxim/proprioception/pain_bus.py), [simulation/sim_logger.py](../../src/maxim/simulation/sim_logger.py), [prompts/](../../src/maxim/prompts/)
 **Companion plans:** [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) (Wires 1+2+3 scoped here), [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy iterations that motivate the release)
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Note:** this is a **release coordination doc** scoping work from multiple sub-plans, not a single-mechanism plan. The front-gate analysis is per-wire because each wire is its own mechanism slice.
+
+**Question per wire:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Stage 0a-d (telemetry + probe instrumentation):** could-ride-on-existing. The probe is an env-var override on existing `propose_via_substrate`; telemetry rides on existing `RequestContext` + `sim_log` + `actions.jsonl` patterns. EC-activation instrumentation is an env-var-gated JSONL event from existing `pattern_complete_or_separate`. No new mechanism.
+
+**Wire-A (NEW — cluster-bias annotation):** could-ride-on-existing. `NAc._cluster_reward_bias` already accumulates; PromptBuilder already renders tool descriptions; agent_loop's `StructuredContext.cluster_bias_annotations` is the producer site. The new piece is **one prompt section consuming existing accumulator state** + the agent-loop producer site that calls it. No new persistence, no new bus.
+
+**Wires 1+2+3 (escalated from bio_emergent_persona_foundations.md):** per-wire analysis lives in that plan's front-gate section. Summary: Wires 1, 3 ride on existing infrastructure; Wire 2 introduces a new percept-keyed aversion store on NAc — explicitly justified because no existing accumulator is keyed by percept identity. Specific reason in the foundations plan.
+
+**Verdict aggregate:** 0.9.1 ships **four annotation wires + telemetry**, three of which ride entirely on existing infrastructure. Only Wire 2's `NAc._percept_valences` introduces new persistence — and that's gated by the latent-bridge×subscriber trap check.
+
+**Specific reason for the release being possible at all:** the substrate-annotates-LLM-context pattern is structurally additive — bio-state already exists; the wires render existing state into a layer (the LLM prompt) where the action proposer reads it. The release does not need to invent new bio-mechanism to fix the Roy-2pc symmetric structural-vs-behavioral gap.
+
 ## Why 0.9.1 (not 1.0)
 
 The 1.0 release plan ([v1_refinement.md](v1_refinement.md)) explicitly **deferred** the bio_emergent_persona_foundations wires to 1.1+ on the rationale that [docs/experiments/12_v1_phased_attribution.md](../experiments/12_v1_phased_attribution.md) Phase A reproduced cross-session recall without scaffolds. That rationale held until the Roy harness produced a different falsification target: cross-session recall happens, but **substrate-acquired bias does not translate into action selection**.

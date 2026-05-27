@@ -4,6 +4,28 @@
 **Trigger:** Roy-3a-retry NULL outcome — Wire-A annotated `sense_food_source [strongly rewarding from prior experience]` but no food entity was in scene. Imagination *should* be able to dream up a food-source entity to make the substrate-favored tool invokable, but the trigger is percept-text-bound and substrate signals (NAc, Wire-A, ATL) don't reach it.
 **Target:** 1.1+ (post-1.0). Not a 1.0 gate.
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `ImaginationTrigger.process_percept()` ([imagination/trigger.py:579](../../src/maxim/imagination/trigger.py)) | **Already the right entry point** — needs an additive `tool_bias_context` parameter, not a new trigger surface. Candidate (2) below rides here |
+| `Narrator.generate_scene_manifest()` ([narrator.py:472](../../src/maxim/simulation/narrator.py)) | **Already the right entry point** for one-shot scene-load substrate injection. Candidate (1) below rides here (~20 LOC additive) |
+| `StructuredContext.cluster_bias_annotations` (Wire-A render at [agent_loop.py:2864](../../src/maxim/runtime/agent_loop.py)) | **Already computes the substrate signal** — the hookup is *consume it from where it's already calculated*, not produce a new signal |
+| `NAc.get_agent_tool_biases()` | Already provides the data; no new accumulator needed |
+| `ComponentIndex` two-layer discovery (alias + embedding) | Solves *which* entity to design once imagination fires — wrong layer for *whether* to trigger. Stays in the design pipeline, not the trigger decision |
+| Bio-pipeline pre-deliberation enrichment ([integration/bio_enrichment.py](../../src/maxim/integration/bio_enrichment.py)) | Tempting but wrong abstraction layer — enrichment shapes the LLM prompt, not the imagination trigger. Adding imagination calls inside enrichment would couple two systems that should stay layered |
+| DN arousal gate ([trigger.py:706](../../src/maxim/imagination/trigger.py)) | Candidate (3) below proposes *relaxing*, not replacing — additive |
+
+**Verdict:** could-ride-on-existing. All three highest-priority hookups are **additive parameters on existing methods**, not new mechanisms. No new bus, bridge, registry, or builder. **Caveat:** Candidate (2) introduces a new *caller* (per-tick subscriber at LLM-submission time) — itself additive wiring, not a new producer-side infrastructure, but it does change the call-frequency profile of `process_percept` and merits load-test review.
+
+**Specific reason:** the substrate signals already exist (Wire-A output, NAc tool biases) and the imagination entry points already exist (`process_percept`, `process_manifest`). The gap is purely *additive wiring* — connecting computed signal A to consumer B. Front-gate scope pressure is satisfied without proposing new mechanism surface.
+
 ## Why this plan exists
 
 In Roy-3a's test arm, the substrate has strong signal that `sense_food_source` is rewarding (Wire-A annotation `[strongly rewarding from prior experience]` at every LLM submission; cluster_reward_bias 0.997 → 0.753 across the arm; 660 ATL "Concept reinforced" events for `sense_food_source (action)` during priming). The simulation could supply a food entity by triggering imagination — that's the cradle precedent. But the percepts in the Roy-1 holdout fixture are pure body-sensation ("heat blooms across your fingertips", "something soft drapes against your cheek"), and imagination's regex+stop-word entity-phrase extractor finds zero entity indicators. So imagination never tries.

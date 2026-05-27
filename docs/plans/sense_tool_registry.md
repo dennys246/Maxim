@@ -4,6 +4,27 @@
 **Trigger:** Roy-3a-retry NULL outcome — Wire-A annotated `sense_food_source [strongly rewarding from prior experience]` but the tool was silently absent from arm A's active tool roster because the test fixture had no food entity. The LLM had no signal that the tool exists elsewhere.
 **Target:** 1.1+ (post-1.0). Not a 1.0 gate.
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient |
+|---|---|
+| `ToolRegistry` ([tools/registry.py](../../src/maxim/tools/registry.py)) — scene-scoped activation + active tool cap | Active-list machinery is already there; what's missing is *grayscale visibility for inactive tools*. ToolRegistry only models active/inactive as binary visibility |
+| `PromptBuilder` `tools_block` rendering | Reads ToolRegistry's active list; would need a new metadata-aware render branch to emit `[GRAYSCALE]` rows. Render-side change rides on PromptBuilder; *what to render* needs the new metadata layer |
+| Executor auto-fire bypass ([agent_loop.py:1292](../../src/maxim/runtime/agent_loop.py)) | Currently implicit-in-dispatcher-path; would still need declarative `auto_fire=True` metadata on the tool for the unification to work |
+| `ComponentIndex` two-layer discovery (alias + embedding) | Solves entity-name discovery, not tool-presence visibility. Wrong abstraction layer |
+| `ToolOutput.side_effects` typed channel (CLAUDE.md L82) | Canonical bio-pipeline signal channel from-tool-to-bio-pipeline. Wrong direction — auto-sense needs a from-tool-to-event-log channel, which is a separate event-type contract |
+| `sim_log` event types | Auto-fired output could route to a new `sensory_events.jsonl` via `sim_log`; but separating from `actions.jsonl` needs a new event-type contract, not just a render change |
+
+**Verdict:** yes-it-needs-to-be-its-own (small but real). The new piece is **tool metadata** (`auto_fire`, `scene_scoped`, `grayscale_when_inactive`, `sensory_event_log`) plus a metadata-aware render branch in `tools_block`. The metadata cannot be derived from existing registration sites because the same registry currently mixes three regimes (universal / auto-discovery / SEM-derived) without a discriminator.
+
+**Specific reason:** ToolRegistry's active/inactive model has no slot for "inactive but knowable" — adding the slot is the smallest change that closes the Roy-3a-retry symptom without restructuring ToolRegistry or the auto-fire executor bypass.
+
 ## Why this plan exists
 
 The sense* tool family has accumulated heterogeneity over three independent design moments (universal-sense was a Phase 0 add, auto-sense was a perception-hygiene fix, SEM-derived sense came with embodiment). Each is correct in isolation; together they produce an LLM-facing surface where conceptually-similar tools behave very differently:

@@ -3,6 +3,34 @@
 **Status:** PHASES 1+2 SHIPPED. Phase 3 (composable body archetypes) PARTIAL — archetype YAMLs exist in `_data/components/archetypes/`, avatar migration not yet done. 1.0 vs 1.1 scope decision pending.
 **Depends on:** PR #190 (sem-damage-autosense) merged
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3. Analyzed per-phase since the plan ships three distinct mechanisms.
+
+**Question per phase:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Phase 1 (Scene Manifest Pre-trigger):** could-ride-on-existing. `ImaginationTrigger.process_percept()` exists; Phase 1 adds **a sibling method** `process_manifest()` that reuses the same extraction→index→design pipeline but bypasses arousal/energy/mention gates (pre-triggering is deliberate). `Narrator` already does LLM scene generation; Phase 1 adds **one method** `generate_scene_manifest()`. No new bus/bridge/registry. *Architecture review finding:* `process_manifest()` must stay a separate method, not a config toggle on `process_percept` — explicit-mechanism discipline.
+
+**Phase 2 (Bio-Enrichment Entity Detection):** could-ride-on-existing — **with caveat**. `BioEnrichmentPipeline` already does thalamic-relay queries; Phase 2 adds entity-candidate *detection* there but routes the *instantiation* call back through ImaginationTrigger via the agent_loop. **Critical layering rule:** bio_enrichment cannot directly mutate EntityMap (would couple two systems that should stay layered). The detection-vs-instantiation split is the front-gate-passed shape.
+
+**Phase 3 (Composable Body Archetypes):** could-ride-on-existing. Existing `bodies/base_humanoid.yaml` already provides the template; archetype YAMLs in `_data/components/archetypes/` already exist (partial). Avatar migration is composition pattern reuse, not new mechanism.
+
+**Existing infrastructure surveyed across all phases:**
+
+| Candidate | Role |
+|---|---|
+| `ImaginationTrigger.process_percept` | Reused as the design pipeline backend for `process_manifest` (Phase 1) |
+| `_ensure_entity_live` | Reused unchanged for pre-instantiation (Phase 1 — `EntityMap.contains()` makes dedup harmless) |
+| `_encode_entity_affordances` | Reused as the substrate-encoding tail of imagination (no new wiring) |
+| `BioEnrichmentPipeline` | Extended with detection-only logic (Phase 2); routing stays in agent_loop |
+| `ComponentIndex` | Reused for two-layer discovery (no extension) |
+| `EntityMap` | Reused for self/scene split (no extension) |
+| Adversarial persona prompt (deprecated PR #217) | Old "world physics engine" role — Phase 1+2 partially absorb the job by surfacing world entities into SEM proactively |
+
+**Verdict:** could-ride-on-existing across all three phases. The new pieces are additive methods + a careful layering rule (Phase 2's detection-vs-instantiation), not new abstractions.
+
+**Specific reason:** the imagination pipeline already has the right entry points; world enrichment is *when* and *how aggressively* to call them, not a new design surface.
+
 ## Motivation
 
 The imagination pipeline resolves individual entity phrases reactively — one at a time, mid-conversation, after 2+ mentions. This means:

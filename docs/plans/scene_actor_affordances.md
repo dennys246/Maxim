@@ -8,6 +8,26 @@
 
 ---
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `DamageComponentTool` ([simulation/tools.py](../../src/maxim/simulation/tools.py)) | Already exists for orchestrator-driven damage but bypasses the affordance spec — provenance is "orchestrator wrote thermal=0.8," not "dragon's breathe_fire affordance fired." Loses the bio-attribution chain |
+| `SetEntitySensorTool` | Same shortcoming as DamageComponentTool — direct sensor write, no affordance invocation |
+| `AffordanceSchema.self_effect` ([embodiment/sem.py](../../src/maxim/embodiment/sem.py)) | **Already the right model** — handles self-targeted sensor deltas with range-clamping, sub-sensor parsing, sim_sensor logging. Stages 1+2 extracted its application code into `_apply_sensor_deltas` and reused it for `target_effect`. Riding on existing infrastructure |
+| Adversarial persona prompt (deprecated by PR #217) | Did "world physics engine" role via LLM narration. Lost when persona deprecated — `OrchestratorActorTool` absorbs the dispatch surface so persona could be removed without breaking narrative→SEM coupling |
+| Full agent-backing for scene entities ([deferred/agent_backed_entities.md](deferred/agent_backed_entities.md)) | Larger, deferred. This plan is the **diagnostic** for whether the bigger investment is needed |
+
+**Verdict:** could-ride-on-existing. The `target_effect` field is a strict **extension** of the existing `self_effect` semantics (same dataclass, same write-back helper). `OrchestratorActorTool` adds one orchestrator-only Tool subclass; no new bus, bridge, registry.
+
+**Specific reason:** the substrate already has the contract surface (`AffordanceSchema` + `_apply_sensor_deltas`) and the right ownership model (`EntityMap` self/scene split). Adding a target-side write-back rides on the self-side machinery; new code is one dataclass field + one helper-call duplication + one tool class.
+
 ## Vision
 
 When the orchestrator narrates "the dragon breathes fire on you," that narration should produce real SEM mechanics on the AUT body — sensor changes → `evaluate_failures()` → PainBus → NAc — without requiring the dragon to be a full Maxim agent. The infrastructure to make this work is 90% already shipped via the imagination pipeline; the missing piece is the path from "scene entity has a `breathe_fire` affordance" to "calling that affordance writes to the AUT's thermal sensor."

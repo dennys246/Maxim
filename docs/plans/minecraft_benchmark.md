@@ -7,6 +7,27 @@
 
 ---
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed:**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| `--embodiment` flag + `bodies/*.yaml` SEM templates | **Already the right entry point** for embodied agent simulation. Minecraft player body is one more body archetype — rides on existing pattern |
+| `ToolBridge` + `AffordanceSchema` (`requires`, `self_effect`, `target_effect`) | **Already the right model** for "concrete embodied actions" (the plan's preferred approach over high-level intents) — Minecraft actions (move_to, mine_block, place_block, attack_entity) become SEM affordances |
+| `scene_actor_affordances` `target_effect` (1.1 work) | **Already the right model** for hostile mob mechanics — zombie attacking player uses the same `target_effect` shape as Maxim-internal dragon |
+| Cradle B4 (shipped) — cross-session evidence | **Already provides the foundational claim** — Minecraft demonstrates the claim viscerally, doesn't enable it |
+| Voyager / GITM / SPRING comparison harness | External benchmark infrastructure — Maxim does not replace these; just runs alongside on same seeds |
+| Custom benchmarking harness (would need to build) | The orchestrator + sim_log + report.json infrastructure already exists; Minecraft adds a new PerceptSource adapter + an external-process bridge, not a new benchmark mechanism |
+
+**Verdict:** could-ride-on-existing for the **substrate side** (embodiment + affordances + sim infrastructure all exist). The new pieces are **external-integration adapters** — a Mineflayer/WebSocket bridge to drive a real Minecraft client and a comparison-protocol harness for fairness.
+
+**Specific reason:** Minecraft is a *demonstration*, not a new mechanism. The bio-pipeline differentiation comes from existing infrastructure (NAc reward biases persisting across runs); Minecraft surfaces this in a third-party-recognizable environment. The new code is bridge + protocol + scoring — not new substrate mechanism. The plan's own framing ("post-1.0 splash launch") matches this — it's a marketable proof point of *existing* claims, not a load-bearing claim of its own.
+
 ## Goal
 
 Demonstrate Maxim playing Minecraft against published LLM-Minecraft harnesses (Voyager, GITM, SPRING, others). The differentiator is the bio-pipeline: Maxim's NAc reward biases, hippocampal episodes, substrate-encoded concepts, and SCN circadian patterns persist across sessions and shape behavior in ways prompt-loop agents cannot match.

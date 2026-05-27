@@ -5,6 +5,29 @@
 **Owns:** [similarity/ec.py](../../src/maxim/similarity/ec.py), [time/oscillator.py](../../src/maxim/time/oscillator.py), [time/scn.py](../../src/maxim/time/scn.py), [decisions/nac.py](../../src/maxim/decisions/nac.py) (consumer-side), [decisions/temporal_credit.py](../../src/maxim/decisions/temporal_credit.py)
 **Companion plans:** [release_0_9_1.md](release_0_9_1.md) (ships Wire-A as the interim; this plan is the structural fix Wire-A surfaces around), [grounded_language_acquisition.md](grounded_language_acquisition.md) (Phase 1's `token_id → ec_node_id` symbol-binding registry is *populated* by the substrate-binding edges this plan ships; the two plans are complementary, not equivalent — see "Relationship to grounded_language_acquisition" below), [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy-4 is the experimental prerequisite; Roy-5+ are the validation iterations)
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3. **This plan is CANCELLED** by Roy-4 (PR #246, 2026-05-13), but the front-gate analysis is preserved as historical documentation of why a new mechanism was contemplated and what eventually superseded it.
+
+**Question:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Existing infrastructure surveyed (at time of original drafting):**
+
+| Candidate | Why insufficient (at the time) |
+|---|---|
+| `EC.pattern_complete_or_separate` ([similarity/ec.py](../../src/maxim/similarity/ec.py)) | Operates within-modality on cosine similarity. Has no edge structure between nodes — would need a new graph data structure |
+| `NAc._temporal_anchors` ([decisions/nac.py:183](../../src/maxim/decisions/nac.py#L183)) | Already does (agent_id, node_id) → (activation, TemporalSignature) for credit assignment. Right shape; wrong consumer — used for credit-assignment-via-coincidence, not edge-formation-via-coincidence |
+| `OscillatorNetwork._event_phases` | Provides longer-horizon phase context but operates at circadian timescales, not tick-level. Wrong granularity for cross-modal binding |
+| `TemporalCreditDistributor` | Composition of NAc + SCN — could extend, but credit assignment ≠ edge formation. Different semantics |
+| `ATL.find_or_create` / `SemanticMemory` | Provides cross-modality concept lookup via natural language — bypasses the alignment problem at the symbol level. Useful as a fallback but does not close the underlying EC-node-level binding gap |
+| Wire-A in 0.9.1 | Surfaces tool-level bias to LLM prompt, bypassing EC retrieval entirely. **Static signal-surfacing, not dynamic signal-formation.** Cannot teach the substrate new cross-modal associations |
+
+**Verdict (at time of drafting):** yes-it-needs-to-be-its-own. The new mechanism was a Hebbian binding edge data structure on EC nodes — no existing surface provides cross-modal node-graph semantics.
+
+**Specific reason (at drafting):** the substrate had no edge-formation primitive across modality EC nodes. `_temporal_anchors` had the right shape for the input (coincident activation) but the wrong consumer (credit, not binding). Extending it would have collapsed two distinct semantics.
+
+**Post-cancellation update (2026-05-13):** Roy-4 found zero priming↔test EC node co-firing across the full reasonable parameter sweep. The proposed Hebbian rule could not bind what the data showed was never coincident. The cancellation was structurally correct — **front-gate analysis would have caught the issue if it had also surveyed "is the input shape this mechanism needs even present in the data?"** That meta-lesson is worth promoting to a CLAUDE.md Principle 3 sub-clause: "verify the input shape exists before designing the consumer." The follow-up [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md) (diagnostic) + [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) (resurrection conditions) inherited the cross-modal alignment problem with a different mechanism (learned projection into shared latent) that doesn't require coincident raw-encoder firing.
+
 ## Why this plan exists
 
 Roy-2c (PR #244, [docs/experiments/20_roy_2c.md](../experiments/20_roy_2c.md)) confirmed **H1: LinguisticEncoder → EC alignment failure** is the load-bearing block on the cluster_reward_bias path. The priming substrate's WMS contents (sensor/drive state + cradle narrator output) embed into one EC region; CLI test percepts ("you sense food nearby") embed into a structurally disjoint EC region — even when humans read the semantic overlap as obvious. The `cluster_reward_bias` map has the right *tool* keys (`sense_food_source`) but the wrong *cluster* keys, so `recommend_action` never finds the bias on engineered-overlap test percepts.

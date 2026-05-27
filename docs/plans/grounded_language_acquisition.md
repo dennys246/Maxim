@@ -5,6 +5,26 @@
 **Companion plans:** [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy methodology — same long-horizon shape), [behavioral_convergence_practice.md](behavioral_convergence_practice.md), [memory_consolidation_practice.md](memory_consolidation_practice.md), [v1_refinement.md](v1_refinement.md) (Phase 0 harness scope add)
 **Operating context:** Roy long-horizon simulations (sim-years of subjective experience) with persistent substrate across sessions, plus deliberately text-heavy curricular sims (mom-reading, teacher-student, dialogue). The substrate-primary AUT runs in **parallel mode** — the existing LLM-AUT path remains available so users can continue running D&D campaigns and other long-horizon LLM-driven sims while this work matures.
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3. Analyzed per-phase because the plan spans a multi-year research program with several distinct mechanism proposals.
+
+**Question per phase:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Phase -1 (substrate action-generation prototype — SHIPPED):** could-ride-on-existing. `NAc.recommend_action()` is a **new method on the existing NAc class** consuming existing reward-bias + causal-link state. `propose_via_substrate()` is **a new function in the existing agent_loop**, producing an `LLMProposal` (existing frozen dataclass — `cluster_id: str | None` field added at end per CC3 path-(b)). No new bus, bridge, builder, registry. *Specific reason:* the bio-readiness audit (2026-05-09) named "no `decision_engine.decide()` that skips the LLM" as the gap; the fix exposes existing NAc state in a new shape, not a new mechanism.
+
+**Phase 0 (pre-linguistic cradle harness — SHIPPED):** could-ride-on-existing. New `cradle_prelinguistic` arc rides on existing `arcs.py` BUILTIN_ARCS dispatch. Motor-only AUT prompt renderer is a **new prompt module** ([prompts/motor_only_aut.py](../../src/maxim/prompts/motor_only_aut.py)) — but rides on existing PromptBuilder pattern. SubstrateTelemetry JSONL writer rides on existing `sim_log` pattern. The new EC sensor-encoding entry point (`SensorEncoder`) is a **new encoder class** — but parallels existing `LinguisticEncoder` shape and routes through existing `EC.pattern_complete_or_separate`.
+
+**Phase 1 (vocabulary-constrained language — 1.1+):** yes-needs-own (small). Token-to-EC-node binding registry has no current home — neither EC nor ATL key by `token_id`. **Specific reason:** existing identity schemes (tool-name in NAc reward biases; cluster-UUID in `_cluster_reward_bias`) don't survive cross-modality (per [feedback_two_identity_schemes.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_two_identity_schemes.md)). The new registry can either ride on `cross_modal_substrate_binding.md`'s edges (if Roy-4 PASS) or build a local co-occurrence learner.
+
+**Phase 2 (symbol binding layer — 1.1+):** yes-needs-own per [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) — see that plan's front-gate analysis. Roy-4 FAIL forced the architecture into JEPA territory; existing infrastructure cannot do cross-modal alignment across 384-dim sensor vs 768-dim linguistic spaces.
+
+**Phase 3 (from-scratch sequence model — research direction):** yes-needs-own. No existing sequence model in Maxim; this phase explicitly *is* the new mechanism. Specific reason: "language is I/O from substrate" thesis cannot be earned without showing language emerges from substrate — and that requires removing the pretrained LLM at the action-selection layer.
+
+**B5 Hivemind shareability infrastructure** (referenced cross-plan in [maxim_hivemind.md](maxim_hivemind.md)): analyzed there.
+
+**Verdict aggregate:** Phases -1 and 0 ride on existing infrastructure (additive methods + parallel encoder + telemetry writer). Phases 1, 2, 3 introduce genuinely new mechanisms — and each is structurally required because the existing identity-and-encoding architecture cannot support cross-modal binding.
+
 ## Architectural framing — parallel modes, not replacement
 
 The work in this plan ships as a **parallel AUT mode** alongside the existing LLM-driven AUT. Users continue to get the LLM-AUT path by default; the substrate-primary mode is opt-in (e.g., `--aut-mode substrate-primary`) until convergence proves out.

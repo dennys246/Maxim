@@ -5,6 +5,27 @@
 **Owns:** [src/maxim/simulation/personas.py](../../src/maxim/simulation/personas.py), [src/maxim/cli_parser.py](../../src/maxim/cli_parser.py), [src/maxim/simulation/orchestrator.py](../../src/maxim/simulation/orchestrator.py), public API surface in [src/maxim/api.py](../../src/maxim/api.py)
 **Companion plans:** [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) (the wire work this cleanup makes room for), [persona_convergence_crucible.md](persona_convergence_crucible.md) (the long-term living doc)
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3.
+
+**Question:** does the `--mode` flag introduction need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Note:** this is primarily a **cleanup plan** (delete dead `personas.py`), not a new-mechanism plan. The front-gate question only really bites for the *additive* `--mode` flag piece. The dead-code deletion is pure removal — no mechanism to scope-press.
+
+**Existing infrastructure surveyed (for the `--mode` flag):**
+
+| Candidate | Why insufficient (or sufficient) |
+|---|---|
+| Existing `--persona` flag dispatch (research_orchestrator + YAML campaign detect + ResearchResult.persona) | **Already does dispatch wearing persona's hat** — the load-bearing semantics. The cleanup migrates these explicit dispatch sites to `--mode` (rename, not new mechanism) |
+| Existing argparse + `cli_parser.py` infrastructure | Already handles all CLI flags; `--mode` is one more flag with deprecation-warning behavior on the predecessor |
+| Existing back-compat surface (`SimulationResult.persona` field on persisted `session.json`) | **Must preserve** — read policy stays: missing `mode` field → `mode="generative"`. No new persistence mechanism |
+| `_orchestrator_strategy` flag (Option B in the open decision) | Would re-introduce LLM-prompt-injection under a new name. Same inauthenticity the cleanup is removing. Rejected on principle |
+
+**Verdict:** could-ride-on-existing. The `--mode` flag is a rename of dispatch semantics already in the codebase wearing the wrong abstraction. No new mechanism — just relabeling the load-bearing dispatch to its honest name and deleting the never-injected `context_prompt` scaffolding.
+
+**Specific reason:** all three dispatch sites (`--research`, YAML campaign detect, `SimulationResult.persona`) already encode mode semantics through persona-naming. The mechanism exists; it's just under a misleading name. The cleanup is structural honesty, not new functionality.
+
 ## Context
 
 The current `--persona` flag and `personas.py` module ship a feature whose stated purpose — shaping orchestrator behavior via persona-specific `context_prompt` strings — **is not actually wired**. Grep for `.context_prompt` returns zero injection sites. The 80-line adversarial prompt, the 200-line refinement prompt, the 287-line sweep prompt — none of them are read by the orchestrator. The persona name flows into reports and logs as a label and that's it.

@@ -6,6 +6,36 @@
 **Owns:** decision-time wiring across [decisions/nac.py](../../src/maxim/decisions/nac.py), [runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py), [runtime/gating.py](../../src/maxim/runtime/gating.py), [embodiment/](../../src/maxim/embodiment/), [proprioception/pain_bus.py](../../src/maxim/proprioception/pain_bus.py)
 **Companion plans:** [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) (clears the cognitive dissonance), [persona_convergence_crucible.md](persona_convergence_crucible.md) (uses these foundations for Roy experiments)
 
+## Front-gate scope pressure (retroactive)
+
+Added 2026-05-27 per CLAUDE.md Principle 3. Analyzed per-wire because the plan ships multiple distinct mechanisms.
+
+**Question per wire:** does this need to be its own mechanism, or can it ride on existing infrastructure?
+
+**Wire 1 (risk-sensitive action annotation):** could-ride-on-existing — **but on `NAc._event_outcome_welford`, not on `CausalLink`**. The plan body (line ~130) originally proposed adding a `variance_estimate` field to `CausalLink`; this is the **exact anti-pattern CLAUDE.md "Lessons learned" warns against** (`[engineering] Key-embedded values produce structurally-degenerate statistics`, Wire 1 pre-merge fold 2026-05-17). `CausalLink._generate_link_id` keys on `outcome_signature` which embeds valence as part of the key, so per-link reward variance is structurally 0 for binary outcomes. The fix already shipped: variance lives at `NAc._event_outcome_welford` keyed by `(agent_id, event_signature)` — the parent aggregation where alternation actually occurs. **Specific load-bearing reason for the existing-infrastructure path:** the parent-aggregation accumulator IS the existing infrastructure; the plan body needs updating to consume `NAc._event_outcome_welford` rather than extending `CausalLink`. The annotation render side rides on PromptBuilder as originally framed.
+
+**Wire 2 (Pavlovian percept aversion):** yes-needs-own. The plan's `NAc._percept_valences[(agent_id, entity_class, failure_mode)]` is **new persistence** — there's no existing per-percept-class valence store. Surveyed and rejected:
+
+| Candidate | Why insufficient |
+|---|---|
+| `CausalLink` | Action-context keyed (`outcome_signature`); cross-action generalization across percept-identity is not the storage semantics |
+| `PainBus` event stream | Event stream, not accumulator — no per-`(entity_class, failure_mode)` running state |
+| `Episode.valence` | Per-episode-bound — closest existing thing to percept-keyed aversion, but does not generalize across episodes for the same percept identity |
+| `ATL.find_or_create` / `SemanticMemory` | Wrong storage semantics — semantic concept ≠ Pavlovian aversion accumulator; ATL has no per-failure-mode dimension |
+| `NAc._reward_bias` | Action-keyed, not percept-keyed; widens recognition, doesn't drive percept salience modulation |
+
+**Specific load-bearing reason:** no existing accumulator is keyed by `(entity_class, failure_mode)` for cross-episode generalization. **Latent-bridge×subscriber trap** flagged in CLAUDE.md review applies — pre-merge review must check.
+
+**Wire 3 (embodiment-state action filter):** could-ride-on-existing. `Embodiment` already tracks component integrity ([reflex.py:40](../../src/maxim/embodiment/reflex.py)); `simulation/tools.py` already writes `context["component_integrity"]`. Wire 3 adds **two read-side methods** on the existing `Embodiment` class. No persistence, no new dataclass.
+
+**Wire-A (cluster-bias annotation, ESCALATED from release_0_9_1.md):** could-ride-on-existing. `NAc._cluster_reward_bias` already accumulates; PromptBuilder already renders tool descriptions. Annotation is **one new prompt section** consuming existing accumulator state. Same shape as Wire 1.
+
+**Verdict aggregate:** Wires 1, 3, A and Stage 0 telemetry ride on existing infrastructure (additive read-side methods + prompt sections + telemetry threads). Wire 2 introduces genuinely new persistence keyed by percept identity, gated by the latent-bridge×subscriber trap check.
+
+**Specific reason for Wire 2's new mechanism:** the percept-keyed aversion store has no analog in the existing bio-systems — PainBus emits, NAc's `_reward_bias` is action-keyed, `Episode.valence` is per-episode-bound, ATL has no failure-mode dimension. Nothing currently accumulates aversion by `(entity_class, failure_mode)` for cross-episode generalization. The new dict closes a real architectural gap.
+
+**Wire 1 health-check (cross-cutting):** the original-plan-body proposal to add `variance_estimate` to `CausalLink` predates the 2026-05-17 Wire 1 fix and now contradicts CLAUDE.md. Plan body lines proposing the CausalLink site should be amended to consume `NAc._event_outcome_welford` instead.
+
 ## Context
 
 A pre-implementation architectural review identified a pattern across the bio-systems: **state that already persists per-agent isn't being read at decision time**.
