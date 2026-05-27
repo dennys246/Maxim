@@ -888,6 +888,7 @@ class PromptBuilder:
         self._add_acting_coach_section(budgeter, request)
         self._add_entity_context_section(budgeter, request)
         self._add_cluster_bias_annotation_section(budgeter, request)
+        self._add_grayscale_tools_section(budgeter, request)
         self._add_guidance_sections(budgeter, request, date_str, time_str)
         self._add_context_sections(budgeter, request, question_text)
         self._add_perception_sections(budgeter, request)
@@ -1159,6 +1160,43 @@ class PromptBuilder:
         if text:
             budgeter.add(
                 "cluster_bias_annotations",
+                text,
+                SectionPriority.IMPORTANT,
+            )
+
+    @staticmethod
+    def _add_grayscale_tools_section(
+        budgeter: PromptBudgeter,
+        request: LLMRequest,
+    ) -> None:
+        """Grayscale tools (W1 sense_tool_registry MVP).
+
+        Renders SEM-derived tools the substrate has accumulated a non-
+        zero reward bias for but that are NOT in the active scene
+        roster. Surfaces "knowable but absent" tools so the LLM can
+        reason about reaching for an equivalent active tool. Fix for
+        the Roy-3a-retry symptom (substrate-favored tool silently
+        invisible to the LLM when its target entity was absent).
+
+        Populated upstream by the agent loop at LLM-submission time
+        (``StructuredContext.grayscale_tool_annotations``). This helper
+        only renders; it does NOT call NAc or the tool registry. Empty
+        / None context skips the section silently — cold-start agents
+        and scenes where every biased tool is already active render no
+        block.
+
+        See [docs/plans/sense_tool_registry.md] § "Phase 3".
+        """
+        annotations = getattr(request.context, "grayscale_tool_annotations", None)
+        if not annotations:
+            return
+
+        from maxim.prompts.grayscale_tools_annotation import compose_grayscale_tools_section
+
+        text = compose_grayscale_tools_section(annotations)
+        if text:
+            budgeter.add(
+                "grayscale_tools",
                 text,
                 SectionPriority.IMPORTANT,
             )

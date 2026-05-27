@@ -74,11 +74,34 @@ class ToolRegistry:
 
     # ── Core registration ───────────────────────────────────────────────
 
-    def register(self, tool: Tool) -> None:
+    def register(self, tool: Tool, *, kind: str | None = None) -> None:
+        """Register a tool. Optionally override its declared ``kind``.
+
+        ``kind`` is a backstop for callers that wrap an existing Tool
+        instance whose own ``kind`` is wrong for this registration site
+        (e.g., wiring an SEM-derived tool as a core tool in a test
+        harness). When ``kind`` is ``None`` (default), the tool's
+        declared ``kind`` class attribute is preserved untouched.
+
+        Tools registered via plain ``register()`` have no scene scope
+        and are always active (the historical "core tool" semantics).
+        Scene-scoped lifecycle is handled separately via
+        ``register_scene_tools``.
+
+        The override uses ``object.__setattr__`` so frozen-dataclass
+        third-party ``Tool`` subclasses (rare today but possible per
+        the plan's Open Question #3) survive the assignment. Plain
+        ``tool.kind = kind`` would raise ``FrozenInstanceError`` on a
+        ``@dataclass(frozen=True)`` subclass.
+        """
         with self._lock:
+            if kind is not None:
+                # Override the instance's kind — useful when a registration
+                # site has more authoritative provenance than the tool's
+                # class default. Use object.__setattr__ for frozen-
+                # subclass safety.
+                object.__setattr__(tool, "kind", kind)
             self._tools[tool.name] = tool
-            # Tools registered via plain register() have no scene scope
-            # and are always active (core tools).
 
     def get(self, name: str) -> Tool:
         with self._lock:
@@ -227,6 +250,33 @@ class ToolRegistry:
                 return False
             meta = self._scene_meta.get(tool_name)
             return meta is None or meta.active
+
+    # ── Metadata-aware enumeration (W1 sense_tool_registry MVP) ─────────
+
+    def get_auto_fire_tools(self) -> list[Tool]:
+        """Return all registered tools with ``auto_fire=True``.
+
+        Used by the agent loop's auto-sense dispatch to drive tools
+        whose ``execute()`` runs implicitly each tick (the result is
+        injected into the next prompt as passive perception rather than
+        logged as a chosen action). The dispatcher's bypass of
+        ``actions.jsonl`` is gated on this metadata, replacing the
+        pre-W1 hardcoded ``sense_presence`` lookup. See
+        [docs/plans/sense_tool_registry.md].
+        """
+        with self._lock:
+            return [t for t in self._tools.values() if getattr(t, "auto_fire", False)]
+
+    def get_tools_by_kind(self, kind: str) -> list[Tool]:
+        """Return all registered tools whose ``kind`` matches.
+
+        Includes both active and deactivated tools — the caller decides
+        whether to filter further by ``is_tool_active``. Used today by
+        the prompt builder to find SEM-derived tools that are knowable
+        but inactive (grayscale visibility).
+        """
+        with self._lock:
+            return [t for t in self._tools.values() if getattr(t, "kind", "core-universal") == kind]
 
     # ── Search ──────────────────────────────────────────────────────────
 

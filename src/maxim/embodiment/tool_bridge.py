@@ -153,6 +153,11 @@ def _resolve_tool_name(
 class SensorReadTool(Tool):
     """Auto-generated tool: read a sensor on an entity."""
 
+    # Generated per-entity by ``generate_tools_for_entity``; lives in the
+    # scene-scoped roster and grayscale-eligible when inactive. See
+    # [docs/plans/sense_tool_registry.md] § "Tool metadata".
+    kind = "sem-modulator-derived"
+
     def __init__(self, entity: Entity, sensor: Sensor, tool_name: str) -> None:
         self.name = tool_name
         self.description = (
@@ -180,6 +185,9 @@ class ModulatorAffordanceTool(Tool):
     modes immediately (don't wait for 1Hz poll), and feeds the actual
     sensor deltas to Cerebellum for forward model training.
     """
+
+    # See SensorReadTool.kind — same provenance rationale.
+    kind = "sem-modulator-derived"
 
     def __init__(
         self,
@@ -404,6 +412,9 @@ class ModulatorAffordanceTool(Tool):
 
 class EntitySenseTool(Tool):
     """Auto-generated tool: read ALL sensors on an entity at once."""
+
+    # See SensorReadTool.kind — same provenance rationale.
+    kind = "sem-modulator-derived"
 
     def __init__(self, entity: Entity, tool_name: str) -> None:
         self.name = tool_name

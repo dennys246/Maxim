@@ -1,8 +1,24 @@
 # Sense tool registry / factory unification
 
-**Status:** DRAFT (2026-05-26). Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 2. Reframed 2026-05-27 — see "1.0 scope reframe" below.
+**Status:** 1.0 MVP SHIPPED (2026-05-27) — see "MVP shipment" below. Full plan remains DRAFT for 1.1+. Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 2. Reframed 2026-05-27 — see "1.0 scope reframe" below.
 **Trigger:** Roy-3a-retry NULL outcome — Wire-A annotated `sense_food_source [strongly rewarding from prior experience]` but the tool was silently absent from arm A's active tool roster because the test fixture had no food entity. The LLM had no signal that the tool exists elsewhere.
-**Target:** **1.0 (MVP-scoped)** + 1.1+ (full plan). See "1.0 scope reframe" below.
+**Target:** **1.0 (MVP-scoped, shipped)** + 1.1+ (full plan). See "1.0 scope reframe" below.
+
+## MVP shipment (2026-05-27)
+
+W1 MVP shipped on branch `feat/w1-sense-tool-registry-mvp` (~400 LOC src + ~290 LOC tests once the two-lens fold landed). Three phases delivered:
+
+- **Phase 1** — `Tool.auto_fire: bool` + `Tool.kind: Literal[ToolKind]` on the Tool ABC with backward-compatible defaults; `SensePresenceTool` declares `auto_fire=True, kind="auto-discovery"`; SEM-derived factories (`SensorReadTool`, `ModulatorAffordanceTool`, `EntitySenseTool`) declare `kind="sem-modulator-derived"`. `ToolRegistry.register(tool, *, kind=None)` accepts override; new helpers `get_auto_fire_tools()` + `get_tools_by_kind()`.
+- **Phase 2** — `runtime/agent_loop.py` auto-sense dispatch iterates `get_auto_fire_tools()` instead of hardcoding `sense_presence`. The actions.jsonl bypass invariant is preserved (direct `tool.execute()` call, never `executor.execute_action`). The interoception block captures the entity-map source by attribute presence (`hasattr(_af_tool, "_entity_map")`) rather than re-introducing the name coupling Phase 2 set out to retire.
+- **Phase 3** — Grayscale visibility via `prompts/grayscale_tools_annotation.py::build_grayscale_annotations` (producer filter — strips `tool:` prefix, excludes active + non-SEM tools, caps at top_n=5) + `compose_grayscale_tools_section` (renderer reusing Wire-A's `bias_to_band` for substrate-voice consistency). Section wired via `PromptBuilder._add_grayscale_tools_section` as an adjacent IMPORTANT section. Producer shares Wire-A's `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION` kill switch — the two surfaces are different views of the same substrate signal.
+
+**Two-lens pre-merge review caught two BLOCK-tier findings folded in-branch:**
+- Bio-C1: NAc-shaped `tool:<name>` signatures vs registry's bare-name lookups silently produced an empty grayscale list in production. Extracted the producer to a testable helper that strips the prefix; the regression guard is `tests/unit/test_grayscale_tools_annotation.py::TestBuildGrayscaleAnnotations::test_strips_tool_prefix_before_set_lookup`.
+- Bio-C2: Wire-A and grayscale renderers used different intensity bands; the same NAc bias would render with conflicting descriptors in adjacent prompt sections. Composer now delegates band naming to Wire-A's `bias_to_band`.
+
+**Tests:** 25 new (`test_tool_metadata.py` × 10, `test_auto_fire_dispatch.py` × 4, `test_grayscale_tools_annotation.py` × 20 after the fold expanded the Layer-2 producer coverage). Fast suite: 6902 passed, 20 skipped, no regressions.
+
+**Roy-iteration integration:** Phase 4 of the original full plan ("re-run Roy-3a with grayscale visibility for `sense_food_source`") is the next-iteration kickoff after W2 (`imagination_substrate_signals` MVP) also lands. Roy will measure whether grayscale visibility converts substrate annotation to actionable LLM behavior.
 
 ## 1.0 scope reframe (2026-05-27)
 
