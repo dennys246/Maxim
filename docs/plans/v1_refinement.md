@@ -53,6 +53,7 @@ Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). W
 **Hard requirements:**
 - **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. C4 SHIPPED (PR #219). C6 SHIPPED (2026-05-03). C5 design intact in §C5. C4/C6 hard-error flip prerequisites tracked in §1.1-T4.
 - **D1-D3** (Section 6) — Docs passes (agent memory transfer, API/CLI surface review, final docs pass). No code, just writing.
+- **W1-W2 (Wire-A substrate→action conversion)** — see new Section 1.5 below. Added 2026-05-27 after Phase B Roy-3a-retry's verdict named the substrate-scene-tool-availability + imagination-substrate-blindness gaps as the 1.0 thesis-demonstration bottleneck.
 
 **Optional polish:**
 - **B3 Phase 3** (Section 2) — Composable body archetypes. YAMLs partially landed; `maxim_sim_avatar` migration pending. 1.0 vs 1.1 scope decision still open. Doesn't gate the substrate-attribution claim.
@@ -154,6 +155,47 @@ The phase deltas attribute the V1 result to specific contributors. Phase A is th
 **Flag lifecycle — decided in 1.0, not deferred.** Flags ship in 0.9.x as experimental. Their disposition is forced at 1.0, conditional on Phase A results: (a) clean pass → flags removed in 1.0, V1 reproducibility via 0.9.x commit-hash pinning; (b) conditional pass → flags graduate from experimental to public-stable, claim documents which scaffolds it depends on; (c) fail → re-scope the 1.0 claim, keep flags as evidence. No experimental limbo through 1.1+.
 
 **Why before 1.0:** the substrate-attribution claim is the central 1.0 marketing claim. Shipping it on contaminated data is a credibility risk. The flag surface is ~40 production LOC; the test surface and harness are larger but cheap.
+
+---
+
+## Section 1.5: Wire-A substrate→action conversion (added 2026-05-27)
+
+The Phase B Roy-3a-retry verdict ([30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md)) confirmed Wire-A's annotation reaches the LLM at strong magnitude (`[strongly rewarding]` throughout the test arm) but **cannot convert to action** because (a) the substrate-favored tool wasn't in the scene's active roster and (b) imagination didn't dream the missing entity into existence. Until both gaps close, Roy iterations stay structurally capped at "annotation is present" findings — the 1.0 thesis-demonstration is blocked.
+
+Both gaps get MVP-scoped 1.0 plans. Full versions of each plan are deferred to 1.1+; only the MVP scope is 1.0 critical path.
+
+### W1. Sense tool registry — grayscale visibility MVP (~150-200 LOC)
+
+**Plan:** [sense_tool_registry.md](sense_tool_registry.md) (1.0 MVP scope section).
+
+**MVP scope:**
+- `tools_block` rendering distinguishes always-active core tools from SEM-derived inactive tools, with `[not in current location]` tag for the latter. Inactive SEM tools the substrate has accumulated bias for (per `NAc.get_agent_tool_biases`) appear in the LLM-facing list.
+- `auto_fire: bool` metadata on Tool dataclass (declarative replacement for the implicit executor bypass).
+- Registration-time classifier with `kind=` discriminator.
+
+**Deferred to 1.1+:** `sensory_events.jsonl` separation, LRU eviction tuning, predicate-outcome NAc typing, description unifier.
+
+### W2. Imagination substrate-signal — Hookup 1 MVP (~20-30 LOC)
+
+**Plan:** [imagination_substrate_signals.md](imagination_substrate_signals.md) (1.0 MVP scope section).
+
+**MVP scope:**
+- Substrate-aware manifest — pass `NAc.get_agent_tool_biases()` results to `Narrator.generate_scene_manifest()` so the LLM-generated manifest sees Wire-A's biases at scene-load time. The manifest can then include entities that activate substrate-favored tools.
+
+**Deferred to 1.1+:** Hookup 2 (per-tick subscriber), Hookup 3 (arousal-gate relaxation).
+
+### Integration test: next Wire-A Roy iteration
+
+After W1 + W2 MVPs ship, run Roy-3a-retry's spec unchanged with both gaps closed.
+
+**Convergence outcome** (Arm A ≥1 `sense_food_source` call): Wire-A annotation→action pathway validated; 1.0 has a positive thesis signal to point at. Other 1.0 gates (D1-D3, etc.) proceed; W1+W2 close.
+
+**Divergence-in-a-row outcome** (Roy finds a *new* failure mode beyond the two now-closed gaps): per refined Principle 4, this is the two-divergence-in-a-row trigger to bird's-eye to encoder replacement (Roy-5a Stage 3 + JEPA, 1.2+). W1+W2 stay shipped but their behavioral weight is gated on encoder work; the 1.0 thesis-demonstration claim re-scopes.
+
+### What this section does NOT include
+
+- **scn_decay_anchoring is NOT a 1.0 item** despite originating from the same tau-split kickoff sequence. It's 1.0 nice-to-have / 1.1 acceptable per its own status header — addresses hardware portability, not substrate→action conversion. See [scn_decay_anchoring.md](scn_decay_anchoring.md) for the resolution.
+- Full versions of W1 + W2 (deferred 1.1+ items in each plan's MVP scope section).
 
 ---
 

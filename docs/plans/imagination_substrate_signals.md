@@ -1,8 +1,24 @@
 # Imagination substrate-signal hookup
 
-**Status:** DRAFT (2026-05-26). Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 3.
+**Status:** DRAFT (2026-05-26). Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 3. Reframed 2026-05-27 — see "1.0 scope reframe" below.
 **Trigger:** Roy-3a-retry NULL outcome — Wire-A annotated `sense_food_source [strongly rewarding from prior experience]` but no food entity was in scene. Imagination *should* be able to dream up a food-source entity to make the substrate-favored tool invokable, but the trigger is percept-text-bound and substrate signals (NAc, Wire-A, ATL) don't reach it.
-**Target:** 1.1+ (post-1.0). Not a 1.0 gate.
+**Target:** **1.0 (MVP-scoped: Hookup 1 only)** + 1.1+ (Hookups 2+3). See "1.0 scope reframe" below.
+
+## 1.0 scope reframe (2026-05-27)
+
+Originally targeted as 1.1+. Reframed during the post-Phase-C strategic discussion: **this plan is 1.0 critical path because the substrate→action conversion question is the 1.0 thesis bottleneck.** Roy-3a-retry showed imagination is substrate-blind even when Wire-A annotation is strong — the simulation can't dream the missing entity into scene, so Wire-A's signal has nowhere to land. Complement to [sense_tool_registry.md](sense_tool_registry.md): registry makes invisible tools visible, this plan makes scenes dynamically populated to match substrate preferences.
+
+**1.0 MVP scope — Hookup 1 only (the smallest of the three candidates):**
+
+- **Substrate-aware manifest** — pass `nac_top_biases` (output of `NAc.get_agent_tool_biases`) to `Narrator.generate_scene_manifest()` at [narrator.py:472](../../src/maxim/simulation/narrator.py). The manifest LLM call gains substrate context in its prompt so the LLM-generated manifest can include entities that activate substrate-favored tools.
+- **Reuses existing pipeline** — the manifest pre-trigger runs once at scene load (already in production for cradle); this hookup adds context to its existing LLM call. No new periodic-callback machinery, no new trigger surface.
+- **~20-30 LOC additive** + ~50 LOC tests. Smallest of the three Hookups by far.
+
+**Deferred to 1.1+ (Hookups 2+3, post-Roy-iteration verdict):**
+- **Hookup 2** — per-tick subscriber for missing high-bias tools (Medium-sized; checks Wire-A annotation vs active roster at LLM-submission time, requests imagination for missing tools).
+- **Hookup 3** — arousal-gate relaxation for first-reaction-to-novel-percept ticks (Small).
+
+The MVP is the cheapest path to test the strict-reading hypothesis "closing the substrate-blindness gap lets Wire-A's annotation translate to behavior." Hookups 2+3 wait on the Roy iteration's verdict (per Principle 4's two-divergence-in-a-row watch-point — if the manifest hookup alone doesn't close the gap, the next iteration is likely the trigger to bird's-eye to encoder replacement rather than ship more mechanism-layer patches).
 
 ## Front-gate scope pressure (retroactive)
 
