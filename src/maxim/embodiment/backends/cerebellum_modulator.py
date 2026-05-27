@@ -273,7 +273,17 @@ def cerebellum_modulator_factory(
     fallback_factory: Any = None,
     reaction_bus: Any = None,
 ) -> Any:
-    """Create a factory function for ``attach_backends()``.
+    """Dormant since 2026-05-26: the entire Cerebellum backend path is
+    infrastructure ready for SEM wiring but not yet invoked from any
+    runtime startup path. Grep shows only test callers in
+    ``tests/unit/test_producer_protocols.py``. Awaits a new experiment
+    that earns the SEM-wiring path. See
+    ``docs/plans/reaction_bus_unification.md`` for the gap audit. Do not
+    delete (per CLAUDE.md Principle 2) — the ``reaction_bus`` parameter
+    was preemptively added to close Gap A so the next caller wires it
+    correctly.
+
+    Create a factory function for ``attach_backends()``.
 
     Usage::
 

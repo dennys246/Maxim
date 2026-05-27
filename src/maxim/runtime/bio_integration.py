@@ -302,7 +302,13 @@ def observe_episode(
 
 
 def record_pain_intensity(intensity: float, *, agent_id: str) -> None:
-    """Record a pain intensity for the next episode event's salience_spike.
+    """Dormant since 2026-05-26: the bus path bypasses this stash — no
+    production producer wires up. The per-agent lock + validator + max-merge
+    semantics remain for a future producer that wants to feed
+    ``salience_spike`` from a non-bus source. Awaits a new experiment that
+    earns the alternative path back in.
+
+    Record a pain intensity for the next episode event's salience_spike.
 
     Per-agent: signals from agent A's pain bus must not land on
     agent B's next episode.  Read-modify-write is serialised by an
