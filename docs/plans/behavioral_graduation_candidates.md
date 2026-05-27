@@ -20,6 +20,8 @@ Both gate 1.0. They are siblings, not nested. A passing benchmark with unbacked 
 
 The behavioral analog frame: **CLAUDE.md's "Architectural invariants" lists code rules that can't break. This doc lists behavioral claims that can't silently regress.** Same discipline, different evidence type.
 
+**Format alignment with CLAUDE.md Principle 5.** Per [Principle 5 (regression-guard / experiment citation)](../../CLAUDE.md#working-principles-for-new-mechanisms), CLAUDE.md invariants declare `Regression guard:` (engineering) or `Roy experiment:` (behavioral). This doc's Earned entries use the same `Regression guard:` field format, so a single grep audits both surfaces. When a Tier 3 entry graduates, the `Regression guard:` line on the entry should match (or extend) what the underlying CLAUDE.md invariant declares.
+
 Each entry below is an engineering invariant (or family) from CLAUDE.md whose bio-flavored framing makes an implicit behavioral claim. The entry's lifecycle:
 
 1. **Pre-1.0 path:** `Pending` → graduate via cited Roy/equivalent experiment → `Earned <date>`. By 1.0, Tier 1 must be 100% Earned; Tier 3 entries that can't be earned get explicit dispositions (downgrade or [Dormant per Principle 2](../../CLAUDE.md#working-principles-for-new-mechanisms)).
@@ -164,7 +166,7 @@ The cadence has two layers: **scheduled walks** (heartbeat) and **event-driven r
 
 ## Cross-references
 
-- [CLAUDE.md "Working principles for new mechanisms"](../../CLAUDE.md#working-principles-for-new-mechanisms) — Principle 1 (two-tier invariant tracking) is the gate that triggered this doc.
+- [CLAUDE.md "Working principles for new mechanisms"](../../CLAUDE.md#working-principles-for-new-mechanisms) — Principle 1 (two-tier invariant tracking) is the gate that triggered this doc; Principle 5 (regression-guard / experiment citation) is the format convention that aligns this doc's Earned entries with the CLAUDE.md invariants surface.
 - [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — "does the agent get better" (system-level, ongoing). Sibling doc, different question.
 - [v1_refinement.md](v1_refinement.md) — 1.0 unified plan. Tier 1 entries here line up with V1 validation work.
 - [release_0_9_1.md](release_0_9_1.md) — current active release. Tier 3 #2 + #3 (Wire-A + Wire 1) hinge on Roy-3 ablation arms shipping there.
