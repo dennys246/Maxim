@@ -364,6 +364,6 @@ class TestBioStackOscillatorEnabled:
         """build_bio_stack should enable the SCN oscillator."""
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack(persistence_dir=None)
+        bio = build_bio_stack(agent_id="default_agent", persistence_dir=None)
         assert bio.scn.oscillator is not None
         assert bio.scn.oscillator._observation_count == 0

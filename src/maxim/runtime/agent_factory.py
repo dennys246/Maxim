@@ -400,6 +400,7 @@ class AgentFactory:
             bio = build_bio_stack(
                 persistence_dir=str(agent_dir),
                 pain_bus=pain_bus,
+                agent_id=config.agent_id,
             )
             instance.bio_stack = bio
             instance.pain_bus = bio.pain_bus
@@ -546,8 +547,9 @@ class AgentFactory:
         hippocampus: Any | None,
         nac: Any | None,
         atl: Any | None,
+        *,
         agent_dir: Path | None = None,
-        agent_id: str = "default_agent",
+        agent_id: str,
     ) -> Any:
         """Create a MemoryHub coordinating the agent's memory systems."""
         try:

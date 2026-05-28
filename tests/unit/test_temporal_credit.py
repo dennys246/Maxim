@@ -254,14 +254,14 @@ class TestBioStackIntegration:
     def test_build_bio_stack_has_distributor(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert bio.distributor is not None
         assert isinstance(bio.distributor, TemporalCreditDistributor)
 
     def test_on_session_end_calls_cleanup(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
 
         # Record an event so there's something to clean up
         event = _make_event()

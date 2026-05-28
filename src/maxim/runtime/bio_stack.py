@@ -120,7 +120,15 @@ def build_bio_stack(
     # P4 multi-agent attribution: owning agent's id, threaded into MemoryHub
     # so single-agent percept paths get a stable fallback for the substrate
     # stash even when the percept factory hasn't populated agent_id.
-    agent_id: str = "default_agent",
+    #
+    # REQUIRED keyword-only (exp 32 Bug A fold, 2026-05-27): the previous
+    # ``default_agent`` default silently produced a split between substrate-
+    # write and substrate-read paths when callers didn't override it. Same
+    # silent-no-op pattern as the ``build_executor(pain_bus=...)`` invariant
+    # in CLAUDE.md — pushed into the type so the next miss is a TypeError,
+    # not a silent agent_id divergence. Test sites that don't care about
+    # agent_id pass the literal ``"default_agent"`` explicitly.
+    agent_id: str,
 ) -> BioStack:
     """Construct the full bio-pipeline as a coherent unit.
 

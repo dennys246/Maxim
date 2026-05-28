@@ -1736,7 +1736,12 @@ def build_memory_hub(
     novelty_tracker: Any | None = None,
     # P4: owning agent's id — fallback for the bio_integration substrate
     # stash when a percept has no PerceptContext.agent_id.
-    agent_id: str = "default_agent",
+    #
+    # REQUIRED keyword-only (exp 32 Bug A fold, 2026-05-27): the previous
+    # ``default_agent`` default silently produced cross-session agent_id
+    # divergence at the AgentFactory production door. Mirrors
+    # ``build_bio_stack``'s required-keyword-only contract.
+    agent_id: str,
 ) -> MemoryHub:
     """Construct a MemoryHub with bridges ALWAYS wired.
 
