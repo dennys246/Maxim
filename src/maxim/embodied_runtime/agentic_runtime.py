@@ -123,7 +123,18 @@ class AgenticRuntimeMixin:
             from maxim.runtime.bio_stack import build_bio_stack
             from maxim.utils.paths import user_memory
 
-            bio = build_bio_stack(persistence_dir=user_memory())
+            # ``getattr(self, "agent_id", "reachy")`` — Reachy is currently
+            # the sole consumer of AgenticRuntimeMixin and never sets
+            # ``self.agent_id`` in production, so the fallback ``"reachy"``
+            # is the literal value, not a fallback in the conventional
+            # sense. The dynamic pattern matches the pre-existing call site
+            # at line 318+ in this file; if a future multi-Reachy or
+            # multi-installation deployment needs distinct identities,
+            # set ``self.agent_id`` from configuration before bootstrap.
+            bio = build_bio_stack(
+                persistence_dir=user_memory(),
+                agent_id=getattr(self, "agent_id", "reachy"),
+            )
             nac = bio.nac
             memory_hub = bio.memory_hub
             self._nac = nac

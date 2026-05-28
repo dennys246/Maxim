@@ -429,3 +429,117 @@ class TestBioIntegrationStashIsolation:
         # [1, 3, 4, 7, 9, ...] and agent_bravo [2, 5, 6, 8, ...].
         assert sorted(a_ticks) == list(range(1, ITERS + 1)), a_ticks
         assert sorted(b_ticks) == list(range(1, ITERS + 1)), b_ticks
+
+
+@pytest.mark.multi_agent_modes
+class TestCreateFullAgentBioStackAgentIdPropagation:
+    """Pin ``config.agent_id`` propagation through
+    ``AgentFactory.create_full_agent`` into the bio-stack's MemoryHub.
+
+    Regression for the silent ``default_agent`` fallback surfaced by
+    experiment 32 (Roy-3a post-W1+W2 integration test, Bug A).
+    Pre-fix, ``create_full_agent`` called ``build_bio_stack(...)``
+    without threading ``config.agent_id``, so the MemoryHub built
+    inside the bio-stack carried the builder default
+    ``agent_id="default_agent"`` regardless of what the AgentConfig
+    asked for.  Wire-A's read path
+    (``agent_loop.py::_loop_agent_id = memory_hub.agent_id``) then
+    diverged from every other agent_id surface (sim_agent_context,
+    request_context, executor) — silently rendering empty
+    cluster_bias annotations.
+
+    See docs/experiments/32_wire_a_post_w1_w2.md.
+    """
+
+    def test_memory_hub_agent_id_matches_config_agent_id(self, tmp_path: Path) -> None:
+        factory = AgentFactory(base_data_dir=tmp_path)
+        instance = factory.create_full_agent(
+            AgentConfig(
+                agent_id="probe_agent_xyz",
+                role="pc",
+                persistence_dir=str(tmp_path / "probe"),
+                with_bio_stack=True,
+                with_executor=False,
+                with_pain_bridge=False,
+                with_fear_gate=False,
+            )
+        )
+        assert instance.memory_hub is not None
+        assert instance.memory_hub.agent_id == "probe_agent_xyz"
+
+    def test_two_full_agents_have_disjoint_memory_hub_agent_ids(self, tmp_path: Path) -> None:
+        factory = AgentFactory(base_data_dir=tmp_path)
+        a = factory.create_full_agent(
+            AgentConfig(
+                agent_id="alpha",
+                role="pc",
+                persistence_dir=str(tmp_path / "alpha"),
+                with_bio_stack=True,
+                with_executor=False,
+                with_pain_bridge=False,
+                with_fear_gate=False,
+            )
+        )
+        b = factory.create_full_agent(
+            AgentConfig(
+                agent_id="bravo",
+                role="pc",
+                persistence_dir=str(tmp_path / "bravo"),
+                with_bio_stack=True,
+                with_executor=False,
+                with_pain_bridge=False,
+                with_fear_gate=False,
+            )
+        )
+        assert a.memory_hub is not None and b.memory_hub is not None
+        assert a.memory_hub.agent_id == "alpha"
+        assert b.memory_hub.agent_id == "bravo"
+        # Two factory-built agents with distinct configs must not share
+        # the MemoryHub identity (the pre-fix bug collapsed both to
+        # "default_agent").
+        assert a.memory_hub.agent_id != b.memory_hub.agent_id
+
+    def test_nac_cluster_reward_bias_keys_use_config_agent_id(self, tmp_path: Path) -> None:
+        """The downstream symptom of Bug A: ``NAc._cluster_reward_bias``
+        keys carry the loop-time ``agent_id``.  After Fix A, writing
+        through ``update_cluster_reward_bias`` with the config's
+        agent_id must land on a key prefixed by that same agent_id —
+        not by ``default_agent``.
+        """
+        factory = AgentFactory(base_data_dir=tmp_path)
+        instance = factory.create_full_agent(
+            AgentConfig(
+                agent_id="downstream_probe",
+                role="pc",
+                persistence_dir=str(tmp_path / "ds"),
+                with_bio_stack=True,
+                with_executor=False,
+                with_pain_bridge=False,
+                with_fear_gate=False,
+            )
+        )
+        assert instance.nac is not None
+        assert instance.memory_hub is not None
+        # Resolve agent_id the way agent_loop.py:1074 does.
+        loop_agent_id = instance.memory_hub.agent_id
+        assert loop_agent_id == "downstream_probe"
+        # Write a small bias using the loop's agent_id.
+        instance.nac.update_cluster_reward(
+            agent_id=loop_agent_id,
+            cluster_id="test_cluster",
+            tool_signature="tool:probe",
+            reward=0.5,
+        )
+        # Read back: agent_id="downstream_probe" must find the key;
+        # "default_agent" (the pre-fix accidental key) must not.
+        # Expected magnitude is the closed-form Welford update:
+        #   reward_bias_alpha (NACConfig default 0.15) × reward (0.5) = 0.075.
+        # Reading from the same private dict the bias was written to would
+        # be a self-tautology — the pre-merge executor-lens review caught
+        # this and asked for the closed-form expected value instead.
+        biases = instance.nac.get_agent_tool_biases(agent_id="downstream_probe", top_n=5)
+        assert biases == [("tool:probe", pytest.approx(0.15 * 0.5))]
+        # Pre-fix this read would have succeeded (because the loop
+        # wrote under default_agent).  Post-fix, default_agent has no
+        # entry for downstream_probe's bias.
+        assert instance.nac.get_agent_tool_biases(agent_id="default_agent", top_n=5) == []

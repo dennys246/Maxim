@@ -35,7 +35,7 @@ class TestBuildBioStackCore:
     def test_returns_bio_stack_instance(self):
         from maxim.runtime.bio_stack import BioStack, build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert isinstance(bio, BioStack)
 
     def test_all_core_systems_populated(self):
@@ -45,7 +45,7 @@ class TestBuildBioStackCore:
         from maxim.similarity.ec import EntorhinalCortex
         from maxim.time.scn import SCN
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert isinstance(bio.hippocampus, Hippocampus)
         assert isinstance(bio.nac, NAc)
         assert isinstance(bio.scn, SCN)
@@ -55,27 +55,27 @@ class TestBuildBioStackCore:
         from maxim.integration.memory_hub import MemoryHub
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert isinstance(bio.memory_hub, MemoryHub)
 
     def test_pain_bus_populated(self):
         from maxim.proprioception.pain_bus import PainBus
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert isinstance(bio.pain_bus, PainBus)
 
     def test_reaction_bus_is_pain_bus_internal_bus(self):
         """ReactionBus on BioStack is the one owned by PainBus."""
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert bio.reaction_bus is bio.pain_bus.reaction_bus
 
     def test_default_network_none_by_default(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert bio.default_network is None
 
 
@@ -85,21 +85,21 @@ class TestBuildBioStackFrozen:
     def test_cannot_reassign_hippocampus(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         with pytest.raises(dataclasses.FrozenInstanceError):
             bio.hippocampus = None  # type: ignore[misc]
 
     def test_cannot_reassign_pain_bus(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         with pytest.raises(dataclasses.FrozenInstanceError):
             bio.pain_bus = None  # type: ignore[misc]
 
     def test_cannot_reassign_memory_hub(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         with pytest.raises(dataclasses.FrozenInstanceError):
             bio.memory_hub = None  # type: ignore[misc]
 
@@ -110,19 +110,19 @@ class TestBuildBioStackMemoryHubBridges:
     def test_plan_bridge_alive(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert bio.memory_hub._plan_bridge is not None
 
     def test_escalation_bridge_alive(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert bio.memory_hub._escalation_bridge is not None
 
     def test_fear_bridge_alive(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert bio.memory_hub._fear_bridge is not None
 
 
@@ -132,19 +132,19 @@ class TestBuildBioStackPersistence:
     def test_no_persistence_when_dir_is_none(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack(persistence_dir=None)
+        bio = build_bio_stack(agent_id="default_agent", persistence_dir=None)
         assert bio.hippocampus.config.persistence_path is None
 
     def test_hippocampus_persistence_path(self, tmp_path):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack(persistence_dir=tmp_path)
+        bio = build_bio_stack(agent_id="default_agent", persistence_dir=tmp_path)
         assert bio.hippocampus.config.persistence_path == str(tmp_path / "hippocampus.json")
 
     def test_persistence_dir_as_string(self, tmp_path):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack(persistence_dir=str(tmp_path))
+        bio = build_bio_stack(agent_id="default_agent", persistence_dir=str(tmp_path))
         assert bio.hippocampus.config.persistence_path == str(tmp_path / "hippocampus.json")
 
 
@@ -154,7 +154,7 @@ class TestBuildBioStackATL:
     def test_atl_populated_when_available(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         # ATL may or may not be available depending on deps.
         # When available, it should be an ATL instance.
         if bio.atl is not None:
@@ -165,7 +165,7 @@ class TestBuildBioStackATL:
     def test_atl_persistence_path_when_dir_provided(self, tmp_path):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack(persistence_dir=tmp_path)
+        bio = build_bio_stack(agent_id="default_agent", persistence_dir=tmp_path)
         if bio.atl is not None:
             assert bio.atl.config.persistence_path == str(tmp_path / "atl.json")
 
@@ -178,7 +178,7 @@ class TestBuildBioStackPreBuiltPainBus:
         from maxim.runtime.bio_stack import build_bio_stack
 
         early_bus = PainBus(_allow_raw=True)
-        bio = build_bio_stack(pain_bus=early_bus)
+        bio = build_bio_stack(agent_id="default_agent", pain_bus=early_bus)
         assert bio.pain_bus is early_bus
 
     def test_pre_built_bus_gets_hippocampus_subscriber(self):
@@ -187,7 +187,7 @@ class TestBuildBioStackPreBuiltPainBus:
 
         early_bus = PainBus(_allow_raw=True)
         subs_before = len(early_bus._pain_signal_subs)
-        build_bio_stack(pain_bus=early_bus)
+        build_bio_stack(agent_id="default_agent", pain_bus=early_bus)
         # At least hippocampus + nac subscribers added
         assert len(early_bus._pain_signal_subs) >= subs_before + 2
 
@@ -196,7 +196,7 @@ class TestBuildBioStackPreBuiltPainBus:
         from maxim.runtime.bio_stack import build_bio_stack
 
         early_bus = PainBus(_allow_raw=True)
-        bio = build_bio_stack(pain_bus=early_bus)
+        bio = build_bio_stack(agent_id="default_agent", pain_bus=early_bus)
         assert bio.reaction_bus is early_bus.reaction_bus
 
     def test_additional_pain_subscribers_with_pre_built_bus(self):
@@ -207,6 +207,7 @@ class TestBuildBioStackPreBuiltPainBus:
         calls = []
         extra_sub = lambda signal: calls.append(signal)
         bio = build_bio_stack(
+            agent_id="default_agent",
             pain_bus=early_bus,
             additional_pain_subscribers=(extra_sub,),
         )
@@ -221,7 +222,7 @@ class TestBuildBioStackAdditionalSubscribers:
 
         calls = []
         extra_sub = lambda signal: calls.append(signal)
-        bio = build_bio_stack(additional_pain_subscribers=(extra_sub,))
+        bio = build_bio_stack(agent_id="default_agent", additional_pain_subscribers=(extra_sub,))
         assert extra_sub in bio.pain_bus._pain_signal_subs
 
 
@@ -231,7 +232,7 @@ class TestBuildBioStackDefaultNetwork:
     def test_default_network_constructed_when_requested(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack(with_default_network=True)
+        bio = build_bio_stack(agent_id="default_agent", with_default_network=True)
         # DN is an optional dep — may be None if not installed
         # but the builder should attempt construction
 
@@ -247,6 +248,7 @@ class TestBuildBioStackDefaultNetwork:
             sentinel_bus = object()
             sentinel_fear = object()
             bio = build_bio_stack(
+                agent_id="default_agent",
                 with_default_network=True,
                 dn_maxim=sentinel_maxim,
                 dn_bus=sentinel_bus,
@@ -271,7 +273,7 @@ class TestBuildBioStackComposesBuilders:
         """MemoryHub's core systems are the same objects as BioStack's."""
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert bio.memory_hub.hippocampus is bio.hippocampus
         assert bio.memory_hub.nac is bio.nac
         assert bio.memory_hub.scn is bio.scn
@@ -280,5 +282,5 @@ class TestBuildBioStackComposesBuilders:
     def test_memory_hub_atl_matches_bio_stack(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack()
+        bio = build_bio_stack(agent_id="default_agent")
         assert bio.memory_hub.atl is bio.atl

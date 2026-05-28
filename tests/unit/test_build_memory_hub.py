@@ -53,6 +53,7 @@ class TestBuildMemoryHub:
 
         with pytest.raises(TypeError):
             build_memory_hub(
+                agent_id="default_agent",
                 scn=core_systems["scn"],
                 nac=core_systems["nac"],
                 ec=core_systems["ec"],
@@ -63,6 +64,7 @@ class TestBuildMemoryHub:
 
         with pytest.raises(TypeError):
             build_memory_hub(
+                agent_id="default_agent",
                 hippocampus=core_systems["hippocampus"],
                 nac=core_systems["nac"],
                 ec=core_systems["ec"],
@@ -73,6 +75,7 @@ class TestBuildMemoryHub:
 
         with pytest.raises(TypeError):
             build_memory_hub(
+                agent_id="default_agent",
                 hippocampus=core_systems["hippocampus"],
                 scn=core_systems["scn"],
                 ec=core_systems["ec"],
@@ -83,6 +86,7 @@ class TestBuildMemoryHub:
 
         with pytest.raises(TypeError):
             build_memory_hub(
+                agent_id="default_agent",
                 hippocampus=core_systems["hippocampus"],
                 scn=core_systems["scn"],
                 nac=core_systems["nac"],
@@ -93,7 +97,7 @@ class TestBuildMemoryHub:
     def test_returns_memory_hub_instance(self, core_systems):
         from maxim.integration.memory_hub import MemoryHub, build_memory_hub
 
-        hub = build_memory_hub(**core_systems)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems)
         assert isinstance(hub, MemoryHub)
 
     def test_plan_bridge_always_created(self, core_systems):
@@ -104,21 +108,21 @@ class TestBuildMemoryHub:
         """
         from maxim.integration.memory_hub import build_memory_hub
 
-        hub = build_memory_hub(**core_systems)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems)
         assert hub._plan_bridge is not None
 
     def test_escalation_bridge_always_created(self, core_systems):
         """EscalationLearningBridge is alive on every hub from the builder."""
         from maxim.integration.memory_hub import build_memory_hub
 
-        hub = build_memory_hub(**core_systems)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems)
         assert hub._escalation_bridge is not None
 
     def test_fear_bridge_always_created(self, core_systems):
         """FearCircuitBridge is alive on every hub from the builder."""
         from maxim.integration.memory_hub import build_memory_hub
 
-        hub = build_memory_hub(**core_systems)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems)
         assert hub._fear_bridge is not None
 
     # ── Optional bio-systems forwarded ───────────────────────────────────
@@ -128,7 +132,7 @@ class TestBuildMemoryHub:
         from maxim.memory.atl import ATL, ATLConfig
 
         atl = ATL(config=ATLConfig())
-        hub = build_memory_hub(**core_systems, atl=atl)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems, atl=atl)
         assert hub.atl is atl
 
     def test_angular_gyrus_forwarded(self, core_systems):
@@ -136,28 +140,28 @@ class TestBuildMemoryHub:
         from maxim.math.angular_gyrus import AngularGyrus, AngularGyrusConfig
 
         ag = AngularGyrus(config=AngularGyrusConfig())
-        hub = build_memory_hub(**core_systems, angular_gyrus=ag)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems, angular_gyrus=ag)
         assert hub.angular_gyrus is ag
 
     def test_cerebellum_forwarded(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
         sentinel = object()
-        hub = build_memory_hub(**core_systems, cerebellum=sentinel)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems, cerebellum=sentinel)
         assert hub.cerebellum is sentinel
 
     def test_embodiment_forwarded(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
         sentinel = object()
-        hub = build_memory_hub(**core_systems, embodiment=sentinel)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems, embodiment=sentinel)
         assert hub.embodiment is sentinel
 
     def test_worker_pool_forwarded(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
         sentinel = object()
-        hub = build_memory_hub(**core_systems, worker_pool=sentinel)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems, worker_pool=sentinel)
         assert hub.worker_pool is sentinel
 
     # ── Bridge deps forwarded to .connect() ──────────────────────────────
@@ -168,7 +172,7 @@ class TestBuildMemoryHub:
         from maxim.integration.memory_hub import build_memory_hub
 
         spatial = MagicMock()
-        hub = build_memory_hub(**core_systems, spatial=spatial)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems, spatial=spatial)
         assert hub._spatial_bridge is not None
 
     def test_salience_bridge_created_when_salience_passed(self, core_systems):
@@ -177,19 +181,19 @@ class TestBuildMemoryHub:
         from maxim.integration.memory_hub import build_memory_hub
 
         salience = MagicMock()
-        hub = build_memory_hub(**core_systems, salience=salience)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems, salience=salience)
         assert hub._salience_bridge is not None
 
     def test_no_spatial_bridge_when_spatial_omitted(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
-        hub = build_memory_hub(**core_systems)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems)
         assert hub._spatial_bridge is None
 
     def test_no_salience_bridge_when_salience_omitted(self, core_systems):
         from maxim.integration.memory_hub import build_memory_hub
 
-        hub = build_memory_hub(**core_systems)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems)
         assert hub._salience_bridge is None
 
     def test_fear_agent_stored(self, core_systems):
@@ -199,7 +203,7 @@ class TestBuildMemoryHub:
         from maxim.integration.memory_hub import build_memory_hub
 
         fear_agent = MagicMock()
-        hub = build_memory_hub(**core_systems, fear_agent=fear_agent)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems, fear_agent=fear_agent)
         assert hub._fear_agent is fear_agent
 
     # ── Regression guard: bare MemoryHub() still works for tests ─────────
@@ -229,7 +233,7 @@ class TestBuildMemoryHub:
         """
         from maxim.integration.memory_hub import build_memory_hub
 
-        hub = build_memory_hub(**core_systems)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems)
 
         # All three always-created bridges must be alive
         assert hub._plan_bridge is not None, "PlanHistoryBridge dead — Gap A regression"
@@ -260,7 +264,7 @@ class TestBuildMemoryHub:
         """
         from maxim.integration.memory_hub import build_memory_hub
 
-        hub = build_memory_hub(**core_systems)
+        hub = build_memory_hub(agent_id="default_agent", **core_systems)
 
         # Capture bridge identity from builder
         plan_id = id(hub._plan_bridge)

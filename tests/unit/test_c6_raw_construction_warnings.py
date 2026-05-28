@@ -176,7 +176,7 @@ class TestMemoryHubDeprecationWarning:
         core = _make_memory_hub_core_systems()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", DeprecationWarning)
-            hub = build_memory_hub(**core)
+            hub = build_memory_hub(agent_id="default_agent", **core)
 
         c6 = [w for w in caught if "C6 deprecation" in str(w.message)]
         assert c6 == []
@@ -236,7 +236,7 @@ class TestBuildersSilenceWarnings:
         core = _make_memory_hub_core_systems()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", DeprecationWarning)
-            build_memory_hub(**core)
+            build_memory_hub(agent_id="default_agent", **core)
 
         c6 = [w for w in caught if "C6 deprecation" in str(w.message)]
         assert c6 == []
