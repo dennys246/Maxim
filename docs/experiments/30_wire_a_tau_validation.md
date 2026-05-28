@@ -1,6 +1,6 @@
 # 30 — Wire-A tau-split validation (Roy-3a-retry)
 
-**Status:** Run complete 2026-05-25. NULL outcome with three structural findings.
+**Status:** Run complete 2026-05-25. NULL outcome with three structural findings. **Retroactive correction added 2026-05-27** — see end of doc.
 **Branch:** `feat/wire-a-tau-split-phase-3-validation`
 **Plan:** [docs/plans/cluster_reward_bias_decay_tau_split.md](../plans/cluster_reward_bias_decay_tau_split.md), Phase 3.
 **Predecessor PR:** [#267](https://github.com/dennys246/Maxim/pull/267) (Phase 1 tau-split implementation).
@@ -154,3 +154,23 @@ Per the kickoff's escalation rule ("do NOT silently retry with a different tau. 
 - [docs/plans/v1_refinement.md](../plans/v1_refinement.md): checked, no existing tau-split entry to update (the 1.0 plan never tracked the tau-split work directly). No fold required.
 - [docs/plans/persona_convergence_crucible.md](../plans/persona_convergence_crucible.md): three NULL-branch open questions become next-iteration scope; Wire-A's tau parameter remains tunable per the calibration framing.
 - [docs/plans/README.md](../plans/README.md): index entries added for the two new plan docs.
+
+## Retroactive correction (2026-05-27, [32_wire_a_post_w1_w2.md](32_wire_a_post_w1_w2.md))
+
+The W1+W2 integration test on 2026-05-27 surfaced a Roy cross-session agent_id mismatch that was already in effect during this Phase B run:
+
+- Priming MemoryHub defaults to `agent_id="default_agent"` ([memory_hub.py:170](../../src/maxim/integration/memory_hub.py)); persisted `cluster_reward_bias` keys carry that prefix.
+- The test-arm AUT is constructed with `agent_id="sim_aut"` ([orchestrator.py:534](../../src/maxim/simulation/orchestrator.py)); `_loop_agent_id` resolves to `"sim_aut"` at [agent_loop.py:1074](../../src/maxim/runtime/agent_loop.py).
+- `NAc.get_agent_tool_biases(agent_id="sim_aut")` returns `[]` because the strict-equality filter at [nac.py:1903](../../src/maxim/decisions/nac.py) doesn't cross the priming/test agent_id boundary.
+
+**The claim "Wire-A rendered `sense_food_source [strongly rewarding from prior experience]` at every LLM submission during arm A" was inferred from priming-end magnitude + decay-trajectory math, not verified from rendered LLM prompts.** The 0.997 → 0.753 decay this doc cited as evidence of the annotation being read was actually proof that `NAc.decay_cluster_reward_biases` ticked — that function is agent_id-agnostic, so it runs regardless of whether the annotation reaches the LLM.
+
+What stays valid from this experiment:
+- **Tau-split structural validation (decay trajectory):** valid. The Phase 1 calibration math holds independently of whether the annotation reaches the LLM.
+- **PRIMARY criterion failure (Arm A = 0 `sense_food_source`):** valid as a behavioral measurement. The cause-attribution to "scene-tool-availability gap" is partially valid — the gap is real — but the agent_id mismatch likely contributed too.
+- **Findings 1-3 (scene-tool-availability, sense-tool heterogeneity, imagination substrate-blindness):** valid as architectural observations; they motivated W1+W2 correctly. The integration test couldn't measure their effectiveness because of the upstream wiring bug, but the architectural reasoning stands.
+
+What needs re-validation after Fix A (Roy priming uses `agent_id="sim_aut"`, [v1_refinement.md §1.5](../plans/v1_refinement.md)) lands:
+- Whether Wire-A's annotation ever reached the LLM during 0.9.1 Roy iterations.
+- Whether the "annotation drives the LLM toward a tool the current scene cannot supply" third NULL branch above is the actual cause of Phase B's failure, or whether annotation-empty was the actual cause.
+- Companion: experiment 32's Bug A scoping inherits this question.
