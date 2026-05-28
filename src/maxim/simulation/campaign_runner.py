@@ -292,6 +292,12 @@ def run_fixture_campaign(
     aut_memory_hub: Any | None = None,
     aut_pain_bus: Any | None = None,
     aut_percept_trace_buffer: Any | None = None,
+    # Fix B (W2 to fixture scene-load) — optional substrate-aware
+    # pre-trigger. All three must be non-None alongside aut_nac for the
+    # pre-trigger to fire. See FixtureDrivenOrchestrator.run() docstring.
+    aut_imagination_trigger: Any | None = None,
+    llm_router: Any | None = None,
+    goal: str | None = None,
     settle_s: float = 2.0,
     turn_timeout: float = 30.0,
 ) -> dict[str, Any]:
@@ -300,6 +306,14 @@ def run_fixture_campaign(
     Loads a YAML fixture and drives it through the bridge, collecting
     bio-system state snapshots at end-of-run. Returns the FixtureResult
     as a dict for integration with the orchestrator's report pipeline.
+
+    Fix B params (``aut_imagination_trigger``, ``llm_router``, ``goal``)
+    are optional — pre-Fix-B callers continue to work unchanged. When
+    all three are provided alongside ``aut_nac``, the orchestrator
+    issues a substrate-aware ``generate_scene_manifest`` LLM call BEFORE
+    driving percepts so substrate-favored entities materialize into the
+    fixture scene. Closes exp 32's Bug B (W2 hookup bypassed by
+    fixture-driven test arms).
     """
     from maxim.simulation.sim_logger import display_status, display_summary
 
@@ -323,6 +337,9 @@ def run_fixture_campaign(
             memory_hub=aut_memory_hub,
             pain_bus=aut_pain_bus,
             percept_trace_buffer=aut_percept_trace_buffer,
+            imagination_trigger=aut_imagination_trigger,
+            llm_router=llm_router,
+            goal=goal,
         )
 
         exp_status = (

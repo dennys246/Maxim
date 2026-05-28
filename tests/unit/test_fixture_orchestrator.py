@@ -427,3 +427,299 @@ class TestCampaignRunnerDispatch:
         from maxim.simulation.campaign_runner import run_fixture_campaign
 
         assert callable(run_fixture_campaign)
+
+
+# ── Fix B: substrate-aware scene-load pre-trigger ───────────────────────────
+
+
+class TestFixBSubstratePretrigger:
+    """Fix B (W2 to fixture scene-load) — exp 32 Bug B fold.
+
+    Pins the substrate-aware pre-trigger contract on FixtureDrivenOrchestrator.run():
+    fires when ALL FOUR (nac + imagination_trigger + llm_router + goal) are non-None.
+    See docs/plans/imagination_substrate_signals.md + 33_wire_a_post_fix_a.md.
+
+    Pre-merge review folds (2026-05-28):
+    - BLOCK 2 (observability): every gate emits a ``sim_log("SEM_TRACE", ...)``
+      event so Roy's JSONL post-hoc analyzers can distinguish "fired with N
+      entities" from "skipped (kill-switch)" from "skipped (empty biases)" etc.
+      ``FixtureResult.pretrigger_entities`` surfaces the materialized entity
+      names for cross-arm scene-divergence auditing.
+    - Exec NIT-1 (description-suffix coverage): the fires-with-biases test
+      asserts the fixture description lands in the augmented manifest goal.
+    - Exec NIT-2 (monkeypatch): tests use ``monkeypatch.setattr`` instead of
+      hand-rolled try/finally module patching.
+    """
+
+    def _basic_fixture(self, tmp_path):
+        return _write_fixture(
+            tmp_path,
+            {
+                "name": "fix_b_probe",
+                "description": "Fix B pre-trigger smoke",
+                "percepts": [
+                    {"at": 0, "source": "cli", "cli_input": "hello"},
+                ],
+                "expectations": [],
+            },
+        )
+
+    def _ready_bridge(self):
+        bridge = SimulationBridge(response_timeout=0.5, settle_s=0.2)
+        # Auto-responder so .run() doesn't time out on the percept loop.
+        _fake_aut_responder(bridge, count=1)
+        return bridge
+
+    def _patch_narrator(self, monkeypatch, return_value: str = "Generated manifest text") -> MagicMock:
+        """Patch ``generate_scene_manifest`` for the duration of a test."""
+        import maxim.simulation.narrator as narrator_mod
+
+        mock = MagicMock(return_value=return_value)
+        monkeypatch.setattr(narrator_mod, "generate_scene_manifest", mock)
+        return mock
+
+    def _patch_sim_log(self, monkeypatch) -> MagicMock:
+        """Patch ``sim_log`` so emission assertions don't depend on the
+        sim_logger global state. The pre-trigger lazy-imports sim_log from
+        ``maxim.simulation.sim_logger`` inside the method body, so patching
+        the module attribute is sufficient."""
+        import maxim.simulation.sim_logger as sim_logger_mod
+
+        mock = MagicMock()
+        monkeypatch.setattr(sim_logger_mod, "sim_log", mock)
+        return mock
+
+    def test_pretrigger_no_op_when_all_fix_b_params_none(self, tmp_path):
+        """S1 contract preserved: no pre-trigger fires when Fix B params absent."""
+        fixture = self._basic_fixture(tmp_path)
+        bridge = self._ready_bridge()
+        orch = FixtureDrivenOrchestrator(fixture, turn_timeout=2.0, settle_s=0.2)
+
+        result = orch.run(bridge)  # No Fix B kwargs.
+        assert result.turns_delivered >= 0  # Run completes normally.
+        # FixtureResult surfaces an empty entity tuple when the pre-trigger
+        # never fires — Roy analyzers read this to distinguish "Fix B didn't
+        # run" from "Fix B ran with zero entities".
+        assert result.pretrigger_entities == ()
+
+    def test_pretrigger_fires_with_all_fix_b_params_and_nac_biases(self, tmp_path, monkeypatch):
+        """All four params + non-empty NAc biases → manifest LLM call + process_manifest.
+
+        Also verifies:
+        - description-suffix branch of the goal-augmentation logic (Exec NIT-1)
+        - sim_log SEM_TRACE emission with entity count (BLOCK 2)
+        - FixtureResult.pretrigger_entities surfaces the materialized list (BLOCK 3)
+        """
+        fixture = self._basic_fixture(tmp_path)
+        bridge = self._ready_bridge()
+        orch = FixtureDrivenOrchestrator(fixture, turn_timeout=2.0, settle_s=0.2)
+
+        nac = MagicMock()
+        nac.get_agent_tool_biases.return_value = [("tool:sense_food_source", 0.85)]
+        memory_hub = MagicMock()
+        memory_hub.agent_id = "sim_aut"
+        imagination_trigger = MagicMock()
+        imagination_trigger.process_manifest.return_value = ["food_source", "berry_patch"]
+        llm_router = MagicMock()
+
+        narrator_mock = self._patch_narrator(monkeypatch, return_value="Generated manifest text")
+        sim_log_mock = self._patch_sim_log(monkeypatch)
+
+        result = orch.run(
+            bridge,
+            nac=nac,
+            memory_hub=memory_hub,
+            imagination_trigger=imagination_trigger,
+            llm_router=llm_router,
+            goal="roy:test:arm_a",
+        )
+
+        # NAc bias lookup uses canonical agent_id from memory_hub.
+        nac.get_agent_tool_biases.assert_called_once()
+        assert nac.get_agent_tool_biases.call_args.kwargs["agent_id"] == "sim_aut"
+
+        # Manifest LLM called with the augmented goal — includes BOTH the
+        # fixture name and the fixture description (Exec NIT-1 coverage).
+        narrator_mock.assert_called_once()
+        call_goal = narrator_mock.call_args.args[1]
+        assert "fix_b_probe" in call_goal, call_goal
+        assert "roy:test:arm_a" in call_goal, call_goal
+        assert "Fix B pre-trigger smoke" in call_goal, call_goal
+
+        # process_manifest invoked with the manifest text.
+        imagination_trigger.process_manifest.assert_called_once()
+        assert imagination_trigger.process_manifest.call_args.args[0] == "Generated manifest text"
+        assert imagination_trigger.process_manifest.call_args.kwargs["scene_id"] == "fixture_pretrigger"
+
+        # Materialized entities land on FixtureResult for Roy auditing (BLOCK 3).
+        assert result.pretrigger_entities == ("food_source", "berry_patch")
+
+        # SEM_TRACE emissions surface to JSONL analyzers (BLOCK 2).
+        sem_trace_msgs = [
+            call.args[1] for call in sim_log_mock.call_args_list if call.args and call.args[0] == "SEM_TRACE"
+        ]
+        # Two events: "generating manifest" + "N entities resolved".
+        assert any("generating manifest" in m for m in sem_trace_msgs), sem_trace_msgs
+        assert any("2 entities resolved" in m for m in sem_trace_msgs), sem_trace_msgs
+
+    def test_pretrigger_skipped_when_nac_biases_empty(self, tmp_path, monkeypatch):
+        """Empty NAc biases → no manifest LLM call + SEM_TRACE 'skipped' event."""
+        fixture = self._basic_fixture(tmp_path)
+        bridge = self._ready_bridge()
+        orch = FixtureDrivenOrchestrator(fixture, turn_timeout=2.0, settle_s=0.2)
+
+        nac = MagicMock()
+        nac.get_agent_tool_biases.return_value = []
+        memory_hub = MagicMock()
+        memory_hub.agent_id = "sim_aut"
+        imagination_trigger = MagicMock()
+        llm_router = MagicMock()
+
+        narrator_mock = self._patch_narrator(monkeypatch, return_value="should-not-fire")
+        sim_log_mock = self._patch_sim_log(monkeypatch)
+
+        result = orch.run(
+            bridge,
+            nac=nac,
+            memory_hub=memory_hub,
+            imagination_trigger=imagination_trigger,
+            llm_router=llm_router,
+            goal="roy:test:arm_a",
+        )
+        narrator_mock.assert_not_called()
+        imagination_trigger.process_manifest.assert_not_called()
+        assert result.pretrigger_entities == ()
+
+        # SEM_TRACE "skipped (NAc has no biases)" event surfaces.
+        sem_trace_msgs = [
+            call.args[1] for call in sim_log_mock.call_args_list if call.args and call.args[0] == "SEM_TRACE"
+        ]
+        assert any("no biases" in m for m in sem_trace_msgs), sem_trace_msgs
+
+    def test_pretrigger_skipped_when_kill_switch_set(self, tmp_path, monkeypatch):
+        """MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL=1 → short-circuit + kill-switch SEM_TRACE."""
+        fixture = self._basic_fixture(tmp_path)
+        bridge = self._ready_bridge()
+        orch = FixtureDrivenOrchestrator(fixture, turn_timeout=2.0, settle_s=0.2)
+        monkeypatch.setenv("MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL", "1")
+
+        nac = MagicMock()
+        nac.get_agent_tool_biases.return_value = [("tool:sense_food_source", 0.85)]
+        memory_hub = MagicMock()
+        memory_hub.agent_id = "sim_aut"
+        imagination_trigger = MagicMock()
+        llm_router = MagicMock()
+
+        narrator_mock = self._patch_narrator(monkeypatch, return_value="should-not-fire")
+        sim_log_mock = self._patch_sim_log(monkeypatch)
+
+        result = orch.run(
+            bridge,
+            nac=nac,
+            memory_hub=memory_hub,
+            imagination_trigger=imagination_trigger,
+            llm_router=llm_router,
+            goal="roy:test:arm_a",
+        )
+        nac.get_agent_tool_biases.assert_not_called()
+        narrator_mock.assert_not_called()
+        imagination_trigger.process_manifest.assert_not_called()
+        assert result.pretrigger_entities == ()
+
+        # Kill-switch SEM_TRACE event distinguishes "disabled by operator"
+        # from "skipped on empty biases" in Roy's ablation arms.
+        sem_trace_msgs = [
+            call.args[1] for call in sim_log_mock.call_args_list if call.args and call.args[0] == "SEM_TRACE"
+        ]
+        assert any("MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL" in m for m in sem_trace_msgs), sem_trace_msgs
+
+    def test_pretrigger_skipped_when_goal_none(self, tmp_path, monkeypatch):
+        """Missing goal → pre-trigger is a no-op (per the four-param contract)."""
+        fixture = self._basic_fixture(tmp_path)
+        bridge = self._ready_bridge()
+        orch = FixtureDrivenOrchestrator(fixture, turn_timeout=2.0, settle_s=0.2)
+
+        nac = MagicMock()
+        nac.get_agent_tool_biases.return_value = [("tool:sense_food_source", 0.85)]
+        imagination_trigger = MagicMock()
+        llm_router = MagicMock()
+
+        narrator_mock = self._patch_narrator(monkeypatch, return_value="should-not-fire")
+
+        result = orch.run(
+            bridge,
+            nac=nac,
+            imagination_trigger=imagination_trigger,
+            llm_router=llm_router,
+            goal=None,
+        )
+        nac.get_agent_tool_biases.assert_not_called()
+        narrator_mock.assert_not_called()
+        assert result.pretrigger_entities == ()
+
+    def test_pretrigger_fail_soft_does_not_abort_fixture_run(self, tmp_path, monkeypatch):
+        """Pre-trigger exception is logged + swallowed; the percept loop still runs."""
+        fixture = self._basic_fixture(tmp_path)
+        bridge = self._ready_bridge()
+        orch = FixtureDrivenOrchestrator(fixture, turn_timeout=2.0, settle_s=0.2)
+
+        nac = MagicMock()
+        nac.get_agent_tool_biases.side_effect = RuntimeError("boom")
+        memory_hub = MagicMock()
+        memory_hub.agent_id = "sim_aut"
+        imagination_trigger = MagicMock()
+        llm_router = MagicMock()
+
+        sim_log_mock = self._patch_sim_log(monkeypatch)
+
+        # Should NOT raise — pre-trigger errors are fail-soft.
+        result = orch.run(
+            bridge,
+            nac=nac,
+            memory_hub=memory_hub,
+            imagination_trigger=imagination_trigger,
+            llm_router=llm_router,
+            goal="roy:test:arm_a",
+        )
+        assert isinstance(result, FixtureResult)
+        # Even on failure, FixtureResult surfaces an empty entity tuple.
+        assert result.pretrigger_entities == ()
+        # SEM_TRACE 'failed' event surfaces the error class + message.
+        sem_trace_msgs = [
+            call.args[1] for call in sim_log_mock.call_args_list if call.args and call.args[0] == "SEM_TRACE"
+        ]
+        assert any("failed" in m and "RuntimeError" in m for m in sem_trace_msgs), sem_trace_msgs
+
+    def test_pretrigger_skipped_when_invalid_agent_id(self, tmp_path, monkeypatch):
+        """ValueError from get_agent_tool_biases → logged + skipped (defensive, should
+        not fire post-Fix-A since AgentConfig.agent_id is required non-empty).
+        """
+        fixture = self._basic_fixture(tmp_path)
+        bridge = self._ready_bridge()
+        orch = FixtureDrivenOrchestrator(fixture, turn_timeout=2.0, settle_s=0.2)
+
+        nac = MagicMock()
+        nac.get_agent_tool_biases.side_effect = ValueError("non-empty agent_id required")
+        memory_hub = MagicMock()
+        memory_hub.agent_id = ""  # empty, would trigger ValueError on real NAc
+        imagination_trigger = MagicMock()
+        llm_router = MagicMock()
+
+        narrator_mock = self._patch_narrator(monkeypatch, return_value="should-not-fire")
+        sim_log_mock = self._patch_sim_log(monkeypatch)
+
+        result = orch.run(
+            bridge,
+            nac=nac,
+            memory_hub=memory_hub,
+            imagination_trigger=imagination_trigger,
+            llm_router=llm_router,
+            goal="roy:test:arm_a",
+        )
+        narrator_mock.assert_not_called()
+        assert result.pretrigger_entities == ()
+        # SEM_TRACE 'invalid agent_id' event surfaces.
+        sem_trace_msgs = [
+            call.args[1] for call in sim_log_mock.call_args_list if call.args and call.args[0] == "SEM_TRACE"
+        ]
+        assert any("invalid agent_id" in m for m in sem_trace_msgs), sem_trace_msgs
