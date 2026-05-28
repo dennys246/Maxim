@@ -1434,8 +1434,42 @@ def start_simulation_mode(
             from maxim.simulation.narrator import generate_scene_manifest
             from maxim.simulation.sim_logger import sim_log
 
+            # W2 Hookup 1 — surface substrate-acquired tool biases to the
+            # manifest LLM so the generated entity list can include entities
+            # that activate substrate-favored tools (closes the imagination-
+            # blindness gap surfaced by Roy-3a-retry). See
+            # docs/plans/imagination_substrate_signals.md. Env-var gate
+            # MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL preserves ablation-
+            # evidence integrity for Roy iterations (parallel to Wire-A's
+            # MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION); shared truthy-parser.
+            _aut_nac_biases: list[tuple[str, float]] | None = None
+            if aut_nac is not None:
+                from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+                if not annotation_disabled_via_env(os.environ.get("MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL")):
+                    # Resolve agent_id from the canonical AUT MemoryHub stash
+                    # (same precedent as substrate_telemetry at line 1487)
+                    # instead of a fresh literal — a future agent_id refactor
+                    # then can't silently null this lookup.
+                    _aut_agent_id = getattr(aut_memory_hub, "agent_id", None) or "sim_aut"
+                    try:
+                        _aut_nac_biases = aut_nac.get_agent_tool_biases(
+                            agent_id=_aut_agent_id,
+                            top_n=5,
+                        )
+                    except ValueError as e:
+                        logger.warning(
+                            "W2 substrate-aware manifest skipped due to invalid agent_id (%s)",
+                            e,
+                        )
+                        _aut_nac_biases = None
+
             logger.info("Generating scene manifest for SEM world enrichment...")
-            manifest_text = generate_scene_manifest(llm_router, goal)
+            manifest_text = generate_scene_manifest(
+                llm_router,
+                goal,
+                nac_top_biases=_aut_nac_biases,
+            )
             if manifest_text:
                 manifest_results = aut_imagination_trigger.process_manifest(
                     manifest_text,

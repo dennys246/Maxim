@@ -1,8 +1,28 @@
 # Imagination substrate-signal hookup
 
-**Status:** DRAFT (2026-05-26). Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 3. Reframed 2026-05-27 — see "1.0 scope reframe" below.
+**Status:** **Hookup 1 SHIPPED** (PR pending, 2026-05-27). Hookups 2+3 remain 1.1+. Surfaced by [30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md) Finding 3. Reframed 2026-05-27 — see "1.0 scope reframe" below.
 **Trigger:** Roy-3a-retry NULL outcome — Wire-A annotated `sense_food_source [strongly rewarding from prior experience]` but no food entity was in scene. Imagination *should* be able to dream up a food-source entity to make the substrate-favored tool invokable, but the trigger is percept-text-bound and substrate signals (NAc, Wire-A, ATL) don't reach it.
 **Target:** **1.0 (MVP-scoped: Hookup 1 only)** + 1.1+ (Hookups 2+3). See "1.0 scope reframe" below.
+
+## W2 MVP shipment recap (2026-05-27, PR pending)
+
+**Scope landed:** Hookup 1 ONLY (substrate-aware manifest generation). `Narrator.generate_scene_manifest()` gains optional `nac_top_biases` parameter; the AUT orchestrator passes `aut_nac.get_agent_tool_biases(agent_id=<canonical AUT id>, top_n=5)` at scene-load time.
+
+**Substrate-voice consistency** — pre-merge two-lens review surfaced as bio-fidelity Critical finding C1 that the original implementation diverged from Wire-A's rendering shape (leaked raw floats, dropped "from prior experience" framing, emitted neutral entries unconditionally). Folded before merge by routing W2 through `compose_cluster_bias_annotation_section` directly so manifest LLM and AUT proposer LLM see the same substrate voice. The manifest-specific directive line is appended below the shared section.
+
+**Ablation gate** — added `MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL` env-var (parallel to Wire-A's `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION`) so Roy iterations can ablate W2 without re-implementing the gate. Shares the `annotation_disabled_via_env` truthy-parser. Conftest autouse scrub added in the same commit (per CLAUDE.md "opt-in env vars need autouse scrubs").
+
+**Agent_id resolution** — pulls from `aut_memory_hub.agent_id` (canonical AUT source, fallback `"sim_aut"`) instead of a fresh literal, so a future agent_id refactor can't silently null the lookup. Cross-confirmed M3 finding from both review lenses.
+
+**Self-reinforcing loop (Open Question #5):** intentionally NOT mitigated in MVP. The loop closes across sessions, not within (manifest is one-shot at scene-load, biases drift during the session, next scene reads drifted biases). Empirical-grounding gate ("≥N% of past sessions") becomes a Hookup-2 prerequisite if the Roy iteration shows pathological reinforcement. Documented in the `_compose_substrate_context` docstring.
+
+**Two substrate render surfaces by design:** W2 (manifest LLM) and Wire-A (AUT proposer LLM) both surface `_cluster_reward_bias`. Disjoint action spaces (entity selection vs tool selection) so not strict double-counting; shared renderer keeps the substrate voice unified across surfaces. Documented in the `_compose_substrate_context` docstring.
+
+**Deferred from MVP:** drives-routed-through-manifest (homeostatic/entropic) — bio-fidelity reviewer m3 flagged as a natural Hookup-2 candidate but explicitly out of scope.
+
+**Tests:** 9 tests in `tests/unit/test_imagination.py::TestGenerateSceneManifestSubstrateAware` pinning byte-identical no-op path, shared-renderer reuse, no-raw-float-leakage, "from prior experience" framing, all-neutral filter, ordering, and band routing.
+
+**Next iteration:** Roy-3a-retry-W1+W2 to measure end-to-end gap closure. Per Principle 4 (cycle convergence vs divergence): if the integration iteration's primary criterion fails AND post-hoc findings spawn new follow-up plans, bird's-eye to encoder replacement rather than ship Hookups 2+3 immediately.
 
 ## 1.0 scope reframe (2026-05-27)
 

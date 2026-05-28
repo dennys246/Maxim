@@ -1116,6 +1116,224 @@ class TestGenerateSceneManifest:
         assert result == ""
 
 
+class TestGenerateSceneManifestSubstrateAware:
+    """W2 Hookup 1 — substrate-aware manifest generation.
+
+    Pins the contract for ``generate_scene_manifest(..., nac_top_biases=...)``:
+
+    - ``None`` (default) preserves the pre-W2 byte-identical prompt
+      so cradle's substrate-blind path is unchanged.
+    - non-None + non-empty injects Wire-A's shared section header
+      (``=== Substrate associations from prior experience ===``) plus
+      a manifest-specific directive line.
+    - **Substrate-voice consistency** (bio-fidelity fold C1): rendering
+      delegates to ``compose_cluster_bias_annotation_section`` so the
+      manifest LLM and AUT proposer LLM see the same band labels, same
+      "from prior experience" framing, and NO raw-float leakage.
+    - All-neutral lists produce no section (matches Wire-A's filter).
+
+    See docs/plans/imagination_substrate_signals.md Hookup 1.
+    """
+
+    def _capture_prompt(self, mock_llm) -> str:
+        """Pull the prompt sent to ``generate_json`` from the mock."""
+        assert mock_llm.generate_json.called
+        args, kwargs = mock_llm.generate_json.call_args
+        # generate_json(prompt, max_tokens=...) — prompt is positional.
+        return args[0] if args else kwargs.get("prompt", "")
+
+    def test_none_biases_preserves_pre_w2_prompt(self):
+        """Default ``nac_top_biases=None`` must produce the pre-W2 prompt."""
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm_default = MagicMock()
+        mock_llm_default.generate_json.return_value = {"entities": ["a sword"]}
+        generate_scene_manifest(mock_llm_default, "explore a dungeon")
+        prompt_default = self._capture_prompt(mock_llm_default)
+
+        mock_llm_none = MagicMock()
+        mock_llm_none.generate_json.return_value = {"entities": ["a sword"]}
+        generate_scene_manifest(mock_llm_none, "explore a dungeon", nac_top_biases=None)
+        prompt_none = self._capture_prompt(mock_llm_none)
+
+        assert prompt_default == prompt_none
+        assert "Substrate associations" not in prompt_default
+
+    def test_empty_biases_preserves_pre_w2_prompt(self):
+        """Empty list must behave the same as ``None`` (no section emitted)."""
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm_default = MagicMock()
+        mock_llm_default.generate_json.return_value = {"entities": ["a sword"]}
+        generate_scene_manifest(mock_llm_default, "explore a dungeon")
+        prompt_default = self._capture_prompt(mock_llm_default)
+
+        mock_llm_empty = MagicMock()
+        mock_llm_empty.generate_json.return_value = {"entities": ["a sword"]}
+        generate_scene_manifest(mock_llm_empty, "explore a dungeon", nac_top_biases=[])
+        prompt_empty = self._capture_prompt(mock_llm_empty)
+
+        assert prompt_default == prompt_empty
+        assert "Substrate associations" not in prompt_empty
+
+    def test_all_neutral_biases_emit_no_section(self):
+        """All-neutral biases route through the shared filter and emit
+        nothing — matches Wire-A's all-neutral-skip behavior so the
+        manifest LLM doesn't get token-noise without signal."""
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm_default = MagicMock()
+        mock_llm_default.generate_json.return_value = {"entities": ["a sword"]}
+        generate_scene_manifest(mock_llm_default, "explore a dungeon")
+        prompt_default = self._capture_prompt(mock_llm_default)
+
+        mock_llm_neutral = MagicMock()
+        mock_llm_neutral.generate_json.return_value = {"entities": ["a sword"]}
+        # All entries in (-0.1, 0.1) → neutral / mixed band.
+        generate_scene_manifest(
+            mock_llm_neutral,
+            "explore a dungeon",
+            nac_top_biases=[("tool:a", 0.05), ("tool:b", -0.08)],
+        )
+        prompt_neutral = self._capture_prompt(mock_llm_neutral)
+
+        assert prompt_default == prompt_neutral
+        assert "Substrate associations" not in prompt_neutral
+
+    def test_non_empty_biases_injects_substrate_section(self):
+        """Non-empty biases inject the shared Wire-A renderer output
+        plus W2's manifest-specific directive."""
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = {"entities": ["a fruit"]}
+
+        biases = [
+            ("tool:sense_food_source", 0.85),
+            ("tool:sense_water", -0.6),
+        ]
+        generate_scene_manifest(mock_llm, "find food", nac_top_biases=biases)
+        prompt = self._capture_prompt(mock_llm)
+
+        # Shared header from Wire-A's renderer.
+        assert "=== Substrate associations from prior experience ===" in prompt
+        # Bare tool names (prefix stripped) appear in the prompt.
+        assert "sense_food_source" in prompt
+        assert "sense_water" in prompt
+        # The "tool:" prefix must NOT appear in the rendered tool-name lines
+        # (Wire-A's strip_tool_prefix discipline).
+        assert "tool:sense_food_source" not in prompt
+        assert "tool:sense_water" not in prompt
+        # Bands route through bias_to_band — 0.85 → strongly rewarding.
+        assert "strongly rewarding" in prompt
+        # -0.6 → strongly aversive (|-0.6| >= 0.5 lower band).
+        assert "strongly aversive" in prompt
+        # The W2-specific directive line is present so the manifest LLM
+        # reads the section as direction, not just data.
+        assert "prefer entities" in prompt
+
+    def test_no_raw_float_leakage(self):
+        """Bio-fidelity fold C1 — raw float values MUST NOT appear in
+        the prompt. The substrate-voice argument (cluster_bias_annotation.py
+        docstring lines 30-53) is that bands are display-layer translation,
+        not substrate state. Leaking the numeric anchors the LLM on
+        threshold boundaries across surfaces."""
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = {"entities": ["x"]}
+        # Deliberately distinct values so any leak is detectable.
+        biases = [
+            ("tool:a", 0.857),
+            ("tool:b", -0.731),
+        ]
+        generate_scene_manifest(mock_llm, "g", nac_top_biases=biases)
+        prompt = self._capture_prompt(mock_llm)
+
+        # None of the source values may appear in any rendered form
+        # (raw decimal, signed, or three-digit truncation).
+        for needle in ("0.857", "+0.857", "0.731", "-0.731", "0.86", "0.73"):
+            assert needle not in prompt, f"raw float leak: {needle!r} found in prompt"
+
+    def test_from_prior_experience_framing_present(self):
+        """Bio-fidelity fold C1 — substrate-voice framing must mark the
+        signal as episodic recall, not standing fact. Wire-A appends
+        ``from prior experience`` to non-neutral bands; W2 inherits this
+        via the shared renderer."""
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = {"entities": ["x"]}
+        biases = [("tool:sense_food_source", 0.85)]
+        generate_scene_manifest(mock_llm, "g", nac_top_biases=biases)
+        prompt = self._capture_prompt(mock_llm)
+
+        assert "from prior experience" in prompt
+
+    def test_substrate_section_appears_before_goal(self):
+        """Substrate context precedes the goal so the LLM reads
+        preferences as standing context, not goal-overriding noise."""
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = {"entities": ["x"]}
+        biases = [("tool:sense_food_source", 0.85)]
+        generate_scene_manifest(mock_llm, "explore", nac_top_biases=biases)
+        prompt = self._capture_prompt(mock_llm)
+
+        substrate_idx = prompt.index("=== Substrate associations from prior experience ===")
+        goal_idx = prompt.index("Simulation goal:")
+        assert substrate_idx < goal_idx
+
+    def test_band_rendering_routes_through_bias_to_band(self):
+        """All four non-neutral bands (per ``bias_to_band``) render via
+        the shared section. Neutral entries appear when mixed with non-
+        neutrals (per Wire-A's renderer)."""
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        # bias_to_band thresholds: 0.5 / 0.1 / -0.1 / -0.5
+        biases = [
+            ("tool:a", 0.9),  # strongly rewarding
+            ("tool:b", 0.3),  # mildly rewarding
+            ("tool:c", 0.0),  # neutral / mixed (kept by Wire-A when mixed)
+            ("tool:d", -0.3),  # mildly aversive
+            ("tool:e", -0.9),  # strongly aversive
+        ]
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = {"entities": ["x"]}
+        generate_scene_manifest(mock_llm, "g", nac_top_biases=biases)
+        prompt = self._capture_prompt(mock_llm)
+
+        assert "strongly rewarding" in prompt
+        assert "mildly rewarding" in prompt
+        assert "neutral / mixed" in prompt
+        assert "mildly aversive" in prompt
+        assert "strongly aversive" in prompt
+
+    def test_uses_shared_renderer_not_duplicated_logic(self):
+        """Cross-confirmation guard — the W2 manifest section MUST be a
+        superset of Wire-A's renderer output. If a future refactor
+        replaces the shared call with a private composer, this test
+        catches the substrate-voice drift."""
+        from maxim.prompts.cluster_bias_annotation import (
+            compose_cluster_bias_annotation_section,
+        )
+        from maxim.simulation.narrator import generate_scene_manifest
+
+        biases = [
+            ("tool:sense_food_source", 0.85),
+            ("tool:sense_water", -0.6),
+        ]
+        mock_llm = MagicMock()
+        mock_llm.generate_json.return_value = {"entities": ["x"]}
+        generate_scene_manifest(mock_llm, "g", nac_top_biases=biases)
+        prompt = self._capture_prompt(mock_llm)
+
+        shared_section = compose_cluster_bias_annotation_section(biases)
+        assert shared_section  # guard against test-fixture regression
+        assert shared_section in prompt
+
+
 class TestFindAliasOnly:
     """Tests for ComponentIndex.find_alias_only()."""
 
