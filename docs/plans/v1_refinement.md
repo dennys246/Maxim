@@ -192,6 +192,13 @@ After W1 + W2 MVPs ship, run Roy-3a-retry's spec unchanged with both gaps closed
 
 **Divergence-in-a-row outcome** (Roy finds a *new* failure mode beyond the two now-closed gaps): per refined Principle 4, this is the two-divergence-in-a-row trigger to bird's-eye to encoder replacement (Roy-5a Stage 3 + JEPA, 1.2+). W1+W2 stay shipped but their behavioral weight is gated on encoder work; the 1.0 thesis-demonstration claim re-scopes.
 
+**Outcome (2026-05-27, [32_wire_a_post_w1_w2.md](../experiments/32_wire_a_post_w1_w2.md)):** AMBIGUOUS-WITH-WIRING-BUG. PRIMARY failed (0/0/0), but structural analysis identified two upstream wiring gaps neither of which lives inside the W1 or W2 MVPs:
+
+- **Bug A** — Roy cross-session agent_id mismatch. Priming MemoryHub defaults to `agent_id="default_agent"`; the AUT orchestrator constructs the test-arm MemoryHub with `agent_id="sim_aut"` ([orchestrator.py:534](../../src/maxim/simulation/orchestrator.py)). `cluster_reward_bias` persists with the priming-time key; the test arm reads via `_loop_agent_id="sim_aut"` and `get_agent_tool_biases` strict-filters to empty. Wire-A and W1's grayscale (which reuses Wire-A's biases) both silently render empty. Affects every 0.9.1 Roy iteration that has claimed Wire-A reached the LLM — Experiment 30's reconstruction needs re-validation.
+- **Bug B** — W2's hookup site (`generate_scene_manifest` at [orchestrator.py:1468](../../src/maxim/simulation/orchestrator.py)) is structurally bypassed by Roy's fixture-driven test arms (`roy_1_holdout.yaml`). The W2 MVP plan correctly cites cradle as its precedent; that precedent doesn't extend to the Roy fixture path.
+
+Both fixes are 1.0 critical path before the next Wire-A Roy iteration can run with a working measurement instrument. The bird's-eye to encoder replacement is **not authorized** by this iteration — the thesis was not measured (the instrument was broken). Refined Principle 4 fires on new failure modes of the thesis, not on instrument bugs. Fix A's two candidate shapes and Fix B's two options are scoped in the experiment doc.
+
 ### What this section does NOT include
 
 - **scn_decay_anchoring is NOT a 1.0 item** despite originating from the same tau-split kickoff sequence. It's 1.0 nice-to-have / 1.1 acceptable per its own status header — addresses hardware portability, not substrate→action conversion. See [scn_decay_anchoring.md](scn_decay_anchoring.md) for the resolution.
