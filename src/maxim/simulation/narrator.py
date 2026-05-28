@@ -469,7 +469,66 @@ a carved stone altar glowing faintly
 """
 
 
-def generate_scene_manifest(llm: Any, goal: str) -> str:
+def _compose_substrate_context(nac_top_biases: list[tuple[str, float]] | None) -> str:
+    """Render top-N NAc tool biases as a manifest prompt prefix (W2 MVP).
+
+    Surfaces substrate-acquired tool preferences to the manifest LLM
+    call so the generated entity list can include entities that activate
+    substrate-favored tools.
+
+    **Substrate-voice consistency** — delegates rendering to Wire-A's
+    ``compose_cluster_bias_annotation_section`` so the manifest LLM and
+    the AUT proposer LLM see the same band labels, the same
+    "from prior experience" framing (substrate signal is *episodic
+    recall*, not standing fact), the same all-neutral filtering, and no
+    raw-float leakage. W2's only manifest-unique piece is the directive
+    line appended to the section. Surfaced by the two-lens pre-merge
+    review (bio-fidelity critical finding C1).
+
+    Returns empty string when ``nac_top_biases`` is None, empty, or
+    contains only neutral entries so the no-substrate-signal path is
+    byte-identical to the pre-W2 behavior.
+
+    **Self-reinforcing loop (plan Open Question #5):** The manifest
+    runs ONCE at scene-load. The loop closes across sessions (next
+    scene reads drifted biases), not within a session. The empirical-
+    grounding gate ("≥N% of past sessions") is intentionally NOT a
+    Hookup-1 requirement — it becomes a Hookup-2 prerequisite if the
+    Roy iteration shows pathological reinforcement.
+
+    **Two substrate render surfaces by design:** W2 (manifest LLM) and
+    Wire-A (AUT proposer LLM) both surface the same `_cluster_reward_bias`
+    signal. The two LLMs have disjoint action spaces (entity selection
+    vs tool selection), so the rendering is not double-counting — but
+    the signal IS amplified through two surfaces with no normalization.
+    The shared renderer (above) keeps the substrate-voice unified.
+
+    See [imagination_substrate_signals.md](
+    docs/plans/imagination_substrate_signals.md) Hookup 1.
+    """
+    if not nac_top_biases:
+        return ""
+    from maxim.prompts.cluster_bias_annotation import compose_cluster_bias_annotation_section
+
+    rendered = compose_cluster_bias_annotation_section(nac_top_biases)
+    if not rendered:
+        # All-neutral or otherwise filtered by the shared renderer — keep
+        # the byte-identical-to-pre-W2 path (no section emitted).
+        return ""
+    directive = (
+        "When generating the scene manifest, prefer entities that would "
+        "activate these substrate-favored tools where the goal narrative "
+        "permits."
+    )
+    return f"{rendered}\n{directive}"
+
+
+def generate_scene_manifest(
+    llm: Any,
+    goal: str,
+    *,
+    nac_top_biases: list[tuple[str, float]] | None = None,
+) -> str:
     """Generate a scene entity manifest from a simulation goal.
 
     Makes a single LLM call to produce a natural-language list of
@@ -482,8 +541,21 @@ def generate_scene_manifest(llm: Any, goal: str) -> str:
     Args:
         llm: LLM router or similar (must have ``generate_json``).
         goal: The simulation goal string.
+        nac_top_biases: Optional substrate-acquired tool preferences from
+            :meth:`NAc.get_agent_tool_biases`. When non-None and
+            non-empty, surfaced to the manifest LLM as additional context
+            so the generated manifest can include entities that activate
+            substrate-favored tools (W2 MVP, Hookup 1 of
+            imagination_substrate_signals.md). When ``None`` (default),
+            behavior is byte-identical to the pre-W2 substrate-blind
+            path — the cradle pattern stays valid per the plan's "keep
+            the option to run substrate-blind" invariant.
     """
-    prompt = f"{_MANIFEST_SYSTEM}\n\nSimulation goal: {goal}\n\nList the entities:"
+    substrate_context = _compose_substrate_context(nac_top_biases)
+    if substrate_context:
+        prompt = f"{_MANIFEST_SYSTEM}\n\n{substrate_context}\n\nSimulation goal: {goal}\n\nList the entities:"
+    else:
+        prompt = f"{_MANIFEST_SYSTEM}\n\nSimulation goal: {goal}\n\nList the entities:"
 
     try:
         # Use generate_json since LLMRouter doesn't have generate_text.

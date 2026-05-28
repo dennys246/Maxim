@@ -423,6 +423,9 @@ MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION=1  # Disable Wire-A's cluster-bias annotat
 # Wire 1 risk-sensitive variance annotation (release_0_9_1.md Stage 4)
 MAXIM_DISABLE_VARIANCE_ANNOTATION=1  # Disable Wire 1's variance-band felt-sensation annotation on tool descriptions. Default OFF (annotation ON in 0.9.1 by design). Mirrors MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION's parser. Set this to "1" / "true" / "yes" / "on" in the Roy-3 ablation arm to compare variance-annotation-on vs -off arms. The agent-loop producer site at runtime/agent_loop.py reads the var per LLM submission; absent / empty → annotation populated. Variance comes from CausalLink.variance_estimate (Welford online algorithm on the binary reward signal) via NAc.get_action_risk_profile.
 
+# W2 imagination substrate-signal MVP (imagination_substrate_signals.md Hookup 1)
+MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL=1  # Disable W2's substrate-aware scene-manifest enrichment. Default OFF (substrate-aware manifest ON). Mirrors Wire-A's MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION parser. Set to "1" / "true" / "yes" / "on" in Roy ablation arms to compare W2-on vs W2-off and measure the substrate→imagination gap closure independently of Wire-A's annotation gap closure. The sim orchestrator producer site reads the var once at scene-load; absent / empty → manifest sees NAc.get_agent_tool_biases via compose_cluster_bias_annotation_section (shared with Wire-A for substrate-voice consistency).
+
 # Leader proxy admission control
 MAXIM_PROXY_MAX_CONCURRENT=4     # Max in-flight requests to upstream (0=unlimited)
 MAXIM_PROXY_RATE_LIMIT_RPM=0     # Per-peer requests/minute (0=unlimited)

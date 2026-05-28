@@ -214,6 +214,29 @@ def _isolate_maxim_disable_variance_annotation():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_disable_imagination_substrate_signal():
+    """Scrub ``MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL`` across every test.
+
+    Added in W2 MVP (imagination_substrate_signals.md Hookup 1). Gates
+    the substrate-aware manifest read at the sim orchestrator scene-load
+    site (parallel to Wire-A's ablation gate above). Default OFF
+    (substrate-aware manifest ON); Roy iterations set this to ``1`` to
+    measure W2's contribution by comparing on-vs-off arms. Per
+    CLAUDE.md "opt-in env vars in hot startup paths need autouse
+    scrubs", pair the env-var reader at ``simulation/orchestrator.py``
+    with this scrub so a Roy ablation test does not leak the disabled
+    state into every later test that constructs the AUT orchestrator.
+    """
+    saved = os.environ.pop("MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL", None)
+        if saved is not None:
+            os.environ["MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_deep_embodiment():
     """Reset ``resolution._resolved_depth`` + scrub ``MAXIM_DEEP_EMBODIMENT``.
 
