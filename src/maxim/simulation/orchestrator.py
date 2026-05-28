@@ -1429,7 +1429,17 @@ def start_simulation_mode(
     # goal and resolve all entities through the imagination pipeline.
     # This runs AFTER ImaginationTrigger wiring (EntityMap, ComponentIndex,
     # designer all constructed) and BEFORE the AUT thread launch.
-    if aut_imagination_trigger is not None and llm_router is not None:
+    #
+    # Fix B fold (2026-05-27, pre-merge review BLOCK 1, cross-confirmed by
+    # both review lenses): gate on ``fixture_path is None`` so the generative-
+    # narrator pre-trigger does NOT double-fire alongside Fix B's fixture
+    # pre-trigger at ``FixtureDrivenOrchestrator._substrate_pretrigger``.
+    # Pre-fold, BOTH hookups fired when fixture_path was set — burning two
+    # manifest LLM calls per fixture run AND polluting the JSONL trace with
+    # both ``scene_id="pre_trigger"`` and ``scene_id="fixture_pretrigger"``.
+    # The two call sites now have disjoint conditions (this one handles the
+    # generative path; FixtureDrivenOrchestrator handles the fixture path).
+    if fixture_path is None and aut_imagination_trigger is not None and llm_router is not None:
         try:
             from maxim.simulation.narrator import generate_scene_manifest
             from maxim.simulation.sim_logger import sim_log
@@ -1662,6 +1672,11 @@ def start_simulation_mode(
         stop_event.set()
 
     # ── Fixture-driven campaign (S1) — no narrator LLM required ──────────
+    # Fix B (2026-05-27, docs/plans/imagination_substrate_signals.md): the
+    # substrate-aware pre-trigger threads aut_imagination_trigger + llm_router
+    # + goal so fixture-driven test arms (Roy's roy_1_holdout etc.) materialize
+    # substrate-favored entities into scene BEFORE driving percepts. Closes
+    # exp 32's Bug B (W2 hookup was structurally bypassed in this path).
     fixture_result: dict[str, Any] = {}
     if fixture_path is not None:
         from maxim.simulation.campaign_runner import run_fixture_campaign as _run_fix
@@ -1673,6 +1688,9 @@ def start_simulation_mode(
             aut_nac=aut_nac,
             aut_memory_hub=aut_memory_hub,
             aut_pain_bus=aut_pain_bus,
+            aut_imagination_trigger=aut_imagination_trigger,
+            llm_router=llm_router,
+            goal=goal,
         )
         stop_event.set()
 
