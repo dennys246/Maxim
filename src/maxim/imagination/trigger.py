@@ -549,9 +549,9 @@ class ImaginationTrigger:
             spec = self._registry.get(ref)
             entity_raw = spec.get("entity", spec)
 
-            from maxim.embodiment.spec import _parse_entity
+            from maxim.embodiment.spec import _parse_entity, normalize_llm_entity_spec
 
-            entity = _parse_entity(entity_raw)
+            entity = _parse_entity(normalize_llm_entity_spec(entity_raw))
             _entity_map.register_scene(entity)
 
             # Encode affordance names through substrate path for concept transfer.
@@ -770,9 +770,9 @@ class ImaginationTrigger:
         _entity_map = getattr(self, "_entity_map", None)
         if _entity_map is not None:
             try:
-                from maxim.embodiment.spec import _parse_entity
+                from maxim.embodiment.spec import _parse_entity, normalize_llm_entity_spec
 
-                entity = _parse_entity(spec.get("entity", spec))
+                entity = _parse_entity(normalize_llm_entity_spec(spec.get("entity", spec)))
                 _entity_map.register_scene(entity)
                 # Encode imagined entity affordances through substrate path
                 self._encode_entity_affordances(entity)
@@ -999,9 +999,10 @@ class ImaginationTrigger:
             # Register as scene entity
             if _entity_map is not None:
                 try:
-                    from maxim.embodiment.spec import _parse_entity
+                    from maxim.embodiment.spec import _parse_entity, normalize_llm_entity_spec
 
-                    entity = _parse_entity(design_result.spec.get("entity", design_result.spec))
+                    raw_spec = design_result.spec.get("entity", design_result.spec)
+                    entity = _parse_entity(normalize_llm_entity_spec(raw_spec))
                     _entity_map.register_scene(entity)
                     self._encode_entity_affordances(entity)
                 except Exception as e:

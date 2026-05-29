@@ -50,11 +50,23 @@ OUTPUT FORMAT — return ONLY a JSON object with this structure:
     }
   },
   "modulators": {
-    "modulator_group_name": {
+    "verb_group_name": {
+      "abstract": true,
       "affordances": {
         "action_name": {
           "params": {"param_name": "type (str|float|int|bool)"},
           "description": "what this action does"
+        }
+      }
+    },
+    "component_part_name": {
+      "sensors": {
+        "sub_sensor_name": {"unit": "ratio", "range": [0, 1], "initial": 1.0}
+      },
+      "affordances": {
+        "use_part": {
+          "params": {},
+          "description": "use this component"
         }
       }
     }
@@ -76,6 +88,13 @@ RULES:
 - pain values: 0.0 = none, 0.5 = moderate, 1.0 = severe
 - For NPCs: always include hp, and at least one social sensor (trust, mood, etc.)
 - For weapons: always include durability
+- Modulators MUST either declare at least one sensor in their own ``sensors``
+  field (component-damage model — e.g. a "wing" modulator owns "integrity")
+  OR declare ``"abstract": true`` for capability-only modulators (verbs with
+  no internal state — e.g. "social", "combat", "use", "movement"). Forgetting
+  the marker is rejected at parse time. When in doubt: prefer ``"abstract": true``
+  for verb-named groups (social/combat/use/movement); prefer real sensors for
+  noun-named parts (wing/engine/mechanism).
 - Include a "synonyms" list of 5-10 alternative names or short phrases a user
   might use to refer to this entity (e.g. "rusty blade", "old sword", "dull knife")
 - Return ONLY the JSON object, no markdown, no explanation
