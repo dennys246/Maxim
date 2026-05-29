@@ -27,7 +27,6 @@ Example YAML::
 from __future__ import annotations
 
 import logging
-import sys
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -46,6 +45,7 @@ from maxim.embodiment.sem import (
     HomeostaticDriveSpec,
     ModulationSpec,
 )
+from maxim.exceptions import ConfigurationError
 
 log = logging.getLogger(__name__)
 
@@ -248,33 +248,28 @@ def _parse_drive_spec(drive_data: dict[str, Any]) -> DriveSpec:
         raise ValueError(f"Unknown drive drift_mode: {mode!r}. Expected 'homeostatic' or 'entropic'.")
 
 
-def _check_c5_direct_health_deprecation(data: dict[str, Any]) -> None:
-    """Emit a DeprecationWarning when an entity declares both a direct
-    ``health`` sensor and modulators that carry sensors (component-damage
-    model), without opting into derived health.
+def _check_c5_direct_health(data: dict[str, Any]) -> None:
+    """Reject entities that declare a direct ``health`` sensor while also
+    having modulators with sensors (component-damage model), without
+    opting into derived health.
 
-    The canonical 1.0 shape is one source of truth for entity health:
-    when an entity has modulators with sub-sensors, ``Body.evaluate_failures``
+    The 1.0 contract: one source of truth for entity health. When an
+    entity has modulators with sub-sensors, ``Body.evaluate_failures``
     derives ``vital_metrics["health"]`` from modulator integrities.
     A direct ``health`` sensor duplicates that state and goes stale —
-    the agent reads ``health = 1.0`` while modulators sit at 0.3 integrity.
+    the agent would read ``health = 1.0`` while modulators sit at 0.3.
 
-    To opt in to derived health, declare ``health: derived`` at the entity
-    root (alongside ``sensors``/``modulators``).  Becomes a hard error in 1.0.
+    To opt in to derived health, declare ``health: derived`` at the
+    entity root (alongside ``sensors``/``modulators``). Boolean ``True``
+    is intentionally NOT accepted — one canonical spelling.
 
-    Mirrors the deprecation pattern in ``cli_utils._resolve_persona_mode``:
-    ``DeprecationWarning`` is silenced by Python's default warning filter
-    outside ``__main__``, and ``_parse_entity`` is reached via deep call
-    chains from the orchestrator / foundry / imagination paths — so we
-    also print a stderr line for human visibility.
+    Shipped as a ``DeprecationWarning`` in 0.9 (PR #220, 2026-04-30);
+    flipped to ``ConfigurationError`` in 1.0 per v1_refinement.md §C5.
     """
     sensors = data.get("sensors") or {}
     if not isinstance(sensors, dict) or "health" not in sensors:
         return
 
-    # Single canonical form: ``health: derived`` (string) at the entity root.
-    # Boolean ``True`` is intentionally NOT accepted — shipping one form
-    # into 1.0 keeps the contract narrow.
     if data.get("health") == "derived":
         return
 
@@ -285,7 +280,7 @@ def _check_c5_direct_health_deprecation(data: dict[str, Any]) -> None:
     if not has_modulator_sensors:
         return
 
-    msg = (
+    raise ConfigurationError(
         f"Entity {data['name']!r} declares a direct 'health' sensor while "
         f"also having modulators with sub-sensors (component-damage model). "
         f"The direct sensor duplicates state computed from modulator "
@@ -293,10 +288,8 @@ def _check_c5_direct_health_deprecation(data: dict[str, Any]) -> None:
         f"'health: derived' at the entity root so health is computed "
         f"from modulator integrities, or (b) remove the direct 'health' "
         f"sensor if the modulators already model the relevant integrity. "
-        f"This becomes a hard error in 1.0. (C5 deprecation)"
+        f"(C5)"
     )
-    print(f"DeprecationWarning: {msg}", file=sys.stderr)
-    warnings.warn(msg, DeprecationWarning, stacklevel=2)
 
 
 def _parse_entity(
@@ -314,7 +307,7 @@ def _parse_entity(
     if not name:
         raise ValueError("Entity must have a 'name' field")
 
-    _check_c5_direct_health_deprecation(data)
+    _check_c5_direct_health(data)
 
     entity_type = data.get("entity_type", "generic")
     # ``metadata`` catches every top-level YAML key not in the recognized

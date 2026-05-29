@@ -51,7 +51,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). What remains:
 
 **Hard requirements:**
-- **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. C4 SHIPPED (PR #219). C6 SHIPPED (2026-05-03). C5 design intact in §C5. C4/C6 hard-error flip prerequisites tracked in §1.1-T4.
+- **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. C4 deprecation SHIPPED (PR #219). C6 deprecation SHIPPED (2026-05-03). C5 SHIPPED both phases (deprecation PR #220, hard-error flip PR #299, 2026-05-29). C4/C6 hard-error flip prerequisites tracked in §1.1-T4.
 - **D1-D3** (Section 6) — Docs passes (agent memory transfer, API/CLI surface review, final docs pass). No code, just writing.
 - **W1-W2 (Wire-A substrate→action conversion)** — see new Section 1.5 below. Added 2026-05-27 after Phase B Roy-3a-retry's verdict named the substrate-scene-tool-availability + imagination-substrate-blindness gaps as the 1.0 thesis-demonstration bottleneck.
 
@@ -464,9 +464,15 @@ Require every modulator to declare at least one sensor. Capability-only modulato
 
 - **C4-followup-2: Sensor-promotion audit.** The 115 bundled modulators were marked `abstract: true` uniformly by an audit script. A small subset (~5-15) arguably should grow real sensors instead so `compute_integrity()` reflects "this capability is degraded" — `cradle_lever_door.mechanism` should own `lever_position`, `wizard.magic` should own `mana`, etc. **Approach:** group the 115 by modulator-name category (combat/social/maintenance/usage are clearly verbs and stay abstract — ~95+ of them); the real audit shrinks to the ~15 ambiguous ones (`magic`, `mechanism`, `lifecycle`, `physical`, `expression`). For each: does the entity carry sensors that conceptually belong to this modulator's working order? Net diff is small (5-10 promotions); the architectural signal it sends ("we know what state belongs where") is large. Polish pass — no hard deadline, can land any time before 1.x.
 
-### C5. Entity health as direct sensor (deprecation phase)
+### C5. Entity health as direct sensor — SHIPPED
 
-If entity has modulators with sensors AND a direct `health` sensor (not `derived`), parse-time warning in 0.9, hard error in 1.0.
+Deprecation phase shipped via PR #220 (2026-04-30): parse-time `DeprecationWarning` when an entity has modulators with sensors AND a direct `health` sensor without `health: derived` opt-in.
+
+Hard-error flip shipped via PR #299 (2026-05-29): warning replaced with `ConfigurationError` raised from `_check_c5_direct_health` in [`src/maxim/embodiment/spec.py`](../../src/maxim/embodiment/spec.py). Single canonical opt-in spelling (string `"derived"` only — boolean `True` rejected) preserved from the deprecation cycle. Bundled audit (80 components + scenarios) confirms zero offenders. Regression guard: [tests/unit/test_c5_direct_health.py](../../tests/unit/test_c5_direct_health.py) (8 tests).
+
+**Promoted from §1.1-T4 to 1.0** because the bundled audit cleared all offenders and C5 has no follow-up prerequisites (unlike C4's imagination/foundry normalizer or C6's DefaultNetwork standalone-path coupling).
+
+**Marker convention post-flip:** bare `(C5)` in the exception message — the `"deprecation"` suffix used by C4's pre-flip warning (`"(C4 v0.9 deprecation)"`) and C6's pre-flip warning (`"(C6 deprecation)"`) becomes anachronistic once the warning is an error. The natural endpoint for all three is `(C{N})` once C4 and C6 also flip.
 
 ### C6. Raw constructor enforcement (deprecation phase) — SHIPPED (2026-05-03)
 
@@ -725,9 +731,11 @@ Compare Maxim against Voyager / GITM / SPRING on a Minecraft live demo. Builds o
 
 Bio-enrichment routing through ComponentIndex, composable body archetypes. Phase 1 shipped. Phases 2-3 enrich the learning environment for the Minecraft demo but don't gate the cross-session claim — the Cradle and Experiment 10 already validate the claim with simpler worlds.
 
-### 1.1-T4. C4-C6 hard errors
+### 1.1-T4. C4 + C6 hard errors
 
 After 0.9 deprecation cycle. Flip `warnings.warn(DeprecationWarning, ...)` → `raise ConfigurationError(...)` (or `TypeError` for the C6 raw-construction path) at each shipped warning site.
+
+**C5 hard-error flip shipped** via PR #299 (2026-05-29) as Phase 1 of the sequenced 1.0 plan — see §C5. Remaining: C4 and C6.
 
 **C4 prerequisites (must clear before flipping the C4 warning):**
 - C4-followup-1 (imagination + foundry pipeline normalizer + prompt update) — see §C4. Hard prerequisite: without it, the flip hard-fails every imagined entity.
