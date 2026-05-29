@@ -214,6 +214,57 @@ Both fixes are 1.0 critical path before the next Wire-A Roy iteration can run wi
 
 ---
 
+## Section 1.6: Post-Roy-5b roadmap (encoder pivot resolution path)
+
+Added 2026-05-28. User authorized the **strict reading** at this point: 1.0 release waits for the encoder pivot to resolve rather than ship a re-scoped Wire-A-only thesis. Roy-5b (Stage 3 of [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md)) is the immediate next experiment; this section captures the roadmap from Roy-5b's verdict through 1.0 ship. Companion: [project_post_roy_5b_roadmap.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_post_roy_5b_roadmap.md).
+
+### Branch A — Stage 4a (Roy-5b PASS, ≥1 would-have-bound edge)
+
+Mechanism rescues with the corrected scaffold. Three steps to 1.0-readiness:
+
+1. **Resurrection PR** — lift [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md)'s cancellation header, add prerequisites section ("agent must run with naming-event cradle arc"), un-archive Stages 2-6. ~30 LOC doc fold; no code yet. **Needs explicit auth** for the implementation that follows.
+2. **Implementation** — Stages 2-6 of the cancelled plan: ~780 LOC. `PatternCompletionResult.bound_neighbors` field, EC `_format_version` bump, Hebbian binding rule + persistence + retrieval-side consumer. Two-lens pre-merge review expected; bio-fidelity-critical mechanism.
+3. **Roy-6 validation** — re-run Roy-3a's spec (or Roy-5b-shape) with the binding mechanism active end-to-end. PRIMARY same as before. If Arm A converges → V1 cross-session-learning thesis has its mechanism, **1.0 unblocked.**
+
+**Wall:** ~2–3 weeks assuming Roy-6 converges first-shot.
+
+### Branch B — Stage 4b (Roy-5b FAIL, zero edges even with scaffold)
+
+Mechanism is structurally dead even under deliberately-scaffolded co-firing. Promote [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) from "Stage 4b candidate" to "1.2 implementation in flight":
+
+1. **Promotion + plan refinement** — full plan-doc review, sizing pass, dependency map. ~1 day. **Needs explicit auth** for implementation.
+2. **Stage 1 (data collection)** — extend the naming-event scaffold to capture (sensor, drive, narrator_utterance) triples durably as JEPA training samples. New persistence layer in `_data/projections/training/`.
+3. **Stage 2 (training pipeline)** — `src/maxim/training/jepa/`, `scripts/train_jepa_projection.py`, `scripts/eval_jepa_alignment.py`. Two-headed projection MLPs (one per encoder), shared K=256 latent. RTX 5080 leader should handle training; CPU-only is unworkable.
+3. **Stage 3 (integration)** — additive `embed_projected()` on each encoder; existing same-modality call sites untouched.
+4. **Stage 4 (validation)** — Roy-7+ iterations with JEPA-projected substrate.
+
+**Wall:** ~2–4 months (months-scale research direction the disambiguator plan named).
+
+### Convergence — post-mechanism (1.0 ship sequence)
+
+Either branch lands at the same place: substrate→action conversion thesis has a clean behavioral demonstration. Then:
+
+1. **Benchmarking pass** — second of the two 1.0 gates per CLAUDE.md ("benchmarking + behavioral_graduation_candidates"). Specs need a scoping pass.
+2. **Behavioral graduation sweep** — [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) Tier 1 entries reach `Earned`; Stale/Broken either fix or downgrade.
+3. **D1–D3 gates** — whatever's left in v1_refinement Sections 6+ untouched. Re-read end-to-end at the convergence point to catch drift.
+4. **1.0 release** — version bump, PyPI publish, announcement.
+
+### Open questions worth pre-flagging now
+
+Shape the next 2–4 months; light scoping passes between sessions, not heavy plans:
+
+- **Branch B's training data sufficiency.** Will the naming-arc scaffold produce enough paired data for JEPA to converge? Stage 1's data-collection budget should be sized once the scaffold lands; worst case is "naming-arc data alone is too narrow → need a broader cradle pass before JEPA training is viable" which adds weeks.
+- **Hardware: where does training run?** RTX 5080 leader handles inference fine; JEPA training is a different load profile. Confirm headroom at JEPA Stage 2 kickoff.
+- **The strict-vs-lenient framing under Branch B.** If JEPA takes 4 months, is the "1.0 release waits" stance still right? Checkpoint at JEPA Stage 1 boundary (when implementation starts in earnest), not mid-stream.
+- **Whether 0.9.x continues to ship in parallel.** Wire-A, Fix A, Fix B all live and useful. A 0.9.2 / 0.9.3 cadence with operator-visible surface improvements is independent of the encoder pivot. Cheap; worth doing if user value warrants.
+
+### Cadence prediction
+
+- **Branch A:** ~3 PRs over 2–3 weeks (resurrection, implementation, Roy-6 validation). Each ~3–5 hour sessions matching the recent pattern.
+- **Branch B:** ~6–10 PRs over 2–4 months. Bigger, slower sessions; Stage 2 (training pipeline) is the longest single body of work and benefits from a multi-session arc with explicit checkpoints.
+
+---
+
 ## Section 2: Bio-System Stabilization (freeze-worthy interfaces)
 
 These are the systems that must be fully operational and standardized before 1.0 freezes the interfaces. Post-1.0, interface changes are expensive.
