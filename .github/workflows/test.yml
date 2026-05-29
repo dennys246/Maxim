@@ -229,16 +229,19 @@ jobs:
             echo "Import llm_swap_on_target from peer/admin_core instead."
             exit 1
           fi
-          # v0.9 C6 raw-construction allow list: PainBus / ReactionBus /
-          # MemoryHub raw construction must go through the canonical builders
-          # (build_pain_bus / build_reaction_bus / build_memory_hub). The
-          # builders pass _allow_raw=True internally; the only other
-          # legitimate src/maxim/ opt-out is DefaultNetwork's raw PainBus
-          # construction, which is deferred to the Wave-2
+          # C6 hard-error allow list (PR #301, 2026-05-29): PainBus /
+          # ReactionBus / MemoryHub raw construction without
+          # _allow_raw=True now raises TypeError. The keyword survives
+          # as the structural opt-out for tests. Production code goes
+          # through the canonical builders (build_pain_bus /
+          # build_reaction_bus / build_memory_hub) which pass
+          # _allow_raw=True internally. The only legitimate src/maxim/
+          # production opt-out is DefaultNetwork's raw PainBus
+          # construction, deferred to the Wave-2
           # memory_hub_unification follow-on (split-subscriber-ownership
-          # fix). New _allow_raw=True production sites are an architectural
-          # decision and require explicit allow-list update + CLAUDE.md
-          # rationale.
+          # fix). New _allow_raw=True production sites are an
+          # architectural decision and require explicit allow-list
+          # update + CLAUDE.md rationale.
           #
           # Match `_allow_raw=True` ONLY on lines where it appears as a
           # kwarg in a call: at line-start (after indentation), after a
