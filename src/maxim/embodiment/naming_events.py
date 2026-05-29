@@ -1,14 +1,31 @@
 """Embodiment naming-event scaffolding — deterministic drive-utterance co-firing.
 
-**Lifecycle: research scaffolding (Roy-5b, Stage 3 of
-docs/plans/roy_5_encoder_alignment_disambiguator.md).** Graduates to
-production if Stage 4a resurrects
-[docs/plans/cross_modal_substrate_binding.md] with the corrected-scaffold
-prerequisite; archives if Stage 4b promotes
-[docs/plans/jepa_cross_modal_alignment.md] as the encoder-replacement
-direction. The dormancy marker is explicit per CLAUDE.md Principle 2 —
-if the Roy-5b verdict is not in by 2026-09-01, audit whether this
-module should be marked dormant.
+**Dormant since 2026-05-29: superseded by EC drift fix per
+[docs/experiments/36_roy_5b_confound_isolation.md].** Roy-5b-confound-
+isolation showed the Roy-2c recognition gap closes from the EC drift
+fix alone (PR #264 raised `pattern_complete_threshold` 0.40 → 0.44) —
+no scaffold needed. With the scaffold, this module produces +1 (drive,
+drive) binding edge at default rule that doesn't form without it, but
+the recognition gap closure that motivated the scaffold is already
+achieved at the EC pattern-completion layer independent of binding
+edges. The scaffold IS structurally doing what it was designed to do
+(co-temporal drive + linguistic EC firing) — it just doesn't carry the
+load the Roy-5 disambiguator plan needed. Per CLAUDE.md Principle 2,
+the code stays wired and tests stay green; no new features build on
+top. Resurrection requires a new experiment that earns this
+mechanism's behavioral weight (e.g., demonstrating that
+co-temporal-firing-based learning produces some downstream property
+the threshold-only path cannot).
+
+**Pre-dormancy history:** Roy-5b (Stage 3 of
+docs/plans/roy_5_encoder_alignment_disambiguator.md, 2026-05-28)
+ran this scaffold and produced 1 matched binding edge at default.
+Roy-5b-confound-isolation (2026-05-29) ran the same protocol WITHOUT
+the scaffold at HEAD and produced the same arm A overlap (10/10),
+showing the recognition gap closure was threshold-driven, not
+scaffold-driven. `docs/plans/cross_modal_substrate_binding.md` was
+archived as a result; `docs/plans/jepa_cross_modal_alignment.md`
+remains parked with weakened motivation.
 
 Roy-5b needs the priming arc to produce a temporally-aligned (sensor
 pattern, drive state, body-utterance) triple within a shared salience
