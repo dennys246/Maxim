@@ -270,6 +270,57 @@ jobs:
             echo "cycle + 1.0 hard-error flip."
             exit 1
           fi
+          # v1 C4-followup-1 LLM-spec normalizer rule: any caller of
+          # _parse_entity outside the four sanctioned non-LLM input
+          # sources (defining/recursive use in embodiment/spec.py,
+          # bundled YAML pass-through in component_registry.py,
+          # user-authored DM YAML in campaign_runner.py, curated arc
+          # data in generative_runner.py) MUST also call
+          # normalize_llm_entity_spec on the spec. Bundled + user-YAML
+          # sources are AUDITED — they declare `abstract: true`
+          # explicitly so the user-migration signal (C4 deprecation
+          # warning, 1.0 ConfigurationError) reaches the author. LLM
+          # specs are NOT audited — the normalizer auto-fills the
+          # missing marker so LLM forgetfulness doesn't crash the
+          # imagined / foundry-generated paths.
+          #
+          # Match `_parse_entity(` calls (excluding the function
+          # definition signature) and require either an allow-listed
+          # file OR the normalizer on the same line / nearby. Per-file
+          # allow-list is the load-bearing structural enforcement;
+          # adding a new entry without updating both the allow-list
+          # and CLAUDE.md is the canonical "silent-no-op" trap this
+          # guard exists to close.
+          #
+          # See docs/plans/v1_refinement.md §C4 followup-1.
+          # Match assignment-form calls only (`x = _parse_entity(`) so
+          # docstring/comment mentions like "ready for _parse_entity()"
+          # do not false-positive.
+          PARSE_ENTITY_MATCHES=$(grep -rnE --include="*.py" "=\s*_parse_entity\(" src/maxim/ \
+            | grep -vE "^src/maxim/embodiment/spec\.py:" \
+            | grep -vE "^src/maxim/embodiment/component_registry\.py:" \
+            | grep -vE "^src/maxim/simulation/campaign_runner\.py:" \
+            | grep -vE "^src/maxim/simulation/generative_runner\.py:" \
+            | grep -vE "normalize_llm_entity_spec" \
+            || true)
+          if [ -n "$PARSE_ENTITY_MATCHES" ]; then
+            echo "ERROR: new _parse_entity caller outside the C4-followup-1 allow list detected"
+            echo "$PARSE_ENTITY_MATCHES"
+            echo ""
+            echo "LLM-derived entity specs (imagination, foundry, ...) MUST route through"
+            echo "maxim.embodiment.spec.normalize_llm_entity_spec(spec) before _parse_entity"
+            echo "so the C4 hard-error flip doesn't reject LLM forgetfulness about the"
+            echo "modulator.abstract=true marker."
+            echo ""
+            echo "If you have a legitimate new non-LLM caller (e.g., a new bundled-YAML"
+            echo "loader where the user-migration signal should reach the author), update BOTH:"
+            echo "  1. The allow list in .github/workflows/test.yml"
+            echo "  2. CLAUDE.md (the C4-followup-1 invariant)"
+            echo "in the same commit, with a comment naming the input source class."
+            echo ""
+            echo "See src/maxim/embodiment/spec.py::normalize_llm_entity_spec docstring."
+            exit 1
+          fi
           echo "CI grep invariants clean"
 
       - name: CLAUDE.md invariant regression-guard lint (Principle 5)

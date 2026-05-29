@@ -214,54 +214,92 @@ Both fixes are 1.0 critical path before the next Wire-A Roy iteration can run wi
 
 ---
 
-## Section 1.6: Post-Roy-5b roadmap (encoder pivot resolution path)
+## Section 1.6: Post-Roy-5b roadmap (RESOLVED 2026-05-29) + sequenced 1.0 plan
 
-Added 2026-05-28. User authorized the **strict reading** at this point: 1.0 release waits for the encoder pivot to resolve rather than ship a re-scoped Wire-A-only thesis. Roy-5b (Stage 3 of [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md)) is the immediate next experiment; this section captures the roadmap from Roy-5b's verdict through 1.0 ship. Companion: [project_post_roy_5b_roadmap.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_post_roy_5b_roadmap.md).
+Added 2026-05-28; updated 2026-05-29 after Roy-5b verdict + Roy-5b-confound-isolation Branch A resolution. **Both Branch A and Branch B are now closed** — the encoder-pivot question is resolved (not via either branch, but via a third path the disambiguator plan didn't pre-register). See [docs/experiments/36_roy_5b_confound_isolation.md](../experiments/36_roy_5b_confound_isolation.md) for the verdict + [project_roy_5b_confound_isolation.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_roy_5b_confound_isolation.md) memory.
 
-### Branch A — Stage 4a (Roy-5b PASS, ≥1 would-have-bound edge)
+### What happened (the resolved encoder-pivot question)
 
-Mechanism rescues with the corrected scaffold. Three steps to 1.0-readiness:
+The Roy-2c recognition gap closes from the **EC drift fix alone** (PR #264, `pattern_complete_threshold` 0.40 → 0.44, 2026-05-24). No naming-event scaffold needed; no Hebbian binding mechanism needed; no JEPA projection needed. Four-experiment matrix:
 
-1. **Resurrection PR** — lift [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md)'s cancellation header, add prerequisites section ("agent must run with naming-event cradle arc"), un-archive Stages 2-6. ~30 LOC doc fold; no code yet. **Needs explicit auth** for the implementation that follows.
-2. **Implementation** — Stages 2-6 of the cancelled plan: ~780 LOC. `PatternCompletionResult.bound_neighbors` field, EC `_format_version` bump, Hebbian binding rule + persistence + retrieval-side consumer. Two-lens pre-merge review expected; bio-fidelity-critical mechanism.
-3. **Roy-6 validation** — re-run Roy-3a's spec (or Roy-5b-shape) with the binding mechanism active end-to-end. PRIMARY same as before. If Arm A converges → V1 cross-session-learning thesis has its mechanism, **1.0 unblocked.**
+| Experiment | Body | Codebase | Threshold | Arm A overlap with priming |
+|---|---|---|---|---|
+| Roy-4 (2026-05-13) | infant_humanoid | pre-fix | 0.40 | 0/10 |
+| Roy-4-replica (2026-05-29) | infant_humanoid | pre-fix | 0.40 | 0/10 |
+| Roy-5b-confound-isolation (2026-05-29) | infant_humanoid | HEAD | 0.44 | 10/10 |
+| Roy-5b (2026-05-28) | naming_v1 (scaffold) | HEAD | 0.44 | 10/10 |
 
-**Wall:** ~2–3 weeks assuming Roy-6 converges first-shot.
+The threshold tweak is solely responsible. **Outcomes:**
+- [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) ARCHIVED. Do not resurrect.
+- [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) stays at its pre-Roy-5b "Stage 4b candidate" status — 1.1+/1.2 research direction motivated by the dimensional fact (384 vs 768-dim cross-modal cosine undefined). Roy-5b's specific Branch B promotion trigger (clean FAIL across the sweep) did not fire, so JEPA does NOT promote to "1.2 in flight" today. But the plan's underlying motivation is independent of any specific Roy iteration verdict — it stands on the structural fact about different-dimensional encoders. Neither Roy-5b nor Roy-5b-confound-isolation cancel it; neither promotes it.
+- [embodiment/naming_events.py](../../src/maxim/embodiment/naming_events.py) marked Dormant per CLAUDE.md Principle 2.
+- [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md) Stage 4 disposition resolved; new Stage 5 question: what does the threshold-driven gap closure buy behaviorally?
 
-### Branch B — Stage 4b (Roy-5b FAIL, zero edges even with scaffold)
+### Sequenced 1.0 plan (authorized 2026-05-29)
 
-Mechanism is structurally dead even under deliberately-scaffolded co-firing. Promote [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) from "Stage 4b candidate" to "1.2 implementation in flight":
+User-authorized order. Two tracks run in parallel through the middle; benchmarking scope gets defined alongside the warm-up so the graduation criteria can incorporate it.
 
-1. **Promotion + plan refinement** — full plan-doc review, sizing pass, dependency map. ~1 day. **Needs explicit auth** for implementation.
-2. **Stage 1 (data collection)** — extend the naming-event scaffold to capture (sensor, drive, narrator_utterance) triples durably as JEPA training samples. New persistence layer in `_data/projections/training/`.
-3. **Stage 2 (training pipeline)** — `src/maxim/training/jepa/`, `scripts/train_jepa_projection.py`, `scripts/eval_jepa_alignment.py`. Two-headed projection MLPs (one per encoder), shared K=256 latent. RTX 5080 leader should handle training; CPU-only is unworkable.
-3. **Stage 3 (integration)** — additive `embed_projected()` on each encoder; existing same-modality call sites untouched.
-4. **Stage 4 (validation)** — Roy-7+ iterations with JEPA-projected substrate.
+**Phase 1 — Warm-up (1-2 small PRs + 1 planning doc):**
+1. **C5 + C4/C6 hard-error flip.** Per §C5 design + §1.1-T4 prerequisites. Small mechanical PRs. Gets a known-quantity item off the board, builds momentum.
+2. **Benchmarking scope-definition planning doc.** Per [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) "Benchmarking is the **sibling** 1.0 gate to behavioral graduation." Currently undefined in plan docs. Scoping during warm-up means the criteria can inform how Tier 1 graduations get measured. Don't tail-load this — risk of late surprises that re-open graduation work.
 
-**Wall:** ~2–4 months (months-scale research direction the disambiguator plan named).
+**Phase 2 — Parallel tracks (the calendar middle):**
 
-### Convergence — post-mechanism (1.0 ship sequence)
+*Foreground track — Tier 1 behavioral graduations, in confidence order:*
+1. **Cross-session learning** (Tier 1, PARTIAL → EARNED). Closest to EARNED — 3 memories/turn already measured per [Exp 10](../experiments/10_cross_session_enrichment.md); needs predictions + concepts pending. **Tackle first** because lowest risk of taking calendar.
+2. **Affordance concept transfer** (Tier 1, PARTIAL → EARNED). Has 0.785 cosine measurement; needs broader Roy-5+ fixture validation. **Tackle second.**
+3. **Substrate-primary action selection** (Tier 1, PARTIAL → EARNED). Hardest — Roy-5b's findings inform but don't graduate this. The disambiguator's new Stage 5 question is the path forward but currently undefined. **Tackle last** because earlier graduations may inform what "threshold-driven closure buys behaviorally" looks like in practice.
 
-Either branch lands at the same place: substrate→action conversion thesis has a clean behavioral demonstration. Then:
+"Hammer each one until we **graduate or reframe**." Each Tier 1 item ends in `EARNED` status OR explicit retraction in 1.0 release notes (no silent omission). Per [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) "1.0 commitment" line.
 
-1. **Benchmarking pass** — second of the two 1.0 gates per CLAUDE.md ("benchmarking + behavioral_graduation_candidates"). Specs need a scoping pass.
-2. **Behavioral graduation sweep** — [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) Tier 1 entries reach `Earned`; Stale/Broken either fix or downgrade.
-3. **D1–D3 gates** — whatever's left in v1_refinement Sections 6+ untouched. Re-read end-to-end at the convergence point to catch drift.
-4. **1.0 release** — version bump, PyPI publish, announcement.
+*Background track — Hivemind shareability infrastructure (~660 LOC):*
+- Substrate snapshot bundle format (zip + manifest + signature, ~150 LOC)
+- `nac.merge()` / `ec.merge()` Bayesian-aggregation library functions (~200 LOC)
+- Provenance tags on NAc links + EC nodes (~100 LOC)
+- Identity-bearing concept detection ported from old Mother plan (~80 LOC)
+- Substrate domain tagging (~50 LOC)
+- `maxim substrate export` / `maxim substrate import` CLI verbs (~80 LOC)
 
-### Open questions worth pre-flagging now
+Runs PARALLEL to graduations because each Roy iteration is ~25 min wall + analysis — leader would sit idle during graduation analysis windows otherwise. Two-track approach saves ~2-3 weeks. Doesn't touch user-facing 1.0 surface; doesn't gate D1-D3.
 
-Shape the next 2–4 months; light scoping passes between sessions, not heavy plans:
+**Phase 3 — Benchmarking execution:**
 
-- **Branch B's training data sufficiency.** Will the naming-arc scaffold produce enough paired data for JEPA to converge? Stage 1's data-collection budget should be sized once the scaffold lands; worst case is "naming-arc data alone is too narrow → need a broader cradle pass before JEPA training is viable" which adds weeks.
-- **Hardware: where does training run?** RTX 5080 leader handles inference fine; JEPA training is a different load profile. Confirm headroom at JEPA Stage 2 kickoff.
-- **The strict-vs-lenient framing under Branch B.** If JEPA takes 4 months, is the "1.0 release waits" stance still right? Checkpoint at JEPA Stage 1 boundary (when implementation starts in earnest), not mid-stream.
-- **Whether 0.9.x continues to ship in parallel.** Wire-A, Fix A, Fix B all live and useful. A 0.9.2 / 0.9.3 cadence with operator-visible surface improvements is independent of the encoder pivot. Cheap; worth doing if user value warrants.
+Once graduation criteria are firm + Tier 1 graduations are in flight or done, execute against the benchmarking scope from Phase 1's planning doc. Sibling 1.0 gate per [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md).
+
+**Phase 4 — D1-D3 docs:**
+
+Last, so docs reflect the settled state. No code; just writing. Agent memory transfer + API/CLI surface review + final docs pass per §6.
+
+### Why this sequence
+
+- **C5/C4/C6 first:** small mechanical wins that build momentum, no calendar risk, surface a "done" early.
+- **Benchmarking scope EARLY (parallel to C5/C4/C6):** scoping is a planning artifact at warm-up stage; defining it informs how graduations get measured. Tail-loading is risky.
+- **Tier 1 graduations as the long-pole middle:** the binary "graduate or reframe" framing is the honest 1.0 discipline. 3 of 5 Tier 1 items are PARTIAL today. The Roy harness is mature enough that each graduation is ~1-3 weeks; cross-session-first ordering puts the highest-confidence graduations first.
+- **Hivemind PARALLEL to graduations:** independent code work that fills the "wait for Roy iteration" calendar windows. Strict serial would leave the leader idle.
+- **Benchmarking execution after scope + graduations:** scope is firm by then; can be executed against settled graduation criteria.
+- **Docs LAST:** D1-D3 is "no code, just writing"; writing once everything is settled prevents rework.
+
+### Walls (rough)
+
+| Phase | Wall | Notes |
+|---|---|---|
+| Phase 1 (warm-up) | ~1 week | C5/C4/C6 PRs + benchmarking scope doc |
+| Phase 2 (parallel tracks) | ~4-6 weeks | graduations: cross-session ~1-2wk + affordance ~1-2wk + substrate-primary ~2-3wk. Hivemind in background. |
+| Phase 3 (benchmarking exec) | ~1-2 weeks | depends on scope from Phase 1 |
+| Phase 4 (docs) | ~1-2 weeks | D1-D3 |
+| **Total 1.0 wall** | **~7-11 weeks** | with realistic risk buffer |
 
 ### Cadence prediction
 
-- **Branch A:** ~3 PRs over 2–3 weeks (resurrection, implementation, Roy-6 validation). Each ~3–5 hour sessions matching the recent pattern.
-- **Branch B:** ~6–10 PRs over 2–4 months. Bigger, slower sessions; Stage 2 (training pipeline) is the longest single body of work and benefits from a multi-session arc with explicit checkpoints.
+~8-12 PRs total across 1.0. Each PR matches the recent pattern (~3-5 hour sessions, two-lens review where applicable, single durable artifact). Hivemind track may stack multiple smaller LOC PRs.
+
+### Open questions worth pre-flagging now
+
+- **What does "graduated" actually look like per Tier 1 item?** The graduation candidates doc lists the bio-mechanism + status, but each PARTIAL item needs a pre-registered experiment + diagnostic that produces a clean PASS/FAIL (Roy-style discipline). Each Tier 1 kickoff should pre-register its graduation criterion before the experiment runs.
+- **Benchmarking scope definition.** What tasks, what metrics, what acceptance criteria? Phase 1's scoping doc owns this. Inputs: 1.0 thesis ("cross-session learning without fine-tuning"), Tier 1 graduation criteria, comparable benchmark precedents in the bio-inspired-LLM-harness space.
+- **The "reframe" option per Tier 1 item.** If a PARTIAL item can't graduate, which framings get retracted vs which force a 1.0 delay? Cross-session learning is load-bearing for the entire thesis; substrate-primary action selection is currently experimental flag and could ship as such. Worth thinking through per-item before "hammering."
+- **0.9.x parallel cadence.** Wire-A, Fix A, Fix B all live and useful. A 0.9.2 / 0.9.3 cadence with operator-visible surface improvements is independent of the 1.0 sequence. Cheap; worth doing if user value warrants.
+- **Disambiguator Stage 5 question.** "What does the threshold-driven gap closure buy behaviorally?" is the disambiguator plan's new next-question. May surface a problem that informs (or blocks) substrate-primary graduation. Light scoping pass before substrate-primary graduation kicks off.
 
 ---
 
@@ -422,13 +460,19 @@ Require every modulator to declare at least one sensor. Capability-only modulato
 
 **Known follow-ups (track for 1.x track, before the hard-error flip in §1.1-T4):**
 
-- **C4-followup-1: Imagination + foundry pipelines emit bare LLM specs.** `imagination/trigger.py` (3 call sites) and `simulation/foundry.py` (2 call sites) call `_parse_entity` on LLM-generated specs that don't declare `abstract: true` on capability-only modulators. v0.9 surfaces deprecation warnings on every imagined entity — the intended deprecation signal. v1.x flip will hard-fail those entry points until fixed. **Fix shape:** small post-process normalizer in `spec.py` (`if not mod.get("sensors") and "abstract" not in mod: mod["abstract"] = True`) called at the 5 LLM-spec entry points + update `simulation/entity_designer.py` JSON template to ask the LLM to emit `abstract: true` for capability-only modulators. The post-process is a safety net for LLM forgetfulness; the prompt update is the right-shaped ask. Hard 1.x deadline (warning → error). ~50-100 LOC.
+- **C4-followup-1: Imagination + foundry pipelines emit bare LLM specs — SHIPPED** (PR #300, 2026-05-29). Per-source contract enforced: LLM-derived `_parse_entity` callers (3 sites in `imagination/trigger.py`, 2 in `simulation/foundry.py`) route through `normalize_llm_entity_spec` which fills `abstract: True` on capability-only modulators. Bundled YAMLs (`component_registry`), user-authored YAMLs (`campaign_runner` DM specs), and curated arc data (`generative_runner` world entities) deliberately DO NOT normalize — the C4 deprecation warning / 1.0 `ConfigurationError` is the user-facing migration signal asking the author to declare `abstract: true` explicitly. The LLM prompt in `simulation/entity_designer.py::_SEM_SCHEMA_PROMPT` is updated with the right-shaped ask (split example modulators — verb-group with `abstract: true` vs component-part with sensors — prevents cargo-cult of both fields on the same modulator). Audited scenarios/ YAMLs: zero bare modulators across 51 files. Regression-guarded by: (a) CI grep in `.github/workflows/test.yml` allow-listing the four non-LLM input source files + requiring `normalize_llm_entity_spec` on every other `_parse_entity` caller, (b) [tests/unit/test_normalize_llm_entity_spec.py](../../tests/unit/test_normalize_llm_entity_spec.py) (15 tests covering bare-marker-fill / non-mutation / idempotency / recursion / end-to-end C4-warning suppression), (c) CLAUDE.md "Architectural invariants" entry naming the contract.
 
 - **C4-followup-2: Sensor-promotion audit.** The 115 bundled modulators were marked `abstract: true` uniformly by an audit script. A small subset (~5-15) arguably should grow real sensors instead so `compute_integrity()` reflects "this capability is degraded" — `cradle_lever_door.mechanism` should own `lever_position`, `wizard.magic` should own `mana`, etc. **Approach:** group the 115 by modulator-name category (combat/social/maintenance/usage are clearly verbs and stay abstract — ~95+ of them); the real audit shrinks to the ~15 ambiguous ones (`magic`, `mechanism`, `lifecycle`, `physical`, `expression`). For each: does the entity carry sensors that conceptually belong to this modulator's working order? Net diff is small (5-10 promotions); the architectural signal it sends ("we know what state belongs where") is large. Polish pass — no hard deadline, can land any time before 1.x.
 
-### C5. Entity health as direct sensor (deprecation phase)
+### C5. Entity health as direct sensor — SHIPPED
 
-If entity has modulators with sensors AND a direct `health` sensor (not `derived`), parse-time warning in 0.9, hard error in 1.0.
+Deprecation phase shipped via PR #220 (2026-04-30): parse-time `DeprecationWarning` when an entity has modulators with sensors AND a direct `health` sensor without `health: derived` opt-in.
+
+Hard-error flip shipped via PR #299 (2026-05-29): warning replaced with `ConfigurationError` raised from `_check_c5_direct_health` in [`src/maxim/embodiment/spec.py`](../../src/maxim/embodiment/spec.py). Single canonical opt-in spelling (string `"derived"` only — boolean `True` rejected) preserved from the deprecation cycle. Bundled audit (80 components + scenarios) confirms zero offenders. Regression guard: [tests/unit/test_c5_direct_health.py](../../tests/unit/test_c5_direct_health.py) (8 tests).
+
+**Promoted from §1.1-T4 to 1.0** because the bundled audit cleared all offenders and C5 has no follow-up prerequisites (unlike C4's imagination/foundry normalizer or C6's DefaultNetwork standalone-path coupling).
+
+**Marker convention post-flip:** bare `(C5)` in the exception message — the `"deprecation"` suffix used by C4's pre-flip warning (`"(C4 v0.9 deprecation)"`) and C6's pre-flip warning (`"(C6 deprecation)"`) becomes anachronistic once the warning is an error. The natural endpoint for all three is `(C{N})` once C4 and C6 also flip.
 
 ### C6. Raw constructor enforcement — SHIPPED
 
@@ -702,6 +746,8 @@ After 0.9 deprecation cycle. Flip `warnings.warn(DeprecationWarning, ...)` → `
 **C6 hard-error flip SHIPPED** (PR #301, 2026-05-29) via path (b) — see §C6. `DefaultNetwork._init_pain_circuit` retains its `PainBus(_allow_raw=True)` opt-out; Wave-2 split-subscriber-ownership fix in `pain_bus_unification.md` is the proper resolution but ships separately.
 
 **Remaining: C4** flip pending.
+
+**C5 hard-error flip shipped** via PR #299 (2026-05-29) as Phase 1 of the sequenced 1.0 plan — see §C5. Remaining: C4 and C6.
 
 **C4 prerequisites (must clear before flipping the C4 warning):**
 - C4-followup-1 (imagination + foundry pipeline normalizer + prompt update) — see §C4. **SHIPPED** (PR #300, 2026-05-29). Hard prerequisite cleared.
