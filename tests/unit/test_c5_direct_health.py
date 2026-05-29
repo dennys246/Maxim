@@ -1,22 +1,23 @@
-"""C5: deprecation warning for direct ``health`` sensor when an entity
+"""C5: hard ConfigurationError for direct ``health`` sensor when an entity
 also has modulators with sensors (component-damage model).
 
-The canonical 1.0 shape is one source of truth for entity health: when
-an entity has modulators with sub-sensors, ``Body.evaluate_failures``
-derives ``vital_metrics["health"]`` from modulator integrities. A direct
+The 1.0 contract: one source of truth for entity health. When an entity
+has modulators with sub-sensors, ``Body.evaluate_failures`` derives
+``vital_metrics["health"]`` from modulator integrities. A direct
 ``health`` sensor duplicates that state and goes stale.
 
-0.9 emits ``DeprecationWarning`` at parse time. 1.0 will hard-error.
+0.9.x emitted ``DeprecationWarning`` at parse time (PR #220, 2026-04-30).
+1.0 flipped to ``ConfigurationError`` per v1_refinement.md §C5 (PR #299).
 """
 
 from __future__ import annotations
 
-import warnings
-from io import StringIO
 from pathlib import Path
-from unittest.mock import patch
+
+import pytest
 
 from maxim.embodiment.spec import _parse_entity, load_spec
+from maxim.exceptions import ConfigurationError
 
 
 def _make_entity_dict(
@@ -38,12 +39,12 @@ def _make_entity_dict(
 
 
 # ---------------------------------------------------------------------------
-# (a) entity with modulators-with-sensors AND direct health → WARN
+# (a) entity with modulators-with-sensors AND direct health → RAISE
 # ---------------------------------------------------------------------------
 
 
-class TestOffenderWarns:
-    def test_modulators_with_sensors_plus_direct_health_warns(self):
+class TestOffenderRaises:
+    def test_modulators_with_sensors_plus_direct_health_raises(self):
         data = _make_entity_dict(
             name="dragon",
             sensors={
@@ -58,26 +59,24 @@ class TestOffenderWarns:
                 },
             },
         )
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with pytest.raises(ConfigurationError) as exc:
             _parse_entity(data)
 
-        c5 = [w for w in caught if "C5 deprecation" in str(w.message)]
-        assert len(c5) == 1, f"Expected exactly one C5 warning, got {len(caught)}: {[str(w.message) for w in caught]}"
-        assert issubclass(c5[0].category, DeprecationWarning)
-        assert "dragon" in str(c5[0].message)
-        # Upgrade-path mentions both options.
-        assert "health: derived" in str(c5[0].message)
-        assert "remove the direct 'health' sensor" in str(c5[0].message)
+        msg = str(exc.value)
+        assert "dragon" in msg
+        assert "(C5)" in msg
+        # Both opt-in paths surfaced in the message.
+        assert "health: derived" in msg
+        assert "remove the direct 'health' sensor" in msg
 
 
 # ---------------------------------------------------------------------------
-# (b) entity with modulators-with-sensors AND derived health → no warn
+# (b) entity with modulators-with-sensors AND derived health → no raise
 # ---------------------------------------------------------------------------
 
 
 class TestDerivedOptIn:
-    def test_health_derived_string_marker_suppresses_warning(self):
+    def test_health_derived_string_marker_suppresses_error(self):
         data = _make_entity_dict(
             name="dragon_v2",
             sensors={
@@ -93,17 +92,13 @@ class TestDerivedOptIn:
             },
             health_marker="derived",
         )
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            _parse_entity(data)
+        # Must not raise.
+        _parse_entity(data)
 
-        c5 = [w for w in caught if "C5 deprecation" in str(w.message)]
-        assert c5 == [], f"Expected no C5 warning, got: {[str(w.message) for w in c5]}"
-
-    def test_health_derived_boolean_true_does_NOT_suppress_warning(self):
+    def test_health_derived_boolean_true_does_NOT_suppress_error(self):
         # Single canonical form for 1.0: only the string "derived" suppresses.
         # Boolean True is rejected so we ship one valid spelling — prevents
-        # "two valid forms" drift inside the deprecation cycle.
+        # "two valid forms" drift.
         data = _make_entity_dict(
             name="dragon_v3",
             sensors={
@@ -119,21 +114,17 @@ class TestDerivedOptIn:
             },
             health_marker=True,
         )
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with pytest.raises(ConfigurationError):
             _parse_entity(data)
 
-        c5 = [w for w in caught if "C5 deprecation" in str(w.message)]
-        assert len(c5) == 1, "Boolean True must not be a valid 'derived' marker"
-
 
 # ---------------------------------------------------------------------------
-# (c) entity with only modulators-with-sensors (no direct health) → no warn
+# (c) entity with only modulators-with-sensors (no direct health) → no raise
 # ---------------------------------------------------------------------------
 
 
-class TestModulatorOnlyNoWarn:
-    def test_modulators_with_sensors_no_health_sensor_no_warn(self):
+class TestModulatorOnlyNoRaise:
+    def test_modulators_with_sensors_no_health_sensor_no_raise(self):
         data = _make_entity_dict(
             name="hardened_drone",
             sensors={
@@ -148,38 +139,28 @@ class TestModulatorOnlyNoWarn:
                 },
             },
         )
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            _parse_entity(data)
-
-        c5 = [w for w in caught if "C5 deprecation" in str(w.message)]
-        assert c5 == []
+        _parse_entity(data)
 
 
 # ---------------------------------------------------------------------------
-# (d) primitive entity with only direct health (no modulators) → no warn
+# (d) primitive entity with only direct health (no modulators) → no raise
 # ---------------------------------------------------------------------------
 
 
-class TestPrimitiveNoWarn:
-    def test_direct_health_alone_no_warn(self):
+class TestPrimitiveNoRaise:
+    def test_direct_health_alone_no_raise(self):
         data = _make_entity_dict(
             name="apple",
             sensors={
                 "health": {"unit": "ratio", "range": [0, 1], "initial": 1.0},
             },
         )
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            _parse_entity(data)
+        _parse_entity(data)
 
-        c5 = [w for w in caught if "C5 deprecation" in str(w.message)]
-        assert c5 == []
-
-    def test_direct_health_with_capability_only_modulator_no_warn(self):
+    def test_direct_health_with_capability_only_modulator_no_raise(self):
         # Capability-only modulators (no sensors) don't trigger component
         # damage modeling, so direct health is still a valid single source
-        # of truth.  Mirrors npcs/ferryman.yaml shape.
+        # of truth. Mirrors npcs/ferryman.yaml shape.
         data = _make_entity_dict(
             name="ferryman",
             sensors={
@@ -194,51 +175,43 @@ class TestPrimitiveNoWarn:
                 },
             },
         )
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            _parse_entity(data)
-
-        c5 = [w for w in caught if "C5 deprecation" in str(w.message)]
-        assert c5 == []
+        _parse_entity(data)
 
 
 # ---------------------------------------------------------------------------
-# Bundled component audit — every shipped YAML must load cleanly.
+# Bundled component audit — every shipped YAML must load cleanly post-flip.
 # ---------------------------------------------------------------------------
 
 
 class TestBundledComponentsClean:
-    def test_no_bundled_component_emits_c5_warning(self):
+    def test_no_bundled_component_violates_c5(self):
         bundled = Path(__file__).resolve().parents[2] / "src" / "maxim" / "_data" / "components"
         assert bundled.is_dir(), f"bundled components dir not found: {bundled}"
 
         offenders: list[tuple[str, str]] = []
         for yaml_path in sorted(bundled.rglob("*.yaml")):
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                try:
-                    load_spec(yaml_path)
-                except Exception:
-                    # Skip files that need a registry or have other parse errors;
-                    # those are out of C5 scope.
-                    continue
-                for w in caught:
-                    if "C5 deprecation" in str(w.message):
-                        offenders.append((str(yaml_path), str(w.message)))
+            try:
+                load_spec(yaml_path)
+            except ConfigurationError as exc:
+                if "(C5)" in str(exc):
+                    offenders.append((str(yaml_path), str(exc)))
+            except Exception:
+                # Other load errors (missing registry, etc.) are out of C5 scope.
+                continue
 
         assert offenders == [], (
-            "Bundled components emit C5 warnings — migrate to "
+            "Bundled components violate C5 — migrate to "
             "'health: derived' or remove the direct health sensor:\n" + "\n".join(f"  {p}: {m}" for p, m in offenders)
         )
 
 
 # ---------------------------------------------------------------------------
-# Recursion: warning fires once per offending entity in a tree.
+# Recursion: the check fires on the first offender during recursive parse.
 # ---------------------------------------------------------------------------
 
 
-class TestRecursionWarnsPerOffender:
-    def test_offending_child_in_clean_root_warns(self):
+class TestRecursionRaisesOnOffender:
+    def test_offending_child_in_clean_root_raises(self):
         data = {
             "name": "carrier",
             "entity_type": "vehicle",
@@ -266,62 +239,6 @@ class TestRecursionWarnsPerOffender:
                 },
             ],
         }
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with pytest.raises(ConfigurationError) as exc:
             _parse_entity(data)
-
-        c5 = [w for w in caught if "C5 deprecation" in str(w.message)]
-        assert len(c5) == 1
-        assert "passenger_drone" in str(c5[0].message)
-
-
-# ---------------------------------------------------------------------------
-# Visibility: DeprecationWarning is silenced under default Python filters
-# outside __main__.  We mirror cli_utils._resolve_persona_mode and also
-# print to stderr so the deprecation cycle actually reaches the user.
-# ---------------------------------------------------------------------------
-
-
-class TestStderrVisibility:
-    def test_offender_prints_deprecation_line_to_stderr(self):
-        data = _make_entity_dict(
-            name="dragon",
-            sensors={
-                "health": {"unit": "ratio", "range": [0, 1], "initial": 1.0},
-            },
-            modulators={
-                "wing": {
-                    "sensors": {
-                        "integrity": {"unit": "ratio", "range": [0, 1], "initial": 1.0},
-                    },
-                    "affordances": {},
-                },
-            },
-        )
-        buf = StringIO()
-        with patch("sys.stderr", buf), warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # don't double-spam pytest output
-            _parse_entity(data)
-
-        out = buf.getvalue()
-        assert "DeprecationWarning:" in out
-        assert "dragon" in out
-        assert "C5 deprecation" in out
-
-    def test_clean_entity_prints_nothing_to_stderr(self):
-        data = _make_entity_dict(
-            name="clean_drone",
-            sensors={"battery": {"unit": "ratio", "range": [0, 1], "initial": 1.0}},
-            modulators={
-                "rotor": {
-                    "sensors": {"integrity": {"unit": "ratio", "range": [0, 1], "initial": 1.0}},
-                    "affordances": {},
-                },
-            },
-        )
-        buf = StringIO()
-        with patch("sys.stderr", buf), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            _parse_entity(data)
-
-        assert "DeprecationWarning" not in buf.getvalue()
+        assert "passenger_drone" in str(exc.value)
