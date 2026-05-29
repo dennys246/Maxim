@@ -2,7 +2,7 @@
 
 **Target version:** 1.1+ research direction (the 1.0 plan is unaffected; 0.9.1 ships Wire-A independently).
 **Status:** **Stage 3 AUTHORIZED 2026-05-28** post-[exp 34](../experiments/34_wire_a_post_fix_a_b.md) divergence-in-a-row trigger. Stage 1 (Roy-5a cosine localization) was completed 2026-05-13 and confirmed H1a (cross-modal subspace incompatibility). The exp 30→32→33→34 sequence proved the substrate→action conversion thesis is bottlenecked at the encoder layer: Fix A + Fix B closed all runtime-pipeline gaps, leaving the manifest LLM's substrate-bias→scene-entity translation as the residual narrow failure mode. User explicitly authorized the encoder pivot. Stage 3 (Roy-5b: redesigned cradle arc + Hebbian retest) is the immediate next experiment; Stage 4 (4a resurrection OR 4b JEPA promotion) is gated on Stage 3's verdict.
-**Owns:** `scripts/analyze_roy_5_cosine_localization.py` (new), `scenarios/roy/roy_5a_*.yaml` (post-hoc analysis spec), `scenarios/roy/roy_5b_*.yaml` (conditional cradle-arc redesign + Hebbian retest), `docs/experiments/22_roy_5*.md`, `_data/components/bodies/infant_humanoid_*.yaml` (conditional cradle-arc edits), `prompts/cradle_narrator.py` (conditional naming-event scaffolding).
+**Owns:** `scripts/analyze_roy_5_cosine_localization.py` (new), `scenarios/roy/roy_5a_*.yaml` (post-hoc analysis spec), `scenarios/roy/roy_5b_*.yaml` (conditional cradle-arc redesign + Hebbian retest), `docs/experiments/22_roy_5*.md`, `_data/components/bodies/infant_humanoid_*.yaml` (conditional cradle-arc edits), `embodiment/naming_events.py` (conditional naming-event scaffolding).
 **Companion plans:** [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy iteration log) · [release_0_9_1.md](release_0_9_1.md) (Wire-A interim is unchanged by this plan) · [grounded_language_acquisition.md](grounded_language_acquisition.md) (Phase 1's `token_id → ec_node_id` registry consumes whichever populator this plan validates) · [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) (cancelled by Roy-4; may resurrect with corrected scaffold per Stage 3)
 
 ## Front-gate scope pressure (retroactive)
@@ -85,7 +85,7 @@ Roy-2c's "tool keys survive, cluster keys don't" pattern is consistent with all 
 | 2a | H1c branch: threshold/centroid sweep + autouse env scrub | ~80 | none | none |
 | 2b | H1b branch: encoder A/B + per-call-site `LinguisticEncoder` factory (kill the process-wide singleton) | ~200 | none | `_get_encoder` API shape (additive — accept explicit model name; existing zero-arg form still works) |
 | 2c | H1a branch: redirect to Stage 3 (no implementation yet) | 0 | none | none |
-| 3 | Roy-5b — redesigned cradle priming arc (deliberate naming events) + Hebbian retest | ~250 | none | new `bodies/infant_humanoid_naming_v1.yaml` + `prompts/cradle_narrator.py` co-firing scaffold |
+| 3 | Roy-5b — redesigned cradle priming arc (deliberate naming events) + Hebbian retest | ~250 | none | new `bodies/infant_humanoid_naming_v1.yaml` + `embodiment/naming_events.py` co-firing scaffold |
 | 4a | H1a + Stage 3 PASS: resurrect `cross_modal_substrate_binding.md` Stages 2-6 with corrected scaffold; lift the cancel | ~780 (from cancelled plan) | EC `_format_version` bump + `PatternCompletionResult.bound_neighbors` field | (see cancelled plan) |
 | 4b | H1a + Stage 3 FAIL: promote encoder replacement to 1.2+ research direction; archive this plan + `cross_modal_substrate_binding.md` as definitively superseded | ~30 (note only) | none | none |
 | **Total 1.1+ if H1c wins** | | **~200** | none | none |
@@ -161,18 +161,23 @@ If Roy-5a returns max cosine < 0.20 across all food-bearing priming centroids vs
 
 No implementation work in 2c itself — Stage 3 is the next experiment.
 
-## Stage 3 — Roy-5b: redesigned cradle arc + Hebbian retest
+## Stage 3 — Roy-5b: drive→linguistic-channel co-firing scaffold + Hebbian retest
 
-**Conditional on Stage 2c (H1a verdict).** Per bio-fidelity review: Roy-4 refuted the Hebbian binding rule on the **existing** cradle priming arc, which does not produce co-firing between sensor-drive states and the linguistic clusters the test fixture activates. Real biological systems acquire word-meaning grounding via **joint attention + caregiver naming events** — temporally aligned (sensor pattern, drive state, narrator utterance) triples within a shared salience window. The existing cradle narrator generates prose ("the infant is in a room with a fire pit nearby") that does NOT co-occur structurally with sensor/drive snapshots; it co-occurs with them in time but not in EC encoding.
+**Conditional on Stage 2c (H1a verdict).** Roy-4 refuted the Hebbian binding rule on the **existing** cradle priming arc, which does not produce co-firing between sensor-drive states and the linguistic clusters the test fixture activates. The structural property the binding rule needs is a temporally-aligned (sensor pattern, drive state, linguistic utterance) triple within a shared salience window — text-modality EC firing co-temporally with interoception-modality EC firing on the SAME priming tick. The existing cradle narrator generates prose ("the infant is in a room with a fire pit nearby") that does NOT co-occur structurally with sensor/drive snapshots; it co-occurs with them in time but not in EC encoding. Worse, in `aut_mode: substrate-primary` (which Roy-4 used) the narrator's text injection is suppressed at `SimulationBridge.send_and_wait`, so the linguistic modality stays empty during priming altogether.
+
+The Stage 3 scaffold is a **drive→linguistic-channel co-firing emitter**: when a drive crosses threshold, the body's percept source appends a short, structurally-stable utterance ("hungry", "thirsty", "warm") into the SAME percept text the sensor snapshot rendered. Because the utterance lands inside the body-state text the substrate-primary AUT does consume, the `LinguisticEncoder` fires on the utterance in the same agent-loop tick the `SensorEncoder` fires on the drive state — closing the co-firing gap.
+
+**Framing note (post-2026-05-28 fold).** Earlier drafts of this plan framed the mechanism as "joint attention + caregiver naming events" — temporally aligned (sensor, drive, narrator-utterance) triples mirroring the way infants acquire word-meaning grounding from caregivers. The pre-merge bio-fidelity review on PR #295 caught that the implementation has no caregiver and no joint attention — the body emits its own utterance derived from its own drive state. The cleaner bio-defense is **interoceptive vocalization**: real interoceptive states (hunger, thirst, thermal discomfort) DO produce co-temporal vocalizations in mammals (crying, whimpering) without requiring an external caregiver. The Hebbian retest property is identical under either framing — both routes establish text-modality EC firing co-temporally with interoception-modality EC firing, which is the only property Stage 3 needs to test. The "joint attention" rationale is preserved as a downstream extension (Stage 4a's resurrected `cross_modal_substrate_binding.md` could explore caregiver-driven scaffolds once the basic binding mechanism is validated), but Stage 3 itself is the interoceptive-vocalization variant.
 
 ### Implementation
 
-- Redesigned cradle priming arc: `_data/components/bodies/infant_humanoid_naming_v1.yaml` + new narrator pattern in `prompts/cradle_narrator.py` that deliberately co-fires:
-  - When drive `hunger ≥ 0.7`: narrator utters "hungry" within the same tick window as the SensorEncoder firing.
-  - When drive `thirst ≥ 0.7`: narrator utters "thirsty" co-tick.
-  - When body sensor `arms.thermal ≥ 0.7`: narrator utters "warm" co-tick.
+- Drive→linguistic co-firing scaffold: `_data/components/bodies/infant_humanoid_naming_v1.yaml` + new interoceptive-vocalization emitter in `embodiment/naming_events.py` that deliberately co-fires:
+  - When entity-level drive `hunger ≥ 0.7`: body emits "hungry" into the next percept in the same tick window as the SensorEncoder firing.
+  - When entity-level drive `thirst ≥ 0.6`: body emits "thirsty" co-tick.
+  - When modulator sub-sensor `arms.thermal ≥ 0.7`: body emits "warm" co-tick.
+  - Hysteresis bands prevent same-utterance re-emission tick-after-tick once a drive sits above threshold; emission re-arms when the drive drops back below `threshold − hysteresis_band`.
   - Each utterance is a short, structurally-stable text — token-level overlap with the eventual test fixture is the load-bearing property.
-- Roy-5b spec `scenarios/roy/roy_5b_iteration.yaml` — same shape as Roy-4 (3 arms, EC trace instrumentation on) but uses the redesigned arc.
+- Roy-5b spec `scenarios/roy/roy_5b_iteration.yaml` — same shape as Roy-4 (3 arms, EC trace instrumentation on, substrate-primary aut_mode) but uses the redesigned body. Single-variable change from Roy-4.
 - Re-run the Roy-4 analyzer (`scripts/analyze_roy_4_coactivation.py`) on Roy-5b's trace. Pre-registered diagnostic:
 
 | Outcome | Diagnosis |
@@ -273,7 +278,7 @@ Both reviews kicked off in parallel during the conversation that produced this p
 - (Architecture) "Do not write the lexicon plan. Write `roy_5_encoder_alignment_disambiguator.md` (~50 LOC scope, days)." → This plan's filename + Stage 1 scoping.
 - (Architecture) "The cross-Roy pattern: tool-name survives, EC cluster identity doesn't — that's two identity schemes for the same concept, and Wire-A already exploits the surviving granularity." → This plan's "no central lexicon" stance + the Roy-2/Wire-A reference in Stage 4b.
 - (Bio-fidelity) "There is no biological warrant for a central, hand-curated lexicon." → This plan's "audit before building" stance + the existing-infrastructure table.
-- (Bio-fidelity) "Joint attention + caregiver naming events" as the bio-faithful developmental mechanism. → This plan's Stage 3 (Roy-5b cradle-arc redesign).
+- (Bio-fidelity) Originally framed as "joint attention + caregiver naming events" — deliberately-aligned (sensor, drive, narrator-utterance) triples mirroring infant word-meaning acquisition. → This plan's Stage 3 (Roy-5b cradle-arc redesign). **Reframed 2026-05-28** during PR #295 fold: the implementation is drive-derived interoceptive vocalization, not caregiver-driven joint attention. Same Hebbian-retest property under either framing; cleaner bio-defense + no caregiver overclaim. Caregiver-driven scaffolds remain a downstream extension for Stage 4a if the binding mechanism resurrects.
 - (Bio-fidelity) "Interim contamination: ship Option A as 'interim' and the thesis erodes silently." → This plan's "No commitment to Option A" non-introduction.
 - (Both) "Use ComponentIndex's alias+embedding pattern + ATL.find_or_create as the per-domain index precedent." → This plan's existing-infrastructure table + non-introduction list.
 

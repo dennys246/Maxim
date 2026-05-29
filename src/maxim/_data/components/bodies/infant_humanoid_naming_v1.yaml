@@ -1,0 +1,52 @@
+component:
+  name: infant_humanoid_naming_v1
+  extends: bodies/infant_humanoid
+  category: bodies
+  archetype: humanoid
+  tags: [body, humanoid, infant, cradle, developmental, naming_events, roy_5b]
+  synonyms: [infant body with naming events, roy-5b body, naming-event infant]
+  description: |
+    Roy-5b cradle priming body. Extends bodies/infant_humanoid
+    unchanged (drives, sub-sensors, modulators) and adds the
+    naming_events metadata that the EmbodimentPerceptSource consumes
+    to deterministically emit interoceptive vocalizations ("hungry",
+    "thirsty", "warm") when drives cross threshold.
+
+    Extending bodies/infant_humanoid (not bodies/base_humanoid)
+    inherits drive thresholds + drift rates from the canonical
+    cradle body, so future drift-curve tuning on infant_humanoid
+    propagates here and the "single-variable change vs Roy-4"
+    promise in the spec doc holds.
+
+    This body is research scaffolding for the Roy-5b iteration only —
+    production cradle sims keep bodies/infant_humanoid. See
+    docs/plans/roy_5_encoder_alignment_disambiguator.md Stage 3 +
+    src/maxim/embodiment/naming_events.py.
+
+entity:
+  name: infant_humanoid_naming_v1
+  entity_type: body
+
+  # Roy-5b naming-event scaffolding. The EmbodimentPerceptSource reads
+  # this metadata block, parses it via embodiment.naming_events.parse_naming_patterns,
+  # and emits the utterances into body_state text when thresholds cross.
+  # The thresholds match this body's drive thresholds (inherited from
+  # infant_humanoid) so the utterance fires at the same moment the
+  # drive begins producing pain — which is the same tick the
+  # SensorEncoder will see the drive snapshot.
+  naming_events:
+    - sensor_key: hunger
+      utterance: "hungry"
+      threshold: 0.7
+      direction: above
+      hysteresis_band: 0.2
+    - sensor_key: thirst
+      utterance: "thirsty"
+      threshold: 0.6
+      direction: above
+      hysteresis_band: 0.2
+    - sensor_key: arms.thermal
+      utterance: "warm"
+      threshold: 0.7
+      direction: above
+      hysteresis_band: 0.2

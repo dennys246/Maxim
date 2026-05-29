@@ -1,0 +1,149 @@
+# Roy-5b — Cross-modal binding retest with naming-event scaffolding
+# (Stage 3 of docs/plans/roy_5_encoder_alignment_disambiguator.md).
+#
+# Roy-4 (docs/experiments/21_roy_4.md) refuted the proposed Hebbian
+# binding rule on the standard cradle priming arc — zero priming↔test
+# co-firing across the full reasonable parameter sweep. Roy-5a
+# (docs/experiments/22_roy_5a.md) confirmed H1a: text-modality and
+# interoception-modality EC centroids embed into structurally
+# incomparable subspaces. The exp 30→32→33→34 sequence (PRs #290,
+# #292, #293) then closed every runtime-pipeline gap on Wire-A's
+# substrate-→-action path; exp 34's residual failure mode is the
+# manifest LLM's substrate-bias→scene-entity translation gap, which
+# Roy-5b cannot test (it's downstream of priming).
+#
+# Stage 3's question is narrower: does the Hebbian binding rule fire
+# AT ALL when the priming arc deliberately co-fires (sensor pattern,
+# drive state, narrator utterance) triples?
+#
+# Single-variable change vs Roy-4: the embodiment is
+# bodies/infant_humanoid_naming_v1 (this iteration only) which
+# declares ``naming_events:`` metadata. The
+# EmbodimentPerceptSource reads that metadata, parses it via
+# embodiment.naming_events, and emits "hungry" / "thirsty" / "warm"
+# interoceptive vocalizations into the body_state percept text the same
+# tick the corresponding drive crosses threshold. This is the
+# drive→linguistic-channel co-firing scaffold Stage 3 needs to retest
+# the Hebbian binding rule on. (The plan-doc framing was "joint
+# attention + caregiver naming"; the implementation is more
+# accurately characterized as drive-derived interoceptive
+# vocalization — the binding-retest mechanics are unaffected, see
+# the pre-merge bio-fidelity review folded into PR #295.)
+#
+# Critical: the priming arc stays in aut_mode: substrate-primary
+# (matching Roy-4). The naming utterances reach the substrate-primary
+# AUT via the body_state percept path, NOT via SimulationBridge.send_and_wait
+# (which is suppressed in substrate-primary mode). The narrator's
+# LLM-generated prose is still suppressed — only the deterministic
+# naming utterances make it through.
+#
+# Pre-registered diagnostic (from docs/plans/roy_5_encoder_alignment_disambiguator.md
+# Stage 3, see also Stage 4 branch):
+#
+#   PASS — at least one would-have-bound edge connects a priming food
+#       cluster to an arm-A test-phase node under the DEFAULT Hebbian
+#       rule (min_cofire=5, min_weight=0.5). Cross-modal binding
+#       plan (docs/plans/cross_modal_substrate_binding.md) is
+#       resurrected with the corrected-scaffold prerequisite. Stage 4a.
+#
+#   FAIL — zero would-have-bound edges across the full Roy-4 parameter
+#       sweep, same as Roy-4. The binding mechanism is structurally
+#       dead even under deliberately-scaffolded co-firing. The
+#       cancelled cross_modal_substrate_binding.md plan is archived
+#       definitively, and docs/plans/jepa_cross_modal_alignment.md
+#       is promoted from "Stage 4b candidate" to "1.2 implementation
+#       in flight". Stage 4b.
+#
+# DO NOT relax the parameter sweep. The defaults match Roy-4 because
+# the question is whether the SAME rule that failed on Roy-4 succeeds
+# under the corrected scaffold. Relaxing thresholds would conflate the
+# scaffold question with a tuning question.
+#
+# IMPORTANT: MAXIM_EC_TRACE_ACTIVATIONS must be set in the RUNNER
+# environment, not in the YAML — same as Roy-4. Pair with
+# MAXIM_LOG_FILE to capture the events into a JSONL file the analyzer
+# can read after the run completes.
+#
+# Run with:
+#   MAXIM_EC_TRACE_ACTIVATIONS=1 \
+#   MAXIM_LOG_FILE=/tmp/roy_5b_ec_trace.jsonl \
+#       maxim roy run scenarios/roy/roy_5b_iteration.yaml
+#
+# Post-hoc analysis: re-run scripts/analyze_roy_4_coactivation.py
+# (per the disambiguator plan, "the analyzer is reusable as-is"). The
+# script computes pairwise co-activation + applies the default
+# Hebbian rule and emits the would-have-bound edge list.
+#
+# Expected wall: ~25-28 min (same shape as Roy-4 — substrate-primary
+# 30s/turn timeout dominates).
+#
+# Companion docs:
+#   docs/plans/roy_5_encoder_alignment_disambiguator.md  (Stage 3 spec)
+#   docs/plans/cross_modal_substrate_binding.md          (Stage 4a destination)
+#   docs/plans/jepa_cross_modal_alignment.md             (Stage 4b destination)
+#   docs/experiments/22_roy_5a.md                        (Stage 1 result, H1a verdict)
+#   docs/experiments/21_roy_4.md                         (Roy-4 baseline being retested)
+#   docs/experiments/34_wire_a_post_fix_a_b.md           (the exp that authorized Stage 3)
+#   scenarios/roy/roy_4_iteration.yaml                   (structural sibling — identical shape)
+#   scenarios/roy/roy_2pc_holdout.yaml                   (engineered-overlap fixture, reused)
+#   src/maxim/prompts/cradle_naming.py                   (naming-event emitter)
+#   src/maxim/_data/components/bodies/infant_humanoid_naming_v1.yaml (body opt-in)
+
+name: roy-5b
+description: |
+  Cross-modal binding retest with deterministic naming-event scaffolding
+  (Stage 3 of roy_5_encoder_alignment_disambiguator.md). Single-variable
+  change vs Roy-4: the embodiment is bodies/infant_humanoid_naming_v1
+  which declares ``naming_events:`` metadata so the EmbodimentPerceptSource
+  co-emits "hungry" / "thirsty" / "warm" utterances into the body_state
+  percept text the same tick the corresponding drive crosses threshold.
+  Same priming arc shape, same fixture, same arms, same default Hebbian
+  rule. Post-hoc analysis via scripts/analyze_roy_4_coactivation.py.
+  PASS → resurrect cross_modal_substrate_binding.md (Stage 4a); FAIL →
+  promote jepa_cross_modal_alignment.md to "1.2 in flight" (Stage 4b).
+
+embodiment: bodies/infant_humanoid_naming_v1
+aut_mode: substrate-primary
+
+# Priming: identical multi-arc mix to Roy-2c / Roy-4 — the naming-event
+# co-firing happens INSIDE the percept text the substrate-primary AUT
+# already consumes, so no arc-level change is needed. The cradle arcs
+# drive hunger/thirst/arms.thermal toward and across their thresholds
+# during these 50 turns; the naming utterances fire on threshold
+# crossings.
+priming:
+  name: roy-5b-priming
+  embodiment: bodies/infant_humanoid_naming_v1
+  aut_mode: substrate-primary
+  stages:
+    - name: act1_neonatal_a
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act1_neonatal_b
+      arc: cradle_prelinguistic
+      turns: 10
+    - name: act2_cradle_a
+      arc: cradle
+      turns: 10
+    - name: act2_cradle_b
+      arc: cradle
+      turns: 10
+    - name: act3_consolidation
+      arc: cradle_prelinguistic
+      turns: 10
+
+# Reuses Roy-2pc/Roy-2c/Roy-4's engineered-overlap fixture unchanged.
+test_scenario:
+  fixture: roy_2pc_holdout.yaml
+  turns: 10
+
+arms:
+  a:
+    substrate: from_priming
+    system_prompt: neutral
+  b:
+    substrate: blank
+    system_prompt: "You are a hungry infant"
+  c:
+    substrate: blank
+    system_prompt: neutral

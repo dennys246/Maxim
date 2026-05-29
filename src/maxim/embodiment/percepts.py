@@ -50,6 +50,35 @@ class EmbodimentPerceptSource:
         self._exhausted = False
         self._in_demand = False
 
+        # Roy-5b naming-event scaffolding (docs/plans/roy_5_encoder_alignment_disambiguator.md
+        # Stage 3, src/maxim/embodiment/naming_events.py). When the body
+        # declares ``naming_events:`` metadata, this source emits a short
+        # utterance into body_state text the same tick the drive crosses
+        # threshold — closing the co-firing gap that left Roy-4's priming
+        # with empty linguistic-modality EC nodes in substrate-primary
+        # mode. Empty tuple = no body opt-in, the percept shape is
+        # byte-identical to pre-Stage-3.
+        #
+        # The dict type-check keeps MagicMock-based unit tests opt-out by
+        # default; a real Embodiment.root.metadata is always a dict
+        # populated by ``_parse_entity`` (spec.py).
+        #
+        # Thread-safety note: ``_naming_fired_keys`` is single-writer
+        # (the agent-loop tick calls ``next_percept`` from one thread per
+        # agent). The ``set_demand_mode`` field exists to bump poll
+        # frequency, not to introduce concurrency — there is no
+        # multi-thread reader/writer on this stash. Per-agent isolation
+        # is guaranteed by one ``EmbodimentPerceptSource`` instance per
+        # agent (the bio-stack wiring), so no ``dict[agent_id, ...]``
+        # stash is needed here.
+        from maxim.embodiment.naming_events import parse_naming_patterns
+
+        metadata = getattr(self._embodiment.root, "metadata", None)
+        naming_events_raw = metadata.get("naming_events") if isinstance(metadata, dict) else None
+        body_name = getattr(self._embodiment.root, "name", None)
+        self._naming_patterns = parse_naming_patterns(naming_events_raw, source=body_name)
+        self._naming_fired_keys: set[str] = set()
+
     # -- PerceptSource protocol ---------------------------------------------
 
     @property
@@ -96,6 +125,33 @@ class EmbodimentPerceptSource:
                 f"FAILURE: {f.failure_name} on {f.entity_path} (pain={f.pain_intensity:.2f})" for f in failures
             ]
             content_parts.append("\n".join(failure_lines))
+
+        # Roy-5b: derive deterministic naming utterances co-temporally
+        # with the same body snapshot the body_state text rendered above.
+        # Appending HERE means LinguisticEncoder processes the utterance
+        # in the same agent-loop tick SensorEncoder processes the drive
+        # snapshot — co-firing the Hebbian binding rule needs. When the
+        # body has no naming_events config, _naming_patterns is empty
+        # and this branch is a no-op (byte-identical pre-Stage-3 path).
+        #
+        # The sensor-value collector walks the embodiment tree directly
+        # (NOT body_state_summary, which intentionally skips dotted-key
+        # modulator drive specs — Roy-4 review surfaced this gap, see
+        # naming_events.py::collect_sensor_values docstring).
+        if self._naming_patterns:
+            from maxim.embodiment.naming_events import (
+                collect_sensor_values,
+                derive_naming_utterances,
+                format_naming_section,
+            )
+
+            sensor_values = collect_sensor_values(self._embodiment)
+            utterances, self._naming_fired_keys = derive_naming_utterances(
+                sensor_values, self._naming_patterns, self._naming_fired_keys
+            )
+            section = format_naming_section(utterances)
+            if section:
+                content_parts.append(section)
 
         try:
             from maxim.agents.modality import SensoryModality, SensoryTag

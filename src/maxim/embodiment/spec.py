@@ -317,6 +317,16 @@ def _parse_entity(
     _check_c5_direct_health_deprecation(data)
 
     entity_type = data.get("entity_type", "generic")
+    # ``metadata`` catches every top-level YAML key not in the recognized
+    # field set. Recognized opt-in metadata keys (read by downstream
+    # consumers):
+    #   - ``naming_events`` — Roy-5b interoceptive-vocalization config
+    #     consumed by ``EmbodimentPerceptSource``. See
+    #     ``embodiment/naming_events.py`` + docs/plans/roy_5_encoder_alignment_disambiguator.md
+    #     Stage 3. Research scaffolding; only ``infant_humanoid_naming_v1.yaml``
+    #     opts in today.
+    # Unknown keys still flow into ``metadata`` for forward-compat; the
+    # consumers gate on key presence.
     metadata = {
         k: v
         for k, v in data.items()
