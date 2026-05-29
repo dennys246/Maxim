@@ -6,8 +6,10 @@ Tests the structural-enforcement invariants from memory_hub_unification.md:
 - Explicit None opt-out for optional systems
 - Bridge deps forwarded to .connect()
 
-Raw MemoryHub() construction is intentionally still allowed for tests.
-The structural enforcement lives at the production door, not the type.
+Raw MemoryHub() construction requires ``_allow_raw=True`` post-C6 flip
+(PR #301) — tests that need a bare hub pass the keyword explicitly. The
+structural enforcement lives at BOTH the type (TypeError when omitted)
+AND the production door (the builder).
 """
 
 from __future__ import annotations
@@ -206,18 +208,24 @@ class TestBuildMemoryHub:
         hub = build_memory_hub(agent_id="default_agent", **core_systems, fear_agent=fear_agent)
         assert hub._fear_agent is fear_agent
 
-    # ── Regression guard: bare MemoryHub() still works for tests ─────────
+    # ── Regression guard: bare MemoryHub() requires explicit _allow_raw=True ─
 
-    def test_raw_constructor_still_allowed(self, core_systems):
-        """Raw MemoryHub() must remain available for test code.
-
-        Structural enforcement lives at the production door
-        (build_memory_hub), not the type.
+    def test_raw_constructor_requires_explicit_allow_raw(self, core_systems):
+        """Post-C6 hard-error flip (v1_refinement §C6), raw MemoryHub()
+        construction without ``_allow_raw=True`` raises ``TypeError``.
+        Tests that need a bare hub must opt in explicitly. Structural
+        enforcement lives at the production door (build_memory_hub).
         """
+        import pytest
+
         from maxim.integration.memory_hub import MemoryHub
 
-        hub = MemoryHub(**core_systems)
-        # No .connect() called — bridges should be None
+        with pytest.raises(TypeError, match=r"build_memory_hub"):
+            MemoryHub(**core_systems)
+
+        # With explicit opt-in: bare construction works (no .connect()
+        # called — bridges remain None).
+        hub = MemoryHub(**core_systems, _allow_raw=True)
         assert hub._plan_bridge is None
         assert hub._escalation_bridge is None
         assert hub._fear_bridge is None
@@ -286,7 +294,7 @@ class TestOnSessionEndLightweight:
     def test_nac_decay_fires(self, core_systems):
         from maxim.integration.memory_hub import MemoryHub
 
-        hub = MemoryHub(**core_systems)
+        hub = MemoryHub(**core_systems, _allow_raw=True)
         hub._session_active = True
         hub._session_start_time = 0.0
         results = hub.on_session_end_lightweight()
@@ -295,7 +303,7 @@ class TestOnSessionEndLightweight:
     def test_session_active_resets(self, core_systems):
         from maxim.integration.memory_hub import MemoryHub
 
-        hub = MemoryHub(**core_systems)
+        hub = MemoryHub(**core_systems, _allow_raw=True)
         hub._session_active = True
         hub._session_start_time = 0.0
         hub.on_session_end_lightweight()
@@ -304,7 +312,7 @@ class TestOnSessionEndLightweight:
     def test_idempotent_double_call(self, core_systems):
         from maxim.integration.memory_hub import MemoryHub
 
-        hub = MemoryHub(**core_systems)
+        hub = MemoryHub(**core_systems, _allow_raw=True)
         hub._session_active = True
         hub._session_start_time = 0.0
         hub.on_session_end_lightweight()
@@ -314,7 +322,7 @@ class TestOnSessionEndLightweight:
     def test_lightweight_flag_in_results(self, core_systems):
         from maxim.integration.memory_hub import MemoryHub
 
-        hub = MemoryHub(**core_systems)
+        hub = MemoryHub(**core_systems, _allow_raw=True)
         hub._session_active = True
         hub._session_start_time = 0.0
         results = hub.on_session_end_lightweight()
@@ -325,7 +333,7 @@ class TestOnSessionEndLightweight:
 
         from maxim.integration.memory_hub import MemoryHub
 
-        hub = MemoryHub(**core_systems)
+        hub = MemoryHub(**core_systems, _allow_raw=True)
         hub._session_active = True
         hub._session_start_time = time.time()
         results = hub.on_session_end_lightweight()
