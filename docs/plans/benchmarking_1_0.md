@@ -149,8 +149,8 @@ Shipping 1.0 without this gate means shipping a thesis we haven't measured. The 
 
 ## Status
 
-- **Scoping accepted:** pending review.
-- **Implementation:** not started. Owner / target date TBD.
+- **Scoping accepted:** 2026-05-30 (user explicit-accepted as-is during the [cross-session graduation kickoff](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/kickoff_1_0_graduation_cross_session.md); acceptance criteria above become the pre-registration template for downstream experiments).
+- **Implementation:** pre-registered at [docs/experiments/37_cross_session_graduation.md](../experiments/37_cross_session_graduation.md). Owner: cross-session graduation worktree (`feat/1-0-graduation-cross-session`). Target: Phase 2 of [v1_refinement.md §1.6](v1_refinement.md).
 - **Gate firing date:** before 1.0 ship.
 
 ## Cross-references
