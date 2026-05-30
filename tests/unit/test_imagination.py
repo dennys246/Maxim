@@ -561,9 +561,10 @@ class TestImaginationDesigner:
                 },
                 "modulators": {
                     "body": {
+                        "abstract": True,
                         "affordances": {
                             "bite": {"description": "venomous bite"},
-                        }
+                        },
                     }
                 },
                 "synonyms": ["dark spider", "shadow arachnid"],
@@ -749,7 +750,8 @@ class TestAffordanceConceptEncoding:
                 "fire_breath": AffordanceSchema(description="breathe fire"),
                 "tail_sweep": AffordanceSchema(description="sweep with tail"),
             }
-        mod = SpecModulator(_name="combat", _entity_name=name, _affordances=affordances)
+        # Capability-only by helper design — no sub-sensors.
+        mod = SpecModulator(_name="combat", _entity_name=name, _affordances=affordances, _abstract=True)
         ent = Entity(name=name, entity_type="creature")
         ent.modulators["combat"] = mod
         return ent
@@ -857,6 +859,7 @@ class TestAffordanceConceptEncoding:
                 "modulators": {
                     "combat": {
                         "name": "combat",
+                        "abstract": True,
                         "affordances": {
                             "fire_breath": {"description": "breathe fire"},
                         },

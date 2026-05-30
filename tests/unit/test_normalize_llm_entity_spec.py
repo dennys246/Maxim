@@ -10,8 +10,6 @@ The normalizer is non-mutating + idempotent + recursive (walks children).
 
 from __future__ import annotations
 
-import warnings
-
 from maxim.embodiment.spec import _parse_entity, normalize_llm_entity_spec
 
 
@@ -184,14 +182,15 @@ class TestRecursesChildren:
 
 
 # ---------------------------------------------------------------------------
-# (g) End-to-end: post-normalize, _parse_entity emits no C4 deprecation warning
+# (g) End-to-end: post-normalize, _parse_entity loads without raising C4
 # ---------------------------------------------------------------------------
 
 
-class TestNoC4WarningAfterNormalize:
-    def test_bare_llm_spec_parses_without_c4_warning_after_normalize(self):
-        # Pre-normalize this would emit a DeprecationWarning from
-        # SpecModulator.__init__ (C4). Post-normalize it should be silent.
+class TestNoC4ErrorAfterNormalize:
+    def test_bare_llm_spec_parses_without_c4_error_after_normalize(self):
+        # Pre-normalize this would raise ConfigurationError from
+        # SpecModulator.__init__ (C4 — flipped from warning in PR-A.3).
+        # Post-normalize it should load cleanly.
         data = {
             "name": "imagined_guard",
             "entity_type": "npc",
@@ -204,17 +203,18 @@ class TestNoC4WarningAfterNormalize:
                 },
             },
         }
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            _parse_entity(normalize_llm_entity_spec(data))
+        # Must not raise.
+        _parse_entity(normalize_llm_entity_spec(data))
 
-        c4 = [w for w in caught if "C4" in str(w.message) or "declares no sensors" in str(w.message)]
-        assert c4 == [], f"Expected no C4 warning after normalize, got: {[str(w.message) for w in c4]}"
-
-    def test_bare_llm_spec_emits_c4_warning_WITHOUT_normalize(self):
-        # Sanity check that the C4 warning IS still emitted on bare specs
+    def test_bare_llm_spec_raises_c4_error_WITHOUT_normalize(self):
+        # Sanity check that the C4 error IS still raised on bare specs
         # when the normalizer is bypassed — otherwise this whole followup
-        # is testing nothing.
+        # is testing nothing. Post-PR-A.3 (C4 hard-error flip) this is a
+        # `ConfigurationError`, not a `DeprecationWarning`.
+        import pytest
+
+        from maxim.exceptions import ConfigurationError
+
         data = {
             "name": "imagined_guard",
             "entity_type": "npc",
@@ -227,12 +227,8 @@ class TestNoC4WarningAfterNormalize:
                 },
             },
         }
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with pytest.raises(ConfigurationError, match=r"declares no sensors"):
             _parse_entity(data)  # NOT normalized
-
-        c4 = [w for w in caught if "declares no sensors" in str(w.message)]
-        assert len(c4) == 1, f"Expected C4 warning on bare spec, got: {[str(w.message) for w in caught]}"
 
 
 # ---------------------------------------------------------------------------

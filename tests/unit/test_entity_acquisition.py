@@ -141,6 +141,7 @@ class TestAcquisitionSideEffects:
             "entity_type": "body",
             "modulators": {
                 "arms": {
+                    "abstract": True,
                     "affordances": {
                         "pick_up": {"params": {"object": "str"}, "description": "Pick up an object"},
                     },
@@ -186,6 +187,7 @@ class TestAcquisitionSideEffects:
             "entity_type": "body",
             "modulators": {
                 "arms": {
+                    "abstract": True,
                     "affordances": {
                         "pick_up": {"params": {"object": "str"}, "description": "Pick up an object"},
                     },

@@ -20,6 +20,7 @@ class TestSelfEffectSchema:
             "entity_type": "item",
             "modulators": {
                 "nutrition": {
+                    "abstract": True,
                     "affordances": {
                         "eat": {
                             "params": {},
@@ -57,6 +58,7 @@ class TestSelfEffectExecution:
             "entity_type": "item",
             "modulators": {
                 "nutrition": {
+                    "abstract": True,
                     "affordances": {
                         "eat": {
                             "params": {},
@@ -103,6 +105,7 @@ class TestSelfEffectExecution:
             "entity_type": "item",
             "modulators": {
                 "nutrition": {
+                    "abstract": True,
                     "affordances": {
                         "eat": {
                             "params": {},
@@ -140,6 +143,7 @@ class TestSelfEffectExecution:
             "entity_type": "item",
             "modulators": {
                 "nutrition": {
+                    "abstract": True,
                     "affordances": {
                         "eat": {
                             "params": {},
@@ -191,6 +195,7 @@ class TestSelfEffectExecution:
             "entity_type": "hazard",
             "modulators": {
                 "flame": {
+                    "abstract": True,
                     "affordances": {
                         "touch": {
                             "params": {},
