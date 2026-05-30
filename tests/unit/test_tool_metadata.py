@@ -139,6 +139,7 @@ def test_sem_derived_tools_declare_sem_kind():
             },
             "modulators": {
                 "actuator": {
+                    "abstract": True,
                     "affordances": {
                         "do_thing": {
                             "params": {},

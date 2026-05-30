@@ -27,7 +27,6 @@ Example YAML::
 from __future__ import annotations
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -105,10 +104,10 @@ def normalize_llm_entity_spec(data: dict[str, Any]) -> dict[str, Any]:
     (``component_registry`` resolution) and user-authored YAMLs (DM
     campaigns via ``campaign_runner``, curated arc data via
     ``generative_runner``) deliberately do NOT route through the
-    normalizer: the C4 deprecation warning (and the 1.0 hard error)
-    is the user-facing migration signal asking the author to declare
-    ``abstract: true`` explicitly. Silently auto-fixing user YAMLs
-    would suppress that signal.
+    normalizer: the 1.0 C4 ``ConfigurationError`` is the user-facing
+    migration signal asking the author to declare ``abstract: true``
+    explicitly. Silently auto-fixing user YAMLs would suppress that
+    signal.
 
     Authorized LLM-derived call sites (CI grep guard in
     ``.github/workflows/test.yml`` allow-lists these and rejects new
@@ -459,7 +458,7 @@ def _parse_entity(
         mod_damage_affinities = mod_spec.get("damage_affinities", {})
         mod_abstract = bool(mod_spec.get("abstract", False))
 
-        # The C4 deprecation warning fires inside SpecModulator.__init__ —
+        # The C4 ConfigurationError is raised inside SpecModulator.__init__ —
         # see that constructor for why the structural enforcement lives at
         # the type, not here.
         modulator = SpecModulator(
@@ -744,24 +743,25 @@ class SpecModulator:
         # Mutable state for per-modulator sensor values (like entity.vital_metrics)
         self.vital_metrics: dict[str, float] = {}
 
-        # C4 (v0.9 deprecation, v1.x hard ConfigurationError): a modulator
-        # with no sensors is silent dead weight for the component-damage
-        # model unless it's explicitly capability-only. Per CLAUDE.md "push
-        # silent-no-op invariants into types, not helpers" — enforcing here
-        # covers _parse_entity, Entity.from_dict, foundry-generated specs,
-        # and any future programmatic builder in one place. The 1.x flip
-        # is `warnings.warn(...)` → `raise ConfigurationError(...)`.
+        # C4: a modulator with no sensors is silent dead weight for the
+        # component-damage model unless it's explicitly capability-only.
+        # Per CLAUDE.md "push silent-no-op invariants into types, not
+        # helpers" — enforcing here covers _parse_entity, Entity.from_dict,
+        # foundry-generated specs, and any future programmatic builder
+        # in one place.
+        #
+        # Shipped as a DeprecationWarning in 0.9 (PR #146, 2026-04-30);
+        # flipped to ConfigurationError in 1.0 per v1_refinement.md §C4.
+        # The C4-followup-1 normalizer (PR #300) is the LLM-spec safety
+        # net: every LLM/foundry/imagination entry point pre-normalizes
+        # bare modulators to `abstract: True` so the flip cannot crash
+        # any production path.
         if not self._sensors and not self._abstract:
-            warnings.warn(
-                (
-                    f"Modulator {self._entity_name!r}.{self._name!r} declares no sensors. "
-                    "Capability-only modulators must declare `abstract: true` "
-                    "in their YAML to opt out; otherwise declare at least one "
-                    "sensor. This will become a hard ConfigurationError in 1.x. "
-                    "See docs/plans/v1_refinement.md §C4."
-                ),
-                DeprecationWarning,
-                stacklevel=2,
+            raise ConfigurationError(
+                f"Modulator {self._entity_name!r}.{self._name!r} declares no sensors. "
+                "Capability-only modulators must declare `abstract: true` "
+                "in their YAML to opt out; otherwise declare at least one "
+                "sensor. See docs/plans/v1_refinement.md §C4. (C4)"
             )
 
     @property
@@ -796,9 +796,10 @@ class SpecModulator:
     def abstract(self) -> bool:
         """Capability-only marker (C4): modulator intentionally has no sensors.
 
-        Set in YAML via ``abstract: true``. Suppresses the v0.9 deprecation
-        warning for modulators that genuinely expose only affordances and have
-        no observable state of their own (e.g. ``weapon.combat``, ``npc.social``).
+        Set in YAML via ``abstract: true``. Opts out of the 1.0 C4
+        ``ConfigurationError`` for modulators that genuinely expose only
+        affordances and have no observable state of their own (e.g.
+        ``weapon.combat``, ``npc.social``).
         """
         return self._abstract
 

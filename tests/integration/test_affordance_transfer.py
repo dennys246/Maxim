@@ -69,10 +69,12 @@ def _make_entity(
     """
     ent = Entity(name=name, entity_type=entity_type)
     for mod_name, affs in affordances.items():
+        # Capability-only by helper design — no sub-sensors are accepted.
         mod = SpecModulator(
             _name=mod_name,
             _entity_name=name,
             _affordances=affs,
+            _abstract=True,
         )
         ent.modulators[mod_name] = mod
     return ent

@@ -26,6 +26,7 @@ class TestTargetEffectSchema:
             "entity_type": "creature",
             "modulators": {
                 "fire_breath": {
+                    "abstract": True,
                     "affordances": {
                         "breathe_fire": {
                             "params": {"target": "str"},
@@ -73,6 +74,7 @@ class TestTargetEffectExecution:
                 "entity_type": "creature",
                 "modulators": {
                     "fire_breath": {
+                        "abstract": True,
                         "affordances": {
                             "breathe_fire": {
                                 "params": {"target": "str"},
@@ -165,6 +167,7 @@ class TestTargetEffectExecution:
                 "entity_type": "creature",
                 "modulators": {
                     "fire_breath": {
+                        "abstract": True,
                         "affordances": {
                             "breathe_fire": {
                                 "params": {"target": "str"},
@@ -221,6 +224,7 @@ class TestTargetEffectExecution:
                 "entity_type": "weapon",
                 "modulators": {
                     "blade": {
+                        "abstract": True,
                         "affordances": {
                             "swing": {
                                 "params": {"target": "str"},
@@ -297,6 +301,7 @@ class TestTargetEffectExecution:
                 "entity_type": "creature",
                 "modulators": {
                     "fire_breath": {
+                        "abstract": True,
                         "affordances": {
                             "breathe_fire": {
                                 "params": {"target": "str"},
@@ -348,6 +353,7 @@ class TestSelfEffectStillWorksAfterRefactor:
                 "entity_type": "item",
                 "modulators": {
                     "nutrition": {
+                        "abstract": True,
                         "affordances": {
                             "eat": {
                                 "params": {},

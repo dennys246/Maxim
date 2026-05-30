@@ -64,6 +64,7 @@ def _make_dragon() -> "object":
             "entity_type": "creature",
             "modulators": {
                 "fire_breath": {
+                    "abstract": True,
                     "affordances": {
                         "breathe_fire": {
                             "params": {"target": "str"},

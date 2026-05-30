@@ -506,7 +506,7 @@ class Entity:
             # reconstruct as the same shape that was saved. Without this,
             # `Entity.from_dict` returns no-sensor stubs for modulators that
             # originally had component-damage sensors, which (after C4) would
-            # spuriously trip the deprecation warning on every load.
+            # spuriously trip the C4 ConfigurationError on every load.
             mod_sensors = getattr(m, "sensors", None)
             if mod_sensors:
                 d["sensors"] = dict(mod_sensors)

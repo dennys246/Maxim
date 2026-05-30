@@ -48,6 +48,7 @@ def components_dir(tmp_path):
               initial: 0.7
           modulators:
             combat:
+              abstract: true
               affordances:
                 slash:
                   params: {target: str}
@@ -79,6 +80,7 @@ def components_dir(tmp_path):
               initial: 0.0
           modulators:
             social:
+              abstract: true
               affordances:
                 speak:
                   params: {message: str}
@@ -106,6 +108,7 @@ def components_dir(tmp_path):
               initial: 0.3
           modulators:
             combat:
+              abstract: true
               affordances:
                 attack:
                   params: {target: str}

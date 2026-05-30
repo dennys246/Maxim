@@ -169,6 +169,7 @@ class TestPrimitiveNoRaise:
             },
             modulators={
                 "social": {
+                    "abstract": True,
                     "affordances": {
                         "speak": {"params": {"message": "str"}, "description": "say"},
                     },
