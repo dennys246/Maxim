@@ -84,6 +84,14 @@ jobs:
             echo "       Failover is the router's job. See docs/plans/archive/llm_path_fast_failover.md."
             exit 1
           fi
+          # leader_ux_profile_management.md L2 invariant: the user-profile
+          # loader at src/maxim/models/language/profile_loader.py must use
+          # yaml.safe_load exclusively. yaml.load allows arbitrary Python
+          # object construction via untrusted YAML.
+          if grep -nE "yaml\.load\(" src/maxim/models/language/profile_loader.py | grep -v "yaml.safe_load"; then
+            echo "ERROR: profile_loader.py uses bare yaml.load() — must use yaml.safe_load()"
+            exit 1
+          fi
           # Probe shims removed (v1 cleanup C1). probe_llm_server,
           # llm_server_responding_at, and _probe_once were moved/deleted.
           # Probe primitives now live in maxim_peer_backend.py. Block any

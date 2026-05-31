@@ -929,3 +929,29 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
         redaction=redaction,
         contemplation=contemplation,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# L2: user-defined profiles (leader_ux_profile_management.md)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# At module import, merge ``~/.config/maxim/profiles.yml`` entries into
+# ``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES``, and ``LLM_MODELS``. User
+# profiles WIN on collision (logged WARNING). A missing or empty file
+# is a silent no-op (the common case). A malformed file raises
+# ``ConfigurationError`` at startup so the operator sees the problem
+# immediately rather than after first inference.
+def _apply_user_profiles_at_import() -> None:
+    """Bridge the loader to the runtime dicts. Pulled into its own
+    function so test code can monkey-patch the path resolution without
+    touching module-level state."""
+    # Imports kept inside the function to avoid a top-of-file import
+    # cycle through ``maxim.models.download`` and to keep ``config.py``'s
+    # import-time cost unchanged when ``profiles.yml`` is absent.
+    from maxim.models.download import LLM_MODELS
+    from maxim.models.language.profile_loader import apply_user_profiles
+
+    apply_user_profiles(_BUILTIN_PROFILES, _PROFILE_ALIASES, LLM_MODELS)
+
+
+_apply_user_profiles_at_import()
