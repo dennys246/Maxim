@@ -25,6 +25,12 @@ into individual modules.
 
 from __future__ import annotations
 
+from maxim.hivemind.identity import (
+    IDENTITY_DOMAIN_MARKER,
+    filter_identity_bearing_links,
+    is_identity_bearing,
+    is_identity_domain,
+)
 from maxim.hivemind.merge import (
     CONSENSUS_SOURCE,
     ec_merge,
@@ -33,6 +39,10 @@ from maxim.hivemind.merge import (
 
 __all__ = [
     "CONSENSUS_SOURCE",
+    "IDENTITY_DOMAIN_MARKER",
     "ec_merge",
+    "filter_identity_bearing_links",
+    "is_identity_bearing",
+    "is_identity_domain",
     "nac_merge",
 ]
