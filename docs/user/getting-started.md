@@ -62,6 +62,8 @@ maxim --llm mistral-7b                 # auto-downloads (prompts first time)
 python -m maxim.models.download --vision
 ```
 
+Bundled profiles cover small (`smollm-1.7b`), mid (`mistral-7b`, `llama3-8b`, `qwen2.5-14b`), and large (`qwen2.5-32b`, `mixtral-8x7b`, `llama-3.1-70b`) model sizes. For any GGUF beyond the bundled set, register a custom profile with `maxim model add` — see [Adding Custom Profiles](llm-setup.md#adding-custom-profiles).
+
 ## First Run
 
 ### Without a Robot (Headless)

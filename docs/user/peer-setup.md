@@ -6,6 +6,8 @@ This guide walks through the full path from an empty machine to a working peer �
 
 > **Prerequisites on the leader:** `maxim tunnel setup` has been run, a cloudflared tunnel is live, and `MAXIM_ROLE=leader maxim` (or plain `maxim` with `~/.cloudflared/config.yml` present) is serving a model. See [LLM Setup — Tunnels](llm-setup.md#maxim-tunnel--guided-cloudflare-tunnel-setup) for leader-side setup.
 
+> **Picking what model the leader serves:** bundled profiles go up to `llama-3.1-70b` for capable hardware. For any GGUF beyond the bundled set (custom quantizations, smaller specialty models, gated repos), register a profile on the leader with `maxim model add` — see [Adding Custom Profiles](llm-setup.md#adding-custom-profiles).
+
 ---
 
 ## The short version
