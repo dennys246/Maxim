@@ -292,6 +292,22 @@ maxim peer test https://maxim.yourdomain.com/v1
 maxim --llm mistral-7b                 # Per-session local override (wins over peer)
 maxim doctor --last-decision           # Why did the last sim pick this model? (P9)
 
+<span class="text-indigo-400 text-xs uppercase tracking-wider">Model profile management (leader/standalone)</span>
+
+# Bundled profiles include qwen2.5-32b, mixtral-8x7b, llama-3.1-70b
+# for capable hardware. Beyond that, register custom profiles:
+
+maxim model add my-qwen-32b-q5 \
+    --hf bartowski/Qwen2.5-32B-Instruct-GGUF:Qwen2.5-32B-Instruct-Q5_K_M.gguf \
+    --n-ctx 32768
+maxim model add my-local --local ~/models/custom.gguf --chat-format llama3_instruct
+maxim model list                       # show user profiles
+maxim model remove my-qwen-32b-q5
+
+# Profiles live in ~/.config/maxim/profiles.yml; user profiles win
+# over bundled ones on collision. Chat-format auto-inferred from name
+# when possible. See llm-setup.md § Adding Custom Profiles.
+
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Debug trace (see everything)</span>
 
 MAXIM_LANE_TRACE=1 maxim               # Trace every LLM call
