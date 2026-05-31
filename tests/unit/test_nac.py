@@ -1153,3 +1153,118 @@ class TestClusterRewardBiasDecayTauSplit:
         finally:
             os.environ.pop("MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU", None)
             caplog.clear()
+
+
+class TestNAcRewardBiasDisabledEnv:
+    """Exp 37 cross-session graduation ablation arm 3.
+
+    Pins the contract for ``MAXIM_NAC_REWARD_BIAS_DISABLED``: when
+    truthy, the three named reward-bias surfaces
+    (``distribute_reward``, ``decay_reward_biases``,
+    ``get_agent_tool_biases``) early-exit as no-ops. Tests whether
+    bio-learning is load-bearing for the cross-session behavioral
+    delta vs LLM in-context recall doing the work.
+
+    Env-var scrub is autouse via ``tests/conftest.py``
+    (``_isolate_maxim_nac_reward_bias_disabled``) — these tests set
+    the var explicitly inside try/finally to keep the scrub
+    contract intact.
+    """
+
+    def test_disabled_unset_distribute_reward_credits_normally(self, nac):
+        """Default behavior: env unset → distribute_reward credits eligible nodes."""
+        nac.update_eligibility("agent-A", "node-1", 1.0)
+        credited = nac.distribute_reward("agent-A", reward=0.5)
+        assert len(credited) == 1
+        node_id, credit = credited[0]
+        assert node_id == "node-1"
+        assert credit == pytest.approx(0.5)
+
+    def test_disabled_set_distribute_reward_returns_empty(self):
+        """MAXIM_NAC_REWARD_BIAS_DISABLED=1 → distribute_reward no-ops."""
+        import os
+
+        from maxim.decisions.nac import NAc, NACConfig
+
+        os.environ["MAXIM_NAC_REWARD_BIAS_DISABLED"] = "1"
+        try:
+            nac = NAc(config=NACConfig())
+            nac.update_eligibility("agent-A", "node-1", 1.0)
+            credited = nac.distribute_reward("agent-A", reward=0.5)
+            assert credited == []
+            # Eligibility itself is not cleared — only the reward-bias surface
+            # is gated. Other NAc state (eligibility traces, causal links,
+            # variance accumulation) continues to flow.
+            assert nac._eligibility[("agent-A", "node-1")] == pytest.approx(1.0)
+        finally:
+            os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
+
+    def test_disabled_set_decay_reward_biases_returns_zero(self):
+        """MAXIM_NAC_REWARD_BIAS_DISABLED=1 → decay_reward_biases no-ops."""
+        import os
+
+        from maxim.decisions.nac import NAc, NACConfig
+
+        os.environ["MAXIM_NAC_REWARD_BIAS_DISABLED"] = "1"
+        try:
+            nac = NAc(config=NACConfig())
+            # Manually seed a bias entry; the gate must early-exit even
+            # when ``_reward_bias`` is non-empty (pre-existing state).
+            nac._reward_bias[("agent-A", "node-1")] = 0.3
+            pruned = nac.decay_reward_biases()
+            assert pruned == 0
+            # Bias entry remains untouched — gate prevents decay,
+            # not just pruning.
+            assert nac._reward_bias[("agent-A", "node-1")] == pytest.approx(0.3)
+        finally:
+            os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
+
+    def test_disabled_set_get_agent_tool_biases_returns_empty(self):
+        """MAXIM_NAC_REWARD_BIAS_DISABLED=1 → get_agent_tool_biases no-ops.
+
+        Wire-A's prompt annotation reads this method; when disabled,
+        Wire-A surfaces no substrate-acquired tool bias to the LLM
+        regardless of accumulated cluster bias state.
+        """
+        import os
+
+        from maxim.decisions.nac import NAc, NACConfig
+
+        os.environ["MAXIM_NAC_REWARD_BIAS_DISABLED"] = "1"
+        try:
+            nac = NAc(config=NACConfig())
+            # Manually seed cluster bias entries; the gate must early-exit
+            # even when ``_cluster_reward_bias`` is non-empty.
+            nac._cluster_reward_bias[("agent-A", "cluster-X", "tool:fire")] = -0.4
+            nac._cluster_reward_bias[("agent-A", "cluster-Y", "tool:water")] = 0.3
+            biases = nac.get_agent_tool_biases(agent_id="agent-A")
+            assert biases == []
+        finally:
+            os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
+
+    @pytest.mark.parametrize(
+        "raw_value,expected",
+        [
+            ("1", True),
+            ("true", True),
+            ("True", True),
+            ("yes", True),
+            ("on", True),
+            ("  YES  ", True),
+            ("0", False),
+            ("false", False),
+            ("", False),
+            ("garbage", False),
+        ],
+    )
+    def test_truthy_parser_handles_canonical_values(self, raw_value, expected):
+        """The env-var parser matches the shared TRUTHY_DISABLE_VALUES shape."""
+        import os
+
+        from maxim.decisions.nac import _read_nac_reward_bias_disabled_env
+
+        os.environ["MAXIM_NAC_REWARD_BIAS_DISABLED"] = raw_value
+        try:
+            assert _read_nac_reward_bias_disabled_env() is expected
+        finally:
+            os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
