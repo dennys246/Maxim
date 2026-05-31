@@ -343,6 +343,34 @@ class TestVersionInfo:
         assert info["version"] == maxim.__version__
         assert "git_hash" not in info
 
+    def test_has_git_metadata_recognizes_directory_form(self, tmp_path):
+        """Regular checkout: `.git` is a directory."""
+        from maxim import _has_git_metadata
+
+        (tmp_path / ".git").mkdir()
+        assert _has_git_metadata(str(tmp_path)) is True
+
+    def test_has_git_metadata_recognizes_worktree_file_form(self, tmp_path):
+        """Worktree: `.git` is a FILE containing a gitdir pointer.
+
+        Regression for the worktree-blind ``os.path.isdir`` guard that
+        silently dropped git_hash + git_message whenever
+        ``get_version_info`` was called from a worktree. Without the
+        fix, this test fails because the function early-returns before
+        shelling out to git.
+        """
+        from maxim import _has_git_metadata
+
+        (tmp_path / ".git").write_text("gitdir: /Users/example/Scripts/Maxim/.git/worktrees/example\n")
+        assert _has_git_metadata(str(tmp_path)) is True
+
+    def test_has_git_metadata_absent_for_pypi_install(self, tmp_path):
+        """PyPI install: no `.git` at all."""
+        from maxim import _has_git_metadata
+
+        # tmp_path is empty -- no .git/ dir, no .git file.
+        assert _has_git_metadata(str(tmp_path)) is False
+
 
 # ── Peer CLI command helpers ─────────────────────────────────────────────────
 
