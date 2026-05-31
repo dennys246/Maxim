@@ -2191,6 +2191,61 @@ def check_embodiment_ref(ref: str) -> CheckResult:
     )
 
 
+def check_user_profiles() -> CheckResult:
+    """Surface ``~/.config/maxim/profiles.yml`` state so operators see
+    user-profile counts and YAML syntax errors at doctor time, not at
+    first ``maxim`` invocation.
+
+    Three outcomes:
+
+    - File missing → ``info`` ("0 user profiles defined")
+    - File parses + N entries → ``info`` ("N user profiles defined")
+    - File present but malformed YAML → ``fail`` with the parse error
+      and a hint pointing at the file path
+
+    A malformed ``profiles.yml`` blocks ``maxim`` startup (the loader
+    raises ``ConfigurationError`` from module import). Surfacing it
+    here means the operator finds the problem before the next
+    inference attempt.
+    """
+    try:
+        from maxim.models.language.profile_loader import (
+            load_user_profiles,
+            profiles_config_path,
+        )
+    except ImportError as exc:
+        return CheckResult(
+            name="User profiles",
+            status="info",
+            message=f"profile loader unavailable: {exc}",
+        )
+
+    path = profiles_config_path()
+    if not path.is_file():
+        return CheckResult(
+            name="User profiles",
+            status="info",
+            message=f"no user profiles file at {path} (0 user profiles)",
+        )
+    try:
+        entries = load_user_profiles(path=path)
+    except Exception as exc:
+        return CheckResult(
+            name="User profiles",
+            status="fail",
+            message=f"{path}: {exc}",
+            fix=(
+                f"Fix the YAML syntax in {path} (or move it aside) — `maxim` will refuse to start until this resolves."
+            ),
+        )
+    count = len(entries)
+    return CheckResult(
+        name="User profiles",
+        status="ok" if count else "info",
+        message=f"{count} user profile{'s' if count != 1 else ''} loaded from {path}",
+    )
+
+
 def run_all_checks(
     info: PlatformInfo,
     *,
@@ -2224,6 +2279,7 @@ def run_all_checks(
         check_disk_space(),
         check_ram_headroom(),
         check_storage_footprint(),
+        check_user_profiles(),
     ]
     # Splice env-var checks in after the hardware checks so operators see
     # misconfigurations right alongside the hardware context.
@@ -2357,6 +2413,7 @@ __all__ = [
     "check_peer_vs_local_conflict",
     "check_remote_reachability",
     "check_storage_footprint",
+    "check_user_profiles",
     "check_mesh_nodes",
     "run_all_checks",
 ]
