@@ -47,6 +47,35 @@ logger = logging.getLogger(__name__)
 _NAC_FORMAT_VERSION: str = "1.2"
 
 
+# Exp 37 cross-session graduation ablation arm 3 env var.
+# When ``MAXIM_NAC_REWARD_BIAS_DISABLED`` is set to a truthy value,
+# the three named NAc reward-bias surfaces (``distribute_reward``,
+# ``decay_reward_biases``, ``get_agent_tool_biases``) early-exit as
+# no-ops. Tests whether bio-learning is load-bearing for the
+# cross-session behavioral delta vs LLM in-context recall doing the
+# work. See ``docs/experiments/37_cross_session_graduation.md``.
+#
+# Read ONCE at NAc construction (per the existing env-var pattern in
+# ``__init__``); env-var changes after construction are NOT picked up
+# until the next NAc instance is built. Pairs with the autouse env-
+# scrub fixture in ``tests/conftest.py`` per the CLAUDE.md "Opt-in
+# env vars in hot startup paths need autouse scrubs" rule.
+_REWARD_BIAS_DISABLE_TRUTHY: frozenset[str] = frozenset({"1", "true", "t", "yes", "y", "on"})
+
+
+def _read_nac_reward_bias_disabled_env() -> bool:
+    """Return True when ``MAXIM_NAC_REWARD_BIAS_DISABLED`` is truthy.
+
+    Mirrors the ``annotation_disabled_via_env`` parser in
+    ``prompts/cluster_bias_annotation.py``. Defined here rather than
+    imported because ``decisions/`` must not depend on ``prompts/``.
+    """
+    raw = os.environ.get("MAXIM_NAC_REWARD_BIAS_DISABLED")
+    if not raw:
+        return False
+    return raw.strip().lower() in _REWARD_BIAS_DISABLE_TRUTHY
+
+
 def _emit_recommend_action_event(
     *,
     agent_id: str,
@@ -323,6 +352,22 @@ class NAc:
                         config.cluster_reward_bias_decay_tau,
                     )
         self.config = config
+
+        # Exp 37 cross-session graduation ablation arm 3: when
+        # ``MAXIM_NAC_REWARD_BIAS_DISABLED=1`` the three named reward-
+        # bias surfaces (``distribute_reward``, ``decay_reward_biases``,
+        # ``get_agent_tool_biases``) early-exit as no-ops. Read here
+        # ONCE at construction (existing env-var pattern in this
+        # __init__); changes after construction are not picked up.
+        # See ``docs/experiments/37_cross_session_graduation.md``.
+        self._reward_bias_disabled: bool = _read_nac_reward_bias_disabled_env()
+        if self._reward_bias_disabled:
+            logger.info(
+                "NAc constructed with MAXIM_NAC_REWARD_BIAS_DISABLED=1 - "
+                "distribute_reward / decay_reward_biases / "
+                "get_agent_tool_biases will return no-op "
+                "(Exp 37 ablation arm 3)"
+            )
 
         # Thread safety: RLock for concurrent access from multi-agent party mode
         # and Mother Maxim's contribution processing. RLock (not Lock) because
@@ -1894,6 +1939,11 @@ class NAc:
         """
         if not agent_id:
             raise ValueError("get_agent_tool_biases requires non-empty agent_id")
+        # Exp 37 ablation arm 3: no-op when MAXIM_NAC_REWARD_BIAS_DISABLED=1.
+        # Returns empty list so Wire-A's prompt annotation sees no substrate-
+        # acquired tool bias to surface to the LLM.
+        if self._reward_bias_disabled:
+            return []
         # Aggregate per tool_signature: keep the bias with the largest
         # |bias| seen across all (agent_id, cluster_id, tool_signature)
         # entries matching agent_id.
@@ -2291,6 +2341,11 @@ class NAc:
 
         Returns list of (node_id, credit_applied) for logging.
         """
+        # Exp 37 ablation arm 3: no-op when MAXIM_NAC_REWARD_BIAS_DISABLED=1.
+        # Tests whether bio-learning is load-bearing for the cross-session
+        # behavioral delta vs LLM in-context recall.
+        if self._reward_bias_disabled:
+            return []
         credited: list[tuple[str, float]] = []
         with self._lock:
             # 1. Fast-decay path
@@ -2361,6 +2416,9 @@ class NAc:
         Called periodically (e.g., on each tick). Uses exponential decay
         with timescale tau from config. Returns count of biases pruned.
         """
+        # Exp 37 ablation arm 3: no-op when MAXIM_NAC_REWARD_BIAS_DISABLED=1.
+        if self._reward_bias_disabled:
+            return 0
         if not self._reward_bias:
             return 0
 
