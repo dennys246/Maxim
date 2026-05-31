@@ -118,6 +118,42 @@ LLM_MODELS: dict[str, dict[str, Any]] = {
         "url": "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
         "filename": "Qwen2.5-14B-Instruct.Q4_K_M.gguf",
     },
+    "qwen2.5-32b-instruct": {
+        "description": (
+            "Alibaba Qwen2.5 32B Instruct - The leader-grade default for "
+            "48 GB+ Apple Silicon or 24 GB+ VRAM. 32K context."
+        ),
+        "size_gb": 19.9,
+        # expected_bytes left None — upstream size not byte-verified yet;
+        # the download path falls through on the size check and relies
+        # on streamed integrity, same as the smollm-135m entry above.
+        "expected_bytes": None,
+        "quantization": "Q4_K_M",
+        "url": "https://huggingface.co/bartowski/Qwen2.5-32B-Instruct-GGUF/resolve/main/Qwen2.5-32B-Instruct-Q4_K_M.gguf",
+        "filename": "Qwen2.5-32B-Instruct-Q4_K_M.gguf",
+    },
+    "llama-3.1-70b-instruct": {
+        "description": (
+            "Meta Llama 3.1 70B Instruct - True large-model territory. "
+            "Comfortable on 64 GB+ unified memory; borderline on 48 GB."
+        ),
+        "size_gb": 42.5,
+        "expected_bytes": None,
+        "quantization": "Q4_K_M",
+        "url": "https://huggingface.co/bartowski/Meta-Llama-3.1-70B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf",
+        "filename": "Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf",
+    },
+    "mixtral-8x7b-instruct": {
+        "description": (
+            "Mistral Mixtral-8x7B Instruct v0.1 - MoE (8 experts, top-2). "
+            "All experts must reside in memory; ~26 GB Q4_K_M weights."
+        ),
+        "size_gb": 26.4,
+        "expected_bytes": None,
+        "quantization": "Q4_K_M",
+        "url": "https://huggingface.co/bartowski/Mixtral-8x7B-Instruct-v0.1-GGUF/resolve/main/Mixtral-8x7B-Instruct-v0.1-Q4_K_M.gguf",
+        "filename": "Mixtral-8x7B-Instruct-v0.1-Q4_K_M.gguf",
+    },
 }
 
 TTS_MODELS: dict[str, dict[str, Any]] = {
