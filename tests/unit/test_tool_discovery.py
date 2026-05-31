@@ -66,10 +66,12 @@ def _make_entity(
             affs = {}
             for aff_name, desc in affordances.items():
                 affs[aff_name] = AffordanceSchema(description=desc)
+            # Capability-only by helper design — no sub-sensors are accepted.
             ent.modulators[mname] = SpecModulator(
                 _name=mname,
                 _entity_name=name,
                 _affordances=affs,
+                _abstract=True,
             )
     return ent
 

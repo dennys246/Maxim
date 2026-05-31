@@ -138,16 +138,38 @@ __all__ = [
 ]
 
 
+def _has_git_metadata(repo_root: str) -> bool:
+    """Return True if ``repo_root`` looks like a git repo.
+
+    Recognizes BOTH shapes:
+
+    - Regular checkout: ``<repo_root>/.git`` is a directory.
+    - Git worktree: ``<repo_root>/.git`` is a FILE containing a
+      ``gitdir:`` pointer to the main checkout's gitdir.
+
+    Returns False for PyPI installs (no ``.git`` at all). The CLAUDE.md
+    "parallel sessions use worktrees" pattern needs both shapes
+    recognized; the pre-refactor ``os.path.isdir`` guard dropped
+    ``git_hash`` + ``git_message`` from ``get_version_info()`` whenever
+    the function was called from a worktree, breaking
+    ``test_includes_git_hash`` in any worktree-hosted fast-suite run.
+    """
+    import os
+
+    return os.path.exists(os.path.join(repo_root, ".git"))
+
+
 def get_version_info() -> dict[str, str]:
     """Return version + git hash for debug/version endpoint."""
     import os
 
     info: dict[str, str] = {"version": __version__}
 
-    # Guard: only shell out to git if we're in a repo (PyPI installs won't have .git)
+    # Guard: only shell out to git if we're in a repo (PyPI installs won't
+    # have .git). See ``_has_git_metadata`` for the dir/file shape handling.
     _pkg_dir = os.path.dirname(os.path.abspath(__file__))
     _repo_root = os.path.dirname(os.path.dirname(_pkg_dir))  # src/maxim -> src -> repo
-    if not os.path.isdir(os.path.join(_repo_root, ".git")):
+    if not _has_git_metadata(_repo_root):
         return info
 
     import subprocess

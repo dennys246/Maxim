@@ -8,10 +8,8 @@ configurable per-kind.
 from __future__ import annotations
 
 import logging
-import sys
 import threading
 import time
-import warnings
 from collections import defaultdict, deque
 from typing import Any, Callable
 
@@ -29,7 +27,7 @@ class ReactionBus:
 
     Example::
 
-        bus = ReactionBus()
+        bus = build_reaction_bus()
         bus.subscribe("pain", lambda r: print(f"Pain: {r.intensity}"))
         bus.publish(Reaction(kind="pain", intensity=0.8, ...))
     """
@@ -44,8 +42,8 @@ class ReactionBus:
         _allow_raw: bool = False,
     ) -> None:
         if not _allow_raw:
-            msg = (
-                "Raw ReactionBus() construction is deprecated; use "
+            raise TypeError(
+                "Raw ReactionBus() construction is rejected; use "
                 "maxim.reactions.bus.build_reaction_bus(...) instead. The builder "
                 "is the canonical construction door — forward-protective for the "
                 "Wave-3 ordering where build_bio_stack constructs a standalone "
@@ -55,11 +53,8 @@ class ReactionBus:
                 "_allow_raw=True), but the door is enforced here so the next "
                 "production caller cannot drift. See "
                 "docs/plans/reaction_bus_unification.md. Tests that need a bare "
-                "bus may pass _allow_raw=True. This becomes a hard error in 1.0. "
-                "(C6 deprecation)"
+                "bus may pass _allow_raw=True. (C6)"
             )
-            print(f"DeprecationWarning: {msg}", file=sys.stderr)
-            warnings.warn(msg, DeprecationWarning, stacklevel=2)
         self._per_kind: dict[str, list[Callable[[Reaction], None]]] = defaultdict(list)
         self._all_subscribers: list[Callable[[Reaction], None]] = []
         self._lock = threading.Lock()

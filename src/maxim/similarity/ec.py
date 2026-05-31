@@ -315,6 +315,16 @@ class EntorhinalCortex:
         self._substrate_nodes: dict[str, tuple[list[float], str]] = {}
         # Member count per node — used for running mean update.
         self._substrate_node_counts: dict[str, int] = {}
+        # Hivemind shareability (v1_refinement.md §B5): parallel dicts holding
+        # per-node provenance + substrate domain. Stored alongside the
+        # (embedding, modality) tuple rather than extending it so all
+        # existing tuple-unpacking call sites stay stable. ``source`` is
+        # ``"local"`` for nodes learned on this Maxim and an opaque
+        # contributor ID for nodes merged in from a substrate bundle.
+        # ``domain`` is ``None`` for undomained / generic nodes and a tag
+        # string (``"combat"``, ``"cooking"``, ...) for domain-scoped nodes.
+        self._substrate_node_sources: dict[str, str] = {}
+        self._substrate_node_domains: dict[str, str | None] = {}
 
     # ─────────────────────────────────────────────────────────────────────────
     # Substrate Pattern Completion (P1)
@@ -417,15 +427,60 @@ class EntorhinalCortex:
         node_id: str,
         embedding: list[float],
         modality: str,
+        *,
+        source: str = "local",
+        domain: str | None = None,
     ) -> None:
-        """Register or update a substrate node's embedding."""
+        """Register or update a substrate node's embedding.
+
+        ``source`` defaults to ``"local"`` (this Maxim learned it). Pass an
+        opaque contributor ID (e.g. ``"oasis-abc123"``, ``"consensus"``)
+        when registering a node imported from a substrate bundle. ``domain``
+        is the optional Hivemind substrate-domain tag (``"combat"``,
+        ``"cooking"``, ...); ``None`` for undomained / generic nodes.
+        Both fields are keyword-only and additive — existing production
+        callers in ``maxim.similarity.encoder`` continue to work unchanged
+        and inherit ``source="local"`` / ``domain=None``.
+        """
         self._substrate_nodes[node_id] = (embedding, modality)
         self._substrate_node_counts[node_id] = 1
+        self._substrate_node_sources[node_id] = source
+        self._substrate_node_domains[node_id] = domain
 
     def remove_substrate_node(self, node_id: str) -> None:
         """Remove a substrate node."""
         self._substrate_nodes.pop(node_id, None)
         self._substrate_node_counts.pop(node_id, None)
+        self._substrate_node_sources.pop(node_id, None)
+        self._substrate_node_domains.pop(node_id, None)
+
+    def substrate_node_metadata(self, node_id: str) -> dict[str, Any] | None:
+        """Return ``{node_id, embedding, modality, member_count, source, domain}``.
+
+        Used by the Hivemind merge functions (v1_refinement.md §B5 PR B)
+        and the bundle composer (PR D) to inspect node provenance and
+        domain without depending on the private parallel-dict layout.
+        Returns ``None`` when the node is not registered.
+
+        The ``node_id`` field is included so callers iterating a list of
+        metadatas don't have to thread the key separately (the common
+        bundle-composition pattern). ``member_count`` is the running
+        count of embeddings absorbed into this node's centroid — named
+        explicitly to distinguish from any future "observation count"
+        statistic at the EC layer.
+        """
+        node = self._substrate_nodes.get(node_id)
+        if node is None:
+            return None
+        emb, mod = node
+        return {
+            "node_id": node_id,
+            "embedding": emb,
+            "modality": mod,
+            "member_count": self._substrate_node_counts.get(node_id, 1),
+            "source": self._substrate_node_sources.get(node_id, "local"),
+            "domain": self._substrate_node_domains.get(node_id),
+        }
 
     @property
     def substrate_node_count(self) -> int:
@@ -730,6 +785,8 @@ class EntorhinalCortex:
                     "embedding": emb,
                     "modality": mod,
                     "count": self._substrate_node_counts.get(nid, 1),
+                    "source": self._substrate_node_sources.get(nid, "local"),
+                    "domain": self._substrate_node_domains.get(nid),
                 }
                 for nid, (emb, mod) in self._substrate_nodes.items()
             },
@@ -787,12 +844,17 @@ class EntorhinalCortex:
         # Load signatures
         self._signatures = {k: SituationSignature.from_dict(v) for k, v in data.get("signatures", {}).items()}
 
-        # Load substrate nodes (P1)
+        # Load substrate nodes (P1). Pre-B5 dumps lack the ``source`` and
+        # ``domain`` fields — both default to ``"local"`` and ``None``.
         self._substrate_nodes = {}
         self._substrate_node_counts = {}
+        self._substrate_node_sources = {}
+        self._substrate_node_domains = {}
         for nid, ndata in data.get("substrate_nodes", {}).items():
             self._substrate_nodes[nid] = (ndata["embedding"], ndata["modality"])
             self._substrate_node_counts[nid] = ndata.get("count", 1)
+            self._substrate_node_sources[nid] = ndata.get("source", "local")
+            self._substrate_node_domains[nid] = ndata.get("domain")
 
         logger.info(
             "Loaded EC from %s (%d signatures, %d substrate nodes)",

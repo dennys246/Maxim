@@ -204,6 +204,27 @@ class CausalLink:
     # On entity discard, imagined links get 0.5x confidence decay (partial learning).
     imagined: bool = False
 
+    # Hivemind shareability (v1_refinement.md §B5): source instance ID for the
+    # single contributor that originally learned this link. ``"local"`` for
+    # links learned on this Maxim; an opaque identifier (e.g. ``"oasis-abc123"``)
+    # for links imported from a substrate bundle of a single contributor.
+    source: str = "local"
+
+    # Hivemind shareability: substrate domain tag scoping which bundles this
+    # link participates in (``"combat"``, ``"cooking"``, ``"medical"``, ...).
+    # ``None`` means undomained / generic.
+    domain: str | None = None
+
+    # Hivemind shareability: full contributor set for fan-in links. Empty
+    # tuple ``()`` means single-contributor (source is the sole contributor).
+    # Populated by PR B's ``nac.merge()`` Bayesian aggregation: when links
+    # from contributors A + B aggregate into one link, ``source`` becomes
+    # ``"consensus"`` (a reserved sentinel) and ``contributors = ("A", "B")``
+    # preserves the audit trail. Reserved as ``tuple`` rather than ``set`` /
+    # ``frozenset`` because the JSON round-trip is unambiguous (list ↔ tuple)
+    # and contributor order can carry weight in some aggregation schemes.
+    contributors: tuple[str, ...] = ()
+
     # Thread safety for concurrent record_observation calls
     _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
@@ -351,6 +372,9 @@ class CausalLink:
             "last_rpe": self.last_rpe,
             "percept_refs": [r.to_dict() if hasattr(r, "to_dict") else r for r in self.percept_refs],
             "imagined": self.imagined,
+            "source": self.source,
+            "domain": self.domain,
+            "contributors": list(self.contributors),
         }
 
     @classmethod
@@ -385,6 +409,9 @@ class CausalLink:
             last_rpe=data.get("last_rpe"),
             percept_refs=percept_refs,
             imagined=bool(data.get("imagined", False)),
+            source=data.get("source", "local"),
+            domain=data.get("domain"),
+            contributors=tuple(data.get("contributors", ())),
         )
 
 

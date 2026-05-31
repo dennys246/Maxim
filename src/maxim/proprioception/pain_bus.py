@@ -54,10 +54,8 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import threading
 import time
-import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 from maxim.proprioception.pain import PainSignal, PainType
@@ -126,18 +124,15 @@ class PainBus:
         _allow_raw: bool = False,
     ) -> None:
         if not _allow_raw:
-            msg = (
-                "Raw PainBus() construction is deprecated; use "
+            raise TypeError(
+                "Raw PainBus() construction is rejected; use "
                 "maxim.proprioception.pain_bus.build_pain_bus(hippocampus=..., nac=...) "
                 "instead. The builder enforces required learning-subject wiring "
                 "(see docs/plans/pain_bus_unification.md) — three CLI entry points "
                 "previously forgot to subscribe NAc, silently disabling causal "
                 "learning for out-of-band SEM pain. Tests that need a bare bus "
-                "may pass _allow_raw=True. This becomes a hard error in 1.0. "
-                "(C6 deprecation)"
+                "may pass _allow_raw=True. (C6)"
             )
-            print(f"DeprecationWarning: {msg}", file=sys.stderr)
-            warnings.warn(msg, DeprecationWarning, stacklevel=2)
         self.reaction_bus = ReactionBus(
             history_size=history_size,
             refractory_overrides={"pain": 0.5},

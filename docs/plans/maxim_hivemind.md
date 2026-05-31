@@ -264,7 +264,7 @@ Substrate-primary Maxim (1.1+, bootstrapped from Hivemind)
 
 | Version | Substrate-primary | Oasis | Hivemind |
 |---|---|---|---|
-| **1.0** | B5: Phase -1 + Phase 0 harness + shareability infrastructure (snapshot bundle format, NAc merge ops, EC merge ops, provenance tagging, identity-bearing concept detection, substrate domains). ~700 LOC. | Format exists. No Oasis software runs yet. | None. |
+| **1.0** | B5: Phase -1 + Phase 0 harness (SHIPPED PR #228, 2026-05-09) + shareability infrastructure (SHIPPED PRs #305/#308/#309/#310, 2026-05-30/31): snapshot bundle format at `src/maxim/hivemind/bundle.py`, `nac_merge` + `ec_merge` at `src/maxim/hivemind/merge.py`, provenance + domain + contributors tags on CausalLink + EC nodes, identity heuristic at `src/maxim/hivemind/identity.py`, `maxim substrate export/import/inspect` CLI. ~1,360 LOC total. | Format + CLI exist. No Oasis software runs yet. | None. |
 | **1.1** | Substrate-primary AUT mode lands. Phase 0 validation runs (raw substrate, no Hivemind). Phase 1 starts. | **Oasis software ships** (~800 LOC). Single-Oasis instance hostable on a Mac Mini. CLI: `maxim oasis serve`. LLM-AUT users can opt in to contribute via `maxim contribute --to oasis://...`. Each Oasis can sync substrate with another Oasis directly (`maxim oasis sync --peer ...`). | Direct Oasis-to-Oasis sync only. No mesh discovery yet. |
 | **1.2** | Phase 1 ships. Phase 2 starts. Substrate-primary Maxims pull bootstrap from Hivemind. | Multi-Oasis federation. Curation tools (mark-trusted, mark-untrusted). Domain maintainer roles. | **Full Hivemind protocol** (~600 LOC): peer discovery, substrate-snapshot exchange protocol, conflict-resolution semantics, poison-resistance defenses, well-known reference servers (optional). |
 | **1.3+** | Phase 3 starts (from-scratch sequence model). | Oasis becomes a substrate-primary instance (no LLM needed). Mac-Mini-class hardware suffices. | Cross-version migration tooling. Curation registry. Domain ecosystem. |
@@ -273,22 +273,26 @@ Substrate-primary Maxim (1.1+, bootstrapped from Hivemind)
 
 ---
 
-## What this changes about B5 (the 1.0 work)
+## What this changes about B5 (the 1.0 work) — SHIPPED 2026-05-30 / 2026-05-31
 
 The grounded-language plan's B5 (Phase -1 + Phase 0 harness, ~700 LOC) needs the shareability infrastructure baked in from day one. Without it, the Hivemind becomes a 1.3+ retrofit (expensive). With it, the Hivemind is a 1.2 turn-on.
 
-**Concretely added to B5:**
+**Shipped in B5 across four reviewed PRs:**
 
-| Feature | Approx LOC | Purpose |
-|---|---|---|
-| Substrate snapshot bundle format (zip + manifest + signature) | ~150 | Shareable unit |
-| `nac.merge(other_nac)` / `ec.merge(other_ec)` Bayesian-aggregation library functions | ~200 | Conflict resolution math |
-| Provenance tags on NAc links + EC nodes (source instance ID) | ~100 | Trust management + experimental hygiene |
-| Identity-bearing concept detection (port from old Mother plan, simplified) | ~80 | Privacy from EC clusters that map to PII |
-| Substrate domain tagging (per-pattern domain field) | ~50 | Selective sharing |
-| `maxim substrate export` / `maxim substrate import` CLI verbs | ~80 | Manual exchange (no service required yet) |
+| Feature | Approx LOC | PR | Purpose |
+|---|---|---|---|
+| Provenance tags on NAc links + EC nodes (source + domain + contributors fields) | ~100 | #305 MERGED | Trust management + experimental hygiene + fan-in audit trail |
+| Substrate domain tagging (per-pattern domain field) | (shipped with PR A) | #305 MERGED | Selective sharing |
+| `nac_merge` / `ec_merge` Bayesian-aggregation library functions | ~340 | #308 MERGED | Conflict resolution math; respects `frozen_centroid_modalities` per bio-fidelity-lens fold |
+| Identity-bearing concept detection (substrate-only heuristic; full ATL/SEM walk deferred to 1.1+) | ~140 | #309 MERGED | Privacy from concepts that map to specific named entities |
+| Substrate snapshot bundle format (zip + manifest + reserved signature slot + migration-registry seam) | ~280 | #310 OPEN | Shareable unit |
+| `maxim substrate export / import / inspect` CLI verbs | ~210 | #310 OPEN | Manual exchange (no service required yet) |
 
-**Total B5 add: ~660 LOC.** Brings B5 to ~1,360 LOC total. Still much smaller than the old Mother plan and now enables both substrate-primary mode AND the eventual Hivemind.
+**Total B5 actual: ~1,070 LOC of source.** Three-lens reviews (Executor + Architecture + Bio-fidelity on PR D) folded 1 CRITICAL ZIP-slip + ~10 IMPORTANT findings across the series before each push.
+
+**Reserved hooks for 1.2 P2P:** `trusted_sources` / `validate_link` / `validate_node` callback slots on merge functions; manifest `signature` + `signature_algorithm` slots; bundle migration-registry skeleton (`register_bundle_migration` + `migrate_bundle_envelope` + `isolated_bundle_migrations`). Reserved namespaces in `src/maxim/hivemind/`: `_consensus` (`CONSENSUS_SOURCE`), `_identity` (`IDENTITY_DOMAIN_MARKER`). The `_*` prefix is rejected at every public entry via shared `_validate_source`.
+
+**Real-session smoke test:** `maxim substrate export ... && maxim substrate import ...` round-tripped cleanly on a captured sim_report dir (2026-05-31). The 1.1 Oasis ingestion contract + 1.2 P2P protocol now build on this surface without retrofitting.
 
 ---
 

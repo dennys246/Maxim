@@ -51,7 +51,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). What remains:
 
 **Hard requirements:**
-- **C4-C6** (Section 5) — Cleanup deprecation cycle. Needs a 0.9 release shipping parse-time / construction-time warnings before 1.0 flips them to hard errors. C4 SHIPPED (PR #219). C6 SHIPPED (2026-05-03). C5 design intact in §C5. C4/C6 hard-error flip prerequisites tracked in §1.1-T4.
+- **C4-C6** (Section 5) — Cleanup deprecation cycle COMPLETE. All three hard-error flips landed in Phase 1 of the sequenced 1.0 plan (2026-05-29): C4 (PR-A.3) + C5 (PR #299) + C6 (PR #301, path (b) with DefaultNetwork opt-out retained). C6 Wave-2 split-subscriber-ownership fix in `pain_bus_unification.md` is post-1.0 polish; C4-followup-2 sensor-promotion audit is post-1.0 polish.
 - **D1-D3** (Section 6) — Docs passes (agent memory transfer, API/CLI surface review, final docs pass). No code, just writing.
 - **W1-W2 (Wire-A substrate→action conversion)** — see new Section 1.5 below. Added 2026-05-27 after Phase B Roy-3a-retry's verdict named the substrate-scene-tool-availability + imagination-substrate-blindness gaps as the 1.0 thesis-demonstration bottleneck.
 
@@ -74,8 +74,14 @@ Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). W
 - **B5. Substrate-primary AUT mode — Phase -1 + Phase 0 harness + Hivemind shareability infrastructure** (see [grounded_language_acquisition.md](grounded_language_acquisition.md) for substrate-primary phases; [maxim_hivemind.md](maxim_hivemind.md) for the Hivemind/Oasis layer that B5's shareability infrastructure enables). Ships under experimental flag (`--aut-mode substrate-primary` or similar). **Three components:**
   - **Phase -1** (~150 LOC) — **GATE CLEARED + SHIPPED** (PR #228, 2026-05-09). `NAc.recommend_action()` + `propose_via_substrate()` + `--aut-mode` CLI plumbing. Boolean YES on substrate-driven action generation. 22 tests across unit + integration.
   - **Phase 0 harness** (~550 LOC) — **SHIPPED** (PR #228, 2026-05-09). `cradle_prelinguistic` arc + motor-only AUT prompt renderer + `SubstrateTelemetry` JSONL writer + `--research` routing fix. 13 harness tests. Smoke run cleared: 38 actions, 61 causal links, hunger drift 0.0 → 0.65 over 5 turns. Validation gap: substrate-primary bypasses `LinguisticEncoder` so EC `node_count` stayed at 0 — the cluster-formation measurement Phase 0 actually wants is blocked on a sensor-percept encoding entry point. Next concrete work item; small (~1-2 sessions).
-  - **Hivemind shareability infrastructure** (~660 LOC) — **PENDING.** Substrate snapshot bundle format (zip + manifest + signature, ~150) + `nac.merge()` / `ec.merge()` Bayesian-aggregation library functions (~200) + provenance tags on NAc links + EC nodes (~100) + identity-bearing concept detection ported from old Mother plan (~80) + substrate domain tagging (~50) + `maxim substrate export` / `maxim substrate import` CLI verbs (~80). Enables the 1.1 Oasis software and the 1.2 Hivemind P2P protocol without retrofitting.
-  - **Scope shipped to date:** ~700 LOC of ~1,360. Hivemind shareability (~660 LOC) remains.
+  - **Hivemind shareability infrastructure** (~660 LOC) — **SHIPPED** (2026-05-30 / 2026-05-31, four reviewed PRs):
+    - PR A (#305, MERGED) — provenance + substrate-domain + fan-in-contributors fields on CausalLink + EC nodes; new `EntorhinalCortex.substrate_node_metadata` accessor.
+    - PR B (#308, MERGED) — `nac_merge` / `ec_merge` Bayesian-aggregation pure-function utilities at `src/maxim/hivemind/merge.py`. Zero-prior for unobserved entries; valence-distinct CausalLinks stay separate; count-weighted EC centroid mean (respecting `frozen_centroid_modalities` per the bio-fidelity-lens fold); Chan parallel-Welford for variance state.
+    - PR C (#309, MERGED) — identity-bearing concept detection at `src/maxim/hivemind/identity.py` (proper-noun + identity-keyword heuristic with conservative-tilt threshold).
+    - PR D (#310, OPEN) — substrate snapshot bundle (ZIP + manifest + reserved signature slot) at `src/maxim/hivemind/bundle.py` + `maxim substrate export | import | inspect` CLI verbs at `src/maxim/hivemind/cli.py` + bundle migration-registry seam for 1.1+. Three-lens review (Executor + Architecture + Bio-fidelity) closed 1 CRITICAL ZIP-slip + 5 IMPORTANT findings before push.
+    - Reserved hooks for 1.2 P2P: `trusted_sources` / `validate_link` / `validate_node` callback slots on merge functions; manifest `signature` + `signature_algorithm` slots. Reserved namespaces: `_consensus` (`CONSENSUS_SOURCE`) + `_identity` (`IDENTITY_DOMAIN_MARKER`); the `_*` prefix is rejected at every public entry point via shared `_validate_source`.
+    - Real-session smoke test passed end-to-end (`maxim substrate export ... && maxim substrate import ...` on a captured sim_report). 1.1 Oasis ingestion + 1.2 P2P protocol build on this surface without retrofitting.
+  - **Scope shipped to date:** ~1,360 LOC of ~1,360. Hivemind shareability complete.
   - **Doesn't touch user-facing 1.0 surface; doesn't gate D1-D3 docs.** Motivated by the 2026-05-09 audit that found 60-70% of recent engineering effort going to LLM-mitigation scaffolding (~845 LOC of band-aids) rather than substrate work — the parallel-mode architecture is the structural fix to the drift, and baking shareability in from day one means the Maxim Hivemind ships as a 1.2 turn-on rather than a 1.3+ retrofit.
 
 **Net assessment:** 1.0 substantively done. Path to ship is one 0.9 release carrying C4/C5/C6 deprecation warnings → deprecation window of operator's choosing → 1.0 release flipping warnings to hard errors. D1-D3 docs work proceeds in parallel with B5 (substrate-primary harness); B3 Phase 3 is optional polish. No more substrate uncertainty, no more confound risk, no more unshipped invariants. The B5 add accepts a small scope expansion to begin the parallel-architecture pivot; 1.0 still ships when D1-D3 + C4/C5/C6 deprecation cycle complete, regardless of where B5 lands (B5 finishing in 1.0 is preferred but not gating).
@@ -240,7 +246,7 @@ The threshold tweak is solely responsible. **Outcomes:**
 User-authorized order. Two tracks run in parallel through the middle; benchmarking scope gets defined alongside the warm-up so the graduation criteria can incorporate it.
 
 **Phase 1 — Warm-up (1-2 small PRs + 1 planning doc):**
-1. **C5 + C4/C6 hard-error flip.** Per §C5 design + §1.1-T4 prerequisites. Small mechanical PRs. Gets a known-quantity item off the board, builds momentum.
+1. **C5 + C4/C6 hard-error flip — SHIPPED** (PRs #299 + PR-A.3 + #301, 2026-05-29). Small mechanical PRs; first momentum win of the sequenced 1.0 plan.
 2. **Benchmarking scope-definition planning doc.** Per [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) "Benchmarking is the **sibling** 1.0 gate to behavioral graduation." Currently undefined in plan docs. Scoping during warm-up means the criteria can inform how Tier 1 graduations get measured. Don't tail-load this — risk of late surprises that re-open graduation work.
 
 **Phase 2 — Parallel tracks (the calendar middle):**
@@ -452,23 +458,35 @@ No-op at ship time — the reflex system landing in 0.8 had already removed `_de
 
 Removed `DamageEntityTool` class, import, registration, and `TOOL_DESCRIPTIONS` entry from `simulation/tools.py`. Removed from `docs/user/tools.md`. Orchestrator prompts in `simulation/orchestrator.py` updated to use `damage_component`. `DamageComponentTool` is the sole damage tool going forward.
 
-### C4. Modulators without sensors (deprecation phase) — SHIPPED (PR #219, 2026-05-03)
+### C4. Modulators without sensors — SHIPPED
 
-Require every modulator to declare at least one sensor. Capability-only modulators declare `abstract: true`. 0.9 deprecation warning, 1.x hard error.
+Require every modulator to declare at least one sensor. Capability-only modulators declare `abstract: true`.
 
-**Shipped:** warning lives in `SpecModulator.__init__` (not `_parse_entity`) per CLAUDE.md "push silent-no-op invariants into types, not helpers" — covers parser, `Entity.from_dict`, foundry-generated specs, future programmatic builders. The 1.x flip is one-line. Symmetric `to_dict` emission of the `abstract` boolean. `Entity.from_dict` reconstructs per-modulator sensors (pre-existing roundtrip gap that the new constructor warning would have made spuriously fire) + legacy-pre-C4 dict-shape compat (no `sensors` and no `abstract` → load as `abstract=True`). Bundled audit: 115 modulators in `_data/components/` + 11 in `scenarios/embodiment/` declare `abstract: true`. Regression-guarded by `test_bundled_components_emit_no_deprecation_warning`. Pre-merge two-lens review folded.
+Deprecation phase shipped via PR #219 (2026-05-03): parse-time `DeprecationWarning` at `SpecModulator.__init__` for any bare modulator without `abstract: true`. Lives at the constructor (not `_parse_entity`) per CLAUDE.md "push silent-no-op invariants into types, not helpers" — covers parser, `Entity.from_dict`, foundry-generated specs, future programmatic builders. Symmetric `to_dict` emission of the `abstract` boolean. `Entity.from_dict` reconstructs per-modulator sensors (pre-existing roundtrip gap that the new constructor warning would have made spuriously fire) + legacy-pre-C4 dict-shape compat (no `sensors` and no `abstract` → load as `abstract=True`). Bundled audit: 115 modulators in `_data/components/` + 11 in `scenarios/embodiment/` declare `abstract: true`.
 
-**Known follow-ups (track for 1.x track, before the hard-error flip in §1.1-T4):**
+Hard-error flip shipped via PR-A.3 (2026-05-29): warning replaced with `ConfigurationError` raised from `SpecModulator.__init__`. Marker shortened from `(C4 v0.9 deprecation)` → `(C4)` matching the C5+C6 post-flip convention. `import warnings` dropped (unused after flip). Regression guard: [tests/unit/test_modulator_abstract.py](../../tests/unit/test_modulator_abstract.py) (15 tests — bundled audit re-anchored on "no ConfigurationError on `_parse_entity`").
 
-- **C4-followup-1: Imagination + foundry pipelines emit bare LLM specs.** `imagination/trigger.py` (3 call sites) and `simulation/foundry.py` (2 call sites) call `_parse_entity` on LLM-generated specs that don't declare `abstract: true` on capability-only modulators. v0.9 surfaces deprecation warnings on every imagined entity — the intended deprecation signal. v1.x flip will hard-fail those entry points until fixed. **Fix shape:** small post-process normalizer in `spec.py` (`if not mod.get("sensors") and "abstract" not in mod: mod["abstract"] = True`) called at the 5 LLM-spec entry points + update `simulation/entity_designer.py` JSON template to ask the LLM to emit `abstract: true` for capability-only modulators. The post-process is a safety net for LLM forgetfulness; the prompt update is the right-shaped ask. Hard 1.x deadline (warning → error). ~50-100 LOC.
+**Follow-up status:**
 
-- **C4-followup-2: Sensor-promotion audit.** The 115 bundled modulators were marked `abstract: true` uniformly by an audit script. A small subset (~5-15) arguably should grow real sensors instead so `compute_integrity()` reflects "this capability is degraded" — `cradle_lever_door.mechanism` should own `lever_position`, `wizard.magic` should own `mana`, etc. **Approach:** group the 115 by modulator-name category (combat/social/maintenance/usage are clearly verbs and stay abstract — ~95+ of them); the real audit shrinks to the ~15 ambiguous ones (`magic`, `mechanism`, `lifecycle`, `physical`, `expression`). For each: does the entity carry sensors that conceptually belong to this modulator's working order? Net diff is small (5-10 promotions); the architectural signal it sends ("we know what state belongs where") is large. Polish pass — no hard deadline, can land any time before 1.x.
+- **C4-followup-1: Imagination + foundry pipelines emit bare LLM specs — SHIPPED** (PR #300, 2026-05-29). Per-source contract enforced: LLM-derived `_parse_entity` callers (3 sites in `imagination/trigger.py`, 2 in `simulation/foundry.py`) route through `normalize_llm_entity_spec` which fills `abstract: True` on capability-only modulators. Bundled YAMLs (`component_registry`), user-authored YAMLs (`campaign_runner` DM specs), and curated arc data (`generative_runner` world entities) deliberately DO NOT normalize — the 1.0 `ConfigurationError` is the user-facing migration signal asking the author to declare `abstract: true` explicitly. The LLM prompt in `simulation/entity_designer.py::_SEM_SCHEMA_PROMPT` is updated with the right-shaped ask (split example modulators — verb-group with `abstract: true` vs component-part with sensors — prevents cargo-cult of both fields on the same modulator). Audited scenarios/ YAMLs: zero bare modulators across 51 files. **Post-flip the normalizer is LOAD-BEARING**: without it, every LLM-imagined entity with a bare modulator would crash `_parse_entity` on the runtime path. Regression-guarded by: (a) CI grep in `.github/workflows/test.yml` allow-listing the four non-LLM input source files + requiring `normalize_llm_entity_spec` on every other `_parse_entity` caller, (b) [tests/unit/test_normalize_llm_entity_spec.py](../../tests/unit/test_normalize_llm_entity_spec.py) (15 tests), (c) CLAUDE.md "Architectural invariants" entry naming the contract.
 
-### C5. Entity health as direct sensor (deprecation phase)
+- **C4-followup-2: Sensor-promotion audit.** The 115 bundled modulators were marked `abstract: true` uniformly by an audit script. A small subset (~5-15) arguably should grow real sensors instead so `compute_integrity()` reflects "this capability is degraded" — `cradle_lever_door.mechanism` should own `lever_position`, `wizard.magic` should own `mana`, etc. **Approach:** group the 115 by modulator-name category (combat/social/maintenance/usage are clearly verbs and stay abstract — ~95+ of them); the real audit shrinks to the ~15 ambiguous ones (`magic`, `mechanism`, `lifecycle`, `physical`, `expression`). For each: does the entity carry sensors that conceptually belong to this modulator's working order? Net diff is small (5-10 promotions); the architectural signal it sends ("we know what state belongs where") is large. Polish pass — no hard deadline, can land any time post-1.0.
 
-If entity has modulators with sensors AND a direct `health` sensor (not `derived`), parse-time warning in 0.9, hard error in 1.0.
+### C5. Entity health as direct sensor — SHIPPED
 
-### C6. Raw constructor enforcement (deprecation phase) — SHIPPED (2026-05-03)
+Deprecation phase shipped via PR #220 (2026-04-30): parse-time `DeprecationWarning` when an entity has modulators with sensors AND a direct `health` sensor without `health: derived` opt-in.
+
+Hard-error flip shipped via PR #299 (2026-05-29): warning replaced with `ConfigurationError` raised from `_check_c5_direct_health` in [`src/maxim/embodiment/spec.py`](../../src/maxim/embodiment/spec.py). Single canonical opt-in spelling (string `"derived"` only — boolean `True` rejected) preserved from the deprecation cycle. Bundled audit (80 components + scenarios) confirms zero offenders. Regression guard: [tests/unit/test_c5_direct_health.py](../../tests/unit/test_c5_direct_health.py) (8 tests).
+
+**Promoted from §1.1-T4 to 1.0** because the bundled audit cleared all offenders and C5 has no follow-up prerequisites (unlike C4's imagination/foundry normalizer or C6's DefaultNetwork standalone-path coupling).
+
+**Marker convention post-flip:** bare `(C5)` in the exception message — the `"deprecation"` suffix used by C4's pre-flip warning (`"(C4 v0.9 deprecation)"`) and C6's pre-flip warning (`"(C6 deprecation)"`) becomes anachronistic once the warning is an error. The natural endpoint for all three is `(C{N})` once C4 and C6 also flip.
+
+### C6. Raw constructor enforcement — SHIPPED
+
+Deprecation phase SHIPPED (PR #221, 2026-05-03); hard-error flip SHIPPED (PR #301, 2026-05-29) via path (b) — `DefaultNetwork._init_pain_circuit` keeps its explicit `PainBus(_allow_raw=True)` opt-out (Wave-2 split-subscriber-ownership fix in `pain_bus_unification.md` is the proper resolution but ships separately).
+
+**Technical debt acknowledgment:** path (b) is an interim 1.0 contract, not a permanent endpoint. The Wave-2 fix in `pain_bus_unification.md` is the final architecture; until it lands, the DN opt-out site is the **single allow-listed production caller** of `PainBus(_allow_raw=True)`. The CI grep allow-list ([.github/workflows/test.yml](../../.github/workflows/test.yml) "C6 hard-error allow list") covers it explicitly; new production opt-outs require updating both the allow-list and CLAUDE.md in the same commit, with a `TODO(wave-N)` comment at the call site. The `TestDefaultNetworkOptOutStillWorks` tripwire in [tests/unit/test_c6_raw_construction.py](../../tests/unit/test_c6_raw_construction.py) pins that the DN-shape construction stays valid.
 
 **Shipped:** Added keyword-only `_allow_raw: bool = False` to `PainBus.__init__`, `ReactionBus.__init__`, and `MemoryHub` (as a `kw_only=True` dataclass field, kept out of `repr` / `compare`). When `_allow_raw` is False, each constructor emits a `DeprecationWarning` naming the canonical builder (`build_pain_bus` / `build_reaction_bus` / `build_memory_hub`) plus the load-bearing rationale (Wave 1+2 silent-no-op bug class). Each warning also prints to stderr (`print(f"DeprecationWarning: {msg}", file=sys.stderr)`) for human visibility — `DeprecationWarning` is silenced by Python's default warning filter outside `__main__` and by pytest's global `ignore::DeprecationWarning`, so the stderr line is the load-bearing signal that callers actually see. Mirrors the C4/C5 + `cli_utils._resolve_persona_mode` pattern.
 
@@ -484,7 +502,7 @@ Test surface: ~60 raw-construct sites updated to `_allow_raw=True` across 15 tes
 
 Pre-merge two-lens review: 5 findings folded (ReactionBus message clarification, stderr-print visibility, CI grep allow-list, DN TODO marker, plan §1.1-T4 prereq mirror). 1 NIT deferred (future tag-bypass-with-reason-string enhancement).
 
-1.0 flip is tracked in §1.1-T4: change the default warning to a `TypeError` (or remove the parameter and require the builder).
+**1.0 flip SHIPPED via PR #301 (2026-05-29):** `PainBus.__init__`, `ReactionBus.__init__`, and `MemoryHub.__post_init__` now `raise TypeError(...)` instead of emitting `DeprecationWarning + stderr` when `_allow_raw=False`. The `_allow_raw=True` opt-out keyword is preserved (used by builders + the DefaultNetwork deferred site + ~60 test sites). Message marker shortened from `"(C6 deprecation)"` to `"(C6)"` matching the C5 convention. Regression guard: [tests/unit/test_c6_raw_construction.py](../../tests/unit/test_c6_raw_construction.py) (18 tests covering raw-raises, opt-out-silent, builder-silent, DefaultNetwork opt-out tripwire).
 
 ### C7. Dormancy audit follow-up — broader cleanup candidate list (1.0 cleanup track)
 
@@ -562,7 +580,7 @@ The persona-cleanup track (1.1-T-persona-triad: scene_actor_affordances → bio_
 8. **B3** (SEM world enrichment Phase 3) — Phases 1+2 shipped; Phase 3 (composable body archetypes) optional for 1.0.
 9. **B4** (cradle) — already shipped (PR #200).
 10. **C1-C3** — already shipped (PR #196, 2026-04-26).
-11. **C4-C6** (deprecation phase) — 0.9 warnings, 1.0 hard errors.
+11. **C4-C6** — all three hard-error flips SHIPPED (PRs #299 + PR-A.3 + #301, 2026-05-29).
 12. **D1-D3** (docs) — last, after content stabilizes.
 
 ## Timing
@@ -725,16 +743,15 @@ Compare Maxim against Voyager / GITM / SPRING on a Minecraft live demo. Builds o
 
 Bio-enrichment routing through ComponentIndex, composable body archetypes. Phase 1 shipped. Phases 2-3 enrich the learning environment for the Minecraft demo but don't gate the cross-session claim — the Cradle and Experiment 10 already validate the claim with simpler worlds.
 
-### 1.1-T4. C4-C6 hard errors
+### 1.1-T4. C-series hard-error flips — SHIPPED
 
-After 0.9 deprecation cycle. Flip `warnings.warn(DeprecationWarning, ...)` → `raise ConfigurationError(...)` (or `TypeError` for the C6 raw-construction path) at each shipped warning site.
+All three C-series hard-error flips landed in Phase 1 of the sequenced 1.0 plan (2026-05-29). The original §1.1-T4 marker is retained for traceability — content moved into the per-flip sections.
 
-**C4 prerequisites (must clear before flipping the C4 warning):**
-- C4-followup-1 (imagination + foundry pipeline normalizer + prompt update) — see §C4. Hard prerequisite: without it, the flip hard-fails every imagined entity.
-- C4-followup-2 (sensor-promotion audit on ambiguous bundled modulators) — see §C4. Soft prerequisite: the bundled YAMLs already pass the C4 invariant, but the audit is the right time to promote ~5-15 from `abstract: true` to "owns these sensors."
+**Exception type per C-series rule:** C4 and C5 use `ConfigurationError` (parse-time YAML schema violation — config invariant); C6 uses `TypeError` (constructor-signature violation — the wrong constructor was called). The split is intentional and follows Python convention.
 
-**C6 prerequisite (must clear before flipping the C6 warning):**
-- `default_network/network.py::_init_pain_circuit` still constructs `PainBus(_allow_raw=True)` when no bus is injected. The Wave-2 follow-on (split-subscriber-ownership fix in `pain_bus_unification.md`) couples DefaultNetwork to MemoryHub so the bus comes from `build_pain_bus`. Until that lands, C6's hard-error flip would break DN's standalone path. Either (a) ship the Wave-2 follow-on first, or (b) leave the explicit `_allow_raw=True` opt-out in DN and flip C6 elsewhere — if you take (b), keep the comment at the call site current.
+- **C5** hard-error flip SHIPPED (PR #299, 2026-05-29) — see §C5.
+- **C6** hard-error flip SHIPPED (PR #301, 2026-05-29) via path (b) with `DefaultNetwork._init_pain_circuit` retaining its `PainBus(_allow_raw=True)` opt-out — see §C6. Wave-2 split-subscriber-ownership fix in `pain_bus_unification.md` is the proper resolution but ships separately.
+- **C4** hard-error flip SHIPPED (PR-A.3, 2026-05-29) — see §C4. Hard prerequisite C4-followup-1 (LLM-spec normalizer, PR #300) cleared first; soft prerequisite C4-followup-2 (sensor-promotion audit) is a polish pass that can land any time post-1.0.
 
 ### 1.1-T5. Agent-backed entities (revival path)
 

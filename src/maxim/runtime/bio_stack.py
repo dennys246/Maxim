@@ -171,7 +171,7 @@ def build_bio_stack(
 
         Sim AUT with early PainBus for sandbox::
 
-            early_bus = PainBus()  # given to sandbox at sim start
+            early_bus = build_pain_bus(hippocampus=None, nac=None)  # given to sandbox at sim start
             bio = build_bio_stack(pain_bus=early_bus, with_default_network=True)
             aut_agent.wire_memory_hub(bio.memory_hub)
 

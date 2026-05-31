@@ -451,9 +451,9 @@ def run_sem_protocol_tests(spec: dict[str, Any]) -> ValidationResult:
 
     # Test 1: Instantiation
     try:
-        from maxim.embodiment.spec import _parse_entity
+        from maxim.embodiment.spec import _parse_entity, normalize_llm_entity_spec
 
-        entity = _parse_entity(spec)
+        entity = _parse_entity(normalize_llm_entity_spec(spec))
     except Exception as e:
         errors.append(f"T1 Instantiation failed: {e}")
         return ValidationResult(candidate_name=name, valid=False, errors=errors)
@@ -562,7 +562,7 @@ def run_gauntlet(
     try:
         from maxim.decisions.nac import NAc, NACConfig
         from maxim.embodiment.body import Embodiment
-        from maxim.embodiment.spec import _parse_entity
+        from maxim.embodiment.spec import _parse_entity, normalize_llm_entity_spec
         from maxim.embodiment.tool_bridge import generate_tools_for_entity
         from maxim.memory.hippocampus import Hippocampus
         from maxim.proprioception.pain_bus import build_pain_bus
@@ -579,7 +579,7 @@ def run_gauntlet(
         # Tools must be in the registry BEFORE build_executor so the bridge
         # can track them. Embodiment is attached to the executor after
         # construction (declared field, not a stash).
-        entity = _parse_entity(candidate.spec)
+        entity = _parse_entity(normalize_llm_entity_spec(candidate.spec))
         embodiment = Embodiment(entity, pain_bus=pain_bus)
         registry = ToolRegistry()
         tools = generate_tools_for_entity(entity, registry, embodiment=embodiment)
