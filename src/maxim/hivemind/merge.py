@@ -512,6 +512,16 @@ def nac_merge(
 # ─────────────────────────────────────────────────────────────────────────
 
 
+# Default frozen-prototype modalities — matches ``ECConfig.frozen_centroid_modalities``.
+# ``ec_merge`` does NOT update the centroid for nodes in these modalities
+# (it only sums counts + unions contributors). This preserves the
+# bio-fidelity invariant from the EC centroid-drift fix lesson:
+# interoceptive embeddings track smooth drive drift and a running-mean
+# centroid update across contributors would re-introduce the drift the
+# frozen-modality contract was designed to prevent.
+DEFAULT_FROZEN_CENTROID_MODALITIES: frozenset[str] = frozenset({"interoception"})
+
+
 def ec_merge(
     left: dict[str, dict[str, Any]],
     right: dict[str, dict[str, Any]],
@@ -519,6 +529,7 @@ def ec_merge(
     left_source: str,
     right_source: str,
     cosine_threshold: float = 0.44,
+    frozen_centroid_modalities: frozenset[str] = DEFAULT_FROZEN_CENTROID_MODALITIES,
     trusted_sources: frozenset[str] | None = None,
     validate_node: Callable[[dict[str, Any]], bool] | None = None,
 ) -> dict[str, dict[str, Any]]:
@@ -613,14 +624,26 @@ def ec_merge(
                 merged[nid_r] = norm_r
             continue
 
-        # Match — weighted-mean centroid merge.
+        # Match — accumulate counts + contributors.
         target = merged[best_id]
         n_l = int(target.get("count", target.get("member_count", 1)))
         n_r = int(norm_r.get("count", norm_r.get("member_count", 1)))
         total_n = n_l + n_r
-        target["embedding"] = [
-            (n_l * float(el) + n_r * float(er)) / total_n for el, er in zip(target["embedding"], emb_r)
-        ]
+
+        # Bio-fidelity fold (Bio-fidelity lens IMPORTANT): for modalities
+        # in ``frozen_centroid_modalities`` (default: ``"interoception"``)
+        # the centroid is FROZEN — running-mean updates across
+        # contributors would re-introduce the centroid drift the
+        # frozen-modality contract prevents within a single substrate
+        # (see CLAUDE.md "behavioral EC centroid drift" lesson). Keep
+        # left's embedding; only counts + contributors accumulate.
+        if modality_r in frozen_centroid_modalities:
+            pass  # centroid unchanged
+        else:
+            target["embedding"] = [
+                (n_l * float(el) + n_r * float(er)) / total_n for el, er in zip(target["embedding"], emb_r)
+            ]
+
         # Update both keys in lockstep — ``count`` is the on-disk shape
         # ``EC.save()``/``EC.load()`` consume; ``member_count`` is the
         # public ``substrate_node_metadata`` alias (post PR A fold).

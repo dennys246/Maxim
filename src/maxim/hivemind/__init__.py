@@ -25,6 +25,13 @@ into individual modules.
 
 from __future__ import annotations
 
+from maxim.hivemind.bundle import (
+    BUNDLE_KIND,
+    BUNDLE_SCHEMA_VERSION,
+    compose_bundle,
+    extract_bundle,
+    read_bundle_manifest,
+)
 from maxim.hivemind.identity import (
     IDENTITY_DOMAIN_MARKER,
     filter_identity_bearing_links,
@@ -38,11 +45,16 @@ from maxim.hivemind.merge import (
 )
 
 __all__ = [
+    "BUNDLE_KIND",
+    "BUNDLE_SCHEMA_VERSION",
     "CONSENSUS_SOURCE",
     "IDENTITY_DOMAIN_MARKER",
+    "compose_bundle",
     "ec_merge",
+    "extract_bundle",
     "filter_identity_bearing_links",
     "is_identity_bearing",
     "is_identity_domain",
     "nac_merge",
+    "read_bundle_manifest",
 ]
