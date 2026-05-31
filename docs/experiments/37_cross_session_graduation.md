@@ -85,13 +85,17 @@ Per scenario (fire_pit, sharp_rock):
 | Wire-A off | B only | 5 | 5 |
 | Wire 1 off | B only | 5 | 5 |
 | NAc bias zeroed | B only | 5 | 5 |
-| **Subtotal per scenario** | | | **30** |
+| **Subtotal per scenario (target runs)** | | | **30** |
 
-× 2 scenarios = **60 runs total** on Claude Sonnet.
+× 2 scenarios = **60 target runs**.
 
-Cost projection at Cradle Exp 11's $0.21/run × 60 runs ≈ **$12.60**. (Was earlier estimated higher; the Arm B-only ablation structure brings it down.)
+Plus Arm C peaceful priors (shared per trial-pair across both scenarios, since the peaceful prior is scenario-agnostic): 5 trials × 1 prior = **+5 prior runs** total. **Grand total: 65 runs on Claude Sonnet.**
 
-Wall time: ~10 min/run; 60 runs × 10 min = 10 hours of LLM time, parallelizable in batches of 3-5 concurrent runs depending on rate limits. Probably 2-3 calendar days for execution + ~1-2 weeks for harness implementation and pre-flight smoke tests.
+Cost projection at Cradle Exp 11's $0.21/run × 65 runs ≈ **$13.65**. (Arm A target runs are reused as the substrate-prior for Arm B and the three B-family ablation arms via `shutil.copytree`; this sharing is what keeps the count near the per-scenario target budget. Arm C requires its own peaceful prior since the failure scenario's substrate is what we're isolating against.)
+
+Wall time: ~10 min/run; 65 runs × 10 min ≈ 11 hours of LLM time, parallelizable in batches of 3-5 concurrent runs depending on rate limits. Probably 2-3 calendar days for execution + ~1-2 weeks for harness implementation and pre-flight smoke tests.
+
+The harness implementation pins the per-arm orchestration + sandbox layout at [scripts/benchmark_cross_session.py](../../scripts/benchmark_cross_session.py); the reproducibility-pin protocol at [docs/experiments/protocols/37_cross_session_graduation_reproduction.md](protocols/37_cross_session_graduation_reproduction.md) §A-E carries the runbook + per-decision rationale (turn-binning operationalization, pair-boundary cost-cap, JSONL append idempotency, FAILURE_CLASS YAML cross-check).
 
 Add tertiary replication on local qwen2.5-14b for Arm A vs Arm B baseline only: 5 trials × 2 arms × 2 scenarios = 20 more runs, ~free per-run cost but slow wall time.
 
