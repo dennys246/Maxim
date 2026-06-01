@@ -161,16 +161,79 @@ PYTHONPATH=src python scripts/benchmark_cross_session.py \
 
 The harness writes append-only — re-runs add new records rather than overwriting, so partial progress is preserved across interruptions. To resume after an abort, re-invoke with the same args and a *new* `--workdir` (the per-arm sandboxes are fresh per run; the resume point comes from the existing JSONL records via the analyzer's per-pair completeness check, not from any state in the workdir).
 
-## D. Analysis (Phase 4 of the implementation queue — separate PR)
+## D. Analysis (`scripts/analyze_exp37.py`)
 
-The analyzer (`scripts/analyze_exp37.py`, NOT in this PR) reads `37_results.jsonl` and computes:
+The analyzer reads `37_results.jsonl` and computes the pre-registered criteria in order:
 
-- **Primary criterion variance-survival rule:** Arm B mean must lie outside Arm A's 95th-percentile band, computed across the same N=5 paired trials. Compute Arm A's percentile band per scenario; check Arm B's mean against it.
-- **Isolation rule:** Arm C mean must fall *within* Arm A's 95th-percentile band. Compute per scenario.
-- **Secondary criterion (ablation attribution):** for each of the 3 B-family ablation arms, check if its mean shrinks Arm B's delta toward Arm A's mean by ≥1 SD of Arm A baseline.
-- **Corroborating metrics:** affordance-preference safe-fraction shift, tool-class diversity, time-to-safe-steady-state.
+- **Primary criterion variance-survival rule:** Arm B mean must lie BELOW Arm A's 2.5th-percentile band, computed across the same N=5 paired trials. Percentile band uses `statistics.quantiles(values, n=40, method="inclusive")`; with N=5 this is essentially the empirical [min, max] (the conservative reading of the pre-reg's "95th-percentile band"). The one-sided check matches the predicted direction `B < A`.
+- **Isolation rule:** Arm C mean must fall WITHIN `[A.p2.5, A.p97.5]`. If Arm C also drops below A's band, the analyzer flags the "general caution" confound.
+- **Secondary criterion (ablation attribution):** for each of the 3 B-family ablation arms, shrinkage = `|B - A| − |ablated − A|`; PASS if `shrinkage / A.sd ≥ 1.0`. Per pre-reg, ≥1 ablation must PASS.
+- **Corroborating metrics:** affordance-preference safe-fraction (direction `B > A`), tool-class diversity (direction `B < A`), time-to-safe-steady-state (direction `B < A`). Each PASSES when `(B - A) / A.sd ≥ 1` in the predicted direction. Per pre-reg, ≥1 must hit; if all three diverge from prediction while the primary still hits, the analyzer notes the "measurement artifact" concern.
+- **Robustness cross-check:** the analyzer ALSO computes the primary criterion using `per_action_failure_rate`. If the per-turn and per-action verdicts disagree, a note flags the turn-binning operationalization (per §1) for review before claiming the verdict.
+- **Schema enforcement:** records with `_format_version != "1.0"` (or missing the field entirely) are refused. Mixed schema versions in one file are a hard error.
+- **Design completeness:** every `(scenario, arm)` combination must have exactly the expected number of trials. Missing or duplicate `trial_pair_id`s cause a hard error — analyzer never produces a verdict on partial data.
 
-The analyzer emits a single Markdown block to be appended to `37_cross_session_graduation.md` "Results" section; it does NOT auto-update graduation status.
+### Invocation
+
+```bash
+PYTHONPATH=src python scripts/analyze_exp37.py \
+    --in docs/experiments/data/37_results.jsonl \
+    --out docs/experiments/data/37_results.md \
+    --trials 5 \
+    --strict-schema-version 1.0
+```
+
+Exit codes:
+
+- `0` — EARNED or EARNED (footnoted)
+- `2` — analyzer error (schema mismatch, incomplete data, JSON parse error)
+- `3` — PARTIAL — reframed (release notes must drop bio-attribution; needs user authorization)
+- `4` — PARTIAL — investigation gate (primary or isolation FAIL; delay 1.0 ship)
+
+### Output
+
+The analyzer emits a Markdown block intended to be appended (by a human) to `docs/experiments/37_cross_session_graduation.md` as a Results section. Block shape:
+
+```markdown
+## Results
+
+Source: ... · Analyzer version: 1.0 · Schema: 1.0
+
+### Overall verdict: **EARNED**
+<rationale>
+
+### Scenario: `fire_pit`
+**Primary + isolation** — table of A/B/C means + bands + pass/fail flags
+**Corroborating metrics (≥1 must pass)** — table of 3 metrics + Δ in SD units
+**Secondary criterion — ablation attribution** — table of 3 ablations + shrinkage in SD units
+**Notes / warnings** — robustness divergence, missing-data flags, etc.
+
+### Scenario: `sharp_rock`
+<same shape>
+```
+
+### Verdict matrix (from pre-reg §"Graduation paths" + §"Falsification conditions")
+
+| Primary | Isolation | Secondary | Corroborating | Label | Exit | Action |
+|---|---|---|---|---|---|---|
+| PASS | PASS | ≥1 PASS | ≥1 hit, 0 wrong-dir | EARNED | 0 | Flip `behavioral_graduation_candidates.md` row 1 to Earned; PR #6 |
+| PASS | PASS | ≥1 PASS | 0 hits | EARNED (footnoted) | 0 | Earn with footnote; corroborating metrics need refinement |
+| PASS | PASS | 0 PASS | ≥1 hit | PARTIAL — reframed | 3 | Release notes drop bio-attribution; needs user authorization |
+| PASS | PASS | 0 PASS | 0 hits | PARTIAL — falsified | 5 | Pre-reg §Falsification #3 catastrophic FAIL: bio AND behavioral claim retracted; investigate before any release-notes wording |
+| PASS | PASS | any | all wrong-dir ≥1 SD | PARTIAL — investigation gate | 4 | Pre-reg §Corroborating: primary may be a measurement artifact; investigate before claiming EARNED |
+| FAIL | * | * | * | PARTIAL — investigation gate | 4 | Root-cause required; delay 1.0 |
+| * | FAIL | * | * | PARTIAL — investigation gate | 4 | Same as above (general-caution confound) |
+
+The analyzer DOES NOT auto-append to the experiment doc and DOES NOT update `behavioral_graduation_candidates.md` — both are human steps (PR #6).
+
+### Forward obligations (when PR #6 flips row 1 to Earned)
+
+Per CLAUDE.md Principle 5 (regression-guard / experiment citation per invariant), the EARNED entry in `behavioral_graduation_candidates.md` must declare:
+
+- **Re-run on:** `encoder swap`, `substrate-pipeline change`, `minor-version heartbeat` (per [behavioral_graduation_candidates.md] Tier 1 trigger taxonomy).
+- **Regression guard:** `docs/experiments/protocols/37_cross_session_graduation_reproduction.md` §D + `tests/behavioral/test_exp37_analyzer_smoke.py` + `tests/behavioral/test_exp37_harness_smoke.py`.
+
+When PR #6 ships, the rest of the discipline cascades: any future minor-version heartbeat re-runs the harness, runs this analyzer with `--strict-schema-version 1.0`, and checks the verdict label is still `EARNED`. If the label flips to `Stale` or `Broken`, the entry blocks the next release per the graduation-candidates lifecycle.
 
 ## E. Updating `behavioral_graduation_candidates.md` (Phase 6 — separate PR)
 
