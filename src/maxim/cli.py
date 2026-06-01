@@ -581,6 +581,13 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         from maxim.hivemind.cli import run_substrate_subcommand
 
         return run_substrate_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "config":
+        # `maxim config get/set/list/path/edit` — instance-level operator
+        # config per config_unification.md C2. The verbs write to
+        # ~/.config/maxim/config.json via the canonical writer module.
+        from maxim.runtime.config_cli import run_config_subcommand
+
+        return run_config_subcommand(raw_argv[1:])
 
     if raw_argv and raw_argv[0] == "peer":
         # `peer connect/show/forget` go to the peer config module;
