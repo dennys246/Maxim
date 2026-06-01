@@ -161,6 +161,29 @@ def _isolate_maxim_nac_min_confidence():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_nac_reward_bias_disabled():
+    """Scrub ``MAXIM_NAC_REWARD_BIAS_DISABLED`` across every test.
+
+    Added for Exp 37 cross-session graduation ablation arm 3
+    (docs/experiments/37_cross_session_graduation.md). When set,
+    NAc's ``distribute_reward``, ``decay_reward_biases``, and
+    ``get_agent_tool_biases`` early-exit as no-ops to test whether
+    bio-learning is load-bearing for the cross-session behavioral
+    delta. Per CLAUDE.md "opt-in env vars in hot startup paths need
+    autouse scrubs", pair the env-var reader at NAc.__init__ with
+    this scrub so an ablation test does not leak the disabled state
+    into every later test that constructs an NAc.
+    """
+    saved = os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
+        if saved is not None:
+            os.environ["MAXIM_NAC_REWARD_BIAS_DISABLED"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_ec_trace_env():
     """Scrub ``MAXIM_EC_TRACE_ACTIVATIONS`` across every test.
 

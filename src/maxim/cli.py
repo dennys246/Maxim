@@ -573,6 +573,15 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         from maxim.models.model_cli import run_model_subcommand
 
         return run_model_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "substrate":
+        # Hivemind shareability (v1_refinement.md §B5 PR D) — substrate
+        # snapshot bundle compose + extract. Round-trips NAc + EC state
+        # via a portable zip archive so 1.1+ Oases can ingest contributions
+        # from LLM-AUT users.
+        from maxim.hivemind.cli import run_substrate_subcommand
+
+        return run_substrate_subcommand(raw_argv[1:])
+
     if raw_argv and raw_argv[0] == "peer":
         # `peer connect/show/forget` go to the peer config module;
         # `peer test` is a diagnostic that lives with `doctor`.
