@@ -289,7 +289,46 @@ class ModulatorAffordanceTool(Tool):
         except Exception:
             pass
 
-        # Immediate failure evaluation — don't wait for 1Hz poll
+        # --- Self-effect / target-effect apply BEFORE evaluate_failures ---
+        # Order-of-operations invariant (Exp 37 root-cause fix, 2026-06-01):
+        # body-sensor writes from self_effect / target_effect MUST happen
+        # before the failure check so evaluate_failures sees the post-effect
+        # state. Pre-fix the order was inverted, which made every
+        # self_effect-based pain affordance (fire_pit_touch arms.thermal,
+        # sharp_rock_pick_up laceration via acquired sharpness sensor)
+        # silently produce empty active_failures. Pinned by
+        # tests/unit/test_self_effect.py::TestSelfEffectFailureCascade.
+
+        # Self-effect: voluntary affordance execution writes back to the
+        # executor's own body.  Fires when the agent explicitly called the
+        # tool (not reflex/orchestrator).  Supports entity-level sensors
+        # ("hunger") and qualified modulator sub-sensors ("arms.thermal").
+        if self._affordance_schema.self_effect and self._embodiment is not None:
+            _apply_sensor_deltas(
+                self._embodiment.root,
+                self._affordance_schema.self_effect,
+                delta_kind="self_effect",
+            )
+
+        # Target-effect: when the affordance fires WITH a target parameter,
+        # write deltas to the resolved target's body sensors.  Silent
+        # no-op if no target is provided (preserves backward compatibility
+        # with self-targeted-only affordances).  Target resolution uses
+        # the entity_map; "self"/"aut"/"player" map to the executor's body.
+        if self._affordance_schema.target_effect:
+            target_arg = kwargs.get("target")
+            target_body = self._resolve_target_body(target_arg)
+            if target_body is not None:
+                _apply_sensor_deltas(
+                    target_body,
+                    self._affordance_schema.target_effect,
+                    delta_kind="target_effect",
+                )
+
+        # Immediate failure evaluation — don't wait for 1Hz poll.
+        # Now that self_effect / target_effect have applied above, the
+        # body sensors reflect the post-effect state and any drive-band
+        # breach (e.g., arms.thermal > comfort_band) is detected here.
         active_failures: list[dict[str, Any]] = []
         if self._embodiment is not None:
             try:
@@ -349,31 +388,6 @@ class ModulatorAffordanceTool(Tool):
             "active_failures": active_failures,
             **result.metadata,
         }
-        # Self-effect: voluntary affordance execution writes back to the
-        # executor's own body.  Fires when the agent explicitly called the
-        # tool (not reflex/orchestrator).  Supports entity-level sensors
-        # ("hunger") and qualified modulator sub-sensors ("arms.thermal").
-        if self._affordance_schema.self_effect and self._embodiment is not None:
-            _apply_sensor_deltas(
-                self._embodiment.root,
-                self._affordance_schema.self_effect,
-                delta_kind="self_effect",
-            )
-
-        # Target-effect: when the affordance fires WITH a target parameter,
-        # write deltas to the resolved target's body sensors.  Silent
-        # no-op if no target is provided (preserves backward compatibility
-        # with self-targeted-only affordances).  Target resolution uses
-        # the entity_map; "self"/"aut"/"player" map to the executor's body.
-        if self._affordance_schema.target_effect:
-            target_arg = kwargs.get("target")
-            target_body = self._resolve_target_body(target_arg)
-            if target_body is not None:
-                _apply_sensor_deltas(
-                    target_body,
-                    self._affordance_schema.target_effect,
-                    delta_kind="target_effect",
-                )
 
         # Build side_effects dict
         side_effects: dict[str, Any] | None = None
