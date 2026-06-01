@@ -23,6 +23,10 @@ maxim --llm smollm-1.7b                # auto-downloads on first run
 | `phi3-mini` | Phi-3 Mini 4K Instruct | ~2.3 GB | 4096 | Good quality, moderate size |
 | `llama3-8b` | Llama 3 8B Instruct | ~4.9 GB | 8192 | Highest quality local |
 | `qwen2-7b` | Qwen2 7B Instruct | ~4.4 GB | 8192 | Strong multilingual support |
+| `qwen2.5-14b` | Qwen2.5 14B Instruct | ~8.4 GB | 32768 | Strong large-context model, fits on 16 GB+ VRAM |
+| `qwen2.5-32b` | Qwen2.5 32B Instruct | ~19.9 GB | 32768 | Leader-grade default for 48 GB+ Apple Silicon or 24 GB+ VRAM |
+| `mixtral-8x7b` | Mixtral 8x7B Instruct v0.1 | ~26.4 GB | 32768 | MoE, all 8 experts in memory; great on 48 GB+ |
+| `llama-3.1-70b` | Llama 3.1 70B Instruct | ~42.5 GB | 32768 | True large-model territory; needs 64 GB+ unified memory |
 
 ### Downloading Models
 
@@ -49,6 +53,63 @@ Set the quantization level with an environment variable:
 ```bash
 export MAXIM_LLM_QUANTIZATION=Q4_K_M
 ```
+
+### Adding Custom Profiles
+
+The bundled profiles cover the common cases, but any GGUF on HuggingFace (or any local GGUF file) can become a first-class Maxim profile via `maxim model add`. The CLI writes to `~/.config/maxim/profiles.yml`, which sits in the same declarative-config directory as `peer.yml` and `mesh.yml`.
+
+**From a HuggingFace repo:**
+
+```bash
+maxim model add my-qwen-32b-q5 \
+    --hf bartowski/Qwen2.5-32B-Instruct-GGUF:Qwen2.5-32B-Instruct-Q5_K_M.gguf \
+    --n-ctx 32768
+
+# Then use it like any bundled profile:
+maxim --llm my-qwen-32b-q5 --auto-download
+```
+
+The `--hf` argument is `REPO:FILE` — the repo (which may contain `/`) and the GGUF filename, separated by the first `:`.
+
+**From a local file:**
+
+```bash
+maxim model add my-local --local ~/models/custom.gguf --chat-format llama3_instruct
+maxim --llm my-local
+```
+
+**Chat-format auto-inference.** When `--chat-format` is omitted, Maxim substring-matches the profile name (and HF repo basename) against `qwen`, `llama-3`, `llama-2`, `mixtral`, `mistral`, `phi-3`, `phi-2`, `gemma` to pick a default. If no rule matches, you must supply `--chat-format` explicitly (one of `chatml`, `mistral_instruct`, `llama3_instruct`, `llama2_chat`, `phi3`, `phi`, `gemma`) — Maxim refuses to guess in the no-match case so a wrong template doesn't silently mis-render every prompt.
+
+**Manage profiles:**
+
+```bash
+maxim model list                # show user profiles
+maxim model remove my-qwen-32b-q5
+```
+
+**Hand-editing `~/.config/maxim/profiles.yml`** works too — useful when you want to preserve comments (which the CLI verbs strip on round-trip) or supply the optional `arch:` block for accurate VRAM estimation:
+
+```yaml
+profiles:
+  my-qwen-32b-q5:
+    backend: llama_cpp                  # llama_cpp or pytorch
+    prompt_style: chatml                # chatml | mistral_instruct |
+                                        # llama3_instruct | llama2_chat |
+                                        # phi3 | phi | gemma
+    download:
+      hf_repo: bartowski/Qwen2.5-32B-Instruct-GGUF
+      hf_file: Qwen2.5-32B-Instruct-Q5_K_M.gguf
+    n_ctx: 32768
+    aliases: [qwen32q5]
+    arch:                               # optional — enables fine VRAM estimation
+      n_layers: 64
+      n_kv_heads: 8
+      head_dim: 128
+      kv_type_bytes: 2
+      weights_gb: 23.0
+```
+
+User profiles WIN over built-ins on name or alias collision (a WARNING is logged), so you can override a bundled profile's quantization or context window without touching source. `maxim doctor` surfaces user-profile counts in its Environment section and flags YAML syntax errors before they block startup.
 
 ### Per-Mode Response Configuration
 

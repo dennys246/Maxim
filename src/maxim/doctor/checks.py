@@ -2191,6 +2191,74 @@ def check_embodiment_ref(ref: str) -> CheckResult:
     )
 
 
+def check_user_profiles() -> CheckResult:
+    """Surface ``~/.config/maxim/profiles.yml`` state so operators see
+    user-profile counts AND any schema-validation errors at doctor time,
+    not at first ``maxim`` invocation.
+
+    Four outcomes:
+
+    - File missing → ``info`` ("0 user profiles defined")
+    - File parses + all entries validate → ``ok`` with count
+    - YAML syntax broken → ``fail`` with parse error
+    - YAML parses but a profile entry fails per-profile schema
+      validation (missing required field, bad enum, broken ``arch:``
+      block, intra-user alias collision, etc.) → ``fail`` with the
+      specific schema error
+
+    A malformed ``profiles.yml`` blocks ``maxim`` startup (the loader
+    raises ``ConfigurationError`` from module import). Pre-merge
+    executor review caught the original implementation only running
+    ``load_user_profiles`` (top-level YAML parse) and missing the
+    per-profile schema layer — leaving operators with a misleading
+    "OK / N loaded" doctor report for files that would crash startup.
+    The fix routes through the full ``apply_user_profiles`` pipeline
+    against throwaway dicts so every schema error surfaces.
+    """
+    try:
+        from maxim.models.language.profile_loader import (
+            apply_user_profiles,
+            load_user_profiles,
+            profiles_config_path,
+        )
+    except ImportError as exc:
+        return CheckResult(
+            name="User profiles",
+            status="info",
+            message=f"profile loader unavailable: {exc}",
+        )
+
+    path = profiles_config_path()
+    if not path.is_file():
+        return CheckResult(
+            name="User profiles",
+            status="info",
+            message=f"no user profiles file at {path} (0 user profiles)",
+        )
+    try:
+        entries = load_user_profiles(path=path)
+        # Run the full validate-and-merge pipeline against throwaway
+        # dicts so per-profile schema errors surface (not just YAML
+        # syntax). Discarded dicts mean no mutation of the runtime
+        # state — this is a pure validation pass.
+        apply_user_profiles({}, {}, {}, path=path)
+    except Exception as exc:
+        return CheckResult(
+            name="User profiles",
+            status="fail",
+            message=f"{path}: {exc}",
+            fix=(
+                f"Fix the schema error in {path} (or move it aside) — `maxim` will refuse to start until this resolves."
+            ),
+        )
+    count = len(entries)
+    return CheckResult(
+        name="User profiles",
+        status="ok" if count else "info",
+        message=f"{count} user profile{'s' if count != 1 else ''} loaded from {path}",
+    )
+
+
 def run_all_checks(
     info: PlatformInfo,
     *,
@@ -2224,6 +2292,7 @@ def run_all_checks(
         check_disk_space(),
         check_ram_headroom(),
         check_storage_footprint(),
+        check_user_profiles(),
     ]
     # Splice env-var checks in after the hardware checks so operators see
     # misconfigurations right alongside the hardware context.
@@ -2357,6 +2426,7 @@ __all__ = [
     "check_peer_vs_local_conflict",
     "check_remote_reachability",
     "check_storage_footprint",
+    "check_user_profiles",
     "check_mesh_nodes",
     "run_all_checks",
 ]

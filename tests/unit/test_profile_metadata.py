@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import pytest
 
-from maxim.models.language.config import _BUILTIN_PROFILES
+from maxim.models.download import LLM_MODELS
+from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
 
 _LLAMA_CPP_PROFILES = sorted(name for name, data in _BUILTIN_PROFILES.items() if data.get("backend") == "llama_cpp")
 
@@ -146,6 +147,39 @@ class TestKnownProfileSpotChecks:
         assert arch["head_dim"] == 128
         assert arch["weights_gb"] == pytest.approx(8.4, abs=0.5)
 
+    def test_qwen2_5_32b_instruct(self):
+        """Qwen2.5-32B uses the same GQA shape as the 14B sibling
+        (8 KV heads, head_dim 128) but doubles the layer count to 64.
+        Spot-check pins both, since copy-pasting the 14B row would
+        silently break VRAM estimation."""
+        arch = _BUILTIN_PROFILES["qwen2.5-32b-instruct"]["arch"]
+        assert arch["n_layers"] == 64
+        assert arch["n_kv_heads"] == 8  # GQA ratio 5 (40/8)
+        assert arch["head_dim"] == 128
+        assert arch["weights_gb"] == pytest.approx(19.9, abs=1.0)
+
+    def test_llama_3_1_70b_instruct(self):
+        """Llama 3.1 70B uses GQA ratio 8 (64 attention / 8 KV) — the
+        same KV-head count as the 8B sibling, but the larger model has
+        10x the layers (80 vs 32). Spot-check pins the layer count
+        because mis-copying 32 here would cause a >2x VRAM underestimate."""
+        arch = _BUILTIN_PROFILES["llama-3.1-70b-instruct"]["arch"]
+        assert arch["n_layers"] == 80
+        assert arch["n_kv_heads"] == 8  # GQA ratio 8 (64/8)
+        assert arch["head_dim"] == 128
+        assert arch["weights_gb"] == pytest.approx(42.5, abs=2.0)
+
+    def test_mixtral_8x7b_instruct(self):
+        """Mixtral-8x7B-Instruct-v0.1 uses GQA ratio 4 (32/8). MoE
+        with 8 experts top-2 routed; all experts reside in memory,
+        so weights_gb reflects the full ~26.4 GB Q4_K_M footprint,
+        NOT the 2-expert active subset."""
+        arch = _BUILTIN_PROFILES["mixtral-8x7b-instruct"]["arch"]
+        assert arch["n_layers"] == 32
+        assert arch["n_kv_heads"] == 8  # GQA ratio 4 (32/8)
+        assert arch["head_dim"] == 128
+        assert arch["weights_gb"] == pytest.approx(26.4, abs=1.5)
+
     def test_qwen2_7b_instruct(self):
         arch = _BUILTIN_PROFILES["qwen2-7b-instruct"]["arch"]
         assert arch["n_layers"] == 28
@@ -171,11 +205,59 @@ class TestKnownProfileSpotChecks:
         assert arch["head_dim"] == 256
 
 
+class TestL1LeaderUXAdditions:
+    """Cross-link guards for the three L1 profiles added per
+    [docs/plans/leader_ux_profile_management.md]. Pins (1) alias
+    resolution to the canonical slug, (2) the profile's ``model``
+    field maps to a ``LLM_MODELS`` download entry, (3) the prompt
+    style matches the family. Catches the most likely
+    drop-something-on-rename failure modes."""
+
+    L1_PROFILES = (
+        ("qwen2.5-32b-instruct", ("qwen2.5-32b", "qwen32b"), "chatml"),
+        ("llama-3.1-70b-instruct", ("llama-3.1-70b", "llama3.1-70b", "llama70b"), "llama3_instruct"),
+        ("mixtral-8x7b-instruct", ("mixtral", "mixtral-8x7b"), "mistral_instruct"),
+    )
+
+    @pytest.mark.parametrize("slug,aliases,prompt_style", L1_PROFILES)
+    def test_alias_resolves_to_canonical_slug(self, slug, aliases, prompt_style):
+        del prompt_style  # unused in this test
+        for alias in aliases:
+            assert normalize_llm_profile(alias) == slug, (
+                f"alias {alias!r} should resolve to {slug!r}, got "
+                f"{normalize_llm_profile(alias)!r}. Check _PROFILE_ALIASES "
+                f"in src/maxim/models/language/config.py."
+            )
+
+    @pytest.mark.parametrize("slug,aliases,prompt_style", L1_PROFILES)
+    def test_profile_model_field_has_download_url(self, slug, aliases, prompt_style):
+        del aliases, prompt_style  # unused in this test
+        model_key = _BUILTIN_PROFILES[slug]["model"]
+        assert model_key in LLM_MODELS, (
+            f"profile {slug!r} declares model={model_key!r} but no "
+            f"LLM_MODELS entry exists. Add the download URL to "
+            f"src/maxim/models/download.py."
+        )
+        entry = LLM_MODELS[model_key]
+        assert entry["url"].startswith("https://huggingface.co/"), (
+            f"L1 download URLs are HuggingFace resolve URLs; got {entry['url']!r}."
+        )
+
+    @pytest.mark.parametrize("slug,aliases,prompt_style", L1_PROFILES)
+    def test_prompt_style_matches_family(self, slug, aliases, prompt_style):
+        del aliases  # unused in this test
+        assert _BUILTIN_PROFILES[slug]["prompt_style"] == prompt_style, (
+            f"profile {slug!r} expected prompt_style={prompt_style!r} "
+            f"(family default); got {_BUILTIN_PROFILES[slug]['prompt_style']!r}."
+        )
+
+
 def test_all_required_profiles_have_metadata():
-    """Regression guard: all 11 llama_cpp profiles expected as of
-    P4b must exist and have metadata. If someone renames or removes
-    a profile, this test produces a clear failure rather than a
-    cryptic "KeyError" elsewhere."""
+    """Regression guard: all expected llama_cpp profiles (P4b baseline
+    plus the L1 leader-UX additions per leader_ux_profile_management.md)
+    must exist and have metadata. If someone renames or removes a
+    profile, this test produces a clear failure rather than a cryptic
+    "KeyError" elsewhere."""
     expected = {
         "mistral-7b-instruct-v0.2",
         "smollm-1.7b-instruct",
@@ -188,10 +270,14 @@ def test_all_required_profiles_have_metadata():
         "qwen2-7b-instruct",
         "gemma-2b-it",
         "gemma-7b-it",
+        # L1 additions (leader_ux_profile_management.md):
+        "mixtral-8x7b-instruct",
+        "llama-3.1-70b-instruct",
+        "qwen2.5-32b-instruct",
     }
     actual = set(_LLAMA_CPP_PROFILES)
     assert expected <= actual, (
-        f"Missing llama_cpp profiles since P4b baseline: {expected - actual}. "
+        f"Missing llama_cpp profiles since baseline: {expected - actual}. "
         f"If a profile was intentionally renamed or removed, update both "
         f"this test's expected set AND ensure the replacement has arch "
         f"metadata via test_profile_has_arch_metadata."

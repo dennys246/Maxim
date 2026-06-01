@@ -17,6 +17,24 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+# Isolate the L2 user-profile loader (leader_ux_profile_management.md)
+# from the developer's real ~/.config/maxim/profiles.yml. The loader
+# fires at maxim.models.language.config import time, which happens
+# transitively via many test files. Point XDG_CONFIG_HOME at an empty
+# tmp directory BEFORE any maxim import so the import-time merge sees
+# no operator profiles. Shared across parallel pytest workers — they
+# just need an empty dir; no contention concern.
+#
+# Pre-merge architecture review caught this as a missing scrub paired
+# with a new module-import side-effect path (the CLAUDE.md
+# "opt-in env vars in hot startup paths need autouse scrubs" pattern,
+# generalized from env vars to import-time config files).
+import tempfile as _tempfile  # noqa: E402
+
+_PROFILE_ISOLATION_DIR = Path(_tempfile.gettempdir()) / "maxim-test-empty-xdg-config"
+_PROFILE_ISOLATION_DIR.mkdir(parents=True, exist_ok=True)
+os.environ["XDG_CONFIG_HOME"] = str(_PROFILE_ISOLATION_DIR)
+
 # Multi-agent isolation fixture (P4 rule, CLAUDE.md L43). Importing
 # the module is enough to register the `multi_agent_modes` fixture for
 # all tests via the `pytest_plugins` mechanism below.

@@ -58,6 +58,8 @@ _PROFILE_ALIASES: dict[str, str] = {
     "mistral": "mistral-7b-instruct-v0.2",
     "mistral-7b": "mistral-7b-instruct-v0.2",
     "mistral-7b-instruct": "mistral-7b-instruct-v0.2",
+    "mixtral": "mixtral-8x7b-instruct",
+    "mixtral-8x7b": "mixtral-8x7b-instruct",
     "smollm": "smollm-1.7b-instruct",
     "smollm-1.7b": "smollm-1.7b-instruct",
     "smollm-1.7b-instruct": "smollm-1.7b-instruct",
@@ -67,6 +69,9 @@ _PROFILE_ALIASES: dict[str, str] = {
     "llama2-13b": "llama-2-13b-chat",
     "llama3": "llama-3-8b-instruct",
     "llama3-8b": "llama-3-8b-instruct",
+    "llama-3.1-70b": "llama-3.1-70b-instruct",
+    "llama3.1-70b": "llama-3.1-70b-instruct",
+    "llama70b": "llama-3.1-70b-instruct",
     # Phi models
     "phi2": "phi-2",
     "phi3": "phi-3-mini-4k-instruct",
@@ -78,6 +83,8 @@ _PROFILE_ALIASES: dict[str, str] = {
     "qwen2.5-14b": "qwen2.5-14b-instruct",
     "qwen2.5": "qwen2.5-14b-instruct",
     "qwen14b": "qwen2.5-14b-instruct",
+    "qwen2.5-32b": "qwen2.5-32b-instruct",
+    "qwen32b": "qwen2.5-32b-instruct",
     # Gemma models
     "gemma": "gemma-2b-it",
     "gemma-2b": "gemma-2b-it",
@@ -118,6 +125,27 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
             "head_dim": 128,
             "kv_type_bytes": 2,
             "weights_gb": 4.1,
+        },
+    },
+    "mixtral-8x7b-instruct": {
+        "backend": "llama_cpp",
+        "model": "mixtral-8x7b-instruct",
+        "model_base": "Mixtral-8x7B-Instruct-v0.1",
+        "prompt_style": "mistral_instruct",
+        "stop": ["</s>"],
+        "n_ctx": 32768,
+        # Mistral Mixtral-8x7B-Instruct-v0.1 published arch: 32 layers,
+        # 32 attention heads, 8 KV heads (GQA ratio 4), hidden_size 4096
+        # → head_dim 128. MoE: 8 experts with top-2 routing per token,
+        # but ALL experts must reside in memory simultaneously, so the
+        # VRAM/RAM footprint reflects the full ~26.4 GB Q4_K_M weights.
+        # Q4_K_M GGUF: 26.44 GB measured (bartowski).
+        "arch": {
+            "n_layers": 32,
+            "n_kv_heads": 8,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 26.4,
         },
     },
     "smollm-1.7b-instruct": {
@@ -195,6 +223,29 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
             "weights_gb": 4.6,
         },
     },
+    "llama-3.1-70b-instruct": {
+        "backend": "llama_cpp",
+        "model": "llama-3.1-70b-instruct",
+        "model_base": "Meta-Llama-3.1-70B-Instruct",
+        "prompt_style": "llama3_instruct",
+        "stop": ["<|eot_id|>"],
+        "n_ctx": 32768,
+        # Meta Llama 3.1 70B published arch: 80 layers, 64 attention
+        # heads, 8 KV heads (GQA ratio 8), hidden_size 8192 → head_dim 128.
+        # The training-time n_ctx ceiling is 131072 (128K); the 32K cap
+        # above is the conservative production default — long-context
+        # inference at 128K on 70B-Q4 needs 64 GB+ of unified memory.
+        # Q4_K_M GGUF: 42.52 GB measured (bartowski). Borderline on
+        # 48 GB Apple Silicon (leaves ~6 GB for KV cache + OS); fully
+        # comfortable on 64 GB+.
+        "arch": {
+            "n_layers": 80,
+            "n_kv_heads": 8,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 42.5,
+        },
+    },
     "phi-2": {
         "backend": "llama_cpp",
         "model": "phi-2",
@@ -252,6 +303,27 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
             "head_dim": 128,
             "kv_type_bytes": 2,
             "weights_gb": 8.4,
+        },
+    },
+    "qwen2.5-32b-instruct": {
+        "backend": "llama_cpp",
+        "model": "qwen2.5-32b-instruct",
+        "model_base": "Qwen2.5-32B-Instruct",
+        "prompt_style": "chatml",
+        "stop": ["<|im_end|>", "<|endoftext|>"],
+        "n_ctx": 32768,
+        # Alibaba Qwen2.5-32B-Instruct published arch: 64 layers,
+        # 40 attention heads, 8 KV heads (GQA ratio 5), hidden_size
+        # 5120 → head_dim 128. Same GQA shape as the 14B sibling.
+        # Q4_K_M GGUF: 19.85 GB measured (bartowski). Comfortable on
+        # 48 GB Apple Silicon; the "I bought a Mac with unified memory
+        # for this" default per the leader-UX plan doc.
+        "arch": {
+            "n_layers": 64,
+            "n_kv_heads": 8,
+            "head_dim": 128,
+            "kv_type_bytes": 2,
+            "weights_gb": 19.9,
         },
     },
     "qwen2-7b-instruct": {
@@ -857,3 +929,29 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
         redaction=redaction,
         contemplation=contemplation,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# L2: user-defined profiles (leader_ux_profile_management.md)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# At module import, merge ``~/.config/maxim/profiles.yml`` entries into
+# ``_BUILTIN_PROFILES``, ``_PROFILE_ALIASES``, and ``LLM_MODELS``. User
+# profiles WIN on collision (logged WARNING). A missing or empty file
+# is a silent no-op (the common case). A malformed file raises
+# ``ConfigurationError`` at startup so the operator sees the problem
+# immediately rather than after first inference.
+def _apply_user_profiles_at_import() -> None:
+    """Bridge the loader to the runtime dicts. Pulled into its own
+    function so test code can monkey-patch the path resolution without
+    touching module-level state."""
+    # Imports kept inside the function to avoid a top-of-file import
+    # cycle through ``maxim.models.download`` and to keep ``config.py``'s
+    # import-time cost unchanged when ``profiles.yml`` is absent.
+    from maxim.models.download import LLM_MODELS
+    from maxim.models.language.profile_loader import apply_user_profiles
+
+    apply_user_profiles(_BUILTIN_PROFILES, _PROFILE_ALIASES, LLM_MODELS)
+
+
+_apply_user_profiles_at_import()

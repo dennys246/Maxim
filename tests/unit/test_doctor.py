@@ -1872,3 +1872,75 @@ class TestOrphanDrainReprobe:
         # exercised via the closure factory pattern — asserting the
         # retry_id has the canonical prefix locks in the contract.
         assert orphan_results[0].retry_id.startswith("mesh_drain_orphan_")
+
+
+class TestCheckUserProfiles:
+    """Doctor integration for L3 of leader_ux_profile_management.md.
+
+    Pins three outcomes: missing file (info, 0 profiles), valid file
+    with entries (ok with count), and malformed YAML (fail with
+    actionable fix hint).
+    """
+
+    def test_missing_file_returns_info(self, tmp_path, monkeypatch):
+        from maxim.doctor.checks import check_user_profiles
+
+        # Point profiles_config_path at a non-existent file
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        result = check_user_profiles()
+        assert result.status == "info"
+        assert "0 user profiles" in result.message
+
+    def test_valid_file_with_entries_returns_ok(self, tmp_path, monkeypatch):
+        from maxim.doctor.checks import check_user_profiles
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        profiles_dir = tmp_path / "maxim"
+        profiles_dir.mkdir()
+        (profiles_dir / "profiles.yml").write_text(
+            "profiles:\n"
+            "  my-model:\n"
+            "    backend: llama_cpp\n"
+            "    prompt_style: chatml\n"
+            "    download: {hf_repo: foo/bar, hf_file: m.gguf}\n"
+        )
+        result = check_user_profiles()
+        assert result.status == "ok"
+        assert "1 user profile" in result.message
+        assert "loaded from" in result.message
+
+    def test_malformed_yaml_returns_fail_with_fix_hint(self, tmp_path, monkeypatch):
+        from maxim.doctor.checks import check_user_profiles
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        profiles_dir = tmp_path / "maxim"
+        profiles_dir.mkdir()
+        (profiles_dir / "profiles.yml").write_text("profiles:\n  bad: [unclosed\n")
+        result = check_user_profiles()
+        assert result.status == "fail"
+        assert result.fix is not None
+        assert "refuse to start" in result.fix
+
+    def test_per_profile_schema_error_returns_fail(self, tmp_path, monkeypatch):
+        """Pre-merge executor review fold: the original check_user_profiles
+        only ran top-level YAML parse (load_user_profiles), missing
+        per-profile schema errors. A YAML-valid file with missing
+        ``prompt_style`` reported "ok / 1 loaded" — but ``maxim``
+        startup would then crash with ConfigurationError. The fix
+        routes through apply_user_profiles for the full validation."""
+        from maxim.doctor.checks import check_user_profiles
+
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        profiles_dir = tmp_path / "maxim"
+        profiles_dir.mkdir()
+        # YAML is syntactically valid; schema is broken (missing prompt_style)
+        (profiles_dir / "profiles.yml").write_text(
+            "profiles:\n  broken-profile:\n    backend: llama_cpp\n    download: {hf_repo: foo/bar, hf_file: m.gguf}\n"
+        )
+        result = check_user_profiles()
+        assert result.status == "fail", (
+            f"per-profile schema error should fail doctor but got status={result.status!r}, "
+            f"message={result.message!r}. The fix at checks.py::check_user_profiles "
+            f"must route through apply_user_profiles for full validation."
+        )
+        assert "prompt_style" in result.message

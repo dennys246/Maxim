@@ -220,6 +220,23 @@ nodes:
 
 Schema errors carry a line number (`mesh.yml line 7: url 'ftp://bad/v1' must use http:// or https://`). `self:` validation is load-bearing: startup fails loudly if `self` doesn't match any entry in `nodes:`. Exit-code contract matches `maxim doctor --json`: `fail` → exit 1, `warn` / `ok` → exit 0.
 
+## Model Profile Management
+
+The `maxim model` verbs manage user-defined model profiles in `~/.config/maxim/profiles.yml`. Profiles authored here merge into the bundled profile set at startup with **user-wins precedence**, so any GGUF on HuggingFace (or any local GGUF file) becomes a first-class profile usable from `--llm`. Full schema + walkthrough in [llm-setup.md § Adding Custom Profiles](llm-setup.md#adding-custom-profiles).
+
+| Command | What it does |
+|---|---|
+| `maxim model add <name> --hf REPO:FILE [--chat-format STYLE] [--n-ctx N] [--alias A] [--force]` | Register a new profile that downloads a GGUF from a HuggingFace repo. The `--hf` value is `REPO:FILE` (the repo may contain `/`; first `:` separates from filename). `--chat-format` is auto-inferred when omitted via substring match on the profile name + repo basename (`qwen`→`chatml`, `llama-3`→`llama3_instruct`, `mixtral`/`mistral`→`mistral_instruct`, `phi-3`→`phi3`, `phi-2`→`phi`, `gemma`→`gemma`); if inference fails the verb errors out asking for an explicit value. `--alias` is repeatable. `--force` overwrites an existing user profile with the same slug. |
+| `maxim model add <name> --local <path> [...]` | Same as above but points at a local GGUF file instead of downloading. The path is `expanduser`-ed at load time. |
+| `maxim model remove <name>` | Drop a user profile. Refuses if the profiles file is missing (exit 1) or the slug doesn't exist (exit 2). |
+| `maxim model list` | Show user profiles with backend / prompt_style / source markers. For the full builtin + user catalog, use `maxim --list-models`. |
+
+**Round-trip caveat:** `add` and `remove` rewrite the file via stdlib YAML serialization, which **strips comments**. Edit `~/.config/maxim/profiles.yml` directly to preserve them.
+
+**Atomic writes:** `profiles.yml` is treated as declarative config (not a secret), so writes use `atomic_write_text`, not `atomic_write_secret`. Same convention as `mesh.yml`.
+
+**Exit codes:** `0` success (including idempotent no-ops), `1` environmental failure (file missing for `remove`), `2` operator error (missing required arg, name collision without `--force`, unknown profile, bad name characters, missing `--chat-format` when inference can't pick a default).
+
 ## Roy Harness
 
 Long-horizon persona-convergence iteration runner. One `maxim roy run`

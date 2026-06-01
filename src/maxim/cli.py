@@ -564,6 +564,15 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         from maxim.roy import run_roy_subcommand
 
         return run_roy_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "model":
+        # `maxim model add/remove/list` — user-profile management
+        # per leader_ux_profile_management.md L3. Writes to
+        # ~/.config/maxim/profiles.yml; the loader at
+        # maxim.models.language.profile_loader picks up changes on
+        # the next process start.
+        from maxim.models.model_cli import run_model_subcommand
+
+        return run_model_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "substrate":
         # Hivemind shareability (v1_refinement.md §B5 PR D) — substrate
         # snapshot bundle compose + extract. Round-trips NAc + EC state
@@ -572,6 +581,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         from maxim.hivemind.cli import run_substrate_subcommand
 
         return run_substrate_subcommand(raw_argv[1:])
+
     if raw_argv and raw_argv[0] == "peer":
         # `peer connect/show/forget` go to the peer config module;
         # `peer test` is a diagnostic that lives with `doctor`.
