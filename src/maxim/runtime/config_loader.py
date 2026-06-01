@@ -1,0 +1,993 @@
+"""Instance-level operator config loader (C1 of config_unification.md).
+
+Reads ``~/.config/maxim/config.json`` and exposes a typed
+:class:`MaximConfig` dataclass plus the :func:`resolve_setting`
+precedence chain that absorbs ~22 daily-use ``MAXIM_*`` env vars onto
+a single source of truth.
+
+Path convention mirrors :func:`maxim.peer.config.peer_config_path` —
+XDG on POSIX, ``%APPDATA%\\maxim\\`` on Windows. Same directory as
+``peer.yml`` / ``mesh.yml`` / ``profiles.yml`` per CLAUDE.md's
+"declarative config layer" invariant.
+
+Precedence (CLI > env > config > default) is exposed via
+:func:`resolve_setting`. The function logs at INFO on convergence
+(both env and config set to the same value — operator's two-sources-
+of-truth confusion is the bug class to surface) AND at WARNING on
+divergence (env shadows config with a different value).
+
+Schema versioning at 1.0 (CC1): every ``config.json`` written by
+Maxim carries ``"_format_version": "1.0"`` at root. The file is
+CLI-canonical (the ``maxim config`` verbs are the operator's primary
+path; hand-edit is the escape hatch), so CC1 applies. This is the
+intentional divergence from ``profiles.yml`` (hand-edit-canonical, no
+``_format_version``) discussed in config_unification.md's
+"Schema versioning" subsection.
+
+Pre-implementation two-lens review fold (2026-06-01) anchors:
+
+- C-1: ``_env_is_set`` rejects empty-string env vars as unset
+- C-2: ``_coerce_*`` uses the pinned truthy/falsy/range table
+- CR3: ``resolve_setting`` logs convergence AND divergence
+- I-3 / IM3: ``_validate_api_key_ref`` rejects inline strings at load time
+- I-4: ``_warned_envs`` module set fires the deprecation INFO once per startup
+- I-6 / IM4: ``_parse_config_dict`` ties unknown-key handling to ``_format_version``
+- IM1: every section dataclass declares its CC3 path in its docstring
+- N1: ``_format_version`` is the first field of :class:`MaximConfig`
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import platform
+import threading
+from dataclasses import dataclass, field, fields
+from pathlib import Path
+from typing import Any, Literal
+
+from maxim.exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Schema constants (FROZEN at 1.0)
+# ─────────────────────────────────────────────────────────────────────────────
+
+CONFIG_FORMAT_VERSION: str = "1.0"
+"""Inaugural format version. Bumped per CC1 on shape changes:
+minor (1.1+) for additive non-breaking fields, major (2.0) for
+required-field breaking changes (loader migration required)."""
+
+_VALID_ROLES: frozenset[str] = frozenset({"leader", "peer", "solo"})
+_VALID_BACKENDS: frozenset[str] = frozenset({"llama_cpp", "pytorch"})
+_VALID_REDACTION_POLICIES: frozenset[str] = frozenset({"standard", "relaxed", "strict"})
+_VALID_TIER_NAMES: frozenset[str] = frozenset({"large", "medium", "small"})
+
+# C-2 fold: canonical truthy/falsy sets. Match the existing
+# MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION parser + the leader-UX PR's
+# profile-loader. Empty string is rejected by `_env_is_set` before
+# coercion runs.
+_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
+_FALSY: frozenset[str] = frozenset({"0", "false", "no", "off"})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Section dataclasses (CC3 path declarations per IM1 fold)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class LLMConfigSection:
+    """LLM core settings.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b) per config_unification.md IM1
+    fold. ``backend`` is a frozen enum surface; an ``extra:`` dict
+    would dilute typed validation. Adding optional fields with defaults
+    is non-breaking; adding required fields is a 2.0 break.
+    """
+
+    enabled: bool = True
+    profile: str | None = None
+    n_ctx: int = 8192
+    backend: Literal["llama_cpp", "pytorch"] = "llama_cpp"
+    auto_download: bool = False
+
+
+@dataclass(frozen=True)
+class LaneTierConfig:
+    """Per-tier remote routing.
+
+    ESCAPE-HATCH at 1.0 (CC3) — path (a) per config_unification.md IM1
+    fold. The only section type where (a) is genuinely right:
+    ``remote_url`` / ``remote_model`` / ``remote_api_key_ref`` are
+    likely to grow forward (``remote_health_path``,
+    ``remote_timeout_s``, ``remote_routing_weight``, ...).
+
+    ``extra`` values MUST be JSON-serializable (str/int/float/bool/None
+    plus nested list/dict only) per CC3 — ndarray/datetime raise at
+    persist time. Producers prefer declared fields; ``extra`` is for
+    genuinely additive metadata only. The ``hash=False, compare=False``
+    spec is load-bearing per CC3 escape-hatch rules.
+    """
+
+    remote_url: str | None = None
+    remote_model: str | None = None
+    remote_api_key_ref: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
+
+
+@dataclass(frozen=True)
+class LanesConfigSection:
+    """Per-tier remote routing config keyed by frozen tier-name set.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b) per config_unification.md IM1
+    fold. Keyed by the lane-tier-names invariant (``large``, ``medium``,
+    ``small``). Adding a new tier post-1.0 is a major-version bump.
+    """
+
+    large: LaneTierConfig = field(default_factory=LaneTierConfig)
+    medium: LaneTierConfig = field(default_factory=LaneTierConfig)
+    small: LaneTierConfig = field(default_factory=LaneTierConfig)
+
+
+@dataclass(frozen=True)
+class CloudConfigSection:
+    """Cloud-LLM fallback config.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b). ``redaction_policy`` is a
+    frozen enum; cloud-LLM contract is tightly coupled to the
+    redaction layer.
+    """
+
+    enabled: bool = False
+    max_lanes: int = 0
+    fallback_model: str | None = None
+    session_budget_usd: float = 5.0
+    redaction_policy: Literal["standard", "relaxed", "strict"] = "standard"
+
+
+@dataclass(frozen=True)
+class ProxyConfigSection:
+    """Leader-proxy admission control.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b).
+    """
+
+    max_concurrent: int = 4
+    rate_limit_rpm: int = 0
+
+
+@dataclass(frozen=True)
+class AutoSpawnConfigSection:
+    """Auto-spawn behavior for llama-cpp-server and cloudflared.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b).
+    """
+
+    llm_server: bool = True
+    tunnel: bool = True
+    port: int = 8100
+    timeout_s: int = 120
+
+
+@dataclass(frozen=True)
+class DataConfigSection:
+    """Data paths + disk budget.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b).
+    """
+
+    home: str | None = None
+    budget_gb: float | None = None
+
+
+@dataclass(frozen=True)
+class MaximConfig:
+    """Top-level Maxim instance config.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b) per config_unification.md IM1
+    fold. Top-level shape is the schema contract; section additions
+    go inside section types, not at root. Adding optional fields with
+    defaults is non-breaking; adding required fields requires
+    ``_format_version 2.0`` + a migration step in the same commit.
+
+    Field order: ``_format_version`` is declared first per the
+    underscore-sort-first convention (N1 fold from the review round —
+    matches ``maxim.utils.format_version`` precedent so the field
+    appears before payload keys in ``json.dumps(..., sort_keys=True)``
+    output).
+    """
+
+    _format_version: str = CONFIG_FORMAT_VERSION
+    role: Literal["leader", "peer", "solo"] | None = None
+    llm: LLMConfigSection = field(default_factory=LLMConfigSection)
+    lanes: LanesConfigSection = field(default_factory=LanesConfigSection)
+    cloud: CloudConfigSection = field(default_factory=CloudConfigSection)
+    proxy: ProxyConfigSection = field(default_factory=ProxyConfigSection)
+    auto_spawn: AutoSpawnConfigSection = field(default_factory=AutoSpawnConfigSection)
+    data: DataConfigSection = field(default_factory=DataConfigSection)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Absorbed env-var registry + field-path mapping
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+_FIELD_TO_ENV: dict[str, str] = {
+    "role": "MAXIM_ROLE",
+    "llm.enabled": "MAXIM_LLM_ENABLED",
+    "llm.profile": "MAXIM_LLM_PROFILE",
+    "llm.n_ctx": "MAXIM_LLM_N_CTX",
+    "llm.backend": "MAXIM_LLM_BACKEND",
+    "llm.auto_download": "MAXIM_AUTO_DOWNLOAD_MODELS",
+    "lanes.large.remote_url": "MAXIM_LANE_LARGE_REMOTE_URL",
+    "lanes.large.remote_model": "MAXIM_LANE_LARGE_REMOTE_MODEL",
+    "lanes.large.remote_api_key_ref": "MAXIM_LANE_LARGE_REMOTE_API_KEY",
+    "lanes.medium.remote_url": "MAXIM_LANE_MEDIUM_REMOTE_URL",
+    "lanes.medium.remote_model": "MAXIM_LANE_MEDIUM_REMOTE_MODEL",
+    "lanes.medium.remote_api_key_ref": "MAXIM_LANE_MEDIUM_REMOTE_API_KEY",
+    "lanes.small.remote_url": "MAXIM_LANE_SMALL_REMOTE_URL",
+    "lanes.small.remote_model": "MAXIM_LANE_SMALL_REMOTE_MODEL",
+    "lanes.small.remote_api_key_ref": "MAXIM_LANE_SMALL_REMOTE_API_KEY",
+    "cloud.enabled": "MAXIM_LLM_CLOUD_ENABLED",
+    "cloud.max_lanes": "MAXIM_MAX_CLOUD_LANES",
+    "cloud.fallback_model": "MAXIM_CLOUD_FALLBACK_MODEL",
+    "cloud.session_budget_usd": "MAXIM_CLOUD_SESSION_BUDGET",
+    "cloud.redaction_policy": "MAXIM_LLM_REDACTION_POLICY",
+    "proxy.max_concurrent": "MAXIM_PROXY_MAX_CONCURRENT",
+    "proxy.rate_limit_rpm": "MAXIM_PROXY_RATE_LIMIT_RPM",
+    "auto_spawn.llm_server": "MAXIM_AUTO_SPAWN_LLM_SERVER",
+    "auto_spawn.tunnel": "MAXIM_AUTO_SPAWN_TUNNEL",
+    "auto_spawn.port": "MAXIM_AUTO_SPAWN_PORT",
+    "auto_spawn.timeout_s": "MAXIM_AUTO_SPAWN_TIMEOUT_S",
+    "data.home": "MAXIM_DATA_HOME",
+    "data.budget_gb": "MAXIM_DATA_BUDGET_GB",
+}
+
+
+_ABSORBED_ENV_VARS: frozenset[str] = frozenset(_FIELD_TO_ENV.values())
+"""Module-level frozenset of every env var the schema absorbs. Used by
+the once-per-startup deprecation INFO log (I-4 fold) — when a
+``resolve_setting`` call hits an env-var present in this set, the
+loader logs an INFO suggesting migration to ``config.json`` exactly
+once across the process lifetime."""
+
+
+_warned_envs: set[str] = set()
+"""Module-level set of env-var names we have already emitted the
+deprecation INFO for in this process. Cleared by
+:func:`_reset_warned_envs` (test-only helper). Production code must
+NOT clear this — the "fire once per startup" semantics are load-bearing
+to keep the log from spamming per-lane-resolution dispatch."""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Path resolution
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def config_path() -> Path:
+    """Return the platform-appropriate ``config.json`` path.
+
+    Mirrors :func:`maxim.peer.config.peer_config_path` so all four
+    declarative config files (``peer.yml``, ``mesh.yml``,
+    ``profiles.yml``, ``config.json``) live in the same directory.
+    """
+    if platform.system() == "Windows":
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
+        return base / "maxim" / "config.json"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "maxim" / "config.json"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Env-var presence test (C-1 fold)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _env_is_set(name: str) -> bool:
+    """Return True iff env var is set to a non-empty, non-whitespace value.
+
+    Fold C-1: POSIX shells can ``export FOO=`` (empty string) and
+    the result is still "present" to :func:`os.environ.get`. The
+    2026-06-01 Mac Mini trigger was exactly a leaked-then-emptied env
+    var silently shadowing ``config.json``. Empty-after-strip is
+    treated as unset.
+    """
+    raw = os.environ.get(name)
+    return raw is not None and raw.strip() != ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Coercion table (C-2 fold)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _coerce_bool(raw: str, field_path: str) -> bool:
+    """Parse a string env value into bool per the C-2 coercion table.
+
+    Truthy: ``{"1", "true", "yes", "on"}`` (case-insensitive, post-strip).
+    Falsy: ``{"0", "false", "no", "off"}``. Anything else raises
+    :class:`ConfigurationError`. Empty string is rejected upstream by
+    :func:`_env_is_set`.
+    """
+    normalized = raw.strip().lower()
+    if normalized in _TRUTHY:
+        return True
+    if normalized in _FALSY:
+        return False
+    raise ConfigurationError(
+        f"config: {field_path}: expected bool-like value (one of {sorted(_TRUTHY | _FALSY)}), got {raw!r}"
+    )
+
+
+def _coerce_int(raw: str, field_path: str, *, min_val: int | None = None, max_val: int | None = None) -> int:
+    """Parse a string env value into int + range-validate per C-2."""
+    try:
+        value = int(raw.strip())
+    except ValueError as e:
+        raise ConfigurationError(f"config: {field_path}: expected int, got {raw!r}") from e
+    if min_val is not None and value < min_val:
+        raise ConfigurationError(f"config: {field_path}: value {value} below minimum {min_val}")
+    if max_val is not None and value > max_val:
+        raise ConfigurationError(f"config: {field_path}: value {value} above maximum {max_val}")
+    return value
+
+
+def _coerce_float(raw: str, field_path: str, *, min_val: float | None = None) -> float:
+    """Parse a string env value into float + lower-bound check per C-2."""
+    try:
+        value = float(raw.strip())
+    except ValueError as e:
+        raise ConfigurationError(f"config: {field_path}: expected float, got {raw!r}") from e
+    if min_val is not None and value < min_val:
+        raise ConfigurationError(f"config: {field_path}: value {value} below minimum {min_val}")
+    return value
+
+
+def _coerce_enum(raw: str, field_path: str, valid: frozenset[str]) -> str:
+    """Match a string env value against an enum set (case-insensitive, post-strip)."""
+    normalized = raw.strip().lower()
+    if normalized not in valid:
+        raise ConfigurationError(f"config: {field_path}: expected one of {sorted(valid)}, got {raw!r}")
+    return normalized
+
+
+def _coerce_role(raw: str, field_path: str) -> str:
+    """Coerce a role value. Auto-converts the legacy ``client`` name to ``peer``.
+
+    The legacy term comes from ``runtime/leader_mode.py::RoleName`` which
+    used ``client`` for what ``runtime/role.py`` calls ``peer``. The
+    C3 unification (see config_unification.md) collapses both onto the
+    ``role.py`` vocabulary; this coercion runs at load time to keep
+    existing operator setups working.
+    """
+    normalized = raw.strip().lower()
+    if normalized == "client":
+        logger.warning(
+            "config: %s='client' is the legacy leader_mode.py term; "
+            "coerced to 'peer'. Update your config / env var to 'peer'.",
+            field_path,
+        )
+        return "peer"
+    if normalized in _VALID_ROLES:
+        return normalized
+    raise ConfigurationError(f"config: {field_path}: expected one of {sorted(_VALID_ROLES)}, got {raw!r}")
+
+
+def _validate_api_key_ref(value: str, field_path: str) -> str:
+    """Validate an api_key_ref value at load time per cross-confirmed I-3 + IM3 fold.
+
+    Two modes ONLY: file path (starts with ``/`` or ``~``) or keyring
+    URI (matches ``keyring:<service>:<account>``). Any other string is
+    rejected with a fix-hint — the original draft's "inline plain
+    string with deprecation WARNING" mode was identified by both
+    review lenses as a footgun that lets ``maxim config set ... sk-abc``
+    cheerfully write mode-0644 plaintext keys to disk.
+
+    Empty string and ``None`` are both treated as unset (no ref).
+    """
+    if not value:
+        return value
+    if value.startswith("/") or value.startswith("~"):
+        return value
+    if value.startswith("keyring:"):
+        if value.count(":") < 2:
+            raise ConfigurationError(
+                f"config: {field_path}: keyring URI must be 'keyring:<service>:<account>', got {value!r}"
+            )
+        return value
+    raise ConfigurationError(
+        f"config: {field_path}: must be a file path (starting with '/' or '~') "
+        f"or a keyring URI ('keyring:<service>:<account>'). "
+        f"Inline plaintext API keys are NOT supported — got {value!r}. "
+        f"Fix: write the key to a mode-0600 file (e.g., ~/.config/maxim/api_key) "
+        f"and reference it by path."
+    )
+
+
+def _coerce_for_field(raw: str, field_path: str) -> Any:
+    """Dispatch coercion based on field path. Returns the typed value."""
+    # Booleans
+    if field_path in {
+        "llm.enabled",
+        "llm.auto_download",
+        "cloud.enabled",
+        "auto_spawn.llm_server",
+        "auto_spawn.tunnel",
+    }:
+        return _coerce_bool(raw, field_path)
+    # Integer fields with range constraints
+    if field_path == "llm.n_ctx":
+        return _coerce_int(raw, field_path, min_val=256)
+    if field_path in {"cloud.max_lanes", "proxy.max_concurrent", "proxy.rate_limit_rpm"}:
+        return _coerce_int(raw, field_path, min_val=0)
+    if field_path == "auto_spawn.port":
+        return _coerce_int(raw, field_path, min_val=1, max_val=65535)
+    if field_path == "auto_spawn.timeout_s":
+        return _coerce_int(raw, field_path, min_val=1)
+    # Float fields
+    if field_path == "cloud.session_budget_usd":
+        return _coerce_float(raw, field_path, min_val=0.0)
+    if field_path == "data.budget_gb":
+        return _coerce_float(raw, field_path, min_val=0.0)
+    # Enum fields
+    if field_path == "role":
+        return _coerce_role(raw, field_path)
+    if field_path == "llm.backend":
+        return _coerce_enum(raw, field_path, _VALID_BACKENDS)
+    if field_path == "cloud.redaction_policy":
+        return _coerce_enum(raw, field_path, _VALID_REDACTION_POLICIES)
+    # API key refs (validate, never coerce)
+    if field_path.endswith(".remote_api_key_ref"):
+        return _validate_api_key_ref(raw.strip(), field_path)
+    # Plain strings (no transformation beyond strip for tidy values)
+    return raw.strip()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dataclass walking helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _walk_dot_path(obj: Any, dot_path: str) -> Any:
+    """Walk a dataclass via dot-separated field names. Returns the leaf value."""
+    parts = dot_path.split(".")
+    for part in parts:
+        obj = getattr(obj, part)
+    return obj
+
+
+def _read_from_config(config: MaximConfig | None, field_path: str) -> Any | None:
+    """Read a field value from the config dataclass.
+
+    Returns ``None`` when the field would shadow a default — i.e., the
+    config either is ``None`` or the value equals the default for that
+    field. This lets the precedence chain distinguish "operator set
+    this in config.json" from "this is the schema's default."
+    """
+    if config is None:
+        return None
+    try:
+        actual = _walk_dot_path(config, field_path)
+    except AttributeError:
+        return None
+    default = _walk_dot_path(MaximConfig(), field_path)
+    if actual == default:
+        return None
+    return actual
+
+
+def _builtin_default(field_path: str) -> Any:
+    """Return the schema default for a field via dot path."""
+    return _walk_dot_path(MaximConfig(), field_path)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Precedence chain (CR3 + C-1 + I-4 folds)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def resolve_setting(
+    field_path: str,
+    cli_value: Any | None = None,
+    *,
+    config: MaximConfig | None = None,
+) -> tuple[Any, str]:
+    """Resolve a config field via the four-layer precedence chain.
+
+    Returns ``(effective_value, source)`` where source is one of
+    ``"cli" | "env" | "config" | "default"``.
+
+    Precedence: CLI > env > config.json > builtin default.
+
+    Logging:
+
+    - **Convergence** (env set AND config sets same value): INFO log
+      noting that ``config.json`` is ignored until env var is unset
+      (CR3 fold).
+    - **Divergence** (env set AND config sets different value): WARNING
+      log naming both values (CR3 fold).
+    - **Deprecation** (env set for an absorbed var): INFO log
+      suggesting migration, fired exactly once per env var per startup
+      via the module-level :data:`_warned_envs` set (I-4 fold).
+    """
+    if field_path not in _FIELD_TO_ENV:
+        raise ConfigurationError(
+            f"config: unknown field path {field_path!r}. Valid paths: {sorted(_FIELD_TO_ENV.keys())}"
+        )
+
+    if cli_value is not None:
+        return cli_value, "cli"
+
+    env_name = _FIELD_TO_ENV[field_path]
+    config_value = _read_from_config(config, field_path)
+
+    if _env_is_set(env_name):
+        env_raw = os.environ[env_name]
+        env_value = _coerce_for_field(env_raw, field_path)
+
+        # CR3 fold: log on every layer interaction, not just mismatch.
+        if config_value is not None:
+            if config_value == env_value:
+                logger.info(
+                    "config: %s has source=env AND config.json sets the same "
+                    "value (%r). config.json is ignored until env var is unset.",
+                    field_path,
+                    env_value,
+                )
+            else:
+                logger.warning(
+                    "config override: %s=%r (env) shadows %r (config.json)",
+                    field_path,
+                    env_value,
+                    config_value,
+                )
+
+        # I-4 fold: once-per-startup deprecation INFO.
+        if env_name in _ABSORBED_ENV_VARS and env_name not in _warned_envs:
+            _warned_envs.add(env_name)
+            logger.info(
+                "config: %s is set. Consider migrating to config.json via "
+                "`maxim config set %s <value>` (env vars deprecated in 1.1).",
+                env_name,
+                field_path,
+            )
+
+        return env_value, "env"
+
+    if config_value is not None:
+        return config_value, "config"
+
+    return _builtin_default(field_path), "default"
+
+
+def _reset_warned_envs() -> None:
+    """Test-only helper: clear the deprecation-INFO dedupe set.
+
+    Production code must NOT call this — the "fire once per startup"
+    semantics are load-bearing to prevent per-request log spam in
+    lane-resolution paths.
+    """
+    _warned_envs.clear()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Schema validation + JSON parsing (I-6 + IM4 folds tied to _format_version)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _check_format_version(data: dict[str, Any]) -> tuple[str, bool]:
+    """Read ``_format_version`` from the parsed config and classify it.
+
+    Returns ``(version_string, is_future_minor)`` where
+    ``is_future_minor`` is True when the file declares a newer minor
+    version than the loader knows but the major version matches —
+    triggering the I-6/IM4 forward-compat tolerance for unknown keys.
+
+    Raises :class:`ConfigurationError` on a future major (the breaking
+    case per CC1).
+    """
+    raw = data.get("_format_version", CONFIG_FORMAT_VERSION)
+    if not isinstance(raw, str) or not raw:
+        raise ConfigurationError(f"config.json: _format_version must be a non-empty string, got {raw!r}")
+
+    # Parse major.minor; tolerate trailing patch/identifiers via splitting.
+    try:
+        major_str, minor_str, *_ = raw.split(".") + ["0"]
+        major = int(major_str)
+        minor = int(minor_str)
+    except (ValueError, IndexError) as e:
+        raise ConfigurationError(
+            f"config.json: _format_version {raw!r} is not a valid major.minor version string"
+        ) from e
+
+    known_major, known_minor = (int(p) for p in CONFIG_FORMAT_VERSION.split(".")[:2])
+
+    if major > known_major:
+        raise ConfigurationError(
+            f"config.json: _format_version {raw!r} is a future major version "
+            f"(loader knows {CONFIG_FORMAT_VERSION}). Major version bumps are "
+            f"breaking per CC1 — upgrade Maxim or downgrade the config file."
+        )
+    if major < known_major:
+        # Older major — for 1.x there is no 0.x case to handle; the
+        # file simply predates the loader's known version. The format-
+        # version check_format_version helper in utils/ would warn
+        # once; here we accept and treat unknown keys strictly because
+        # the file is implicitly older not newer.
+        return raw, False
+
+    is_future_minor = minor > known_minor
+    return raw, is_future_minor
+
+
+def _parse_lane_tier(
+    section: Any,
+    path: str,
+    *,
+    tolerate_unknown: bool,
+) -> LaneTierConfig:
+    """Parse a single ``lanes.<tier>`` section into :class:`LaneTierConfig`.
+
+    The escape-hatch ``extra`` dict gathers any unknown keys; per CC3
+    path (a) the values must be JSON-serializable but the dict has no
+    typed schema. ``tolerate_unknown`` is unused here (the whole point
+    of path (a) is that unknown keys go to ``extra``); it's accepted
+    for signature symmetry with :func:`_parse_typed_section`.
+    """
+    del tolerate_unknown  # always tolerant for escape-hatch sections
+    if section is None:
+        return LaneTierConfig()
+    if not isinstance(section, dict):
+        raise ConfigurationError(f"config.json: {path} must be a mapping, got {type(section).__name__}")
+
+    declared = {"remote_url", "remote_model", "remote_api_key_ref"}
+    extra: dict[str, Any] = {k: v for k, v in section.items() if k not in declared}
+
+    remote_url = section.get("remote_url")
+    remote_model = section.get("remote_model")
+    remote_api_key_ref = section.get("remote_api_key_ref")
+
+    for fname, fval in (
+        ("remote_url", remote_url),
+        ("remote_model", remote_model),
+        ("remote_api_key_ref", remote_api_key_ref),
+    ):
+        if fval is not None and not isinstance(fval, str):
+            raise ConfigurationError(f"config.json: {path}.{fname} must be a string or null, got {type(fval).__name__}")
+
+    if isinstance(remote_api_key_ref, str):
+        remote_api_key_ref = _validate_api_key_ref(remote_api_key_ref, f"{path}.remote_api_key_ref")
+
+    return LaneTierConfig(
+        remote_url=remote_url,
+        remote_model=remote_model,
+        remote_api_key_ref=remote_api_key_ref,
+        extra=extra,
+    )
+
+
+def _parse_typed_section(
+    section: Any,
+    section_path: str,
+    section_cls: type,
+    *,
+    tolerate_unknown: bool,
+) -> Any:
+    """Generic shape-frozen section parser.
+
+    Tied to ``_format_version`` per I-6 + IM4 fold:
+    ``tolerate_unknown=True`` (future-minor case) logs WARNING and
+    drops unknown keys; ``tolerate_unknown=False`` (same-version case)
+    raises :class:`ConfigurationError` to surface typos.
+    """
+    if section is None:
+        return section_cls()
+    if not isinstance(section, dict):
+        raise ConfigurationError(f"config.json: {section_path} must be a mapping, got {type(section).__name__}")
+
+    known_fields = {f.name for f in fields(section_cls)}
+    unknown = set(section.keys()) - known_fields
+    if unknown:
+        if tolerate_unknown:
+            logger.warning(
+                "config.json: %s has unknown key(s) %s — tolerated because "
+                "_format_version is a future minor. Loader will ignore them.",
+                section_path,
+                sorted(unknown),
+            )
+        else:
+            raise ConfigurationError(
+                f"config.json: {section_path} has unknown key(s) "
+                f"{sorted(unknown)}; valid keys are {sorted(known_fields)}"
+            )
+
+    kwargs: dict[str, Any] = {}
+    for fld in fields(section_cls):
+        if fld.name not in section:
+            continue
+        raw = section[fld.name]
+        path = f"{section_path}.{fld.name}"
+        kwargs[fld.name] = _coerce_json_field(raw, path, fld.type)
+
+    return section_cls(**kwargs)
+
+
+def _coerce_json_field(raw: Any, field_path: str, expected_type: Any) -> Any:
+    """Validate and coerce a JSON-parsed value against the dataclass field type.
+
+    This is the JSON path — env-var coercion is in
+    :func:`_coerce_for_field`. JSON already gives us typed values
+    (bool, int, float, str, None), so the work here is mostly range +
+    enum + api_key_ref validation.
+    """
+    # Treat the type as a string annotation; ``get_type_hints`` would
+    # work but introduces ForwardRef churn at module import time.
+    type_str = str(expected_type)
+
+    if raw is None:
+        if "| None" in type_str or "Optional" in type_str:
+            return None
+        raise ConfigurationError(f"config.json: {field_path}: null not allowed")
+
+    # bool — note: ``int`` matches ``"int"`` substring, so check bool
+    # FIRST and use a word-boundary-ish match. ``"bool"`` only ever
+    # appears in bool / bool | None annotations.
+    if expected_type is bool or "bool" in type_str:
+        if not isinstance(raw, bool):
+            raise ConfigurationError(f"config.json: {field_path}: expected bool, got {type(raw).__name__}")
+        return raw
+
+    # float — check BEFORE int because ``"int"`` is a substring of
+    # ``"int | None"`` but NOT of ``"float | None"``. Also Python's
+    # ``isinstance(x, float)`` rejects ints, so use the explicit
+    # int-or-float test below.
+    if expected_type is float or "float" in type_str:
+        if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+            raise ConfigurationError(f"config.json: {field_path}: expected float, got {type(raw).__name__}")
+        return _range_check_float(float(raw), field_path)
+
+    # int with range
+    if expected_type is int or "int" in type_str:
+        if not isinstance(raw, int) or isinstance(raw, bool):
+            raise ConfigurationError(f"config.json: {field_path}: expected int, got {type(raw).__name__}")
+        return _range_check_int(raw, field_path)
+
+    # str + str | None + Literal[...] (Literal annotations are all
+    # string-valued enums in this schema)
+    if expected_type is str or "str" in type_str or type_str.startswith("Literal["):
+        if not isinstance(raw, str):
+            raise ConfigurationError(f"config.json: {field_path}: expected string, got {type(raw).__name__}")
+        # Enum subsets
+        if field_path == "role":
+            return _coerce_role(raw, field_path)
+        if field_path == "llm.backend":
+            return _coerce_enum(raw, field_path, _VALID_BACKENDS)
+        if field_path == "cloud.redaction_policy":
+            return _coerce_enum(raw, field_path, _VALID_REDACTION_POLICIES)
+        return raw
+
+    raise ConfigurationError(
+        f"config.json: {field_path}: unhandled type {expected_type!r} (loader bug — please report)"
+    )
+
+
+def _range_check_int(value: int, field_path: str) -> int:
+    """Apply per-field range constraints to a JSON-parsed int."""
+    if field_path == "llm.n_ctx" and value < 256:
+        raise ConfigurationError(f"config.json: {field_path}={value} below minimum 256")
+    if (
+        field_path
+        in {
+            "cloud.max_lanes",
+            "proxy.max_concurrent",
+            "proxy.rate_limit_rpm",
+        }
+        and value < 0
+    ):
+        raise ConfigurationError(f"config.json: {field_path}={value} below minimum 0")
+    if field_path == "auto_spawn.port" and not (1 <= value <= 65535):
+        raise ConfigurationError(f"config.json: {field_path}={value} must be in 1..65535")
+    if field_path == "auto_spawn.timeout_s" and value < 1:
+        raise ConfigurationError(f"config.json: {field_path}={value} below minimum 1")
+    return value
+
+
+def _range_check_float(value: float, field_path: str) -> float:
+    """Apply per-field range constraints to a JSON-parsed float."""
+    if field_path in {"cloud.session_budget_usd", "data.budget_gb"} and value < 0:
+        raise ConfigurationError(f"config.json: {field_path}={value} below minimum 0.0")
+    return value
+
+
+def _parse_lanes_section(section: Any, tolerate_unknown: bool) -> LanesConfigSection:
+    """Parse the ``lanes`` section.
+
+    Tier names are FROZEN per the existing lane-tier-names invariant
+    (``large``, ``medium``, ``small``). Unknown tier names always
+    raise :class:`ConfigurationError`, regardless of
+    ``_format_version`` — even a future-minor writer cannot introduce
+    a new tier without a major bump (per the LanesConfigSection CC3
+    docstring).
+    """
+    del tolerate_unknown  # tier names are stricter than the version gate
+    if section is None:
+        return LanesConfigSection()
+    if not isinstance(section, dict):
+        raise ConfigurationError(f"config.json: lanes must be a mapping, got {type(section).__name__}")
+
+    unknown_tiers = set(section.keys()) - _VALID_TIER_NAMES
+    if unknown_tiers:
+        raise ConfigurationError(
+            f"config.json: lanes has unknown tier name(s) {sorted(unknown_tiers)}; "
+            f"valid tier names are {sorted(_VALID_TIER_NAMES)} (FROZEN per the "
+            f"lane-tier-names invariant). Adding a new tier requires a major "
+            f"_format_version bump."
+        )
+
+    return LanesConfigSection(
+        large=_parse_lane_tier(section.get("large"), "lanes.large", tolerate_unknown=False),
+        medium=_parse_lane_tier(section.get("medium"), "lanes.medium", tolerate_unknown=False),
+        small=_parse_lane_tier(section.get("small"), "lanes.small", tolerate_unknown=False),
+    )
+
+
+def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
+    """Validate and parse a JSON-decoded dict into :class:`MaximConfig`.
+
+    Tied to ``_format_version`` per I-6 + IM4 fold — the same-version
+    case rejects unknown keys at every level; the future-minor case
+    tolerates them. Future major raises :class:`ConfigurationError`.
+    """
+    if not isinstance(data, dict):
+        raise ConfigurationError(f"config.json: root must be a JSON object, got {type(data).__name__}")
+
+    version, is_future_minor = _check_format_version(data)
+
+    known_top_level = {f.name for f in fields(MaximConfig)}
+    unknown_top = set(data.keys()) - known_top_level
+    if unknown_top:
+        if is_future_minor:
+            logger.warning(
+                "config.json: unknown top-level key(s) %s tolerated because "
+                "_format_version=%r is a future minor (loader knows %s).",
+                sorted(unknown_top),
+                version,
+                CONFIG_FORMAT_VERSION,
+            )
+        else:
+            raise ConfigurationError(
+                f"config.json: unknown top-level key(s) {sorted(unknown_top)}; valid keys are {sorted(known_top_level)}"
+            )
+
+    # Parse role at top level
+    role_raw = data.get("role")
+    if role_raw is None:
+        role: str | None = None
+    elif isinstance(role_raw, str):
+        role = _coerce_role(role_raw, "role")
+    else:
+        raise ConfigurationError(f"config.json: role must be a string or null, got {type(role_raw).__name__}")
+
+    llm = _parse_typed_section(data.get("llm"), "llm", LLMConfigSection, tolerate_unknown=is_future_minor)
+    lanes = _parse_lanes_section(data.get("lanes"), tolerate_unknown=is_future_minor)
+    cloud = _parse_typed_section(data.get("cloud"), "cloud", CloudConfigSection, tolerate_unknown=is_future_minor)
+    proxy = _parse_typed_section(data.get("proxy"), "proxy", ProxyConfigSection, tolerate_unknown=is_future_minor)
+    auto_spawn = _parse_typed_section(
+        data.get("auto_spawn"),
+        "auto_spawn",
+        AutoSpawnConfigSection,
+        tolerate_unknown=is_future_minor,
+    )
+    data_section = _parse_typed_section(data.get("data"), "data", DataConfigSection, tolerate_unknown=is_future_minor)
+
+    return MaximConfig(
+        _format_version=version,
+        role=role,  # type: ignore[arg-type]
+        llm=llm,
+        lanes=lanes,
+        cloud=cloud,
+        proxy=proxy,
+        auto_spawn=auto_spawn,
+        data=data_section,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public loader entry point + lazy singleton
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+_loaded_config: MaximConfig | None = None
+_loaded_config_lock = threading.Lock()
+_loaded_config_path: Path | None = None
+
+
+def load_config(path: Path | None = None) -> MaximConfig:
+    """Read ``config.json`` from disk, validate, return :class:`MaximConfig`.
+
+    Returns a defaults-only :class:`MaximConfig` when the file is
+    missing or empty. Raises :class:`ConfigurationError` on JSON parse
+    errors, schema violations, or future-major versions.
+
+    Does NOT cache. For the lazily-cached production singleton use
+    :func:`get_config`.
+    """
+    effective_path = path if path is not None else config_path()
+
+    if not effective_path.is_file():
+        return MaximConfig()
+
+    try:
+        raw = effective_path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise ConfigurationError(f"config.json: failed to read {effective_path}: {e}") from e
+
+    stripped = raw.strip()
+    if not stripped:
+        return MaximConfig()
+
+    try:
+        data = json.loads(stripped)
+    except json.JSONDecodeError as e:
+        raise ConfigurationError(
+            f"config.json: invalid JSON at {effective_path} (line {e.lineno}, col {e.colno}): {e.msg}"
+        ) from e
+
+    return _parse_config_dict(data)
+
+
+def get_config(path: Path | None = None) -> MaximConfig:
+    """Return the process-wide lazy-cached :class:`MaximConfig`.
+
+    The first call loads from ``path`` (or :func:`config_path` default)
+    and caches; subsequent calls return the cached instance unless
+    ``path`` differs from the cached one (then re-loads + re-caches
+    under that new path).
+
+    For test isolation use :func:`reset_config_cache` from the
+    ``_isolate_config_json_env`` fixture in ``tests/conftest.py``.
+    """
+    global _loaded_config, _loaded_config_path
+    with _loaded_config_lock:
+        target = path if path is not None else config_path()
+        if _loaded_config is None or _loaded_config_path != target:
+            _loaded_config = load_config(target)
+            _loaded_config_path = target
+        return _loaded_config
+
+
+def reset_config_cache() -> None:
+    """Test-only helper: clear the lazy-loaded config singleton.
+
+    Pairs with :func:`_reset_warned_envs` for test isolation. Production
+    code must not call this — the singleton is process-wide by design.
+    """
+    global _loaded_config, _loaded_config_path
+    with _loaded_config_lock:
+        _loaded_config = None
+        _loaded_config_path = None
+
+
+__all__ = [
+    "CONFIG_FORMAT_VERSION",
+    "AutoSpawnConfigSection",
+    "CloudConfigSection",
+    "DataConfigSection",
+    "LaneTierConfig",
+    "LanesConfigSection",
+    "LLMConfigSection",
+    "MaximConfig",
+    "ProxyConfigSection",
+    "config_path",
+    "get_config",
+    "load_config",
+    "reset_config_cache",
+    "resolve_setting",
+]
