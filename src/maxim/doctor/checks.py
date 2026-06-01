@@ -2193,23 +2193,31 @@ def check_embodiment_ref(ref: str) -> CheckResult:
 
 def check_user_profiles() -> CheckResult:
     """Surface ``~/.config/maxim/profiles.yml`` state so operators see
-    user-profile counts and YAML syntax errors at doctor time, not at
-    first ``maxim`` invocation.
+    user-profile counts AND any schema-validation errors at doctor time,
+    not at first ``maxim`` invocation.
 
-    Three outcomes:
+    Four outcomes:
 
     - File missing → ``info`` ("0 user profiles defined")
-    - File parses + N entries → ``info`` ("N user profiles defined")
-    - File present but malformed YAML → ``fail`` with the parse error
-      and a hint pointing at the file path
+    - File parses + all entries validate → ``ok`` with count
+    - YAML syntax broken → ``fail`` with parse error
+    - YAML parses but a profile entry fails per-profile schema
+      validation (missing required field, bad enum, broken ``arch:``
+      block, intra-user alias collision, etc.) → ``fail`` with the
+      specific schema error
 
     A malformed ``profiles.yml`` blocks ``maxim`` startup (the loader
-    raises ``ConfigurationError`` from module import). Surfacing it
-    here means the operator finds the problem before the next
-    inference attempt.
+    raises ``ConfigurationError`` from module import). Pre-merge
+    executor review caught the original implementation only running
+    ``load_user_profiles`` (top-level YAML parse) and missing the
+    per-profile schema layer — leaving operators with a misleading
+    "OK / N loaded" doctor report for files that would crash startup.
+    The fix routes through the full ``apply_user_profiles`` pipeline
+    against throwaway dicts so every schema error surfaces.
     """
     try:
         from maxim.models.language.profile_loader import (
+            apply_user_profiles,
             load_user_profiles,
             profiles_config_path,
         )
@@ -2229,13 +2237,18 @@ def check_user_profiles() -> CheckResult:
         )
     try:
         entries = load_user_profiles(path=path)
+        # Run the full validate-and-merge pipeline against throwaway
+        # dicts so per-profile schema errors surface (not just YAML
+        # syntax). Discarded dicts mean no mutation of the runtime
+        # state — this is a pure validation pass.
+        apply_user_profiles({}, {}, {}, path=path)
     except Exception as exc:
         return CheckResult(
             name="User profiles",
             status="fail",
             message=f"{path}: {exc}",
             fix=(
-                f"Fix the YAML syntax in {path} (or move it aside) — `maxim` will refuse to start until this resolves."
+                f"Fix the schema error in {path} (or move it aside) — `maxim` will refuse to start until this resolves."
             ),
         )
     count = len(entries)

@@ -17,6 +17,7 @@ import pytest
 
 from maxim.exceptions import ConfigurationError
 from maxim.models.language.profile_loader import (
+    _derive_model_base_from_filename,
     _infer_quantization_from_filename,
     apply_user_profiles,
     load_user_profiles,
@@ -160,7 +161,10 @@ profiles:
         assert merged["prompt_style"] == "chatml"
         # Auto-derived fields
         assert merged["model"] == "my-qwen-32b-q5"
-        assert merged["model_base"] == "Qwen2.5-32B-Instruct-GGUF"
+        # model_base is the filename stem (extension + quant suffix
+        # stripped), NOT the HF repo basename — see TestModelBaseDerivation
+        # for the load-bearing rationale.
+        assert merged["model_base"] == "Qwen2.5-32B-Instruct"
         # Defaults applied
         assert merged["n_ctx"] == 8192
         assert merged["stop"] == ["<|im_end|>", "<|endoftext|>"]
@@ -440,6 +444,22 @@ profiles:
         with pytest.raises(ConfigurationError, match=r"'n_ctx' must be a positive integer"):
             apply_user_profiles(builtins, aliases, llm_models, path=target)
 
+    def test_bool_n_ctx_raises(self, tmp_path):
+        """isinstance(True, int) is True in Python — without the bool
+        guard, n_ctx: true would silently land as n_ctx=1."""
+        body = """
+profiles:
+  m:
+    backend: llama_cpp
+    prompt_style: chatml
+    n_ctx: true
+    download: {hf_repo: foo/bar, hf_file: m.gguf}
+"""
+        target = _write_profiles(tmp_path, body)
+        builtins, aliases, llm_models = _fresh_dicts()
+        with pytest.raises(ConfigurationError, match=r"'n_ctx' must be a positive integer"):
+            apply_user_profiles(builtins, aliases, llm_models, path=target)
+
     def test_arch_missing_required_field_raises(self, tmp_path):
         body = """
 profiles:
@@ -520,6 +540,97 @@ class TestQuantizationInference:
     )
     def test_quantization_inference(self, filename, expected):
         assert _infer_quantization_from_filename(filename) == expected
+
+
+class TestModelBaseDerivation:
+    """Pin the load-bearing rule from the pre-merge architecture review:
+    ``model_base`` MUST equal the filename stem (extension + quant suffix
+    stripped) so that ``build_model_path``'s ``{model_base}.{quant}.gguf``
+    lookup actually finds the downloaded file. Catching this requires a
+    test that explicitly constructs the LLMConfig path — the original
+    L2 loader passed every unit test but broke at first ``--llm`` use."""
+
+    @pytest.mark.parametrize(
+        "filename,expected_base",
+        [
+            ("Qwen2.5-32B-Instruct-Q5_K_M.gguf", "Qwen2.5-32B-Instruct"),
+            ("Qwen2.5-32B-Instruct-Q4_K_M.gguf", "Qwen2.5-32B-Instruct"),
+            ("Meta-Llama-3.1-70B-Instruct-Q4_K_M.gguf", "Meta-Llama-3.1-70B-Instruct"),
+            ("Mixtral-8x7B-Instruct-v0.1-Q4_K_M.gguf", "Mixtral-8x7B-Instruct-v0.1"),
+            ("model.Q4_K_M.gguf", "model"),  # dot-separated suffix
+            ("modelQ4_K_M.gguf", "model"),  # no separator
+            ("model-no-quant.gguf", "model-no-quant"),  # no suffix → strip only .gguf
+            ("MyModel-q4_k_m.gguf", "MyModel"),  # case-insensitive suffix match
+        ],
+    )
+    def test_derivation(self, filename, expected_base):
+        assert _derive_model_base_from_filename(filename) == expected_base
+
+    def test_l2_loader_sets_model_base_to_resolvable_value(self, tmp_path):
+        """End-to-end: an L2 profile's ``model_base`` must match the
+        on-disk filename's stem so that build_model_path can find it."""
+        from maxim.models.language.config import build_model_path
+
+        body = """
+profiles:
+  user-qwen-32b:
+    backend: llama_cpp
+    prompt_style: chatml
+    download:
+      hf_repo: bartowski/Qwen2.5-32B-Instruct-GGUF
+      hf_file: Qwen2.5-32B-Instruct-Q5_K_M.gguf
+"""
+        target = _write_profiles(tmp_path, body)
+        builtins, aliases, llm_models = _fresh_dicts()
+        apply_user_profiles(builtins, aliases, llm_models, path=target)
+
+        merged = builtins["user-qwen-32b"]
+        assert merged["model_base"] == "Qwen2.5-32B-Instruct"
+
+        # Simulate the downloaded file landing in a fake models dir.
+        # The case-insensitive fallback in build_model_path should
+        # resolve to it.
+        models_dir = tmp_path / "fake_LLM"
+        models_dir.mkdir()
+        downloaded_file = models_dir / "Qwen2.5-32B-Instruct-Q5_K_M.gguf"
+        downloaded_file.write_bytes(b"")
+        resolved = build_model_path(
+            merged["model_base"],
+            quantization="Q5_K_M",
+            models_dir=str(models_dir),
+        )
+        assert resolved == str(downloaded_file), (
+            f"build_model_path returned {resolved!r}, expected the actual "
+            f"downloaded file {downloaded_file!r}. The model_base derivation "
+            f"is wrong if these differ."
+        )
+
+
+class TestLocalPathToModelPath:
+    """Pin that L2's ``local_path`` flows into ``profile_dict['model_path']``
+    so load_llm_config (config.py) can resolve it without going through
+    build_model_path's derived-from-base lookup. Pre-merge executor
+    review caught this gap — the original loader put local_path only
+    in LLM_MODELS, which load_llm_config never consults."""
+
+    def test_local_path_sets_model_path(self, tmp_path):
+        body = """
+profiles:
+  user-local:
+    backend: llama_cpp
+    prompt_style: chatml
+    local_path: ~/models/custom.gguf
+"""
+        target = _write_profiles(tmp_path, body)
+        builtins, aliases, llm_models = _fresh_dicts()
+        apply_user_profiles(builtins, aliases, llm_models, path=target)
+
+        merged = builtins["user-local"]
+        # The model_path field is what load_llm_config reads
+        assert "model_path" in merged
+        # And expanduser ran (no leading ~)
+        assert not merged["model_path"].startswith("~")
+        assert merged["model_path"].endswith("models/custom.gguf")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

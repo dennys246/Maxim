@@ -64,6 +64,28 @@ class TestChatFormatInference:
         assert infer_chat_format("MY-QWEN-32B", None) == "chatml"
         assert infer_chat_format("my-model", "Bartowski/QWEN2.5-32B-Instruct-GGUF") == "chatml"
 
+    def test_hf_repo_wins_over_profile_name_on_conflict(self):
+        """Pre-merge executor review fold: when the profile name
+        contains a model-family substring but the HF repo is a
+        different family, the repo wins — it's ground truth for the
+        actual model behavior, while the profile name is just a label.
+
+        Without this rule, ``maxim model add llama-3-experiment --hf
+        bartowski/Mixtral-8x7B-Instruct-v0.1-GGUF:...`` would silently
+        pick ``llama3_instruct`` (first match in the joined haystack)
+        instead of ``mistral_instruct`` (the actual model family).
+        """
+        # Conflict: name says llama-3, repo says mixtral. Repo wins.
+        assert (
+            infer_chat_format("llama-3-experiment", "bartowski/Mixtral-8x7B-Instruct-v0.1-GGUF") == "mistral_instruct"
+        )
+        # Conflict: name says qwen, repo says llama-3. Repo wins.
+        assert infer_chat_format("my-qwen-style-model", "meta/Meta-Llama-3-8B-Instruct-GGUF") == "llama3_instruct"
+        # No conflict: name AND repo agree → still works.
+        assert infer_chat_format("my-qwen-32b", "bartowski/Qwen2.5-32B-Instruct-GGUF") == "chatml"
+        # Fallback: repo has no match → fall through to profile name.
+        assert infer_chat_format("my-qwen-special", "myorg/proprietary-model-v2") == "chatml"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # --hf arg parsing

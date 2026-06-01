@@ -41,6 +41,24 @@ falling back to the built-in would mask their intent).
 
 Loading is intentionally synchronous + import-time. Live reload is out
 of scope at 1.0 (mirrors peer.yml / mesh.yml).
+
+**Schema versioning at 1.0 (CC3-analog):** the YAML schema is the
+shape-frozen analog of CC3 option (b) — there is NO ``extra:`` escape
+hatch on user profiles by design (the typed validation enum surface
+would be diluted, and unknown keys are how typos like ``prompt_styel``
+silently land). The file does not carry ``_format_version`` at 1.0
+because it is primarily operator-authored (per CC1: that field marks
+files Maxim writes). When ``maxim model add`` rewrites the file, the
+schema version stays implicit ``1``. Post-1.0 evolution:
+
+- Adding an OPTIONAL field with a default is non-breaking.
+- Adding a REQUIRED field is breaking and requires a top-level
+  ``version: 2`` key + a migration path through the loader.
+
+The validation pipeline is intentionally atomic: every profile entry
+is staged first, then applied in one pass. A single bad profile blocks
+every user profile from merging so operators can't end up in a
+"half-loaded, half-not" state.
 """
 
 from __future__ import annotations
@@ -187,7 +205,9 @@ def _validate_and_normalize(profile_name: str, raw: Any) -> tuple[dict[str, Any]
         )
 
     n_ctx = raw.get("n_ctx", _DEFAULT_N_CTX)
-    if not isinstance(n_ctx, int) or n_ctx <= 0:
+    # isinstance(True, int) is True in Python — guard against the bool
+    # special case so `n_ctx: true` doesn't silently land as n_ctx=1.
+    if isinstance(n_ctx, bool) or not isinstance(n_ctx, int) or n_ctx <= 0:
         raise ConfigurationError(f"profile {profile_name!r}: 'n_ctx' must be a positive integer; got {n_ctx!r}.")
 
     stop = raw.get("stop")
@@ -231,11 +251,16 @@ def _validate_and_normalize(profile_name: str, raw: Any) -> tuple[dict[str, Any]
             raise ConfigurationError(
                 f"profile {profile_name!r}: 'download.hf_file' is required and must be a string (the GGUF filename)."
             )
-        # model_base derives from the repo basename (e.g.,
-        # "bartowski/Qwen2.5-32B-Instruct-GGUF" → "Qwen2.5-32B-Instruct-GGUF").
-        # This matches the pattern in _BUILTIN_PROFILES where model_base
-        # is the HuggingFace-style identifier without the org prefix.
-        profile_dict["model_base"] = hf_repo.split("/", 1)[-1]
+        # model_base is the filename stem (with .gguf + quant suffix
+        # stripped). This is load-bearing: build_model_path constructs
+        # the on-disk lookup as `{model_base}.{quant}.gguf` with a
+        # case-insensitive fallback to `{model_base}-{quant.lower()}.gguf`.
+        # Deriving from the repo basename instead (the original L2
+        # behavior) made the lookup target diverge from the downloader's
+        # actual filename and silently broke every user-added profile
+        # at first `--llm` use. The pre-merge architecture review caught
+        # this; see leader_ux_profile_management.md fold round.
+        profile_dict["model_base"] = _derive_model_base_from_filename(hf_file)
         download_dict = {
             "description": f"User-defined profile {profile_name!r} (from {hf_repo})",
             "size_gb": None,
@@ -250,7 +275,15 @@ def _validate_and_normalize(profile_name: str, raw: Any) -> tuple[dict[str, Any]
             raise ConfigurationError(f"profile {profile_name!r}: 'local_path' must be a string.")
         # Auto-derive model_base from the profile name for local-path
         # profiles. The download path is bypassed entirely.
+        expanded_local_path = str(Path(local_path).expanduser())
         profile_dict["model_base"] = profile_name
+        # model_path is the explicit on-disk path consulted by
+        # load_llm_config (config.py) before falling back to
+        # build_model_path. Without this, local_path entries silently
+        # routed through build_model_path's `{model_base}.{quant}.gguf`
+        # construction — which never resolves to the user's actual file.
+        # Pre-merge executor review caught this; see fold notes.
+        profile_dict["model_path"] = expanded_local_path
         download_dict = {
             "description": f"User-defined profile {profile_name!r} (local file)",
             "size_gb": None,
@@ -258,35 +291,80 @@ def _validate_and_normalize(profile_name: str, raw: Any) -> tuple[dict[str, Any]
             "quantization": None,
             "url": None,  # No download — local file
             "filename": None,
-            "local_path": str(Path(local_path).expanduser()),
+            "local_path": expanded_local_path,
         }
 
     return profile_dict, download_dict
+
+
+_QUANT_SUFFIXES: tuple[str, ...] = (
+    "Q2_K",
+    "Q3_K_S",
+    "Q3_K_M",
+    "Q3_K_L",
+    "Q4_0",
+    "Q4_K_S",
+    "Q4_K_M",
+    "Q5_0",
+    "Q5_K_S",
+    "Q5_K_M",
+    "Q6_K",
+    "Q8_0",
+    "F16",
+    "F32",
+)
 
 
 def _infer_quantization_from_filename(filename: str) -> str | None:
     """Best-effort substring match for the quant suffix. Returns None
     if no recognized suffix is found — the download path tolerates that."""
     upper = filename.upper()
-    for suffix in (
-        "Q2_K",
-        "Q3_K_S",
-        "Q3_K_M",
-        "Q3_K_L",
-        "Q4_0",
-        "Q4_K_S",
-        "Q4_K_M",
-        "Q5_0",
-        "Q5_K_S",
-        "Q5_K_M",
-        "Q6_K",
-        "Q8_0",
-        "F16",
-        "F32",
-    ):
+    for suffix in _QUANT_SUFFIXES:
         if suffix in upper:
             return suffix
     return None
+
+
+def _derive_model_base_from_filename(filename: str) -> str:
+    """Derive the ``model_base`` value used by ``build_model_path`` to
+    locate the downloaded file on disk.
+
+    The on-disk lookup in ``build_model_path`` constructs the canonical
+    filename as ``{model_base}.{quant}.gguf`` with a case-insensitive
+    fallback to ``{model_base}-{quant.lower()}.gguf``. To make either
+    pattern match the GGUF that the downloader writes, ``model_base``
+    must equal the filename with the ``.gguf`` extension and quant
+    suffix stripped.
+
+    Example::
+
+        "Qwen2.5-32B-Instruct-Q5_K_M.gguf"  →  "Qwen2.5-32B-Instruct"
+        "model-q4_k_m.gguf"                  →  "model"
+
+    If no recognized quant suffix is present, returns the filename with
+    only the ``.gguf`` extension stripped. The case-insensitive fallback
+    in ``build_model_path`` still accommodates non-canonical suffix
+    casing as long as the stem matches.
+
+    This fixes the bug where the original loader set ``model_base`` from
+    the HF repo basename (e.g. ``"Qwen2.5-32B-Instruct-GGUF"``), which
+    ``build_model_path`` could never resolve back to the downloaded
+    ``Qwen2.5-32B-Instruct-Q5_K_M.gguf`` file on disk.
+    """
+    stem = filename
+    # Strip .gguf (case-insensitive)
+    lower = stem.lower()
+    if lower.endswith(".gguf"):
+        stem = stem[: -len(".gguf")]
+    # Strip recognized quant suffix (case-insensitive, with separator
+    # being '.' or '-' or none).
+    stem_upper = stem.upper()
+    for suffix in _QUANT_SUFFIXES:
+        for sep in (".", "-", ""):
+            tail = f"{sep}{suffix}"
+            if stem_upper.endswith(tail):
+                return stem[: -len(tail)]
+    return stem
 
 
 # ─────────────────────────────────────────────────────────────────────────────

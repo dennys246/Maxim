@@ -70,13 +70,24 @@ def infer_chat_format(profile_name: str, hf_repo: str | None) -> str | None:
 
     Public entry — also used by the doctor integration to surface a
     "did you forget --chat-format?" hint at config validation time.
+
+    **HF repo basename wins over profile name** (pre-merge executor
+    review fix): if the user names a profile ``llama-3-experiment`` but
+    points it at ``bartowski/Mixtral-8x7B-Instruct-v0.1-GGUF``, the
+    repo is ground truth for the model family. The previous behavior
+    joined both strings into one haystack and matched whichever rule
+    came first — silently mis-routing the experiment to ``llama3_instruct``.
     """
-    haystack_parts = [profile_name.lower()]
+    # HF repo basename first. If it produces a hit, that wins.
     if hf_repo:
-        haystack_parts.append(hf_repo.lower())
-    haystack = " ".join(haystack_parts)
+        hf_basename = hf_repo.split("/")[-1].lower()
+        for needle, style in _CHAT_FORMAT_HINTS:
+            if needle in hf_basename:
+                return style
+    # Fall back to profile name.
+    name_lower = profile_name.lower()
     for needle, style in _CHAT_FORMAT_HINTS:
-        if needle in haystack:
+        if needle in name_lower:
             return style
     return None
 
