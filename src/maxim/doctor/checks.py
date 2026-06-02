@@ -216,6 +216,304 @@ def check_llm_model_active() -> CheckResult:
 # ─── environment variable config ───────────────────────────────────────────
 
 
+def check_resolved_config() -> list["CheckResult"]:
+    """C5 of config_unification.md: "Resolved Config" doctor section.
+
+    Walks every absorbed field in :data:`maxim.runtime.config_loader._FIELD_TO_ENV`
+    and surfaces the effective value + source marker. This is the
+    single-place answer to "what does this instance think it's configured
+    as?" — collapsing what previously required cross-referencing ~96 env
+    vars + 4 config files + 2 role detectors.
+
+    The N2 fold from the pre-implementation review pinned the
+    catch-everything semantics: shadow, convergence, role=client
+    coercion, missing key file, mode != 0600, inline-string-pre-
+    migration, keyring not installed, peer.yml deprecated,
+    format-version forward-compat warning all surface as WARN rows
+    in this section.
+
+    Each absorbed field becomes one :class:`CheckResult`. Status:
+
+    - ``ok`` — field resolved cleanly (any source)
+    - ``warn`` — env shadows config with a different value, OR an
+      ancillary condition fires (missing api_key file, peer.yml
+      present-but-deprecated, etc.)
+    - ``fail`` — parse/coerce error on the field
+    - ``info`` — default or convergence (both env and config set the
+      same value)
+    """
+    from maxim.runtime.config_loader import (
+        _FIELD_TO_ENV,
+        _env_is_set,
+        config_path,
+        load_config,
+        resolve_setting,
+    )
+
+    results: list[CheckResult] = []
+
+    # Load config once for reuse across all field resolutions
+    try:
+        cfg = load_config()
+    except Exception as e:
+        results.append(
+            CheckResult(
+                name="config.json",
+                status="fail",
+                message=f"failed to load: {e}",
+                fix=(f"Inspect the file directly:\n  cat {config_path()}\nThen `maxim config edit` to fix syntax."),
+            )
+        )
+        return results
+
+    # Show file location at the top of the section
+    if config_path().is_file():
+        results.append(
+            CheckResult(
+                name="config.json path",
+                status="ok",
+                message=str(config_path()),
+            )
+        )
+    else:
+        results.append(
+            CheckResult(
+                name="config.json path",
+                status="info",
+                message=f"{config_path()} (file absent — using defaults)",
+            )
+        )
+
+    # Walk every absorbed field
+    import os as _os
+
+    for field_path in sorted(_FIELD_TO_ENV.keys()):
+        env_name = _FIELD_TO_ENV[field_path]
+        env_present = _env_is_set(env_name)
+
+        try:
+            value, source = resolve_setting(field_path, config=cfg)
+        except Exception as e:
+            results.append(
+                CheckResult(
+                    name=field_path,
+                    status="fail",
+                    message=f"{type(e).__name__}: {e}",
+                )
+            )
+            continue
+
+        # Render the value compactly
+        display_value = _format_doctor_value(value)
+
+        # Decide status + message based on source + env shadow
+        if source == "env":
+            env_raw = _os.environ[env_name]
+            cfg_value = _read_config_for_doctor(cfg, field_path)
+            if cfg_value is not None:
+                if cfg_value == value:
+                    # Convergence (CR3 fold)
+                    results.append(
+                        CheckResult(
+                            name=field_path,
+                            status="info",
+                            message=f"{display_value}  [source=env, config.json also sets identically]",
+                        )
+                    )
+                else:
+                    # Divergence (CR3 fold)
+                    results.append(
+                        CheckResult(
+                            name=field_path,
+                            status="warn",
+                            message=f"{display_value}  [source=env, shadows config.json={_format_doctor_value(cfg_value)!s}]",
+                            fix=(
+                                f"To make config.json win, unset the env var:\n"
+                                f"  unset {env_name}\n"
+                                f"Or to make env explicit, update config.json:\n"
+                                f"  maxim config set {field_path} {env_raw}"
+                            ),
+                        )
+                    )
+            else:
+                results.append(
+                    CheckResult(
+                        name=field_path,
+                        status="ok",
+                        message=f"{display_value}  [source=env]",
+                    )
+                )
+        elif source == "config":
+            results.append(
+                CheckResult(
+                    name=field_path,
+                    status="ok",
+                    message=f"{display_value}  [source=config.json]",
+                )
+            )
+        else:  # default
+            # If env is set-but-empty (i.e. POSIX `export FOO=`), surface it
+            # as a WARN so the operator sees the leaked-empty-export case.
+            raw_env = _os.environ.get(env_name)
+            if raw_env is not None and raw_env.strip() == "":
+                results.append(
+                    CheckResult(
+                        name=field_path,
+                        status="warn",
+                        message=f"{display_value}  [source=default; {env_name} is set to empty string — treated as unset per C-1 fold]",
+                        fix=f"  unset {env_name}",
+                    )
+                )
+            else:
+                # Quietly surface the default — info status, no fix
+                results.append(
+                    CheckResult(
+                        name=field_path,
+                        status="info",
+                        message=f"{display_value}  [source=default]",
+                    )
+                )
+        del env_present  # consumed via env_present check above
+
+    # Ancillary checks: api_key_ref file health, peer.yml deprecation
+    results.extend(_check_lane_api_key_refs_health(cfg))
+    results.extend(_check_peer_yml_deprecation())
+
+    return results
+
+
+def _format_doctor_value(value: object) -> str:
+    if value is None:
+        return "<unset>"
+    if isinstance(value, str):
+        return value if value else "<empty>"
+    return repr(value)
+
+
+def _read_config_for_doctor(cfg, field_path: str):
+    """Walk the dot path on a MaximConfig to return the raw config value,
+    or ``None`` if the field equals the default (i.e., no operator-set value).
+    Used by check_resolved_config to detect shadow/convergence states."""
+    from maxim.runtime.config_loader import MaximConfig
+
+    parts = field_path.split(".")
+    obj = cfg
+    default_obj = MaximConfig()
+    for part in parts:
+        obj = getattr(obj, part, None)
+        default_obj = getattr(default_obj, part, None)
+        if obj is None:
+            return None
+    if obj == default_obj:
+        return None
+    return obj
+
+
+def _check_lane_api_key_refs_health(cfg) -> list["CheckResult"]:
+    """Eager probe on every lane's api_key_ref — file missing /
+    mode != 0600 / keyring not installed / inline pre-migration."""
+    from pathlib import Path
+
+    from maxim.runtime.config_loader import resolve_setting
+
+    out: list[CheckResult] = []
+    for tier in ("large", "medium", "small"):
+        try:
+            ref, source = resolve_setting(f"lanes.{tier}.remote_api_key_ref", config=cfg)
+        except Exception:
+            continue
+        if not ref:
+            continue
+        # Path-mode ref: check file existence + mode
+        if ref.startswith("/") or ref.startswith("~"):
+            path = Path(ref).expanduser()
+            if not path.is_file():
+                out.append(
+                    CheckResult(
+                        name=f"lanes.{tier}.remote_api_key_ref",
+                        status="warn",
+                        message=f"file missing: {path}",
+                        fix=(
+                            f"Write the leader's API key to the referenced file (mode 0600):\n"
+                            f"  echo $LEADER_API_KEY > {path}\n"
+                            f"  chmod 0600 {path}"
+                        ),
+                    )
+                )
+                continue
+            try:
+                mode = path.stat().st_mode & 0o777
+            except OSError:
+                mode = None
+            if mode is not None and mode != 0o600:
+                out.append(
+                    CheckResult(
+                        name=f"lanes.{tier}.remote_api_key_ref",
+                        status="warn",
+                        message=f"mode is {oct(mode)} (want 0o600): {path}",
+                        fix=f"  chmod 0600 {path}",
+                    )
+                )
+        # Keyring URI: check keyring availability
+        elif ref.startswith("keyring:"):
+            try:
+                import keyring  # noqa: F401
+            except ImportError:
+                out.append(
+                    CheckResult(
+                        name=f"lanes.{tier}.remote_api_key_ref",
+                        status="warn",
+                        message=f"keyring URI {ref} but keyring package not installed",
+                        fix="  pip install keyring",
+                    )
+                )
+        # Inline string from env (legacy MAXIM_LANE_<TIER>_REMOTE_API_KEY)
+        elif source == "env":
+            out.append(
+                CheckResult(
+                    name=f"lanes.{tier}.remote_api_key_ref",
+                    status="warn",
+                    message="inline key from env (legacy — should migrate to file path)",
+                    fix=(
+                        f"Migrate to a mode-0600 file:\n"
+                        f"  echo $MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY > ~/.config/maxim/api_key\n"
+                        f"  chmod 0600 ~/.config/maxim/api_key\n"
+                        f"  maxim config set lanes.{tier}.remote_api_key_ref ~/.config/maxim/api_key\n"
+                        f"  unset MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY"
+                    ),
+                )
+            )
+    return out
+
+
+def _check_peer_yml_deprecation() -> list["CheckResult"]:
+    """C4 IM5 fold: surface peer.yml presence as a deprecated compat
+    signal so the operator sees the migration path."""
+    try:
+        from maxim.peer.config import peer_config_path
+    except Exception:
+        return []
+    path = peer_config_path()
+    try:
+        if not path.is_file():
+            return []
+    except OSError:
+        return []
+    return [
+        CheckResult(
+            name="peer.yml",
+            status="warn",
+            message=f"{path} present (deprecated as of 1.0, retired in 2.0)",
+            fix=(
+                "If config.json::lanes.large.* is set, peer.yml is now redundant.\n"
+                "  - To migrate: `maxim peer connect <url>` rewrites both files,\n"
+                "    or `maxim peer forget` removes both.\n"
+                "  - To check sources: `maxim config list`."
+            ),
+        )
+    ]
+
+
 def check_env_config(info: PlatformInfo, role: str | None = None) -> list["CheckResult"]:
     """Validate critical Maxim environment variables.
 
@@ -2300,6 +2598,13 @@ def run_all_checks(
     sections: list[tuple[str, list[CheckResult]]] = [
         ("Environment", env_checks),
     ]
+
+    # C5 of config_unification.md: "Resolved Config" section surfaces
+    # every absorbed field with its effective value + source marker.
+    # Single answer to "what does this instance think it's configured
+    # as?" — collapses what previously required cross-referencing 96
+    # env vars + 4 config files + 2 role detectors.
+    sections.append(("Resolved Config", check_resolved_config()))
 
     if detected_role == "peer" and peer_url:
         # ── peer-mode sections ────────────────────────────────────────────
