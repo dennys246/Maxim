@@ -324,28 +324,48 @@ def _preflight_llm() -> tuple[bool, dict[str, Any]]:
     """
     import os
 
-    url = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL") or "").strip()
-    api_key = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY") or "").strip() or None
-    model = (os.environ.get("MAXIM_LANE_LARGE_REMOTE_MODEL") or "").strip() or None
+    # C4 of config_unification.md: prefer the unified config_loader
+    # precedence chain (env > config.json > defaults), then fall back
+    # to peer.yml for back-compat with stale-peer.yml-on-leader setups
+    # where the auto-migration shim didn't fire (cloudflared present).
+    url = ""
+    api_key: str | None = None
+    model: str | None = None
     source = "env"
 
+    try:
+        from maxim.runtime.config_loader import (
+            load_config,
+            resolve_api_key_ref,
+            resolve_setting,
+        )
+
+        cfg = load_config()
+        resolved_url, url_source = resolve_setting("lanes.large.remote_url", config=cfg)
+        resolved_key_ref, _ = resolve_setting("lanes.large.remote_api_key_ref", config=cfg)
+        resolved_model, _ = resolve_setting("lanes.large.remote_model", config=cfg)
+        if resolved_url:
+            url = resolved_url.strip()
+            api_key = resolve_api_key_ref(resolved_key_ref) if resolved_key_ref else None
+            model = (resolved_model or "").strip() or None
+            source = url_source  # "env" | "config" | "default"
+    except Exception as e:  # noqa: BLE001 — preflight must not crash
+        logger.debug("preflight: resolve_setting failed: %s", e, exc_info=True)
+
     # Roy-0 re-measurement (2026-05-11) surfaced a gap: the standard
-    # peer-with-peer.yml setup doesn't export the env vars at the shell
-    # level — the runtime applies the file via
-    # ``apply_peer_config_to_env`` only when lanes are resolved (in
-    # ``runtime/lane_backends.py``), which happens after this preflight.
-    # Without the fallback here, peer-with-peer.yml users get a no-op
-    # preflight even when the leader is dead. Read peer.yml directly so
-    # the preflight catches that failure mode too.
+    # peer-with-peer.yml setup doesn't always export env vars or
+    # have config.json populated. Read peer.yml directly as final
+    # fallback so the preflight catches "leader dead, only peer.yml
+    # present" failure modes.
     if not url:
         try:
             from maxim.peer.config import read_peer_config
 
-            cfg = read_peer_config()
-            if cfg is not None and cfg.url:
-                url = cfg.url.strip()
-                api_key = api_key or (cfg.api_key or None)
-                model = model or (getattr(cfg, "model", None) or None)
+            peer_cfg = read_peer_config()
+            if peer_cfg is not None and peer_cfg.url:
+                url = peer_cfg.url.strip()
+                api_key = api_key or (peer_cfg.api_key or None)
+                model = model or (getattr(peer_cfg, "model", None) or None)
                 source = "peer.yml"
         except Exception as e:  # noqa: BLE001 — peer.yml read must not crash preflight
             logger.debug("preflight: peer.yml read failed: %s", e, exc_info=True)

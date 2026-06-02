@@ -519,10 +519,19 @@ class TestAPIKeyRefValidation:
         with pytest.raises(ConfigurationError, match="keyring URI must be"):
             load_config(path)
 
-    def test_inline_key_via_env_var_rejected(self, monkeypatch):
+    def test_inline_key_via_env_var_passes_through(self, monkeypatch):
+        """The cross-confirmed I-3/IM3 fold rejects inline plaintext in
+        ``config.json`` (load-time validation in ``_parse_lane_tier``).
+        It does NOT apply to env vars: the legacy
+        ``MAXIM_LANE_<TIER>_REMOTE_API_KEY`` env var legitimately holds
+        the inline key directly — that's its pre-C4 semantics, and the
+        C4 migration shim preserves it for back-compat. The validation
+        only fires when WRITING to config.json (via set_field) or when
+        LOADING config.json."""
         monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", "sk-abc123")
-        with pytest.raises(ConfigurationError, match="Inline plaintext"):
-            resolve_setting("lanes.large.remote_api_key_ref")
+        value, source = resolve_setting("lanes.large.remote_api_key_ref")
+        assert source == "env"
+        assert value == "sk-abc123"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

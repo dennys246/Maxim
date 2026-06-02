@@ -493,28 +493,51 @@ def _isolate_maxim_nac_cluster_reward_bias_decay_tau_env():
 @pytest.fixture(autouse=True)
 def _isolate_config_json_env():
     """Scrub every env var absorbed by ``runtime/config_loader`` AND clear
-    the loader's lazy singleton + once-per-startup deprecation set.
+    the loader's lazy singleton + once-per-startup deprecation set
+    AND clean any ``config.json`` / ``api_key`` files left on disk by
+    a previous test's ``set_field`` / ``peer connect`` call.
 
-    Pairs with the C1 work in config_unification.md. Without this
-    scrub, a test that exports any of the ~28 absorbed env vars (e.g.
-    ``MAXIM_LANE_LARGE_REMOTE_URL`` set by a peer test) would leak
-    into every later test that calls ``resolve_setting`` and silently
-    flip its expected source from ``"default"`` to ``"env"``.
+    Pairs with the C1 + C4 work in config_unification.md. Without this
+    scrub:
 
-    Mirrors the existing ``_isolate_maxim_*`` pattern. Lazy-cleanup of
-    the loader's singleton state guarantees test ordering doesn't
-    matter — every test starts with a fresh ``MaximConfig()``-default
-    view.
+    - Env-var leak: a test that exports any of the ~28 absorbed env
+      vars (e.g. ``MAXIM_LANE_LARGE_REMOTE_URL`` set by a peer test)
+      would silently flip its later ``resolve_setting`` source from
+      ``"default"`` to ``"env"``.
+    - File-state leak: the ``XDG_CONFIG_HOME`` override at the top
+      of this conftest points every test at a shared tmp directory.
+      A test that writes ``config.json`` (via ``maxim config set``
+      or the C4 dual-write in ``peer connect``) would leak that file
+      into every later test's ``load_config()`` view.
+
+    Mirrors the existing ``_isolate_maxim_*`` pattern. Lazy-cleanup
+    of the loader's singleton state + on-disk files guarantees test
+    ordering doesn't matter — every test starts with a fresh
+    ``MaximConfig()``-default view.
     """
     from maxim.runtime.config_loader import (
         _ABSORBED_ENV_VARS,
         _reset_warned_envs,
+        config_path,
         reset_config_cache,
     )
+
+    def _clean_disk_state() -> None:
+        try:
+            cp = config_path()
+            for p in (cp, cp.parent / "api_key"):
+                try:
+                    if p.is_file():
+                        p.unlink()
+                except OSError:
+                    pass
+        except Exception:
+            pass
 
     saved = {name: os.environ.pop(name, None) for name in _ABSORBED_ENV_VARS}
     _reset_warned_envs()
     reset_config_cache()
+    _clean_disk_state()
     try:
         yield
     finally:
@@ -524,6 +547,7 @@ def _isolate_config_json_env():
                 os.environ[name] = saved[name]
         _reset_warned_envs()
         reset_config_cache()
+        _clean_disk_state()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

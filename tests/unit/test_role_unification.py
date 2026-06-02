@@ -241,13 +241,36 @@ class TestAdditionalPrecedence:
         assert result == "leader"
         assert source == "default"
 
-    def test_peer_yml_alone_resolves_to_peer(self, fake_home):
+    def test_peer_yml_alone_resolves_to_peer_via_auto_migration(self, fake_home):
         """The legitimate zero-config peer flow: only peer.yml present,
-        no cloudflared, no config.json. Rank 5 fires → peer."""
+        no cloudflared, no config.json.
+
+        Post-C4 IM5 fold: the auto-migration shim fires when
+        config.json is read (via _config_json_role at rank 2), writing
+        config.json from peer.yml. Detection then returns ``peer`` via
+        ``config_json`` source — not ``peer_yml`` — because the
+        migration ran first. peer.yml stays in place for back-compat.
+
+        This is the intended IM5 behavior: existing peer.yml-only
+        setups get a one-time migration on first startup and pick up
+        the canonical config.json source thereafter."""
         _write_peer_yml(fake_home)
         result, source = role.detect_role(argv=[])
         assert result == "peer"
-        assert source == "peer_yml"
+        # Post-IM5: migration shim ran during _config_json_role, so
+        # config.json now exists and wins at rank 2
+        assert source == "config_json"
+
+    def test_peer_yml_alone_with_cloudflared_present_stays_peer_yml(self, fake_home):
+        """Negative case: when cloudflared is present, the migration
+        shim does NOT fire (preserves the leader case). peer.yml then
+        contributes at rank 5. But cloudflared at rank 4 still wins —
+        so this pins the rank-4-over-rank-5 ordering."""
+        _write_peer_yml(fake_home)
+        _write_cloudflared_yml(fake_home)
+        result, source = role.detect_role(argv=[])
+        assert result == "leader"
+        assert source == "cloudflared"
 
     def test_cloudflared_yaml_extension_alone(self, fake_home):
         """Extension-widening unit test: .yaml alone (no .yml) is

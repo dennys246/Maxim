@@ -174,6 +174,130 @@ def _pick_pre_upgrade_infer_profile(vram_gb: float) -> str:
     return _PRE_P4A_INFER_VRAM_TIERS[-1][1]
 
 
+def classify_self_hosted_lane(remote_url: str | None, source: str) -> bool:
+    """Classify a resolved ``lanes.<tier>.remote_url`` as self-hosted infra.
+
+    IM5 audit-note fold (C4 of config_unification.md): the pre-C4
+    ``apply_peer_config_to_env`` set ``MAXIM_MAX_CLOUD_LANES=1`` as a
+    side effect to mark peer-leader URLs as self-hosted infrastructure
+    (so the cloud-lane gate didn't refuse them). Post-C4 the same
+    classification happens here, gated on the resolve_setting source:
+
+    - ``"config"`` or ``"env"`` with a non-null URL → self-hosted
+    - ``"default"`` (no URL) → not applicable
+    - any value → cloud opt-in stays explicit via
+      ``config.json::cloud.enabled``; this function does NOT make
+      cloud-routing decisions, only "is this remote_url a self-hosted
+      peer URL?"
+    """
+    if not remote_url:
+        return False
+    return source in ("config", "env")
+
+
+def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
+    """Populate ``MAXIM_LANE_<TIER>_REMOTE_*`` env vars from the unified
+    config_loader precedence chain.
+
+    Returns True iff at least one tier resolved a non-default
+    ``remote_url`` (i.e., this Maxim is routing inference to a remote
+    endpoint — leader or otherwise). Callers use this flag to suppress
+    the persisted-model restore so a stale local profile doesn't
+    silently override a self-hosted leader URL.
+
+    Self-hosted classification (IM5 audit-note fold) sets
+    ``MAXIM_MAX_CLOUD_LANES=1`` when a non-cloud URL is resolved, so
+    the cloud-lane gate doesn't refuse self-hosted peer URLs.
+    Cloud-provider opt-in stays explicit via
+    ``config.json::cloud.enabled = true``.
+    """
+    import os as _os
+
+    try:
+        from maxim.runtime.config_loader import (
+            load_config,
+            resolve_api_key_ref,
+            resolve_setting,
+        )
+    except Exception as e:
+        if logger_obj is not None:
+            logger_obj.warning("Failed to import config_loader for lane config: %s", e)
+        return False
+
+    # Load config.json so resolve_setting can consult it. The IM5
+    # auto-migration shim fires inside load_config() if peer.yml →
+    # config.json migration conditions match (config.json absent +
+    # peer.yml present + cloudflared absent).
+    try:
+        cfg = load_config()
+    except Exception as e:
+        if logger_obj is not None:
+            logger_obj.warning("Failed to load config.json: %s", e)
+        cfg = None
+
+    has_remote = False
+    for tier in ("large", "medium", "small"):
+        env_url = f"MAXIM_LANE_{tier.upper()}_REMOTE_URL"
+        env_model = f"MAXIM_LANE_{tier.upper()}_REMOTE_MODEL"
+        env_key = f"MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY"
+
+        try:
+            url, url_source = resolve_setting(f"lanes.{tier}.remote_url", config=cfg)
+            model, _ = resolve_setting(f"lanes.{tier}.remote_model", config=cfg)
+            key_ref, _ = resolve_setting(f"lanes.{tier}.remote_api_key_ref", config=cfg)
+        except Exception as e:
+            if logger_obj is not None:
+                logger_obj.warning("Failed to resolve lanes.%s.* from config: %s", tier, e)
+            continue
+
+        if url:
+            # Set env var only if not already populated — preserves the
+            # "env wins" precedence for downstream code.
+            if not _os.environ.get(env_url, "").strip():
+                _os.environ[env_url] = url
+            if model and not _os.environ.get(env_model, "").strip():
+                _os.environ[env_model] = model
+            if key_ref:
+                # I-1 / I-2 fold: resolve the api_key_ref lazily here.
+                # File path / keyring lookup. If unresolvable, leave the
+                # env var unset — downstream lane construction will
+                # surface BackendAuthFailed if the lane is actually used.
+                resolved_key = resolve_api_key_ref(key_ref)
+                if resolved_key and not _os.environ.get(env_key, "").strip():
+                    _os.environ[env_key] = resolved_key
+            has_remote = True
+
+            # Self-hosted classification (IM5 audit note)
+            if classify_self_hosted_lane(url, url_source):
+                _os.environ.setdefault("MAXIM_MAX_CLOUD_LANES", "1")
+
+    # peer.yml fallback (deprecated compat-read): if no lane resolved
+    # a URL via env or config.json, AND peer.yml is still present on
+    # disk (e.g., cloudflared-present case where IM5 auto-migration
+    # didn't fire), populate from peer.yml with a once-per-startup
+    # INFO deprecation log. This keeps the leader-with-stale-peer.yml
+    # case working while the operator migrates.
+    if not has_remote:
+        try:
+            from maxim.peer.config import apply_peer_config_to_env, read_peer_config
+
+            peer_cfg = read_peer_config()
+            if peer_cfg is not None:
+                apply_peer_config_to_env(peer_cfg)
+                if logger_obj is not None:
+                    logger_obj.info(
+                        "config: lanes.large.* resolved from peer.yml "
+                        "(deprecated — run `maxim peer connect <url>` to "
+                        "migrate to config.json)."
+                    )
+                has_remote = True
+        except Exception as e:
+            if logger_obj is not None:
+                logger_obj.warning("Failed to load peer.yml fallback: %s", e)
+
+    return has_remote
+
+
 def _maybe_pin_pre_upgrade_profile(capabilities: Any | None, logger_obj: Any | None) -> None:
     """Pin the leader to its pre-upgrade profile on first post-upgrade run.
 
@@ -1060,24 +1184,36 @@ def build_primary_router(
         load_function_overrides,
     )
 
-    # Peer-config auto-load: if ~/.config/maxim/peer.yml exists and env vars
-    # aren't already set, populate them from the file. Set by
-    # `maxim peer connect`. Env wins over file for per-session overrides.
+    # Lane-routing auto-load (C4 of config_unification.md):
     #
-    # This MUST run before the persisted model restore below — the peer
-    # config signals "my large tier lives on the leader", and restoring
-    # a stale local profile would cause _apply_local_llm_override to
-    # clear the remote_url and silently route everything locally.
-    _has_peer_config = False
-    try:
-        from maxim.peer.config import apply_peer_config_to_env, read_peer_config
-
-        peer_cfg = read_peer_config()
-        if peer_cfg is not None:
-            apply_peer_config_to_env(peer_cfg)
-            _has_peer_config = True
-    except Exception as e:
-        logger.warning("Failed to load peer config: %s", e)
+    # 1. The IM5 fold auto-migration shim in config_loader.load_config()
+    #    has already moved peer.yml → config.json on first startup when
+    #    conditions matched (config.json absent + peer.yml present +
+    #    cloudflared absent), so subsequent startups read from
+    #    config.json::lanes.large.* via the unified resolve_setting
+    #    precedence chain.
+    # 2. For ongoing back-compat with downstream code that reads the
+    #    MAXIM_LANE_LARGE_REMOTE_* env vars directly, populate them
+    #    from resolve_setting here when they aren't already set. This
+    #    is the compat shim that lets the rest of the runtime not
+    #    care whether the value came from env, config.json, or peer.yml.
+    # 3. Self-hosted classification preservation (IM5 audit note):
+    #    when lanes.large.remote_url resolves from env or config (not
+    #    from cloud config), set MAXIM_MAX_CLOUD_LANES=1 so the cloud-
+    #    lane gate doesn't refuse the request. Cloud-provider opt-in
+    #    stays explicit via config.json::cloud.enabled.
+    # 4. peer.yml fallback (deprecated, compat-read): if neither
+    #    config.json nor env has the data but peer.yml still does
+    #    (e.g., cloudflared-present case where auto-migration didn't
+    #    fire), populate from peer.yml with a once-per-startup INFO
+    #    deprecation log.
+    #
+    # This MUST run before the persisted model restore below — the
+    # lane config signals "my large tier lives on the leader", and
+    # restoring a stale local profile would cause
+    # _apply_local_llm_override to clear the remote_url and silently
+    # route everything locally.
+    _has_peer_config = _apply_lane_config_to_env(logger)
 
     # Restore persisted model preference (from --llm or maxim.run(model=...))
     # when no explicit MAXIM_LLM_PROFILE is set for this session.

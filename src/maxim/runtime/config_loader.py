@@ -412,7 +412,17 @@ def _validate_api_key_ref(value: str, field_path: str) -> str:
 
 
 def _coerce_for_field(raw: str, field_path: str) -> Any:
-    """Dispatch coercion based on field path. Returns the typed value."""
+    """Dispatch coercion based on field path. Returns the typed value.
+
+    Note: ``remote_api_key_ref`` env values are NOT validated against
+    the path/keyring schema here. The cross-confirmed I-3/IM3 fold
+    (inline-string rejected) applies to ``config.json`` writes and
+    parse-time validation only — the legacy ``MAXIM_LANE_<TIER>_
+    REMOTE_API_KEY`` env var legitimately holds an inline key value
+    (that's its pre-C4 semantics). :func:`resolve_api_key_ref` handles
+    all three forms (path, keyring URI, inline) for downstream
+    consumers.
+    """
     # Booleans
     if field_path in {
         "llm.enabled",
@@ -443,9 +453,12 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         return _coerce_enum(raw, field_path, _VALID_BACKENDS)
     if field_path == "cloud.redaction_policy":
         return _coerce_enum(raw, field_path, _VALID_REDACTION_POLICIES)
-    # API key refs (validate, never coerce)
+    # API key refs from env: pass through as-is (legacy semantics —
+    # MAXIM_LANE_*_REMOTE_API_KEY holds the inline key directly).
+    # config.json validation happens in _parse_lane_tier; CLI set_field
+    # validation happens in _apply_field_to_section.
     if field_path.endswith(".remote_api_key_ref"):
-        return _validate_api_key_ref(raw.strip(), field_path)
+        return raw.strip()
     # Plain strings (no transformation beyond strip for tidy values)
     return raw.strip()
 
@@ -575,6 +588,69 @@ def _reset_warned_envs() -> None:
     lane-resolution paths.
     """
     _warned_envs.clear()
+
+
+def resolve_api_key_ref(ref: str | None) -> str | None:
+    """Resolve a ``lanes.<tier>.remote_api_key_ref`` value to the actual
+    key string.
+
+    Two resolution modes per the cross-confirmed I-3 + IM3 fold (inline
+    plaintext rejected at load time):
+
+    - **File path** (starts with ``/`` or ``~``): read the file as text.
+      Returns the stripped contents. ``None`` if the file is missing or
+      unreadable. ``maxim doctor`` reports the missing/wrong-mode case
+      eagerly.
+    - **Keyring URI** (``keyring:<service>:<account>``): resolves via
+      :mod:`keyring`. ``None`` if the keyring package is not installed
+      or the entry is absent — does not raise (per I-1 fold —
+      ``maxim doctor`` / ``maxim config get`` must remain runnable when
+      keyring is missing).
+
+    Returns ``None`` when ``ref`` is ``None`` / empty / unresolvable.
+    Callers that need a loud failure on missing key should branch on
+    the ``None`` return and raise their own typed exception (e.g.,
+    :class:`maxim.models.language.types.BackendAuthFailed` at lane
+    backend construction time).
+    """
+    if not ref:
+        return None
+    if ref.startswith("/") or ref.startswith("~"):
+        try:
+            expanded = Path(ref).expanduser()
+            if not expanded.is_file():
+                return None
+            return expanded.read_text(encoding="utf-8").strip() or None
+        except OSError as e:
+            logger.debug("resolve_api_key_ref: failed to read %s: %s", ref, e)
+            return None
+    if ref.startswith("keyring:"):
+        try:
+            import keyring as _keyring  # type: ignore[import-untyped]
+        except ImportError:
+            logger.warning(
+                "config: lanes.*.remote_api_key_ref=%s uses keyring but the "
+                "keyring package is not installed (run `pip install keyring`).",
+                ref,
+            )
+            return None
+        parts = ref.split(":", 2)
+        if len(parts) < 3:
+            return None
+        _, service, account = parts
+        try:
+            return _keyring.get_password(service, account) or None
+        except Exception as e:
+            logger.warning("config: keyring lookup failed for %s: %s", ref, e)
+            return None
+    # Inline key (legacy env-var semantics): when the value isn't a
+    # file path or keyring URI, treat it as an already-resolved key.
+    # config.json values are validated at load time to reject this
+    # shape per the cross-confirmed I-3/IM3 fold; this branch only
+    # fires for values that came from env. Returning the value as-is
+    # preserves the pre-C4 MAXIM_LANE_<TIER>_REMOTE_API_KEY semantics
+    # where the env var directly holds the inline key.
+    return ref.strip() or None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -900,13 +976,168 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Public loader entry point + lazy singleton
+# Public loader entry point + lazy singleton + IM5 auto-migration shim
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 _loaded_config: MaximConfig | None = None
 _loaded_config_lock = threading.Lock()
 _loaded_config_path: Path | None = None
+
+# IM5 fold: track whether the peer.yml → config.json migration has been
+# attempted in this process. Idempotent — once attempted, subsequent
+# load_config() calls skip the check. Tests reset via reset_config_cache().
+_migration_attempted: bool = False
+
+
+def _maybe_migrate_from_peer_yml(target: Path) -> None:
+    """IM5 fold auto-migration: write a minimal ``config.json`` from
+    ``peer.yml`` on first startup when conditions match.
+
+    Triggers iff:
+    - ``config.json`` does NOT exist at ``target``
+    - ``peer.yml`` exists at the canonical location
+    - cloudflared config does NOT exist (preserves the legitimate
+      leader-with-stale-peer.yml case per the C3 seven-rank order;
+      a leader machine should never have its role auto-flipped to peer)
+
+    Writes ``config.json`` with ``role=peer`` and
+    ``lanes.large.{remote_url, remote_api_key_ref, remote_model}``
+    populated from peer.yml fields. peer.yml is left in place — never
+    deleted by the shim. Subsequent startups skip the migration
+    because ``config.json`` now exists.
+
+    Failures (write permission, etc.) degrade gracefully: log WARNING
+    and continue. The caller's load_config will still produce a valid
+    defaults-only MaximConfig.
+    """
+    global _migration_attempted
+    if _migration_attempted:
+        return
+    _migration_attempted = True
+
+    if target.is_file():
+        return
+
+    # Read peer.yml; bail if absent
+    try:
+        from maxim.peer.config import read_peer_config
+    except Exception:
+        return
+    try:
+        peer = read_peer_config()
+    except Exception as e:
+        logger.debug("config: peer.yml read failed during migration check: %s", e)
+        return
+    if peer is None:
+        return
+
+    # Cloudflared check (preserves leader case)
+    try:
+        from maxim.runtime.role import _cloudflared_config_exists
+
+        if _cloudflared_config_exists() is not None:
+            logger.debug(
+                "config: peer.yml present but cloudflared config also present; "
+                "skipping auto-migration (preserves leader case per IM5 fold)."
+            )
+            return
+    except Exception:
+        pass
+
+    # Build the minimal MaximConfig and write
+    try:
+        # Local import to avoid the writer module pulling load_config back
+        # into a cycle at module-init time.
+        from maxim.runtime.config_writer import write_config
+    except Exception as e:
+        logger.warning("config: auto-migration import failed (%s); skipping", e)
+        return
+
+    migrated = MaximConfig(
+        role="peer",
+        lanes=LanesConfigSection(
+            large=LaneTierConfig(
+                remote_url=peer.url,
+                remote_model=peer.model,
+                # peer.yml stores the API key inline (legacy mode-0600
+                # file). The migration writes a file-path reference to
+                # the canonical api_key file so the config.json mode
+                # stays 0644. Operators who hand-edited their peer.yml
+                # to a different path can override post-migration via
+                # `maxim config set lanes.large.remote_api_key_ref`.
+                remote_api_key_ref=_peer_api_key_ref_for_migration(peer.api_key),
+            ),
+        ),
+    )
+
+    try:
+        written = write_config(migrated, path=target)
+    except Exception as e:
+        logger.warning(
+            "config: auto-migration write failed (%s); peer.yml stays as the "
+            "active routing source for now (compat read).",
+            e,
+        )
+        return
+
+    logger.info(
+        "config: auto-migrated peer.yml → %s (peer.yml preserved for 1.x compat, retired in 2.0)",
+        written,
+    )
+
+
+def _peer_api_key_ref_for_migration(api_key: str) -> str | None:
+    """Write the peer.yml inline API key to ``~/.config/maxim/api_key``
+    mode-0600 and return a file-path reference.
+
+    If the canonical api_key file already exists with a DIFFERENT key,
+    leave it alone and return None — the operator has a key file path
+    already and we should not silently clobber it. A subsequent
+    ``maxim config set lanes.large.remote_api_key_ref`` can wire the
+    explicit reference.
+    """
+    if not api_key:
+        return None
+    try:
+        api_key_path = config_path().parent / "api_key"
+        if api_key_path.exists():
+            try:
+                existing = api_key_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                existing = ""
+            if existing and existing != api_key.strip():
+                # Existing different key — don't clobber. Operator
+                # follow-up needed.
+                logger.warning(
+                    "config: peer.yml api_key differs from existing %s; "
+                    "leaving the file alone. Run `maxim config set "
+                    "lanes.large.remote_api_key_ref <path>` to wire a "
+                    "reference manually.",
+                    api_key_path,
+                )
+                return None
+            # Same content already — just reference it
+            return str(api_key_path)
+        from maxim.utils.atomic_io import atomic_write_secret
+
+        api_key_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_secret(str(api_key_path), api_key.strip() + "\n")
+        # atomic_write_secret preserves existing mode; on first write
+        # the file inherits umask (typically 0o644). Force 0o600 since
+        # this is a credential file.
+        try:
+            api_key_path.chmod(0o600)
+        except OSError:
+            pass
+        return str(api_key_path)
+    except Exception as e:
+        logger.warning(
+            "config: failed to write api_key file during migration (%s); "
+            "skipping remote_api_key_ref (operator can wire it later)",
+            e,
+        )
+        return None
 
 
 def load_config(path: Path | None = None) -> MaximConfig:
@@ -916,10 +1147,21 @@ def load_config(path: Path | None = None) -> MaximConfig:
     missing or empty. Raises :class:`ConfigurationError` on JSON parse
     errors, schema violations, or future-major versions.
 
+    Triggers the IM5 fold auto-migration shim (peer.yml → config.json)
+    on first call when conditions match — see
+    :func:`_maybe_migrate_from_peer_yml`.
+
     Does NOT cache. For the lazily-cached production singleton use
     :func:`get_config`.
     """
     effective_path = path if path is not None else config_path()
+
+    # IM5 fold auto-migration runs BEFORE the read so first-startup
+    # peer.yml-only setups get their data written to config.json and
+    # subsequently picked up by the rest of this function. Idempotent —
+    # the shim sets _migration_attempted and short-circuits on
+    # subsequent calls.
+    _maybe_migrate_from_peer_yml(effective_path)
 
     if not effective_path.is_file():
         return MaximConfig()
@@ -964,15 +1206,17 @@ def get_config(path: Path | None = None) -> MaximConfig:
 
 
 def reset_config_cache() -> None:
-    """Test-only helper: clear the lazy-loaded config singleton.
+    """Test-only helper: clear the lazy-loaded config singleton + the
+    IM5 fold auto-migration idempotency flag.
 
     Pairs with :func:`_reset_warned_envs` for test isolation. Production
     code must not call this — the singleton is process-wide by design.
     """
-    global _loaded_config, _loaded_config_path
+    global _loaded_config, _loaded_config_path, _migration_attempted
     with _loaded_config_lock:
         _loaded_config = None
         _loaded_config_path = None
+        _migration_attempted = False
 
 
 __all__ = [
@@ -989,5 +1233,6 @@ __all__ = [
     "get_config",
     "load_config",
     "reset_config_cache",
+    "resolve_api_key_ref",
     "resolve_setting",
 ]
