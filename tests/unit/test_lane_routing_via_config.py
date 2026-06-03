@@ -298,6 +298,85 @@ class TestApplyLaneConfigToEnv:
         # No config.json, no peer.yml, no env
         assert _apply_lane_config_to_env(None) is False
 
+    def test_llm_profile_populated_from_config_json(self, fake_home, monkeypatch):
+        """Post-implementation field-coverage fold (2026-06-02): the
+        function populates MAXIM_LLM_PROFILE / MAXIM_LLM_N_CTX /
+        MAXIM_LLM_BACKEND / MAXIM_LLM_ENABLED / MAXIM_AUTO_DOWNLOAD_MODELS
+        from config.json so the legacy env-var-reading code at tier
+        detection and llama-cpp-server spawn picks up config values.
+        Pre-fold a Mac Mini with config.json::llm.profile=mistral-small-
+        24b silently spawned qwen2.5-14b because tier detection's
+        hardware-best heuristic ran with MAXIM_LLM_PROFILE unset.
+        """
+        import os
+
+        from maxim.runtime.config_loader import LLMConfigSection
+        from maxim.runtime.config_writer import write_config
+        from maxim.runtime.lane_backends import _apply_lane_config_to_env
+
+        write_config(
+            MaximConfig(
+                llm=LLMConfigSection(
+                    profile="mistral-small-24b",
+                    n_ctx=16384,
+                    auto_download=True,
+                ),
+            )
+        )
+        reset_config_cache()
+
+        for env_name in (
+            "MAXIM_LLM_PROFILE",
+            "MAXIM_LLM_N_CTX",
+            "MAXIM_LLM_BACKEND",
+            "MAXIM_LLM_ENABLED",
+            "MAXIM_AUTO_DOWNLOAD_MODELS",
+        ):
+            monkeypatch.delenv(env_name, raising=False)
+
+        _apply_lane_config_to_env(None)
+
+        assert os.environ.get("MAXIM_LLM_PROFILE") == "mistral-small-24b"
+        assert os.environ.get("MAXIM_LLM_N_CTX") == "16384"
+        # auto_download was set explicitly to True (non-default)
+        assert os.environ.get("MAXIM_AUTO_DOWNLOAD_MODELS") == "1"
+        # llm.enabled defaults to True; resolved source is "default" so
+        # the env var is NOT written (preserves the operator's right to
+        # shell-unset for opt-out — covered in
+        # test_default_llm_enabled_does_not_write_env below)
+        assert "MAXIM_LLM_ENABLED" not in os.environ
+
+    def test_env_wins_over_config_for_llm_profile(self, fake_home, monkeypatch):
+        """The same precedence rule as the lane fields: an explicit
+        operator export shadows the config value."""
+        import os
+
+        from maxim.runtime.config_loader import LLMConfigSection
+        from maxim.runtime.config_writer import write_config
+        from maxim.runtime.lane_backends import _apply_lane_config_to_env
+
+        write_config(MaximConfig(llm=LLMConfigSection(profile="from-config")))
+        reset_config_cache()
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "from-env")
+
+        _apply_lane_config_to_env(None)
+
+        assert os.environ.get("MAXIM_LLM_PROFILE") == "from-env"
+
+    def test_default_llm_enabled_does_not_write_env(self, fake_home, monkeypatch):
+        """``source=default`` values must NOT be propagated to env —
+        that would shadow a subsequent operator opt-out via shell
+        unset. Only explicit config/env/cli values write through."""
+        import os
+
+        from maxim.runtime.lane_backends import _apply_lane_config_to_env
+
+        # No config.json, no env — llm.enabled resolves to default True
+        # but should NOT be written to MAXIM_LLM_ENABLED
+        monkeypatch.delenv("MAXIM_LLM_ENABLED", raising=False)
+        _apply_lane_config_to_env(None)
+        assert "MAXIM_LLM_ENABLED" not in os.environ
+
     def test_peer_yml_fallback_when_config_absent(self, fake_home, monkeypatch):
         """Cloudflared-present case: migration skipped, but peer.yml fallback
         in _apply_lane_config_to_env still populates env vars."""

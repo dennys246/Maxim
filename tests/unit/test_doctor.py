@@ -1044,7 +1044,10 @@ class TestCheckEnvConfig:
         results = check_env_config(self._info(), role="leader")
         statuses = {r.name: r.status for r in results}
         assert statuses.get("MAXIM_ROLE") == "ok"
-        assert statuses.get("MAXIM_LLM_N_CTX") == "ok"
+        # Post-implementation field-coverage fold: env-config checks
+        # for llm.* now route through resolve_setting, so the result
+        # rows are named after the field path, not the env var.
+        assert statuses.get("llm.n_ctx") == "ok"
         # No stale-var warnings
         assert "MAXIM_SKIP_REMOTE_PROBE" not in statuses
         assert "MAXIM_PEER_PROBE_KEY" not in statuses
@@ -1079,7 +1082,9 @@ class TestCheckEnvConfig:
         from maxim.doctor.checks import check_env_config
 
         results = check_env_config(self._info(), role="leader")
-        ctx_result = next((r for r in results if r.name == "MAXIM_LLM_N_CTX"), None)
+        # Post-implementation field-coverage fold: row is now named
+        # after the field path, not the env var.
+        ctx_result = next((r for r in results if r.name == "llm.n_ctx"), None)
         assert ctx_result is not None
         assert ctx_result.status == "warn"
         assert "8192" in ctx_result.message

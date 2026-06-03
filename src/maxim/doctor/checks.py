@@ -171,7 +171,15 @@ def check_server_reachable(port: int = 8100) -> CheckResult:
 
 
 def check_llm_model_active() -> CheckResult:
-    """Check if an LLM model is loaded and report which one."""
+    """Check if an LLM model is loaded and report which one.
+
+    Post-implementation field-coverage fold: reads ``llm.profile`` via
+    the unified ``resolve_setting`` chain so config.json values are
+    surfaced alongside the live ``_active_model`` and persisted-model
+    sources. Pre-fold the check only saw env / persisted-model state
+    and silently drifted from C5's "Resolved Config" section when
+    config.json was the actual source.
+    """
     try:
         # Must read `_active_model` through `_server_mod` — importing it by
         # name binds the value at import time and diverges from the live
@@ -179,9 +187,14 @@ def check_llm_model_active() -> CheckResult:
         # This was a silent bug: the check only ever reported the persisted
         # model name, never the live one.
         import maxim.runtime.llm_server as _server_mod
+        from maxim.runtime.config_loader import resolve_setting
         from maxim.runtime.lane_backends import _read_persisted_model
 
         active = _server_mod._active_model
+        try:
+            configured, configured_source = resolve_setting("llm.profile")
+        except Exception:
+            configured, configured_source = None, "default"
         persisted = _read_persisted_model()
 
         if active:
@@ -189,6 +202,14 @@ def check_llm_model_active() -> CheckResult:
                 name="LLM model",
                 status="ok",
                 message=f"active model: {active}",
+            )
+        if configured and configured_source in ("config", "env", "cli"):
+            return CheckResult(
+                name="LLM model",
+                status="warn",
+                message=f"configured model: {configured} (not yet loaded) [source={configured_source}]",
+                fix=f"maxim peer llm {configured}",
+                retry_id="llm_model",
             )
         if persisted:
             return CheckResult(
@@ -201,8 +222,8 @@ def check_llm_model_active() -> CheckResult:
         return CheckResult(
             name="LLM model",
             status="warn",
-            message="no model configured — use `maxim peer llm <model>` to set one",
-            fix="maxim peer llm qwen2.5-14b",
+            message="no model configured — use `maxim config set llm.profile <name>` to set one",
+            fix="maxim config set llm.profile qwen2.5-14b",
             retry_id="llm_model",
         )
     except Exception:
@@ -577,22 +598,56 @@ def check_env_config(info: PlatformInfo, role: str | None = None) -> list["Check
         )
 
     # ── LLM enablement (leader/solo only) ────────────────────────────────────
+    #
+    # Post-implementation field-coverage fold (2026-06-02): the three
+    # llm.* checks below now route through ``resolve_setting`` so
+    # config.json values silence the warnings the same way env values
+    # do. Pre-fold a leader with config.json::llm.profile=qwen-32b
+    # still saw "MAXIM_LLM_PROFILE: not set" — silent drift from C5's
+    # "Resolved Config" section. The status string includes the
+    # resolved source so the operator sees the precedence chain.
     if not is_peer:
-        llm_enabled = os.environ.get("MAXIM_LLM_ENABLED", "").strip()
-        if llm_enabled not in ("1", "true", "yes"):
+        try:
+            from maxim.runtime.config_loader import resolve_setting as _rs
+        except Exception:
+            _rs = None
+
+        # ── llm.enabled ──────────────────────────────────────────────────────
+        if _rs is not None:
+            try:
+                llm_enabled_value, llm_enabled_source = _rs("llm.enabled")
+            except Exception:
+                llm_enabled_value, llm_enabled_source = None, "default"
+        else:
+            llm_enabled_value, llm_enabled_source = None, "default"
+        if not llm_enabled_value:
             results.append(
                 CheckResult(
-                    name="MAXIM_LLM_ENABLED",
+                    name="llm.enabled",
                     status="warn",
-                    message="not set — LLM inference may be disabled",
-                    fix="export MAXIM_LLM_ENABLED=1",
+                    message="not enabled — LLM inference will be skipped",
+                    fix="maxim config set llm.enabled true",
                 )
             )
 
-        # ── MAXIM_LLM_PROFILE ────────────────────────────────────────────────
-        profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
-        if not profile:
-            # Check persisted file before crying foul
+        # ── llm.profile ──────────────────────────────────────────────────────
+        if _rs is not None:
+            try:
+                profile_value, profile_source = _rs("llm.profile")
+            except Exception:
+                profile_value, profile_source = None, "default"
+        else:
+            profile_value, profile_source = None, "default"
+        if profile_value and profile_source in ("config", "env", "cli"):
+            results.append(
+                CheckResult(
+                    name="llm.profile",
+                    status="ok",
+                    message=f"{profile_value}  [source={profile_source}]",
+                )
+            )
+        else:
+            # Fallback: check persisted-model file (legacy state)
             try:
                 from maxim.runtime.lane_backends import _read_persisted_model
 
@@ -602,66 +657,72 @@ def check_env_config(info: PlatformInfo, role: str | None = None) -> list["Check
             if persisted:
                 results.append(
                     CheckResult(
-                        name="MAXIM_LLM_PROFILE",
+                        name="llm.profile",
                         status="info",
                         message=f"not set — using persisted model '{persisted}'",
-                        fix=f"export MAXIM_LLM_PROFILE={persisted}  # makes it explicit",
+                        fix=f"maxim config set llm.profile {persisted}  # makes it explicit",
                     )
                 )
             else:
                 results.append(
                     CheckResult(
-                        name="MAXIM_LLM_PROFILE",
+                        name="llm.profile",
                         status="warn",
                         message="not set and no persisted model — LLM will not start",
-                        fix="export MAXIM_LLM_PROFILE=qwen2.5-14b  # or your model name",
+                        fix="maxim config set llm.profile qwen2.5-14b  # or your model name",
                     )
                 )
 
-        # ── MAXIM_LLM_N_CTX ──────────────────────────────────────────────────
-        n_ctx_raw = os.environ.get("MAXIM_LLM_N_CTX", "").strip()
-        if not n_ctx_raw:
+        # ── llm.n_ctx ────────────────────────────────────────────────────────
+        if _rs is not None:
+            try:
+                n_ctx_value, n_ctx_source = _rs("llm.n_ctx")
+            except Exception:
+                n_ctx_value, n_ctx_source = None, "default"
+        else:
+            n_ctx_value, n_ctx_source = None, "default"
+        if n_ctx_source == "default":
+            # Default (8192) — surface a soft INFO so operators on 14B+
+            # know to raise it explicitly, but not a WARN since the
+            # default is sensible for sub-14B.
             results.append(
                 CheckResult(
-                    name="MAXIM_LLM_N_CTX",
-                    status="warn",
+                    name="llm.n_ctx",
+                    status="info",
                     message=(
-                        "not set — llama-cpp will auto-select context size (often 4096). "
-                        "Long prompts on 14B+ models will fill the KV cache and return "
-                        "empty choices, causing inference_broken cascades."
+                        f"using default ({n_ctx_value}). Long prompts on 14B+ "
+                        "models risk KV-cache overflow; consider raising to 16384."
                     ),
-                    fix="export MAXIM_LLM_N_CTX=16384  # safe for Q4_K_M 14B on 16 GB+ VRAM",
+                    fix="maxim config set llm.n_ctx 16384",
                 )
             )
-        else:
-            try:
-                n_ctx = int(n_ctx_raw)
-                if n_ctx < 8192:
-                    results.append(
-                        CheckResult(
-                            name="MAXIM_LLM_N_CTX",
-                            status="warn",
-                            message=f"MAXIM_LLM_N_CTX={n_ctx} — below 8192 risks context overflow on multi-turn sims",
-                            fix="export MAXIM_LLM_N_CTX=16384",
-                        )
-                    )
-                else:
-                    results.append(
-                        CheckResult(
-                            name="MAXIM_LLM_N_CTX",
-                            status="ok",
-                            message=f"MAXIM_LLM_N_CTX={n_ctx}",
-                        )
-                    )
-            except ValueError:
+        elif isinstance(n_ctx_value, int):
+            if n_ctx_value < 8192:
                 results.append(
                     CheckResult(
-                        name="MAXIM_LLM_N_CTX",
-                        status="fail",
-                        message=f"MAXIM_LLM_N_CTX='{n_ctx_raw}' is not a valid integer",
-                        fix="export MAXIM_LLM_N_CTX=16384",
+                        name="llm.n_ctx",
+                        status="warn",
+                        message=f"{n_ctx_value} [source={n_ctx_source}] — below 8192 risks context overflow on multi-turn sims",
+                        fix="maxim config set llm.n_ctx 16384",
                     )
                 )
+            else:
+                results.append(
+                    CheckResult(
+                        name="llm.n_ctx",
+                        status="ok",
+                        message=f"{n_ctx_value}  [source={n_ctx_source}]",
+                    )
+                )
+        else:
+            results.append(
+                CheckResult(
+                    name="llm.n_ctx",
+                    status="fail",
+                    message=f"{n_ctx_value!r} is not a valid integer [source={n_ctx_source}]",
+                    fix="maxim config set llm.n_ctx 16384",
+                )
+            )
 
     # ── Stale debugging vars that cause silent failures ───────────────────────
     if os.environ.get("MAXIM_SKIP_REMOTE_PROBE", "").strip().lower() in ("1", "true", "yes"):
@@ -799,13 +860,35 @@ def check_context_window(port: int = 8100) -> CheckResult:
             pass
 
     if n_ctx is None:
+        # Post-implementation field-coverage fold: surface the
+        # CONFIGURED n_ctx from resolve_setting when the running
+        # server's introspection failed. Pre-fold the operator only
+        # saw "could not be determined" with no way to confirm what
+        # config.json had asked for.
+        configured_n_ctx, configured_source = None, "default"
+        try:
+            from maxim.runtime.config_loader import resolve_setting as _rs
+
+            configured_n_ctx, configured_source = _rs("llm.n_ctx")
+        except Exception:
+            pass
+        if configured_n_ctx and configured_source in ("config", "env", "cli"):
+            return CheckResult(
+                name="Context window (n_ctx)",
+                status="info",
+                message=(
+                    f"server running but did not expose n_ctx; configured value "
+                    f"{configured_n_ctx} [source={configured_source}] should be in effect."
+                ),
+            )
         return CheckResult(
             name="Context window (n_ctx)",
             status="warn",
             message=(
-                "server is running but n_ctx could not be determined. Set MAXIM_LLM_N_CTX=16384 to make it explicit."
+                "server is running but n_ctx could not be determined and no config value set. "
+                "Set llm.n_ctx via `maxim config set llm.n_ctx 16384` to make it explicit."
             ),
-            fix="export MAXIM_LLM_N_CTX=16384",
+            fix="maxim config set llm.n_ctx 16384",
         )
 
     if n_ctx < 8192:
@@ -817,7 +900,7 @@ def check_context_window(port: int = 8100) -> CheckResult:
                 f"Long prompts will overflow the KV cache and return empty choices "
                 f"(inference_broken cascade)."
             ),
-            fix="export MAXIM_LLM_N_CTX=16384  # then restart: maxim peer restart",
+            fix="maxim config set llm.n_ctx 16384  # then restart: maxim peer restart",
             retry_id="ctx_window",
         )
 

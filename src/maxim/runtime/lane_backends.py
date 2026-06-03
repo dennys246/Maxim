@@ -270,6 +270,53 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
             logger_obj.warning("Failed to load config.json: %s", e)
         cfg = None
 
+    # Post-implementation field-coverage fold (2026-06-02): C4's
+    # original _apply_lane_config_to_env only populated the
+    # MAXIM_LANE_<TIER>_REMOTE_* env vars from config.json. Other
+    # absorbed fields — MAXIM_LLM_PROFILE, MAXIM_LLM_ENABLED,
+    # MAXIM_LLM_N_CTX, MAXIM_AUTO_DOWNLOAD_MODELS — were resolved by
+    # ``resolve_setting`` (so they appeared in C5's "Resolved Config"
+    # section) but never reached the legacy env-var-reading code at
+    # detect_tiers / _maybe_pin_pre_upgrade_profile / llama-cpp-server
+    # spawn. Result: a Mac Mini with config.json::llm.profile=
+    # mistral-small-24b would still spawn qwen2.5-14b because tier
+    # detection picked the hardware-best heuristic. Fix here mirrors
+    # the lane-routing pattern: setdefault from config.json for the
+    # full llm.* + auto_spawn.* surface so env values still win and
+    # the legacy reader paths pick up config.json values seamlessly.
+    _llm_env_map: tuple[tuple[str, str], ...] = (
+        ("llm.profile", "MAXIM_LLM_PROFILE"),
+        ("llm.n_ctx", "MAXIM_LLM_N_CTX"),
+        ("llm.backend", "MAXIM_LLM_BACKEND"),
+    )
+    for field_path, env_name in _llm_env_map:
+        try:
+            value, _ = resolve_setting(field_path, config=cfg)
+        except Exception:
+            continue
+        if value is None or value == "":
+            continue
+        if not _os.environ.get(env_name, "").strip():
+            _os.environ[env_name] = str(value)
+
+    # Booleans need str("1") / str("0") rendering since the legacy
+    # readers use the truthy/falsy set.
+    for field_path, env_name in (
+        ("llm.enabled", "MAXIM_LLM_ENABLED"),
+        ("llm.auto_download", "MAXIM_AUTO_DOWNLOAD_MODELS"),
+    ):
+        try:
+            value, source = resolve_setting(field_path, config=cfg)
+        except Exception:
+            continue
+        # Only propagate when config or env explicitly set the value
+        # — defaults shouldn't write env vars (that would shadow a
+        # subsequent operator opt-out via shell unset).
+        if source == "default":
+            continue
+        if not _os.environ.get(env_name, "").strip():
+            _os.environ[env_name] = "1" if value else "0"
+
     has_remote = False
     for tier in ("large", "medium", "small"):
         env_url = f"MAXIM_LANE_{tier.upper()}_REMOTE_URL"
