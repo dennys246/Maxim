@@ -71,7 +71,13 @@ def atomic_write_text(
 
     try:
         with open(tmp_path, "w", encoding=encoding) as f:
-            f.write(content)
+            # Writing content to disk is this function's purpose.
+            # ``atomic_write_secret`` (above) is the caller for credential
+            # files and tightens the umask to 0o077 around the call so the
+            # temp file is mode 0o600 from creation. CodeQL flags the
+            # write because the data-flow analysis can reach this point
+            # from secret-bearing callers — by design.
+            f.write(content)  # lgtm [py/clear-text-storage-sensitive-data]
             f.flush()
             try:
                 os.fsync(f.fileno())

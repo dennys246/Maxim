@@ -354,10 +354,20 @@ def _cmd_show() -> int:
         print(f"  url:      {cfg.lanes.large.remote_url}")
         ref = cfg.lanes.large.remote_api_key_ref
         if ref:
-            print(f"  api_key:  ref={ref}")
+            # Print a kind descriptor instead of the full ref so a
+            # tunnel-path string (which could leak operator
+            # filesystem layout) stays out of stdout. The full ref is
+            # always inspectable via `maxim config get
+            # lanes.large.remote_api_key_ref` if the operator needs it.
+            ref_kind = "keyring" if ref.startswith("keyring:") else "file"
+            print(f"  api_key:  configured via {ref_kind} reference")
             resolved = resolve_api_key_ref(ref)
             if resolved:
-                print(f"            (resolved: {truncate_key(resolved)})")
+                # truncate_key shows first 6 + last 6 chars with `…` in
+                # the middle — safe for operator-visible display.
+                print(
+                    f"            (resolved: {truncate_key(resolved)})"
+                )  # lgtm [py/clear-text-logging-sensitive-data]
             else:
                 print("            (unresolvable — `maxim doctor` for details)")
         if cfg.lanes.large.remote_model:
@@ -379,7 +389,8 @@ def _cmd_show() -> int:
         return 1
     print(f"Peer config (deprecated peer.yml): {peer_config_path()}")
     print(f"  url:      {peer.url}")
-    print(f"  api_key:  {truncate_key(peer.api_key)}")
+    # truncate_key shows first 6 + last 6 chars — safe for display.
+    print(f"  api_key:  {truncate_key(peer.api_key)}")  # lgtm [py/clear-text-logging-sensitive-data]
     if peer.model:
         print(f"  model:    {peer.model}")
     if peer.is_cloud:
@@ -448,7 +459,11 @@ def _cmd_key(argv: list[str]) -> int:
         if ref:
             resolved = resolve_api_key_ref(ref)
             if resolved:
-                print(resolved)
+                # Documented intentional: `maxim peer key` prints the
+                # raw key to stdout for piping/export idioms like
+                # `export KEY=$(maxim peer key)`. Operator's
+                # responsibility to use it in trusted contexts.
+                print(resolved)  # lgtm [py/clear-text-logging-sensitive-data]
                 return 0
     except Exception:
         pass
@@ -458,7 +473,8 @@ def _cmd_key(argv: list[str]) -> int:
         print("No peer config found.", file=sys.stderr)
         print("Run: maxim peer connect <url>", file=sys.stderr)
         return 1
-    print(peer.api_key)
+    # Documented intentional — see above.
+    print(peer.api_key)  # lgtm [py/clear-text-logging-sensitive-data]
     return 0
 
 

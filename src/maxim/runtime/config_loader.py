@@ -645,16 +645,25 @@ def resolve_api_key_ref(ref: str | None) -> str | None:
                 return None
             return expanded.read_text(encoding="utf-8").strip() or None
         except OSError as e:
-            logger.debug("resolve_api_key_ref: failed to read %s: %s", ref, e)
+            # Log the failure category, not the path — paths can encode
+            # operator filesystem layout that's not for the log file.
+            # The value the function received is a REFERENCE (file path),
+            # not the secret itself; the cross-confirmed I-3/IM3 fold
+            # forbids inline secrets in this position. CodeQL's data-
+            # flow analysis flags this because the surrounding function
+            # name contains "api_key", but `ref` is metadata, not key.
+            logger.debug(
+                "resolve_api_key_ref: failed to read file-mode reference: %s",
+                type(e).__name__,
+            )
             return None
     if ref.startswith("keyring:"):
         try:
             import keyring as _keyring  # type: ignore[import-untyped]
         except ImportError:
             logger.warning(
-                "config: lanes.*.remote_api_key_ref=%s uses keyring but the "
-                "keyring package is not installed (run `pip install keyring`).",
-                ref,
+                "config: lanes.*.remote_api_key_ref uses keyring but the "
+                "keyring package is not installed (run `pip install keyring`)."
             )
             return None
         parts = ref.split(":", 2)
@@ -664,7 +673,10 @@ def resolve_api_key_ref(ref: str | None) -> str | None:
         try:
             return _keyring.get_password(service, account) or None
         except Exception as e:
-            logger.warning("config: keyring lookup failed for %s: %s", ref, e)
+            # Log the failure category, not the URI — service+account
+            # can be operator metadata. `ref` is a REFERENCE, not the
+            # key itself.
+            logger.warning("config: keyring lookup failed: %s", type(e).__name__)
             return None
     # Inline key (legacy env-var semantics): when the value isn't a
     # file path or keyring URI, treat it as an already-resolved key.
