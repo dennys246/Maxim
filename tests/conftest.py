@@ -521,6 +521,7 @@ def _isolate_config_json_env():
         config_path,
         reset_config_cache,
     )
+    from maxim.runtime.lane_backends import _reset_lane_env_applied
 
     def _clean_disk_state() -> None:
         try:
@@ -537,6 +538,7 @@ def _isolate_config_json_env():
     saved = {name: os.environ.pop(name, None) for name in _ABSORBED_ENV_VARS}
     _reset_warned_envs()
     reset_config_cache()
+    _reset_lane_env_applied()
     _clean_disk_state()
     try:
         yield
@@ -547,6 +549,7 @@ def _isolate_config_json_env():
                 os.environ[name] = saved[name]
         _reset_warned_envs()
         reset_config_cache()
+        _reset_lane_env_applied()
         _clean_disk_state()
 
 

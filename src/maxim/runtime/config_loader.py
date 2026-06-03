@@ -96,6 +96,11 @@ class LLMConfigSection:
     auto_download: bool = False
 
 
+_LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset(
+    {"remote_url", "remote_model", "remote_api_key_ref"}
+)
+
+
 @dataclass(frozen=True)
 class LaneTierConfig:
     """Per-tier remote routing.
@@ -111,12 +116,32 @@ class LaneTierConfig:
     persist time. Producers prefer declared fields; ``extra`` is for
     genuinely additive metadata only. The ``hash=False, compare=False``
     spec is load-bearing per CC3 escape-hatch rules.
+
+    **Post-implementation Architecture #4 fold:** the escape-hatch
+    ``extra`` dict must NOT contain keys that collide with declared
+    fields (``remote_url``, ``remote_model``, ``remote_api_key_ref``).
+    Without this guard, the C2 writer's ``_serialize_for_json`` step
+    would silently shadow declared fields on round-trip. Push the
+    invariant into the type via ``__post_init__`` so a malformed
+    LaneTierConfig is rejected at construction time, not at write
+    time. Mirrors CLAUDE.md's "push silent-no-op invariants into
+    types, not helpers" discipline.
     """
 
     remote_url: str | None = None
     remote_model: str | None = None
     remote_api_key_ref: str | None = None
     extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
+
+    def __post_init__(self) -> None:
+        collisions = _LANE_TIER_DECLARED_FIELDS & set(self.extra.keys())
+        if collisions:
+            raise ConfigurationError(
+                f"LaneTierConfig: extra dict contains key(s) that collide "
+                f"with declared fields: {sorted(collisions)}. extra is for "
+                f"forward-growth additive metadata only — declared fields "
+                f"go in their own slots."
+            )
 
 
 @dataclass(frozen=True)
@@ -668,8 +693,32 @@ def _check_format_version(data: dict[str, Any]) -> tuple[str, bool]:
 
     Raises :class:`ConfigurationError` on a future major (the breaking
     case per CC1).
+
+    **Post-implementation Architecture #1 fold:** the version-string
+    extraction routes through :func:`maxim.utils.format_version.check_format_version`,
+    the canonical helper per CC1. This wraps it with the
+    major.minor classification needed for the I-6/IM4 unknown-key
+    forward-compat rule. The pre-fold code rolled its own version
+    extraction, silently bypassing CC1's fail-loud-on-stale-conflict
+    semantics — exactly the "two parallel implementations of a
+    freeze-critical contract" pattern CLAUDE.md targets.
     """
-    raw = data.get("_format_version", CONFIG_FORMAT_VERSION)
+    from maxim.utils.format_version import (
+        FORMAT_VERSION as _FV_DEFAULT,
+        LEGACY_VERSION,
+        check_format_version,
+    )
+
+    # check_format_version returns a string version or LEGACY_VERSION
+    # when the field is absent. We treat absent as "same as loader"
+    # for our minor-version classification (the C1 contract says
+    # empty/missing config returns defaults — same as a 1.0 file with
+    # no payload).
+    raw = check_format_version(data, "config_json", log=logger)
+    if raw == LEGACY_VERSION:
+        # Pre-1.0 file or absent field. Treat as same-major.
+        raw = _FV_DEFAULT
+
     if not isinstance(raw, str) or not raw:
         raise ConfigurationError(f"config.json: _format_version must be a non-empty string, got {raw!r}")
 
@@ -1007,6 +1056,18 @@ def _maybe_migrate_from_peer_yml(target: Path) -> None:
     deleted by the shim. Subsequent startups skip the migration
     because ``config.json`` now exists.
 
+    **Post-implementation Executor I2 fold:** the
+    ``_migration_attempted`` flag is set AFTER the work completes
+    (either successfully OR after a definitive "not applicable" check
+    like config.json present, peer.yml absent, cloudflared present).
+    The pre-fold ordering set the flag BEFORE the work, so a
+    transient OSError on first write (permission denied, disk full,
+    etc.) would permanently skip migration for the rest of the
+    process — even after the operator fixed permissions and re-ran.
+    Now retry storms are bounded by the "not applicable" check (which
+    happens before any write attempt) and recoverable write failures
+    leave the flag unset so the next load_config call can try again.
+
     Failures (write permission, etc.) degrade gracefully: log WARNING
     and continue. The caller's load_config will still produce a valid
     defaults-only MaximConfig.
@@ -1014,22 +1075,27 @@ def _maybe_migrate_from_peer_yml(target: Path) -> None:
     global _migration_attempted
     if _migration_attempted:
         return
-    _migration_attempted = True
 
     if target.is_file():
+        # Not applicable — config.json already exists. Set the flag so
+        # we don't repeatedly stat the file on every load_config call.
+        _migration_attempted = True
         return
 
     # Read peer.yml; bail if absent
     try:
         from maxim.peer.config import read_peer_config
     except Exception:
+        _migration_attempted = True  # not applicable
         return
     try:
         peer = read_peer_config()
     except Exception as e:
         logger.debug("config: peer.yml read failed during migration check: %s", e)
+        _migration_attempted = True  # not applicable
         return
     if peer is None:
+        _migration_attempted = True  # not applicable
         return
 
     # Cloudflared check (preserves leader case)
@@ -1041,6 +1107,7 @@ def _maybe_migrate_from_peer_yml(target: Path) -> None:
                 "config: peer.yml present but cloudflared config also present; "
                 "skipping auto-migration (preserves leader case per IM5 fold)."
             )
+            _migration_attempted = True  # definitive — leader case
             return
     except Exception:
         pass
@@ -1052,6 +1119,8 @@ def _maybe_migrate_from_peer_yml(target: Path) -> None:
         from maxim.runtime.config_writer import write_config
     except Exception as e:
         logger.warning("config: auto-migration import failed (%s); skipping", e)
+        # Do NOT set the flag — import errors might be transient (e.g.,
+        # a partial install). Next load_config retries.
         return
 
     migrated = MaximConfig(
@@ -1076,11 +1145,16 @@ def _maybe_migrate_from_peer_yml(target: Path) -> None:
     except Exception as e:
         logger.warning(
             "config: auto-migration write failed (%s); peer.yml stays as the "
-            "active routing source for now (compat read).",
+            "active routing source for now (compat read). Next load_config "
+            "will retry the migration.",
             e,
         )
+        # Per Executor I2 fold: leave flag unset so transient write
+        # failures (permission denied, disk full) can recover on a
+        # subsequent retry.
         return
 
+    _migration_attempted = True  # success
     logger.info(
         "config: auto-migrated peer.yml → %s (peer.yml preserved for 1.x compat, retired in 2.0)",
         written,
@@ -1122,10 +1196,20 @@ def _peer_api_key_ref_for_migration(api_key: str) -> str | None:
         from maxim.utils.atomic_io import atomic_write_secret
 
         api_key_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_secret(str(api_key_path), api_key.strip() + "\n")
-        # atomic_write_secret preserves existing mode; on first write
-        # the file inherits umask (typically 0o644). Force 0o600 since
-        # this is a credential file.
+        # Post-implementation Executor C3 fold (umask race): on a
+        # brand-new file ``atomic_write_secret`` inherits the
+        # caller's umask, which is typically 0o022 — exposing the
+        # API key as world-readable during the brief window between
+        # the write and the subsequent chmod. Tighten the umask to
+        # 0o077 around the write so the file is created at 0o600
+        # from the start. Restore the original umask afterward.
+        original_umask = os.umask(0o077)
+        try:
+            atomic_write_secret(str(api_key_path), api_key.strip() + "\n")
+        finally:
+            os.umask(original_umask)
+        # Defensive chmod for the resave case (an existing file at a
+        # wider mode wouldn't be re-tightened by the umask change).
         try:
             api_key_path.chmod(0o600)
         except OSError:

@@ -234,6 +234,47 @@ class TestAdditionalPrecedence:
         assert result == "leader"
         assert source == "default"
 
+    def test_config_json_parse_error_surfaces_warning(self, fake_home, caplog):
+        """Post-implementation Executor I3 fold: ``ConfigurationError``
+        from a malformed config.json should be surfaced as a WARNING
+        event before falling through, not silently debug-logged.
+        Otherwise a typo in config.json silently corrupts role
+        detection's seven-rank ordering."""
+        import logging
+
+        cfg_dir = fake_home / "maxim"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        # Invalid JSON syntax — triggers ConfigurationError at parse
+        (cfg_dir / "config.json").write_text("{not valid json")
+
+        with caplog.at_level(logging.WARNING, logger="maxim.runtime.role"):
+            result, source = role.detect_role(argv=[])
+
+        # Falls through to default leader
+        assert result == "leader"
+        assert source == "default"
+        # WARNING was emitted (not silent debug)
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any("config.json failed to parse" in r.getMessage() for r in warnings), (
+            "ConfigurationError during role detection must surface a WARNING, not be silently debug-logged"
+        )
+
+    def test_config_json_unknown_top_level_key_surfaces_warning(self, fake_home, caplog):
+        """Typo'd top-level key: same WARNING surface."""
+        import logging
+
+        cfg_dir = fake_home / "maxim"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / "config.json").write_text(
+            '{"_format_version": "1.0", "rolee": "leader"}'  # typo
+        )
+        with caplog.at_level(logging.WARNING, logger="maxim.runtime.role"):
+            result, source = role.detect_role(argv=[])
+        assert result == "leader"
+        assert source == "default"
+        warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert any("config.json failed to parse" in r.getMessage() for r in warnings)
+
     def test_config_json_missing_falls_through_normally(self, fake_home):
         """No config.json file → falls through to mesh.yml / peer.yml /
         cloudflared / default. With nothing else set, defaults to leader."""
@@ -346,15 +387,9 @@ class TestRoleDivergenceCompat:
 
         # The event was emitted at DEBUG and tagged via extra
         divergence_records = [
-            r
-            for r in caplog.records
-            if r.levelno == logging.DEBUG
-            and getattr(r, "event", None) == "role_divergence"
+            r for r in caplog.records if r.levelno == logging.DEBUG and getattr(r, "event", None) == "role_divergence"
         ]
-        assert divergence_records, (
-            "role_divergence event must continue firing at DEBUG for "
-            "back-compat per N-2 fold"
-        )
+        assert divergence_records, "role_divergence event must continue firing at DEBUG for back-compat per N-2 fold"
         data = getattr(divergence_records[-1], "data", {})
         assert data.get("deprecated") is True
         assert "single detector" in data.get("reason", "")
@@ -381,9 +416,7 @@ class TestRoleDetectedTelemetry:
         # log_structured attaches data via extra={"event":..., "data":...}
         # (structured_logging.py:374), which surfaces as LogRecord attrs.
         info_records = [
-            r
-            for r in caplog.records
-            if r.levelno == logging.INFO and getattr(r, "event", None) == "role_detected"
+            r for r in caplog.records if r.levelno == logging.INFO and getattr(r, "event", None) == "role_detected"
         ]
         assert info_records, "role_detected event must fire at INFO"
         data = getattr(info_records[-1], "data", {})

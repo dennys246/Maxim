@@ -195,6 +195,28 @@ def classify_self_hosted_lane(remote_url: str | None, source: str) -> bool:
     return source in ("config", "env")
 
 
+# Post-implementation Executor C1 fold: idempotency flag.
+# _apply_lane_config_to_env populates env vars from config.json. Without
+# this flag, a second invocation (e.g. from another build_primary_router
+# call) sees the env vars set by the first call and re-attributes the
+# field source from "config" to "env" — silently breaking C5's doctor
+# source attribution. The cached `_lane_env_has_remote` lets callers
+# get the original result without re-running the side-effect path.
+_lane_env_applied: bool = False
+_lane_env_has_remote: bool = False
+
+
+def _reset_lane_env_applied() -> None:
+    """Test-only helper: clear the lane-env once-per-startup flag.
+
+    Pairs with :func:`maxim.runtime.config_loader.reset_config_cache`
+    in the ``_isolate_config_json_env`` autouse fixture.
+    """
+    global _lane_env_applied, _lane_env_has_remote
+    _lane_env_applied = False
+    _lane_env_has_remote = False
+
+
 def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
     """Populate ``MAXIM_LANE_<TIER>_REMOTE_*`` env vars from the unified
     config_loader precedence chain.
@@ -210,8 +232,21 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
     the cloud-lane gate doesn't refuse self-hosted peer URLs.
     Cloud-provider opt-in stays explicit via
     ``config.json::cloud.enabled = true``.
+
+    **Idempotent** (post-implementation Executor C1 fold): the first
+    call performs the env-population work and caches the result; later
+    calls return the cached ``has_remote`` value without re-running
+    ``resolve_setting`` or re-firing side effects. Without this guard,
+    the env vars populated by the first call would be re-attributed
+    as ``source="env"`` by ``resolve_setting`` on the second call,
+    silently corrupting C5's doctor "Resolved Config" section.
     """
     import os as _os
+
+    global _lane_env_applied, _lane_env_has_remote
+    if _lane_env_applied:
+        return _lane_env_has_remote
+    _lane_env_applied = True
 
     try:
         from maxim.runtime.config_loader import (
@@ -275,15 +310,35 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
     # a URL via env or config.json, AND peer.yml is still present on
     # disk (e.g., cloudflared-present case where IM5 auto-migration
     # didn't fire), populate from peer.yml with a once-per-startup
-    # INFO deprecation log. This keeps the leader-with-stale-peer.yml
-    # case working while the operator migrates.
+    # INFO deprecation log. Keeps the leader-with-stale-peer.yml case
+    # working while the operator migrates.
+    #
+    # Post-implementation Executor C2 fold: replicate the controlled
+    # in-function env-population pattern instead of calling the legacy
+    # ``apply_peer_config_to_env`` shim. The shim writes env vars +
+    # ``MAXIM_MAX_CLOUD_LANES=1`` via ``_setdefault_nonempty`` (which
+    # is functionally equivalent), but routing through it makes the
+    # idempotency contract harder to reason about and re-creates the
+    # source-attribution corruption pattern this function's own gate
+    # guards against. Doing the work inline keeps the contract local.
     if not has_remote:
         try:
-            from maxim.peer.config import apply_peer_config_to_env, read_peer_config
+            from maxim.peer.config import read_peer_config, register_leader_endpoint
 
             peer_cfg = read_peer_config()
             if peer_cfg is not None:
-                apply_peer_config_to_env(peer_cfg)
+                if peer_cfg.url and not _os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip():
+                    _os.environ["MAXIM_LANE_LARGE_REMOTE_URL"] = peer_cfg.url
+                if peer_cfg.api_key and not _os.environ.get("MAXIM_LANE_LARGE_REMOTE_API_KEY", "").strip():
+                    _os.environ["MAXIM_LANE_LARGE_REMOTE_API_KEY"] = peer_cfg.api_key
+                if peer_cfg.model and not _os.environ.get("MAXIM_LANE_LARGE_REMOTE_MODEL", "").strip():
+                    _os.environ["MAXIM_LANE_LARGE_REMOTE_MODEL"] = peer_cfg.model
+                # peer.yml URL is self-hosted infrastructure by definition
+                _os.environ.setdefault("MAXIM_MAX_CLOUD_LANES", "1")
+                # Preserve the legacy register_leader_endpoint side
+                # effect so downstream http callers can resolve the
+                # "leader" named endpoint.
+                register_leader_endpoint(peer_cfg.url)
                 if logger_obj is not None:
                     logger_obj.info(
                         "config: lanes.large.* resolved from peer.yml "
@@ -295,6 +350,7 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
             if logger_obj is not None:
                 logger_obj.warning("Failed to load peer.yml fallback: %s", e)
 
+    _lane_env_has_remote = has_remote
     return has_remote
 
 

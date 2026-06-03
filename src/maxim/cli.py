@@ -542,12 +542,25 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     # model is configured, so bare ``ANTHROPIC_API_KEY=sk-... maxim``
     # "just works." Each implicit-set logs INFO so the auto-config
     # is visible.
+    #
+    # Post-implementation Architecture #3 fold: narrow the exception
+    # catch from bare ``Exception`` to ``ImportError`` only. The
+    # function itself does only idempotent env-var ``setdefault``
+    # writes — no operational reason for it to raise. A bare-Exception
+    # swallow would silently hide a real bug (e.g., a regression in
+    # the env-var setdefault path) under the operator's "maxim doesn't
+    # find an LLM" symptom. ``ImportError`` is the one legitimate
+    # failure mode (the cli_utils import path could be broken in a
+    # stripped-down install).
     try:
         from maxim.cli_utils import configure_cloud_solo_auto_detect
-
+    except ImportError as _autodetect_err:
+        logging.getLogger(__name__).debug(
+            "C7a auto-detect skipped: cli_utils import failed (%s)",
+            _autodetect_err,
+        )
+    else:
         configure_cloud_solo_auto_detect(logging.getLogger(__name__))
-    except Exception as _autodetect_err:
-        logging.getLogger(__name__).debug("C7a auto-detect skipped: %s", _autodetect_err)
 
     # Stage A observability: print loud warning if trace flags are active so
     # users don't leave them on accidentally (log volume + request-id exposure).

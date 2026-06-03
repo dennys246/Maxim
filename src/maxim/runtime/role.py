@@ -148,15 +148,47 @@ def _config_json_role() -> Role | None:
     loader returns a defaults-only ``MaximConfig`` when the file is
     missing, so ``cfg.role is None`` (the default) means
     "config.json doesn't pin a role" and we fall through to lower
-    ranks. Any parse error is silently swallowed at this layer —
-    role detection runs early at startup and a config-parse failure
-    would block ``maxim doctor``, which is the recovery path the
-    operator needs.
+    ranks.
+
+    Post-implementation Executor I3 fold: ``ConfigurationError`` from
+    a malformed config.json (bad enum, typo'd top-level key, future
+    major version) is surfaced as a structured WARNING event before
+    falling through. Pre-fold this was a silent debug log, which
+    meant a typo in config.json would silently route role detection
+    to a wrong rank with no operator-visible signal until C5's doctor
+    section ran later. The seven-rank order's correctness depends on
+    knowing whether the config.json layer is healthy or broken.
+
+    Other exceptions (import failures, etc.) continue to fall through
+    at debug level — those don't represent operator-visible config
+    errors.
     """
     try:
+        from maxim.exceptions import ConfigurationError
         from maxim.runtime.config_loader import load_config
-
+    except Exception as e:
+        logger.debug("role: config_loader import failed (%s); falling through", e)
+        return None
+    try:
         cfg = load_config()
+    except ConfigurationError as e:
+        # Surface the parse failure loudly — operator-visible config
+        # errors must not silently corrupt role detection.
+        logger.warning(
+            "role: config.json failed to parse during role detection (%s); "
+            "falling through to lower ranks. Run `maxim doctor` to see the full error.",
+            e,
+        )
+        try:
+            log_structured(
+                logger,
+                logging.WARNING,
+                event="config_parse_error_during_role_detect",
+                data={"error": f"{type(e).__name__}: {e}"},
+            )
+        except Exception:
+            pass
+        return None
     except Exception as e:
         logger.debug("role: config.json read failed (%s); falling through", e)
         return None
