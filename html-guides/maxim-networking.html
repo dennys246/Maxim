@@ -144,14 +144,20 @@
     </table>
 
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 mt-3">
-      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Role Detection</h3>
-      <p class="text-slate-300 leading-relaxed mb-2">Maxim detects the role at startup using the following priority:</p>
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Role Detection (seven-rank order as of 1.0)</h3>
+      <p class="text-slate-300 leading-relaxed mb-2">Maxim's unified detector at startup uses the following priority — first match wins:</p>
       <ol class="space-y-1 text-slate-300 list-decimal pl-5">
         <li>Explicit <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_ROLE=leader|peer|solo</code> environment variable.</li>
-        <li>Presence of a cloudflared config file with an ingress rule pointing to :8099 implies <span class="text-indigo-400 font-semibold">leader</span>.</li>
-        <li>Presence of a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">peer.yml</code> with a remote endpoint implies <span class="text-indigo-400 font-semibold">peer</span>.</li>
-        <li>Otherwise, <span class="text-indigo-400 font-semibold">solo</span>.</li>
+        <li><strong class="text-emerald-300">New in 1.0:</strong> <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">~/.config/maxim/config.json::role</code> — the canonical persistent setting via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim config set role &lt;value&gt;</code>.</li>
+        <li>Presence of <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">~/.config/maxim/mesh.yml</code> implies <span class="text-indigo-400 font-semibold">peer</span>.</li>
+        <li>Presence of <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">~/.cloudflared/config.yml</code> OR <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">.yaml</code> (extension widened in 1.0) OR the systemd path <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">/etc/cloudflared/config.{yml,yaml}</code> implies <span class="text-indigo-400 font-semibold">leader</span>. <strong>This is promoted above peer.yml as of 1.0</strong> so a stale peer.yml from earlier exploration doesn't silently override a real leader provisioning signal.</li>
+        <li>Presence of <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">~/.config/maxim/peer.yml</code> (legacy, deprecated as of 1.0, retired in 2.0) implies <span class="text-indigo-400 font-semibold">peer</span>.</li>
+        <li><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">--llm &lt;local-profile&gt;</code> CLI flag with none of the above signals implies <span class="text-indigo-400 font-semibold">solo</span>.</li>
+        <li>Default — <span class="text-indigo-400 font-semibold">leader</span>.</li>
       </ol>
+      <div class="mt-3 bg-emerald-950/40 border border-emerald-700/40 rounded-lg p-3 text-sm text-slate-300">
+        <p><strong class="text-emerald-300">First-startup peer.yml → config.json auto-migration:</strong> when <code class="bg-slate-900 px-1.5 py-0.5 rounded text-xs">config.json</code> is absent AND <code class="bg-slate-900 px-1.5 py-0.5 rounded text-xs">peer.yml</code> is present AND cloudflared config is absent, the loader writes a minimal <code class="bg-slate-900 px-1.5 py-0.5 rounded text-xs">config.json</code> from peer.yml fields on first run. peer.yml is never deleted. When cloudflared is present, migration is skipped so a stale peer.yml from a previous peer setup doesn't auto-flip a leader machine to peer.</p>
+      </div>
     </div>
   </section>
 

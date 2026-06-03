@@ -12,6 +12,49 @@ maxim --list-models                    # see available local models
 maxim --llm smollm-1.7b                # auto-downloads on first run
 ```
 
+## Setting up a leader (canonical 1.0 path)
+
+As of 1.0 the canonical way to persist a Maxim instance's configuration is `maxim config set` writing to `~/.config/maxim/config.json`. Worked example for a Mac Mini with 48GB unified memory running `qwen2.5-32b-instruct` as the leader:
+
+```bash
+# 1. Clear stale MAXIM_* env vars from any old shell-rc setup. The precedence
+#    chain is CLI > env > config > defaults, so a leaked export will silently
+#    shadow whatever you write to config.json. Easiest: unset the daily-use
+#    family in your current shell, then remove matching `export` lines from
+#    ~/.zshrc or ~/.bashrc so they don't come back next session.
+unset MAXIM_ROLE MAXIM_LLM_ENABLED MAXIM_LLM_PROFILE MAXIM_LLM_N_CTX \
+      MAXIM_LANE_LARGE_REMOTE_URL MAXIM_LANE_LARGE_REMOTE_API_KEY \
+      MAXIM_LANE_LARGE_REMOTE_MODEL MAXIM_MAX_CLOUD_LANES \
+      MAXIM_AUTO_DOWNLOAD_MODELS
+
+# 2. If this Mac was previously a peer, clear the stale peer config. The
+#    auto-migration shim correctly skips when cloudflared is present (so a
+#    leftover peer.yml won't auto-flip the role), but cleaning up is tidy:
+maxim peer forget                       # clears peer.yml + config.json::lanes.large.*
+
+# 3. Write the leader config:
+maxim config set role leader
+maxim config set llm.profile qwen2.5-32b-instruct
+maxim config set llm.n_ctx 16384        # comfortable on 48GB; push to 32768 if needed
+maxim config set llm.auto_download true # downloads GGUF on first run
+maxim config set auto_spawn.llm_server true
+maxim config set auto_spawn.tunnel true
+
+# 4. Verify the resolved configuration. The "Resolved Config" section shows
+#    every absorbed field with its source marker — the single answer to
+#    "what does this instance think it's configured as?"
+maxim doctor
+
+# 5. Run it:
+maxim                                   # auto-spawns llama.cpp + cloudflared,
+                                        # role exported as MAXIM_ROLE=leader
+                                        # by the unified detector at startup
+```
+
+The tunnel still needs `maxim tunnel setup` once to provision the Cloudflare named tunnel; after that `auto_spawn.tunnel=true` keeps cloudflared running. See [Tunnels](#maxim-tunnel--guided-cloudflare-tunnel-setup) below.
+
+**Why clear env vars first?** The 2026-06-01 Mac Mini setup that triggered the 1.0 config overhaul lost ~2 hours to a stale `MAXIM_LANE_LARGE_REMOTE_URL` from when the box was a peer — the env var silently shadowed config.json. The `maxim doctor` "Resolved Config" section now surfaces this via WARN rows like `MAXIM_LANE_LARGE_REMOTE_URL is set in env but config.json::lanes.large.remote_url is null. The env var wins.`
+
 ## Local Models
 
 ### Available Profiles
@@ -616,13 +659,25 @@ cloudflared tunnel run maxim-llm
 sudo cloudflared service install
 ```
 
-Then on peers:
+Then on peers — the canonical 1.0 path is `maxim peer connect`, which writes both `config.json::lanes.large.*` (canonical) and `peer.yml` (compat through 1.x):
 
 ```bash
-export MAXIM_LANE_LARGE_REMOTE_URL=https://maxim.yourdomain.com/v1
-export MAXIM_MAX_CLOUD_LANES=1   # cloud-lane gate opt-in (public URL)
+maxim peer connect https://maxim.yourdomain.com
+# paste the API key at the hidden prompt; the connect verb tests reachability
+# before saving. See "Peer authentication" below for the key flow.
+
 maxim
 ```
+
+The pre-1.0 env-var flow still works as a per-session override (the precedence chain is CLI > env > config > defaults), but is no longer the recommended primary path:
+
+```bash
+# Pre-1.0 style — env vars override config.json for this session
+export MAXIM_LANE_LARGE_REMOTE_URL=https://maxim.yourdomain.com/v1
+maxim
+```
+
+Run `maxim doctor` to see the "Resolved Config" section with every absorbed field's value + source — the single answer to "what does this instance think it's configured as?"
 
 #### Peer authentication — API key
 
@@ -648,13 +703,23 @@ maxim tunnel key rotate     # generate a new key (invalidates peers)
 maxim tunnel key export     # copy-paste snippets for all shells
 ```
 
-**Sharing with a peer — cross-platform snippets:**
-
-`maxim tunnel key export` prints ready-to-paste snippets for **bash/zsh,
-fish, PowerShell, and Windows cmd** — the peer picks theirs:
+**Sharing with a peer — `maxim peer connect` does this for you in 1.0:**
 
 ```bash
-# bash / zsh (Linux, macOS, WSL)
+# On the peer machine — paste the key at the hidden prompt:
+maxim peer connect https://maxim.yourdomain.com
+# The key is written to ~/.config/maxim/api_key (mode 0600) and referenced
+# from config.json::lanes.large.remote_api_key_ref. Both peer.yml and
+# config.json are dual-written during the 1.x deprecation window.
+```
+
+`maxim tunnel key export` still prints ready-to-paste snippets for **bash/zsh,
+fish, PowerShell, and Windows cmd** if the peer prefers env-var workflow —
+that path also works (the precedence chain treats env vars as per-session
+overrides above config.json):
+
+```bash
+# bash / zsh (Linux, macOS, WSL) — pre-1.0 alternative
 export MAXIM_LANE_LARGE_REMOTE_API_KEY="…"
 echo 'export MAXIM_LANE_LARGE_REMOTE_API_KEY="…"' >> ~/.bashrc
 
