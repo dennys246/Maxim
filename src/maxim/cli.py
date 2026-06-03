@@ -535,6 +535,20 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         except Exception:
             pass
 
+    # C7a of config_unification.md: solo + cloud-key auto-detect.
+    # Runs AFTER detect_and_apply_role so MAXIM_ROLE is exported and
+    # the auto-detect can gate on role == solo. Implicitly enables the
+    # cloud-LLM gates when a cloud API key is present but no local
+    # model is configured, so bare ``ANTHROPIC_API_KEY=sk-... maxim``
+    # "just works." Each implicit-set logs INFO so the auto-config
+    # is visible.
+    try:
+        from maxim.cli_utils import configure_cloud_solo_auto_detect
+
+        configure_cloud_solo_auto_detect(logging.getLogger(__name__))
+    except Exception as _autodetect_err:
+        logging.getLogger(__name__).debug("C7a auto-detect skipped: %s", _autodetect_err)
+
     # Stage A observability: print loud warning if trace flags are active so
     # users don't leave them on accidentally (log volume + request-id exposure).
     from maxim.models.language.mesh_trace import print_startup_warning_if_enabled

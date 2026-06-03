@@ -309,6 +309,93 @@ def check_gpu_status(logger: logging.Logger) -> None:
             logger.info("   - CUDA-compatible GPU is available")
 
 
+_CLOUD_API_KEY_TO_PROFILE: tuple[tuple[str, str], ...] = (
+    # Priority order for default cloud profile selection. First key
+    # present wins. Profiles match the bundled cloud profile catalog
+    # in models/language/config.py — anything renamed there must be
+    # mirrored here.
+    ("ANTHROPIC_API_KEY", "claude-sonnet"),
+    ("OPENAI_API_KEY", "gpt-4o"),
+    ("GOOGLE_API_KEY", "gemini-2.5-flash"),
+    ("GROQ_API_KEY", "groq-llama3-70b"),
+    ("TOGETHER_API_KEY", "together-llama3-70b"),
+    ("FIREWORKS_API_KEY", "fireworks-llama3-70b"),
+    ("MISTRAL_API_KEY", "mistral-large"),
+    ("DEEPSEEK_API_KEY", "deepseek-chat"),
+)
+
+
+def configure_cloud_solo_auto_detect(logger: logging.Logger) -> None:
+    """C7a of config_unification.md: solo + cloud key auto-detect.
+
+    When the operator has a cloud API key set (Anthropic, OpenAI,
+    Google, Groq, Together, Fireworks, Mistral, or DeepSeek) AND
+    no local LLM profile is configured AND the resolved role is solo
+    AND no peer-routing URL is set, implicitly enable the cloud-LLM
+    gates so ``maxim`` "just works" with bare-API-key configuration.
+
+    Sets ONLY env vars that are not already set (operator overrides
+    always win). Each implicit set logs INFO so the auto-config is
+    visible.
+
+    Does NOT fire when:
+    - Role is leader or peer (cloud-as-leader-serving-peers is C7b,
+      deferred until ``mesh_usage_accounting.md`` ships)
+    - ``MAXIM_LLM_PROFILE`` is already set (operator picked a model)
+    - ``MAXIM_LANE_LARGE_REMOTE_URL`` is set (routing to a leader)
+    - No cloud API key env vars are present
+
+    This pairs with the larger architectural framing pinned in
+    config_unification.md C7a discussion: role and LLM-source are
+    independent axes; ``solo`` means "alone, not in a mesh" — it
+    doesn't imply "local LLM". The auto-detect just removes the
+    seven-flag incantation operators previously needed for cloud-only
+    setup.
+    """
+    role = os.environ.get("MAXIM_ROLE", "").strip().lower()
+    if role and role != "solo":
+        return
+
+    # Operator already picked a local model — respect it
+    if os.environ.get("MAXIM_LLM_PROFILE", "").strip():
+        return
+
+    # Routing to a peer leader — that's a different mode, skip
+    if os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip():
+        return
+
+    # Find available cloud keys
+    available: list[tuple[str, str]] = []
+    for env_name, profile in _CLOUD_API_KEY_TO_PROFILE:
+        if os.environ.get(env_name, "").strip():
+            available.append((env_name, profile))
+
+    if not available:
+        return
+
+    # Pick the highest-priority available profile
+    chosen_env, chosen_profile = available[0]
+    n_keys_present = len(available)
+
+    # Apply the implicit defaults — only if not already set
+    def _setdefault_with_log(name: str, value: str) -> None:
+        if not os.environ.get(name, "").strip():
+            os.environ[name] = value
+            logger.info(
+                "C7a auto-detect (solo + %s present): %s=%s",
+                chosen_env,
+                name,
+                value,
+            )
+
+    _setdefault_with_log("MAXIM_LLM_ENABLED", "1")
+    _setdefault_with_log("MAXIM_LLM_CLOUD_ENABLED", "1")
+    _setdefault_with_log("MAXIM_MAX_CLOUD_LANES", str(min(n_keys_present, 3)))
+    _setdefault_with_log("MAXIM_LLM_REDACTION_POLICY", "standard")
+    _setdefault_with_log("MAXIM_CLOUD_SESSION_BUDGET", "5.0")
+    _setdefault_with_log("MAXIM_LLM_PROFILE", chosen_profile)
+
+
 def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data") -> None:
     """Configure a smaller LLM model for CPU-only inference when no GPU is available."""
     import json
