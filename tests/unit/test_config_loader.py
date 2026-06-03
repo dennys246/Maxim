@@ -134,6 +134,29 @@ class TestCC3PathDeclarations:
             f"(CC3)' marker in docstring"
         )
 
+    def test_lane_tier_extra_collision_with_declared_field_raises_at_construction(self):
+        """Post-implementation Architecture #4 fold: the collision
+        guard moved from ``_serialize_for_json`` (writer-only) into
+        ``LaneTierConfig.__post_init__`` so a malformed dataclass
+        cannot reach the writer at all. Mirrors CLAUDE.md's "push
+        silent-no-op invariants into types, not helpers" discipline.
+        """
+        from maxim.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="collide with declared fields"):
+            LaneTierConfig(
+                remote_url="http://leader/v1",
+                extra={"remote_url": "http://different/v1"},
+            )
+        with pytest.raises(ConfigurationError, match="collide with declared fields"):
+            LaneTierConfig(extra={"remote_api_key_ref": "~/foo"})
+        # Genuinely additive forward-growth fields are fine
+        ok = LaneTierConfig(
+            remote_url="http://leader/v1",
+            extra={"remote_health_path": "/health", "remote_timeout_s": 30},
+        )
+        assert ok.extra == {"remote_health_path": "/health", "remote_timeout_s": 30}
+
     def test_lane_tier_config_declares_path_a_escape_hatch(self):
         doc = LaneTierConfig.__doc__ or ""
         assert "ESCAPE-HATCH at 1.0 (CC3)" in doc, (

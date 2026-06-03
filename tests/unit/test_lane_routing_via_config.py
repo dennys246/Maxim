@@ -122,6 +122,51 @@ class TestAutoMigration:
         assert cfg == MaximConfig()
         assert not config_path().is_file()
 
+    def test_migration_retries_after_transient_write_failure(self, fake_home, monkeypatch, caplog):
+        """Post-implementation Executor I2 fold: the
+        ``_migration_attempted`` flag is set AFTER successful write,
+        not before. A transient write failure (mocked here as
+        write_config raising OSError) leaves the flag unset so a
+        subsequent load_config call retries the migration. Pre-fold
+        the flag was set BEFORE the work, permanently skipping
+        migration for the rest of the process after a one-off failure.
+        """
+        _write_peer_yml(fake_home)
+
+        # First call: fail the write
+        from maxim.runtime import config_writer
+
+        call_count = {"n": 0}
+
+        def fake_write_config(cfg, path=None):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise OSError("simulated disk full")
+            return (
+                config_writer.write_config.__wrapped__(cfg, path=path)
+                if hasattr(config_writer.write_config, "__wrapped__")
+                else _real_write_config(cfg, path=path)
+            )
+
+        # Cleaner approach: monkey just the first call
+        from maxim.runtime.config_writer import write_config as _real_write_config
+
+        monkeypatch.setattr("maxim.runtime.config_writer.write_config", fake_write_config)
+
+        with caplog.at_level(logging.WARNING, logger="maxim.runtime.config_loader"):
+            cfg = load_config()
+        # Migration write failed; load_config returns defaults
+        assert cfg == MaximConfig()
+        assert not config_path().is_file()
+        assert any("auto-migration write failed" in r.getMessage() for r in caplog.records)
+
+        # Second call (with the real writer restored) MUST retry the
+        # migration — the flag was not set by the failed attempt.
+        monkeypatch.setattr("maxim.runtime.config_writer.write_config", _real_write_config)
+        cfg2 = load_config()
+        assert cfg2.role == "peer"
+        assert cfg2.lanes.large.remote_url == "http://leader.example.com/v1"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # resolve_api_key_ref helper

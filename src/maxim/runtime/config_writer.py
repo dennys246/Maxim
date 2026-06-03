@@ -37,6 +37,7 @@ from maxim.runtime.config_loader import (
     load_config,
 )
 from maxim.utils.atomic_io import atomic_write_json
+from maxim.utils.format_version import with_format_version
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,15 @@ def _serialize_for_json(config: MaximConfig) -> dict[str, Any]:
     :class:`LaneTierConfig`'s ``extra`` dict must remain a top-level
     sibling of the declared fields when round-tripped (otherwise a
     future-grown field would be lost). We inline ``extra`` here.
+
+    **Post-implementation Architecture #4 fold:** the collision check
+    moved into :class:`LaneTierConfig.__post_init__`. A malformed
+    LaneTierConfig now cannot reach this writer at all — the
+    constructor rejects it with ``ConfigurationError``. The defensive
+    assertion below guards against the impossible case where the
+    invariant is bypassed (e.g., via a hypothetical caller that
+    constructs the dataclass without ``__post_init__`` running — not
+    possible with frozen dataclasses, but cheap to document).
     """
     payload = asdict(config)
     # Inline lanes.<tier>.extra back into the tier dict
@@ -61,13 +71,11 @@ def _serialize_for_json(config: MaximConfig) -> dict[str, Any]:
         tier = lanes.get(tier_name, {})
         extras = tier.pop("extra", {}) or {}
         for k, v in extras.items():
-            if k in tier:
-                # Should not happen — _parse_lane_tier moves unknown keys
-                # to extra. But guard explicitly so a bug in the parser
-                # doesn't silently shadow declared fields on write.
-                raise ConfigurationError(
-                    f"config_writer: lanes.{tier_name}.extra contains key {k!r} that collides with a declared field"
-                )
+            assert k not in tier, (
+                f"config_writer: LaneTierConfig.__post_init__ should have "
+                f"caught the collision on lanes.{tier_name}.extra[{k!r}] "
+                f"at construction. Reached the writer — invariant bypassed."
+            )
             tier[k] = v
     return payload
 
@@ -89,7 +97,12 @@ def write_config(
     target.parent.mkdir(parents=True, exist_ok=True)
 
     payload = _serialize_for_json(config)
-    payload["_format_version"] = CONFIG_FORMAT_VERSION
+    # Post-implementation Architecture #1 fold: route _format_version
+    # stamping through the canonical with_format_version helper. The
+    # pre-fold direct assignment silently bypassed CC1's fail-loud-
+    # on-stale-conflict semantics (raises ValueError when payload
+    # already carries a mismatched _format_version).
+    payload = with_format_version(payload, CONFIG_FORMAT_VERSION)
 
     try:
         from filelock import FileLock

@@ -85,6 +85,30 @@ class TestWriteAndReadRoundtrip:
         raw = json.loads(path.read_text())
         assert raw["_format_version"] == "1.0"
 
+    def test_format_version_routed_through_canonical_helper(self, tmp_path, monkeypatch):
+        """Post-implementation Architecture #1 fold: writes route
+        ``_format_version`` through
+        :func:`maxim.utils.format_version.with_format_version`, the
+        canonical CC1 helper. Verify by patching the helper and
+        confirming the writer calls it."""
+        calls = []
+
+        from maxim.utils.format_version import (
+            FORMAT_VERSION as _FV_DEFAULT,
+            with_format_version as _original_helper,
+        )
+
+        def tracking_wrapper(payload, version=_FV_DEFAULT):
+            calls.append((dict(payload), version))
+            return _original_helper(payload, version)
+
+        monkeypatch.setattr("maxim.runtime.config_writer.with_format_version", tracking_wrapper)
+
+        path = tmp_path / "config.json"
+        write_config(MaximConfig(), path=path)
+        assert calls, "with_format_version helper was not called by the writer"
+        assert calls[0][1] == "1.0"
+
 
 class TestSetField:
     def test_set_string_field(self, tmp_path):
@@ -262,20 +286,26 @@ class TestConcurrentWriters:
 
 class TestSerializationCollision:
     """Extra-dict keys that collide with declared fields must raise
-    rather than silently shadow."""
+    rather than silently shadow.
 
-    def test_extra_collision_with_declared_field_raises(self, tmp_path):
-        path = tmp_path / "config.json"
-        # Construct a degenerate LaneTierConfig with extra containing a
-        # declared field name; the writer must refuse rather than
-        # silently overwriting.
-        cfg = MaximConfig(
-            lanes=LanesConfigSection(
-                large=LaneTierConfig(
-                    remote_url="http://example.com",
-                    extra={"remote_url": "http://different.com"},  # collision
+    Post-implementation Architecture #4 fold: the collision check
+    moved from ``_serialize_for_json`` (writer-only) into
+    ``LaneTierConfig.__post_init__``. A malformed dataclass cannot
+    reach the writer at all — construction itself raises. The writer
+    retains a defensive assertion for the invariant-bypassed case.
+    """
+
+    def test_extra_collision_with_declared_field_raises_at_construction(self, tmp_path):
+        # Post-impl Architecture #4 fold: construction raises before
+        # the writer is reached. The original test expected the writer
+        # to refuse; it now never gets the chance.
+        del tmp_path  # not needed — fails before we'd write
+        with pytest.raises(ConfigurationError, match="collide with declared fields"):
+            MaximConfig(
+                lanes=LanesConfigSection(
+                    large=LaneTierConfig(
+                        remote_url="http://example.com",
+                        extra={"remote_url": "http://different.com"},  # collision
+                    ),
                 ),
-            ),
-        )
-        with pytest.raises(ConfigurationError, match="collides"):
-            write_config(cfg, path=path)
+            )

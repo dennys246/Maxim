@@ -96,9 +96,7 @@ class LLMConfigSection:
     auto_download: bool = False
 
 
-_LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset(
-    {"remote_url", "remote_model", "remote_api_key_ref"}
-)
+_LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset({"remote_url", "remote_model", "remote_api_key_ref"})
 
 
 @dataclass(frozen=True)
@@ -709,6 +707,18 @@ def _check_format_version(data: dict[str, Any]) -> tuple[str, bool]:
         check_format_version,
     )
 
+    # Type-check the raw field BEFORE routing through the canonical
+    # helper. A non-string value (e.g., ``_format_version: 1.0`` as a
+    # number) is most likely an operator typo and should fail loudly —
+    # the canonical helper at maxim.utils.format_version treats non-
+    # string values as "missing" (returns LEGACY_VERSION). For
+    # config.json specifically we want stricter behavior because the
+    # file is CLI-canonical and the CLI never writes a non-string
+    # version.
+    raw_field = data.get("_format_version")
+    if raw_field is not None and (not isinstance(raw_field, str) or not raw_field):
+        raise ConfigurationError(f"config.json: _format_version must be a non-empty string, got {raw_field!r}")
+
     # check_format_version returns a string version or LEGACY_VERSION
     # when the field is absent. We treat absent as "same as loader"
     # for our minor-version classification (the C1 contract says
@@ -718,9 +728,6 @@ def _check_format_version(data: dict[str, Any]) -> tuple[str, bool]:
     if raw == LEGACY_VERSION:
         # Pre-1.0 file or absent field. Treat as same-major.
         raw = _FV_DEFAULT
-
-    if not isinstance(raw, str) or not raw:
-        raise ConfigurationError(f"config.json: _format_version must be a non-empty string, got {raw!r}")
 
     # Parse major.minor; tolerate trailing patch/identifiers via splitting.
     try:

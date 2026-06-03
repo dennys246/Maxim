@@ -313,11 +313,24 @@ def _write_lane_to_config_json(url: str, key: str, model: str | None, is_cloud: 
     set_field("lanes.large.remote_api_key_ref", str(api_key_path))
     if model:
         set_field("lanes.large.remote_model", model)
-    # is_cloud=True from peer connect means the operator marked the URL
-    # as a public/cloud lane — surface that as cloud.enabled so the
-    # cloud-lane gate semantics are explicit at the config layer.
-    if is_cloud:
-        set_field("cloud.enabled", "true")
+    # Post-implementation Executor I5 fold: do NOT flip cloud.enabled
+    # based on the peer-connect ``--cloud`` flag.
+    #
+    # ``--cloud`` on `maxim peer connect` describes the URL: "this
+    # leader URL is public-facing" (typically tunneled through
+    # Cloudflare). ``config.json::cloud.enabled`` is a different
+    # concept: cloud-LLM-PROVIDER opt-in (Claude/OpenAI/Groq/etc.)
+    # with budget gate + redaction policy + max_lanes. Flipping
+    # cloud.enabled silently activates the cloud-PROVIDER routing
+    # path for a leader URL — wrong semantics. The IM5 audit's
+    # self-hosted classification (MAXIM_MAX_CLOUD_LANES=1 set when
+    # lanes.large.remote_url resolves from config) is the correct
+    # signal for "this URL is self-hosted infra, don't gate it as
+    # cloud-provider."
+    #
+    # The ``is_cloud`` PeerConfig field is preserved in peer.yml for
+    # back-compat with pre-C4 callers that branch on it.
+    _ = is_cloud  # field intentionally not propagated to config.json
 
     return config_path()
 
