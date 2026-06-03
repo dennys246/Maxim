@@ -242,6 +242,57 @@ jobs:
             echo "Import llm_swap_on_target from peer/admin_core instead."
             exit 1
           fi
+          # config_unification.md C2 + C6 invariants (IM2 fold).
+          # runtime/config_writer.py defines the canonical writer
+          # surface (write_config / mutate_config / set_field). The
+          # allow-list below enumerates the only modules that may
+          # call those functions. Mirror of the
+          # write_mesh_config / mesh_setup.py pattern: operator-
+          # explicit one-shot setup verbs only — automatic runtime /
+          # admin-API writes to declarative config files are forbidden.
+          CONFIG_WRITER_MATCHES=$(grep -rn --include="*.py" -E "\b(write_config|mutate_config|set_field)\(" src/maxim/ tests/ \
+            | grep -vE "^src/maxim/runtime/config_writer\.py:" \
+            | grep -vE "^src/maxim/runtime/config_cli\.py:" \
+            | grep -vE "^src/maxim/runtime/config_loader\.py:.*written = write_config" \
+            | grep -vE "^src/maxim/peer/cli\.py:" \
+            | grep -vE "^tests/unit/test_config_writer\.py:" \
+            | grep -vE "^tests/unit/test_config_cli\.py:" \
+            | grep -vE "^tests/unit/test_config_loader\.py:" \
+            | grep -vE "^tests/unit/test_lane_routing_via_config\.py:" \
+            | grep -vE "^tests/unit/test_doctor_resolved_config\.py:" \
+            | grep -vE "^tests/unit/test_role_unification\.py:" \
+            || true)
+          if [ -n "$CONFIG_WRITER_MATCHES" ]; then
+            echo "ERROR: new caller of config_writer.write_config / mutate_config / set_field detected (config_unification.md IM2)"
+            echo "$CONFIG_WRITER_MATCHES"
+            echo ""
+            echo "runtime/config_writer.py is the only sanctioned writer of"
+            echo "~/.config/maxim/config.json. Mirror the mesh_setup.py /"
+            echo "write_mesh_config pattern — operator-explicit one-shot"
+            echo "setup verbs only; automatic runtime / admin-API writes"
+            echo "to declarative config files are forbidden."
+            echo ""
+            echo "If you have a legitimate new caller (e.g., a new maxim"
+            echo "config verb), update both:"
+            echo "  1. The allow list in .github/workflows/test.yml"
+            echo "  2. The config_writer.py module docstring"
+            echo "in the same commit so the rule stays coherent."
+            exit 1
+          fi
+          # config_unification.md cross-confirmed I-3/IM3 fold: inline
+          # plaintext API keys must never appear in test fixtures. The
+          # repo-wide grep catches sk-/gsk_/AKIA/xoxb- patterns. Only
+          # quoted SAMPLE-WITHIN-TEST-CODE matches like
+          # `set_field("...remote_api_key_ref", "sk-...")` for testing
+          # the rejection path are allowed.
+          if grep -rnE '"remote_api_key_ref"[^:]*:\s*"(sk-|gsk_|AKIA|xoxb-)' tests/fixtures/ 2>/dev/null; then
+            echo "ERROR: inline plaintext API key in tests/fixtures/ (config_unification.md I-3/IM3)"
+            echo ""
+            echo "Lane API key references must be file paths or keyring URIs."
+            echo "Sample keys for testing rejection paths should be inside"
+            echo "test code (tests/unit/), not committed in fixtures."
+            exit 1
+          fi
           # C6 hard-error allow list (PR #301, 2026-05-29): PainBus /
           # ReactionBus / MemoryHub raw construction without
           # _allow_raw=True now raises TypeError. The keyword survives

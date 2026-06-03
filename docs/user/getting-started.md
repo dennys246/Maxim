@@ -74,6 +74,8 @@ maxim --language-model smollm-1.7b
 
 This starts the full agent loop without attempting a robot connection. Useful for testing LLM reasoning, planning, and coding tools on your development machine.
 
+> **Persisting your choices.** As of 1.0, the canonical way to set Maxim's runtime preferences (role, default model, lane routing, etc.) is `maxim config set` writing to `~/.config/maxim/config.json`. Run `maxim config` for the verb surface or `maxim doctor` for the "Resolved Config" section that shows every effective field + source. See [Configuration](configuration.md#quick-start-maxim-config).
+
 ### Simulation Mode
 
 The easiest way to start is to run `maxim` with no arguments:
