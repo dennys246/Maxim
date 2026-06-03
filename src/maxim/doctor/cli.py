@@ -520,9 +520,18 @@ def _peer_test(base_url: str, *, key: str | None, model: str | None) -> int:
         )
         data = resp.json()
     except _http.HTTPAuthError as e:
-        print(f"  ✗ HTTP {e.status}: auth rejected")
-        print("    → Bearer token rejected. Check the key matches the leader's.")
-        print("    → On the leader, run: maxim tunnel key show")
+        # Key-drift detection (post-config-unification UX fold,
+        # 2026-06-03): the canonical 401 cause is "your stored key
+        # doesn't match the leader's current key." Direct the
+        # operator at rotate-and-re-paste rather than the generic
+        # "check the key" message. Aligns with the canonical
+        # classifier at peer/probe_classify.py.
+        print(f"  ✗ HTTP {e.status}: auth rejected — your stored API key may be stale")
+        print("    → On the leader, print the current key:")
+        print("        maxim tunnel key show")
+        print("    → Then re-pair this peer with the fresh key:")
+        print(f"        maxim peer connect {base_url.rstrip('/v1').rstrip('/')}")
+        print("        (paste the new key at the prompt)")
         return 1
     except _http.HTTPClientError as e:
         print(f"  ✗ HTTP {e.status}: {e.fix_hint}")

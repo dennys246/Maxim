@@ -91,13 +91,30 @@ def classify_probe_outcome(
             fix=None,
         )
     if outcome == "auth_rejected":
+        # Key-drift detection (post-config-unification UX fold,
+        # 2026-06-03): the canonical 401 path on a peer-leader setup
+        # is "your stored key doesn't match the leader's current key,"
+        # not a generic "auth failed." Surface the rotate-and-re-paste
+        # path as primary because the operator's stored key is the
+        # thing they can fix; the leader's key only needs rotating if
+        # THEY've decided to rotate. The mesh.yml::cluster_key path
+        # stays as a secondary hint for cluster setups.
+        #
+        # Larger drift-detection design (option 3 from the discussion)
+        # is tracked in docs/plans/key_drift_detection.md — that
+        # follow-up adds a /v1/admin/key-fingerprint endpoint so peers
+        # can detect drift PROACTIVELY without ever waiting for a 401.
         return ProbeClassification(
             status="fail",
-            message=f"auth rejected ({url}): {detail}",
+            message=f"auth rejected ({url}): {detail} — your stored API key may be stale (leader's current key differs from yours)",
             fix=(
-                "Cluster key mismatch. On the leader:\n"
-                "  maxim tunnel key rotate && maxim tunnel key export\n"
-                "Then update mesh.yml::cluster_key on this node."
+                "Your stored API key likely doesn't match the leader's current key.\n"
+                "On the leader, print the current key (or rotate if you want a fresh one):\n"
+                "  maxim tunnel key show       # canonical case: leader rotated, peer is stale\n"
+                "  maxim tunnel key rotate     # security case: invalidate every peer + start fresh\n"
+                "Then re-pair this peer with the fresh key:\n"
+                "  maxim peer connect <leader-url>   # paste the key at the prompt\n"
+                "(For mesh.yml-based cluster setups: update mesh.yml::cluster_key on this node instead.)"
             ),
         )
     if outcome == "inference_broken":

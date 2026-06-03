@@ -615,11 +615,11 @@ def check_env_config(info: PlatformInfo, role: str | None = None) -> list["Check
         # ── llm.enabled ──────────────────────────────────────────────────────
         if _rs is not None:
             try:
-                llm_enabled_value, llm_enabled_source = _rs("llm.enabled")
+                llm_enabled_value, _ = _rs("llm.enabled")
             except Exception:
-                llm_enabled_value, llm_enabled_source = None, "default"
+                llm_enabled_value = None
         else:
-            llm_enabled_value, llm_enabled_source = None, "default"
+            llm_enabled_value = None
         if not llm_enabled_value:
             results.append(
                 CheckResult(
@@ -2243,11 +2243,24 @@ def check_remote_reachability(url: str | None = None, api_key: str | None = None
             message=f"{url} responding ({result.latency_ms:.0f} ms)",
         )
     if result.outcome == "auth_rejected":
+        # Key-drift detection (post-config-unification UX fold,
+        # 2026-06-03): route the message + fix through the canonical
+        # classifier in peer/probe_classify.py rather than overriding
+        # locally. CLAUDE.md C1 invariant: "callers do NOT override
+        # the returned message" — pass richer `detail` instead.
+        from maxim.peer.probe_classify import classify_probe_outcome
+
+        classification = classify_probe_outcome(
+            outcome=result.outcome,
+            detail=result.detail,
+            latency_ms=result.latency_ms,
+            url=url,
+        )
         return CheckResult(
             name="Remote leader probe",
-            status="warn",
-            message=f"{url} alive but rejected the API key ({result.detail})",
-            fix="maxim peer key  # rotate / re-paste from leader",
+            status="warn",  # auth_rejected is recoverable (re-paste key)
+            message=classification.message,
+            fix=classification.fix,
             retry_id="remote_probe",
         )
     fix_hints = {

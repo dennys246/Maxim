@@ -1496,7 +1496,16 @@ def build_primary_router(
 
 _PROBE_FIX_HINTS: dict[str, str] = {
     "ok": "",
-    "auth_rejected": "Auth token rejected — run `maxim peer key` to rotate",
+    # Key-drift detection (post-config-unification UX fold, 2026-06-03):
+    # canonical 401 cause is "your stored key differs from leader's
+    # current key". Direct the operator at the rotate-and-re-paste
+    # path. See peer/probe_classify.py for the long-form message.
+    "auth_rejected": (
+        "Stored API key likely doesn't match the leader's current key. "
+        "On the leader: `maxim tunnel key show` (or `maxim tunnel key rotate` for "
+        "a fresh key), then on this node: `maxim peer connect <leader-url>` and "
+        "paste the fresh key"
+    ),
     "dns_fail": "Check the hostname spelling in peer.yml or $MAXIM_LANE_*_REMOTE_URL",
     "tls_error": "Check the TLS certificate validity on the leader",
     "connection_refused": "Leader is not accepting connections — is `maxim` running there?",
