@@ -792,3 +792,155 @@ class TestForUrlFactory:
         # Falls through to cfg["api_key_env"] which is "" in for_url's
         # built cfg; os.getenv("", "") returns "".
         assert backend._get_api_key() == ""
+
+
+# ─── Served-model discovery ────────────────────────────────────────────
+#
+# llama-cpp-server echoes the request's ``model`` field unchanged in
+# ``/v1/chat/completions`` responses. Without ``/v1/models`` discovery,
+# ``LLMResponse.model`` would surface the *requested* name (e.g.
+# ``claude-sonnet-4-6``) even when the leader is serving local Qwen,
+# corrupting both display and cost tracking. These tests pin the
+# substitution + fallback contract.
+
+
+class TestServedModelDiscovery:
+    def _models_response(self, served: str) -> Response:
+        body = {
+            "object": "list",
+            "data": [{"id": served, "object": "model", "owned_by": "llamacpp"}],
+        }
+        return Response(
+            status=200,
+            headers={},
+            content=json.dumps(body).encode("utf-8"),
+            elapsed_ms=5.0,
+            endpoint="discovery",
+            request_id="probe",
+        )
+
+    def test_warmup_populates_served_model(self):
+        backend = _make_backend()
+        with patch.object(_http, "fetch_url", return_value=self._models_response("qwen2.5-32b")):
+            assert backend.warmup() is True
+        assert backend.served_model == "qwen2.5-32b"
+        assert backend._served_model_discovery_attempted is True
+
+    def test_non_streaming_response_substitutes_served_model(self, ok_body):
+        """``LLMResponse.model`` reflects the served name, not the echo.
+
+        Discovery happens during ``warmup()`` — the canonical entry point
+        the router calls once per backend instance. The substitution then
+        applies to every subsequent ``complete_with_usage`` call without
+        re-probing ``/v1/models``.
+        """
+        backend = _make_backend()
+        # ok_body echoes "test-model" (the requested name). Discovery
+        # during warmup surfaces a different name — the served name must
+        # win.
+        with patch.object(_http, "fetch_url", return_value=self._models_response("qwen2.5-32b")):
+            assert backend.warmup() is True
+        assert backend.served_model == "qwen2.5-32b"
+        with patch.object(_http, "post", return_value=_make_response(200, ok_body)):
+            resp = backend.complete_with_usage(
+                system="",
+                user="hi",
+                max_tokens=8,
+                temperature=0.0,
+            )
+        assert resp.model == "qwen2.5-32b"
+        assert resp.provider == "test-peer"
+
+    def test_discovery_failure_falls_back_to_echoed_model(self, ok_body):
+        """Probe failure during ``warmup()`` leaves ``_served_model``
+        empty; subsequent completions use the existing
+        ``raw.get('model') or requested`` fallback path."""
+        backend = _make_backend()
+
+        def _fail(*_args, **_kwargs):
+            raise HTTPConnectionError("test-peer", fix_hint="probe down")
+
+        with patch.object(_http, "fetch_url", side_effect=_fail):
+            assert backend.warmup() is True  # warmup still succeeds
+        assert backend.served_model == ""
+        assert backend._served_model_discovery_attempted is True
+
+        with patch.object(_http, "post", return_value=_make_response(200, ok_body)):
+            resp = backend.complete_with_usage(
+                system="",
+                user="hi",
+                max_tokens=8,
+                temperature=0.0,
+            )
+        # ok_body echoes the requested "test-model" — that's the fallback.
+        assert resp.model == "test-model"
+
+    def test_discovery_is_one_shot(self):
+        """Repeated ``warmup()`` calls must NOT re-probe ``/v1/models``
+        after the first attempt (success OR failure)."""
+        backend = _make_backend()
+        call_count = {"n": 0}
+
+        def _count_calls(*_args, **_kwargs):
+            call_count["n"] += 1
+            raise HTTPConnectionError("test-peer", fix_hint="probe down")
+
+        with patch.object(_http, "fetch_url", side_effect=_count_calls):
+            for _ in range(5):
+                backend.warmup()
+        assert call_count["n"] == 1
+
+    def test_completion_does_not_probe_v1_models(self, ok_body):
+        """``complete_with_usage`` must NOT call ``/v1/models`` —
+        preserves the EXACTLY-one-HTTP-call invariant. Discovery is the
+        responsibility of ``warmup()``."""
+        backend = _make_backend()
+        fetch_call_count = {"n": 0}
+
+        def _track_fetch(*_args, **_kwargs):
+            fetch_call_count["n"] += 1
+            raise AssertionError("complete_with_usage must not call /v1/models")
+
+        with patch.object(_http, "post", return_value=_make_response(200, ok_body)):
+            with patch.object(_http, "fetch_url", side_effect=_track_fetch):
+                resp = backend.complete_with_usage(
+                    system="",
+                    user="hi",
+                    max_tokens=8,
+                    temperature=0.0,
+                )
+        assert fetch_call_count["n"] == 0
+        # Without warmup the served model stays empty → fall back to echo.
+        assert resp.model == "test-model"
+
+    def test_malformed_models_response_is_swallowed(self):
+        """``/v1/models`` returning a non-list-of-dicts body during
+        ``warmup()`` leaves ``_served_model`` empty without raising."""
+        backend = _make_backend()
+        malformed = Response(
+            status=200,
+            headers={},
+            content=b'{"data": "not-a-list"}',
+            elapsed_ms=5.0,
+            endpoint="discovery",
+            request_id="probe",
+        )
+        with patch.object(_http, "fetch_url", return_value=malformed):
+            assert backend.warmup() is True
+        assert backend.served_model == ""
+
+    def test_empty_models_data_is_swallowed(self):
+        """``{"data": []}`` (no models loaded) during ``warmup()`` leaves
+        ``_served_model`` empty without raising."""
+        backend = _make_backend()
+        empty = Response(
+            status=200,
+            headers={},
+            content=b'{"data": []}',
+            elapsed_ms=5.0,
+            endpoint="discovery",
+            request_id="probe",
+        )
+        with patch.object(_http, "fetch_url", return_value=empty):
+            assert backend.warmup() is True
+        assert backend.served_model == ""

@@ -2724,6 +2724,43 @@ def start_simulation_mode(
         )
         if llm_router
         else "",
+        # Routing-path diagnostics: provider key + backend class + endpoint URL.
+        # Without these, the report cannot distinguish e.g. claude-sonnet-4-6
+        # via Anthropic direct from claude-sonnet-4-6 via a leader proxy.
+        # Falls through aut_router → llm_router (single-router sims read llm_router).
+        language_provider=(
+            getattr(aut_router, "last_used_provider", "") or getattr(llm_router, "last_used_provider", "")
+        )
+        if llm_router
+        else "",
+        language_backend_class=(
+            getattr(aut_router, "last_used_backend_class", "") or getattr(llm_router, "last_used_backend_class", "")
+        )
+        if llm_router
+        else "",
+        language_endpoint=(
+            getattr(aut_router, "last_used_endpoint", "") or getattr(llm_router, "last_used_endpoint", "")
+        )
+        if llm_router
+        else "",
+        # AUT-specific routing when dual-LLM mode is active. Empty when
+        # single-router (orchestrator + AUT share one router).
+        aut_model=(
+            getattr(aut_router, "last_used_model", "")
+            or getattr(aut_router, "model_name", "")
+            or getattr(aut_router, "active_model", "")
+        )
+        if aut_router and aut_router is not llm_router
+        else "",
+        aut_provider=getattr(aut_router, "last_used_provider", "")
+        if aut_router and aut_router is not llm_router
+        else "",
+        aut_backend_class=getattr(aut_router, "last_used_backend_class", "")
+        if aut_router and aut_router is not llm_router
+        else "",
+        aut_endpoint=getattr(aut_router, "last_used_endpoint", "")
+        if aut_router and aut_router is not llm_router
+        else "",
         llm_finish_context=llm_finish,
         # Plan 4 follow-up (2026-04-14): forward the session_id we
         # generated at sim entry so the report's session_id matches the

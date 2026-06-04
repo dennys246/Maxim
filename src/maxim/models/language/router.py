@@ -141,6 +141,13 @@ class LLMRouter:
         # actually ran (important when the router spans local + cloud backends).
         self._last_used_model: str = ""
         self._last_used_provider: str = ""
+        # Backend type + base URL captured at success time for routing-path
+        # diagnostics. Without these, the report cannot distinguish
+        # "claude-sonnet-4-6 via Anthropic-direct" from
+        # "claude-sonnet-4-6 via leader proxy" — both show identical model
+        # names. Empty until the first successful dispatch.
+        self._last_used_backend_class: str = ""
+        self._last_used_endpoint: str = ""
         # Plan 3 R2.5: per-dispatch attempt log, drained into a single
         # ``dispatch_exhausted`` WARN when all providers fail. Populated
         # by ``_record_attempt_outcome`` from inside ``_try_provider``.
@@ -216,6 +223,28 @@ class LLMRouter:
     def last_used_provider(self) -> str:
         """Return the provider key that most recently served a request."""
         return self._last_used_provider
+
+    @property
+    def last_used_backend_class(self) -> str:
+        """Backend class name that served the most recent successful call.
+
+        E.g., ``"_OpenAIBackend"`` (Anthropic or OpenAI cloud), or
+        ``"_MaximPeerBackend"`` (self-hosted leader). Empty until the
+        first successful dispatch.
+        """
+        return self._last_used_backend_class
+
+    @property
+    def last_used_endpoint(self) -> str:
+        """Base URL that served the most recent successful call.
+
+        E.g., ``"https://api.anthropic.com/v1"`` (Anthropic direct) or
+        ``"https://maxim.big-mac-mini.org/v1"`` (leader-proxied) — lets
+        the report distinguish cloud-direct from leader-proxied even
+        when both serve the same model name. Empty when the provider's
+        cfg has no base_url (most cloud providers use the SDK's default).
+        """
+        return self._last_used_endpoint
 
     def get_token_counter(self) -> TokenCounter:
         """Return a token counter that lazily upgrades to the real tokenizer.
@@ -530,7 +559,12 @@ class LLMRouter:
 
         return filtered, budget_tier, totals
 
-    def _note_provider_success(self, provider_key: str, model: str = "") -> None:
+    def _note_provider_success(
+        self,
+        provider_key: str,
+        model: str = "",
+        backend: Any | None = None,
+    ) -> None:
         # Plan 3.5 R6 review: guard success bookkeeping behind the
         # cancellation check too. If an orphan thread completes the HTTP
         # call after the agent-level timeout fired, we don't want it to
@@ -550,6 +584,23 @@ class LLMRouter:
         self._last_used_provider = provider_key
         if model:
             self._last_used_model = model
+        # Capture routing-path diagnostics: backend class + base URL.
+        # Without these the simulation report cannot distinguish
+        # Anthropic-direct from leader-proxied from local-llama. Empty
+        # values fall back silently — display layer renders only what's set.
+        if backend is not None:
+            try:
+                self._last_used_backend_class = type(backend).__name__
+            except Exception:
+                pass
+        # base_url lives on the provider config dict, not the backend
+        # instance — read it from the same _providers cfg the dispatcher
+        # used so the captured value reflects what actually ran.
+        try:
+            provider_cfg = self._providers.get(provider_key, {})
+            self._last_used_endpoint = str(provider_cfg.get("base_url") or "")
+        except Exception:
+            pass
 
     def _is_cancelled(self) -> bool:
         """Plan 3.5 R4: check if the current request has been cancelled
@@ -1269,7 +1320,7 @@ class LLMRouter:
                 stop=stop,
             )
             if text:
-                self._note_provider_success(provider_key, model=model_override or model)
+                self._note_provider_success(provider_key, model=model_override or model, backend=backend)
             return text, None
 
         # Path B: backend takes structured system/user (cloud providers)
@@ -1305,6 +1356,7 @@ class LLMRouter:
                 self._note_provider_success(
                     provider_key,
                     model=resp.model or model_override or model,
+                    backend=backend,
                 )
                 usage = {
                     "input_tokens": resp.input_tokens,
@@ -1369,7 +1421,7 @@ class LLMRouter:
             stop=tuple(getattr(self.cfg, "stop", ("</s>",))),
         )
         if text:
-            self._note_provider_success(provider_key, model=model_override or model)
+            self._note_provider_success(provider_key, model=model_override or model, backend=backend)
         return text, None
 
     @staticmethod
