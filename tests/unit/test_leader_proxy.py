@@ -1574,8 +1574,12 @@ class TestAdmissionCheck:
         assert err["context_window"] == 300
         assert err["safety_overhead_tokens"] == 10
         assert err["estimated_prompt_tokens"] > 280
-        # max_tokens unset → applies default of 1024
-        assert err["max_tokens"] == 1024
+        # max_tokens unset → applies _PROXY_DEFAULT_MAX_TOKENS fallback.
+        # Don't hard-code the literal here; reference the constant so a
+        # future tune doesn't drift this test out of sync.
+        from maxim.runtime.leader_proxy import _PROXY_DEFAULT_MAX_TOKENS
+
+        assert err["max_tokens"] == _PROXY_DEFAULT_MAX_TOKENS
         # Total > n_ctx is the rejection condition; message names the math
         assert "exceeds the model's context window" in err["message"]
 
@@ -1703,3 +1707,97 @@ class TestLaneTimeoutFieldFlow:
         lanes = {"large": LaneConfig(name="large", max_workers=1)}
         updated = apply_lane_env_overrides(lanes)
         assert updated["large"].remote_timeout_s is None
+
+
+class TestBackendsAlwaysSendMaxTokens:
+    """Pin that both backends always populate ``max_tokens`` in the
+    outgoing HTTP request.
+
+    This makes the proxy admission gate's ``_PROXY_DEFAULT_MAX_TOKENS``
+    fallback **structurally unreachable** for Maxim-internal traffic —
+    when that fallback fires, it's signal that an external client
+    (curl probe, raw API script) made the call, not a Maxim agent.
+
+    The invariant has two halves: the method signature requires
+    ``max_tokens`` as a keyword-only argument (no default), AND the
+    payload construction always includes the field. Both backends
+    follow this contract. A silent regression here (e.g., someone
+    adds ``max_tokens: int = 0`` as a default) would let the gate's
+    fallback start firing on real agent traffic — degraded admission
+    accuracy without a loud failure.
+    """
+
+    def test_maxim_peer_backend_build_payload_includes_max_tokens(self):
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        # Construct minimally without firing __init__ — we only need
+        # the bound method on the class for payload construction.
+        backend = object.__new__(_MaximPeerBackend)
+        payload = backend._build_payload(
+            system="sys",
+            user="usr",
+            max_tokens=512,
+            temperature=0.7,
+            stop=(),
+            model="test-model",
+            tools=None,
+            thinking=None,
+        )
+        assert "max_tokens" in payload
+        assert payload["max_tokens"] == 512
+        # Verify the type coercion happens (defensive against bool sneaking
+        # through — bool is technically int in Python)
+        assert isinstance(payload["max_tokens"], int)
+
+    def test_maxim_peer_backend_complete_with_usage_max_tokens_required(self):
+        """Removing the ``max_tokens`` requirement on the signature
+        would let callers silently elide the field — the proxy gate
+        would then apply ``_PROXY_DEFAULT_MAX_TOKENS`` (2048) which
+        may not match what the agent actually wants."""
+        import inspect
+
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        sig = inspect.signature(_MaximPeerBackend.complete_with_usage)
+        assert "max_tokens" in sig.parameters, "_MaximPeerBackend.complete_with_usage must accept max_tokens"
+        param = sig.parameters["max_tokens"]
+        assert param.default is inspect.Parameter.empty, (
+            "max_tokens must be required (no default) — see TestBackendsAlwaysSendMaxTokens docstring"
+        )
+        assert param.kind == inspect.Parameter.KEYWORD_ONLY, (
+            "max_tokens must be keyword-only — positional would risk silent miscount on signature changes"
+        )
+
+    def test_maxim_peer_backend_complete_max_tokens_required(self):
+        """Same contract on the legacy ``complete`` method."""
+        import inspect
+
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        sig = inspect.signature(_MaximPeerBackend.complete)
+        param = sig.parameters["max_tokens"]
+        assert param.default is inspect.Parameter.empty
+        assert param.kind == inspect.Parameter.KEYWORD_ONLY
+
+    def test_openai_backend_complete_with_usage_max_tokens_required(self):
+        """Same contract on the cloud-backend path. ``_OpenAIBackend``
+        passes ``max_tokens`` straight through to the OpenAI SDK
+        client; the gate's fallback must not be load-bearing here either."""
+        import inspect
+
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        sig = inspect.signature(_OpenAIBackend.complete_with_usage)
+        param = sig.parameters["max_tokens"]
+        assert param.default is inspect.Parameter.empty
+        assert param.kind == inspect.Parameter.KEYWORD_ONLY
+
+    def test_openai_backend_complete_max_tokens_required(self):
+        import inspect
+
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        sig = inspect.signature(_OpenAIBackend.complete)
+        param = sig.parameters["max_tokens"]
+        assert param.default is inspect.Parameter.empty
+        assert param.kind == inspect.Parameter.KEYWORD_ONLY

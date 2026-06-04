@@ -289,7 +289,16 @@ _PROXY_CONTEXT_OVERHEAD_DEFAULT = 256
 _PROXY_CONTEXT_OVERHEAD_MIN = 0
 _PROXY_CONTEXT_OVERHEAD_MAX = 4096
 _PROXY_CHAR_TO_TOKEN_RATIO = 3.5
-_PROXY_DEFAULT_MAX_TOKENS = 1024
+# Fallback for the admission gate when an incoming request omits
+# ``max_tokens``. Calibrated to match the upper bound of typical
+# ``LLMMode.max_response_tokens`` values in src/maxim/utils/prompts.py
+# (2048 — the autonomous-mode ceiling) so the gate stays conservative
+# for non-PromptBuilder clients (curl probes, external API scripts).
+# Maxim-internal traffic always sends explicit ``max_tokens`` — it's a
+# required keyword parameter on every backend's ``complete*`` method —
+# so this fallback is structurally unreachable for normal agent calls.
+# Pinned by ``TestBackendsAlwaysSendMaxTokens`` in test_leader_proxy.py.
+_PROXY_DEFAULT_MAX_TOKENS = 2048
 
 # Endpoints subject to admission. Other ``/v1/*`` paths (e.g. ``/v1/models``,
 # ``/v1/embeddings``) pass through unchecked — admission only applies to
