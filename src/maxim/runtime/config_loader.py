@@ -594,6 +594,25 @@ def resolve_setting(
     if cli_value is not None:
         return cli_value, "cli"
 
+    # 2026-06-04 fold: when callers don't pass an explicit ``config``,
+    # auto-load via the cached :func:`get_config`. Pre-fold, ``_read_from_config(None, ...)``
+    # silently returned ``None``, which made every ``resolve_setting(field_path)``
+    # call (no kwarg) read as "config layer is empty" and fall through to the
+    # schema default — even when ``config.json`` had a real operator value.
+    # Symptom: ``maxim doctor`` showed contradictory rows like "llm.n_ctx:
+    # using default (8192)" alongside "llm.n_ctx: 13312 [source=config.json]"
+    # because some doctor helpers passed ``config=cfg`` and others didn't.
+    # Now both paths converge on the same cached config.
+    if config is None:
+        try:
+            config = get_config()
+        except Exception:
+            # If load_config raised (parse error, permission denied), preserve
+            # the legacy fall-through-to-default behaviour rather than
+            # propagating the error to every caller. The dedicated
+            # ``check_resolved_config`` path surfaces config.json load failures
+            # via its own ``fail`` row.
+            config = None
     env_name = _FIELD_TO_ENV[field_path]
     config_value = _read_from_config(config, field_path)
 

@@ -392,6 +392,47 @@ class TestPrecedenceChain:
         with pytest.raises(ConfigurationError, match="unknown field path"):
             resolve_setting("llm.nonexistent_field")
 
+    def test_auto_loads_config_when_kwarg_omitted(self, tmp_path, monkeypatch):
+        """Regression guard for the 2026-06-04 fold: callers that don't
+        pass ``config=cfg`` previously got incorrect ``source=default``
+        results because ``_read_from_config(None, ...)`` returned ``None``
+        immediately. The fix auto-loads via ``get_config()`` (cached).
+
+        Symptom: ``maxim doctor`` showed three contradictory rows about
+        ``llm.n_ctx`` — one saying "using default (8192)" and another
+        saying "13312 [source=config.json]" for the same field. The
+        contradiction came from this exact gap."""
+        from maxim.runtime.config_writer import write_config
+
+        monkeypatch.delenv("MAXIM_LLM_N_CTX", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        reset_config_cache()
+        write_config(MaximConfig(llm=LLMConfigSection(n_ctx=13312)))
+        reset_config_cache()
+
+        value, source = resolve_setting("llm.n_ctx")  # no config= kwarg
+        assert source == "config"
+        assert value == 13312
+
+    def test_explicit_config_overrides_auto_load(self, tmp_path, monkeypatch):
+        """Passing an explicit ``config=cfg`` overrides the on-disk
+        config.json. Useful when callers want to resolve against a
+        stub config in tests without writing to disk."""
+        from maxim.runtime.config_writer import write_config
+
+        monkeypatch.delenv("MAXIM_LLM_N_CTX", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        reset_config_cache()
+        write_config(MaximConfig(llm=LLMConfigSection(n_ctx=13312)))
+        reset_config_cache()
+
+        explicit_cfg = MaximConfig(llm=LLMConfigSection(n_ctx=2048))
+        value, source = resolve_setting("llm.n_ctx", config=explicit_cfg)
+        assert source == "config"
+        assert value == 2048  # explicit stub wins over on-disk config.json
+
 
 class TestOverrideLogging:
     """CR3 fold: log on every layer interaction — shadow AND convergence."""
