@@ -32,6 +32,8 @@ maxim                        # routes inference to the leader
 
 That's it when everything works. The rest of this guide is for when it doesn't.
 
+> **As of 1.0**, `maxim peer connect` writes both `~/.config/maxim/config.json::lanes.large.*` (canonical) and `~/.config/maxim/peer.yml` (deprecated compat through 1.x, retired in 2.0). Inspect either source via `maxim config get` or `maxim peer show`. See [Configuration → Quick start](configuration.md#quick-start-maxim-config).
+
 ---
 
 ## Verify the leader is healthy FIRST

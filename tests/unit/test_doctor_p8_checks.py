@@ -148,7 +148,14 @@ class TestCheckRemoteReachability:
             result = check_remote_reachability(self.URL, "wrong-key")
         assert result.status == "warn"
         assert result.fix is not None
-        assert "maxim peer key" in result.fix
+        # Post-config-unification UX fold (2026-06-03): the fix-hint
+        # now routes through the canonical classifier in
+        # peer/probe_classify.py and recommends `maxim peer connect`
+        # for re-pairing the peer with the leader's current key.
+        # The verbose hint also mentions `maxim tunnel key show` and
+        # `maxim tunnel key rotate` as the leader-side commands.
+        assert "maxim peer connect" in result.fix
+        assert "maxim tunnel key" in result.fix
 
     def test_dns_fail_fails_with_hostname_hint(self):
         result_obj = ProbeResult(self.URL, "dns_fail", "name not known", None)

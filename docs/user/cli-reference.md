@@ -220,6 +220,29 @@ nodes:
 
 Schema errors carry a line number (`mesh.yml line 7: url 'ftp://bad/v1' must use http:// or https://`). `self:` validation is load-bearing: startup fails loudly if `self` doesn't match any entry in `nodes:`. Exit-code contract matches `maxim doctor --json`: `fail` → exit 1, `warn` / `ok` → exit 0.
 
+## Instance Configuration (`maxim config`)
+
+The `maxim config` verbs manage the operator-level config at `~/.config/maxim/config.json`. As of 1.0 this is the canonical way to persist Maxim's runtime preferences (role, default model, lane routing, cloud LLM fallback, auto-spawn behavior, etc.). The precedence chain is **CLI args > env vars > config.json > builtin defaults** — env vars still work as per-session overrides but are no longer the recommended primary surface. See [configuration.md](configuration.md#quick-start-maxim-config) for the full absorbed-fields table.
+
+| Command | What it does |
+|---|---|
+| `maxim config get` | Print every absorbed field with its effective value + source marker (`cli` / `env` / `config` / `default`). |
+| `maxim config get <field>` | Print one field by dot path (e.g. `llm.profile`, `lanes.large.remote_url`). |
+| `maxim config set <field> <value>` | Atomic write to `config.json` under a `filelock.FileLock`. String values are coerced to the schema type (`"4"` → int 4 for `proxy.max_concurrent`). Pass `null` or `-` to clear a field. |
+| `maxim config list [--json]` | Same as `get` with no args; `--json` for machine-readable output. |
+| `maxim config path` | Print the resolved `config.json` path (XDG-aware). |
+| `maxim config edit` | Open `$EDITOR` (or `$VISUAL`) on the file. Validates after the editor exits; a parse error surfaces a warning but doesn't auto-revert. |
+
+**API key references** in `config.json::lanes.<tier>.remote_api_key_ref` accept ONLY file paths (`/...` or `~/...`) or keyring URIs (`keyring:<service>:<account>`). Inline plaintext keys are rejected at load time. The canonical leader-key path is `~/.config/maxim/api_key` (mode 0600).
+
+**`maxim doctor` shows a "Resolved Config" section** that renders every absorbed field's value + source — the single answer to "what does this instance think it's configured as?"
+
+**Auto-migration:** on first startup when `config.json` is absent + `peer.yml` is present + cloudflared config absent, the loader writes `config.json::role=peer` + `lanes.large.*` from peer.yml fields. peer.yml is never deleted by the shim. When cloudflared config exists (i.e., this machine is a tunneled leader), migration is skipped so a stale peer.yml from a previous peer setup doesn't flip the role.
+
+**Atomic writes:** `config_writer.py` is the only sanctioned writer. Single-file FileLock around read-modify-write. CI grep enforces single-writer.
+
+**Exit codes:** `0` success, `1` environmental failure (write permission, etc.), `2` operator error (unknown field, bad value type, missing arg, validation failure after `edit`).
+
 ## Model Profile Management
 
 The `maxim model` verbs manage user-defined model profiles in `~/.config/maxim/profiles.yml`. Profiles authored here merge into the bundled profile set at startup with **user-wins precedence**, so any GGUF on HuggingFace (or any local GGUF file) becomes a first-class profile usable from `--llm`. Full schema + walkthrough in [llm-setup.md § Adding Custom Profiles](llm-setup.md#adding-custom-profiles).

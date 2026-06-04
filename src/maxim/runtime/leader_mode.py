@@ -1,33 +1,43 @@
-"""Leader-vs-follower role detection for Maxim clusters (multi-LLM Phase 6b).
+"""Leader-vs-follower role detection — thin wrapper around ``runtime/role.py``.
 
-One Maxim instance can act as a leader — it auto-spawns an LLM server and
-exposes it to peers (via LAN bind + optional Cloudflare tunnel). Followers
-and solo instances still spawn a server for their own use, but bind to
-loopback only.
+**C3 of config_unification.md, 2026-06-01.** This module is now a
+thin translation layer over the unified detector in
+:mod:`maxim.runtime.role`. The pre-C3 architecture had two
+independent ``detect_role`` functions in two modules with different
+decision orders + different file-extension assumptions; the
+2026-06-01 Mac Mini regression hit divergence on day one.
 
-Signals, in priority order:
-  1. MAXIM_ROLE env var (explicit)            → "leader" | "client" | "solo"
-  2. /etc/cloudflared/config.yml exists        → leader (implicit, systemd)
-  3. ~/.cloudflared/config.yml exists           → leader (implicit, user-space)
-  4. default                                   → "solo"
+After C3, the single source of truth lives in
+:func:`maxim.runtime.role.detect_role`. This module's
+:func:`detect_role` calls that and translates the returned
+:data:`maxim.runtime.role.Role` into a :class:`RoleDecision`
+(role + bind_host + reason).
 
-The leader distinction only changes bind semantics and peer advertising —
-the process itself is still a normal Maxim instance with its own CLI + loop.
+**Compatibility shape preserved through 1.x:**
+
+- :data:`RoleName` keeps the legacy ``client`` value alongside
+  ``peer`` so callers comparing ``decision.role == "client"`` continue
+  to work. ``role.py`` returns ``peer``; the wrapper returns
+  ``client`` to existing consumers that haven't migrated. Drops in 1.2.
+- :class:`RoleDecision` shape unchanged.
+
+New consumers should call :func:`maxim.runtime.role.detect_role`
+directly and use the :data:`maxim.runtime.role.Role` vocabulary.
 """
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 
-RoleName = Literal["leader", "client", "solo"]
+RoleName = Literal["leader", "client", "peer", "solo"]
+"""Legacy enum: ``client`` is the pre-C3 term for ``peer``. New code
+should use ``peer`` directly via :mod:`maxim.runtime.role`."""
 
 
 @dataclass(frozen=True)
 class RoleDecision:
-    """Resolved role for this Maxim instance."""
+    """Resolved role for this Maxim instance (legacy compat shape)."""
 
     role: RoleName
     bind_host: str  # address the local server should bind to
@@ -38,63 +48,54 @@ class RoleDecision:
         return self.role == "leader"
 
 
-def _env_role() -> str | None:
-    raw = os.environ.get("MAXIM_ROLE", "").strip().lower()
-    if raw in ("leader", "client", "solo"):
-        return raw
-    return None
+def _bind_host_for(role: str) -> str:
+    """leader → ``0.0.0.0``; peer/solo → ``127.0.0.1``."""
+    return "0.0.0.0" if role == "leader" else "127.0.0.1"
 
 
-def _cloudflared_config_exists() -> Path | None:
-    """Return the path to cloudflared's config.yml if present.
-
-    Prefers /etc/cloudflared/ (systemd service, production) over
-    ~/.cloudflared/ (user-space, development). The systemd service
-    reads from /etc/, so that's the authoritative location.
-    """
-    candidates = [
-        Path("/etc/cloudflared/config.yml"),
-        Path.home() / ".cloudflared" / "config.yml",
-    ]
-    for path in candidates:
-        try:
-            if path.is_file():
-                return path
-        except OSError:
-            continue
-    return None
+def _reason_for(role: str, source: str) -> str:
+    """Render a human-readable ``RoleDecision.reason`` from the source."""
+    source_msgs = {
+        "env_var": f"MAXIM_ROLE={role}",
+        "config_json": f"config.json::role={role}",
+        "mesh_yml": "mesh.yml exists",
+        "cloudflared": "cloudflared config found",
+        "peer_yml": "peer.yml exists (legacy)",
+        "cli_flag": "--llm flag present",
+        "default": f"default ({role})",
+    }
+    return source_msgs.get(source, f"{source} → {role}")
 
 
 def detect_role() -> RoleDecision:
     """Resolve the role of this Maxim instance.
 
-    Returns a RoleDecision with:
-    - `role`:   leader / client / solo
-    - `bind_host`: what IP the local-spawned server should listen on
-    - `reason`: which signal fired
+    Thin wrapper around :func:`maxim.runtime.role.detect_role`.
+    Translates the canonical :data:`maxim.runtime.role.Role`
+    (leader|peer|solo) into a :class:`RoleDecision` with
+    ``bind_host`` and ``reason``.
 
-    Bind semantics:
-    - leader → 0.0.0.0 (reachable by peers + tunnel)
-    - client → 127.0.0.1 (follower shouldn't host anything public)
-    - solo   → 127.0.0.1 (safe default for single-machine use)
+    For back-compat with pre-C3 callers, returns the legacy
+    ``client`` string for what ``role.py`` calls ``peer``. This
+    coercion will be removed in 1.2.
     """
-    env_role = _env_role()
-    if env_role == "leader":
-        return RoleDecision(role="leader", bind_host="0.0.0.0", reason="MAXIM_ROLE=leader")
-    if env_role == "client":
-        return RoleDecision(role="client", bind_host="127.0.0.1", reason="MAXIM_ROLE=client")
-    if env_role == "solo":
-        return RoleDecision(role="solo", bind_host="127.0.0.1", reason="MAXIM_ROLE=solo")
+    from maxim.runtime.role import detect_role as _detect
 
-    tunnel_cfg = _cloudflared_config_exists()
-    if tunnel_cfg is not None:
-        return RoleDecision(
-            role="leader",
-            bind_host="0.0.0.0",
-            reason=f"cloudflared config found at {tunnel_cfg}",
-        )
+    role, source = _detect(argv=None)
 
-    return RoleDecision(role="solo", bind_host="127.0.0.1", reason="default (no MAXIM_ROLE set, no cloudflared config)")
+    # Back-compat: pre-C3 vocabulary used "client"; preserve for
+    # existing consumers that branch on .role == "client". Drops in 1.2.
+    legacy_role: RoleName
+    if role == "peer":
+        legacy_role = "client"
+    else:
+        legacy_role = role  # type: ignore[assignment]
+
+    return RoleDecision(
+        role=legacy_role,
+        bind_host=_bind_host_for(role),
+        reason=_reason_for(role, source),
+    )
 
 
 __all__ = ["RoleDecision", "RoleName", "detect_role"]

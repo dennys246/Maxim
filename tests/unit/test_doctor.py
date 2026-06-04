@@ -255,13 +255,29 @@ class TestServerCheck:
 class TestLanAccessPlatformSpecific:
     @pytest.fixture(autouse=True)
     def _isolate_cloudflared_config(self):
-        """LAN access check now uses detect_role() which inspects cloudflared
-        config presence. Isolate tests from the host's actual config file."""
-        with patch("maxim.runtime.leader_mode._cloudflared_config_exists", return_value=None):
+        """LAN access check now uses detect_role() which inspects four
+        signals (config.json + mesh.yml + cloudflared + peer.yml).
+        Isolate tests from the host's actual config files so the
+        unified C3 detector falls through to the rank-7 default of
+        ``leader``.
+
+        Post-C3 (config_unification.md): ``_cloudflared_config_exists``
+        moved from ``runtime/leader_mode.py`` to ``runtime/role.py``;
+        the three other signal probes also live in role.py."""
+        with (
+            patch("maxim.runtime.role._cloudflared_config_exists", return_value=None),
+            patch("maxim.runtime.role._peer_yml_exists", return_value=False),
+            patch("maxim.runtime.role._mesh_yml_exists", return_value=False),
+            patch("maxim.runtime.role._config_json_role", return_value=None),
+        ):
             yield
 
     def test_wsl2_shows_netsh_fix(self, monkeypatch):
-        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+        # Post-C3: the unified detector defaults to ``leader`` (rank 7
+        # of the seven-rank order), which suppresses the LAN firewall
+        # warning. These platform-specific tests want the non-leader
+        # case where the warning surfaces — set role=solo explicitly.
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
         from maxim.doctor.checks import check_lan_access
 
         info = _info(runtime="wsl2", windows_host_ip="192.168.1.10")
@@ -273,7 +289,11 @@ class TestLanAccessPlatformSpecific:
         assert "192.168.1.10" in (result.fix or "")
 
     def test_native_linux_shows_ufw_or_firewalld(self, monkeypatch):
-        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+        # Post-C3: the unified detector defaults to ``leader`` (rank 7
+        # of the seven-rank order), which suppresses the LAN firewall
+        # warning. These platform-specific tests want the non-leader
+        # case where the warning surfaces — set role=solo explicitly.
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
         from maxim.doctor.checks import check_lan_access
 
         info = _info(runtime="native", os="linux", distro="ubuntu")
@@ -283,7 +303,11 @@ class TestLanAccessPlatformSpecific:
         assert "ufw" in (result.fix or "")
 
     def test_fedora_shows_firewalld(self, monkeypatch):
-        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+        # Post-C3: the unified detector defaults to ``leader`` (rank 7
+        # of the seven-rank order), which suppresses the LAN firewall
+        # warning. These platform-specific tests want the non-leader
+        # case where the warning surfaces — set role=solo explicitly.
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
         from maxim.doctor.checks import check_lan_access
 
         info = _info(runtime="native", os="linux", distro="fedora")
@@ -292,7 +316,11 @@ class TestLanAccessPlatformSpecific:
         assert "firewall-cmd" in (result.fix or "")
 
     def test_macos_mentions_settings(self, monkeypatch):
-        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+        # Post-C3: the unified detector defaults to ``leader`` (rank 7
+        # of the seven-rank order), which suppresses the LAN firewall
+        # warning. These platform-specific tests want the non-leader
+        # case where the warning surfaces — set role=solo explicitly.
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
         from maxim.doctor.checks import check_lan_access
 
         info = _info(runtime="native", os="macos", distro="unknown")
@@ -301,7 +329,11 @@ class TestLanAccessPlatformSpecific:
         assert "System Settings" in (result.fix or "") or "firewall" in (result.fix or "").lower()
 
     def test_windows_shows_newnetfirewallrule(self, monkeypatch):
-        monkeypatch.delenv("MAXIM_ROLE", raising=False)
+        # Post-C3: the unified detector defaults to ``leader`` (rank 7
+        # of the seven-rank order), which suppresses the LAN firewall
+        # warning. These platform-specific tests want the non-leader
+        # case where the warning surfaces — set role=solo explicitly.
+        monkeypatch.setenv("MAXIM_ROLE", "solo")
         from maxim.doctor.checks import check_lan_access
 
         info = _info(runtime="native", os="windows", distro="unknown")
@@ -1012,7 +1044,10 @@ class TestCheckEnvConfig:
         results = check_env_config(self._info(), role="leader")
         statuses = {r.name: r.status for r in results}
         assert statuses.get("MAXIM_ROLE") == "ok"
-        assert statuses.get("MAXIM_LLM_N_CTX") == "ok"
+        # Post-implementation field-coverage fold: env-config checks
+        # for llm.* now route through resolve_setting, so the result
+        # rows are named after the field path, not the env var.
+        assert statuses.get("llm.n_ctx") == "ok"
         # No stale-var warnings
         assert "MAXIM_SKIP_REMOTE_PROBE" not in statuses
         assert "MAXIM_PEER_PROBE_KEY" not in statuses
@@ -1047,7 +1082,9 @@ class TestCheckEnvConfig:
         from maxim.doctor.checks import check_env_config
 
         results = check_env_config(self._info(), role="leader")
-        ctx_result = next((r for r in results if r.name == "MAXIM_LLM_N_CTX"), None)
+        # Post-implementation field-coverage fold: row is now named
+        # after the field path, not the env var.
+        ctx_result = next((r for r in results if r.name == "llm.n_ctx"), None)
         assert ctx_result is not None
         assert ctx_result.status == "warn"
         assert "8192" in ctx_result.message

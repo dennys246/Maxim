@@ -296,9 +296,15 @@ class TestValidateRemoteUrls:
             out = _validate_remote_urls({"large": cfg}, logger=log)
         assert out["large"].remote_url == cfg.remote_url
         assert log.warning.called
-        # Hint mentions key rotation
+        # Hint mentions the key-drift recovery path (post-config-
+        # unification UX fold, 2026-06-03): canonical 401 cause is
+        # peer's stored key doesn't match leader's current key. The
+        # short hint mentions both `maxim tunnel key` (show or rotate
+        # on the leader side) and `maxim peer connect` (re-pair on
+        # the peer side).
         msg = log.warning.call_args[0][0] % log.warning.call_args[0][1:]
-        assert "maxim peer key" in msg
+        assert "maxim tunnel key" in msg
+        assert "maxim peer connect" in msg
 
     def test_unreachable_drops_lane(self, fake_data_home):
         cfg = self._lane("https://dead.example.com/v1")

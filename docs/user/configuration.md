@@ -1,5 +1,95 @@
 # Configuration
 
+## Quick start: `maxim config`
+
+> **As of 1.0, the canonical way to configure a Maxim instance is the `maxim config` CLI verbs + `~/.config/maxim/config.json`.**
+> Environment variables still work as a per-session override, but they are no longer the recommended primary surface.
+
+```bash
+maxim config get                     # show every effective field + source
+maxim config get llm.profile         # show one field with source marker
+maxim config set role leader         # write to ~/.config/maxim/config.json
+maxim config set llm.profile qwen2.5-32b-instruct
+maxim config set lanes.large.remote_url https://leader.example.com/v1
+maxim config edit                    # open $EDITOR on the file
+maxim config path                    # print the resolved file path
+```
+
+The `maxim doctor` command shows a **Resolved Config** section that surfaces every absorbed field with its source — the single answer to "what does this instance think it's configured as?"
+
+### Precedence chain
+
+For every absorbed field:
+
+**CLI args > env vars > `~/.config/maxim/config.json` > builtin defaults**
+
+This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between layers are logged at WARNING (env shadows config with a different value), and convergence is logged at INFO (env and config agree — operator's two-sources-of-truth confusion class). Run `maxim doctor` to see the resolved value + source for every absorbed field in one place.
+
+**Empty-string env vars are treated as unset.** `export MAXIM_LANE_LARGE_REMOTE_URL=` (a common bash-rc leak) falls through to `config.json` per the C-1 fold.
+
+### Absorbed fields (~22)
+
+| Field path | Type | Default | Replaces env var |
+|---|---|---|---|
+| `role` | leader / peer / solo | (computed) | `MAXIM_ROLE` |
+| `llm.enabled` | bool | true | `MAXIM_LLM_ENABLED` |
+| `llm.profile` | string | none | `MAXIM_LLM_PROFILE` |
+| `llm.n_ctx` | int ≥ 256 | 8192 | `MAXIM_LLM_N_CTX` |
+| `llm.backend` | llama_cpp / pytorch | llama_cpp | `MAXIM_LLM_BACKEND` |
+| `llm.auto_download` | bool | false | `MAXIM_AUTO_DOWNLOAD_MODELS` |
+| `lanes.<tier>.remote_url` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_URL` |
+| `lanes.<tier>.remote_model` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_MODEL` |
+| `lanes.<tier>.remote_api_key_ref` | path or `keyring:<service>:<account>` | null | `MAXIM_LANE_<TIER>_REMOTE_API_KEY` |
+| `cloud.enabled` | bool | false | `MAXIM_LLM_CLOUD_ENABLED` |
+| `cloud.max_lanes` | int ≥ 0 | 0 | `MAXIM_MAX_CLOUD_LANES` |
+| `cloud.fallback_model` | string \| null | null | `MAXIM_CLOUD_FALLBACK_MODEL` |
+| `cloud.session_budget_usd` | float ≥ 0 | 5.0 | `MAXIM_CLOUD_SESSION_BUDGET` |
+| `cloud.redaction_policy` | standard / relaxed / strict | standard | `MAXIM_LLM_REDACTION_POLICY` |
+| `proxy.max_concurrent` | int ≥ 0 | 4 | `MAXIM_PROXY_MAX_CONCURRENT` |
+| `proxy.rate_limit_rpm` | int ≥ 0 | 0 | `MAXIM_PROXY_RATE_LIMIT_RPM` |
+| `auto_spawn.llm_server` | bool | true | `MAXIM_AUTO_SPAWN_LLM_SERVER` |
+| `auto_spawn.tunnel` | bool | true | `MAXIM_AUTO_SPAWN_TUNNEL` |
+| `auto_spawn.port` | int 1..65535 | 8100 | `MAXIM_AUTO_SPAWN_PORT` |
+| `auto_spawn.timeout_s` | int ≥ 1 | 120 | `MAXIM_AUTO_SPAWN_TIMEOUT_S` |
+| `data.home` | string \| null | null | `MAXIM_DATA_HOME` |
+| `data.budget_gb` | float ≥ 0 \| null | null | `MAXIM_DATA_BUDGET_GB` |
+
+Tier names (`large`, `medium`, `small`) are FROZEN at 1.0 per the lane-tier-names invariant.
+
+### API key references — file path or keyring URI only
+
+`lanes.<tier>.remote_api_key_ref` accepts **two forms**:
+
+- **File path** (starts with `/` or `~`): the file is read at lane backend construction time. Must be mode 0600. The canonical leader-key file lives at `~/.config/maxim/api_key`.
+- **Keyring URI** (`keyring:<service>:<account>`): resolved via the system keychain (macOS Keychain, Linux Secret Service). Requires `pip install keyring`.
+
+**Inline plaintext keys are rejected** at `config.json` load time. The cross-confirmed cross-confirmed I-3/IM3 fold from the pre-implementation review: `maxim config set lanes.large.remote_api_key_ref sk-abc123` would cheerfully write mode-0644 plaintext keys to disk. Use a file-path reference instead:
+
+```bash
+echo "$LEADER_API_KEY" > ~/.config/maxim/api_key
+chmod 0600 ~/.config/maxim/api_key
+maxim config set lanes.large.remote_api_key_ref ~/.config/maxim/api_key
+```
+
+The legacy `MAXIM_LANE_<TIER>_REMOTE_API_KEY` env var still works (it directly holds the inline key — that's the pre-1.0 semantics). `maxim doctor` flags it with a migration fix-hint.
+
+### What `config.json` does NOT replace
+
+- **`~/.config/maxim/peer.yml`** — kept as a back-compat reader through 1.x. New `peer connect` invocations dual-write both files. Retired in 2.0.
+- **`~/.config/maxim/mesh.yml`** — multi-node topology (Plan 4). Per-cluster, not per-instance.
+- **`~/.config/maxim/profiles.yml`** — custom profile catalog. Hand-edit-canonical.
+- **`~/.cloudflared/config.{yml,yaml}`** — cloudflared's own config, not Maxim's. Detected as a leader signal (extension widened to accept either form).
+
+The four declarative-config files coexist by design.
+
+### Auto-migration from peer.yml
+
+On first startup when `config.json` is absent **AND** `peer.yml` is present **AND** `~/.cloudflared/config.{yml,yaml}` is absent (preserves the legitimate leader-case), the loader auto-writes a minimal `config.json` populated from peer.yml fields. peer.yml is left in place — never deleted by the shim. Subsequent startups read `config.json` directly. The migration logs INFO once.
+
+If cloudflared is present (i.e., this machine is provisioned as a tunneled leader), the migration is skipped so a stale peer.yml from a previous peer setup doesn't silently flip the role to peer. This was Mac Mini Trigger #3 from the 2026-06-01 incident that motivated this entire plan.
+
+---
+
 ## Overview
 
 Maxim is configured through three mechanisms: CLI flags, environment variables, and JSON config files. CLI flags override environment variables, which override config file defaults.

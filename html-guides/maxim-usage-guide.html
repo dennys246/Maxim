@@ -223,7 +223,29 @@ pip install 'pymaxim[llm-openai]'</div>
       </table>
     </div>
 
-    <h3 class="text-lg font-semibold text-indigo-400">Environment Variables</h3>
+    <h3 class="text-lg font-semibold text-indigo-400">Configuration — <code class="bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim config</code> (canonical 1.0 path)</h3>
+
+    <div class="bg-emerald-950/40 border border-emerald-700/40 rounded-lg p-4 text-sm text-slate-300">
+      <p class="mb-2"><strong class="text-emerald-300">New in 1.0:</strong> the canonical way to persist Maxim's runtime preferences is the <code class="bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim config</code> verb family writing to <code class="bg-slate-900 px-1.5 py-0.5 rounded text-xs">~/.config/maxim/config.json</code>. The pre-1.0 environment variables below still work as per-session overrides (precedence chain: <strong>CLI args &gt; env vars &gt; config.json &gt; defaults</strong>), but are no longer the recommended primary surface.</p>
+      <p class="mt-3"><code class="bg-slate-900 px-1.5 py-0.5 rounded text-xs">maxim doctor</code> shows a "Resolved Config" section with every absorbed field's value + source marker — the single answer to "what does this instance think it's configured as?"</p>
+    </div>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">maxim config — quick start</span>
+
+maxim config set role leader                       # leader / peer / solo
+maxim config set llm.profile qwen2.5-32b-instruct  # default model
+maxim config set llm.n_ctx 16384                   # context window
+maxim config set llm.auto_download true            # download GGUFs on first run
+maxim config set auto_spawn.llm_server true        # spawn llama-cpp-server
+maxim config set auto_spawn.tunnel true            # spawn cloudflared
+
+maxim config get                                   # all fields + sources
+maxim config get llm.profile                       # one field
+maxim config edit                                  # opens $EDITOR
+maxim config path                                  # print the file path
+maxim doctor                                       # "Resolved Config" section</div>
+
+    <h3 class="text-lg font-semibold text-indigo-400">Environment Variables (per-session overrides)</h3>
 
     <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Core settings</span>
 
@@ -252,7 +274,7 @@ MAXIM_PROVENANCE_PERSIST=1             # 0=disable, 1=enable persistence
 
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Networking &amp; diagnostics</span>
 
-MAXIM_ROLE=leader                      # leader / client / solo
+MAXIM_ROLE=leader                      # leader / peer / solo (legacy `client` term coerces to `peer` with WARN)
 MAXIM_HEARTBEAT=1                      # System health heartbeat (GPU/CPU/RAM)
 MAXIM_LANE_TRACE=1                     # Per-request LLM trace + heartbeat
 MAXIM_PROXY_MAX_CONCURRENT=4           # Max in-flight proxy requests

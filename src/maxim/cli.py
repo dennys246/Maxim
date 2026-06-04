@@ -535,6 +535,33 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         except Exception:
             pass
 
+    # C7a of config_unification.md: solo + cloud-key auto-detect.
+    # Runs AFTER detect_and_apply_role so MAXIM_ROLE is exported and
+    # the auto-detect can gate on role == solo. Implicitly enables the
+    # cloud-LLM gates when a cloud API key is present but no local
+    # model is configured, so bare ``ANTHROPIC_API_KEY=sk-... maxim``
+    # "just works." Each implicit-set logs INFO so the auto-config
+    # is visible.
+    #
+    # Post-implementation Architecture #3 fold: narrow the exception
+    # catch from bare ``Exception`` to ``ImportError`` only. The
+    # function itself does only idempotent env-var ``setdefault``
+    # writes — no operational reason for it to raise. A bare-Exception
+    # swallow would silently hide a real bug (e.g., a regression in
+    # the env-var setdefault path) under the operator's "maxim doesn't
+    # find an LLM" symptom. ``ImportError`` is the one legitimate
+    # failure mode (the cli_utils import path could be broken in a
+    # stripped-down install).
+    try:
+        from maxim.cli_utils import configure_cloud_solo_auto_detect
+    except ImportError as _autodetect_err:
+        logging.getLogger(__name__).debug(
+            "C7a auto-detect skipped: cli_utils import failed (%s)",
+            _autodetect_err,
+        )
+    else:
+        configure_cloud_solo_auto_detect(logging.getLogger(__name__))
+
     # Stage A observability: print loud warning if trace flags are active so
     # users don't leave them on accidentally (log volume + request-id exposure).
     from maxim.models.language.mesh_trace import print_startup_warning_if_enabled
@@ -581,6 +608,13 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
         from maxim.hivemind.cli import run_substrate_subcommand
 
         return run_substrate_subcommand(raw_argv[1:])
+    if raw_argv and raw_argv[0] == "config":
+        # `maxim config get/set/list/path/edit` — instance-level operator
+        # config per config_unification.md C2. The verbs write to
+        # ~/.config/maxim/config.json via the canonical writer module.
+        from maxim.runtime.config_cli import run_config_subcommand
+
+        return run_config_subcommand(raw_argv[1:])
 
     if raw_argv and raw_argv[0] == "peer":
         # `peer connect/show/forget` go to the peer config module;

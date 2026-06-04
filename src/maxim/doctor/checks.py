@@ -171,7 +171,15 @@ def check_server_reachable(port: int = 8100) -> CheckResult:
 
 
 def check_llm_model_active() -> CheckResult:
-    """Check if an LLM model is loaded and report which one."""
+    """Check if an LLM model is loaded and report which one.
+
+    Post-implementation field-coverage fold: reads ``llm.profile`` via
+    the unified ``resolve_setting`` chain so config.json values are
+    surfaced alongside the live ``_active_model`` and persisted-model
+    sources. Pre-fold the check only saw env / persisted-model state
+    and silently drifted from C5's "Resolved Config" section when
+    config.json was the actual source.
+    """
     try:
         # Must read `_active_model` through `_server_mod` — importing it by
         # name binds the value at import time and diverges from the live
@@ -179,9 +187,14 @@ def check_llm_model_active() -> CheckResult:
         # This was a silent bug: the check only ever reported the persisted
         # model name, never the live one.
         import maxim.runtime.llm_server as _server_mod
+        from maxim.runtime.config_loader import resolve_setting
         from maxim.runtime.lane_backends import _read_persisted_model
 
         active = _server_mod._active_model
+        try:
+            configured, configured_source = resolve_setting("llm.profile")
+        except Exception:
+            configured, configured_source = None, "default"
         persisted = _read_persisted_model()
 
         if active:
@@ -189,6 +202,14 @@ def check_llm_model_active() -> CheckResult:
                 name="LLM model",
                 status="ok",
                 message=f"active model: {active}",
+            )
+        if configured and configured_source in ("config", "env", "cli"):
+            return CheckResult(
+                name="LLM model",
+                status="warn",
+                message=f"configured model: {configured} (not yet loaded) [source={configured_source}]",
+                fix=f"maxim peer llm {configured}",
+                retry_id="llm_model",
             )
         if persisted:
             return CheckResult(
@@ -201,8 +222,8 @@ def check_llm_model_active() -> CheckResult:
         return CheckResult(
             name="LLM model",
             status="warn",
-            message="no model configured — use `maxim peer llm <model>` to set one",
-            fix="maxim peer llm qwen2.5-14b",
+            message="no model configured — use `maxim config set llm.profile <name>` to set one",
+            fix="maxim config set llm.profile qwen2.5-14b",
             retry_id="llm_model",
         )
     except Exception:
@@ -214,6 +235,304 @@ def check_llm_model_active() -> CheckResult:
 
 
 # ─── environment variable config ───────────────────────────────────────────
+
+
+def check_resolved_config() -> list["CheckResult"]:
+    """C5 of config_unification.md: "Resolved Config" doctor section.
+
+    Walks every absorbed field in :data:`maxim.runtime.config_loader._FIELD_TO_ENV`
+    and surfaces the effective value + source marker. This is the
+    single-place answer to "what does this instance think it's configured
+    as?" — collapsing what previously required cross-referencing ~96 env
+    vars + 4 config files + 2 role detectors.
+
+    The N2 fold from the pre-implementation review pinned the
+    catch-everything semantics: shadow, convergence, role=client
+    coercion, missing key file, mode != 0600, inline-string-pre-
+    migration, keyring not installed, peer.yml deprecated,
+    format-version forward-compat warning all surface as WARN rows
+    in this section.
+
+    Each absorbed field becomes one :class:`CheckResult`. Status:
+
+    - ``ok`` — field resolved cleanly (any source)
+    - ``warn`` — env shadows config with a different value, OR an
+      ancillary condition fires (missing api_key file, peer.yml
+      present-but-deprecated, etc.)
+    - ``fail`` — parse/coerce error on the field
+    - ``info`` — default or convergence (both env and config set the
+      same value)
+    """
+    from maxim.runtime.config_loader import (
+        _FIELD_TO_ENV,
+        _env_is_set,
+        config_path,
+        load_config,
+        resolve_setting,
+    )
+
+    results: list[CheckResult] = []
+
+    # Load config once for reuse across all field resolutions
+    try:
+        cfg = load_config()
+    except Exception as e:
+        results.append(
+            CheckResult(
+                name="config.json",
+                status="fail",
+                message=f"failed to load: {e}",
+                fix=(f"Inspect the file directly:\n  cat {config_path()}\nThen `maxim config edit` to fix syntax."),
+            )
+        )
+        return results
+
+    # Show file location at the top of the section
+    if config_path().is_file():
+        results.append(
+            CheckResult(
+                name="config.json path",
+                status="ok",
+                message=str(config_path()),
+            )
+        )
+    else:
+        results.append(
+            CheckResult(
+                name="config.json path",
+                status="info",
+                message=f"{config_path()} (file absent — using defaults)",
+            )
+        )
+
+    # Walk every absorbed field
+    import os as _os
+
+    for field_path in sorted(_FIELD_TO_ENV.keys()):
+        env_name = _FIELD_TO_ENV[field_path]
+        env_present = _env_is_set(env_name)
+
+        try:
+            value, source = resolve_setting(field_path, config=cfg)
+        except Exception as e:
+            results.append(
+                CheckResult(
+                    name=field_path,
+                    status="fail",
+                    message=f"{type(e).__name__}: {e}",
+                )
+            )
+            continue
+
+        # Render the value compactly
+        display_value = _format_doctor_value(value)
+
+        # Decide status + message based on source + env shadow
+        if source == "env":
+            env_raw = _os.environ[env_name]
+            cfg_value = _read_config_for_doctor(cfg, field_path)
+            if cfg_value is not None:
+                if cfg_value == value:
+                    # Convergence (CR3 fold)
+                    results.append(
+                        CheckResult(
+                            name=field_path,
+                            status="info",
+                            message=f"{display_value}  [source=env, config.json also sets identically]",
+                        )
+                    )
+                else:
+                    # Divergence (CR3 fold)
+                    results.append(
+                        CheckResult(
+                            name=field_path,
+                            status="warn",
+                            message=f"{display_value}  [source=env, shadows config.json={_format_doctor_value(cfg_value)!s}]",
+                            fix=(
+                                f"To make config.json win, unset the env var:\n"
+                                f"  unset {env_name}\n"
+                                f"Or to make env explicit, update config.json:\n"
+                                f"  maxim config set {field_path} {env_raw}"
+                            ),
+                        )
+                    )
+            else:
+                results.append(
+                    CheckResult(
+                        name=field_path,
+                        status="ok",
+                        message=f"{display_value}  [source=env]",
+                    )
+                )
+        elif source == "config":
+            results.append(
+                CheckResult(
+                    name=field_path,
+                    status="ok",
+                    message=f"{display_value}  [source=config.json]",
+                )
+            )
+        else:  # default
+            # If env is set-but-empty (i.e. POSIX `export FOO=`), surface it
+            # as a WARN so the operator sees the leaked-empty-export case.
+            raw_env = _os.environ.get(env_name)
+            if raw_env is not None and raw_env.strip() == "":
+                results.append(
+                    CheckResult(
+                        name=field_path,
+                        status="warn",
+                        message=f"{display_value}  [source=default; {env_name} is set to empty string — treated as unset per C-1 fold]",
+                        fix=f"  unset {env_name}",
+                    )
+                )
+            else:
+                # Quietly surface the default — info status, no fix
+                results.append(
+                    CheckResult(
+                        name=field_path,
+                        status="info",
+                        message=f"{display_value}  [source=default]",
+                    )
+                )
+        del env_present  # consumed via env_present check above
+
+    # Ancillary checks: api_key_ref file health, peer.yml deprecation
+    results.extend(_check_lane_api_key_refs_health(cfg))
+    results.extend(_check_peer_yml_deprecation())
+
+    return results
+
+
+def _format_doctor_value(value: object) -> str:
+    if value is None:
+        return "<unset>"
+    if isinstance(value, str):
+        return value if value else "<empty>"
+    return repr(value)
+
+
+def _read_config_for_doctor(cfg, field_path: str):
+    """Walk the dot path on a MaximConfig to return the raw config value,
+    or ``None`` if the field equals the default (i.e., no operator-set value).
+    Used by check_resolved_config to detect shadow/convergence states."""
+    from maxim.runtime.config_loader import MaximConfig
+
+    parts = field_path.split(".")
+    obj = cfg
+    default_obj = MaximConfig()
+    for part in parts:
+        obj = getattr(obj, part, None)
+        default_obj = getattr(default_obj, part, None)
+        if obj is None:
+            return None
+    if obj == default_obj:
+        return None
+    return obj
+
+
+def _check_lane_api_key_refs_health(cfg) -> list["CheckResult"]:
+    """Eager probe on every lane's api_key_ref — file missing /
+    mode != 0600 / keyring not installed / inline pre-migration."""
+    from pathlib import Path
+
+    from maxim.runtime.config_loader import resolve_setting
+
+    out: list[CheckResult] = []
+    for tier in ("large", "medium", "small"):
+        try:
+            ref, source = resolve_setting(f"lanes.{tier}.remote_api_key_ref", config=cfg)
+        except Exception:
+            continue
+        if not ref:
+            continue
+        # Path-mode ref: check file existence + mode
+        if ref.startswith("/") or ref.startswith("~"):
+            path = Path(ref).expanduser()
+            if not path.is_file():
+                out.append(
+                    CheckResult(
+                        name=f"lanes.{tier}.remote_api_key_ref",
+                        status="warn",
+                        message=f"file missing: {path}",
+                        fix=(
+                            f"Write the leader's API key to the referenced file (mode 0600):\n"
+                            f"  echo $LEADER_API_KEY > {path}\n"
+                            f"  chmod 0600 {path}"
+                        ),
+                    )
+                )
+                continue
+            try:
+                mode = path.stat().st_mode & 0o777
+            except OSError:
+                mode = None
+            if mode is not None and mode != 0o600:
+                out.append(
+                    CheckResult(
+                        name=f"lanes.{tier}.remote_api_key_ref",
+                        status="warn",
+                        message=f"mode is {oct(mode)} (want 0o600): {path}",
+                        fix=f"  chmod 0600 {path}",
+                    )
+                )
+        # Keyring URI: check keyring availability
+        elif ref.startswith("keyring:"):
+            try:
+                import keyring  # noqa: F401
+            except ImportError:
+                out.append(
+                    CheckResult(
+                        name=f"lanes.{tier}.remote_api_key_ref",
+                        status="warn",
+                        message=f"keyring URI {ref} but keyring package not installed",
+                        fix="  pip install keyring",
+                    )
+                )
+        # Inline string from env (legacy MAXIM_LANE_<TIER>_REMOTE_API_KEY)
+        elif source == "env":
+            out.append(
+                CheckResult(
+                    name=f"lanes.{tier}.remote_api_key_ref",
+                    status="warn",
+                    message="inline key from env (legacy — should migrate to file path)",
+                    fix=(
+                        f"Migrate to a mode-0600 file:\n"
+                        f"  echo $MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY > ~/.config/maxim/api_key\n"
+                        f"  chmod 0600 ~/.config/maxim/api_key\n"
+                        f"  maxim config set lanes.{tier}.remote_api_key_ref ~/.config/maxim/api_key\n"
+                        f"  unset MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY"
+                    ),
+                )
+            )
+    return out
+
+
+def _check_peer_yml_deprecation() -> list["CheckResult"]:
+    """C4 IM5 fold: surface peer.yml presence as a deprecated compat
+    signal so the operator sees the migration path."""
+    try:
+        from maxim.peer.config import peer_config_path
+    except Exception:
+        return []
+    path = peer_config_path()
+    try:
+        if not path.is_file():
+            return []
+    except OSError:
+        return []
+    return [
+        CheckResult(
+            name="peer.yml",
+            status="warn",
+            message=f"{path} present (deprecated as of 1.0, retired in 2.0)",
+            fix=(
+                "If config.json::lanes.large.* is set, peer.yml is now redundant.\n"
+                "  - To migrate: `maxim peer connect <url>` rewrites both files,\n"
+                "    or `maxim peer forget` removes both.\n"
+                "  - To check sources: `maxim config list`."
+            ),
+        )
+    ]
 
 
 def check_env_config(info: PlatformInfo, role: str | None = None) -> list["CheckResult"]:
@@ -279,22 +598,56 @@ def check_env_config(info: PlatformInfo, role: str | None = None) -> list["Check
         )
 
     # ── LLM enablement (leader/solo only) ────────────────────────────────────
+    #
+    # Post-implementation field-coverage fold (2026-06-02): the three
+    # llm.* checks below now route through ``resolve_setting`` so
+    # config.json values silence the warnings the same way env values
+    # do. Pre-fold a leader with config.json::llm.profile=qwen-32b
+    # still saw "MAXIM_LLM_PROFILE: not set" — silent drift from C5's
+    # "Resolved Config" section. The status string includes the
+    # resolved source so the operator sees the precedence chain.
     if not is_peer:
-        llm_enabled = os.environ.get("MAXIM_LLM_ENABLED", "").strip()
-        if llm_enabled not in ("1", "true", "yes"):
+        try:
+            from maxim.runtime.config_loader import resolve_setting as _rs
+        except Exception:
+            _rs = None
+
+        # ── llm.enabled ──────────────────────────────────────────────────────
+        if _rs is not None:
+            try:
+                llm_enabled_value, _ = _rs("llm.enabled")
+            except Exception:
+                llm_enabled_value = None
+        else:
+            llm_enabled_value = None
+        if not llm_enabled_value:
             results.append(
                 CheckResult(
-                    name="MAXIM_LLM_ENABLED",
+                    name="llm.enabled",
                     status="warn",
-                    message="not set — LLM inference may be disabled",
-                    fix="export MAXIM_LLM_ENABLED=1",
+                    message="not enabled — LLM inference will be skipped",
+                    fix="maxim config set llm.enabled true",
                 )
             )
 
-        # ── MAXIM_LLM_PROFILE ────────────────────────────────────────────────
-        profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
-        if not profile:
-            # Check persisted file before crying foul
+        # ── llm.profile ──────────────────────────────────────────────────────
+        if _rs is not None:
+            try:
+                profile_value, profile_source = _rs("llm.profile")
+            except Exception:
+                profile_value, profile_source = None, "default"
+        else:
+            profile_value, profile_source = None, "default"
+        if profile_value and profile_source in ("config", "env", "cli"):
+            results.append(
+                CheckResult(
+                    name="llm.profile",
+                    status="ok",
+                    message=f"{profile_value}  [source={profile_source}]",
+                )
+            )
+        else:
+            # Fallback: check persisted-model file (legacy state)
             try:
                 from maxim.runtime.lane_backends import _read_persisted_model
 
@@ -304,66 +657,72 @@ def check_env_config(info: PlatformInfo, role: str | None = None) -> list["Check
             if persisted:
                 results.append(
                     CheckResult(
-                        name="MAXIM_LLM_PROFILE",
+                        name="llm.profile",
                         status="info",
                         message=f"not set — using persisted model '{persisted}'",
-                        fix=f"export MAXIM_LLM_PROFILE={persisted}  # makes it explicit",
+                        fix=f"maxim config set llm.profile {persisted}  # makes it explicit",
                     )
                 )
             else:
                 results.append(
                     CheckResult(
-                        name="MAXIM_LLM_PROFILE",
+                        name="llm.profile",
                         status="warn",
                         message="not set and no persisted model — LLM will not start",
-                        fix="export MAXIM_LLM_PROFILE=qwen2.5-14b  # or your model name",
+                        fix="maxim config set llm.profile qwen2.5-14b  # or your model name",
                     )
                 )
 
-        # ── MAXIM_LLM_N_CTX ──────────────────────────────────────────────────
-        n_ctx_raw = os.environ.get("MAXIM_LLM_N_CTX", "").strip()
-        if not n_ctx_raw:
+        # ── llm.n_ctx ────────────────────────────────────────────────────────
+        if _rs is not None:
+            try:
+                n_ctx_value, n_ctx_source = _rs("llm.n_ctx")
+            except Exception:
+                n_ctx_value, n_ctx_source = None, "default"
+        else:
+            n_ctx_value, n_ctx_source = None, "default"
+        if n_ctx_source == "default":
+            # Default (8192) — surface a soft INFO so operators on 14B+
+            # know to raise it explicitly, but not a WARN since the
+            # default is sensible for sub-14B.
             results.append(
                 CheckResult(
-                    name="MAXIM_LLM_N_CTX",
-                    status="warn",
+                    name="llm.n_ctx",
+                    status="info",
                     message=(
-                        "not set — llama-cpp will auto-select context size (often 4096). "
-                        "Long prompts on 14B+ models will fill the KV cache and return "
-                        "empty choices, causing inference_broken cascades."
+                        f"using default ({n_ctx_value}). Long prompts on 14B+ "
+                        "models risk KV-cache overflow; consider raising to 16384."
                     ),
-                    fix="export MAXIM_LLM_N_CTX=16384  # safe for Q4_K_M 14B on 16 GB+ VRAM",
+                    fix="maxim config set llm.n_ctx 16384",
                 )
             )
-        else:
-            try:
-                n_ctx = int(n_ctx_raw)
-                if n_ctx < 8192:
-                    results.append(
-                        CheckResult(
-                            name="MAXIM_LLM_N_CTX",
-                            status="warn",
-                            message=f"MAXIM_LLM_N_CTX={n_ctx} — below 8192 risks context overflow on multi-turn sims",
-                            fix="export MAXIM_LLM_N_CTX=16384",
-                        )
-                    )
-                else:
-                    results.append(
-                        CheckResult(
-                            name="MAXIM_LLM_N_CTX",
-                            status="ok",
-                            message=f"MAXIM_LLM_N_CTX={n_ctx}",
-                        )
-                    )
-            except ValueError:
+        elif isinstance(n_ctx_value, int):
+            if n_ctx_value < 8192:
                 results.append(
                     CheckResult(
-                        name="MAXIM_LLM_N_CTX",
-                        status="fail",
-                        message=f"MAXIM_LLM_N_CTX='{n_ctx_raw}' is not a valid integer",
-                        fix="export MAXIM_LLM_N_CTX=16384",
+                        name="llm.n_ctx",
+                        status="warn",
+                        message=f"{n_ctx_value} [source={n_ctx_source}] — below 8192 risks context overflow on multi-turn sims",
+                        fix="maxim config set llm.n_ctx 16384",
                     )
                 )
+            else:
+                results.append(
+                    CheckResult(
+                        name="llm.n_ctx",
+                        status="ok",
+                        message=f"{n_ctx_value}  [source={n_ctx_source}]",
+                    )
+                )
+        else:
+            results.append(
+                CheckResult(
+                    name="llm.n_ctx",
+                    status="fail",
+                    message=f"{n_ctx_value!r} is not a valid integer [source={n_ctx_source}]",
+                    fix="maxim config set llm.n_ctx 16384",
+                )
+            )
 
     # ── Stale debugging vars that cause silent failures ───────────────────────
     if os.environ.get("MAXIM_SKIP_REMOTE_PROBE", "").strip().lower() in ("1", "true", "yes"):
@@ -501,13 +860,35 @@ def check_context_window(port: int = 8100) -> CheckResult:
             pass
 
     if n_ctx is None:
+        # Post-implementation field-coverage fold: surface the
+        # CONFIGURED n_ctx from resolve_setting when the running
+        # server's introspection failed. Pre-fold the operator only
+        # saw "could not be determined" with no way to confirm what
+        # config.json had asked for.
+        configured_n_ctx, configured_source = None, "default"
+        try:
+            from maxim.runtime.config_loader import resolve_setting as _rs
+
+            configured_n_ctx, configured_source = _rs("llm.n_ctx")
+        except Exception:
+            pass
+        if configured_n_ctx and configured_source in ("config", "env", "cli"):
+            return CheckResult(
+                name="Context window (n_ctx)",
+                status="info",
+                message=(
+                    f"server running but did not expose n_ctx; configured value "
+                    f"{configured_n_ctx} [source={configured_source}] should be in effect."
+                ),
+            )
         return CheckResult(
             name="Context window (n_ctx)",
             status="warn",
             message=(
-                "server is running but n_ctx could not be determined. Set MAXIM_LLM_N_CTX=16384 to make it explicit."
+                "server is running but n_ctx could not be determined and no config value set. "
+                "Set llm.n_ctx via `maxim config set llm.n_ctx 16384` to make it explicit."
             ),
-            fix="export MAXIM_LLM_N_CTX=16384",
+            fix="maxim config set llm.n_ctx 16384",
         )
 
     if n_ctx < 8192:
@@ -519,7 +900,7 @@ def check_context_window(port: int = 8100) -> CheckResult:
                 f"Long prompts will overflow the KV cache and return empty choices "
                 f"(inference_broken cascade)."
             ),
-            fix="export MAXIM_LLM_N_CTX=16384  # then restart: maxim peer restart",
+            fix="maxim config set llm.n_ctx 16384  # then restart: maxim peer restart",
             retry_id="ctx_window",
         )
 
@@ -1862,11 +2243,24 @@ def check_remote_reachability(url: str | None = None, api_key: str | None = None
             message=f"{url} responding ({result.latency_ms:.0f} ms)",
         )
     if result.outcome == "auth_rejected":
+        # Key-drift detection (post-config-unification UX fold,
+        # 2026-06-03): route the message + fix through the canonical
+        # classifier in peer/probe_classify.py rather than overriding
+        # locally. CLAUDE.md C1 invariant: "callers do NOT override
+        # the returned message" — pass richer `detail` instead.
+        from maxim.peer.probe_classify import classify_probe_outcome
+
+        classification = classify_probe_outcome(
+            outcome=result.outcome,
+            detail=result.detail,
+            latency_ms=result.latency_ms,
+            url=url,
+        )
         return CheckResult(
             name="Remote leader probe",
-            status="warn",
-            message=f"{url} alive but rejected the API key ({result.detail})",
-            fix="maxim peer key  # rotate / re-paste from leader",
+            status="warn",  # auth_rejected is recoverable (re-paste key)
+            message=classification.message,
+            fix=classification.fix,
             retry_id="remote_probe",
         )
     fix_hints = {
@@ -2300,6 +2694,13 @@ def run_all_checks(
     sections: list[tuple[str, list[CheckResult]]] = [
         ("Environment", env_checks),
     ]
+
+    # C5 of config_unification.md: "Resolved Config" section surfaces
+    # every absorbed field with its effective value + source marker.
+    # Single answer to "what does this instance think it's configured
+    # as?" — collapses what previously required cross-referencing 96
+    # env vars + 4 config files + 2 role detectors.
+    sections.append(("Resolved Config", check_resolved_config()))
 
     if detected_role == "peer" and peer_url:
         # ── peer-mode sections ────────────────────────────────────────────

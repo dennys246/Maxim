@@ -515,7 +515,14 @@ def ensure_available(
         return False
 
     info = LLM_MODELS[profile_name]
-    size_gb = float(info.get("size_gb", 0.0))
+    # User profiles added via ``maxim model add`` don't have a
+    # known size_gb; profile_loader.py injects ``size_gb: None`` for
+    # them. ``.get(key, default)`` only returns the default when the
+    # key is ABSENT, not when the value is None — so guard against
+    # both. 0.0 disables the soft-budget pre-check (acceptable for
+    # user profiles where the operator chose the GGUF deliberately).
+    raw_size = info.get("size_gb")
+    size_gb = float(raw_size) if raw_size is not None else 0.0
 
     ok, reason = can_download(
         size_gb,

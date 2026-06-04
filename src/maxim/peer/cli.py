@@ -261,15 +261,22 @@ def _cmd_connect(argv: list[str]) -> int:
             print("  debug independently.")
             return 1
 
-    # Save config
+    # Save config — IM5 fold dual-write (config_unification.md C4):
+    # writes to BOTH config.json::lanes.large.* (canonical as of 1.0)
+    # AND peer.yml (deprecated compat through 1.x, retired in 2.0). The
+    # dual-write keeps shell scripts and hand-greps that still expect
+    # peer.yml working during the deprecation window.
     cfg = PeerConfig(url=url, api_key=key, model=model, is_cloud=is_cloud)
-    path = write_peer_config(cfg)
+    peer_path = write_peer_config(cfg)
+    config_json_path = _write_lane_to_config_json(url, key, model, is_cloud)
+
     # New URL: drop any cached probe outcomes so the next startup re-probes
     # the freshly-configured leader instead of trusting a stale entry from
     # whatever was previously connected.
     _clear_probe_cache()
     print()
-    print(f"✓ Saved peer config to {path}")
+    print(f"✓ Saved lane routing to {config_json_path}")
+    print(f"  (also wrote {peer_path} for 1.x back-compat — retired in 2.0)")
     print(f"  url:      {url}")
     print(f"  api_key:  {truncate_key(key)}")
     if model:
@@ -281,30 +288,150 @@ def _cmd_connect(argv: list[str]) -> int:
     return 0
 
 
+def _write_lane_to_config_json(url: str, key: str, model: str | None, is_cloud: bool):
+    """Mirror peer.yml's data into ``config.json::lanes.large.*``.
+
+    Writes the API key to ``~/.config/maxim/api_key`` mode-0600 (via
+    :func:`maxim.utils.atomic_io.atomic_write_secret`) and stores the
+    file-path reference in ``config.json``. The cross-confirmed
+    I-3/IM3 fold forbids inline plaintext keys in config.json.
+
+    Returns the path to ``config.json``.
+    """
+    from maxim.runtime.config_loader import config_path
+    from maxim.runtime.config_writer import set_field
+    from maxim.utils.atomic_io import atomic_write_secret
+
+    # Write the API key to a mode-0600 file alongside config.json
+    api_key_path = config_path().parent / "api_key"
+    api_key_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_secret(str(api_key_path), key.strip() + "\n")
+
+    # Write the lane fields via the canonical writer module
+    set_field("role", "peer")
+    set_field("lanes.large.remote_url", url)
+    set_field("lanes.large.remote_api_key_ref", str(api_key_path))
+    if model:
+        set_field("lanes.large.remote_model", model)
+    # Post-implementation Executor I5 fold: do NOT flip cloud.enabled
+    # based on the peer-connect ``--cloud`` flag.
+    #
+    # ``--cloud`` on `maxim peer connect` describes the URL: "this
+    # leader URL is public-facing" (typically tunneled through
+    # Cloudflare). ``config.json::cloud.enabled`` is a different
+    # concept: cloud-LLM-PROVIDER opt-in (Claude/OpenAI/Groq/etc.)
+    # with budget gate + redaction policy + max_lanes. Flipping
+    # cloud.enabled silently activates the cloud-PROVIDER routing
+    # path for a leader URL — wrong semantics. The IM5 audit's
+    # self-hosted classification (MAXIM_MAX_CLOUD_LANES=1 set when
+    # lanes.large.remote_url resolves from config) is the correct
+    # signal for "this URL is self-hosted infra, don't gate it as
+    # cloud-provider."
+    #
+    # The ``is_cloud`` PeerConfig field is preserved in peer.yml for
+    # back-compat with pre-C4 callers that branch on it.
+    _ = is_cloud  # field intentionally not propagated to config.json
+
+    return config_path()
+
+
 def _cmd_show() -> int:
-    cfg = read_peer_config()
-    if cfg is None:
-        print(f"No peer config at {peer_config_path()}")
+    """Show the resolved peer config. C4 fold: reads config.json first,
+    falls through to peer.yml for back-compat."""
+    from maxim.runtime.config_loader import (
+        config_path,
+        load_config,
+        resolve_api_key_ref,
+    )
+
+    try:
+        cfg = load_config()
+    except Exception:
+        cfg = None
+
+    if cfg is not None and cfg.lanes.large.remote_url:
+        print(f"Lane routing (config.json): {config_path()}")
+        print(f"  url:      {cfg.lanes.large.remote_url}")
+        ref = cfg.lanes.large.remote_api_key_ref
+        if ref:
+            # Don't print the ref value or any derivation of the
+            # resolved key. The verb's purpose is "is this peer
+            # configured?" — the answer is yes/no/unresolvable. Use
+            # `maxim peer key` to inspect the key value itself, or
+            # `maxim config get lanes.large.remote_api_key_ref` to
+            # inspect the reference path. Separating these surfaces
+            # keeps `peer show` safe to run in screen-shared contexts.
+            ref_kind = "keyring" if ref.startswith("keyring:") else "file"
+            resolved = resolve_api_key_ref(ref)
+            if resolved:
+                print(f"  api_key:  ✓ configured via {ref_kind} reference")
+            else:
+                print(f"  api_key:  ✗ {ref_kind} reference unresolvable — `maxim doctor` for details")
+        if cfg.lanes.large.remote_model:
+            print(f"  model:    {cfg.lanes.large.remote_model}")
+        if cfg.cloud.enabled:
+            print("  is_cloud: true (cloud.enabled in config.json)")
+        # Also show peer.yml if present — operator wants to see drift
+        peer = read_peer_config()
+        if peer is not None:
+            print()
+            print(f"  ℹ peer.yml also present at {peer_config_path()} (deprecated compat)")
+        return 0
+
+    # Fall through to peer.yml compat-read
+    peer = read_peer_config()
+    if peer is None:
+        print(f"No peer config at {peer_config_path()} or {config_path()}")
         print("Run: maxim peer connect <url>")
         return 1
-    print(f"Peer config: {peer_config_path()}")
-    print(f"  url:      {cfg.url}")
-    print(f"  api_key:  {truncate_key(cfg.api_key)}")
-    if cfg.model:
-        print(f"  model:    {cfg.model}")
-    if cfg.is_cloud:
+    print(f"Peer config (deprecated peer.yml): {peer_config_path()}")
+    print(f"  url:      {peer.url}")
+    # Don't print the key value or any derivation. The verb's purpose
+    # is "is this peer configured?" — use `maxim peer key` for the
+    # value itself. Same rationale as the config.json::lanes.large
+    # path above.
+    print("  api_key:  ✓ configured (use `maxim peer key` to inspect)")
+    if peer.model:
+        print(f"  model:    {peer.model}")
+    if peer.is_cloud:
         print("  is_cloud: true")
+    print()
+    print("⚠ peer.yml is deprecated as of 1.0. Run `maxim peer connect <url>` to")
+    print("  migrate to config.json. peer.yml will be retired in 2.0.")
     return 0
 
 
 def _cmd_forget() -> int:
-    path = peer_config_path()
+    """C4 fold: delete BOTH config.json::lanes.large.* AND peer.yml."""
+    from maxim.runtime.config_loader import config_path, load_config
+    from maxim.runtime.config_writer import set_field
+
+    removed_any = False
+
+    # Clear config.json lane routing — pass None directly (set_field
+    # accepts typed None, which writes a null field).
+    try:
+        cfg = load_config()
+        if cfg.lanes.large.remote_url or cfg.lanes.large.remote_api_key_ref:
+            set_field("lanes.large.remote_url", None)
+            set_field("lanes.large.remote_api_key_ref", None)
+            set_field("lanes.large.remote_model", None)
+            print(f"✓ Cleared lanes.large.* in {config_path()}")
+            removed_any = True
+    except Exception as e:
+        print(f"⚠ Could not clear config.json lanes: {e}")
+
+    # Delete peer.yml — back-compat removal preserves the operator's
+    # expected "Removed peer config" message for tests + scripts.
     if delete_peer_config():
         _clear_probe_cache()
-        print(f"✓ Removed peer config: {path}")
-        return 0
-    print(f"No peer config to remove at {path}")
-    return 1
+        print(f"✓ Removed peer config: {peer_config_path()}")
+        removed_any = True
+
+    if not removed_any:
+        print(f"No peer config to remove at {peer_config_path()}")
+        return 1
+    return 0
 
 
 # ─── key ─────────────────────────────────────────────────────────────────
@@ -315,18 +442,39 @@ def _cmd_key(argv: list[str]) -> int:
 
     maxim peer key          — print the raw key (for piping/export)
     maxim peer key set KEY  — update the key in-place (validates, preserves 0600)
+
+    C4 fold: prefers config.json::lanes.large.remote_api_key_ref;
+    falls through to peer.yml::api_key for back-compat.
     """
     if argv and argv[0] == "set":
         return _cmd_key_set(argv[1:])
 
-    # Default: print the raw key
-    cfg = read_peer_config()
-    if cfg is None:
+    # Default: print the raw key. Prefer config.json's resolved
+    # api_key_ref path; fall through to peer.yml for back-compat.
+    from maxim.runtime.config_loader import load_config, resolve_api_key_ref
+
+    try:
+        cfg = load_config()
+        ref = cfg.lanes.large.remote_api_key_ref
+        if ref:
+            resolved = resolve_api_key_ref(ref)
+            if resolved:
+                # Documented intentional: `maxim peer key` prints the
+                # raw key to stdout for piping/export idioms like
+                # `export KEY=$(maxim peer key)`. Operator's
+                # responsibility to use it in trusted contexts.
+                print(resolved)  # lgtm [py/clear-text-logging-sensitive-data]
+                return 0
+    except Exception:
+        pass
+
+    peer = read_peer_config()
+    if peer is None:
         print("No peer config found.", file=sys.stderr)
         print("Run: maxim peer connect <url>", file=sys.stderr)
         return 1
-    # Print raw key only — safe for `export KEY=$(maxim peer key)`
-    print(cfg.api_key)
+    # Documented intentional — see above.
+    print(peer.api_key)  # lgtm [py/clear-text-logging-sensitive-data]
     return 0
 
 
@@ -366,10 +514,24 @@ def _cmd_key_set(argv: list[str]) -> int:
         )
         return 1
 
-    # Update config, preserving url/model/is_cloud
+    # Update peer.yml (compat) — preserves url/model/is_cloud
     updated = PeerConfig(url=cfg.url, api_key=key, model=cfg.model, is_cloud=cfg.is_cloud)
-    path = write_peer_config(updated)
-    print(f"✓ API key updated in {path}")
+    peer_path = write_peer_config(updated)
+
+    # C4 fold: also update the canonical ~/.config/maxim/api_key file
+    # referenced by config.json::lanes.large.remote_api_key_ref.
+    try:
+        from maxim.runtime.config_loader import config_path
+        from maxim.utils.atomic_io import atomic_write_secret
+
+        api_key_path = config_path().parent / "api_key"
+        api_key_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_secret(str(api_key_path), key.strip() + "\n")
+        print(f"✓ API key updated in {api_key_path} (canonical)")
+        print(f"  (also wrote {peer_path} for 1.x back-compat)")
+    except Exception as e:
+        print(f"⚠ Could not update canonical key file: {e}")
+        print(f"✓ API key updated in {peer_path}")
     print(f"  key: {truncate_key(key)}")
     return 0
 

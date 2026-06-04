@@ -21,8 +21,17 @@ def _clean_role_env(monkeypatch):
 
 @pytest.fixture
 def _no_config(monkeypatch):
+    """Patch out every role-signal probe so the test sees a "no
+    signals at all" environment regardless of the developer machine's
+    actual ``~/.cloudflared/`` / ``~/.config/maxim/`` state.
+
+    Post-C3 the seven-rank detector consults config.json + mesh.yml +
+    cloudflared + peer.yml; all four must be patched to None for a
+    clean default-leader baseline."""
     monkeypatch.setattr("maxim.runtime.role._peer_yml_exists", lambda: False)
     monkeypatch.setattr("maxim.runtime.role._mesh_yml_exists", lambda: False)
+    monkeypatch.setattr("maxim.runtime.role._cloudflared_config_exists", lambda: None)
+    monkeypatch.setattr("maxim.runtime.role._config_json_role", lambda: None)
 
 
 def test_env_var_wins(monkeypatch, _no_config):
@@ -38,12 +47,16 @@ def test_env_var_invalid_falls_through(monkeypatch, _no_config):
 def test_mesh_yml_beats_peer_yml(monkeypatch):
     monkeypatch.setattr("maxim.runtime.role._mesh_yml_exists", lambda: True)
     monkeypatch.setattr("maxim.runtime.role._peer_yml_exists", lambda: True)
+    monkeypatch.setattr("maxim.runtime.role._cloudflared_config_exists", lambda: None)
+    monkeypatch.setattr("maxim.runtime.role._config_json_role", lambda: None)
     assert detect_role([]) == ("peer", "mesh_yml")
 
 
 def test_peer_yml_exists(monkeypatch):
     monkeypatch.setattr("maxim.runtime.role._mesh_yml_exists", lambda: False)
     monkeypatch.setattr("maxim.runtime.role._peer_yml_exists", lambda: True)
+    monkeypatch.setattr("maxim.runtime.role._cloudflared_config_exists", lambda: None)
+    monkeypatch.setattr("maxim.runtime.role._config_json_role", lambda: None)
     assert detect_role([]) == ("peer", "peer_yml")
 
 
@@ -187,20 +200,25 @@ def test_fix7_lazy_migration_in_model_state_file(_isolated_home):
     assert path.read_text() == "legacy-model"
 
 
-def test_fix9_role_divergence_warns(monkeypatch, _isolated_home, _no_config, caplog):
-    """Fix #9: explicit warning when leader_mode + role disagree."""
+def test_fix9_role_divergence_back_compat_event(monkeypatch, _isolated_home, _no_config, caplog):
+    """Post-C3 (N-2 fold): ``role_divergence`` is no longer a WARNING
+    surfacing detector disagreement (the two detectors are now one and
+    structurally cannot disagree). The event continues firing at DEBUG
+    with ``deprecated: true`` so external dashboards subscribing to it
+    don't silently lose a column. Drops in 1.2.
+    """
     import logging as _logging
 
-    from maxim.runtime import leader_mode
-    from maxim.runtime.leader_mode import RoleDecision
+    with caplog.at_level(_logging.DEBUG, logger="maxim.runtime.role"):
+        detect_and_apply_role([])
 
-    monkeypatch.setattr(
-        leader_mode,
-        "detect_role",
-        lambda: RoleDecision(role="client", bind_host="127.0.0.1", reason="forced client"),
+    divergence_records = [
+        rec
+        for rec in caplog.records
+        if rec.levelno == _logging.DEBUG and getattr(rec, "event", None) == "role_divergence"
+    ]
+    assert divergence_records, (
+        "role_divergence event must continue firing at DEBUG for back-compat"
     )
-    with caplog.at_level(_logging.WARNING, logger="maxim.runtime.role"):
-        detect_and_apply_role([])  # role.py says leader, leader_mode says client → warn
-    assert any(
-        "divergence" in rec.message.lower() or "role_divergence" in rec.message for rec in caplog.records
-    ) or any("divergence" in str(rec) for rec in caplog.records)
+    data = getattr(divergence_records[-1], "data", {})
+    assert data.get("deprecated") is True
