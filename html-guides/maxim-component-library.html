@@ -2,7 +2,7 @@
 
 {% block title %}Component Library — Maxim Docs | SEM Entity Templates{% endblock %}
 
-{% block meta_description %}Browse Maxim's 63 SEM component templates — weapons, creatures, NPCs, environments, items, and vehicles across fantasy, cyberpunk, sci-fi, horror, historical, and modern genres. Searchable and filterable.{% endblock %}
+{% block meta_description %}Browse Maxim's 55 SEM component templates — weapons, creatures, NPCs, environments, items, and vehicles across fantasy, cyberpunk, sci-fi, and more.{% endblock %}
 
 {% block meta_keywords %}Maxim components, SEM entities, game assets, NPC templates, weapon templates, creature templates, fantasy, cyberpunk, scifi, horror{% endblock %}
 
@@ -16,7 +16,7 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "Component Library — SEM Entity Templates",
-  "description": "63 reusable SEM entity templates across 7 categories and 7 genres for Maxim's cognitive simulation system.",
+  "description": "55 reusable SEM entity templates across 7 categories and 7 genres for Maxim's cognitive simulation system.",
   "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
   "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
   "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/component-library",
@@ -58,10 +58,12 @@
 </style>
 
 <div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
   <!-- Header -->
   <div class="text-center space-y-4">
     <h1 class="text-3xl md:text-4xl font-bold text-white">Component Library</h1>
-    <p class="text-lg text-slate-400 max-w-3xl mx-auto">63 SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation. Expand the library with the <a href="/maxim/embodiment#asset-foundry" class="text-indigo-400 hover:text-indigo-300 no-underline">Asset Foundry</a> or <a href="/maxim/embodiment#auto-curation" class="text-indigo-400 hover:text-indigo-300 no-underline">Auto-Curation</a>.</p>
+    <p class="text-lg text-slate-400 max-w-3xl mx-auto">65+ SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation. Expand the library with the <a href="/maxim/embodiment#asset-foundry" class="text-indigo-400 hover:text-indigo-300 no-underline">Asset Foundry</a> or <a href="/maxim/embodiment#auto-curation" class="text-indigo-400 hover:text-indigo-300 no-underline">Auto-Curation</a>.</p>
   </div>
 
   <!-- ComponentIndex Discovery -->
@@ -80,7 +82,7 @@
     <div class="flex flex-col md:flex-row gap-3">
       <div class="flex-1 relative">
         <input id="search-input" type="text" placeholder="Search components, sensors, affordances..." class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-500 text-sm">
-        <span class="absolute right-3 top-2.5 text-slate-500 text-sm" id="result-count">63 components</span>
+        <span class="absolute right-3 top-2.5 text-slate-500 text-sm" id="result-count">54 components</span>
       </div>
     </div>
     <div class="space-y-2">
@@ -633,5 +635,6 @@ print(staff.sensors[<span class="text-green-400">"mana"</span>].read())</div>
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}

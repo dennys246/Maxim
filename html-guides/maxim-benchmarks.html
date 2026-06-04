@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Benchmarks — Maxim Docs | Multi-Model Cognitive Architecture Testing{% endblock %}
+{% block title %}Benchmarks — Maxim Docs | Multi-Model Cognitive Testing{% endblock %}
 
-{% block meta_description %}Compare LLM backends across cognitive metrics with Maxim's three-tier benchmark system. Measure hallucination rates, memory formation, causal learning, and embodiment readiness.{% endblock %}
+{% block meta_description %}Compare LLM backends across cognitive metrics with Maxim's three-tier benchmark system: hallucination, memory formation, causal learning.{% endblock %}
 
 {% block meta_keywords %}Maxim benchmarks, cognitive benchmarks, LLM comparison, hallucination rate, memory formation, causal learning, embodiment metrics, bio-inspired testing{% endblock %}
 
@@ -532,5 +532,6 @@ result = maxim.imagine(
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}

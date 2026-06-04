@@ -2,7 +2,7 @@
 
 {% block title %}Memory Systems — Maxim Docs | Agentic Robotics Framework{% endblock %}
 
-{% block meta_description %}How Maxim remembers, predicts, and learns. Explore the Hippocampus, SCN, Nucleus Accumbens, Entorhinal Cortex, and Anterior Temporal Lobe (ATL) — biologically-inspired memory systems, semantic knowledge, and cross-layer spreading activation for embodied AI agents.{% endblock %}
+{% block meta_description %}How Maxim remembers, predicts, and learns. Hippocampus, SCN, Nucleus Accumbens, Entorhinal Cortex, and ATL — biologically-inspired memory for embodied AI.{% endblock %}
 
 {% block meta_keywords %}Maxim memory systems, robot memory, hippocampus AI, episodic memory robot, reward prediction, entorhinal cortex, circadian rhythm AI, agentic memory, embodied AI memory, semantic memory, ATL anterior temporal lobe, cross-layer graph, semantic promoter, knowledge graph{% endblock %}
 
@@ -171,9 +171,11 @@ class MemoryLayer(ABC):
 FORMING    &rarr;  Initial observation, still accumulating context
                Protected from eviction during the active session
 
+WORKING    &rarr;  Enriched with importance scores and decay rates
+               Protected from eviction during the active session
+
 SHORT_TERM &rarr;  Committed to the Hippocampus for storage
                Subject to consolidation during sleep
-               (Active-reference context is in WorkingMemorySet, not a tier)
 
 LONG_TERM  &rarr;  Survived consolidation waves
                Permanent storage in the Hippocampus</div>
@@ -836,18 +838,6 @@ PromotionCandidate:
 
 <span class="text-slate-500">Ordering is critical: promotion runs BEFORE consolidation</span>
 <span class="text-slate-500">so source episodes still exist when cross-layer edges form.</span></div>
-
-    <h3 class="text-lg font-semibold text-white mt-6 mb-3">Use-Based Episodic Promotion (0.8)</h3>
-
-    <p class="text-slate-300 leading-relaxed mb-3">Separate from the semantic promotion pipeline above, individual episodic memories can promote from SHORT_TERM to LONG_TERM via <strong class="text-white">use-based consolidation</strong>. Each time <span class="font-mono text-xs text-indigo-400">Hippocampus.recall()</span> returns a memory:</p>
-
-    <ul class="space-y-2 text-slate-300 list-disc pl-5">
-      <li><span class="font-mono text-xs text-blue-400">touch()</span> is called (increments access_count + updates accessed_at)</li>
-      <li>A <span class="font-mono text-xs text-blue-400">RECALL</span> entry is added to WorkingMemorySet (reconsolidation pull into active context)</li>
-      <li>If the recall used a query string, the memory is scored for promotion: context-diverse access accumulates <span class="font-mono text-xs text-blue-400">promotion_pressure</span>; wall-clock decay prevents trickle-promotion; when pressure crosses the threshold, the memory promotes to LONG_TERM</li>
-    </ul>
-
-    <p class="text-slate-300 leading-relaxed mt-3">This is biologically inspired: memories that are actively retrieved in diverse contexts consolidate more strongly than those accessed in only one context. The context-diversity guard uses query-string hashing &mdash; identical queries don't accumulate pressure.</p>
   </section>
 
   <!-- Knowledge in the Agent Loop -->
@@ -1136,5 +1126,6 @@ wave_score = 0.30 &times; significance          <span class="text-slate-500"># O
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}

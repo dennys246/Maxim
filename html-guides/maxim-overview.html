@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Maxim — A Brain for Robots | Agentic Robotics Cognitive Architecture{% endblock %}
+{% block title %}Maxim — A Brain for Robots | Agentic Robotics Framework{% endblock %}
 
-{% block meta_description %}Maxim is an agentic robotics framework that gives robots a brain. A biologically-inspired cognitive architecture for embodied AI agents with memory, attention, proprioception, and learning.{% endblock %}
+{% block meta_description %}Maxim is an agentic robotics harness that gives robots a brain — a biologically-inspired cognitive architecture for embodied AI agents.{% endblock %}
 
-{% block meta_keywords %}Maxim, Maxim AI, Maxim agent, Maxim brain, Maxim robot, agentic robotics, cognitive architecture, robot brain, embodied AI, biologically-inspired AI, artificial mind, Reachy Mini, memory systems, attention networks, proprioception, ROS2{% endblock %}
+{% block meta_keywords %}Maxim, Maxim AI, Maxim agent, Maxim harness, Maxim brain, Maxim robot, agentic robotics, cognitive architecture, robot brain, embodied AI, biologically-inspired AI, artificial mind, Reachy Mini, memory systems, attention networks, proprioception, ROS2{% endblock %}
 
 {% block meta_author %}Maxim Project{% endblock %}
 {% block og_site_name %}Maxim{% endblock %}
@@ -38,6 +38,65 @@
   "url": "https://www.dennyschaedig.com/maxim"
 }
 </script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.dennyschaedig.com/" },
+    { "@type": "ListItem", "position": 2, "name": "Ramblings", "item": "https://www.dennyschaedig.com/ramblings" },
+    { "@type": "ListItem", "position": 3, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is Maxim?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Maxim is an agentic robotics framework — a biologically-inspired cognitive architecture that gives robots something resembling a mind. It implements computational models of brain structures (hippocampus, entorhinal cortex, nucleus accumbens, attention networks, proprioception, and more) so embodied AI agents can perceive, remember, decide, and learn."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is the Maxim harness?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The Maxim harness is the orchestration layer that wires the biologically-inspired components (memory systems, attention, proprioception, reward prediction, tool use) together with an LLM and an embodied platform like Reachy Mini. It coordinates perception, memory recall, attention, and action in a single agent loop."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Maxim open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes — Maxim is open source on GitHub at https://github.com/dennys246/Maxim. The repository contains the full cognitive architecture, agent harness, simulation environment, and integration code for the Reachy Mini humanoid robot."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What hardware does Maxim run on?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Maxim currently runs on the Reachy Mini humanoid robot, processing real visual input, motor commands, and human interactions. The architecture is hardware-agnostic and can be adapted to other embodied platforms via the embodiment layer."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is Maxim different from other AI agents?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Most AI agents are pure LLM wrappers with stateless tool calls. Maxim adds a persistent bio-substrate — episodic memory (hippocampus), semantic memory (ATL), reward prediction (nucleus accumbens), circadian rhythms (SCN), and proprioception — so the agent learns from every interaction rather than starting fresh each turn."
+      }
+    }
+  ]
+}
+</script>
 {% endblock %}
 
 {% block extra_head %}
@@ -50,9 +109,15 @@
 <div class="space-y-8">
   <a href="/ramblings" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Ramblings</a>
 
-  <header class="text-center space-y-2">
+  <header class="text-center space-y-4">
     <h1 class="text-4xl md:text-5xl font-bold text-white tracking-tight" style="font-family: 'Space Grotesk', sans-serif;">MAXIM</h1>
     <p class="text-indigo-400 font-medium">An Artificial Brain from Biological Blueprints</p>
+    <img
+      src="{{ url_for('static', filename='img/reachy_mini_hidding.jpg') }}"
+      alt="Maxim cognitive architecture running on a Reachy Mini humanoid robot — biologically-inspired brain for embodied AI agents"
+      class="mx-auto rounded-xl max-h-80 w-auto object-contain shadow-lg shadow-indigo-500/10"
+      loading="eager"
+    />
   </header>
 
   <!-- Navigation Menu -->
@@ -70,7 +135,6 @@
       <a href="/maxim/embodiment" class="btn-link">Embodiment</a>
       <a href="/maxim/component-library" class="btn-link">Component Library</a>
       <a href="/maxim/imagination" class="btn-link">Imagination</a>
-      <a href="/maxim/deliberation" class="btn-link">Deliberation</a>
       <a href="/maxim/concept-decomposition" class="btn-link">Concept Decomposition</a>
       <a href="/maxim/communication" class="btn-link">Communication</a>
       <a href="/maxim/operating-modes" class="btn-link">Operating Modes</a>
@@ -199,6 +263,32 @@
         <li>If the robot moves too fast and jerks, <em class="text-indigo-400 not-italic font-medium">Pain Detection</em> signals discomfort</li>
         <li>Success or failure updates all relevant memories and predictions</li>
       </ul>
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2">Frequently Asked Questions</h2>
+    <div class="space-y-4">
+      <details class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <summary class="text-indigo-400 font-semibold cursor-pointer">What is Maxim?</summary>
+        <p class="text-slate-300 mt-3 leading-relaxed">Maxim is an agentic robotics framework — a biologically-inspired cognitive architecture that gives robots something resembling a mind. It implements computational models of brain structures (hippocampus, entorhinal cortex, nucleus accumbens, attention networks, proprioception, and more) so embodied AI agents can perceive, remember, decide, and learn.</p>
+      </details>
+      <details class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <summary class="text-indigo-400 font-semibold cursor-pointer">What is the Maxim harness?</summary>
+        <p class="text-slate-300 mt-3 leading-relaxed">The Maxim harness is the orchestration layer that wires the biologically-inspired components (memory systems, attention, proprioception, reward prediction, tool use) together with an LLM and an embodied platform like Reachy Mini. It coordinates perception, memory recall, attention, and action in a single agent loop.</p>
+      </details>
+      <details class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <summary class="text-indigo-400 font-semibold cursor-pointer">Is Maxim open source?</summary>
+        <p class="text-slate-300 mt-3 leading-relaxed">Yes — Maxim is open source on GitHub at <a href="https://github.com/dennys246/Maxim" class="text-indigo-400 hover:text-indigo-300">github.com/dennys246/Maxim</a>. The repository contains the full cognitive architecture, agent harness, simulation environment, and integration code for the Reachy Mini humanoid robot.</p>
+      </details>
+      <details class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <summary class="text-indigo-400 font-semibold cursor-pointer">What hardware does Maxim run on?</summary>
+        <p class="text-slate-300 mt-3 leading-relaxed">Maxim currently runs on the Reachy Mini humanoid robot, processing real visual input, motor commands, and human interactions. The architecture is hardware-agnostic and can be adapted to other embodied platforms via the <a href="/maxim/embodiment" class="text-indigo-400 hover:text-indigo-300">embodiment layer</a>.</p>
+      </details>
+      <details class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <summary class="text-indigo-400 font-semibold cursor-pointer">How is Maxim different from other AI agents?</summary>
+        <p class="text-slate-300 mt-3 leading-relaxed">Most AI agents are pure LLM wrappers with stateless tool calls. Maxim adds a persistent bio-substrate — episodic memory (hippocampus), semantic memory (ATL), reward prediction (nucleus accumbens), circadian rhythms (SCN), and proprioception — so the agent learns from every interaction rather than starting fresh each turn.</p>
+      </details>
     </div>
   </section>
 

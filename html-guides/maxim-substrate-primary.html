@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Substrate-Primary Mode — Maxim Docs | Bio-Substrate Action Selection{% endblock %}
+{% block title %}Substrate-Primary Mode — Maxim Docs | Bio-Substrate AUT{% endblock %}
 
-{% block meta_description %}Maxim's substrate-primary AUT mode — a parallel architecture where the bio-substrate (NAc, EC, ATL, Hippocampus, Default Network, reflexes) drives action selection without LLM mediation. Phase -1 prototype shipped 2026-05-09.{% endblock %}
+{% block meta_description %}Maxim's substrate-primary AUT mode — a parallel architecture where the bio-substrate drives action selection without LLM mediation.{% endblock %}
 
 {% block meta_keywords %}substrate-primary, Maxim AUT mode, bio-substrate action selection, NAc recommend_action, parallel mode architecture, grounded language acquisition, cradle prelinguistic, LLM-free agent{% endblock %}
 
@@ -419,5 +419,6 @@ action = nac.recommend_action(
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}
