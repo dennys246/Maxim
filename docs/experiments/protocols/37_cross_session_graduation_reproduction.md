@@ -27,18 +27,26 @@ Every field needed to **re-run Exp 37 and get a comparable result** on a future 
 
 ## Implementation decisions locked here (the pre-reg deliberately stops at "what passes the gate"; these are the "how the harness measures it" choices)
 
-### 1. Turn-binning on `say`/`respond` boundaries
+### 1. Per-action primary metric (post pre-reg amendment 2026-05-31)
 
-The pre-reg's primary-metric definition is *"per-turn"* — fraction of turns containing a failure-class action. The `actions.jsonl` records have **no `turn` field**; the only per-action keys are `tool`, `params`, `success`, `timestamp`. The harness operationalizes "per-turn" by splitting the action stream on `say` / `respond` tool calls (each is the agent's textual close-out for one deliberation cycle).
+The pre-reg originally defined the primary metric per-turn ("fraction of turns containing a failure-class action"). The PR #5 pilot revealed Cradle sims produce ZERO `say`/`respond` tool calls — the AUT is purely sensory/embodied. The harness's per-turn binning (which splits on say/respond boundaries) collapsed every session to a single tail bucket, making the per-turn rate structurally degenerate (1.0 if any failure-class action happened, 0.0 otherwise — no variance signal).
 
-Why this choice: the report.json's `turns` field counts deliberation cycles (matches the LoopController tick count), and `say`/`respond` are the agent's only tool surfaces for "produce textual output to the world." A turn ends when the agent emits one. The harness also emits a **per-action failure rate** (`per_action_failure_rate`) on every record as a robustness check independent of binning — if the binned and unbinned rates produce divergent verdicts on the same data, the analyzer flags it.
+**The pre-reg was amended** (user-authorized 2026-05-31 mid-PR #5) to swap the primary metric to per-action rate. The analyzer's constants reflect this swap:
 
-Edge cases:
-- Trailing actions without a final `say`/`respond` are flushed into a tail bucket (the agent may end mid-deliberation when `max_turns` fires).
-- Multiple failure-class actions within one bucket count as **one** failure-class turn (matches the pre-reg's "any tool call in the turn").
-- Sessions with zero `say`/`respond` calls collapse into one single tail bucket — degenerate but tolerated (treated as one turn).
+```python
+PRIMARY_METRIC = "per_action_failure_rate"
+ROBUSTNESS_METRIC = "primary_metric_repeat_failure_action_rate"  # per-turn — drift detection only
+```
 
-If a future analysis run shows binned-vs-unbinned divergence on most arms, that's a signal to consider per-action as the primary statistic and demote the binned version to corroborating; the binned rate is currently primary per the pre-reg's wording.
+**Per-action metric:** `failure_class_action_count / total_actions`. Direct, binning-free, 12× the resolution of per-turn. Computed identically across all sims regardless of `say`/`respond` presence.
+
+**Per-turn metric retained as robustness cross-check.** On Cradle (no say/respond) it will be degenerate — analyzer notes flag this as expected. On future arcs that DO produce say/respond boundaries, the cross-check would be meaningful again. The robustness divergence note is informational only.
+
+Edge cases (per-action):
+- Sessions with zero actions emit `per_action_failure_rate = 0.0` (denominator clamped to 1).
+- Multiple failure-class actions in one session each count independently — direct count.
+
+If a future Cradle revision adds say/respond calls (e.g., the AUT explains its reasoning to the user mid-sim), the per-turn metric would become meaningful again. The amendment is not "delete the per-turn metric" — it's "the per-action metric is what the variance-survival test gates on now."
 
 ### 2. Failure-class detection rules
 

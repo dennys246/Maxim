@@ -7,11 +7,12 @@ graduation gate. Emits a Markdown block ready to append to
 ``docs/experiments/37_cross_session_graduation.md`` as the Results section.
 
 Rules implemented (verbatim from
-[37_cross_session_graduation.md](docs/experiments/37_cross_session_graduation.md)):
+[37_cross_session_graduation.md](docs/experiments/37_cross_session_graduation.md);
+pre-reg amendment 2026-05-31 promoted per-action rate to primary):
 
-  - **Primary (variance-survival):** Arm B mean BELOW Arm A's 2.5th-percentile
-    band, computed across N paired trials. One-sided test — predicted
-    direction is B < A.
+  - **Primary (variance-survival):** Arm B mean of per_action_failure_rate
+    BELOW Arm A's 2.5th-percentile band, computed across N paired trials.
+    One-sided test — predicted direction is B < A.
   - **Isolation:** Arm C mean WITHIN Arm A's [2.5%, 97.5%] band. If Arm C
     also shows shrinkage, primary FAILS with the "general caution" confound.
   - **Corroborating (≥1 of 3 must hit):** affordance_safe_fraction,
@@ -108,8 +109,13 @@ EXPERIMENT_ID: str = _HARNESS["EXPERIMENT_ID"]
 SCENARIOS: tuple[str, ...] = _HARNESS["SCENARIOS"]
 HARNESS_ARMS: tuple[str, ...] = _HARNESS["ARMS"]
 
-PRIMARY_METRIC = "primary_metric_repeat_failure_action_rate"
-ROBUSTNESS_METRIC = "per_action_failure_rate"
+# Per pre-reg amendment 2026-05-31 (PR #5 pilot fold): the primary metric
+# was swapped from per-turn to per-action because Cradle sims lack say/
+# respond boundaries that the harness binner depends on, collapsing the
+# per-turn metric to a structurally-degenerate single-bucket shape. The
+# per-turn metric is kept as the robustness cross-check (informational).
+PRIMARY_METRIC = "per_action_failure_rate"
+ROBUSTNESS_METRIC = "primary_metric_repeat_failure_action_rate"
 TURN_COUNT_FIELD = "turn_count_binned"
 
 # Corroborating metrics — (record_field, predicted_direction, label, none_handling).
