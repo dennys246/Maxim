@@ -363,11 +363,20 @@ def _cmd_show() -> int:
             print(f"  api_key:  configured via {ref_kind} reference")
             resolved = resolve_api_key_ref(ref)
             if resolved:
-                # truncate_key shows first 6 + last 6 chars with `…` in
-                # the middle — safe for operator-visible display.
-                print(
-                    f"            (resolved: {truncate_key(resolved)})"
-                )  # lgtm [py/clear-text-logging-sensitive-data]
+                # Display a sha256 fingerprint (first 12 hex chars)
+                # instead of any portion of the resolved key. The
+                # fingerprint is a one-way hash — pre-image
+                # resistance of sha256 means an observer cannot
+                # recover the key from it (2^96 search space on the
+                # truncated prefix). Maps directly to the key-drift
+                # detection plan's fingerprint format (see
+                # docs/plans/key_drift_detection.md), so the operator
+                # can cross-reference this against the leader's
+                # future `/v1/admin/key-fingerprint` endpoint.
+                import hashlib as _hashlib
+
+                _fp = _hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:12]
+                print(f"            (verified: sha256-12={_fp})")
             else:
                 print("            (unresolvable — `maxim doctor` for details)")
         if cfg.lanes.large.remote_model:
@@ -389,8 +398,13 @@ def _cmd_show() -> int:
         return 1
     print(f"Peer config (deprecated peer.yml): {peer_config_path()}")
     print(f"  url:      {peer.url}")
-    # truncate_key shows first 6 + last 6 chars — safe for display.
-    print(f"  api_key:  {truncate_key(peer.api_key)}")  # lgtm [py/clear-text-logging-sensitive-data]
+    # Display a sha256 fingerprint instead of a truncated key (same
+    # rationale as the config.json::lanes.large path above). Maps to
+    # the key-drift detection plan's fingerprint format.
+    import hashlib as _hashlib
+
+    _peer_fp = _hashlib.sha256(peer.api_key.encode("utf-8")).hexdigest()[:12]
+    print(f"  api_key:  sha256-12={_peer_fp}")
     if peer.model:
         print(f"  model:    {peer.model}")
     if peer.is_cloud:
