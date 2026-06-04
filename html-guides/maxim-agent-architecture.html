@@ -2,7 +2,7 @@
 
 {% block title %}The Agent Brain — Maxim Docs | Agentic Robotics Framework{% endblock %}
 
-{% block meta_description %}Explore Maxim's layered agent architecture — how perception, cognition, and action layers combine to give robots a brain inspired by biological neural systems.{% endblock %}
+{% block meta_description %}Explore Maxim's layered agent architecture — how perception, cognition, and action layers combine to give robots a biologically-inspired brain.{% endblock %}
 
 {% block meta_keywords %}Maxim agent architecture, robot brain layers, agentic AI architecture, perception cognition action, embodied AI agent, Maxim cognitive layers, ROS2 agent{% endblock %}
 
@@ -202,7 +202,7 @@
               <div class="bg-slate-900/60 rounded-lg p-4 border border-slate-700 space-y-3 mt-3">
                 <h5 class="text-indigo-400 font-semibold text-sm">Inspired by the Medial Temporal Lobe</h5>
                 <p class="text-sm text-slate-300">The MemoryAgent mirrors the medial temporal lobe (MTL) &mdash; not as a storage vault, but as an active <em class="text-indigo-400 not-italic">convergence zone</em> that integrates multiple memory systems into a coherent context for decision-making. In the brain, you don't "look up" a memory like a database query. The MTL reconstructs it by weaving together episodic traces, temporal context, familiarity signals, and spatial patterns. The MemoryAgent does exactly this when building StructuredContext for the LLM.</p>
-                <p class="text-sm text-slate-300">Like biological working memory, observations don't become permanent memories instantly. They pass through <em class="text-indigo-400 not-italic">staged formation</em>: new observations enter a forming pool, accumulate context as they transition to short-term status, and can be promoted to long-term storage via use-based consolidation (context-diverse recall accumulates promotion pressure) or sleep consolidation. Active-reference context is maintained in the ExecAgent's <em class="text-indigo-400 not-italic">WorkingMemorySet</em>&mdash;a dedicated layer (not a memory tier) that mirrors how the prefrontal cortex actively maintains items in biological working memory.</p>
+                <p class="text-sm text-slate-300">Like biological working memory, observations don't become permanent memories instantly. They pass through <em class="text-indigo-400 not-italic">staged formation</em>: new observations enter a forming pool, accumulate context as they graduate to working status, and are finally committed to the Hippocampus for long-term storage. During the active session, forming and working entries are protected from eviction&mdash;just as the prefrontal cortex actively maintains items in biological working memory until they're consolidated.</p>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div class="space-y-1">
@@ -244,7 +244,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div class="space-y-1">
                     <p class="text-white font-medium">Dorsolateral PFC &rarr; Goal Formulation</p>
-                    <p class="text-slate-400">The dlPFC maintains working memory and performs abstract reasoning to formulate plans. The ExecAgent mirrors this by owning a <strong class="text-white">WorkingMemorySet</strong> &mdash; a bounded, typed active-reference layer over recent percepts, outcomes, thoughts, and reactions. Before each LLM call, a <strong class="text-white">ThoughtGate</strong> evaluates the working-memory head for novelty and salience. When the gate fires, a <strong class="text-white">BioEnrichmentPipeline</strong> automatically retrieves hippocampal memories, NAc predictions, ATL concepts, and recent action outcomes &mdash; injecting them into the prompt <em class="text-indigo-400 not-italic">before</em> the executive decision. The LLM never acts without its bio-systems informing it first. It doesn't react to stimuli directly &mdash; it deliberates.</p>
+                    <p class="text-slate-400">The dlPFC maintains working memory and performs abstract reasoning to formulate plans. The ExecAgent mirrors this by holding StructuredContext in its prompt window and reasoning over it to propose new goals. It doesn't react to stimuli directly &mdash; it deliberates.</p>
                   </div>
                   <div class="space-y-1">
                     <p class="text-white font-medium">Anterior Cingulate &rarr; Conflict Monitoring</p>
@@ -260,12 +260,7 @@
                   </div>
                 </div>
 
-                <div class="space-y-1 mt-3">
-                  <p class="text-white font-medium">Pre-Deliberation Pipeline (Layer 1) &rarr; Thalamic Relay</p>
-                  <p class="text-slate-400">Before every LLM call, the ThoughtGate evaluates the working-memory head for novelty and salience. When the gate fires, the BioEnrichmentPipeline automatically retrieves relevant memories from hippocampus, causal predictions from NAc, semantic concepts from ATL, and recent actions from WorkingMemorySet. This enriched context is injected into the prompt alongside a PFC deliberation preamble that teaches the LLM to signal <code>ready_to_act</code> &mdash; true when action is needed (tool call, speech, movement), false when still gathering context. Enrichment results are stored as THOUGHT entries in WorkingMemorySet so the LLM sees accumulated reasoning across cycles. This mirrors how the thalamus routes salient stimuli to the PFC, which retrieves from long-term and working memory before the executive decision fires, and how PFC recurrence allows iterative refinement before basal ganglia gates the motor output.</p>
-                </div>
-
-                <p class="text-sm text-slate-400 italic mt-3">The key insight: the frontal lobe doesn't execute actions &mdash; it decides what's worth doing. The ExecAgent preserves this separation. It proposes and prioritizes, but never acts. Execution is always delegated downward, just as the PFC delegates to motor cortex and basal ganglia.</p>
+                <p class="text-sm text-slate-400 italic">The key insight: the frontal lobe doesn't execute actions &mdash; it decides what's worth doing. The ExecAgent preserves this separation. It proposes and prioritizes, but never acts. Execution is always delegated downward, just as the PFC delegates to motor cortex and basal ganglia.</p>
               </div>
             </div>
           </div>
@@ -644,6 +639,7 @@ Energy Types:
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}
 

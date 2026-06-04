@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Multi-LLM Networking &amp; Peer Mesh — Maxim Docs | Distributed Inference{% endblock %}
+{% block title %}Multi-LLM Networking — Maxim Docs | Distributed Inference{% endblock %}
 
-{% block meta_description %}How Maxim distributes LLM inference across peer machines using Cloudflare tunnels, a stdlib-only reverse proxy, admission control, and lane metrics. Setup, troubleshooting, and roadmap.{% endblock %}
+{% block meta_description %}How Maxim distributes LLM inference across peer machines using Cloudflare tunnels, a stdlib-only reverse proxy, admission control, and lane metrics.{% endblock %}
 
 {% block meta_keywords %}Maxim networking, distributed inference, peer mesh, Cloudflare tunnel, LeaderProxy, LLM scaling, multi-GPU, agentic robotics, Maxim peer, admission control, lane metrics{% endblock %}
 
@@ -523,5 +523,6 @@ maxim peer test https://maxim.yourdomain.com/v1</pre>
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}

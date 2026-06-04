@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Tools &amp; Introspection — Maxim Docs | Agentic Robotics Framework{% endblock %}
+{% block title %}Tools &amp; Introspection — Maxim Docs | Agent Tool System{% endblock %}
 
-{% block meta_description %}Complete guide to Maxim's tool system: how the LLM agent interacts with the world and introspects on its own biological subsystems. Memory recall, causal prediction, pain awareness, temporal patterns, and more.{% endblock %}
+{% block meta_description %}Maxim's tool system: how the LLM agent interacts with the world and introspects on biological subsystems — memory, causal prediction, pain, time.{% endblock %}
 
 {% block meta_keywords %}Maxim tools, LLM tools, agent introspection, memory recall, causal prediction, pain detection, temporal patterns, biological self-awareness, embodied AI tools{% endblock %}
 
@@ -52,7 +52,6 @@
     <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
     <ol class="space-y-1 text-slate-300 list-decimal pl-5">
       <li><a href="#action-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Action Tools (Side Effects)</a></li>
-      <li><a href="#discovery-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Discovery Tools (0.7)</a></li>
       <li><a href="#introspection" class="text-indigo-400 hover:text-indigo-300 no-underline">Introspection Tools (Self-Awareness)</a></li>
       <li><a href="#memory-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Memory: Episodic Recall &amp; Similarity</a></li>
       <li><a href="#causal-tools" class="text-indigo-400 hover:text-indigo-300 no-underline">Causal: Prediction &amp; Learned Links</a></li>
@@ -94,25 +93,6 @@
         <p class="text-xs text-slate-500 mt-1">Console output, TTS, SMS/voice via Twilio gateway.</p>
       </div>
     </div>
-  </section>
-
-  <!-- ── Discovery Tools (0.7) ──────────────────────────── -->
-  <section id="discovery-tools" class="space-y-4 pt-6 border-t border-slate-700">
-    <h2 class="text-2xl font-bold text-white">Discovery Tools <span class="text-sm text-cyan-400 font-normal">(0.7)</span></h2>
-    <p class="text-slate-300 leading-relaxed">SEM Tool Discovery replaces the flat per-entity tool explosion with a hybrid approach: goal-relevant tools visible from turn 1, plus on-demand discovery for the rest.</p>
-
-    <div class="grid gap-3 md:grid-cols-2">
-      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-        <h4 class="text-white font-semibold">sense <span class="text-xs text-slate-500">(entity_name)</span></h4>
-        <p class="text-xs text-slate-500 mt-1">Read all sensors on any named entity. Replaces per-entity <code class="text-slate-400">sense_*</code> and <code class="text-slate-400">read_*</code> tools with a single universal tool.</p>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-        <h4 class="text-white font-semibold">discover_tools <span class="text-xs text-slate-500">(query)</span></h4>
-        <p class="text-xs text-slate-500 mt-1">Describe what you want to do. Matches intent against entity modulators/affordances, ranks by NAc valence, and activates the relevant tools for the next turn.</p>
-      </div>
-    </div>
-
-    <p class="text-slate-300 leading-relaxed text-sm"><strong class="text-white">Token savings:</strong> ~400-1,000 tokens per turn (from ~36 tools to ~12). <strong class="text-white">LRU eviction:</strong> discovered tools deactivated after 5 turns of non-use. <strong class="text-white">Imagination:</strong> imagined entity tools start deactivated and are discoverable on demand.</p>
   </section>
 
   <!-- ── Introspection Overview ──────────────────────────── -->
@@ -311,9 +291,7 @@
       <p class="text-slate-400 text-xs">Params: <code>text</code> (str). Aliases: <code>message</code>, <code>phrase</code></p>
 
       <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">think</code></h3>
-      <p class="text-slate-300 text-sm">Pause and reason about the current situation before acting. An explicit "think before acting" step that doesn't produce an external action. Counts as an action in the turn budget to prevent infinite think loops. When a <strong class="text-white">BioEnrichmentPipeline</strong> is wired, the thought is enriched with hippocampal memories, NAc causal predictions, ATL concepts, and available affordances &mdash; the enriched response is returned so the LLM's follow-up can incorporate bio-system associations.</p>
-      <p class="text-slate-300 text-sm mt-1"><strong class="text-indigo-400">Note:</strong> Most deliberation now happens automatically via the PFC deliberation cycle &mdash; the <strong class="text-white">ThoughtGate</strong> evaluates working memory for novelty and salience before every LLM call, and when it fires, the <strong class="text-white">BioEnrichmentPipeline</strong> enriches the percept and adds a THOUGHT entry to WorkingMemorySet. The LLM sees a <code class="text-indigo-300">ready_to_act</code> field in its response schema &mdash; set to <code>false</code> to request more bio-system associations before committing to action. The <code class="text-indigo-300">think</code> tool remains available for explicit multi-turn reasoning beyond the automatic cycle.</p>
-      <p class="text-slate-300 text-sm mt-1">Convergence detection prevents think loops: keyword overlap (Jaccard &ge; 0.8) triggers a convergence nudge, and a hard cap (default 3 consecutive thinks) injects a termination signal.</p>
+      <p class="text-slate-300 text-sm">Pause and reason about the current situation before acting. An explicit "think before acting" step that doesn't produce an external action. Counts as an action in the turn budget to prevent infinite think loops. Useful for small models (7B) that tend to jump to action without reasoning.</p>
       <p class="text-slate-400 text-xs">Params: <code>thought</code> (str). Aliases: <code>text</code>, <code>prompt</code></p>
 
       <h3 class="text-lg font-semibold text-white"><code class="text-indigo-400">examine</code></h3>
@@ -422,5 +400,6 @@ Executor gate rejects calls to inactive tools</div>
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}

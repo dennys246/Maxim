@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Concept Decomposition — Maxim Docs | Agentic Robotics Framework{% endblock %}
+{% block title %}Concept Decomposition — Maxim Docs | Agentic Robotics{% endblock %}
 
-{% block meta_description %}How Maxim breaks text into concept-level substrate nodes. Protocol-based noun-phrase extraction enables finer-grained Hebbian binding, cross-modal retrieval, and valence association for bio-inspired cognitive agents.{% endblock %}
+{% block meta_description %}How Maxim breaks text into concept-level substrate nodes via noun-phrase extraction, enabling Hebbian binding and cross-modal retrieval.{% endblock %}
 
 {% block meta_keywords %}concept decomposition, noun phrase extraction, substrate nodes, Hebbian binding, cross-modal retrieval, concept-level AI, spaCy NLP, bio-inspired memory, embodied cognition, agentic AI{% endblock %}
 
@@ -265,5 +265,48 @@ MAXIM_SUBSTRATE_PATH=1 MAXIM_CONCEPT_DECOMPOSITION=1 maxim --llm mistral-7b</div
 
     <p class="text-slate-300 leading-relaxed mt-3">The rich return type supports future extensions (role-tagged edges, confidence-weighted binding) without breaking the Stage 1 interface. Downstream code accesses <span class="font-mono text-xs text-blue-400">chunk.text</span> for encoding.</p>
   </section>
+
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/memory-systems" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Memory Systems</span>
+      </a>
+      <a href="/maxim/semantic-memory" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Semantic Memory</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/semantic-memory" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Semantic Memory</a>
+        <a href="/maxim/concept-decomposition" class="text-xs text-indigo-400 font-medium transition px-2 py-1 rounded bg-slate-800 no-underline">Concept Decomposition</a>
+        <a href="/maxim/math-cognition" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Math &amp; Statistics</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/imagination" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Imagination</a>
+        <a href="/maxim/component-library" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Component Library</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/tools" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Tools &amp; Introspection</a>
+        <a href="/maxim/prompt-system" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Prompt System</a>
+        <a href="/maxim/operating-modes" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Operating Modes</a>
+        <a href="/maxim/networking" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Networking</a>
+        <a href="/maxim/agent-mesh" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Agent Mesh</a>
+        <a href="/maxim/simulation" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Simulation</a>
+        <a href="/maxim/dm-campaigns" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">DM Campaigns</a>
+        <a href="/maxim/benchmarks" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Benchmarks</a>
+        <a href="/maxim/experiments" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Experiments</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}

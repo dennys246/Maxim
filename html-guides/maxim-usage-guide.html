@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Usage Guide — Maxim Docs | Installation, Configuration &amp; CLI Reference{% endblock %}
+{% block title %}Usage Guide — Maxim Docs | Install, Config &amp; CLI{% endblock %}
 
-{% block meta_description %}Get started with Maxim. Installation instructions, configuration options, CLI reference, and step-by-step setup guide for the agentic robotics cognitive architecture.{% endblock %}
+{% block meta_description %}Get started with Maxim. Install instructions, configuration, CLI reference, and step-by-step setup for the agentic robotics cognitive architecture.{% endblock %}
 
 {% block meta_keywords %}Maxim installation, Maxim setup, Maxim CLI, Maxim configuration, agentic robotics setup, ROS2 robot framework, Maxim getting started, Maxim documentation{% endblock %}
 
@@ -580,41 +580,8 @@ maxim [OPTIONS]
   <section class="space-y-4">
     <h2 id="keyboard" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Keyboard Controls</h2>
 
-    <p class="text-slate-300 leading-relaxed">Available in interactive simulation mode (default). The active panel has a <span class="text-emerald-400">green border</span>. Type <code class="bg-slate-950 px-1 rounded text-xs">/help</code> during a session to see this table.</p>
+    <p class="text-slate-300 leading-relaxed">Available in interactive mode (default):</p>
 
-    <h3 class="text-lg font-semibold text-slate-200 mt-4">Log &amp; Navigation</h3>
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-      <div class="bg-slate-950 rounded-lg p-3 text-center">
-        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">&uarr; / &darr;</kbd>
-        <span class="block text-xs text-slate-400">Scroll log (or thinking panel when expanded)</span>
-      </div>
-      <div class="bg-slate-950 rounded-lg p-3 text-center">
-        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">&larr;</kbd>
-        <span class="block text-xs text-slate-400">Page up in log</span>
-      </div>
-      <div class="bg-slate-950 rounded-lg p-3 text-center">
-        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">&rarr;</kbd>
-        <span class="block text-xs text-slate-400">Jump to bottom / collapse thinking</span>
-      </div>
-      <div class="bg-slate-950 rounded-lg p-3 text-center">
-        <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">Shift+&larr;/&rarr;</kbd>
-        <span class="block text-xs text-slate-400">Cycle agent focus</span>
-      </div>
-    </div>
-
-    <h3 class="text-lg font-semibold text-slate-200 mt-4">Thinking Panel</h3>
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-      <div class="bg-slate-950 rounded-lg p-3 text-center">
-        <kbd class="inline-block bg-emerald-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">Option+=</kbd>
-        <span class="block text-xs text-slate-400">Expand thinking (arrows switch to it)</span>
-      </div>
-      <div class="bg-slate-950 rounded-lg p-3 text-center">
-        <kbd class="inline-block bg-emerald-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">Option+-</kbd>
-        <span class="block text-xs text-slate-400">Shrink thinking (arrows revert to log)</span>
-      </div>
-    </div>
-
-    <h3 class="text-lg font-semibold text-slate-200 mt-4">Robot Mode</h3>
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       <div class="bg-slate-950 rounded-lg p-3 text-center">
         <kbd class="inline-block bg-indigo-600 text-white px-3 py-1 rounded font-mono text-sm mb-1">c</kbd>
@@ -884,5 +851,6 @@ for sig, pred in nac._learned_associations.items():
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}

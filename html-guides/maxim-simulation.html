@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Percept Simulation — Maxim Docs | Scenario Testing &amp; Safety Validation{% endblock %}
+{% block title %}Percept Simulation — Maxim Docs | Scenario Testing{% endblock %}
 
-{% block meta_description %}Test Maxim's full agentic pipeline without hardware. Write YAML scenarios or generate them from natural language, validate safety systems, and trace bio-inspired subsystem activity.{% endblock %}
+{% block meta_description %}Test Maxim's full agentic pipeline without hardware. YAML scenarios, natural-language generation, safety validation, and subsystem tracing.{% endblock %}
 
 {% block meta_keywords %}Maxim simulation, percept simulation, scenario testing, FearAgent, safety validation, YAML scenarios, robotics testing, headless testing{% endblock %}
 
@@ -289,11 +289,6 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
     <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5 mt-3">
       <h4 class="text-indigo-400 font-semibold mb-1">LLM Sharing</h4>
       <p class="text-slate-300 text-sm">Both agents share a single LLM backend. The orchestrator and AUT take turns naturally (inject &rarr; wait &rarr; respond &rarr; analyze), so inference serializes without contention.</p>
-    </div>
-
-    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-5 mt-3">
-      <h4 class="text-amber-400 font-semibold mb-1">Stall Detection</h4>
-      <p class="text-slate-300 text-sm">A daemon thread monitors for idle stalls (&gt;30s no turn advance) and ping-pong loops (6+ orchestrator tool calls without a <code class="text-indigo-300">send_message</code>). When triggered, a <strong class="text-white">context-aware nudge</strong> is injected that stays on the simulation goal &mdash; e.g., <em>"You have observed the scene. Now take a concrete action toward: escape the dungeon"</em>. The nudge adapts based on the AUT's last action (look &rarr; push action, speak &rarr; push physical, move &rarr; push interaction). Configurable via <code class="text-indigo-300">MAXIM_SIM_STALL_THRESHOLD_S</code>, <code class="text-indigo-300">MAXIM_SIM_PING_PONG_BUDGET</code>.</p>
     </div>
 
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">AUT Inspection</h3>
@@ -1017,5 +1012,6 @@ Actions recorded: 3
       </div>
     </div>
   </div>
+  {% include "_maxim_footer.html" %}
 </div>
 {% endblock %}
