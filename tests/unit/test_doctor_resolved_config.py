@@ -494,3 +494,226 @@ class TestVramContextFitCheck:
         # Fix names the new value but NOT the unset step
         assert "13312" in r.fix
         assert "unset MAXIM_LLM_N_CTX" not in r.fix
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Legacy env-var migration (post-PR-#318 follow-up)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestLegacyEnvMigration:
+    """Aggregated migration suggestion for operators upgrading from
+    Maxim ≤0.9.1 with multiple MAXIM_* env vars still exported.
+
+    The check is informational (warn status, never fail) and only fires
+    when ≥2 absorbed env vars are set — a stray single var is not the
+    "pre-migration era" pattern.
+    """
+
+    def test_empty_when_no_env_vars_set(self, fake_home, monkeypatch):
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import _ABSORBED_ENV_VARS, load_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        results = _check_legacy_env_migration(load_config())
+        assert results == []
+
+    def test_empty_when_only_one_env_var_set(self, fake_home, monkeypatch):
+        """One stray var doesn't trigger the migration suggestion —
+        could be a deliberate per-process override."""
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import _ABSORBED_ENV_VARS, load_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        results = _check_legacy_env_migration(load_config())
+        assert results == []
+
+    def test_fires_when_two_or_more_env_vars_set(self, fake_home, monkeypatch):
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import _ABSORBED_ENV_VARS, load_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-14b-instruct")
+        results = _check_legacy_env_migration(load_config())
+        assert len(results) == 1
+        r = results[0]
+        assert r.name == "legacy_env_migration"
+        assert r.status == "warn"
+        assert "detected 2 MAXIM_* env vars" in r.message
+
+    def test_fix_includes_config_set_commands_for_divergent_envs(self, fake_home, monkeypatch):
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import _ABSORBED_ENV_VARS, load_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-14b-instruct")
+        results = _check_legacy_env_migration(load_config())
+        fix = results[0].fix
+        assert "maxim config set llm.n_ctx 8192" in fix
+        assert "maxim config set llm.profile qwen2.5-14b-instruct" in fix
+
+    def test_fix_skips_config_set_for_convergent_envs(self, fake_home, monkeypatch):
+        """If env and config.json already agree on a value, the migration
+        script shouldn't include a redundant `maxim config set` line —
+        just the unset is enough."""
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import (
+            LLMConfigSection,
+            MaximConfig,
+            _ABSORBED_ENV_VARS,
+            reset_config_cache,
+        )
+        from maxim.runtime.config_writer import write_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+
+        # config.json sets n_ctx=13312, profile=qwen2.5-14b-instruct
+        write_config(MaximConfig(llm=LLMConfigSection(n_ctx=13312, profile="qwen2.5-14b-instruct")))
+        reset_config_cache()
+        # env sets identical values (convergent case)
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "13312")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-14b-instruct")
+
+        from maxim.runtime.config_loader import load_config
+
+        results = _check_legacy_env_migration(load_config())
+        assert len(results) == 1
+        fix = results[0].fix
+        # No config set lines for convergent values
+        assert "maxim config set llm.n_ctx" not in fix
+        assert "maxim config set llm.profile" not in fix
+        # Message notes the convergence count
+        assert "already match config.json" in results[0].message
+        # Unset block still includes both
+        assert "MAXIM_LLM_N_CTX" in fix
+        assert "MAXIM_LLM_PROFILE" in fix
+        assert "unset" in fix
+
+    def test_fix_mixed_convergent_and_divergent(self, fake_home, monkeypatch):
+        """Some env vars converge with config, others shadow it — script
+        should include config-set lines ONLY for the shadowing ones."""
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import (
+            LLMConfigSection,
+            MaximConfig,
+            _ABSORBED_ENV_VARS,
+            load_config,
+            reset_config_cache,
+        )
+        from maxim.runtime.config_writer import write_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        write_config(MaximConfig(llm=LLMConfigSection(n_ctx=13312, profile="qwen2.5-14b-instruct")))
+        reset_config_cache()
+        # n_ctx converges, profile diverges
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "13312")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-32b-instruct")
+
+        results = _check_legacy_env_migration(load_config())
+        fix = results[0].fix
+        assert "maxim config set llm.profile qwen2.5-32b-instruct" in fix
+        assert "maxim config set llm.n_ctx" not in fix  # convergent → skipped
+
+    def test_api_key_env_uses_file_ref_pattern(self, fake_home, monkeypatch):
+        """API keys must not be written into the migration script in
+        plaintext — recommend the file-ref pattern instead per the
+        mesh.yml secrets handling invariant."""
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import _ABSORBED_ENV_VARS, load_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_API_KEY", "sk-secret-12345")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://leader/v1")
+        results = _check_legacy_env_migration(load_config())
+        fix = results[0].fix
+        # The actual key value is NOT in the migration script
+        assert "sk-secret-12345" not in fix
+        # The file-ref pattern IS recommended
+        assert "chmod 0600" in fix
+        assert "api_key" in fix.lower()
+
+    def test_platform_specific_lookup_line(self, fake_home, monkeypatch):
+        """The macOS run includes launchd plist lookup; Linux includes
+        systemd unit lookup. Just verify the current platform's line is
+        present (running both platforms in CI is impractical)."""
+        import platform
+
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import _ABSORBED_ENV_VARS, load_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-14b-instruct")
+        results = _check_legacy_env_migration(load_config())
+        fix = results[0].fix
+        system = platform.system().lower()
+        if system == "darwin":
+            assert "launchd" in fix.lower() or "LaunchAgents" in fix
+        elif system == "linux":
+            assert "systemd" in fix.lower()
+
+    def test_unset_command_includes_all_set_envs(self, fake_home, monkeypatch):
+        from maxim.doctor.checks import _check_legacy_env_migration
+        from maxim.runtime.config_loader import _ABSORBED_ENV_VARS, load_config
+
+        for name in _ABSORBED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        envs = ["MAXIM_LLM_N_CTX", "MAXIM_LLM_PROFILE", "MAXIM_LANE_LARGE_REMOTE_URL"]
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-14b-instruct")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://leader/v1")
+        results = _check_legacy_env_migration(load_config())
+        fix = results[0].fix
+        for env in envs:
+            assert env in fix
+
+
+class TestFormatValueForSet:
+    """Helper that quotes ``maxim config set`` argument values safely."""
+
+    def test_int_renders_bare(self):
+        from maxim.doctor.checks import _format_value_for_set
+
+        assert _format_value_for_set(8192) == "8192"
+
+    def test_simple_string_renders_bare(self):
+        from maxim.doctor.checks import _format_value_for_set
+
+        assert _format_value_for_set("qwen2.5-14b-instruct") == "qwen2.5-14b-instruct"
+
+    def test_string_with_space_gets_quoted(self):
+        from maxim.doctor.checks import _format_value_for_set
+
+        assert _format_value_for_set("hello world") == "'hello world'"
+
+    def test_string_with_single_quote_gets_escaped(self):
+        from maxim.doctor.checks import _format_value_for_set
+
+        assert _format_value_for_set("it's") == "'it'\\''s'"
+
+    def test_boolean_renders_lowercase(self):
+        from maxim.doctor.checks import _format_value_for_set
+
+        assert _format_value_for_set(True) == "true"
+        assert _format_value_for_set(False) == "false"
+
+    def test_none_renders_null(self):
+        from maxim.doctor.checks import _format_value_for_set
+
+        assert _format_value_for_set(None) == "null"
+
+    def test_empty_string_renders_quoted(self):
+        from maxim.doctor.checks import _format_value_for_set
+
+        assert _format_value_for_set("") == "''"
