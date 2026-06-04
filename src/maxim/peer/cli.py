@@ -354,31 +354,19 @@ def _cmd_show() -> int:
         print(f"  url:      {cfg.lanes.large.remote_url}")
         ref = cfg.lanes.large.remote_api_key_ref
         if ref:
-            # Print a kind descriptor instead of the full ref so a
-            # tunnel-path string (which could leak operator
-            # filesystem layout) stays out of stdout. The full ref is
-            # always inspectable via `maxim config get
-            # lanes.large.remote_api_key_ref` if the operator needs it.
+            # Don't print the ref value or any derivation of the
+            # resolved key. The verb's purpose is "is this peer
+            # configured?" — the answer is yes/no/unresolvable. Use
+            # `maxim peer key` to inspect the key value itself, or
+            # `maxim config get lanes.large.remote_api_key_ref` to
+            # inspect the reference path. Separating these surfaces
+            # keeps `peer show` safe to run in screen-shared contexts.
             ref_kind = "keyring" if ref.startswith("keyring:") else "file"
-            print(f"  api_key:  configured via {ref_kind} reference")
             resolved = resolve_api_key_ref(ref)
             if resolved:
-                # Display a sha256 fingerprint (first 12 hex chars)
-                # instead of any portion of the resolved key. The
-                # fingerprint is a one-way hash — pre-image
-                # resistance of sha256 means an observer cannot
-                # recover the key from it (2^96 search space on the
-                # truncated prefix). Maps directly to the key-drift
-                # detection plan's fingerprint format (see
-                # docs/plans/key_drift_detection.md), so the operator
-                # can cross-reference this against the leader's
-                # future `/v1/admin/key-fingerprint` endpoint.
-                import hashlib as _hashlib
-
-                _fp = _hashlib.sha256(resolved.encode("utf-8")).hexdigest()[:12]
-                print(f"            (verified: sha256-12={_fp})")
+                print(f"  api_key:  ✓ configured via {ref_kind} reference")
             else:
-                print("            (unresolvable — `maxim doctor` for details)")
+                print(f"  api_key:  ✗ {ref_kind} reference unresolvable — `maxim doctor` for details")
         if cfg.lanes.large.remote_model:
             print(f"  model:    {cfg.lanes.large.remote_model}")
         if cfg.cloud.enabled:
@@ -398,13 +386,11 @@ def _cmd_show() -> int:
         return 1
     print(f"Peer config (deprecated peer.yml): {peer_config_path()}")
     print(f"  url:      {peer.url}")
-    # Display a sha256 fingerprint instead of a truncated key (same
-    # rationale as the config.json::lanes.large path above). Maps to
-    # the key-drift detection plan's fingerprint format.
-    import hashlib as _hashlib
-
-    _peer_fp = _hashlib.sha256(peer.api_key.encode("utf-8")).hexdigest()[:12]
-    print(f"  api_key:  sha256-12={_peer_fp}")
+    # Don't print the key value or any derivation. The verb's purpose
+    # is "is this peer configured?" — use `maxim peer key` for the
+    # value itself. Same rationale as the config.json::lanes.large
+    # path above.
+    print("  api_key:  ✓ configured (use `maxim peer key` to inspect)")
     if peer.model:
         print(f"  model:    {peer.model}")
     if peer.is_cloud:
