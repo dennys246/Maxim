@@ -516,6 +516,10 @@ def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, L
       MAXIM_LANE_{NAME}_REMOTE_URL      → remote_url
       MAXIM_LANE_{NAME}_REMOTE_MODEL    → remote_model
       MAXIM_LANE_{NAME}_REMOTE_API_KEY  → remote_api_key
+      MAXIM_LANE_{NAME}_TIMEOUT_S       → remote_timeout_s
+        (llm_timeout_scalability.md Stage 2 — per-tier inference read
+        timeout, strictly positive seconds; falsy/unparseable values are
+        ignored and the backend default applies)
 
     If REMOTE_URL is set on a lane, it supersedes that lane's local profile
     assignment (the backend becomes a remote HTTP client). A missing or empty
@@ -533,11 +537,26 @@ def apply_lane_env_overrides(lane_configs: dict[str, LaneConfig]) -> dict[str, L
             continue
         model = os.environ.get(f"MAXIM_LANE_{key}_REMOTE_MODEL", "").strip() or None
         api_key = os.environ.get(f"MAXIM_LANE_{key}_REMOTE_API_KEY", "").strip() or None
+        raw_timeout = os.environ.get(f"MAXIM_LANE_{key}_TIMEOUT_S", "").strip()
+        timeout_s: float | None = None
+        if raw_timeout:
+            try:
+                parsed = float(raw_timeout)
+                if parsed > 0:
+                    timeout_s = parsed
+            except (ValueError, TypeError):
+                # Silent ignore — the config_loader-side coercion already
+                # raises ConfigurationError with a clear message. If the
+                # env var is set directly (bypassing the loader), fall
+                # back to the backend default rather than bricking the
+                # lane.
+                timeout_s = None
         out[name] = dataclasses.replace(
             cfg,
             remote_url=url,
             remote_model=model,
             remote_api_key=api_key,
+            remote_timeout_s=timeout_s,
         )
     return out
 

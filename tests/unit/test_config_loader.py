@@ -172,6 +172,118 @@ class TestCC3PathDeclarations:
         assert hash(a) == hash(b)  # hash=False omits it from the hash too
 
 
+class TestLaneTierTimeoutField:
+    """llm_timeout_scalability.md Stage 2: per-tier timeout_s field."""
+
+    def test_default_is_none(self):
+        cfg = LaneTierConfig()
+        assert cfg.timeout_s is None
+
+    def test_positive_float_accepted(self):
+        cfg = LaneTierConfig(timeout_s=600.0)
+        assert cfg.timeout_s == 600.0
+
+    def test_positive_int_accepted(self):
+        # int → float at the dataclass level is fine; the loader-side
+        # parser converts to float during construction from JSON.
+        cfg = LaneTierConfig(timeout_s=120)
+        assert cfg.timeout_s == 120
+
+    def test_zero_rejected(self):
+        from maxim.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="must be positive"):
+            LaneTierConfig(timeout_s=0)
+
+    def test_negative_rejected(self):
+        from maxim.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="must be positive"):
+            LaneTierConfig(timeout_s=-5.0)
+
+    def test_non_numeric_rejected(self):
+        from maxim.exceptions import ConfigurationError
+
+        with pytest.raises(ConfigurationError, match="must be a number"):
+            LaneTierConfig(timeout_s="600")  # type: ignore[arg-type]
+
+    def test_resolve_setting_from_env(self, monkeypatch):
+        from maxim.runtime.config_loader import resolve_setting
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_TIMEOUT_S", "450")
+        value, source = resolve_setting("lanes.large.timeout_s")
+        assert value == 450.0
+        assert source == "env"
+
+    def test_resolve_setting_default_is_none(self, monkeypatch):
+        from maxim.runtime.config_loader import resolve_setting
+
+        monkeypatch.delenv("MAXIM_LANE_LARGE_TIMEOUT_S", raising=False)
+        value, source = resolve_setting("lanes.large.timeout_s")
+        assert value is None
+        assert source == "default"
+
+    def test_resolve_setting_rejects_malformed_env(self, monkeypatch):
+        from maxim.exceptions import ConfigurationError
+        from maxim.runtime.config_loader import resolve_setting
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_TIMEOUT_S", "not-a-number")
+        with pytest.raises(ConfigurationError, match="expected float"):
+            resolve_setting("lanes.large.timeout_s")
+
+    def test_resolve_setting_rejects_zero_env(self, monkeypatch):
+        from maxim.exceptions import ConfigurationError
+        from maxim.runtime.config_loader import resolve_setting
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_TIMEOUT_S", "0")
+        with pytest.raises(ConfigurationError, match="must be positive"):
+            resolve_setting("lanes.large.timeout_s")
+
+    def test_resolve_setting_rejects_negative_env(self, monkeypatch):
+        from maxim.exceptions import ConfigurationError
+        from maxim.runtime.config_loader import resolve_setting
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_TIMEOUT_S", "-10")
+        with pytest.raises(ConfigurationError, match="below minimum"):
+            resolve_setting("lanes.large.timeout_s")
+
+    def test_parse_lane_tier_from_json_dict(self):
+        from maxim.runtime.config_loader import _parse_lane_tier
+
+        section = {"timeout_s": 600}
+        cfg = _parse_lane_tier(section, "lanes.large", tolerate_unknown=False)
+        assert cfg.timeout_s == 600.0
+
+    def test_parse_lane_tier_rejects_zero_in_json(self):
+        from maxim.exceptions import ConfigurationError
+        from maxim.runtime.config_loader import _parse_lane_tier
+
+        with pytest.raises(ConfigurationError, match="must be positive"):
+            _parse_lane_tier({"timeout_s": 0}, "lanes.large", tolerate_unknown=False)
+
+    def test_parse_lane_tier_rejects_string_in_json(self):
+        from maxim.exceptions import ConfigurationError
+        from maxim.runtime.config_loader import _parse_lane_tier
+
+        with pytest.raises(ConfigurationError, match="must be a number"):
+            _parse_lane_tier({"timeout_s": "600"}, "lanes.large", tolerate_unknown=False)
+
+    def test_parse_lane_tier_rejects_bool_in_json(self):
+        """bool is technically a subclass of int in Python — explicit
+        guard prevents ``"timeout_s": true`` parsing as 1.0."""
+        from maxim.exceptions import ConfigurationError
+        from maxim.runtime.config_loader import _parse_lane_tier
+
+        with pytest.raises(ConfigurationError, match="must be a number"):
+            _parse_lane_tier({"timeout_s": True}, "lanes.large", tolerate_unknown=False)
+
+    def test_parse_lane_tier_null_keeps_none(self):
+        from maxim.runtime.config_loader import _parse_lane_tier
+
+        cfg = _parse_lane_tier({"timeout_s": None}, "lanes.large", tolerate_unknown=False)
+        assert cfg.timeout_s is None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Path resolution
 # ─────────────────────────────────────────────────────────────────────────────

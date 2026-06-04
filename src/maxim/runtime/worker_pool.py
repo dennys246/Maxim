@@ -96,6 +96,15 @@ class LaneConfig:
     remote_url: str | None = None
     remote_api_key: str | None = None
     remote_model: str | None = None
+    # llm_timeout_scalability.md Stage 2: per-tier read timeout for the
+    # inference HTTP call (seconds). ``None`` → backend default
+    # (``_MaximPeerBackend`` 300s, ``_OpenAIBackend`` 60s). Set explicitly
+    # for large self-hosted lanes running 30B+ models where defaults
+    # under-provision the wait window. Resolved from config.json /
+    # ``MAXIM_LANE_<TIER>_TIMEOUT_S`` and threaded through to the
+    # backend's provider config so ``_get_timeout_policy`` /
+    # ``_get_timeout`` pick it up.
+    remote_timeout_s: float | None = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

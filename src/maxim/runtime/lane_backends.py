@@ -322,15 +322,26 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
         env_url = f"MAXIM_LANE_{tier.upper()}_REMOTE_URL"
         env_model = f"MAXIM_LANE_{tier.upper()}_REMOTE_MODEL"
         env_key = f"MAXIM_LANE_{tier.upper()}_REMOTE_API_KEY"
+        env_timeout = f"MAXIM_LANE_{tier.upper()}_TIMEOUT_S"
 
         try:
             url, url_source = resolve_setting(f"lanes.{tier}.remote_url", config=cfg)
             model, _ = resolve_setting(f"lanes.{tier}.remote_model", config=cfg)
             key_ref, _ = resolve_setting(f"lanes.{tier}.remote_api_key_ref", config=cfg)
+            timeout_s, timeout_source = resolve_setting(f"lanes.{tier}.timeout_s", config=cfg)
         except Exception as e:
             if logger_obj is not None:
                 logger_obj.warning("Failed to resolve lanes.%s.* from config: %s", tier, e)
             continue
+
+        # llm_timeout_scalability.md Stage 2: per-tier timeout passthrough.
+        # Populate the env var so downstream backends + the leader proxy
+        # see a single source of truth. Only set when source is non-default
+        # (operator explicitly configured) so backend defaults remain in
+        # play for unconfigured tiers.
+        if timeout_s is not None and timeout_source != "default":
+            if not _os.environ.get(env_timeout, "").strip():
+                _os.environ[env_timeout] = str(float(timeout_s))
 
         if url:
             # Set env var only if not already populated — preserves the
@@ -969,7 +980,7 @@ class LaneBackendManager:
         # lanes, keep _OpenAIBackend for cloud. The "type" field drives
         # LLMRouter._get_backend_for_provider's branch selection.
         backend_type = _classify_backend(kind)
-        providers[provider_key] = {
+        provider_entry: dict[str, Any] = {
             "type": backend_type,
             "base_url": cfg.remote_url,
             "api_key_env": api_key_env,
@@ -981,6 +992,15 @@ class LaneBackendManager:
             # when no pricing entry exists for the model name.
             "pricing_required": False,
         }
+        # llm_timeout_scalability.md Stage 2: thread per-tier timeout_s
+        # into the provider config. Both backends (_MaximPeerBackend
+        # _get_timeout_policy, _OpenAIBackend _get_timeout) already read
+        # cfg.get("timeout_s", <default>) — populating the key here makes
+        # the operator's per-tier override flow naturally to the read
+        # site without backend-side wiring changes.
+        if cfg.remote_timeout_s is not None:
+            provider_entry["timeout_s"] = float(cfg.remote_timeout_s)
+        providers[provider_key] = provider_entry
 
         # Ensure the lane provider appears in routing.provider_priority so
         # _provider_order() doesn't silently exclude it when the user's

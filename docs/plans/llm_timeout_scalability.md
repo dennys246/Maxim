@@ -93,7 +93,7 @@ Each stage targets a specific layer:
 
 ---
 
-## Stage 2 — Per-tier `timeout_s` in `config.json`
+## Stage 2 — Per-tier `timeout_s` in `config.json`  *(SHIPPED 2026-06-04)*
 
 **Schema extension:** `LaneTierConfig` gains a declared field `timeout_s: float | None = None`. `None` → backend default (`_MaximPeerBackend` 300s, `_OpenAIBackend` 60s). Operators set it explicitly:
 
@@ -107,13 +107,13 @@ Each stage targets a specific layer:
 }
 ```
 
-**Backend plumbing:** both `_MaximPeerBackend._get_timeout_policy()` and `_OpenAIBackend._get_timeout()` already read from `_provider_cfg()`. The lane → provider config bridge in `lane_backends.py` needs to thread `timeout_s` through. ~30 LOC including precedence resolution: CLI flag > env var > config.json > backend default.
+**Backend plumbing — completed:** the lane → provider config bridge in `lane_backends.py:985-996` now threads `cfg.remote_timeout_s` into `providers[provider_key]["timeout_s"]` when set. Both `_MaximPeerBackend._get_timeout_policy()` and `_OpenAIBackend._get_timeout()` already read this key via `_provider_cfg().get("timeout_s", <default>)` per the Plan 3 R2.5 contract — no backend-side wiring change needed.
 
-**Env-var counterpart for back-compat:** `MAXIM_LANE_<TIER>_TIMEOUT_S`. Plumbed through `resolve_setting("lanes.<tier>.timeout_s", env_var=...)` from PR #318's loader.
+**Env-var counterpart for back-compat:** `MAXIM_LANE_<TIER>_TIMEOUT_S`. Wired into `_FIELD_TO_ENV` with float coercion + strict-positive validation in `_coerce_for_field`. `_apply_lane_config_to_env` populates the env var from `config.json`; `apply_lane_env_overrides` in `lane_models.py` reads it into `LaneConfig.remote_timeout_s` with defensive silent-ignore on malformed/non-positive values (loader-side raises `ConfigurationError`; this is the bypass-the-loader defence).
 
-**`maxim doctor` integration:** the "Resolved Config" section grows a row per tier showing `lanes.<tier>.timeout_s = 600 (from: config)` / `(from: default)`. Free from C5's existing resolver.
+**`maxim doctor` integration:** the "Resolved Config" section automatically grows a row per tier (`lanes.large.timeout_s`, `lanes.medium.timeout_s`, `lanes.small.timeout_s`) showing the effective value + source. Free from PR #318's `_FIELD_TO_ENV` walk.
 
-**Regression guard:** new tests in `tests/unit/test_config_loader.py` pinning (a) `timeout_s` defaults to backend default when unset, (b) `config.json` overrides env-default, (c) env var overrides `config.json`, (d) negative or zero values rejected at load with `ConfigurationError`.
+**Regression guard:** [tests/unit/test_config_loader.py::TestLaneTierTimeoutField](../../tests/unit/test_config_loader.py) — 13 tests pinning field validation (zero/negative/non-numeric rejected), JSON parser (string/bool rejected, null accepted), env coercion (positive pass-through, malformed/zero/negative raise), `resolve_setting` precedence (env vs default). [tests/unit/test_leader_proxy.py::TestLaneTimeoutFieldFlow](../../tests/unit/test_leader_proxy.py) — 4 tests pinning env passthrough into `LaneConfig.remote_timeout_s`.
 
 ---
 
@@ -138,6 +138,39 @@ Each stage targets a specific layer:
 - Switch transport to gRPC / WebSocket — too disruptive; would invalidate the OpenAI-API-compatible wire shape that everything else uses.
 - Disable cloudflared's idle timeout — server-side config; not all operators have access; doesn't generalize.
 - Use Cloudflare Workers / Cloudflare Tunnel WebSocket mode — vendor lock-in; not all peers tunnel via Cloudflare.
+
+---
+
+## Stage 3.5 — Proxy context-overflow admission  *(SHIPPED 2026-06-04)*
+
+**Surfaced by the Stage 3 heavy-stress validation** (2026-06-03 evening). A 9534-token prompt against an 8192-token `n_ctx` was held alive by 5 keepalive frames over 150s — Stage 3 did its job — but llama-cpp-server eventually aborted generation with `INTERNAL_ERROR`. The agent got no actionable error; the operator had to read llama-cpp logs to diagnose context overflow.
+
+**Problem class:** oversize prompts that exceed the upstream model's context window. The upstream silently aborts mid-generation, the stream limps along with keepalives until something cuts the connection, and the failure surfaces as a generic stream interruption rather than a typed "you're asking for more than I can hold" error.
+
+**Fix:** admission control at the proxy. Before forwarding to upstream, estimate input tokens and compare against the resolved context window. Reject overflowing requests with HTTP 413 + a typed JSON error carrying the numbers the operator needs (`estimated_prompt_tokens`, `max_tokens`, `context_window`, `safety_overhead_tokens`).
+
+**Implementation:**
+- `_PROXY_INFERENCE_PATHS` = `{/v1/chat/completions, /v1/completions}` — admission only gates inference endpoints; `/v1/models`, `/debug/ping`, etc. pass through unchecked.
+- `_resolve_proxy_context_window()` reads through `resolve_setting("llm.n_ctx", config=cfg)` — env (`MAXIM_LLM_N_CTX`) > `config.json::llm.n_ctx` > default-unset. Returns `None` when unresolvable.
+- `_get_proxy_context_window()` wraps the resolver in a thread-safe `(resolved, value)` tuple cache + `threading.Lock`. Logs INFO on first resolved value, WARNING on first None (admission stays off).
+- `_estimate_inference_input_tokens(body)` parses JSON, sums string `content` (and text parts of multipart content) across messages, adds 16 chars per message for chat-template overhead, divides by `_PROXY_CHAR_TO_TOKEN_RATIO = 3.5`. Also handles legacy `/v1/completions` with string-or-list `prompt`.
+- `_check_context_admission(body, n_ctx, overhead)` compares `prompt_tokens + max_tokens (or 1024 default) + overhead` against `n_ctx`. Returns `None` (admit) or an error dict (reject). Malformed bodies return None (let upstream return a cleaner 400).
+- `_proxy_request` calls the gate after reading body, before forwarding. Rejection sends 413 directly and returns.
+
+**Knobs:**
+- `MAXIM_PROXY_CONTEXT_ADMISSION` (default ON when `n_ctx` resolves; explicit OFF via `0`/`false`/`no`/`off`)
+- `MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS` (default 256, clamped 0-4096)
+
+**Graceful default-on:** existing operators with no `MAXIM_LLM_N_CTX` set get a startup WARNING and admission stays off (existing behaviour preserved). Operators who set `MAXIM_LLM_N_CTX` get the gate automatically.
+
+**Why character-based (not tiktoken / not llama-cpp `/tokenize`):**
+- tiktoken adds a dependency and is inaccurate for Qwen/Llama tokenizers (~10-30% off)
+- llama-cpp `/tokenize` is precise but adds an HTTP round-trip per request
+- The admission gate is a safety net, not a precise predictor — character-based with a generous overhead margin catches 10×-over prompts cleanly without complexity
+
+**`maxim doctor` integration:** `_check_proxy_context_admission` renders the gate's effective state in the "Resolved Config" section: `enabled [context_window=8192, overhead=256 tokens, char_to_token_ratio=3.5]` or `disabled [reason=llm.n_ctx not configured]` with a `fix:` line directing the operator to set `MAXIM_LLM_N_CTX`.
+
+**Regression guard:** [tests/unit/test_leader_proxy.py::TestContextOverheadResolver / TestAdmissionEnableGate / TestInputTokenEstimator / TestAdmissionCheck / TestContextWindowResolver](../../tests/unit/test_leader_proxy.py) — 28 tests pinning env parsing/clamping, gate logic, estimator across body shapes (chat completion / multipart / legacy completions / empty / malformed / large), OpenAI-compatible error envelope, and cache thread-safety.
 
 ---
 
@@ -300,11 +333,12 @@ New test in `tests/unit/test_adaptive_timeout.py` pinning:
 
 ---
 
-## Roll-out order  *(updated 2026-06-03 after Stage 1 audit)*
+## Roll-out order  *(updated 2026-06-04)*
 
-1. **Stage 1 (DONE):** Audit complete. `_MaximPeerBackend` was correctly bound on the failing path; no misclassification. Closes without code change.
-2. **Stage 3 (1.0 — PROMOTED to most-urgent fix):** Proxy keepalive in `_proxy_request` streaming path. The actual fix for the Mac Mini incident — Layer 2 (cloudflared tunnel idle) is the real failure mode and only Stage 3 addresses it. ~2 days including the mock-upstream test.
-3. **Stage 2 (1.0):** `LaneTierConfig.timeout_s` field + env var + backend plumbing + doctor row. Useful for operators tuning custom timeouts, but no longer load-bearing for the failing incident (since `_MaximPeerBackend` already defaults to 300s, which would have been enough if Layer 2 hadn't fired first). ~2 days including tests.
-4. **Stage 4 (1.1):** Adaptive throughput model with error-proportional convergence, conservative cold-start, and parameter-size bootstrap. ~1-2 weeks including the open-questions resolution + on-disk format design + soak validation.
+1. **Stage 1 (DONE 2026-06-03):** Audit complete. `_MaximPeerBackend` was correctly bound on the failing path; no misclassification. Closed without code change.
+2. **Stage 3 (DONE 2026-06-03, PR #320):** Proxy TTFT keepalive emitter. The fix for the Mac Mini incident's Layer 2 (cloudflared tunnel idle) failure mode. Validated end-to-end with a 150s silent TTFT carried by 5 keepalive frames.
+3. **Stage 3.5 (DONE 2026-06-04, this PR):** Proxy context-overflow admission. Closes the failure-mode gap surfaced by the Stage 3 validation — oversize prompts now get a clean 413 instead of silently hanging upstream.
+4. **Stage 2 (DONE 2026-06-04, this PR):** `LaneTierConfig.timeout_s` field + env var + backend plumbing + doctor row. Operators tuning custom timeouts now have an explicit per-tier knob.
+5. **Stage 4 (1.1):** Adaptive throughput model with error-proportional convergence, conservative cold-start, and parameter-size bootstrap. ~1-2 weeks including the open-questions resolution + on-disk format design + soak validation.
 
-Stage 3 alone unblocks self-hosted leaders running 30B+ models through tunnels. Stages 2 + 4 are the calibrated-by-simulation flavor of the same problem and pair naturally with [`decay_consolidation_calibration_plan.md`](decay_consolidation_calibration_plan.md)'s calibration discipline (different domain, same "measure the system, don't hand-pick" philosophy).
+Stages 1-3.5 unblock self-hosted leaders running 30B+ models through tunnels with clean error paths for oversize requests. Stage 4 is the calibrated-by-simulation flavor of the same problem and pairs naturally with [`decay_consolidation_calibration_plan.md`](decay_consolidation_calibration_plan.md)'s calibration discipline (different domain, same "measure the system, don't hand-pick" philosophy).
