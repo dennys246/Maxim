@@ -407,6 +407,16 @@ def check_resolved_config() -> list["CheckResult"]:
     # MAXIM_PROXY_CONTEXT_ADMISSION isn't set to a disable value.
     results.extend(_check_proxy_context_admission())
 
+    # Adjacent VRAM projection: at the configured (llm.n_ctx, llm.profile)
+    # combination, will the model fit comfortably in available VRAM? The
+    # existing `check_vram_pressure` only works on nvidia-smi systems
+    # (and ALSO does live-monitoring) — this is a cross-platform
+    # projection that works on Apple Silicon + AMD + NVIDIA via
+    # `detect_compute_resources`, surfaced here so the admission row
+    # and the VRAM-fit row appear together in the Resolved Config view.
+    # Answers "will this config fit?" rather than "is VRAM full now?".
+    results.extend(_check_vram_context_pressure())
+
     return results
 
 
@@ -476,6 +486,145 @@ def _check_proxy_context_admission() -> list["CheckResult"]:
                 f"overhead={overhead} tokens (source={overhead_src}), "
                 f"char_to_token_ratio={_PROXY_CHAR_TO_TOKEN_RATIO}]"
             ),
+        )
+    ]
+
+
+def _check_vram_context_pressure() -> list["CheckResult"]:
+    """Project whether (llm.n_ctx, llm.profile) fits comfortably in VRAM.
+
+    Cross-platform companion to ``check_vram_pressure``:
+
+    - ``check_vram_pressure`` uses ``nvidia-smi`` and ALSO does live
+      monitoring of current VRAM utilization. It silently no-ops on
+      Apple Silicon / AMD systems because ``nvidia-smi`` is absent.
+    - This check uses ``detect_compute_resources`` (cross-platform) +
+      ``project_vram_usage`` (pure-data projection). Surfaces the
+      same ``vram_spillover_risk`` warning the leader emits at spawn
+      time, but in the ``maxim doctor`` flow so the operator sees it
+      AT DIAGNOSTIC time rather than only AT STARTUP.
+
+    Positioned in the Resolved Config section directly after the
+    proxy context-admission row so the operator reads "your gate
+    rejects oversize at 16384 tokens" right next to "your 16384
+    setting projects 34.8 GB of 36 GB physical VRAM — recommended
+    13312." Both rows answer adjacent questions about the same
+    context budget.
+
+    Returns ``[]`` (no row) when n_ctx or profile is unresolvable
+    (the admission row already noted the absence) — keeps the doctor
+    output tight.
+    """
+    try:
+        from maxim.models.language.config import _BUILTIN_PROFILES
+        from maxim.runtime.capabilities import detect_compute_resources
+        from maxim.runtime.config_loader import load_config, resolve_setting
+        from maxim.runtime.lane_models import project_vram_usage
+    except Exception as e:
+        return [
+            CheckResult(
+                name="proxy.vram_context_fit",
+                status="info",
+                message=f"VRAM projection unavailable: {type(e).__name__}",
+            )
+        ]
+
+    try:
+        cfg = load_config()
+        n_ctx_value, n_ctx_src = resolve_setting("llm.n_ctx", config=cfg)
+        profile_value, profile_src = resolve_setting("llm.profile", config=cfg)
+    except Exception as e:
+        return [
+            CheckResult(
+                name="proxy.vram_context_fit",
+                status="info",
+                message=f"VRAM projection skipped: config resolution failed ({type(e).__name__})",
+            )
+        ]
+
+    if n_ctx_value is None or profile_value is None:
+        return []  # admission row already noted the absence
+
+    try:
+        _, _, vram_gb, _ = detect_compute_resources()
+    except Exception:
+        vram_gb = 0.0
+
+    if not vram_gb or vram_gb <= 0:
+        return [
+            CheckResult(
+                name="proxy.vram_context_fit",
+                status="info",
+                message=("VRAM budget unknown (no GPU / unified memory detected) — projection skipped"),
+            )
+        ]
+
+    profile_meta = _BUILTIN_PROFILES.get(str(profile_value), {})
+    try:
+        projection = project_vram_usage(
+            str(profile_value),
+            profile_meta,
+            int(n_ctx_value),
+            float(vram_gb),
+        )
+    except Exception as e:
+        return [
+            CheckResult(
+                name="proxy.vram_context_fit",
+                status="info",
+                message=f"VRAM projection failed: {type(e).__name__}",
+            )
+        ]
+    if projection is None:
+        return [
+            CheckResult(
+                name="proxy.vram_context_fit",
+                status="info",
+                message=(
+                    f"VRAM projection unavailable for profile {profile_value!r} (no arch metadata in _BUILTIN_PROFILES)"
+                ),
+            )
+        ]
+
+    msg_base = (
+        f"projected {projection.projected_total_gb:.1f} GB "
+        f"(weights {projection.weights_gb:.1f} + KV {projection.kv_cache_gb:.1f} "
+        f"+ {projection.headroom_gb:.1f} headroom) vs physical "
+        f"{projection.physical_vram_gb:.1f} GB at n_ctx={projection.n_ctx}"
+    )
+
+    if projection.spillover_risk:
+        # Pick the fix narrative based on where the operator is setting
+        # the value. The mesh.yml two-layer-split invariant prefers
+        # config.json for declarative settings; if env is the source,
+        # we also recommend unsetting it.
+        fix_lines: list[str] = [
+            "# Lower n_ctx to the projection's recommended value:",
+            f"maxim config set llm.n_ctx {projection.recommended_n_ctx}",
+        ]
+        if n_ctx_src == "env":
+            fix_lines.extend(
+                [
+                    "# Then unset the env shadow so config.json wins:",
+                    "unset MAXIM_LLM_N_CTX",
+                    "# (also remove the export from ~/.zshrc / ~/.bashrc / launchd plist)",
+                ]
+            )
+        fix_lines.append("# Restart the leader to apply (kill + relaunch, or `maxim peer restart` from a peer)")
+        return [
+            CheckResult(
+                name="proxy.vram_context_fit",
+                status="warn",
+                message=f"{msg_base} — KV cache will spill to shared memory once full (5-30x slowdown)",
+                fix="\n".join(fix_lines),
+            )
+        ]
+
+    return [
+        CheckResult(
+            name="proxy.vram_context_fit",
+            status="ok",
+            message=f"{msg_base} — fits comfortably",
         )
     ]
 

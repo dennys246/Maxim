@@ -297,3 +297,200 @@ class TestSectionIntegration:
             sections = run_all_checks(info, role="solo")
         section_names = [name for name, _ in sections]
         assert "Resolved Config" in section_names
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# VRAM context-fit projection (llm_timeout_scalability.md follow-up)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestVramContextFitCheck:
+    """Cross-platform VRAM projection row in Resolved Config.
+
+    The row answers "will the configured (n_ctx, profile) fit comfortably
+    in available VRAM?" — sibling to the proxy.context_admission row.
+    """
+
+    def test_row_omitted_when_n_ctx_unset(self, fake_home, monkeypatch):
+        """If llm.n_ctx is unresolvable, the admission row already noted
+        the absence — VRAM check returns no row to keep doctor output tight."""
+        from maxim.doctor.checks import _check_vram_context_pressure
+
+        monkeypatch.delenv("MAXIM_LLM_N_CTX", raising=False)
+        monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+        results = _check_vram_context_pressure()
+        # No row at all (we don't want two rows screaming about the same gap)
+        assert results == []
+
+    def test_no_vram_detected_renders_info_row(self, fake_home, monkeypatch):
+        """CPU-only / no GPU systems get an info row, not a false-positive warn."""
+        from maxim.doctor import checks as _checks
+
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-14b-instruct")
+
+        # Stub detect_compute_resources to report no VRAM (e.g., a CPU-only box)
+        monkeypatch.setattr(
+            "maxim.runtime.capabilities.detect_compute_resources",
+            lambda: (False, "cpu", 0.0, 16.0),
+        )
+        results = _checks._check_vram_context_pressure()
+        assert len(results) == 1
+        r = results[0]
+        assert r.name == "proxy.vram_context_fit"
+        assert r.status == "info"
+        assert "no GPU" in r.message or "unified memory" in r.message
+
+    def test_spillover_risk_renders_warn_with_recommendation(self, fake_home, monkeypatch):
+        """The Mac Mini incident shape: n_ctx=16384 on a 36 GB system
+        projects 34.8 GB — spillover risk. Expect a WARN row with a
+        fix string naming both the recommended n_ctx AND the unset-env
+        step (because env is the source)."""
+        from dataclasses import dataclass
+
+        from maxim.doctor import checks as _checks
+
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "16384")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "qwen2.5-32b-instruct")
+
+        monkeypatch.setattr(
+            "maxim.runtime.capabilities.detect_compute_resources",
+            lambda: (True, "mps", 36.0, 36.0),
+        )
+
+        @dataclass(frozen=True)
+        class FakeProjection:
+            profile: str = "qwen2.5-32b-instruct"
+            n_ctx: int = 16384
+            weights_gb: float = 19.9
+            kv_cache_gb: float = 4.0
+            headroom_gb: float = 10.9
+            projected_total_gb: float = 34.8
+            physical_vram_gb: float = 36.0
+            spillover_risk: bool = True
+            recommended_n_ctx: int = 13312
+
+        monkeypatch.setattr(
+            "maxim.runtime.lane_models.project_vram_usage",
+            lambda *a, **kw: FakeProjection(),
+        )
+
+        results = _checks._check_vram_context_pressure()
+        assert len(results) == 1
+        r = results[0]
+        assert r.name == "proxy.vram_context_fit"
+        assert r.status == "warn"
+        assert "34.8 GB" in r.message
+        assert "n_ctx=16384" in r.message
+        assert "spill" in r.message.lower()
+        # Fix string names the recommended value AND the unset-env step
+        # (because n_ctx_src == "env")
+        assert r.fix is not None
+        assert "13312" in r.fix
+        assert "unset MAXIM_LLM_N_CTX" in r.fix
+        assert "maxim config set llm.n_ctx 13312" in r.fix
+
+    def test_comfortable_fit_renders_ok_no_fix(self, fake_home, monkeypatch):
+        from dataclasses import dataclass
+
+        from maxim.doctor import checks as _checks
+
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "4096")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "mistral-7b-instruct-v0.2")
+
+        monkeypatch.setattr(
+            "maxim.runtime.capabilities.detect_compute_resources",
+            lambda: (True, "cuda", 24.0, 64.0),
+        )
+
+        @dataclass(frozen=True)
+        class FakeProjection:
+            profile: str = "mistral-7b-instruct-v0.2"
+            n_ctx: int = 4096
+            weights_gb: float = 4.5
+            kv_cache_gb: float = 1.0
+            headroom_gb: float = 1.5
+            projected_total_gb: float = 7.0
+            physical_vram_gb: float = 24.0
+            spillover_risk: bool = False
+            recommended_n_ctx: int = 4096
+
+        monkeypatch.setattr(
+            "maxim.runtime.lane_models.project_vram_usage",
+            lambda *a, **kw: FakeProjection(),
+        )
+
+        results = _checks._check_vram_context_pressure()
+        assert len(results) == 1
+        r = results[0]
+        assert r.status == "ok"
+        assert "fits comfortably" in r.message
+        assert r.fix is None or r.fix == ""
+
+    def test_unknown_profile_renders_info_row(self, fake_home, monkeypatch):
+        """Profile not in _BUILTIN_PROFILES → projection returns None
+        → info row (not warn, not silently dropped)."""
+        from maxim.doctor import checks as _checks
+
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "fictional-model-42b")
+
+        monkeypatch.setattr(
+            "maxim.runtime.capabilities.detect_compute_resources",
+            lambda: (True, "cuda", 24.0, 64.0),
+        )
+        monkeypatch.setattr(
+            "maxim.runtime.lane_models.project_vram_usage",
+            lambda *a, **kw: None,
+        )
+        results = _checks._check_vram_context_pressure()
+        assert len(results) == 1
+        assert results[0].status == "info"
+        assert "fictional-model-42b" in results[0].message
+
+    def test_spillover_fix_omits_unset_when_source_is_config(self, fake_home, monkeypatch):
+        """If the operator set n_ctx via config.json (not env), the
+        fix string should NOT tell them to ``unset MAXIM_LLM_N_CTX``.
+        The mesh.yml two-layer-split invariant prefers config.json as
+        the canonical surface — when it's already in use, we just
+        rewrite it."""
+        from dataclasses import dataclass
+
+        from maxim.doctor import checks as _checks
+        from maxim.runtime import config_writer
+
+        # Set via config.json (NOT env) so source resolves to "config"
+        monkeypatch.delenv("MAXIM_LLM_N_CTX", raising=False)
+        monkeypatch.delenv("MAXIM_LLM_PROFILE", raising=False)
+        config_writer.set_field("llm.n_ctx", 16384)
+        config_writer.set_field("llm.profile", "qwen2.5-32b-instruct")
+
+        monkeypatch.setattr(
+            "maxim.runtime.capabilities.detect_compute_resources",
+            lambda: (True, "mps", 36.0, 36.0),
+        )
+
+        @dataclass(frozen=True)
+        class FakeProjection:
+            profile: str = "qwen2.5-32b-instruct"
+            n_ctx: int = 16384
+            weights_gb: float = 19.9
+            kv_cache_gb: float = 4.0
+            headroom_gb: float = 10.9
+            projected_total_gb: float = 34.8
+            physical_vram_gb: float = 36.0
+            spillover_risk: bool = True
+            recommended_n_ctx: int = 13312
+
+        monkeypatch.setattr(
+            "maxim.runtime.lane_models.project_vram_usage",
+            lambda *a, **kw: FakeProjection(),
+        )
+
+        results = _checks._check_vram_context_pressure()
+        assert len(results) == 1
+        r = results[0]
+        assert r.status == "warn"
+        # Fix names the new value but NOT the unset step
+        assert "13312" in r.fix
+        assert "unset MAXIM_LLM_N_CTX" not in r.fix
