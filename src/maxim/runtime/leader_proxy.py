@@ -209,6 +209,101 @@ worst-case long-context + long-output on mid-range hardware and matches the
 peer backend's default ``timeout_s``.
 """
 
+# ─── TTFT keepalive (llm_timeout_scalability.md Stage 3) ──────────────────
+#
+# Cloudflare tunnels enforce a ~100s idle timeout on the origin connection.
+# When the agent hits a self-hosted leader through a cloudflared tunnel and
+# the upstream LLM's time-to-first-token exceeds the idle window (common on
+# 30B+ models with long prompts on edge hardware), the tunnel closes
+# silently — the proxy doesn't notice until it tries to write the first
+# real chunk and gets EPIPE. Sending an SSE comment frame at regular
+# intervals during the silent window resets the idle timer without
+# affecting the response semantics (clients ignore lines beginning with
+# ":" per the SSE spec).
+_PROXY_KEEPALIVE_DEFAULT_INTERVAL_S = 30.0
+_PROXY_KEEPALIVE_MIN_INTERVAL_S = 5.0
+_PROXY_KEEPALIVE_MAX_INTERVAL_S = 90.0
+
+# Pre-formatted HTTP/1.1 chunked frame carrying an SSE keepalive comment.
+# Inner payload ``: keepalive\n\n`` is 13 bytes (0xd in hex). Total frame:
+# ``d\r\n`` (chunk size) + ``: keepalive\n\n`` (payload) + ``\r\n`` (trailer)
+# = 18 bytes. Compile-time constant so the hot path doesn't re-encode it.
+_KEEPALIVE_CHUNK_FRAME: bytes = b"d\r\n: keepalive\n\n\r\n"
+
+
+def _resolve_keepalive_interval_s() -> float:
+    """Parse ``MAXIM_PROXY_KEEPALIVE_INTERVAL_S`` with bounds.
+
+    Invalid / unparseable values fall back to the default rather than
+    bricking every streaming response with a 0-second interval.
+    """
+    raw = os.environ.get("MAXIM_PROXY_KEEPALIVE_INTERVAL_S")
+    if raw is None or raw.strip() == "":
+        return _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S
+    try:
+        value = float(raw)
+    except (ValueError, TypeError):
+        return _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S
+    if value < _PROXY_KEEPALIVE_MIN_INTERVAL_S:
+        return _PROXY_KEEPALIVE_MIN_INTERVAL_S
+    if value > _PROXY_KEEPALIVE_MAX_INTERVAL_S:
+        return _PROXY_KEEPALIVE_MAX_INTERVAL_S
+    return value
+
+
+def _is_event_stream_response(response_headers: dict[str, str]) -> bool:
+    """Check whether the upstream response is a Server-Sent-Events stream.
+
+    Returns True iff Content-Type indicates ``text/event-stream``
+    (case-insensitive header lookup; value may include parameters like
+    ``charset=utf-8``). Buffered (``application/json``) responses must
+    skip keepalive injection — there's no in-band slot for SSE comment
+    frames in a single JSON body.
+    """
+    for key, val in response_headers.items():
+        if key.lower() == "content-type":
+            return "text/event-stream" in val.lower()
+    return False
+
+
+def _run_keepalive_emitter(
+    wfile: Any,
+    write_lock: threading.Lock,
+    stop_event: threading.Event,
+    interval_s: float,
+) -> None:
+    """Emit SSE keepalive frames to ``wfile`` until ``stop_event`` is set.
+
+    Runs in a daemon thread alongside the main proxy streaming loop.
+    Acquires ``write_lock`` around each frame so writes serialise with
+    the main thread's chunk forwarder — ``wfile`` is backed by a single
+    socket and concurrent writes would interleave bytes.
+
+    Exits silently on any write failure: a broken pipe means the client
+    has already closed; the main thread will detect the same error when
+    it tries to write the first real chunk and handle logging there.
+
+    The wait-then-check ordering is deliberate: we want to emit a
+    keepalive AFTER each interval elapses, not before. So
+    ``stop_event.wait(timeout=interval_s)`` returns False on timeout
+    (still streaming, emit a frame), True if stopped (exit).
+    """
+    while True:
+        if stop_event.wait(timeout=interval_s):
+            return
+        with write_lock:
+            if stop_event.is_set():
+                # Race: main thread set the event between our wait()
+                # returning False and our lock acquisition. The first
+                # real chunk is about to write; skip this keepalive.
+                return
+            try:
+                wfile.write(_KEEPALIVE_CHUNK_FRAME)
+                wfile.flush()
+            except Exception:
+                stop_event.set()
+                return
+
 
 # ─── GPU metrics ──────────────────────────────────────────────────────────
 
@@ -844,6 +939,13 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         elapsed_ms: float = 0.0
 
         stream: "_http.StreamingResponse | None" = None
+        # Stage 3 keepalive state — declared at the same scope as
+        # ``stream`` so the ``finally`` block can stop the emitter on
+        # every exit path, including upstream errors that occur before
+        # the SSE check.
+        keepalive_thread: threading.Thread | None = None
+        keepalive_stop = threading.Event()
+        write_lock = threading.Lock()
         try:
             stream = _http.raw_proxy_forward_streaming(
                 upstream,
@@ -886,6 +988,29 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             self.send_header("Transfer-Encoding", "chunked")
             self.end_headers()
 
+            # Stage 3 (llm_timeout_scalability.md): start the TTFT
+            # keepalive emitter if upstream responded with an SSE stream.
+            # During the silent window between response headers and the
+            # first generated token, the emitter writes ``: keepalive``
+            # comment frames every ~30s to defeat cloudflared's ~100s
+            # tunnel idle timeout. The stop_event is set on the first
+            # real chunk (or any error path) so the daemon thread exits
+            # cleanly. ``write_lock`` serialises the emitter and the
+            # main chunk writer because both target ``self.wfile``.
+            if _is_event_stream_response(resp_headers):
+                keepalive_thread = threading.Thread(
+                    target=_run_keepalive_emitter,
+                    args=(
+                        self.wfile,
+                        write_lock,
+                        keepalive_stop,
+                        _resolve_keepalive_interval_s(),
+                    ),
+                    daemon=True,
+                    name="proxy-keepalive",
+                )
+                keepalive_thread.start()
+
             # Stream body — write each chunk in HTTP/1.1 chunked format so
             # the peer receives tokens progressively.  Accumulate locally
             # for post-send usage logging (body is at most a few KB for
@@ -894,11 +1019,20 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             try:
                 for chunk in stream.iter_bytes(chunk_size=16384):
                     if chunk:
-                        body_chunks.append(chunk)
-                        self.wfile.write(f"{len(chunk):x}\r\n".encode())
-                        self.wfile.write(chunk)
-                        self.wfile.write(b"\r\n")
-                        self.wfile.flush()
+                        # First non-empty chunk: stop the keepalive
+                        # emitter BEFORE acquiring the write lock so the
+                        # emitter sees the stop signal on its next
+                        # wakeup. Order matters — if we acquired the lock
+                        # first, the emitter could already be parked at
+                        # ``with write_lock`` and would emit one more
+                        # keepalive after our first real chunk.
+                        keepalive_stop.set()
+                        with write_lock:
+                            body_chunks.append(chunk)
+                            self.wfile.write(f"{len(chunk):x}\r\n".encode())
+                            self.wfile.write(chunk)
+                            self.wfile.write(b"\r\n")
+                            self.wfile.flush()
             except Exception as chunk_err:
                 # Mid-stream failure: log with request context so operators
                 # can correlate with the peer-side dispatch_exhausted and
@@ -948,6 +1082,15 @@ class _ProxyHandler(BaseHTTPRequestHandler):
             ).encode()
             resp_headers = {}
         finally:
+            # Stop the keepalive emitter on every exit path. Setting the
+            # event is sufficient — the daemon thread is a no-op once
+            # the flag flips. Join with a short timeout so a stuck
+            # emitter (e.g., blocked in a slow ``flush``) can't pin the
+            # proxy worker; daemon=True lets it die with the process if
+            # the join times out.
+            keepalive_stop.set()
+            if keepalive_thread is not None:
+                keepalive_thread.join(timeout=1.0)
             if stream is not None:
                 stream.close()
 
