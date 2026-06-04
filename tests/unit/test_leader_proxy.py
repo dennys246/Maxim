@@ -1081,3 +1081,287 @@ class TestDevModeResponses:
 
         (tmp_path / ".git").mkdir()
         assert (P(str(tmp_path)) / ".git").is_dir()
+
+
+# ── TTFT keepalive (llm_timeout_scalability.md Stage 3) ───────────────────
+
+
+class TestKeepaliveIntervalResolver:
+    """Test _resolve_keepalive_interval_s parsing + clamping."""
+
+    def test_default_when_env_unset(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S,
+            _resolve_keepalive_interval_s,
+        )
+
+        monkeypatch.delenv("MAXIM_PROXY_KEEPALIVE_INTERVAL_S", raising=False)
+        assert _resolve_keepalive_interval_s() == _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S
+
+    def test_default_when_env_empty(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S,
+            _resolve_keepalive_interval_s,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_KEEPALIVE_INTERVAL_S", "")
+        assert _resolve_keepalive_interval_s() == _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S
+
+    def test_default_when_env_whitespace(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S,
+            _resolve_keepalive_interval_s,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_KEEPALIVE_INTERVAL_S", "   ")
+        assert _resolve_keepalive_interval_s() == _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S
+
+    def test_default_when_env_malformed(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S,
+            _resolve_keepalive_interval_s,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_KEEPALIVE_INTERVAL_S", "not-a-number")
+        assert _resolve_keepalive_interval_s() == _PROXY_KEEPALIVE_DEFAULT_INTERVAL_S
+
+    def test_valid_value_passes_through(self, monkeypatch):
+        from maxim.runtime.leader_proxy import _resolve_keepalive_interval_s
+
+        monkeypatch.setenv("MAXIM_PROXY_KEEPALIVE_INTERVAL_S", "45")
+        assert _resolve_keepalive_interval_s() == 45.0
+
+    def test_value_below_minimum_clamps_up(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_KEEPALIVE_MIN_INTERVAL_S,
+            _resolve_keepalive_interval_s,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_KEEPALIVE_INTERVAL_S", "1")
+        assert _resolve_keepalive_interval_s() == _PROXY_KEEPALIVE_MIN_INTERVAL_S
+
+    def test_value_above_maximum_clamps_down(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_KEEPALIVE_MAX_INTERVAL_S,
+            _resolve_keepalive_interval_s,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_KEEPALIVE_INTERVAL_S", "999")
+        assert _resolve_keepalive_interval_s() == _PROXY_KEEPALIVE_MAX_INTERVAL_S
+
+    def test_negative_value_clamps_to_minimum(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_KEEPALIVE_MIN_INTERVAL_S,
+            _resolve_keepalive_interval_s,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_KEEPALIVE_INTERVAL_S", "-10")
+        assert _resolve_keepalive_interval_s() == _PROXY_KEEPALIVE_MIN_INTERVAL_S
+
+
+class TestEventStreamDetection:
+    """Test _is_event_stream_response distinguishes SSE from buffered JSON."""
+
+    def test_plain_event_stream(self):
+        from maxim.runtime.leader_proxy import _is_event_stream_response
+
+        assert _is_event_stream_response({"Content-Type": "text/event-stream"})
+
+    def test_event_stream_with_charset(self):
+        from maxim.runtime.leader_proxy import _is_event_stream_response
+
+        assert _is_event_stream_response({"Content-Type": "text/event-stream; charset=utf-8"})
+
+    def test_lowercase_header_name(self):
+        from maxim.runtime.leader_proxy import _is_event_stream_response
+
+        assert _is_event_stream_response({"content-type": "text/event-stream"})
+
+    def test_mixed_case_value(self):
+        from maxim.runtime.leader_proxy import _is_event_stream_response
+
+        assert _is_event_stream_response({"Content-Type": "Text/Event-Stream"})
+
+    def test_application_json_is_not_stream(self):
+        from maxim.runtime.leader_proxy import _is_event_stream_response
+
+        assert not _is_event_stream_response({"Content-Type": "application/json"})
+
+    def test_missing_content_type(self):
+        from maxim.runtime.leader_proxy import _is_event_stream_response
+
+        assert not _is_event_stream_response({})
+
+    def test_other_headers_ignored(self):
+        from maxim.runtime.leader_proxy import _is_event_stream_response
+
+        # Headers that contain "text/event-stream" in their value but aren't
+        # Content-Type should not trigger a false positive.
+        assert not _is_event_stream_response({"X-Custom": "text/event-stream", "Content-Type": "application/json"})
+
+
+class TestKeepaliveChunkFrameFormat:
+    """Pin the wire format of the pre-encoded keepalive chunk frame."""
+
+    def test_frame_is_valid_chunked_encoding(self):
+        from maxim.runtime.leader_proxy import _KEEPALIVE_CHUNK_FRAME
+
+        # Format: <hex-size>\r\n<payload>\r\n
+        size_part, _, rest = _KEEPALIVE_CHUNK_FRAME.partition(b"\r\n")
+        payload, trailer, empty = rest.partition(b"\r\n")
+        expected_size = int(size_part, 16)
+        assert len(payload) == expected_size
+        assert trailer == b"\r\n"
+        assert empty == b""
+
+    def test_payload_is_sse_comment(self):
+        from maxim.runtime.leader_proxy import _KEEPALIVE_CHUNK_FRAME
+
+        # The payload must begin with ":" per the SSE spec for clients to
+        # treat it as a comment and ignore it.
+        _, _, rest = _KEEPALIVE_CHUNK_FRAME.partition(b"\r\n")
+        payload, _, _ = rest.partition(b"\r\n")
+        assert payload.startswith(b":")
+
+    def test_payload_terminates_sse_event(self):
+        from maxim.runtime.leader_proxy import _KEEPALIVE_CHUNK_FRAME
+
+        # SSE event boundary is \n\n. Comments need the same terminator to
+        # flush through any SSE parser the client may layer above raw HTTP.
+        _, _, rest = _KEEPALIVE_CHUNK_FRAME.partition(b"\r\n")
+        payload, _, _ = rest.partition(b"\r\n")
+        assert payload.endswith(b"\n\n")
+
+
+class TestKeepaliveEmitter:
+    """Test _run_keepalive_emitter under controlled timing."""
+
+    def test_emits_at_configured_cadence(self):
+        """With a 50ms interval, ~3 emissions in 175ms (after 50, 100, 150ms)."""
+        from maxim.runtime.leader_proxy import (
+            _KEEPALIVE_CHUNK_FRAME,
+            _run_keepalive_emitter,
+        )
+
+        class FakeWFile:
+            def __init__(self):
+                self.writes: list[bytes] = []
+                self.flushes = 0
+
+            def write(self, data):
+                self.writes.append(data)
+
+            def flush(self):
+                self.flushes += 1
+
+        wfile = FakeWFile()
+        lock = threading.Lock()
+        stop = threading.Event()
+
+        t = threading.Thread(
+            target=_run_keepalive_emitter,
+            args=(wfile, lock, stop, 0.05),
+            daemon=True,
+        )
+        t.start()
+        time.sleep(0.175)
+        stop.set()
+        t.join(timeout=1.0)
+
+        # At least 2 emissions in the window (timing on CI can be loose).
+        assert len(wfile.writes) >= 2
+        # Every write is the keepalive frame, byte-exact.
+        assert all(w == _KEEPALIVE_CHUNK_FRAME for w in wfile.writes)
+        # Each write is paired with a flush.
+        assert wfile.flushes == len(wfile.writes)
+
+    def test_stops_immediately_when_event_set(self):
+        from maxim.runtime.leader_proxy import _run_keepalive_emitter
+
+        class FakeWFile:
+            def __init__(self):
+                self.writes: list[bytes] = []
+
+            def write(self, data):
+                self.writes.append(data)
+
+            def flush(self):
+                pass
+
+        wfile = FakeWFile()
+        lock = threading.Lock()
+        stop = threading.Event()
+        stop.set()  # already stopped — emitter must exit on first wait()
+
+        t = threading.Thread(
+            target=_run_keepalive_emitter,
+            args=(wfile, lock, stop, 0.05),
+            daemon=True,
+        )
+        t.start()
+        t.join(timeout=1.0)
+
+        assert not t.is_alive()
+        assert wfile.writes == []
+
+    def test_exits_silently_on_write_error(self):
+        """Broken pipe means the client is gone. Emitter must not raise."""
+        from maxim.runtime.leader_proxy import _run_keepalive_emitter
+
+        class BrokenWFile:
+            def write(self, data):
+                raise BrokenPipeError("client gone")
+
+            def flush(self):
+                pass
+
+        wfile = BrokenWFile()
+        lock = threading.Lock()
+        stop = threading.Event()
+
+        t = threading.Thread(
+            target=_run_keepalive_emitter,
+            args=(wfile, lock, stop, 0.05),
+            daemon=True,
+        )
+        t.start()
+        t.join(timeout=1.0)
+
+        assert not t.is_alive()
+        # Emitter sets the stop event on write error so callers can detect
+        # the client disconnect without inspecting thread state.
+        assert stop.is_set()
+
+    def test_acquires_write_lock(self):
+        """The emitter must release the lock between iterations so the main
+        chunk writer can interleave. Holding the lock for the whole sleep
+        would block real chunk forwarding."""
+        from maxim.runtime.leader_proxy import _run_keepalive_emitter
+
+        class FakeWFile:
+            def write(self, data):
+                pass
+
+            def flush(self):
+                pass
+
+        wfile = FakeWFile()
+        lock = threading.Lock()
+        stop = threading.Event()
+
+        t = threading.Thread(
+            target=_run_keepalive_emitter,
+            args=(wfile, lock, stop, 0.05),
+            daemon=True,
+        )
+        t.start()
+
+        # Probe the lock during the emitter's sleep window — must be free.
+        time.sleep(0.025)
+        acquired = lock.acquire(blocking=False)
+        if acquired:
+            lock.release()
+        stop.set()
+        t.join(timeout=1.0)
+
+        assert acquired, "emitter must not hold the lock during its sleep"
