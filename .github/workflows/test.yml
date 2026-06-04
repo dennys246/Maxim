@@ -84,6 +84,28 @@ jobs:
             echo "       Failover is the router's job. See docs/plans/archive/llm_path_fast_failover.md."
             exit 1
           fi
+          # stall_detector_timeout_awareness.md invariant: new stall
+          # detectors MUST consult runtime/stall_threshold.py rather than
+          # defining their own hardcoded 30s threshold. Matches literal
+          # patterns like `STALL_S = 30` or `stall_threshold = 30` outside
+          # the canonical module + its tests. Pure 30-as-non-stall integers
+          # in unrelated contexts won't match because the rule requires
+          # "STALL" in the assigned name.
+          STALL_LITERAL_MATCHES=$(grep -rnE "(STALL[A-Z_]*|stall[a-z_]*threshold)\s*=\s*30(\.0)?\b" \
+              --include="*.py" src/maxim/ \
+            | grep -vE "^src/maxim/runtime/stall_threshold\.py:" \
+            | grep -vE "^src/maxim/runtime/heartbeat\.py:" \
+            || true)
+          # heartbeat.py allowlisted: Stage 2 of stall_detector_timeout_awareness.md
+          # migrates heartbeat to compute_stall_threshold via opt-in
+          # MAXIM_HEARTBEAT_USE_LANE_TIMEOUT; target 1.0.x.
+          if [ -n "$STALL_LITERAL_MATCHES" ]; then
+            echo "ERROR: hardcoded 30s stall threshold outside runtime/stall_threshold.py:"
+            echo "$STALL_LITERAL_MATCHES"
+            echo "       Use compute_stall_threshold() from runtime/stall_threshold.py"
+            echo "       See docs/plans/stall_detector_timeout_awareness.md."
+            exit 1
+          fi
           # leader_ux_profile_management.md L2 + L3 invariant: every
           # module that reads ~/.config/maxim/profiles.yml must use
           # yaml.safe_load exclusively. yaml.load allows arbitrary

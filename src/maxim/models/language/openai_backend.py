@@ -20,6 +20,26 @@ from maxim.models.language.types import LLMResponse
 # imports block so the E402 noqa suppression is no longer needed.
 from maxim.utils.net import validate_base_url as _validate_base_url
 
+# Stall-detector integration: warn-once shim around the registry import.
+# Architecture review I5: silent-swallow re-introduces the bug class
+# llm_call_registry exists to close.
+_register_byte_received_warned: bool = False
+
+
+def _register_byte_received_safe() -> None:
+    global _register_byte_received_warned
+    try:
+        from maxim.runtime.llm_call_registry import register_byte_received
+
+        register_byte_received()
+    except Exception as exc:  # pragma: no cover — defensive
+        if not _register_byte_received_warned:
+            _register_byte_received_warned = True
+            warn(
+                "Stall registry instrumentation failed (further occurrences suppressed): %s",
+                exc,
+            )
+
 
 def _is_auth_error(err: Exception) -> bool:
     msg = str(err).lower()
@@ -410,6 +430,12 @@ class _OpenAIBackend:
         output_tokens = 0
 
         for chunk in stream:
+            # Stall-detector integration: update last_byte_at on every
+            # chunk arrival so the orchestrator's stall detector sees
+            # the call as alive. Mirrors _MaximPeerBackend._stream_response.
+            # See _register_byte_received_safe helper at module top
+            # (architecture review I5).
+            _register_byte_received_safe()
             if getattr(chunk, "usage", None):
                 usage = chunk.usage
                 input_tokens = getattr(usage, "prompt_tokens", 0) or 0

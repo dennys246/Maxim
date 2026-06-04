@@ -2228,10 +2228,43 @@ def start_simulation_mode(
         """
         import os as _os
 
-        try:
-            stall_threshold_s = float(_os.environ.get("MAXIM_SIM_STALL_THRESHOLD_S", "30.0"))
-        except ValueError:
-            stall_threshold_s = 30.0
+        # --- Stall threshold derivation (post stall_detector_timeout_awareness.md fold) ---
+        # Active tier is hardcoded to "large" for sim_orchestrator: the
+        # function_router routes orchestrator calls through the large lane
+        # by convention. **Known limitation (B2 of post-impl architecture
+        # review):** this reads MAXIM_LANE_LARGE_TIMEOUT_S directly rather
+        # than consulting LaneConfig.remote_timeout_s — drifts silently if
+        # an operator configures lanes.large.timeout_s via config.json only
+        # without the env-var bridge populating. Tracked as a follow-up
+        # alongside the FunctionRouter-consultation migration; both require
+        # a stable runtime accessor not yet exposed.
+        # The deprecated-alias handling (MAXIM_SIM_STALL_THRESHOLD_S →
+        # MAXIM_STALL_FLOOR_S) is centralized in compute_stall_threshold
+        # itself so the orchestrator doesn't need to mutate os.environ.
+        from maxim.runtime.stall_threshold import (
+            compute_stall_threshold,
+            max_byte_silence_threshold_s,
+        )
+
+        _resolved_tier = "large"
+
+        _lane_timeout_env = _os.environ.get(f"MAXIM_LANE_{_resolved_tier.upper()}_TIMEOUT_S")
+        _lane_timeout_s: float | None = None
+        if _lane_timeout_env:
+            try:
+                _lane_timeout_s = float(_lane_timeout_env)
+                if _lane_timeout_s <= 0:
+                    _lane_timeout_s = None
+            except ValueError:
+                _lane_timeout_s = None
+
+        def _current_threshold() -> float:
+            """Recompute the threshold each cycle; cheap (env reads + arithmetic)."""
+            return compute_stall_threshold(
+                lane_tier=_resolved_tier,
+                lane_timeout_s=_lane_timeout_s,
+            )
+
         try:
             check_interval_s = float(_os.environ.get("MAXIM_SIM_STALL_CHECK_INTERVAL_S", "3.0"))
         except ValueError:
@@ -2244,8 +2277,7 @@ def start_simulation_mode(
         except ValueError:
             ping_pong_budget = int(_default_pp)
         # Clamp to sane bounds so a typo can't wedge the detector.
-        stall_threshold_s = max(5.0, stall_threshold_s)
-        check_interval_s = max(0.5, min(check_interval_s, stall_threshold_s))
+        check_interval_s = max(0.5, min(check_interval_s, _current_threshold()))
         ping_pong_budget = max(2, ping_pong_budget)
 
         def _orch_action_count() -> int:
@@ -2366,10 +2398,40 @@ def start_simulation_mode(
             # ── Ping-pong trigger: too many orch actions without a turn ──
             orch_actions_since_turn = current_actions - _last_orch_action_count[0]
             ping_pong = orch_actions_since_turn >= ping_pong_budget
-            time_stalled = time.time() - _last_activity_time[0] > stall_threshold_s
+            time_stalled = time.time() - _last_activity_time[0] > _current_threshold()
 
             if not (ping_pong or time_stalled):
                 continue
+
+            # ── Stall-detector ↔ in-flight LLM call suppression ──
+            # Per stall_detector_timeout_awareness.md v2: if an LLM call is
+            # in flight at the orchestrator's tier AND bytes have been
+            # flowing within the keepalive-derived budget, suppress the
+            # nudge entirely — the orchestrator isn't stalled, it's
+            # awaiting inference. PR #320 TTFT keepalive frames count as
+            # bytes-on-wire so this works even during multi-minute TTFTs.
+            #
+            # The wedged-call branch fires when bytes have been silent
+            # past max_byte_silence_threshold_s, distinguishing "call
+            # alive but slow" from "connection dead but registered".
+            try:
+                from maxim.runtime.llm_call_registry import (
+                    any_call_in_flight,
+                    oldest_byte_silence_s,
+                )
+
+                if any_call_in_flight(tier=_resolved_tier):
+                    silence_s = oldest_byte_silence_s(tier=_resolved_tier)
+                    if silence_s is None or silence_s < max_byte_silence_threshold_s():
+                        # Call alive, bytes flowing — suppress nudge
+                        continue
+                    # No bytes for >max_byte_silence_threshold_s — connection
+                    # is wedged. Fall through and let the nudge fire as a
+                    # stuck-call warning.
+            except Exception:
+                # Defensive: registry consultation must never wedge the
+                # detector. On any failure, fall through to existing logic.
+                pass
 
             # Nudge cooldown: don't flood the orchestrator with nudges.
             if time.time() - _last_nudge_time[0] < _NUDGE_COOLDOWN_S:

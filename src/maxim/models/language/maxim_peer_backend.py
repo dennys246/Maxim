@@ -96,6 +96,29 @@ from maxim.utils.structured_logging import log_structured
 logger = logging.getLogger(__name__)
 
 
+# Stall-detector integration: register_byte_received is a registry probe
+# called from the stream loop on every chunk arrival. Hoisted out of the
+# loop (architecture review I5) and wrapped with a warn-once shim so a
+# silently broken instrumentation surfaces in logs instead of silently
+# re-introducing the bug class llm_call_registry exists to close.
+_register_byte_received_warned: bool = False
+
+
+def _register_byte_received_safe() -> None:
+    global _register_byte_received_warned
+    try:
+        from maxim.runtime.llm_call_registry import register_byte_received
+
+        register_byte_received()
+    except Exception as exc:  # pragma: no cover — defensive
+        if not _register_byte_received_warned:
+            _register_byte_received_warned = True
+            warn(
+                "Stall registry instrumentation failed (further occurrences suppressed): %s",
+                exc,
+            )
+
+
 # ─── Probe primitives (moved from runtime/llm_server.py) ─────────────────
 #
 # These are the actual probe implementations. ``health_check()`` calls them
@@ -858,6 +881,21 @@ class _MaximPeerBackend:
                 context=context,
             ) as response:
                 for line in response.iter_lines():
+                    # Stall-detector integration: update the registry's
+                    # last_byte_at on EVERY arriving line, including PR #320
+                    # TTFT keepalive frames (``: keepalive``) which are SSE
+                    # comments filtered out by the data-line check below.
+                    # The orchestrator's stall detector reads
+                    # ``oldest_byte_silence_s`` to distinguish "call alive
+                    # but slow" from "connection wedged" — keepalive bytes
+                    # are exactly what make this distinction work.
+                    # Module-level import was hoisted out of the loop and
+                    # the silent-swallow is replaced by a warn-once flag
+                    # (architecture review I5) so a silently-broken
+                    # instrumentation surfaces in logs instead of
+                    # re-introducing the bug class this module exists
+                    # to close.
+                    _register_byte_received_safe()
                     if not line:
                         continue
                     # httpx iter_lines strips trailing newline, does not

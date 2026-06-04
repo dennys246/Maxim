@@ -929,45 +929,64 @@ class LLMRouter:
         # ``dispatch_exhausted`` WARN if all providers fail.
         self._dispatch_attempts.clear()
         dispatch_t0 = time.monotonic()
-        for provider_key in providers:
-            outcome = self._try_provider(
-                provider_key=provider_key,
-                system=system,
-                user=user,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                prompt_tokens=prompt_tokens,
-                budget_tier=budget_tier,
-                tools=tools,
-                thinking=thinking,
-                stream=stream,
-                request_context=request_context,
-                now=now,
-            )
-            if outcome is None:
-                # provider was skipped (cloud-disabled, backend init failure, etc.)
-                continue
-            text, usage, status = outcome
-            if status == "success":
-                # Clear the attempt buffer; a successful dispatch doesn't
-                # need an aggregated WARN even if earlier providers in
-                # the priority list failed.
-                self._dispatch_attempts.clear()
-                return text, usage
-            if status == "budget_reject":
-                self._dispatch_attempts.clear()
-                return "", None
-            # status == "failed" → try next provider
 
-        # All providers failed — emit one aggregated WARN with the
-        # full per-attempt breakdown and multi-agent context.
-        total_elapsed_ms = (time.monotonic() - dispatch_t0) * 1000
-        self._emit_dispatch_exhausted(
-            request_context=request_context,
-            total_elapsed_ms=total_elapsed_ms,
-            drained_keys=self._last_drained_keys or None,
-        )
-        return "", None
+        # Stall-detector integration: register the dispatch as an in-flight
+        # LLM call BEFORE entering the provider-fallback loop, so the
+        # registry sees one continuous in-flight window across provider
+        # retries. Per consolidated review of stall_detector_timeout_awareness.md
+        # v2, wrapping at the per-backend ``complete_with_usage`` site would
+        # leave gaps between provider-A end and provider-B start where the
+        # orchestrator's stall detector would incorrectly fire mid-failover.
+        # The call_id is threaded into ``_try_provider`` so backend stream
+        # consumers can call ``register_byte_received(call_id)`` on chunk
+        # arrival (including PR #320 TTFT keepalive frames).
+        from maxim.runtime.llm_call_registry import register_call_end, register_call_start
+
+        # call_id flows to backend stream consumers via ContextVar
+        # (see llm_call_registry.py); no signature threading needed.
+        call_id = register_call_start(tier=str(budget_tier) if budget_tier else "unknown")
+        try:
+            for provider_key in providers:
+                outcome = self._try_provider(
+                    provider_key=provider_key,
+                    system=system,
+                    user=user,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    prompt_tokens=prompt_tokens,
+                    budget_tier=budget_tier,
+                    tools=tools,
+                    thinking=thinking,
+                    stream=stream,
+                    request_context=request_context,
+                    now=now,
+                )
+                if outcome is None:
+                    # provider was skipped (cloud-disabled, backend init failure, etc.)
+                    continue
+                text, usage, status = outcome
+                if status == "success":
+                    # Clear the attempt buffer; a successful dispatch doesn't
+                    # need an aggregated WARN even if earlier providers in
+                    # the priority list failed.
+                    self._dispatch_attempts.clear()
+                    return text, usage
+                if status == "budget_reject":
+                    self._dispatch_attempts.clear()
+                    return "", None
+                # status == "failed" → try next provider
+
+            # All providers failed — emit one aggregated WARN with the
+            # full per-attempt breakdown and multi-agent context.
+            total_elapsed_ms = (time.monotonic() - dispatch_t0) * 1000
+            self._emit_dispatch_exhausted(
+                request_context=request_context,
+                total_elapsed_ms=total_elapsed_ms,
+                drained_keys=self._last_drained_keys or None,
+            )
+            return "", None
+        finally:
+            register_call_end(call_id)
 
     def _try_provider(
         self,
