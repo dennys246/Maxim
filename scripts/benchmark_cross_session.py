@@ -196,13 +196,21 @@ def _real_sim(
         goal,
         "--embodiment",
         "bodies/infant_humanoid",
-        "--language-model",
-        model,
         "--interactive",
         "false",
         "--sim-max-turns",
         str(max_turns),
     ]
+    # ``--language-model`` is INTENTIONALLY omitted: passing it forces the
+    # sub-sim into local-llama-cpp mode (spawn-the-profile-locally),
+    # overriding peer.yml routing even when role detects as ``peer``. For
+    # Exp 37 we want every sub-sim to call the shared leader (so the
+    # post-A substrate snapshot resumes against the SAME model and the
+    # variance-survival rule isn't polluted by per-sandbox model
+    # downloads). The harness's ``--model`` flag is preserved as a
+    # JSONL metadata field; the served model name is discovered by
+    # ``_MaximPeerBackend.warmup()`` and surfaced in the report via
+    # PR #325's served-model substitution.
     if resume_session is not None:
         cmd.extend(["--resume-sim", resume_session])
 
