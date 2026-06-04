@@ -715,6 +715,25 @@ Modern frameworks expose `input_tokens`, `output_tokens`, `cached_tokens` in sta
 
 **Deliverable:** audit the call-site telemetry in `models/language/router.py`, `_MaximPeerBackend`, `_OpenAIBackend`, `LLMEnergyTracker`. Confirm `input_tokens` / `output_tokens` / `cached_tokens` are exposed under those exact field names in any user-visible structure. Where missing, add them. Document the contract in CC4's classification doc.
 
+### CC13. Auth format-freeze audit (~50 LOC + ~16 tests + 1 doc page)
+
+**Plan:** [auth_format_freeze_audit.md](auth_format_freeze_audit.md) (drafted 2026-06-04)
+
+Narrow format-freeze pass on the four security-shaped surfaces shipping in 1.0, so the future hardware-token / signed-bundle / mTLS / WebAuthn work planned for 1.1+ alongside Hivemind P2P is not boxed out by 1.0 schema choices. **Does not implement authentication** — full pluggable auth provider abstraction stays a 1.1+ track. This is purely about whether the slots already shipping in 1.0 admit the future without a breaking change.
+
+**Surfaces audited:**
+
+1. **`lanes.<tier>.remote_api_key_ref` URI scheme** — currently accepts file paths + `keyring:` URIs. Reserve `pkcs11:` / `fido2:` / `tpm:` / `vault:` / `op:` / `env:` schemes in the doc; validator stays deny-by-default.
+2. **Hivemind bundle `signature_algorithm`** — publish the recognized-values registry (`ed25519`, `ed25519-pgp`, `webauthn`, `pkcs7`, etc.) so 1.2 P2P verifiers share a vocabulary. Reserve `signer_identity: str | None` field on the manifest (10 LOC) so 1.1+ can bind verified identity to `contributor_id` without retrofitting.
+3. **`mesh.yml::cluster_key` shape** — add three reserved-null sibling fields (`cluster_keys: list[str] | None` for rotation, `cluster_trust_anchors: list[str] | None` for asymmetric mesh auth, `cluster_auth_mode: str | None`). Parser already tolerates absent fields per the frozen dialect.
+4. **Leader proxy `Authorization:` scheme dispatch** — ~20 LOC refactor to parse the scheme before the credential, return 401 on unknown schemes rather than treating as malformed Bearer. Reserves the dispatch table for future `Signature` / `HSM-Sig` / mTLS variants.
+
+**Why parallel to benchmarking is the right timing:** all four are doc + freeze-shape additions with `None` defaults, no behavior change at 1.0. The benchmarking track measures behavior under load — this track touches none of that surface. Genuinely independent work.
+
+**Pre-merge review:** two-lens (Executor + Architecture) — freeze-decisions are exactly the case where pre-merge review pays off. Specifically watch for boxed-out future schemes, name conflicts with existing Hivemind identifiers, and reserved namespace scope.
+
+**Wall:** 0.5–1 day implementation + 0.5 day review. Owner unassigned; can fold into any natural slot during the Phase 3 benchmarking window.
+
 ---
 
 ## Section 8: 1.1 track (concurrent development, not 1.0 gating)
