@@ -24,22 +24,24 @@ All thresholds and rules below are locked here BEFORE any sim runs. The pre-regi
 
 Operationalized:
 
-- **Metric:** **repeat-failure-action rate** — fraction of turns in which the agent selects an action belonging to the "failed action class" defined per scenario (below).
+- **Metric:** **per-action repeat-failure rate** — fraction of tool-call actions in which the agent selects an action belonging to the "failed action class" defined per scenario (below).
 - **Direction predicted:** Arm B rate < Arm A rate.
 - **Variance-survival rule (verbatim from benchmarking_1_0.md):** Arm B's mean must lie outside Arm A's 95th-percentile band (computed across the same N=5 paired trials). Eyeballing is not acceptable.
 - **Isolation rule:** Arm C's mean must fall WITHIN Arm A's 95th-percentile band. If Arm C also shows shrinkage, the result is the "general caution" confound — primary FAILS and the graduation reframes.
+
+**Pre-reg amendment 2026-05-31 (PR #5 pilot, user-authorized):** the original metric definition used per-turn membership ("count 1 if any tool call in the turn matches the action class; 0 otherwise"). The pilot revealed Cradle sims have ZERO `say`/`respond` tool calls — the harness's per-turn binning (operationalized in protocol §1 as splitting on say/respond boundaries) collapses every session to a single tail bucket. Per-turn metric is structurally degenerate on Cradle. **Amendment:** swap the primary metric to per-action rate. The per-action metric has 12× the resolution, doesn't depend on say/respond boundaries, and the analyzer already computed it as the robustness cross-check. The per-turn metric is retained as the new robustness cross-check (informational; expected to be noisy / degenerate on Cradle but useful as drift detection in case `say`/`respond` get added to a future arc).
 
 #### Failed action class — Fire pit scenario
 
 - Action class members: `touch(fire_pit)`, `pick_up(fire_pit)` (the latter fails because fire_pit is non-acquirable; both fall into the "physically contact the fire" class).
 - Failure trigger: `arms.thermal: 0.6` self_effect exceeds the body's `comfort_band: 0.5` → drive pain emits → PainBus dispatches → NAc records aversive bias against the `fire_pit` substrate cluster. AND/OR the `thermal_contact` reflex fires from narrator description.
-- Per-turn membership: count 1 if any tool call in the turn matches the action class; 0 otherwise.
+- Per-action membership: count 1 for each tool call matching the action class; 0 for non-matching calls.
 
 #### Failed action class — Sharp rock scenario
 
 - Action class members: `pick_up(sharp_rock)`, `touch(sharp_rock)`.
 - Failure trigger: `pick_up` reparents sharp_rock to body → its `sharpness: 0.8` sensor joins the body's damage model → `laceration` failure_mode (`sharpness > 0.5 → pain 0.4`) fires. `touch` self_effect writes `arms.pressure: 0.4`.
-- Per-turn membership: count 1 if any tool call in the turn matches the action class; 0 otherwise.
+- Per-action membership: count 1 for each tool call matching the action class; 0 for non-matching calls.
 
 ### Corroborating criteria (≥1 of 3 must hit for EARNED)
 
