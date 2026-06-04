@@ -1365,3 +1365,439 @@ class TestKeepaliveEmitter:
         t.join(timeout=1.0)
 
         assert acquired, "emitter must not hold the lock during its sleep"
+
+
+# ── Context-overflow admission (llm_timeout_scalability.md follow-up) ─────
+
+
+class TestContextOverheadResolver:
+    """Test _resolve_context_overhead_tokens parsing + clamping."""
+
+    def test_default_when_unset(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_CONTEXT_OVERHEAD_DEFAULT,
+            _resolve_context_overhead_tokens,
+        )
+
+        monkeypatch.delenv("MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS", raising=False)
+        assert _resolve_context_overhead_tokens() == _PROXY_CONTEXT_OVERHEAD_DEFAULT
+
+    def test_default_when_empty(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_CONTEXT_OVERHEAD_DEFAULT,
+            _resolve_context_overhead_tokens,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS", "")
+        assert _resolve_context_overhead_tokens() == _PROXY_CONTEXT_OVERHEAD_DEFAULT
+
+    def test_default_when_malformed(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_CONTEXT_OVERHEAD_DEFAULT,
+            _resolve_context_overhead_tokens,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS", "not-a-number")
+        assert _resolve_context_overhead_tokens() == _PROXY_CONTEXT_OVERHEAD_DEFAULT
+
+    def test_valid_value_passes_through(self, monkeypatch):
+        from maxim.runtime.leader_proxy import _resolve_context_overhead_tokens
+
+        monkeypatch.setenv("MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS", "512")
+        assert _resolve_context_overhead_tokens() == 512
+
+    def test_clamps_below_min(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_CONTEXT_OVERHEAD_MIN,
+            _resolve_context_overhead_tokens,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS", "-100")
+        assert _resolve_context_overhead_tokens() == _PROXY_CONTEXT_OVERHEAD_MIN
+
+    def test_clamps_above_max(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _PROXY_CONTEXT_OVERHEAD_MAX,
+            _resolve_context_overhead_tokens,
+        )
+
+        monkeypatch.setenv("MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS", "99999")
+        assert _resolve_context_overhead_tokens() == _PROXY_CONTEXT_OVERHEAD_MAX
+
+
+class TestAdmissionEnableGate:
+    """Test _is_admission_enabled parser."""
+
+    def test_default_enabled(self, monkeypatch):
+        from maxim.runtime.leader_proxy import _is_admission_enabled
+
+        monkeypatch.delenv("MAXIM_PROXY_CONTEXT_ADMISSION", raising=False)
+        assert _is_admission_enabled()
+
+    @pytest.mark.parametrize("value", ["0", "false", "no", "off", "False", "OFF", "  off  ", ""])
+    def test_disabling_values(self, monkeypatch, value):
+        from maxim.runtime.leader_proxy import _is_admission_enabled
+
+        monkeypatch.setenv("MAXIM_PROXY_CONTEXT_ADMISSION", value)
+        assert not _is_admission_enabled()
+
+    @pytest.mark.parametrize("value", ["1", "true", "yes", "on", "anything-else"])
+    def test_enabling_values(self, monkeypatch, value):
+        from maxim.runtime.leader_proxy import _is_admission_enabled
+
+        monkeypatch.setenv("MAXIM_PROXY_CONTEXT_ADMISSION", value)
+        assert _is_admission_enabled()
+
+
+class TestInputTokenEstimator:
+    """Test _estimate_inference_input_tokens across body shapes."""
+
+    def test_empty_body(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        assert _estimate_inference_input_tokens(b"") == (0, 0)
+
+    def test_malformed_json(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        assert _estimate_inference_input_tokens(b"{not json") == (0, 0)
+
+    def test_non_dict_root(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        assert _estimate_inference_input_tokens(b'["list"]') == (0, 0)
+
+    def test_chat_completion_string_content(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        body = json.dumps(
+            {
+                "messages": [
+                    {"role": "system", "content": "You are helpful."},
+                    {"role": "user", "content": "Hello world"},
+                ]
+            }
+        ).encode()
+        tokens, max_t = _estimate_inference_input_tokens(body)
+        # 16 chars + 11 chars + 32 chars (2 × 16 role overhead) = 59 chars / 3.5 ≈ 16
+        assert 10 <= tokens <= 25
+        assert max_t == 0
+
+    def test_chat_completion_with_max_tokens(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        body = json.dumps({"messages": [{"role": "user", "content": "hi"}], "max_tokens": 100}).encode()
+        _, max_t = _estimate_inference_input_tokens(body)
+        assert max_t == 100
+
+    def test_chat_completion_negative_max_tokens_clamps_to_zero(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        body = json.dumps({"messages": [{"role": "user", "content": "hi"}], "max_tokens": -50}).encode()
+        _, max_t = _estimate_inference_input_tokens(body)
+        assert max_t == 0
+
+    def test_chat_completion_multipart_content(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        body = json.dumps(
+            {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Describe this image"},
+                            {"type": "image_url", "image_url": "data:..."},
+                        ],
+                    }
+                ]
+            }
+        ).encode()
+        tokens, _ = _estimate_inference_input_tokens(body)
+        # "Describe this image" = 19 chars + 16 role overhead = 35 chars / 3.5 = 10
+        # image_url ignored (no text field) — that's by design
+        assert tokens > 0
+
+    def test_legacy_completions_prompt_string(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        body = json.dumps({"prompt": "Once upon a time", "max_tokens": 50}).encode()
+        tokens, max_t = _estimate_inference_input_tokens(body)
+        # 16 chars / 3.5 ≈ 4. Don't lock the exact value; just confirm > 0.
+        assert tokens > 0
+        assert max_t == 50
+
+    def test_legacy_completions_prompt_list(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        body = json.dumps({"prompt": ["first chunk", "second chunk"]}).encode()
+        tokens, _ = _estimate_inference_input_tokens(body)
+        assert tokens > 0
+
+    def test_large_prompt_scales(self):
+        from maxim.runtime.leader_proxy import _estimate_inference_input_tokens
+
+        # 1000-char message → ~286 tokens at ratio 3.5
+        big = "x" * 1000
+        body = json.dumps({"messages": [{"role": "user", "content": big}]}).encode()
+        tokens, _ = _estimate_inference_input_tokens(body)
+        assert 280 <= tokens <= 295
+
+
+class TestAdmissionCheck:
+    """Test _check_context_admission decision logic."""
+
+    def test_within_budget_admits(self):
+        from maxim.runtime.leader_proxy import _check_context_admission
+
+        body = json.dumps({"messages": [{"role": "user", "content": "hi"}], "max_tokens": 100}).encode()
+        # Tiny prompt + 100 + 256 overhead << 8192 ctx → admit
+        assert _check_context_admission(body, n_ctx=8192, overhead=256) is None
+
+    def test_unparseable_passes_through(self):
+        from maxim.runtime.leader_proxy import _check_context_admission
+
+        # Don't false-reject on malformed bodies — let upstream return
+        # a cleaner 400 from its own parser.
+        assert _check_context_admission(b"{malformed", n_ctx=100, overhead=10) is None
+
+    def test_rejects_oversize_prompt(self):
+        from maxim.runtime.leader_proxy import _check_context_admission
+
+        # 1000-char message → ~286 tokens. n_ctx=300 → reject.
+        body = json.dumps({"messages": [{"role": "user", "content": "x" * 1000}]}).encode()
+        result = _check_context_admission(body, n_ctx=300, overhead=10)
+        assert result is not None
+        err = result["error"]
+        assert err["code"] == "context_overflow"
+        assert err["type"] == "invalid_request_error"
+        assert err["context_window"] == 300
+        assert err["safety_overhead_tokens"] == 10
+        assert err["estimated_prompt_tokens"] > 280
+        # max_tokens unset → applies _PROXY_DEFAULT_MAX_TOKENS fallback.
+        # Don't hard-code the literal here; reference the constant so a
+        # future tune doesn't drift this test out of sync.
+        from maxim.runtime.leader_proxy import _PROXY_DEFAULT_MAX_TOKENS
+
+        assert err["max_tokens"] == _PROXY_DEFAULT_MAX_TOKENS
+        # Total > n_ctx is the rejection condition; message names the math
+        assert "exceeds the model's context window" in err["message"]
+
+    def test_rejects_when_max_tokens_pushes_over(self):
+        from maxim.runtime.leader_proxy import _check_context_admission
+
+        # Small prompt but huge max_tokens
+        body = json.dumps({"messages": [{"role": "user", "content": "hi"}], "max_tokens": 10000}).encode()
+        result = _check_context_admission(body, n_ctx=8192, overhead=256)
+        assert result is not None
+        assert result["error"]["max_tokens"] == 10000
+
+    def test_error_envelope_is_openai_compatible(self):
+        """Agent-side error handlers key on error.code / error.type — pin
+        the envelope so changes that drop those fields fail loudly."""
+        from maxim.runtime.leader_proxy import _check_context_admission
+
+        body = json.dumps({"messages": [{"role": "user", "content": "x" * 10000}]}).encode()
+        result = _check_context_admission(body, n_ctx=100, overhead=10)
+        assert result is not None
+        assert "error" in result
+        assert set(result["error"].keys()) >= {"code", "type", "message"}
+
+
+class TestContextWindowResolver:
+    """Test _get_proxy_context_window resolution + caching + reset."""
+
+    def test_resolves_from_env(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _get_proxy_context_window,
+            _reset_proxy_context_window_cache_for_test,
+        )
+
+        _reset_proxy_context_window_cache_for_test()
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        assert _get_proxy_context_window() == 8192
+
+    def test_none_when_unset(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _get_proxy_context_window,
+            _reset_proxy_context_window_cache_for_test,
+        )
+
+        _reset_proxy_context_window_cache_for_test()
+        monkeypatch.delenv("MAXIM_LLM_N_CTX", raising=False)
+        assert _get_proxy_context_window() is None
+
+    def test_cache_blocks_repeat_resolution(self, monkeypatch):
+        """Once resolved (or known-None), the cache returns the same
+        answer without re-walking the loader. This matters because
+        ``resolve_setting`` reads env on every call — if the cache
+        were broken, an env change mid-process would silently flip
+        the admission gate."""
+        from maxim.runtime.leader_proxy import (
+            _get_proxy_context_window,
+            _reset_proxy_context_window_cache_for_test,
+        )
+
+        _reset_proxy_context_window_cache_for_test()
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "4096")
+        first = _get_proxy_context_window()
+        # Change env without resetting cache
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        second = _get_proxy_context_window()
+        assert first == second == 4096
+
+    def test_reset_clears_cache(self, monkeypatch):
+        from maxim.runtime.leader_proxy import (
+            _get_proxy_context_window,
+            _reset_proxy_context_window_cache_for_test,
+        )
+
+        _reset_proxy_context_window_cache_for_test()
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "4096")
+        assert _get_proxy_context_window() == 4096
+        _reset_proxy_context_window_cache_for_test()
+        monkeypatch.setenv("MAXIM_LLM_N_CTX", "8192")
+        assert _get_proxy_context_window() == 8192
+
+
+class TestLaneTimeoutFieldFlow:
+    """Test that LaneTierConfig.timeout_s flows through to the backend
+    provider config via apply_lane_env_overrides."""
+
+    def test_env_var_populates_remote_timeout_s(self, monkeypatch):
+        from maxim.runtime.lane_models import apply_lane_env_overrides
+        from maxim.runtime.worker_pool import LaneConfig
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_TIMEOUT_S", "600")
+        lanes = {"large": LaneConfig(name="large", max_workers=1)}
+        updated = apply_lane_env_overrides(lanes)
+        assert updated["large"].remote_timeout_s == 600.0
+
+    def test_missing_env_leaves_default_none(self, monkeypatch):
+        from maxim.runtime.lane_models import apply_lane_env_overrides
+        from maxim.runtime.worker_pool import LaneConfig
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100")
+        monkeypatch.delenv("MAXIM_LANE_LARGE_TIMEOUT_S", raising=False)
+        lanes = {"large": LaneConfig(name="large", max_workers=1)}
+        updated = apply_lane_env_overrides(lanes)
+        assert updated["large"].remote_timeout_s is None
+
+    def test_zero_env_treated_as_unset(self, monkeypatch):
+        """Strictly-positive constraint applies at the env-passthrough
+        layer too — zero or negative is silently ignored (the loader
+        side raises ConfigurationError; this is the bypass-the-loader
+        defensive path)."""
+        from maxim.runtime.lane_models import apply_lane_env_overrides
+        from maxim.runtime.worker_pool import LaneConfig
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_TIMEOUT_S", "0")
+        lanes = {"large": LaneConfig(name="large", max_workers=1)}
+        updated = apply_lane_env_overrides(lanes)
+        assert updated["large"].remote_timeout_s is None
+
+    def test_malformed_env_treated_as_unset(self, monkeypatch):
+        from maxim.runtime.lane_models import apply_lane_env_overrides
+        from maxim.runtime.worker_pool import LaneConfig
+
+        monkeypatch.setenv("MAXIM_LANE_LARGE_REMOTE_URL", "http://127.0.0.1:8100")
+        monkeypatch.setenv("MAXIM_LANE_LARGE_TIMEOUT_S", "not-a-number")
+        lanes = {"large": LaneConfig(name="large", max_workers=1)}
+        updated = apply_lane_env_overrides(lanes)
+        assert updated["large"].remote_timeout_s is None
+
+
+class TestBackendsAlwaysSendMaxTokens:
+    """Pin that both backends always populate ``max_tokens`` in the
+    outgoing HTTP request.
+
+    This makes the proxy admission gate's ``_PROXY_DEFAULT_MAX_TOKENS``
+    fallback **structurally unreachable** for Maxim-internal traffic —
+    when that fallback fires, it's signal that an external client
+    (curl probe, raw API script) made the call, not a Maxim agent.
+
+    The invariant has two halves: the method signature requires
+    ``max_tokens`` as a keyword-only argument (no default), AND the
+    payload construction always includes the field. Both backends
+    follow this contract. A silent regression here (e.g., someone
+    adds ``max_tokens: int = 0`` as a default) would let the gate's
+    fallback start firing on real agent traffic — degraded admission
+    accuracy without a loud failure.
+    """
+
+    def test_maxim_peer_backend_build_payload_includes_max_tokens(self):
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        # Construct minimally without firing __init__ — we only need
+        # the bound method on the class for payload construction.
+        backend = object.__new__(_MaximPeerBackend)
+        payload = backend._build_payload(
+            system="sys",
+            user="usr",
+            max_tokens=512,
+            temperature=0.7,
+            stop=(),
+            model="test-model",
+            tools=None,
+            thinking=None,
+        )
+        assert "max_tokens" in payload
+        assert payload["max_tokens"] == 512
+        # Verify the type coercion happens (defensive against bool sneaking
+        # through — bool is technically int in Python)
+        assert isinstance(payload["max_tokens"], int)
+
+    def test_maxim_peer_backend_complete_with_usage_max_tokens_required(self):
+        """Removing the ``max_tokens`` requirement on the signature
+        would let callers silently elide the field — the proxy gate
+        would then apply ``_PROXY_DEFAULT_MAX_TOKENS`` (2048) which
+        may not match what the agent actually wants."""
+        import inspect
+
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        sig = inspect.signature(_MaximPeerBackend.complete_with_usage)
+        assert "max_tokens" in sig.parameters, "_MaximPeerBackend.complete_with_usage must accept max_tokens"
+        param = sig.parameters["max_tokens"]
+        assert param.default is inspect.Parameter.empty, (
+            "max_tokens must be required (no default) — see TestBackendsAlwaysSendMaxTokens docstring"
+        )
+        assert param.kind == inspect.Parameter.KEYWORD_ONLY, (
+            "max_tokens must be keyword-only — positional would risk silent miscount on signature changes"
+        )
+
+    def test_maxim_peer_backend_complete_max_tokens_required(self):
+        """Same contract on the legacy ``complete`` method."""
+        import inspect
+
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        sig = inspect.signature(_MaximPeerBackend.complete)
+        param = sig.parameters["max_tokens"]
+        assert param.default is inspect.Parameter.empty
+        assert param.kind == inspect.Parameter.KEYWORD_ONLY
+
+    def test_openai_backend_complete_with_usage_max_tokens_required(self):
+        """Same contract on the cloud-backend path. ``_OpenAIBackend``
+        passes ``max_tokens`` straight through to the OpenAI SDK
+        client; the gate's fallback must not be load-bearing here either."""
+        import inspect
+
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        sig = inspect.signature(_OpenAIBackend.complete_with_usage)
+        param = sig.parameters["max_tokens"]
+        assert param.default is inspect.Parameter.empty
+        assert param.kind == inspect.Parameter.KEYWORD_ONLY
+
+    def test_openai_backend_complete_max_tokens_required(self):
+        import inspect
+
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        sig = inspect.signature(_OpenAIBackend.complete)
+        param = sig.parameters["max_tokens"]
+        assert param.default is inspect.Parameter.empty
+        assert param.kind == inspect.Parameter.KEYWORD_ONLY

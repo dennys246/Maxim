@@ -96,7 +96,9 @@ class LLMConfigSection:
     auto_download: bool = False
 
 
-_LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset({"remote_url", "remote_model", "remote_api_key_ref"})
+_LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset(
+    {"remote_url", "remote_model", "remote_api_key_ref", "timeout_s"}
+)
 
 
 @dataclass(frozen=True)
@@ -129,6 +131,15 @@ class LaneTierConfig:
     remote_url: str | None = None
     remote_model: str | None = None
     remote_api_key_ref: str | None = None
+    # llm_timeout_scalability.md Stage 2: per-tier read timeout for the
+    # inference HTTP call. ``None`` → backend default
+    # (``_MaximPeerBackend`` 300s, ``_OpenAIBackend`` 60s). Set explicitly
+    # for large self-hosted lanes running 30B+ models where defaults
+    # under-provision the wait window (qwen2.5-32b on Mac Mini can hit
+    # 150s+ TTFT on growing-context prompts). Resolved through the
+    # standard CLI > env > config.json > default precedence chain via
+    # ``resolve_setting('lanes.<tier>.timeout_s', ...)``.
+    timeout_s: float | None = None
     extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -140,6 +151,16 @@ class LaneTierConfig:
                 f"forward-growth additive metadata only — declared fields "
                 f"go in their own slots."
             )
+        if self.timeout_s is not None:
+            if not isinstance(self.timeout_s, (int, float)):
+                raise ConfigurationError(
+                    f"LaneTierConfig.timeout_s must be a number, got "
+                    f"{type(self.timeout_s).__name__}: {self.timeout_s!r}"
+                )
+            if self.timeout_s <= 0:
+                raise ConfigurationError(
+                    f"LaneTierConfig.timeout_s must be positive, got {self.timeout_s}. Use None for backend default."
+                )
 
 
 @dataclass(frozen=True)
@@ -249,12 +270,15 @@ _FIELD_TO_ENV: dict[str, str] = {
     "lanes.large.remote_url": "MAXIM_LANE_LARGE_REMOTE_URL",
     "lanes.large.remote_model": "MAXIM_LANE_LARGE_REMOTE_MODEL",
     "lanes.large.remote_api_key_ref": "MAXIM_LANE_LARGE_REMOTE_API_KEY",
+    "lanes.large.timeout_s": "MAXIM_LANE_LARGE_TIMEOUT_S",
     "lanes.medium.remote_url": "MAXIM_LANE_MEDIUM_REMOTE_URL",
     "lanes.medium.remote_model": "MAXIM_LANE_MEDIUM_REMOTE_MODEL",
     "lanes.medium.remote_api_key_ref": "MAXIM_LANE_MEDIUM_REMOTE_API_KEY",
+    "lanes.medium.timeout_s": "MAXIM_LANE_MEDIUM_TIMEOUT_S",
     "lanes.small.remote_url": "MAXIM_LANE_SMALL_REMOTE_URL",
     "lanes.small.remote_model": "MAXIM_LANE_SMALL_REMOTE_MODEL",
     "lanes.small.remote_api_key_ref": "MAXIM_LANE_SMALL_REMOTE_API_KEY",
+    "lanes.small.timeout_s": "MAXIM_LANE_SMALL_TIMEOUT_S",
     "cloud.enabled": "MAXIM_LLM_CLOUD_ENABLED",
     "cloud.max_lanes": "MAXIM_MAX_CLOUD_LANES",
     "cloud.fallback_model": "MAXIM_CLOUD_FALLBACK_MODEL",
@@ -469,6 +493,15 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         return _coerce_float(raw, field_path, min_val=0.0)
     if field_path == "data.budget_gb":
         return _coerce_float(raw, field_path, min_val=0.0)
+    if field_path.startswith("lanes.") and field_path.endswith(".timeout_s"):
+        # llm_timeout_scalability.md Stage 2: strictly positive (matches
+        # LaneTierConfig.__post_init__ validation). Zero or negative
+        # would mean "give up immediately," which is never useful and
+        # would brick the lane.
+        value = _coerce_float(raw, field_path, min_val=0.0)
+        if value <= 0.0:
+            raise ConfigurationError(f"config: {field_path}: must be positive, got {value}")
+        return value
     # Enum fields
     if field_path == "role":
         return _coerce_role(raw, field_path)
@@ -791,12 +824,13 @@ def _parse_lane_tier(
     if not isinstance(section, dict):
         raise ConfigurationError(f"config.json: {path} must be a mapping, got {type(section).__name__}")
 
-    declared = {"remote_url", "remote_model", "remote_api_key_ref"}
+    declared = {"remote_url", "remote_model", "remote_api_key_ref", "timeout_s"}
     extra: dict[str, Any] = {k: v for k, v in section.items() if k not in declared}
 
     remote_url = section.get("remote_url")
     remote_model = section.get("remote_model")
     remote_api_key_ref = section.get("remote_api_key_ref")
+    timeout_s = section.get("timeout_s")
 
     for fname, fval in (
         ("remote_url", remote_url),
@@ -806,6 +840,20 @@ def _parse_lane_tier(
         if fval is not None and not isinstance(fval, str):
             raise ConfigurationError(f"config.json: {path}.{fname} must be a string or null, got {type(fval).__name__}")
 
+    if timeout_s is not None:
+        if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)):
+            raise ConfigurationError(
+                f"config.json: {path}.timeout_s must be a number or null, got {type(timeout_s).__name__}"
+            )
+        # LaneTierConfig.__post_init__ rejects ≤ 0; surface here at parse
+        # time with a clearer JSON-context message before construction.
+        if timeout_s <= 0:
+            raise ConfigurationError(
+                f"config.json: {path}.timeout_s must be positive, got {timeout_s}. "
+                f"Use null (or omit) for the backend default."
+            )
+        timeout_s = float(timeout_s)
+
     if isinstance(remote_api_key_ref, str):
         remote_api_key_ref = _validate_api_key_ref(remote_api_key_ref, f"{path}.remote_api_key_ref")
 
@@ -813,6 +861,7 @@ def _parse_lane_tier(
         remote_url=remote_url,
         remote_model=remote_model,
         remote_api_key_ref=remote_api_key_ref,
+        timeout_s=timeout_s,
         extra=extra,
     )
 

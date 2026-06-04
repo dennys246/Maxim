@@ -400,7 +400,84 @@ def check_resolved_config() -> list["CheckResult"]:
     results.extend(_check_lane_api_key_refs_health(cfg))
     results.extend(_check_peer_yml_deprecation())
 
+    # llm_timeout_scalability.md follow-up: surface the proxy
+    # context-overflow admission gate state so operators see at-a-glance
+    # whether oversize prompts will be rejected cleanly (413) or quietly
+    # hang the upstream model. ON when llm.n_ctx is resolvable AND
+    # MAXIM_PROXY_CONTEXT_ADMISSION isn't set to a disable value.
+    results.extend(_check_proxy_context_admission())
+
     return results
+
+
+def _check_proxy_context_admission() -> list["CheckResult"]:
+    """Surface the proxy context-overflow admission gate's effective state.
+
+    Returns one ``CheckResult`` row showing whether the gate is enabled
+    (with the active context window + overhead) or disabled (with the
+    reason: missing ``llm.n_ctx`` vs explicit operator opt-out).
+
+    The row is intentionally ``info`` (not ``warn``) in both states —
+    enabled is the recommended path but disabled is a legitimate choice
+    for operators running a model where the proxy can't determine n_ctx
+    (custom servers, etc.). The startup WARNING in
+    ``leader_proxy._get_proxy_context_window`` is the louder signal.
+    """
+    import os as _os
+
+    from maxim.runtime.leader_proxy import (
+        _PROXY_CHAR_TO_TOKEN_RATIO,
+        _is_admission_enabled,
+        _resolve_context_overhead_tokens,
+        _resolve_proxy_context_window,
+    )
+
+    if not _is_admission_enabled():
+        return [
+            CheckResult(
+                name="proxy.context_admission",
+                status="warn",
+                message="disabled  [source=MAXIM_PROXY_CONTEXT_ADMISSION]",
+                fix=(
+                    "Oversize prompts will hang the upstream model with no "
+                    "actionable error. Remove the opt-out to re-enable:\n"
+                    "  unset MAXIM_PROXY_CONTEXT_ADMISSION"
+                ),
+            )
+        ]
+
+    n_ctx = _resolve_proxy_context_window()
+    if n_ctx is None:
+        return [
+            CheckResult(
+                name="proxy.context_admission",
+                status="warn",
+                message="disabled  [reason=llm.n_ctx not configured]",
+                fix=(
+                    "Oversize prompts will hang the upstream model with no "
+                    "actionable error. Set llm.n_ctx to the upstream's actual "
+                    "runtime context window:\n"
+                    "  maxim config set llm.n_ctx 8192\n"
+                    "Or via env:\n"
+                    "  export MAXIM_LLM_N_CTX=8192"
+                ),
+            )
+        ]
+
+    overhead = _resolve_context_overhead_tokens()
+    overhead_env = _os.environ.get("MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS")
+    overhead_src = "env" if overhead_env and overhead_env.strip() else "default"
+    return [
+        CheckResult(
+            name="proxy.context_admission",
+            status="ok",
+            message=(
+                f"enabled  [context_window={n_ctx}, "
+                f"overhead={overhead} tokens (source={overhead_src}), "
+                f"char_to_token_ratio={_PROXY_CHAR_TO_TOKEN_RATIO}]"
+            ),
+        )
+    ]
 
 
 def _format_doctor_value(value: object) -> str:

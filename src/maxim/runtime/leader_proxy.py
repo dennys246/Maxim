@@ -266,6 +266,270 @@ def _is_event_stream_response(response_headers: dict[str, str]) -> bool:
     return False
 
 
+# ─── Proxy context-overflow admission (llm_timeout_scalability.md F/U) ──
+#
+# The heavy stress test on 2026-06-03 (Stage 3 validation) surfaced a
+# second failure class: prompts larger than the upstream model's context
+# window cause llama-cpp-server to silently abort generation, producing a
+# stream that limps along with keepalives until the upstream gives up.
+# The agent gets no actionable error.
+#
+# The fix is admission control at the proxy. Before forwarding an
+# inference request, we estimate prompt tokens from the request body and
+# compare against the configured context window. Oversize requests get a
+# clean HTTP 413 with a typed error carrying the numbers the operator
+# needs to debug.
+#
+# Token counting is char-based (no new dep, no extra HTTP call). English
+# averages ~4 chars/token; we use 3.5 to slightly overestimate tokens
+# (defensive). For Qwen / Llama tokenizers on code or markdown, the ratio
+# can drop to ~3.0 — the overhead margin (default 256 tokens) covers the
+# slop. Operators on tight budgets can tune both knobs.
+_PROXY_CONTEXT_OVERHEAD_DEFAULT = 256
+_PROXY_CONTEXT_OVERHEAD_MIN = 0
+_PROXY_CONTEXT_OVERHEAD_MAX = 4096
+_PROXY_CHAR_TO_TOKEN_RATIO = 3.5
+# Fallback for the admission gate when an incoming request omits
+# ``max_tokens``. Calibrated to match the upper bound of typical
+# ``LLMMode.max_response_tokens`` values in src/maxim/utils/prompts.py
+# (2048 — the autonomous-mode ceiling) so the gate stays conservative
+# for non-PromptBuilder clients (curl probes, external API scripts).
+# Maxim-internal traffic always sends explicit ``max_tokens`` — it's a
+# required keyword parameter on every backend's ``complete*`` method —
+# so this fallback is structurally unreachable for normal agent calls.
+# Pinned by ``TestBackendsAlwaysSendMaxTokens`` in test_leader_proxy.py.
+_PROXY_DEFAULT_MAX_TOKENS = 2048
+
+# Endpoints subject to admission. Other ``/v1/*`` paths (e.g. ``/v1/models``,
+# ``/v1/embeddings``) pass through unchecked — admission only applies to
+# generation calls where context-window violations are a real failure mode.
+_PROXY_INFERENCE_PATHS: frozenset[str] = frozenset({"/v1/chat/completions", "/v1/completions"})
+
+
+def _resolve_context_overhead_tokens() -> int:
+    """Parse ``MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS`` with bounds."""
+    raw = os.environ.get("MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS")
+    if raw is None or raw.strip() == "":
+        return _PROXY_CONTEXT_OVERHEAD_DEFAULT
+    try:
+        value = int(raw)
+    except (ValueError, TypeError):
+        return _PROXY_CONTEXT_OVERHEAD_DEFAULT
+    return max(_PROXY_CONTEXT_OVERHEAD_MIN, min(_PROXY_CONTEXT_OVERHEAD_MAX, value))
+
+
+def _is_admission_enabled() -> bool:
+    """Operator opt-out via ``MAXIM_PROXY_CONTEXT_ADMISSION``.
+
+    Default ON when ``MAXIM_LLM_N_CTX`` is resolvable, OFF otherwise (the
+    proxy emits a one-time startup WARNING when it can't determine the
+    context window, then passes through). Setting the var to ``0`` /
+    ``false`` / ``no`` / ``off`` forces OFF even if n_ctx is known.
+    """
+    raw = os.environ.get("MAXIM_PROXY_CONTEXT_ADMISSION")
+    if raw is None:
+        return True
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _resolve_proxy_context_window() -> int | None:
+    """Resolve the upstream model's runtime context window.
+
+    Reads through the standard ``resolve_setting`` precedence chain
+    (CLI > env > config.json > default). ``MAXIM_LLM_N_CTX`` is what
+    the leader sets when launching llama-cpp-server, so it's the
+    authoritative runtime value (vs llama-cpp's ``/v1/models`` which
+    reports the *model's* training context, not the runtime ``-c`` arg).
+
+    Returns ``None`` if no value is configured anywhere — the caller
+    should treat this as "skip admission, log a warning, pass through".
+    """
+    try:
+        from maxim.runtime.config_loader import load_config, resolve_setting
+
+        cfg = load_config()
+        value, source = resolve_setting("llm.n_ctx", config=cfg)
+        if value is not None and source != "default":
+            return int(value)
+    except Exception:
+        return None
+    return None
+
+
+def _estimate_inference_input_tokens(body: bytes) -> tuple[int, int]:
+    """Estimate prompt tokens + read ``max_tokens`` from a request body.
+
+    Handles both ``/v1/chat/completions`` (messages list with role/content
+    objects, content may be a string OR a multipart list) and the legacy
+    ``/v1/completions`` shape (single ``prompt`` string or list of strings).
+
+    Returns ``(estimated_prompt_tokens, max_tokens)``. Either may be 0
+    if the body is malformed or the field is missing — the caller
+    decides whether to (a) pass through on a 0 (let upstream handle the
+    malformed body) or (b) apply a default ``max_tokens`` for admission
+    arithmetic.
+
+    The +16 chars per message is the per-role JSON+template overhead
+    (e.g. ``<|im_start|>user\\n...<|im_end|>``) — chat templates eat
+    roughly 8-12 tokens per turn beyond the raw content; 16 chars ≈ 4-5
+    tokens at our ratio, defensively rounded up.
+    """
+    try:
+        data = json.loads(body)
+    except (ValueError, TypeError):
+        return 0, 0
+    if not isinstance(data, dict):
+        return 0, 0
+
+    char_count = 0
+    messages = data.get("messages")
+    if isinstance(messages, list):
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content")
+            if isinstance(content, str):
+                char_count += len(content)
+            elif isinstance(content, list):
+                # Multipart content (vision / mixed media). Sum the
+                # text parts only — image / audio parts contribute
+                # different token costs that this estimator doesn't
+                # try to model. The admission gate is a safety net,
+                # not a precise predictor.
+                for part in content:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        char_count += len(part["text"])
+            char_count += 16  # role + chat-template scaffolding overhead
+
+    # Legacy /v1/completions: "prompt" may be string or list-of-strings.
+    prompt = data.get("prompt")
+    if isinstance(prompt, str):
+        char_count += len(prompt)
+    elif isinstance(prompt, list):
+        for p in prompt:
+            if isinstance(p, str):
+                char_count += len(p)
+
+    estimated_tokens = int(char_count / _PROXY_CHAR_TO_TOKEN_RATIO)
+    raw_max = data.get("max_tokens")
+    if raw_max is None:
+        max_tokens = 0
+    else:
+        try:
+            max_tokens = max(0, int(raw_max))
+        except (ValueError, TypeError):
+            max_tokens = 0
+    return estimated_tokens, max_tokens
+
+
+# Cached resolution of the upstream context window. ``MAXIM_LLM_N_CTX``
+# doesn't change at runtime (the leader sets it when launching
+# llama-cpp-server), so we resolve once and cache. Tests reset via
+# ``_reset_proxy_context_window_cache_for_test``.
+#
+# State shape: ``(resolved: bool, value: int | None)`` — the explicit
+# ``resolved`` flag distinguishes "haven't checked yet" from "checked,
+# nothing configured" so we don't re-walk the loader on every request
+# in the disabled-by-config case.
+_proxy_context_window_state: tuple[bool, int | None] = (False, None)
+_proxy_context_window_lock = threading.Lock()
+
+
+def _get_proxy_context_window() -> int | None:
+    """Thread-safe cached resolution of the upstream context window.
+
+    Returns the resolved value (int) or ``None`` if no value is
+    configured anywhere. On the first None resolution, logs a WARNING
+    that admission is disabled; on the first resolved value, logs an
+    INFO with the active window + overhead so operators see the gate
+    is on. The double-checked locking pattern is safe here because the
+    state tuple is replaced atomically (Python tuple assignment is
+    atomic; the lock only prevents redundant loader walks).
+    """
+    global _proxy_context_window_state
+    resolved, value = _proxy_context_window_state
+    if resolved:
+        return value
+    with _proxy_context_window_lock:
+        resolved, value = _proxy_context_window_state
+        if resolved:
+            return value
+        value = _resolve_proxy_context_window()
+        _proxy_context_window_state = (True, value)
+        if value is None:
+            logger.warning(
+                "Proxy context-overflow admission disabled: MAXIM_LLM_N_CTX "
+                "is not configured (env or config.json::llm.n_ctx). "
+                "Set MAXIM_LLM_N_CTX explicitly to enable the gate; "
+                "oversize prompts may otherwise hang the upstream model. "
+                "Set MAXIM_PROXY_CONTEXT_ADMISSION=0 to silence this warning."
+            )
+        else:
+            logger.info(
+                "Proxy context-overflow admission enabled (context_window=%d, "
+                "overhead=%d tokens, char_to_token_ratio=%.1f)",
+                value,
+                _resolve_context_overhead_tokens(),
+                _PROXY_CHAR_TO_TOKEN_RATIO,
+            )
+        return value
+
+
+def _reset_proxy_context_window_cache_for_test() -> None:
+    """Test helper: clear the cached context-window resolution.
+
+    Production code never calls this. The autouse env-scrub fixture in
+    ``tests/conftest.py`` invokes it so per-test env-var changes to
+    ``MAXIM_LLM_N_CTX`` actually take effect.
+    """
+    global _proxy_context_window_state
+    with _proxy_context_window_lock:
+        _proxy_context_window_state = (False, None)
+
+
+def _check_context_admission(
+    body: bytes,
+    n_ctx: int,
+    overhead: int,
+) -> dict[str, Any] | None:
+    """Decide whether a request would fit in the model's context window.
+
+    Returns ``None`` if admitted (or if the body can't be parsed —
+    don't false-reject on malformed input, let upstream return a
+    cleaner 400). Returns an error dict suitable for JSON serialisation
+    if rejected: the dict carries the numbers the operator needs to
+    debug (``estimated_prompt_tokens``, ``max_tokens``,
+    ``context_window``, ``safety_overhead_tokens``) plus an
+    OpenAI-compatible ``error`` envelope so agent-side error-handlers
+    that key on ``error.code`` / ``error.type`` work without
+    Maxim-specific code.
+    """
+    prompt_tokens, max_tokens = _estimate_inference_input_tokens(body)
+    if prompt_tokens == 0:
+        return None
+    effective_max = max_tokens if max_tokens > 0 else _PROXY_DEFAULT_MAX_TOKENS
+    total = prompt_tokens + effective_max + overhead
+    if total <= n_ctx:
+        return None
+    return {
+        "error": {
+            "code": "context_overflow",
+            "type": "invalid_request_error",
+            "message": (
+                f"Estimated prompt tokens ({prompt_tokens}) + max_tokens "
+                f"({effective_max}) + safety overhead ({overhead}) = {total} "
+                f"exceeds the model's context window ({n_ctx}). Shrink the "
+                f"prompt, reduce max_tokens, or run a model with a larger "
+                f"context window."
+            ),
+            "estimated_prompt_tokens": prompt_tokens,
+            "max_tokens": effective_max,
+            "context_window": n_ctx,
+            "safety_overhead_tokens": overhead,
+        }
+    }
+
+
 def _run_keepalive_emitter(
     wfile: Any,
     write_lock: threading.Lock,
@@ -903,6 +1167,44 @@ class _ProxyHandler(BaseHTTPRequestHandler):
         # Read request body
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length) if content_length > 0 else None
+
+        # llm_timeout_scalability.md follow-up: context-overflow admission.
+        # Reject prompts that would exceed the upstream model's context
+        # window with a typed 413 BEFORE forwarding. Without this gate,
+        # oversize prompts cause llama-cpp-server to silently abort
+        # mid-generation, producing a stream that limps along with
+        # keepalives until upstream gives up — terrible debugging UX and
+        # wasted upstream compute on a guaranteed-to-fail request.
+        #
+        # The gate is OFF when MAXIM_LLM_N_CTX is unset (graceful default
+        # for existing setups) or when MAXIM_PROXY_CONTEXT_ADMISSION=0
+        # (explicit opt-out).
+        if body is not None and self.path in _PROXY_INFERENCE_PATHS and _is_admission_enabled():
+            n_ctx = _get_proxy_context_window()
+            if n_ctx is not None:
+                overhead = _resolve_context_overhead_tokens()
+                rejection = _check_context_admission(body, n_ctx, overhead)
+                if rejection is not None:
+                    elapsed_ms = (time.time() - t0) * 1000
+                    err = rejection["error"]
+                    logger.warning(
+                        "Rejected oversize request: req=%s peer=%s path=%s prompt_tokens=%d max_tokens=%d ctx=%d",
+                        request_id[:8] if request_id else "none",
+                        peer_ip,
+                        self.path,
+                        err["estimated_prompt_tokens"],
+                        err["max_tokens"],
+                        n_ctx,
+                    )
+                    body_bytes = json.dumps(rejection).encode()
+                    self.send_response(413)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("X-Maxim-Proxy-Ms", f"{elapsed_ms:.0f}")
+                    self.send_header("Content-Length", str(len(body_bytes)))
+                    self.end_headers()
+                    self.wfile.write(body_bytes)
+                    self.wfile.flush()
+                    return
 
         # Build upstream request — forward client headers verbatim
         upstream = f"{self.upstream_url}{self.path}"

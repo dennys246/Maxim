@@ -522,6 +522,7 @@ def _isolate_config_json_env():
         reset_config_cache,
     )
     from maxim.runtime.lane_backends import _reset_lane_env_applied
+    from maxim.runtime.leader_proxy import _reset_proxy_context_window_cache_for_test
 
     def _clean_disk_state() -> None:
         try:
@@ -539,6 +540,7 @@ def _isolate_config_json_env():
     _reset_warned_envs()
     reset_config_cache()
     _reset_lane_env_applied()
+    _reset_proxy_context_window_cache_for_test()
     _clean_disk_state()
     try:
         yield
@@ -550,6 +552,7 @@ def _isolate_config_json_env():
         _reset_warned_envs()
         reset_config_cache()
         _reset_lane_env_applied()
+        _reset_proxy_context_window_cache_for_test()
         _clean_disk_state()
 
 
