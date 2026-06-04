@@ -151,6 +151,20 @@ Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The m
 
 **Estimated effort:** ~3 sessions (design + implementation + review fold + docs). ~400-600 LOC + tests.
 
+### Stage C10: Mesh perception transport
+
+Peer-tunneled sensory percepts. Drives the Reachy Mini app form-factor: the app runs as a peer node, performs on-device STT + vision segmentation + drive sensor reads, and tunnels event-shaped `Percept` instances to a leader for cognition. Generalizes to any embodiment peer with sensors but limited compute (future Minecraft adapter, multi-Maxim training rigs). Plan detail in [mesh_perception_transport.md](mesh_perception_transport.md).
+
+**Architectural framing:** the mesh today has exactly one cross-node transport (`_MaximPeerBackend` for LLM inference, with its load-bearing "one HTTP call, no retry" invariant). Perception traffic has different failure semantics (a dropped sensor frame is a missed observation, not a router-failover event) and wants a sibling typed backend rather than an extension. C10 establishes the **typed-transport-per-purpose** pattern as an architectural invariant — Hivemind substrate-bundle exchange (1.1+) is the second consumer that proves the abstraction.
+
+**Split timeline (the unusual part):**
+- **1.0 prep** — additive wire-format reservations, Protocol-contract documentation, and the typed-transport-per-purpose invariant land in CLAUDE.md before 1.0 ships. ~150 LOC + ~3 tests + 2 invariants. One session. The refactor-now-or-refactor-later test: post-1.0, adding required `PerceptSource` Protocol members would break third-party implementations, and silently extending `Percept.to_dict` would introduce a session-format-drift class of bug. Cheap to pin now, expensive to pin later.
+- **1.1 ship** — actual `_MaximPercepTransport` typed backend, `RemotePerceptSource` adapter, `/v1/mesh/percepts/<node>` endpoint family, CLI verbs, Reachy app peer-side integration. ~400-600 LOC alongside Hivemind, which proves the typed-transport-per-purpose pattern with two siblings instead of one.
+
+**v1 scope cut (1.1):** processed event-shaped percepts only — no raw video / raw audio frames. Peer does on-device perception; frames stay local. Raw-frame streaming is a 1.2+ concern when (and if) the substrate-level vision encoder is load-bearing enough to need them.
+
+**Estimated effort:** 1.0 prep ~1 session (~150 LOC). 1.1 implementation ~3-4 sessions (~400-600 LOC + tests + Reachy app wiring + 3-lens pre-merge review).
+
 ---
 
 ## 5. Mapping to versions
@@ -161,9 +175,12 @@ Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The m
 | **0.5** | C4.6 auto-undrain + C5 capacity-aware routing + substrate P3a / P4 / B3-B5 | C4.6 design needed |
 | **0.6** | C5 capacity-aware routing + C6 admin API + dashboard + **C9 mesh doc transport** | not started |
 | **0.7+** | C7 security hardening + C8 cross-version compat | not started |
-| **1.0** | Cross-session learning demonstration (banner) — separate from mesh | not started |
+| **1.0** | Cross-session learning demonstration (banner) — separate from mesh. **C10 prep (1.0 slice)** lands here: additive wire-format reservations + CLAUDE.md invariants for the typed-transport-per-purpose pattern. ~150 LOC, no new transport. | C10 prep not started |
+| **1.1** | **C10 ship (1.1 slice)** alongside Hivemind: `_MaximPercepTransport` typed backend + `RemotePerceptSource` adapter + endpoint family + Reachy app peer integration. ~400-600 LOC. | C10 ship not started |
 
 **Note on C9 placement:** C9 is orthogonal to the reactivity work (C4/C4.5/C5) and doesn't share file territory with any other stage — it can slip earlier (0.5) if multi-agent coordination becomes a user-visible blocker, or later (0.7) if it stays a nice-to-have. 0.6 is the default slot because it pairs naturally with C6's admin API work on the same endpoint surface.
+
+**Note on C10's split timeline:** C10 is the only stage in the roadmap that deliberately splits across versions. The 1.0 prep slice is refactor-hygiene (pin the Protocol contract, pin the wire format, document the typed-transport playbook) — cheap now, expensive post-1.0 because the prep items touch frozen surface (`PerceptSource` Protocol, `Percept` wire format under `_format_version`). The 1.1 ship slice waits for Hivemind because the typed-transport-per-purpose pattern is proven by two siblings (perception transport + substrate-bundle transport) rather than presumed by one.
 
 ---
 
@@ -206,6 +223,8 @@ Update this roadmap when:
 - **A new C3.x sub-stage is identified** — most likely from operator feedback during real mesh use.
 - **C4 plan doc is drafted** — link it from §4 Stage C4.
 - **C9 plan doc activates** — when multi-agent coordination becomes a user-visible blocker OR when two C3.x+ features in a row would want the doc-transport primitive. See `mesh_doc_transport.md` §"Re-check triggers" for the activation criteria.
+- **C10 1.0 prep lands** — update Stage C10 with the PR + commit hash and mark the prep slice shipped. Re-check before 1.1 implementation whether any prep invariant needs revision based on Hivemind's parallel substrate-bundle transport design.
+- **Reachy app team firms up timeline** — C10's driving consumer. If the app ships before 1.1 is ready, decide whether to compress the 1.1 work or stand up a temporary Reachy-specific path with an explicit migration commitment back to the typed-transport playbook.
 - **Any C5 / C6 / C7 / C9 architectural decision conflicts with a load-bearing invariant** — flag it explicitly here, don't let the conflict accumulate silently.
 - **The "fully reactive" definition in §1 starts to feel wrong** — that's the load-bearing piece. If the definition shifts, every stage estimate shifts with it.
 - **Versions ship and the table in §5 needs to slip** — common, expected, no apology needed; just keep it honest.
@@ -221,4 +240,6 @@ Update this roadmap when:
 - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
 - [node_security_simplification.md](node_security_simplification.md) — feeds C7.
 - [mesh_doc_transport.md](mesh_doc_transport.md) — Stage C9 shell plan (mesh-to-mesh structured doc exchange).
+- [mesh_perception_transport.md](mesh_perception_transport.md) — Stage C10 shell plan (peer-tunneled sensory percepts; split 1.0 prep / 1.1 ship). Driving consumer: Reachy Mini app peer.
+- [maxim_hivemind.md](maxim_hivemind.md) — 1.1+ substrate-bundle exchange; second consumer of the typed-transport-per-purpose pattern C10 establishes in 1.0.
 - [cross_platform_file_lock.md](cross_platform_file_lock.md) — shell plan to unify the two file-lock APIs (`utils/process_lock` and `filelock.FileLock`); blocks nothing, useful cleanup post-C4.
