@@ -308,6 +308,20 @@ class _MaximPeerBackend:
         # ``_get_api_key`` first, which keeps the factory safe to call
         # from parallel code paths.
         self._api_key_override: str | None = None
+        # Ground-truth model name as reported by the leader's ``/v1/models``
+        # endpoint. Populated lazily on first successful call. llama-cpp-server
+        # echoes the request's ``model`` field back unchanged in
+        # ``/v1/chat/completions`` responses, so without this we'd surface the
+        # requested name (e.g. ``claude-sonnet-4-6``) as the served name —
+        # corrupting display AND cost tracking (CostTracker would apply
+        # Anthropic Sonnet pricing for local Qwen inference). The discovery
+        # call hits a registry-cached endpoint and never raises; failure leaves
+        # the field empty and falls back to existing behaviour.
+        self._served_model: str = ""
+        # One-shot: don't re-probe ``/v1/models`` on every response if the
+        # first attempt failed (avoids repeated network calls per request on
+        # a leader that doesn't expose ``/v1/models``).
+        self._served_model_discovery_attempted: bool = False
 
     # ─── Interface methods ──────────────────────────────────────────────
 
@@ -325,7 +339,59 @@ class _MaximPeerBackend:
             return False
         if not self._ensure_endpoint_registered():
             return False
+        self._try_discover_served_model()
         return True
+
+    @property
+    def served_model(self) -> str:
+        """The model the leader is actually serving (from ``/v1/models``).
+
+        Empty string until first successful discovery. Treat as advisory:
+        callers fall back to the requested model name when this is empty.
+        """
+        return self._served_model
+
+    def _try_discover_served_model(self) -> None:
+        """Probe ``/v1/models`` once and cache ``data[0]['id']``.
+
+        Best effort — any failure silently leaves ``_served_model`` empty so
+        the existing requested-model-name path stays the fallback. Discovery
+        is one-shot per backend instance (success or failure both flip the
+        ``_served_model_discovery_attempted`` flag so we don't re-probe on
+        every response); callers that need re-resolution after a leader model
+        swap should construct a fresh backend (which happens on every router
+        reload).
+        """
+        if self._served_model or self._served_model_discovery_attempted:
+            return
+        self._served_model_discovery_attempted = True
+        base = self._resolve_base_url()
+        if not base:
+            return
+        probe_url = _build_probe_url(base)
+        headers: dict[str, str] = {}
+        api_key = self._get_api_key()
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        try:
+            resp = _http.fetch_url(
+                probe_url,
+                method="GET",
+                headers=headers,
+                timeout=_http.TimeoutPolicy(connect_s=2.0, read_s=3.0, total_s=4.0),
+            )
+            body = json.loads(resp.content or b"{}")
+        except Exception:  # noqa: BLE001 — discovery is best-effort
+            return
+        data = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(data, list) or not data:
+            return
+        first = data[0]
+        if not isinstance(first, dict):
+            return
+        served = first.get("id")
+        if isinstance(served, str) and served:
+            self._served_model = served
 
     def unload(self) -> None:
         """The shared httpx client is registry-owned. Nothing to unload."""
@@ -820,11 +886,19 @@ class _MaximPeerBackend:
         cached = int(details.get("cached_tokens") or 0) if isinstance(details, dict) else 0
         uncached = max(0, input_tokens - cached) if input_tokens else 0
 
+        # Served-model substitution: llama-cpp-server echoes the request's
+        # ``model`` field unchanged, so ``raw.get("model")`` is NOT
+        # authoritative. Prefer the leader-discovered ``_served_model``
+        # (populated once during ``warmup()`` via ``/v1/models``) when
+        # available; otherwise fall back to the upstream's echo (which may
+        # come from a different upstream that doesn't echo), then to the
+        # requested name. The ``EXACTLY one HTTP call`` invariant is
+        # preserved — discovery happens in ``warmup()``, not here.
         return LLMResponse(
             content=content,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            model=str(raw.get("model") or model),
+            model=self._served_model or str(raw.get("model") or model),
             latency_ms=(time.monotonic() - start) * 1000,
             provider=self._provider_key,
             stop_reason=stop_reason,
@@ -1039,11 +1113,18 @@ class _MaximPeerBackend:
             },
         )
 
+        # Served-model substitution: streaming chunks don't carry an
+        # authoritative model name (chunks just echo the request payload).
+        # Prefer leader-discovered ``_served_model`` (populated once during
+        # ``warmup()`` via ``/v1/models``) so display + cost tracking see
+        # ground truth instead of the requested name. The ``EXACTLY one
+        # HTTP call`` invariant is preserved — discovery happens in
+        # ``warmup()``, not here.
         return LLMResponse(
             content=content,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            model=model,
+            model=self._served_model or model,
             latency_ms=elapsed_ms,
             provider=self._provider_key,
             stop_reason=stop_reason,

@@ -28,7 +28,17 @@ class SimulationReport:
     goal: str = ""
     persona: str = ""
     language_model: str = ""
+    language_provider: str = (
+        ""  # provider key (lane label, e.g. "lane-large", "anthropic"); first-tier coarse routing signal
+    )
+    language_backend_class: str = (
+        ""  # backend class name (e.g. "_OpenAIBackend", "_MaximPeerBackend"); cloud-vs-self-hosted second-tier signal
+    )
+    language_endpoint: str = ""  # base URL (e.g. "https://api.anthropic.com/v1", "https://leader.dennys.com/v1"); definitive routing-path third-tier signal
     aut_model: str = ""  # Separate AUT model when dual-LLM mode is active
+    aut_provider: str = ""  # provider for aut_model when dual-LLM mode is active
+    aut_backend_class: str = ""
+    aut_endpoint: str = ""
 
     # Timing
     duration_s: float = 0.0
@@ -129,6 +139,13 @@ def build_report(
     aut_memory_hub: Any | None = None,
     llm_router: Any | None = None,
     language_model: str = "",
+    language_provider: str = "",
+    language_backend_class: str = "",
+    language_endpoint: str = "",
+    aut_model: str = "",
+    aut_provider: str = "",
+    aut_backend_class: str = "",
+    aut_endpoint: str = "",
     llm_finish_context: dict[str, Any] | None = None,
     session_id: str | None = None,
 ) -> SimulationReport:
@@ -294,6 +311,13 @@ def build_report(
         goal=goal,
         persona=persona,
         language_model=language_model,
+        language_provider=language_provider,
+        language_backend_class=language_backend_class,
+        language_endpoint=language_endpoint,
+        aut_model=aut_model,
+        aut_provider=aut_provider,
+        aut_backend_class=aut_backend_class,
+        aut_endpoint=aut_endpoint,
         duration_s=round(duration_s, 1),
         turns=bridge.turn_count,
         finish_reason=finish_reason,
@@ -531,12 +555,51 @@ def analyze_simulation(
     return report
 
 
+def _format_model_routing(
+    model: str,
+    provider: str,
+    backend_class: str,
+    endpoint: str,
+) -> str:
+    """Render a one-line model+routing string for display.
+
+    Picks the most-informative annotation available, in priority order:
+    - With backend_class + endpoint: ``"model (BackendClass @ endpoint-host)"``
+    - With backend_class only:        ``"model (BackendClass)"``
+    - With provider only:             ``"model (via provider)"``
+    - Bare model:                     ``"model"``
+
+    Endpoint hostname is extracted from the URL for readability — the full
+    ``language_endpoint`` field in report.json preserves the URL verbatim
+    for analyzer/downstream consumption.
+    """
+    if not model:
+        return ""
+    if backend_class and endpoint:
+        host = endpoint
+        if "://" in host:
+            host = host.split("://", 1)[1]
+        host = host.split("/", 1)[0]
+        return f"{model} ({backend_class} @ {host})"
+    if backend_class:
+        return f"{model} ({backend_class})"
+    if provider:
+        return f"{model} (via {provider})"
+    return model
+
+
 def _build_roundup_prompt(report: SimulationReport) -> str:
     """Build the analysis prompt from report data."""
+    model_disp = _format_model_routing(
+        report.language_model,
+        report.language_provider,
+        report.language_backend_class,
+        report.language_endpoint,
+    )
     lines = [
         f"# Simulation Report — {report.goal}",
         f"Persona: {report.persona}",
-        f"Model: {report.language_model}",
+        f"Model: {model_disp}",
         f"Duration: {report.duration_s}s, Turns: {report.turns}",
         f"Finish reason: {report.finish_reason}",
         "",
@@ -591,14 +654,28 @@ def print_report(report: SimulationReport, *, session_dir: Path | str | None = N
     """
     from maxim.simulation.sim_logger import display_summary
 
+    model_disp = _format_model_routing(
+        report.language_model,
+        report.language_provider,
+        report.language_backend_class,
+        report.language_endpoint,
+    )
     lines = [
         f"SIMULATION REPORT — {report.session_id}",
         f"  Goal: {report.goal}",
         f"  Persona: {report.persona}",
-        f"  Model: {report.language_model}",
+        f"  Model: {model_disp}",
         f"  Duration: {report.duration_s}s | Turns: {report.turns}",
         f"  Finish: {report.finish_reason}",
     ]
+    if report.aut_model and report.aut_model != report.language_model:
+        aut_disp = _format_model_routing(
+            report.aut_model,
+            report.aut_provider,
+            report.aut_backend_class,
+            report.aut_endpoint,
+        )
+        lines.insert(5, f"  AUT model: {aut_disp}")
     if report.llm_finish_status:
         lines.append(f"  Orchestrator status: {report.llm_finish_status}")
         if report.llm_finish_reason:
