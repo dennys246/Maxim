@@ -400,6 +400,15 @@ def check_resolved_config() -> list["CheckResult"]:
     results.extend(_check_lane_api_key_refs_health(cfg))
     results.extend(_check_peer_yml_deprecation())
 
+    # Legacy env-var migration: operators upgrading from Maxim ≤0.9.1
+    # likely have several MAXIM_* env vars exported in their shell rc /
+    # launchd plist. Each fires its own per-startup deprecation INFO
+    # (PR #318's I-4 fold), but that's easy to miss in the log scroll.
+    # This row aggregates the situation into a single doctor row with
+    # a copy/paste migration script so operators can clean up in one
+    # pass.
+    results.extend(_check_legacy_env_migration(cfg))
+
     # llm_timeout_scalability.md follow-up: surface the proxy
     # context-overflow admission gate state so operators see at-a-glance
     # whether oversize prompts will be rejected cleanly (413) or quietly
@@ -731,6 +740,173 @@ def _check_lane_api_key_refs_health(cfg) -> list["CheckResult"]:
                 )
             )
     return out
+
+
+def _format_value_for_set(value: object) -> str:
+    """Format a resolved value for use in a ``maxim config set`` command.
+
+    Strings with whitespace or special chars get single-quoted; other
+    scalars render bare. Helpers like booleans use the canonical lower-
+    case form the coercer accepts (``true`` / ``false``).
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    text = str(value)
+    if not text:
+        return "''"
+    # Single-quote anything that contains spaces, glob chars, or shell
+    # metacharacters; otherwise emit bare for cleanest copy/paste.
+    needs_quote = any(c in text for c in " \t\"'$\\`*?[](){}|&;<>#")
+    if needs_quote:
+        # Single-quote, escape embedded single quotes via the
+        # POSIX ``'\''`` sequence.
+        return "'" + text.replace("'", "'\\''") + "'"
+    return text
+
+
+def _check_legacy_env_migration(cfg: object) -> list["CheckResult"]:
+    """Detect pre-config-unification env-var-heavy setups + suggest migration.
+
+    Operators upgrading from Maxim ≤0.9.1 likely have several MAXIM_*
+    env vars exported in their shell rc / launchd plist from the era
+    when env vars were the only configuration surface. Each one now
+    fires its own once-per-startup deprecation INFO via PR #318's I-4
+    fold, but those scroll past in the log and don't tell the operator
+    "here's the full migration command list."
+
+    This check aggregates the situation:
+
+    - Counts how many ``_ABSORBED_ENV_VARS`` are currently set
+    - Below threshold (< 2): returns empty (one stray var is not the
+      "pre-migration era" pattern; could be a deliberate per-process
+      override)
+    - At or above threshold: emits one WARN row with a copy/paste
+      migration script that includes:
+        1. ``maxim config set <field> <value>`` commands for env-only
+           values (skips ones already convergent with config.json — no
+           point re-setting what's there)
+        2. ``unset MAXIM_*`` for the current shell
+        3. ``grep`` commands to find persistent exports in shell rc files
+        4. Platform-aware lookup of launchd plists (macOS) or systemd
+           units (Linux) where env vars may be set globally
+
+    The check is informational — it never fails. Operators on a healthy
+    pre-1.1 env-heavy setup will see this row exactly once per doctor
+    invocation and can clean up at their leisure.
+    """
+    from maxim.runtime.config_loader import (
+        _ABSORBED_ENV_VARS,
+        _FIELD_TO_ENV,
+        _env_is_set,
+        resolve_setting,
+    )
+
+    set_envs = sorted(name for name in _ABSORBED_ENV_VARS if _env_is_set(name))
+    if len(set_envs) < 2:
+        return []
+
+    # Reverse lookup: env var name → field_path
+    env_to_field: dict[str, str] = {v: k for k, v in _FIELD_TO_ENV.items()}
+
+    config_set_lines: list[str] = []
+    convergent_only_envs: list[str] = []
+
+    for env_name in set_envs:
+        field_path = env_to_field.get(env_name)
+        if field_path is None:
+            continue
+        try:
+            env_value, env_source = resolve_setting(field_path, config=cfg)
+        except Exception:
+            continue
+        if env_source != "env":
+            # Resolve says source isn't env even though it's set — shouldn't
+            # normally happen (env wins over config), but skip defensively.
+            continue
+        # Check if config.json has the same value (convergent case) —
+        # then we don't need maxim config set, just unset the env.
+        try:
+            from maxim.runtime.config_loader import _read_from_config
+
+            config_value = _read_from_config(cfg, field_path)
+        except Exception:
+            config_value = None
+        if config_value is not None and config_value == env_value:
+            convergent_only_envs.append(env_name)
+        else:
+            # Don't write secrets (API keys) into the migration script in
+            # plaintext — recommend using the file-ref pattern instead.
+            if env_name.endswith("_REMOTE_API_KEY"):
+                config_set_lines.append(f"# {env_name}: write key to a 0600 file and reference by path")
+                config_set_lines.append(
+                    "echo -n '<your-key>' > ~/.config/maxim/api_key && chmod 0600 ~/.config/maxim/api_key"
+                )
+                config_set_lines.append(
+                    f"maxim config set {field_path.replace('_REMOTE_API_KEY', '_remote_api_key_ref').lower()} ~/.config/maxim/api_key"
+                )
+            else:
+                config_set_lines.append(f"maxim config set {field_path} {_format_value_for_set(env_value)}")
+
+    # Build the full fix script
+    fix_lines: list[str] = []
+    if config_set_lines:
+        fix_lines.append("# 1. Persist current env values to config.json (skips ones already convergent):")
+        fix_lines.extend(config_set_lines)
+        fix_lines.append("")
+    fix_lines.append("# 2. Unset the env vars for the current shell:")
+    fix_lines.append(f"unset {' '.join(set_envs)}")
+    fix_lines.append("")
+    fix_lines.append("# 3. Find + remove persistent exports from shell rc files:")
+    fix_lines.append(
+        "grep -nE '^export MAXIM_' ~/.zshrc ~/.zprofile ~/.zshenv ~/.bashrc ~/.bash_profile /etc/profile 2>/dev/null"
+    )
+    fix_lines.append("# Then edit each matching file to remove the export line(s).")
+
+    # Platform-specific persistent-env lookup
+    import platform as _platform_mod
+
+    system = _platform_mod.system().lower()
+    if system == "darwin":
+        fix_lines.append("")
+        fix_lines.append("# 4. macOS: also check launchd plists for MAXIM_* keys:")
+        fix_lines.append(
+            "grep -rl 'MAXIM_' ~/Library/LaunchAgents/ /Library/LaunchAgents/ /Library/LaunchDaemons/ 2>/dev/null"
+        )
+        fix_lines.append("# For each matching plist, remove the <key>MAXIM_*</key><string>...</string> pair,")
+        fix_lines.append("# then `launchctl unload <plist>; launchctl load <plist>` to apply.")
+    elif system == "linux":
+        fix_lines.append("")
+        fix_lines.append("# 4. Linux: also check systemd unit files for Environment= lines:")
+        fix_lines.append("grep -rnE '^Environment.*MAXIM_' /etc/systemd/ ~/.config/systemd/ 2>/dev/null")
+        fix_lines.append("# For each matching unit, remove the Environment= line,")
+        fix_lines.append("# then `systemctl daemon-reload && systemctl restart <unit>` to apply.")
+
+    fix_lines.append("")
+    fix_lines.append("# 5. Restart the leader to pick up the migrated config:")
+    fix_lines.append("#    kill the running `maxim` and re-launch (or `maxim peer restart` from a peer)")
+
+    # Compose the message
+    convergent_note = (
+        f" ({len(convergent_only_envs)} already match config.json — those just need unset)"
+        if convergent_only_envs
+        else ""
+    )
+    message = (
+        f"detected {len(set_envs)} MAXIM_* env vars from pre-0.10 configuration"
+        f"{convergent_note}. Migrate to config.json for cleaner setup "
+        f"(env vars deprecated in 1.1)."
+    )
+
+    return [
+        CheckResult(
+            name="legacy_env_migration",
+            status="warn",
+            message=message,
+            fix="\n".join(fix_lines),
+        )
+    ]
 
 
 def _check_peer_yml_deprecation() -> list["CheckResult"]:
