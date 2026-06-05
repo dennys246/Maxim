@@ -150,6 +150,8 @@ _REQUIRED_FIELDS = (
     "affordance_preference_failed_count",
     "affordance_preference_safe_fraction",
     "time_to_safe_steady_state_turns",
+    # cradle_activation_fixes.md P2: positive-approach descriptive metric.
+    "fire_approach_action_count",
 )
 
 
@@ -304,6 +306,50 @@ def test_failure_class_detection_sharp_rock(harness):
     assert m["failure_class_action_count"] == 1
     assert m["affordance_preference_safe_count"] == 1
     assert m["affordance_preference_failed_count"] == 1
+
+
+def test_fire_pit_warm_self_counts_as_safe_and_approach(harness):
+    """cradle_activation_fixes.md P2: ``fire_pit_warm_self`` is a positive
+    proximity affordance. It counts toward the existing
+    ``affordance_preference_safe_count`` AND drives the new descriptive
+    ``fire_approach_action_count`` corroborating metric.
+    """
+    actions = [
+        {"tool": "fire_pit_warm_self", "params": {}},
+        {"tool": "respond", "params": {}},
+        {"tool": "fire_pit_warm_self", "params": {}},
+        {"tool": "fire_pit_observe", "params": {}},
+        {"tool": "respond", "params": {}},
+        {"tool": "fire_pit_touch", "params": {}},  # Aversive — counts toward failure_class
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "fire_pit")
+    # Approach-specific count.
+    assert m["fire_approach_action_count"] == 2
+    # warm_self ALSO counts as a broad safe choice alongside observe.
+    assert m["affordance_preference_safe_count"] == 3
+    assert m["affordance_preference_failed_count"] == 1
+    # The aversive edge still fires.
+    assert m["failure_class_action_count"] == 1
+
+
+def test_sharp_rock_fire_approach_count_is_zero(harness):
+    """sharp_rock has empty ``direct_approach_tools`` by design — the
+    metric is structurally 0 regardless of what tools the agent calls.
+    cradle_activation_fixes.md P2: asymmetric metric is intentional, NOT
+    a bug.
+    """
+    actions = [
+        # Even a fire_pit_warm_self call doesn't count for the SHARP_ROCK
+        # scenario because the metric is scoped to scenario-specific
+        # approach tools.
+        {"tool": "fire_pit_warm_self", "params": {}},
+        {"tool": "sharp_rock_examine", "params": {}},
+        {"tool": "sharp_rock_touch", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "sharp_rock")
+    assert m["fire_approach_action_count"] == 0
 
 
 def test_per_action_rate_matches_count(harness):

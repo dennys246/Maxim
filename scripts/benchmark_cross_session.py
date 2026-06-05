@@ -68,12 +68,27 @@ FAILURE_CLASS: dict[str, dict[str, Any]] = {
     "fire_pit": {
         "direct_failure_tools": frozenset({"fire_pit_touch"}),
         "body_failure_rules": (("infant_humanoid_pick_up", "object", "fire_pit"),),
-        "direct_safe_tools": frozenset({"fire_pit_observe"}),
+        "direct_safe_tools": frozenset({"fire_pit_observe", "fire_pit_warm_self"}),
+        # NEW (cradle_activation_fixes.md P2): positive-approach affordances
+        # — distinct from the broader ``direct_safe_tools`` (which lumps
+        # ``observe`` + ``warm_self`` together as non-failure choices).
+        # These are the affordances that produce warming on fire_pit
+        # WITHOUT triggering thermal_contact failure. Drives the
+        # ``fire_approach_action_count`` descriptive corroborating metric
+        # (NOT pre-reg gated) — the substrate hypothesis is that Arm B's
+        # transferred positive edge ("fire = warm") yields APPROACH counts
+        # at or above Arm A while the failure_class_action_count drops.
+        "direct_approach_tools": frozenset({"fire_pit_warm_self"}),
     },
     "sharp_rock": {
         "direct_failure_tools": frozenset({"sharp_rock_touch"}),
         "body_failure_rules": (("infant_humanoid_pick_up", "object", "sharp_rock"),),
         "direct_safe_tools": frozenset({"sharp_rock_examine"}),
+        # No proximity-approach analog for sharp_rock — the metric is 0
+        # by construction for this scenario, but the field MUST exist so
+        # compute_metrics doesn't KeyError. Asymmetric metric is by
+        # design (scenario-specific positive edges).
+        "direct_approach_tools": frozenset(),
     },
 }
 
@@ -410,6 +425,7 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
     direct_failure: frozenset[str] = rules["direct_failure_tools"]
     body_rules: tuple[tuple[str, str, str], ...] = rules["body_failure_rules"]
     direct_safe: frozenset[str] = rules["direct_safe_tools"]
+    direct_approach: frozenset[str] = rules.get("direct_approach_tools", frozenset())
 
     def _is_failure(action: dict[str, Any]) -> bool:
         tool = action.get("tool")
@@ -424,9 +440,13 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
     def _is_safe_on_target(action: dict[str, Any]) -> bool:
         return action.get("tool") in direct_safe
 
+    def _is_approach(action: dict[str, Any]) -> bool:
+        return action.get("tool") in direct_approach
+
     # Per-action counts (robustness check).
     failure_actions = sum(1 for a in actions if _is_failure(a))
     safe_target_actions = sum(1 for a in actions if _is_safe_on_target(a))
+    approach_actions = sum(1 for a in actions if _is_approach(a))
     total_actions = len(actions) or 1
     per_action_rate = failure_actions / total_actions
 
@@ -483,6 +503,13 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
         "affordance_preference_failed_count": failure_actions,
         "affordance_preference_safe_fraction": safe_fraction,
         "time_to_safe_steady_state_turns": steady_state_turn,
+        # NEW (cradle_activation_fixes.md P2): positive-approach corroborating
+        # metric — DESCRIPTIVE only, NOT pre-reg gated. Pairs with
+        # ``failure_class_action_count`` to test the substrate-transfer
+        # claim's POSITIVE edge (B should approach as often as A while
+        # touching less). For sharp_rock the value is structurally 0
+        # (no approach affordance in that scenario by design).
+        "fire_approach_action_count": approach_actions,
     }
 
 
@@ -605,7 +632,13 @@ def _assert_failure_class_matches_yaml(scenario: str) -> None:
 
     rules = FAILURE_CLASS[scenario]
     expected_affordances: set[str] = set()
-    for tname in rules["direct_failure_tools"] | rules["direct_safe_tools"]:
+    # Include direct_approach_tools so a rename of ``warm_self`` in the
+    # YAML fails loudly instead of silently zeroing the corroborating
+    # metric (cradle_activation_fixes.md P2 invariant).
+    declared = (
+        rules["direct_failure_tools"] | rules["direct_safe_tools"] | rules.get("direct_approach_tools", frozenset())
+    )
+    for tname in declared:
         # tool names are ``{entity_name}_{affordance}``; entity_name is the
         # scenario itself for these direct-affordance tools.
         prefix = f"{scenario}_"

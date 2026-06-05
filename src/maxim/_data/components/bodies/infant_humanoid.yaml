@@ -48,8 +48,16 @@ entity:
         drift_mode: homeostatic
         set_point: 0.0
         drift_rate: 0.001
-        comfort_band: 0.4
-        pain_scale: 0.5
+        # Exp 37 calibration (cradle_activation_fixes.md P2): tightened from
+        # comfort_band=0.4 / pain_scale=0.5 so a single ``feel`` of
+        # cradle_cool_air (self_effect core_temperature: -0.2 → body
+        # core_temperature: -0.35) breaches comfort by 0.10 and produces a
+        # 1.5 × 0.10 = 0.15 / tick drive-pain signal — large enough to
+        # overcome the LLM's adult "fire is dangerous" prior on Arm A so
+        # the infant agent actually seeks warmth (and learns the
+        # approach-vs-touch discrimination Exp 37 measures).
+        comfort_band: 0.25
+        pain_scale: 1.5
 
   # Somatosensory sub-sensors on modulators (deep-merged onto base_humanoid)
   modulators:
