@@ -33,10 +33,13 @@ Every field needed to **re-run Exp 37 and get a comparable result** on a future 
 
 ```python
 PRIMARY_METRIC = "positive_approach_engagement_fraction"
-PRIMARY_METRIC_DIRECTION = "increase"  # B > A.p97.5 (higher warm_self share is better)
+PRIMARY_METRIC_DIRECTION = "increase"  # (B - A) / A.sd >= +1 SD (post-2026-06-05 SD-shift swap)
+PRIMARY_SD_SHIFT_THRESHOLD = 1.0       # pre-reg §Corroborating already endorses this test family
 ROBUSTNESS_METRIC = "per_action_failure_rate"
 ROBUSTNESS_METRIC_DIRECTION = "decrease"  # legacy primary, retained as robustness signal
 ```
+
+**Post-2026-06-05 statistical test:** the primary criterion is **mean-shift-in-SD-units**, not the legacy "B mean outside A's empirical percentile band." The percentile-band rule was structurally impossible for any bounded metric that frequently hits its bound — the 2026-06-05 validation smoke showed `positive_approach_engagement_fraction` on Arm A piles up at 1.0 (3 of 5 trials), making A's band collapse to [0, 1] and B's "outside band" predicate impossible. The SD-shift test handles bounded distributions cleanly and is the same statistical shape already used for corroborating metrics. See [docs/plans/exp37_sd_shift.md](../../plans/exp37_sd_shift.md) for the full rationale.
 
 **Positive-approach-engagement-fraction:** `fire_pit_warm_self_count / engagement_count`, where `engagement_count = fire_pit_warm_self_count + fire_pit_observe_count + fire_pit_touch_count + pick_up_fire_pit_count`. Sessions with zero on-target engagement emit `0.0` (denominator clamped to 1). For sharp_rock the metric is structurally 0 — no positive-approach affordance in that scenario by design. This is the scenario-asymmetric design the 2026-06-XX amendment explicitly endorses.
 
@@ -192,8 +195,8 @@ The harness writes append-only — re-runs add new records rather than overwriti
 
 The analyzer reads `37_results.jsonl` and computes the pre-registered criteria in order:
 
-- **Primary criterion variance-survival rule:** Arm B mean must lie ABOVE Arm A's 97.5th-percentile band, computed across the same N=5 paired trials (direction-flipped by 2026-06-XX pivot per §1). Percentile band uses `statistics.quantiles(values, n=40, method="inclusive")`; with N=5 this is essentially the empirical [min, max]. The one-sided check matches the predicted direction `B > A` (higher positive-approach-engagement-fraction is better).
-- **Isolation rule:** Arm C mean must fall WITHIN `[A.p2.5, A.p97.5]`. If Arm C also rises above A's band, the analyzer flags the "general caution" confound — though now in the direction of "general preference for safe affordances regardless of substrate inheritance."
+- **Primary criterion (mean-shift-in-SD-units, post-2026-06-05 amendment):** `(B mean - A mean) / A.sd ≥ +1` SD in the predicted direction (increase). Replaces the structurally-impossible percentile-band rule. Zero-SD fallback (the I2 corroborating fallback applied to primary): if Arm A's SD is 0 across the 5 trials (all-identical values), pass on directional sign + non-zero shift, with an explanatory note appended to the verdict.
+- **Isolation rule (unchanged):** Arm C mean must fall WITHIN `[A.p2.5, A.p97.5]` (the empirical percentile band). Isolation is direction-agnostic and tolerant of A piling up at one bound. If Arm C falls outside A's range, the analyzer flags the "general caution" confound — substrate-prior may bias general behavior rather than specific failure-class avoidance.
 - **Secondary criterion (ablation attribution):** for each of the 3 B-family ablation arms, shrinkage = `|B - A| − |ablated − A|`; PASS if `shrinkage / A.sd ≥ 1.0`. Per pre-reg, ≥1 ablation must PASS. Direction-agnostic.
 - **Corroborating metrics:** affordance-preference safe-fraction (direction `B > A`), tool-class diversity (direction `B < A`), time-to-safe-steady-state (direction `B < A`), AND `time_to_first_warm_self_action` (direction `B < A`, NEW per 2026-06-XX pivot — substrate transfer predicts B reaches warm_self earlier than A's exploration). Each PASSES when `(B - A) / A.sd ≥ 1` in the predicted direction. Per pre-reg, ≥1 must hit; if ALL diverge from prediction while the primary still hits, the analyzer notes the "measurement artifact" concern.
 - **Robustness cross-check (legacy primary):** the analyzer ALSO computes the variance-survival test using the legacy `per_action_failure_rate` (direction `decrease`). Divergence between the new primary (positive-approach-engagement) and robustness (failure-rate) flags substrate weirdness — warm_self preference shift without touch reduction (or vice versa). Inspect both signals before claiming the verdict.
