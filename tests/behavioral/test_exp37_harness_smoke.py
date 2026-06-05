@@ -893,6 +893,10 @@ class TestCloudDispatchEnvSetup:
         assert env.get("MAXIM_LANE_LARGE_REMOTE_URL") == ""
         assert env.get("MAXIM_LANE_LARGE_REMOTE_API_KEY") == ""
         assert env.get("MAXIM_LANE_LARGE_REMOTE_MODEL") == ""
+        # Auto-download must be enabled — without it the sub-sim prompts
+        # on stdin for the SMALL tier's smollm-1.7b-instruct download and
+        # cascades into _llm_unavailable on every LLM call.
+        assert env.get("MAXIM_AUTO_DOWNLOAD_MODELS") == "1"
 
     def test_local_model_uses_peer_routing_unchanged(self, harness, monkeypatch, tmp_path):
         """Local / peer-routed models must NOT get --language-model on

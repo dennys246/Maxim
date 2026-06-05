@@ -308,6 +308,15 @@ def _real_sim(
         env["MAXIM_LANE_LARGE_REMOTE_URL"] = ""
         env["MAXIM_LANE_LARGE_REMOTE_API_KEY"] = ""
         env["MAXIM_LANE_LARGE_REMOTE_MODEL"] = ""
+        # Auto-accept any model downloads the sub-sim triggers. Even with
+        # the LARGE tier on a cloud profile, the sub-sim's lane bootstrap
+        # may try to ensure a local SMALL profile (default smollm-1.7b-instruct
+        # at ~1.1 GB) is available — without this env var, the sub-sim
+        # prompts for download on stdin, times out (--interactive false),
+        # and EVERY LLM call (LARGE included) cascades into the
+        # ``_llm_unavailable`` fallback. CLAUDE.md env table:
+        # MAXIM_AUTO_DOWNLOAD_MODELS=1 == --auto-download.
+        env["MAXIM_AUTO_DOWNLOAD_MODELS"] = "1"
         # Sanity-check the provider API key is set in env (best-effort —
         # the sub-sim will fail with a clear error if it's missing, but
         # we surface the check here for faster diagnosis).
