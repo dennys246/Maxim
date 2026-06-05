@@ -289,6 +289,117 @@ class Percept:
         valid_fields = {f.name for f in fields(cls)}
         return cls(**{k: v for k, v in data.items() if k in valid_fields})
 
+    def to_wire_dict(self) -> dict[str, Any]:
+        """Serialize for cross-process transport (peer → leader).
+
+        Distinct from :meth:`to_dict`, which is session-persistence on
+        the leader. The wire-dict is the contract a network-backed
+        :class:`~maxim.simulation.sources.PerceptSource` ships through
+        the perception transport (C10 prep, full transport in 1.1 —
+        see ``docs/plans/mesh_perception_transport.md``).
+
+        Carries raw observations the peer captured on-device:
+        ``detections`` (vision), ``transcript_chunk_index`` +
+        ``raw_transcript_text`` (STT), ``file_changed``,
+        ``explore_command``, plus the basic framing every percept has.
+
+        **Excludes by design**:
+
+        - ``embedding``, ``substrate_node_id`` — the leader owns the
+          substrate (EC, ATL, LinguisticEncoder). The peer ships raw
+          observations; the leader computes substrate references on
+          receipt. This is also the bio-fidelity argument — the peer
+          is "a sensor," not "a partial cognition."
+        - ``salience``, ``novelty`` — these are leader-computed derived
+          signals (compared against the leader's memory state). The
+          peer cannot compute them without the leader's substrate.
+        - ``maxim_runtime`` — leader-internal runtime fields.
+
+        **Versioning.** The wire-dict carries ``_format_version`` at
+        root (CC1 contract via :mod:`maxim.utils.format_version`). The
+        wire-dict path is versioned independently of the session-dict
+        path — bump the version on either side without touching the
+        other. The ``MeshMessage`` envelope's ``protocol_version``
+        gates the mesh transport as a whole; ``_format_version`` here
+        gates this payload's shape specifically so future evolution
+        (new optional field, drop a field) is operator-visible at the
+        payload layer without forcing a full mesh-protocol bump.
+
+        **Large-frame upgrade path (plan Q6).** When the 1.1+ work
+        needs to ship raw video / audio frames too large for inline
+        JSON, the agreed convention is ``metadata["blob_ref"]`` — a
+        string identifier the leader resolves via a separate
+        blob-fetch endpoint. This requires no wire-dict shape change:
+        ``metadata`` is already on the wire as a free-form dict, so
+        receivers that don't know about blob refs see them as opaque
+        metadata. Do NOT propose a top-level ``blob_ref`` field — that
+        would break 1.0 receivers.
+        """
+        from maxim.utils.format_version import with_format_version
+
+        payload = {
+            "timestamp": self.timestamp,
+            "source": self.source,
+            "detections": self.detections,
+            "transcript_chunk": self.transcript_chunk,
+            "transcript_chunk_index": self.transcript_chunk_index,
+            "file_changed": self.file_changed,
+            "cli_input": self.cli_input,
+            "has_voice_command": self.has_voice_command,
+            "has_maxim_keyword": self.has_maxim_keyword,
+            "hard_override": self.hard_override,
+            "explore_command": self.explore_command,
+            "content": self.content,
+            "metadata": self.metadata,
+            "raw_transcript_text": self.raw_transcript_text,
+            "sensory": self.sensory.to_dict() if self.sensory and hasattr(self.sensory, "to_dict") else None,
+            "context": self.context.to_dict() if self.context is not None else None,
+            "modality": self.modality,
+        }
+        return with_format_version(payload)
+
+    @classmethod
+    def from_wire_dict(cls, data: dict[str, Any]) -> "Percept":
+        """Reconstruct a Percept from a peer-shipped wire-dict.
+
+        Rehydrates the typed
+        :class:`~maxim.agents.percept_context.PerceptContext` the same
+        way :meth:`from_dict` does. ``sensory`` follows the same
+        pre-existing path as :meth:`from_dict` — the bare dict that
+        :meth:`to_wire_dict` writes for it deserializes into the
+        ``Any``-typed ``Percept.sensory`` field as-is, NOT into a
+        typed :class:`~maxim.agents.modality.SensoryTag`. Consumers
+        that need the typed form must re-construct it themselves;
+        this gap is pre-existing in :meth:`from_dict` and intentional
+        for now (wire format is shape-stable; rehydration policy
+        follows the session-dict precedent).
+
+        Substrate fields (``embedding``, ``substrate_node_id``) are
+        intentionally absent from the wire — leader-side code
+        populates them after running substrate encoding on the
+        received Percept.
+
+        The ``_format_version`` field is read off the input dict and
+        silently dropped before reconstruction — the receiver tolerates
+        a missing field (legacy producer) and rejects an unknown
+        future version via :func:`check_format_version`.
+        """
+        from maxim.agents.percept_context import PerceptContext
+        from maxim.utils.format_version import check_format_version
+
+        data = dict(data)
+        # Surface version drift via the standard one-warning-per-file-type
+        # path. Missing field is treated as legacy ("0.x") and tolerated.
+        check_format_version(data, "percept_wire")
+        data.pop("_format_version", None)
+        ctx_raw = data.pop("context", None)
+        if ctx_raw is not None and not isinstance(ctx_raw, PerceptContext):
+            data["context"] = PerceptContext.from_dict(ctx_raw)
+        elif ctx_raw is not None:
+            data["context"] = ctx_raw
+        valid_fields = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in valid_fields})
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data Classes - Memory
