@@ -52,7 +52,7 @@ def run_generative_campaign(
             tool_registry=tool_registry,
             session_dir=session_dir_base,
         )
-        display_summary([f"Generative campaign complete: {result.turns_completed} turns"])
+        display_summary([f"Generative campaign complete: {result.total_turns} turns"])
         return result
     except Exception as e:
         logger.warning("Generative campaign failed: %s", e)
