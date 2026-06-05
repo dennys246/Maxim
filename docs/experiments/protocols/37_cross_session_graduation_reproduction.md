@@ -52,14 +52,29 @@ If a future Cradle revision adds say/respond calls (e.g., the AUT explains its r
 
 Per-scenario rules live in `FAILURE_CLASS` at the top of the harness. They follow the entity affordance tool naming convention (`{entity_name}_{affordance_name}` per `embodiment/tool_bridge.py::_resolve_tool_name`) and the body-level pick_up convention (`infant_humanoid_pick_up` with `params.object` carrying the entity name).
 
-| Scenario | Failure-class tools | Safe (on-target) tools |
-|---|---|---|
-| `fire_pit` | `fire_pit_touch`, `infant_humanoid_pick_up(object=fire_pit)` | `fire_pit_observe` |
-| `sharp_rock` | `sharp_rock_touch`, `infant_humanoid_pick_up(object=sharp_rock)` | `sharp_rock_examine` |
+| Scenario | Failure-class tools | Safe (on-target) tools | Approach (descriptive) |
+|---|---|---|---|
+| `fire_pit` | `fire_pit_touch`, `infant_humanoid_pick_up(object=fire_pit)` | `fire_pit_observe`, `fire_pit_warm_self` | `fire_pit_warm_self` |
+| `sharp_rock` | `sharp_rock_touch`, `infant_humanoid_pick_up(object=sharp_rock)` | `sharp_rock_examine` | _none (scenario asymmetric by design)_ |
 
-If a future cradle-arc revision renames the safe affordance on `fire_pit` from `observe` to something else, the harness MUST be updated in lockstep — the rules are pinned to the YAML's affordance names. Drift between the YAML and the rules silently underestimates the safe-fraction corroborating metric.
+`fire_pit_warm_self` is a proximity affordance (cradle_activation_fixes.md P2 amendment): the agent stands close enough to feel the radiated heat without making contact, producing a positive `core_temperature` write (+0.2) that drives toward homeostasis. Counted as a safe choice in `affordance_preference_safe_fraction` AND tracked separately as the **`fire_approach_action_count`** descriptive corroborating metric. The Approach column is scenario-asymmetric by design — sharp_rock has no proximity-positive analog.
 
-To prevent silent drift, `run_benchmark` calls `_assert_failure_class_matches_yaml(scenario)` at startup (when bio-stack imports are available — skipped for smoke-test contexts). The check loads `_data/components/items/cradle_<scenario>.yaml` via `ComponentRegistry`, extracts the actual affordance names from the entity's modulators, and asserts that every affordance referenced by `FAILURE_CLASS[scenario]` is present in the YAML. A rename produces a loud `RuntimeError` rather than a $14 zero-signal trial run.
+If a future cradle-arc revision renames any affordance on `fire_pit` from `observe` / `warm_self` / `touch` to something else, the harness MUST be updated in lockstep — the rules are pinned to the YAML's affordance names. Drift between the YAML and the rules silently underestimates the safe-fraction (and silently zeros the approach metric).
+
+To prevent silent drift, `run_benchmark` calls `_assert_failure_class_matches_yaml(scenario)` at startup (when bio-stack imports are available — skipped for smoke-test contexts). The check loads `_data/components/items/cradle_<scenario>.yaml` via `ComponentRegistry`, extracts the actual affordance names from the entity's modulators, and asserts that every affordance referenced by `FAILURE_CLASS[scenario]` (including the new `direct_approach_tools` set) is present in the YAML. A rename produces a loud `RuntimeError` rather than a $14 zero-signal trial run.
+
+### 2.1. `fire_approach_action_count` — descriptive corroborating metric (NOT pre-reg gated)
+
+Added in cradle_activation_fixes.md P2 alongside the drive-system calibration (infant_humanoid `core_temperature` `comfort_band: 0.4 → 0.25`, `pain_scale: 0.5 → 1.5`) and the `fire_pit_warm_self` proximity affordance. Counts the number of `fire_pit_warm_self` calls per session (0 for `sharp_rock` by construction).
+
+**Hypothesis under substrate transfer (Arm B vs Arm A):**
+
+- `fire_approach_action_count`: same or HIGHER on B (positive substrate edge "fire = warm" transferred)
+- `failure_class_action_count`: LOWER on B (negative substrate edge "touch = pain" transferred)
+
+The discrimination between the two edges is what the substrate-transfer claim predicts — bare avoidance (`A=0, B=0`) means the LLM's adult prior dominated and neither edge formed. Bare overcorrection (`A=high, B=high` for both) means the substrate isn't differentiating.
+
+**Operationally:** the analyzer emits both counts in the per-scenario descriptive block but does NOT promote them to pre-reg pass/fail flags. The variance-survival rule on `failure_class_action_count` remains the sole primary gate (per §1's amendment-locked decision). `fire_approach_action_count` is documentation for human interpretation of WHY the primary metric moved (or didn't).
 
 ### 3. Run-count: 65 runs (per [the pre-reg's trial-structure table](../37_cross_session_graduation.md#trial-structure))
 

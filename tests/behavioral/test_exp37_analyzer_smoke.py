@@ -60,6 +60,7 @@ def _record(
     tool_diversity: int = 5,
     time_to_steady: int | None = 5,
     schema_version: str = "1.0",
+    fire_approach_count: int = 0,
 ) -> dict[str, Any]:
     """Build a single JSONL record with engineered metric values.
 
@@ -102,6 +103,10 @@ def _record(
         "affordance_preference_failed_count": int((1 - safe_fraction) * 10),
         "affordance_preference_safe_fraction": safe_fraction,
         "time_to_safe_steady_state_turns": time_to_steady,
+        # cradle_activation_fixes.md P2: descriptive corroborating metric.
+        # Default 0 keeps existing engineered-variance tests unchanged; new
+        # tests below opt in by passing non-zero values.
+        "fire_approach_action_count": fire_approach_count,
     }
 
 
@@ -810,3 +815,172 @@ def test_heading_suffix_renders_into_markdown(analyzer, tmp_path):
         heading_suffix="2026-06-15 run-12",
     )
     assert "## Results — 2026-06-15 run-12" in result.markdown
+
+
+# ─── fire_approach_action_count descriptive corroborating metric ────────
+
+
+def _build_design_with_approach(
+    *,
+    fire_pit_a: list[int],
+    fire_pit_b: list[int],
+) -> list[dict[str, Any]]:
+    """Build a minimal full design where ONLY fire_pit's
+    fire_approach_action_count varies; sharp_rock stays at the default 0.
+    Other metrics keep the standard EARNED-shape values so the analyzer
+    runs end-to-end without hitting design-completeness errors.
+    """
+    a_vals = _arm_a_baseline()
+    b_vals = _arm_b_improved()
+    c_vals = _arm_c_within_a_band()
+    records: list[dict[str, Any]] = []
+    for scenario in ("fire_pit", "sharp_rock"):
+        for trial_id in range(1, 6):
+            i = trial_id - 1
+            approach_a = fire_pit_a[i] if scenario == "fire_pit" else 0
+            approach_b = fire_pit_b[i] if scenario == "fire_pit" else 0
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="A",
+                    scenario=scenario,
+                    primary=a_vals[i],
+                    safe_fraction=0.3,
+                    fire_approach_count=approach_a,
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="B",
+                    scenario=scenario,
+                    primary=b_vals[i],
+                    safe_fraction=0.8,
+                    tool_diversity=3,
+                    time_to_steady=2,
+                    fire_approach_count=approach_b,
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="C",
+                    scenario=scenario,
+                    primary=c_vals[i],
+                    safe_fraction=0.3,
+                )
+            )
+            for ab_arm in ("B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"):
+                records.append(
+                    _record(
+                        trial_pair_id=trial_id,
+                        arm=ab_arm,
+                        scenario=scenario,
+                        primary=b_vals[i],
+                    )
+                )
+    return records
+
+
+def test_approach_descriptive_is_none_when_all_zero(analyzer, tmp_path):
+    """sharp_rock (and the default fire_pit case) should produce
+    ``approach_descriptive=None`` so the analyzer doesn't render a
+    degenerate row.
+    """
+    records = _build_design_with_approach(fire_pit_a=[0] * 5, fire_pit_b=[0] * 5)
+    p = tmp_path / "approach_none.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    for v in result.scenarios:
+        assert v.approach_descriptive is None
+    # Markdown does NOT include the descriptive block when nothing to show.
+    assert "Descriptive corroborating" not in result.markdown
+
+
+def test_approach_descriptive_renders_when_nonzero(analyzer, tmp_path):
+    """fire_pit with non-zero approach counts on Arm A and Arm B should
+    produce a populated descriptive block in the markdown and on the
+    ScenarioVerdict.
+    """
+    records = _build_design_with_approach(
+        fire_pit_a=[2, 3, 2, 3, 4],  # mean 2.8
+        fire_pit_b=[3, 4, 4, 5, 5],  # mean 4.2 — higher, predicted direction
+    )
+    p = tmp_path / "approach_nonzero.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    fire_v = next(v for v in result.scenarios if v.scenario == "fire_pit")
+    rock_v = next(v for v in result.scenarios if v.scenario == "sharp_rock")
+    assert fire_v.approach_descriptive is not None
+    assert fire_v.approach_descriptive["a_mean"] == pytest.approx(2.8)
+    assert fire_v.approach_descriptive["b_mean"] == pytest.approx(4.2)
+    assert fire_v.approach_descriptive["delta"] == pytest.approx(1.4)
+    assert fire_v.approach_descriptive["predicted_direction"] == "same_or_higher"
+    # Negative-delta warning note should NOT appear (Δ > 0 here).
+    assert fire_v.approach_descriptive["note"] is None
+    # sharp_rock still suppressed.
+    assert rock_v.approach_descriptive is None
+    assert "Descriptive corroborating" in result.markdown
+    assert "fire_approach_action_count" in result.markdown
+
+
+def test_approach_descriptive_negative_delta_emits_warning_note(analyzer, tmp_path):
+    """If Arm B's approach count is LOWER than A's (general-avoidance pattern
+    suspected) the analyzer attaches an explanatory note to the
+    descriptive block. The verdict itself is unchanged — the metric is NOT
+    gated.
+    """
+    records = _build_design_with_approach(
+        fire_pit_a=[4, 5, 4, 5, 4],  # mean 4.4
+        fire_pit_b=[1, 2, 1, 2, 1],  # mean 1.4 — Arm B avoided the fire entirely
+    )
+    p = tmp_path / "approach_negative.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    fire_v = next(v for v in result.scenarios if v.scenario == "fire_pit")
+    assert fire_v.approach_descriptive is not None
+    assert fire_v.approach_descriptive["delta"] < 0
+    assert fire_v.approach_descriptive["note"] is not None
+    assert "general caution" in fire_v.approach_descriptive["note"]
+
+
+def test_scenario_verdict_approach_descriptive_default_none(analyzer):
+    """Backward-compat: ScenarioVerdict.approach_descriptive defaults to
+    None so consumers constructed pre-PR-E continue to work.
+    """
+    v = analyzer.ScenarioVerdict(
+        scenario="dummy",
+        primary_pass=True,
+        isolation_pass=True,
+        primary_pass_robustness=True,
+        corroborating_hits=1,
+        corroborating_wrong_direction=0,
+        corroborating_details=[],
+        secondary_hits=1,
+        secondary_details=[],
+        a_mean=0.5,
+        a_sd=0.05,
+        a_band=(0.4, 0.6),
+        b_mean=0.2,
+        c_mean=0.5,
+        notes=[],
+    )
+    assert v.approach_descriptive is None

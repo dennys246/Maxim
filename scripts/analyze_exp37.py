@@ -385,6 +385,13 @@ class ScenarioVerdict:
     b_mean: float | None
     c_mean: float | None
     notes: list[str]
+    # Optional descriptive corroborating block — DESCRIPTIVE only (NOT pre-reg
+    # gated). Populated when ``FAILURE_CLASS[scenario]`` declares a non-empty
+    # ``direct_approach_tools`` (cradle_activation_fixes.md P2). Shape:
+    # ``{"a_mean": float|None, "b_mean": float|None, "delta": float|None,
+    # "predicted_direction": "increase"|"same_or_higher", "note": str|None}``.
+    # None for scenarios with no approach affordance (e.g. sharp_rock).
+    approach_descriptive: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -607,6 +614,7 @@ def evaluate_scenario(
 
     corroborating = _compute_corroborating(grouped, scenario)
     secondary = _compute_secondary(grouped, scenario, PRIMARY_METRIC)
+    approach_descriptive = _compute_descriptive_approach(grouped, scenario)
 
     return ScenarioVerdict(
         scenario=scenario,
@@ -624,7 +632,66 @@ def evaluate_scenario(
         b_mean=b_mean,
         c_mean=c_mean,
         notes=notes,
+        approach_descriptive=approach_descriptive,
     )
+
+
+def _compute_descriptive_approach(
+    grouped: dict[tuple[str, str], list[dict[str, Any]]],
+    scenario: str,
+) -> dict[str, Any] | None:
+    """Compute the ``fire_approach_action_count`` descriptive corroborating
+    metric for a scenario (cradle_activation_fixes.md P2).
+
+    Returns ``None`` when the scenario has no approach affordance (e.g.
+    ``sharp_rock`` has empty ``direct_approach_tools`` by design). Otherwise
+    returns a dict with A mean, B mean, and the predicted direction
+    ("same_or_higher" — substrate transfer predicts B's positive-approach
+    count is unchanged or increases relative to A while
+    ``failure_class_action_count`` drops).
+
+    NOT a pre-reg gate — the analyzer renders this block descriptively
+    in the markdown but does NOT promote it to pass/fail in the verdict.
+    """
+    # Probe Arm A records for the field — when the harness's
+    # FAILURE_CLASS table declares no approach affordances for a scenario,
+    # ``compute_metrics`` still emits ``fire_approach_action_count: 0`` for
+    # every record, so presence is universal. The signal is whether any A
+    # or B record shows a non-zero count.
+    a_vals = _extract_metric(grouped.get((scenario, "A"), []), "fire_approach_action_count")
+    b_vals = _extract_metric(grouped.get((scenario, "B"), []), "fire_approach_action_count")
+
+    # Asymmetric design: scenarios with no approach affordance always emit
+    # 0 — render nothing rather than display a degenerate row. Detect by:
+    # if BOTH a_vals and b_vals are all zero (or empty), suppress.
+    def _all_zero(vs: list[float]) -> bool:
+        return len(vs) == 0 or all(v == 0 for v in vs)
+
+    if _all_zero(a_vals) and _all_zero(b_vals):
+        return None
+
+    a_mean = _safe_mean(a_vals)
+    b_mean = _safe_mean(b_vals)
+    delta = (b_mean - a_mean) if (a_mean is not None and b_mean is not None) else None
+
+    note: str | None = None
+    if a_mean is None or b_mean is None:
+        note = "Insufficient data (a_mean / b_mean missing)"
+    elif delta is not None and delta < 0:
+        note = (
+            "Δ < 0: Arm B shows FEWER positive-approach actions than Arm A. "
+            "Substrate transfer predicts the positive edge ('fire = warm') is preserved; "
+            "investigate whether the agent avoided fire entirely on B (general caution) "
+            "or specifically lost the approach association."
+        )
+
+    return {
+        "a_mean": a_mean,
+        "b_mean": b_mean,
+        "delta": delta,
+        "predicted_direction": "same_or_higher",
+        "note": note,
+    }
 
 
 # ─── Verdict matrix ──────────────────────────────────────────────────────
@@ -800,6 +867,27 @@ def render_markdown(
         lines.append("")
         lines.append(f"Corroborating hits: **{v.corroborating_hits} / {len(v.corroborating_details)}**")
         lines.append("")
+
+        # Descriptive corroborating: fire_approach_action_count
+        # (cradle_activation_fixes.md P2). Rendered only when the scenario
+        # has a non-zero approach signal. NOT pre-reg gated — pure
+        # documentation of WHY the primary metric moved (positive substrate
+        # edge inspection).
+        if v.approach_descriptive is not None:
+            ad = v.approach_descriptive
+            lines.append("**Descriptive corroborating — `fire_approach_action_count` (NOT pre-reg gated)**")
+            lines.append("")
+            lines.append("| Arm | Mean count |")
+            lines.append("|---|---|")
+            lines.append(f"| A | {_fmt(ad['a_mean'], places=2)} |")
+            lines.append(f"| B | {_fmt(ad['b_mean'], places=2)} |")
+            delta_disp = _fmt(ad["delta"], places=2)
+            lines.append("")
+            lines.append(f"Δ (B − A) = {delta_disp}; predicted direction: {ad['predicted_direction']}.")
+            if ad.get("note"):
+                lines.append("")
+                lines.append(f"_Note: {ad['note']}_")
+            lines.append("")
 
         lines.append("**Secondary criterion — ablation attribution (≥1 must shrink Arm B's delta)**")
         lines.append("")

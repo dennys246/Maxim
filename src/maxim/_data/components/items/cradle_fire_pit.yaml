@@ -27,7 +27,27 @@ entity:
         observe:
           params: {}
           description: "Look at the fire pit from a safe distance"
+        warm_self:
+          # Exp 37 calibration (cradle_activation_fixes.md P2): proximity
+          # affordance distinct from ``touch``. Stand close enough to feel
+          # the radiated heat WITHOUT making contact. arms.thermal: +0.2
+          # stays within the arms' comfort_band (0.5) so this affordance
+          # produces NO thermal_contact failure — it's the positive
+          # substrate edge ("fire = warm") that Arm B's substrate transfer
+          # should encode and reuse. Pairs symmetrically with
+          # cradle_cool_air.yaml::feel (self_effect -0.2 on core_temperature)
+          # so two warm_self calls fully restore homeostasis after two
+          # cool_air exposures.
+          params: {}
+          description: "Stand close to the fire pit to feel the radiated heat without touching it"
+          self_effect:
+            core_temperature: 0.2
+            arms.thermal: 0.2
         touch:
+          # Existing aversive affordance. arms.thermal: 0.6 breaches the
+          # arms' comfort_band (0.5) → thermal_contact failure → PainBus →
+          # NAc aversive memory. The negative substrate edge ("touch =
+          # pain") for Exp 37's failure_class_action_count primary metric.
           params: {}
           description: "Reach toward the fire pit to feel the heat"
           self_effect:
