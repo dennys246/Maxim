@@ -65,6 +65,19 @@ class MeshMessageType(Enum):
     INFERENCE_REQUEST = auto()
     INFERENCE_RESPONSE = auto()
 
+    # Perception transport (1.0 prep — reserved; implementation in 1.1).
+    # See docs/plans/mesh_perception_transport.md §"1.0 prep work" Prep 1.
+    # Adding consumers post-1.0 is non-breaking (additive enum values), but
+    # reserving the slots now lets the 1.1 ship land against a frozen wire
+    # envelope. PERCEPT_PUSH carries a wire-dict Percept (peer → leader);
+    # PERCEPT_ACK carries a sequence-number receipt (leader → peer) with
+    # the originating PERCEPT_PUSH's ``msg_id`` echoed via the standard
+    # ``MeshMessage.correlation_id`` field — no new envelope mechanism
+    # is needed for ack correlation; the existing envelope already
+    # supports it.
+    PERCEPT_PUSH = auto()
+    PERCEPT_ACK = auto()
+
 
 @dataclass
 class MeshMessage:
