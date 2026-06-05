@@ -165,6 +165,52 @@ class TestCampaignRunner:
         )
         assert "error" in result["turns"][0]
 
+    def test_run_generative_campaign_display_reads_total_turns(self, monkeypatch):
+        """The wrapper's display line accesses result.total_turns (not the
+        non-existent .turns_completed). Because the wrapper's broad except
+        swallows AttributeError silently, a field-name mismatch would
+        return None instead of the result. This test pins the field name
+        against future drift.
+        """
+        from maxim.simulation import campaign_runner
+        from maxim.simulation import generative_runner as gr_module
+        from maxim.simulation import sim_logger
+        from maxim.simulation.generative_runner import GenerativeCampaignResult
+
+        fake_result = GenerativeCampaignResult(
+            goal="test",
+            arc_name="memory_recall",
+            total_turns=7,
+        )
+
+        def _fake_run(**kwargs):
+            return fake_result
+
+        captured: list[list[str]] = []
+
+        def _capture_summary(lines):
+            captured.append(list(lines))
+
+        monkeypatch.setattr(gr_module, "run_generative_campaign", _fake_run)
+        monkeypatch.setattr(sim_logger, "display_summary", _capture_summary)
+        monkeypatch.setattr(sim_logger, "display_status", lambda *a, **kw: None)
+
+        result = campaign_runner.run_generative_campaign(
+            goal="test",
+            bridge=MagicMock(),
+            llm_router=MagicMock(),
+            arc_yaml=None,
+            max_turns=3,
+            tool_registry=MagicMock(),
+            session_dir_base="/tmp/test_session",
+        )
+
+        # If the field name drifts, the broad except swallows AttributeError
+        # and returns None — assert we got the actual result back.
+        assert result is fake_result
+        assert captured, "display_summary should have been called"
+        assert any("7 turns" in line for line in captured[-1])
+
 
 class TestImportPaths:
     """Verify all original import paths still work."""
