@@ -16,13 +16,21 @@ parses the resulting ``actions.jsonl`` for ``Tool not registered: 'respond'``
 entries. Asserts the count is zero (or strictly below a threshold) over a
 short turn budget.
 
-**Run manually** before merging PR D and before re-firing Exp 37::
+**Run manually** before re-firing Exp 37::
 
-    MAXIM_CRADLE_SMOKE_LLM=qwen2.5-14b pytest \
+    MAXIM_CRADLE_SMOKE_LLM=qwen2.5-14b-instruct pytest \
         tests/integration/test_cradle_tool_routing.py -v -m slow
 
 The test is skipped by default — it requires (a) a working LLM router
-configuration via env / config and (b) the slow marker to be selected.
+configuration via env / config (peer.yml routing to a leader serving the
+named profile, or a local model the named profile can resolve) and (b)
+the slow marker to be selected.
+
+**Run from a peer machine, NOT from the leader** — the harness lesson
+in CLAUDE.md (cradle smoke 2026-06-04) explains why running cradle sims
+on the same machine as the LLM server causes role-detection and port
+collision cascades. This test sets ``--home-dir`` to a tmp tree so it
+doesn't collide with any sim state in ``~/.maxim/``.
 """
 
 from __future__ import annotations
@@ -84,8 +92,14 @@ def test_cradle_arm_a_no_respond_loop(tmp_path: Path) -> None:
     model = _model_env()
     assert model is not None  # mypy
 
-    session_dir = tmp_path / "cradle_smoke_session"
-    session_dir.mkdir()
+    # ``--home-dir`` redirects ALL Maxim data (sessions, memory, logs) to
+    # the given directory. The sim writes per-session artifacts to
+    # ``<home_dir>/sim_reports/<session_id>/`` so we can scope the search
+    # to one tmp tree. (Pre-fix this test passed ``--session-dir`` which
+    # doesn't exist as a maxim CLI flag — the subprocess would argparse-
+    # fail before producing any data, silently passing the assertion.)
+    home_dir = tmp_path / "maxim_home"
+    home_dir.mkdir()
 
     cmd = [
         sys.executable,
@@ -101,26 +115,39 @@ def test_cradle_arm_a_no_respond_loop(tmp_path: Path) -> None:
         "8",
         "--interactive",
         "false",
-        "--session-dir",
-        str(session_dir),
+        "--home-dir",
+        str(home_dir),
     ]
 
-    env = {**os.environ, "MAXIM_LOG_FILE": str(session_dir / "maxim.jsonl")}
+    env = {**os.environ, "MAXIM_LOG_FILE": str(home_dir / "maxim.jsonl")}
 
     # 5-minute wall budget — generous for slow local models, well within
     # the slow-test contract.
     try:
-        subprocess.run(cmd, env=env, timeout=300, check=False)
+        result = subprocess.run(cmd, env=env, timeout=300, check=False)
     except subprocess.TimeoutExpired:
-        pytest.fail(f"Cradle smoke timed out (>300s); session at {session_dir}")
+        pytest.fail(f"Cradle smoke timed out (>300s); home_dir at {home_dir}")
 
-    actions = session_dir / "actions.jsonl"
-    if not actions.exists():
-        # Fall back to scanning all sessions dirs the CLI may have produced.
-        candidates = list(session_dir.rglob("actions.jsonl"))
-        if not candidates:
-            pytest.fail(f"No actions.jsonl produced under {session_dir}; check the CLI invocation.")
-        actions = candidates[0]
+    if result.returncode != 0:
+        pytest.fail(
+            f"maxim --sim cradle exited with code {result.returncode}. "
+            f"home_dir at {home_dir}; stderr/stdout merged at "
+            f"{home_dir / 'maxim.jsonl'}. The non-zero exit is a hard failure "
+            f"(distinct from the 'Tool not registered' regression this test "
+            f"specifically guards) — investigate before re-enabling the smoke."
+        )
+
+    # Find the actions.jsonl the sim wrote. Default layout under
+    # ``--home-dir`` is ``<home_dir>/sim_reports/<session_id>/actions.jsonl``;
+    # rglob covers any alternate placement.
+    candidates = list(home_dir.rglob("actions.jsonl"))
+    if not candidates:
+        pytest.fail(
+            f"No actions.jsonl produced under {home_dir}; the sim may not "
+            f"have reached the per-session writer. Inspect "
+            f"{home_dir / 'maxim.jsonl'} for the failure mode."
+        )
+    actions = candidates[0]
 
     bad = _count_unregistered_respond_errors(actions)
     assert bad == 0, (
