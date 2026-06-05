@@ -1037,11 +1037,12 @@ def test_primary_metric_is_positive_approach_engagement_fraction(analyzer):
 
 
 def test_primary_pass_when_b_above_a_p97_band(analyzer, tmp_path):
-    """Direction-flip check: with the new primary, Arm B EARNED requires
-    B.mean > A.p97.5. _record's default ``positive_approach_fraction
+    """Pre-2026-06-05 this test asserted ``B.mean > A.p97.5``. After the
+    SD-shift swap the assertion shifts to ``(B - A) / A.sd ≥ +1`` SD in
+    the predicted direction. _record's default ``positive_approach_fraction
     = 1 - primary`` maps the existing "Arm B improved" fixture (low
-    primary on B) onto "high positive_approach on B" → primary should
-    PASS.
+    primary on B) onto "high positive_approach on B" → A ~0.35 SD ~0.04,
+    B ~0.80 → delta_sd ~11 SD → PASS.
     """
     ablations = {
         "B-wire-a-off": [0.55, 0.58, 0.60, 0.63, 0.65],
@@ -1071,17 +1072,16 @@ def test_primary_pass_when_b_above_a_p97_band(analyzer, tmp_path):
 
 
 def test_primary_fail_when_b_below_a_band(analyzer, tmp_path):
-    """Symmetric to the EARNED test: if Arm B's positive_approach is
-    LOWER than A's (substrate transfer ABSENT or REVERSED), primary
-    must FAIL. Uses identical A baseline and explicitly forces B's
-    positive_approach to also be low.
+    """Symmetric to the EARNED test: if Arm B's positive_approach equals
+    A's mean (substrate transfer ABSENT or REVERSED), the SD-shift test
+    yields ``delta_sd = 0`` → not ≥ +1 SD → FAIL.
     """
     records = _build_full_design(
         a_vals=_arm_a_baseline(),
         b_vals=_arm_a_baseline(),  # B same as A → no improvement
         c_vals=_arm_c_within_a_band(),
     )
-    # Default 1-primary maps both to ~0.35 → B not above A.p97.5 → FAIL.
+    # Default 1-primary maps both to ~0.35 → delta_sd = 0 → FAIL.
     p = tmp_path / "pivot_fail.jsonl"
     _write_jsonl(p, records)
     result = analyzer.run_analysis(
@@ -1095,10 +1095,10 @@ def test_primary_fail_when_b_below_a_band(analyzer, tmp_path):
         assert not v.primary_pass, f"{v.scenario}: expected primary FAIL — a_band={v.a_band}, b_mean={v.b_mean}"
 
 
-def test_pivot_markdown_uses_p97_5_predicted_label(analyzer, tmp_path):
-    """The rendered markdown should display ``> A.p97.5`` for B's
-    predicted side (direction-aware label per the analyzer's render
-    function), NOT the legacy ``< A.p2.5`` text.
+def test_pivot_markdown_uses_sd_shift_predicted_label(analyzer, tmp_path):
+    """Post-2026-06-05 the markdown should display ``Δ = X SD`` and the
+    SD-shift threshold for B's predicted side, NOT the legacy percentile-
+    band reference. Direction-aware via PRIMARY_METRIC_DIRECTION.
     """
     records = _build_full_design(
         a_vals=_arm_a_baseline(),
@@ -1114,8 +1114,11 @@ def test_pivot_markdown_uses_p97_5_predicted_label(analyzer, tmp_path):
         scenarios=("fire_pit", "sharp_rock"),
         strict_schema_version="1.0",
     )
-    assert "> A.p97.5" in result.markdown
-    assert "< A.p2.5" not in result.markdown
+    assert "SD" in result.markdown
+    assert "need" in result.markdown
+    # Legacy percentile-band references must be gone.
+    assert "A.p97.5" not in result.markdown
+    assert "A.p2.5" not in result.markdown
 
 
 def test_time_to_first_warm_self_corroborating_present(analyzer, tmp_path):
@@ -1186,3 +1189,206 @@ def test_time_to_first_warm_self_corroborating_present(analyzer, tmp_path):
     # B's mean (1.0) should be < A's mean (~6.0) → predicted direction
     # (decrease) → PASS.
     assert ttfws_record["pass"], f"expected PASS; got {ttfws_record}"
+
+
+# ─── exp37_sd_shift.md — SD-shift primary on bounded distributions ──────
+
+
+def test_sd_shift_primary_pass_on_bounded_distribution(analyzer, tmp_path):
+    """Validates the SD-shift swap on the empirical-style case the
+    2026-06-05 validation smoke surfaced: Arm A piles up at the ceiling
+    of a bounded metric. Engineered to have A SD low enough that
+    `A.mean + 1.0 * A.sd` is still within [0, 1], so a B shift of ≥+1 SD
+    is reachable.
+    """
+    # A: tightly clustered near the ceiling. mean=0.92, sd~0.04.
+    a_engineered = [0.88, 0.90, 0.92, 0.94, 0.96]
+    # B: shifted up by ~3 SD. Still within [0, 1].
+    b_engineered = [0.97, 0.98, 0.99, 1.00, 1.00]
+    records = []
+    for scenario in ("fire_pit", "sharp_rock"):
+        for trial_id in range(1, 6):
+            i = trial_id - 1
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="A",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=a_engineered[i],
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="B",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=b_engineered[i],
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="C",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=a_engineered[i],  # within A's range
+                )
+            )
+            for ab in ("B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"):
+                records.append(
+                    _record(
+                        trial_pair_id=trial_id,
+                        arm=ab,
+                        scenario=scenario,
+                        primary=0.5,
+                        positive_approach_fraction=b_engineered[i],
+                    )
+                )
+    p = tmp_path / "sd_shift_bounded.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    for v in result.scenarios:
+        assert v.primary_pass, (
+            f"{v.scenario}: SD-shift should PASS on bounded ceiling case — "
+            f"a_mean={v.a_mean}, a_sd={v.a_sd}, b_mean={v.b_mean}"
+        )
+
+
+def test_sd_shift_primary_fail_when_b_shift_below_threshold(analyzer, tmp_path):
+    """Validates the SD-shift FAIL path: B shifts in the correct
+    direction but by less than 1 SD → FAIL. Distinguishes "small
+    substrate effect, real but undetectable at this N" from "no
+    substrate effect at all."
+    """
+    a_engineered = [0.40, 0.45, 0.50, 0.55, 0.60]  # mean 0.5, sd ~0.08
+    b_engineered = [0.55, 0.55, 0.55, 0.55, 0.55]  # mean 0.55, delta=0.05, ~0.6 SD
+    records = []
+    for scenario in ("fire_pit", "sharp_rock"):
+        for trial_id in range(1, 6):
+            i = trial_id - 1
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="A",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=a_engineered[i],
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="B",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=b_engineered[i],
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="C",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=a_engineered[i],
+                )
+            )
+            for ab in ("B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"):
+                records.append(
+                    _record(
+                        trial_pair_id=trial_id,
+                        arm=ab,
+                        scenario=scenario,
+                        primary=0.5,
+                        positive_approach_fraction=b_engineered[i],
+                    )
+                )
+    p = tmp_path / "sd_shift_subthreshold.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    for v in result.scenarios:
+        assert not v.primary_pass, (
+            f"{v.scenario}: SD-shift should FAIL when B shift <1 SD — "
+            f"a_sd={v.a_sd}, delta={v.b_mean - v.a_mean if v.b_mean and v.a_mean else 'N/A'}"
+        )
+
+
+def test_sd_shift_zero_sd_fallback_pass_on_directional_shift(analyzer, tmp_path):
+    """When Arm A's SD is 0 (all-identical trials), the zero-SD fallback
+    fires: pass on directional sign + non-zero shift. This matches the
+    I2 corroborating fallback and prevents the test from erroring when
+    A has truly zero variance.
+    """
+    a_engineered = [1.0, 1.0, 1.0, 1.0, 1.0]  # SD = 0
+    b_engineered = [1.0, 1.0, 1.0, 1.0, 1.0]  # No shift → should FAIL
+    # B same as A → no directional shift → zero-SD fallback rejects.
+    records = []
+    for scenario in ("fire_pit", "sharp_rock"):
+        for trial_id in range(1, 6):
+            i = trial_id - 1
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="A",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=a_engineered[i],
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="B",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=b_engineered[i],
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="C",
+                    scenario=scenario,
+                    primary=0.5,
+                    positive_approach_fraction=a_engineered[i],
+                )
+            )
+            for ab in ("B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"):
+                records.append(
+                    _record(
+                        trial_pair_id=trial_id,
+                        arm=ab,
+                        scenario=scenario,
+                        primary=0.5,
+                        positive_approach_fraction=b_engineered[i],
+                    )
+                )
+    p = tmp_path / "sd_shift_zero_sd.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    # B == A (no shift) → fallback rejects → FAIL.
+    for v in result.scenarios:
+        assert not v.primary_pass, (
+            f"{v.scenario}: zero-SD case with no shift should FAIL — "
+            f"a_sd={v.a_sd}, delta={(v.b_mean or 0) - (v.a_mean or 0)}"
+        )

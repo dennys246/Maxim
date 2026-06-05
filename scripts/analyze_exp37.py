@@ -11,15 +11,19 @@ Rules implemented (verbatim from
 pre-reg amendments 2026-05-31 (per-action rate) and 2026-06-XX
 (exp37_metric_pivot.md Path 2 → positive-approach-engagement-fraction)):
 
-  - **Primary (variance-survival):** Arm B mean of
-    positive_approach_engagement_fraction ABOVE Arm A's 97.5th-percentile
-    band, computed across N paired trials. One-sided test — predicted
-    direction is B > A (substrate-transferred warm_self preference biases
-    B toward higher positive-approach ratio when engaging with fire).
-  - **Robustness (legacy primary, decrease):** Arm B mean of
-    per_action_failure_rate BELOW Arm A's 2.5th-percentile band. Divergence
-    between primary and robustness flags potential substrate weirdness
-    (warm_self bias without touch reduction, or vice versa).
+  - **Primary (mean-shift-in-SD-units, pre-reg amendment 2026-06-05):**
+    ``(B - A) / A.sd ≥ +1`` SD for positive_approach_engagement_fraction
+    (predicted direction is increase). Replaces the legacy
+    "B mean OUTSIDE A's empirical percentile band" rule because bounded
+    metrics that frequently hit their ceiling/floor (LLM-AUT positive-
+    approach piles up at 1.0) make the percentile-band predicate
+    structurally impossible. The SD-shift is the same statistical shape
+    already used for corroborating metrics. Zero-SD fallback: pass on
+    directional sign + non-zero shift.
+  - **Robustness (legacy primary, decrease):** ``(B - A) / A.sd ≤ -1`` SD
+    on per_action_failure_rate (same SD-shift test, opposite direction).
+    Divergence between primary and robustness flags potential substrate
+    weirdness (warm_self bias without touch reduction, or vice versa).
   - **Isolation:** Arm C mean WITHIN Arm A's [2.5%, 97.5%] band. If Arm C
     also shows shrinkage, primary FAILS with the "general caution" confound.
   - **Corroborating (≥1 of 3 must hit):** affordance_safe_fraction,
@@ -442,25 +446,47 @@ class AnalysisResult:
     markdown: str
 
 
+PRIMARY_SD_SHIFT_THRESHOLD = 1.0
+
+
 def _compute_primary_isolation(
     grouped: dict[tuple[str, str], list[dict[str, Any]]],
     scenario: str,
     metric: str,
     *,
     direction: str = "decrease",
+    sd_threshold: float = PRIMARY_SD_SHIFT_THRESHOLD,
 ) -> tuple[bool, bool, float | None, float | None, tuple[float, float] | None, float | None, list[str]]:
     """Returns ``(primary_pass, isolation_pass, a_mean, a_sd, a_band, b_mean, c_mean, notes)``.
 
-    ``direction`` controls which side of Arm A's percentile band Arm B's
-    mean must exit for primary_pass:
+    **Pre-reg amendment 2026-06-05 (`exp37_sd_shift.md`)**: the primary
+    rule swapped from "Arm B mean outside Arm A's empirical percentile
+    band" to "Arm B mean differs from Arm A's mean by ≥ ``sd_threshold``
+    × A's SD in the predicted direction." Rationale: the validation
+    smoke (5 Arm A trials, 2026-06-05) showed
+    ``positive_approach_engagement_fraction`` piles up at the [0, 1]
+    ceiling under LLM-AUT — 3 of 5 trials at 1.0. The empirical
+    percentile band collapses to [floor, ceiling] and the "B outside
+    band" predicate is structurally impossible for any bounded metric
+    that frequently hits its bound. The mean-shift-in-SD-units test
+    handles bounded distributions cleanly and is the same statistical
+    shape already used for corroborating metrics (precedent: per pre-reg
+    §Corroborating, "≥1 SD effect on the Arm A baseline").
 
-    - ``"decrease"`` (legacy, robustness check): B.mean < A.p2.5 — used for
-      ``per_action_failure_rate`` where lower is better.
-    - ``"increase"`` (pivot, primary): B.mean > A.p97.5 — used for
-      ``positive_approach_engagement_fraction`` where higher is better.
+    ``direction`` controls the predicted side:
 
-    Isolation always uses the two-sided band (C must lie within A's
-    [p2.5, p97.5]); the "general caution" confound is direction-agnostic.
+    - ``"decrease"`` (legacy, robustness check): ``(B - A) / A.sd ≤ -threshold``.
+    - ``"increase"`` (pivot, primary): ``(B - A) / A.sd ≥ threshold``.
+
+    Zero-SD fallback: if Arm A's SD is None or 0 (all trials produced
+    the same value — a true zero-variance case, e.g., the metric is
+    structurally constrained), pass on directional sign + non-zero
+    shift. Matches the existing corroborating zero-SD fallback (I2 fold).
+
+    Isolation still uses the two-sided empirical percentile band
+    ([p2.5, p97.5]); the "general caution" confound is direction-agnostic
+    and tolerant of A piling up at one bound (isolation_pass requires C
+    INSIDE A's range, which is naturally true when A's range is narrow).
     """
     notes: list[str] = []
     a_vals = _extract_metric(grouped.get((scenario, "A"), []), metric)
@@ -477,11 +503,26 @@ def _compute_primary_isolation(
         notes.append(f"Insufficient data for {scenario}: a_mean={a_mean}, b_mean={b_mean}, a_band={a_band}")
         return (False, False, a_mean, a_sd, a_band, b_mean, c_mean, notes)
 
-    # Primary: B mean must lie OUTSIDE A's band on the predicted side.
-    if direction == "increase":
-        primary_pass = b_mean > a_band[1]
-    else:  # "decrease" — legacy / robustness
-        primary_pass = b_mean < a_band[0]
+    # Primary: mean shift in SD units (pre-reg amendment 2026-06-05).
+    delta = b_mean - a_mean
+    if a_sd is None or a_sd == 0:
+        # Zero-variance Arm A: any non-zero directional shift passes
+        # (this is the I2-fold zero-SD fallback applied to primary).
+        if direction == "increase":
+            primary_pass = delta > 0
+        else:  # decrease
+            primary_pass = delta < 0
+        if primary_pass:
+            notes.append(
+                f"Zero-SD on Arm A for {scenario} primary: passing on directional "
+                f"shift (delta={delta:+.4f}, direction={direction!r})."
+            )
+    else:
+        delta_sd = delta / a_sd
+        if direction == "increase":
+            primary_pass = delta_sd >= sd_threshold
+        else:  # decrease
+            primary_pass = delta_sd <= -sd_threshold
 
     isolation_pass = True
     if c_mean is None:
@@ -889,14 +930,19 @@ def render_markdown(
         a_band_str = f"[{_fmt(v.a_band[0])}, {_fmt(v.a_band[1])}]" if v.a_band else "—"
         lines.append(f"| A | {_fmt(v.a_mean)} | baseline · 95% band {a_band_str} | — |")
         primary_str = "PASS" if v.primary_pass else "FAIL"
-        # Direction-aware label: with the exp37_metric_pivot.md Path 2
-        # primary, higher is better → predicted side is A.p97.5 (the upper
-        # bound of A's empirical band). Legacy direction (lower=better)
-        # is preserved as the robustness check below.
-        if PRIMARY_METRIC_DIRECTION == "increase":
-            predicted_str = f"> A.p97.5 = {_fmt(v.a_band[1] if v.a_band else None)}"
+        # Pre-reg amendment 2026-06-05 (exp37_sd_shift.md): primary
+        # criterion is mean-shift-in-SD-units (≥ ``PRIMARY_SD_SHIFT_THRESHOLD``
+        # in the predicted direction), not the legacy empirical
+        # percentile band. The label reflects what reviewers should
+        # check against.
+        if v.a_sd is not None and v.a_sd > 0 and v.a_mean is not None and v.b_mean is not None:
+            delta_sd = (v.b_mean - v.a_mean) / v.a_sd
+            sd_str = f"Δ = {delta_sd:+.2f} SD"
         else:
-            predicted_str = f"< A.p2.5 = {_fmt(v.a_band[0] if v.a_band else None)}"
+            sd_str = "Zero-SD fallback"
+        sign = "≥" if PRIMARY_METRIC_DIRECTION == "increase" else "≤"
+        threshold_sign = "+" if PRIMARY_METRIC_DIRECTION == "increase" else "−"
+        predicted_str = f"{sd_str} (need {sign}{threshold_sign}{PRIMARY_SD_SHIFT_THRESHOLD} SD)"
         lines.append(f"| B | {_fmt(v.b_mean)} | {predicted_str} | **{primary_str}** |")
         isolation_str = "PASS" if v.isolation_pass else "FAIL"
         lines.append(f"| C | {_fmt(v.c_mean)} | ∈ A's band | **{isolation_str}** |")

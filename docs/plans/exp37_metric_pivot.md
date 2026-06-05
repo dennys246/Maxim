@@ -222,3 +222,4 @@ Plus the actual Exp 37 re-fire (65 runs × ~12 turns × ~235s/turn ≈ 50 hours 
 - Substrate-primary action selection → Exp 38 / Oasis
 - Layer-3 narrative reflex redesign → separate concern, not part of this metric pivot
 - The imagined-entity noise issue → 1.1 scenario polish
+- **Cradle environment enrichment** (electric-heater idea, broken-heater SEM repair affordance, additional thermal-domain components) → genuine measurement-instrument improvement surfaced in the 2026-06-05 discussion; tracked for 1.1 cradle polish. The user's intuition that environmental sparsity contributes to Arm A's ceiling-piled distribution is correct; the fix is real but not in the critical path for 1.0 ship. See [exp37_sd_shift.md](exp37_sd_shift.md) "Out of scope" for the full reasoning.
