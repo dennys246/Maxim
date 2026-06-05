@@ -27,35 +27,39 @@ Every field needed to **re-run Exp 37 and get a comparable result** on a future 
 
 ## Implementation decisions locked here (the pre-reg deliberately stops at "what passes the gate"; these are the "how the harness measures it" choices)
 
-### 1. Per-action primary metric (post pre-reg amendment 2026-05-31)
+### 1. Primary metric — current state (post pre-reg amendments 2026-05-31 and 2026-06-XX)
 
-The pre-reg originally defined the primary metric per-turn ("fraction of turns containing a failure-class action"). The PR #5 pilot revealed Cradle sims produce ZERO `say`/`respond` tool calls — the AUT is purely sensory/embodied. The harness's per-turn binning (which splits on say/respond boundaries) collapsed every session to a single tail bucket, making the per-turn rate structurally degenerate (1.0 if any failure-class action happened, 0.0 otherwise — no variance signal).
-
-**The pre-reg was amended** (user-authorized 2026-05-31 mid-PR #5) to swap the primary metric to per-action rate. The analyzer's constants reflect this swap:
+**Current primary (Path 2 pivot per [exp37_metric_pivot.md](../../plans/exp37_metric_pivot.md)):**
 
 ```python
-PRIMARY_METRIC = "per_action_failure_rate"
-ROBUSTNESS_METRIC = "primary_metric_repeat_failure_action_rate"  # per-turn — drift detection only
+PRIMARY_METRIC = "positive_approach_engagement_fraction"
+PRIMARY_METRIC_DIRECTION = "increase"  # B > A.p97.5 (higher warm_self share is better)
+ROBUSTNESS_METRIC = "per_action_failure_rate"
+ROBUSTNESS_METRIC_DIRECTION = "decrease"  # legacy primary, retained as robustness signal
 ```
 
-**Per-action metric:** `failure_class_action_count / total_actions`. Direct, binning-free, 12× the resolution of per-turn. Computed identically across all sims regardless of `say`/`respond` presence.
+**Positive-approach-engagement-fraction:** `fire_pit_warm_self_count / engagement_count`, where `engagement_count = fire_pit_warm_self_count + fire_pit_observe_count + fire_pit_touch_count + pick_up_fire_pit_count`. Sessions with zero on-target engagement emit `0.0` (denominator clamped to 1). For sharp_rock the metric is structurally 0 — no positive-approach affordance in that scenario by design. This is the scenario-asymmetric design the 2026-06-XX amendment explicitly endorses.
 
-**Per-turn metric retained as robustness cross-check.** On Cradle (no say/respond) it will be degenerate — analyzer notes flag this as expected. On future arcs that DO produce say/respond boundaries, the cross-check would be meaningful again. The robustness divergence note is informational only.
+**Why the pivot.** The 2026-06-04 cradle smoke (PR E branch live) confirmed PR D + PR E work end-to-end: the LLM-AUT reasons about thermal homeostasis, finds `fire_pit_warm_self`, and restores body temperature to set-point. But the LLM also discovers the SAFE warming path (`warm_self` + `shelter`) and never NEEDS to touch the fire. `failure_class_action_count` is structurally 0 on Arm A → `a_sd = 0` → variance-survival math is impossible (B mean cannot be negative). The pivot reframes the substrate-transfer claim from "B touches less" to "B prefers warm_self more strongly when engaging with fire," which directly measures what the substrate-transferred reward bias predicts.
 
-Edge cases (per-action):
-- Sessions with zero actions emit `per_action_failure_rate = 0.0` (denominator clamped to 1).
-- Multiple failure-class actions in one session each count independently — direct count.
+**Legacy `per_action_failure_rate` retained as robustness signal.** Divergence between primary and robustness flags substrate weirdness (warm_self preference shift without touch reduction, or vice versa). Both signals should be inspected when interpreting the verdict. The pre-2026-05-31 per-turn metric (`primary_metric_repeat_failure_action_rate`) is still emitted by the harness for record-schema stability but is no longer consumed by the analyzer's pass/fail logic.
 
-If a future Cradle revision adds say/respond calls (e.g., the AUT explains its reasoning to the user mid-sim), the per-turn metric would become meaningful again. The amendment is not "delete the per-turn metric" — it's "the per-action metric is what the variance-survival test gates on now."
+Edge cases (positive-approach-engagement-fraction):
+
+- Sessions with zero on-target engagement → fraction = 0.0 (denominator clamped). This is the "agent never engaged" path; consistent with "no signal to interpret."
+- All-engagement-is-warm_self sessions → fraction = 1.0. Plausible on Arm B but ceiling effect possible; the corroborating `time_to_first_warm_self_action` provides additional discrimination.
+- Sessions where the agent ONLY touches (no warm_self / observe) → fraction = 0.0 (the substrate-transferred preference signal indicates avoidance, not engagement).
+
+**New corroborating: `time_to_first_warm_self_action`.** Action-index at which the agent first calls a positive-approach affordance. Substrate transfer predicts B's first warm_self comes earlier than A's exploration-driven discovery. None values (never reached) censored to `total_actions + 1` (mirrors `time_to_safe_steady_state_turns` handling).
 
 ### 2. Failure-class detection rules
 
 Per-scenario rules live in `FAILURE_CLASS` at the top of the harness. They follow the entity affordance tool naming convention (`{entity_name}_{affordance_name}` per `embodiment/tool_bridge.py::_resolve_tool_name`) and the body-level pick_up convention (`infant_humanoid_pick_up` with `params.object` carrying the entity name).
 
-| Scenario | Failure-class tools | Safe (on-target) tools | Approach (descriptive) |
-|---|---|---|---|
-| `fire_pit` | `fire_pit_touch`, `infant_humanoid_pick_up(object=fire_pit)` | `fire_pit_observe`, `fire_pit_warm_self` | `fire_pit_warm_self` |
-| `sharp_rock` | `sharp_rock_touch`, `infant_humanoid_pick_up(object=sharp_rock)` | `sharp_rock_examine` | _none (scenario asymmetric by design)_ |
+| Scenario | Failure-class tools | Safe (on-target) tools | Approach (positive subset of safe) | Engagement (PRIMARY denominator) |
+|---|---|---|---|---|
+| `fire_pit` | `fire_pit_touch`, `infant_humanoid_pick_up(object=fire_pit)` | `fire_pit_observe`, `fire_pit_warm_self` | `fire_pit_warm_self` | `fire_pit_warm_self`, `fire_pit_observe`, `fire_pit_touch`, `infant_humanoid_pick_up(object=fire_pit)` |
+| `sharp_rock` | `sharp_rock_touch`, `infant_humanoid_pick_up(object=sharp_rock)` | `sharp_rock_examine` | _none (scenario asymmetric by design)_ | `sharp_rock_examine`, `sharp_rock_touch`, `infant_humanoid_pick_up(object=sharp_rock)` |
 
 `fire_pit_warm_self` is a proximity affordance (cradle_activation_fixes.md P2 amendment): the agent stands close enough to feel the radiated heat without making contact, producing a positive `core_temperature` write (+0.2) that drives toward homeostasis. Counted as a safe choice in `affordance_preference_safe_fraction` AND tracked separately as the **`fire_approach_action_count`** descriptive corroborating metric. The Approach column is scenario-asymmetric by design — sharp_rock has no proximity-positive analog.
 
@@ -74,7 +78,7 @@ Added in cradle_activation_fixes.md P2 alongside the drive-system calibration (i
 
 The discrimination between the two edges is what the substrate-transfer claim predicts — bare avoidance (`A=0, B=0`) means the LLM's adult prior dominated and neither edge formed. Bare overcorrection (`A=high, B=high` for both) means the substrate isn't differentiating.
 
-**Operationally:** the analyzer emits both counts in the per-scenario descriptive block but does NOT promote them to pre-reg pass/fail flags. The variance-survival rule on `failure_class_action_count` remains the sole primary gate (per §1's amendment-locked decision). `fire_approach_action_count` is documentation for human interpretation of WHY the primary metric moved (or didn't).
+**Operationally:** the analyzer emits both counts in the per-scenario descriptive block. Per the 2026-06-XX pivot, `fire_approach_action_count`'s spiritual successor — `positive_approach_engagement_fraction` — is now the primary metric and IS pre-reg gated (the substrate-transfer hypothesis on the positive edge is what the pivot measures). The raw `fire_approach_action_count` field is retained for descriptive interpretation (e.g., "B's higher fraction reflects 4 warm_self calls vs A's 2"). `failure_class_action_count` is similarly retained descriptively; both feed the analyzer's narrative block but neither gates the verdict on its own.
 
 ### 3. Run-count: 65 runs (per [the pre-reg's trial-structure table](../37_cross_session_graduation.md#trial-structure))
 
@@ -188,11 +192,11 @@ The harness writes append-only — re-runs add new records rather than overwriti
 
 The analyzer reads `37_results.jsonl` and computes the pre-registered criteria in order:
 
-- **Primary criterion variance-survival rule:** Arm B mean must lie BELOW Arm A's 2.5th-percentile band, computed across the same N=5 paired trials. Percentile band uses `statistics.quantiles(values, n=40, method="inclusive")`; with N=5 this is essentially the empirical [min, max] (the conservative reading of the pre-reg's "95th-percentile band"). The one-sided check matches the predicted direction `B < A`.
-- **Isolation rule:** Arm C mean must fall WITHIN `[A.p2.5, A.p97.5]`. If Arm C also drops below A's band, the analyzer flags the "general caution" confound.
-- **Secondary criterion (ablation attribution):** for each of the 3 B-family ablation arms, shrinkage = `|B - A| − |ablated − A|`; PASS if `shrinkage / A.sd ≥ 1.0`. Per pre-reg, ≥1 ablation must PASS.
-- **Corroborating metrics:** affordance-preference safe-fraction (direction `B > A`), tool-class diversity (direction `B < A`), time-to-safe-steady-state (direction `B < A`). Each PASSES when `(B - A) / A.sd ≥ 1` in the predicted direction. Per pre-reg, ≥1 must hit; if all three diverge from prediction while the primary still hits, the analyzer notes the "measurement artifact" concern.
-- **Robustness cross-check:** the analyzer ALSO computes the primary criterion using `per_action_failure_rate`. If the per-turn and per-action verdicts disagree, a note flags the turn-binning operationalization (per §1) for review before claiming the verdict.
+- **Primary criterion variance-survival rule:** Arm B mean must lie ABOVE Arm A's 97.5th-percentile band, computed across the same N=5 paired trials (direction-flipped by 2026-06-XX pivot per §1). Percentile band uses `statistics.quantiles(values, n=40, method="inclusive")`; with N=5 this is essentially the empirical [min, max]. The one-sided check matches the predicted direction `B > A` (higher positive-approach-engagement-fraction is better).
+- **Isolation rule:** Arm C mean must fall WITHIN `[A.p2.5, A.p97.5]`. If Arm C also rises above A's band, the analyzer flags the "general caution" confound — though now in the direction of "general preference for safe affordances regardless of substrate inheritance."
+- **Secondary criterion (ablation attribution):** for each of the 3 B-family ablation arms, shrinkage = `|B - A| − |ablated − A|`; PASS if `shrinkage / A.sd ≥ 1.0`. Per pre-reg, ≥1 ablation must PASS. Direction-agnostic.
+- **Corroborating metrics:** affordance-preference safe-fraction (direction `B > A`), tool-class diversity (direction `B < A`), time-to-safe-steady-state (direction `B < A`), AND `time_to_first_warm_self_action` (direction `B < A`, NEW per 2026-06-XX pivot — substrate transfer predicts B reaches warm_self earlier than A's exploration). Each PASSES when `(B - A) / A.sd ≥ 1` in the predicted direction. Per pre-reg, ≥1 must hit; if ALL diverge from prediction while the primary still hits, the analyzer notes the "measurement artifact" concern.
+- **Robustness cross-check (legacy primary):** the analyzer ALSO computes the variance-survival test using the legacy `per_action_failure_rate` (direction `decrease`). Divergence between the new primary (positive-approach-engagement) and robustness (failure-rate) flags substrate weirdness — warm_self preference shift without touch reduction (or vice versa). Inspect both signals before claiming the verdict.
 - **Schema enforcement:** records with `_format_version != "1.0"` (or missing the field entirely) are refused. Mixed schema versions in one file are a hard error.
 - **Design completeness:** every `(scenario, arm)` combination must have exactly the expected number of trials. Missing or duplicate `trial_pair_id`s cause a hard error — analyzer never produces a verdict on partial data.
 

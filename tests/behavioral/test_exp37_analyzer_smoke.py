@@ -61,6 +61,16 @@ def _record(
     time_to_steady: int | None = 5,
     schema_version: str = "1.0",
     fire_approach_count: int = 0,
+    # exp37_metric_pivot.md (Path 2) new primary. Default mirrors
+    # ``primary`` but inverted (1 - primary) so existing engineered-variance
+    # fixtures keep their semantics: an "Arm B improved" fixture had
+    # ``primary`` LOW (B < A.p2.5 → legacy PASS); under the pivot, NEW
+    # primary is HIGH (B > A.p97.5 → pivot PASS). Both pass together
+    # without divergence. Explicit caller override available for
+    # divergence-engineering tests.
+    positive_approach_fraction: float | None = None,
+    engagement_count: int = 5,
+    time_to_first_warm_self: int | None = 1,
 ) -> dict[str, Any]:
     """Build a single JSONL record with engineered metric values.
 
@@ -107,6 +117,18 @@ def _record(
         # Default 0 keeps existing engineered-variance tests unchanged; new
         # tests below opt in by passing non-zero values.
         "fire_approach_action_count": fire_approach_count,
+        # exp37_metric_pivot.md (Path 2): NEW primary + denominator + new
+        # corroborating. Default positive_approach_fraction = 1 - primary
+        # mirrors the inverse-direction relationship so existing
+        # engineered fixtures (where Arm B's ``primary`` is lower than A's)
+        # automatically encode "Arm B's positive-approach-fraction is
+        # higher than A's" — both metrics PASS together for EARNED cases,
+        # no spurious divergence flagged.
+        "positive_approach_engagement_fraction": (
+            positive_approach_fraction if positive_approach_fraction is not None else 1.0 - primary
+        ),
+        "fire_pit_engagement_count": engagement_count,
+        "time_to_first_warm_self_action": time_to_first_warm_self,
     }
 
 
@@ -349,14 +371,23 @@ def test_partial_investigation_isolation_fails(analyzer, tmp_path):
 
 
 def test_robustness_divergence_emits_note(analyzer, tmp_path):
-    """When per-turn primary passes but per-action robustness disagrees, the
-    analyzer surfaces a note (per protocol §1)."""
+    """exp37_metric_pivot.md (Path 2): when the NEW primary
+    (positive_approach_engagement_fraction, increase direction) passes
+    but the legacy ROBUSTNESS metric (per_action_failure_rate, decrease
+    direction) disagrees, the analyzer surfaces a note. The two metrics
+    measure different aspects of the substrate-transfer claim — a
+    divergence indicates "B's warm_self preference shifted without
+    reducing touch behavior" (or vice versa) and warrants investigation.
+    """
     records = _build_full_design(
         a_vals=_arm_a_baseline(),
         b_vals=_arm_b_improved(),
         c_vals=_arm_c_within_a_band(),
     )
-    # Force per_action to land INSIDE A's band on B's records (disagree).
+    # Force per_action to land NEAR A on B's records → robustness check
+    # FAILS while the new primary still PASSes (positive_approach is
+    # populated from 1 - primary by default, so it's still in the
+    # "improved" zone for B).
     for r in records:
         if r["arm"] == "B":
             r["per_action_failure_rate"] = 0.65  # near A
@@ -371,7 +402,9 @@ def test_robustness_divergence_emits_note(analyzer, tmp_path):
     )
     verdicts = result.scenarios
     notes_joined = " ".join(n for v in verdicts for n in v.notes)
-    assert "Robustness divergence" in notes_joined, f"expected robustness note; got: {notes_joined!r}"
+    assert "Primary / robustness divergence" in notes_joined, (
+        f"expected pivot-era divergence note; got: {notes_joined!r}"
+    )
 
 
 # ─── 7. Schema mismatch refused ──────────────────────────────────────────
@@ -593,13 +626,16 @@ def test_wrong_direction_corroborating_triggers_investigation(analyzer, tmp_path
     )
     # tool_diversity: predicted DECREASE on B; here it increases (wrong direction).
     # time_to_steady: predicted DECREASE on B; here it increases (wrong direction).
+    # time_to_first_warm_self: predicted DECREASE on B; here it increases (wrong direction).
     for r in records:
         if r["arm"] == "A":
             r["tool_class_diversity"] = 3
             r["time_to_safe_steady_state_turns"] = 2
+            r["time_to_first_warm_self_action"] = 2  # A reaches warm_self at action 2
         if r["arm"] == "B":
             r["tool_class_diversity"] = 10  # ↑ (wrong direction)
             r["time_to_safe_steady_state_turns"] = 8  # ↑ (wrong direction)
+            r["time_to_first_warm_self_action"] = 10  # ↑ (wrong direction — substrate fails to bias earlier)
     p = tmp_path / "wrong_direction.jsonl"
     _write_jsonl(p, records)
     result = analyzer.run_analysis(
@@ -984,3 +1020,169 @@ def test_scenario_verdict_approach_descriptive_default_none(analyzer):
         notes=[],
     )
     assert v.approach_descriptive is None
+
+
+# ─── exp37_metric_pivot.md (Path 2) — direction flip + pivot semantics ──
+
+
+def test_primary_metric_is_positive_approach_engagement_fraction(analyzer):
+    """Pin the pivot: the analyzer's PRIMARY_METRIC constant should be
+    the new field, with direction=increase. Catches accidental revert
+    to the pre-pivot constant in a future refactor.
+    """
+    assert analyzer.PRIMARY_METRIC == "positive_approach_engagement_fraction"
+    assert analyzer.PRIMARY_METRIC_DIRECTION == "increase"
+    assert analyzer.ROBUSTNESS_METRIC == "per_action_failure_rate"
+    assert analyzer.ROBUSTNESS_METRIC_DIRECTION == "decrease"
+
+
+def test_primary_pass_when_b_above_a_p97_band(analyzer, tmp_path):
+    """Direction-flip check: with the new primary, Arm B EARNED requires
+    B.mean > A.p97.5. _record's default ``positive_approach_fraction
+    = 1 - primary`` maps the existing "Arm B improved" fixture (low
+    primary on B) onto "high positive_approach on B" → primary should
+    PASS.
+    """
+    ablations = {
+        "B-wire-a-off": [0.55, 0.58, 0.60, 0.63, 0.65],
+        "B-wire-1-off": [0.20, 0.22, 0.24, 0.26, 0.28],
+        "B-nac-bias-off": [0.50, 0.52, 0.55, 0.58, 0.60],
+    }
+    records = _build_full_design(
+        a_vals=_arm_a_baseline(),  # primary ~0.65 → positive_approach ~0.35
+        b_vals=_arm_b_improved(),  # primary ~0.20 → positive_approach ~0.80
+        c_vals=_arm_c_within_a_band(),
+        ablations=ablations,
+    )
+    p = tmp_path / "pivot_earned.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    for v in result.scenarios:
+        assert v.primary_pass, (
+            f"{v.scenario}: expected primary PASS with positive_approach pivot — "
+            f"a_mean={v.a_mean}, a_band={v.a_band}, b_mean={v.b_mean}"
+        )
+
+
+def test_primary_fail_when_b_below_a_band(analyzer, tmp_path):
+    """Symmetric to the EARNED test: if Arm B's positive_approach is
+    LOWER than A's (substrate transfer ABSENT or REVERSED), primary
+    must FAIL. Uses identical A baseline and explicitly forces B's
+    positive_approach to also be low.
+    """
+    records = _build_full_design(
+        a_vals=_arm_a_baseline(),
+        b_vals=_arm_a_baseline(),  # B same as A → no improvement
+        c_vals=_arm_c_within_a_band(),
+    )
+    # Default 1-primary maps both to ~0.35 → B not above A.p97.5 → FAIL.
+    p = tmp_path / "pivot_fail.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    for v in result.scenarios:
+        assert not v.primary_pass, f"{v.scenario}: expected primary FAIL — a_band={v.a_band}, b_mean={v.b_mean}"
+
+
+def test_pivot_markdown_uses_p97_5_predicted_label(analyzer, tmp_path):
+    """The rendered markdown should display ``> A.p97.5`` for B's
+    predicted side (direction-aware label per the analyzer's render
+    function), NOT the legacy ``< A.p2.5`` text.
+    """
+    records = _build_full_design(
+        a_vals=_arm_a_baseline(),
+        b_vals=_arm_b_improved(),
+        c_vals=_arm_c_within_a_band(),
+    )
+    p = tmp_path / "pivot_md.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    assert "> A.p97.5" in result.markdown
+    assert "< A.p2.5" not in result.markdown
+
+
+def test_time_to_first_warm_self_corroborating_present(analyzer, tmp_path):
+    """The new corroborating metric should appear in the verdict's
+    corroborating_details. Substrate transfer predicts B reaches
+    warm_self earlier than A → direction = decrease.
+    """
+    # Engineer the new metric specifically: A reaches warm_self at action 4,
+    # B at action 1 (substrate-biased earlier).
+    records = []
+    a_vals = _arm_a_baseline()
+    b_vals = _arm_b_improved()
+    c_vals = _arm_c_within_a_band()
+    for scenario in ("fire_pit", "sharp_rock"):
+        for trial_id in range(1, 6):
+            i = trial_id - 1
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="A",
+                    scenario=scenario,
+                    primary=a_vals[i],
+                    time_to_first_warm_self=4 + i,  # 4..8
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="B",
+                    scenario=scenario,
+                    primary=b_vals[i],
+                    time_to_first_warm_self=1,  # consistently early
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="C",
+                    scenario=scenario,
+                    primary=c_vals[i],
+                    time_to_first_warm_self=4 + i,
+                )
+            )
+            for ab in ("B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"):
+                records.append(
+                    _record(
+                        trial_pair_id=trial_id,
+                        arm=ab,
+                        scenario=scenario,
+                        primary=b_vals[i],
+                    )
+                )
+    p = tmp_path / "ttfws.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    fire_v = next(v for v in result.scenarios if v.scenario == "fire_pit")
+    fields = [c["field"] for c in fire_v.corroborating_details]
+    assert "time_to_first_warm_self_action" in fields, (
+        f"time_to_first_warm_self_action should appear in corroborating; got fields={fields}"
+    )
+    ttfws_record = next(c for c in fire_v.corroborating_details if c["field"] == "time_to_first_warm_self_action")
+    # B's mean (1.0) should be < A's mean (~6.0) → predicted direction
+    # (decrease) → PASS.
+    assert ttfws_record["pass"], f"expected PASS; got {ttfws_record}"

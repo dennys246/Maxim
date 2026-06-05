@@ -8,11 +8,18 @@ graduation gate. Emits a Markdown block ready to append to
 
 Rules implemented (verbatim from
 [37_cross_session_graduation.md](docs/experiments/37_cross_session_graduation.md);
-pre-reg amendment 2026-05-31 promoted per-action rate to primary):
+pre-reg amendments 2026-05-31 (per-action rate) and 2026-06-XX
+(exp37_metric_pivot.md Path 2 → positive-approach-engagement-fraction)):
 
-  - **Primary (variance-survival):** Arm B mean of per_action_failure_rate
-    BELOW Arm A's 2.5th-percentile band, computed across N paired trials.
-    One-sided test — predicted direction is B < A.
+  - **Primary (variance-survival):** Arm B mean of
+    positive_approach_engagement_fraction ABOVE Arm A's 97.5th-percentile
+    band, computed across N paired trials. One-sided test — predicted
+    direction is B > A (substrate-transferred warm_self preference biases
+    B toward higher positive-approach ratio when engaging with fire).
+  - **Robustness (legacy primary, decrease):** Arm B mean of
+    per_action_failure_rate BELOW Arm A's 2.5th-percentile band. Divergence
+    between primary and robustness flags potential substrate weirdness
+    (warm_self bias without touch reduction, or vice versa).
   - **Isolation:** Arm C mean WITHIN Arm A's [2.5%, 97.5%] band. If Arm C
     also shows shrinkage, primary FAILS with the "general caution" confound.
   - **Corroborating (≥1 of 3 must hit):** affordance_safe_fraction,
@@ -109,13 +116,24 @@ EXPERIMENT_ID: str = _HARNESS["EXPERIMENT_ID"]
 SCENARIOS: tuple[str, ...] = _HARNESS["SCENARIOS"]
 HARNESS_ARMS: tuple[str, ...] = _HARNESS["ARMS"]
 
-# Per pre-reg amendment 2026-05-31 (PR #5 pilot fold): the primary metric
-# was swapped from per-turn to per-action because Cradle sims lack say/
-# respond boundaries that the harness binner depends on, collapsing the
-# per-turn metric to a structurally-degenerate single-bucket shape. The
-# per-turn metric is kept as the robustness cross-check (informational).
-PRIMARY_METRIC = "per_action_failure_rate"
-ROBUSTNESS_METRIC = "primary_metric_repeat_failure_action_rate"
+# Per pre-reg amendment 2026-06-XX (exp37_metric_pivot.md Path 2): primary
+# metric pivoted to ``positive_approach_engagement_fraction`` — the share of
+# the agent's on-target fire engagement that goes to the positive-approach
+# affordance ``fire_pit_warm_self``. The substrate-transfer hypothesis under
+# LLM-AUT predicts B is biased toward warm_self when it engages with fire,
+# producing a HIGHER ratio than A's exploration-driven engagement. The
+# 2026-05-31 swap to per_action_failure_rate is retained as the robustness
+# cross-check (its variance-survival math is degenerate when Arm A never
+# touches the fire — the failure mode this pivot resolves).
+#
+# DIRECTION FLIP: with the new primary, "better" is HIGHER (warm_self
+# preference is the predicted Arm B signal). _compute_primary_isolation
+# takes the direction as a kwarg so old callers (robustness check on the
+# legacy metric) keep "decrease" semantics.
+PRIMARY_METRIC = "positive_approach_engagement_fraction"
+PRIMARY_METRIC_DIRECTION = "increase"
+ROBUSTNESS_METRIC = "per_action_failure_rate"
+ROBUSTNESS_METRIC_DIRECTION = "decrease"
 TURN_COUNT_FIELD = "turn_count_binned"
 
 # Corroborating metrics — (record_field, predicted_direction, label, none_handling).
@@ -145,6 +163,19 @@ CORROBORATING_METRICS: tuple[tuple[str, str, str, str], ...] = (
         "time_to_safe_steady_state_turns",
         "decrease",
         "Time-to-safe-steady-state (turns to 3 consecutive zero-failure turns; None censored to turn_count_binned+1)",
+        "censor_to_max",
+    ),
+    # exp37_metric_pivot.md (Path 2): action-index at which the agent
+    # first calls ``fire_pit_warm_self``. Substrate transfer predicts B's
+    # first warm_self comes EARLIER than A's exploration-driven discovery
+    # (or at least no later), giving a meaningful corroborating signal
+    # for the new primary. ``censor_to_max`` keeps "never reached" sorting
+    # as strictly worse than any reached session (parallel to
+    # time_to_safe_steady_state_turns handling).
+    (
+        "time_to_first_warm_self_action",
+        "decrease",
+        "Time-to-first-warm-self (action index of first warm_self; None censored to turn_count_binned+1)",
         "censor_to_max",
     ),
 )
@@ -415,8 +446,22 @@ def _compute_primary_isolation(
     grouped: dict[tuple[str, str], list[dict[str, Any]]],
     scenario: str,
     metric: str,
+    *,
+    direction: str = "decrease",
 ) -> tuple[bool, bool, float | None, float | None, tuple[float, float] | None, float | None, list[str]]:
-    """Returns ``(primary_pass, isolation_pass, a_mean, a_sd, a_band, b_mean, c_mean, notes)``."""
+    """Returns ``(primary_pass, isolation_pass, a_mean, a_sd, a_band, b_mean, c_mean, notes)``.
+
+    ``direction`` controls which side of Arm A's percentile band Arm B's
+    mean must exit for primary_pass:
+
+    - ``"decrease"`` (legacy, robustness check): B.mean < A.p2.5 — used for
+      ``per_action_failure_rate`` where lower is better.
+    - ``"increase"`` (pivot, primary): B.mean > A.p97.5 — used for
+      ``positive_approach_engagement_fraction`` where higher is better.
+
+    Isolation always uses the two-sided band (C must lie within A's
+    [p2.5, p97.5]); the "general caution" confound is direction-agnostic.
+    """
     notes: list[str] = []
     a_vals = _extract_metric(grouped.get((scenario, "A"), []), metric)
     b_vals = _extract_metric(grouped.get((scenario, "B"), []), metric)
@@ -433,8 +478,10 @@ def _compute_primary_isolation(
         return (False, False, a_mean, a_sd, a_band, b_mean, c_mean, notes)
 
     # Primary: B mean must lie OUTSIDE A's band on the predicted side.
-    # Predicted direction is B < A (lower repeat-failure-action rate is better).
-    primary_pass = b_mean < a_band[0]
+    if direction == "increase":
+        primary_pass = b_mean > a_band[1]
+    else:  # "decrease" — legacy / robustness
+        primary_pass = b_mean < a_band[0]
 
     isolation_pass = True
     if c_mean is None:
@@ -597,18 +644,26 @@ def evaluate_scenario(
     scenario: str,
 ) -> ScenarioVerdict:
     primary_pass, isolation_pass, a_mean, a_sd, a_band, b_mean, c_mean, notes = _compute_primary_isolation(
-        grouped, scenario, PRIMARY_METRIC
+        grouped, scenario, PRIMARY_METRIC, direction=PRIMARY_METRIC_DIRECTION
     )
 
-    # Robustness cross-check via per-action rate.
+    # Robustness cross-check via the legacy per-action failure rate.
+    # exp37_metric_pivot.md (Path 2): the OLD primary is retained as the
+    # robustness signal — divergence between the new primary's verdict
+    # and the legacy primary's verdict flags that the substrate-driven
+    # warm_self preference shift may not correspond to a touch-avoidance
+    # shift. Pre-reg amendment notes both signals should be inspected.
     primary_rob_pass, _, _, _, rob_band, b_rob_mean, _, rob_notes = _compute_primary_isolation(
-        grouped, scenario, ROBUSTNESS_METRIC
+        grouped, scenario, ROBUSTNESS_METRIC, direction=ROBUSTNESS_METRIC_DIRECTION
     )
     if primary_pass != primary_rob_pass:
         notes.append(
-            f"Robustness divergence on {scenario}: per-turn primary={primary_pass} "
-            f"vs per-action robustness={primary_rob_pass}. Investigate turn-binning "
-            f"before claiming the verdict (per protocol §1)."
+            f"Primary / robustness divergence on {scenario}: "
+            f"positive-approach-engagement primary={primary_pass} "
+            f"vs per-action-failure-rate robustness={primary_rob_pass}. "
+            f"Substrate may be biasing toward warm_self without reducing touch "
+            f"(or vice versa). Investigate before claiming the verdict "
+            f"(per protocol §1)."
         )
     notes.extend(rob_notes)
 
@@ -834,17 +889,25 @@ def render_markdown(
         a_band_str = f"[{_fmt(v.a_band[0])}, {_fmt(v.a_band[1])}]" if v.a_band else "—"
         lines.append(f"| A | {_fmt(v.a_mean)} | baseline · 95% band {a_band_str} | — |")
         primary_str = "PASS" if v.primary_pass else "FAIL"
-        lines.append(
-            f"| B | {_fmt(v.b_mean)} | < A.p2.5 = {_fmt(v.a_band[0] if v.a_band else None)} | **{primary_str}** |"
-        )
+        # Direction-aware label: with the exp37_metric_pivot.md Path 2
+        # primary, higher is better → predicted side is A.p97.5 (the upper
+        # bound of A's empirical band). Legacy direction (lower=better)
+        # is preserved as the robustness check below.
+        if PRIMARY_METRIC_DIRECTION == "increase":
+            predicted_str = f"> A.p97.5 = {_fmt(v.a_band[1] if v.a_band else None)}"
+        else:
+            predicted_str = f"< A.p2.5 = {_fmt(v.a_band[0] if v.a_band else None)}"
+        lines.append(f"| B | {_fmt(v.b_mean)} | {predicted_str} | **{primary_str}** |")
         isolation_str = "PASS" if v.isolation_pass else "FAIL"
         lines.append(f"| C | {_fmt(v.c_mean)} | ∈ A's band | **{isolation_str}** |")
         lines.append("")
         lines.append(
-            f"Robustness (per-action rate): "
+            f"Robustness (legacy per-action failure rate, decrease): "
             f"{'PASS' if v.primary_pass_robustness else 'FAIL'}"
             + (
-                " — DIVERGES from per-turn primary; see protocol §1"
+                " — DIVERGES from positive-approach-engagement primary; "
+                "see protocol §1 (substrate may be biasing warm_self without "
+                "reducing touch, or vice versa)"
                 if v.primary_pass != v.primary_pass_robustness
                 else ""
             )
