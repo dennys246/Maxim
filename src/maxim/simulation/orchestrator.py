@@ -913,6 +913,7 @@ def start_simulation_mode(
             from maxim.prompts.acting_coach import ActingCoachConfig
 
             aut_llm_worker.acting_coach = ActingCoachConfig()
+            aut_llm_worker.is_embodied = True
 
             # E2: Inject entity context into AUT prompt
             if aut_component_registry is not None:

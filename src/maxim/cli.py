@@ -1923,6 +1923,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                         from maxim.prompts.acting_coach import ActingCoachConfig
 
                         llm_worker.acting_coach = ActingCoachConfig()
+                        llm_worker.is_embodied = True
 
                         # E2: Inject entity context (sensors, affordances, failure
                         # triggers) into the AUT prompt so the agent knows what

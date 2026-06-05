@@ -392,6 +392,71 @@ class TestExamineTool:
         assert "dragon" in result.output["observation"].lower()
 
 
+# ── ThinkTool schema tests ───────────────────────────────────────────
+
+
+class TestThinkToolSchema:
+    """The think tool's input_schema must not strictly require ``thought``.
+
+    Pre-fix the schema was the legacy custom format ``{"thought": str}``
+    which the Tool._validate_input dispatcher interpreted as a required
+    field — raising ``Missing required input: thought`` for any LLM call
+    that used the ``text`` / ``prompt`` aliases or omitted the param.
+    The alias fallback inside ``execute()`` never ran. See
+    docs/plans/cradle_activation_fixes.md (Finding B).
+    """
+
+    def test_schema_is_jsonschema_with_empty_required(self):
+        tool = ThinkTool()
+        schema = tool.to_json_schema()
+        assert schema.get("type") == "object"
+        assert "thought" in schema.get("properties", {})
+        # The critical invariant — empty required list means the validator
+        # does not block calls that omit the param or use aliases.
+        assert schema.get("required", []) == []
+
+    def test_execute_accepts_thought(self):
+        result = ThinkTool().execute(thought="planning my next action")
+        assert result.success is True
+        assert result.output["thought"] == "planning my next action"
+
+    def test_execute_accepts_text_alias(self):
+        """LLM commonly emits 'text' instead of 'thought'; aliasing
+        in execute() must not be blocked by a strict validator.
+        """
+        result = ThinkTool().execute(text="planning via text alias")
+        assert result.success is True
+        assert result.output["thought"] == "planning via text alias"
+
+    def test_execute_accepts_prompt_alias(self):
+        result = ThinkTool().execute(prompt="planning via prompt alias")
+        assert result.success is True
+        assert result.output["thought"] == "planning via prompt alias"
+
+    def test_execute_empty_returns_typed_failure(self):
+        """When all aliases are missing, execute() returns a typed failure
+        — NOT a Missing-required-input exception from the validator.
+        """
+        result = ThinkTool().execute()
+        assert result.success is False
+        assert "Empty thought" in (result.error or "")
+
+    def test_executor_dispatch_accepts_empty_params(self):
+        """End-to-end through the Executor: think() with no params must
+        reach execute() (returning a typed failure), NOT trip the
+        validator. Tightly bound to the cradle smoke regression: the
+        14B LLM occasionally emits ``think({})`` and the validator
+        was eating the call before the alias path could handle it.
+        """
+        registry = ToolRegistry()
+        registry.register(ThinkTool())
+        exe = Executor(tool_registry=registry)
+        result = exe.execute({"tool_name": "think", "params": {}})
+        # Executor should report failure from execute() (Empty thought),
+        # not a ValueError from the validator.
+        assert result is not None
+
+
 # ── Tool Usage Tracking tests ────────────────────────────────────────
 
 

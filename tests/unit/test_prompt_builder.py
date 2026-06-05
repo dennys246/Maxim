@@ -79,10 +79,11 @@ class TestBuildIdentitySection:
         mode.goal = goal
         return mode
 
-    def _make_request(self, autonomy=AutonomyLevel.SUPERVISED, sleeping=False):
+    def _make_request(self, autonomy=AutonomyLevel.SUPERVISED, sleeping=False, is_embodied=False):
         req = MagicMock()
         req.autonomy_level = autonomy
         req.is_sleeping = sleeping
+        req.is_embodied = is_embodied
         return req
 
     def test_basic_identity(self):
@@ -103,6 +104,17 @@ class TestBuildIdentitySection:
             "10:00 AM",
         )
         assert "explore the environment" in result
+
+    def test_embodied_identity_flips_to_body(self):
+        """When is_embodied=True the identity drops the 'Maxim, a robot
+        assistant' phrasing and emits the 'body in a world' exploration
+        directive. Prevents 14B models from interpreting the agent as a
+        chatbot and looping on the (now-suppressed) `respond` tool.
+        """
+        result = build_identity_section(self._make_mode(), self._make_request(is_embodied=True), "Monday", "10:00 AM")
+        assert "body in a world" in result
+        assert "physical tools" in result
+        assert "robot assistant" not in result
 
 
 # ── build_datetime_section ─────────────────────────────────────────────────
@@ -197,6 +209,38 @@ class TestBuildToolGuidanceCore:
         assert "ANY file" in result
         assert ".maxim_workspace/" not in result
 
+    def test_embodied_mode_suppresses_conversational_tools(self):
+        """When is_embodied=True the core tool guidance must NOT instruct
+        the LLM to call the conversational `respond` / `speak` tools by
+        name (those are not registered in embodied arcs — the body
+        exposes `<body>_respond` instead). The block may MENTION those
+        names in the negative ("there is no generic 'respond'") as the
+        affirmative replacement guidance, but the imperative tool-parameter
+        / planning-rule patterns from the unmasked branch must be absent.
+        Without this gating, the LLM enters the silent `Tool not
+        registered: 'respond'` loop documented in
+        docs/plans/cradle_activation_fixes.md (Finding B).
+        """
+        result = build_tool_guidance_core("passive", is_embodied=True)
+        # Imperative patterns from the unmasked branch — none should appear.
+        assert '- respond: {"message"' not in result
+        assert '- speak: {"text"' not in result
+        assert "Use 'respond'" not in result
+        assert "write_file" not in result
+        assert "Planning Rule" not in result
+        assert "Tool Parameters" not in result
+        # Affirmative replacement guidance.
+        assert "Body Tool Discipline" in result
+        assert "sense_tools" in result
+
+    def test_embodied_mode_unaffected_by_operational_mode(self):
+        """The embodied branch is independent of mode_name; passive /
+        active / singularity all collapse to the same body-tool block.
+        """
+        passive = build_tool_guidance_core("passive", is_embodied=True)
+        singularity = build_tool_guidance_core("singularity", is_embodied=True)
+        assert passive == singularity
+
 
 # ── build_tool_guidance_extended ──────────────────────────────────────────
 
@@ -215,6 +259,18 @@ class TestBuildToolGuidanceExtended:
     def test_contains_batched_calls(self):
         result = build_tool_guidance_extended("active")
         assert "BATCHED" in result
+
+    def test_embodied_mode_returns_empty(self):
+        """When is_embodied=True the extended tool-selection menu is empty
+        — its content is conversational ('KNOWLEDGE from memory: Use
+        respond') and doesn't apply to body-driven agents. The dynamic
+        tool manifest (built elsewhere from the registry) carries the
+        per-entity affordances. The embodied core block in
+        build_tool_guidance_core supplies the affirmative discipline.
+        """
+        assert build_tool_guidance_extended("passive", is_embodied=True) == ""
+        assert build_tool_guidance_extended("singularity", is_embodied=True) == ""
+        assert build_tool_guidance_extended("active", is_embodied=True) == ""
 
 
 # ── build_observation_section ─────────────────────────────────────────────
