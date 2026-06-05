@@ -196,6 +196,58 @@ def _resolve_maxim_binary() -> str:
     return _MAXIM_BIN_CACHE
 
 
+CLOUD_MODEL_PREFIXES: tuple[str, ...] = (
+    "claude-",
+    "gpt-",
+    "gemini-",
+    "groq-",
+    "together-",
+    "fireworks-",
+    "deepseek-",
+    # NOTE: "mistral-" is intentionally NOT in this prefix list — both
+    # local (mistral-7b, mistral-7b-instruct) and cloud (mistral-large-*,
+    # mistral-medium-*) profiles use it. Cloud-Mistral runs need explicit
+    # handling via the broader profile registry once that lookup is wired
+    # into the harness; until then, cloud-Mistral isn't supported through
+    # the auto-dispatch path.
+)
+
+
+_CLOUD_PROVIDER_KEY_ENV: dict[str, str] = {
+    "claude-": "ANTHROPIC_API_KEY",
+    "gpt-": "OPENAI_API_KEY",
+    "gemini-": "GOOGLE_API_KEY",
+    "groq-": "GROQ_API_KEY",
+    "together-": "TOGETHER_API_KEY",
+    "fireworks-": "FIREWORKS_API_KEY",
+    "deepseek-": "DEEPSEEK_API_KEY",
+    # NOTE: "mistral-" intentionally omitted — see CLOUD_MODEL_PREFIXES.
+}
+
+
+def _provider_key_env_for_model(model: str) -> str | None:
+    """Map a cloud model name to the required API-key env var. See
+    CLAUDE.md "Environment Variables" for the canonical list.
+    """
+    for prefix, env_name in _CLOUD_PROVIDER_KEY_ENV.items():
+        if model.startswith(prefix):
+            return env_name
+    return None
+
+
+def _is_cloud_model(model: str) -> bool:
+    """Return True when ``model`` resolves to a cloud-provider profile.
+
+    Cloud profiles need different sub-sim plumbing than the default
+    peer-to-leader routing: the harness must pass ``--language-model`` so
+    the profile resolves on the sub-sim side AND must set the cloud-lane
+    env vars per CLAUDE.md (MAXIM_LLM_CLOUD_ENABLED, MAXIM_MAX_CLOUD_LANES,
+    provider API key) AND must blank out any peer.yml routing so the
+    sub-sim doesn't try to dispatch the LARGE tier through the leader.
+    """
+    return any(model.startswith(prefix) for prefix in CLOUD_MODEL_PREFIXES)
+
+
 def _real_sim(
     data_home: Path,
     goal: str,
@@ -232,16 +284,47 @@ def _real_sim(
         "--sim-max-turns",
         str(max_turns),
     ]
-    # ``--language-model`` is INTENTIONALLY omitted: passing it forces the
-    # sub-sim into local-llama-cpp mode (spawn-the-profile-locally),
-    # overriding peer.yml routing even when role detects as ``peer``. For
-    # Exp 37 we want every sub-sim to call the shared leader (so the
-    # post-A substrate snapshot resumes against the SAME model and the
-    # variance-survival rule isn't polluted by per-sandbox model
-    # downloads). The harness's ``--model`` flag is preserved as a
-    # JSONL metadata field; the served model name is discovered by
-    # ``_MaximPeerBackend.warmup()`` and surfaced in the report via
-    # PR #325's served-model substitution.
+
+    # Per the 2026-06-05 cloud-dispatch fix: peer-routed local-LLM mode
+    # (the original Exp 37 design) and cloud-API mode use different sub-sim
+    # plumbing. Peer mode omits ``--language-model`` and lets the sub-sim's
+    # role detection + peer.yml route LARGE-tier inference through the
+    # leader. Cloud mode passes ``--language-model`` AND sets explicit
+    # cloud-lane env vars AND blanks peer.yml routing so the sub-sim
+    # doesn't try to dispatch through the leader.
+    if _is_cloud_model(model):
+        cmd.extend(["--language-model", model])
+        # Force solo role so the sub-sim's role detector doesn't see peer.yml
+        # / mesh.yml on this machine and try to route through the leader.
+        env["MAXIM_ROLE"] = "solo"
+        # Explicitly enable cloud dispatch + reserve cloud lanes for the
+        # sub-sim. CLAUDE.md env table: MAXIM_LLM_CLOUD_ENABLED + MAXIM_MAX_CLOUD_LANES.
+        env["MAXIM_LLM_CLOUD_ENABLED"] = "1"
+        env.setdefault("MAXIM_MAX_CLOUD_LANES", "6")
+        env.setdefault("MAXIM_LLM_REDACTION_POLICY", "standard")
+        # Blank any peer.yml-derived LARGE-tier routing so the sub-sim's
+        # router doesn't dispatch through ``_MaximPeerBackend`` (which
+        # would still hit the leader regardless of profile).
+        env["MAXIM_LANE_LARGE_REMOTE_URL"] = ""
+        env["MAXIM_LANE_LARGE_REMOTE_API_KEY"] = ""
+        env["MAXIM_LANE_LARGE_REMOTE_MODEL"] = ""
+        # Sanity-check the provider API key is set in env (best-effort —
+        # the sub-sim will fail with a clear error if it's missing, but
+        # we surface the check here for faster diagnosis).
+        _provider_key_env = _provider_key_env_for_model(model)
+        if _provider_key_env and not env.get(_provider_key_env):
+            raise RuntimeError(
+                f"Cloud model {model!r} requires {_provider_key_env} in the harness "
+                f"env; missing. Set it before invoking the harness."
+            )
+    # else: peer-routing mode (original Exp 37 design). ``--language-model``
+    # is INTENTIONALLY omitted: passing it would force the sub-sim into
+    # local-llama-cpp mode (spawn-the-profile-locally), overriding peer.yml
+    # routing even when role detects as ``peer``. The harness's ``--model``
+    # flag is preserved as a JSONL metadata field; the served model name
+    # is discovered by ``_MaximPeerBackend.warmup()`` and surfaced in the
+    # report via PR #325's served-model substitution.
+
     if resume_session is not None:
         cmd.extend(["--resume-sim", resume_session])
 

@@ -810,3 +810,140 @@ def test_version_info_present(harness, workdir, out_path):
     # Either the maxim version came through or an error was captured —
     # either way, the field is present.
     assert "version" in vi or "version_info_error" in vi
+
+
+# ─── 13. Cloud-model dispatch detection (2026-06-05 patch) ───────────────
+
+
+class TestCloudModelDetection:
+    def test_anthropic_claude_recognized(self, harness):
+        assert harness._is_cloud_model("claude-sonnet")
+        assert harness._is_cloud_model("claude-haiku-4.5")
+        assert harness._is_cloud_model("claude-opus-4.7")
+
+    def test_openai_recognized(self, harness):
+        assert harness._is_cloud_model("gpt-4o")
+        assert harness._is_cloud_model("gpt-4-turbo")
+
+    def test_other_providers_recognized(self, harness):
+        for name in ("gemini-pro", "groq-mixtral", "together-llama", "deepseek-chat"):
+            assert harness._is_cloud_model(name), f"{name!r} should be cloud"
+
+    def test_local_profiles_not_cloud(self, harness):
+        for name in ("qwen2.5-14b-instruct", "mistral-7b", "smollm-1.7b-instruct"):
+            assert not harness._is_cloud_model(name), f"{name!r} should NOT be cloud"
+
+    def test_provider_key_env_mapping(self, harness):
+        assert harness._provider_key_env_for_model("claude-sonnet") == "ANTHROPIC_API_KEY"
+        assert harness._provider_key_env_for_model("gpt-4o") == "OPENAI_API_KEY"
+        assert harness._provider_key_env_for_model("gemini-pro") == "GOOGLE_API_KEY"
+        # Unknown / local profile → None.
+        assert harness._provider_key_env_for_model("qwen2.5-14b-instruct") is None
+
+
+class TestCloudDispatchEnvSetup:
+    """The cloud-dispatch branch of ``_real_sim`` must:
+
+    - Pass ``--language-model <model>`` to the sub-sim CLI.
+    - Set ``MAXIM_ROLE=solo`` so the sub-sim's role detector doesn't try
+      to route through peer.yml / mesh.yml.
+    - Set ``MAXIM_LLM_CLOUD_ENABLED=1`` and ``MAXIM_MAX_CLOUD_LANES``.
+    - Blank any peer.yml-derived LARGE-tier env vars.
+    - Raise if the provider API key isn't in env.
+
+    We can't easily exercise the full ``_real_sim`` without subprocessing
+    a real ``maxim``, but we can verify the env + cmd construction by
+    pulling the logic up to a testable helper. Instead, monkeypatch
+    ``subprocess.run`` to capture the cmd / env that would have been used.
+    """
+
+    def test_cloud_dispatch_passes_language_model_flag(self, harness, monkeypatch, tmp_path):
+        captured: dict[str, object] = {}
+
+        def fake_run(cmd, env=None, **kwargs):
+            captured["cmd"] = list(cmd)
+            captured["env"] = dict(env) if env else {}
+
+            # Raise to abort the rest of _real_sim cleanly; assertion below
+            # checks what got captured.
+            raise RuntimeError("captured")
+
+        monkeypatch.setattr(harness.subprocess, "run", fake_run)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake-for-test")
+
+        with pytest.raises(RuntimeError, match="captured"):
+            harness._real_sim(
+                data_home=tmp_path / "home",
+                goal="test cradle",
+                model="claude-sonnet",
+                max_turns=4,
+                resume_session=None,
+                extra_env={},
+                timeout_s=60,
+            )
+
+        cmd = captured["cmd"]
+        assert "--language-model" in cmd, f"cloud model should pass --language-model; got {cmd}"
+        assert "claude-sonnet" in cmd
+        env = captured["env"]
+        assert env.get("MAXIM_ROLE") == "solo"
+        assert env.get("MAXIM_LLM_CLOUD_ENABLED") == "1"
+        assert "MAXIM_MAX_CLOUD_LANES" in env
+        # Peer.yml routing must be blanked.
+        assert env.get("MAXIM_LANE_LARGE_REMOTE_URL") == ""
+        assert env.get("MAXIM_LANE_LARGE_REMOTE_API_KEY") == ""
+        assert env.get("MAXIM_LANE_LARGE_REMOTE_MODEL") == ""
+
+    def test_local_model_uses_peer_routing_unchanged(self, harness, monkeypatch, tmp_path):
+        """Local / peer-routed models must NOT get --language-model on
+        the cmd (peer.yml + role detection drives routing). This pins the
+        original Exp 37 design path against accidental regression by the
+        cloud-dispatch branch.
+        """
+        captured: dict[str, object] = {}
+
+        def fake_run(cmd, env=None, **kwargs):
+            captured["cmd"] = list(cmd)
+            captured["env"] = dict(env) if env else {}
+            raise RuntimeError("captured")
+
+        monkeypatch.setattr(harness.subprocess, "run", fake_run)
+
+        with pytest.raises(RuntimeError, match="captured"):
+            harness._real_sim(
+                data_home=tmp_path / "home",
+                goal="test cradle",
+                model="qwen2.5-14b-instruct",  # local profile
+                max_turns=4,
+                resume_session=None,
+                extra_env={},
+                timeout_s=60,
+            )
+
+        cmd = captured["cmd"]
+        assert "--language-model" not in cmd, (
+            f"local model must NOT pass --language-model (would force "
+            f"local-llama-cpp mode and break peer.yml routing); got {cmd}"
+        )
+        env = captured["env"]
+        # Local-mode env should NOT have the cloud-dispatch overrides.
+        assert env.get("MAXIM_ROLE") != "solo"
+        # MAXIM_LANE_LARGE_REMOTE_URL might be set from peer.yml; the local
+        # branch must NOT explicitly blank it.
+        assert "MAXIM_LLM_CLOUD_ENABLED" not in env or env.get("MAXIM_LLM_CLOUD_ENABLED") != "1"
+
+    def test_cloud_dispatch_raises_when_provider_key_missing(self, harness, monkeypatch, tmp_path):
+        """Best-effort sanity check: if the provider API key isn't in env,
+        fail early at the harness layer rather than 60 trials in.
+        """
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+            harness._real_sim(
+                data_home=tmp_path / "home",
+                goal="test cradle",
+                model="claude-sonnet",
+                max_turns=4,
+                resume_session=None,
+                extra_env={},
+                timeout_s=60,
+            )
