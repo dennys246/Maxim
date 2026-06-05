@@ -152,6 +152,11 @@ _REQUIRED_FIELDS = (
     "time_to_safe_steady_state_turns",
     # cradle_activation_fixes.md P2: positive-approach descriptive metric.
     "fire_approach_action_count",
+    # exp37_metric_pivot.md (Path 2): NEW primary + denominator + new
+    # corroborating.
+    "positive_approach_engagement_fraction",
+    "fire_pit_engagement_count",
+    "time_to_first_warm_self_action",
 )
 
 
@@ -350,6 +355,112 @@ def test_sharp_rock_fire_approach_count_is_zero(harness):
     ]
     m = harness.compute_metrics(actions, "sharp_rock")
     assert m["fire_approach_action_count"] == 0
+
+
+# ─── exp37_metric_pivot.md (Path 2) — positive_approach_engagement_fraction ──
+
+
+def test_positive_approach_engagement_fraction_pure_warm_self(harness):
+    """Pure warm_self engagement → fraction = 1.0 (ceiling)."""
+    actions = [
+        {"tool": "fire_pit_warm_self", "params": {}},
+        {"tool": "respond", "params": {}},
+        {"tool": "fire_pit_warm_self", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "fire_pit")
+    assert m["fire_pit_engagement_count"] == 2
+    assert m["positive_approach_engagement_fraction"] == 1.0
+    assert m["time_to_first_warm_self_action"] == 0
+
+
+def test_positive_approach_engagement_fraction_mixed_engagement(harness):
+    """Realistic mixed: 2 warm_self + 1 observe + 1 touch + 1
+    pick_up(fire_pit) → fraction = 2 / 5 = 0.4.
+    """
+    actions = [
+        {"tool": "fire_pit_observe", "params": {}},
+        {"tool": "fire_pit_warm_self", "params": {}},
+        {"tool": "infant_humanoid_pick_up", "params": {"object": "fire_pit"}},
+        {"tool": "fire_pit_warm_self", "params": {}},
+        {"tool": "fire_pit_touch", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "fire_pit")
+    assert m["fire_pit_engagement_count"] == 5
+    assert m["positive_approach_engagement_fraction"] == pytest.approx(2 / 5)
+    # First warm_self is action index 1 (0-based).
+    assert m["time_to_first_warm_self_action"] == 1
+
+
+def test_positive_approach_engagement_fraction_zero_engagement(harness):
+    """Sessions where the agent never engages with fire_pit at all →
+    fraction = 0.0 (denominator clamped) and time_to_first_warm_self
+    is None.
+    """
+    actions = [
+        {"tool": "sense_cool_air", "params": {}},
+        {"tool": "respond", "params": {}},
+        {"tool": "cool_air_feel", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "fire_pit")
+    assert m["fire_pit_engagement_count"] == 0
+    assert m["positive_approach_engagement_fraction"] == 0.0
+    assert m["time_to_first_warm_self_action"] is None
+
+
+def test_positive_approach_engagement_fraction_only_aversive(harness):
+    """Agent that ONLY touches the fire (no warm_self, no observe) →
+    fraction = 0 / 1 = 0.0. The substrate-transferred preference signal
+    indicates aversion, not engagement.
+    """
+    actions = [
+        {"tool": "fire_pit_touch", "params": {}},
+        {"tool": "respond", "params": {}},
+        {"tool": "fire_pit_touch", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "fire_pit")
+    assert m["fire_pit_engagement_count"] == 2
+    assert m["positive_approach_engagement_fraction"] == 0.0
+    assert m["time_to_first_warm_self_action"] is None
+
+
+def test_sharp_rock_positive_approach_engagement_structurally_zero(harness):
+    """sharp_rock has empty ``direct_approach_tools`` → numerator is
+    structurally 0 → fraction is structurally 0 regardless of
+    engagement count. Validates the scenario-asymmetric design.
+    """
+    actions = [
+        {"tool": "sharp_rock_examine", "params": {}},
+        {"tool": "sharp_rock_touch", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "sharp_rock")
+    assert m["fire_pit_engagement_count"] == 2  # examine + touch on sharp_rock
+    assert m["positive_approach_engagement_fraction"] == 0.0
+    assert m["time_to_first_warm_self_action"] is None
+
+
+def test_body_pick_up_counts_as_engagement(harness):
+    """Body-level pick_up(fire_pit) counts toward the engagement
+    denominator via ``body_engagement_rules`` (parallels
+    body_failure_rules). Confirms the body channel is wired.
+    """
+    actions = [
+        {"tool": "fire_pit_warm_self", "params": {}},
+        # pick_up(blanket) — NOT engagement (object != fire_pit).
+        {"tool": "infant_humanoid_pick_up", "params": {"object": "blanket"}},
+        # pick_up(fire_pit) — engagement (matches body_engagement_rules).
+        {"tool": "infant_humanoid_pick_up", "params": {"object": "fire_pit"}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "fire_pit")
+    # 1 warm_self + 1 pick_up(fire_pit) = 2 engagement actions.
+    # pick_up(blanket) excluded.
+    assert m["fire_pit_engagement_count"] == 2
+    assert m["positive_approach_engagement_fraction"] == 0.5
 
 
 def test_per_action_rate_matches_count(harness):

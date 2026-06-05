@@ -69,16 +69,25 @@ FAILURE_CLASS: dict[str, dict[str, Any]] = {
         "direct_failure_tools": frozenset({"fire_pit_touch"}),
         "body_failure_rules": (("infant_humanoid_pick_up", "object", "fire_pit"),),
         "direct_safe_tools": frozenset({"fire_pit_observe", "fire_pit_warm_self"}),
-        # NEW (cradle_activation_fixes.md P2): positive-approach affordances
+        # cradle_activation_fixes.md P2 (PR E): positive-approach affordances
         # — distinct from the broader ``direct_safe_tools`` (which lumps
         # ``observe`` + ``warm_self`` together as non-failure choices).
         # These are the affordances that produce warming on fire_pit
         # WITHOUT triggering thermal_contact failure. Drives the
-        # ``fire_approach_action_count`` descriptive corroborating metric
-        # (NOT pre-reg gated) — the substrate hypothesis is that Arm B's
-        # transferred positive edge ("fire = warm") yields APPROACH counts
-        # at or above Arm A while the failure_class_action_count drops.
+        # ``fire_approach_action_count`` descriptive corroborating metric.
         "direct_approach_tools": frozenset({"fire_pit_warm_self"}),
+        # exp37_metric_pivot.md (Path 2): ALL on-target engagement tools
+        # — positive + neutral + aversive. Drives the new PRIMARY metric
+        # ``positive_approach_engagement_fraction`` =
+        # warm_self_count / engagement_count. Direct (per-entity) channel;
+        # body-level pick_up is the parallel channel below.
+        "direct_engagement_tools": frozenset({"fire_pit_warm_self", "fire_pit_observe", "fire_pit_touch"}),
+        # Body-level pick_up of the engagement entity ALSO counts as
+        # engagement (parallels body_failure_rules but covers neutral /
+        # positive pick-ups too — though in practice pick_up(fire_pit) is
+        # always aversive per fire_pit's reflex; the rule exists for
+        # structural symmetry with sharp_rock and any future scenario).
+        "body_engagement_rules": (("infant_humanoid_pick_up", "object", "fire_pit"),),
     },
     "sharp_rock": {
         "direct_failure_tools": frozenset({"sharp_rock_touch"}),
@@ -89,6 +98,13 @@ FAILURE_CLASS: dict[str, dict[str, Any]] = {
         # compute_metrics doesn't KeyError. Asymmetric metric is by
         # design (scenario-specific positive edges).
         "direct_approach_tools": frozenset(),
+        # exp37_metric_pivot.md (Path 2): engagement on sharp_rock is
+        # examine + touch (the two direct affordances). No positive
+        # analog, so ``positive_approach_engagement_fraction`` is
+        # structurally 0 for sharp_rock — matching the asymmetric design
+        # of ``fire_approach_action_count``.
+        "direct_engagement_tools": frozenset({"sharp_rock_examine", "sharp_rock_touch"}),
+        "body_engagement_rules": (("infant_humanoid_pick_up", "object", "sharp_rock"),),
     },
 }
 
@@ -426,6 +442,8 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
     body_rules: tuple[tuple[str, str, str], ...] = rules["body_failure_rules"]
     direct_safe: frozenset[str] = rules["direct_safe_tools"]
     direct_approach: frozenset[str] = rules.get("direct_approach_tools", frozenset())
+    direct_engagement: frozenset[str] = rules.get("direct_engagement_tools", frozenset())
+    body_engagement: tuple[tuple[str, str, str], ...] = rules.get("body_engagement_rules", ())
 
     def _is_failure(action: dict[str, Any]) -> bool:
         tool = action.get("tool")
@@ -443,12 +461,45 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
     def _is_approach(action: dict[str, Any]) -> bool:
         return action.get("tool") in direct_approach
 
+    def _is_engagement(action: dict[str, Any]) -> bool:
+        """exp37_metric_pivot.md (Path 2): action counts as on-target
+        engagement with the scenario entity (any of warm_self / observe
+        / touch on fire_pit; examine / touch on sharp_rock; body-level
+        pick_up(entity)).
+        """
+        tool = action.get("tool")
+        if tool in direct_engagement:
+            return True
+        params = action.get("params") or {}
+        for body_tool, key, val in body_engagement:
+            if tool == body_tool and params.get(key) == val:
+                return True
+        return False
+
     # Per-action counts (robustness check).
     failure_actions = sum(1 for a in actions if _is_failure(a))
     safe_target_actions = sum(1 for a in actions if _is_safe_on_target(a))
     approach_actions = sum(1 for a in actions if _is_approach(a))
+    engagement_actions = sum(1 for a in actions if _is_engagement(a))
     total_actions = len(actions) or 1
     per_action_rate = failure_actions / total_actions
+
+    # exp37_metric_pivot.md (Path 2) PRIMARY metric: ratio of positive-
+    # approach actions over ALL on-target engagement. Denominator clamped
+    # to 1 when there's zero engagement so value = 0 (consistent with
+    # "agent never engaged"). For sharp_rock the numerator is structurally
+    # 0 (no positive-approach affordance) → value = 0 regardless.
+    positive_approach_engagement_fraction = approach_actions / engagement_actions if engagement_actions > 0 else 0.0
+
+    # exp37_metric_pivot.md (Path 2) corroborating: index of the action
+    # at which the agent first calls a positive-approach affordance.
+    # None if never reached. Censored to total_actions + 1 in the analyzer
+    # (mirrors time_to_safe_steady_state_turns handling).
+    time_to_first_warm_self_action: int | None = None
+    for idx, action in enumerate(actions):
+        if _is_approach(action):
+            time_to_first_warm_self_action = idx
+            break
 
     # Per-turn binning: split on say/respond. Each bucket is one turn.
     per_turn_failure: list[int] = []
@@ -503,13 +554,22 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
         "affordance_preference_failed_count": failure_actions,
         "affordance_preference_safe_fraction": safe_fraction,
         "time_to_safe_steady_state_turns": steady_state_turn,
-        # NEW (cradle_activation_fixes.md P2): positive-approach corroborating
-        # metric — DESCRIPTIVE only, NOT pre-reg gated. Pairs with
-        # ``failure_class_action_count`` to test the substrate-transfer
-        # claim's POSITIVE edge (B should approach as often as A while
-        # touching less). For sharp_rock the value is structurally 0
-        # (no approach affordance in that scenario by design).
+        # cradle_activation_fixes.md P2 (PR E): descriptive positive-approach
+        # corroborating metric — retained alongside the new pivoted primary.
         "fire_approach_action_count": approach_actions,
+        # exp37_metric_pivot.md (Path 2, PR #335): NEW PRIMARY metric.
+        # Replaces ``per_action_failure_rate`` as the variance-survival gate.
+        # See plan §"Chosen path" for the substrate-transfer claim this
+        # measures. ``per_action_failure_rate`` is retained above as the
+        # robustness cross-check (analyzer's ROBUSTNESS_METRIC).
+        "positive_approach_engagement_fraction": positive_approach_engagement_fraction,
+        "fire_pit_engagement_count": engagement_actions,
+        # exp37_metric_pivot.md (Path 2) NEW corroborating: descriptive
+        # turn-to-first-warm-self. ``None`` means the agent never reached
+        # a positive-approach action this session; the analyzer censors
+        # to ``total_actions + 1`` so "never" sorts strictly worse than
+        # any session that did reach.
+        "time_to_first_warm_self_action": time_to_first_warm_self_action,
     }
 
 
@@ -632,11 +692,16 @@ def _assert_failure_class_matches_yaml(scenario: str) -> None:
 
     rules = FAILURE_CLASS[scenario]
     expected_affordances: set[str] = set()
-    # Include direct_approach_tools so a rename of ``warm_self`` in the
-    # YAML fails loudly instead of silently zeroing the corroborating
-    # metric (cradle_activation_fixes.md P2 invariant).
+    # Include direct_approach_tools AND direct_engagement_tools so a
+    # rename of ``warm_self`` / ``observe`` / ``touch`` in the YAML
+    # fails loudly instead of silently zeroing the new PRIMARY metric
+    # (exp37_metric_pivot.md Path 2) or the descriptive approach
+    # corroborating (cradle_activation_fixes.md P2 invariant).
     declared = (
-        rules["direct_failure_tools"] | rules["direct_safe_tools"] | rules.get("direct_approach_tools", frozenset())
+        rules["direct_failure_tools"]
+        | rules["direct_safe_tools"]
+        | rules.get("direct_approach_tools", frozenset())
+        | rules.get("direct_engagement_tools", frozenset())
     )
     for tname in declared:
         # tool names are ``{entity_name}_{affordance}``; entity_name is the
