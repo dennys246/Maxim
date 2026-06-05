@@ -325,6 +325,14 @@ class LLMWorker:
         # (sensors, affordances, failure triggers) into AUT prompts.
         self.entity_spec: dict[str, Any] | None = None
 
+        # When True, the agent owns a SEM body and is running in an embodied
+        # arc. Producers (cli.py, simulation/orchestrator.py) set this
+        # alongside ``acting_coach`` / ``entity_spec``. Propagated onto every
+        # ``LLMRequest`` so prompt_builder can suppress conversational
+        # ``respond`` / ``speak`` guidance that the deregistered tools would
+        # silently reject. See docs/plans/cradle_activation_fixes.md (B).
+        self.is_embodied: bool = False
+
         # PromptBuilder for prompt construction
         self._prompt_builder = PromptBuilder(
             llm=self._llm,
@@ -832,6 +840,7 @@ class LLMWorker:
             protocol_context=protocol_context,
             acting_coach=self.acting_coach,
             entity_spec=self.entity_spec,
+            is_embodied=self.is_embodied,
             failed_tools=failed_tools or [],
         )
 

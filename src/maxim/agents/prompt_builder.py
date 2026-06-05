@@ -123,18 +123,14 @@ def build_modification_section(mod: dict[str, Any]) -> str:
 
 def build_identity_section(mode: ModeInfo, request: LLMRequest, date_str: str, time_str: str) -> str:
     """Build the system identity and operational state section."""
-    # When the AUT has an embodied body (acting_coach is set), use an
-    # exploration-focused identity instead of "robot assistant". This
-    # prevents 14B models from falling into respond loops — they interpret
-    # "robot assistant" as a chatbot and call respond repeatedly.
+    # When the AUT has an embodied body, use an exploration-focused identity
+    # instead of "robot assistant". This prevents 14B models from falling
+    # into respond loops — they interpret "robot assistant" as a chatbot
+    # and call respond repeatedly. ``request.is_embodied`` is set by
+    # producers (cli.py / simulation/orchestrator.py) whenever an
+    # ``ActingCoachConfig`` is wired alongside an entity spec.
     identity = "You are Maxim, a robot assistant."
-    _coach = getattr(request, "acting_coach", None)
-    # Check for a real ActingCoachConfig (has role_values), not a MagicMock.
-    if (
-        _coach is not None
-        and hasattr(_coach, "role_values")
-        and isinstance(getattr(_coach, "role_values", None), (list, tuple))
-    ):
+    if getattr(request, "is_embodied", False):
         identity = (
             "You are a body in a world. You explore by ACTING — using your "
             "physical tools to interact with objects around you. You do NOT "
@@ -387,8 +383,31 @@ def build_workspace_manifest(mode_name: str = "passive", cwd: str | None = None)
     return "\n".join(sections) if sections else ""
 
 
-def build_tool_guidance_core(mode_name: str = "passive") -> str:
-    """Build compact essential tool guidance, adapted to operational mode."""
+def build_tool_guidance_core(mode_name: str = "passive", *, is_embodied: bool = False) -> str:
+    """Build compact essential tool guidance, adapted to operational mode.
+
+    When ``is_embodied`` is True, suppress the conversational
+    ``respond`` / ``speak`` / file / planning guidance — the embodied
+    arc deregisters those tools and the body exposes its own
+    ``<body>_respond`` / ``<body>_use`` affordances. Emitting the
+    conversational guidance in embodied mode produces the silent
+    ``Tool not registered: 'respond'`` loop documented in
+    docs/plans/cradle_activation_fixes.md (Finding B).
+    """
+    if is_embodied:
+        return "\n".join(
+            [
+                "=== Body Tool Discipline ===",
+                "Your tools live on your body and on objects in the world around you.",
+                "Each turn, pick ONE physical affordance (sense, touch, pick_up, use, ...) "
+                "and call it with the exact parameters its description requires.",
+                "Body-prefixed tools (e.g. '<body>_respond', '<body>_use') are the only way "
+                "to vocalise or manipulate — there is no generic 'respond' or 'speak' in this "
+                "scene.",
+                "If no listed affordance fits, call 'sense_tools' to discover what is reachable.",
+            ]
+        )
+
     lines = [
         "=== Tool Parameters ===",
         '- respond: {"message": "your answer"}',
@@ -442,8 +461,18 @@ def build_tool_guidance_core(mode_name: str = "passive") -> str:
     return "\n".join(lines)
 
 
-def build_tool_guidance_extended(mode_name: str = "passive") -> str:
-    """Build extended tool selection guidance, adapted to operational mode."""
+def build_tool_guidance_extended(mode_name: str = "passive", *, is_embodied: bool = False) -> str:
+    """Build extended tool selection guidance, adapted to operational mode.
+
+    When ``is_embodied`` is True, return empty — the conversational
+    tool-selection menu does not apply to body-driven agents whose
+    available tools are entity affordances surfaced through the dynamic
+    tool manifest. See ``build_tool_guidance_core`` for the embodied
+    counterpart.
+    """
+    if is_embodied:
+        return ""
+
     lines = [
         "=== Tool Selection ===",
         "- REAL-TIME DATA (scores, weather, news, prices): Use 'internet_search'",
@@ -1210,14 +1239,15 @@ class PromptBuilder:
     ) -> None:
         """Tool guidance + datetime + cost budget. Mostly IMPORTANT priority."""
         mode_name = request.mode.name
+        is_embodied = bool(getattr(request, "is_embodied", False))
         budgeter.add(
             "tool_guidance_core",
-            build_tool_guidance_core(mode_name=mode_name),
+            build_tool_guidance_core(mode_name=mode_name, is_embodied=is_embodied),
             SectionPriority.IMPORTANT,
         )
         budgeter.add(
             "tool_guidance_extended",
-            build_tool_guidance_extended(mode_name=mode_name),
+            build_tool_guidance_extended(mode_name=mode_name, is_embodied=is_embodied),
             SectionPriority.NICE_TO_HAVE,
         )
         budgeter.add("datetime", build_datetime_section(date_str, time_str), SectionPriority.IMPORTANT)

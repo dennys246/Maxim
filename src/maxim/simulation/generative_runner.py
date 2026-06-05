@@ -358,18 +358,14 @@ def run_generative_campaign(
     _activated_entities: set[str] = set()
     _last_phase_idx: int = -1
 
-    # For embodied arcs (any arc with world_entities on its phases),
-    # deregister conversational tools that cause 14B models to fall
-    # into respond loops instead of using physical body tools.
-    _has_embodied_phases = any(p.world_entities for p in arc.phases)
-    if _has_embodied_phases and tool_registry is not None:
-        _conversational_tools = ("respond", "say")
-        for _ct in _conversational_tools:
-            try:
-                tool_registry.deregister(_ct)
-                log.info("Deregistered conversational tool %r for embodied arc", _ct)
-            except (KeyError, ValueError):
-                pass  # tool may not be registered
+    # Embodied arcs (any arc with world_entities) no longer deregister the
+    # conversational ``respond`` / ``say`` tools. Instead, ``LLMWorker.is_embodied``
+    # propagates onto every ``LLMRequest`` and ``prompt_builder`` suppresses
+    # the conversational tool guidance — so the LLM is steered toward the
+    # body-prefixed affordances without us removing the upstream conversational
+    # tools (which non-cradle producers still need). See
+    # docs/plans/cradle_activation_fixes.md (Finding B) for the prior
+    # silent-loop class this replaces.
 
     for turn_idx in range(max_turns):
         if narrator.is_done:

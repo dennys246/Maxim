@@ -90,8 +90,23 @@ class ThinkTool(Tool):
         "your next move. This does not produce any visible action — but "
         "your bio-systems will surface relevant memories and predictions."
     )
+    # JSONSchema with empty ``required`` so the dispatch validator does not
+    # block calls like ``think(text="...")`` or ``think({})``. ``execute()``
+    # already accepts ``thought`` / ``text`` / ``prompt`` aliases and returns
+    # a typed "Empty thought" error when none are supplied. Under the legacy
+    # custom format (``{"thought": str}``) the validator raised
+    # ``Missing required input: thought`` before the alias fallback ran,
+    # producing the silent failures the cradle smoke surfaced.
+    # See docs/plans/cradle_activation_fixes.md (Finding B).
     input_schema = {
-        "thought": str,
+        "type": "object",
+        "properties": {
+            "thought": {
+                "type": "string",
+                "description": "Your reasoning about the current situation.",
+            },
+        },
+        "required": [],
     }
 
     def __init__(

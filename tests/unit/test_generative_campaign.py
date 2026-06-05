@@ -408,6 +408,68 @@ class TestGenerativeRunner:
 
         assert result.arc_name == "custom"
 
+    def test_embodied_arc_does_not_deregister_conversational_tools(self):
+        """Regression guard for PR D — the deregister block at
+        generative_runner.py:365-372 was deleted because it forced
+        a silent ``Tool not registered: 'respond'`` loop whenever the
+        prompt_builder (which we did not consult before deregistering)
+        still instructed the LLM to call ``respond``. The fix routes the
+        intent through ``LLMRequest.is_embodied`` and gates prompt content
+        instead. This test pins the deletion: an arc whose phases declare
+        ``world_entities`` must NOT cause tool_registry.deregister to be
+        invoked for ``respond`` or ``say``. See
+        docs/plans/cradle_activation_fixes.md (Finding B).
+        """
+        llm = MagicMock()
+        llm.generate_json = MagicMock(
+            return_value={
+                "phase": "intro",
+                "scene_type": "embodied",
+                "done": True,  # End immediately
+            }
+        )
+        llm.generate_text = MagicMock(return_value="Scene.")
+
+        bridge = MagicMock()
+        bridge.send_and_wait = MagicMock(return_value={"response": "ok"})
+
+        tool_registry = MagicMock()
+        # Without the fix, the deregister loop fires on (respond, say)
+        # and we'd see ≥1 call to tool_registry.deregister. The fix
+        # deletes that loop entirely.
+        embodied_arc = NarrativeArc(
+            name="embodied_test",
+            description="Arc with world_entities to trigger the embodied branch",
+            phases=[
+                NarrativePhase(
+                    "intro",
+                    "Look around",
+                    1,
+                    1,
+                    world_entities=("items/cradle_food",),
+                ),
+            ],
+        )
+
+        run_generative_campaign(
+            goal="test embodied",
+            bridge=bridge,
+            llm=llm,
+            arc=embodied_arc,
+            max_turns=2,
+            tool_registry=tool_registry,
+        )
+
+        deregistered = [
+            call.args[0] for call in tool_registry.deregister.call_args_list if call.args
+        ]
+        assert "respond" not in deregistered, (
+            f"respond should NOT be deregistered post-PR D; deregistered={deregistered}"
+        )
+        assert "say" not in deregistered, (
+            f"say should NOT be deregistered post-PR D; deregistered={deregistered}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # YAML export

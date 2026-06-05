@@ -150,6 +150,16 @@ class LLMRequest:
     # SEM entity spec dict for entity context injection (E2)
     entity_spec: dict[str, Any] | None = field(default=None, compare=False)
 
+    # When True, the agent owns a SEM body and is running in an embodied arc.
+    # Gates prompt sections that would otherwise tell the LLM to call the
+    # conversational ``respond`` / ``speak`` tools — those are deregistered
+    # for embodied arcs (the body exposes its own ``<body>_respond`` /
+    # ``<body>_use`` tools), so emitting the conversational guidance produces
+    # the silent `Tool not registered: 'respond'` loop documented in
+    # docs/plans/cradle_activation_fixes.md (Finding B). Set by the producer
+    # (LLMWorker) at construction; consumers (prompt_builder) read it.
+    is_embodied: bool = field(default=False, compare=False)
+
     # EXPERIMENTAL OPT-IN — pretrained-LLM hallucination mitigation. Names of
     # tools the model previously called that don't exist for this agent.
     # Surfaced as a negative-instruction prompt section. Gated by env
