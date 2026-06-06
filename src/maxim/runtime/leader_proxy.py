@@ -143,12 +143,16 @@ def _detect_install_mode() -> str:
 
 
 def _try_import(module_name: str) -> bool:
-    """Return True if *module_name* is importable."""
-    try:
-        __import__(module_name)
-        return True
-    except ImportError:
-        return False
+    """Return True if *module_name* is importable.
+
+    Thin back-compat wrapper over the shared
+    :func:`maxim.utils.optional_deps.optional_dependency_available` probe (this
+    is a capability check for the ``maxim doctor`` extras table, not a
+    requested-feature gate, so it must never raise).
+    """
+    from maxim.utils.optional_deps import optional_dependency_available
+
+    return optional_dependency_available(module_name)
 
 
 def _detect_installed_extras() -> list[str]:

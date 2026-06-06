@@ -8,6 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from maxim.utils.logging import info, warn
+from maxim.utils.optional_deps import OptionalDependencyError
 
 logger = logging.getLogger(__name__)
 from maxim.utils.structured_logging import log_agentic, log_structured
@@ -1126,6 +1127,19 @@ class LLMRouter:
             )
             if text:
                 return text, usage, "success"
+        except OptionalDependencyError:
+            # A requested backend's optional dependency is NOT installed. This
+            # is a SETUP error, categorically different from the transient
+            # BackendError failures below (which all mean "try the next
+            # provider"). Silently falling through to another provider is
+            # exactly the 2026-06-05 cloud-dispatch incident: the sim completed
+            # with cost=$0 and every action an _llm_unavailable fallback, and
+            # the missing `anthropic` package was invisible. Re-raise so it
+            # propagates out of the dispatch loop and aborts the run loudly
+            # with the actionable pip-install hint. MUST stay BEFORE the
+            # generic `except Exception` (which would otherwise swallow it as
+            # an "unclassified" provider failure).
+            raise
         except BackendOverloaded as e:
             self._note_provider_overload(
                 provider_key,

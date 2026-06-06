@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.models.language.token_counter import CharEstimateCounter
+from maxim.utils.optional_deps import OptionalDependencyError
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Re-exports for backward compatibility
@@ -604,6 +605,22 @@ class LLMWorker:
                 logger.error("Failed to replace LLM executor after timeout: %s", e)
             return {"_timeout": True, "_timeout_s": self._llm_timeout}
         except concurrent.futures.CancelledError:
+            return None
+        except OptionalDependencyError as e:
+            # A requested backend's optional dependency is not installed. This
+            # is a SETUP error: the agent loop runs inference in a worker
+            # thread, so the exception can't hard-abort the main process from
+            # here, but it MUST be unmistakable in the logs (the 2026-06-05
+            # incident degraded silently into _llm_unavailable). Log at ERROR
+            # with the actionable pip-install hint, distinct from the generic
+            # call-failure path below. The synchronous CLI/API validation
+            # (cli_utils._missing_backend_dependency, api._validate_profile) is
+            # what actually aborts the run before reaching here.
+            logger.error(
+                "LLM backend dependency missing — inference cannot run: %s. %s",
+                e,
+                getattr(e, "fix_hint", ""),
+            )
             return None
         except Exception as e:
             logger.error("LLM call failed: %s", e)

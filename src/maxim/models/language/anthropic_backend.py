@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from maxim.utils.logging import warn
+from maxim.utils.optional_deps import require_optional_dependency
 from maxim.models.language.cancellation import is_shutdown_requested, shutdown_wait
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.types import LLMResponse
@@ -135,11 +136,12 @@ class _AnthropicBackend:
     def _ensure_client(self) -> Any | None:
         if self._client is not None:
             return self._client
-        try:
-            from anthropic import Anthropic  # type: ignore
-        except Exception as e:
-            warn("Anthropic backend unavailable. Fix: pip install pymaxim[llm-anthropic]  (%s)", e)
-            return None
+        # Requested-but-missing dependency is a SETUP error, not a transient
+        # failure: raise loudly (aborts the run with an actionable hint) rather
+        # than returning None and letting the router mask it as "no eligible
+        # providers". This is the 2026-06-05 cloud-dispatch incident fix.
+        anthropic_mod = require_optional_dependency("anthropic", feature="Anthropic backend")
+        Anthropic = anthropic_mod.Anthropic
         api_key = self._get_api_key()
         if not api_key:
             warn("Anthropic API key missing. Fix: export ANTHROPIC_API_KEY=<your-key>")

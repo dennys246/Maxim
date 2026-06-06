@@ -6,6 +6,7 @@ import threading
 from typing import Any
 
 from maxim.utils.logging import warn
+from maxim.utils.optional_deps import require_optional_dependency
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +29,13 @@ class _LlamaCppBackend:
             if self._llm is not None:
                 return True
 
-            try:
-                from llama_cpp import Llama  # type: ignore
-            except Exception as e:
-                warn("LLM backend unavailable (install `llama-cpp-python`): %s", e)
-                return False
+            # Requested-but-missing dependency is a SETUP error: raise loudly
+            # with an actionable hint instead of returning False and letting
+            # the caller mask it as a generic "no local model" failure.
+            llama_mod = require_optional_dependency(
+                "llama_cpp", extra="llm-llama", feature="Local llama.cpp backend"
+            )
+            Llama = llama_mod.Llama
 
             model_path = str(self.cfg.model_path or "").strip()
             if not model_path or not os.path.exists(model_path):

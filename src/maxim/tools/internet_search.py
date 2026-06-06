@@ -110,7 +110,14 @@ def _search_with_ddg_package(
     try:
         from ddgs import DDGS
     except ImportError:
-        return None  # Package not installed
+        from maxim.utils.optional_deps import warn_optional_fallback
+
+        warn_optional_fallback(
+            "ddgs",
+            fallback="web search is using the regex HTML-scraping fallback (less reliable)",
+            feature="Internet search",
+        )
+        return None  # Package not installed → caller uses regex fallback
 
     results: list[dict[str, str]] = []
     try:

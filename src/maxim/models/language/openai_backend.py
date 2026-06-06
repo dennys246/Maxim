@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from maxim.utils.logging import warn
+from maxim.utils.optional_deps import require_optional_dependency
 
 log = logging.getLogger(__name__)
 from maxim.models.language.cancellation import is_shutdown_requested, shutdown_wait
@@ -171,11 +172,11 @@ class _OpenAIBackend:
     def _ensure_client(self) -> Any | None:
         if self._client is not None:
             return self._client
-        try:
-            from openai import OpenAI  # type: ignore
-        except Exception as e:
-            warn("OpenAI backend unavailable. Fix: pip install pymaxim[llm-openai]  (%s)", e)
-            return None
+        # Requested-but-missing dependency is a SETUP error: raise loudly with
+        # an actionable hint rather than returning None and letting the router
+        # mask it as "no eligible providers" (the 2026-06-05 incident class).
+        openai_mod = require_optional_dependency("openai", feature="OpenAI backend")
+        OpenAI = openai_mod.OpenAI
         api_key = self._get_api_key()
         if not api_key:
             warn("OpenAI API key missing. Fix: export OPENAI_API_KEY=<your-key>")

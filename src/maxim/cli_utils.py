@@ -22,6 +22,37 @@ def normalize_epoch_value(value: object) -> int:
     return epochs if epochs > 0 else 0
 
 
+# Cloud backend type → (import name, pyproject extra). Used to validate that an
+# explicitly-requested cloud model's SDK is installed BEFORE any worker thread
+# starts. The openai-compatible providers (gemini/groq/together/fireworks/
+# mistral/deepseek) all route through the ``openai`` SDK.
+_CLOUD_BACKEND_DEPENDENCY: dict[str, tuple[str, str]] = {
+    "anthropic": ("anthropic", "llm-anthropic"),
+    "claude": ("anthropic", "llm-anthropic"),
+    "openai": ("openai", "llm-openai"),
+    "openai_compatible": ("openai", "llm-openai"),
+    "openai_compat": ("openai", "llm-openai"),
+}
+
+
+def _missing_backend_dependency(backend_type: str) -> tuple[str, str] | None:
+    """Return ``(import_name, extra)`` if a cloud backend's SDK is missing.
+
+    Returns ``None`` when the backend has no optional dependency (or the
+    dependency is already importable). Used by :func:`apply_cli_overrides` to
+    fail loudly + synchronously on a requested-but-missing cloud SDK.
+    """
+    from maxim.utils.optional_deps import optional_dependency_available
+
+    dep = _CLOUD_BACKEND_DEPENDENCY.get(str(backend_type).strip().lower())
+    if dep is None:
+        return None
+    import_name, extra = dep
+    if optional_dependency_available(import_name):
+        return None
+    return import_name, extra
+
+
 # Default for --persona / --mode when neither flag is passed. Preserves
 # the historical CLI behavior (the orchestrator used "adversarial" as
 # the silent default before the persona deprecation cycle started in 0.9).
@@ -134,6 +165,17 @@ def normalize_args(args: argparse.Namespace) -> None:
                     raise SystemExit(
                         f"Error: {language_model} requires {api_key_env}.\n  Fix: export {api_key_env}=<your-key>"
                     )
+                # Fail loudly + synchronously when the cloud SDK is missing,
+                # before any worker thread starts (otherwise it degrades into a
+                # swallowed warning + _llm_unavailable fallback — the
+                # 2026-06-05 cloud-dispatch incident).
+                _missing = _missing_backend_dependency(profile.get("backend", ""))
+                if _missing is not None:
+                    _import_name, _extra = _missing
+                    raise SystemExit(
+                        f"Error: {language_model} needs the {_import_name!r} package, which is "
+                        f"not installed.\n  Fix: pip install pymaxim[{_extra}]"
+                    )
             # Persist across sessions so the user doesn't need --llm every time
             try:
                 from maxim.runtime.lane_backends import _write_persisted_model
@@ -187,6 +229,20 @@ def normalize_args(args: argparse.Namespace) -> None:
             if api_key_env and not os.environ.get(api_key_env):
                 raise SystemExit(
                     f"{label} {model_name!r} requires {api_key_env} to be set.\n  export {api_key_env}=<your-key>"
+                )
+            # Fail loudly + synchronously (main thread, before any worker
+            # threads spin up) when the cloud backend's optional SDK is not
+            # installed. Without this the missing package surfaces only as a
+            # swallowed worker warning and the run completes with cost=$0 and
+            # every action an _llm_unavailable fallback — the 2026-06-05
+            # cloud-dispatch incident. SystemExit gives a clean CLI message
+            # (no traceback) consistent with the checks above.
+            _missing = _missing_backend_dependency(profile.get("backend", ""))
+            if _missing is not None:
+                _import_name, _extra = _missing
+                raise SystemExit(
+                    f"{label} {model_name!r} needs the {_import_name!r} package, which is not "
+                    f"installed.\n  Fix: pip install pymaxim[{_extra}]"
                 )
 
         if cloud_fallback:

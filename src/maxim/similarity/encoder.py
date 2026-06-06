@@ -48,7 +48,14 @@ def _get_encoder(model_name: str = "all-mpnet-base-v2") -> Any | None:
         logger.info("LinguisticEncoder loaded model: %s", model_name)
         return _encoder_model
     except ImportError:
-        logger.debug("sentence-transformers not installed; LinguisticEncoder will use fallback bag-of-words hash")
+        from maxim.utils.optional_deps import warn_optional_fallback
+
+        warn_optional_fallback(
+            "sentence_transformers",
+            fallback="LinguisticEncoder is using deterministic bag-of-words hash embeddings (lower semantic quality)",
+            feature="LinguisticEncoder",
+            log=logger,
+        )
         return None
     except Exception as e:
         logger.warning("Failed to load encoder model %s: %s", model_name, e)
