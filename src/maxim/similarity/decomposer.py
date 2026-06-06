@@ -320,5 +320,12 @@ def _auto_detect_strategy(config: DecomposerConfig) -> DecompositionStrategy:
             min_chunk_len=config.min_chunk_len,
         )
     except ImportError:
-        logger.debug("spaCy not installed; concept decomposition using identity fallback")
+        from maxim.utils.optional_deps import warn_optional_fallback
+
+        warn_optional_fallback(
+            "spacy",
+            fallback="concept decomposition is using the identity strategy (no noun-chunk extraction)",
+            feature="Concept decomposition",
+            log=logger,
+        )
         return IdentityStrategy()

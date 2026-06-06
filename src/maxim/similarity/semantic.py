@@ -85,7 +85,14 @@ def _get_or_load_model(model_name: str) -> Any:
             return _sentence_transformer_model
 
         except ImportError:
-            logger.warning("sentence-transformers not installed. Install with: pip install sentence-transformers")
+            from maxim.utils.optional_deps import warn_optional_fallback
+
+            warn_optional_fallback(
+                "sentence_transformers",
+                fallback="semantic similarity is unavailable; callers fall back to lexical matching",
+                feature="Semantic similarity",
+                log=logger,
+            )
             return None
         except Exception as e:
             logger.error("Failed to load semantic model: %s", e)

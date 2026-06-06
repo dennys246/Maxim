@@ -140,6 +140,24 @@ def _isolate_maxim_log_display_env():
 
 
 @pytest.fixture(autouse=True)
+def _reset_optional_dep_fallback_warnings():
+    """Clear the process-scoped warn-once dedup set in optional_deps.
+
+    ``warn_optional_fallback`` emits exactly one log per (import, feature) per
+    process. Without resetting between tests, a test that triggers a fallback
+    notice would suppress the same notice in every later test that asserts on
+    it. Mirrors the autouse env-scrub pattern above.
+    """
+    from maxim.utils.optional_deps import _reset_optional_dep_warnings_for_test
+
+    _reset_optional_dep_warnings_for_test()
+    try:
+        yield
+    finally:
+        _reset_optional_dep_warnings_for_test()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_nac_min_confidence():
     """Scrub ``MAXIM_NAC_MIN_CONFIDENCE`` across every test.
 

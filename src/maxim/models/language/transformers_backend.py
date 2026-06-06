@@ -13,6 +13,8 @@ import os
 import threading
 from typing import TYPE_CHECKING, Any
 
+from maxim.utils.optional_deps import require_optional_dependency
+
 if TYPE_CHECKING:
     from maxim.models.language.config import LLMConfig
 
@@ -231,6 +233,15 @@ class _PyTorchTransformersBackend:
                 return False
 
             self._init_attempted = True
+            # Requested-but-missing dependency is a SETUP error: raise loudly
+            # with an actionable hint BEFORE the broad try below (which is for
+            # genuine model-load failures, not missing packages). Otherwise a
+            # missing torch/transformers collapses into "Failed to load PyTorch
+            # model" + return False — degraded and unactionable.
+            require_optional_dependency("torch", extra="llm-torch", feature="Transformers backend")
+            require_optional_dependency(
+                "transformers", extra="llm-torch", feature="Transformers backend"
+            )
             try:
                 import torch
                 from transformers import AutoModelForCausalLM, AutoTokenizer
