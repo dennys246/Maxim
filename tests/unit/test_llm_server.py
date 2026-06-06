@@ -138,6 +138,129 @@ class TestHealthCheckReachability:
         assert self._is_reachable("http://localhost:99999/v1") is False
 
 
+class TestCheckExistingLlmServer:
+    """Singleton guard for the harness-on-leader cascade fix.
+
+    ``check_existing_llm_server`` decides whether to reuse an already-running
+    llama-cpp-server or spawn a fresh one, and fails loud on a wrong-model
+    server. The probe is delegated to ``_MaximPeerBackend.health_check`` so we
+    patch that (and ``_read_served_model_id``) rather than touch the network.
+    """
+
+    _MODEL_PATH = "/home/u/.maxim/models/Qwen2.5-14B-Instruct.Q4_K_M.gguf"
+    _PROFILE = "qwen2.5-14b-instruct"
+    _URL = "http://127.0.0.1:8100/v1"
+
+    def _probe(self, outcome: str):
+        from maxim.runtime.llm_server import ProbeResult
+
+        return ProbeResult(url=self._URL, outcome=outcome, detail=f"probe={outcome}", latency_ms=1.0)
+
+    def test_spawn_when_no_existing_server(self):
+        """Port connection-refused → spawn proceeds."""
+        from maxim.runtime.llm_server import check_existing_llm_server
+
+        with patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("connection_refused")):
+            decision = check_existing_llm_server(
+                url=self._URL,
+                api_key="k",
+                expected_model_path=self._MODEL_PATH,
+                expected_profile=self._PROFILE,
+            )
+        assert decision == "spawn"
+
+    def test_reuse_when_existing_server_returns_200(self):
+        """200 with the right served model → reuse (skip spawn)."""
+        from maxim.runtime.llm_server import check_existing_llm_server
+
+        with (
+            patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("ok")),
+            patch("maxim.runtime.llm_server._read_served_model_id", return_value=self._MODEL_PATH),
+        ):
+            decision = check_existing_llm_server(
+                url=self._URL,
+                api_key="k",
+                expected_model_path=self._MODEL_PATH,
+                expected_profile=self._PROFILE,
+            )
+        assert decision == "reuse"
+
+    def test_reuse_when_served_model_matches_by_basename(self):
+        """The harness symlinks ~/.maxim/models into each sandbox, so the
+        served path and the configured path differ in their directory but
+        share a basename. Basename match must still reuse."""
+        from maxim.runtime.llm_server import check_existing_llm_server
+
+        served = "/tmp/exp37_work/trial001_A/models/Qwen2.5-14B-Instruct.Q4_K_M.gguf"
+        with (
+            patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("ok")),
+            patch("maxim.runtime.llm_server._read_served_model_id", return_value=served),
+        ):
+            decision = check_existing_llm_server(
+                url=self._URL,
+                api_key="k",
+                expected_model_path=self._MODEL_PATH,
+                expected_profile=self._PROFILE,
+            )
+        assert decision == "reuse"
+
+    def test_reuse_when_existing_server_returns_401(self):
+        """Auth-gated but alive → treat as up and reuse (CLAUDE.md 'auth in
+        health probes' lesson). The served model can't be read behind auth,
+        so ``_read_served_model_id`` must NOT be consulted."""
+        from maxim.runtime.llm_server import check_existing_llm_server
+
+        with (
+            patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("auth_rejected")),
+            patch("maxim.runtime.llm_server._read_served_model_id") as mock_read,
+        ):
+            decision = check_existing_llm_server(
+                url=self._URL,
+                api_key="k",
+                expected_model_path=self._MODEL_PATH,
+                expected_profile=self._PROFILE,
+            )
+        assert decision == "reuse"
+        mock_read.assert_not_called()
+
+    def test_fail_loud_when_existing_server_returns_wrong_model(self):
+        """200 but a DIFFERENT served model → RuntimeError with an actionable
+        message pointing at the CLAUDE.md lesson."""
+        import pytest
+
+        from maxim.runtime.llm_server import check_existing_llm_server
+
+        wrong = "/home/u/.maxim/models/mistral-7b-instruct.Q4_K_M.gguf"
+        with (
+            patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("ok")),
+            patch("maxim.runtime.llm_server._read_served_model_id", return_value=wrong),
+        ):
+            with pytest.raises(RuntimeError, match="harness on the same machine as the leader"):
+                check_existing_llm_server(
+                    url=self._URL,
+                    api_key="k",
+                    expected_model_path=self._MODEL_PATH,
+                    expected_profile=self._PROFILE,
+                )
+
+    def test_reuse_when_served_model_unverifiable(self):
+        """200 but /v1/models yields no usable id → reuse anyway (avoid the
+        kill+respawn cascade) rather than fail loud."""
+        from maxim.runtime.llm_server import check_existing_llm_server
+
+        with (
+            patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("ok")),
+            patch("maxim.runtime.llm_server._read_served_model_id", return_value=None),
+        ):
+            decision = check_existing_llm_server(
+                url=self._URL,
+                api_key="k",
+                expected_model_path=self._MODEL_PATH,
+                expected_profile=self._PROFILE,
+            )
+        assert decision == "reuse"
+
+
 class TestProfileHasLocalFile:
     def test_empty_name(self):
         assert profile_has_local_file("") is False

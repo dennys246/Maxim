@@ -154,6 +154,15 @@ class CostCapExceeded(RuntimeError):
     """Raised when cumulative cost exceeds ``--cost-cap``."""
 
 
+class PreflightError(RuntimeError):
+    """Raised when the first sub-sim's routing fails the preflight guard.
+
+    Specifically: the sub-sim ran its OWN local LLM (``source == "tier_table"``
+    on the large tier) instead of reusing an existing server — the
+    harness-on-leader cascade signature documented in CLAUDE.md.
+    """
+
+
 def run_one_sim(
     *,
     data_home: Path,
@@ -837,6 +846,79 @@ def _assert_failure_class_matches_yaml(scenario: str) -> None:
         )
 
 
+PREFLIGHT_LANE = "large"
+
+
+def assert_subsim_routed_not_local(data_home: Path, *, lane: str = PREFLIGHT_LANE) -> None:
+    """Refuse to continue if the first sub-sim spawned its OWN local LLM.
+
+    Reads ``<data_home>/util/lane_decisions.jsonl`` (written by the sub-sim's
+    ``build_primary_router``) and inspects ``tier_decisions.<lane>.source``:
+
+      - ``"tier_table"`` → the sub-sim ran its own large-tier model locally
+        instead of reusing the leader's already-running server. On the leader
+        machine this is the harness-on-leader cascade signature from the
+        CLAUDE.md lesson "Don't run the benchmark harness on the same machine
+        as the leader" (a colliding spawn that dead-ends the proxy upstream
+        and takes the tunnel down). Raise :class:`PreflightError`.
+      - ``"env"`` (routed to the leader via env), ``"reused_server"`` (the
+        singleton check reused the live server), or any other value → safe;
+        return.
+
+    A missing log (or missing field) is a SOFT pass — we can't assert what
+    isn't recorded, and we don't want to block environments that don't emit
+    the decision log (e.g. mock smoke runs). The guard is a loud backstop
+    for the case where the singleton check has a corner case, not the
+    primary mechanism.
+    """
+    log_path = data_home / "util" / "lane_decisions.jsonl"
+    if not log_path.exists():
+        print(
+            f"PREFLIGHT: no lane_decisions.jsonl under {data_home} — skipping route check.",
+            file=sys.stderr,
+        )
+        return
+
+    last_record: dict[str, Any] | None = None
+    for line in log_path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            last_record = parsed  # keep the most recent valid record
+    if last_record is None:
+        return
+
+    tier_decisions = last_record.get("tier_decisions")
+    lane_info = tier_decisions.get(lane) if isinstance(tier_decisions, dict) else None
+    if not isinstance(lane_info, dict):
+        return
+    source = lane_info.get("source")
+
+    if source == "tier_table":
+        raise PreflightError(
+            f"PREFLIGHT ABORT: the first sub-sim routed its {lane!r} tier via "
+            f"source={source!r} — it spawned/ran its OWN local LLM instead of "
+            f"reusing an existing server. On the leader machine this is the "
+            f"harness-on-leader cascade signature. Resolution: ensure a healthy "
+            f"llama-cpp-server is already serving the target model on the "
+            f"singleton port BEFORE starting the harness (the singleton check "
+            f"will then reuse it), or run the harness from a peer with "
+            f"MAXIM_LANE_{lane.upper()}_REMOTE_URL pointed at the leader. See the "
+            f"CLAUDE.md lesson 'Don't run the benchmark harness on the same "
+            f"machine as the leader'. (decision log: {log_path})"
+        )
+
+    print(
+        f"PREFLIGHT OK: sub-sim {lane!r} tier source={source!r} (not a local spawn) — continuing.",
+        file=sys.stderr,
+    )
+
+
 # ─── Orchestration ───────────────────────────────────────────────────────
 
 
@@ -896,6 +978,12 @@ def run_benchmark(
     # observed_max_record_cost ratchets up from actual data and the
     # projection becomes meaningful for subsequent pairs.
     observed_max_record_cost = 0.0
+
+    # Preflight: after the FIRST real sub-sim populates its data_home, assert
+    # it didn't spawn its own local LLM (the harness-on-leader cascade). Run
+    # once, before any further sub-sims kick off. Skipped in mock mode (no
+    # decision log written).
+    preflight_ran = False
 
     # Skip patterns for substrate copy: omit live filelock files that
     # may carry stale PIDs from the prior run. Models cache symlink is
@@ -960,6 +1048,9 @@ def run_benchmark(
                         mock=mock,
                         mock_failure_count=4,
                     )
+                    if not mock and not preflight_ran:
+                        assert_subsim_routed_not_local(arm_a_result.data_home)
+                        preflight_ran = True
                     if "A" in arms_set:
                         _emit(
                             build_record(
@@ -1024,6 +1115,9 @@ def run_benchmark(
                             mock=mock,
                             mock_failure_count=0,
                         )
+                        if not mock and not preflight_ran:
+                            assert_subsim_routed_not_local(arm_c_prior.data_home)
+                            preflight_ran = True
                         prior_cost = float(arm_c_prior.report.get("cost_usd", 0.0))
                         cumulative_cost += prior_cost
                         observed_max_record_cost = max(observed_max_record_cost, prior_cost)
@@ -1125,6 +1219,9 @@ def main(argv: list[str] | None = None) -> int:
             mock=args.mock_llm,
             cleanup_after_trial=args.cleanup_after_trial,
         )
+    except PreflightError as exc:
+        print(f"ABORT: {exc}", file=sys.stderr)
+        return 4
     except CostCapExceeded as exc:
         print(f"ABORT: {exc}", file=sys.stderr)
         return 3

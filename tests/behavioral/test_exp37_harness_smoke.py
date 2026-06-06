@@ -951,3 +951,69 @@ class TestCloudDispatchEnvSetup:
                 extra_env={},
                 timeout_s=60,
             )
+
+
+# ─── Harness preflight guard (harness-on-leader cascade backstop) ────────
+
+
+def _write_lane_decisions(data_home: Path, *, large_source: str) -> None:
+    """Synthesize a sub-sim ``util/lane_decisions.jsonl`` with the given
+    ``tier_decisions.large.source`` (mirrors decision_log.py's shape)."""
+    util = data_home / "util"
+    util.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": 1.0,
+        "pid": 1234,
+        "maxim_version": "test",
+        "caps": {},
+        "env": {},
+        "peer_config_loaded": False,
+        "tier_decisions": {
+            "large": {"profile": "qwen2.5-14b-instruct", "source": large_source},
+            "medium": {"profile": "smollm-1.7b-instruct", "source": large_source},
+        },
+    }
+    (util / "lane_decisions.jsonl").write_text(json.dumps(record) + "\n")
+
+
+class TestHarnessPreflight:
+    def test_harness_preflight_rejects_tier_table_source(self, harness, tmp_path):
+        """source == "tier_table" (sub-sim spawned its own local LLM) →
+        PreflightError pointing at the CLAUDE.md lesson."""
+        data_home = tmp_path / "trial001_fire_pit_A"
+        _write_lane_decisions(data_home, large_source="tier_table")
+        with pytest.raises(harness.PreflightError, match="harness on the same machine as the leader"):
+            harness.assert_subsim_routed_not_local(data_home)
+
+    def test_harness_preflight_accepts_env_source(self, harness, tmp_path):
+        """source == "env" (routed to the leader) → passes (no raise)."""
+        data_home = tmp_path / "trial001_fire_pit_A"
+        _write_lane_decisions(data_home, large_source="env")
+        # Should not raise.
+        harness.assert_subsim_routed_not_local(data_home)
+
+    def test_harness_preflight_accepts_reused_server_source(self, harness, tmp_path):
+        """source == "reused_server" (singleton check reused the leader's
+        live server — the leader-local fire's safe state) → passes."""
+        data_home = tmp_path / "trial001_fire_pit_A"
+        _write_lane_decisions(data_home, large_source="reused_server")
+        harness.assert_subsim_routed_not_local(data_home)
+
+    def test_harness_preflight_soft_pass_when_log_missing(self, harness, tmp_path):
+        """No decision log → soft pass (can't assert what isn't recorded)."""
+        data_home = tmp_path / "empty_home"
+        data_home.mkdir()
+        # Should not raise even though there's no util/lane_decisions.jsonl.
+        harness.assert_subsim_routed_not_local(data_home)
+
+    def test_harness_preflight_reads_last_record(self, harness, tmp_path):
+        """Multiple records → the MOST RECENT is authoritative. An earlier
+        tier_table followed by a later reused_server must pass."""
+        util = (tmp_path / "home") / "util"
+        util.mkdir(parents=True)
+        lines = [
+            json.dumps({"tier_decisions": {"large": {"source": "tier_table"}}}),
+            json.dumps({"tier_decisions": {"large": {"source": "reused_server"}}}),
+        ]
+        (util / "lane_decisions.jsonl").write_text("\n".join(lines) + "\n")
+        harness.assert_subsim_routed_not_local(tmp_path / "home")
