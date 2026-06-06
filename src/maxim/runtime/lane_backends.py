@@ -1155,7 +1155,7 @@ def _ensure_lane_profiles_available(
         try:
             new_tiers = detect_tiers(
                 capabilities,
-                profile_available=lambda p, _excl=excluded: (_profile_has_local_file(p) and p not in _excl),
+                profile_available=lambda p, _excl=excluded: _profile_has_local_file(p) and p not in _excl,
             )
         except Exception as e:
             if logger is not None:
@@ -1459,7 +1459,12 @@ def build_primary_router(
     #  - infer lane has a local profile (not already remote)
     #  - MAXIM_AUTO_SPAWN_LLM_SERVER != 0
     # When it fires, the infer lane is rewritten to point at the spawned server.
-    lane_configs = _maybe_auto_spawn_server(capabilities, lane_configs, logger)
+    # ``_auto_spawn_sources`` captures whether each tier reused an existing
+    # server (singleton check) or spawned a fresh one — fed into the decision
+    # log so the Exp 37 harness preflight can distinguish a safe leader-local
+    # reuse from the harness-on-leader cascade.
+    _auto_spawn_sources: dict[str, str] = {}
+    lane_configs = _maybe_auto_spawn_server(capabilities, lane_configs, logger, sources_out=_auto_spawn_sources)
 
     # Build FunctionRouter with available tiers derived from lane_configs
     from maxim.runtime.function_router import DEFAULT_FUNCTIONS, FunctionRouter
@@ -1491,6 +1496,7 @@ def build_primary_router(
         record = decision_log.build_record(
             caps=capabilities,
             final_lane_configs=lane_configs,
+            decision_sources=_derive_decision_sources(lane_configs, _auto_spawn_sources),
             peer_config_loaded=_has_peer_config,
         )
         decision_log.append_record(record)
@@ -1658,10 +1664,57 @@ def _validate_remote_urls(lane_configs: dict[str, Any], logger: Any | None) -> d
     return out
 
 
+# Decision-source value marking a lane that reused an already-running
+# llama-cpp-server (the singleton-check path). Distinct from "tier_table"
+# (the cascade signature: a sub-sim spawned its OWN local server) so the
+# Exp 37 harness preflight can tell a safe leader-local reuse apart from
+# the failure class. See decision_log.py / benchmark_cross_session.py.
+_REUSED_SERVER_SOURCE = "reused_server"
+
+
+def _derive_decision_sources(
+    lane_configs: dict[str, Any],
+    auto_spawn_sources: dict[str, str],
+) -> dict[str, str]:
+    """Attribute a routing ``source`` to each lane for the decision log.
+
+    Precedence per tier:
+      1. An explicit source recorded by ``_maybe_auto_spawn_server``
+         (``"reused_server"`` for the singleton-reuse path, ``"tier_table"``
+         for a fresh local spawn).
+      2. ``"env"`` when ``MAXIM_LANE_<TIER>_REMOTE_URL`` is set non-empty
+         (also covers config.json values, which ``_apply_lane_config_to_env``
+         setdefaults into the same env var).
+      3. ``"config"`` when the lane carries a ``remote_url`` from another
+         resolution path.
+      4. ``"tier_table"`` otherwise (in-process local inference — the
+         sub-sim is doing its own large-tier work).
+
+    The Exp 37 harness preflight rejects ``"tier_table"`` on the large tier
+    as the harness-on-leader cascade signature; ``"reused_server"`` and
+    ``"env"`` are the safe states.
+    """
+    sources: dict[str, str] = {}
+    for tier, cfg in lane_configs.items():
+        if tier in auto_spawn_sources:
+            sources[tier] = auto_spawn_sources[tier]
+            continue
+        env_key = f"MAXIM_LANE_{tier.upper()}_REMOTE_URL"
+        if os.environ.get(env_key, "").strip():
+            sources[tier] = "env"
+        elif getattr(cfg, "remote_url", None):
+            sources[tier] = "config"
+        else:
+            sources[tier] = "tier_table"
+    return sources
+
+
 def _maybe_auto_spawn_server(
     capabilities: Any,
     lane_configs: dict[str, Any],
     logger: Any | None,
+    *,
+    sources_out: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Auto-spawn a llama-cpp-server subprocess and rewrite the infer lane.
 
@@ -1788,53 +1841,42 @@ def _maybe_auto_spawn_server(
             logger.warning("Failed to read tunnel API key: %s", e)
             api_key = None
 
-    # Auto-discovery: if something already answers at port, check if we
-    # own it (spawned in this process) before reusing.  Ghost servers from
-    # a previous session are killed and respawned — reusing them is a
-    # security risk (the old agent loop may still be connected) and can
-    # serve stale models.
-    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend as _PeerBackend
+    # Singleton check: if a llama-cpp-server is already serving the right
+    # model on this port, REUSE it instead of kill+respawn. This is the
+    # structural fix for the harness-on-leader cascade (CLAUDE.md "Don't run
+    # the benchmark harness on the same machine as the leader"): a sub-sim
+    # that auto-detects leader role on the leader machine must NOT kill the
+    # leader's live server (port collision → dead upstream → 502s → operator
+    # kills maxim → cloudflared dies → tunnel down → 530s). Probes via the
+    # canonical entry point and fails loud on a wrong-model server.
+    from maxim.runtime.llm_server import check_existing_llm_server
 
     existing_url = f"http://127.0.0.1:{port}/v1"
-    if _PeerBackend.for_url(existing_url).health_check(enable_stage2=False).is_reachable:
+    decision = check_existing_llm_server(
+        url=existing_url,
+        api_key=api_key,
+        expected_model_path=model_path,
+        expected_profile=effective_profile,
+        logger=logger,
+    )
+    if decision == "reuse":
         if _server_mod._active_spawner is not None and _server_mod._active_spawner.is_running:
-            # We spawned this server in this process — safe to reuse.
-            if logger is not None:
-                logger.info(
-                    "Auto-discovery: reusing our llama-cpp-server on port %d",
-                    port,
-                )
+            # We spawned this server in this process — refresh tracking.
             _server_mod._active_model = effective_profile
             _server_mod._llm_start_time = time.time()
-            out = dict(lane_configs)
-            out[_infer_tier] = dataclasses.replace(
-                infer_cfg,
-                remote_url=existing_url,
-                remote_model=effective_profile,
-                remote_api_key=infer_cfg.remote_api_key or api_key,
-            )
-            return out
-        else:
-            # Ghost server from a previous session — kill it so we get a
-            # clean process we control.  This prevents orphaned agent loops
-            # from continuing to query the server after Ctrl+C.
-            if logger is not None:
-                logger.warning(
-                    "Found unowned llama-cpp-server on port %d — killing ghost process before respawn",
-                    port,
-                )
-            try:
-                from maxim.runtime.local_server_spawner import kill_stale_llm_servers
+        if sources_out is not None:
+            sources_out[_infer_tier] = _REUSED_SERVER_SOURCE
+        out = dict(lane_configs)
+        out[_infer_tier] = dataclasses.replace(
+            infer_cfg,
+            remote_url=existing_url,
+            remote_model=effective_profile,
+            remote_api_key=infer_cfg.remote_api_key or api_key,
+        )
+        return out
 
-                _ghost_killed = kill_stale_llm_servers(port)
-                if _ghost_killed:
-                    # Only sleep if we actually killed something — give the port a moment to release
-                    time.sleep(1.0)
-            except Exception:
-                pass
-
-    # Port not responding or ghost was just killed — may have a stale
-    # process holding VRAM.  Only kill+sleep if something was actually found.
+    # decision == "spawn": port not responding — may have a stale process
+    # holding VRAM.  Only kill+sleep if something was actually found.
     try:
         from maxim.runtime.local_server_spawner import kill_stale_llm_servers
 
@@ -1914,6 +1956,14 @@ def _maybe_auto_spawn_server(
     _server_mod._active_spawner = spawner
     _server_mod._active_model = effective_profile
     _server_mod._llm_start_time = time.time()
+
+    # A FRESH local spawn (vs the singleton-reuse path above) is the
+    # cascade signature the harness preflight watches for: a sub-sim that
+    # spawned its own large-tier server on the leader machine. Mark it
+    # "tier_table" so _derive_decision_sources doesn't mislabel the
+    # localhost remote_url as "config".
+    if sources_out is not None:
+        sources_out[_infer_tier] = "tier_table"
 
     # Rewrite the primary inference tier to point at the spawned server.
     # Auto-wire the API key for the leader's own client so local inference doesn't 401.

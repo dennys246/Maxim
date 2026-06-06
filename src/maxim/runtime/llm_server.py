@@ -182,6 +182,177 @@ class ProbeResult:
         return self.outcome in ("ok", "auth_rejected")
 
 
+# ─── Singleton spawn guard (harness-on-leader cascade fix) ───────────────────
+#
+# Before binding port 8100 for a fresh llama-cpp-server, probe the port. If a
+# server is already alive there serving the right model, REUSE it instead of
+# spawning a colliding process. This is the structural fix for the
+# harness-on-leader cascade documented in CLAUDE.md ("Don't run the benchmark
+# harness on the same machine as the leader"): a sub-sim that auto-detects
+# leader role on the leader machine must NOT kill + respawn the leader's live
+# server (which collides on the port, kills the upstream, 502s the proxy,
+# and takes the tunnel down).
+
+
+# Decision values returned by :func:`check_existing_llm_server`.
+REUSE_EXISTING = "reuse"
+SPAWN_NEW = "spawn"
+
+
+def _read_served_model_id(url: str, api_key: str | None) -> str | None:
+    """Return the model id reported by ``GET <url>/v1/models``, or None.
+
+    Reuses :meth:`_MaximPeerBackend._try_discover_served_model` (the canonical
+    ``/v1/models`` reader) rather than re-implementing the parse — the served
+    name is the first ``data[].id`` entry. Best-effort: any failure (network,
+    parse, auth) returns None so the caller treats the served model as
+    unknown rather than fabricating a mismatch.
+    """
+    try:
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+        backend = _MaximPeerBackend.for_url(url, api_key=api_key)
+        backend._try_discover_served_model()
+        served = backend.served_model
+        return served or None
+    except Exception:  # noqa: BLE001 — discovery is best-effort
+        return None
+
+
+def _served_model_matches(
+    served: str | None,
+    expected_model_path: str | None,
+    expected_profile: str | None,
+) -> bool | None:
+    """Compare a served model id against the configured model.
+
+    Returns:
+      - ``True``  — served model matches the configured profile / GGUF path.
+      - ``False`` — served model is positively a DIFFERENT model.
+      - ``None``  — served model is unknown / unparseable (cannot decide).
+
+    llama-cpp-server reports ``data[0].id`` as the value passed to its
+    ``--model`` flag (the GGUF path) when no ``--model_alias`` is set, so a
+    basename comparison against the resolved GGUF path is robust to the
+    harness's per-trial ``models/`` symlink (same file, different absolute
+    path). The profile name is also accepted in case a future spawn sets an
+    explicit alias.
+    """
+    if not served:
+        return None
+    s = str(served).strip()
+    if not s:
+        return None
+    s_base = os.path.basename(s)
+    if expected_model_path:
+        ep = str(expected_model_path)
+        if s == ep or (s_base and s_base == os.path.basename(ep)):
+            return True
+    if expected_profile:
+        epf = str(expected_profile).strip()
+        if epf and (s == epf or s_base == epf):
+            return True
+    # We have something to compare against and it didn't match → wrong model.
+    if expected_model_path or expected_profile:
+        return False
+    return None
+
+
+def check_existing_llm_server(
+    *,
+    url: str,
+    api_key: str | None,
+    expected_model_path: str | None = None,
+    expected_profile: str | None = None,
+    logger: Any | None = None,
+    first_timeout_s: float = 0.8,
+    retry_timeout_s: float = 2.0,
+) -> Literal["reuse", "spawn"]:
+    """Singleton guard: decide whether to reuse an existing LLM server.
+
+    Probes ``url`` (``GET /v1/models``) via the canonical probe entry point
+    (:meth:`_MaximPeerBackend.health_check`) with a short timeout, then:
+
+    - **HTTP 200, right model** → return ``"reuse"`` (caller points the lane
+      at ``url`` and skips spawn).
+    - **HTTP 401 (auth-gated but alive)** → return ``"reuse"``. Per the
+      CLAUDE.md "auth in health probes" lesson, a 401 proves the HTTP
+      listener is up; on the singleton port that is the leader's own
+      auth-gated server. We cannot read ``/v1/models`` to verify the model,
+      but reusing is strictly safer than the kill+respawn that triggers the
+      cascade.
+    - **Connection-refused / timeout / unreachable** → return ``"spawn"``
+      (no existing server; proceed with spawn as today).
+    - **HTTP 200, DIFFERENT served model** → raise :class:`RuntimeError`
+      (fail loud rather than silently serving the wrong model).
+
+    The probe is delegated to :meth:`_MaximPeerBackend.health_check` so this
+    function does not re-implement the probe surface (Plan 3 R2.6 invariant).
+    """
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+
+    backend = _MaximPeerBackend.for_url(url, api_key=api_key, model=expected_profile or "default")
+    result = backend.health_check(
+        first_timeout_s=first_timeout_s,
+        retry_timeout_s=retry_timeout_s,
+        enable_stage2=False,
+    )
+
+    if result.outcome == "auth_rejected":
+        if logger is not None:
+            logger.info(
+                "Singleton check: existing auth-gated llama-cpp-server at %s — "
+                "treating as alive and reusing (cannot verify served model behind auth)",
+                url,
+            )
+        return REUSE_EXISTING
+
+    if not result.is_reachable:
+        # connection_refused / timeout / dns_fail / http_5xx / other →
+        # no server we can reuse. Spawn as today.
+        if logger is not None:
+            logger.debug(
+                "Singleton check: no reusable server at %s (probe=%s: %s) — will spawn",
+                url,
+                result.outcome,
+                result.detail,
+            )
+        return SPAWN_NEW
+
+    # outcome == "ok": listener answered /v1/models without auth rejection.
+    # Verify the served model before reusing.
+    served = _read_served_model_id(url, api_key)
+    match = _served_model_matches(served, expected_model_path, expected_profile)
+
+    if match is False:
+        configured = expected_profile or expected_model_path or "<unknown>"
+        raise RuntimeError(
+            f"Singleton check: an LLM server is already running on {url} but it is "
+            f"serving model {served!r}, not the configured {configured!r}. Refusing "
+            f"to silently use the wrong model. Resolution: stop the existing server "
+            f"(or point this run at the served model). See the CLAUDE.md lesson "
+            f"'Don't run the benchmark harness on the same machine as the leader'."
+        )
+
+    if logger is not None:
+        if match is True:
+            logger.info(
+                "Singleton check: reusing existing llama-cpp-server at %s (served=%s)",
+                url,
+                served,
+            )
+        else:
+            # match is None — alive but served model unverifiable. Reuse is
+            # still the safe choice (avoids the kill+respawn cascade).
+            logger.warning(
+                "Singleton check: server at %s is alive but its served model could "
+                "not be verified (served=%r) — reusing anyway to avoid kill+respawn",
+                url,
+                served,
+            )
+    return REUSE_EXISTING
+
+
 def profile_has_local_file(profile_name: str) -> bool:
     """Return True iff the profile's GGUF file actually exists on disk.
 

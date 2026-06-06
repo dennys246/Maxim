@@ -20,7 +20,7 @@ class TestBuildPrimaryRouter:
         from maxim.runtime.lane_backends import build_primary_router
 
         # Don't auto-spawn a real server — just test the construction path
-        with patch("maxim.runtime.lane_backends._maybe_auto_spawn_server", side_effect=lambda c, lc, log: lc):
+        with patch("maxim.runtime.lane_backends._maybe_auto_spawn_server", side_effect=lambda c, lc, log, **kw: lc):
             router, manager = build_primary_router()
 
         # On a machine without GPU or remote config, router may be None
