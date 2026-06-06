@@ -238,10 +238,13 @@ class TestCliMissingBackendDependency:
                 sys.modules["anthropic"] = saved
 
     def test_none_when_present(self):
+        # Env-independent: force the availability probe to report the SDK as
+        # importable (CI does not install the llm-anthropic extra, so we can't
+        # rely on `anthropic` actually being present here).
         from maxim.cli_utils import _missing_backend_dependency
 
-        # anthropic is installed in the test env.
-        assert _missing_backend_dependency("anthropic") is None
+        with patch("maxim.utils.optional_deps.optional_dependency_available", return_value=True):
+            assert _missing_backend_dependency("anthropic") is None
 
     def test_none_for_unknown_backend(self):
         from maxim.cli_utils import _missing_backend_dependency
