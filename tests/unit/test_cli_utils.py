@@ -191,6 +191,46 @@ class TestClearMemory:
         results = clear_memory("hippo", home_dir=str(tmp_path))
         assert results["hippo"] is False
 
+    def test_bio_system_globs_across_agent_dirs(self, tmp_path):
+        # Bio-systems now persist per-agent under agents/<id>/; clearing a
+        # bio-system must remove it for EVERY agent (the bug: it only ever
+        # looked at the stale legacy util/ path).
+        a1 = tmp_path / "agents" / "a1" / "hippocampus.json"
+        a2 = tmp_path / "agents" / "a2" / "hippocampus.json"
+        for p in (a1, a2):
+            p.parent.mkdir(parents=True)
+            p.write_text("{}")
+        results = clear_memory("hippo", home_dir=str(tmp_path))
+        assert results["hippo"] is True
+        assert not a1.exists()
+        assert not a2.exists()
+
+    def test_bio_system_clears_legacy_path_too(self, tmp_path):
+        # Back-compat: a pre-0.9 flat util/ file is still cleaned up.
+        legacy = tmp_path / "util" / "nac_state.json"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("{}")
+        results = clear_memory("nac", home_dir=str(tmp_path))
+        assert results["nac"] is True
+        assert not legacy.exists()
+
+    def test_angular_gyrus_clears_per_agent(self, tmp_path):
+        ag = tmp_path / "agents" / "cli_agent" / "angular_gyrus.json"
+        ag.parent.mkdir(parents=True)
+        ag.write_text("{}")
+        results = clear_memory("angular_gyrus", home_dir=str(tmp_path))
+        assert results["angular_gyrus"] is True
+        assert not ag.exists()
+
+    def test_planning_directory_is_removed(self, tmp_path):
+        # planning maps to a directory — must rmtree, not unlink.
+        plan_dir = tmp_path / "planning"
+        plan_dir.mkdir()
+        (plan_dir / "plan.json").write_text("{}")
+        results = clear_memory("planning", home_dir=str(tmp_path))
+        assert results["planning"] is True
+        assert not plan_dir.exists()
+
 
 class TestMemoryPaths:
     def test_has_expected_keys(self):
@@ -198,6 +238,13 @@ class TestMemoryPaths:
         assert "nac" in MEMORY_PATHS
         assert "atl" in MEMORY_PATHS
         assert "fear" in MEMORY_PATHS
+
+    def test_bio_systems_target_agent_dirs(self):
+        # Regression guard: bio-system entries must glob across agents/, not
+        # point only at the stale legacy util/*_state.json layout.
+        for key in ("hippo", "nac", "scn", "atl", "angular_gyrus"):
+            assert key in MEMORY_PATHS
+            assert any(p.startswith("agents/*/") for p in MEMORY_PATHS[key]), key
 
 
 class TestImportPaths:

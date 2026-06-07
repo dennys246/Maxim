@@ -537,37 +537,60 @@ def reexec_with_mode(args: argparse.Namespace, *, mode: str) -> None:
     os.execv(sys.executable, argv)
 
 
-# Memory file paths for --clear-memory (relative to data_home / ~/.maxim/)
-MEMORY_PATHS = {
-    "focus": "util/focus_learner.json",
-    "bounds": "util/workspace_bounds.json",
-    "escalation": "util/escalation_learning.json",
-    "fear": "util/fear_learning.json",
-    "threshold": "util/adaptive_thresholds.json",
-    "nac": "util/nac_state.json",
-    "scn": "util/scn_state.json",
-    "hippo": "util/hippocampus.json",
-    "pain": "util/pain_detector.json",
-    "semantic": "util/semantic_embeddings.npz",
-    "statistician": "util/statistician_state.json",
-    "atl": "util/atl_state.json",
-    "cross_layer": "util/cross_layer_graph.json",
-    "planning": "planning",
+# Memory targets for --clear-memory, as glob patterns relative to data_home / ~/.maxim/.
+#
+# Two persistence layouts coexist by design:
+#   - Global default-network / bridge learners write ONE shared file under util/.
+#   - Per-agent bio-systems (Hippocampus, NAc, SCN, ATL, AngularGyrus) are persisted
+#     per agent under agents/<agent_id>/ by AgentFactory / build_bio_stack. Clearing a
+#     bio-system globs across every agent dir so the bio-system is wiped everywhere;
+#     legacy flat paths are included so pre-0.9 installs are cleaned up too.
+# A pattern containing "*" is glob-expanded; every match is removed (each is printed).
+MEMORY_PATHS: dict[str, tuple[str, ...]] = {
+    # Global learners (one shared file under util/)
+    "focus": ("util/focus_learner.json",),
+    "bounds": ("util/workspace_bounds.json",),
+    "escalation": ("util/escalation_learning.json",),
+    "fear": ("util/fear_learning.json",),
+    "threshold": ("util/adaptive_thresholds.json",),
+    "pain": ("util/pain_detector.json",),
+    "statistician": ("util/statistician_state.json",),
+    "cross_layer": ("util/cross_layer_graph.json",),
+    "semantic": ("util/semantic_embeddings.npz",),
+    # Per-agent bio-systems (agents/<id>/<file>.json) + legacy fallbacks
+    "hippo": (
+        "agents/*/hippocampus.json",
+        "memory/hippocampus.json",
+        "memory/memories.json",
+        "util/hippocampus.json",
+    ),
+    "nac": ("agents/*/nac.json", "util/nac_state.json"),
+    "scn": ("agents/*/scn.json", "util/scn_state.json"),
+    "atl": ("agents/*/atl.json", "util/atl_state.json"),
+    "angular_gyrus": ("agents/*/angular_gyrus.json",),
+    # Planning artifacts (directory)
+    "planning": ("planning",),
 }
 
 
 def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bool]:
-    """Clear persistent memory files.
+    """Clear persistent memory files/directories.
+
+    Each memory type expands to one or more glob patterns under ``~/.maxim/``
+    (see :data:`MEMORY_PATHS`). Per-agent bio-systems are matched across every
+    ``agents/<id>/`` directory; every matched file or directory is removed.
 
     Args:
         memory_types: Comma-separated memory types or 'all'.
         home_dir: Base data directory (deprecated, uses ~/.maxim/ by default).
 
     Returns:
-        Dict mapping memory type to success (True if cleared, False if not found).
+        Dict mapping memory type to success (True if at least one target was
+        cleared, False if none were found).
     """
+    import shutil
     from pathlib import Path
-    from maxim.utils.paths import resolve_user_state
+    from maxim.utils.paths import data_home
 
     results: dict[str, bool] = {}
 
@@ -576,6 +599,8 @@ def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bo
     else:
         types_to_clear = [t.strip().lower() for t in memory_types.split(",")]
 
+    base = Path(home_dir) if home_dir is not None else data_home()
+
     for mem_type in types_to_clear:
         if mem_type not in MEMORY_PATHS:
             print(f"Unknown memory type: {mem_type}", file=sys.stderr)
@@ -583,23 +608,33 @@ def clear_memory(memory_types: str, home_dir: str | None = None) -> dict[str, bo
             results[mem_type] = False
             continue
 
-        rel_path = MEMORY_PATHS[mem_type]
-        if home_dir is not None:
-            full_path = Path(home_dir) / rel_path
-        else:
-            full_path = resolve_user_state(rel_path)
+        # Expand each pattern relative to base; "*" globs across agent dirs.
+        matched: list[Path] = []
+        for pattern in MEMORY_PATHS[mem_type]:
+            if "*" in pattern:
+                matched.extend(sorted(base.glob(pattern)))
+            else:
+                candidate = base / pattern
+                if candidate.exists():
+                    matched.append(candidate)
 
-        if full_path.exists():
+        if not matched:
+            results[mem_type] = False
+            print(f"  Not found: {mem_type}")
+            continue
+
+        cleared_any = False
+        for path in matched:
             try:
-                full_path.unlink()
-                results[mem_type] = True
-                print(f"  Cleared: {mem_type} ({full_path})")
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+                cleared_any = True
+                print(f"  Cleared: {mem_type} ({path})")
             except Exception as e:
                 print(f"  Failed to clear {mem_type}: {e}", file=sys.stderr)
-                results[mem_type] = False
-        else:
-            results[mem_type] = False
-            print(f"  Not found: {mem_type} ({full_path})")
+        results[mem_type] = cleared_any
 
     return results
 

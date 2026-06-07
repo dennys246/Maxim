@@ -224,8 +224,10 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="TYPE",
         help=(
             "Clear persistent memory and exit. "
-            "Types: all (default), focus, bounds, escalation, fear, threshold, "
-            "nac, scn, hippo, pain, semantic. Can specify multiple comma-separated types."
+            "Bio-systems (cleared across all agents/<id>/): hippo, nac, scn, atl, angular_gyrus. "
+            "Global learners: focus, bounds, escalation, fear, threshold, pain, statistician, "
+            "cross_layer, semantic. Also: planning. Use 'all' (default) for everything. "
+            "Can specify multiple comma-separated types."
         ),
     )
 
