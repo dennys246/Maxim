@@ -766,7 +766,7 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
 
                 user_warn(
                     "LeaderProxy failed to start",
-                    fix="Check that the listen port is free (`lsof -i :7077`) or set MAXIM_PROXY_PORT.",
+                    fix="Check that the listen port is free (`lsof -i :8099`) or set MAXIM_LEADER_PROXY_PORT.",
                     source="leader-boot",
                     event="leader_boot_proxy_failed",
                 )
