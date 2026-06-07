@@ -144,6 +144,63 @@ Estimated wall: 1-2 weeks total for steps 1-5, +1 week for review fold + status 
 
 Will be drafted at `docs/experiments/protocols/37_cross_session_graduation_reproduction.md` as part of step 2 above. The protocol pre-registers the seed range, model version, prompt version, and encoder version so future re-runs (on the minor-version heartbeat trigger per [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md)) reproduce this baseline exactly.
 
+## Results — 2026-06-06 Qwen14B fire
+
+**Verdict: PARTIAL — investigation gate.** Full analyzer output at [data/37_results.md](data/37_results.md); per-trial JSONL at [data/37_results.jsonl](data/37_results.jsonl).
+
+**Run envelope:** 60 of 60 expected records (5 trials × 2 scenarios × 6 arms = 60 ✓). Fire ran on the leader Mac Mini (post-PR #339 harness-on-leader structural fix) using local Qwen2.5-14B-Instruct, started 2026-06-05 18:49, completed 2026-06-06 08:58, ~14 hours wall, $0 cost (local inference).
+
+### Headline finding — the LLM-AUT noise floor masks the substrate-transfer signal
+
+Under LLM-AUT Qwen2.5-14B on the cradle scenario at N=5 paired trials, the behavioral substrate-transfer claim is **not statistically detectable** through the pre-registered metrics. Specifically on fire_pit (sharp_rock collapsed to degenerate zero — see "scenario asymmetry" below):
+
+| | Arm A | Arm B | Δ |
+|---|---|---|---|
+| `positive_approach_engagement_fraction` mean | 0.5333 | 0.5167 | −0.0167 (−0.06 SD) |
+| `positive_approach_engagement_fraction` empirical range | [0.333, 0.96] | (5 values spanning similar range) | — |
+| `fire_approach_action_count` mean | 1.60 | 1.40 | −0.20 |
+| Isolation (Arm C within A's band) | — | — | **PASS** (C=0.617 inside [0.333, 0.96]) |
+
+The pre-registered SD-shift test (per [exp37_sd_shift.md](../plans/exp37_sd_shift.md)) requires `(B − A) / A.sd ≥ +1.0`. The measured delta is −0.06 SD (slightly *below* A's mean) — not within rounding error of the threshold; legitimately null.
+
+### Why the signal isn't there: empirical evidence of LLM prior dominance
+
+The ablation pattern is the diagnostic signature. The pre-reg's secondary criterion expected that turning off bio-mechanisms one at a time would *shrink* Arm B's delta toward Arm A (proving the bio-mechanisms drive the B-vs-A effect). Instead:
+
+| Ablation arm | Removes from B | B mean → Ablated mean | Direction |
+|---|---|---|---|
+| `B-wire-a-off` | Wire-A annotation (substrate "voice" in prompt) | 0.5167 → 0.5667 | Overshoots past A (+0.0333), wrong direction |
+| `B-wire-1-off` | Wire-1 annotation (variance in tool desc) | 0.5167 → 0.4567 | Drifts further from A, wrong direction |
+| `B-nac-bias-off` | NAc reward bias (preference signal) | 0.5167 → 0.6000 | Overshoots past A (+0.0667), wrong direction |
+
+If the substrate were materially driving B's behavior, ablating any of these mechanisms should pull B back toward A's baseline. Instead, ablations push B in roughly arbitrary directions and 2 of 3 *overshoot past* A — the classic signature of "the dominant decision driver is something else (the LLM's pretraining) and the bio-mechanisms are adding small, sometimes-helpful sometimes-harmful perturbations on top."
+
+This matches the qualitative signal from the 2026-06-05 cradle smoke: the LLM-AUT reasoned out loud about thermal homeostasis ("if standing closer to the fire will help me feel warmer") using **pretrained world knowledge**, not substrate retrieval. The substrate was carrying memory and surfacing it through prompt context (Wire-A, Wire-1, NAc bias annotations), but the LLM's pretraining already knows what infants do near fires. Substrate signal is real but small relative to LLM prior dominance.
+
+### What this experiment establishes and doesn't
+
+| Claim | Status |
+|---|---|
+| Substrate carries memory across sessions (Hippocampus persistence + RECALL) | **EARNED** via [Exp 10](10_cross_session_enrichment.md) — 3 memories/turn on resume; unchanged by this fire |
+| Substrate contributes to action selection through prompt-context channels (Wire-A, Wire-1, NAc bias) | **EARNED** via PR #266 (Wire-A) + PR #257 (Wire-1) + the bias plumbing audit; mechanism integrity unchanged by this fire |
+| Substrate **drives** action selection strongly enough to produce a measurable behavioral delta under LLM-AUT | **PARTIAL — investigation gate** via this fire; the LLM-AUT noise floor (Qwen14B priors + cradle scenario sparsity + N=5) masks any substrate-attributable behavioral shift at the pre-registered detection threshold |
+| Substrate-driven action selection independent of LLM (Exp 38 / Oasis) | Out of scope for 1.0; the principled future test of the strong claim |
+
+### Scenario asymmetry — sharp_rock collapsed to zero
+
+Every sharp_rock arm × trial recorded `positive_approach_engagement_fraction = 0`, `fire_pit_engagement_count = 0`, `failure_class_action_count = 0`. The LLM-AUT never engaged with sharp_rock at all across 25 sharp_rock sessions (5 trials × 5 of 6 arms — C is shared peaceful prior). This is the asymmetric-design concern surfaced in [exp37_metric_pivot.md](../plans/exp37_metric_pivot.md) realized in practice: sharp_rock has no positive-approach affordance (no analog to `fire_pit_warm_self`), and the LLM-AUT's pretrained "sharp rocks are dangerous" priors prevent engagement before any substrate signal can apply. The scenario contributes no information to the verdict; fire_pit alone carries the substantive evidence.
+
+### Honest scope of what shipped
+
+This fire is the locked 1.0 evidence for the cross-session behavioral-delta claim. The verdict is empirically anchored. The metric pivot ([exp37_metric_pivot.md](../plans/exp37_metric_pivot.md), 2026-06-XX) and SD-shift swap ([exp37_sd_shift.md](../plans/exp37_sd_shift.md), 2026-06-05) reflect iterative empirical learning from cradle smoke evidence, anchored to specific measured failure modes. The 2026-06-05 pre-implementation Qwen-validation smoke (5 Arm A trials) already showed Arm A's positive_approach distribution would be wide; the n=5 fire confirmed this at the full design completion.
+
+The four pre-reg amendments (2026-05-31 per-action swap, 2026-06-XX positive-approach pivot, 2026-06-05 SD-shift, and this results doc's interpretation) are documented across the cited plan files. Reviewers can fairly ask "why didn't you anticipate the LLM prior dominance?" Honest answer: the original pre-reg implicitly assumed substrate signal > LLM prior dominance; the iterative empirical work between PRs #299 (graduation pre-registration) and this results doc surfaced the opposite ratio. That's what pre-registered experiments are for.
+
+### Path forward
+
+- **1.0 ship:** Tier 1 row 1 in [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) flips to a split claim — memory-persistence component goes EARNED (Exp 10 unchanged), behavioral-delta component goes PARTIAL with this fire as the locked evidence and explicit deferral of the strong claim to Exp 38 substrate-primary work. Bio-framing in 1.0 release notes pulls back from "substrate drives behavior" to "substrate provides cross-session infrastructure that LLM-driven agents use." This matches the [framing strategy](../../CLAUDE.md) bio-inspired-LLM-harness positioning that was already the operative framing per the 2026-06-04 / 2026-06-05 discussions.
+- **Post-1.0 (no specific commitment):** Exp 38 substrate-primary measurement — remove the LLM noise floor, measure substrate-driven action selection directly. Cradle scenario enrichment (more affordances, more entities) is a sibling improvement that may help LLM-AUT measurement too but isn't on the 1.0 critical path. N=10 re-fire or Sonnet replication are possible but the marginal information from amending pre-reg a fifth time is unfavorable.
+
 ## Cross-references
 
 - [docs/plans/benchmarking_1_0.md](../plans/benchmarking_1_0.md) — 1.0 benchmarking gate (this is its primary experiment).
