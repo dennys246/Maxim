@@ -74,6 +74,86 @@ scn.load(f"{agent_dir}/scn.json")
 scn.save(f"{agent_dir}/scn.json")
 ```
 
+## peer.yml → config.json migration (0.9.3+)
+
+If you ran Maxim as a peer node before 0.9.3, your peer configuration lived in
+`~/.config/maxim/peer.yml`. Starting with 0.9.3, the primary config layer is
+`~/.config/maxim/config.json`. Maxim migrates the two automatically.
+
+### What the shim does
+
+On the first startup after upgrade, `load_config()` checks three conditions before
+writing anything:
+
+1. `~/.config/maxim/config.json` does **not** yet exist.
+2. `~/.config/maxim/peer.yml` **does** exist.
+3. No cloudflared config is found at `~/.cloudflared/config.yml` (or `.yaml`) or
+   `/etc/cloudflared/config.yml` (or `.yaml`) — this prevents a machine that was
+   previously both leader and peer from having its role silently flipped.
+
+When all three conditions hold, the shim:
+
+- Creates `~/.config/maxim/config.json` with `role: peer` and
+  `lanes.large.{remote_url, remote_model, remote_api_key_ref}` copied from your
+  peer.yml.
+- Writes your inline API key to `~/.config/maxim/api_key` (mode `0600`), then stores
+  the file path as the `remote_api_key_ref` reference in `config.json`. The key is
+  never written inline to `config.json`.
+- Leaves `peer.yml` in place — it is never deleted. Maxim continues to read it as a
+  fallback on machines where the migration is skipped (e.g., cloudflared-present
+  leaders).
+
+If a write error occurs (permission denied, disk full), the shim logs a WARNING and
+returns without setting the "done" flag, so the next `load_config()` call retries
+automatically.
+
+### Verifying the migration
+
+After the first startup following the upgrade:
+
+```bash
+maxim config get lanes.large.remote_url
+```
+
+Expected output (value will be your peer's actual URL):
+
+```
+lanes.large.remote_url: https://maxim.yourdomain.com   [source=config]
+```
+
+The `[source=config]` marker confirms Maxim is reading from `config.json`. If you
+see `[source=env]` instead, a `MAXIM_LANE_LARGE_REMOTE_URL` environment variable
+is shadowing the config file — the migration still ran, but the env var takes
+precedence. Unset it to let `config.json` be the sole source.
+
+You can also inspect the full migrated state:
+
+```bash
+maxim config get
+```
+
+### If the migration did not run
+
+The shim skips when any of the three trigger conditions are unmet:
+
+- **cloudflared is installed:** the machine is treated as a potential leader and the
+  shim intentionally does nothing. Manually set your role in `config.json` if needed:
+  `maxim config set role peer`.
+- **peer.yml is missing or malformed:** run `maxim peer test <url>` to confirm your
+  peer is reachable, then create `~/.config/maxim/peer.yml` manually and restart.
+- **config.json already exists:** the migration only runs when the file is absent.
+  Use `maxim config get` to inspect the existing config.
+
+### If the API key file already existed with a different key
+
+The shim does not clobber an existing `~/.config/maxim/api_key` file when it
+contains a different key. In that case `remote_api_key_ref` is left blank in
+`config.json` and a WARNING is logged. Wire it manually:
+
+```bash
+maxim config set lanes.large.remote_api_key_ref ~/.config/maxim/api_key
+```
+
 ## What requires manual action
 
 Nothing today. The 1.0 upgrade is designed to be a no-op for users with existing state.

@@ -521,6 +521,61 @@ so network hops are absorbed by the next cycle — you'll notice it only in
 reaction-time budgets. For real-time motor control, keep a local backend on
 the lane that drives motion.
 
+### Multi-tier remote routing
+
+Each of Maxim's three WorkerPool lanes (`large`, `medium`, `small`) can independently target a different server. The env var family follows a consistent pattern:
+
+| Env var | Config key | Purpose |
+|---|---|---|
+| `MAXIM_LANE_LARGE_REMOTE_URL` | `lanes.large.remote_url` | Inference URL for large-tier calls (orchestrator, primary reasoning) |
+| `MAXIM_LANE_LARGE_REMOTE_MODEL` | `lanes.large.remote_model` | Model name to request on that server |
+| `MAXIM_LANE_LARGE_REMOTE_API_KEY` | `lanes.large.remote_api_key_ref` | Auth token (or path to key file) |
+| `MAXIM_LANE_LARGE_TIMEOUT_S` | `lanes.large.timeout_s` | Per-request inference timeout in seconds (strictly positive) |
+| `MAXIM_LANE_MEDIUM_REMOTE_URL` | `lanes.medium.remote_url` | Inference URL for medium-tier calls (tool parsing, structured output) |
+| `MAXIM_LANE_MEDIUM_REMOTE_MODEL` | `lanes.medium.remote_model` | |
+| `MAXIM_LANE_MEDIUM_REMOTE_API_KEY` | `lanes.medium.remote_api_key_ref` | |
+| `MAXIM_LANE_MEDIUM_TIMEOUT_S` | `lanes.medium.timeout_s` | |
+| `MAXIM_LANE_SMALL_REMOTE_URL` | `lanes.small.remote_url` | Inference URL for small-tier calls (quick checks, background tasks) |
+| `MAXIM_LANE_SMALL_REMOTE_MODEL` | `lanes.small.remote_model` | |
+| `MAXIM_LANE_SMALL_REMOTE_API_KEY` | `lanes.small.remote_api_key_ref` | |
+| `MAXIM_LANE_SMALL_TIMEOUT_S` | `lanes.small.timeout_s` | |
+
+**Typical scenario: large model on GPU server, small/medium routed locally.**
+
+```bash
+# Large tier → powerful 32B model on your home GPU server
+export MAXIM_LANE_LARGE_REMOTE_URL=http://192.168.1.10:8100/v1
+export MAXIM_LANE_LARGE_REMOTE_MODEL=qwen2.5-32b-instruct
+export MAXIM_LANE_LARGE_TIMEOUT_S=300
+
+# Medium tier → faster 7B model on the same server (different port)
+export MAXIM_LANE_MEDIUM_REMOTE_URL=http://192.168.1.10:8101/v1
+export MAXIM_LANE_MEDIUM_REMOTE_MODEL=mistral-7b-instruct-v0.2
+export MAXIM_LANE_MEDIUM_TIMEOUT_S=60
+
+# Small tier → stays local (CPU fallback); no env var needed
+maxim
+```
+
+**Scenario: all three tiers via cloud API (solo auto-detect handles this, but
+explicit config gives you control over which model each tier uses):**
+
+```bash
+maxim config set lanes.large.remote_url https://api.anthropic.com/v1
+maxim config set lanes.large.remote_model claude-sonnet-4-6
+maxim config set lanes.medium.remote_url https://api.anthropic.com/v1
+maxim config set lanes.medium.remote_model claude-haiku-4-5-20251001
+# small tier stays local; unset lanes fall back to auto-detection
+export ANTHROPIC_API_KEY=sk-ant-...
+export MAXIM_MAX_CLOUD_LANES=2
+maxim
+```
+
+Unset lanes fall back to auto-detection (local GPU via auto-spawn, or the CPU
+fallback profile). Setting a lane's `TIMEOUT_S` overrides the backend default
+(300 s for self-hosted, 60 s for cloud providers). `maxim doctor` shows the
+resolved tier routing in its "Resolved Config" section.
+
 ### `maxim doctor` — environment diagnostics
 
 Run anytime to see what's configured and what's missing:
@@ -814,6 +869,45 @@ maxim
 ```
 
 The session cost ceiling (`MAXIM_CLOUD_SESSION_BUDGET`, default $5.00) is enforced per session. Keep an eye on cost in sim reports.
+
+### Cloud auto-detect (solo role)
+
+If you export a cloud API key without setting any other LLM config, Maxim **auto-enables cloud dispatch** at startup via `configure_cloud_solo_auto_detect` in `cli_utils.py`. This is why `export ANTHROPIC_API_KEY=... && maxim` works with no additional flags — the seven-flag incantation is done for you.
+
+**When it fires:** role is `solo` (or unset), no `MAXIM_LLM_PROFILE` is set, and no `MAXIM_LANE_LARGE_REMOTE_URL` is set (i.e., not routing to a peer leader). Auto-detect does not fire for `leader` or `peer` roles.
+
+**What it sets (only if not already present):**
+
+| Env var | Value | Notes |
+|---|---|---|
+| `MAXIM_LLM_ENABLED` | `1` | |
+| `MAXIM_LLM_CLOUD_ENABLED` | `1` | |
+| `MAXIM_MAX_CLOUD_LANES` | number of API keys found (max 3) | |
+| `MAXIM_LLM_REDACTION_POLICY` | `standard` | |
+| `MAXIM_CLOUD_SESSION_BUDGET` | `5.0` | USD |
+| `MAXIM_LLM_PROFILE` | best available profile | e.g. `claude-sonnet` if `ANTHROPIC_API_KEY` set |
+
+Priority order: Anthropic → OpenAI → Google → Groq → Together → Fireworks → Mistral → DeepSeek. The first available key wins the profile choice.
+
+**Operator overrides always win.** Any of these env vars already set before startup are left untouched; `maxim config set` values in `config.json` are also respected (env vars take precedence over config in the resolution chain, but existing env vars block the auto-set).
+
+**Disabling auto-detect:**
+
+```bash
+# Persistent — write false to config so auto-detect never fires again
+maxim config set cloud.enabled false
+
+# Per-session — point MAXIM_LLM_PROFILE at a local model to block the key check
+export MAXIM_LLM_PROFILE=mistral-7b
+```
+
+**Inspect what was auto-configured:**
+
+```bash
+maxim doctor
+# The "Resolved Config" section shows every absorbed field and its source.
+# Auto-detected fields appear with source "env" and a C7a INFO log at startup.
+```
 
 ## Python API
 

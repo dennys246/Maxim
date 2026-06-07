@@ -35,6 +35,17 @@ pip install -e .
 
 Install any combination with `pip install "pymaxim[extra1,extra2]"` (or `pip install -e ".[extra1,extra2]"` from a source checkout).
 
+> **Minimum Recommended Install**
+>
+> `pip install pymaxim` alone has no LLM backend — the agent loop loads but cannot call an LLM.
+> Pick the profile that matches your setup:
+>
+> | Use case | Command |
+> |----------|---------|
+> | Cloud inference (Anthropic Claude) | `pip install "pymaxim[llm-anthropic]"` |
+> | Local inference (llama.cpp) | `pip install "pymaxim[llm-llama,llm-server]"` |
+> | Everything (recommended starting point) | `pip install "pymaxim[all,semantic]"` |
+
 | Extra | Command | What it adds |
 |-------|---------|--------------|
 | `llm-llama` | `pip install -e ".[llm-llama]"` | Local LLM inference via llama.cpp |
@@ -57,6 +68,13 @@ Install any combination with `pip install "pymaxim[extra1,extra2]"` (or `pip ins
 | `all` | `pip install -e ".[all]"` | Most extras (excludes `yolo`, `llm-torch`, `semantic`, and `test`) |
 
 > **Note:** The `yolo` extra pulls in `ultralytics` which is AGPL-3.0 licensed. It is excluded from `all` to keep the core install Apache-2.0-clean. The `llm-torch` and `semantic` extras both require PyTorch and are excluded from `all` to avoid heavy optional GPU dependencies; install those individually as needed.
+
+> **`[semantic]` is not included in `[all]`.**
+> Without `[semantic]`, Maxim's memory and substrate-encoding systems fall back to a bag-of-words hash embedding. This is fine for quick tests but silently reduces memory recall quality and EC pattern-completion accuracy. For full memory quality — neural similarity search, EC paraphrase clustering, and substrate concept transfer — install:
+>
+> ```bash
+> pip install "pymaxim[all,semantic]"
+> ```
 
 ### Downloading Models
 

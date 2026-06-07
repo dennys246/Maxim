@@ -2,6 +2,33 @@
 
 Maxim is a bio-inspired cognitive architecture for autonomous agents. Published to PyPI as `pymaxim` (import name: `maxim`). Works headless, with simulation, or connected to robots via the pluggable `RobotController` abstraction.
 
+## Required Pre-Commit Checks
+
+Run these before considering any non-trivial task done:
+
+```bash
+# Lint + format
+ruff check src/ tests/
+ruff format src/ tests/
+
+# Tests (fast suite)
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
+
+# If touching memory/, decisions/, integration/memory_hub.py:
+python -m pytest tests/integration/test_memory_hub.py -q
+```
+
+## Configuration and Environment Variables
+
+Maxim is configured primarily through environment variables. The authoritative registry of all `MAXIM_*` environment variables — with defaults, consuming files, and purpose — lives in **CLAUDE.md's "Environment Variables" section**. Key clusters to know:
+
+- **Backend/LLM routing:** `MAXIM_LLM_PROFILE`, `MAXIM_ROLE`, `MAXIM_LANE_LARGE_REMOTE_URL`, `MAXIM_LANE_LARGE_REMOTE_API_KEY`
+- **Substrate encoding:** `MAXIM_SUBSTRATE_PATH=1` (enables EC/ATL dual-write), `MAXIM_CONCEPT_DECOMPOSITION=1`
+- **Diagnostics/trace:** `MAXIM_LOG_FILE=/tmp/maxim.jsonl`, `MAXIM_BACKEND_TRACE=1`, `MAXIM_PROVENANCE_VERBOSITY=1`
+- **Feature gates (ablation/ops):** `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION`, `MAXIM_DISABLE_VARIANCE_ANNOTATION`, `MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL`
+
+Operator configuration is also read from `~/.config/maxim/config.json` (written by `maxim config set`). Precedence: CLI flags > env vars > config.json > built-in defaults.
+
 ## Standards (Project Defaults)
 - Prefer small, surgical changes; minimize refactors unless explicitly requested.
 - When possible reduce the size of code to simplified systems.
@@ -84,6 +111,7 @@ When multiple systems share the same functional role, they **must** use the same
 - Python `>=3.12` (see `pyproject.toml`).
 - Follow existing repo style; keep code straightforward and readable.
 - Add type hints where they improve clarity; prioritize stable interfaces for cross-module use.
+- **Dependency-gated imports:** use `src/maxim/utils/optional_deps.py` — never roll your own `try/except ImportError`. Three entry points: `require_optional_dependency(import_name)` for explicitly-requested features (raises `OptionalDependencyError` on miss); `optional_dependency_available(import_name)` for capability probes (returns bool, never logs); `warn_optional_fallback(import_name, fallback=...)` for deliberate degradation paths (emits one deduped WARNING). The `EXTRA_FOR_IMPORT` dict in that module maps import names to `pymaxim[extra]` strings for actionable fix hints.
 
 ## Environment Diagnostics (`maxim doctor`)
 
@@ -185,10 +213,10 @@ The Hippocampus is an associative memory substrate that stores complete agentic 
                               │   MEMORY HUB    │
                               └────────┬────────┘
                                        │
-     ┌─────────┬─────────┬──────────┼──────────┬─────────┬─────────┬─────────┬─────────┐
-     ▼         ▼         ▼          ▼          ▼         ▼         ▼         ▼         ▼
-  Spatial  Salience  Planning   Escalation   Fear      Pain     Energy    Comms     Math
-   Bridge   Bridge    Bridge     Bridge     Bridge    Bridge    Bridge   Bridge    Bridge
+     ┌─────────┬─────────┬──────────┼──────────┬─────────┬─────────┐
+     ▼         ▼         ▼          ▼          ▼         ▼         ▼
+  Spatial  Salience  Planning   Escalation   Fear      Pain   (future
+   Bridge   Bridge    Bridge     Bridge     Bridge    Bridge  bridges)
 ```
 
 ### Core Components
@@ -217,7 +245,8 @@ Bridges connect the memory system to external perception/decision/action systems
 | **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Learned escalation thresholds | `escalation_learning.json` |
 | **FearCircuitBridge** | Hippocampus ↔ FearAgent ↔ NAc (+ EC via associative graph) | Memory-informed risk assessment | `fear_learning.json` |
 | **PainCircuitBridge** | PainDetector ↔ NAc | Learns action→pain associations | *(via NAc persistence)* |
-| **CommunicationBridge** | Comms ↔ Hippocampus | Communication-aware memory | - |
+
+Note: `CommunicationBridge` is referenced in `maxim_agent.py` but the backing module (`bridges/communication_bridge.py`) does not exist — it is a planned-but-unimplemented bridge. `EnergyReactionBridge` and `MovementEnergyTracker` were removed in the cradle sensorimotor update; do not re-introduce them.
 
 ### Memory Types
 
@@ -271,6 +300,13 @@ This enables biological-like memory decay and reinforcement.
 
 ### Usage Example
 
+> **C6 construction rule:** `PainBus()`, `ReactionBus()`, and `MemoryHub()` raise `TypeError` if called
+> without `_allow_raw=True` (which is test-only). Always use the canonical `build_*` builders:
+> `build_pain_bus(hippocampus=..., nac=...)`, `build_reaction_bus(...)`,
+> `build_memory_hub(hippocampus=..., scn=..., nac=..., ec=..., agent_id=...)`.
+> The four core bio-systems — `Hippocampus()`, `NAc()`, `SCN()`, `EntorhinalCortex()` — are
+> intentionally allowed as plain constructors.
+
 ```python
 from maxim.memory.hippocampus import Hippocampus
 from maxim.integration import build_memory_hub
@@ -278,13 +314,13 @@ from maxim.time.scn import SCN
 from maxim.decisions.nac import NAc
 from maxim.similarity.ec import EntorhinalCortex
 
-# Create core systems
+# Core bio-systems: plain construction is allowed for these four
 hippocampus = Hippocampus()
 scn = SCN()
 nac = NAc()
 ec = EntorhinalCortex()
 
-# Create hub (use build_memory_hub — raw MemoryHub() requires _allow_raw=True since C6)
+# MemoryHub: use build_memory_hub — raw MemoryHub() raises TypeError (C6)
 hub = build_memory_hub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec, agent_id="my_agent")
 
 # Session lifecycle

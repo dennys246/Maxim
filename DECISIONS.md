@@ -9,13 +9,13 @@ coding assistant capabilities and architectural robustness:
 
 - **Cognitive pain system** (#15): Tool errors routed through PainDetector → NAc → FearAgent.
   NAc learns which tools fail in which contexts via Rescorla-Wagner. ToolPainBridge,
-  ToolHarmPredictor, MonitorRegistry created.
+  ToolHarmPredictor, MonitorRegistry created. [MonitorRegistry superseded — not in current codebase]
 - **Coding tools** (#11a-d): EditFileTool (text-anchor edits), CodeSearchTool (regex search),
   RunTestsTool (structured test results), GitDiffTool, GitCommitTool.
 - **Structured error vocabulary** (#9): StopReason (10 loop termination reasons),
   ToolErrorKind (7 error classifications) on ToolOutput.
-- **Frozen value dataclasses** (#2): ToolOutput, LLMProposal, SkillResult, LongHorizonConfig.
-- **Session persistence** (#8): AgentSession with save/load, Percept serialization.
+- **Frozen value dataclasses** (#2): ToolOutput, LLMProposal, SkillResult [superseded — not in current codebase], LongHorizonConfig.
+- **Session persistence** (#8): AgentSession [superseded — not in current codebase] with save/load, Percept serialization.
 - **Context compaction** (#10): Sliding window with first-turn pinning for long-horizon plans.
 - **Test-driven replan** (#12): CodingReplanContext with structured test/build failures.
 - **Streaming events** (#5): StreamEvent + on_event callback for fine-grained loop events.

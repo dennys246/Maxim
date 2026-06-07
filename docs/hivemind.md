@@ -150,6 +150,20 @@ This won't be perfect — pure peer-to-peer systems with open contribution alway
 | **1.2** | Phase 1 ships. Phase 2 starts. Substrate-primary Maxims pull bootstrap from Hivemind. | Multi-Oasis federation. Curation tools (mark-trusted, mark-untrusted). Domain maintainer roles. | **Full Hivemind protocol** (~600 LOC): peer discovery, substrate-snapshot exchange, conflict-resolution semantics, poison-resistance defenses, optional well-known reference servers. |
 | **1.3+** | Phase 3 starts (from-scratch sequence model). | Oasis becomes a substrate-primary instance (no LLM needed). Mac-Mini-class hardware suffices. | Cross-version migration tooling. Curation registry. Domain ecosystem. |
 
+## Using the substrate CLI today (1.0)
+
+Everything above the Oasis/P2P layers is design rationale for 1.1+. What ships **today** in 1.0 is the shareability foundation: the bundle format, the NAc/EC merge utilities, and the `maxim substrate` CLI verbs. You can export a session's learned substrate, share the ZIP, and merge it into another Maxim right now.
+
+```bash
+maxim substrate export my-substrate.zip --session <id> --contributor-id <id> [--domain X]
+maxim substrate import my-substrate.zip --output-dir ./imported/
+maxim substrate inspect my-substrate.zip
+```
+
+`import` extracts only -- it never auto-merges into a live system. Folding extracted state into a running agent is a deliberate `maxim.hivemind.nac_merge` / `ec_merge` call. Hippocampus episodes are never bundled.
+
+**For the full end-to-end user guide** -- verb signatures, the merge utilities, the reserved `_*` contributor namespace, the identity filter, and the load-bearing safety semantics -- see **[Substrate Sharing](user/substrate-sharing.md)**.
+
 ## Confound discipline: raw vs primed substrate
 
 If substrate-primary Maxims bootstrap from patterns distilled from LLM-AUT experience, the "substrate carries cognition" claim weakens unless we're careful. The discipline that keeps the headline experiment honest:

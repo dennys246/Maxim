@@ -56,7 +56,7 @@
       <a href="#preemption" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Preemption Circuit</a>
       <a href="#execution" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Execution Tracking</a>
       <a href="#containment" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Mode-Based Containment</a>
-      <a href="#bridge" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Communication Bridge</a>
+      <a href="#bridge" class="text-sm text-slate-300 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800/50 no-underline">Conversation Memory</a>
     </div>
   </nav>
 
@@ -260,24 +260,29 @@ capture_before(
 
   <!-- Communication Bridge -->
   <section class="space-y-4">
-    <h2 id="bridge" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Communication Bridge</h2>
+    <h2 id="bridge" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Conversation Memory</h2>
 
-    <p class="text-slate-300 leading-relaxed">The CommunicationBridge connects external messaging to the reward system, enabling Maxim to learn from communication outcomes:</p>
+    <p class="text-slate-300 leading-relaxed">Communication isn't just delivered &mdash; it's remembered. The <span class="text-indigo-400 font-semibold">ConversationManager</span> tracks per-channel, per-participant exchanges and, when a conversation expires, archives it into Maxim's memory systems so the agent can learn from how it talks to people:</p>
 
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Communication &rarr; Learning Loop</span>
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Conversation &rarr; Memory Loop</span>
 
-Agent sends message  &rarr;  User responds positively  &rarr;  Inbound Percept
-      │                                                       │
-      &darr;                                                       &darr;
-CommunicationBridge                                    NAc reward attribution
-      │                                                       │
-      &darr;                                                       &darr;
-Record outcome: "messaging user about X &rarr; positive"    Learn: future similar
-                                                          situations &rarr; communicate</div>
+Inbound / outbound messages  &rarr;  ConversationManager (per channel + participant)
+                                          │
+                                          &darr;  on expiry / cleanup
+                                  _archive(conversation)
+                              ┌───────────┴───────────┐
+                              &darr;                       &darr;
+              Hippocampus (episodic)         NAc conversation event
+              summary Percept on bus         (3+ messages → record_event)
+                              │                       │
+                              &darr;                       &darr;
+              ATL via SemanticPromoter at session-end consolidation</div>
 
-    <p class="text-slate-300 leading-relaxed mt-3">The bridge subscribes to the AgentBus and watches for communication-related ToolResults and subsequent user responses. Over time, the NAc learns which communication patterns lead to positive outcomes, making the agent progressively better at deciding <em>when</em> and <em>how</em> to reach out.</p>
+    <p class="text-slate-300 leading-relaxed mt-3">Each archived conversation publishes a summary <em>Percept</em> onto the agent bus (captured by the Hippocampus as an episodic memory) and, once it has at least three messages, records a conversation-level event in the NAc. Over time the NAc accumulates which channels and patterns matter.</p>
 
-    <p class="text-slate-300 leading-relaxed">As a <em class="text-indigo-400 not-italic font-medium">PromotionSource</em>, the bridge can also contribute candidates to the <a href="/maxim/memory-systems#promotion" class="text-indigo-400 hover:text-indigo-300">SemanticPromoter</a> &mdash; communication patterns that repeat enough become ATL concepts ("user prefers brief updates" or "morning messages get faster responses").</p>
+    <p class="text-slate-300 leading-relaxed">Patterns that repeat enough are promoted to the <a href="/maxim/memory-systems#promotion" class="text-indigo-400 hover:text-indigo-300">SemanticPromoter</a> during session-end consolidation, becoming ATL concepts ("user prefers brief updates" or "morning messages get faster responses").</p>
+
+    <p class="text-slate-400 text-sm mt-3">Note: a dedicated <code class="font-mono text-xs">CommunicationBridge</code> abstraction described in earlier drafts is not part of the 1.0 surface &mdash; conversation learning flows through the <code class="font-mono text-xs">ConversationManager</code> archival path above.</p>
   </section>
 
   <!-- Navigation -->

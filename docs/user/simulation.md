@@ -207,11 +207,74 @@ This restores the AUT's memory and causal links from the previous run, and tells
 
 Every simulation run produces a report in `~/.maxim/sim_reports/{session_id}/`:
 - `report.json` -- Full metrics: tool usage, success rates, AUT cognitive state, cost, LLM analysis
-- `actions.jsonl` -- Every action record for post-hoc analysis
+- `actions.jsonl` -- Every action record for post-hoc analysis (JSONL, first line is a header record with `_record_kind: "header"`)
 - `aut_hippocampus.json` -- AUT's episodic memories from this run
 - `aut_nac.json` -- AUT's causal links learned during this run
+- `aut_ec.json` -- AUT's entorhinal cortex substrate nodes (present when `MAXIM_SUBSTRATE_PATH=1`)
+- `aut_atl.json` -- AUT's ATL semantic concepts (present when `MAXIM_SUBSTRATE_PATH=1`)
+- `bio_telemetry.jsonl` -- Per-event bio-system trace (Track 3 research data)
 
 An LLM-powered roundup automatically runs at the end of each session (if the LLM is still available), producing a summary, issues found, and recommendations in the report.
+
+### Reading Your First Sim Report
+
+After a run, open `~/.maxim/sim_reports/{session_id}/report.json`. The key fields to look at first:
+
+| Field | What it means | Typical range (10-turn run) |
+|---|---|---|
+| `turns` | Number of orchestrator turns completed | 5–15 |
+| `total_actions` | Tool calls made by the AUT | 20–150 |
+| `blocked_actions` | Actions blocked by FearGatedExecutor | 0 for cooperative personas |
+| `aut_memories_formed` | Total episodic memory entries in the AUT's hippocampus at session end | 50–700 |
+| `aut_causal_links` | NAc causal links learned during the session | 10–300 |
+| `pain_events_count` | Pain signals fired through PainBus | 0 unless pain triggers hit |
+| `fear_blocks_count` | FearAgent block events | 0 for cooperative scenarios |
+| `learn_events_count` | Substrate learning events (tier promotions, weight updates) | 10–100 |
+| `cost_usd` | Total LLM API spend (exact, not estimated) | $0.00 local; $0.05–$0.50 cloud |
+| `total_input_tokens` | Input tokens sent to LLM provider | 10k–200k cloud |
+| `finish_reason` | How the session ended | `max_turns`, `cancel`, `completed`, `error` |
+| `llm_finish_status` | Orchestrator's verdict on the goal | `completed`, `failed`, `inconclusive`, `blocked`, `stuck`, `aborted` |
+
+**`aut_memories_formed = 0`** means the AUT's hippocampus was not wired up (substrate path disabled) or — if substrate is enabled — the `[semantic]` optional dependency is missing and the fallback bag-of-words encoder produced zero episodic entries. Check with:
+
+```bash
+# Confirm substrate is active
+echo $MAXIM_SUBSTRATE_PATH   # should be 1
+
+# Check whether sentence-transformers is installed
+python -c "import sentence_transformers; print('ok')"
+# If this fails: pip install 'pymaxim[all,semantic]'
+```
+
+**`aut_causal_links = 0`** with `aut_memories_formed > 0` means NAc received no reward signal during the session — expected for very short or read-only runs. Pain triggers and tool outcomes drive link formation.
+
+**`aut_nac_summary`** contains the top 5 causal links by confidence, formatted as:
+```json
+{
+  "total_links": 281,
+  "top_links": [
+    {
+      "event": "tool:sense_food_source",
+      "outcome": "tool:sense_food_source:positive",
+      "confidence": 0.941,
+      "observations": 657
+    }
+  ]
+}
+```
+
+To view the report on stdout without interactive mode:
+
+```bash
+maxim --sim "test memory recall" --interactive false --sim-max-turns 5
+# Report prints at end of run; also saved to ~/.maxim/sim_reports/
+```
+
+To emit the full JSON report to a file for scripting:
+
+```bash
+maxim --sim "test memory recall" --interactive false --sim-report results.json --sim-max-turns 5
+```
 
 ### Response Policy (Auto-Approval)
 

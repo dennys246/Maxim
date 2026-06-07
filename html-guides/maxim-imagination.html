@@ -44,7 +44,7 @@
     <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
     <h1 class="text-3xl md:text-4xl font-bold text-white">Imagination</h1>
     <p class="text-indigo-400 font-medium">Real-Time Entity Design from Novel Percepts</p>
-    <p class="text-slate-400 text-sm">Shipped in v0.7.0 &mdash; I1 + I2</p>
+    <p class="text-slate-400 text-sm">Shipped in v0.7.0 (I1 + I2); evolved through v0.8&ndash;0.9</p>
   </header>
 
   <!-- Core Concept -->
@@ -61,6 +61,11 @@
     <div class="bg-indigo-900/30 border border-indigo-500/50 rounded-xl p-5">
       <h4 class="text-indigo-400 font-semibold mb-1">Why This Matters</h4>
       <p class="text-slate-300 text-sm">Without imagination, the agent can only sense entities that were pre-authored as YAML components. Narration that mentions a "rusted padlock" or "crystal chandelier" would have no sensors or failure modes &mdash; the agent could only talk about them. Imagination closes this gap by designing components on-the-fly, making novel entities observable and substrate-encodable.</p>
+    </div>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+      <h4 class="text-slate-300 font-semibold mb-1">Implementation history</h4>
+      <p class="text-slate-400 text-sm leading-relaxed">The core pipeline (I1 entity extraction + I2 EntityDesigner + I3 scene-scoped tools) shipped in v0.7.0. Post-0.7.0 additions: <strong class="text-slate-300">archetype scaffolding</strong> &mdash; the designer infers a structural archetype (humanoid, creature, weapon&hellip;) and merges its body-part vocabulary into the LLM-generated spec, reducing hallucinated modulator names on common entity categories; <strong class="text-slate-300">manifest pre-trigger</strong> (<code class="bg-slate-950 px-1 rounded text-xs">process_manifest()</code>) &mdash; called by the orchestrator before the first sim turn to pre-instantiate entities from the scene description, bypassing the mention threshold and arousal gate; and confirmed <strong class="text-slate-300">observe-only scene registration</strong> &mdash; imagined entities land in the EntityMap as observe-only, sensable via <code class="bg-slate-950 px-1 rounded text-xs">sense</code>/<code class="bg-slate-950 px-1 rounded text-xs">sense_presence</code> but with no directly callable affordance tools (the agent interacts via its own body tools).</p>
     </div>
   </section>
 
