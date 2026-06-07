@@ -19,13 +19,15 @@ LLMs (especially small ones like Mistral-7B) hallucinate tool names from their t
 |---|---|---|
 | `remember`, `recall`, `recall_memory`, `search_memory` | `memory_recall` | Model wants to recall past information |
 | `speech_recognition`, `speechrecognition`, `speech`, `dialogue`, `talk` | `say` | Model wants to speak aloud |
-| `natural_language_processing`, `nlp`, `nlp_extractor`, `nlp_understanding`, `reflection`, `analyze_text`, `research` | `think` | Model wants to analyze/reason about text |
+| `natural_language_processing`, `nlp`, `nlp_extractor`, `nlp_understanding`, `reflection`, `analyze_text`, `research`, `reflect` | `think` | Model wants to analyze/reason about text |
 | `dialogue_parser`, `dialogueparser`, `parse_dialogue` | `think` | Model wants to parse conversation (reasoning step) |
 | `internet_search`, `web_search` | `memory_recall` | Model wants to look something up (in sim, search your memory instead) |
+| `pick`, `select`, `decide`, `choose_option`, `make_choice` | `choose` | Model wants to pick a DM campaign option |
+| `inspect`, `look`, `observe`, `look_at`, `investigate` | `examine` | Model wants to look at something in the scene |
 
 ## How to add new aliases
 
-1. Run a simulation and look for `[MOTOR] [FAIL] <name>: Tool not registered` in the logs
+1. Run a simulation and look for `Tool not registered: '<name>'.` in the logs
 2. Determine which registered tool the model was trying to use (what did it want to accomplish?)
 3. Add the mapping to `TOOL_ALIASES` in `src/maxim/runtime/executor.py`:
    ```python

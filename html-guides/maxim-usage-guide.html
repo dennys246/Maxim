@@ -474,7 +474,7 @@ maxim [OPTIONS]
 
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Execution</span>
 
---mode MODE                  exploration|live|observe|sleep|reflection|train|research
+--mode MODE                  exploration|live|agentic|sleep|reflection|train
 --epochs INT                 Stop after N cycles (0 = unlimited)
 --audio true|false           Enable audio recording (default: true)
 --audio_len FLOAT            Transcription chunk duration (default: 5.0s)
@@ -793,18 +793,20 @@ from maxim.memory.hippocampus import Hippocampus
 
 hippo = Hippocampus()
 hippo.load(str(Path.home() / ".maxim" / "memory" / "hippocampus.json"))
-print(f"Total memories: {len(hippo.memories)}")
+print(f"Total memories: {len(hippo._memories)}")
 
-for mem_id, mem in list(hippo.memories.items())[:5]:
-    print(f"  {mem.action.tool_name} → {mem.outcome.valence}")
+for mem_id, mem in list(hippo._memories.items())[:5]:
+    print(f"  {mem.action.tool_name} → {mem.outcome.success}")
 
 <span class="text-indigo-400 text-xs uppercase tracking-wider">Python: inspect NAc learning</span>
 
 from maxim.decisions.nac import NAc
 
-nac = NAc.load_from_file(str(Path.home() / ".maxim" / "util" / "nac_state.json"))
-for sig, pred in nac._learned_associations.items():
-    print(f"  {sig}: conf={pred.confidence:.2f}, val={pred.valence}")</div>
+nac = NAc()
+nac.load(str(Path.home() / ".maxim" / "util" / "nac_state.json"))
+for sig, links in nac._links.items():
+    for link in links:
+        print(f"  {sig}: conf={link.confidence:.2f}, val={link.outcome_valence}")</div>
 
     <h3 class="text-lg font-semibold text-indigo-400">Hardware Diagnostics</h3>
 

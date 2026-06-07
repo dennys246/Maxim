@@ -226,7 +226,7 @@ result = runner.run(count=5)
 
 ## Invariants
 
-- Foundry **never auto-commits** to the component library. Human review required.
+- Manual foundry runs **never auto-commit** to the component library. Promoted components land in `~/.maxim/foundry/{run_id}/promoted/` and require manual copy to `~/.maxim/components/`. (`--auto-curate` is the explicit exception: it auto-promotes directly to `~/.maxim/components/` for the current session.)
 - Generated components pass the **same validation** as hand-written ones.
 - Each gauntlet gets a **fresh bio-stack**. Zero state leakage.
 - **Infra failures are not candidate failures.** Setup crashes are logged separately.
@@ -235,4 +235,4 @@ result = runner.run(count=5)
 
 - [Embodiment Guide](../embodiment_guide.md) — SEM entity system overview
 - [YAML Reference](../embodiment_yaml_reference.md) — Component YAML format
-- [Asset Foundry Plan](../plans/deferred/asset_foundry_plan.md) — Design document
+- [Asset Foundry Plan](../plans/archive/asset_foundry_plan.md) — Design document

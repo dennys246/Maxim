@@ -214,15 +214,7 @@ Templates are discovered from three search paths (highest priority first):
 2. User encounters (`~/.maxim/encounters/`)
 3. Bundled encounters (`src/maxim/_data/encounters/`)
 
-Query available templates programmatically:
-
-```python
-from maxim.simulation.encounter_library import EncounterLibrary
-
-library = EncounterLibrary()
-combats = library.query(tags=["combat"], difficulty=3)
-template = library.get("combat/forest_ambush")
-```
+The YAML `template:` key is parsed and the campaign loader accepts an `encounter_library` argument if you supply one. However, **there is currently no `EncounterLibrary` class in the codebase** — `maxim.simulation.encounter_library` does not exist. The programmatic query API shown in earlier drafts of this doc is not yet implemented. Until it is, work with the bundled encounter YAML files directly from `src/maxim/_data/encounters/` and `~/.maxim/encounters/`.
 
 ### Choices and Branching
 
@@ -269,29 +261,15 @@ npcs:
 
 Bare string values also work: `guard: "npcs/guard"`. Templates are discovered from `~/.maxim/components/`, bundled components, and the campaign-local directory. Use `extends:` within component YAML to inherit from a parent template.
 
-#### NPC Fields for Party Mode
+#### NPC Fields for Party Mode (planned — not yet implemented)
 
-When `party_mode: true` is set on the campaign, NPCs support additional fields that control their cognitive capabilities:
+The NPC per-agent fields (`remembers`, `learns`, `model_tier`) described below are **not currently consumed by the DM runtime**. They are planned for a future Party Mode implementation. Do not rely on them in campaigns today.
 
-| Field | Type | Default | Description |
+| Field | Type | Planned Default | Planned Description |
 |-------|------|---------|-------------|
 | `remembers` | bool | `true` | NPC gets its own Hippocampus for episodic memory |
 | `learns` | bool | `true` | NPC gets its own NAc for causal learning |
 | `model_tier` | str | `"small"` | LLM tier for NPC reasoning (`small`, `medium`, `large`) |
-
-```yaml
-npcs:
-  torchbearer:
-    ref: "npcs/torchbearer"
-    remembers: true
-    learns: true
-    model_tier: small
-  crowd_extra:
-    ref: "npcs/commoner"
-    remembers: false        # No memory — ambient NPC
-    learns: false
-    model_tier: small
-```
 
 ### Dice Checks
 
@@ -325,7 +303,7 @@ When running **non-interactively** (`--interactive false`), the AUT responds to 
 
 1. **ChooseTool** — A `choose` tool is available. The AUT can call `choose(option="fight")` directly. This is unambiguous.
 
-2. **Tool alias redirect** — If the AUT hallucates a tool matching a choice name (e.g., calls `accept_job` as a tool), the alias system redirects to `choose(option="accept_job")`.
+2. **Tool alias redirect** — If the AUT hallucinates a tool matching a choice name (e.g., calls `accept_job` as a tool), the alias system redirects to `choose(option="accept_job")`.
 
 3. **LLM fallback** — If neither works, the LLM classifies the response text against the choices. Returns `{"choice": "choice_name"}`.
 
@@ -359,33 +337,19 @@ Results appear in the campaign report:
   Bio-system expectations: 3/4 passed
 ```
 
-## Party Mode (Multi-Agent Campaigns)
+## Party Mode (Multi-Agent Campaigns) — Planned, Not Yet Implemented
 
-Enable `party_mode: true` on the campaign to run with NPC agents that have real Hippocampus and NAc instances. Each NPC receives scene narrative, generates dialogue, learns causal patterns, and remembers prior encounters.
+> **This feature is not yet implemented.** The `party_mode: true` field is parsed from campaign YAML and stored on `CampaignDef`, but the DM runtime (`simulation/dm_runtime.py`) does not act on it. There is no `PartyDMRuntime` class. NPCs do not receive their own Hippocampus or NAc, and `party.get_agent_memories()` does not exist.
 
-```yaml
-campaign:
-  name: haunted_manor
-  goal: test multi-agent memory and social dynamics
-  seed: 42
-  party_mode: true
-```
+The following describes the intended design for a future release:
 
-The encounter loop changes when party mode is active:
+When `party_mode: true` is set, each named NPC would run as an agent with its own bio-stack. Each NPC would receive scene narrative, generate dialogue, learn causal patterns, and remember prior encounters. The encounter loop would change so that NPC agents react first (generating dialogue and updating internal state), the PC observes NPC reactions alongside the scene and makes a choice, and all agents witness the outcome.
 
-1. DM delivers scene narrative to ALL agents (PC + active NPCs)
-2. NPC agents react first (generate dialogue, update internal state)
-3. PC agent observes NPC reactions alongside the scene, then makes a choice
-4. DM resolves the choice and applies effects
-5. All agents witness the outcome (feeds into their hippocampus)
-
-This means NPCs remember prior encounters, learn causal patterns from the PC's behavior, and adapt their dialogue accordingly. After the campaign, per-NPC memory exports are available via `party.get_agent_memories()`.
-
-Party mode requires more LLM inference (one call per NPC per encounter). Use `model_tier: small` on NPCs to keep costs manageable for ambient characters.
+For now, NPC behavior is limited to `dialogue_hints` seeds and `persona_prompt` metadata injected into the scene stimulus. NPCs do not learn or remember across encounters.
 
 ## Live Entity State in Scenes
 
-When SEM entities are instantiated (via `init_entities()` or Party Mode), the DM runtime automatically includes live sensor values in the scene stimulus. This means the agent perceives the **actual game state** — not just static text:
+When SEM entities are instantiated via `init_entities()`, the DM runtime automatically includes live sensor values in the scene stimulus. This means the agent perceives the **actual game state** — not just static text:
 
 ```
 [Game State]
@@ -513,4 +477,4 @@ Validation errors are printed before the campaign starts. Fix all errors before 
 - [Simulation Guide](simulation.md) — Other simulation modes (generative, research, benchmark)
 - [Troubleshooting: Bio-Systems](../troubleshooting/biosystems.md) — Diagnosing specific bio-system issues
 - [Embodiment Guide](../embodiment_guide.md) — SEM protocol for entity specs
-- [DM Campaigns HTML Guide](../../htmls-guides/maxim-dm-campaigns.html) — Full technical reference
+- [DM Campaigns HTML Guide](../../html-guides/maxim-dm-campaigns.html) — Full technical reference

@@ -9,13 +9,13 @@ coding assistant capabilities and architectural robustness:
 
 - **Cognitive pain system** (#15): Tool errors routed through PainDetector → NAc → FearAgent.
   NAc learns which tools fail in which contexts via Rescorla-Wagner. ToolPainBridge,
-  ToolHarmPredictor, MonitorRegistry created.
+  ToolHarmPredictor, MonitorRegistry created. [MonitorRegistry superseded — not in current codebase]
 - **Coding tools** (#11a-d): EditFileTool (text-anchor edits), CodeSearchTool (regex search),
   RunTestsTool (structured test results), GitDiffTool, GitCommitTool.
 - **Structured error vocabulary** (#9): StopReason (10 loop termination reasons),
   ToolErrorKind (7 error classifications) on ToolOutput.
-- **Frozen value dataclasses** (#2): ToolOutput, LLMProposal, SkillResult, LongHorizonConfig.
-- **Session persistence** (#8): AgentSession with save/load, Percept serialization.
+- **Frozen value dataclasses** (#2): ToolOutput, LLMProposal, SkillResult [superseded — not in current codebase], LongHorizonConfig.
+- **Session persistence** (#8): AgentSession [superseded — not in current codebase] with save/load, Percept serialization.
 - **Context compaction** (#10): Sliding window with first-turn pinning for long-horizon plans.
 - **Test-driven replan** (#12): CodingReplanContext with structured test/build failures.
 - **Streaming events** (#5): StreamEvent + on_event callback for fine-grained loop events.
@@ -27,7 +27,7 @@ coding assistant capabilities and architectural robustness:
 
 ## 2026-03-13: Conscience mixin decomposition and agents/ module extraction
 
-> **Note:** The package was renamed `conscience/` → `embodied_runtime/` in v1.0.0 to better describe its contents (robot mixin stack, not safety enforcement). All file references below use the new path.
+> **Note:** The package was renamed `conscience/` → `embodied_runtime/` (commit ed59cc2, 2026-04-10, during v0.2.x development) to better describe its contents (robot mixin stack, not safety enforcement). All file references below use the new path.
 
 Decision:
 - `src/maxim/embodied_runtime/selfy.py` `Maxim` class decomposed into six mixins: `ConnectionMixin` (connection.py), `VisionStreamMixin` (vision_stream.py), `AgenticRuntimeMixin` (agentic_runtime.py), `MovementMixin` (movement.py), `InputHandlerMixin` (input_handlers.py), `MediaLoopMixin` (media_loop.py). Module-level worker functions live in `workers.py`.
@@ -65,7 +65,7 @@ Tradeoffs:
 Decision:
 - Cloud LLM providers (Anthropic/OpenAI) integrate through `LLMRouter` (no parallel gateway).
 - Cloud usage is explicit opt-in (`cloud_enabled: true`) and requires a redaction policy.
-- Cost tracking persists to `data/util/cost_state.json`; audit logs append to `data/logs/cloud_audit.jsonl`.
+- Cost tracking persists to `data/util/cost_state.json` (migrated to `~/.maxim/util/cost_state.json` in later releases via `resolve_user_state`); audit logs append to `data/logs/cloud_audit.jsonl`.
 - Budget enforcement uses routing policy thresholds with graceful fallback to local models.
 
 Reason:

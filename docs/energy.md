@@ -34,16 +34,11 @@ Maxim tracks energy consumption to enable:
 from maxim.energy import EnergyType
 
 class EnergyType(Enum):
-    LLM_TOKENS = "llm_tokens"           # Token-based energy (input + output)
-    LLM_LATENCY = "llm_latency"         # Time waiting for LLM response
-    LLM_COST = "llm_cost"               # USD-normalized cost signal
-    COMPUTE_TIME = "compute_time"       # General CPU/GPU compute time
-    MOTOR_COMMAND = "motor_command"     # Energy to execute movement
-    MOTOR_CURRENT = "motor_current"    # Actual motor current draw
+    LLM_TOKENS = "llm_tokens"             # Token-based energy (input + output)
+    LLM_LATENCY = "llm_latency"           # Time waiting for LLM response
+    LLM_COST = "llm_cost"                 # USD-normalized cost signal
+    MOTOR_COMMAND = "motor_command"       # Energy to execute movement
     VISION_INFERENCE = "vision_inference" # Vision model inference
-    AUDIO_PROCESSING = "audio_processing" # Audio transcription/TTS
-    ATTENTION = "attention"             # Cognitive attention/focus cost
-    MEMORY_ACCESS = "memory_access"    # Memory retrieval cost
 ```
 
 ---
@@ -58,14 +53,12 @@ Central coordinator that aggregates all energy trackers.
 from maxim.energy import (
     EnergyRegistry,
     LLMEnergyTracker,
-    MovementEnergyTracker,
     get_global_registry,
 )
 
 # Create and configure registry
 registry = EnergyRegistry()
 registry.register(LLMEnergyTracker())
-registry.register(MovementEnergyTracker())
 
 # Or use global singleton
 registry = get_global_registry()
@@ -81,15 +74,6 @@ signal = llm_tracker.record(
     output_tokens=150,
     model="claude-3-haiku",
     latency_ms=1200,
-)
-
-# Record movement via the MovementEnergyTracker
-move_tracker = registry.get_tracker("movement")
-signal = move_tracker.record(
-    delta_yaw=45.0,
-    delta_pitch=10.0,
-    duration_s=0.3,
-    movement_type="head",
 )
 
 # Record a generic energy signal directly
@@ -110,7 +94,6 @@ registry.record_signal(signal)
 # Get summary of all energy usage (per-tracker stats + budgets)
 summary = registry.get_summary(window_seconds=60.0)
 print(f"LLM energy: {summary['trackers']['llm']['total_energy']:.2f}")
-print(f"Movement energy: {summary['trackers']['movement']['total_energy']:.2f}")
 
 # Check budget state
 if registry.is_low_energy("llm"):
@@ -184,63 +167,6 @@ print(f"Token budget used: {budget['percentage']:.1f}%")
 
 ---
 
-## MovementEnergyTracker
-
-Tracks motor activity energy consumption.
-
-### Configuration
-
-```python
-from maxim.energy import MovementEnergyTracker, MovementEnergyConfig
-
-config = MovementEnergyConfig(
-    # Distance costs
-    angular_energy_per_degree=0.02,      # 50 degrees = 1 energy
-    translation_energy_per_mm=0.05,      # 20 mm = 1 energy
-
-    # Speed affects energy (faster = more expensive)
-    speed_multiplier_base=1.0,           # Baseline for normal speed
-    fast_speed_threshold=100.0,          # deg/sec threshold for "fast"
-    fast_speed_multiplier=1.5,           # Multiplier when above threshold
-
-    # Duration cost (motor hold time)
-    duration_cost_per_second=0.1,        # Holding position has cost
-
-    # Component multipliers
-    antenna_energy_multiplier=0.3,       # Antennas are lighter
-    body_rotation_multiplier=2.0,        # Body rotation is heavier
-)
-
-tracker = MovementEnergyTracker(config)
-```
-
-### Usage
-
-```python
-# Record a head movement
-signal = tracker.record_head_movement(
-    delta_yaw=45.0,
-    delta_pitch=10.0,
-    duration_s=0.5,
-)
-
-# Record from an action signature
-signal = tracker.record_from_signature(
-    "look_at:dy=90:dp=30",
-    duration_s=0.3,
-)
-
-# Record body rotation (turn_around)
-signal = tracker.record_body_rotation(angle=90.0, duration_s=5.0)
-
-# Get movement stats
-stats = tracker.get_movement_stats()
-print(f"Total angular distance: {stats['total_angular_distance']}°")
-print(f"Movement count: {stats['movement_count']}")
-```
-
----
-
 ## EnergySignal
 
 Represents a single energy expenditure event.
@@ -276,34 +202,30 @@ from typing import Any
 import time
 
 @dataclass
-class AudioEnergyConfig(EnergyConfig):
-    cost_per_second: float = 10.0
-    tts_multiplier: float = 2.0
-    stt_multiplier: float = 1.5
+class VisionEnergyConfig(EnergyConfig):
+    cost_per_frame: float = 1.0
+    hires_multiplier: float = 2.5
 
-class AudioEnergyTracker(EnergyTracker):
-    name = "audio"
-    energy_types = {EnergyType.AUDIO_PROCESSING}
+class CustomVisionTracker(EnergyTracker):
+    name = "custom_vision"
+    energy_types = {EnergyType.VISION_INFERENCE}
 
-    def __init__(self, config: AudioEnergyConfig | None = None):
-        super().__init__(config or AudioEnergyConfig())
-        self._audio_config = config or AudioEnergyConfig()
+    def __init__(self, config: VisionEnergyConfig | None = None):
+        super().__init__(config or VisionEnergyConfig())
+        self._vcfg = config or VisionEnergyConfig()
 
-    def record(self, duration_seconds: float = 0.0,
-               mode: str = "tts", **kwargs: Any) -> EnergySignal:
-        energy = duration_seconds * self._audio_config.cost_per_second
-        if mode == "tts":
-            energy *= self._audio_config.tts_multiplier
-        else:
-            energy *= self._audio_config.stt_multiplier
+    def record(self, frame_count: int = 1,
+               hires: bool = False, **kwargs: Any) -> EnergySignal:
+        energy = frame_count * self._vcfg.cost_per_frame
+        if hires:
+            energy *= self._vcfg.hires_multiplier
 
         signal = EnergySignal(
-            energy_type=EnergyType.AUDIO_PROCESSING,
+            energy_type=EnergyType.VISION_INFERENCE,
             amount=energy,
             timestamp=time.time(),
             source=self.name,
-            duration_ms=duration_seconds * 1000,
-            context={"mode": mode},
+            context={"frame_count": frame_count, "hires": hires},
         )
         self._record_signal(signal)
         return signal

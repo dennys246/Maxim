@@ -5,12 +5,199 @@ All notable changes to pymaxim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Note (2026-05-11):** versions 0.6.0 → 0.8.1 shipped to PyPI without
+> **Note (2026-05-11, updated 2026-06-06):** versions 0.6.0 → 0.8.1 shipped to PyPI without
 > matching CHANGELOG entries. The summaries for that window live in
 > [docs/plans/v1_refinement.md](docs/plans/v1_refinement.md) and the
 > [HTML roadmap](html-guides/maxim-roadmap.html). The 0.9.0 entry below
-> picks up the convention again; backfilling 0.6/0.7/0.8 from the
-> roadmap is tracked as documentation debt and can land in a follow-up.
+> picks up the convention again.
+
+## [Unreleased]
+
+_(No changes yet since 0.9.3.)_
+
+## [0.9.3] - 2026-06-06
+
+### Added
+
+- **Loud optional-dependency failures** (`src/maxim/utils/optional_deps.py`). An audit
+  found 45+ optional-import sites using four inconsistent behaviours (raise, warn-and-continue,
+  warn-and-fallback, or fully silent). The new `optional_deps` module centralises this with
+  two functions: `require_optional_dependency(import_name, extra=, feature=)` raises a typed
+  `OptionalDependencyError` (subclass of `ImportError`) with an actionable
+  `pip install pymaxim[...]` message for explicitly-requested-but-missing backends;
+  `warn_optional_fallback(import_name, extra=, feature=)` logs a one-time WARNING and returns
+  `None` for graceful-degradation paths. Motivated by a 2026-06-05 incident where the
+  `anthropic` package was simply not installed: `_AnthropicBackend` swallowed the import
+  error and returned None, the router treated every response as a transient hiccup, and the
+  entire sim completed with `cost=$0` and every action an `_llm_unavailable` fallback — the
+  missing backbone was invisible. Now all four backends (`anthropic`, `openai`-compatible,
+  `llama_cpp`, `transformers`) raise on startup if their required SDK is absent and the
+  profile was explicitly requested. 229 LOC core + 219 LOC tests.
+
+### Changed
+
+- `LLMWorker` (via `agents/llm_worker.py`) calls `require_optional_dependency` at
+  construction time for the resolved backend profile, so the failure surfaces during agent
+  startup rather than on the first inference call.
+
+## [0.9.2] - 2026-06-05
+
+### Added
+
+- **Config-unification: `~/.config/maxim/config.json`** (PR #318). Single-source operator
+  config absorbs ~22 daily-use `MAXIM_*` env vars onto one file. Precedence chain:
+  CLI > env > config.json > builtin defaults, surfaced by
+  `runtime/config_loader.py::resolve_setting`. New `maxim config` subcommand verbs: `get`,
+  `get <field-path>`, `set <field-path> <val>`, `list`, `path`, `edit`. Role detection
+  unified to a seven-rank single source of truth in `runtime/role.py` (env var → config.json
+  → mesh.yml → cloudflared → peer.yml → `--llm` local → default leader). Shadow/convergence
+  override logging surfaces mismatches. API-key references in config accept file paths or
+  `keyring:<service>:<account>` URIs; inline plaintext keys are rejected at load time.
+  peer.yml auto-migrates to config.json on first startup when cloudflared is absent.
+- **`maxim doctor` "Resolved Config" section** (PR #318 C5, PR #322, PR #327). New section
+  in `maxim doctor` output shows all operator-configurable fields with their resolved value
+  and source (CLI / env / config.json / default). Includes cross-platform VRAM / context-fit
+  row and aggregated legacy env-var migration row.
+- **`maxim model add|remove|list` CLI verbs** (PR #314). `src/maxim/models/model_cli.py`.
+  `add` appends an entry to `~/.config/maxim/profiles.yml`; `remove` deletes by name;
+  `list` prints all known profiles (bundled + user). Doctor check surfaces profiles.yml
+  parse errors at startup.
+- **User-profile YAML loader** (`~/.config/maxim/profiles.yml`, PR #314 L2). Operator-
+  authored profiles merge into the bundled profile table at load time.
+- **Three new bundled profiles** (PR #314 L1): `qwen2.5-32b`, `llama-3.1-70b`,
+  `mixtral-8x7b` with auto-detect VRAM thresholds.
+- **Hivemind shareability infrastructure** (`src/maxim/hivemind/`, PRs #305–#311).
+  Four-PR track: (A) provenance + substrate-domain + fan-in-contributors fields on
+  `CausalLink` and EC nodes; (B) `nac_merge` / `ec_merge` Bayesian-aggregation pure
+  functions in `hivemind/merge.py`; (C) identity-bearing concept detection in
+  `hivemind/identity.py`; (D) substrate snapshot bundle format (ZIP + manifest, no episodes
+  by design) and `maxim substrate export <out.zip> | import <in.zip> | inspect <in.zip>`
+  CLI verbs. Merged-link/node provenance uses the `_consensus` reserved namespace; identity-
+  quarantine uses `_identity`. Source contributor IDs in the `_*` namespace are rejected.
+  `ec_merge` respects `frozen_centroid_modalities` to prevent cross-contributor centroid
+  drift. The `import` verb extracts only — no auto-merge into a live system.
+- **`MAXIM_NAC_REWARD_BIAS_DISABLED` env var** (PR #307). Gates
+  `NAc.distribute_reward`, `decay_reward_biases`, and `get_agent_tool_biases` as no-ops.
+  Used for Exp 37 ablation arm 3 (does cross-session behavioral delta come from bio-learning
+  or from LLM in-context recall?). Set at NAc construction time; changes after construction
+  are not picked up.
+- **LLM timeout scalability** (PRs #320–#323):
+  - **TTFT keepalive emitter** (PR #320). Leader proxy emits `: keepalive\n\n` SSE comment
+    frames every `MAXIM_PROXY_KEEPALIVE_INTERVAL_S` (default 30s, clamped 5–90s) during
+    upstream time-to-first-token. Prevents cloudflared tunnel idle-timeout (≈100s) from
+    closing the stream before the first token arrives on 30B+ models.
+  - **Per-tier inference timeout** (PR #321). `MAXIM_LANE_<TIER>_TIMEOUT_S` env var family
+    (tier names: `LARGE`, `MEDIUM`, `SMALL`) and matching `lanes.<tier>.timeout_s`
+    config.json field. Resolved via `resolve_setting`; threaded into the backend via
+    `LaneConfig.remote_timeout_s`.
+  - **Context-overflow admission gate** (PR #321). Leader proxy returns HTTP 413 with a
+    typed `{"error": {"code": "context_overflow", ...}}` body for requests whose estimated
+    prompt + `max_tokens` + overhead exceed the upstream context window. Character-based
+    estimator (`len / 3.5` chars/token). Safety margin via
+    `MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS` (default 256, clamped 0–4096). Gate controlled by
+    `MAXIM_PROXY_CONTEXT_ADMISSION` (default on when `MAXIM_LLM_N_CTX` is resolvable).
+  - **`resolve_setting` auto-load fix** (PR #323). `resolve_setting` was silently returning
+    the builtin default when called without an explicit `config=` kwarg. Now auto-loads the
+    canonical config on every call, so caller discipline is no longer required.
+- **Stall detector timeout-awareness** (PR #324). `runtime/llm_call_registry.py`
+  in-flight call registry tracks active calls + byte-arrival times per tier.
+  `runtime/stall_threshold.py::compute_stall_threshold` derives per-tier thresholds from
+  lane timeout config. Orchestrator stall detector suppresses nudges during legitimate
+  inference; `oldest_byte_silence_s(tier=...)` gates the TTFT window.
+- **EC + ATL state persistence in sim reports** (PR #248). `aut_ec.json` and
+  `aut_atl.json` written to `~/.maxim/sim_reports/{session_id}/` at session end. Used for
+  cross-session substrate resume.
+- **`cluster_reward_bias_decay_tau` split from `reward_bias_decay_tau`** (PR #267).
+  Wire-A's `_cluster_reward_bias` now decays with its own tau (`NACConfig.
+  cluster_reward_bias_decay_tau = 300.0`) independent of `reward_bias_decay_tau = 50.0`.
+  The 50.0 default was sized for EC threshold modulation, not multi-turn substrate-voice
+  annotation.
+- **Exp 37 cross-session graduation infrastructure** (PRs #304, #313, #315). Pre-
+  registered experiment; cross-session benchmark harness (`scripts/benchmark_cross_session.py`,
+  945 LOC) + analyzer (`scripts/analyze_exp37.py`, 920 LOC). 6 arms × 2 scenarios ×
+  5 trials. Singleton spawn guard + preflight check so the harness can run from the leader
+  machine using local Qwen14B.
+- **Mesh perception transport 1.0 prep** (PR #329, C10). `Percept.to_wire_dict` /
+  `from_wire_dict` wire format; substrate fields (`embedding`, `substrate_node_id`) excluded
+  from wire; non-blocking `PerceptSource` protocol contract reserved. Full transport ships
+  in 1.1.
+
+### Fixed
+
+- **SEM `self_effect` / `target_effect` applied before `evaluate_failures`** (PR #316).
+  Pre-fix, `ModulatorAffordanceTool.execute` ran `evaluate_failures` before applying sensor
+  deltas, so affordances that write to sensors and then fail (fire-pit touch → arms.thermal
+  spike → burn failure) never triggered the pain cascade.
+- **`get_version_info` recognises worktree `.git` file form** (PR #306). Worktrees store
+  `.git` as a file, not a directory; the old code assumed a directory and returned an empty
+  version string.
+- **`maxim peer` reports now surface served model name and backend routing** (PR #325).
+  Previously, peer status reports showed only the URL; now they include the active model
+  and whether inference is routing through llama-cpp or a cloud provider.
+- **`size_gb=None` in user profiles no longer crashes `ensure_available`** (PR #318 fold).
+
+### Backward compatibility
+
+- `NACConfig.cluster_reward_bias_decay_tau` is a new optional field with default `300.0`;
+  existing serialized NAc state loads without change (missing field → default).
+- `Percept.to_wire_dict` / `from_wire_dict` are additive; existing `to_dict` / `from_dict`
+  paths are unchanged.
+- All `maxim config`, `maxim model`, and `maxim substrate` subcommands are additive; no
+  existing flags renamed or removed.
+
+## [0.9.1] - 2026-05-25
+
+### Added
+
+- **Stage 0b + 0c telemetry** (PR #254). `agent_id` and `session_id` threaded into every
+  action JSONL record via `RequestContext`. `entity_class` field added to MOTOR/PERCEPT sim
+  events. NAc snapshots written at session boundary (not only at final shutdown). `_format_version`
+  bump on action JSONL per the CC1 contract.
+- **Stage 0d: `MAXIM_EC_TRACE_ACTIVATIONS` per-tick instrumentation** (PR #246). Gated
+  `sim_ec_activation` JSONL events from `EntorhinalCortex.pattern_complete_or_separate`.
+  Fields: `agent_id`, `tick`, `active_node_id`, `activation_strength`, `modality_tag`,
+  `modality`, `is_new`. Off by default.
+- **Wire-A: cluster-bias annotation prompt section** (PR #253). Agent loop now renders a
+  `cluster_bias_annotations` section in the LLM prompt when `NAc._cluster_reward_bias` has
+  non-zero entries. Controlled by `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION` env var (default on).
+- **Wire 3: embodiment-state → tool filter** (PR #255). Active sensor readings gate which
+  SEM affordance tools are offered to the LLM. Tools whose `requires` precondition is unmet
+  by the current body state are suppressed from the tool window.
+- **Wire 2: Pavlovian percept aversion** (PR #256). New per-percept aversion accumulator on
+  NAc (`_percept_aversion`), keyed by percept identity. Negative-valence episodes from a
+  percept type suppress its future tool-window visibility. New JSON key on NAc serialisation;
+  `GatingContext.learned_aversions` field reserved.
+- **Wire 1: risk-sensitive action annotation** (PR #257). Variance-band felt-sensation
+  annotation on tool descriptions in the LLM prompt. Reads `CausalLink.variance_estimate`
+  (Welford online algorithm on the binary reward signal) via `NAc.get_action_risk_profile`.
+  Controlled by `MAXIM_DISABLE_VARIANCE_ANNOTATION` env var (default on).
+- **EC text-modality centroid drift fix** (PRs #259–#264). Five-phase fix:
+  `ECConfig.pattern_complete_threshold` raised from 0.40 to 0.44 for the `text` modality,
+  eliminating progressive centroid drift under sequential streaming. Roy-2c rerun: behavioral
+  signal unchanged, structural fragmentation reduced 79% (`cluster_reward_bias_l2` 2.566 →
+  0.535).
+- **`NAc.get_threshold_overrides` base parameterized** (PR #263, Phase 3.5). Callers pass
+  the live EC threshold so the override tracks the active EC instance rather than a hardcoded
+  0.44 fallback.
+- **`cluster_reward_bias_decay_tau` split** (PR #267). See 0.9.2 entry; shipped into the
+  0.9.1 line after the tag.
+
+### Fixed
+
+- **Roy-5 H1C boundary tracks EC default** (PR #262). `H1C_LOWER_BOUND` in
+  `tests/unit/test_roy_5_cosine_localization.py` was hardcoded to the old 0.40 default;
+  now tracks `ECConfig.pattern_complete_threshold` so the test doesn't silently pass at the
+  wrong boundary after any future threshold change.
+
+### Backward compatibility
+
+- **`ECConfig.pattern_complete_threshold`** changed default 0.40 → 0.44. This is a behaviour
+  change for existing EC instances that relied on the default. Sessions that persist EC state
+  and resume will use the new threshold from the first resumed turn.
+- **`NAc._percept_aversion`** is a new optional JSON key. Pre-0.9.1 snapshots load to an
+  empty dict with no warning.
+- **Wire-A, Wire 1, Wire 3** are on by default; Wire 2 is on by default. All four wires can
+  be disabled via their respective env vars for ablation experiments.
 
 ## [0.9.0] - 2026-05-11
 

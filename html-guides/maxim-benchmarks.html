@@ -291,29 +291,33 @@ result = maxim.imagine(
   <span class="text-indigo-400">difficulty</span>: medium
   <span class="text-indigo-400">subsystems_tested</span>: [hippocampus, atl, nac]
 
-<span class="text-indigo-400">turns</span>:
-  - <span class="text-indigo-400">text</span>: <span class="text-green-400">"A red bird lands on the windowsill."</span>
+<span class="text-indigo-400">percepts</span>:
+  - <span class="text-indigo-400">at</span>: 0
+    <span class="text-indigo-400">cli_input</span>: <span class="text-green-400">"A red bird lands on the windowsill."</span>
     <span class="text-indigo-400">salience</span>: 0.8
     <span class="text-indigo-400">novelty</span>: 0.9
-  - <span class="text-indigo-400">text</span>: <span class="text-green-400">"The weather forecast plays on the radio."</span>
+  - <span class="text-indigo-400">at</span>: 1
+    <span class="text-indigo-400">cli_input</span>: <span class="text-green-400">"The weather forecast plays on the radio."</span>
     <span class="text-indigo-400">salience</span>: 0.2
     <span class="text-indigo-400">novelty</span>: 0.1
-  - <span class="text-indigo-400">text</span>: <span class="text-green-400">"What color was the bird you saw earlier?"</span>
+  - <span class="text-indigo-400">at</span>: 2
+    <span class="text-indigo-400">cli_input</span>: <span class="text-green-400">"What color was the bird you saw earlier?"</span>
     <span class="text-indigo-400">salience</span>: 0.7
     <span class="text-indigo-400">novelty</span>: 0.3
 
-<span class="text-indigo-400">benchmark</span>:
-  <span class="text-indigo-400">expectations</span>:
-    - <span class="text-indigo-400">type</span>: memory_count_range
+<span class="text-indigo-400">expectations</span>:
+  - <span class="text-indigo-400">type</span>: memory_count_range
+    <span class="text-indigo-400">params</span>:
       <span class="text-indigo-400">min</span>: 2
       <span class="text-indigo-400">max</span>: 10
-    - <span class="text-indigo-400">type</span>: hallucination_rate_below
-      <span class="text-indigo-400">threshold</span>: 0.1
-    - <span class="text-indigo-400">type</span>: graph_density_above
-      <span class="text-indigo-400">threshold</span>: 0.5
+  - <span class="text-indigo-400">type</span>: hallucination_rate_below
+    <span class="text-indigo-400">params</span>:
+      <span class="text-indigo-400">max_rate</span>: 0.1
+  - <span class="text-indigo-400">type</span>: graph_density_above
+    <span class="text-indigo-400">params</span>:
+      <span class="text-indigo-400">min_density</span>: 0.5
 
-<span class="text-indigo-400">suite</span>:
-  <span class="text-indigo-400">cognitive_suite</span>: true
+<span class="text-indigo-400">benchmark</span>:
   <span class="text-indigo-400">weight</span>: 1.0</div>
 
     <p class="text-slate-300 mt-4">The <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">metadata</code> section is used for filtering and reporting. The <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">benchmark.expectations</code> list defines pass/fail criteria. The <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">suite</code> section controls which aggregate suites include this scenario.</p>
@@ -371,20 +375,12 @@ result = maxim.imagine(
         </thead>
         <tbody class="text-slate-300">
           <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">results.json</td>
+            <td class="px-4 py-3 font-mono text-xs">benchmark_report.json</td>
             <td class="px-4 py-3">Full structured output &mdash; all metrics, expectations, pass/fail status, model metadata</td>
           </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
+          <tr class="hover:bg-slate-800/50">
             <td class="px-4 py-3 font-mono text-xs">summary.md</td>
             <td class="px-4 py-3">Human-readable summary with tables, deltas (if baseline provided), and per-scenario breakdown</td>
-          </tr>
-          <tr class="border-b border-slate-700 hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">actions.jsonl</td>
-            <td class="px-4 py-3">Full action log from the simulation run (same format as sim reports)</td>
-          </tr>
-          <tr class="hover:bg-slate-800/50">
-            <td class="px-4 py-3 font-mono text-xs">aut_state/</td>
-            <td class="px-4 py-3">Subdirectory with AUT hippocampus, NAc, and ATL state snapshots at end of run</td>
           </tr>
         </tbody>
       </table>
@@ -399,23 +395,18 @@ result = maxim.imagine(
   <span class="text-indigo-400">"duration_s"</span>: <span class="text-amber-400">287.4</span>,
   <span class="text-indigo-400">"passed"</span>: <span class="text-amber-400">true</span>,
   <span class="text-indigo-400">"metrics"</span>: {
-    <span class="text-indigo-400">"tier_1"</span>: {
-      <span class="text-indigo-400">"hallucination_rate"</span>: <span class="text-amber-400">0.02</span>,
-      <span class="text-indigo-400">"correct_tool_usage_rate"</span>: <span class="text-amber-400">0.91</span>,
-      <span class="text-indigo-400">"json_compliance_rate"</span>: <span class="text-amber-400">0.97</span>,
-      <span class="text-indigo-400">"alias_redirect_rate"</span>: <span class="text-amber-400">0.85</span>
-    },
-    <span class="text-indigo-400">"tier_2"</span>: {
-      <span class="text-indigo-400">"memory_formation_rate"</span>: <span class="text-amber-400">0.88</span>,
-      <span class="text-indigo-400">"associative_graph_density"</span>: <span class="text-amber-400">1.42</span>,
-      <span class="text-indigo-400">"concept_formation_rate"</span>: <span class="text-amber-400">0.65</span>,
-      <span class="text-indigo-400">"causal_link_count"</span>: <span class="text-amber-400">7</span>,
-      <span class="text-indigo-400">"learning_efficiency"</span>: <span class="text-amber-400">0.23</span>,
-      <span class="text-indigo-400">"observation_density"</span>: <span class="text-amber-400">1.8</span>,
-      <span class="text-indigo-400">"pain_signal_count"</span>: <span class="text-amber-400">2</span>,
-      <span class="text-indigo-400">"type_token_ratio"</span>: <span class="text-amber-400">0.71</span>
-    },
-    <span class="text-indigo-400">"tier_3"</span>: <span class="text-green-400">"not_available"</span>
+    <span class="text-indigo-400">"hallucination_rate"</span>: <span class="text-amber-400">0.02</span>,
+    <span class="text-indigo-400">"correct_tool_usage_rate"</span>: <span class="text-amber-400">0.91</span>,
+    <span class="text-indigo-400">"json_compliance_rate"</span>: <span class="text-amber-400">0.97</span>,
+    <span class="text-indigo-400">"alias_redirect_rate"</span>: <span class="text-amber-400">0.85</span>,
+    <span class="text-indigo-400">"memory_formation_rate"</span>: <span class="text-amber-400">0.88</span>,
+    <span class="text-indigo-400">"associative_graph_density"</span>: <span class="text-amber-400">1.42</span>,
+    <span class="text-indigo-400">"concept_formation_rate"</span>: <span class="text-amber-400">0.65</span>,
+    <span class="text-indigo-400">"causal_link_count"</span>: <span class="text-amber-400">7</span>,
+    <span class="text-indigo-400">"learning_efficiency"</span>: <span class="text-amber-400">0.23</span>,
+    <span class="text-indigo-400">"observation_density"</span>: <span class="text-amber-400">1.8</span>,
+    <span class="text-indigo-400">"pain_signal_count"</span>: <span class="text-amber-400">2</span>,
+    <span class="text-indigo-400">"type_token_ratio"</span>: <span class="text-amber-400">0.71</span>
   },
   <span class="text-indigo-400">"expectations"</span>: [
     { <span class="text-indigo-400">"type"</span>: <span class="text-green-400">"hallucination_rate_below"</span>, <span class="text-indigo-400">"passed"</span>: <span class="text-amber-400">true</span> },

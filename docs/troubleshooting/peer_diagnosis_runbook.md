@@ -35,7 +35,7 @@ If any are red/yellow, fix them first — the peer path can't work if the leader
 maxim
 ```
 
-Wait for the banner showing `infer self-hosted http://127.0.0.1:8100/v1` before proceeding.
+Wait for the banner showing `large   self-hosted http://127.0.0.1:8100/v1` before proceeding.
 
 ---
 
@@ -273,8 +273,8 @@ Peer runs `maxim peer test <url>`
 ├── HTTP 502 ────────────────────────────── Rung 3 (origin down, start `maxim` on leader)
 ├── HTTP 200 + models listed ────────────── Path works! Check Rung 5 (is peer's Maxim using it?)
 │
-Peer banner shows `infer local` ─────────── Rung 0 (peer config missing/overridden)
-Peer banner shows `infer self-hosted` ───── Rung 5 (MAXIM_LANE_TRACE to verify calls)
+Peer banner shows `large   local` ──────────── Rung 0 (peer config missing/overridden)
+Peer banner shows `large   self-hosted` ────── Rung 5 (MAXIM_LANE_TRACE to verify calls)
 GPU stays idle despite peer traffic ──────── Rung 6 (something else is serving)
 ```
 
@@ -406,7 +406,7 @@ A peer-side Claude should report the peer's findings from the "autonomous" comma
 The diagnosis is complete when:
 
 1. `maxim peer test <url>` returns 4/4 green on the peer
-2. Peer's startup banner shows `infer self-hosted https://maxim.yourdomain.com/v1`
+2. Peer's startup banner shows `large   self-hosted https://maxim.yourdomain.com/v1`
 3. `MAXIM_LANE_TRACE=1` shows `peer_infer req=... status=ok` for every LLM call
 4. Leader's `maxim tunnel tail` shows `200 OK` for forwarded requests
 5. Leader's `nvidia-smi dmon` shows GPU utilization spikes correlating with peer traffic

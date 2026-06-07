@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Agent Mesh — Maxim Docs | Peer-to-Peer Knowledge Sharing{% endblock %}
+{% block title %}Agent Mesh — Maxim Docs | Multi-Agent Primitives &amp; Peer Networking{% endblock %}
 
-{% block meta_description %}How Maxim agents discover peers, share learned knowledge, delegate tasks, and coordinate temporal reasoning across a cooperative mesh network.{% endblock %}
+{% block meta_description %}The mesh primitives Maxim ships today — in-process message bus, agent identity, uniform memory references — plus the peer/leader tunnel model for cross-machine LLM routing and Hivemind substrate sharing.{% endblock %}
 
-{% block meta_keywords %}Maxim agent mesh, peer-to-peer AI, knowledge sharing, cooperative agents, task delegation, distributed planning, causal link transfer, motor program sharing, SCN clock sync, agentic robotics{% endblock %}
+{% block meta_keywords %}Maxim agent mesh, multi-agent runtime, LocalMessageBus, MeshMessage, AgentProfile, peer leader tunnel, Cloudflare tunnel, Hivemind substrate sharing, maxim peer CLI, distributed inference{% endblock %}
 
 {% block meta_author %}Maxim Project{% endblock %}
 {% block og_site_name %}Maxim{% endblock %}
@@ -15,13 +15,13 @@
 {
   "@context": "https://schema.org",
   "@type": "TechArticle",
-  "headline": "Agent Mesh & Cooperative Intelligence in Maxim",
-  "description": "How Maxim agents discover peers, share learned knowledge, delegate tasks, and coordinate temporal reasoning across a cooperative mesh network.",
+  "headline": "Agent Mesh & Multi-Agent Coordination in Maxim",
+  "description": "The mesh primitives Maxim ships today — in-process message bus, agent identity, uniform memory references — plus the peer/leader tunnel model for cross-machine LLM routing and Hivemind substrate sharing.",
   "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
   "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
   "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/agent-mesh",
   "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
-  "keywords": ["agent mesh", "knowledge sharing", "task delegation", "distributed planning", "cooperative AI"]
+  "keywords": ["agent mesh", "multi-agent runtime", "message bus", "peer networking", "substrate sharing"]
 }
 </script>
 <script type="application/ld+json">
@@ -42,23 +42,27 @@
 
   <header class="text-center space-y-2">
     <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
-    <h1 class="text-3xl md:text-4xl font-bold text-white">Agent Mesh &amp; Cooperative Intelligence</h1>
-    <p class="text-indigo-400 font-medium">Sovereign Agents, Cooperative Network</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Agent Mesh &amp; Multi-Agent Coordination</h1>
+    <p class="text-indigo-400 font-medium">Sovereign Agents, Shared Substrate</p>
   </header>
+
+  <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
+    <h3 class="text-sm font-semibold text-indigo-400 mb-2">What this page covers</h3>
+    <p class="text-slate-300 text-sm">Maxim's "mesh" today is two concrete things: a small set of <strong>in-process multi-agent primitives</strong> (<code class="text-green-400 bg-slate-900 px-1 rounded text-xs">mesh/</code> &mdash; a message bus, agent identity, and a memory-reference scheme used by the multi-agent runtime and the research protocol) and a <strong>cross-machine peer/leader model</strong> for sharing one GPU's LLM across many machines. A networked agent-to-agent transport (the old <code class="text-green-400 bg-slate-900 px-1 rounded text-xs">PeerChannel</code>, <code class="text-green-400 bg-slate-900 px-1 rounded text-xs">ExperienceBroker</code>, <code class="text-green-400 bg-slate-900 px-1 rounded text-xs">TaskDelegator</code>, <code class="text-green-400 bg-slate-900 px-1 rounded text-xs">PeerRegistry</code>, and <code class="text-green-400 bg-slate-900 px-1 rounded text-xs">PeerClockEstimator</code>) was removed as dead code in 2026-04 and is not part of 1.0. Cross-machine knowledge sharing instead ships as the <a href="/maxim/hivemind" class="text-indigo-400 hover:text-indigo-300">Hivemind</a> substrate bundle, and distributed inference ships through the <a href="/maxim/networking" class="text-indigo-400 hover:text-indigo-300">Cloudflare tunnel + LeaderProxy</a> path. A peer-to-peer substrate protocol is on the roadmap for 1.2+.</p>
+  </div>
 
   <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
     <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
     <ol class="space-y-1 text-slate-300 list-decimal pl-5">
       <li><a href="#design-philosophy" class="text-indigo-400 hover:text-indigo-300 no-underline">Design Philosophy</a></li>
-      <li><a href="#identity" class="text-indigo-400 hover:text-indigo-300 no-underline">Identity &amp; Discovery</a></li>
-      <li><a href="#transport" class="text-indigo-400 hover:text-indigo-300 no-underline">Transport Layer</a></li>
-      <li><a href="#admission" class="text-indigo-400 hover:text-indigo-300 no-underline">Admission Control</a></li>
-      <li><a href="#knowledge-sharing" class="text-indigo-400 hover:text-indigo-300 no-underline">Knowledge Sharing</a></li>
-      <li><a href="#task-delegation" class="text-indigo-400 hover:text-indigo-300 no-underline">Task Delegation</a></li>
-      <li><a href="#distributed-planning" class="text-indigo-400 hover:text-indigo-300 no-underline">Distributed Planning</a></li>
-      <li><a href="#clock-sync" class="text-indigo-400 hover:text-indigo-300 no-underline">Clock Synchronization</a></li>
-      <li><a href="#api-endpoints" class="text-indigo-400 hover:text-indigo-300 no-underline">API Endpoints</a></li>
-      <li><a href="#trust-model" class="text-indigo-400 hover:text-indigo-300 no-underline">Trust Model</a></li>
+      <li><a href="#primitives" class="text-indigo-400 hover:text-indigo-300 no-underline">Mesh Primitives</a></li>
+      <li><a href="#message-bus" class="text-indigo-400 hover:text-indigo-300 no-underline">The Local Message Bus</a></li>
+      <li><a href="#identity" class="text-indigo-400 hover:text-indigo-300 no-underline">Identity &amp; Memory References</a></li>
+      <li><a href="#multi-agent-runtime" class="text-indigo-400 hover:text-indigo-300 no-underline">Multi-Agent Runtime</a></li>
+      <li><a href="#peer-leader" class="text-indigo-400 hover:text-indigo-300 no-underline">Peer / Leader Networking</a></li>
+      <li><a href="#peer-cli" class="text-indigo-400 hover:text-indigo-300 no-underline">The <code>maxim peer</code> CLI</a></li>
+      <li><a href="#substrate-sharing" class="text-indigo-400 hover:text-indigo-300 no-underline">Substrate Sharing (Hivemind)</a></li>
+      <li><a href="#roadmap" class="text-indigo-400 hover:text-indigo-300 no-underline">What's Reserved for Later</a></li>
     </ol>
   </div>
 
@@ -66,201 +70,165 @@
   <section class="space-y-4">
     <h2 id="design-philosophy" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Design Philosophy</h2>
 
-    <p class="text-slate-300 leading-relaxed">Every Maxim instance is a <span class="text-indigo-400 font-semibold">sovereign agent</span>. It owns its hippocampus, its causal models (NAc), its semantic concepts (ATL), its learned significance weights, and its tool registry. No other agent can modify its state directly.</p>
+    <p class="text-slate-300 leading-relaxed">Every Maxim instance is a <span class="text-indigo-400 font-semibold">sovereign agent</span>. It owns its hippocampus, its causal models (NAc), its semantic concepts (ATL), its learned significance weights, and its tool registry. No other agent modifies its state directly &mdash; coordination always happens through explicit messages or through substrate bundles the receiver chooses to accept.</p>
 
-    <p class="text-slate-300 leading-relaxed">Cooperation happens through four verbs:</p>
+    <p class="text-slate-300 leading-relaxed">That sovereignty principle has survived intact even as the speculative networked-mesh machinery was pared back. What remains is deliberately small and load-bearing: a handful of primitives in <code class="text-indigo-400">src/maxim/mesh/</code> that let several agents run side-by-side in one process and address each other cleanly. The cross-machine story is handled separately &mdash; by sharing <em>inference</em> (the peer/leader tunnel) and by sharing <em>learned substrate</em> (Hivemind bundles), not by a general agent-to-agent network protocol.</p>
+  </section>
+
+  <!-- 2. Primitives -->
+  <section class="space-y-4">
+    <h2 id="primitives" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Mesh Primitives</h2>
+
+    <p class="text-slate-300 leading-relaxed">The <code class="text-indigo-400">mesh</code> package ships four primitives. They are the foundational abstractions for multi-agent collaboration, used by the <a href="/maxim/simulation" class="text-indigo-400 hover:text-indigo-300">simulation</a> runtime and research-protocol agent setups.</p>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-        <h3 class="text-indigo-400 font-semibold mb-1">Sharing</h3>
-        <p class="text-slate-300 text-sm">"Here's what I learned" &mdash; serialized CausalLinks, reflections, or motor programs sent as gifts. The receiver decides what to keep.</p>
+        <h3 class="text-indigo-400 font-semibold mb-1">LocalMessageBus</h3>
+        <p class="text-slate-300 text-sm"><code class="text-green-400 bg-slate-900 px-1 rounded text-xs">mesh/bus.py</code> &mdash; thread-safe, in-process pub/sub. Agents register a handler by nickname; messages deliver synchronously. Supports broadcast and history queries.</p>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-        <h3 class="text-indigo-400 font-semibold mb-1">Requesting</h3>
-        <p class="text-slate-300 text-sm">"Can you do this?" &mdash; delegated goals with results returned. The receiver evaluates with its own planner.</p>
+        <h3 class="text-indigo-400 font-semibold mb-1">MeshMessage</h3>
+        <p class="text-slate-300 text-sm"><code class="text-green-400 bg-slate-900 px-1 rounded text-xs">mesh/message.py</code> &mdash; a typed message envelope with a <code class="text-indigo-400">MeshMessageType</code> enum, a JSON-serializable payload, and a <code class="text-indigo-400">protocol_version</code> guard.</p>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-        <h3 class="text-indigo-400 font-semibold mb-1">Querying</h3>
-        <p class="text-slate-300 text-sm">"What do you know about X?" &mdash; read-only queries against peer memory. Never returns raw dumps.</p>
+        <h3 class="text-indigo-400 font-semibold mb-1">AgentProfile</h3>
+        <p class="text-slate-300 text-sm"><code class="text-green-400 bg-slate-900 px-1 rounded text-xs">mesh/identity.py</code> &mdash; lightweight identity: nickname, role, capabilities, persona hint, and a generated <code class="text-indigo-400">agent_id</code>. Serializes to/from a dict.</p>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-        <h3 class="text-indigo-400 font-semibold mb-1">Advertising</h3>
-        <p class="text-slate-300 text-sm">"Here's what I can do" &mdash; capability broadcasts via heartbeat. Statistics only, not the actual data.</p>
+        <h3 class="text-indigo-400 font-semibold mb-1">UMR (parse_umr)</h3>
+        <p class="text-slate-300 text-sm"><code class="text-green-400 bg-slate-900 px-1 rounded text-xs">mesh/naming.py</code> &mdash; a Uniform Memory Reference (<code class="text-indigo-400">nickname.region.id</code>) for addressing another agent's memory by name.</p>
       </div>
     </div>
+
+    <p class="text-slate-400 text-sm mt-3">The envelope is transport-agnostic on purpose: a future networked transport could reuse <code class="text-indigo-400">MeshMessage</code> without schema changes. Today every message travels in-process through the bus.</p>
   </section>
 
-  <!-- 2. Identity -->
+  <!-- 3. Message Bus -->
   <section class="space-y-4">
-    <h2 id="identity" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Identity &amp; Discovery</h2>
+    <h2 id="message-bus" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Local Message Bus</h2>
 
-    <p class="text-slate-300 leading-relaxed">Each agent carries two layers of identity. <span class="text-indigo-400 font-semibold">AgentProfile</span> is the lightweight local identity (nickname, role, capabilities) used by in-process agents like the research protocol's Writer and Reviewer. <span class="text-indigo-400 font-semibold">AgentIdentity</span> extends it with hardware capabilities, knowledge statistics, and inference info for network coordination.</p>
+    <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">LocalMessageBus</span> is a mailbox-style pub/sub. Each agent registers a handler under its nickname; a <code class="text-indigo-400">send()</code> delivers the message synchronously in the sender's thread (fine for the sequential research protocol). Sending to recipient <code class="text-indigo-400">"*"</code> broadcasts to every registered handler except the sender. The bus keeps a queryable history so a test or orchestrator can filter messages by sender, recipient, or type.</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Bus API</span>
+bus = LocalMessageBus()
+bus.register("writer", on_message)                  <span class="text-slate-500"># handler by nickname</span>
+bus.send(MeshMessage(sender="researcher",
+                     recipient="writer",
+                     msg_type=MeshMessageType.EXPERIMENT_DATA,
+                     payload={...}))
+bus.send(MeshMessage(..., recipient="*", ...))       <span class="text-slate-500"># broadcast to all but sender</span>
+bus.get_history(sender="researcher")                 <span class="text-slate-500"># filtered query</span></div>
+
+    <p class="text-slate-300 leading-relaxed">Handler exceptions are caught and logged, never re-raised into the sender &mdash; one misbehaving agent can't crash the bus. There is no network transport here; this is strictly the in-process coordination layer.</p>
+  </section>
+
+  <!-- 4. Identity -->
+  <section class="space-y-4">
+    <h2 id="identity" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Identity &amp; Memory References</h2>
+
+    <p class="text-slate-300 leading-relaxed"><span class="text-indigo-400 font-semibold">AgentProfile</span> is the local identity carried by in-process agents like the research protocol's Writer and Reviewer. It is intentionally minimal &mdash; nickname, role, capabilities, a one-line persona hint, an entity type, and a generated <code class="text-indigo-400">agent_id</code>. Hardware capabilities and knowledge statistics are <em>not</em> part of it; those fields were reserved for a networked identity layer that isn't part of 1.0.</p>
+
+    <p class="text-slate-300 leading-relaxed">A <span class="text-indigo-400 font-semibold">Uniform Memory Reference (UMR)</span> addresses a specific item in another agent's memory using a three-part dotted name:</p>
+
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">UMR format — nickname.region.id</span>
+researcher.hippo.exp_001     <span class="text-slate-500"># experiment 001 in researcher's hippocampus</span>
+writer.paper.methods         <span class="text-slate-500"># methods section of writer's paper</span>
+reviewer.review.round_1      <span class="text-slate-500"># reviewer's first-round review</span>
+
+parse_umr("writer.paper.methods")   <span class="text-slate-500"># → UMR(nickname, region, ref_id)</span></div>
+
+    <p class="text-slate-400 text-sm mt-3"><code class="text-indigo-400">parse_umr</code> raises <code class="text-indigo-400">ValueError</code> unless the string has exactly three dot-separated parts (the region/id split tolerates dots inside the id).</p>
+  </section>
+
+  <!-- 5. Multi-Agent Runtime -->
+  <section class="space-y-4">
+    <h2 id="multi-agent-runtime" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Multi-Agent Runtime</h2>
+
+    <p class="text-slate-300 leading-relaxed">These primitives are what make Maxim's multi-agent runtime work. The <span class="text-indigo-400 font-semibold">AgentPool</span> (<code class="text-indigo-400">runtime/agent_pool.py</code>) orchestrates concurrent agent instances and wires them together with a <code class="text-indigo-400">LocalMessageBus</code>, while the <span class="text-indigo-400 font-semibold">AgentFactory</span> creates each instance with its own isolated Hippocampus, NAc, and ATL.</p>
 
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-      <h3 class="text-lg font-semibold text-indigo-400 mb-3">What's Broadcast</h3>
+      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Where the bus shows up</h3>
       <ul class="space-y-2 text-slate-300">
-        <li><span class="text-indigo-400 font-semibold">Node ID</span> &mdash; persistent across restarts (saved to disk), stable address for peer tracking</li>
-        <li><span class="text-indigo-400 font-semibold">Available tools &amp; skills</span> &mdash; what this agent can do (used for delegation routing)</li>
-        <li><span class="text-indigo-400 font-semibold">Knowledge statistics</span> &mdash; episodic memory count, causal link count, top tools by success rate</li>
-        <li><span class="text-indigo-400 font-semibold">Inference models</span> &mdash; what LLMs are loaded, whether inference is available</li>
-        <li><span class="text-indigo-400 font-semibold">Embodiment summary</span> &mdash; body modalities and affordances (when embodied)</li>
+        <li><span class="text-indigo-400 font-semibold">AgentPool</span> &mdash; constructs a shared <code class="text-indigo-400">LocalMessageBus</code> so pooled NPC/AUT agents can message each other within one process.</li>
+        <li><span class="text-indigo-400 font-semibold">Research protocol</span> &mdash; the research orchestrator builds a bus and routes <code class="text-indigo-400">EXPERIMENT_DATA</code> / <code class="text-indigo-400">PAPER_DRAFT</code> / <code class="text-indigo-400">REVIEW_RESULT</code> messages between Researcher, Writer, and Reviewer roles.</li>
+        <li><span class="text-indigo-400 font-semibold">Agent setup</span> &mdash; <code class="text-indigo-400">create.py</code> uses <code class="text-indigo-400">AgentProfile</code> to give each agent a stable identity for log prefixes and addressing.</li>
       </ul>
-      <p class="text-slate-400 text-sm mt-3">The identity shares <em>statistics</em> about knowledge, not the knowledge itself. A peer sees "500 episodes, high-confidence grasp patterns" &mdash; not the actual memories.</p>
+      <p class="text-slate-400 text-sm mt-3">See <a href="/maxim/simulation" class="text-indigo-400 hover:text-indigo-300">Simulation</a> for how multi-agent scenarios (DM campaigns, research protocols) drive these agents.</p>
     </div>
   </section>
 
-  <!-- 3. Transport -->
+  <!-- 6. Peer / Leader -->
   <section class="space-y-4">
-    <h2 id="transport" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Transport Layer</h2>
+    <h2 id="peer-leader" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Peer / Leader Networking</h2>
 
-    <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">PeerChannel</span> implements the same Channel interface as SMS and voice, so mesh messages flow through CommunicationGateway. Sends are queued to a background thread &mdash; callers never block on network I/O.</p>
-
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Send Path</span>
-send_mesh() &rarr; Queue (maxsize=1000) &rarr; Background Thread &rarr; HTTP POST /v1/mesh/message
-                                                  &darr; retry on failure
-                                          Exponential backoff: 1s, 2s, 4s (3 attempts)
-
-<span class="text-indigo-400 text-xs uppercase tracking-wider">Receive Path</span>
-POST /v1/mesh/message &rarr; MeshMessage.from_dict() &rarr; protocol_version check
-                                                       &darr;
-                                              PeerChannel.receive()
-                                                       &darr;
-                                              Percept on agent bus (salience=0.7)</div>
-
-    <p class="text-slate-300 leading-relaxed">The wire protocol uses <span class="text-indigo-400 font-semibold">MeshMessage</span> &mdash; a typed envelope with 24 message types covering discovery, delegation, knowledge sharing, prediction, and inference routing. A <code class="text-indigo-400">protocol_version</code> field ensures peers running different Maxim versions can detect incompatibilities.</p>
-  </section>
-
-  <!-- 4. Admission -->
-  <section class="space-y-4">
-    <h2 id="admission" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Admission Control</h2>
-
-    <p class="text-slate-300 leading-relaxed"><span class="text-indigo-400 font-semibold">MeshAdmissionControl</span> protects agents from flooding. Every incoming message is checked before dispatch. Peers that exceed rate limits accumulate violations with escalating gate durations.</p>
+    <p class="text-slate-300 leading-relaxed">When people say "Maxim across machines," they almost always mean <span class="text-indigo-400 font-semibold">sharing one GPU's LLM</span> across several agents. Maxim does this with a role-based topology rather than a peer mesh:</p>
 
     <div class="overflow-x-auto">
       <table class="w-full text-left text-slate-300 text-sm">
-        <thead><tr class="border-b border-slate-700"><th class="py-2 text-indigo-400">Trust Level</th><th class="py-2 text-indigo-400">Rate Limit</th><th class="py-2 text-indigo-400">How Established</th></tr></thead>
+        <thead><tr class="border-b border-slate-700"><th class="py-2 text-indigo-400">Role</th><th class="py-2 text-indigo-400">What it runs</th></tr></thead>
         <tbody>
-          <tr class="border-b border-slate-800"><td class="py-2">Verified</td><td>120 msg/min</td><td>Pre-shared key</td></tr>
-          <tr class="border-b border-slate-800"><td class="py-2">Discovered</td><td>60 msg/min</td><td>mDNS (future)</td></tr>
-          <tr class="border-b border-slate-800"><td class="py-2">Remote</td><td>60 msg/min</td><td>Tunnel auth</td></tr>
-          <tr><td class="py-2">Unknown</td><td>20 msg/min</td><td>No auth</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-semibold">Leader</td><td>GPU machine: llama-cpp-server + LeaderProxy (:8099) + cloudflared tunnel + its own agent loop</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-semibold">Peer</td><td>Client machine: agent loop only; its LLM router points at the leader over the tunnel</td></tr>
+          <tr><td class="py-2 font-semibold">Solo</td><td>Default: everything local, no proxy and no tunnel</td></tr>
         </tbody>
       </table>
     </div>
 
-    <p class="text-slate-300 leading-relaxed">Burst detection triggers at 20 messages in 5 seconds. Gate durations escalate: 30s &rarr; 2min &rarr; 10min &rarr; 1hr. Gated peers receive 429 responses and are skipped by the distributed planner.</p>
+    <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">LeaderProxy</span> authenticates and rate-limits inbound peer requests before forwarding them to the local inference server; a <span class="text-indigo-400 font-semibold">Cloudflare Tunnel</span> exposes that proxy securely without opening firewall ports. The full topology &mdash; role detection order, the proxy's auth and admission control, lane metrics, and the wire format &mdash; lives on the <a href="/maxim/networking" class="text-indigo-400 hover:text-indigo-300">Networking</a> page. This is the layer that absorbed everything the old "transport" and "admission control" sections used to describe.</p>
   </section>
 
-  <!-- 5. Knowledge Sharing -->
+  <!-- 7. Peer CLI -->
   <section class="space-y-4">
-    <h2 id="knowledge-sharing" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Knowledge Sharing</h2>
+    <h2 id="peer-cli" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The <code>maxim peer</code> CLI</h2>
 
-    <p class="text-slate-300 leading-relaxed">Knowledge sharing uses a <span class="text-indigo-400 font-semibold">provider/receiver protocol</span>. Any subsystem can participate by implementing two simple interfaces. The <span class="text-indigo-400 font-semibold">ExperienceBroker</span> routes between them without knowing subsystem specifics.</p>
+    <p class="text-slate-300 leading-relaxed">Peer machines are configured and managed through <code class="text-indigo-400">maxim peer</code>. The verbs split into local configuration, remote leader management, and diagnostics:</p>
 
-    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Protocol</span>
-KnowledgeProvider &mdash; get_shareable(limit, **filters) &rarr; list[dict]
-KnowledgeReceiver &mdash; import_knowledge(data, source, trust) &rarr; bool
-
-<span class="text-indigo-400 text-xs uppercase tracking-wider">Broker</span>
-ExperienceBroker.register_provider(nac_provider)
-ExperienceBroker.register_receiver(nac_receiver)
-ExperienceBroker.get_shareable("causal_link") &rarr; [{knowledge_type: ..., ...}]
-ExperienceBroker.import_knowledge("causal_link", data, "peer-A", "verified")</div>
-
-    <h3 class="text-lg font-semibold text-white mt-4">Built-in Adapters</h3>
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-        <h4 class="text-indigo-400 font-semibold mb-1">Causal Links</h4>
-        <p class="text-slate-300 text-sm">Wraps NAc. Exports high-confidence links (&ge;0.6, 3+ observations). Imports with trust-level transfer discount (0.5&times; for verified, 0.1&times; for unknown).</p>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-        <h4 class="text-indigo-400 font-semibold mb-1">Reflections</h4>
-        <p class="text-slate-300 text-sm">Wraps Hippocampus. Exports memories with reflection text. Imports with trust-level salience caps (0.5 for verified, 0.15 for unknown).</p>
-      </div>
-      <div class="bg-slate-800 border border-slate-700 rounded-xl p-4">
-        <h4 class="text-indigo-400 font-semibold mb-1">Motor Programs</h4>
-        <p class="text-slate-300 text-sm">Wraps ProgramRegistry. Exports battle-tested programs (3+ executions, &ge;50% success). Requires verified/discovered trust. Validates entity paths against local embodiment.</p>
-      </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-slate-300 text-sm">
+        <thead><tr class="border-b border-slate-700"><th class="py-2 text-indigo-400">Command</th><th class="py-2 text-indigo-400">Purpose</th></tr></thead>
+        <tbody>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">peer connect</td><td>Point this machine at a leader (writes <code class="text-indigo-400">config.json</code>)</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">peer show</td><td>Print the current peer configuration</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">peer key</td><td>Set/rotate the leader API key reference</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">peer forget</td><td>Clear the peer configuration</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">peer test</td><td>Diagnostic probe of the leader (reachability, auth, model, latency)</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">peer version / logs / deps</td><td>Read-only: compare versions, tail logs, list leader packages</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">peer update / restart</td><td>Update and restart the leader remotely (auto-detects pip vs git)</td></tr>
+          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">peer llm / install</td><td>Switch the leader's active model; install an optional extra on the leader</td></tr>
+          <tr><td class="py-2 font-mono text-xs">peer init-mesh / add-node / remove-node</td><td>Manage the operator-declared <code class="text-indigo-400">mesh.yml</code> node list</td></tr>
+        </tbody>
+      </table>
     </div>
 
-    <p class="text-slate-400 text-sm mt-3">Future adapters (DN thresholds, forward models, contacts) register the same way &mdash; no broker changes needed.</p>
+    <p class="text-slate-400 text-sm mt-3">Step-by-step setup is in the <a href="/maxim/networking#peer-setup" class="text-indigo-400 hover:text-indigo-300">Networking guide's Peer Setup</a> section and the user docs' <code class="text-indigo-400">peer-setup.md</code>.</p>
   </section>
 
-  <!-- 6. Task Delegation -->
+  <!-- 8. Substrate Sharing -->
   <section class="space-y-4">
-    <h2 id="task-delegation" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Task Delegation</h2>
+    <h2 id="substrate-sharing" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Substrate Sharing (Hivemind)</h2>
 
-    <p class="text-slate-300 leading-relaxed">One agent can propose a goal to another. The <span class="text-indigo-400 font-semibold">TaskDelegator</span> picks the best peer by tool availability and success rate. The <span class="text-indigo-400 font-semibold">TaskReceiver</span> evaluates proposals using local NAc predictions and queue depth.</p>
+    <p class="text-slate-300 leading-relaxed">The old "knowledge sharing" verbs (share / request / query / advertise via an <code class="text-indigo-400">ExperienceBroker</code>) are replaced in 1.0 by a file-based exchange: the <a href="/maxim/hivemind" class="text-indigo-400 hover:text-indigo-300">Hivemind</a> substrate bundle. A bundle is a ZIP of the learned substrate &mdash; the NAc causal model and the EC substrate nodes &mdash; with episodic memories deliberately excluded by construction (a privacy invariant).</p>
 
-    <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
-      <h3 class="text-lg font-semibold text-indigo-400 mb-3">Safety Mechanisms</h3>
-      <ul class="space-y-2 text-slate-300">
-        <li><span class="text-indigo-400 font-semibold">Loop detection</span> &mdash; Goals carry <code class="text-indigo-400">delegation_depth</code> (max 2) and <code class="text-indigo-400">delegation_chain</code> (cycle detection)</li>
-        <li><span class="text-indigo-400 font-semibold">Queue limits</span> &mdash; Max 5 concurrent delegations per agent</li>
-        <li><span class="text-indigo-400 font-semibold">NAc veto</span> &mdash; Rejects if local NAc predicts failure with &gt;70% confidence</li>
-        <li><span class="text-indigo-400 font-semibold">Gated peer skip</span> &mdash; Misbehaving peers are excluded from delegation routing</li>
-      </ul>
-    </div>
+    <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">maxim substrate</span>
+maxim substrate export out.zip --session &lt;id&gt; --contributor-id &lt;you&gt;
+maxim substrate inspect out.zip            <span class="text-slate-500"># print the manifest, no extraction</span>
+maxim substrate import out.zip --output-dir ./incoming</div>
+
+    <p class="text-slate-300 leading-relaxed"><strong>Important:</strong> <code class="text-indigo-400">import</code> <em>extracts only</em> &mdash; it does not auto-merge a bundle into a live system. Merging is a deliberate, separate step (the <code class="text-indigo-400">nac_merge</code> / <code class="text-indigo-400">ec_merge</code> utilities), and contributor IDs in the reserved <code class="text-indigo-400">_*</code> namespace are rejected. By default the export quarantines identity-bearing patterns (an identity-filter threshold of 2; pass <code class="text-indigo-400">--no-identity-filter</code> only for trusted backups). Locally-learned substrate always dominates &mdash; an imported bundle is a <em>prior</em>, not a replacement.</p>
   </section>
 
-  <!-- 7. Distributed Planning -->
+  <!-- 9. Roadmap -->
   <section class="space-y-4">
-    <h2 id="distributed-planning" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Distributed Planning</h2>
+    <h2 id="roadmap" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What's Reserved for Later</h2>
 
-    <p class="text-slate-300 leading-relaxed">The AdaptivePlanner's <code class="text-indigo-400">_tag_delegatable_subgoals()</code> runs after LLM decomposition. It checks each sub-goal against peer capabilities and tags actions with <code class="text-indigo-400">_preferred_node</code> when a peer is better suited:</p>
+    <p class="text-slate-300 leading-relaxed">A few seams exist in the code today that anticipate networked coordination without shipping it in 1.0:</p>
 
     <ul class="space-y-2 text-slate-300 list-disc pl-5">
-      <li><span class="text-indigo-400 font-semibold">Remote-only tools</span> &mdash; peer has the tool, we don't &rarr; always delegate</li>
-      <li><span class="text-indigo-400 font-semibold">Better success rate</span> &mdash; peer has &gt;80% success and local NAc predicts &lt;50% &rarr; delegate</li>
+      <li><span class="text-indigo-400 font-semibold">Perception transport (1.1)</span> &mdash; the <code class="text-indigo-400">MeshMessageType</code> enum reserves <code class="text-indigo-400">PERCEPT_PUSH</code> / <code class="text-indigo-400">PERCEPT_ACK</code> slots so a peer can stream raw observations to a leader that owns the substrate. The wire envelope is frozen now; consumers land in 1.1.</li>
+      <li><span class="text-indigo-400 font-semibold">P2P Hivemind protocol (1.2+)</span> &mdash; the merge utilities already reserve poison-resistance hooks (trusted-source filters, per-link/per-node validators) so a future peer-to-peer substrate exchange doesn't have to retrofit them.</li>
     </ul>
-  </section>
 
-  <!-- 8. Clock Sync -->
-  <section class="space-y-4">
-    <h2 id="clock-sync" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Clock Synchronization</h2>
-
-    <p class="text-slate-300 leading-relaxed">The <span class="text-indigo-400 font-semibold">PeerClockEstimator</span> learns per-peer clock offsets using heartbeat round-trip times (NTP-lite). Offsets are smoothed with an EMA and stabilize after ~10 sync points.</p>
-
-    <p class="text-slate-300 leading-relaxed">The SCN's <code class="text-indigo-400">register_external()</code> corrects incoming TemporalSignatures before registration, ensuring temporal bins align across agents with different system clocks. The phase-normalized indexing is naturally resistant to small offsets &mdash; skew only matters when it shifts a memory into the wrong hour bin (&gt;30 minutes).</p>
-  </section>
-
-  <!-- 9. API Endpoints -->
-  <section class="space-y-4">
-    <h2 id="api-endpoints" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">API Endpoints</h2>
-
-    <p class="text-slate-300 leading-relaxed">The mesh mounts under the existing LeaderProxy, inheriting authentication, rate limiting, and GPU metrics. Three endpoints handle all mesh traffic:</p>
-
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-slate-300 text-sm">
-        <thead><tr class="border-b border-slate-700"><th class="py-2 text-indigo-400">Endpoint</th><th class="py-2 text-indigo-400">Method</th><th class="py-2 text-indigo-400">Purpose</th></tr></thead>
-        <tbody>
-          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">/v1/mesh/message</td><td>POST</td><td>Send a MeshMessage to this agent (checked by MeshAdmissionControl)</td></tr>
-          <tr class="border-b border-slate-800"><td class="py-2 font-mono text-xs">/v1/mesh/peers</td><td>GET</td><td>List all known peers from PeerRegistry (read-only)</td></tr>
-          <tr><td class="py-2 font-mono text-xs">/v1/mesh/status</td><td>GET</td><td>Admission control state &mdash; per-peer trust, violations, gate status</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <p class="text-slate-400 text-sm mt-3">The <span class="text-indigo-400 font-semibold">PeerRegistry</span> bootstraps from the existing peer config file (tunnel URL + API key) or can be populated via mDNS discovery (future). Peers are tracked by persistent <code class="text-indigo-400">node_id</code>, updated on each heartbeat exchange.</p>
-  </section>
-
-  <!-- 10. Trust Model -->
-  <section class="space-y-4">
-    <h2 id="trust-model" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Trust Model</h2>
-
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-slate-300 text-sm">
-        <thead><tr class="border-b border-slate-700"><th class="py-2 text-indigo-400">Trust</th><th class="py-2 text-indigo-400">Knowledge Discount</th><th class="py-2 text-indigo-400">Motor Programs</th><th class="py-2 text-indigo-400">Rate Limit</th></tr></thead>
-        <tbody>
-          <tr class="border-b border-slate-800"><td class="py-2">Verified</td><td>0.5&times;</td><td>Accepted</td><td>120/min</td></tr>
-          <tr class="border-b border-slate-800"><td class="py-2">Discovered</td><td>0.3&times;</td><td>Accepted</td><td>60/min</td></tr>
-          <tr class="border-b border-slate-800"><td class="py-2">Remote</td><td>0.3&times;</td><td>Rejected</td><td>60/min</td></tr>
-          <tr><td class="py-2">Unknown</td><td>0.1&times;</td><td>Rejected</td><td>20/min</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <p class="text-slate-300 leading-relaxed">Locally-learned knowledge always dominates. Imported data is a <em>prior</em>, not a replacement &mdash; as the local agent observes the same patterns, confidence grows organically through its own experience.</p>
+    <p class="text-slate-400 text-sm mt-3">See the <a href="/maxim/roadmap" class="text-indigo-400 hover:text-indigo-300">Roadmap</a> for how the three-layer architecture (LLM-AUT mode, Maxim Oasis, Maxim Hivemind) is sequenced.</p>
   </section>
 
   <!-- Footer nav -->

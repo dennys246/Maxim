@@ -2,6 +2,33 @@
 
 Maxim is a bio-inspired cognitive architecture for autonomous agents. Published to PyPI as `pymaxim` (import name: `maxim`). Works headless, with simulation, or connected to robots via the pluggable `RobotController` abstraction.
 
+## Required Pre-Commit Checks
+
+Run these before considering any non-trivial task done:
+
+```bash
+# Lint + format
+ruff check src/ tests/
+ruff format src/ tests/
+
+# Tests (fast suite)
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
+
+# If touching memory/, decisions/, integration/memory_hub.py:
+python -m pytest tests/integration/test_memory_hub.py -q
+```
+
+## Configuration and Environment Variables
+
+Maxim is configured primarily through environment variables. The authoritative registry of all `MAXIM_*` environment variables — with defaults, consuming files, and purpose — lives in **CLAUDE.md's "Environment Variables" section**. Key clusters to know:
+
+- **Backend/LLM routing:** `MAXIM_LLM_PROFILE`, `MAXIM_ROLE`, `MAXIM_LANE_LARGE_REMOTE_URL`, `MAXIM_LANE_LARGE_REMOTE_API_KEY`
+- **Substrate encoding:** `MAXIM_SUBSTRATE_PATH=1` (enables EC/ATL dual-write), `MAXIM_CONCEPT_DECOMPOSITION=1`
+- **Diagnostics/trace:** `MAXIM_LOG_FILE=/tmp/maxim.jsonl`, `MAXIM_BACKEND_TRACE=1`, `MAXIM_PROVENANCE_VERBOSITY=1`
+- **Feature gates (ablation/ops):** `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION`, `MAXIM_DISABLE_VARIANCE_ANNOTATION`, `MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL`
+
+Operator configuration is also read from `~/.config/maxim/config.json` (written by `maxim config set`). Precedence: CLI flags > env vars > config.json > built-in defaults.
+
 ## Standards (Project Defaults)
 - Prefer small, surgical changes; minimize refactors unless explicitly requested.
 - When possible reduce the size of code to simplified systems.
@@ -66,7 +93,7 @@ When multiple systems share the same functional role, they **must** use the same
 
 ## Allowed Actions
 - Modify code under `src/` with user requests.
-- Add/modify smoke tests under `src/tests/` (offline-by-default; provide explicit opt-in for robot/network).
+- Add/modify smoke tests under `tests/` (offline-by-default; provide explicit opt-in for robot/network).
 - Update documentation (`README.md`, `DECISIONS.md`, `ARCHITECTURE.md`).
 - Creating new file within a `src/` folder if another file would better seperate module functionality, always request approval first.
 - Create files and data in the `sandbox/` folder for creating experimental functionality and to be added directly into the repo if useful.
@@ -84,6 +111,7 @@ When multiple systems share the same functional role, they **must** use the same
 - Python `>=3.12` (see `pyproject.toml`).
 - Follow existing repo style; keep code straightforward and readable.
 - Add type hints where they improve clarity; prioritize stable interfaces for cross-module use.
+- **Dependency-gated imports:** use `src/maxim/utils/optional_deps.py` — never roll your own `try/except ImportError`. Three entry points: `require_optional_dependency(import_name)` for explicitly-requested features (raises `OptionalDependencyError` on miss); `optional_dependency_available(import_name)` for capability probes (returns bool, never logs); `warn_optional_fallback(import_name, fallback=...)` for deliberate degradation paths (emits one deduped WARNING). The `EXTRA_FOR_IMPORT` dict in that module maps import names to `pymaxim[extra]` strings for actionable fix hints.
 
 ## Environment Diagnostics (`maxim doctor`)
 
@@ -185,10 +213,10 @@ The Hippocampus is an associative memory substrate that stores complete agentic 
                               │   MEMORY HUB    │
                               └────────┬────────┘
                                        │
-     ┌─────────┬─────────┬──────────┼──────────┬─────────┬─────────┬─────────┬─────────┐
-     ▼         ▼         ▼          ▼          ▼         ▼         ▼         ▼         ▼
-  Spatial  Salience  Planning   Escalation   Fear      Pain     Energy    Comms     Math
-   Bridge   Bridge    Bridge     Bridge     Bridge    Bridge    Bridge   Bridge    Bridge
+     ┌─────────┬─────────┬──────────┼──────────┬─────────┬─────────┐
+     ▼         ▼         ▼          ▼          ▼         ▼         ▼
+  Spatial  Salience  Planning   Escalation   Fear      Pain   (future
+   Bridge   Bridge    Bridge     Bridge     Bridge    Bridge  bridges)
 ```
 
 ### Core Components
@@ -217,7 +245,8 @@ Bridges connect the memory system to external perception/decision/action systems
 | **EscalationLearningBridge** | Hippocampus ↔ SCN/NAc | Learned escalation thresholds | `escalation_learning.json` |
 | **FearCircuitBridge** | Hippocampus ↔ FearAgent ↔ NAc (+ EC via associative graph) | Memory-informed risk assessment | `fear_learning.json` |
 | **PainCircuitBridge** | PainDetector ↔ NAc | Learns action→pain associations | *(via NAc persistence)* |
-| **CommunicationBridge** | Comms ↔ Hippocampus | Communication-aware memory | - |
+
+Note: `CommunicationBridge` is referenced in `maxim_agent.py` but the backing module (`bridges/communication_bridge.py`) does not exist — it is a planned-but-unimplemented bridge. `EnergyReactionBridge` and `MovementEnergyTracker` were removed in the cradle sensorimotor update; do not re-introduce them.
 
 ### Memory Types
 
@@ -271,22 +300,28 @@ This enables biological-like memory decay and reinforcement.
 
 ### Usage Example
 
+> **C6 construction rule:** `PainBus()`, `ReactionBus()`, and `MemoryHub()` raise `TypeError` if called
+> without `_allow_raw=True` (which is test-only). Always use the canonical `build_*` builders:
+> `build_pain_bus(hippocampus=..., nac=...)`, `build_reaction_bus(...)`,
+> `build_memory_hub(hippocampus=..., scn=..., nac=..., ec=..., agent_id=...)`.
+> The four core bio-systems — `Hippocampus()`, `NAc()`, `SCN()`, `EntorhinalCortex()` — are
+> intentionally allowed as plain constructors.
+
 ```python
 from maxim.memory.hippocampus import Hippocampus
-from maxim.integration import MemoryHub
+from maxim.integration import build_memory_hub
 from maxim.time.scn import SCN
 from maxim.decisions.nac import NAc
 from maxim.similarity.ec import EntorhinalCortex
 
-# Create core systems
+# Core bio-systems: plain construction is allowed for these four
 hippocampus = Hippocampus()
 scn = SCN()
 nac = NAc()
 ec = EntorhinalCortex()
 
-# Create hub
-hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec)
-hub.connect()
+# MemoryHub: use build_memory_hub — raw MemoryHub() raises TypeError (C6)
+hub = build_memory_hub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec, agent_id="my_agent")
 
 # Session lifecycle
 hub.on_session_start()
@@ -341,7 +376,7 @@ Separate gains for each direction (handles mechanical asymmetry):
 - `_gain_v_pos` / `_gain_v_neg` - Vertical positive/negative
 
 **Persistence:**
-Learned gains persist to `data/util/focus_learner.json`:
+Learned gains persist to `~/.maxim/util/focus_learner.json`:
 ```json
 {
   "version": 1,
@@ -366,7 +401,7 @@ Dynamically adjusts escalation thresholds based on feedback:
 - LLM queue busy → raise threshold
 - High fear/risk → lower threshold
 
-Persists to `data/util/adaptive_thresholds.json`.
+Persists to `~/.maxim/util/adaptive_thresholds.json`.
 
 ### Components
 
@@ -417,22 +452,13 @@ def review_action(
     self,
     action_type: str,
     action_params: dict[str, Any],
-    harm_registry: HarmRegistry | None = None,
+    *,
+    agent_id: str = "",
     pain_bridge: PainCircuitBridge | None = None,
 ) -> ReviewResult:
     findings = []
 
-    # Tier 1: Predictive harm
-    if harm_registry:
-        prediction = harm_registry.predict_worst(action_type, action_params)
-        if prediction and prediction.risk_score >= 0.4:
-            findings.append(Finding(
-                category=DangerCategory.RESOURCE_EXHAUSTION,
-                description=f"Predicted: {prediction.reason}",
-                severity=RiskLevel.MEDIUM if prediction.risk_score >= 0.7 else RiskLevel.LOW,
-            ))
-
-    # Tier 2: Learned pain prediction
+    # Learned pain prediction via PainCircuitBridge
     if pain_bridge and action_type == "movement":
         should_gate, reason = pain_bridge.should_gate_action(
             action_params.get("action_signature", "")
@@ -455,7 +481,7 @@ def review_action(
 | `JOINT_LIMIT` | Near workspace boundaries | JointLimitHarmPredictor |
 | `MOTOR_STALL` | Position unreachable | JointLimitHarmPredictor |
 | `LLM_TIMEOUT` | Predicted slow LLM response | (Future) |
-| `RESOURCE_EXHAUSTION` | Energy budget exceeded | EnergyCircuitBridge |
+| `RESOURCE_EXHAUSTION` | Energy budget exceeded | EnergyRegistry |
 
 
 ## CONTEMPLATION SYSTEM (ExecAgent Local Chain-of-Thought)
@@ -567,7 +593,7 @@ The energy system monitors resource expenditure to enable energy-aware decision 
 |------|---------|---------|
 | `LLM_TOKENS` | LLMEnergyTracker | input_tokens, output_tokens, model multiplier |
 | `LLM_LATENCY` | LLMEnergyTracker | latency_ms, opportunity cost |
-| `MOTOR_COMMAND` | MovementEnergyTracker | angular_distance, velocity, duration |
+| `MOTOR_COMMAND` | *(type reserved; MovementEnergyTracker removed in cradle update)* | angular_distance, velocity, duration |
 
 ### LLM Energy Tracking
 
@@ -611,18 +637,12 @@ elif registry.is_critical_energy("llm"):
 
 ### NAc Integration for Learning
 
-The EnergyCircuitBridge teaches the system which actions are "expensive":
-
-1. **Record Start**: `bridge.record_action_start("llm:planning:complex")`
-2. **Energy Accumulates**: LLM tracker records tokens, latency
-3. **Record End**: `bridge.record_action_end(event_id)` → Reports to NAc
-4. **Future Prediction**: `bridge.predict_energy("llm:planning:complex")` → Learned cost
-
-High-energy actions get NEGATIVE valence, enabling the system to prefer efficient alternatives.
+The EnergyRegistry provides energy budget signals that can feed into decision gating. High-energy actions can be assigned NEGATIVE valence to let the system prefer efficient alternatives.
 
 ### Location
 
 - Energy Types: `src/maxim/energy/signal.py`
-- Trackers: `src/maxim/energy/llm_tracker.py`, `src/maxim/energy/movement_tracker.py`
+- Trackers: `src/maxim/energy/llm_tracker.py`
 - Registry: `src/maxim/energy/registry.py`
-- NAc Bridge: `src/maxim/bridges/energy_bridge.py`
+
+Note: `MovementEnergyTracker` and `EnergyReactionBridge` (`energy_bridge.py`) were removed in the cradle sensorimotor update. Motor energy tracking is handled by the drive protocol (`embodiment/sem.py::EntropicDriveSpec`).

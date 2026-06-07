@@ -136,7 +136,9 @@ Detects pain signals from movement metrics using configurable thresholds.
 |------|---------|-------------|
 | `EXCESSIVE_VELOCITY` | Angular velocity > threshold | Too-fast movement |
 | `DIRECTION_THRASHING` | Rapid reversals | Back-and-forth oscillation |
-| `SUSTAINED_STRAIN` | Prolonged near-limit | Extended uncomfortable position |
+| `EXCESSIVE_ACCELERATION` | Angular acceleration > threshold | Sudden speed change |
+| `SUSTAINED_STRAIN` | Prolonged near-limit | Extended uncomfortable position (defined, not yet auto-detected) |
+| `MOVEMENT_FAILURE` | Actual position ≠ commanded | Obstruction or motor stall |
 
 ### Configuration
 
@@ -263,14 +265,19 @@ Both layers use `extract_paths_from_params(tool_name, params)` which:
 
 ### Usage (simulation wiring)
 
-The sim orchestrator stacks both wrappers automatically for AUT executors:
+The sim orchestrator stacks both wrappers automatically for AUT executors. The bridge is
+constructed inside `build_executor` — do NOT assign `executor._tool_pain_bridge` after
+construction (that silently attaches the bridge to the wrapper, leaving the inner executor
+unwired). The canonical shape:
 
 ```python
-executor = Executor(registry)
-executor._tool_pain_bridge = bridge                # NAc learning hook
-executor = PainInterceptorExecutor(executor, ...)  # Layer 2
+from maxim.runtime.bootstrap import build_executor
+
+# build_executor wires ToolPainBridge internally (required keyword-only pain_bus=)
+executor = build_executor(registry, pain_bus=pain_bus, nac=nac, hippocampus=hippocampus)
+executor = PainInterceptorExecutor(executor, pain_bus=pain_bus)  # Layer 2
 executor = AnticipatoryPainExecutor(executor, assessor=PerceivedPainAssessor(nac=nac))  # Layer 1
-executor = FearGatedExecutor(executor, fear_agent) # safety gate (outermost)
+executor = FearGatedExecutor(executor, fear_agent)  # safety gate (outermost)
 ```
 
 See `src/maxim/simulation/orchestrator.py` for the actual wiring.

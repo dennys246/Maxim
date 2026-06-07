@@ -319,7 +319,7 @@ After you push, the Mac peer session will pull main, read `docs/experiments/p4_v
 
 If anything else is unclear, read these in order:
 
-- [docs/plans/substrate_p4_cross_modal_binding.md](../plans/substrate_p4_cross_modal_binding.md) — the P4 plan
+- [docs/plans/archive/substrate_p4_cross_modal_binding.md](../plans/archive/substrate_p4_cross_modal_binding.md) — the P4 plan (archived)
 - [docs/experiments/p4_mug_test_sweep.md](../experiments/p4_mug_test_sweep.md) — Phase 2D results + Option 2 decision
 - [docs/experiments/p4_clip_calibration.md](../experiments/p4_clip_calibration.md) — Phase 2B calibration that ran on Mac
 - [docs/experiments/p4_vram_audit_mac_reference.md](../experiments/p4_vram_audit_mac_reference.md) — the Mac peer baseline you're trying to reproduce on CUDA

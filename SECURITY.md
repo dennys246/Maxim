@@ -4,8 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 1.0.x   | Yes       |
-| < 1.0   | No        |
+| 0.9.x   | Yes (current pre-release) |
+| 1.0.x   | Yes (forthcoming)         |
+| < 0.9   | No                        |
 
 ## Reporting a Vulnerability
 
@@ -32,10 +33,17 @@ Maxim includes several safety-critical systems:
 - **Filesystem policy** — sandboxed file access with configurable boundaries
 - **Cloud redaction** — PII filtering before cloud LLM dispatch
 
-### Deidentification (Mother Maxim)
-- **Bio-system-aware deidentification** — ATL + SEM identity map extracts names/locations deterministically
-- **Dual-pass pipeline** — client-side deidentification + server-side verification
-- **Model tier gate** — contributions declare deidentification model; weak models rejected
+### Deidentification (Mother Maxim — PLANNED, post-1.0)
+
+> **Not yet implemented.** The features below are design goals for the Mother Maxim / Oasis layer
+> (targeted for 1.1+). The only current privacy mechanism for substrate sharing is a heuristic
+> identity-bearing label filter in `hivemind/identity.py` (used to quarantine identity-shaped
+> NAc links and EC nodes from substrate bundles). The full ATL+SEM deidentification pipeline
+> described below does not exist in 1.0.
+
+- **Bio-system-aware deidentification** *(planned)* — ATL + SEM identity map extracts names/locations deterministically
+- **Dual-pass pipeline** *(planned)* — client-side deidentification + server-side verification
+- **Model tier gate** *(planned)* — contributions declare deidentification model; weak models rejected
 
 ## Best Practices
 

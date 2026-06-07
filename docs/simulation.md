@@ -7,19 +7,17 @@ Internal documentation for the `src/maxim/simulation/` module.
 ```
 src/maxim/simulation/
     __init__.py
-    sources.py                 # PerceptSource protocol + ConversationalSource
+    sources.py                 # PerceptSource protocol
     conversational_source.py   # ConversationalSource (thread-safe live input)
     sinks.py                   # ActionSink protocol + RecordingSink
     scenario_source.py         # ScenarioSource (YAML loader + emitter) + ScenarioDefinition
     bridge.py                  # SimulationBridge (ConversationalSource + RecordingSink + send_and_wait)
     orchestrator.py            # start_simulation_mode() lifecycle, 3-thread orchestrator
     tools.py                   # Orchestrator tools (send_message, spawn_sub_simulation, extend_simulation, ...)
-    tools_user.py              # AskUserTool (interactive human-in-the-loop, JSONL audit, replay)
     personas.py                # 8 personas (adversarial, cooperative, confused, escalating, campaign, refinement, researcher, sweep)
     response_policy.py         # ResponsePolicy (auto-approve/reject/delayed/ask-orchestrator)
     report.py                  # SimulationReport builder, persistence, LLM roundup
     interactive.py             # Conversational REPL (rewired for multi-turn)
-    runner.py                  # ScenarioRunner (standalone executor)
     validation.py              # 15 expectation types (behavioral, metric, bio-system)
     instrumented_executor.py   # InstrumentedExecutor wrapper
     simulation_generator.py    # LLM-powered natural language → YAML generation
@@ -162,7 +160,7 @@ To implement a new source, create a class satisfying this protocol and pass it a
 
 ## ConversationalSource
 
-Defined in `sources.py`. A `PerceptSource` implementation for the interactive REPL mode (`maxim --sim` with no arguments). Unlike `ScenarioSource`, which replays a finite YAML file, `ConversationalSource` generates percepts from user input via the LLM:
+Defined in `conversational_source.py`. A `PerceptSource` implementation for the interactive REPL mode (`maxim --sim` with no arguments). Unlike `ScenarioSource`, which replays a finite YAML file, `ConversationalSource` generates percepts from user input via the LLM:
 
 1. User types a natural-language scenario description.
 2. The LLM generates structured percepts from the description.
@@ -227,7 +225,7 @@ When `percept_source` is provided, the loop replaces the normal `environment.obs
 
 1. **Exhaustion check** (step 0.5): if `percept_source.is_exhausted()` is `True`, the loop breaks. Note: for `ConversationalSource`, `is_exhausted()` is always `False`; termination is driven by `state.is_done()` or `max_steps`.
 2. **Percept fetch** (step 1): calls `percept_source.next_percept()` instead of `environment.observe()`.
-3. **Pain routing**: if the percept has `source == "proprioception"` and `content == "pain_signal"`, it calls `route_pain_percept(percept, pain_bus)`. Pain routing works in headless mode via the standalone `PainBus`.
+3. **Pain routing**: if the percept has `source == "proprioception"` and `content == "pain_signal"`, `SimulationAdapter.next_observation()` constructs a `Reaction` and emits it via `PainBus.reaction_bus`. Pain routing works in headless mode via the standalone `PainBus`.
 4. **Observation dict conversion**: the percept's fields are mapped into the observation dict that the rest of the pipeline consumes (`cli_input`, `transcript_chunk`, `detections`, etc.).
 5. **Step advance**: calls `percept_source.advance_step()` (if available) once per iteration.
 
@@ -241,32 +239,17 @@ After a finite percept source (YAML scenario) is exhausted, a 60-second grace pe
 
 ## Pain Routing
 
-`route_pain_percept()` in `src/maxim/proprioception/pain_bus.py` bridges the simulation layer into the bio-inspired subsystem:
+Pain percepts (`source=proprioception, content=pain_signal`) are routed in `src/maxim/runtime/sim_adapter.py::SimulationAdapter.next_observation()`:
 
 ```
 Percept (source=proprioception, content=pain_signal)
-    -> route_pain_percept()
-        -> PainSignal constructed from metadata (pain_type, joint, intensity, velocity)
-            -> PainBus.emit()
+    -> SimulationAdapter.next_observation()
+        -> Reaction constructed from metadata (pain_type, intensity)
+            -> PainBus.reaction_bus.emit()
                 -> Hippocampus subscriber forms episodic memory
 ```
 
-This is called both in the standalone `ScenarioRunner.run()` and in `run_agentic_loop()` when a simulation percept is detected.
-
-## ScenarioRunner (Standalone)
-
-`ScenarioRunner` in `runner.py` provides a lightweight execution path that does not require an LLM or the full agent pipeline:
-
-1. Creates a `ScenarioSource` from the YAML file.
-2. Creates a `RecordingSink`.
-3. Iterates up to `max_steps`, calling `next_percept()` and `advance_step()` each iteration.
-4. Routes pain percepts through `PainBus` if provided.
-5. After the loop, calls `validate_expectations()` with the sink, hippocampus, and emitted tags.
-6. Returns a `ScenarioResult`.
-
-The convenience function `run_scenario(path, hippocampus, pain_bus, max_steps)` wraps this.
-
-For full integration testing, pass a `ScenarioSource` as `percept_source` to `run_agentic_loop()` instead.
+This is called from `run_agentic_loop()` via the `SimulationAdapter` wrapper when a simulation percept is detected.
 
 ## Adding New Expectation Types
 
@@ -342,7 +325,7 @@ CLI: `maxim --generate-simulation "description" -o output.yaml`
 
 **Narrative acts** (`simulation/arcs.py`): The `NarrativePhase` dataclass supports `act` (grouping phases into narrative acts) and `world_entities` (component refs activated on phase entry). The cradle builtin arc has 4 acts:
 
-1. **Neonatal** (exploration + pain_consequence) — fire pit, food
+1. **Neonatal** (exploration + pain_consequence) — fire pit, food, cool air
 2. **Primary circular** (object_introduction + discrimination) — sharp rock, blanket
 3. **Secondary circular** (tool_discovery + intentional_action) — lever door, button
 4. **Consolidation** (recall) — all entities, cross-session transfer test
@@ -410,7 +393,7 @@ Defined in `report.py`. Built after every simulation run in the orchestrator cle
 - Cost data (session USD, input/output tokens)
 - LLM roundup (summary, issues found, recommendations)
 
-**What it persists** to `data/sim_reports/{session_id}/`:
+**What it persists** to `~/.maxim/sim_reports/{session_id}/`:
 - `report.json` — full report including LLM analysis
 - `actions.jsonl` — every ActionRecord for post-hoc analysis
 - `aut_hippocampus.json` — AUT's episodic memories from this run

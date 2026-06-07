@@ -16,3 +16,6 @@ In-depth troubleshooting docs for specific subsystems. For quick-reference table
 | [Benchmarks](benchmarks.md) | Benchmark runner issues, metric comparison failures, scenario validation |
 | [Embodiment](embodiment.md) | YAML loading, SEM entity issues, motor program failures, pain bus, cerebellum |
 | [Bio-Systems](biosystems.md) | Diagnosing bio-inspired subsystem issues using DM campaigns. Hippocampus recall, NAc learning, SCN temporal bins, ATL concepts, PainBus, Cerebellum, SensoryGate, ChooseTool. Pipeline audit script usage. |
+| [HTTP Debugging](http_debugging.md) | Outbound HTTP issues after Plan 1 R1. All calls route through `utils/http.py`; structured events + metrics. First stop when peer → leader calls fail. |
+| [Leader Proxy Debug](leader_proxy_debug.md) | LeaderProxy not reachable (404 / connection refused). Cloudflare tunnel routing to wrong port (8099 vs 8100). |
+| [P4 VRAM Audit Runbook](p4_vram_audit_leader_runbook.md) | VRAM co-residency audit on the RTX 5080 leader using `scripts/p4_vram_audit.py`. |

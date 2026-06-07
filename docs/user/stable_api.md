@@ -164,7 +164,7 @@ async def handler():
         goal="test memory recall",
         max_turns=20,
     )
-    return {"session_id": session.session_id}
+    return {"session_id": session.id}
 ```
 
 This pattern is **stable in 1.0** for every public verb. Each verb satisfies three constraints:

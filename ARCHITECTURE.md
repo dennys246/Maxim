@@ -6,7 +6,7 @@ Maxim is a bio-inspired cognitive architecture for AI agents. It combines a 5-ag
 
 ```
 Percepts → 5-Agent Pipeline → Tool Execution → Memory Capture → Bio-System Learning
-              ↑ LLM Router (10 cloud + local backends)
+              ↑ LLM Router (8 cloud providers / 15 cloud profiles + local backends)
 ```
 
 **Modes of operation:**
@@ -47,7 +47,7 @@ Paths refer to the `src/maxim/` package layout.
   - `hippocampus.py`: Associative memory graph storing complete agentic loops with selective capture, compression, and sleep-based consolidation.
   - `types.py`: EpisodicMemory and CompressedMemory dataclasses.
   - `strategies.py`: Pluggable memory management strategies (AccessBased, ImportanceBased, TemporalAware).
-  - `consolidation.py`: ConsolidationOrchestrator - wave-based sleep consolidation with path-dependent thresholds (acute/chronic).
+  - `hippocampus_consolidation.py`: `ConsolidationMixin` — wave-based sleep consolidation with path-dependent thresholds (acute/chronic).
   - `context_index.py`: SimilarityIndex - MinHash + LSH for O(1) context/percept similarity lookup.
   - `store.py`: Split persistence protocols (`EpisodicStore`, `CausalStore`, `SemanticStore`) with `File*Store` defaults. Database backends via `[database]` extra.
 - `src/maxim/time/`: owns temporal indexing and rhythm tracking.
@@ -72,7 +72,7 @@ Paths refer to the `src/maxim/` package layout.
   - `signal.py`: EnergyType enum, EnergySignal dataclass, EnergyBudget.
   - `tracker.py`: Abstract EnergyTracker base class.
   - `llm_tracker.py`: Token-based LLM energy (input/output tokens, latency, model multipliers).
-  - `movement_tracker.py`: Physics-based movement energy estimation.
+  - ~~`movement_tracker.py`~~: Deleted in the cradle sensorimotor update. `MovementEnergyTracker` was removed; interoceptive drive signals are now handled by `embodiment/sem.py` (`HomeostaticDriveSpec` / `EntropicDriveSpec`).
   - `registry.py`: EnergyRegistry with domain budgets and aggregation.
 - `src/maxim/bridges/`: owns cross-system integration between memory and external systems.
   - `spatial_bridge.py`: Location priors from historical object positions.
@@ -91,7 +91,7 @@ Paths refer to the `src/maxim/` package layout.
   - `engrams.py`: MotorEngram — contextual links between programs and episodic memories.
   - `llm_backend.py`: LLMSensor, LLMModulator, NarrativeSensor, NarrativeModulator.
   - `program_executor.py`: Step-by-step motor program execution with pain gates.
-  - `component_registry.py`: ComponentRegistry — template catalog for reusable SEM entity specs. Multi-path discovery (campaign-local → `~/.maxim/components/` → `_data/components/`). 54 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops.
+  - `component_registry.py`: ComponentRegistry — template catalog for reusable SEM entity specs. Multi-path discovery (campaign-local → `~/.maxim/components/` → `_data/components/`). 73 seed components across 7 categories (bodies, creatures, environments, items, npcs, vehicles, weapons). Genre-gated: fantasy, cyberpunk, scifi, horror, historical, modern, devops.
 - `src/maxim/mesh/`: owns cooperative peer-to-peer agent networking. Each Maxim instance is sovereign (owns its memories, causal models, behaviors) but can share cooperatively.
   - `identity.py`: AgentProfile — lightweight identity for local multi-agent coordination.
   - `agent_identity.py`: AgentIdentity — extends AgentProfile with hardware capabilities and knowledge statistics for network-level coordination.
@@ -171,8 +171,8 @@ If a component cannot be tested in isolation, the architecture is violated.
   - `prompts.py`: PromptRequest, PromptHandler ABC, PromptType enum. Every user interaction flows through this protocol (DM choices, architect interviews, freeform chat, confirmations).
   - `display.py`: Rich-based split-panel terminal UI with scrolling agent log, status bar, and input area. Graceful degradation without `rich`.
   - `dm_display.py`: DM-specific display extensions (encounter info panels, character sheet).
-- `src/maxim/simulation/dm_party.py`: PartyDMRuntime — multi-agent campaign execution. NPC agents have real memory (Hippocampus, NAc) via AgentFactory. NPCs witness outcomes, remember encounters, and adapt dialogue.
-- `src/maxim/simulation/encounter_library.py`: EncounterLibrary — reusable encounter template catalog. Multi-path discovery (campaign-local → `~/.maxim/encounters/` → `_data/encounters/`). 8 seed encounters across 4 categories (combat, exploration, puzzle, social). Tag-based queries, difficulty filtering.
+- `src/maxim/simulation/dm_runtime.py`: DM campaign runtime — multi-agent campaign execution. NPC agents have real memory (Hippocampus, NAc) via AgentFactory. NPCs witness outcomes, remember encounters, and adapt dialogue.
+- `src/maxim/_data/encounters/`: Bundled encounter templates — 8 seed YAML files across 4 categories (combat, exploration, puzzle, social). Accessible via the `browse_encounters` tool (`simulation/tools_dm.py::BrowseEncountersTool`) in DM campaign mode.
 - `src/maxim/simulation/entity_designer.py`: EntityDesigner — LLM-driven SEM spec generation from natural language descriptions. Uses ComponentRegistry templates as bases; generates only the delta.
 - `src/maxim/memory/store.py`: Split persistence protocols — `EpisodicStore`, `CausalStore`, `SemanticStore`. Each protocol matches its subsystem's query patterns. `File*Store` defaults wrap current JSON persistence. Database implementations (PostgreSQL + pgvector) provided by `[database]` extra.
 - `src/maxim/_data/`: Bundled seed data shipped with the package.
@@ -305,7 +305,7 @@ Six biologically-inspired systems collaborate to give Maxim memory, temporal awa
 ```
   ┌─────────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌──────────────┐
   │ Hippocampus │  │    SCN    │  │    NAc    │  │    EC     │  │    ATL    │  │AngularGyrus  │
-  │  (memory/)  │  │  (time/)  │  │(decisions/)│  │(similarity/)│ │  (memory/)│  │  (memory/)   │
+  │  (memory/)  │  │  (time/)  │  │(decisions/)│  │(similarity/)│ │  (memory/)│  │   (math/)    │
   │  Episodic   │  │ Temporal  │  │  Reward   │  │ Similarity│  │ Semantic  │  │ Algebraic    │
   │  Memory     │  │  Rhythm   │  │ Prediction│  │  Matching │  │ Concepts  │  │  Memory      │
   └──────┬──────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘  └──────┬───────┘
@@ -389,9 +389,12 @@ This enables biological-like memory decay and reinforcement.
 ### Session Lifecycle
 
 ```python
-# Create core systems
-hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec)
-hub.connect(spatial=spatial_map, salience=salience_network)
+# Create core systems (use canonical builder — raw MemoryHub() raises TypeError)
+hub = build_memory_hub(
+    hippocampus=hippocampus, scn=scn, nac=nac, ec=ec,
+    spatial=spatial_map, salience=salience_network,
+    agent_id="my_agent",
+)
 
 # Start session (restores priors from memory)
 hub.on_session_start()
@@ -470,7 +473,7 @@ Monitors resource expenditure across subsystems to enable energy-aware decisions
 |------|-------------|--------|
 | `LLM_TOKENS` | Token-based energy (input + output) | LLMEnergyTracker |
 | `LLM_LATENCY` | Time waiting for LLM response | LLMEnergyTracker |
-| `MOTOR_COMMAND` | Energy for movement execution | MovementEnergyTracker |
+| `MOTOR_COMMAND` | Energy for movement execution | (EnergyRegistry / not actively sourced; `MovementEnergyTracker` was deleted) |
 | `VISION_INFERENCE` | Vision model inference | (Future) |
 | `AUDIO_PROCESSING` | Audio transcription/TTS | (Future) |
 

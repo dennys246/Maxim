@@ -92,7 +92,7 @@ Create a git commit with a message.
 Search the web. Requires the `--internet-access` flag.
 
 ### InternetAccessTool
-Fetch content from a URL. Requires the `--internet-access` flag.
+Enable or disable internet access at runtime. Toggles the internet access policy used by `InternetSearchTool` and `HttpFetchTool`.
 
 ### HttpFetchTool
 Fetch raw HTTP content from URLs.

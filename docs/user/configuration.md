@@ -27,7 +27,7 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 
 **Empty-string env vars are treated as unset.** `export MAXIM_LANE_LARGE_REMOTE_URL=` (a common bash-rc leak) falls through to `config.json` per the C-1 fold.
 
-### Absorbed fields (~22)
+### Absorbed fields (~23)
 
 | Field path | Type | Default | Replaces env var |
 |---|---|---|---|
@@ -40,6 +40,7 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 | `lanes.<tier>.remote_url` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_URL` |
 | `lanes.<tier>.remote_model` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_MODEL` |
 | `lanes.<tier>.remote_api_key_ref` | path or `keyring:<service>:<account>` | null | `MAXIM_LANE_<TIER>_REMOTE_API_KEY` |
+| `lanes.<tier>.timeout_s` | float > 0 \| null | null (backend default) | `MAXIM_LANE_<TIER>_TIMEOUT_S` |
 | `cloud.enabled` | bool | false | `MAXIM_LLM_CLOUD_ENABLED` |
 | `cloud.max_lanes` | int ≥ 0 | 0 | `MAXIM_MAX_CLOUD_LANES` |
 | `cloud.fallback_model` | string \| null | null | `MAXIM_CLOUD_FALLBACK_MODEL` |
@@ -104,7 +105,7 @@ Environment variables not on this list are **debug / experimental** — see the 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MAXIM_LLM_ENABLED` | Enable LLM inference (1/true). | 0 |
+| `MAXIM_LLM_ENABLED` | Enable LLM inference (1/true). | 1 |
 | `MAXIM_LLM_PROFILE` | Model profile name. | None |
 | `MAXIM_LLM_QUANTIZATION` | Quantization level (Q3_K_M, Q4_K_M, Q5_K_M, Q8_0). | Q4_K_M |
 | `MAXIM_LLM_N_CTX` | Override auto-computed llama.cpp context window. Same as `--llm-n-ctx`. | (formula) |
@@ -178,6 +179,10 @@ These variables are **debug / experimental**: useful for diagnostics or workarou
 | `MAXIM_SUBSTRATE_PATH` | Enable substrate encoding path (LinguisticEncoder → EC → ATL dual-write). | 0 |
 | `MAXIM_CONCEPT_DECOMPOSITION` | Enable concept decomposition (noun-phrase extraction before EC). Requires spaCy + en_core_web_sm. | 0 |
 | `MAXIM_NAC_TEMPORAL_CREDIT_WEIGHT` | Temporal credit weight for SCN-substrate eligibility traces. | 0.3 |
+| `MAXIM_NAC_MIN_CONFIDENCE` | Minimum confidence threshold for `propose_via_substrate` (substrate-primary action selection). Set to `0.0` to bypass the cold-start gate entirely. Invalid values fall back to default with a WARNING. | 0.3 |
+| `MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU` | Decay timescale (ticks) for the Wire-A cluster-reward bias. Higher values make learned substrate-voice annotations persist across more turns. Clamped 50–1000. | 300.0 |
+| `MAXIM_NAC_REWARD_BIAS_DISABLED` | Gates NAc reward-bias surfaces (`distribute_reward`, `decay_reward_biases`, `get_agent_tool_biases`) as no-ops. Truthy values: `1`, `true`, `yes`, `on` (case-insensitive). Eligibility traces and causal links are unaffected. Read once at NAc construction. | off |
+| `MAXIM_EC_TRACE_ACTIVATIONS` | Emit per-tick `sim_ec_activation` JSONL events from `EntorhinalCortex.pattern_complete_or_separate`. Truthy values: `1`, `true`, `yes`, `on`. Used for co-activation analysis (e.g. `scripts/analyze_roy_4_coactivation.py`). | off |
 | `MAXIM_AUTO_SPAWN_N_CTX` | Legacy alias for `MAXIM_LLM_N_CTX`. Kept for in-place upgrades. | (unset) |
 
 ### Debug — peer/probe internals
@@ -185,14 +190,45 @@ These variables are **debug / experimental**: useful for diagnostics or workarou
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MAXIM_SKIP_REMOTE_PROBE` | Bypass the remote-URL probe. CI/test escape hatch. | 0 |
-| `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` | First-attempt probe timeout (clamped 0.2-5.0). | 0.8 |
-| `MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S` | Retry probe timeout (clamped 0.5-10.0). | 2.5 |
+| `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` | First-attempt probe timeout (clamped 0.2-5.0). | 1.5 |
+| `MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S` | Retry probe timeout (clamped 0.5-10.0). | 8.0 |
 | `MAXIM_REMOTE_PROBE_CACHE_TTL_S` | Probe cache freshness window (clamped 0-600). | 60 |
 | `MAXIM_DRAIN_CACHE_TTL_S` | DrainConstraint mtime cache freshness (clamped 0-60). | 1.0 |
 | `MAXIM_AUTO_DRAIN_THRESHOLD` | Transient failure count before auto-drain (clamped 2-20). | 5 |
 | `MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S` | Auto-undrain probe cycle interval (clamped 30-600). | 90 |
+| `MAXIM_LEADER_PROXY_PORT` | Port the leader proxy listens on. Peers point `MAXIM_LANE_LARGE_REMOTE_URL` at this port. | 8099 |
 | `MAXIM_PROXY_MAX_CONCURRENT` | Max in-flight requests to upstream (0 = unlimited). | 4 |
 | `MAXIM_PROXY_RATE_LIMIT_RPM` | Per-peer requests/minute (0 = unlimited). | 0 |
+| `MAXIM_PROXY_KEEPALIVE_INTERVAL_S` | SSE keepalive cadence (seconds) during TTFT on streaming responses (clamped 5-90). Prevents cloudflared's ~100s idle timeout from closing the connection on slow 30B+ models. | 30 |
+| `MAXIM_PROXY_CONTEXT_ADMISSION` | Enable the proxy-side context-overflow admission gate (rejects requests whose estimated prompt exceeds `MAXIM_LLM_N_CTX`). `0`/`false`/`no`/`off` to disable. | on when `MAXIM_LLM_N_CTX` resolvable |
+| `MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS` | Safety margin (tokens) for the char-based token estimator in the admission gate (clamped 0-4096). | 256 |
+
+### Debug — context pool
+
+The context pool (`agents/context_pool.py`) manages the rolling LLM context window, automatically summarizing when the pool exceeds a configured token budget.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_CONTEXT_POOL_MAX_TOKENS` | Maximum token budget before the pool triggers summarization. | 2000 |
+| `MAXIM_CONTEXT_POOL_SUMMARY_TOKENS` | Target token count for each generated summary entry. | 500 |
+| `MAXIM_CONTEXT_POOL_MAX_ENTRIES` | Maximum number of entries before forced summarization. | 50 |
+| `MAXIM_CONTEXT_POOL_KEEP_RECENT` | Number of most-recent entries always kept unsummarized. | 5 |
+| `MAXIM_CONTEXT_POOL_AGENT_STATES` | Include agent bio-state snapshots in the pool. `true`/`false`. | true |
+| `MAXIM_CONTEXT_POOL_OUTCOMES` | Include tool outcome entries in the pool. `true`/`false`. | true |
+| `MAXIM_CONTEXT_POOL_ABSTRACTIONS` | Include the abstraction stream in the pool. `true`/`false`. | true |
+| `MAXIM_CONTEXT_POOL_PATH` | File path for pool persistence across restarts. Unset = no persistence. | (unset) |
+
+### Debug — bio-system feature gates
+
+These three switches disable specific LLM-context annotation sections injected by the substrate pipeline. They accept truthy values `1`, `true`, `yes`, `on` (case-insensitive) to disable the feature.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION` | Disable Wire-A's cluster-bias annotation section in the LLM prompt (NAc learned substrate voice). Off = annotation active. | off |
+| `MAXIM_DISABLE_VARIANCE_ANNOTATION` | Disable Wire 1's variance-band felt-sensation annotation on tool descriptions. Off = annotation active. | off |
+| `MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL` | Disable W2's substrate-aware scene-manifest enrichment (NAc tool biases fed into the imagination scene manifest). Off = enrichment active. | off |
+
+These are operator toggles as well as research ablation arms — setting one lets you measure the behavioral contribution of each annotation layer independently.
 
 ### Debug — embodiment
 
@@ -256,25 +292,20 @@ When set, all subdirectories (`config/`, `util/`, `memory/`, `models/`, `sim_rep
 
 ## Config Files
 
-User-modifiable config files live under `~/.maxim/`:
+### ~/.config/maxim/config.json — Primary operator config (1.0+)
 
-### ~/.maxim/config/llm.json -- LLM Configuration
+As of 1.0, the canonical operator-config file is `~/.config/maxim/config.json`. It absorbs the ~23 fields listed in the [Absorbed fields](#absorbed-fields-23) table above. Use the `maxim config` CLI to read and write it:
 
-Controls which model runs, how it behaves per mode, token limits.
+```bash
+maxim config get                        # show all effective fields + source
+maxim config get llm.profile            # get one field
+maxim config set llm.profile qwen2.5-32b-instruct
+maxim config set lanes.large.remote_url https://leader.example.com/v1
+```
 
-Key fields:
-- `enabled` (bool) -- master switch
-- `profile` (str) -- active model profile name
-- `max_tokens` (int) -- max response tokens (default: 512)
-- `temperature` (float) -- sampling temperature (default: 0.0 = deterministic)
-- `quantization` (str) -- weight quantization level
-- `profiles` (dict) -- model definitions with backend, model_path, prompt_style, stop tokens, n_ctx
-- `mode_response_config` (dict) -- per-mode token budgets and response formats
+The legacy `~/.maxim/config/llm.json` file was the pre-0.9 LLM config store. Its role has been absorbed by `config.json`. If you have a hand-edited `llm.json`, migrate the relevant fields via `maxim config set` and remove the old file — it is no longer read by the current runtime.
 
-Three profiles ship by default:
-- phi-3-mini-4k-instruct (ChatML, 4096 ctx)
-- mistral-7b-instruct-v0.2 (Mistral instruct, 8192 ctx)
-- smollm-1.7b-instruct (ChatML, 2048 ctx)
+> **Checking what the runtime actually sees:** `maxim config get` shows each field annotated with its source (`cli`, `env`, `config.json`, or `default`). `maxim doctor` shows the full Resolved Config section and flags any env/config mismatches at WARNING.
 
 ### ~/.maxim/util/whisper.json -- Audio Transcription
 
@@ -354,8 +385,14 @@ Cloud dispatch requires `MAXIM_LLM_CLOUD_ENABLED=1`. See the environment variabl
 ## Directory Structure
 
 ```
+~/.config/maxim/    -- Primary operator config (1.0+)
+├── config.json     -- Absorbed fields (llm, lanes, cloud, proxy, auto_spawn, data)
+├── api_key         -- Leader API key file (mode 0600, referenced by remote_api_key_ref)
+├── peer.yml        -- Back-compat peer config (read-only; new setups write config.json)
+├── mesh.yml        -- Multi-node topology (Plan 4)
+└── profiles.yml    -- Custom LLM profile catalog
+
 ~/.maxim/
-├── config/         -- LLM config (llm.json)
 ├── util/           -- Runtime config files (whisper.json, phrase_responses.json, etc.)
 ├── memory/         -- Episodic memories (persistent)
 ├── models/

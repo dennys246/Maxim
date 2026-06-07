@@ -42,18 +42,27 @@ python3 -c "from maxim.runtime.leader_mode import detect_role; print(detect_role
 
 ### A. Leader mode not detected → proxy doesn't start
 
-The early proxy boot in `cli.py` runs `detect_role()` which checks:
-1. `MAXIM_ROLE=leader` env var (highest priority)
-2. `~/.cloudflared/config.yml` exists (auto-detect)
+The early proxy boot in `cli.py` runs `detect_and_apply_role()` which uses the 7-rank detection from `runtime/role.py` (first match wins):
 
-**Fix:** If neither is set:
+1. `MAXIM_ROLE=leader` env var (highest priority)
+2. `config.json::role = leader`
+3. `mesh.yml` exists → peer (not leader)
+4. `~/.cloudflared/config.{yml,yaml}` or `/etc/cloudflared/config.{yml,yaml}` exists → leader
+5. `peer.yml` exists → peer (not leader)
+6. `--llm <local>` CLI flag + no peer/mesh/cloudflared → solo
+7. Default → leader
+
+**Fix:** If the proxy isn't starting on a machine that should be a leader:
 ```bash
 # Option 1: Set env var explicitly
 export MAXIM_ROLE=leader
 maxim
 
-# Option 2: Verify cloudflared config exists
-ls -la ~/.cloudflared/config.yml
+# Option 2: Verify cloudflared config exists (checks both ~/.cloudflared/ and /etc/cloudflared/)
+ls -la ~/.cloudflared/config.yml /etc/cloudflared/config.yml
+
+# Option 3: Set role in config.json
+maxim config set role leader
 ```
 
 ### B. API key not found → proxy starts without auth

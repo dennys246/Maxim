@@ -66,7 +66,7 @@ To simulate a pain signal:
     scenario_tag: pain_event
 ```
 
-The runner calls `route_pain_percept()` to bridge `Percept` into the `PainBus`, which in turn can trigger Hippocampus memory formation.
+The sim adapter constructs a `Reaction` from the percept metadata and routes it through `PainBus.reaction_bus`, which in turn can trigger Hippocampus memory formation.
 
 ## Writing Expectations
 
@@ -235,5 +235,5 @@ The fixture orchestrator collects `substrate_metrics` at end-of-run — Hippocam
 - **Start simple.** Begin with one or two percepts and one expectation. Add complexity once the basics pass.
 - **Use step_based for CI.** It is deterministic and fast -- no wall-clock waits.
 - **Tag everything.** Put a `scenario_tag` in every percept's `metadata`. The tag appears in logs and is required for `pipeline_continued` expectations.
-- **Check the standalone runner first.** Run without `--mode agentic` to validate scenario parsing and pain routing before involving the LLM.
+- **Start without a language model first.** Use `--sim <fixture.yaml>` with `--interactive false` to validate scenario parsing and pain routing. Fixture-driven mode (`FixtureDrivenOrchestrator`) runs without a narrator LLM.
 - **Use `--sim-report`** to save machine-readable results for CI integration.

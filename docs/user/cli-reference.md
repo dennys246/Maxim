@@ -82,10 +82,10 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 |------|------|---------|-------------|
 | `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect), `interactive` (redirects to generative sim with full interactive stack), `cradle` (sensorimotor developmental sim — requires `--embodiment bodies/infant_humanoid`). Goals matching builtin arcs (cradle, memory_recall, causal_learning, etc.) auto-enable the generative narrator. No argument with bare `maxim`: Rich menu with campaign discovery. |
 | `--sim-goal`, `--goal` | str | None | Simulation goal (alternative to passing goal as `--sim` value) |
-| `--sim-persona`, `--persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement` |
+| `--sim-persona`, `--persona` | str | `adversarial` | **[DEPRECATED in 0.9 — removed in 1.1]** Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`. Use `--sim-mode` instead. |
+| `--sim-mode` | str | `adversarial` | Orchestrator mode for simulation. Replacement for `--sim-persona`. Accepts the same values plus `neutral`, `researcher`, `sweep`, `dungeon_master`, `adventure_architect`. |
 | `--dm` | flag | | DM campaign mode. With `--sim <goal>`: generate. With `--sim <path.yaml>`: auto-detected. |
 | `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
-| `--sim-interactive` | flag | | Enable human-in-the-loop interaction during simulation |
 | `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
 | `--aut-mode` | str | `llm-primary` | **[experimental]** AUT action-selection mode. `llm-primary` (default) proposes actions via the LLM. `substrate-primary` skips the LLM and proposes via `NAc.recommend_action()` — Phase -1 of the grounded language acquisition program. See [docs/plans/grounded_language_acquisition.md](../plans/grounded_language_acquisition.md) and [substrate_primary.md](../substrate_primary.md). |
 | `--campaign` | str | None | Campaign YAML(s) for research mode. Glob patterns accepted. |
@@ -96,6 +96,10 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--continuous` | flag | | Never auto-complete, keep testing until `/cancel` |
 | `--no-sim-env` | flag | | Skip simulated filesystem with pain-triggering files |
 | `--sim-report` | str | None | Write structured results to a JSON file (requires `--sim`) |
+| `--report-json` | str | None | Emit the full SimulationReport as JSON. Use `-` for stdout or a file path. |
+| `--seed` | int | None | Global deterministic seed for reproducible fixture runs (sets PYTHONHASHSEED, random, numpy, and torch seeds). |
+| `--reap-orphans` | flag | off | **[experimental]** Kill stale maxim sim processes at startup. Equivalent to `MAXIM_REAP_ORPHANS=1`. |
+| `--no-embodiment` | flag | off | Disable default embodiment in sim mode. Sims default to `bodies/base_humanoid`; pass this flag for pre-0.7 behavior (no body). |
 
 ## Asset Foundry
 
@@ -189,6 +193,9 @@ Subcommands for managing a remote leader node over a Cloudflare tunnel.
 
 | `GET /v1/debug/vram` | (admin endpoint, not a CLI verb) Returns the leader's live VRAM state as JSON: nvidia-smi ratio, utilization, temperature, projected model footprint from `project_vram_usage()`, spillover/warning flags, and recommended n_ctx. Auth via bearer (cluster key) or localhost. Returns 503 if nvidia-smi is unavailable (not a GPU node). Prerequisite for peer-mode doctor VRAM visibility and C5 capacity-aware routing. (Plan 4 Stage C3.4) |
 
+| `maxim peer key` | Print the raw stored API key to stdout (for piping / export idioms like `export KEY=$(maxim peer key)`). Reads `config.json::lanes.large.remote_api_key_ref` first; falls back to `peer.yml::api_key` for back-compat. |
+| `maxim peer key set [KEY]` | Update the stored API key in place without re-running `peer connect`. Validates latin-1 encoding (HTTP Bearer token requirement). If `KEY` is omitted, prompts with hidden input. Writes the canonical `~/.config/maxim/api_key` (mode 0600) referenced by `config.json`, and also updates `peer.yml` for 1.x back-compat. |
+
 **Future (post-Stage C3.6):** `/v1/mesh/*` admin API, per-agent rate limiting, request-trace ring buffer, cluster key rotation, C4.6 auto-undrain via periodic health probe. Full arc tracked in [docs/plans/reactive_peer_mesh_roadmap.md](../plans/reactive_peer_mesh_roadmap.md).
 
 ### Drain state layer
@@ -259,6 +266,56 @@ The `maxim model` verbs manage user-defined model profiles in `~/.config/maxim/p
 **Atomic writes:** `profiles.yml` is treated as declarative config (not a secret), so writes use `atomic_write_text`, not `atomic_write_secret`. Same convention as `mesh.yml`.
 
 **Exit codes:** `0` success (including idempotent no-ops), `1` environmental failure (file missing for `remove`), `2` operator error (missing required arg, name collision without `--force`, unknown profile, bad name characters, missing `--chat-format` when inference can't pick a default).
+
+## Substrate Sharing
+
+The `maxim substrate` verbs manage substrate snapshot bundles — ZIP archives containing the NAc causal-learning state and EC substrate nodes from a session. Bundles are how Maxim instances share learned knowledge. The 1.0 `import` verb **extracts only** — it does not auto-merge into a live system. Merging requires calling `maxim.hivemind.nac_merge` / `ec_merge` on the extracted files (or using the 1.1+ Oasis ingestion pipeline).
+
+| Command | What it does |
+|---|---|
+| `maxim substrate export <output.zip> --session <ID> --contributor-id <id> [--domain TAG] [--no-identity-filter] [--identity-threshold N]` | Compose a bundle from a session's `aut_nac.json` + `aut_ec.json`. `--session` accepts either a bare session ID (resolved under `~/.maxim/sessions/{id}/`) or a path to any directory containing those files. `--contributor-id` is required and must not start with `_` (reserved namespace). `--domain` scopes the bundle to a substrate-domain tag (e.g. `"combat"`) — EC nodes outside the domain are dropped; undomained nodes ride along. |
+| `maxim substrate import <input.zip> --output-dir <dir>` | Extract the bundle ZIP to `<dir>` (created if absent). Prints the manifest summary. Does **not** merge into any running system — the extracted `nac.json` / `ec.json` must be passed through `nac_merge` / `ec_merge` and re-loaded by the caller. |
+| `maxim substrate inspect <input.zip>` | Print the bundle manifest as JSON without extracting any files. Safe to run on untrusted bundles for inspection. |
+
+**Identity filter (on by default):** `export` strips identity-bearing NAc event signatures and reserved-identity-domain EC nodes from the bundle before writing. The heuristic threshold is `2` by default (stricter than the standalone heuristic default of `1`). Pass `--no-identity-filter` to disable for trusted-internal backups only. Override the threshold with `--identity-threshold N`.
+
+**Session directory resolution:** `--session` first tries the argument as a literal path. If that is not a directory, it resolves as `~/.maxim/sessions/<ID>/`. Note this is the live-session recording path, not `~/.maxim/sim_reports/`.
+
+**Bundle format:** a ZIP containing `manifest.json`, `nac.json` (if NAc state was present), and `ec.json` (if EC substrate nodes were present). `manifest.json` records `contributor_id`, `domain`, `schema_version`, `identity_filter_applied`, and a `contents` map listing which slices are present.
+
+**Example workflow:**
+
+```bash
+# Export learned substrate from a completed session
+maxim substrate export ~/exports/my-combat.zip \
+  --session abc123 \
+  --contributor-id my-maxim-1 \
+  --domain combat
+
+# Inspect a bundle from a peer before merging
+maxim substrate inspect ~/imports/peer-combat.zip
+
+# Extract to a working directory (merging into a live system requires Python API)
+maxim substrate import ~/imports/peer-combat.zip \
+  --output-dir ~/imports/peer-combat-extracted/
+```
+
+**Python API for merging (post-extraction):**
+
+```python
+from maxim.hivemind.merge import nac_merge, ec_merge
+import json, pathlib
+
+my_nac = json.loads(pathlib.Path("my_nac.json").read_text())
+peer_nac = json.loads(pathlib.Path("peer-combat-extracted/nac.json").read_text())
+
+merged_nac = nac_merge(
+    left=my_nac, left_source="my-maxim-1",
+    right=peer_nac, right_source="peer-maxim-2",
+)
+```
+
+See [hivemind.md](../hivemind.md) for the full merge and Oasis ingestion guide.
 
 ## Roy Harness
 

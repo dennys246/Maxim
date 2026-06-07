@@ -156,7 +156,7 @@ User profiles WIN over built-ins on name or alias collision (a WARNING is logged
 
 ### Per-Mode Response Configuration
 
-LLM context windows and response lengths adapt automatically to the current operational mode. Configuration lives in `~/.maxim/config/llm.json` under `mode_response_config`:
+LLM context windows and response lengths adapt automatically to the current operational mode. Defaults are defined in `src/maxim/utils/prompts.py::get_mode_response_config` and can be overridden via bundled JSON mode config files:
 
 | Mode | Response Tokens | Context Window | Format |
 |------|----------------|----------------|--------|
@@ -200,20 +200,17 @@ echo 'export ANTHROPIC_API_KEY="sk-ant-api03-..."' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-**4. Add a Claude profile to `~/.maxim/config/llm.json`** (under the `"profiles"` section):
-```json
-"claude-sonnet": {
-  "backend": "anthropic",
-  "model": "claude-sonnet-4-6",
-  "n_ctx": 65536,
-  "max_tokens": 4096
-},
-"claude-haiku": {
-  "backend": "anthropic",
-  "model": "claude-haiku-4-5-20251001",
-  "n_ctx": 65536,
-  "max_tokens": 4096
-}
+**4. (Optional) Add a custom Claude profile to `~/.config/maxim/profiles.yml`** or use the built-in `claude-sonnet` / `claude-haiku` aliases, which already point to `claude-sonnet-4-6` and `claude-haiku-4-5-20251001` respectively. To add a custom entry via `profiles.yml`:
+```yaml
+profiles:
+  claude-sonnet:
+    backend: anthropic
+    model: claude-sonnet-4-6
+    n_ctx: 200000
+  claude-haiku:
+    backend: anthropic
+    model: claude-haiku-4-5-20251001
+    n_ctx: 200000
 ```
 
 **5. Run with Claude:**
@@ -229,8 +226,8 @@ maxim --sim "test safety" --language-model claude-sonnet
 
 | Profile | Model | Speed | Cost | Best For |
 |---------|-------|-------|------|----------|
-| `claude-haiku` | Claude Haiku 4.5 | Fastest | $0.80/1M in | Quick sim runs, high-volume testing |
-| `claude-sonnet` | Claude Sonnet 4.5 | Fast | $3.00/1M in | Best balance for sim + refinement |
+| `claude-haiku` | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`) | Fastest | $0.80/1M in | Quick sim runs, high-volume testing |
+| `claude-sonnet` | Claude Sonnet 4.6 (`claude-sonnet-4-6`) | Fast | $3.00/1M in | Best balance for sim + refinement |
 
 ### OpenAI
 
@@ -239,14 +236,13 @@ pip install -e '.[llm-openai]'
 export OPENAI_API_KEY="sk-..."
 ```
 
-Add a profile to `~/.maxim/config/llm.json`:
-```json
-"gpt-4o": {
-  "backend": "openai",
-  "model": "gpt-4o",
-  "n_ctx": 128000,
-  "max_tokens": 4096
-}
+Add a custom profile to `~/.config/maxim/profiles.yml`:
+```yaml
+profiles:
+  gpt-4o:
+    backend: openai
+    model: gpt-4o
+    n_ctx: 128000
 ```
 
 ### Cost Tracking & Enforcement
@@ -271,7 +267,7 @@ The router enforces budget limits at multiple levels:
 | Monthly | $100.00 | Downgrades model, falls back to local |
 | **Session ceiling** | **$5.00** | **Hard reject -- ALL requests blocked** |
 
-The session ceiling is the only hard stop. All other limits degrade gracefully (cheaper model or local fallback). Configure in `~/.maxim/config/llm.json`:
+The session ceiling is the only hard stop. All other limits degrade gracefully (cheaper model or local fallback). Override limits via an `llm.json` file in the working directory (or pointed at by `MAXIM_LLM_CONFIG`):
 
 ```json
 {
@@ -288,17 +284,14 @@ Set `fallback_on_budget_exceeded` to `"reject"` for hard enforcement on all limi
 
 ## Configuration File
 
-Edit `~/.maxim/config/llm.json` for fine-grained control over LLM behavior:
+The canonical 1.0 configuration path is `~/.config/maxim/config.json`, written by `maxim config set` (see the "Setting up a leader" section above). For fine-grained control, use the `maxim config set` verbs:
 
-```json
-{
-  "enabled": true,
-  "profile": "mistral-7b-instruct-v0.2",
-  "max_tokens": 512,
-  "temperature": 0.0,
-  "quantization": "Q4_K_M"
-}
+```bash
+maxim config set llm.profile mistral-7b
+maxim config set llm.n_ctx 8192
 ```
+
+A legacy `llm.json` file (found via `MAXIM_LLM_CONFIG` env var or in the working directory) is still supported for profile and routing config, but `~/.config/maxim/config.json` is the canonical 1.0 configuration path for role, lane routing, and LLM settings.
 
 ### Per-Mode Response Tuning
 
@@ -401,8 +394,7 @@ conservative; raise them only as needed:
 | `MAXIM_MAX_CLOUD_LANES` | `0` | Hard cap on lanes targeting a cloud endpoint. **Must be raised to use Claude, OpenAI, etc.** |
 
 Self-hosted servers (localhost / private-IP endpoints) are **not** counted as
-cloud, so they bypass `MAXIM_MAX_CLOUD_LANES`. The session-cost ceiling in
-`~/.maxim/config/llm.json` (`max_session_cost`, default $5.00) provides a second layer.
+cloud, so they bypass `MAXIM_MAX_CLOUD_LANES`. The session-cost ceiling (`MAXIM_CLOUD_SESSION_BUDGET`, default $5.00) provides a second layer.
 
 ### Auto-spawn (Phase 6) — zero-terminal setup
 
@@ -418,9 +410,8 @@ On startup you'll see a banner like:
 ```
  ──────────────────────────────────────────────────────────────
   Maxim LLM lanes
-  infer   self-hosted http://127.0.0.1:8100/v1
-  review  local   smollm-1.7b-instruct (cpu)
-  record  (no LLM)
+  large   self-hosted http://127.0.0.1:8100/v1
+  small   local   smollm-1.7b-instruct (cpu)
  ──────────────────────────────────────────────────────────────
 ```
 
@@ -476,7 +467,7 @@ Other valid roles:
 | `MAXIM_ROLE` | Bind | Use |
 |---|---|---|
 | `leader` | `0.0.0.0` | Host for peers (home PC, desktop with GPU) |
-| `client` | `127.0.0.1` | Follower — pairs with `MAXIM_LANE_LARGE_REMOTE_URL` |
+| `peer` | `127.0.0.1` | Follower — pairs with `MAXIM_LANE_LARGE_REMOTE_URL` |
 | `solo` | `127.0.0.1` | Single-machine default (no peers) |
 
 **Setting up a home leader:**
@@ -509,7 +500,7 @@ Keep that terminal running. The server exposes an OpenAI-compatible API at
 `http://<host>:8000/v1`.
 
 On the client machine, point a lane at the server via environment overrides
-(temporary) or `~/.maxim/config/llm.json` (persistent):
+(temporary) or `maxim config set` (persistent):
 
 ```bash
 # Quick test — one-shot remote lane
@@ -518,23 +509,72 @@ MAXIM_LANE_LARGE_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
 maxim --language-model mistral-7b
 ```
 
-Or pin it in `~/.maxim/config/llm.json`:
+Or pin it persistently via `maxim config set`:
 
-```json
-{
-  "lane_models": {
-    "large": {
-      "remote_url": "http://192.168.1.10:8000/v1",
-      "model": "mistral-7b-instruct-v0.2"
-    }
-  }
-}
+```bash
+maxim config set lanes.large.remote_url http://192.168.1.10:8000/v1
+maxim config set lanes.large.remote_model mistral-7b-instruct-v0.2
 ```
 
 **Latency:** LAN ~5-20 ms + inference. The agentic loop is async (WorkerPool),
 so network hops are absorbed by the next cycle — you'll notice it only in
 reaction-time budgets. For real-time motor control, keep a local backend on
 the lane that drives motion.
+
+### Multi-tier remote routing
+
+Each of Maxim's three WorkerPool lanes (`large`, `medium`, `small`) can independently target a different server. The env var family follows a consistent pattern:
+
+| Env var | Config key | Purpose |
+|---|---|---|
+| `MAXIM_LANE_LARGE_REMOTE_URL` | `lanes.large.remote_url` | Inference URL for large-tier calls (orchestrator, primary reasoning) |
+| `MAXIM_LANE_LARGE_REMOTE_MODEL` | `lanes.large.remote_model` | Model name to request on that server |
+| `MAXIM_LANE_LARGE_REMOTE_API_KEY` | `lanes.large.remote_api_key_ref` | Auth token (or path to key file) |
+| `MAXIM_LANE_LARGE_TIMEOUT_S` | `lanes.large.timeout_s` | Per-request inference timeout in seconds (strictly positive) |
+| `MAXIM_LANE_MEDIUM_REMOTE_URL` | `lanes.medium.remote_url` | Inference URL for medium-tier calls (tool parsing, structured output) |
+| `MAXIM_LANE_MEDIUM_REMOTE_MODEL` | `lanes.medium.remote_model` | |
+| `MAXIM_LANE_MEDIUM_REMOTE_API_KEY` | `lanes.medium.remote_api_key_ref` | |
+| `MAXIM_LANE_MEDIUM_TIMEOUT_S` | `lanes.medium.timeout_s` | |
+| `MAXIM_LANE_SMALL_REMOTE_URL` | `lanes.small.remote_url` | Inference URL for small-tier calls (quick checks, background tasks) |
+| `MAXIM_LANE_SMALL_REMOTE_MODEL` | `lanes.small.remote_model` | |
+| `MAXIM_LANE_SMALL_REMOTE_API_KEY` | `lanes.small.remote_api_key_ref` | |
+| `MAXIM_LANE_SMALL_TIMEOUT_S` | `lanes.small.timeout_s` | |
+
+**Typical scenario: large model on GPU server, small/medium routed locally.**
+
+```bash
+# Large tier → powerful 32B model on your home GPU server
+export MAXIM_LANE_LARGE_REMOTE_URL=http://192.168.1.10:8100/v1
+export MAXIM_LANE_LARGE_REMOTE_MODEL=qwen2.5-32b-instruct
+export MAXIM_LANE_LARGE_TIMEOUT_S=300
+
+# Medium tier → faster 7B model on the same server (different port)
+export MAXIM_LANE_MEDIUM_REMOTE_URL=http://192.168.1.10:8101/v1
+export MAXIM_LANE_MEDIUM_REMOTE_MODEL=mistral-7b-instruct-v0.2
+export MAXIM_LANE_MEDIUM_TIMEOUT_S=60
+
+# Small tier → stays local (CPU fallback); no env var needed
+maxim
+```
+
+**Scenario: all three tiers via cloud API (solo auto-detect handles this, but
+explicit config gives you control over which model each tier uses):**
+
+```bash
+maxim config set lanes.large.remote_url https://api.anthropic.com/v1
+maxim config set lanes.large.remote_model claude-sonnet-4-6
+maxim config set lanes.medium.remote_url https://api.anthropic.com/v1
+maxim config set lanes.medium.remote_model claude-haiku-4-5-20251001
+# small tier stays local; unset lanes fall back to auto-detection
+export ANTHROPIC_API_KEY=sk-ant-...
+export MAXIM_MAX_CLOUD_LANES=2
+maxim
+```
+
+Unset lanes fall back to auto-detection (local GPU via auto-spawn, or the CPU
+fallback profile). Setting a lane's `TIMEOUT_S` overrides the backend default
+(300 s for self-hosted, 60 s for cloud providers). `maxim doctor` shows the
+resolved tier routing in its "Resolved Config" section.
 
 ### `maxim doctor` — environment diagnostics
 
@@ -814,36 +854,60 @@ can handle auth if you need it (no Maxim-side API key required for tunnel access
 
 Cloud providers need **three** things enabled explicitly:
 
-1. `cloud_enabled: true` in `~/.maxim/config/llm.json` (or `MAXIM_LLM_CLOUD_ENABLED=1`)
+1. `MAXIM_LLM_CLOUD_ENABLED=1` (or `maxim config set cloud.enabled true`)
 2. `MAXIM_MAX_CLOUD_LANES=1` (or higher) — gate on the number of cloud lanes
 3. API key in env — `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
 
-Example `~/.maxim/config/llm.json` for a Claude cloud lane:
-
-```json
-{
-  "cloud_enabled": true,
-  "lane_models": {
-    "large": {
-      "remote_url": "https://api.anthropic.com/v1",
-      "model": "claude-3-5-sonnet-20241022",
-      "api_key_env": "ANTHROPIC_API_KEY"
-    }
-  }
-}
-```
-
-Then:
+To use Claude on the large lane persistently:
 
 ```bash
+maxim config set lanes.large.remote_url https://api.anthropic.com/v1
+maxim config set lanes.large.remote_model claude-sonnet-4-6
 export ANTHROPIC_API_KEY=sk-ant-...
 export MAXIM_MAX_CLOUD_LANES=1
 maxim
 ```
 
-The session cost ceiling (`max_session_cost`, default $5.00 in the routing
-policy) is enforced **per LLMRouter** — if you run multiple cloud lanes, each
-has its own ceiling. Keep an eye on cost in sim reports.
+The session cost ceiling (`MAXIM_CLOUD_SESSION_BUDGET`, default $5.00) is enforced per session. Keep an eye on cost in sim reports.
+
+### Cloud auto-detect (solo role)
+
+If you export a cloud API key without setting any other LLM config, Maxim **auto-enables cloud dispatch** at startup via `configure_cloud_solo_auto_detect` in `cli_utils.py`. This is why `export ANTHROPIC_API_KEY=... && maxim` works with no additional flags — the seven-flag incantation is done for you.
+
+**When it fires:** role is `solo` (or unset), no `MAXIM_LLM_PROFILE` is set, and no `MAXIM_LANE_LARGE_REMOTE_URL` is set (i.e., not routing to a peer leader). Auto-detect does not fire for `leader` or `peer` roles.
+
+**What it sets (only if not already present):**
+
+| Env var | Value | Notes |
+|---|---|---|
+| `MAXIM_LLM_ENABLED` | `1` | |
+| `MAXIM_LLM_CLOUD_ENABLED` | `1` | |
+| `MAXIM_MAX_CLOUD_LANES` | number of API keys found (max 3) | |
+| `MAXIM_LLM_REDACTION_POLICY` | `standard` | |
+| `MAXIM_CLOUD_SESSION_BUDGET` | `5.0` | USD |
+| `MAXIM_LLM_PROFILE` | best available profile | e.g. `claude-sonnet` if `ANTHROPIC_API_KEY` set |
+
+Priority order: Anthropic → OpenAI → Google → Groq → Together → Fireworks → Mistral → DeepSeek. The first available key wins the profile choice.
+
+**Operator overrides always win.** Any of these env vars already set before startup are left untouched; `maxim config set` values in `config.json` are also respected (env vars take precedence over config in the resolution chain, but existing env vars block the auto-set).
+
+**Disabling auto-detect:**
+
+```bash
+# Persistent — write false to config so auto-detect never fires again
+maxim config set cloud.enabled false
+
+# Per-session — point MAXIM_LLM_PROFILE at a local model to block the key check
+export MAXIM_LLM_PROFILE=mistral-7b
+```
+
+**Inspect what was auto-configured:**
+
+```bash
+maxim doctor
+# The "Resolved Config" section shows every absorbed field and its source.
+# Auto-detected fields appear with source "env" and a C7a INFO log at startup.
+```
 
 ## Python API
 
@@ -870,4 +934,4 @@ result = agent.generate_json("Extract name and age from: 'John is 25'")
 | Model not found | Run `maxim --list-models` to see download status |
 | Out of memory | Use a smaller model or lower quantization level |
 | Slow inference | Use smaller model (`smollm-1.7b`) or lower quantization (`Q3_K_M`) |
-| Gibberish output | Check that `prompt_style` matches the model family in `~/.maxim/config/llm.json` |
+| Gibberish output | Check that `prompt_style` matches the model family (use `maxim model list` or inspect `~/.config/maxim/profiles.yml`) |

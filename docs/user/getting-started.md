@@ -35,21 +35,46 @@ pip install -e .
 
 Install any combination with `pip install "pymaxim[extra1,extra2]"` (or `pip install -e ".[extra1,extra2]"` from a source checkout).
 
+> **Minimum Recommended Install**
+>
+> `pip install pymaxim` alone has no LLM backend — the agent loop loads but cannot call an LLM.
+> Pick the profile that matches your setup:
+>
+> | Use case | Command |
+> |----------|---------|
+> | Cloud inference (Anthropic Claude) | `pip install "pymaxim[llm-anthropic]"` |
+> | Local inference (llama.cpp) | `pip install "pymaxim[llm-llama,llm-server]"` |
+> | Everything (recommended starting point) | `pip install "pymaxim[all,semantic]"` |
+
 | Extra | Command | What it adds |
 |-------|---------|--------------|
 | `llm-llama` | `pip install -e ".[llm-llama]"` | Local LLM inference via llama.cpp |
+| `llm-server` | `pip install -e ".[llm-server]"` | Host a local llama-cpp-server + OpenAI-compatible endpoint |
 | `llm-torch` | `pip install -e ".[llm-torch]"` | PyTorch/Transformers backend (Blackwell GPUs) |
 | `llm-anthropic` | `pip install -e ".[llm-anthropic]"` | Anthropic cloud backend |
 | `llm-openai` | `pip install -e ".[llm-openai]"` | OpenAI cloud backend |
+| `vision` | `pip install -e ".[vision]"` | Camera + object detection (OpenCV + ONNX Runtime) |
+| `audio` | `pip install -e ".[audio]"` | Microphone + Whisper transcription |
+| `reachy` | `pip install -e ".[reachy]"` | Reachy Mini robot SDK |
+| `search` | `pip install -e ".[search]"` | Web search via DuckDuckGo |
+| `training` | `pip install -e ".[training]"` | MotorCortex model training (TensorFlow/Keras) |
 | `yolo` | `pip install -e ".[yolo]"` | YOLOv8 vision engine (AGPL-3.0 license) |
 | `tts` | `pip install -e ".[tts]"` | Text-to-speech via Piper |
 | `comms` | `pip install -e ".[comms]"` | SMS/Voice communication via Twilio |
 | `semantic` | `pip install -e ".[semantic]"` | Neural embeddings for memory similarity |
 | `temporal` | `pip install -e ".[temporal]"` | Natural language date/time parsing |
+| `database` | `pip install -e ".[database]"` | PostgreSQL + pgvector memory stores |
 | `test` | `pip install -e ".[test]"` | pytest + coverage + parallel execution |
-| `all` | `pip install -e ".[all]"` | Everything above (except `yolo` and `test`) |
+| `all` | `pip install -e ".[all]"` | Most extras (excludes `yolo`, `llm-torch`, `semantic`, and `test`) |
 
-> **Note:** The `yolo` extra pulls in `ultralytics` which is AGPL-3.0 licensed. It is excluded from `all` to keep the core install MIT-clean.
+> **Note:** The `yolo` extra pulls in `ultralytics` which is AGPL-3.0 licensed. It is excluded from `all` to keep the core install Apache-2.0-clean. The `llm-torch` and `semantic` extras both require PyTorch and are excluded from `all` to avoid heavy optional GPU dependencies; install those individually as needed.
+
+> **`[semantic]` is not included in `[all]`.**
+> Without `[semantic]`, Maxim's memory and substrate-encoding systems fall back to a bag-of-words hash embedding. This is fine for quick tests but silently reduces memory recall quality and EC pattern-completion accuracy. For full memory quality — neural similarity search, EC paraphrase clustering, and substrate concept transfer — install:
+>
+> ```bash
+> pip install "pymaxim[all,semantic]"
+> ```
 
 ### Downloading Models
 
@@ -74,7 +99,7 @@ maxim --language-model smollm-1.7b
 
 This starts the full agent loop without attempting a robot connection. Useful for testing LLM reasoning, planning, and coding tools on your development machine.
 
-> **Persisting your choices.** As of 1.0, the canonical way to set Maxim's runtime preferences (role, default model, lane routing, etc.) is `maxim config set` writing to `~/.config/maxim/config.json`. Run `maxim config` for the verb surface or `maxim doctor` for the "Resolved Config" section that shows every effective field + source. See [Configuration](configuration.md#quick-start-maxim-config).
+> **Persisting your choices.** The canonical way to set Maxim's runtime preferences (role, default model, lane routing, etc.) is `maxim config set` writing to `~/.config/maxim/config.json`. Run `maxim config` for the verb surface or `maxim doctor` for the "Resolved Config" section that shows every effective field + source. See [Configuration](configuration.md#quick-start-maxim-config).
 
 ### Simulation Mode
 
@@ -186,8 +211,9 @@ pool = maxim.create.pool()
 pool.add(maxim.create.agent("guard", personality="stern"))
 pool.add(maxim.create.agent("merchant", personality="cunning"))
 
-# SEM entities
-from maxim import Entity, Sensor, Modulator
+# SEM entities (Entity is exported from top-level maxim; Sensor/Modulator are Protocols — import from maxim.embodiment.sem)
+from maxim import Entity
+from maxim.embodiment.sem import Sensor, Modulator
 guard = maxim.create.entity("npcs/guard", name="Captain Aldric")
 guard.metadata["faction"] = "royal_guard"
 ```

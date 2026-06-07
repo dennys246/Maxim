@@ -256,6 +256,36 @@
             <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
             <td class="py-3">Sim orchestrator, Reachy embodied runtime, and headless API all migrated to <code class="bg-slate-950 px-1 rounded text-xs">AgentFactory.create_full_agent()</code>. <strong>v0.7.0.</strong></td>
           </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Sensorimotor Cradle + Drive System</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">4-act developmental arc (<code class="bg-slate-950 px-1 rounded text-xs">maxim --sim cradle</code>), homeostatic + entropic drives, 3-layer sensation model, thermal contact reflexes, drive visibility in Acting Coach prompt. P5 Stress Persistence (final 1.0 gate CLOSED). <strong>v0.8.0.</strong></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Cognitive Maturity (v0.8 suite)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Working Memory + Executive cycle, PFC deliberation loop, temporal credit (SCN oscillator B2 + TemporalCreditDistributor), reflex system, rich interactive display overhaul, affordance concept transfer, entity ownership, pre-deliberation (ThoughtGate + bio-enrichment). <strong>v0.8.0.</strong></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Substrate-Annotates-LLM-Context (Wires A/1/2/3)</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3">Wire-A cluster-bias annotation, Wire 1 variance annotation, Wire 2 manifest enrichment, Wire 3 goal-scoped bias. EC centroid-drift fix (threshold 0.40&rarr;0.44). Roy-3 cross-session validation. <strong>v0.9.1.</strong></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Config Unification + Hivemind Shareability</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3"><code class="bg-slate-950 px-1 rounded text-xs">~/.config/maxim/config.json</code> single-source operator config. <code class="bg-slate-950 px-1 rounded text-xs">maxim config/model/substrate</code> CLIs. Portable substrate-snapshot bundles with <code class="bg-slate-950 px-1 rounded text-xs">nac_merge</code>/<code class="bg-slate-950 px-1 rounded text-xs">ec_merge</code> Bayesian aggregation. Leader model profiles. LLM timeout scalability (TTFT keepalive, per-tier timeout, context-overflow gate). <strong>v0.9.2.</strong></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Loud Optional-Dependency Failures</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">Done</span></td>
+            <td class="py-3"><code class="bg-slate-950 px-1 rounded text-xs">utils/optional_deps.py</code> centralises 45+ import sites. Missing requested backend raises <code class="bg-slate-950 px-1 rounded text-xs">OptionalDependencyError</code> with install hint instead of silent empty response. <strong>v0.9.3.</strong></td>
+          </tr>
+          <tr class="border-t border-slate-700">
+            <td class="pr-4 py-3 text-white font-medium">Exp 37 Cross-Session Graduation + Docs</td>
+            <td class="pr-4 py-3"><span class="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">In Progress</span></td>
+            <td class="py-3">Validation harness + analyzer shipped. Behavioral trial in progress (6 arms &times; 2 scenarios &times; 5 trials). Documentation accuracy sweep under way. Remaining 1.0 prerequisites.</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -265,12 +295,44 @@
   <section class="space-y-4">
     <h2 id="recently-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What We Just Shipped</h2>
 
-    <p class="text-slate-300 leading-relaxed"><strong>v0.7.0: Imagination system, default embodiment, Acting Coach, scene-scoped tools, Asset Foundry + Auto-Curation, ComponentIndex, AgentFactory F3&ndash;F5.</strong> The agent now has a body by default, imagines novel entities in real-time from narration text, and tools activate/deactivate per-scene. All 1.0 gates are closed. Earlier: generalizable embodiment + Asset Foundry (v0.6), B4 replanning (v0.5), behavioral convergence (v0.3).</p>
+    <p class="text-slate-300 leading-relaxed"><strong>1.0 is in preparation.</strong> The 0.8.x and 0.9.x series shipped the final architectural features: sensorimotor cradle + drive system (v0.8), substrate-annotates-LLM-context Wires A/1/2/3 + EC centroid-drift fix (v0.9.1), config unification + Hivemind shareability + LLM timeout scalability + leader model profiles (v0.9.2), and loud optional-dependency failures (v0.9.3). All 1.0 gates are closed; remaining work is validation, documentation, and packaging. Earlier milestones: imagination system + Acting Coach + factory migration (v0.7), generalizable embodiment + Asset Foundry (v0.6), B4 replanning (v0.5), behavioral convergence (v0.3).</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Config Unification + <code class="bg-slate-950 px-1 rounded text-xs">maxim config/model</code> CLIs <span class="text-xs text-indigo-400">(v0.9.2)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed"><code class="bg-slate-950 px-1 rounded text-xs">~/.config/maxim/config.json</code> replaces scattered env vars as the single operator config. <code class="bg-slate-950 px-1 rounded text-xs">resolve_setting</code> precedence chain (CLI &gt; env &gt; config.json &gt; default). <code class="bg-slate-950 px-1 rounded text-xs">maxim config get/set/list</code> and <code class="bg-slate-950 px-1 rounded text-xs">maxim model add/list/remove</code> CLIs. Seven-rank role detector unified in <code class="bg-slate-950 px-1 rounded text-xs">runtime/role.py</code>. Auto-migration from peer.yml on first startup. Doctor "Resolved Config" section.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Hivemind Shareability + <code class="bg-slate-950 px-1 rounded text-xs">maxim substrate</code> CLI <span class="text-xs text-indigo-400">(v0.9.2)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Portable substrate-snapshot bundle format (ZIP + manifest). <code class="bg-slate-950 px-1 rounded text-xs">nac_merge()</code> / <code class="bg-slate-950 px-1 rounded text-xs">ec_merge()</code> pure-function Bayesian aggregation with provenance tracking. Identity-bearing concept detection. <code class="bg-slate-950 px-1 rounded text-xs">maxim substrate export|import|inspect</code> CLI verbs. Full P2P Hivemind protocol remains 1.2+.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">LLM Timeout Scalability (Stages 1&ndash;3) <span class="text-xs text-indigo-400">(v0.9.2)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Per-tier timeout configuration (<code class="bg-slate-950 px-1 rounded text-xs">MAXIM_LANE_&lt;TIER&gt;_TIMEOUT_S</code> + <code class="bg-slate-950 px-1 rounded text-xs">lanes.&lt;tier&gt;.timeout_s</code>). TTFT keepalive emitter defeats Cloudflare&rsquo;s ~100s tunnel idle timeout during long first-token waits on 30B+ models. Context-overflow admission gate (HTTP 413 + typed error body) prevents oversize prompts from silently hanging llama-cpp-server. Stall detector with per-tier threshold derivation via <code class="bg-slate-950 px-1 rounded text-xs">compute_stall_threshold</code>.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Leader Model Profiles + <code class="bg-slate-950 px-1 rounded text-xs">maxim model</code> CLI <span class="text-xs text-indigo-400">(v0.9.2)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Three new bundled profiles (qwen2.5-32b, llama-3.1-70b, mixtral-8x7b). User-profile loader via <code class="bg-slate-950 px-1 rounded text-xs">~/.config/maxim/profiles.yml</code>. <code class="bg-slate-950 px-1 rounded text-xs">maxim model add|remove|list</code> CLI verbs. Chat-format inference per profile. Profile schema frozen at 1.0.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Loud Optional-Dependency Failures <span class="text-xs text-indigo-400">(v0.9.3)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed"><code class="bg-slate-950 px-1 rounded text-xs">utils/optional_deps.py</code> centralises 45+ import sites. Missing a requested optional backend now raises <code class="bg-slate-950 px-1 rounded text-xs">OptionalDependencyError</code> with a concrete install hint instead of silently returning empty responses. Eliminates the most common class of silent mis-installs.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Sensorimotor Cradle + Drive System <span class="text-xs text-indigo-400">(v0.8)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Four-act developmental arc (<code class="bg-slate-950 px-1 rounded text-xs">maxim --sim cradle</code>), homeostatic and entropic drive types (temperature, hunger, fatigue), 3-layer sensation model (contact / proximity / narrative), thermal contact reflexes, drive-state visibility in the Acting Coach prompt. 7 cradle stages. P5 stress persistence &mdash; the final 1.0 gate &mdash; shipped alongside.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Substrate-Annotates-LLM-Context (Wires A/1/2/3) <span class="text-xs text-indigo-400">(v0.9.1)</span></h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Wire-A: cluster-bias annotation surfaces learned affordance preferences at the LLM prompt. Wire 1: variance-band felt-sensation annotation on tool descriptions. Wire 2: substrate-aware scene manifest enrichment. Wire 3: goal-scoped reward bias. EC centroid-drift fix (threshold 0.40&rarr;0.44) eliminates progressive concept collapse across sequential percepts. Roy-3 cross-session validation complete.</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">Cognitive Maturity (v0.8 suite)</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">Working Memory + Executive cycle, PFC deliberation loop, temporal credit distribution (TemporalCreditDistributor + SCN oscillator B2 anticipatory pre-activation), deliberative thinking (ThinkTool enrichment + percept enrichment), reflex system (innate body responses replacing auto-damage), rich interactive display overhaul (thinking panel, split panels, resize, slash commands), affordance concept transfer (substrate-native cross-entity learning), entity ownership (self vs scene separation).</p>
+      </div>
+      <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">Imagination System (I1+I2+I3) <span class="text-xs text-indigo-400">(v0.7)</span></h3>
-        <p class="text-slate-300 text-sm leading-relaxed">Entity noun-phrase extraction from percepts, ComponentIndex two-layer lookup (alias + embedding), DN arousal gate, EntityDesigner LLM-driven design, ephemeral registration with provenance tagging (<code class="bg-slate-950 px-1 rounded text-xs">imagined=True</code>), 50% confidence decay at session end. I3: scene-scoped tool activation with active cap + executor gate.</p>
+        <p class="text-slate-300 text-sm leading-relaxed">Entity noun-phrase extraction from percepts, ComponentIndex two-layer lookup (alias + embedding), DN arousal gate, EntityDesigner LLM-driven design with archetype scaffolding, manifest pre-trigger for scene-load pre-instantiation, ephemeral registration with provenance tagging (<code class="bg-slate-950 px-1 rounded text-xs">imagined=True</code>), 50% confidence decay at session end. I3: scene-scoped tool activation with active cap + executor gate.</p>
       </div>
       <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">Acting Coach + Factory F3&ndash;F5 <span class="text-xs text-indigo-400">(v0.7)</span></h3>
@@ -361,17 +423,17 @@
 
     <div class="rounded-xl bg-gradient-to-br from-purple-700 via-indigo-700 to-purple-800 p-5 text-white shadow-lg">
       <h3 class="text-base font-semibold mb-2">2026-05-09 architectural pivot</h3>
-      <p class="text-sm leading-relaxed">Maxim is moving toward a <strong>parallel-mode architecture</strong> where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) drives action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing LLM-AUT mode remains the user-facing default; substrate-primary mode ships parallel as opt-in via <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code>. <strong>Phase &minus;1 prototype shipped 2026-05-09</strong> &mdash; <code class="bg-slate-950 px-1 rounded text-xs">NAc.recommend_action()</code> can generate non-reflex actions from learned causal links + drive heuristics with no LLM proposal needed (11 unit tests pass). The federated <strong>Maxim Hivemind + Oasis</strong> layer (in plan, not yet implemented) will let multiple Maxims share distilled bio-substrate across instances. See <a href="/maxim/substrate-primary" class="underline hover:text-indigo-200">Substrate-Primary Mode</a> and <a href="/maxim/hivemind" class="underline hover:text-indigo-200">Maxim Hivemind + Oasis</a>.</p>
+      <p class="text-sm leading-relaxed">Maxim is moving toward a <strong>parallel-mode architecture</strong> where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) drives action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing LLM-AUT mode remains the user-facing default; substrate-primary mode ships parallel as opt-in via <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code>. <strong>Phase &minus;1 prototype shipped 2026-05-09</strong> &mdash; <code class="bg-slate-950 px-1 rounded text-xs">NAc.recommend_action()</code> can generate non-reflex actions from learned causal links + drive heuristics with no LLM proposal needed (11 unit tests pass). <strong>Hivemind shareability infrastructure shipped (2026-05-31, PRs #305/#308/#309/#310):</strong> the <strong>Maxim Hivemind + Oasis</strong> substrate-sharing foundation is live — portable bundle format, <code class="bg-slate-950 px-1 rounded text-xs">nac_merge</code> / <code class="bg-slate-950 px-1 rounded text-xs">ec_merge</code> Bayesian aggregation, identity detection, and <code class="bg-slate-950 px-1 rounded text-xs">maxim substrate export|import|inspect</code> CLI. Full P2P Hivemind protocol remains 1.2+. See <a href="/maxim/substrate-primary" class="underline hover:text-indigo-200">Substrate-Primary Mode</a> and <a href="/maxim/hivemind" class="underline hover:text-indigo-200">Maxim Hivemind + Oasis</a>.</p>
     </div>
 
-    <p class="text-slate-300 leading-relaxed">The path forward: 1.0 ships with <strong>B5 substrate-primary harness</strong> (Phase &minus;1 + Phase 0 + Hivemind shareability infrastructure, all behind experimental flag) alongside D1&ndash;D3 docs. 1.1 lands substrate-primary AUT mode + first hostable Maxim Oasis. 1.2 ships the full Hivemind P2P protocol.</p>
+    <p class="text-slate-300 leading-relaxed">The path forward: 1.0 ships with the full <strong>B5 substrate-primary harness</strong> (Phase &minus;1 + Phase 0 + Hivemind shareability infrastructure) and the documentation pass now under way. Exp 37 cross-session graduation validates the behavioral claim. 1.1 lands substrate-primary AUT mode + first hostable Maxim Oasis. 1.2 ships the full Hivemind P2P protocol.</p>
 
     <div class="space-y-3">
       <div class="bg-slate-800 border border-indigo-500/50 rounded-xl p-5 flex items-start gap-4">
         <span class="text-2xl font-bold text-indigo-500 shrink-0">1</span>
         <div>
           <h3 class="text-white font-semibold">B5 Substrate-Primary Harness <span class="text-xs text-indigo-400">(v1.0)</span></h3>
-          <p class="text-slate-300 text-sm leading-relaxed"><strong>Phase &minus;1</strong> &check; shipped (NAc action proposal + 11 tests). <strong>Phase 0 harness</strong> &check; shipped: <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code> CLI flag + cradle-prelinguistic arc variant + motor-only AUT prompt + per-tick telemetry. <strong>Roy harness</strong> &check; shipped (2026-05-10): R1 curriculum runner + R2 substrate_diff + R3 three-arm iteration runner + R4 idempotent log generator + R5 process-global invariants. <strong>G3 fail-fast LLM preflight</strong> &check; shipped (2026-05-11, PR #235+#238): <code class="bg-slate-950 px-1 rounded text-xs">_MaximPeerBackend.health_check()</code> probe with env-then-peer.yml resolution; aborts in &le;3s on unreachable leader. <strong>G4 cluster_id reward wire</strong> &check; shipped (2026-05-11, PR #236+#237): closes the deferred Track 2 wire — substrate-primary tool outcomes now populate <code class="bg-slate-950 px-1 rounded text-xs">NAc._cluster_reward_bias</code>, persist to <code class="bg-slate-950 px-1 rounded text-xs">aut_nac.json</code>, surface in <code class="bg-slate-950 px-1 rounded text-xs">substrate_diff</code>. Empirically validated: live Roy-0 run produced <code class="bg-slate-950 px-1 rounded text-xs">cluster_reward_bias_l2 = 2.4587</code> on A-vs-blank pairs (~11.6&times; blank-vs-blank noise floor). <strong>Roy iteration arc Roy-1a&ndash;Roy-4</strong> &check; shipped (2026-05-11 &rarr; 2026-05-13): six follow-up iterations reproducing the wire 6&times; on the same priming and localizing the behavioral-expression gap to LinguisticEncoder &rarr; EC alignment; Roy-4 (PR #246) cancelled the 1.1 Hebbian binding plan via a pre-registered cheap-gate experiment. <strong>0.9.1 Wire-A</strong> ships as the operator-visible interim that surfaces the surviving tool-level signal at the LLM prompt regardless of encoder drift. <strong>1.1+ reframe</strong>: <code class="bg-slate-950 px-1 rounded text-xs">roy_5_encoder_alignment_disambiguator.md</code> (PR #247) replaces the cancelled binding plan with a diagnostic-first ladder; Stage 1 (Roy-5a cosine analysis on existing Roy-4 data, zero new sim runs) decodes the gap to one of three sub-hypotheses that scope the 1.1+ fix. <strong>Hivemind shareability infrastructure</strong> remains: portable substrate-snapshot bundle format + <code class="bg-slate-950 px-1 rounded text-xs">nac.merge()</code> / <code class="bg-slate-950 px-1 rounded text-xs">ec.merge()</code> Bayesian aggregation + provenance tags + identity-bearing concept detection + substrate domains + export/import CLI verbs.</p>
+          <p class="text-slate-300 text-sm leading-relaxed"><strong>Phase &minus;1</strong> &check; shipped (NAc action proposal + 11 tests). <strong>Phase 0 harness</strong> &check; shipped: <code class="bg-slate-950 px-1 rounded text-xs">--aut-mode substrate-primary</code> CLI flag + cradle-prelinguistic arc variant + motor-only AUT prompt + per-tick telemetry. <strong>Roy harness</strong> &check; shipped (2026-05-10): R1 curriculum runner + R2 substrate_diff + R3 three-arm iteration runner + R4 idempotent log generator + R5 process-global invariants. <strong>G3 fail-fast LLM preflight</strong> &check; shipped (2026-05-11, PR #235+#238): <code class="bg-slate-950 px-1 rounded text-xs">_MaximPeerBackend.health_check()</code> probe with env-then-peer.yml resolution; aborts in &le;3s on unreachable leader. <strong>G4 cluster_id reward wire</strong> &check; shipped (2026-05-11, PR #236+#237): closes the deferred Track 2 wire — substrate-primary tool outcomes now populate <code class="bg-slate-950 px-1 rounded text-xs">NAc._cluster_reward_bias</code>, persist to <code class="bg-slate-950 px-1 rounded text-xs">aut_nac.json</code>, surface in <code class="bg-slate-950 px-1 rounded text-xs">substrate_diff</code>. Empirically validated: live Roy-0 run produced <code class="bg-slate-950 px-1 rounded text-xs">cluster_reward_bias_l2 = 2.4587</code> on A-vs-blank pairs (~11.6&times; blank-vs-blank noise floor). <strong>Roy iteration arc Roy-1a&ndash;Roy-4</strong> &check; shipped (2026-05-11 &rarr; 2026-05-13): six follow-up iterations reproducing the wire 6&times; on the same priming and localizing the behavioral-expression gap to LinguisticEncoder &rarr; EC alignment; Roy-4 (PR #246) cancelled the 1.1 Hebbian binding plan via a pre-registered cheap-gate experiment. <strong>0.9.1 Wire-A</strong> ships as the operator-visible interim that surfaces the surviving tool-level signal at the LLM prompt regardless of encoder drift. <strong>1.1+ reframe</strong>: <code class="bg-slate-950 px-1 rounded text-xs">roy_5_encoder_alignment_disambiguator.md</code> (PR #247) replaces the cancelled binding plan with a diagnostic-first ladder; Stage 1 (Roy-5a cosine analysis on existing Roy-4 data, zero new sim runs) decodes the gap to one of three sub-hypotheses that scope the 1.1+ fix. <strong>Hivemind shareability infrastructure</strong> &check; shipped (2026-05-31, PRs #305/#308/#309/#310): portable substrate-snapshot bundle format + <code class="bg-slate-950 px-1 rounded text-xs">nac_merge()</code> / <code class="bg-slate-950 px-1 rounded text-xs">ec_merge()</code> Bayesian aggregation + provenance tags + identity-bearing concept detection + substrate domains + <code class="bg-slate-950 px-1 rounded text-xs">maxim substrate export|import|inspect</code> CLI verbs.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 flex items-start gap-4">
@@ -432,7 +494,7 @@
   <section class="space-y-4">
     <h2 id="dependency-graph" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Dependency Graph</h2>
 
-    <p class="text-slate-300 leading-relaxed">All 1.0 gates are closed. Remaining work is polish and packaging.</p>
+    <p class="text-slate-300 leading-relaxed">All 1.0 gates are closed. Remaining work is validation, documentation, and packaging.</p>
 
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
       <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Path to 1.0</span>
@@ -464,14 +526,25 @@
   ├──&gt; <span class="text-yellow-400">2026-05-13</span> <code>roy_5_encoder_alignment_disambiguator.md</code> opened (PR #247)
   │                Stage 1 (Roy-5a cosine analysis on existing Roy-4 data) queued; verdict scopes 1.1+ fix
   │
-  ├──&gt; B3.2-B3.3 Acting Coach extensions
-  ├──&gt; B5 substrate-primary harness flagged (Phase &minus;1 &check;, Phase 0 harness &check;, validation 1.1+)
-  ├──&gt; Hivemind shareability infra (export/import, merge(), provenance — 1.0 reservation)
+  ├──&gt; <span class="text-green-400">v0.9.1 SHIPPED (2026-05-25)</span>
+  │                Wire-A cluster-bias annotation; Wires 1/2/3 (variance/manifest/goal); EC drift fix (0.40→0.44)
+  │                Roy-3 cross-session validation complete; NAc reward-bias ablation arm env var
   │
-  └──&gt; <span class="text-green-400">v1.0</span> — All gates closed. D1-D3 docs + stale-tagging cleanup remain. Package + publish.</div>
+  ├──&gt; <span class="text-green-400">v0.9.2 SHIPPED (2026-06-05)</span>
+  │                config.json operator config + maxim config/model CLIs; seven-rank role detector
+  │                Hivemind shareability (nac_merge/ec_merge/export/import/inspect); leader model profiles
+  │                LLM timeout scalability: TTFT keepalive, per-tier timeout_s, context-overflow admission gate
+  │                Stall detector with canonical stall-threshold derivation (compute_stall_threshold)
+  │                Singleton spawn guard + harness preflight (leader-local fire safe)
+  │
+  ├──&gt; <span class="text-green-400">v0.9.3 SHIPPED (2026-06-06)</span>
+  │                Loud optional-dependency failures via utils/optional_deps.py (OptionalDependencyError)
+  │
+  └──&gt; <span class="text-yellow-400">v1.0 IN PREPARATION</span>
+       All gates closed. Exp 37 cross-session graduation + docs pass + packaging remain.</div>
     </div>
 
-    <p class="text-slate-300 leading-relaxed">All architectural gates have been closed and v0.8.0 ships P5 (the final gate). The Roy harness shipped 2026-05-10 with G3 + G4 follow-ups landing 2026-05-11, giving 1.0 a working substrate-primary closed-loop validated end-to-end against a live leader. The 2026-05-13 Roy iteration arc (Roy-1a through Roy-4) extends the validation surface from "the wire fires" to "the wire's behavioral expression is gated at the encoder-alignment layer"; the 1.1 Hebbian binding plan was cancelled by Roy-4 in favor of a diagnostic-first reframe (<code class="bg-slate-950 px-1 rounded text-xs">roy_5_encoder_alignment_disambiguator.md</code>). Remaining 1.0 work is D1&ndash;D3 docs + stale-tagging cleanup; 1.0 is a packaging milestone independent of the 1.1+ encoder-alignment research direction.</p>
+    <p class="text-slate-300 leading-relaxed">All architectural gates closed with v0.8.0 (P5 final gate). The 0.9.x series added the substrate-annotation wires (v0.9.1), config unification + Hivemind shareability + LLM timeout scalability (v0.9.2), and loud optional-dependency failures (v0.9.3). 1.0 is a validation and packaging milestone; the remaining 1.1+ encoder-alignment research direction (Roy-5, JEPA) is independent of the ship decision.</p>
   </section>
 
   <!-- 6. Contributing -->

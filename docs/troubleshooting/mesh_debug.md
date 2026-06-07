@@ -203,7 +203,7 @@ echo "MAXIM_ROLE=$MAXIM_ROLE"
 maxim doctor          # role_divergence will appear in the report if config + env disagree
 ```
 
-The role-detection decision order (Plan 2 R2a) is: `MAXIM_ROLE` env var → `mesh.yml::self` role → `peer.yml` existence → `--llm` flag without peer config → default leader. If you need to override, set `MAXIM_ROLE=peer` (or `leader` / `solo`) in the environment before starting the daemon.
+The role-detection decision order (C3 seven-rank, `runtime/role.py`) is: (1) `MAXIM_ROLE` env var → (2) `config.json::role` → (3) `mesh.yml` exists → peer → (4) `~/.cloudflared/config.{yml,yaml}` or `/etc/cloudflared/config.{yml,yaml}` exists → leader → (5) `peer.yml` exists → peer → (6) `--llm` flag without peer/mesh/cloudflared signal → solo → (7) default → leader. Note that cloudflared detection (rank 4) is promoted above `peer.yml` (rank 5) so a stale `peer.yml` left over from a previous peer setup does not silently override a real leader. If you need to override, set `MAXIM_ROLE=peer` (or `leader` / `solo`) in the environment before starting the daemon.
 
 ---
 

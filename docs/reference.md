@@ -39,7 +39,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/decisions/` | NAc causal learning, adaptive planner, reward distribution, **TemporalCreditDistributor** (temporal-phase-aware credit via NAc+SCN), **ValenceSignal** (abstract reward/punishment transport type for WMS salience modulation), goal-level reward bias (`_goal_reward_bias` `[-max,+max]` for ThoughtGate "go"/"no-go" modulation) |
 | `src/maxim/time/` | SCN temporal rhythm indexing, **TemporalEvent** (frozen dataclass envelope for signal sources — tool, pain, reaction, percept, deliberation events) |
 | `src/maxim/similarity/` | Entorhinal Cortex (pattern completion, centroid update) + LinguisticEncoder (P1, affordance name encoding) + ConceptDecomposer (noun-phrase extraction before EC) + AffordanceDecompositionStrategy (underscore-split for SEM affordance identifiers) |
-| `src/maxim/prompts/` | PromptAssembler (B1), MemorySummary, prompt profiles, **Acting Coach (B3)** — meta-prompt scaffolding for affordance exploration with bio-system modulation (NAc valence, pain anticipation, cerebellum predictions) |
+| `src/maxim/prompts/` | prompt profiles, **Acting Coach (B3)** — meta-prompt scaffolding for affordance exploration with bio-system modulation (NAc valence, pain anticipation, cerebellum predictions). (`PromptAssembler` / `MemorySummary` were deleted; never wired into production.) |
 | `src/maxim/math/` | Angular Gyrus mathematical cognition, IPS fast stats |
 | `src/maxim/default_network/` | Reactive behavior layer (thalamic gate, arbiter) |
 | `src/maxim/salience/` | Novelty tracking, interest matching |
@@ -69,7 +69,7 @@ Agents -> Planning -> Decision Engine -> Runtime -> Executor -> Tools -> Environ
 | `src/maxim/memory/pattern_completer.py` | Pattern completion from partial cues |
 | `src/maxim/memory/semantic_promoter.py` | Promotion of recurring patterns to semantic concepts |
 | `src/maxim/memory/cross_layer.py` | CrossLayerGraph: associative edges between memory systems |
-| `src/maxim/memory/consolidation.py` | ConsolidationOrchestrator: wave-based sleep consolidation |
+| `src/maxim/memory/hippocampus_consolidation.py` | `ConsolidationMixin`: wave-based sleep consolidation |
 | `src/maxim/memory/sleep_replay.py` | P8 sleep replay: episode ranking by NAc reward_bias + valence, re-fire Hebbian with consolidation multiplier (0.5) |
 | `src/maxim/planning/structural_diff.py` | B4 Jaccard distance on action sequences for plan comparison. Pure utility, no agent/memory/runtime imports (0.5) |
 | `src/maxim/planning/adaptive_planner.py` | ADaPT-style lazy planner with deep memory integration. B4 anti-repetition constraint in decomposition prompts (0.5) |
@@ -234,7 +234,7 @@ Observe state -> Agents propose intents -> Planners propose plans
 | `llama3-8b` | Llama 3 8B Instruct | ~4.9 GB | 8192 |
 | `phi3-mini` | Microsoft Phi-3 Mini | ~2.3 GB | 4096 |
 | `qwen2-7b` | Qwen2 7B Instruct | ~4.4 GB | 8192 |
-| `qwen2.5-14b-instruct` | Qwen2.5 14B Instruct | ~9.0 GB | 8192 |
+| `qwen2.5-14b-instruct` | Qwen2.5 14B Instruct | ~9.0 GB | 32768 |
 
 ### Cloud Providers
 

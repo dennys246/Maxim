@@ -2,7 +2,7 @@
 
 Step-by-step guide for publishing pymaxim to PyPI.
 
-**Current version:** 1.0.0
+**Current version:** 0.9.3 (preparing for 1.0.0)
 **Package name:** pymaxim (import name: `maxim`)
 **Build system:** setuptools + wheel
 
@@ -38,7 +38,7 @@ maxim --sim benchmark --models mistral-7b --campaign scenarios/benchmarks/quick_
 # Full suite (exclude known slow integration test)
 python -m pytest tests/ -q --ignore=tests/integration/test_memory_hub.py
 
-# Expected: 3392+ passed, 0 failed (1 pre-existing flaky ordering issue in test_lane_backends passes in isolation)
+# Expected: 7800+ passed, 0 failed (1 pre-existing flaky ordering issue in test_lane_backends passes in isolation)
 ```
 
 ### 3. Verify clean import
@@ -71,12 +71,12 @@ Known items from Phase 12b that may be blocking:
 | Composable API (create/load/Session/Report) | **SHIPPED** (2026-04-08, 83 tests) | No |
 | Persistence fixes (NAc/SCN/AG atomic writes, Entity serialization) | **FIXED** (2026-04-08, 19 tests) | No |
 | Phase 1 code quality (atomic writes, rate limits, env parsing, blocklist, type annotations, error logging) | **FIXED** (2026-04-08, 19 tests) | No |
-| Store protocol wiring (1m) | **DEFERRED** to v0.2.1 (interface mismatch needs redesign with M-1) | No |
+| Store protocol wiring (1m) | **SHIPPED** (store protocol wiring complete, see substrate_binding_persistence.md) | No |
 
 ### 5. Verify version consistency
 
 ```bash
-# Both must show 1.0.0
+# Both must show the same version (e.g. 1.0.0)
 grep 'version = ' pyproject.toml
 python -c "import maxim; print(maxim.__version__)"
 ```
@@ -93,13 +93,14 @@ rm -rf dist/ build/ *.egg-info
 python -m build
 
 # 3. Validate package metadata
-twine check dist/pymaxim-1.0.0*
+twine check dist/pymaxim-*
 # Expected: PASSED for both .whl and .tar.gz
 
 # 4. Verify bundled data is in the wheel
 python -c "
-import zipfile
-with zipfile.ZipFile('dist/pymaxim-1.0.0-py3-none-any.whl') as z:
+import zipfile, glob
+whl = sorted(glob.glob('dist/pymaxim-*-py3-none-any.whl'))[-1]
+with zipfile.ZipFile(whl) as z:
     data = [f for f in z.namelist() if '_data/' in f]
     print(f'{len(data)} bundled data files')
     assert len(data) >= 25, 'Expected 25+ bundled files'
@@ -117,7 +118,7 @@ with zipfile.ZipFile('dist/pymaxim-1.0.0-py3-none-any.whl') as z:
 
 ```bash
 # 1. Upload to Test PyPI
-twine upload --repository testpypi dist/pymaxim-1.0.0*
+twine upload --repository testpypi dist/pymaxim-*
 
 # 2. Test install in clean venv
 python -m venv /tmp/test-maxim-install
@@ -153,7 +154,7 @@ Only after Test PyPI verification passes:
 
 ```bash
 # The big moment
-twine upload dist/pymaxim-1.0.0*
+twine upload dist/pymaxim-*
 
 # Verify real install
 pip install pymaxim
@@ -163,12 +164,6 @@ python -c "import maxim; print(maxim.__version__)"
 ---
 
 ## Post-Publication Priorities
-
-### Immediate (v0.2.1 patch)
-
-1. **Fix `maxim.run()` TypeError** — flagship API call must work
-2. **Wire campaign()/research() stubs** to actual runtime
-3. **Error honesty** — fix ~60 critical `except Exception:` in API surface
 
 ### Week 1-2
 
@@ -205,7 +200,7 @@ pip install twine
 # Contact PyPI support or use the web interface to yank
 
 # For non-critical issues, publish a patch instead:
-# Bump to 0.2.1, fix the issue, rebuild, upload
+# Bump to X.Y.(Z+1), fix the issue, rebuild, upload
 ```
 
 ---

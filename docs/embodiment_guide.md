@@ -166,18 +166,18 @@ YAML Spec ──→ Entity Tree ──→ Auto-Generated Tools ──→ Agent
 
 | File | Purpose |
 |------|---------|
-| `embodiment/sem.py` | Core protocols: Sensor, Modulator, Entity, FailureMode |
-| `embodiment/spec.py` | YAML loader, SpecSensor/SpecModulator stubs |
+| `embodiment/sem.py` | Core protocols: Sensor, Modulator, Entity, FailureMode, HomeostaticDriveSpec, EntropicDriveSpec |
+| `embodiment/spec.py` | YAML loader, SpecSensor/SpecModulator stubs, attach_backends, _parse_drive_spec |
 | `embodiment/tool_bridge.py` | Auto-tool generation with collision detection |
 | `embodiment/body.py` | Embodiment runtime (failure eval, vital drift, prompt state) |
 | `embodiment/percepts.py` | EmbodimentPerceptSource (1Hz polling, demand mode) |
-| `embodiment/llm_backend.py` | LLM/Narrative sensor and modulator backends |
+| `embodiment/reflex.py` | Innate reflex system (percept-pattern → pain/reaction) |
 | `embodiment/cerebellum.py` | Cerebellum forward models + motor program registry + engram formation/recall |
 | `embodiment/motor.py` | MotorProgram, MotorStep, ProgramRegistry, entity_state_similarity |
 | `embodiment/engrams.py` | MotorEngram, salience computation, formation decision logic |
-| `embodiment/program_executor.py` | Step-by-step program runner with pain gates |
 | `embodiment/backends/cerebellum_modulator.py` | CerebellumModulator (predict/fallback/train loop) |
-| `embodiment/atl_integration.py` | Auto-register ATL body_part concepts |
+| `embodiment/component_registry.py` | ComponentRegistry — discover, load, instantiate entity templates |
+| `embodiment/component_index.py` | ComponentIndex — two-layer semantic discovery (alias + embedding) |
 
 ### Scenario Files
 
@@ -247,7 +247,7 @@ component:
   category: environments
 ```
 
-All 62 bundled seed components include hand-authored synonyms. Foundry-generated components get synonyms automatically via the EntityDesigner prompt.
+The bundled component library ships with hand-authored synonyms on every component. Foundry-generated components get synonyms automatically via the EntityDesigner prompt.
 
 ## Concepts
 
@@ -280,10 +280,7 @@ When a sensor value approaches a failure threshold (within 20% of range), the bo
 Default: 1Hz. Pain-relevant sensors are promoted to every-tick. Configurable:
 
 ```python
-# Via environment variable:
-MAXIM_EMBODIMENT_POLL_HZ=5
-
-# Via code:
+# Via code (no env-var override exists):
 source = EmbodimentPerceptSource(emb, poll_hz=5)
 
 # Demand mode (during motor programs):
@@ -300,7 +297,7 @@ Two entities with the same name get progressively prefixed:
 
 ### Virtual Entities (Beyond Robotics)
 
-SEM works for any interactive entity. A sword, NPC, or door is just an Entity with sensors and modulators backed by `NarrativeModulator` instead of hardware. The cognitive stack (Cerebellum, NAc, engrams) learns from these interactions exactly as it learns from robot joints.
+SEM works for any interactive entity. A sword, NPC, or door is just an Entity with sensors and modulators backed by `SpecModulator` stubs (or a `CerebellumModulator` with LLM fallback) instead of hardware. The cognitive stack (Cerebellum, NAc, engrams) learns from these interactions exactly as it learns from robot joints.
 
 ## Cerebellum (Phase 1a — Shipped)
 
@@ -321,7 +318,7 @@ Key properties:
 - **High-variance fallback**: uncertain models fall back to LLM
 - **Per-key locks**: thread-safe concurrent predict/observe
 - **Param bucketing**: similar params (within 10% of range) share a model
-- **Persistence**: `data/embodiment/cerebellum.json`
+- **Persistence**: `<persistence_dir>/cerebellum.json` (default: `~/.maxim/memory/cerebellum.json`)
 
 ## Motor Programs (Phase 1b — Shipped)
 

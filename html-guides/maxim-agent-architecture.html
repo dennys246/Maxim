@@ -442,7 +442,7 @@ StructuredContext:
 
     <h3 class="text-lg font-semibold text-white mt-6 mb-3">Bio-Skill Integration</h3>
 
-    <p class="text-slate-300 leading-relaxed mb-3">Skills access biological memory systems through a <em class="text-indigo-400 not-italic font-medium">BioContext</em> facade &mdash; a lightweight wrapper that provides skill-friendly methods without exposing internal wiring. Skills opt in by declaring <span class="font-mono text-indigo-400">bio_dependencies(["memory_hub"])</span> and receive a BioContext instance at activation.</p>
+    <p class="text-slate-300 leading-relaxed mb-3">Skills integrate with biological memory systems by writing context into the agent's perception observations. The MemoryAgent, ConceptExtractor, and ATL relationship graph do the rest automatically &mdash; no explicit wiring needed on the skill side.</p>
 
     <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">Skill-Concept Pipeline</span>
 

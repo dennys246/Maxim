@@ -26,7 +26,7 @@ The report shows bio-system expectations (e.g., "3/4 passed"). Failed expectatio
 
 **Check:** Look for `[HIPPOCAMPUS] Captured:` lines in the trace. If absent:
 
-1. **MemoryHub not initialized** — The orchestrator must create MemoryHub with all required systems (hippocampus, scn, nac, ec). Check `simulation/orchestrator.py` around line 506.
+1. **MemoryHub not initialized** — MemoryHub is constructed inside `build_bio_stack` via `AgentFactory.create_full_agent`. Check `simulation/orchestrator.py` around line 547 (the `AgentFactory.create_full_agent` call) to confirm all required bio-systems are wired.
 2. **Capture worker not started** — `hippocampus.start_capture_worker()` must be called after session start. Without it, async captures queue but never process.
 3. **Salience too low** — The observation spam filter skips captures with `salience < 0.55` when there's no content. Verify your percepts have `cli_input`, `content`, or `transcript`.
 
@@ -39,7 +39,7 @@ grep "Captured:" ~/.maxim/sim_reports/*/actions.jsonl | wc -l
 
 **Check:** Look for `[HIPPOCAMPUS] Recalled` lines.
 
-1. **Forming pool boost** — Was previously +1.0 (drowning old memories). Now +0.2. If old code, update `memory_agent.py:695`.
+1. **Forming pool boost** — Was previously +1.0 (drowning old memories). Now +0.2. If old code, update `memory_agent.py:839`.
 2. **Echo filter** — Memories formed < 3 seconds ago are filtered from recall (prevents immediate echo). This is correct behavior — wait for the next encounter.
 3. **Empty transcript fallback** — If percepts have no `raw_transcript_text`, the keyword similarity query degrades. Ensure campaign scene text reaches the AUT as `cli_input`.
 4. **Association index empty** — First-run campaigns have no keyword index. Memories need to be captured AND indexed before recall works.
@@ -48,7 +48,7 @@ grep "Captured:" ~/.maxim/sim_reports/*/actions.jsonl | wc -l
 
 **This is normal** during settle periods between encounters. The idle-tick filter skips most of these (salience < 0.55 with no content). If you see excessive captures:
 
-1. Check that the filter is in place: `memory_agent.py` around line 289 should have `min_capture_salience = 0.55 if not has_content else 0.0`.
+1. Check that the filter is in place: `memory_agent.py` around line 328 should have `min_capture_salience = 0.55 if not has_content else 0.0`.
 2. Increase the settle time or reduce loop frequency.
 
 ---
@@ -84,7 +84,7 @@ RPE > 0 indicates the outcome differed from prediction — this is the learning 
 
 ### Symptom: "SCN has 0 registered memories"
 
-1. **SCN not initialized** — Check `simulation/orchestrator.py` creates `aut_scn = SCN()` and passes it to MemoryHub.
+1. **SCN not initialized** — SCN is constructed inside `build_bio_stack` (via `AgentFactory.create_full_agent`). Check `simulation/orchestrator.py` around line 547 to confirm `create_full_agent` is called. The SCN instance is accessible at `_aut_instance.bio_stack.scn`.
 2. **Capture callback missing** — MemoryHub's `__post_init__` should register `_on_memory_captured_scn` as a capture callback. This callback registers each new memory in SCN bins immediately (not just during consolidation).
 3. **All bins same phase** — In short campaigns (< 1 minute), all memories land in the same circadian bin. This is expected — SCN temporal discrimination requires events spread across hours.
 
@@ -98,7 +98,7 @@ Look for `[SCN] Registered XXXXXXXX in circadian=X.XX` lines in the trace. If pr
 
 ### Symptom: "ATL not initialized" or empty concept context
 
-1. **ATL not created in orchestrator** — Check that `aut_atl = ATL(config=ATLConfig())` exists and is passed to MemoryHub.
+1. **ATL not created in orchestrator** — ATL is constructed inside `build_bio_stack` (via `AgentFactory.create_full_agent`). Check `simulation/orchestrator.py` around line 547 to confirm `create_full_agent` is called with a persistence directory. The ATL instance is available at `_aut_instance.bio_stack.atl`.
 2. **Multi-layer wiring missing** — ATL must be non-None for MemoryHub's `_wire_multi_layer()` to run. This wires ConceptExtractor, ConceptGrounder, ConceptContextBuilder, and SemanticPromoter.
 3. **Concept confidence gate** — New concepts start with low confidence (halved growth rate below 3 reinforcements). A single-exposure concept has confidence ~0.55, not 0.6. This is intentional — prevents false generalization.
 
@@ -112,7 +112,7 @@ Look for `[SCN] Registered XXXXXXXX in circadian=X.XX` lines in the trace. If pr
 
 ### Symptom: No pain signals during campaigns
 
-1. **PainBus not initialized** — Check `aut_pain_bus = PainBus()` in orchestrator.
+1. **PainBus not initialized** — Check `aut_pain_bus = build_pain_bus(...)` in orchestrator. Raw `PainBus()` construction now raises `TypeError`; use `build_pain_bus(hippocampus=..., nac=...)` or `build_pain_bus(hippocampus=None, nac=None)` for a no-op bus.
 2. **No subscribers** — PainBus needs at least two subscribers wired: `create_pain_memory_subscriber(hippocampus)` and `create_pain_nac_subscriber(nac)`.
 3. **No entity failure modes** — DM campaigns without SEM entities (just raw text encounters) won't trigger entity-based pain. Pain fires from failure mode thresholds on Entity sensors.
 4. **Refractory period** — PainBus has a 0.5s cooldown per (type, entity). Rapid identical signals are throttled. This is correct — prevents spam.
@@ -127,13 +127,13 @@ Check that `create_pain_nac_subscriber(nac)` is subscribed to the PainBus. Look 
 
 ### Symptom: No forward models forming
 
-1. **Cerebellum not initialized** — Check `aut_cerebellum = Cerebellum(config=CerebellumConfig())` in orchestrator and `aut_memory_hub.cerebellum = aut_cerebellum`.
+1. **Cerebellum not initialized** — Cerebellum is constructed inside `build_bio_stack` (via `AgentFactory.create_full_agent`). Check `simulation/orchestrator.py` around line 547 to confirm `create_full_agent` is called. The cerebellum instance is available at `_aut_instance.bio_stack.cerebellum`.
 2. **Motor programs not in prompt** — `memory_agent.py build_context()` should populate `context.motor_programs` from `cerebellum.programs.find_related()`. Check this wiring exists.
 3. **No embodiment tools** — Cerebellum learns from `ModulatorAffordanceTool` executions. Without SEM entities in the campaign, there are no embodiment tools to observe.
 
 ### Symptom: Forward models exist but not in LLM prompt
 
-Check `prompt_builder.py` lines 1006-1030 — the motor programs section renders if `context.motor_programs` is non-empty. If empty, the `build_context()` wiring to Cerebellum is missing.
+Check `prompt_builder.py` around line 1625 — the motor programs section renders if `context.motor_programs` is non-empty. If empty, the `build_context()` wiring to Cerebellum is missing.
 
 ---
 

@@ -22,8 +22,8 @@ Maxim supports two vision backends. The default engine is fully open-source unde
 
 | Engine | Models | License | Install |
 |--------|--------|---------|---------|
-| **RTM** (default) | RTMDet-m + RTMPose-m | Apache 2.0 | Included in base install |
-| **YOLO** (optional) | YOLOv8 | AGPL-3.0 | `pip install -e '.[yolo]'` |
+| **RTM** (default) | RTMDet-m + RTMPose-m | Apache 2.0 | `pip install -e '.[vision]'` |
+| **YOLO** (optional) | YOLOv8 | AGPL-3.0 | `pip install -e '.[vision,yolo]'` |
 
 Switch engines with the `--segmentation-model` flag:
 
