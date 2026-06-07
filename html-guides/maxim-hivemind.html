@@ -163,16 +163,12 @@
     <h3 class="text-xl font-semibold text-white">Substrate snapshot bundle</h3>
     <p class="text-slate-300 leading-relaxed">The unit of exchange. A versioned, signed archive containing:</p>
     <div class="bg-slate-900 border border-slate-700 rounded-xl p-5">
-<pre class="text-sm text-slate-300 overflow-x-auto"><code>maxim-substrate-v1.0/
-├── manifest.json           # version, contributor metadata, signature, domain tags
-├── nac.json                # causal links + confidence + provenance tags
-├── ec.json                 # concept centroids + cluster metadata
-├── atl.json                # semantic concepts
-├── reflexes.yaml           # innate response specs
-├── cerebellum/             # forward model parameters (binary)
-└── README.md               # optional human-readable description</code></pre>
+<pre class="text-sm text-slate-300 overflow-x-auto"><code>maxim-substrate.zip
+├── manifest.json           # _format_version, schema_version, contributor_id, domain, signature slots
+├── nac.json                # causal links + confidence + provenance tags  (v1.0)
+└── ec.json                 # concept centroids + cluster metadata          (v1.0)</code></pre>
     </div>
-    <p class="text-slate-300 leading-relaxed">Schema-stable, version-aware, scrubbable. Extends the existing <code class="bg-slate-950 px-1 rounded text-xs">_format_version</code> contract per Maxim's v1.0 freeze.</p>
+    <p class="text-slate-300 leading-relaxed">ATL, reflexes, and Cerebellum payloads are reserved for v1.1 (the migration-registry seam is already in place). Schema-stable, version-aware, scrubbable. Extends the existing <code class="bg-slate-950 px-1 rounded text-xs">_format_version</code> contract per Maxim's v1.0 freeze.</p>
 
     <h3 class="text-xl font-semibold text-white pt-2">Substrate domains</h3>
     <p class="text-slate-300 leading-relaxed">Bundles are tagged by <strong>substrate domain</strong> (combat, cooking, medical, fantasy, robotics, conversation, ...). Subscribers opt into specific domains. Two purposes: <strong>relevance</strong> (a medical-AI hobbyist doesn't want combat patterns polluting their substrate) and <strong>curation</strong> (domain maintainers can flag bad patterns).</p>

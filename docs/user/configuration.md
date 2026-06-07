@@ -27,7 +27,7 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 
 **Empty-string env vars are treated as unset.** `export MAXIM_LANE_LARGE_REMOTE_URL=` (a common bash-rc leak) falls through to `config.json` per the C-1 fold.
 
-### Absorbed fields (~22)
+### Absorbed fields (~23)
 
 | Field path | Type | Default | Replaces env var |
 |---|---|---|---|
@@ -40,6 +40,7 @@ This mirrors `kubeconfig`, `gh`, `npm`, and `pyproject.toml`. Mismatches between
 | `lanes.<tier>.remote_url` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_URL` |
 | `lanes.<tier>.remote_model` | string \| null | null | `MAXIM_LANE_<TIER>_REMOTE_MODEL` |
 | `lanes.<tier>.remote_api_key_ref` | path or `keyring:<service>:<account>` | null | `MAXIM_LANE_<TIER>_REMOTE_API_KEY` |
+| `lanes.<tier>.timeout_s` | float > 0 \| null | null (backend default) | `MAXIM_LANE_<TIER>_TIMEOUT_S` |
 | `cloud.enabled` | bool | false | `MAXIM_LLM_CLOUD_ENABLED` |
 | `cloud.max_lanes` | int ≥ 0 | 0 | `MAXIM_MAX_CLOUD_LANES` |
 | `cloud.fallback_model` | string \| null | null | `MAXIM_CLOUD_FALLBACK_MODEL` |
@@ -104,7 +105,7 @@ Environment variables not on this list are **debug / experimental** — see the 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MAXIM_LLM_ENABLED` | Enable LLM inference (1/true). | 0 |
+| `MAXIM_LLM_ENABLED` | Enable LLM inference (1/true). | 1 |
 | `MAXIM_LLM_PROFILE` | Model profile name. | None |
 | `MAXIM_LLM_QUANTIZATION` | Quantization level (Q3_K_M, Q4_K_M, Q5_K_M, Q8_0). | Q4_K_M |
 | `MAXIM_LLM_N_CTX` | Override auto-computed llama.cpp context window. Same as `--llm-n-ctx`. | (formula) |
@@ -185,14 +186,17 @@ These variables are **debug / experimental**: useful for diagnostics or workarou
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MAXIM_SKIP_REMOTE_PROBE` | Bypass the remote-URL probe. CI/test escape hatch. | 0 |
-| `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` | First-attempt probe timeout (clamped 0.2-5.0). | 0.8 |
-| `MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S` | Retry probe timeout (clamped 0.5-10.0). | 2.5 |
+| `MAXIM_REMOTE_PROBE_FIRST_TIMEOUT_S` | First-attempt probe timeout (clamped 0.2-5.0). | 1.5 |
+| `MAXIM_REMOTE_PROBE_RETRY_TIMEOUT_S` | Retry probe timeout (clamped 0.5-10.0). | 8.0 |
 | `MAXIM_REMOTE_PROBE_CACHE_TTL_S` | Probe cache freshness window (clamped 0-600). | 60 |
 | `MAXIM_DRAIN_CACHE_TTL_S` | DrainConstraint mtime cache freshness (clamped 0-60). | 1.0 |
 | `MAXIM_AUTO_DRAIN_THRESHOLD` | Transient failure count before auto-drain (clamped 2-20). | 5 |
 | `MAXIM_AUTO_UNDRAIN_PROBE_INTERVAL_S` | Auto-undrain probe cycle interval (clamped 30-600). | 90 |
 | `MAXIM_PROXY_MAX_CONCURRENT` | Max in-flight requests to upstream (0 = unlimited). | 4 |
 | `MAXIM_PROXY_RATE_LIMIT_RPM` | Per-peer requests/minute (0 = unlimited). | 0 |
+| `MAXIM_PROXY_KEEPALIVE_INTERVAL_S` | SSE keepalive cadence (seconds) during TTFT on streaming responses (clamped 5-90). Prevents cloudflared's ~100s idle timeout from closing the connection on slow 30B+ models. | 30 |
+| `MAXIM_PROXY_CONTEXT_ADMISSION` | Enable the proxy-side context-overflow admission gate (rejects requests whose estimated prompt exceeds `MAXIM_LLM_N_CTX`). `0`/`false`/`no`/`off` to disable. | on when `MAXIM_LLM_N_CTX` resolvable |
+| `MAXIM_PROXY_CONTEXT_OVERHEAD_TOKENS` | Safety margin (tokens) for the char-based token estimator in the admission gate (clamped 0-4096). | 256 |
 
 ### Debug — embodiment
 

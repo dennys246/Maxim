@@ -1,6 +1,6 @@
 # Component Library
 
-54 reusable SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation.
+72 reusable SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation.
 
 **Interactive version with search and filtering:** [dennyschaedig.com/maxim/component-library](https://www.dennyschaedig.com/maxim/component-library)
 
@@ -111,17 +111,26 @@ encounters:
 | `environments/megacorp_lobby` | cyberpunk | security_level, crowd_density, camera_coverage | — |
 | `environments/ripperdoc_clinic` | cyberpunk | lighting, noise_level, sterility, security_level | — |
 
-### Items (7)
+### Items (21)
 
 | Component | Genre | Key Sensors | Failure Modes |
 |-----------|-------|-------------|---------------|
+| `items/healing_potion` | fantasy | doses, potency, freshness | empty, expired |
+| `items/antidote_vial` | fantasy | doses, potency | empty |
+| `items/food_ration` | fantasy | portions, nutrition | empty |
+| `items/water_flask` | fantasy | fill_level, purity | empty |
+| `items/poison_vial` | fantasy | doses, toxicity | poisoned |
+| `items/spellbook` | fantasy | pages_intact, comprehension, ward_strength | pages_crumble, ward_backlash |
+| `items/cursed_amulet` | horror, fantasy | curse_intensity, power, bearer_sanity, bond_strength | curse_overwhelm, sanity_break, bonded |
+| `items/orange_triangular_crystal_vial` | fantasy | doses, potency | empty, toxic |
+| `items/purple_hexagonal_glass_vial` | fantasy | doses, potency | empty |
+| `items/teal_cylindrical_ceramic_vial` | fantasy | doses, potency | empty |
 | `items/laptop` | modern | battery, storage_used, cpu_temp, network_signal | battery_dead, overheating, storage_full |
 | `items/terminal_console` | devops, modern | uptime, cpu_load, disk_usage, security_posture | disk_full, overloaded, breach_detected |
-| `items/spellbook` | fantasy | pages_intact, comprehension, ward_strength | pages_crumble, ward_backlash |
-| `items/healing_potion` | fantasy | doses, potency, freshness | empty, expired |
-| `items/cursed_amulet` | horror, fantasy | curse_intensity, power, bearer_sanity, bond_strength | curse_overwhelm, sanity_break, bonded |
 | `items/radio_transceiver` | modern, historical | battery, signal_strength, frequency | battery_dead, no_signal |
 | `items/lockpick_set` | modern, fantasy | picks_remaining, tension_wrench, quality | picks_broken, wrench_bent |
+
+**Cradle scenario items (7):** `items/cradle_fire_pit`, `items/cradle_blanket`, `items/cradle_cool_air`, `items/cradle_sharp_rock`, `items/cradle_food`, `items/cradle_button`, `items/cradle_lever_door` — scene objects used by the `cradle` developmental arc. Accessible via the registry like any other component.
 
 ### Vehicles (3)
 
@@ -131,10 +140,14 @@ encounters:
 | `vehicles/horse` | fantasy, historical | stamina, hp, loyalty, speed, hunger | exhausted, spooked, collapsed |
 | `vehicles/sailing_ship` | historical | hull_integrity, sail_condition, crew_morale, supplies, wind_strength | hull_breach, becalmed, mutiny, starvation |
 
-### Bodies (2)
+### Bodies (6)
 
 | Component | Genre | Key Sensors | Failure Modes |
 |-----------|-------|-------------|---------------|
+| `bodies/base_humanoid` | neutral | stamina, hunger, visibility, carrying_weight | concussion, exhaustion, crippled, injury, overburdened |
+| `bodies/infant_humanoid` | neutral | hunger, thirst, core_temperature | (drive-pain only) |
+| `bodies/reachy_mini` | neutral (robot) | head_yaw/pitch/roll, body_yaw, camera_health, battery, motor_temperature | thermal_throttling, low_battery, pose_drift, camera_lost |
+| `bodies/host_machine` | modern, devops | cpu_usage, memory_usage, disk_usage, gpu_usage, network_latency | overheating, disk_full, high_latency |
 | `bodies/cybernetic_arm` | cyberpunk | integrity, grip_strength, power, proprioception | servo_failure, power_loss, grip_malfunction |
 | `bodies/megarm_v3` | cyberpunk | integrity, grip_strength, power, proprioception, micro_tools | servo_failure, power_loss, proprioceptive_drift |
 

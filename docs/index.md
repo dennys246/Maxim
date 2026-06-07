@@ -2,9 +2,9 @@
 
 Comprehensive documentation for Maxim's systems and subsystems.
 
-**Version:** 1.0.0 | **Last updated:** 2026-05-09
+**Version:** 0.9.3 | **Last updated:** 2026-06-06
 
-> **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The federated **Maxim Hivemind + Oasis** layer (in plan, not yet implemented) lets multiple Maxims share distilled bio-substrate across instances. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the new docs.
+> **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The **Maxim Hivemind** shareability layer (infrastructure shipped in 0.9.x; `maxim substrate export|import|inspect` CLI available; Oasis persistent-substrate-primary instances target 1.1+) lets multiple Maxims share distilled bio-substrate across instances. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the new docs.
 
 ## Quick Links
 
@@ -39,7 +39,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Substrate-Primary Mode](substrate_primary.md) | NEW (2026-05-09) — parallel AUT mode where bio-substrate selects actions without LLM. Phase -1 prototype shipped; Phase 0 harness in 1.0 (B5). |
-| [Maxim Hivemind + Oasis](hivemind.md) | NEW (2026-05-09) — federated peer-to-peer substrate-sharing layer. Hivemind = collective cognition; Oasis = persistent substrate-primary instance that distills LLM-AUT contributions. Ships 1.1+. |
+| [Maxim Hivemind + Oasis](hivemind.md) | (2026-05-09) — federated peer-to-peer substrate-sharing layer. Hivemind shareability infrastructure (merge, bundle, identity, `maxim substrate` CLI) shipped in 0.9.x; Oasis persistent-substrate-primary instances target 1.1+. |
 | [Roy Harness — Persona Convergence Crucible](plans/persona_convergence_crucible.md) | NEW (2026-05-11) — long-horizon three-arm iteration runner: prime substrate via curriculum, run same held-out test across substrate-primed / persona-injected / neutral arms, report pairwise substrate divergence (`reward_bias_l2`, **`cluster_reward_bias_l2`**, episode + concept deltas). G3 fail-fast preflight + G4 cluster_id reward wire shipped 2026-05-11. CLI: `maxim roy run <spec.yaml>`. |
 
 ### Perception & Attention
@@ -81,7 +81,7 @@ Comprehensive documentation for Maxim's systems and subsystems.
 | Document | Description |
 |----------|-------------|
 | [Bridges](archive/bridges.md) | Cross-system integration, memory bridges |
-| Agent Mesh Guide ([HTML](../htmls-guides/maxim-agent-mesh.html)) | Identity, protocol, transport, knowledge sharing, delegation |
+| Agent Mesh Guide ([HTML](../html-guides/maxim-agent-mesh.html)) | Identity, protocol, transport, knowledge sharing, delegation |
 
 ### Publication & Development
 
@@ -285,7 +285,7 @@ All user data persists under `~/.maxim/` (configurable via `MAXIM_DATA_HOME`). B
 | PainDetector | `util/pain_detector.json` | `--clear-memory pain` |
 | SemanticEmbeddings | `util/semantic_embeddings.npz` | `--clear-memory semantic` |
 | Statistician | `util/statistician_state.json` | `--clear-memory statistician` |
-| Active LLM Model | `util/active_llm_model.txt` | (manual / hot-swap) |
+| Active LLM Model | `util/active_llm_model.{role}.txt` | (manual / hot-swap) |
 | Node ID | `util/node_id.txt` | (persistent mesh identity) |
 | Simulation Reports | `sessions/{session_id}/` | (per-session, not auto-cleared) |
 

@@ -19,7 +19,7 @@ Sleep is not a mode -- it is a processing state the agent enters by calling the 
 Maxim's behavior is controlled by two independent dimensions:
 
 1. **ProcessingState** -- `awake` or `sleep`. Determines whether the agent loop is running.
-2. **OperationalMode** -- `planning`, `supervised`, or `autonomous`. Controls permissions (what tools are available, whether code execution is allowed, filesystem access).
+2. **AutonomyLevel** -- `planning`, `supervised`, or `autonomous` (set via `--autonomy`). Controls permissions (what tools are available, whether code execution is allowed, filesystem access).
 
 ### Planning
 
@@ -93,9 +93,9 @@ You do not have to restart Maxim to change modes.
 
 - "Maxim sleep" -- agent enters sleep
 - "Maxim wake up" -- wake from sleep
-- "Maxim planning" -- switch to planning mode
-- "Maxim supervised" -- switch to supervised mode
-- "Maxim autonomous" -- switch to autonomous mode
+- "Maxim passive" -- switch to planning (passive) mode
+- "Maxim active" -- switch to supervised (active) mode
+- "Maxim singularity" -- switch to autonomous mode
 
 ### Agent Tools
 

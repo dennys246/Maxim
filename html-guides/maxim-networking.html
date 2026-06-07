@@ -238,7 +238,7 @@
         </div>
         <div>
           <h4 class="text-white font-medium mb-1">Per-Peer Rate Limiting</h4>
-          <p class="text-slate-300 leading-relaxed">Configured via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_PROXY_RATE_LIMIT_RPM</code> (default: 60). Each peer is tracked by its API key. Exceeding the limit returns a 429 with a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">Retry-After</code> header.</p>
+          <p class="text-slate-300 leading-relaxed">Configured via <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_PROXY_RATE_LIMIT_RPM</code> (default: 0, disabled). Each peer is tracked by its API key. Exceeding the limit returns a 429 with a <code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">Retry-After</code> header.</p>
         </div>
       </div>
     </div>
@@ -260,8 +260,8 @@
         </tr>
         <tr>
           <td class="py-1.5"><code class="text-green-400 bg-slate-900 px-1.5 py-0.5 rounded text-xs">MAXIM_PROXY_RATE_LIMIT_RPM</code></td>
-          <td class="py-1.5">60</td>
-          <td class="py-1.5">Requests per minute allowed per peer API key</td>
+          <td class="py-1.5">0 (disabled)</td>
+          <td class="py-1.5">Requests per minute allowed per peer API key (0 = unlimited)</td>
         </tr>
       </tbody>
     </table>
@@ -310,9 +310,9 @@ curl -s -H "Authorization: Bearer $MAXIM_API_KEY" \
 # Example output
 {
   "lanes": {
-    "infer":  { "p50_ms": 142, "p99_ms": 890, "fail_pct": 0.3, "tok_per_sec": 48.2 },
-    "review": { "p50_ms": 98,  "p99_ms": 520, "fail_pct": 0.0, "tok_per_sec": 31.7 },
-    "record": { "p50_ms": 67,  "p99_ms": 310, "fail_pct": 0.1, "tok_per_sec": 22.4 }
+    "large":  { "p50_ms": 142, "p99_ms": 890, "fail_pct": 0.3, "tok_per_sec": 48.2 },
+    "medium": { "p50_ms": 98,  "p99_ms": 520, "fail_pct": 0.0, "tok_per_sec": 31.7 },
+    "small":  { "p50_ms": 67,  "p99_ms": 310, "fail_pct": 0.1, "tok_per_sec": 22.4 }
   },
   "uptime_s": 3847,
   "total_requests": 1294
@@ -397,11 +397,11 @@ maxim --language-model mistral-7b
 
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 mt-3">
       <h3 class="text-lg font-semibold text-indigo-400 mb-3">peer.yml Structure</h3>
-      <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto">endpoint: https://maxim.yourdomain.com/v1
+      <pre class="bg-slate-900 text-green-400 p-4 rounded-lg text-sm overflow-x-auto">url: https://maxim.yourdomain.com/v1
 api_key: mk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-timeout_s: 30
-retry_max: 3
-verify_ssl: true</pre>
+# Optional fields:
+# model: mistral-7b        (overrides /v1/models default)
+# is_cloud: true           (forces cloud-lane gate for public URLs)</pre>
     </div>
   </section>
 

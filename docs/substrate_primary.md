@@ -27,7 +27,7 @@ Substrate-primary mode runs **in parallel** to the existing LLM-AUT path. The us
 | **`--aut-mode llm-primary`** (default) | LLM proposes; bio-substrate learns from outcomes | All current Maxim workloads — D&D campaigns, Reachy demos, headless agent runs |
 | **`--aut-mode substrate-primary`** (opt-in, 1.1+) | `NAc.recommend_action()` proposes; LLM not invoked at all on the AUT side | Substrate research; Phase 0/1 grounded-language experiments; eventual user-facing path once mature |
 
-The orchestrator, environment NPCs, imagination designer, and Mother→Hivemind distillation all continue to use LLMs. Substrate-primary mode is specifically about the AUT's action loop.
+The orchestrator, environment NPCs, imagination designer, and Hivemind/Oasis distillation all continue to use LLMs. Substrate-primary mode is specifically about the AUT's action loop.
 
 ## How action selection works in substrate-primary mode
 

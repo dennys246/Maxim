@@ -28,8 +28,8 @@ Memories are promoted based on: use-based pressure (diverse recall contexts accu
 ## Where Memory Lives
 
 ```
-~/.maxim/memory/memories.json          -- Episodic memories (main store)
-~/.maxim/util/learned_bounds.json      -- Workspace safety bounds
+~/.maxim/memory/hippocampus.json       -- Episodic memories (main store)
+~/.maxim/util/workspace_bounds.json    -- Workspace safety bounds
 ~/.maxim/util/focus_learner.json       -- Motor gain learning
 ~/.maxim/util/adaptive_thresholds.json -- Auto-tuned thresholds
 ```

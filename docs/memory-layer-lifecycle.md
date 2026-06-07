@@ -115,8 +115,10 @@ Updated by ConceptExtractor on capture and ConceptGrounder on recall.
 Three operations during sleep cycle:
 
 1. **Promotion to long-term**: High salience (>0.9), high novelty (>0.9),
-   successful user interaction, or high access count (>=5). Marked with
-   `long_term=True` and `consolidated_at` timestamp.
+   successful user interaction, high access count (>=5), or use-based
+   `promotion_pressure` >= 3.0 (context-diverse recall accumulates pressure;
+   wall-clock decay prevents trickle-promotion). Marked with `long_term=True`
+   and `consolidated_at` timestamp.
 
 2. **Compression**: Full `EpisodicMemory` --> `CompressedMemory` (goal, tool,
    success, salience, novelty). Triggered when age > threshold and score < threshold.

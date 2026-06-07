@@ -34,11 +34,10 @@ The key property: **nothing below the decomposer changes.** EC, Hippocampus, Heb
 
 ## Enabling Decomposition
 
-Concept decomposition requires the `semantic` extra (for sentence-transformers) plus spaCy:
+Concept decomposition requires the `semantic` extra (spaCy is included):
 
 ```bash
 pip install pymaxim[semantic]
-pip install spacy
 python -m spacy download en_core_web_sm
 ```
 

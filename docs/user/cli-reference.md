@@ -82,10 +82,10 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 |------|------|---------|-------------|
 | `--sim` | str | None | Simulation mode: `"goal string"` (generative), `path.yaml` (direct injection/DM campaign auto-detect), `interactive` (redirects to generative sim with full interactive stack), `cradle` (sensorimotor developmental sim — requires `--embodiment bodies/infant_humanoid`). Goals matching builtin arcs (cradle, memory_recall, causal_learning, etc.) auto-enable the generative narrator. No argument with bare `maxim`: Rich menu with campaign discovery. |
 | `--sim-goal`, `--goal` | str | None | Simulation goal (alternative to passing goal as `--sim` value) |
-| `--sim-persona`, `--persona` | str | `adversarial` | Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement` |
+| `--sim-persona`, `--persona` | str | `adversarial` | **[DEPRECATED in 0.9 — removed in 1.1]** Orchestrator persona: `adversarial`, `cooperative`, `confused`, `escalating`, `campaign`, `refinement`. Use `--sim-mode` instead. |
+| `--sim-mode` | str | `adversarial` | Orchestrator mode for simulation. Replacement for `--sim-persona`. Accepts the same values plus `neutral`, `researcher`, `sweep`, `dungeon_master`, `adventure_architect`. |
 | `--dm` | flag | | DM campaign mode. With `--sim <goal>`: generate. With `--sim <path.yaml>`: auto-detected. |
 | `--research` | flag | | Enable research report (Writer + Reviewer agents after sim) |
-| `--sim-interactive` | flag | | Enable human-in-the-loop interaction during simulation |
 | `--aut-model` | str | None | Separate model for AUT in dual-LLM research mode |
 | `--aut-mode` | str | `llm-primary` | **[experimental]** AUT action-selection mode. `llm-primary` (default) proposes actions via the LLM. `substrate-primary` skips the LLM and proposes via `NAc.recommend_action()` — Phase -1 of the grounded language acquisition program. See [docs/plans/grounded_language_acquisition.md](../plans/grounded_language_acquisition.md) and [substrate_primary.md](../substrate_primary.md). |
 | `--campaign` | str | None | Campaign YAML(s) for research mode. Glob patterns accepted. |
@@ -96,6 +96,10 @@ Running `maxim` with no arguments launches a Rich interactive menu with campaign
 | `--continuous` | flag | | Never auto-complete, keep testing until `/cancel` |
 | `--no-sim-env` | flag | | Skip simulated filesystem with pain-triggering files |
 | `--sim-report` | str | None | Write structured results to a JSON file (requires `--sim`) |
+| `--report-json` | str | None | Emit the full SimulationReport as JSON. Use `-` for stdout or a file path. |
+| `--seed` | int | None | Global deterministic seed for reproducible fixture runs (sets PYTHONHASHSEED, random, numpy, and torch seeds). |
+| `--reap-orphans` | flag | off | **[experimental]** Kill stale maxim sim processes at startup. Equivalent to `MAXIM_REAP_ORPHANS=1`. |
+| `--no-embodiment` | flag | off | Disable default embodiment in sim mode. Sims default to `bodies/base_humanoid`; pass this flag for pre-0.7 behavior (no body). |
 
 ## Asset Foundry
 

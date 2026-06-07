@@ -157,7 +157,7 @@ maxim peer restart
 
 **Fix:** Leaders in leader mode auto-enable this. If it's still disabled:
 - Leader may not be detected as leader. Check: `maxim doctor` → Role section
-- Need either `MAXIM_ROLE=leader` env var or `/etc/cloudflared/config.yml` present
+- Role detection checks (first match wins): `MAXIM_ROLE=leader` env var, `config.json::role=leader`, `mesh.yml` exists, cloudflared config found at `~/.cloudflared/` or `/etc/cloudflared/`, `peer.yml` exists, `--llm` flag, default
 - Explicitly: `MAXIM_ALLOW_REMOTE_UPDATE=1 maxim`
 
 ### HTTP 409 — No git repository (dev mode on pip leader)

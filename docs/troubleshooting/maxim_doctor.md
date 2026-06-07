@@ -3,8 +3,12 @@
 `maxim doctor` runs platform-aware diagnostics and prints actionable fix hints. Run it first whenever something isn't working.
 
 ```bash
-maxim doctor           # one-shot check
-maxim doctor --retry   # walk through failures, retest after each fix
+maxim doctor                                  # one-shot check
+maxim doctor --retry                          # walk through failures, retest after each fix
+maxim doctor --json                           # machine-readable JSON output
+maxim doctor --as peer <url>                  # peer-mode checks against a remote leader
+maxim doctor --last-decision                  # print last lane-routing decision and exit
+maxim doctor --embodiment weapons/rusty_sword # validate an SEM component ref
 ```
 
 ## Understanding the output
@@ -20,6 +24,17 @@ Each check shows one of:
 Lines starting with `→` are fix instructions. They're copy-pasteable and use your actual IPs/paths (not placeholders).
 
 ## Sections
+
+### Resolved Config
+
+Shown after the Environment section. Walks every field absorbed by `~/.config/maxim/config.json` and displays the effective value with its source (`[source=env]`, `[source=config.json]`, `[source=default]`). Also surfaces:
+
+- API key file health (missing file, wrong permissions, keyring not installed)
+- Shadow warnings when an env var and `config.json` set the same field to different values
+- `peer.yml` deprecation notice (file still present but superseded by `config.json`)
+- Legacy env var migration guidance for installs upgrading from ≤0.9.1
+
+Use this section to answer "what does this instance actually think it's configured as?" without cross-referencing multiple config files.
 
 ### Environment
 
@@ -40,6 +55,10 @@ Lines starting with `→` are fix instructions. They're copy-pasteable and use y
 |-------|--------------|--------------|
 | llama-cpp-server installed | `llama_cpp.server` importable | `pip install -e '.[llm-server]'` |
 | Auto-spawn server | Port 8100 responding | Start `maxim` in another terminal (auto-spawn fires on startup) |
+| LLM model | Active / configured model name | `maxim config set llm.profile <name>` |
+| Context window (n_ctx) | Running server's n_ctx value | `maxim config set llm.n_ctx 16384` |
+| VRAM pressure | KV-cache spillover risk via `nvidia-smi` | Lower n_ctx or use a smaller model |
+| Inference coherence | LLM returns correct answer to `2+2` | Check model is loaded; restart if corrupt |
 
 **"Nothing responding at port 8100":**
 - Expected if you haven't started `maxim` yet — auto-spawn only fires during `maxim` startup
@@ -50,13 +69,13 @@ Lines starting with `→` are fix instructions. They're copy-pasteable and use y
 
 | Check | What it tests | Common fixes |
 |-------|--------------|--------------|
-| Role | leader / client / solo detection | Set `MAXIM_ROLE=leader` or add cloudflared config |
+| Role | leader / peer / solo detection | Set `MAXIM_ROLE=leader` or add cloudflared config |
 | LAN access | Peers can reach this machine | Platform-specific firewall hints |
 
 **Roles explained:**
 - **solo** (default): binds to `127.0.0.1`, only local access
 - **leader**: binds to `0.0.0.0`, accepts peer connections + starts tunnel
-- **client**: peer that uses a remote leader for inference
+- **peer**: uses a remote leader for inference
 
 ### Tunnel (Cloudflare)
 

@@ -20,6 +20,10 @@ The time system provides:
 | `BinEntry` | `scn.py` | Single entry in a bounded bin (memory_id, significance, timestamp) |
 | `TemporalSignature` | `temporal_signature.py` | Multi-scale time encoding |
 | `circular_distance` | `temporal_signature.py` | Cyclic time comparison |
+| `OscillatorNetwork` | `oscillator.py` | Kuramoto coupled oscillator network |
+| `OscillatorConfig` | `oscillator.py` | Configuration for the coupled oscillator |
+| `TemporalEvent` | `temporal_event.py` | Temporally-anchored event envelope for credit attribution |
+| `CircadianContext` | `circadian.py` | Circadian phase snapshot attached to percepts |
 
 ---
 
@@ -214,17 +218,17 @@ imminent = scn.get_anticipatory_signatures(min_imminence=0.5)
 
 ### Anticipatory Pre-Activation
 
-The `TemporalCreditDistributor` uses oscillator predictions to prime the system:
+**Dormant since 2026-05-26.** `TemporalCreditDistributor.anticipatory_pre_activate()` is implemented but the production agent loop has no per-tick caller wired. The method is available for future use when a new experiment earns the behavioral weight.
 
 ```python
-# Called once per tick (before distribute):
+# Would be called once per tick (before distribute) if active:
 dist.anticipatory_pre_activate(agent_id)
 
 # When reward arrives, pre-activated traces are credited normally:
 dist.distribute(agent_id, reward=1.0)
 ```
 
-Anticipation primes NAc eligibility traces for events predicted to be imminent.  When the predicted event actually fires and a reward arrives, the pre-activated trace is credited through the normal fast-decay path.  This closes the SCN→NAc feedback loop.
+When active, anticipation would prime NAc eligibility traces for events predicted to be imminent. When the predicted event fires and a reward arrives, the pre-activated trace is credited through the normal fast-decay path.
 
 ### Key Parameters
 
@@ -317,13 +321,12 @@ Clear with: `maxim --clear-memory scn`
 
 ## Integration with Consolidation
 
-SCN plays a central role in the consolidation pipeline:
+SCN plays a role in the consolidation pipeline:
 
-1. **Acute staging**: After each goal, `ExecAgent._evaluate_staging()` registers the memory's temporal signature in SCN with its significance score
-2. **Wave scoring**: `ConsolidationOrchestrator._compute_wave_score()` queries `scn.query_similar_time()` for temporal recurrence — memories at the same time of day score higher
-3. **Promotion**: When a staged memory is promoted, it is registered in SCN with its final wave score as significance
-4. **Chronic staging**: `find_chronic_candidates()` queries SCN bounded bins (last 24h of circadian bins, same weekday, similar time tolerance) to find recurring patterns
-5. **Eviction**: BoundedBin prevents unbounded growth — low-significance memories are evicted when bins reach capacity
+1. **Memory registration**: `MemoryHub.on_percept_received()` registers each captured memory's temporal signature in SCN with its salience as significance (`integration/memory_hub.py:979`). `TemporalCreditDistributor.record_event()` also registers temporal events for SCN bin indexing.
+2. **Acute staging metadata**: After each goal, `ExecAgent._evaluate_staging()` reads the current `TemporalSignature` and attaches circadian/weekly/monthly/annual phase data (plus oscillator anomaly score) to the staging sidecar JSON. The staging step does NOT itself register memories in SCN.
+3. **Sleep consolidation**: `Hippocampus.sleep_with_clustering()` calls `scn.get_all_clusters()` to group memories by `(hour, day)` temporal cluster, then keeps only the best representatives per cluster. This is the primary SCN→consolidation integration path.
+4. **Eviction**: BoundedBin prevents unbounded growth — low-significance memories are evicted when bins reach capacity.
 
 ---
 

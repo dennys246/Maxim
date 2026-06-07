@@ -66,7 +66,7 @@ When multiple systems share the same functional role, they **must** use the same
 
 ## Allowed Actions
 - Modify code under `src/` with user requests.
-- Add/modify smoke tests under `src/tests/` (offline-by-default; provide explicit opt-in for robot/network).
+- Add/modify smoke tests under `tests/` (offline-by-default; provide explicit opt-in for robot/network).
 - Update documentation (`README.md`, `DECISIONS.md`, `ARCHITECTURE.md`).
 - Creating new file within a `src/` folder if another file would better seperate module functionality, always request approval first.
 - Create files and data in the `sandbox/` folder for creating experimental functionality and to be added directly into the repo if useful.
@@ -273,7 +273,7 @@ This enables biological-like memory decay and reinforcement.
 
 ```python
 from maxim.memory.hippocampus import Hippocampus
-from maxim.integration import MemoryHub
+from maxim.integration import build_memory_hub
 from maxim.time.scn import SCN
 from maxim.decisions.nac import NAc
 from maxim.similarity.ec import EntorhinalCortex
@@ -284,9 +284,8 @@ scn = SCN()
 nac = NAc()
 ec = EntorhinalCortex()
 
-# Create hub
-hub = MemoryHub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec)
-hub.connect()
+# Create hub (use build_memory_hub — raw MemoryHub() requires _allow_raw=True since C6)
+hub = build_memory_hub(hippocampus=hippocampus, scn=scn, nac=nac, ec=ec, agent_id="my_agent")
 
 # Session lifecycle
 hub.on_session_start()
@@ -341,7 +340,7 @@ Separate gains for each direction (handles mechanical asymmetry):
 - `_gain_v_pos` / `_gain_v_neg` - Vertical positive/negative
 
 **Persistence:**
-Learned gains persist to `data/util/focus_learner.json`:
+Learned gains persist to `~/.maxim/util/focus_learner.json`:
 ```json
 {
   "version": 1,
@@ -366,7 +365,7 @@ Dynamically adjusts escalation thresholds based on feedback:
 - LLM queue busy → raise threshold
 - High fear/risk → lower threshold
 
-Persists to `data/util/adaptive_thresholds.json`.
+Persists to `~/.maxim/util/adaptive_thresholds.json`.
 
 ### Components
 
@@ -417,22 +416,13 @@ def review_action(
     self,
     action_type: str,
     action_params: dict[str, Any],
-    harm_registry: HarmRegistry | None = None,
+    *,
+    agent_id: str = "",
     pain_bridge: PainCircuitBridge | None = None,
 ) -> ReviewResult:
     findings = []
 
-    # Tier 1: Predictive harm
-    if harm_registry:
-        prediction = harm_registry.predict_worst(action_type, action_params)
-        if prediction and prediction.risk_score >= 0.4:
-            findings.append(Finding(
-                category=DangerCategory.RESOURCE_EXHAUSTION,
-                description=f"Predicted: {prediction.reason}",
-                severity=RiskLevel.MEDIUM if prediction.risk_score >= 0.7 else RiskLevel.LOW,
-            ))
-
-    # Tier 2: Learned pain prediction
+    # Learned pain prediction via PainCircuitBridge
     if pain_bridge and action_type == "movement":
         should_gate, reason = pain_bridge.should_gate_action(
             action_params.get("action_signature", "")
@@ -455,7 +445,7 @@ def review_action(
 | `JOINT_LIMIT` | Near workspace boundaries | JointLimitHarmPredictor |
 | `MOTOR_STALL` | Position unreachable | JointLimitHarmPredictor |
 | `LLM_TIMEOUT` | Predicted slow LLM response | (Future) |
-| `RESOURCE_EXHAUSTION` | Energy budget exceeded | EnergyCircuitBridge |
+| `RESOURCE_EXHAUSTION` | Energy budget exceeded | EnergyRegistry |
 
 
 ## CONTEMPLATION SYSTEM (ExecAgent Local Chain-of-Thought)
@@ -567,7 +557,7 @@ The energy system monitors resource expenditure to enable energy-aware decision 
 |------|---------|---------|
 | `LLM_TOKENS` | LLMEnergyTracker | input_tokens, output_tokens, model multiplier |
 | `LLM_LATENCY` | LLMEnergyTracker | latency_ms, opportunity cost |
-| `MOTOR_COMMAND` | MovementEnergyTracker | angular_distance, velocity, duration |
+| `MOTOR_COMMAND` | *(type reserved; MovementEnergyTracker removed in cradle update)* | angular_distance, velocity, duration |
 
 ### LLM Energy Tracking
 
@@ -611,18 +601,12 @@ elif registry.is_critical_energy("llm"):
 
 ### NAc Integration for Learning
 
-The EnergyCircuitBridge teaches the system which actions are "expensive":
-
-1. **Record Start**: `bridge.record_action_start("llm:planning:complex")`
-2. **Energy Accumulates**: LLM tracker records tokens, latency
-3. **Record End**: `bridge.record_action_end(event_id)` → Reports to NAc
-4. **Future Prediction**: `bridge.predict_energy("llm:planning:complex")` → Learned cost
-
-High-energy actions get NEGATIVE valence, enabling the system to prefer efficient alternatives.
+The EnergyRegistry provides energy budget signals that can feed into decision gating. High-energy actions can be assigned NEGATIVE valence to let the system prefer efficient alternatives.
 
 ### Location
 
 - Energy Types: `src/maxim/energy/signal.py`
-- Trackers: `src/maxim/energy/llm_tracker.py`, `src/maxim/energy/movement_tracker.py`
+- Trackers: `src/maxim/energy/llm_tracker.py`
 - Registry: `src/maxim/energy/registry.py`
-- NAc Bridge: `src/maxim/bridges/energy_bridge.py`
+
+Note: `MovementEnergyTracker` and `EnergyReactionBridge` (`energy_bridge.py`) were removed in the cradle sensorimotor update. Motor energy tracking is handled by the drive protocol (`embodiment/sem.py::EntropicDriveSpec`).

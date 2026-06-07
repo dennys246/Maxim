@@ -68,22 +68,34 @@ config = DefaultNetworkConfig(
     salience_network_enabled=True,
 )
 
-dn = DefaultNetwork(config)
+dn = DefaultNetwork(maxim=maxim_instance, config=config)
 ```
 
 ### Main Loop
 
-```python
-# Process a frame
-action = dn.process_frame(
-    frame=camera_frame,
-    detections=yolo_detections,
-    current_position=(yaw, pitch),
-)
+DefaultNetwork runs its own internal loop at `update_hz`. Inputs arrive via handler methods; outputs go to registered callbacks.
 
-if action:
-    # Execute the winning behavior's action
-    motor.execute(action)
+```python
+# Start the internal loop (runs at update_hz in a daemon thread)
+dn.start()
+
+# Register a callback to receive winning behavior actions
+dn.add_action_callback(lambda action: motor.execute(action))
+
+# Register a callback for percepts escalated to the deliberative layer
+dn.add_escalation_callback(lambda filtered: agent.process(filtered))
+
+# Feed incoming percepts (call from your perception thread)
+dn.on_percept(percept)
+
+# Or feed raw YOLO detections directly
+dn.on_detections(yolo_detections)
+
+# Inhibit reactive behaviors while deliberating
+dn.inhibit(duration=2.0)
+
+# Stop the network
+dn.stop()
 ```
 
 ---
@@ -135,9 +147,7 @@ if result.escalated:
     filtered = gate.create_filtered_percept(percept, result)
     # Send to LLM for deliberation
     agent.process(filtered)
-else:
-    # Handle reactively in DN (reason will be "routine")
-    dn.handle_locally(percept)
+# else: DN handles reactively via its internal behavior loop
 
 # Set active goal for relevance matching
 gate.set_active_goal("find the red cup")
@@ -237,7 +247,8 @@ class CustomBehavior(Behavior):
 ### Behavior Configuration
 
 ```yaml
-# ~/.maxim/config/default_network.yaml
+# Default config is bundled at data/util/default_network.yaml in the package.
+# Pass a custom path via build_default_network(config_path=...) to override.
 default_network:
   enabled: true
   update_hz: 30.0
@@ -364,14 +375,20 @@ DN manages background operations via throttled task manager:
 
 ```python
 from maxim.default_network import BackgroundTaskManager, ThrottleConfig
+from maxim.default_network.background_tasks import BackgroundTaskConfig
 
-config = ThrottleConfig(
-    salience_update_hz=5.0,
-    attention_update_hz=10.0,
-    behavior_update_hz=30.0,
+bg_config = BackgroundTaskConfig(
+    cleanup_interval_seconds=30.0,
+    stats_interval_seconds=60.0,
 )
 
-manager = BackgroundTaskManager(config)
+throttle = ThrottleConfig(
+    salience_update_hz=10.0,
+    novelty_update_hz=10.0,
+    behavior_eval_hz=15.0,
+)
+
+manager = BackgroundTaskManager(config=bg_config)
 manager.start()
 ```
 
@@ -389,18 +406,16 @@ from maxim.default_network import (
     suggest_exploration_direction,
 )
 
-# Dynamic duration based on distance
+# Dynamic duration based on distance (from_pos, to_pos as (u, v) tuples)
 duration = compute_dynamic_duration(
-    current=(0, 0),
-    target=(45, 20),
-    min_duration=0.1,
-    max_duration=0.5,
+    from_pos=(0, 0),
+    to_pos=(320, 240),
 )
 
-# Get exploration direction
+# Get exploration direction given current position and recent history
 direction = suggest_exploration_direction(
-    gaze_history=history,
-    attention_map=attention,
+    current_pos=(320, 240),
+    recent_positions=recent_pos_list,
 )
 ```
 

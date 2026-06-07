@@ -130,10 +130,10 @@ If `curl` from the peer works but the peer's Maxim process doesn't trigger the
 leader's GPU:
 
 1. Start peer with `MAXIM_LANE_TRACE=1` (new flag, see §4). Logs every lane
-   dispatch: `lane=infer backend=remote-openai url=https://...`.
-2. If `backend=local-llama` → root cause (a): peer.yml loaded after lane init.
+   dispatch: `lane=large backend=remote url=https://...`.
+2. If `backend=local` → root cause (a): peer.yml loaded after lane init.
    Fix: move peer config load before `LaneBackendManager.__init__`.
-3. If `backend=remote-openai` but GPU on leader idles → request is going
+3. If `backend=remote` but GPU on leader idles → request is going
    somewhere else. Check DNS, tunnel routing, or a stray local proxy.
 
 ### Phase 4: Is the leader's GPU actually serving peer requests?
@@ -155,7 +155,7 @@ debug session:
 | Flag | Effect | Default |
 |------|--------|---------|
 | `MAXIM_LEADER_DISABLE_AUTH=1` | Spawn llama-cpp-server without `--api_key`; leader logs a WARNING every 30s | off |
-| `MAXIM_LANE_TRACE=1` | Log every lane dispatch with backend, URL, model, request-id | off |
+| `MAXIM_LANE_TRACE=1` | Log every lane dispatch (large/medium/small) with backend, URL, model, request-id | off |
 | `MAXIM_PEER_LOG_REQUESTS=1` | Peer logs each remote call with status, latency, bytes | off |
 | `MAXIM_TUNNEL_ECHO=1` | Leader logs inbound request headers (for debugging WAF/UA issues) | off |
 

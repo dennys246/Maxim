@@ -26,10 +26,10 @@ maxim --autonomy supervised
 maxim --autonomy autonomous
 ```
 
-You can also grant autonomy for a limited window. After the duration elapses, the system reverts to `planning`:
+You can also grant autonomous mode for a limited window. After the duration elapses, the system reverts to `supervised`:
 
 ```bash
-maxim --autonomy supervised --autonomy-duration 300   # 5 minutes, then back to planning
+maxim --autonomy autonomous --autonomy-duration 300   # 5 minutes, then back to supervised
 ```
 
 If you are unsure which level to use, leave it at `planning`. You can always promote to a higher level mid-session.
@@ -45,14 +45,14 @@ Every tool call the agent wants to make passes through FearAgent before executio
 
 FearAgent classifies threats into eight categories:
 
-- **SYSTEM_DAMAGE** -- Commands that could corrupt the OS or critical software.
-- **DATA_LOSS** -- Destructive file operations, bulk deletes, format commands.
-- **CREDENTIAL_EXPOSURE** -- Access to passwords, tokens, keys, or secrets.
-- **NETWORK_RISK** -- Unexpected outbound connections, data exfiltration patterns.
-- **PRIVILEGE_ESCALATION** -- Attempts to gain root or elevated permissions.
-- **INJECTION** -- Shell injection, code injection, prompt injection patterns.
-- **RESOURCE_ABUSE** -- Fork bombs, infinite loops, excessive resource consumption.
-- **PHYSICAL_HARM** -- Movement commands that could damage the robot or its surroundings.
+- **CODE_EXECUTION** -- subprocess, eval, exec, os.system, dynamic imports.
+- **NETWORK_ACCESS** -- socket, requests, urllib, and other outbound network calls.
+- **FILE_SYSTEM** -- file writes, deletes, and permission changes.
+- **DATA_EXFILTRATION** -- encoding combined with network calls; suspicious data handling.
+- **PRIVILEGE_ESCALATION** -- attempts to gain root or elevated permissions.
+- **PERSISTENCE** -- cron, systemd, autostart, or shell-profile modifications.
+- **OBFUSCATION** -- base64-decode-then-exec, marshal.loads, pickle.loads patterns.
+- **RESOURCE_EXHAUSTION** -- fork bombs, infinite loops, excessive resource consumption.
 
 In `strict_mode`, anything flagged as suspicious is blocked outright. In normal mode, lower-severity items are allowed with a warning logged.
 
@@ -60,7 +60,7 @@ In `strict_mode`, anything flagged as suspicious is blocked outright. In normal 
 
 ## FearGatedExecutor
 
-In addition to FearAgent's per-call review, a dedicated `FearGatedExecutor` wraps the tool execution layer to ensure that every tool call in every mode -- robot, headless, or simulation -- is safety-gated. This operates **independently of DefaultNetwork**, so it applies even when no robot is connected.
+In addition to FearAgent's per-call review, `FearGatedExecutor` is an optional executor wrapper that safety-gates every tool call in any mode -- robot, headless, or simulation. It is enabled by passing `with_fear_gate=True` to `AgentFactory.create_full_agent`. This operates **independently of DefaultNetwork**, so it applies even when no robot is connected.
 
 FearGatedExecutor performs a two-tier review on every tool call:
 
@@ -114,7 +114,6 @@ This means a brand-new Maxim installation starts conservative and gradually gain
 Resource tracking prevents runaway behavior across multiple dimensions:
 
 - **Token limits** -- Per-phase caps on LLM token consumption.
-- **Movement energy** -- Cumulative tracking of motor effort.
 - **Compute time** -- Wall-clock budgets for processing phases.
 
 When any budget is exhausted, the current phase ends gracefully rather than crashing or continuing without limits. This protects against infinite loops, stuck planning cycles, and excessive motor activity.
@@ -146,10 +145,10 @@ File operations are governed by a path-based permission system:
 
 ## Internet Access
 
-Internet access is **disabled by default**. To enable it:
+Internet access is **enabled by default**. To disable it:
 
 ```bash
-maxim --internet-access
+maxim --no-internet
 ```
 
 When internet access is enabled, the following safeguards apply:
@@ -182,9 +181,9 @@ The safety stack, from outermost to innermost:
 
 1. **Autonomy level** -- Controls whether the agent can act at all without asking.
 2. **FearAgent** -- Reviews every tool call for danger patterns.
-3. **FearGatedExecutor** -- Independent executor wrapper ensuring tool safety in all modes (robot, headless, simulation).
+3. **FearGatedExecutor** -- Optional executor wrapper that gates every tool call via FearAgent; active when `with_fear_gate=True`.
 4. **Filesystem policy** -- Restricts which paths can be read, written, or executed.
-5. **Internet policy** -- Blocks network access unless explicitly enabled.
+5. **Internet policy** -- Internet access is on by default; disable with `--no-internet`.
 6. **Predictive harm detection** -- Blocks unsafe movements before they reach hardware.
 7. **Pain detection** -- Monitors the robot during movement and intervenes in real time.
 8. **Workspace bounds** -- Limits the robot to regions it has safely explored.

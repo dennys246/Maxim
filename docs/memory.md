@@ -46,7 +46,7 @@ from maxim.memory import Hippocampus, HippocampusConfig, Perception
 
 config = HippocampusConfig(
     max_nodes=10_000,
-    persistence_path="~/.maxim/util/hippocampus.json",
+    persistence_path="~/.maxim/memory/hippocampus.json",
     indexed_keys=frozenset({"goal", "tool", "object", "person"}),
 )
 
@@ -178,34 +178,27 @@ hippo = Hippocampus(config, strategy=strategy)
 
 ## Sleep Consolidation
 
-During sleep mode, the Hippocampus performs memory consolidation via the **ConsolidationOrchestrator** — a wave-based system that separates consolidation logic from the Hippocampus itself.
+During sleep mode, the Hippocampus performs memory consolidation via `ConsolidationMixin` (implemented in `memory/hippocampus_consolidation.py`).
 
 ### Consolidation Pipeline
 
 ```
-Agent Cycle → Significance Evaluation → Acute Staging (sidecar JSON)
-                                              ↓
-Sleep Mode → ConsolidationOrchestrator.run_wave()
-                ├── Re-evaluate with NAc corroboration
-                ├── Check temporal recurrence (SCN)
-                ├── Check percept recurrence (LSH)
-                ├── Check context recurrence (LSH)
-                ├── Promote if threshold met
-                ├── Expire after 5 waves
-                └── Harvest utility for weight learning
+Agent Cycle → _evaluate_staging() → Acute Staging (sidecar JSON in short_term_memory/)
+                                         (significance score via SignificanceWeightLearner)
+Sleep Mode → hippocampus.sleep()
+                ├── _consolidate(): promote candidates to LONG_TERM
+                │    ├── salience > 0.9
+                │    ├── novelty > 0.9
+                │    ├── user interaction + success
+                │    ├── access_count >= 5
+                │    └── promotion_pressure >= 3.0 (use-based path)
+                ├── Compress: old records → CompressedMemory
+                └── Remove: stale, low-score memories
 ```
-
-### Staging Paths
-
-| Path | Threshold | Trigger | Description |
-|------|-----------|---------|-------------|
-| **Acute** | 0.45 | RPE spike / user input | One-shot learning, lower bar |
-| **Chronic** | 0.60 | Temporal recurrence | Needs evidence, higher bar |
-| **Immediate** | 0.85 | Very high significance | Skip waves, promote instantly |
 
 ### Significance Heuristics
 
-Moments are scored for staging by `SignificanceWeightLearner` using 6 heuristics:
+Completed cycles are scored by `SignificanceWeightLearner` (in `exec_agent`) using 6 heuristics:
 
 | Heuristic | Baseline Weight | Signal |
 |-----------|----------------|--------|
@@ -216,22 +209,9 @@ Moments are scored for staging by `SignificanceWeightLearner` using 6 heuristics
 | `energy_state_change` | 0.05 | Crossed low/critical |
 | `outcome_valence_extremity` | 0.10 | Very good/bad outcome |
 
-Weights learn from long-term utility via associative graph integration (Pearson correlation between heuristic scores and edge growth).
+When the weighted score exceeds `staging_threshold` (default 0.5), a JSON sidecar is written to `data/short_term_memory/`.
 
-### Wave Score Formula
-
-Each consolidation wave re-scores staged moments:
-
-```
-wave_score = 0.30 × significance
-           + 0.20 × nac_corroboration
-           + 0.20 × temporal_recurrence
-           + 0.12 × percept_recurrence
-           + 0.10 × context_recurrence
-           + 0.08 × novelty_decay
-```
-
-### Legacy API
+### API
 
 ```python
 # Trigger sleep consolidation (compress, remove, promote)
@@ -327,11 +307,11 @@ Hippocampus persists to JSON:
 
 ```python
 # Save manually
-hippo.save("~/.maxim/util/hippocampus.json")
+hippo.save("~/.maxim/memory/hippocampus.json")
 
 # Load on init if path exists
 hippo = Hippocampus(HippocampusConfig(
-    persistence_path="~/.maxim/util/hippocampus.json"
+    persistence_path="~/.maxim/memory/hippocampus.json"
 ))
 
 # Auto-save on shutdown
@@ -342,14 +322,16 @@ hippo = Hippocampus(HippocampusConfig(
 
 ```json
 {
-  "version": "3.0",
+  "_format_version": "1.0",
   "saved_at": 1707235200.0,
   "memories": [...],
-  "indices": {...},
-  "metadata": {
-    "total_captures": 1234,
-    "compressions": 56
-  }
+  "context_index": {...},
+  "stats": {...},
+  "compressed_count": 0,
+  "associative_graph": {...},
+  "episodes": [...],
+  "next_episode_ordinal": 0,
+  "node_modality": {}
 }
 ```
 
@@ -414,7 +396,7 @@ Mathematical and statistical cognition. Combines memories across modalities and 
 
 Lives in `src/maxim/math/`. See the Math Cognition guide for details.
 
-Clear with: `maxim --clear-memory angular`
+The Angular Gyrus does not currently have a dedicated `--clear-memory` key.
 
 ---
 
@@ -481,7 +463,7 @@ Clear with: `maxim --clear-memory scn`
 |--------|-------------|
 | **SCN** | Temporal indexing for time-based queries |
 | **NAc** | Causal learning from episodic sequences |
-| **ConsolidationOrchestrator** | Wave-based sleep consolidation with path-dependent thresholds |
+| **ConsolidationMixin** | Sleep consolidation: promote, compress, remove (`hippocampus_consolidation.py`) |
 | **SignificanceWeightLearner** | Learns which heuristics predict useful memories |
 | **SimilarityIndex (LSH)** | O(1) context/percept similarity for recall and consolidation |
 | **SalienceMemoryBridge** | Updates salience from memory patterns |
@@ -605,11 +587,10 @@ Perception/Action/Decision
           ↓
     StateStore (cache)
           ↓
-    Sleep Consolidation (ConsolidationOrchestrator)
-    ├── Load staged sidecars
-    ├── Re-score with wave formula
-    ├── Promote if threshold met (acute: 0.45, chronic: 0.60)
-    ├── Expire after 5 waves
-    ├── Chronic staging (recurrence detection via LSH)
-    └── Harvest utility for weight learning
+    Sleep Consolidation (hippocampus.sleep())
+    ├── _consolidate(): promote candidates to LONG_TERM
+    │    └── criteria: salience/novelty > 0.9, user+success, access_count >= 5,
+    │                  promotion_pressure >= 3.0
+    ├── Compress: old records → CompressedMemory
+    └── Remove: stale, low-score memories
 ```

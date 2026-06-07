@@ -56,11 +56,11 @@
       <p class="text-slate-300">Imagination fires during low-arousal idle states &mdash; the same way you don't daydream while fighting. When the brain encounters something unfamiliar, it constructs a mental model from prior experience to reason about the novel entity before physically interacting with it. The Default Network, which activates during rest and mind-wandering, gates this process.</p>
     </div>
 
-    <p class="text-slate-300 leading-relaxed">When the agent encounters a <strong class="text-white">novel entity</strong> mentioned in percept text that has no existing SEM component, the imagination system designs one in real-time. The result is a fully functional entity with sensors, affordances, and failure modes &mdash; registered ephemerally for the session and available for interaction through auto-generated tools.</p>
+    <p class="text-slate-300 leading-relaxed">When the agent encounters a <strong class="text-white">novel entity</strong> mentioned in percept text that has no existing SEM component, the imagination system designs one in real-time. The result is a fully functional entity with sensors, affordances, and failure modes &mdash; registered ephemerally for the session as an observable scene entity, sensable via <code class="bg-slate-950 px-1 rounded text-xs">sense</code> / <code class="bg-slate-950 px-1 rounded text-xs">sense_presence</code>.</p>
 
     <div class="bg-indigo-900/30 border border-indigo-500/50 rounded-xl p-5">
       <h4 class="text-indigo-400 font-semibold mb-1">Why This Matters</h4>
-      <p class="text-slate-300 text-sm">Without imagination, the agent can only interact with entities that were pre-authored as YAML components. Narration that mentions a "rusted padlock" or "crystal chandelier" would have no tools, no sensors, no failure modes &mdash; the agent could only talk about them, never touch them. Imagination closes this gap by designing components on-the-fly.</p>
+      <p class="text-slate-300 text-sm">Without imagination, the agent can only sense entities that were pre-authored as YAML components. Narration that mentions a "rusted padlock" or "crystal chandelier" would have no sensors or failure modes &mdash; the agent could only talk about them. Imagination closes this gap by designing components on-the-fly, making novel entities observable and substrate-encodable.</p>
     </div>
   </section>
 
@@ -94,7 +94,7 @@ ComponentIndex Two-Layer Lookup
                       &darr;
                 register_ephemeral() + ComponentIndex.add()
                       &darr;
-                Scene-Scoped Tool Registration</div>
+                Scene EntityMap Registration (observe-only)</div>
 
     <p class="text-slate-300 leading-relaxed mt-4">Each stage is a gate. If any gate fails, the pipeline short-circuits gracefully &mdash; the agent falls back to verbal-only interaction with the entity.</p>
   </section>
@@ -228,9 +228,9 @@ entity:
         <h3 class="text-white font-semibold mb-2">During Session</h3>
         <ul class="text-slate-300 text-sm space-y-1 list-disc pl-5">
           <li>Visible to <code class="bg-slate-950 px-1 rounded text-xs">get()</code>, <code class="bg-slate-950 px-1 rounded text-xs">has()</code>, <code class="bg-slate-950 px-1 rounded text-xs">query()</code></li>
-          <li>Tools registered in current scene scope</li>
+          <li>Registered as observe-only scene entity (sensable via <code class="bg-slate-950 px-1 rounded text-xs">sense</code> / <code class="bg-slate-950 px-1 rounded text-xs">sense_presence</code>)</li>
           <li>Added to ComponentIndex for dedup</li>
-          <li>Full SEM interaction (sensors, affordances, failures)</li>
+          <li>Affordance metadata present for substrate encoding; agent interacts via its own body tools</li>
         </ul>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
@@ -271,18 +271,17 @@ On session end (entity discard):
 
   <!-- Scene-Scoped Tools -->
   <section class="space-y-4">
-    <h2 id="scene-tools" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Scene-Scoped Tool Registration</h2>
+    <h2 id="scene-tools" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Scene Entity Registration</h2>
 
-    <p class="text-slate-300 leading-relaxed">Imagined entities get their tools registered into the current <strong class="text-white">scene scope</strong> (I3). This means:</p>
+    <p class="text-slate-300 leading-relaxed">Imagined entities are registered as <strong class="text-white">observe-only scene entities</strong> in the EntityMap. The agent can sense them but cannot call their affordances directly as tools. The agent interacts using its own body&rsquo;s tools (the self-entity), not the scene entity&rsquo;s affordances. This means:</p>
 
     <ul class="space-y-2 text-slate-300 list-disc pl-5">
-      <li>Tools activate when the entity enters the scene and deactivate when it leaves</li>
-      <li>An <strong class="text-white">active tool cap</strong> prevents prompt overflow from many imagined entities</li>
-      <li>The <strong class="text-white">executor gate</strong> rejects calls to deactivated tools with informative errors</li>
-      <li>Least-recently-used tools are deactivated first when the cap is reached</li>
+      <li>Sensable via <code class="bg-slate-950 px-1 rounded text-xs">sense</code> and <code class="bg-slate-950 px-1 rounded text-xs">sense_presence</code> tools</li>
+      <li>Affordance names are encoded through the substrate path for concept transfer (EC &rarr; ATL &rarr; NAc eligibility)</li>
+      <li>The scene-scoped tool cap (I3) applies to the agent&rsquo;s own body tools, not to imagined scene entities</li>
     </ul>
 
-    <p class="text-slate-300 leading-relaxed mt-3">This integrates naturally with the <a href="/maxim/tools#scene-scoped" class="text-indigo-400 hover:text-indigo-300 no-underline">scene-scoped tool system</a> &mdash; imagined entities follow the same lifecycle as pre-authored ones.</p>
+    <p class="text-slate-300 leading-relaxed mt-3">This integrates with the <a href="/maxim/tools#scene-scoped" class="text-indigo-400 hover:text-indigo-300 no-underline">scene-scoped tool system</a> &mdash; imagined entities follow the same observe-only lifecycle as pre-authored scene entities.</p>
   </section>
 
   <!-- ImaginationCache -->
@@ -390,7 +389,7 @@ while running:
       </a>
       <a href="/maxim/component-library" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline">
         <h3 class="text-indigo-400 font-semibold mb-1">Component Library</h3>
-        <p class="text-slate-400 text-sm">65+ pre-authored entities. ComponentIndex searches these before imagining.</p>
+        <p class="text-slate-400 text-sm">80+ pre-authored entities. ComponentIndex searches these before imagining.</p>
       </a>
       <a href="/maxim/embodiment#asset-foundry" class="bg-slate-800 border border-slate-700 rounded-xl p-5 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline">
         <h3 class="text-indigo-400 font-semibold mb-1">Asset Foundry</h3>

@@ -5,12 +5,14 @@ All notable changes to pymaxim will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-> **Note (2026-05-11):** versions 0.6.0 → 0.8.1 shipped to PyPI without
+> **Note (2026-05-11, updated 2026-06-06):** versions 0.6.0 → 0.8.1 shipped to PyPI without
 > matching CHANGELOG entries. The summaries for that window live in
 > [docs/plans/v1_refinement.md](docs/plans/v1_refinement.md) and the
 > [HTML roadmap](html-guides/maxim-roadmap.html). The 0.9.0 entry below
-> picks up the convention again; backfilling 0.6/0.7/0.8 from the
-> roadmap is tracked as documentation debt and can land in a follow-up.
+> picks up the convention again. Versions 0.9.1 → 0.9.3 (current) also shipped without
+> CHANGELOG entries; those changes are tracked in the project memory and plan docs under
+> `docs/plans/`. Backfilling 0.6/0.7/0.8/0.9.x from the roadmap is tracked as
+> documentation debt and can land in a follow-up.
 
 ## [0.9.0] - 2026-05-11
 

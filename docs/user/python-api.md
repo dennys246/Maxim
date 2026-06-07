@@ -164,7 +164,7 @@ import maxim
 hippo = maxim.create.hippocampus(persistence_path="/tmp/memory.json")
 hippo.store_observation("The wolf was near the cave entrance")
 hippo.store_observation("The key was under the mat")
-memories = hippo.recall("wolf", limit=3)
+memories = hippo.recall(query="wolf", limit=3)
 hippo.save()  # Persist to disk
 
 # Causal learning
@@ -293,7 +293,8 @@ for category, names in maxim.create.templates().items():
     print(f"{category}: {', '.join(names)}")
 
 # From code
-from maxim import Entity, Sensor, Modulator
+from maxim import Entity
+from maxim.embodiment.sem import Sensor, Modulator
 
 robot_arm = Entity(
     name="left_arm",

@@ -14,7 +14,7 @@ maxim --sim "test memory recall under interference"
 maxim --sim "test causal learning" --research
 
 # Interactive mode (human-in-the-loop)
-maxim --sim "adventure in the forest" --sim-interactive
+maxim --sim "adventure in the forest" --interactive
 
 # YAML campaign (direct injection, bypass generative)
 maxim --sim scenarios/experiments/hippocampal_recall_short.yaml
@@ -106,25 +106,17 @@ Large models can run multi-arc campaigns. When one arc completes:
 
 ## Interactive Mode
 
-With `--sim-interactive`, the narrator can pause for human input:
+With `--interactive`, the agent can pause for human input via the `request_interaction` tool:
 
 ```bash
-maxim --sim "adventure in the dungeon" --sim-interactive
+maxim --sim "adventure in the dungeon" --interactive
 ```
 
-The `ask_user` tool prompts via stdin with randomized timeouts (~10s). Timeout escalation:
-
-| Consecutive Timeouts | Behavior |
-|---------------------|----------|
-| 1st | Gentle nudge — NPC shifts impatiently |
-| 2nd-3rd | World reacts — opportunities close, new paths open |
-| 4th+ | Passive protagonist — story happens TO the AUT |
-
-All interactions are recorded to `user_interactions.jsonl`.
+The `request_interaction` tool presents choices or asks questions and waits for the user to type a response. Unanswered prompts time out after `timeout_sec` (default 300s) and the agent proceeds with its best judgment.
 
 ## YAML Export
 
-Every generative run exports turns to `data/sim_reports/{session_id}/generated_campaign.yaml`. This enables:
+Every generative run exports turns to `~/.maxim/sim_reports/{session_id}/generated_campaign.yaml`. This enables:
 - **Replay**: `maxim --sim generated_campaign.yaml`
 - **A/B testing**: same narrative, different AUT models
 - **Debugging**: inspect what the narrator generated vs. arc template
@@ -173,7 +165,7 @@ maxim --benchmark all --models mistral-7b,qwen2.5   # All tiers
 | `simulation/narrator.py` | Narrator (two-call + single-call), system prompts |
 | `simulation/generative_runner.py` | Main runner, YAML export, SEM entity loading |
 | `simulation/plan_arc_bridge.py` | Plan-to-arc translation, narrator context enrichment, bridge-and-compress |
-| `simulation/tools_user.py` | ask_user tool, JSONL audit, replay, timeout escalation |
+| `interactive/prompts.py` | PromptRequest/PromptHandler — routes `request_interaction` calls to the user |
 | `mesh/identity.py` | AgentProfile with entity_type + log_prefix |
 
 ## CLI Reference
@@ -183,7 +175,7 @@ maxim --benchmark all --models mistral-7b,qwen2.5   # All tiers
 | `--sim <goal>` | Goal string → generative campaign |
 | `--sim <path.yaml>` | YAML path → direct injection campaign |
 | `--research` | Generate research report after sim |
-| `--sim-interactive` | Enable human-in-the-loop |
+| `--interactive` | Enable human-in-the-loop (TTY default: ON) |
 | `--benchmark [tiers]` | Top-level benchmark command |
 | `--models <list>` | Models for benchmark |
 | `--continuous` | Never auto-complete |

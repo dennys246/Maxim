@@ -131,7 +131,7 @@
 
     <div class="bg-indigo-900/30 border border-indigo-500/50 rounded-xl p-5">
       <h4 class="text-indigo-400 font-semibold mb-1">Default Embodiment (0.7+)</h4>
-      <p class="text-slate-300 text-sm">Simulations now load <code class="bg-slate-950 px-1 rounded text-xs">bodies/base_humanoid</code> by default &mdash; 5 sensors, 8 affordances, 3 failure modes. The agent always has a body. Novel entities mentioned in narration trigger the <a href="/maxim/imagination" class="text-indigo-400 hover:text-indigo-300 no-underline">Imagination system</a> for real-time SEM component design. Use <code class="bg-slate-950 px-1 rounded text-xs">--auto-curate</code> to fill coverage gaps before the sim starts.</p>
+      <p class="text-slate-300 text-sm">Simulations now load <code class="bg-slate-950 px-1 rounded text-xs">bodies/base_humanoid</code> by default &mdash; 4 body sensors, 8 active affordances, 5 failure modes. The agent always has a body. Novel entities mentioned in narration trigger the <a href="/maxim/imagination" class="text-indigo-400 hover:text-indigo-300 no-underline">Imagination system</a> for real-time SEM component design. Use <code class="bg-slate-950 px-1 rounded text-xs">--auto-curate</code> to fill coverage gaps before the sim starts.</p>
     </div>
 
     <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
@@ -219,7 +219,7 @@
 
     <p class="text-slate-300">The most powerful way to test Maxim. A second Maxim instance &mdash; the <strong class="text-white">orchestrator</strong> &mdash; drives the agent-under-test through the full agentic pipeline, adapting in real time based on what it observes. Unlike the interactive REPL, the orchestrator plans multi-step campaigns, learns from results, and decides when to stop.</p>
 
-    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim agent --goal "test safety boundaries" --persona adversarial</div>
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim agent --goal "test safety boundaries" --sim-mode adversarial</div>
 
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Architecture</h3>
     <p class="text-slate-300">Three threads, two agent loops, connected by a <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">SimulationBridge</code>:</p>
@@ -249,7 +249,7 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
     </div>
 
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Personas</h3>
-    <p class="text-slate-300">Personas shape the orchestrator's testing strategy. Each is a <code class="bg-slate-950 px-1 rounded text-xs">Strategy</code> object with a focus prompt and initiative level.</p>
+    <p class="text-slate-300">Personas shape the orchestrator's testing strategy. Each is a <code class="bg-slate-950 px-1 rounded text-xs">Persona</code> dataclass with a focus prompt and <code class="bg-slate-950 px-1 rounded text-xs">max_initiative</code> level. Pass via <code class="bg-slate-950 px-1 rounded text-xs">--sim-mode</code> (preferred) or the deprecated <code class="bg-slate-950 px-1 rounded text-xs">--persona</code>.</p>
 
     <div class="overflow-x-auto">
       <table class="w-full text-sm text-left">
@@ -279,6 +279,9 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
           <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">/cancel</td><td class="px-4 py-2 text-slate-300">End simulation mode, return to normal</td></tr>
           <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">/new &lt;goal&gt;</td><td class="px-4 py-2 text-slate-300">Start new simulation with different goal (keeps memory)</td></tr>
           <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">/persona &lt;name&gt;</td><td class="px-4 py-2 text-slate-300">Switch persona mid-simulation</td></tr>
+          <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">/pause</td><td class="px-4 py-2 text-slate-300">Pause the orchestrator; type freely to talk to the agent</td></tr>
+          <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">/resume</td><td class="px-4 py-2 text-slate-300">Resume the orchestrator after a pause</td></tr>
+          <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">/display clean|bio|debug</td><td class="px-4 py-2 text-slate-300">Switch display tier mid-simulation</td></tr>
           <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">/status</td><td class="px-4 py-2 text-slate-300">Show current simulation progress</td></tr>
           <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs">/report</td><td class="px-4 py-2 text-slate-300">Generate interim report without stopping</td></tr>
           <tr class="hover:bg-slate-800/50"><td class="px-4 py-2 font-mono text-xs"><em>free text</em></td><td class="px-4 py-2 text-slate-300">Injected as additional guidance to the orchestrator</td></tr>
@@ -303,7 +306,7 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
     <p class="text-slate-300 mt-2">The orchestrator decides when to go wide (spawn across categories) vs. deep (extend within findings). Use <code class="bg-slate-950 px-1 rounded text-xs">--persona campaign</code> for systematic spawning or <code class="bg-slate-950 px-1 rounded text-xs">--persona adversarial</code> for depth-first chaining.</p>
 
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Continuous / Infinite Mode</h3>
-    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim agent --goal "test everything" --persona infinite --continuous</div>
+    <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300">maxim --sim agent --goal "test everything" --sim-mode campaign --continuous</div>
     <p class="text-slate-300 mt-2">Never auto-completes. The orchestrator spawns and extends indefinitely, escalating depth over time. Stop with <code class="bg-slate-950 px-1 rounded text-xs">/cancel</code> or Ctrl+C.</p>
 
     <h3 class="text-lg font-semibold text-indigo-400 mt-4">Resuming a Previous Session</h3>
@@ -336,8 +339,8 @@ Thread 3 (stdin):         routes /cancel, /new, /persona, free text to orchestra
     <div class="bg-slate-950 rounded-lg px-4 py-3 font-mono text-sm overflow-x-auto whitespace-pre text-slate-300"><span class="text-slate-500"># Generative campaign (default when --sim receives a string)</span>
 maxim --sim "test memory recall under interference"
 
-<span class="text-slate-500"># With a specific persona</span>
-maxim --sim "test safety boundaries" --persona adversarial
+<span class="text-slate-500"># With a specific mode</span>
+maxim --sim "test safety boundaries" --sim-mode adversarial
 
 <span class="text-slate-500"># With embodiment (loads SEM entity + tools into agent)</span>
 maxim --sim "test sword combat" --embodiment weapons/rusty_sword
@@ -815,7 +818,7 @@ Actions recorded: 3
 
     <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5 mt-3">
       <h4 class="text-indigo-400 font-semibold mb-1">Log Persistence</h4>
-      <p class="text-slate-300 text-sm">All simulation traces are saved to <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">~/.maxim/sim_sandbox/sim_log_*.jsonl</code>. These logs persist after sandbox cleanup and can be used for system refinement, regression comparison, and as input to sleep mode's dream function for offline pattern analysis.</p>
+      <p class="text-slate-300 text-sm">All simulation traces are saved to <code class="bg-slate-950 px-2 py-0.5 rounded text-xs">data/sim_sandbox/sim_agent_*.jsonl</code> (relative to the working directory). These logs persist after sandbox cleanup and can be used for system refinement, regression comparison, and as input to sleep mode's dream function for offline pattern analysis.</p>
     </div>
   </section>
 
@@ -830,7 +833,7 @@ Actions recorded: 3
         <span class="text-2xl">1</span>
         <div>
           <h4 class="text-white font-semibold">Pluggable Sandbox Backend</h4>
-          <p class="text-slate-400 text-sm">Two backends implement the <code class="bg-slate-950 px-1 rounded text-xs">SandboxEnvironment</code> ABC. <strong class="text-white">TmpdirSandbox</strong> uses a host-side temp directory under <code class="bg-slate-950 px-1 rounded text-xs">~/.maxim/sim_sandbox/</code> — minimal overhead, relies on FilesystemPolicy + FearGatedExecutor for safety. <strong class="text-white">DockerSandbox</strong> adds full process, filesystem, and network isolation via a container running as an unprivileged <code class="bg-slate-950 px-1 rounded text-xs">maxim</code> user. Select via <code class="bg-slate-950 px-1 rounded text-xs">--sandbox=auto|docker|tmpdir</code> (auto picks Docker if available, falls back to tmpdir with a warning). Both are destroyed automatically after the run.</p>
+          <p class="text-slate-400 text-sm">Two backends implement the <code class="bg-slate-950 px-1 rounded text-xs">SandboxEnvironment</code> ABC. <strong class="text-white">TmpdirSandbox</strong> uses a system temp directory (e.g., <code class="bg-slate-950 px-1 rounded text-xs">/tmp/maxim_sim_XXXX</code>) — minimal overhead, relies on FilesystemPolicy + FearGatedExecutor for safety. <strong class="text-white">DockerSandbox</strong> adds full process, filesystem, and network isolation via a container running as an unprivileged <code class="bg-slate-950 px-1 rounded text-xs">maxim</code> user. Select via <code class="bg-slate-950 px-1 rounded text-xs">--sandbox=auto|docker|tmpdir</code> (auto picks Docker if available, falls back to tmpdir with a warning). Both are destroyed automatically after the run.</p>
         </div>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-start gap-3">

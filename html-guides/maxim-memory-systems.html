@@ -171,16 +171,13 @@ class MemoryLayer(ABC):
 FORMING    &rarr;  Initial observation, still accumulating context
                Protected from eviction during the active session
 
-WORKING    &rarr;  Enriched with importance scores and decay rates
-               Protected from eviction during the active session
-
 SHORT_TERM &rarr;  Committed to the Hippocampus for storage
                Subject to consolidation during sleep
 
 LONG_TERM  &rarr;  Survived consolidation waves
                Permanent storage in the Hippocampus</div>
 
-    <p class="text-slate-300 leading-relaxed">While observations are forming and working, each one is wrapped in a <span class="font-mono text-xs text-blue-400">WorkingMemoryEntry</span>&mdash;a container that tracks how important, how fresh, and how relevant the observation is, independently of the memory record itself. The ATL can also inject predicted outcomes into forming memories before they're committed, letting the system pre-fill expectations like "last time I saw this, X happened."</p>
+    <p class="text-slate-300 leading-relaxed">While observations are in the FORMING tier, each one is wrapped in a <span class="font-mono text-xs text-blue-400">WorkingMemoryEntry</span>&mdash;a container that tracks how important, how fresh, and how relevant the observation is, independently of the memory record itself. The ATL can also inject predicted outcomes into forming memories before they're committed, letting the system pre-fill expectations like "last time I saw this, X happened."</p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
@@ -921,7 +918,7 @@ will carry the "this went badly" signal.</div>
     <p class="text-slate-300 leading-relaxed">At retrieval time, <code class="bg-slate-950 px-1 rounded text-xs">retrieve_on_cue(include_valence=True)</code> returns results annotated with their accumulated valence. The agent's prompt context includes this affective coloring, enabling reasoning like "I've done something similar before and it went badly" without requiring explicit causal chain reconstruction.</p>
 
     <h3 class="text-lg font-semibold text-white mt-6 mb-3">distribute_reward: Reactions to NAc Learning</h3>
-    <p class="text-slate-300 leading-relaxed">Reactions dispatched through the <code class="bg-slate-950 px-1 rounded text-xs">ReactionBus</code> reach the NAc via the <code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> subscriber. This adjusts per-node <code class="bg-slate-950 px-1 rounded text-xs">reward_bias</code> values in the Hebbian graph and modulates EC similarity thresholds: positive rewards tighten thresholds (the system becomes more selective), while negative rewards loosen them (the system becomes more sensitive to potential matches, casting a wider net to avoid repeating mistakes).</p>
+    <p class="text-slate-300 leading-relaxed">Reactions dispatched through the <code class="bg-slate-950 px-1 rounded text-xs">ReactionBus</code> reach the NAc via the <code class="bg-slate-950 px-1 rounded text-xs">distribute_reward</code> subscriber. This adjusts per-node <code class="bg-slate-950 px-1 rounded text-xs">reward_bias</code> values in the Hebbian graph and modulates EC similarity thresholds: positive rewards raise the bias, which <em>lowers</em> the EC recognition threshold for rewarded nodes (the system becomes more permissive toward patterns it has been rewarded for). The bias clamps to [0, max_reward_bias] — negative or pain signals reduce bias toward zero but cannot invert it, so recognition returns toward the baseline threshold rather than narrowing below it.</p>
   </section>
 
   <!-- Episode Boundaries -->
@@ -942,7 +939,7 @@ CaptureEvent fields checked at each tick:
 
     <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
       <h4 class="text-red-400 font-semibold mb-2">salience_spike_rule</h4>
-      <p class="text-slate-300 text-sm">When a pain signal with intensity &ge; 0.7 fires, the current episode is immediately finalized (with its accumulated negative valence) and a new episode begins. This mirrors how biological trauma creates sharp memory boundaries &mdash; you remember the moment before and after a painful event as distinct episodes, not a continuous stream. The <code class="bg-slate-950 px-1 rounded text-xs">CaptureEvent.salience_spike</code> field carries this signal from the PainBus into the episode capture pipeline.</p>
+      <p class="text-slate-300 text-sm">When a pain signal with intensity &ge; 0.5 fires, the current episode is immediately finalized (with its accumulated negative valence) and a new episode begins. This mirrors how biological trauma creates sharp memory boundaries &mdash; you remember the moment before and after a painful event as distinct episodes, not a continuous stream. The <code class="bg-slate-950 px-1 rounded text-xs">CaptureEvent.salience_spike</code> field carries this signal from the PainBus into the episode capture pipeline.</p>
     </div>
   </section>
 

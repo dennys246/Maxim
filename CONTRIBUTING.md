@@ -11,7 +11,7 @@ cd Maxim
 pip install -e ".[test]"
 
 # Run tests
-python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
 
 # Lint
 ruff check src/ tests/
@@ -42,8 +42,8 @@ Maxim has a strict layer dependency graph. See `ARCHITECTURE.md` for full detail
 # Fast: just the module you changed
 python -m pytest tests/unit/test_your_module.py -v
 
-# Full suite (exclude known slow integration test)
-python -m pytest tests/ -x -q --ignore=tests/integration/test_memory_hub.py
+# Full suite (exclude known slow integration test and slow-marked tests)
+python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py
 
 # If touching memory/, decisions/, integration/:
 python -m pytest tests/integration/test_memory_hub.py -q
@@ -60,7 +60,7 @@ python -m pytest tests/integration/test_memory_hub.py -q
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feat/my-feature`)
 3. Make your changes with tests
-4. Run `ruff check src/ tests/` and `python -m pytest tests/ -x -q`
+4. Run `ruff check src/ tests/` and `python -m pytest tests/ -x -q -m "not slow" --ignore=tests/integration/test_memory_hub.py`
 5. Commit with a descriptive message (see format below)
 6. Push to your fork and open a PR
 

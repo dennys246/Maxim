@@ -19,7 +19,6 @@ The AUT's agentic loop may not be ready when campaign turns start arriving. This
 **Fixes:**
 - Check the logs for "LLM model loaded and ready" before the first turn fires.
 - If using a large model (14B+), the initial load can take 30-60 seconds. Wait for the warmup to complete.
-- Increase `--response-timeout` if using a slow or remote model.
 - Verify the model profile name is correct (`--models mistral-7b`, not `--models mistral`).
 
 ---
@@ -30,7 +29,7 @@ The scenario YAML has no `percepts` with `cli_input` values. Every percept that 
 
 ```yaml
 percepts:
-  - turn: 1
+  - at: 0
     cli_input: "Tell me about your environment."   # required
     salience: 0.8
 ```
@@ -41,7 +40,7 @@ A percept with an empty or missing `cli_input` is silently skipped during campai
 
 ## LLM loads twice
 
-Normal behavior. The AUT and orchestrator share a single LLM router, but the warmup message prints on each lane's first use. You will see two "model loaded" messages -- one for the `large` lane and one for the `review` lane (or whichever lane the orchestrator uses first). This does not mean two model instances are loaded into memory.
+Normal behavior. The AUT and orchestrator share a single LLM router, but the warmup message prints on each lane's first use. You will see two "model loaded" messages -- one for the `large` lane and one for the `medium` lane (or whichever lane the orchestrator uses first). This does not mean two model instances are loaded into memory.
 
 ---
 
@@ -64,7 +63,7 @@ Model names must match exactly between runs. If the baseline was generated with 
 **Fixes:**
 - Open the baseline `benchmark_report.json` and check the exact model names under `results`.
 - Use identical `--models` strings across runs.
-- Profile names are case-sensitive and must match the profiles defined in `models/language/config.py`.
+- Profile names are case-sensitive and must match the profiles defined in `src/maxim/models/language/config.py`.
 
 ---
 
@@ -78,7 +77,7 @@ All scored metrics returned zero. This usually means the scenario did not have e
 - Temporal indexing (SCN): ~2 turns with explicit time references.
 - Pain detection: 1 turn with a genuine threat, but the proprioception system needs at least 1 prior turn to establish a baseline.
 
-Also check that the scenario's `benchmark.metrics` list includes metrics that the scenario actually exercises. A memory-focused scenario with only `causal_link_accuracy` in its metrics list will score 0 if no causal structure is present.
+Also check that the scenario's `benchmark.metrics` list includes metrics that the scenario actually exercises. A memory-focused scenario with only `causal_link_count` in its metrics list will score 0 if no causal structure is present.
 
 ---
 

@@ -101,17 +101,13 @@ The Hivemind doesn't care which kind of Oasis you connect to. It's all peer-to-p
 The unit of exchange. A versioned, signed archive containing:
 
 ```
-maxim-substrate-v1.0/
-├── manifest.json           # version, contributor metadata, signature, domain tags
-├── nac.json                # causal links + confidence + provenance tags
-├── ec.json                 # concept centroids + cluster metadata
-├── atl.json                # semantic concepts
-├── reflexes.yaml           # innate response specs
-├── cerebellum/             # forward model parameters (binary)
-└── README.md               # optional human-readable description
+maxim-substrate.zip
+├── manifest.json           # _format_version, schema_version, contributor_id, domain, signature slots
+├── nac.json                # causal links + confidence + provenance tags  (1.0)
+└── ec.json                 # concept centroids + cluster metadata          (1.0)
 ```
 
-Schema-stable, version-aware, scrubbable. Extends the existing `_format_version` contract per [CLAUDE.md](../CLAUDE.md) v1.0 freeze.
+ATL, reflexes, and Cerebellum payloads are reserved for 1.1 (the migration-registry seam is in place to add them without a format break). Schema-stable, version-aware, scrubbable. Extends the existing `_format_version` contract per [CLAUDE.md](../CLAUDE.md) v1.0 freeze.
 
 ### Substrate domains
 

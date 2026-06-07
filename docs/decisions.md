@@ -31,7 +31,7 @@ NAc learns from two sources at runtime:
 
 NAc predictions are surfaced in the LLM prompt via `StructuredContext.causal_context` (built by `MemoryAgent._build_causal_context()`). The LLM sees learned expectations like "stealth past guard → success (confidence=0.7)" before making decisions.
 
-In the Agent Mesh, NAc links can be shared between peers via `CausalLinkProvider`/`CausalLinkReceiver` with trust-level transfer discounts.
+In Hivemind bundles, NAc links can be shared between peers via `hivemind/merge.py::nac_merge` (Bayesian aggregation with provenance tracking).
 
 ---
 
@@ -64,15 +64,15 @@ class CausalLink:
     outcome_valence: Valence  # POSITIVE, NEUTRAL, NEGATIVE
 
     # Temporal relationship
-    delta: TemporalDelta      # Time between event and outcome
+    temporal_delta: TemporalDelta  # Time between event and outcome
 
     # Learning state
-    strength: float           # 0.0-1.0, learned via Rescorla-Wagner
+    predicted_value: float    # 0.0-1.0, learned via Rescorla-Wagner (V)
     confidence: float         # How reliable is this link?
     observation_count: int    # Number of observations
 
     # Context matching
-    context: dict[str, Any]   # Conditions when this link applies
+    event_context: dict[str, Any]  # Conditions when this link applies
 ```
 
 ---
@@ -158,7 +158,7 @@ class OutcomePrediction:
     predicted_outcome: str        # Expected outcome signature
     predicted_valence: Valence    # POSITIVE/NEUTRAL/NEGATIVE
     confidence: float             # 0.0-1.0
-    supporting_links: int         # Number of observations
+    contributing_links: list[str] # CausalLink IDs that informed this
     context_match: float          # How well context matches
 ```
 
@@ -217,7 +217,6 @@ context = {
 | **EscalationLearningBridge** | Learn escalation thresholds |
 | **ExecAgent Contemplation** | Learn when plan critique+refine improves outcomes; auto-tune contemplation gates |
 | **SignificanceWeightLearner** | RPE magnitude is the top-weighted significance heuristic (0.35) for memory staging |
-| **ConsolidationOrchestrator** | NAc corroboration (has event→outcome pattern strengthened?) contributes 0.20 of wave score |
 
 ### Example: Pain Learning Flow
 
@@ -294,7 +293,7 @@ bias = nac.reward_bias("agent-1", "atl-node-abc")
 
 # Get EC threshold overrides for pattern completion
 overrides = nac.get_threshold_overrides("agent-1")
-# → {"atl-node-abc": 0.25}  (base 0.40 - bias)
+# → {"atl-node-abc": 0.29}  (base 0.44 - bias)
 ```
 
 ### Eligibility traces

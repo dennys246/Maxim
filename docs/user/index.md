@@ -29,7 +29,7 @@ Documentation for users of Maxim (pymaxim) — a bio-inspired cognitive architec
 - [Vision & Audio](vision-audio.md) — Camera, Whisper, VAD, voice commands
 - [Memory](memory-user-guide.md) — What persists, lifecycle, recall improvements
 - [Safety](safety.md) — Autonomy levels, FearAgent, pain detection, harm prediction
-- [Component Library](component-library.md) — 55 SEM components across 7 genre-gated categories
+- [Component Library](component-library.md) — 73 SEM components across 7 genre-gated categories
 - [API Quickstart](api-quickstart.md) — Quick examples for the Python API
 
 ## Setup & Support

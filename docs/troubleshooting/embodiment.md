@@ -232,18 +232,20 @@ The `EmbodimentPerceptSource` reads sensors at the configured poll rate and appl
 Virtual entity sensors read from `entity.vital_metrics`. If you're using `SpecModulator` stubs (no LLM backend), they return success but don't modify state. Attach backends:
 
 ```python
-from maxim.embodiment.llm_backend import NarrativeModulator
+from maxim.embodiment.backends.cerebellum_modulator import cerebellum_modulator_factory
 from maxim.embodiment.spec import attach_backends
+from maxim.embodiment.cerebellum import Cerebellum
 
-def mod_factory(ent, mname, spec_mod):
-    return NarrativeModulator(ent, mname, spec_mod.affordances)
-
-attach_backends(root, modulator_factory=mod_factory)
+cb = Cerebellum()
+factory = cerebellum_modulator_factory(cb, fallback_factory=None)
+attach_backends(root, modulator_factory=factory)
 ```
+
+Without a LLM fallback the `CerebellumModulator` returns a no-op result, which is the same behaviour as the raw `SpecModulator` stubs — but it enables Cerebellum learning once observations accumulate.
 
 ### Item durability not degrading
 
-Same issue — without a backend, modulator execution is a no-op. The `NarrativeModulator` (with or without LLM) applies heuristic changes to sensor values. See above for attaching backends.
+Same issue — without a backend, modulator execution is a no-op. See above for attaching a `CerebellumModulator` backend which applies learned or heuristic changes to sensor values.
 
 ## Cerebellum Issues
 
@@ -277,10 +279,12 @@ Check that `persistence_path` is set:
 ```python
 from maxim.embodiment.cerebellum import Cerebellum, CerebellumConfig
 
-cb = Cerebellum(CerebellumConfig(persistence_path="~/.maxim/embodiment/cerebellum.json"))
+cb = Cerebellum(CerebellumConfig(persistence_path="~/.maxim/memory/cerebellum.json"))
 cb.save()  # Explicit save
 cb.load()  # Explicit load
 ```
+
+When using `build_bio_stack(persistence_dir=...)`, Cerebellum state is saved automatically to `<persistence_dir>/cerebellum.json` (default: `~/.maxim/memory/cerebellum.json`).
 
 ## Motor Program Issues
 

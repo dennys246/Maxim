@@ -227,9 +227,9 @@ Main Thread (observation loop)
 <span class="text-amber-400">WorkerPool</span> (runtime/worker_pool.py)
 ├─ <span class="text-amber-400">Lane</span>: Named work category with own PriorityQueue + ThreadPoolExecutor
 │   Default lanes:
-│     infer  &mdash; 1 worker, GPU-bound (LLM calls)
-│     review &mdash; 1 worker, CPU-bound (evaluation)
-│     record &mdash; 2 workers (memory writes, I/O)
+│     large  &mdash; 1 worker, GPU-bound (LLM calls)
+│     medium &mdash; 1 worker, CPU-bound (evaluation)
+│     small  &mdash; 2 workers (memory writes, I/O)
 │
 ├─ <span class="text-amber-400">Job</span>: Unit of work with priority, optional DependencySpec
 │   Lifecycle: PENDING &rarr; RUNNING &rarr; COMPLETED | FAILED | CANCELLED
@@ -559,7 +559,7 @@ Peer's large tier  →  OpenAI client  →  https://tunnel-url/v1/chat/completio
                                         llama-cpp-server (:8100) — GPU inference
     </div>
 
-    <p class="text-slate-300 leading-relaxed mt-3">The <span class="text-indigo-400 font-semibold">LeaderProxy</span> (stdlib HTTP, ~250 LOC) sits in front of the inference server, enforcing auth, logging every request with correlation IDs, and injecting GPU metrics into response headers. Per-lane <span class="text-indigo-400 font-semibold">LaneMetrics</span> track latency percentiles, failure rates, and token throughput across all backends. A <span class="text-indigo-400 font-semibold">HeartbeatMonitor</span> samples system health (GPU/CPU/RAM/disk/WiFi) every 10 seconds with automatic stall detection. See <a href="/maxim/networking" class="text-indigo-400 hover:text-indigo-300">Networking &amp; Mesh</a> for the full architecture.</p>
+    <p class="text-slate-300 leading-relaxed mt-3">The <span class="text-indigo-400 font-semibold">LeaderProxy</span> (stdlib HTTP) sits in front of the inference server, enforcing auth, logging every request with correlation IDs, injecting GPU metrics into response headers, emitting SSE keepalive frames during TTFT to defeat tunnel idle timeouts, and enforcing a context-overflow admission gate (HTTP 413) to block oversize prompts before they reach the inference backend. Per-lane <span class="text-indigo-400 font-semibold">LaneMetrics</span> track latency percentiles, failure rates, and token throughput across all backends. A <span class="text-indigo-400 font-semibold">HeartbeatMonitor</span> samples system health (GPU/CPU/RAM/disk/WiFi) every 10 seconds with automatic stall detection. See <a href="/maxim/networking" class="text-indigo-400 hover:text-indigo-300">Networking &amp; Mesh</a> for the full architecture.</p>
 
     <h3 class="text-lg font-semibold text-indigo-400">Model Options</h3>
 
@@ -794,9 +794,9 @@ boosts = spatial_bridge.boost_attention_for_goal("find mug")
     <p class="text-slate-300 leading-relaxed"><em class="text-indigo-400 not-italic font-medium">Hippocampus + SCN &harr; NAc</em></p>
     <p class="text-slate-300 leading-relaxed">Learns when to ask a human for help. If confidence in an action drops below a learned threshold (different per goal type, per time of day), Maxim escalates rather than acting autonomously.</p>
 
-    <h3 class="text-lg font-semibold text-indigo-400">EnergyCircuitBridge</h3>
-    <p class="text-slate-300 leading-relaxed"><em class="text-indigo-400 not-italic font-medium">Energy Tracking &harr; NAc</em></p>
-    <p class="text-slate-300 leading-relaxed">Reports resource costs as valence signals. Expensive LLM calls get negative valence. Cheap local inferences get positive valence. Over time, the NAc learns to predict energy costs and factor them into planning.</p>
+    <h3 class="text-lg font-semibold text-indigo-400">Energy &harr; NAc (via tool_dispatch)</h3>
+    <p class="text-slate-300 leading-relaxed"><em class="text-indigo-400 not-italic font-medium">Tool execution timing &harr; NAc</em></p>
+    <p class="text-slate-300 leading-relaxed">Energy costs flow to NAc via <code class="bg-slate-950 px-1.5 py-0.5 rounded text-xs">runtime/tool_dispatch.py</code>: tool calls taking &gt;2s get a NEGATIVE valence signal; cheaper calls get NEUTRAL. Over time, the NAc learns to predict energy costs and factor them into planning.</p>
 
     <h3 class="text-lg font-semibold text-indigo-400">SalienceMemoryBridge</h3>
     <p class="text-slate-300 leading-relaxed"><em class="text-indigo-400 not-italic font-medium">Hippocampus + EC &harr; SalienceNetwork</em></p>
@@ -808,27 +808,21 @@ boosts = spatial_bridge.boost_attention_for_goal("find mug")
 
     <div class="bg-slate-950 rounded-lg p-5 font-mono text-sm text-slate-300 overflow-x-auto whitespace-pre"><span class="text-indigo-400 text-xs uppercase tracking-wider">MemoryHub — central coordinator</span>
 
-hub = MemoryHub(
-    hippocampus=hippo, spatial_map=spatial_map,
-    nac=nac, fear_agent=fear_agent,
-    pain_detector=pain_detector
+hub = build_memory_hub(
+    hippocampus=hippo, scn=scn, nac=nac, ec=ec,
+    spatial=spatial_map, fear_agent=fear_agent,
+    agent_id="main_agent"
 )
-
-# MemoryAgent &harr; Hippocampus wiring (done in wire_memory_hub):
-memory_agent.connect_hippocampus(hippo)  <span class="text-slate-500"># Delegate storage</span>
-hippo.register_deletion_callback(        <span class="text-slate-500"># Sync on removal</span>
-    memory_agent._on_memory_deleted)
+# build_memory_hub always calls .connect() internally, so bridges
+# (PlanHistoryBridge, EscalationLearningBridge, FearCircuitBridge)
+# are live on every returned hub. Direct MemoryHub() construction
+# requires _allow_raw=True (C6 hard-error flip).
 
 # Session lifecycle
 hub.on_session_start()              # Load all priors
 hub.record_action(sig, tool, params) # During execution
 hub.record_outcome(sig, success, v)  # After execution
-hub.consolidate_during_sleep()       # Wave consolidation + compress &amp; clean
-
-# Consolidation pipeline wiring (done in wire_memory_hub):
-# - SimilarityIndex (context + percept) for O(1) LSH recall
-# - ExecAgent.wire_staging() for acute significance evaluation
-# - ConsolidationOrchestrator for wave-based sleep consolidation</div>
+hub.consolidate_during_sleep()       # Wave consolidation + compress &amp; clean</div>
   </section>
 
   <!-- 8. Persistence -->

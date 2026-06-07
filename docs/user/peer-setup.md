@@ -241,7 +241,7 @@ maxim peer forget
 
 The two files coexist by design. Each has a distinct purpose:
 
-- **`~/.config/maxim/peer.yml`** is the **simple-single-leader** config from the `peer connect` flow. Maxim's `runtime/role.py` reads its **existence** as part of the leader-vs-peer role detection decision order (per Plan 2 R2a). Every Plan 4 Stage C verb leaves `peer.yml` untouched — even `init-mesh`, which copies values out of it but never modifies the source. **Do not delete `peer.yml` after running `init-mesh`** — role detection breaks silently on the next `maxim` invocation.
+- **`~/.config/maxim/peer.yml`** is the **simple-single-leader** config from the `peer connect` flow. Maxim's `runtime/role.py` reads its **existence** as rank 5 in the C3 seven-rank role detection order (MAXIM_ROLE env → config.json::role → mesh.yml → cloudflared config → peer.yml → --llm flag → default). Every Plan 4 Stage C verb leaves `peer.yml` untouched — even `init-mesh`, which copies values out of it but never modifies the source. **Do not delete `peer.yml` after running `init-mesh`** — role detection may be affected on the next `maxim` invocation if no higher-rank signal is present.
 - **`~/.config/maxim/mesh.yml`** is the **multi-node topology** the C1/C2/C3 verbs read and (for C3.1+) write. It's deliberately declarative — the only sanctioned writers are `init-mesh`, `add-node`, and `remove-node` (all in `src/maxim/peer/mesh_setup.py`, enforced by a CI grep allow-list). Operators can hand-edit it; runtime code paths cannot.
 
 ### The two-layer split: declarative topology vs runtime mutable state
@@ -340,9 +340,11 @@ Leaders automatically enable remote updates — peers can trigger `git pull + pi
 
 ```bash
 # From any peer:
-maxim peer update              # preview pending commits (dry run)
-maxim peer update --apply      # pull + install
-maxim peer update --branch dev # target a specific branch
+maxim peer update              # pull + install (auto-detects pip or git mode)
+maxim peer update --dry-run    # preview only, no change
+maxim peer update --dev        # force git mode (origin/main)
+maxim peer update --dev feat/foo  # force git mode (specific branch)
+maxim peer update --version 0.3.1  # pin a specific PyPI version
 ```
 
 The leader must restart `maxim` after an update to load new code. Disable with `MAXIM_ALLOW_REMOTE_UPDATE=0` if you don't want peers to be able to trigger updates.

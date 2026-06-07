@@ -325,7 +325,7 @@ When running **non-interactively** (`--interactive false`), the AUT responds to 
 
 1. **ChooseTool** — A `choose` tool is available. The AUT can call `choose(option="fight")` directly. This is unambiguous.
 
-2. **Tool alias redirect** — If the AUT hallucates a tool matching a choice name (e.g., calls `accept_job` as a tool), the alias system redirects to `choose(option="accept_job")`.
+2. **Tool alias redirect** — If the AUT hallucinates a tool matching a choice name (e.g., calls `accept_job` as a tool), the alias system redirects to `choose(option="accept_job")`.
 
 3. **LLM fallback** — If neither works, the LLM classifies the response text against the choices. Returns `{"choice": "choice_name"}`.
 
@@ -513,4 +513,4 @@ Validation errors are printed before the campaign starts. Fix all errors before 
 - [Simulation Guide](simulation.md) — Other simulation modes (generative, research, benchmark)
 - [Troubleshooting: Bio-Systems](../troubleshooting/biosystems.md) — Diagnosing specific bio-system issues
 - [Embodiment Guide](../embodiment_guide.md) — SEM protocol for entity specs
-- [DM Campaigns HTML Guide](../../htmls-guides/maxim-dm-campaigns.html) — Full technical reference
+- [DM Campaigns HTML Guide](../../html-guides/maxim-dm-campaigns.html) — Full technical reference

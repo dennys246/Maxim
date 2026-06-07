@@ -479,18 +479,21 @@ Probes determine whether a peer is reachable and usable. Two stages:
 
 ## Role detection [Present]
 
-**Plan 2 R2a SHIPPED 2026-04-12.** `runtime/role.py::detect_role()` is the single source of truth. Called from the top of `cli.py::main()` AFTER `configure_logging` and BEFORE subcommand dispatch so `role_detected` fires for every entry point (including `maxim doctor` / `maxim peer X`, which short-circuit before the sim loop). Decision order: `MAXIM_ROLE` env var → `mesh.yml` → `peer.yml` → `--llm` CLI flag + no peer config → default leader. The detected role is exported to `MAXIM_ROLE` so `runtime/llm_server.py::_model_state_file` and future downstream code can read it without re-detecting. Persisted model state is split per role (`active_llm_model.{role}.txt`); legacy `active_llm_model.txt` auto-migrates on first startup.
+**Plan 2 R2a SHIPPED 2026-04-12; updated by Config-Unification C3 (2026-06-02).** `runtime/role.py::detect_role()` is the single source of truth. `cli.py::main()` calls `detect_and_apply_role(raw_argv)` (which wraps `detect_role()` + exports the result) AFTER `configure_logging` and BEFORE subcommand dispatch so `role_detected` fires for every entry point (including `maxim doctor` / `maxim peer X`, which short-circuit before the sim loop). C3 updated the decision order to seven ranks (see decision tree below); it adds `config.json::role` at rank 2 and promotes cloudflared detection to rank 4. The detected role is exported to `MAXIM_ROLE` so `runtime/llm_server.py::_model_state_file` and future downstream code can read it without re-detecting. Persisted model state is split per role (`active_llm_model.{role}.txt`); legacy `active_llm_model.txt` auto-migrates on first startup.
 
-Role (`leader | peer | solo`) is detected **once** at process startup by `runtime/role.py::detect_role()`, called as the first action in `cli.py::main()`. Result is exported to `os.environ["MAXIM_ROLE"]` for downstream reads.
+Role (`leader | peer | solo`) is detected **once** at process startup by `runtime/role.py::detect_and_apply_role()`, called as the first action in `cli.py::main()`. Result is exported to `os.environ["MAXIM_ROLE"]` for downstream reads.
 
-**Decision tree:**
+**Decision tree (seven-rank, as of C3):**
 
 ```
-1. MAXIM_ROLE env var set?                 → use that
-2. mesh.yml exists?                         → peer (or leader if self matches a role:leader entry)
-3. peer.yml exists?                         → peer (legacy)
-4. --llm <local> flag + no peer config?     → solo
-5. default                                   → leader
+1. MAXIM_ROLE env var set?                               → use that
+2. config.json::role set?                                → use that (C3)
+3. mesh.yml exists?                                      → peer
+4. ~/.cloudflared/config.{yml,yaml} or
+   /etc/cloudflared/config.{yml,yaml} exists?            → leader (C3, promoted above peer.yml)
+5. peer.yml exists?                                      → peer (legacy, demoted below cloudflared)
+6. --llm <local> flag + no peer/mesh/cloudflared?        → solo
+7. default                                               → leader
 ```
 
 **Why explicit:** the 2026-04-12 persisted-profile incident was caused by implicit role inference in three different code paths. Having a single `detect_role()` function called once at startup makes "what role am I?" unambiguous.

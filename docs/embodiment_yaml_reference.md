@@ -210,6 +210,61 @@ Custom failure modes should compose from these base modes using the `composes` f
 | `<=` | Less than or equal |
 | `==` | Equal to |
 
+## Drive Spec (Optional)
+
+Sensors can carry a `drive:` block that wires them into the homeostatic/entropic pain system. Drives cause pain automatically as sensor values drift — no explicit failure mode needed.
+
+```yaml
+sensors:
+  hunger:
+    unit: ratio
+    range: [0, 1]
+    initial: 0.0
+    drive:
+      drift_mode: entropic          # "entropic" or "homeostatic"
+      drift_direction: up           # "up" (toward 1) or "down" (toward 0)
+      drift_rate: 0.006             # per-second drift rate
+      deprivation_threshold: 0.7    # pain fires beyond this
+      deprivation_pain: 0.3         # pain intensity at deprivation
+      satisfaction_threshold: 0.3  # positive reaction fires when crossing back
+
+  core_temperature:
+    unit: celsius_norm
+    range: [-1, 1]
+    initial: 0.0
+    drive:
+      drift_mode: homeostatic       # self-regulates toward set_point
+      set_point: 0.0                # equilibrium target
+      drift_rate: 0.001             # homeostatic pull rate per second
+      comfort_band: 0.25            # no pain within ±band of set_point
+      pain_scale: 1.5               # intensity per unit outside comfort band
+      pain_model: linear            # "linear" (v1.0); future: "exponential", "asymmetric"
+```
+
+### Entropic Drive Fields
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `drift_mode` | Yes | — | Must be `"entropic"` |
+| `drift_direction` | No | `"up"` | `"up"` (toward 1.0) or `"down"` (toward 0.0) |
+| `drift_rate` | No | `0.001` | Per-second drift magnitude |
+| `deprivation_threshold` | No | `0.7` | PainSignal fires when value crosses this |
+| `deprivation_pain` | No | `0.3` | Pain intensity at deprivation |
+| `satisfaction_threshold` | No | `0.3` | Positive reaction fires when crossing back |
+
+### Homeostatic Drive Fields
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `drift_mode` | Yes | — | Must be `"homeostatic"` |
+| `set_point` | No | `0.0` | Body's equilibrium target |
+| `drift_rate` | No | `0.001` | Homeostatic pull rate per second |
+| `comfort_band` | No | `0.0` | No pain within ±band of set_point |
+| `pain_scale` | No | `0.5` | Pain intensity per unit outside comfort band |
+| `pain_model` | No | `"linear"` | Pain formula (`"linear"` only in v1.0) |
+
+---
+
 ## Test Sequence (Optional)
 
 For validation scenarios:

@@ -378,11 +378,12 @@ Available channels:
 
 | Channel | Subsystems Shown |
 |---------|-----------------|
-| `bio` | HIPPOCAMPUS, NAc, SCN, ATL, FEAR, PAIN, MOTOR, SENSORY, BODY_STATE |
-| `exec` | EXEC, PIPELINE |
-| `sim` | PERCEPT, SCENE, NPC, CHOICE |
+| `bio` | HIPPOCAMPUS, NAc, SCN, ATL, FEAR, PAIN, PERCEPT, REACTION, SENSORY, BODY_STATE, CEREBELLUM, THOUGHT, DELIBERATION, BODY, ENRICHMENT, IMAGINATION, DISCOVERY, GATE |
+| `bio-only` | HIPPOCAMPUS, NAc, SCN, ATL, FEAR, PAIN, REACTION, SENSORY, THOUGHT, DELIBERATION, CEREBELLUM, ENRICHMENT, GATE |
+| `exec` | EXEC, MOTOR, PIPELINE |
+| `sim` | SCENE, NPC, CHOICE, RESULT, BLOCKED |
 | `memory` | HIPPOCAMPUS, NAc, SCN, ATL |
-| `safety` | FEAR, PAIN |
+| `safety` | FEAR, PAIN, BLOCKED |
 | `all` | Everything (default) |
 
 ### Subsystem Labels
@@ -407,7 +408,7 @@ The `--verbosity` flag (0-3) controls overall logging detail:
 - `2` — detailed (≈ `--show exec,sim`)
 - `3` — debug (≈ `--show all` + pipeline internals)
 
-Simulation logs are automatically saved to `~/.maxim/sim_reports/{session_id}/sim_log_*.jsonl` for future analysis.
+Simulation logs are automatically saved to `~/.maxim/sim_sandbox/sim_log_*.jsonl` (interactive REPL) or `data/sim_sandbox/sim_log_*.jsonl` (CLI scenario runs) for future analysis.
 
 ## Safety
 
@@ -429,7 +430,7 @@ maxim --sim "test memory recall under interference"
 maxim --sim "test safety boundaries" --persona adversarial
 ```
 
-Interactive mode is ON by default for TTY sessions (since 0.4), enabling the `ask_user` tool so the narrator can pause and ask for human input during the campaign. To disable:
+Interactive mode is ON by default for TTY sessions (since 0.4), enabling `request_interaction` so the agent can pause and ask for human input during the campaign. To disable:
 
 ```bash
 maxim --sim "explore cooking safety" --interactive false

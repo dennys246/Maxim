@@ -6,7 +6,7 @@
 maxim doctor
 
 # Check robot connection
-maxim --timeout 60 --verbosity 2
+maxim --timeout 60 --log-level 2
 
 # Verbose logging
 maxim --log-level 2
@@ -30,7 +30,7 @@ maxim --mode agentic --log-level 2 --display debug
 |-------|----------|
 | "Model not found" | `python -m maxim.models.download --llm <model-name>` or `maxim.download_model("model-name")` from Python |
 | `--llm` flag ignored | Fixed in v1.0.0 — `detect_tiers()` now respects `MAXIM_LLM_PROFILE`. Update to latest. |
-| Wrong model loads on restart | Your `--llm` choice now persists automatically. Clear with: delete `~/.maxim/util/active_llm_model.txt` |
+| Wrong model loads on restart | Your `--llm` choice now persists automatically. Clear with: delete `~/.maxim/util/active_llm_model.<role>.txt` (e.g. `active_llm_model.leader.txt`) |
 | VRAM not released on exit | Fixed in v1.0.0 — shutdown now kills the full process tree. If stuck: `maxim --delete-model` won't help, but restarting will auto-kill stale servers. |
 | Out of memory | Use `smollm-1.7b` or lower quantization (`Q3_K_M`). Delete unused models: `maxim --delete-model <name>` |
 | Slow inference | Use smaller model (`smollm-1.7b`) or lower quantization |
@@ -86,9 +86,9 @@ maxim --clear-memory all
 ## Debug Logging
 ```bash
 # Standard verbose
-maxim --verbosity 2
+maxim --log-level 2
 
-# Agentic loop detail (0=quiet, 1=info, 2=debug, 3=trace)
+# Agentic loop detail (0=warnings/errors, 1=info, 2=debug)
 maxim --mode agentic --log-level 2 --display debug
 
 # Provenance tracing (see why decisions were made)

@@ -2,7 +2,7 @@
 
 {% block title %}Component Library — Maxim Docs | SEM Entity Templates{% endblock %}
 
-{% block meta_description %}Browse Maxim's 55 SEM component templates — weapons, creatures, NPCs, environments, items, and vehicles across fantasy, cyberpunk, sci-fi, and more.{% endblock %}
+{% block meta_description %}Browse Maxim's 73 SEM component templates — weapons, creatures, NPCs, environments, items, vehicles, and bodies across fantasy, cyberpunk, sci-fi, and more.{% endblock %}
 
 {% block meta_keywords %}Maxim components, SEM entities, game assets, NPC templates, weapon templates, creature templates, fantasy, cyberpunk, scifi, horror{% endblock %}
 
@@ -16,7 +16,7 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "Component Library — SEM Entity Templates",
-  "description": "55 reusable SEM entity templates across 7 categories and 7 genres for Maxim's cognitive simulation system.",
+  "description": "73 reusable SEM entity templates across 7 categories and 7 genres for Maxim's cognitive simulation system.",
   "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
   "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
   "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/component-library",
@@ -63,7 +63,7 @@
   <!-- Header -->
   <div class="text-center space-y-4">
     <h1 class="text-3xl md:text-4xl font-bold text-white">Component Library</h1>
-    <p class="text-lg text-slate-400 max-w-3xl mx-auto">65+ SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation. Expand the library with the <a href="/maxim/embodiment#asset-foundry" class="text-indigo-400 hover:text-indigo-300 no-underline">Asset Foundry</a> or <a href="/maxim/embodiment#auto-curation" class="text-indigo-400 hover:text-indigo-300 no-underline">Auto-Curation</a>.</p>
+    <p class="text-lg text-slate-400 max-w-3xl mx-auto">73 SEM entity templates across 7 categories. Every component has sensors, affordances, and failure modes that drive Maxim's bio-cognitive systems during simulation. Expand the library with the <a href="/maxim/embodiment#asset-foundry" class="text-indigo-400 hover:text-indigo-300 no-underline">Asset Foundry</a> or <a href="/maxim/embodiment#auto-curation" class="text-indigo-400 hover:text-indigo-300 no-underline">Auto-Curation</a>.</p>
   </div>
 
   <!-- ComponentIndex Discovery -->
@@ -82,7 +82,7 @@
     <div class="flex flex-col md:flex-row gap-3">
       <div class="flex-1 relative">
         <input id="search-input" type="text" placeholder="Search components, sensors, affordances..." class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white placeholder-slate-500 text-sm">
-        <span class="absolute right-3 top-2.5 text-slate-500 text-sm" id="result-count">54 components</span>
+        <span class="absolute right-3 top-2.5 text-slate-500 text-sm" id="result-count">73 components</span>
       </div>
     </div>
     <div class="space-y-2">
@@ -124,11 +124,11 @@
       <span class="text-slate-600">&middot;</span>
       <a href="#cat-environments" class="toc-link text-sm text-slate-300 no-underline">Environments (12)</a>
       <span class="text-slate-600">&middot;</span>
-      <a href="#cat-items" class="toc-link text-sm text-slate-300 no-underline">Items (7)</a>
+      <a href="#cat-items" class="toc-link text-sm text-slate-300 no-underline">Items (21)</a>
       <span class="text-slate-600">&middot;</span>
       <a href="#cat-vehicles" class="toc-link text-sm text-slate-300 no-underline">Vehicles (3)</a>
       <span class="text-slate-600">&middot;</span>
-      <a href="#cat-bodies" class="toc-link text-sm text-slate-300 no-underline">Bodies (2)</a>
+      <a href="#cat-bodies" class="toc-link text-sm text-slate-300 no-underline">Bodies (7)</a>
     </div>
   </div>
 
@@ -445,7 +445,7 @@ print(staff.sensors[<span class="text-green-400">"mana"</span>].read())</div>
   <!-- ITEMS -->
   <!-- ═══════════════════════════════════════════════════════════════ -->
   <div id="cat-items" class="space-y-4">
-    <h2 class="text-2xl font-bold text-white border-b border-slate-700 pb-2">Items <span class="text-sm font-normal text-slate-500">(7)</span></h2>
+    <h2 class="text-2xl font-bold text-white border-b border-slate-700 pb-2">Items <span class="text-sm font-normal text-slate-500">(21)</span></h2>
 
     <div class="component-card bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3" data-category="items" data-genres="modern" data-search="laptop battery storage cpu temp network signal write file read file run program browse web send email plug in connect wifi">
       <div class="flex items-center justify-between"><h3 class="text-white font-semibold">Laptop</h3><div class="flex gap-1"><span class="genre-tag genre-modern">modern</span></div></div>
@@ -479,10 +479,10 @@ print(staff.sensors[<span class="text-green-400">"mana"</span>].read())</div>
       <code class="text-xs text-slate-500">ref: items/cursed_amulet</code>
     </div>
 
-    <div class="component-card bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3" data-category="items" data-genres="fantasy modern historical" data-search="healing potion doses potency freshness drink administer radio transceiver lockpick set">
-      <div class="flex items-center justify-between"><h3 class="text-white font-semibold">+ 3 more items</h3><div class="flex gap-1"><span class="genre-tag genre-fantasy">fantasy</span><span class="genre-tag genre-modern">modern</span><span class="genre-tag genre-historical">historical</span></div></div>
-      <p class="text-sm text-slate-400">Healing Potion (fantasy), Radio Transceiver (modern/historical), Lockpick Set (modern/fantasy).</p>
-      <code class="text-xs text-slate-500">refs: items/healing_potion, items/radio_transceiver, items/lockpick_set</code>
+    <div class="component-card bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3" data-category="items" data-genres="fantasy modern historical neutral" data-search="healing potion radio transceiver lockpick set antidote vial food ration water flask poison vial cradle items">
+      <div class="flex items-center justify-between"><h3 class="text-white font-semibold">+ 17 more items</h3><div class="flex gap-1"><span class="genre-tag genre-fantasy">fantasy</span><span class="genre-tag genre-modern">modern</span><span class="genre-tag genre-neutral">neutral</span></div></div>
+      <p class="text-sm text-slate-400">Healing Potion, Lockpick Set, Radio Transceiver, Antidote Vial, Food Ration, Water Flask, Poison Vial (fantasy/neutral); three colored vials (orange, purple, teal); eight cradle scenario items (cradle_blanket, cradle_button, cradle_cool_air, cradle_fire_pit, cradle_food, cradle_lever_door, cradle_sharp_rock, cradle_food).</p>
+      <code class="text-xs text-slate-500">See items/ directory for full list</code>
     </div>
   </div>
 
@@ -521,7 +521,7 @@ print(staff.sensors[<span class="text-green-400">"mana"</span>].read())</div>
   <!-- BODIES -->
   <!-- ═══════════════════════════════════════════════════════════════ -->
   <div id="cat-bodies" class="space-y-4">
-    <h2 class="text-2xl font-bold text-white border-b border-slate-700 pb-2">Bodies <span class="text-sm font-normal text-slate-500">(3)</span></h2>
+    <h2 class="text-2xl font-bold text-white border-b border-slate-700 pb-2">Bodies <span class="text-sm font-normal text-slate-500">(7)</span></h2>
 
     <div class="component-card bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3" data-category="bodies" data-genres="modern" data-search="reachy mini robot embodied humanoid head pollen robotics antenna camera microphone battery motor temperature pose confidence look at nod">
       <div class="flex items-center justify-between"><h3 class="text-white font-semibold">Reachy Mini <span class="text-xs text-indigo-400 font-normal">(real robot — bundled reference)</span></h3><div class="flex gap-1"><span class="genre-tag genre-modern">modern</span><span class="genre-tag genre-neutral">robot</span></div></div>
@@ -537,6 +537,12 @@ print(staff.sensors[<span class="text-green-400">"mana"</span>].read())</div>
       <div class="flex flex-wrap gap-1"><span class="sensor-pill">integrity</span><span class="sensor-pill">grip_strength</span><span class="sensor-pill">power</span><span class="sensor-pill">proprioception</span><span class="sensor-pill">pain_feedback</span></div>
       <div class="flex flex-wrap gap-1"><span class="failure-pill">servo_failure</span><span class="failure-pill">power_loss</span><span class="failure-pill">grip_malfunction</span></div>
       <code class="text-xs text-slate-500">refs: bodies/cybernetic_arm, bodies/megarm_v3</code>
+    </div>
+
+    <div class="component-card bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3" data-category="bodies" data-genres="neutral" data-search="base humanoid default body infant humanoid host machine development cradle">
+      <div class="flex items-center justify-between"><h3 class="text-white font-semibold">+ 5 more bodies</h3><div class="flex gap-1"><span class="genre-tag genre-neutral">neutral</span></div></div>
+      <p class="text-sm text-slate-400">Base Humanoid (default sim body), Infant Humanoid (cradle developmental arc), Host Machine (devops scenario). See <code>bodies/</code> directory.</p>
+      <code class="text-xs text-slate-500">refs: bodies/base_humanoid, bodies/infant_humanoid, bodies/host_machine</code>
     </div>
   </div>
 
