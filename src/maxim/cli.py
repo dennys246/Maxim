@@ -153,6 +153,26 @@ def _handle_clear_memory(scope: str, home_dir: str) -> int:
     return 0
 
 
+def _llm_backend_available() -> bool:
+    """Best-effort check that *some* LLM backend is usable.
+
+    True if a cloud API key is set, LLM is explicitly enabled, a remote/peer
+    URL is configured, or a local backend package is importable. Uses
+    ``find_spec`` (no heavy import) so it's cheap to call from the menu.
+    """
+    import importlib.util
+
+    from maxim.cli_utils import _CLOUD_API_KEY_TO_PROFILE
+
+    if any(os.environ.get(name, "").strip() for name, _ in _CLOUD_API_KEY_TO_PROFILE):
+        return True
+    if os.environ.get("MAXIM_LLM_ENABLED", "").strip() == "1":
+        return True
+    if os.environ.get("MAXIM_LANE_LARGE_REMOTE_URL", "").strip():
+        return True
+    return any(importlib.util.find_spec(mod) is not None for mod in ("llama_cpp", "transformers"))
+
+
 def _bare_maxim_menu() -> int:
     """Interactive menu for bare ``maxim`` invocation (no args).
 
@@ -217,6 +237,26 @@ def _bare_maxim_menu() -> int:
         options.append((name, f"campaign:{_path}"))
     options.append(("Run diagnostics (maxim doctor)", "doctor"))
     options.append(("Show help", "help"))
+
+    # ── Warn once if no LLM backend is configured ─────────────────────
+    # Chat and simulations all need a model; a bare `pip install pymaxim`
+    # ships none, so surface the install/setup hint before the user picks
+    # an option that would otherwise fail later.
+    if not _llm_backend_available():
+        _warn_lines = [
+            "No LLM backend detected — chat and simulations need a model.",
+            "  Cloud:  pip install 'pymaxim[llm-anthropic]'  then export ANTHROPIC_API_KEY=...",
+            "  Local:  pip install 'pymaxim[llm-llama,llm-server]'",
+            "  Then run 'maxim doctor' to verify your setup.",
+        ]
+        if _rich:
+            console.print(f"[bold yellow]⚠ {_warn_lines[0]}[/bold yellow]")
+            for _line in _warn_lines[1:]:
+                console.print(f"[dim]{_line}[/dim]")
+        else:
+            print(f"⚠ {_warn_lines[0]}")
+            for _line in _warn_lines[1:]:
+                print(_line)
 
     # ── Menu loop — Ctrl+C returns here ───────────────────────────────
     while True:

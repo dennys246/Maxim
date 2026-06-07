@@ -407,6 +407,36 @@ jobs:
             echo "See src/maxim/embodiment/spec.py::normalize_llm_entity_spec docstring."
             exit 1
           fi
+          # optional_deps single-source-of-truth: a missing optional
+          # dependency must not silently degrade behavior. The anti-pattern
+          # is `except ImportError:` immediately followed by `<name> = None`
+          # (a silent no-op fallback). New code must route through
+          # maxim/utils/optional_deps.py — require_optional_dependency (fail
+          # loud), optional_dependency_available (capability probe), or
+          # warn_optional_fallback (degrade WITH a one-time notice). The
+          # allow-list is the set of pre-existing grandfathered sites; most
+          # are benign UI fallbacks (rich -> plain). Detects the assignment
+          # on the line immediately after the except (grep -A1).
+          SILENT_IMPORT_MATCHES=$(grep -rn --include="*.py" -A1 "except ImportError" src/maxim/ \
+            | grep -E "[:-][0-9]+[-:][[:space:]]*[A-Za-z_][A-Za-z0-9_.]*[[:space:]]*=[[:space:]]*None\b" \
+            | grep -vE "^src/maxim/(cli|comms/api|inference/segment_vision|interactive/prompts|runtime/agent_loop|runtime/agent_pool|similarity/__init__|similarity/ec|tools/internet_search)\.py-" \
+            || true)
+          if [ -n "$SILENT_IMPORT_MATCHES" ]; then
+            echo "ERROR: silent optional-dependency fallback ('except ImportError: X = None')"
+            echo "$SILENT_IMPORT_MATCHES"
+            echo ""
+            echo "Use maxim/utils/optional_deps.py instead of a silent None fallback:"
+            echo "  - require_optional_dependency(...)  → fail loud with an install hint"
+            echo "  - optional_dependency_available(...) → capability probe (no error)"
+            echo "  - warn_optional_fallback(...)        → degrade WITH a one-time notice"
+            echo ""
+            echo "If a new silent fallback is genuinely benign (e.g. a cosmetic"
+            echo "UI fallback), update BOTH:"
+            echo "  1. The allow list in .github/workflows/test.yml"
+            echo "  2. The optional_deps invariant in CLAUDE.md"
+            echo "in the same commit so the rule stays coherent."
+            exit 1
+          fi
           echo "CI grep invariants clean"
 
       - name: CLAUDE.md invariant regression-guard lint (Principle 5)

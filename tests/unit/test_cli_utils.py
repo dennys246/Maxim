@@ -247,6 +247,60 @@ class TestMemoryPaths:
             assert any(p.startswith("agents/*/") for p in MEMORY_PATHS[key]), key
 
 
+class TestLlmBackendAvailable:
+    """D15: the bare `maxim` menu warns when no LLM backend is reachable."""
+
+    _ENV = (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "GOOGLE_API_KEY",
+        "GROQ_API_KEY",
+        "TOGETHER_API_KEY",
+        "FIREWORKS_API_KEY",
+        "MISTRAL_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "MAXIM_LLM_ENABLED",
+        "MAXIM_LANE_LARGE_REMOTE_URL",
+    )
+
+    def _clear(self, monkeypatch):
+        for k in self._ENV:
+            monkeypatch.delenv(k, raising=False)
+
+    def test_false_when_nothing_available(self, monkeypatch):
+        from maxim import cli
+
+        self._clear(monkeypatch)
+        monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+        assert cli._llm_backend_available() is False
+
+    def test_true_with_cloud_key(self, monkeypatch):
+        from maxim import cli
+
+        self._clear(monkeypatch)
+        monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+        assert cli._llm_backend_available() is True
+
+    def test_true_with_llm_enabled(self, monkeypatch):
+        from maxim import cli
+
+        self._clear(monkeypatch)
+        monkeypatch.setattr("importlib.util.find_spec", lambda name: None)
+        monkeypatch.setenv("MAXIM_LLM_ENABLED", "1")
+        assert cli._llm_backend_available() is True
+
+    def test_true_with_local_backend(self, monkeypatch):
+        from maxim import cli
+
+        self._clear(monkeypatch)
+        monkeypatch.setattr(
+            "importlib.util.find_spec",
+            lambda name: object() if name == "llama_cpp" else None,
+        )
+        assert cli._llm_backend_available() is True
+
+
 class TestImportPaths:
     def test_import_from_cli(self):
         from maxim.cli import _normalize_epoch_value, _normalize_args
