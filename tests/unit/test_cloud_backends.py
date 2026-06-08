@@ -75,6 +75,70 @@ class TestAnthropicBackend:
         blocks = backend._build_system_blocks("")
         assert blocks == []
 
+    def test_prompt_cache_bool_shorthand(self):
+        backend = self._make_backend(prompt_cache=True)
+        assert backend._prompt_cache_enabled() is True
+
+    def test_prompt_cache_disabled_default(self):
+        backend = self._make_backend(prompt_cache=None)
+        # No provider flag and cfg.prompt_cache defaults False.
+        assert backend._prompt_cache_enabled() is False
+
+    def test_prompt_cache_cfg_fallback(self):
+        """Default cloud path: provider entry has no prompt_cache key, but the
+        top-level cfg flag (set from the profile) enables it."""
+        from maxim.models.language.anthropic_backend import _AnthropicBackend
+
+        cfg = _make_cfg(
+            prompt_cache=True,
+            providers={"local": {"type": "anthropic", "model": "claude-sonnet-4-6"}},
+        )
+        backend = _AnthropicBackend(cfg, provider_key="local")
+        assert backend._prompt_cache_enabled() is True
+
+    def test_provider_entry_overrides_cfg_fallback(self):
+        """An explicit provider-level prompt_cache=False wins over cfg=True."""
+        from maxim.models.language.anthropic_backend import _AnthropicBackend
+
+        cfg = _make_cfg(
+            prompt_cache=True,
+            providers={"local": {"type": "anthropic", "model": "claude-sonnet-4-6", "prompt_cache": False}},
+        )
+        backend = _AnthropicBackend(cfg, provider_key="local")
+        assert backend._prompt_cache_enabled() is False
+
+    def test_parse_response_emits_cache_event(self, caplog):
+        import logging
+
+        backend = self._make_backend(prompt_cache=True)
+        usage = MagicMock(
+            input_tokens=100,
+            output_tokens=20,
+            cache_read_input_tokens=900,
+            cache_creation_input_tokens=0,
+        )
+        resp = MagicMock(usage=usage, content=[], stop_reason="end_turn", id="msg_abc")
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.anthropic_backend"):
+            backend._parse_response(resp, "claude-sonnet-4-6", 0.0)
+        events = [r for r in caplog.records if r.getMessage() == "anthropic_cache"]
+        assert len(events) == 1
+        data = events[0].data
+        assert data["cache_read_tokens"] == 900
+        assert data["cache_write_tokens"] == 0
+        assert data["input_tokens_uncached"] == 100
+        assert abs(data["cache_hit_ratio"] - 0.9) < 1e-6
+        assert data["request_id"] == "msg_abc"
+
+    def test_parse_response_no_cache_event_when_disabled(self, caplog):
+        import logging
+
+        backend = self._make_backend(prompt_cache=None)
+        usage = MagicMock(input_tokens=100, output_tokens=20, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        resp = MagicMock(usage=usage, content=[], stop_reason="end_turn", id="msg_x")
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.anthropic_backend"):
+            backend._parse_response(resp, "claude-sonnet-4-6", 0.0)
+        assert not [r for r in caplog.records if r.getMessage() == "anthropic_cache"]
+
     # ── Thinking config ─────────────────────────────────────────────────
 
     def test_thinking_config_disabled(self):
@@ -365,3 +429,45 @@ class TestLLMWorkerPhase3:
         assert "tools" in params
         assert "thinking" in params
         assert "stream" in params
+
+
+class TestPromptCacheConfigWiring:
+    """Profile → cfg.prompt_cache → synthesized provider entry wiring
+    (prompt_caching_for_cloud_backends.md Phase 1b)."""
+
+    def test_builtin_claude_profiles_enable_prompt_cache(self):
+        from maxim.models.language.config import _BUILTIN_PROFILES
+
+        for name in ("claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"):
+            assert _BUILTIN_PROFILES[name].get("prompt_cache") is True, name
+
+    def test_normalize_providers_surfaces_prompt_cache(self):
+        from maxim.models.language.cloud_dispatch import normalize_providers
+
+        cfg = _make_cfg(prompt_cache=True, providers={})
+        synthesized = normalize_providers(cfg)
+        assert synthesized["local"]["prompt_cache"] is True
+
+    def test_normalize_providers_default_prompt_cache_false(self):
+        from maxim.models.language.cloud_dispatch import normalize_providers
+
+        cfg = _make_cfg(providers={})  # prompt_cache defaults False
+        synthesized = normalize_providers(cfg)
+        assert synthesized["local"]["prompt_cache"] is False
+
+    def test_load_llm_config_claude_profile_enables_prompt_cache(self, monkeypatch):
+        from maxim.models.language.config import load_llm_config
+
+        # Isolate from any repo-local llm.json / env profile override.
+        monkeypatch.setenv("MAXIM_LLM_CONFIG", "/nonexistent/llm.json")
+        monkeypatch.delenv("MAXIM_LLM_PROMPT_CACHE", raising=False)
+        cfg = load_llm_config(profile_override="claude-sonnet")
+        assert cfg.prompt_cache is True
+
+    def test_load_llm_config_local_profile_no_prompt_cache(self, monkeypatch):
+        from maxim.models.language.config import load_llm_config
+
+        monkeypatch.setenv("MAXIM_LLM_CONFIG", "/nonexistent/llm.json")
+        monkeypatch.delenv("MAXIM_LLM_PROMPT_CACHE", raising=False)
+        cfg = load_llm_config(profile_override="mistral-7b")
+        assert cfg.prompt_cache is False

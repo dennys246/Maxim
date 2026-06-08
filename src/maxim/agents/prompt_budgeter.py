@@ -13,6 +13,12 @@ from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
+# Upper bound on the fraction of the prompt budget the byte-stable cacheable
+# prefix may consume in build_segmented(). Keeps a guaranteed floor for the
+# dynamic bucket's MANDATORY sections (the user request) even when the stable
+# set is unusually large. Fixed (not per-turn) so it never perturbs the prefix.
+_STABLE_BUDGET_FRACTION = 0.7
+
 
 class SectionPriority(IntEnum):
     """Priority tiers for prompt sections. Lower = higher priority."""
@@ -35,6 +41,11 @@ class PromptSection:
     truncatable: bool = False
     min_tokens: int = 0
     truncate_fn: Callable[[str, int], str] | None = None
+    # When True, this section is part of the byte-stable cacheable prefix
+    # (prompt_caching_for_cloud_backends.md). Stable sections are assembled
+    # independently of dynamic content so the prefix is byte-identical across
+    # turns within a session/phase. Default False (dynamic).
+    cacheable: bool = False
 
 
 class PromptBudgeter:
@@ -72,6 +83,7 @@ class PromptBudgeter:
         truncatable: bool = False,
         min_tokens: int = 0,
         truncate_fn: Callable[[str, int], str] | None = None,
+        cacheable: bool = False,
     ) -> None:
         """Add a section to the budget. Empty content is silently ignored."""
         if not content or not content.strip():
@@ -87,31 +99,30 @@ class PromptBudgeter:
                 truncatable=truncatable,
                 min_tokens=min_tokens,
                 truncate_fn=truncate_fn,
+                cacheable=cacheable,
             )
         )
         self._insertion_idx += 1
 
-    def build(self) -> tuple[str, list[str]]:
-        """Assemble the prompt within budget.
+    def _fit(self, sections: list[PromptSection], budget: int) -> tuple[list[PromptSection], list[str], int]:
+        """Select/truncate ``sections`` to fit within ``budget``.
 
-        Returns:
-            (prompt_text, list of dropped section names)
+        Priority-tier order (MANDATORY first); truncatable sections shorten
+        before being dropped. Returns (included, dropped_names, tokens_used).
+        Pure with respect to ``self`` (only reads the token counter).
         """
-        budget = self.prompt_budget
         included: list[PromptSection] = []
         dropped: list[str] = []
         used = 0
 
-        # Process by priority tier
         by_tier: dict[SectionPriority, list[PromptSection]] = {}
-        for s in self._sections:
+        for s in sections:
             by_tier.setdefault(s.priority, []).append(s)
 
         for tier in sorted(by_tier.keys()):
             for section in by_tier[tier]:
                 remaining = budget - used
                 if section.token_count <= remaining:
-                    # Fits entirely
                     included.append(section)
                     used += section.token_count
                 elif (
@@ -120,7 +131,6 @@ class PromptBudgeter:
                     and remaining >= section.min_tokens
                     and remaining > 0
                 ):
-                    # Truncate to fit
                     truncated = section.truncate_fn(section.content, remaining)
                     new_count = self._counter.count_tokens(truncated)
                     if new_count <= remaining and truncated.strip():
@@ -134,6 +144,7 @@ class PromptBudgeter:
                                 truncatable=section.truncatable,
                                 min_tokens=section.min_tokens,
                                 truncate_fn=section.truncate_fn,
+                                cacheable=section.cacheable,
                             )
                         )
                         used += new_count
@@ -145,13 +156,64 @@ class PromptBudgeter:
                 else:
                     dropped.append(section.name)
 
+        return included, dropped, used
+
+    @staticmethod
+    def _emit(included: list[PromptSection]) -> str:
+        """Join included sections in original insertion order."""
+        ordered = sorted(included, key=lambda s: s.insertion_order)
+        return "\n\n".join(s.content for s in ordered)
+
+    def build(self) -> tuple[str, list[str]]:
+        """Assemble the prompt within budget.
+
+        Returns:
+            (prompt_text, list of dropped section names)
+        """
+        budget = self.prompt_budget
+        included, dropped, used = self._fit(self._sections, budget)
         if dropped:
             logger.info("Prompt budget %d/%d — dropped sections: %s", used, budget, ", ".join(dropped))
+        return self._emit(included), dropped
 
-        # Re-sort by original insertion order to preserve prompt flow
-        included.sort(key=lambda s: s.insertion_order)
-        prompt_text = "\n\n".join(s.content for s in included)
-        return prompt_text, dropped
+    def build_segmented(self) -> tuple[str, str, list[str]]:
+        """Assemble a byte-stable cacheable prefix + a dynamic remainder.
+
+        Splits sections by the ``cacheable`` flag and budgets the stable
+        sections FIRST, with a budget that does not depend on per-turn dynamic
+        content. This guarantees the stable text is byte-identical across turns
+        within a session/phase — the prerequisite for prompt caching
+        (docs/plans/prompt_caching_for_cloud_backends.md).
+
+        The stable bucket is capped at ``_STABLE_BUDGET_FRACTION`` of the prompt
+        budget so a pathologically large stable set (e.g. a huge singularity
+        tool manifest) can never starve the dynamic MANDATORY sections (the
+        user request). The cap is a fixed fraction — independent of per-turn
+        state — so it does not itself perturb the stable text.
+
+        Returns:
+            (stable_text, dynamic_text, dropped_section_names)
+        """
+        budget = self.prompt_budget
+        stable_sections = [s for s in self._sections if s.cacheable]
+        dynamic_sections = [s for s in self._sections if not s.cacheable]
+
+        stable_cap = int(budget * _STABLE_BUDGET_FRACTION)
+        stable_included, stable_dropped, stable_used = self._fit(stable_sections, stable_cap)
+
+        dynamic_budget = max(0, budget - stable_used)
+        dyn_included, dyn_dropped, dyn_used = self._fit(dynamic_sections, dynamic_budget)
+
+        dropped = stable_dropped + dyn_dropped
+        if dropped:
+            logger.info(
+                "Prompt budget segmented %d(stable)+%d(dynamic)/%d — dropped: %s",
+                stable_used,
+                dyn_used,
+                budget,
+                ", ".join(dropped),
+            )
+        return self._emit(stable_included), self._emit(dyn_included), dropped
 
 
 # ── Truncation Helpers ──────────────────────────────────────────────────────

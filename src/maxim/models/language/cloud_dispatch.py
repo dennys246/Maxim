@@ -81,6 +81,11 @@ def normalize_providers(cfg: Any) -> dict[str, dict[str, Any]]:
             "model_base": cfg.model_base,
             "model_path": cfg.model_path,
             "n_ctx": cfg.n_ctx,
+            # Surface the profile's prompt-caching flag into the synthesized
+            # provider entry so the cloud backends' _prompt_cache_enabled()
+            # picks it up on the default (no user-configured providers) path.
+            # No-op for local/peer backends, which have no caching path.
+            "prompt_cache": bool(getattr(cfg, "prompt_cache", False)),
         }
     }
 

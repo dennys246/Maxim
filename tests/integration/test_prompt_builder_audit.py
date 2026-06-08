@@ -29,12 +29,10 @@ import hashlib
 from datetime import datetime
 from types import SimpleNamespace
 
-import pytest
-
 from maxim.agents.autonomy import AutonomyLevel
 from maxim.agents.bus import StructuredContext
 from maxim.agents.llm_types import LLMRequest, ModeInfo
-from maxim.agents.prompt_builder import PromptBuilder
+from maxim.agents.prompt_builder import PROMPT_SEGMENT_DELIMITER, PromptBuilder
 from maxim.models.language.cloud_dispatch import SYSTEM_TOOL_RESPONSE
 
 
@@ -138,17 +136,20 @@ def _make_turn_request(turn: int) -> LLMRequest:
     return req
 
 
-def _collect_payloads(monkeypatch, n_turns: int = 12) -> list[str]:
-    """Return the assembled user-message payload (build_prompt output) for each
-    turn, with datetime advanced per turn the way wall-clock does."""
+def _collect_segments(monkeypatch, n_turns: int = 12) -> list[tuple[str, str]]:
+    """Return (stable_prefix, dynamic_remainder) for each turn's build_prompt
+    output, advancing wall-clock per turn the way a real sub-sim does.
+
+    Post-Phase-1, build_prompt emits ``TOOL_PROMPT|<stable>\x1e<dynamic>``."""
     builder = _make_builder()
-    payloads: list[str] = []
+    segments: list[tuple[str, str]] = []
 
     base = datetime(2026, 6, 8, 10, 0, 0)
 
     for turn in range(n_turns):
         # Advance wall clock by a minute per turn — build_datetime_section
-        # renders time to minute precision, a classic silent invalidator.
+        # renders time to minute precision, a classic silent invalidator that
+        # MUST land in the dynamic segment, never the cacheable prefix.
         fake_now = base.replace(minute=turn % 60)
 
         class _FixedDateTime(datetime):
@@ -159,9 +160,12 @@ def _collect_payloads(monkeypatch, n_turns: int = 12) -> list[str]:
         monkeypatch.setattr("maxim.agents.prompt_builder.datetime", _FixedDateTime)
         prompt = builder.build_prompt(_make_turn_request(turn))
         assert prompt.startswith("TOOL_PROMPT|"), f"turn {turn}: unexpected prompt path: {prompt[:40]!r}"
-        payloads.append(prompt[len("TOOL_PROMPT|") :])
+        payload = prompt[len("TOOL_PROMPT|") :]
+        assert PROMPT_SEGMENT_DELIMITER in payload, f"turn {turn}: missing segment delimiter"
+        stable, dynamic = payload.split(PROMPT_SEGMENT_DELIMITER, 1)
+        segments.append((stable, dynamic))
 
-    return payloads
+    return segments
 
 
 def _sha(text: str) -> str:
@@ -169,67 +173,61 @@ def _sha(text: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Baseline characterization (PASS now — documents the broken state)
+# Post-Phase-1 invariants
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_system_block_carries_negligible_tokens_vs_user_payload(monkeypatch):
-    """The literal ``system`` block (where cache_control lives) is the static
-    SYSTEM_TOOL_RESPONSE constant; the per-turn payload is ~100x larger and
-    lives in the user message. Caching the system block saves ~nothing."""
-    payloads = _collect_payloads(monkeypatch, n_turns=3)
-    system_tokens = _CharTokenCounter.count_tokens(SYSTEM_TOOL_RESPONSE)
-    user_tokens = _CharTokenCounter.count_tokens(payloads[0])
-    # The cacheable system block is a small minority of total tokens even on
-    # this tiny synthetic fixture (~12%); in a real cradle sub-sim the ratio is
-    # ~800x (≈145 system tokens vs ~120K user tokens).
-    system_fraction = system_tokens / (system_tokens + user_tokens)
-    assert system_fraction < 0.25, (
-        f"cacheable system block should be a small minority of tokens; "
-        f"system={system_tokens} user={user_tokens} fraction={system_fraction:.2f}"
-    )
-
-
-def test_baseline_user_payload_is_not_byte_stable_across_turns(monkeypatch):
-    """BASELINE: the per-turn user payload changes every turn — 12 unique
-    hashes. This is the documented pre-fix state; the cache would miss on
-    every turn even if the breakpoint were moved onto the user message."""
-    payloads = _collect_payloads(monkeypatch, n_turns=12)
-    hashes = [_sha(p) for p in payloads]
-    # Documented baseline: every turn differs.
-    assert len(set(hashes)) == 12, (
-        "baseline expected 12 distinct payloads; if this changed, re-audit "
-        "(see docs/plans/prompt_caching_for_cloud_backends.md Phase 0)"
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# The target invariant (currently FAILS — flipped green by Phase 1)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Phase 0 baseline: no byte-stable cacheable prefix exists today — the "
-        "whole payload is in the user message with dynamic content interleaved "
-        "from the top. Phase 1 (prompt_caching_for_cloud_backends.md) introduces "
-        "a stable system-prompt prefix; flipping this green is the Phase 1/3 "
-        "acceptance gate. xfail(strict) makes this XPASS-fail the moment a stable "
-        "prefix lands, forcing the marker removal."
-    ),
-)
 def test_cacheable_prefix_is_byte_stable_across_turns(monkeypatch):
-    """TARGET: across 12 turns the cacheable prefix must be byte-identical.
+    """The cacheable (stable) segment must be byte-identical across all turns.
 
-    Today there is no separated prefix, so we measure the whole payload and it
-    is not stable. Phase 1 should: (a) move the stable session-scoped sections
-    into the ``system`` prompt (where cache_control lives), and (b) keep them
-    byte-identical across turns. When that lands, replace this body with an
-    assertion over the actual system prompt and remove the xfail marker (this
-    becomes ``test_system_prompt_byte_stable_across_turns`` per Phase 3)."""
-    payloads = _collect_payloads(monkeypatch, n_turns=12)
-    hashes = [_sha(p) for p in payloads]
-    assert len(set(hashes)) == 1, (
-        f"cacheable prefix not byte-stable: {len(set(hashes))} distinct of {len(hashes)} turns"
+    This is the Phase 1 acceptance gate (was the Phase 0 xfail baseline). The
+    stable prefix carries only class-(a)/(c) sections (identity, instructions,
+    tool guidance, foundational, entity_context, tools); the byte-stability is
+    what lets a single cache_control breakpoint at the end of the system block
+    cache the whole prefix across turns 2..N."""
+    segments = _collect_segments(monkeypatch, n_turns=12)
+    stable_hashes = [_sha(s) for s, _d in segments]
+    assert len(set(stable_hashes)) == 1, (
+        f"cacheable prefix not byte-stable: {len(set(stable_hashes))} distinct of {len(segments)} turns"
+    )
+
+
+def test_stable_prefix_excludes_dynamic_content(monkeypatch):
+    """The stable prefix must NOT contain per-turn dynamic markers — those are
+    the silent invalidators Phase 0 identified. They belong in the dynamic
+    segment."""
+    stable, dynamic = _collect_segments(monkeypatch, n_turns=2)[1]
+    # Stable carries the static sections...
+    assert "OPERATIONAL STATE" in stable  # identity section
+    # ...and excludes per-turn dynamic content.
+    assert "Body State" not in stable, "drive states leaked into cacheable prefix"
+    assert "Current time" not in stable, "datetime leaked into cacheable prefix"
+    assert "Relevant Memories" not in stable, "memories leaked into cacheable prefix"
+    # The dynamic segment carries them.
+    assert "Body State" in dynamic
+    assert "Relevant Memories" in dynamic
+
+
+def test_dynamic_segment_varies_across_turns(monkeypatch):
+    """The dynamic segment correctly changes every turn (drives, observations,
+    memories, datetime)."""
+    segments = _collect_segments(monkeypatch, n_turns=12)
+    dyn_hashes = [_sha(d) for _s, d in segments]
+    assert len(set(dyn_hashes)) == 12, f"expected 12 distinct dynamic segments; got {len(set(dyn_hashes))}"
+
+
+def test_cacheable_prefix_is_non_trivial(monkeypatch):
+    """The stable prefix must carry real content (else caching it is pointless).
+    On a real cradle run the dominant stable chunk is the foundational
+    Constitution/AGENTS block; here we just assert the prefix is non-empty and a
+    meaningful fraction of the total."""
+    stable, dynamic = _collect_segments(monkeypatch, n_turns=1)[0]
+    stable_tokens = _CharTokenCounter.count_tokens(stable)
+    dynamic_tokens = _CharTokenCounter.count_tokens(dynamic)
+    assert stable_tokens > 0, "stable prefix is empty — nothing to cache"
+    # System block actually sent = SYSTEM_TOOL_RESPONSE + stable prefix.
+    system_tokens = _CharTokenCounter.count_tokens(SYSTEM_TOOL_RESPONSE) + stable_tokens
+    total = system_tokens + dynamic_tokens
+    assert system_tokens / total > 0.05, (
+        f"cacheable system fraction implausibly small; system={system_tokens} dynamic={dynamic_tokens}"
     )
