@@ -248,6 +248,30 @@ def _apply_lane_config_to_env(logger_obj: Any | None) -> bool:
         return _lane_env_has_remote
     _lane_env_applied = True
 
+    # Cloud-dispatch escape hatch (Exp 37 fix 2026-06-07): when the harness
+    # spawns a sub-sim with a cloud LARGE-tier profile (claude-*, gpt-*,
+    # etc.), it sets MAXIM_DISABLE_PEER_CONFIG=1 so the sub-sim doesn't
+    # silently re-populate MAXIM_LANE_LARGE_REMOTE_URL from peer.yml or
+    # config.json — which would route LARGE through ``_MaximPeerBackend``
+    # to whatever local-model leader the peer was previously configured
+    # for, defeating the cloud-dispatch intent. The harness's PR #337 fix
+    # explicitly blanked the env var, but ``setdefault`` semantics here
+    # treat empty-string-set as functionally-equivalent-to-unset and
+    # re-populated from config. This gate is the targeted fix: when the
+    # env var is set (truthy), short-circuit to no-remote-routing so the
+    # router falls back to the profile's default backend (e.g.,
+    # ``_AnthropicBackend`` for ``claude-sonnet-*``).
+    _disable_peer = _os.environ.get("MAXIM_DISABLE_PEER_CONFIG", "").strip().lower()
+    if _disable_peer in ("1", "true", "yes", "on"):
+        if logger_obj is not None:
+            logger_obj.info(
+                "MAXIM_DISABLE_PEER_CONFIG=%s — skipping peer.yml + config.json "
+                "lane routing. Router will use profile-default backend for each tier.",
+                _disable_peer,
+            )
+        _lane_env_has_remote = False
+        return False
+
     try:
         from maxim.runtime.config_loader import (
             load_config,

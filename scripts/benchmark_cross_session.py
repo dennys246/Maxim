@@ -313,10 +313,21 @@ def _real_sim(
         env.setdefault("MAXIM_LLM_REDACTION_POLICY", "standard")
         # Blank any peer.yml-derived LARGE-tier routing so the sub-sim's
         # router doesn't dispatch through ``_MaximPeerBackend`` (which
-        # would still hit the leader regardless of profile).
+        # would still hit the leader regardless of profile). The
+        # empty-string env vars are belt-and-suspenders alongside the
+        # MAXIM_DISABLE_PEER_CONFIG gate below — without the gate, the
+        # sub-sim's ``_apply_lane_config_to_env`` re-populates these from
+        # config.json/peer.yml via setdefault-semantics (empty-string-set
+        # reads as "unset" to that function). With the gate, lane
+        # auto-population is short-circuited and the router falls back to
+        # the profile's default backend (e.g., ``_AnthropicBackend`` for
+        # ``claude-sonnet-*``). Found 2026-06-07 during Phase 1 cloud
+        # validation; see CLAUDE.md / `runtime/lane_backends.py` comment
+        # for the full root cause.
         env["MAXIM_LANE_LARGE_REMOTE_URL"] = ""
         env["MAXIM_LANE_LARGE_REMOTE_API_KEY"] = ""
         env["MAXIM_LANE_LARGE_REMOTE_MODEL"] = ""
+        env["MAXIM_DISABLE_PEER_CONFIG"] = "1"
         # Auto-accept any model downloads the sub-sim triggers. Even with
         # the LARGE tier on a cloud profile, the sub-sim's lane bootstrap
         # may try to ensure a local SMALL profile (default smollm-1.7b-instruct

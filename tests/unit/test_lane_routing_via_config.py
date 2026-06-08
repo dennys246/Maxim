@@ -298,6 +298,85 @@ class TestApplyLaneConfigToEnv:
         # No config.json, no peer.yml, no env
         assert _apply_lane_config_to_env(None) is False
 
+    def test_disable_peer_config_short_circuits(self, fake_home, monkeypatch):
+        """Exp 37 cloud-dispatch fix 2026-06-07: when the harness sets
+        MAXIM_DISABLE_PEER_CONFIG=1 (cloud-dispatch path), the function
+        short-circuits to no-remote-routing even if config.json or
+        peer.yml would resolve to a remote URL. The router then falls
+        back to the profile's default backend (e.g., _AnthropicBackend
+        for ``claude-sonnet-*``).
+        """
+        import os
+
+        from maxim.runtime.config_writer import write_config
+        from maxim.runtime.lane_backends import _apply_lane_config_to_env
+
+        # config.json declares a leader URL — would normally resolve via
+        # resolve_setting and populate MAXIM_LANE_LARGE_REMOTE_URL.
+        write_config(
+            MaximConfig(
+                lanes=LanesConfigSection(
+                    large=LaneTierConfig(remote_url="http://leader.local/v1"),
+                ),
+            )
+        )
+        reset_config_cache()
+
+        for env_name in (
+            "MAXIM_LANE_LARGE_REMOTE_URL",
+            "MAXIM_LANE_LARGE_REMOTE_API_KEY",
+            "MAXIM_LANE_LARGE_REMOTE_MODEL",
+            "MAXIM_MAX_CLOUD_LANES",
+        ):
+            monkeypatch.delenv(env_name, raising=False)
+
+        monkeypatch.setenv("MAXIM_DISABLE_PEER_CONFIG", "1")
+
+        has = _apply_lane_config_to_env(None)
+        # Function returned False (no remote routing applied).
+        assert has is False
+        # The leader URL from config.json must NOT have been written to
+        # the env, despite being resolvable.
+        assert "MAXIM_LANE_LARGE_REMOTE_URL" not in os.environ
+
+    def test_disable_peer_config_accepts_truthy_values(self, fake_home, monkeypatch):
+        """Mirrors the env-var parser pattern used elsewhere in Maxim:
+        ``1`` / ``true`` / ``yes`` / ``on`` (case-insensitive) all
+        trigger the short-circuit.
+        """
+        import importlib
+        import os
+
+        from maxim.runtime import lane_backends
+        from maxim.runtime.config_writer import write_config
+
+        write_config(
+            MaximConfig(
+                lanes=LanesConfigSection(
+                    large=LaneTierConfig(remote_url="http://leader.local/v1"),
+                ),
+            )
+        )
+
+        # Test each truthy form. reset_config_cache() between iterations
+        # is handled by the module-level _lane_env_applied flag — clear
+        # it via a re-import per iteration.
+
+        for truthy in ("1", "true", "TRUE", "Yes", "on"):
+            reset_config_cache()
+            importlib.reload(lane_backends)
+            for env_name in (
+                "MAXIM_LANE_LARGE_REMOTE_URL",
+                "MAXIM_DISABLE_PEER_CONFIG",
+            ):
+                monkeypatch.delenv(env_name, raising=False)
+            monkeypatch.setenv("MAXIM_DISABLE_PEER_CONFIG", truthy)
+
+            assert lane_backends._apply_lane_config_to_env(None) is False
+            assert "MAXIM_LANE_LARGE_REMOTE_URL" not in os.environ, (
+                f"MAXIM_DISABLE_PEER_CONFIG={truthy!r} should suppress; but URL got populated"
+            )
+
     def test_llm_profile_populated_from_config_json(self, fake_home, monkeypatch):
         """Post-implementation field-coverage fold (2026-06-02): the
         function populates MAXIM_LLM_PROFILE / MAXIM_LLM_N_CTX /
