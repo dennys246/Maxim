@@ -13,7 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(No changes yet since 0.9.3.)_
+### Changed
+
+- **Exp 37 row 1 reframe (2026-06-07, PR #344).** The 2026-06-06 Exp 37 Qwen14B fire
+  completed 60/60 records with verdict `PARTIAL — investigation gate`. The substrate-
+  transfer behavioral claim under LLM-AUT is not statistically detectable at the
+  pre-registered N=5 threshold (fire_pit primary Δ = −0.06 SD vs threshold +1.0;
+  ablations 0/3 PASS with 2 of 3 OVERSHOOTING past Arm A — the diagnostic signature
+  of LLM prior dominance over substrate signal). [Tier 1 row 1](docs/plans/behavioral_graduation_candidates.md)
+  splits into 1a "Cross-session memory persistence" (EARNED via [Exp 10](docs/experiments/10_cross_session_enrichment.md))
+  and 1b "Cross-session behavioral delta under LLM-AUT" (PARTIAL — investigation gate).
+- **1.0 framing pulled back from "substrate drives action selection" to "bio-inspired
+  cognitive harness for LLM agents."** Per the 1.0 commitment line's explicit-
+  retraction discipline in `behavioral_graduation_candidates.md`, the strong substrate-
+  drives-behavior claim is pulled. The substrate provides cross-session infrastructure
+  (memory, valence, causal links, drives) that LLM-driven agents use; substrate-driven
+  action selection independent of the LLM is post-1.0 research direction via Exp 38
+  substrate-primary work / Oasis architecture. README + Tier 1 row 1 + the Exp 37
+  results doc updated together to honor the retraction discipline.
+- **README "What Makes This Different" table** rewords the "Behavior emerges from
+  learned experience" row to "LLM action selection augmented by substrate-derived
+  context (memory recall, causal predictions, valence, drives)" — matches the empirical
+  reality of how Maxim agents actually use the substrate, anchored to Exp 37 evidence.
 
 ## [0.9.3] - 2026-06-06
 

@@ -1,8 +1,10 @@
 # Maxim
 
-Bio-inspired cognitive architecture for LLM agents — embodied sensation, homeostatic drives, and brain-modeled persistent memory enable cross-session learning without fine-tuning.
+Bio-inspired cognitive harness for LLM agents — embodied sensation, homeostatic drives, and brain-modeled persistent memory let LLM-driven agents carry learning across sessions without fine-tuning.
 
-Maxim gives an LLM agent a **body** (sensors, modulators, pain), **drives** (hunger, temperature, fatigue that drift and compete), and **biological memory systems** (Hippocampus, NAc, ATL, SCN, Angular Gyrus) that learn from experience. The agent doesn't "know" fire is dangerous because GPT said so — it knows because touching fire triggered pain in its thermal sensors, NAc formed a causal link, and the enrichment pipeline surfaces "fire = negative" next session.
+Maxim gives an LLM agent a **body** (sensors, modulators, pain), **drives** (hunger, temperature, fatigue that drift and compete), and **biological memory systems** (Hippocampus, NAc, ATL, SCN, Angular Gyrus) that capture experience. When the agent's body touches fire, its thermal sensors register pain, NAc forms a causal link, and the enrichment pipeline surfaces that experience in subsequent sessions — providing the LLM with experience-grounded context alongside its pretraining. The bio-substrate doesn't replace the LLM's prior knowledge; it augments the LLM's prompt context with persistent, agent-specific lived experience.
+
+> **Positioning** (per [Exp 37 2026-06-06 results](docs/experiments/37_cross_session_graduation.md)): Maxim is a **bio-inspired LLM harness**. The substrate provides cross-session infrastructure (memory, valence, causal links, drives) that LLM-driven agents use. Substrate-driven action selection independent of the LLM is post-1.0 research direction via Exp 38 substrate-primary work. See [docs/plans/behavioral_graduation_candidates.md](docs/plans/behavioral_graduation_candidates.md) for the Tier 1 graduation status.
 
 **Website:** [dennyschaedig.com/maxim](https://www.dennyschaedig.com/maxim)
 
@@ -10,12 +12,12 @@ Maxim gives an LLM agent a **body** (sensors, modulators, pain), **drives** (hun
 
 | Traditional LLM Agent | Maxim Agent |
 |---|---|
-| Stateless between sessions | Cross-session memory via hippocampal recall + NAc causal links |
+| Stateless between sessions | Cross-session memory via hippocampal recall + NAc causal links (EARNED, [Exp 10](docs/experiments/10_cross_session_enrichment.md)) |
 | Text in, text out | Embodied: sensors, pain, homeostatic drives, reflexes |
-| Learns via fine-tuning | Learns via bio-pipeline: sensation → pain/reward → causal links → enrichment |
+| Fine-tune to learn from new data | Bio-substrate captures experience: sensation → pain/reward → causal links → enrichment, surfaced as prompt context in subsequent sessions |
 | Flat tool list | Three interaction levels: observe, touch, acquire |
 | No internal state | Hunger drifts, temperature self-regulates, fatigue accumulates |
-| Prompt engineering for behavior | Behavior emerges from learned experience |
+| Prompt engineering for behavior | LLM action selection augmented by substrate-derived context (memory recall, causal predictions, valence, drives) |
 
 ## Quickstart
 
