@@ -129,6 +129,152 @@ debugging on PromptBuilder.assemble. Zero LLM cost (read-only audit).
 **Acceptance:** every dynamic field in the system prompt is named, classified,
 and has a placement recommendation. No silent invalidators remain undocumented.
 
+#### Phase 0 — RESULTS (completed 2026-06-08, read-only audit)
+
+**Decisive architectural finding — the plan's premise does not match the code.**
+
+The mental model behind this plan was "a ~100K-token system prompt is re-sent
+every turn; mark its end with one `cache_control` breakpoint." The code does
+**not** work that way:
+
+1. `PromptBuilder.build_prompt` assembles **every** section (identity, tools,
+   observations, memories, drive states, datetime, bio-annotations, conversation
+   history — all of it) into a **single string** returned as
+   `TOOL_PROMPT|<everything>` ([prompt_builder.py:940](../../src/maxim/agents/prompt_builder.py)).
+2. The router's `_generate_tool_response`
+   ([router.py:1873-1890](../../src/maxim/models/language/router.py)) routes that
+   entire string into the **`user`** message and sets **`system`** to the tiny
+   static constant `SYSTEM_TOOL_RESPONSE` (~145 tokens,
+   [cloud_dispatch.py:49](../../src/maxim/models/language/cloud_dispatch.py)).
+3. `_AnthropicBackend.complete_with_usage` builds
+   `messages = [{"role": "user", "content": user}]` (one user message, no
+   multi-turn array — conversation history is rendered as text *inside* the
+   payload) and applies the `cache_control` marker via `_build_system_blocks`
+   **to the `system` parameter only** — i.e. to the ~145-token constant.
+
+**Consequence: flipping `prompt_cache: true` today caches the ~145-token static
+system constant and nothing else. ~0% of the per-turn ITPM is recoverable.** The
+"wiring already exists" surprise from the original audit is real but the wiring
+points at the wrong message.
+
+Two distinct problems, both must be solved for any benefit:
+
+- **P1 (placement):** the large stable content lives in the `user` message, but
+  `cache_control` only marks the `system` message. A cacheable prefix must be
+  moved into `system` (or the breakpoint moved onto the user message at the
+  stable/dynamic boundary).
+- **P2 (stability):** even within the `user` payload there is **no byte-stable
+  prefix**. Dynamic content begins at position 2 (the user-request/percept) and
+  is interleaved throughout — datetime to minute precision, per-tick drive
+  states (`body_state`, CRITICAL priority), Acting Coach bio-modulation,
+  Wire-A/W1 substrate annotations, observations, accumulating memories. The
+  `PromptBudgeter` re-emits in insertion order ([prompt_budgeter.py:152](../../src/maxim/agents/prompt_budgeter.py)),
+  and budget-driven truncation/drop of any earlier section shifts every byte
+  after it.
+
+**Hash-test artifact:** [tests/integration/test_prompt_builder_audit.py](../../tests/integration/test_prompt_builder_audit.py).
+- `test_system_block_carries_negligible_tokens_vs_user_payload` — PASSES;
+  documents that the cacheable system block is a small minority of tokens (real
+  cradle ratio ≈ 145 system vs ~120K user).
+- `test_baseline_user_payload_is_not_byte_stable_across_turns` — PASSES;
+  documents 12 distinct payload hashes across 12 turns (cache miss every turn).
+- `test_cacheable_prefix_is_byte_stable_across_turns` — `xfail(strict=True)`;
+  this is the target invariant. It stays xfail until Phase 1 introduces a
+  byte-stable prefix, at which point it XPASSes and (under `strict`) fails,
+  forcing removal of the marker. This is the Phase 1/3 acceptance gate and the
+  Phase 3 `test_system_prompt_byte_stable_across_turns` in embryo.
+
+**Per-section audit.** "Current placement" is the `user` message for *every*
+section (the `TOOL_PROMPT` single-string architecture). Classification rubric:
+**(a)** genuinely-stable → belongs in `system`, cacheable; **(b)**
+dynamic-must-move-out → keep in `user` turn; **(c)** cacheable-with-care →
+session/phase-stable, can go in `system`, invalidates only at session/phase
+boundaries (which we don't cache across anyway).
+
+| section_name | inserted at | class | recommended placement | reason |
+|---|---|---|---|---|
+| instructions | 1 | (c) | system | static per autonomy level; session-stable |
+| user_request | 2 | (b) | user turn | the percept/goal — varies per turn |
+| planning_banner | 3 | (a) | system | static; empty in autonomous cradle |
+| modification | 4 | (b) | user turn | only on user-revise; dynamic when present |
+| identity | 5 | (c) | system | mode/goal/sim/interactive flags fixed per session (date/time params unused in body) |
+| tools | 6 | (c) | system | scene roster stable **within a narrative phase**; changes at act boundary (and per-tick if imagination/sense_tools mutate roster — see caveat) |
+| failed_tools | 7 | (b)/(a) | user turn | accumulates hallucinated names; empty by default (`MAXIM_TOOL_FAILURE_HINTS` off) |
+| workspace_manifest | 8 | (b) | user turn | filesystem scan; empty for embodied cradle, dynamic when files written |
+| realtime_hint | 9 | (b) | user turn | derived from question keywords |
+| pfc_preamble | 10 | (a) | system | `PFC_PREAMBLE` static constant |
+| acting_coach | 11 | (b) | user turn | bio-modulated by `body_state`/`causal_context`/`motor_programs` — varies per tick (large in cradle) |
+| entity_context | 12 | (c) | system | composed from session-fixed `entity_spec` |
+| cluster_bias_annotations | 13 | (b) | user turn | Wire-A NAc bias, updates per tick |
+| grayscale_tools | 14 | (b) | user turn | W1 substrate annotation, per tick |
+| tool_guidance_core | 15 | (a) | system | static given `mode_name`+`is_embodied` |
+| tool_guidance_extended | 16 | (a) | system | static (empty when embodied) |
+| datetime | 17 | (b) | user turn | minute-precision timestamp — classic silent invalidator |
+| budget_context | 18 | (b) | user turn | cloud spend totals, per request |
+| conversation | 19 | (b) | user turn | grows every turn (ideally a real message array) |
+| context_pool | 20 | (b) | user turn | accumulating observations |
+| active_protocols | 21 | (c)/(b) | user turn | "re-injected each submission"; treat as dynamic unless proven stable |
+| reasoning_carryover | 22 | (b) | user turn | prior-cycle reasoning, grows |
+| prefetch_context | 23 | (b) | user turn | speculative prefetch (not in cradle) |
+| coding_guidelines | 24 | (b) | user turn | derived from question text |
+| foundational | 25 | (a) | system | `_load_foundational_context` is session-cached (Constitution/AGENTS) |
+| mode_context | 26 | (c) | system | `mode.context_prompt`, session-fixed |
+| observation | 27 | (b) | user turn | current percept |
+| speech | 28 | (b) | user turn | detected speech |
+| agent_states | 29 | (b) | user turn | multi-agent states |
+| recent_outcomes | 30 | (b) | user turn | last N tool outcomes |
+| body_state | 31 | (b) | user turn | **drive states drift every tick** — CRITICAL priority, large in cradle |
+| bio_enrichment | 32 | (b) | user turn | per-percept bio associations |
+| auto_sense | 33 | (b) | user turn | passive perception sweep |
+| deliberation_transcript | 34 | (b) | user turn | accumulating multi-cycle reasoning |
+| working_memory_thoughts | 35 | (b) | user turn | prior-cycle THOUGHT entries |
+| relevant_memories | 36 | (b) | user turn | recalled episodes, accumulate |
+| concept_context | 37 | (b) | user turn | active ATL concepts |
+| knowledge_context | 38 | (b) | user turn | semantic knowledge recalls |
+| causal_context | 39 | (b) | user turn | learned causal predictions |
+| valence_context | 40 | (b) | user turn | learned valence associations |
+| motor_programs | 41 | (b) | user turn | learned motor programs |
+| statistical_patterns | 42 | (b) | user turn | active statistical patterns |
+
+**Stable-prefix candidates (class a/c → `system`):** instructions,
+planning_banner, identity, tools (phase-scoped), pfc_preamble, entity_context,
+tool_guidance_core, tool_guidance_extended, foundational, mode_context. These
+are the only sections that can form a cacheable prefix. **Everything else — and
+notably the largest cradle contributors (acting_coach, body_state, memories,
+conversation, observation, bio annotations) — is genuinely per-tick dynamic.**
+
+**Caveat on `tools` (the most important class-(c) section).** The tool roster is
+stable *within* a cradle narrative phase but (i) changes at act boundaries when
+`world_entities` activate, and (ii) may change per-tick if imagination registers
+ephemeral entities or `sense_tools` reshapes the active window. If the roster
+churns per-tick in practice, `tools` collapses from (c) to (b) and the cacheable
+prefix shrinks further. **This must be measured on a real cradle run before
+relying on it** (the synthetic hash test holds the roster constant, so it does
+not exercise this).
+
+**Scope verdict — Standing Risk #1 is REALIZED, and larger than anticipated.**
+The risk anticipated "half the system prompt is per-turn dynamic." The reality
+is stronger: there is effectively *no* system prompt today (it's a 145-token
+constant), and realizing caching requires a **structural split** of the single
+`TOOL_PROMPT` user-string into (1) a deterministic, byte-stable `system` prefix
+assembled only from class-(a)/(c) sections and (2) a `user` turn carrying all
+class-(b) content — plus making the budgeter emit the stable prefix
+deterministically (truncation of dynamic sections must not perturb the prefix).
+This is a multi-day refactor touching `PromptBuilder.build_prompt`, the
+`PromptBudgeter` ordering/segmentation contract, the router's
+`_generate_tool_response` system/user split, and a swath of prompt-builder
+tests — **not a flag flip plus a few section moves.** Phase 1a as originally
+scoped ("move dynamic content out of system") is inverted: the work is "lift
+stable content *into* a newly-real system prefix."
+
+**Recommendation:** checkpoint with the user before starting Phase 1 (per the
+plan's own instruction and Standing Risk #1). Decision needed: (A) proceed with
+the structural prompt-architecture split, or (B) defer caching and unblock Exp 37
+cloud fires another way (e.g. tier upgrade, or pivot to higher-ITPM providers
+DeepSeek/GPT-4o per Sequencing Option B). Estimated effort for (A):
+~2–4 days including the smoke validation, dominated by the budgeter
+segmentation refactor and test churn.
+
 ### Phase 1 — Fix invalidators + enable cache + add instrumentation
 
 Goal: make `prompt_cache.enabled: true` actually deliver cache hits in
