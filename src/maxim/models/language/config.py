@@ -455,7 +455,10 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "api_key_env": "ANTHROPIC_API_KEY",
         "prompt_cache": True,
     },
-    # Cloud providers (OpenAI)
+    # Cloud providers (OpenAI). prompt_cache here gates the openai_cache
+    # measurement event — OpenAI caching itself is automatic/server-side for
+    # prompts >1024 tokens (no marker), enabled by Phase 1's stable system
+    # prefix. See docs/plans/prompt_caching_for_cloud_backends.md Phase 2.
     "gpt-4o": {
         "backend": "openai",
         "model": "gpt-4o",
@@ -464,6 +467,7 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "n_ctx": 128000,
         "cloud": True,
         "api_key_env": "OPENAI_API_KEY",
+        "prompt_cache": True,
     },
     "gpt-4o-mini": {
         "backend": "openai",

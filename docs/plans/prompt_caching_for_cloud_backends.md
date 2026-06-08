@@ -512,3 +512,72 @@ get a clean Anthropic comparison AND we ship a real engineering improvement.
   — the PromptBuilder that Phase 0 audits.
 - [src/maxim/models/language/openai_backend.py](../../src/maxim/models/language/openai_backend.py)
   — the OpenAI backend that Phase 2 extends.
+
+## Results
+
+### Phase 1 — implemented (commit `d5cd543`, 2026-06-08)
+
+The Phase 0 audit invalidated the plan's premise (see Phase 0 RESULTS above), so
+Phase 1 became the structural refactor it described as the worst case:
+
+- **`PromptBudgeter`** gained a `cacheable` flag + `build_segmented()` — stable
+  sections are budgeted first, independent of dynamic content (capped at 70% of
+  budget so dynamic MANDATORY can't starve), guaranteeing a byte-stable prefix.
+- **`PromptBuilder`** tags 10 class-(a)/(c) sections cacheable and emits
+  `TOOL_PROMPT|<stable>\x1e<dynamic>`.
+- **Router** `_generate_tool_response` splits on the delimiter → stable prefix
+  into `system` (after `SYSTEM_TOOL_RESPONSE`, so the whole system block ends at
+  the cache breakpoint), dynamic into `user`. No-delimiter payloads unchanged.
+- **Profiles/config**: `prompt_cache: true` on the 3 Claude profiles; new
+  `LLMConfig.prompt_cache` threaded profile → synthesized provider → backend.
+- **Instrumentation**: `anthropic_cache` structured event per call.
+
+Regression coverage: budgeter (6), router split (4), backend wiring +
+instrumentation (8), audit byte-stability gate flipped green (4). Full fast
+suite: 7791 passed.
+
+### Phase 1d — Sonnet smoke (2026-06-08, 1 trial, fire_pit Arm A, $0.30)
+
+Command: `benchmark_cross_session.py --scenario fire_pit --arms A --trials 1
+--seed-base 600 --model claude-sonnet --sim-max-turns 12` with
+`MAXIM_LOG_FILE` capturing `anthropic_cache` events.
+
+**Caching works and the prefix is byte-stable** (proven by 43K cache reads — a
+non-stable prefix would read ~0). Measured across the 44 LLM calls of the
+12-turn sub-sim:
+
+| metric | value |
+|---|---|
+| total input tokens (sub-sim) | 112,368 |
+| cache_read (not ITPM-counted) | 43,016 |
+| cache_write (1.25× billed) | 8,645 (2 writes) |
+| uncached input | 60,707 |
+| **ITPM-counted input (write+uncached)** | **69,352** |
+| **ITPM reduction vs no-cache** | **38.3%** |
+| calls with prompt ≥1024 tok (Anthropic min cacheable) | 24 / 44 |
+| per-call prompt size (min/median/max) | 383 / 1,147 / 7,685 |
+
+**Key corrections to the plan's assumptions:**
+
+1. **The "~120K input tokens" is the SUM across the sub-sim's 44 calls, not a
+   per-turn 120K system prompt.** Per-call median is only ~1.1K tokens.
+2. **The plan's acceptance bar (>80% hit ratio, >5× reduction) is NOT met and
+   was never achievable** — it assumed a large *stable* prefix re-sent every
+   turn. Reality: the stable prefix is ~4.2-4.4K tokens; the rest is genuinely
+   dynamic (memories, drives, conversation) or sub-1024 calls that can't cache.
+3. **The real win — ~38% ITPM reduction — still clears the tier-1 ceiling**
+   that caused the 2026-06-08 cascade (~30K → ~18.6K ITPM sustained). This is
+   the meaningful success: it unblocks Sonnet/Haiku Exp 37 fires at tier 1.
+4. **The `tools` phase-stability caveat manifested benignly:** one prefix
+   re-write at a narrative-act boundary (4,218 → 4,427 tokens, +209 when new
+   `world_entities` activated), then reuse resumed. NOT per-tick churn — `tools`
+   was correctly classified phase-stable. The default 5-min TTL held across the
+   ~6-min run; no need to bump to 1h.
+
+**Why only 24/44 calls are cache-eligible:** the cradle sub-sim makes several
+LLM call *types* (AUT tool-prompt, narrator, answer-only, imagination). Only the
+AUT tool-prompt calls (~one per turn) carry the large stable prefix and exceed
+Anthropic's 1024-token minimum; the rest are small and cannot cache. The ~38%
+is therefore close to the practical ceiling for this scenario without making
+more of the per-call content stable (out of scope — that content is genuinely
+dynamic).

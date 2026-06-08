@@ -296,6 +296,84 @@ class TestOpenAIBackend:
         backend = self._make_backend()
         assert backend.supports_streaming is True
 
+    # ── Prompt caching (Phase 2) ────────────────────────────────────────
+
+    def _make_backend_with_cache(self, prompt_cache=True):
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        cfg = LLMConfig(
+            enabled=True,
+            providers={
+                "openai": {
+                    "type": "openai",
+                    "api_key_env": "OPENAI_API_KEY",
+                    "model": "gpt-4o",
+                    "prompt_cache": prompt_cache,
+                }
+            },
+        )
+        return _OpenAIBackend(cfg, provider_key="openai")
+
+    def test_prompt_cache_enabled_provider_bool(self):
+        assert self._make_backend_with_cache(True)._prompt_cache_enabled() is True
+
+    def test_prompt_cache_disabled_default(self):
+        assert self._make_backend()._prompt_cache_enabled() is False
+
+    def test_prompt_cache_cfg_fallback(self):
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        cfg = LLMConfig(
+            enabled=True,
+            prompt_cache=True,
+            providers={"local": {"type": "openai", "model": "gpt-4o"}},
+        )
+        backend = _OpenAIBackend(cfg, provider_key="local")
+        assert backend._prompt_cache_enabled() is True
+
+    def test_parse_response_emits_openai_cache_event(self, caplog):
+        import logging
+
+        backend = self._make_backend_with_cache(True)
+        mock_resp = MagicMock()
+        choice = MagicMock()
+        choice.message.content = "{}"
+        choice.finish_reason = "stop"
+        mock_resp.choices = [choice]
+        mock_resp.id = "chatcmpl-xyz"
+        mock_resp.usage.prompt_tokens = 1000
+        mock_resp.usage.completion_tokens = 20
+        details = MagicMock()
+        details.cached_tokens = 768
+        mock_resp.usage.prompt_tokens_details = details
+
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.openai_backend"):
+            backend._parse_response(mock_resp, "gpt-4o", 0.0)
+        events = [r for r in caplog.records if r.getMessage() == "openai_cache"]
+        assert len(events) == 1
+        data = events[0].data
+        assert data["cache_read_tokens"] == 768
+        assert data["input_tokens_uncached"] == 232  # 1000 - 768 (OpenAI prompt_tokens is inclusive)
+        assert data["prompt_tokens_total"] == 1000
+        assert abs(data["cache_hit_ratio"] - 0.768) < 1e-6
+        assert data["request_id"] == "chatcmpl-xyz"
+
+    def test_parse_response_no_event_when_disabled(self, caplog):
+        import logging
+
+        backend = self._make_backend()  # no prompt_cache
+        mock_resp = MagicMock()
+        choice = MagicMock()
+        choice.message.content = "{}"
+        choice.finish_reason = "stop"
+        mock_resp.choices = [choice]
+        mock_resp.usage.prompt_tokens = 1000
+        mock_resp.usage.completion_tokens = 20
+        mock_resp.usage.prompt_tokens_details = None
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.openai_backend"):
+            backend._parse_response(mock_resp, "gpt-4o", 0.0)
+        assert not [r for r in caplog.records if r.getMessage() == "openai_cache"]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Router Integration Tests
@@ -440,6 +518,11 @@ class TestPromptCacheConfigWiring:
 
         for name in ("claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"):
             assert _BUILTIN_PROFILES[name].get("prompt_cache") is True, name
+
+    def test_builtin_gpt4o_profile_enables_prompt_cache(self):
+        from maxim.models.language.config import _BUILTIN_PROFILES
+
+        assert _BUILTIN_PROFILES["gpt-4o"].get("prompt_cache") is True
 
     def test_normalize_providers_surfaces_prompt_cache(self):
         from maxim.models.language.cloud_dispatch import normalize_providers
