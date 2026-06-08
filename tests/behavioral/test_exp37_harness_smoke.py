@@ -897,6 +897,16 @@ class TestCloudDispatchEnvSetup:
         # on stdin for the SMALL tier's smollm-1.7b-instruct download and
         # cascades into _llm_unavailable on every LLM call.
         assert env.get("MAXIM_AUTO_DOWNLOAD_MODELS") == "1"
+        # MAXIM_DISABLE_PEER_CONFIG=1 must be set so the sub-sim's
+        # ``_apply_lane_config_to_env`` short-circuits the peer.yml /
+        # config.json lane-routing auto-population. Without this, the
+        # sub-sim re-populates MAXIM_LANE_LARGE_REMOTE_URL from
+        # peer.yml after the harness blanks it (the empty-string-set
+        # reads as "unset" to the setdefault-semantics population code).
+        # Found 2026-06-07 during Phase 1 cloud validation: sub-sims
+        # were routing to the leader's local Qwen via tunnel instead of
+        # the cloud profile's _AnthropicBackend.
+        assert env.get("MAXIM_DISABLE_PEER_CONFIG") == "1"
 
     def test_local_model_uses_peer_routing_unchanged(self, harness, monkeypatch, tmp_path):
         """Local / peer-routed models must NOT get --language-model on
