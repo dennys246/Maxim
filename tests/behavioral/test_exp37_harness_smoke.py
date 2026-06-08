@@ -966,9 +966,18 @@ class TestCloudDispatchEnvSetup:
 # ─── Harness preflight guard (harness-on-leader cascade backstop) ────────
 
 
-def _write_lane_decisions(data_home: Path, *, large_source: str) -> None:
+def _write_lane_decisions(
+    data_home: Path,
+    *,
+    large_source: str,
+    large_profile: str = "qwen2.5-14b-instruct",
+) -> None:
     """Synthesize a sub-sim ``util/lane_decisions.jsonl`` with the given
-    ``tier_decisions.large.source`` (mirrors decision_log.py's shape)."""
+    ``tier_decisions.large.source`` (mirrors decision_log.py's shape).
+
+    ``large_profile`` defaults to a local profile; pass ``claude-sonnet-4-6``
+    (or any cloud-prefix profile) to exercise the cloud-dispatch exception.
+    """
     util = data_home / "util"
     util.mkdir(parents=True, exist_ok=True)
     record = {
@@ -979,7 +988,7 @@ def _write_lane_decisions(data_home: Path, *, large_source: str) -> None:
         "env": {},
         "peer_config_loaded": False,
         "tier_decisions": {
-            "large": {"profile": "qwen2.5-14b-instruct", "source": large_source},
+            "large": {"profile": large_profile, "source": large_source},
             "medium": {"profile": "smollm-1.7b-instruct", "source": large_source},
         },
     }
@@ -1008,6 +1017,29 @@ class TestHarnessPreflight:
         data_home = tmp_path / "trial001_fire_pit_A"
         _write_lane_decisions(data_home, large_source="reused_server")
         harness.assert_subsim_routed_not_local(data_home)
+
+    def test_harness_preflight_accepts_cloud_profile_with_tier_table_source(self, harness, tmp_path):
+        """Cloud-dispatch exception (2026-06-07): when the lane resolved
+        to a cloud profile (claude-*, gpt-*, etc.), source="tier_table"
+        is the LEGITIMATE path (no local llama-cpp involved). Preflight
+        must NOT raise.
+        """
+        for cloud_profile in ("claude-sonnet-4-6", "gpt-4o", "gemini-pro"):
+            data_home = tmp_path / f"trial_{cloud_profile.replace('-', '_')}"
+            _write_lane_decisions(data_home, large_source="tier_table", large_profile=cloud_profile)
+            # Should not raise — cloud profile path is legitimate.
+            harness.assert_subsim_routed_not_local(data_home)
+
+    def test_harness_preflight_still_rejects_local_profile_with_tier_table_source(self, harness, tmp_path):
+        """The cloud-dispatch exception must NOT relax the check for local
+        profiles. A local profile with source="tier_table" still means
+        the sub-sim spawned its own llama-cpp — the original cascade case.
+        """
+        for local_profile in ("qwen2.5-14b-instruct", "mistral-7b", "smollm-1.7b-instruct"):
+            data_home = tmp_path / f"trial_{local_profile.replace('-', '_').replace('.', '_')}"
+            _write_lane_decisions(data_home, large_source="tier_table", large_profile=local_profile)
+            with pytest.raises(harness.PreflightError, match="harness on the same machine as the leader"):
+                harness.assert_subsim_routed_not_local(data_home)
 
     def test_harness_preflight_soft_pass_when_log_missing(self, harness, tmp_path):
         """No decision log → soft pass (can't assert what isn't recorded)."""

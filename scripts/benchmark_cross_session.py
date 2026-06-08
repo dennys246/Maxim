@@ -909,6 +909,24 @@ def assert_subsim_routed_not_local(data_home: Path, *, lane: str = PREFLIGHT_LAN
     if not isinstance(lane_info, dict):
         return
     source = lane_info.get("source")
+    profile = lane_info.get("profile")
+
+    # Cloud-dispatch exception (2026-06-07): when the lane resolved to a
+    # cloud profile (claude-*, gpt-*, etc.), source="tier_table" is the
+    # LEGITIMATE path — no local llama-cpp is involved at all, the router
+    # dispatches through the cloud backend (_AnthropicBackend, etc.). The
+    # original preflight assumed source="tier_table" meant "sub-sim spawned
+    # its own local LLM," but that's only true for LOCAL profiles. Skip the
+    # source check entirely when the profile prefix matches CLOUD_MODEL_PREFIXES
+    # — the cloud-dispatch path has its own correctness checks downstream.
+    if isinstance(profile, str) and _is_cloud_model(profile):
+        print(
+            f"PREFLIGHT OK: sub-sim {lane!r} tier resolved to cloud profile "
+            f"{profile!r} via source={source!r} (cloud dispatch, no local "
+            f"spawn) — continuing.",
+            file=sys.stderr,
+        )
+        return
 
     if source == "tier_table":
         raise PreflightError(
