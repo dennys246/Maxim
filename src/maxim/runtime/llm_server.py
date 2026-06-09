@@ -326,12 +326,35 @@ def check_existing_llm_server(
 
     if match is False:
         configured = expected_profile or expected_model_path or "<unknown>"
+        # Most common cause when configured and served diverge: the operator
+        # ran ``maxim --llm <new>`` to swap the runtime server but did not
+        # also update ``config.json::llm.profile``. The two state files are
+        # intentionally separate (declarative vs runtime, per
+        # config_unification.md C2) but the divergence surfaces here when a
+        # sub-sim consults the declarative config. Surface concrete fix
+        # commands so the operator does not have to read CLAUDE.md to
+        # disambiguate.
         raise RuntimeError(
             f"Singleton check: an LLM server is already running on {url} but it is "
             f"serving model {served!r}, not the configured {configured!r}. Refusing "
-            f"to silently use the wrong model. Resolution: stop the existing server "
-            f"(or point this run at the served model). See the CLAUDE.md lesson "
-            f"'Don't run the benchmark harness on the same machine as the leader'."
+            f"to silently use the wrong model.\n"
+            f"\n"
+            f"Most likely cause: ``maxim --llm <model>`` swaps the running server "
+            f"but does NOT update ``~/.config/maxim/config.json::llm.profile`` "
+            f"(declarative config, intentionally separate per config_unification.md "
+            f"C2). The two state files have drifted.\n"
+            f"\n"
+            f"Resolutions (pick one):\n"
+            f"  (a) Adopt the served model as the configured one:\n"
+            f"        maxim --list-models   # find the profile name matching the served GGUF\n"
+            f"        maxim config set llm.profile <profile-name>\n"
+            f"  (b) Restart the server with the configured model:\n"
+            f"        pkill -f llama_cpp.server && maxim --llm {configured}\n"
+            f"  (c) Stop the existing server entirely and let this run spawn fresh:\n"
+            f"        pkill -f llama_cpp.server\n"
+            f"\n"
+            f"See the CLAUDE.md lesson 'Config.json vs active_llm_model.txt drift "
+            f"after maxim --llm <model>'."
         )
 
     if logger is not None:
