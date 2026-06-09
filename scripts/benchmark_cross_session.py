@@ -321,6 +321,27 @@ def _real_sim(
         env["MAXIM_LLM_CLOUD_ENABLED"] = "1"
         env.setdefault("MAXIM_MAX_CLOUD_LANES", "6")
         env.setdefault("MAXIM_LLM_REDACTION_POLICY", "standard")
+        # Neutralize each sub-sim's INTERNAL RoutingPolicy cost gate. Defaults
+        # ($1/hr, $10/day, $5/session) are sized for a single interactive
+        # session, but the cost tracker persists a rolling window in shared
+        # ~/.maxim/cost_state.json across sub-sims — so a multi-run fire crosses
+        # $1/hr within the first hour and EVERY subsequent sub-sim's first
+        # request is gated ("No eligible LLM providers" -> _llm_unavailable).
+        # This was the 2026-06-08 full-fire collapse (NOT rate limiting). The
+        # harness's own --cost-cap is the real aggregate ceiling.
+        #
+        # We set the caps HIGH (not 0): 0 means "unlimited" at the budget-gate
+        # layer, but LLMRouter._validate_cloud_config treats all-zero cost
+        # limits as a misconfiguration and DISABLES cloud dispatch entirely
+        # ("cost limits missing"). A large finite value clears the budget gate
+        # for any realistic fire while satisfying the cloud-safety guard.
+        # setdefault lets an operator re-impose a real cap explicitly.
+        _HIGH_CAP = "100000"  # USD; >> any single fire, << meaningless overflow
+        env.setdefault("MAXIM_LLM_MAX_COST_PER_HOUR", _HIGH_CAP)
+        env.setdefault("MAXIM_LLM_MAX_COST_PER_DAY", _HIGH_CAP)
+        env.setdefault("MAXIM_LLM_MAX_COST_PER_MONTH", _HIGH_CAP)
+        env.setdefault("MAXIM_LLM_MAX_COST_PER_REQUEST", _HIGH_CAP)
+        env.setdefault("MAXIM_LLM_MAX_SESSION_COST", _HIGH_CAP)
         # Blank any peer.yml-derived LARGE-tier routing so the sub-sim's
         # router doesn't dispatch through ``_MaximPeerBackend`` (which
         # would still hit the leader regardless of profile). The

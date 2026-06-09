@@ -720,6 +720,112 @@ class TestPromptCacheConfigWiring:
         synthesized = normalize_providers(cfg)
         assert synthesized["local"]["prompt_cache"] is False
 
+    # ── Routing cost-cap env overrides (full-fire collapse fix) ──────────
+
+    def test_routing_cost_caps_default_when_no_env(self, monkeypatch):
+        from maxim.models.language.cloud_dispatch import load_routing_policy
+
+        for v in (
+            "MAXIM_LLM_MAX_COST_PER_HOUR",
+            "MAXIM_LLM_MAX_COST_PER_DAY",
+            "MAXIM_LLM_MAX_SESSION_COST",
+            "MAXIM_LLM_MAX_COST_PER_REQUEST",
+            "MAXIM_LLM_MAX_COST_PER_MONTH",
+        ):
+            monkeypatch.delenv(v, raising=False)
+        p = load_routing_policy({})
+        assert p.max_cost_per_hour == 1.00
+        assert p.max_cost_per_day == 10.00
+        assert p.max_session_cost == 5.00
+
+    def test_routing_cost_caps_env_override_to_unlimited(self, monkeypatch):
+        from maxim.models.language.cloud_dispatch import load_routing_policy
+
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_HOUR", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_DAY", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_SESSION_COST", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_REQUEST", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_MONTH", "0")
+        p = load_routing_policy({"max_cost_per_hour": 1.0, "max_cost_per_day": 10.0})
+        assert p.max_cost_per_hour == 0.0  # env wins over config
+        assert p.max_cost_per_day == 0.0
+        assert p.max_session_cost == 0.0
+
+    def test_routing_cost_cap_env_overrides_config(self, monkeypatch):
+        from maxim.models.language.cloud_dispatch import load_routing_policy
+
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_HOUR", "50")
+        p = load_routing_policy({"max_cost_per_hour": 1.0})
+        assert p.max_cost_per_hour == 50.0
+
+    def test_routing_cost_cap_malformed_env_falls_back(self, monkeypatch):
+        from maxim.models.language.cloud_dispatch import load_routing_policy
+
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_HOUR", "not-a-number")
+        p = load_routing_policy({"max_cost_per_hour": 3.0})
+        assert p.max_cost_per_hour == 3.0  # falls back to config
+
+    def test_all_zero_caps_yield_normal_budget_status(self, monkeypatch):
+        """With all caps 0, the budget gate never blocks (the fix's core
+        invariant — delegate to the harness --cost-cap)."""
+        import dataclasses
+        from maxim.models.language.config import LLMConfig
+        from maxim.models.language.router import LLMRouter
+
+        for v in ("HOUR", "DAY", "MONTH", "REQUEST"):
+            monkeypatch.setenv(f"MAXIM_LLM_MAX_COST_PER_{v}", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_SESSION_COST", "0")
+        cfg = dataclasses.replace(LLMConfig(), enabled=True)
+        router = LLMRouter(cfg)
+        # With every cap at 0, _budget_status computes no ratios and can never
+        # reach "blocked" regardless of accumulated spend — the gate is off and
+        # the harness --cost-cap is the sole ceiling.
+        assert router._routing_policy.max_cost_per_hour == 0.0
+        status, _ = router._budget_status(1000.0)
+        assert status == "normal"
+
+    def test_all_zero_caps_disable_cloud_dispatch(self, monkeypatch):
+        """SAFETY GUARD: all-zero cost caps make _validate_cloud_config refuse
+        cloud (cost limits missing). This is why the harness sets HIGH finite
+        caps, not 0 — 0 neutralizes the budget gate but trips this guard."""
+        import dataclasses
+        from maxim.models.language.config import LLMConfig
+        from maxim.models.language.router import LLMRouter
+
+        for v in ("HOUR", "DAY", "MONTH", "REQUEST"):
+            monkeypatch.setenv(f"MAXIM_LLM_MAX_COST_PER_{v}", "0")
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            enabled=True,
+            cloud_enabled=True,
+            redaction={"policy": "standard"},
+            providers={"anthropic": {"type": "anthropic", "model": "claude-sonnet-4-6"}},
+        )
+        router = LLMRouter(cfg)
+        assert router._cloud_allowed is False
+        assert "cost" in router._cloud_block_reason
+
+    def test_high_caps_keep_cloud_enabled_and_unblocked(self, monkeypatch):
+        """The harness approach: HIGH finite caps -> cloud stays allowed AND the
+        budget gate never blocks for a realistic fire."""
+        import dataclasses
+        from maxim.models.language.config import LLMConfig
+        from maxim.models.language.router import LLMRouter
+
+        for v in ("HOUR", "DAY", "MONTH", "REQUEST"):
+            monkeypatch.setenv(f"MAXIM_LLM_MAX_COST_PER_{v}", "100000")
+        monkeypatch.setenv("MAXIM_LLM_MAX_SESSION_COST", "100000")
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            enabled=True,
+            cloud_enabled=True,
+            redaction={"policy": "standard"},
+            providers={"anthropic": {"type": "anthropic", "model": "claude-sonnet-4-6"}},
+        )
+        router = LLMRouter(cfg)
+        assert router._cloud_allowed is True
+        assert router._budget_status(1000.0)[0] == "normal"
+
     def test_load_llm_config_claude_profile_enables_prompt_cache(self, monkeypatch):
         from maxim.models.language.config import load_llm_config
 
