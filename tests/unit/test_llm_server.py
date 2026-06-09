@@ -235,13 +235,52 @@ class TestCheckExistingLlmServer:
             patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("ok")),
             patch("maxim.runtime.llm_server._read_served_model_id", return_value=wrong),
         ):
-            with pytest.raises(RuntimeError, match="harness on the same machine as the leader"):
+            with pytest.raises(RuntimeError, match=r"Refusing to silently use the wrong model"):
                 check_existing_llm_server(
                     url=self._URL,
                     api_key="k",
                     expected_model_path=self._MODEL_PATH,
                     expected_profile=self._PROFILE,
                 )
+
+    def test_wrong_model_error_includes_concrete_fix_commands(self):
+        """The error message must surface concrete operator-runnable fix
+        commands (config_unification.md C2 + 2026-06-09 footgun lesson):
+          (a) ``maxim config set llm.profile <profile>``  — adopt served
+          (b) ``maxim --llm <configured>``                 — re-spawn to match config
+          (c) ``pkill -f llama_cpp.server``                — stop everything
+        Without these, the operator has to read CLAUDE.md to figure out
+        what to do; the singleton-check error is the natural surface for
+        the resolution paths.
+        """
+        import pytest
+
+        from maxim.runtime.llm_server import check_existing_llm_server
+
+        wrong = "/home/u/.maxim/models/Mistral-Small-24B-Instruct-2501-Q4_K_M.gguf"
+        with (
+            patch.object(_MaximPeerBackend, "health_check", return_value=self._probe("ok")),
+            patch("maxim.runtime.llm_server._read_served_model_id", return_value=wrong),
+        ):
+            with pytest.raises(RuntimeError) as excinfo:
+                check_existing_llm_server(
+                    url=self._URL,
+                    api_key="k",
+                    expected_model_path=self._MODEL_PATH,
+                    expected_profile=self._PROFILE,
+                )
+        msg = str(excinfo.value)
+        # (a) adopt-served path
+        assert "maxim config set llm.profile" in msg, f"resolution (a) missing: {msg!r}"
+        # (b) re-spawn-to-match-config path — must interpolate the
+        # configured profile so operator can copy/paste
+        assert f"maxim --llm {self._PROFILE}" in msg, f"resolution (b) missing or stale: {msg!r}"
+        # (c) kill-everything path
+        assert "pkill -f llama_cpp.server" in msg, f"resolution (c) missing: {msg!r}"
+        # Pointer to the new CLAUDE.md lesson by name
+        assert "config.json" in msg.lower() or "active_llm_model" in msg.lower(), (
+            f"message should mention the two state files by name: {msg!r}"
+        )
 
     def test_reuse_when_served_model_unverifiable(self):
         """200 but /v1/models yields no usable id → reuse anyway (avoid the
