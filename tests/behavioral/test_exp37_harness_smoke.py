@@ -276,6 +276,93 @@ def test_cost_cap_exit_code(harness, workdir, out_path):
     assert rc == 3
 
 
+# ─── 5b. Systemic-failure early-abort guard (credit/auth outage) ─────────
+
+
+def test_systemic_failure_aborts_after_consecutive_zero_token(harness, workdir, out_path, monkeypatch):
+    """N consecutive zero-input-token sub-sims (the credit-exhaustion / auth
+    signature) abort the fire fast instead of grinding out garbage records."""
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    with pytest.raises(harness.SystemicLLMFailure):
+        harness.run_benchmark(
+            out_path=out_path,
+            workdir=workdir,
+            arms=harness.ARMS,
+            scenarios=harness.SCENARIOS,
+            trials=2,
+            model="claude-sonnet",
+            cost_cap=100.0,
+            max_turns=4,
+            seed_base=42,
+            mock=True,
+            max_consecutive_failures=3,
+        )
+    # Aborted at the threshold, not after all 24 records.
+    records = _read_records(out_path)
+    assert len(records) == 3, f"expected abort at 3 records, got {len(records)}"
+
+
+def test_systemic_failure_guard_disabled_with_zero_threshold(harness, workdir, out_path, monkeypatch):
+    """--max-consecutive-failures 0 disables the guard — zero-token runs still
+    complete (operator override)."""
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    summary = harness.run_benchmark(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        trials=1,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+        max_consecutive_failures=0,
+    )
+    expected = 1 * 2 * len(harness.ARMS)
+    assert summary["records_written"] == expected
+
+
+def test_systemic_failure_does_not_fire_on_healthy_run(harness, workdir, out_path):
+    """Healthy (non-zero-token) runs never trip the guard."""
+    summary = harness.run_benchmark(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        trials=2,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+        max_consecutive_failures=3,
+    )
+    assert summary["records_written"] == 2 * 2 * len(harness.ARMS)
+
+
+def test_systemic_failure_exit_code(harness, workdir, out_path, monkeypatch):
+    """CLI main() returns 5 on systemic-failure abort."""
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    argv = [
+        "--out",
+        str(out_path),
+        "--workdir",
+        str(workdir),
+        "--trials",
+        "2",
+        "--cost-cap",
+        "100.0",
+        "--sim-max-turns",
+        "4",
+        "--max-consecutive-failures",
+        "3",
+        "--mock-llm",
+    ]
+    rc = harness.main(argv)
+    assert rc == 5
+
+
 # ─── 6. Failure-class detection routes through the per-scenario rules ────
 
 

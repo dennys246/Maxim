@@ -154,6 +154,49 @@ class CostCapExceeded(RuntimeError):
     """Raised when cumulative cost exceeds ``--cost-cap``."""
 
 
+class SystemicLLMFailure(RuntimeError):
+    """Raised when N consecutive sub-sims make ZERO successful LLM calls
+    (``total_input_tokens == 0``) — the signature of a systemic provider
+    outage (credit exhaustion, auth/key revocation, cloud gate) rather than a
+    transient blip. Aborts the fire fast instead of grinding out a file full of
+    zero-cost ``_llm_unavailable`` records (the 2026-06-09 credit-exhaustion
+    run wrote 22 garbage records before it was noticed)."""
+
+
+# Known systemic-failure signatures to surface in the abort message (best
+# effort; the abort trigger itself is token-based, not log-parse-based).
+_SYSTEMIC_FAILURE_SIGNATURES: tuple[tuple[str, str], ...] = (
+    ("credit balance is too low", "Anthropic credit balance exhausted (Plans & Billing)"),
+    ("credit balance", "provider credit/billing balance exhausted"),
+    ("insufficient_quota", "OpenAI quota/billing exhausted"),
+    ("invalid_api_key", "invalid/revoked API key"),
+    ("authentication", "authentication failed (key revoked or wrong)"),
+    ("401", "auth rejected (HTTP 401)"),
+)
+
+
+def _detect_systemic_cause(data_home: Any) -> str | None:
+    """Best-effort scan of a sub-sim's harness logs for a known systemic-failure
+    signature, to enrich the abort message. Returns None if nothing matches."""
+    try:
+        from pathlib import Path as _P
+
+        log_dir = _P(str(data_home)) / "harness_logs"
+        if not log_dir.is_dir():
+            return None
+        for log in sorted(log_dir.glob("*.log")):
+            try:
+                text = log.read_text(errors="replace").lower()
+            except OSError:
+                continue
+            for needle, label in _SYSTEMIC_FAILURE_SIGNATURES:
+                if needle.lower() in text:
+                    return label
+    except Exception:
+        return None
+    return None
+
+
 class PreflightError(RuntimeError):
     """Raised when the first sub-sim's routing fails the preflight guard.
 
@@ -527,6 +570,11 @@ def _mock_sim(
     for a in actions:
         tool_usage[a["tool"]] = tool_usage.get(a["tool"], 0) + 1
 
+    # Test-only knob (mock path only): simulate a systemic LLM failure where the
+    # sub-sim made zero successful calls (credit exhaustion / auth) so tests can
+    # exercise the SystemicLLMFailure early-abort guard.
+    _zero = os.environ.get("MAXIM_BENCH_MOCK_ZERO_TOKENS", "").strip() in ("1", "true", "yes")
+
     report = {
         "session_id": session_id,
         "goal": goal,
@@ -538,9 +586,9 @@ def _mock_sim(
         "tool_usage": tool_usage,
         "aut_memories_formed": 12,
         "aut_causal_links": 4,
-        "cost_usd": 0.02,
-        "total_input_tokens": 1000,
-        "total_output_tokens": 200,
+        "cost_usd": 0.0 if _zero else 0.02,
+        "total_input_tokens": 0 if _zero else 1000,
+        "total_output_tokens": 0 if _zero else 200,
     }
     (session_dir / "report.json").write_text(json.dumps(report))
     with (session_dir / "actions.jsonl").open("w") as f:
@@ -995,6 +1043,7 @@ def run_benchmark(
     seed_base: int,
     mock: bool,
     cleanup_after_trial: bool = False,
+    max_consecutive_failures: int = 3,
 ) -> dict[str, Any]:
     """Drive paired trials across arms × scenarios. Returns a summary dict.
 
@@ -1031,6 +1080,8 @@ def run_benchmark(
     versions = _capture_versions()
     cumulative_cost = 0.0
     records_written = 0
+    # Consecutive zero-input-token records → systemic-failure early-abort.
+    consecutive_zero_token = 0
     # Track per-record cost for worst-case projection at pair boundaries.
     # Seed at 0.0 so the FIRST trial pair always passes the projection check
     # (no data yet to predict from); the per-record _check_cost safety net
@@ -1052,6 +1103,7 @@ def run_benchmark(
 
     def _emit(rec: dict[str, Any]) -> None:
         nonlocal cumulative_cost, records_written, observed_max_record_cost
+        nonlocal consecutive_zero_token
         key = (rec["experiment"], rec["trial_pair_id"], rec["arm"], rec.get("scenario"))
         if key in existing_keys:
             raise RuntimeError(
@@ -1065,6 +1117,25 @@ def run_benchmark(
         cumulative_cost += rec["cost_usd"]
         observed_max_record_cost = max(observed_max_record_cost, rec["cost_usd"])
         _check_cost(cumulative_cost, cost_cap)
+
+        # Early-abort on systemic LLM failure: a record with zero input tokens
+        # means the sub-sim made NO successful LLM call (every turn fell back to
+        # _llm_unavailable). One is a fluke; N in a row is a systemic outage
+        # (credit exhaustion / auth / cloud gate) and the rest of the fire will
+        # be garbage. Abort fast with an actionable cause instead of grinding.
+        if rec.get("total_input_tokens", 0) <= 0:
+            consecutive_zero_token += 1
+        else:
+            consecutive_zero_token = 0
+        if max_consecutive_failures > 0 and consecutive_zero_token >= max_consecutive_failures:
+            cause = _detect_systemic_cause(rec.get("data_home")) or "unknown (no known signature in logs)"
+            raise SystemicLLMFailure(
+                f"{consecutive_zero_token} consecutive sub-sims made ZERO successful LLM "
+                f"calls (total_input_tokens==0) — systemic provider failure, aborting. "
+                f"Likely cause: {cause}. Wrote {records_written} records "
+                f"(${cumulative_cost:.2f}); the zero-cost tail must be pruned before a "
+                f"resume/refill. Raise --max-consecutive-failures to override."
+            )
 
     def _project_pair_cost(needs_arm_c_prior: bool) -> float:
         """Worst-case cost of the next trial pair before it starts."""
@@ -1267,6 +1338,15 @@ def main(argv: list[str] | None = None) -> int:
         "rate bucket recovers. Mitigates the sustained-429 collapse on long cloud "
         "fires (e.g. 20-30 for Anthropic tier-1 Sonnet). Default 0 (no pacing).",
     )
+    parser.add_argument(
+        "--max-consecutive-failures",
+        type=int,
+        default=3,
+        help="Abort the fire after this many consecutive sub-sims with ZERO "
+        "successful LLM calls (systemic provider outage: credit exhaustion, "
+        "auth, cloud gate) instead of grinding out zero-cost records. "
+        "0 disables the guard. Default 3.",
+    )
     args = parser.parse_args(argv)
 
     global _PACE_S
@@ -1289,6 +1369,7 @@ def main(argv: list[str] | None = None) -> int:
             seed_base=args.seed_base,
             mock=args.mock_llm,
             cleanup_after_trial=args.cleanup_after_trial,
+            max_consecutive_failures=args.max_consecutive_failures,
         )
     except PreflightError as exc:
         print(f"ABORT: {exc}", file=sys.stderr)
@@ -1296,6 +1377,9 @@ def main(argv: list[str] | None = None) -> int:
     except CostCapExceeded as exc:
         print(f"ABORT: {exc}", file=sys.stderr)
         return 3
+    except SystemicLLMFailure as exc:
+        print(f"ABORT: {exc}", file=sys.stderr)
+        return 5
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
