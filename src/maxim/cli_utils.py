@@ -174,7 +174,7 @@ def normalize_args(args: argparse.Namespace) -> None:
                     _import_name, _extra = _missing
                     raise SystemExit(
                         f"Error: {language_model} needs the {_import_name!r} package, which is "
-                        f"not installed.\n  Fix: pip install pymaxim[{_extra}]"
+                        f"not installed.\n  Fix: pip install 'pymaxim[{_extra}]'"
                     )
             # Persist across sessions so the user doesn't need --llm every time
             try:
@@ -242,7 +242,7 @@ def normalize_args(args: argparse.Namespace) -> None:
                 _import_name, _extra = _missing
                 raise SystemExit(
                     f"{label} {model_name!r} needs the {_import_name!r} package, which is not "
-                    f"installed.\n  Fix: pip install pymaxim[{_extra}]"
+                    f"installed.\n  Fix: pip install 'pymaxim[{_extra}]'"
                 )
 
         if cloud_fallback:
@@ -480,7 +480,7 @@ def configure_cpu_fallback_model(logger: logging.Logger, home_dir: str = "data")
     print(
         "  INFO: No GPU detected — using smollm-1.7b-instruct (CPU mode).\n"
         "  For better results, set a cloud API key (e.g. export ANTHROPIC_API_KEY=...)\n"
-        "  or install GPU support: pip install pymaxim[llm-torch]",
+        "  or install GPU support: pip install 'pymaxim[llm-torch]'",
         file=sys.stderr,
     )
     os.environ.setdefault("MAXIM_LLM_PROFILE", "smollm-1.7b-instruct")

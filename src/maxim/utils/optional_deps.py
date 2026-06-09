@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 # Canonical ``import name → extra`` mapping. Generalises the partial
 # ``_EXTRA_IMPORT_MAP`` that used to live in ``runtime/leader_proxy.py``.
 # Keyed by the *import* name (what you ``import``), valued by the pyproject
-# extra (what you ``pip install pymaxim[...]``). When an import name is not in
+# extra (what you ``pip install 'pymaxim[...]'``). When an import name is not in
 # this table the fix hint falls back to ``pip install <import_name>``.
 EXTRA_FOR_IMPORT: dict[str, str] = {
     # vision
@@ -104,7 +104,7 @@ EXTRA_FOR_IMPORT: dict[str, str] = {
 def _fix_hint(import_name: str, extra: str | None) -> str:
     """Build the actionable ``pip install`` hint for a missing dependency."""
     if extra:
-        return f"Fix: pip install pymaxim[{extra}]"
+        return f"Fix: pip install 'pymaxim[{extra}]'"
     return f"Fix: pip install {import_name}"
 
 

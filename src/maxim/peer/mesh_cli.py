@@ -431,7 +431,7 @@ def _run_node_install(
 
     **Self-guard:** refuses if ``node.name == mesh.self_name`` because
     remote-installing on yourself is a round-trip through your own
-    admin endpoint when ``pip install pymaxim[<extras>]`` would do
+    admin endpoint when ``pip install 'pymaxim[<extras>]'`` would do
     the same thing locally. Matches the ``remove-node`` self-guard
     pattern from C3.2. The state-layer ``drain_node_if_absent`` ALSO
     enforces the self-drain guard, so this step 1 check is defense-
@@ -454,7 +454,7 @@ def _run_node_install(
         print(
             f"✗ Refusing to install on self ({node.name!r}) — remote-installing\n"
             f"  on yourself is a round-trip through your own admin endpoint.\n"
-            f"  → Use `pip install pymaxim[<extras>]` directly on this machine.",
+            f"  → Use `pip install 'pymaxim[<extras>]'` directly on this machine.",
             file=sys.stderr,
         )
         return 2

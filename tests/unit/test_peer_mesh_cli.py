@@ -587,7 +587,8 @@ class TestRunNodeInstall:
         err = capsys.readouterr().err
         assert rc == 2
         assert "Refusing to install on self" in err
-        assert "pip install pymaxim" in err
+        # Hint is zsh-safe quoted: pip install 'pymaxim[<extras>]'
+        assert "pip install 'pymaxim" in err
 
     # ─── unknown-node guard (via dispatcher) ───────────────────────
 
