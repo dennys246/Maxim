@@ -87,7 +87,9 @@ class Report:
         elif suffix == ".json":
             return self._save_json(p)
         elif suffix in _OPTIONAL_FORMATS:
-            raise ValueError(f"Format '{suffix}' requires pymaxim[docs] (not yet available). Use .md or .json for now.")
+            raise ValueError(
+                f"Format '{suffix}' requires 'pymaxim[docs]' (not yet available). Use .md or .json for now."
+            )
         else:
             raise ValueError(f"Unsupported format '{suffix}'. Supported: .md, .json. Future: .pdf, .docx, .html")
 

@@ -20,7 +20,7 @@ def test_vision_rtm_engine_without_cv2():
         with patch.dict(sys.modules, {"cv2": None}):
             from maxim.models.vision.rtm_engine import _import_cv2
 
-            with pytest.raises(ImportError, match="pip install pymaxim\\[vision\\]"):
+            with pytest.raises(ImportError, match="pip install 'pymaxim\\[vision\\]'"):
                 _import_cv2()
     finally:
         if saved is not None:
@@ -34,7 +34,7 @@ def test_vision_ultralytics_without_cv2():
         with patch.dict(sys.modules, {"cv2": None}):
             from maxim.models.vision.ultralytics_engine import _import_cv2
 
-            with pytest.raises(ImportError, match="pip install pymaxim\\[vision\\]"):
+            with pytest.raises(ImportError, match="pip install 'pymaxim\\[vision\\]'"):
                 _import_cv2()
     finally:
         if saved is not None:
@@ -57,7 +57,7 @@ def test_validate_model_missing_anthropic_sdk():
             # Need to reimport to get fresh validation
             from maxim.api import _validate_model
 
-            with pytest.raises(ConfigurationError, match="pip install pymaxim\\[llm-anthropic\\]"):
+            with pytest.raises(ConfigurationError, match="pip install 'pymaxim\\[llm-anthropic\\]'"):
                 _validate_model("claude-sonnet")
     finally:
         if saved_mod is not None:
@@ -82,7 +82,7 @@ def test_validate_model_missing_openai_sdk():
         with patch.dict(sys.modules, {"openai": None}):
             from maxim.api import _validate_model
 
-            with pytest.raises(ConfigurationError, match="pip install pymaxim\\[llm-openai\\]"):
+            with pytest.raises(ConfigurationError, match="pip install 'pymaxim\\[llm-openai\\]'"):
                 _validate_model("gpt-4o")
     finally:
         if saved_mod is not None:
@@ -115,9 +115,9 @@ class TestRequireOptionalDependency:
         assert e.import_name == "definitely_not_installed_xyz"
         assert e.extra == "vision"
         assert e.feature == "My feature"
-        assert "pip install pymaxim[vision]" in str(e)
+        assert "pip install 'pymaxim[vision]'" in str(e)
         assert "My feature" in str(e)
-        assert e.fix_hint == "Fix: pip install pymaxim[vision]"
+        assert e.fix_hint == "Fix: pip install 'pymaxim[vision]'"
 
     def test_extra_defaults_from_map(self):
         from maxim.utils.optional_deps import OptionalDependencyError, require_optional_dependency
@@ -129,7 +129,7 @@ class TestRequireOptionalDependency:
                 with pytest.raises(OptionalDependencyError) as exc:
                     require_optional_dependency("anthropic")
             assert exc.value.extra == "llm-anthropic"
-            assert "pip install pymaxim[llm-anthropic]" in str(exc.value)
+            assert "pip install 'pymaxim[llm-anthropic]'" in str(exc.value)
         finally:
             if saved is not None:
                 sys.modules["anthropic"] = saved
@@ -139,7 +139,19 @@ class TestRequireOptionalDependency:
 
         with pytest.raises(OptionalDependencyError) as exc:
             require_optional_dependency("some_unmapped_pkg_qqq")
+        # Bare package (no extra) needs no quoting — not a glob.
         assert exc.value.fix_hint == "Fix: pip install some_unmapped_pkg_qqq"
+
+    def test_extra_hint_is_zsh_safe_quoted(self):
+        """The pymaxim[extra] spec MUST be single-quoted so it is copy-paste
+        safe in zsh (the macOS default), where unquoted brackets glob to
+        'no matches found'. Regression for the 2026-06-09 install-hint bug."""
+        from maxim.utils.optional_deps import OptionalDependencyError, require_optional_dependency
+
+        with pytest.raises(OptionalDependencyError) as exc:
+            require_optional_dependency("definitely_not_installed_xyz", extra="vision")
+        hint = exc.value.fix_hint
+        assert "'pymaxim[vision]'" in hint, hint
 
     def test_is_importerror_subclass(self):
         from maxim.utils.optional_deps import OptionalDependencyError
@@ -181,7 +193,7 @@ class TestWarnOptionalFallback:
         # Deduped: exactly one notice for the same (import, feature).
         hits = [m for m in msgs if "sentence_transformers" in m and "Encoder" in m]
         assert len(hits) == 1
-        assert "pip install pymaxim[semantic]" in hits[0]
+        assert "pip install 'pymaxim[semantic]'" in hits[0]
         assert "using bag-of-words" in hits[0]
 
 

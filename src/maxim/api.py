@@ -214,14 +214,14 @@ def _validate_model(model: str) -> None:
                 import anthropic  # noqa: F401
             except ImportError:
                 raise ConfigurationError(
-                    f"Model '{model}' requires the Anthropic SDK.\n  Fix: pip install pymaxim[llm-anthropic]"
+                    f"Model '{model}' requires the Anthropic SDK.\n  Fix: pip install 'pymaxim[llm-anthropic]'"
                 )
         elif backend == "openai":
             try:
                 import openai  # noqa: F401
             except ImportError:
                 raise ConfigurationError(
-                    f"Model '{model}' requires the OpenAI SDK.\n  Fix: pip install pymaxim[llm-openai]"
+                    f"Model '{model}' requires the OpenAI SDK.\n  Fix: pip install 'pymaxim[llm-openai]'"
                 )
 
         if api_key_env and not os.environ.get(api_key_env):
@@ -711,7 +711,7 @@ def connect(
         raise MaximConnectionError(
             f"Failed to connect to robot '{robot_type}'. "
             f"Available types: {', '.join(available) or 'none'}. "
-            f"Install a robot package (e.g. pymaxim[reachy]) to register controllers."
+            f"Install a robot package (e.g. 'pymaxim[reachy]') to register controllers."
         )
 
     return controller

@@ -1796,7 +1796,7 @@ def _maybe_auto_spawn_server(
         if logger is not None:
             logger.warning(
                 "Auto-spawn skipped: llama_cpp.server not installed. "
-                "Run: pip install pymaxim[llm-server] to enable local server spawning."
+                "Run: pip install 'pymaxim[llm-server]' to enable local server spawning."
             )
         return lane_configs
 

@@ -22,7 +22,7 @@ def _import_cv2():
         return cv2
     except ImportError:
         raise ImportError(
-            "OpenCV is required for display features. Install with: pip install pymaxim[vision]"
+            "OpenCV is required for display features. Install with: pip install 'pymaxim[vision]'"
         ) from None
 
 

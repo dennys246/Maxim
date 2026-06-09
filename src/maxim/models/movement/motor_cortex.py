@@ -8,7 +8,7 @@ os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
 try:
     import keras
 except ImportError as _e:
-    raise ImportError("motor_cortex requires keras. Install with: pip install pymaxim[training]") from _e
+    raise ImportError("motor_cortex requires keras. Install with: pip install 'pymaxim[training]'") from _e
 
 from maxim.utils import config
 
