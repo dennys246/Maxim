@@ -286,6 +286,7 @@ class TestOpenAIBackend:
         mock_resp.usage.prompt_tokens = 50
         mock_resp.usage.completion_tokens = 20
         mock_resp.usage.prompt_tokens_details = None
+        mock_resp.usage.prompt_cache_hit_tokens = 0  # real OpenAI lacks DeepSeek's field
 
         result = backend._parse_response(mock_resp, "gpt-4o", 0.0)
         assert result.content == '{"answer": "hello"}'
@@ -370,9 +371,34 @@ class TestOpenAIBackend:
         mock_resp.usage.prompt_tokens = 1000
         mock_resp.usage.completion_tokens = 20
         mock_resp.usage.prompt_tokens_details = None
+        mock_resp.usage.prompt_cache_hit_tokens = 0  # real OpenAI lacks DeepSeek's field
         with caplog.at_level(logging.INFO, logger="maxim.models.language.openai_backend"):
             backend._parse_response(mock_resp, "gpt-4o", 0.0)
         assert not [r for r in caplog.records if r.getMessage() == "openai_cache"]
+
+    def test_parse_response_reads_deepseek_cache_field(self, caplog):
+        """DeepSeek reports cache hits via usage.prompt_cache_hit_tokens, not
+        prompt_tokens_details.cached_tokens."""
+        import logging
+
+        backend = self._make_backend_with_cache(True)
+        mock_resp = MagicMock()
+        choice = MagicMock()
+        choice.message.content = "{}"
+        choice.finish_reason = "stop"
+        mock_resp.choices = [choice]
+        mock_resp.id = "ds-1"
+        mock_resp.usage.prompt_tokens = 2000
+        mock_resp.usage.completion_tokens = 30
+        mock_resp.usage.prompt_tokens_details = None  # DeepSeek omits this
+        mock_resp.usage.prompt_cache_hit_tokens = 1536
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.openai_backend"):
+            result = backend._parse_response(mock_resp, "deepseek-chat", 0.0)
+        events = [r for r in caplog.records if r.getMessage() == "openai_cache"]
+        assert len(events) == 1
+        assert events[0].data["cache_read_tokens"] == 1536
+        assert events[0].data["input_tokens_uncached"] == 464
+        assert result.cached_input_tokens == 1536
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -523,6 +549,61 @@ class TestPromptCacheConfigWiring:
         from maxim.models.language.config import _BUILTIN_PROFILES
 
         assert _BUILTIN_PROFILES["gpt-4o"].get("prompt_cache") is True
+
+    # ── DeepSeek / OpenAI-compatible default-path dispatch ──────────────
+
+    def test_deepseek_has_default_pricing(self):
+        from maxim.models.language.cloud_dispatch import DEFAULT_PRICING
+
+        assert "deepseek-chat" in DEFAULT_PRICING
+
+    def test_load_llm_config_deepseek_threads_base_url_and_key_env(self, monkeypatch):
+        from maxim.models.language.config import load_llm_config
+
+        monkeypatch.setenv("MAXIM_LLM_CONFIG", "/nonexistent/llm.json")
+        cfg = load_llm_config(profile_override="deepseek-chat")
+        assert cfg.base_url == "https://api.deepseek.com/v1"
+        assert cfg.api_key_env == "DEEPSEEK_API_KEY"
+        assert cfg.prompt_cache is True
+
+    def test_normalize_providers_surfaces_base_url_and_key_env(self):
+        from maxim.models.language.cloud_dispatch import normalize_providers
+
+        cfg = _make_cfg(
+            providers={},
+            backend="openai",
+            base_url="https://api.deepseek.com/v1",
+            api_key_env="DEEPSEEK_API_KEY",
+        )
+        entry = normalize_providers(cfg)["local"]
+        assert entry["base_url"] == "https://api.deepseek.com/v1"
+        assert entry["api_key_env"] == "DEEPSEEK_API_KEY"
+
+    def test_normalize_providers_omits_blank_base_url(self):
+        from maxim.models.language.cloud_dispatch import normalize_providers
+
+        cfg = _make_cfg(providers={}, backend="openai")  # no base_url / api_key_env
+        entry = normalize_providers(cfg)["local"]
+        assert "base_url" not in entry
+        assert "api_key_env" not in entry
+
+    def test_openai_backend_api_key_env_cfg_fallback(self, monkeypatch):
+        """Default cloud path: provider entry (cfg.providers) is empty, so the
+        backend must read api_key_env from the top-level LLMConfig."""
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        cfg = _make_cfg(providers={}, backend="openai", api_key_env="DEEPSEEK_API_KEY")
+        backend = _OpenAIBackend(cfg, provider_key="local")
+        assert backend._get_api_key() == "sk-deepseek-test"
+
+    def test_openai_backend_base_url_cfg_fallback(self):
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        cfg = _make_cfg(providers={}, backend="openai", base_url="https://api.deepseek.com/v1")
+        backend = _OpenAIBackend(cfg, provider_key="local")
+        assert backend._get_base_url() == "https://api.deepseek.com/v1"
 
     def test_normalize_providers_surfaces_prompt_cache(self):
         from maxim.models.language.cloud_dispatch import normalize_providers

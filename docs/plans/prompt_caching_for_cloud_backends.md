@@ -581,3 +581,90 @@ Anthropic's 1024-token minimum; the rest are small and cannot cache. The ~38%
 is therefore close to the practical ceiling for this scenario without making
 more of the per-call content stable (out of scope — that content is genuinely
 dynamic).
+
+### Phase 2 — OpenAI caching (commit `0610d2d`, 2026-06-08)
+
+OpenAI Chat Completions has **no `cache_control` marker** — caching is automatic
+and server-side for prompts >1024 tokens, keyed on the stable message prefix
+that Phase 1's system/user split already provides. So Phase 2 added measurement,
+not a marker: `_OpenAIBackend._prompt_cache_enabled()` + `_log_cache_usage()`
+emitting an `openai_cache` event (buffered + streaming paths), `prompt_cache:
+true` on the gpt-4o profile (gates the event), and `cached_tokens` capture in the
+streaming path (previously hardcoded 0). 8 unit tests.
+
+### Phase 2d — gpt-4o smoke (2026-06-08, 1 trial, fire_pit Arm A, $0.27)
+
+| metric | value |
+|---|---|
+| LLM calls | 45 |
+| total prompt tokens | 99,165 |
+| cache_read | 30,720 (10 calls) |
+| uncached | 68,445 |
+| cache served | 31.0% of input tokens |
+| calls with prompt ≥1024 tok | 23 / 45 |
+| per-call prompt size (min/median/max) | 353 / 1,028 / 6,758 |
+
+OpenAI caching works on the same stable prefix (31% of input served from cache).
+**Important difference from Anthropic:** OpenAI cached tokens get a ~50% *cost*
+discount but, unlike Anthropic's ITPM exemption, still count toward TPM rate
+limits. So for OpenAI the benefit is **cost (~15% on input), not rate-limit
+headroom**. OpenAI tier limits are generally higher than Anthropic's anyway, so
+this is a cost optimization rather than a blocker-clearing fix.
+
+### Phase 2e — DeepSeek (deepseek-chat) smoke (2026-06-08, 1 trial, $0.03)
+
+DeepSeek routes through the OpenAI-compatible backend. The smoke surfaced — and
+this work fixed — a **pre-existing gap: DeepSeek cloud dispatch was never wired
+on the default (no user-configured providers) path.** Two missing pieces:
+
+1. **No pricing entry** → the cloud cost-gate excluded it (`attempts: []`). Added
+   `deepseek-chat` / `deepseek-reasoner` to `DEFAULT_PRICING`.
+2. **`base_url` / `api_key_env` were dropped.** The synthesized provider entry
+   lives in `router._providers`, but backends read `cfg.providers` (empty on the
+   default path) — so DeepSeek's `api.deepseek.com` endpoint and
+   `DEEPSEEK_API_KEY` never reached the backend, which silently fell back to
+   `api.openai.com` / `OPENAI_API_KEY` → `empty_response`. (claude/gpt-4o were
+   unaffected because their defaults match.) Fixed by threading `base_url` +
+   `api_key_env` through `LLMConfig` → synthesized provider entry, plus a
+   cfg-level fallback in `_OpenAIBackend._get_api_key` / `_get_base_url` and
+   `_AnthropicBackend._get_api_key` — the same fallback shape already used for
+   `model` and `prompt_cache`.
+
+| metric | value |
+|---|---|
+| LLM calls | 47 |
+| total prompt tokens | 105,532 |
+| cache_read | 49,024 |
+| uncached | 56,508 |
+| **cache served** | **46.5% of input tokens** (32/47 calls) |
+| total sub-sim cost | $0.03 |
+
+DeepSeek's automatic caching hit *more* of the workload than Anthropic/OpenAI
+(46.5%, and on smaller calls too). DeepSeek bills cached tokens at ~74% off
+(~$0.07 vs $0.27 per 1M) but, like OpenAI, does not exempt them from rate limits
+— so the benefit is **cost** (DeepSeek's limits are very high regardless). The
+`openai_cache` event captures DeepSeek's `prompt_cache_hit_tokens` field (which
+differs from OpenAI's `prompt_tokens_details.cached_tokens`).
+
+## Summary
+
+Caching is live for Anthropic (Sonnet/Haiku/Opus), OpenAI (gpt-4o), and DeepSeek
+(deepseek-chat), validated end-to-end. The plan's headline "6× / 75% ITPM reduction" was **not achievable**
+(it rested on a false premise of a large *stable* per-turn prefix). The real,
+measured outcome:
+
+- **Anthropic: ~38% ITPM reduction** — clears the tier-1 ceiling that blocked
+  the 2026-06-08 Exp 37 Sonnet/Haiku replication. **This is the blocker-clearing
+  result.**
+- **OpenAI gpt-4o: ~31% of input cached → ~15% input-cost reduction** (no
+  rate-limit benefit by OpenAI's design).
+- **DeepSeek deepseek-chat: ~46.5% of input cached → cost reduction** (~74% off
+  cached tokens); also fixed DeepSeek/OpenAI-compatible cloud dispatch on the
+  default path (pricing + base_url/api_key_env threading).
+- Byte-stable system prefix enforced structurally + by regression test, so future
+  PromptBuilder changes can't silently break caching.
+
+Out of scope / not pursued: caching for `_MaximPeerBackend` (local llama-cpp has
+KV-cache); DeepSeek/other providers (same `prompt_cache` pattern applies when
+needed); raising the cache-eligible call fraction (the non-AUT calls are small
+and the dynamic content is genuinely per-turn).

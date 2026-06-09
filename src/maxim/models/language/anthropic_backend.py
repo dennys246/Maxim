@@ -102,7 +102,11 @@ class _AnthropicBackend:
 
     def _get_api_key(self) -> str:
         cfg = self._provider_cfg()
-        env_key = str(cfg.get("api_key_env") or "ANTHROPIC_API_KEY")
+        # Provider entry wins; fall back to the top-level LLMConfig.api_key_env
+        # (set from the active profile) for the default cloud path where the
+        # provider entry is synthesized in the router — same shape as the
+        # OpenAI backend. Default stays ANTHROPIC_API_KEY.
+        env_key = str(cfg.get("api_key_env") or getattr(self.cfg, "api_key_env", "") or "ANTHROPIC_API_KEY")
         return str(os.getenv(env_key, "")).strip()
 
     def _get_timeout(self) -> float:

@@ -20,6 +20,11 @@ DEFAULT_PRICING: dict[str, ModelPricing] = {
     "claude-opus-4-6": ModelPricing(15.00, 75.00, 1.50),
     "gpt-4o": ModelPricing(2.50, 10.00, 1.25),
     "gpt-4o-mini": ModelPricing(0.15, 0.60, 0.075),
+    # DeepSeek (per 1M tokens, USD; approximate standard-tier list prices —
+    # input is the cache-MISS rate, cached_input is the cache-HIT rate).
+    # Without an entry the cloud cost-gate excludes deepseek as "no pricing".
+    "deepseek-chat": ModelPricing(0.27, 1.10, 0.07),
+    "deepseek-reasoner": ModelPricing(0.55, 2.19, 0.14),
     "local": ModelPricing(0.0, 0.0, 0.0),
 }
 
@@ -74,20 +79,29 @@ def normalize_providers(cfg: Any) -> dict[str, dict[str, Any]]:
     providers = cfg.providers if isinstance(cfg.providers, dict) else {}
     if providers:
         return {str(k): v for k, v in providers.items() if isinstance(k, str) and isinstance(v, dict)}
-    return {
-        "local": {
-            "type": cfg.backend or "llama_cpp",
-            "model": cfg.model,
-            "model_base": cfg.model_base,
-            "model_path": cfg.model_path,
-            "n_ctx": cfg.n_ctx,
-            # Surface the profile's prompt-caching flag into the synthesized
-            # provider entry so the cloud backends' _prompt_cache_enabled()
-            # picks it up on the default (no user-configured providers) path.
-            # No-op for local/peer backends, which have no caching path.
-            "prompt_cache": bool(getattr(cfg, "prompt_cache", False)),
-        }
+    entry: dict[str, Any] = {
+        "type": cfg.backend or "llama_cpp",
+        "model": cfg.model,
+        "model_base": cfg.model_base,
+        "model_path": cfg.model_path,
+        "n_ctx": cfg.n_ctx,
+        # Surface the profile's prompt-caching flag into the synthesized
+        # provider entry so the cloud backends' _prompt_cache_enabled()
+        # picks it up on the default (no user-configured providers) path.
+        # No-op for local/peer backends, which have no caching path.
+        "prompt_cache": bool(getattr(cfg, "prompt_cache", False)),
     }
+    # OpenAI-compatible providers that need a custom endpoint / key env (e.g.
+    # DeepSeek) carry them on the profile; surface them so the backend can reach
+    # the right host with the right key on the default path. Omitted when blank
+    # so claude/gpt-4o keep the backend defaults.
+    base_url = str(getattr(cfg, "base_url", "") or "").strip()
+    api_key_env = str(getattr(cfg, "api_key_env", "") or "").strip()
+    if base_url:
+        entry["base_url"] = base_url
+    if api_key_env:
+        entry["api_key_env"] = api_key_env
+    return {"local": entry}
 
 
 def load_routing_policy(raw: dict[str, Any]) -> RoutingPolicy:

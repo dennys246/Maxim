@@ -141,7 +141,13 @@ class _OpenAIBackend:
 
     def _get_api_key(self) -> str:
         cfg = self._provider_cfg()
-        env_key = str(cfg.get("api_key_env") or "OPENAI_API_KEY")
+        # Provider entry wins; fall back to the top-level LLMConfig.api_key_env
+        # (set from the active profile by load_llm_config) for the default cloud
+        # path where the provider entry is synthesized in the router and the
+        # backend's cfg.providers is empty — same fallback shape as model /
+        # prompt_cache. Without this, an OpenAI-compatible profile with a custom
+        # key env (e.g. DeepSeek → DEEPSEEK_API_KEY) silently reads OPENAI_API_KEY.
+        env_key = str(cfg.get("api_key_env") or getattr(self.cfg, "api_key_env", "") or "OPENAI_API_KEY")
         return str(os.getenv(env_key, "")).strip()
 
     def _prompt_cache_enabled(self) -> bool:
@@ -197,7 +203,9 @@ class _OpenAIBackend:
 
     def _get_base_url(self) -> str | None:
         cfg = self._provider_cfg()
-        base_url = cfg.get("base_url")
+        # Provider entry wins; fall back to the top-level LLMConfig.base_url (set
+        # from the active profile) for the default cloud path — see _get_api_key.
+        base_url = cfg.get("base_url") or getattr(self.cfg, "base_url", "")
         if not base_url:
             return None
         allow_local = bool(cfg.get("allow_local_endpoints", False))
@@ -441,6 +449,12 @@ class _OpenAIBackend:
         details = getattr(usage, "prompt_tokens_details", None) if usage is not None else None
         if details is not None:
             cached = getattr(details, "cached_tokens", 0) or 0
+        if not cached and usage is not None:
+            # DeepSeek (OpenAI-compatible) reports cache hits at the usage top
+            # level as prompt_cache_hit_tokens rather than in
+            # prompt_tokens_details.cached_tokens. Read it as a fallback so the
+            # instrumentation is accurate across OpenAI-compatible providers.
+            cached = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
         uncached = max(0, input_tokens - cached) if input_tokens else 0
 
         self._log_cache_usage(
@@ -506,6 +520,9 @@ class _OpenAIBackend:
                 details = getattr(usage, "prompt_tokens_details", None)
                 if details is not None:
                     cached_tokens = getattr(details, "cached_tokens", 0) or 0
+                if not cached_tokens:
+                    # DeepSeek-style top-level cache-hit field (see _parse_response).
+                    cached_tokens = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
 
             choices = getattr(chunk, "choices", None)
             if not choices:

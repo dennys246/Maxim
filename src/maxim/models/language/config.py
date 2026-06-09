@@ -570,6 +570,10 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "cloud": True,
         "api_key_env": "DEEPSEEK_API_KEY",
         "base_url": "https://api.deepseek.com/v1",
+        # DeepSeek does automatic context caching (reports prompt_cache_hit_tokens);
+        # gates the openai_cache measurement event. See
+        # docs/plans/prompt_caching_for_cloud_backends.md Phase 2.
+        "prompt_cache": True,
     },
     "deepseek-reasoner": {
         "backend": "openai",
@@ -705,6 +709,14 @@ class LLMConfig:
     # entry by normalize_providers; the cloud backends read it via
     # _prompt_cache_enabled(). Default False (off — local/peer profiles).
     prompt_cache: bool = False
+    # OpenAI-compatible providers that need a custom endpoint / key env on the
+    # DEFAULT (no user-configured providers) path. Surfaced from the profile and
+    # propagated into the synthesized provider entry by normalize_providers.
+    # Empty = use the backend defaults (api.openai.com / OPENAI_API_KEY). Needed
+    # for e.g. DeepSeek (api.deepseek.com / DEEPSEEK_API_KEY); claude/gpt-4o use
+    # defaults so they leave these blank.
+    base_url: str = ""
+    api_key_env: str = ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -925,6 +937,10 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     else:
         prompt_cache = bool(profile_cfg.get("prompt_cache", builtin.get("prompt_cache", default.prompt_cache)))
 
+    # OpenAI-compatible endpoint / key env from the profile (e.g. DeepSeek).
+    base_url = str(profile_cfg.get("base_url", builtin.get("base_url", default.base_url)) or "").strip()
+    api_key_env = str(profile_cfg.get("api_key_env", builtin.get("api_key_env", default.api_key_env)) or "").strip()
+
     return LLMConfig(
         enabled=bool(enabled),
         backend=backend or default.backend,
@@ -953,6 +969,8 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
         redaction=redaction,
         contemplation=contemplation,
         prompt_cache=prompt_cache,
+        base_url=base_url,
+        api_key_env=api_key_env,
     )
 
 
