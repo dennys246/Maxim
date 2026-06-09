@@ -186,8 +186,18 @@ def run_one_sim(
     """
     if mock:
         return _mock_sim(data_home, goal, model, max_turns, resume_session, mock_failure_count)
-    return _real_sim(data_home, goal, model, max_turns, resume_session, extra_env or {}, timeout_s)
+    result = _real_sim(data_home, goal, model, max_turns, resume_session, extra_env or {}, timeout_s)
+    # Inter-sub-sim pacing (--pace-s): let the cloud provider's per-minute rate
+    # bucket recover between sub-sims. Sequential runs of dense-prompt sub-sims
+    # otherwise build sustained ITPM that triggers 429s mid-run (the 2026-06-08
+    # Exp 37 collapse). No-op at the default 0.
+    if _PACE_S > 0:
+        time.sleep(_PACE_S)
+    return result
 
+
+# Inter-sub-sim pace (seconds), set from --pace-s in main(). 0 = no pacing.
+_PACE_S: float = 0.0
 
 _MAXIM_BIN_CACHE: str | None = None
 
@@ -1228,7 +1238,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Synthetic backend — for smoke tests only. NEVER use for graduation runs.",
     )
+    parser.add_argument(
+        "--pace-s",
+        type=float,
+        default=0.0,
+        help="Seconds to sleep between sub-sims so the cloud provider's per-minute "
+        "rate bucket recovers. Mitigates the sustained-429 collapse on long cloud "
+        "fires (e.g. 20-30 for Anthropic tier-1 Sonnet). Default 0 (no pacing).",
+    )
     args = parser.parse_args(argv)
+
+    global _PACE_S
+    _PACE_S = max(0.0, float(args.pace_s))
 
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
     scenarios = SCENARIOS if args.scenario == "both" else (args.scenario,)

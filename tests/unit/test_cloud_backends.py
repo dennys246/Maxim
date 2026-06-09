@@ -139,6 +139,107 @@ class TestAnthropicBackend:
             backend._parse_response(resp, "claude-sonnet-4-6", 0.0)
         assert not [r for r in caplog.records if r.getMessage() == "anthropic_cache"]
 
+    # ── Capacity-error backoff (429 / 529) ──────────────────────────────
+
+    def test_overloaded_error_detection(self):
+        from maxim.models.language.anthropic_backend import (
+            _is_overloaded_error,
+            _is_rate_limit_error,
+            _is_capacity_error,
+        )
+
+        ov = Exception("Error code: 529 - {'type': 'overloaded_error'}")
+        rl = Exception("Error code: 429 - rate_limit_error")
+        other = Exception("Error code: 500 - internal")
+        assert _is_overloaded_error(ov) is True
+        assert _is_overloaded_error(rl) is False  # 529-specific
+        assert _is_rate_limit_error(rl) is True
+        assert _is_capacity_error(ov) is True and _is_capacity_error(rl) is True
+        assert _is_capacity_error(other) is False
+
+    def test_retry_after_seconds_parsing(self):
+        from maxim.models.language.anthropic_backend import _retry_after_seconds
+
+        err = Exception("429")
+        err.response = MagicMock()
+        err.response.headers = {"retry-after": "12"}
+        assert _retry_after_seconds(err) == 12.0
+        # absent / no response
+        assert _retry_after_seconds(Exception("nope")) is None
+
+    def test_capacity_backoff_bounded_and_honors_retry_after(self):
+        from maxim.models.language.anthropic_backend import _AnthropicBackend
+
+        # exponential, jittered, capped at 30 (no retry-after)
+        for attempt in range(8):
+            b = _AnthropicBackend._capacity_backoff(attempt, Exception("529"))
+            assert 0 < b <= 30 * 1.3 + 0.01
+        # retry-after raises the floor
+        err = Exception("429")
+        err.response = MagicMock()
+        err.response.headers = {"retry-after": "45"}
+        b = _AnthropicBackend._capacity_backoff(0, err)
+        assert b >= 45 * 0.7  # honored (with jitter band), capped at 60*1.3
+
+    def test_capacity_max_retries_default(self):
+        backend = self._make_backend()
+        assert backend._get_capacity_max_retries() == 6
+
+    def test_529_retries_then_succeeds(self):
+        """A 529 on the first attempt must be retried (not exhaust the tiny
+        generic budget) and succeed on the next — the core 2026-06-08 fix."""
+        from unittest.mock import patch
+
+        backend = self._make_backend(capacity_max_retries=3)
+        # Build a fake client whose .messages.create raises 529 once then returns.
+        good = MagicMock()
+        good.usage = MagicMock(
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+        )
+        good.content = []
+        good.stop_reason = "end_turn"
+        good.id = "msg_ok"
+        calls = {"n": 0}
+
+        def _create(**kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise Exception("Error code: 529 - overloaded_error")
+            return good
+
+        fake_client = MagicMock()
+        fake_client.messages.create.side_effect = _create
+        backend._client = fake_client
+
+        # Patch backoff sleep so the test is instant.
+        with patch("maxim.models.language.anthropic_backend.shutdown_wait", return_value=False):
+            resp = backend.complete_with_usage(system="s", user="u", max_tokens=16, temperature=0.0)
+        assert calls["n"] == 2  # retried once
+        assert resp.input_tokens == 10  # succeeded on retry
+
+    def test_generic_error_uses_small_budget(self):
+        """A non-capacity error exhausts the small generic budget (2) — does NOT
+        get the capacity budget."""
+        from unittest.mock import patch
+
+        backend = self._make_backend()  # generic max_retries=2
+        calls = {"n": 0}
+
+        def _create(**kw):
+            calls["n"] += 1
+            raise Exception("Error code: 500 - internal_server_error")
+
+        fake_client = MagicMock()
+        fake_client.messages.create.side_effect = _create
+        backend._client = fake_client
+        with patch("maxim.models.language.anthropic_backend.shutdown_wait", return_value=False):
+            resp = backend.complete_with_usage(system="s", user="u", max_tokens=16, temperature=0.0)
+        assert resp.content == ""  # failed
+        assert calls["n"] == 3  # 1 initial + 2 generic retries (NOT 7)
+
     # ── Thinking config ─────────────────────────────────────────────────
 
     def test_thinking_config_disabled(self):
