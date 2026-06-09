@@ -201,6 +201,76 @@ The four pre-reg amendments (2026-05-31 per-action swap, 2026-06-XX positive-app
 - **1.0 ship:** Tier 1 row 1 in [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) flips to a split claim — memory-persistence component goes EARNED (Exp 10 unchanged), behavioral-delta component goes PARTIAL with this fire as the locked evidence and explicit deferral of the strong claim to Exp 38 substrate-primary work. Bio-framing in 1.0 release notes pulls back from "substrate drives behavior" to "substrate provides cross-session infrastructure that LLM-driven agents use." This matches the [framing strategy](../../CLAUDE.md) bio-inspired-LLM-harness positioning that was already the operative framing per the 2026-06-04 / 2026-06-05 discussions.
 - **Post-1.0 (no specific commitment):** Exp 38 substrate-primary measurement — remove the LLM noise floor, measure substrate-driven action selection directly. Cradle scenario enrichment (more affordances, more entities) is a sibling improvement that may help LLM-AUT measurement too but isn't on the 1.0 critical path. N=10 re-fire or Sonnet replication are possible but the marginal information from amending pre-reg a fifth time is unfavorable.
 
+## Results — 2026-06-08 Qwen32B fire (cross-model scale-axis follow-up)
+
+**Verdict: PARTIAL — investigation gate** (same overall label as Qwen14B, but the underlying evidence is qualitatively different). Full analyzer output at [data/37_results_qwen32b.md](data/37_results_qwen32b.md); per-trial JSONL at [data/37_results_qwen32b.jsonl](data/37_results_qwen32b.jsonl).
+
+**Run envelope:** 60 of 60 expected records (5 trials × 2 scenarios × 6 arms). Fire ran on the leader Mac Mini using local Qwen2.5-32B-Instruct (Q4_K_M, served via the same llama-cpp-server infrastructure as the Qwen14B fire), started 2026-06-07 22:42, completed 2026-06-09 04:52 — ~30 hours wall, $0 cost. This is the first row of the [cross-model characterization plan](../plans/exp37_cross_model_characterization.md) — exploratory scale-axis evidence, NOT a 5th pre-reg amendment.
+
+### Headline finding — substrate-transfer signal IS detectable at 32B scale
+
+The primary metric `positive_approach_engagement_fraction` on fire_pit shifts measurably in the predicted direction:
+
+| | Qwen14B (2026-06-06) | Qwen32B (2026-06-08) |
+|---|---|---|
+| Arm A mean | 0.533 | 0.420 |
+| Arm B mean | 0.517 | **0.800** |
+| Δ in SD units | −0.06 SD | **+1.43 SD** ← passes the +1.0 PASS threshold |
+| Primary verdict | FAIL | **PASS** |
+| Robustness (legacy per-action failure rate) | FAIL | **PASS** |
+| Corroborating hits | 0/4 | **2/4 PASS** |
+
+Two of the four pre-registered corroborating metrics PASS on Qwen32B fire_pit:
+
+- **Affordance-preference safe-fraction**: A = 0.74 ± 0.18, B = 0.97 → **+1.22 SD** increase. Arm B picks the safe affordance 97% of the time vs A's 74%.
+- **Tool-class diversity** (decrease): A = 8.0 ± 1.2, B = 6.6 → **−1.14 SD** decrease. Arm B explores fewer dead-end tools, more focused.
+
+The descriptive `fire_approach_action_count` also flips direction relative to Qwen14B: A = 1.60, B = **3.00**, Δ = +1.40 in the predicted direction (Qwen14B had Δ = −0.20, wrong direction).
+
+**This is real evidence that substrate carries cross-session memory AND that the carried memory shifts behavior measurably at sufficient model scale.** The 14B → 32B scaling axis produced a qualitative behavioral change.
+
+### Two reasons the overall verdict stays PARTIAL
+
+**1. Secondary criterion FAILS (0/3 ablations shrink B's delta).**
+
+| Ablation | A mean | B mean | Ablated mean | Shrinkage (SD units) | Verdict |
+|---|---|---|---|---|---|
+| Wire-A annotation off | 0.420 | 0.800 | 0.650 | +0.56 | FAIL (suggestive, not significant) |
+| Wire-1 variance annotation off | 0.420 | 0.800 | 0.817 | −0.06 | FAIL (no change) |
+| NAc reward bias zeroed | 0.420 | 0.800 | 0.793 | +0.03 | FAIL (no change) |
+
+Only Wire-A ablation moves the needle (+0.56 SD shrinkage toward A, but below the +1.0 PASS threshold). Wire-1 and NAc-bias ablations produce no measurable change in B's mean. **The substrate IS doing something at 32B, but the specific bio-mechanism attribution we hypothesized in the pre-reg isn't cleanly supported.** This is the same pattern as Qwen14B — the substrate-transfer effect doesn't map to any single bio-mechanism we can ablate.
+
+**2. Arm C "general caution" confound triggered.**
+
+Arm C (peaceful-prior session, supposed to show A's baseline if substrate transfer is fire-specific) mean = 0.667 on fire_pit — OUTSIDE Arm A's empirical band [0.033, 0.660]. C ≈ B, not C ≈ A. The substrate-derived preference for warm_self **generalizes across priors**, not just fire-failure priors. The agent gets "more preference-driven" from ANY prior session, regardless of substrate content.
+
+This is the isolation-arm confound the pre-reg specifically guards against: "if C falls outside A's band, the B-vs-A delta is contaminated by general-caution rather than substrate-specific transfer." The shift in B is real, but its specificity to the fire-failure substrate isn't supported.
+
+### Sharp_rock — degenerate again
+
+All sharp_rock arms produced zero engagement (same as Qwen14B). The scenario contributes no information to the verdict at either model scale. The asymmetric-design concern from [exp37_metric_pivot.md](../plans/exp37_metric_pivot.md) is realized at both scales now; fire_pit alone carries the substantive evidence.
+
+### Honest interpretation — what changed vs Qwen14B and what 1.0 looks like
+
+The Qwen14B-vs-Qwen32B scale-axis comparison reshapes the 1.0 narrative:
+
+- **Qwen14B headline (2026-06-06):** "LLM priors empirically dominate substrate signal at typical scales. Bio-framing pulled to 'cross-session infrastructure.' Strong substrate-drives-behavior claim deferred to Exp 38."
+- **Qwen32B headline (2026-06-08):** "Substrate-transfer signal IS detectable at 32B scale (+1.43 SD primary, 2/4 corroborating PASS, predicted-direction shift in descriptive). Specific bio-mechanism attribution (Wire-A / Wire-1 / NAc-bias) is NOT cleanly supported — ablations don't shrink the delta. The effect appears to generalize across priors (Arm C confound triggered), suggesting the substrate signal is broader-grained than scenario-specific."
+
+The combined cross-scale story is genuinely informative:
+
+1. **Substrate carries cross-session memory at all scales tested** — unchanged claim, Exp 10 + both Qwen fires.
+2. **The carried memory measurably shifts behavior at 32B but not at 14B** — scale-dependent. The LLM-prior-dominance interpretation from the Qwen14B fire was too strong; it applies to 14B specifically, not to LLM-AUT broadly. (Consistent with the broader observation that smaller models have stronger priors that dominate context, and larger models can leverage context-derived signal more thoughtfully.)
+3. **The mechanism by which substrate shifts behavior isn't attributable to specific bio-channels** — ablations on Wire-A, Wire-1, or NAc reward bias don't cleanly break the effect. Either the substrate effect is multi-channel (each channel contributes a little, no single ablation is decisive), or it's mediated by something downstream we're not measuring (e.g., the substrate-derived prompt context as a whole changes the LLM's reasoning trajectory in ways no single annotation captures).
+4. **The substrate effect generalizes across priors** — Arm C carrying B-like behavior suggests "agent has a prior session, regardless of content" produces the behavioral shift, not "agent has a fire-failure prior specifically." This is a weaker claim than scenario-specific learning but still a real cross-session-memory-shapes-behavior finding.
+
+### Path forward (updated 2026-06-08)
+
+- **1.0 framing:** Tier 1 row 1b in [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) stays PARTIAL but the framing nuances. New framing: "substrate carries cross-session memory (EARNED via Exp 10), and the carried memory measurably shifts LLM-AUT behavior at ≥32B scale (this fire), but the specific bio-mechanism attribution isn't cleanly supported and the effect appears to generalize across priors. The strong 'substrate drives action selection via specific bio-mechanisms' claim stays deferred to Exp 38." This is a stronger 1.0 evidence base than the Qwen14B-alone story.
+- **Cross-model exploratory continuation:** Mistral24B fire (running 2026-06-09) tests the family-axis at similar scale. Cloud LLM fires (Sonnet, GPT-4o, DeepSeek) are blocked behind the prompt-caching architecture work ([prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md)) or a tier-2 upgrade. Each adds incrementally to the cross-model characterization without changing the row 1b graduation status.
+- **Post-1.0 work that this fire empirically motivates:** (a) Exp 38 substrate-primary measurement remains the principled test of the strong claim; (b) understanding WHY ablations don't shrink the delta is a substantive research question — could be multi-channel mediation, could be substrate-context-as-a-whole effects on LLM reasoning that no single annotation captures, could be that the LLM's pretraining handles most of the "what to do near fire" question and substrate channels are mild perturbations on top.
+
 ## Cross-references
 
 - [docs/plans/benchmarking_1_0.md](../plans/benchmarking_1_0.md) — 1.0 benchmarking gate (this is its primary experiment).
