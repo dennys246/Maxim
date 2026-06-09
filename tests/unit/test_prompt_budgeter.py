@@ -202,6 +202,78 @@ class TestPromptBudgeter:
         assert "What is the weather?" in text
 
 
+class TestBuildSegmented:
+    """build_segmented() splits cacheable (stable) from dynamic sections.
+
+    Backing for prompt_caching_for_cloud_backends.md Phase 1.
+    """
+
+    def test_partitions_by_cacheable_flag(self):
+        b = _make_budgeter(total=1000)
+        b.add("identity", "stable identity", SectionPriority.CRITICAL, cacheable=True)
+        b.add("user_request", "dynamic request", SectionPriority.MANDATORY, cacheable=False)
+        stable, dynamic, dropped = b.build_segmented()
+        assert "stable identity" in stable
+        assert "stable identity" not in dynamic
+        assert "dynamic request" in dynamic
+        assert "dynamic request" not in stable
+        assert dropped == []
+
+    def test_stable_text_is_independent_of_dynamic_content(self):
+        """The stable text must be byte-identical regardless of how much
+        dynamic content is present — the byte-stability prerequisite."""
+
+        def _build(dynamic_words: int) -> str:
+            b = _make_budgeter(total=10000)
+            b.add("identity", "you are a body in a world", SectionPriority.CRITICAL, cacheable=True)
+            b.add("tools", "tool_a does things", SectionPriority.CRITICAL, cacheable=True)
+            b.add("obs", "observed " * dynamic_words, SectionPriority.IMPORTANT, cacheable=False)
+            stable, _dynamic, _dropped = b.build_segmented()
+            return stable
+
+        assert _build(5) == _build(500)
+
+    def test_stable_cap_protects_dynamic_mandatory(self):
+        """A huge stable set cannot starve the dynamic MANDATORY user request:
+        the stable bucket is capped at 70% of budget."""
+        b = _make_budgeter(total=100)  # prompt_budget = 100
+        # 200-token stable section would consume everything if uncapped.
+        b.add("big_stable", "word " * 200, SectionPriority.CRITICAL, cacheable=True)
+        b.add("user_request", "the actual question", SectionPriority.MANDATORY, cacheable=False)
+        stable, dynamic, dropped = b.build_segmented()
+        # Stable capped at 70 tokens → the 200-token section doesn't fit, dropped.
+        assert "big_stable" in dropped
+        # Dynamic MANDATORY survives within its guaranteed floor.
+        assert "the actual question" in dynamic
+
+    def test_emit_preserves_insertion_order_within_each_segment(self):
+        b = _make_budgeter(total=10000)
+        b.add("s_first", "alpha", SectionPriority.NICE_TO_HAVE, cacheable=True)
+        b.add("d_first", "one", SectionPriority.NICE_TO_HAVE, cacheable=False)
+        b.add("s_second", "beta", SectionPriority.MANDATORY, cacheable=True)
+        b.add("d_second", "two", SectionPriority.MANDATORY, cacheable=False)
+        stable, dynamic, _ = b.build_segmented()
+        # Insertion order preserved even though priorities differ.
+        assert stable.index("alpha") < stable.index("beta")
+        assert dynamic.index("one") < dynamic.index("two")
+
+    def test_all_dynamic_yields_empty_stable(self):
+        b = _make_budgeter(total=1000)
+        b.add("user_request", "hi", SectionPriority.MANDATORY, cacheable=False)
+        stable, dynamic, _ = b.build_segmented()
+        assert stable == ""
+        assert "hi" in dynamic
+
+    def test_build_still_works_unsegmented(self):
+        """Legacy build() ignores the cacheable flag and emits one string."""
+        b = _make_budgeter(total=1000)
+        b.add("identity", "stable", SectionPriority.CRITICAL, cacheable=True)
+        b.add("req", "dynamic", SectionPriority.MANDATORY, cacheable=False)
+        text, dropped = b.build()
+        assert "stable" in text and "dynamic" in text
+        assert dropped == []
+
+
 # ── Token Counter Tests ─────────────────────────────────────────────────────
 
 

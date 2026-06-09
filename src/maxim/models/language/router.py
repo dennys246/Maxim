@@ -1855,9 +1855,25 @@ Return JSON exactly like:
 
         Returns a structured response with action, reasoning, and optional next_actions.
         """
-        # Detect PLANNING mode from the prompt banner
-        # Match against key phrase that appears in both old and new banner formats
+        # Detect PLANNING mode from the prompt banner. Match against key phrase
+        # that appears in both old and new banner formats. Detect on the FULL
+        # payload BEFORE splitting — the planning banner / instructions are in
+        # the cacheable (stable) segment, so detecting on the dynamic remainder
+        # alone would miss it.
         is_planning_mode = "PLANNING MODE" in tool_prompt and "APPROVAL" in tool_prompt
+
+        # Prompt-caching split (prompt_caching_for_cloud_backends.md Phase 1):
+        # PromptBuilder emits ``<stable_prefix>\x1e<dynamic_remainder>``. Route
+        # the byte-stable prefix into the system message (where the cloud
+        # backends' cache_control breakpoint lives) and the dynamic remainder
+        # into the user message. Payloads without the delimiter (followup
+        # prompts, legacy callers) carry no stable prefix — everything stays in
+        # the user message exactly as before.
+        from maxim.agents.prompt_builder import PROMPT_SEGMENT_DELIMITER
+
+        stable_prefix = ""
+        if PROMPT_SEGMENT_DELIMITER in tool_prompt:
+            stable_prefix, tool_prompt = tool_prompt.split(PROMPT_SEGMENT_DELIMITER, 1)
 
         if is_planning_mode:
             # PLANNING MODE: Allow proposal text followed by JSON
@@ -1876,6 +1892,13 @@ First write your proposal in plain text, then <|action_json|>, then the JSON."""
             user = f"""{tool_prompt}
 
 Respond with ONLY a valid JSON object. No text before or after the JSON."""
+
+        # Append the stable prefix AFTER the base system instruction so the
+        # whole system block (static constant + stable prefix) is byte-identical
+        # across turns and the single cache_control breakpoint at its end caches
+        # all of it.
+        if stable_prefix.strip():
+            system = f"{system}\n\n{stable_prefix}"
 
         if is_planning_mode:
             info("PLANNING mode detected - expecting proposal + <|action_json|> + JSON format")

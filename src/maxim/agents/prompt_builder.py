@@ -38,6 +38,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Separator between the byte-stable cacheable prefix and the dynamic remainder
+# inside a ``TOOL_PROMPT|`` payload. ASCII Record Separator (0x1e) — never
+# appears in human-readable prompt text, so it is an unambiguous split point.
+# The router (``LLMRouter._generate_tool_response``) splits on this to route the
+# stable segment into the ``system`` message (where ``cache_control`` lives) and
+# the dynamic segment into the ``user`` message. See
+# docs/plans/prompt_caching_for_cloud_backends.md Phase 1.
+PROMPT_SEGMENT_DELIMITER = "\x1e"
+
+
 # Static block injected when sim mode is active. Extracted to a module
 # constant so token-count consumers can import it and avoid drift if the
 # wording changes.
@@ -925,10 +935,17 @@ class PromptBuilder:
         self._add_working_memory_section(budgeter, request.context)
         self._add_memory_sections(budgeter, request.context)
 
-        prompt_text, dropped = budgeter.build()
+        # Segment into a byte-stable cacheable prefix (class-(a)/(c) sections,
+        # tagged cacheable=True at their add sites) + a dynamic remainder. The
+        # router routes the stable segment into the system message (cacheable)
+        # and the dynamic segment into the user message. See
+        # docs/plans/prompt_caching_for_cloud_backends.md Phase 1.
+        stable_text, dynamic_text, dropped = budgeter.build_segmented()
         if dropped:
             notice = f"[Context note: omitted due to token budget: {', '.join(dropped)}]"
-            prompt_text = notice + "\n\n" + prompt_text
+            # The budget notice is per-turn (varies with what was dropped), so
+            # it belongs on the dynamic side — never in the cacheable prefix.
+            dynamic_text = notice + "\n\n" + dynamic_text
             logger.info(
                 "Prompt budget: dropped %d sections for %s (n_ctx=%d, reserve=%d)",
                 len(dropped),
@@ -937,7 +954,7 @@ class PromptBuilder:
                 response_reserve,
             )
 
-        return f"TOOL_PROMPT|{prompt_text}"
+        return f"TOOL_PROMPT|{stable_text}{PROMPT_SEGMENT_DELIMITER}{dynamic_text}"
 
     # ── _build_tool_aware_prompt section helpers ──────────────────────────
 
@@ -947,8 +964,18 @@ class PromptBuilder:
         request: LLMRequest,
         question_text: str,
     ) -> None:
-        """Instructions + the user's request itself. Cannot be dropped."""
-        budgeter.add("instructions", build_instructions_section(request), SectionPriority.MANDATORY)
+        """Instructions + the user's request itself. Cannot be dropped.
+
+        ``instructions`` is the static response-format block — stable per
+        autonomy level across a session, so it joins the cacheable prefix.
+        ``user_request`` is the per-turn percept/goal and stays dynamic.
+        """
+        budgeter.add(
+            "instructions",
+            build_instructions_section(request),
+            SectionPriority.MANDATORY,
+            cacheable=True,
+        )
         if question_text:
             budgeter.add(
                 "user_request",
@@ -975,6 +1002,7 @@ class PromptBuilder:
             "planning_banner",
             build_planning_banner(request.autonomy_level),
             SectionPriority.CRITICAL,
+            cacheable=True,
         )
         if request.pending_modification:
             budgeter.add(
@@ -986,6 +1014,7 @@ class PromptBuilder:
             "identity",
             build_identity_section(mode, request, date_str, time_str),
             SectionPriority.CRITICAL,
+            cacheable=True,
         )
 
         # Tool section: opt-in learned relevance filter, declared per mode via
@@ -1025,6 +1054,14 @@ class PromptBuilder:
                     truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
                 )
         else:
+            # Unfiltered manifest (autonomous modes incl. cradle). The scene
+            # roster is stable WITHIN a narrative phase — it activates new
+            # entities only at act boundaries — so it joins the cacheable
+            # prefix. NOTE: if imagination / sense_tools churn the roster
+            # per-tick, this collapses to dynamic and the cache will miss;
+            # the Phase 1d smoke validation must confirm cache_read>0 on a
+            # real cradle run. The relevance-FILTERED path above stays dynamic
+            # (its subset depends on per-turn question_text).
             budgeter.add(
                 "tools",
                 build_tools_section(request, mode_name=mode_name),
@@ -1032,6 +1069,7 @@ class PromptBuilder:
                 truncatable=True,
                 min_tokens=50,
                 truncate_fn=lambda c, m: _truncate_tool_guidance(c, m, counter),
+                cacheable=True,
             )
 
         # EXPERIMENTAL — hallucination-hint section (empty when feature off
@@ -1097,7 +1135,7 @@ class PromptBuilder:
         if has_bio_signal:
             from maxim.agents.exec_prompts import PFC_PREAMBLE
 
-            budgeter.add("pfc_preamble", PFC_PREAMBLE, SectionPriority.IMPORTANT)
+            budgeter.add("pfc_preamble", PFC_PREAMBLE, SectionPriority.IMPORTANT, cacheable=True)
 
     @staticmethod
     def _add_acting_coach_section(
@@ -1147,10 +1185,12 @@ class PromptBuilder:
 
         text = build_entity_context_section(entity_spec)
         if text:
+            # Composed from the session-fixed entity_spec → stable prefix.
             budgeter.add(
                 "entity_context",
                 text,
                 SectionPriority.IMPORTANT,
+                cacheable=True,
             )
 
     @staticmethod
@@ -1240,15 +1280,19 @@ class PromptBuilder:
         """Tool guidance + datetime + cost budget. Mostly IMPORTANT priority."""
         mode_name = request.mode.name
         is_embodied = bool(getattr(request, "is_embodied", False))
+        # Tool guidance depends only on mode_name + is_embodied (fixed per
+        # session) → cacheable prefix. datetime is per-call wall-clock → dynamic.
         budgeter.add(
             "tool_guidance_core",
             build_tool_guidance_core(mode_name=mode_name, is_embodied=is_embodied),
             SectionPriority.IMPORTANT,
+            cacheable=True,
         )
         budgeter.add(
             "tool_guidance_extended",
             build_tool_guidance_extended(mode_name=mode_name, is_embodied=is_embodied),
             SectionPriority.NICE_TO_HAVE,
+            cacheable=True,
         )
         budgeter.add("datetime", build_datetime_section(date_str, time_str), SectionPriority.IMPORTANT)
 
@@ -1348,9 +1392,11 @@ class PromptBuilder:
             if coding_context:
                 budgeter.add("coding_guidelines", coding_context, SectionPriority.IMPORTANT)
 
-        budgeter.add("foundational", _load_foundational_context(), SectionPriority.IMPORTANT)
+        # Foundational (Constitution/AGENTS, session-cached) and the mode's
+        # static context_prompt are session-stable → cacheable prefix.
+        budgeter.add("foundational", _load_foundational_context(), SectionPriority.IMPORTANT, cacheable=True)
         if request.mode.context_prompt:
-            budgeter.add("mode_context", request.mode.context_prompt, SectionPriority.NICE_TO_HAVE)
+            budgeter.add("mode_context", request.mode.context_prompt, SectionPriority.NICE_TO_HAVE, cacheable=True)
 
     @staticmethod
     def _add_perception_sections(

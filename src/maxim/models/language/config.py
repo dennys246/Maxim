@@ -421,7 +421,10 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "n_ctx": 4096,
         "quantization": "F16",
     },
-    # Cloud providers (Anthropic)
+    # Cloud providers (Anthropic). prompt_cache marks the system prompt as
+    # cacheable (cache_read_input_tokens do NOT count toward ITPM on Sonnet
+    # 4.x / Haiku 4.5 / Opus 4.x). See
+    # docs/plans/prompt_caching_for_cloud_backends.md.
     "claude-sonnet-4-6": {
         "backend": "anthropic",
         "model": "claude-sonnet-4-6",
@@ -430,6 +433,7 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "n_ctx": 200000,
         "cloud": True,
         "api_key_env": "ANTHROPIC_API_KEY",
+        "prompt_cache": True,
     },
     "claude-haiku-4-5-20251001": {
         "backend": "anthropic",
@@ -439,6 +443,7 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "n_ctx": 200000,
         "cloud": True,
         "api_key_env": "ANTHROPIC_API_KEY",
+        "prompt_cache": True,
     },
     "claude-opus-4-6": {
         "backend": "anthropic",
@@ -448,8 +453,12 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "n_ctx": 200000,
         "cloud": True,
         "api_key_env": "ANTHROPIC_API_KEY",
+        "prompt_cache": True,
     },
-    # Cloud providers (OpenAI)
+    # Cloud providers (OpenAI). prompt_cache here gates the openai_cache
+    # measurement event — OpenAI caching itself is automatic/server-side for
+    # prompts >1024 tokens (no marker), enabled by Phase 1's stable system
+    # prefix. See docs/plans/prompt_caching_for_cloud_backends.md Phase 2.
     "gpt-4o": {
         "backend": "openai",
         "model": "gpt-4o",
@@ -458,6 +467,7 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "n_ctx": 128000,
         "cloud": True,
         "api_key_env": "OPENAI_API_KEY",
+        "prompt_cache": True,
     },
     "gpt-4o-mini": {
         "backend": "openai",
@@ -560,6 +570,10 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "cloud": True,
         "api_key_env": "DEEPSEEK_API_KEY",
         "base_url": "https://api.deepseek.com/v1",
+        # DeepSeek does automatic context caching (reports prompt_cache_hit_tokens);
+        # gates the openai_cache measurement event. See
+        # docs/plans/prompt_caching_for_cloud_backends.md Phase 2.
+        "prompt_cache": True,
     },
     "deepseek-reasoner": {
         "backend": "openai",
@@ -689,6 +703,20 @@ class LLMConfig:
     pricing: dict[str, dict[str, Any]] = field(default_factory=dict)
     redaction: dict[str, Any] = field(default_factory=dict)
     contemplation: tuple[tuple[str, Any], ...] = ()
+    # Cloud prompt caching (prompt_caching_for_cloud_backends.md). When True,
+    # the active profile's system prompt is marked cacheable. Surfaced from the
+    # profile via load_llm_config and propagated into the synthesized provider
+    # entry by normalize_providers; the cloud backends read it via
+    # _prompt_cache_enabled(). Default False (off — local/peer profiles).
+    prompt_cache: bool = False
+    # OpenAI-compatible providers that need a custom endpoint / key env on the
+    # DEFAULT (no user-configured providers) path. Surfaced from the profile and
+    # propagated into the synthesized provider entry by normalize_providers.
+    # Empty = use the backend defaults (api.openai.com / OPENAI_API_KEY). Needed
+    # for e.g. DeepSeek (api.deepseek.com / DEEPSEEK_API_KEY); claude/gpt-4o use
+    # defaults so they leave these blank.
+    base_url: str = ""
+    api_key_env: str = ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -901,6 +929,18 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
     contemplation_raw = raw.get("contemplation")
     contemplation = tuple(contemplation_raw.items()) if isinstance(contemplation_raw, dict) else ()
 
+    # Prompt caching: profile (user > builtin) with env override. Precedence
+    # mirrors the other profile-derived flags above.
+    prompt_cache_env = _as_bool(os.getenv("MAXIM_LLM_PROMPT_CACHE"))
+    if prompt_cache_env is not None:
+        prompt_cache = prompt_cache_env
+    else:
+        prompt_cache = bool(profile_cfg.get("prompt_cache", builtin.get("prompt_cache", default.prompt_cache)))
+
+    # OpenAI-compatible endpoint / key env from the profile (e.g. DeepSeek).
+    base_url = str(profile_cfg.get("base_url", builtin.get("base_url", default.base_url)) or "").strip()
+    api_key_env = str(profile_cfg.get("api_key_env", builtin.get("api_key_env", default.api_key_env)) or "").strip()
+
     return LLMConfig(
         enabled=bool(enabled),
         backend=backend or default.backend,
@@ -928,6 +968,9 @@ def load_llm_config(profile_override: str | None = None) -> LLMConfig:
         pricing=pricing,
         redaction=redaction,
         contemplation=contemplation,
+        prompt_cache=prompt_cache,
+        base_url=base_url,
+        api_key_env=api_key_env,
     )
 
 

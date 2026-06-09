@@ -75,6 +75,70 @@ class TestAnthropicBackend:
         blocks = backend._build_system_blocks("")
         assert blocks == []
 
+    def test_prompt_cache_bool_shorthand(self):
+        backend = self._make_backend(prompt_cache=True)
+        assert backend._prompt_cache_enabled() is True
+
+    def test_prompt_cache_disabled_default(self):
+        backend = self._make_backend(prompt_cache=None)
+        # No provider flag and cfg.prompt_cache defaults False.
+        assert backend._prompt_cache_enabled() is False
+
+    def test_prompt_cache_cfg_fallback(self):
+        """Default cloud path: provider entry has no prompt_cache key, but the
+        top-level cfg flag (set from the profile) enables it."""
+        from maxim.models.language.anthropic_backend import _AnthropicBackend
+
+        cfg = _make_cfg(
+            prompt_cache=True,
+            providers={"local": {"type": "anthropic", "model": "claude-sonnet-4-6"}},
+        )
+        backend = _AnthropicBackend(cfg, provider_key="local")
+        assert backend._prompt_cache_enabled() is True
+
+    def test_provider_entry_overrides_cfg_fallback(self):
+        """An explicit provider-level prompt_cache=False wins over cfg=True."""
+        from maxim.models.language.anthropic_backend import _AnthropicBackend
+
+        cfg = _make_cfg(
+            prompt_cache=True,
+            providers={"local": {"type": "anthropic", "model": "claude-sonnet-4-6", "prompt_cache": False}},
+        )
+        backend = _AnthropicBackend(cfg, provider_key="local")
+        assert backend._prompt_cache_enabled() is False
+
+    def test_parse_response_emits_cache_event(self, caplog):
+        import logging
+
+        backend = self._make_backend(prompt_cache=True)
+        usage = MagicMock(
+            input_tokens=100,
+            output_tokens=20,
+            cache_read_input_tokens=900,
+            cache_creation_input_tokens=0,
+        )
+        resp = MagicMock(usage=usage, content=[], stop_reason="end_turn", id="msg_abc")
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.anthropic_backend"):
+            backend._parse_response(resp, "claude-sonnet-4-6", 0.0)
+        events = [r for r in caplog.records if r.getMessage() == "anthropic_cache"]
+        assert len(events) == 1
+        data = events[0].data
+        assert data["cache_read_tokens"] == 900
+        assert data["cache_write_tokens"] == 0
+        assert data["input_tokens_uncached"] == 100
+        assert abs(data["cache_hit_ratio"] - 0.9) < 1e-6
+        assert data["request_id"] == "msg_abc"
+
+    def test_parse_response_no_cache_event_when_disabled(self, caplog):
+        import logging
+
+        backend = self._make_backend(prompt_cache=None)
+        usage = MagicMock(input_tokens=100, output_tokens=20, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        resp = MagicMock(usage=usage, content=[], stop_reason="end_turn", id="msg_x")
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.anthropic_backend"):
+            backend._parse_response(resp, "claude-sonnet-4-6", 0.0)
+        assert not [r for r in caplog.records if r.getMessage() == "anthropic_cache"]
+
     # ── Thinking config ─────────────────────────────────────────────────
 
     def test_thinking_config_disabled(self):
@@ -222,6 +286,7 @@ class TestOpenAIBackend:
         mock_resp.usage.prompt_tokens = 50
         mock_resp.usage.completion_tokens = 20
         mock_resp.usage.prompt_tokens_details = None
+        mock_resp.usage.prompt_cache_hit_tokens = 0  # real OpenAI lacks DeepSeek's field
 
         result = backend._parse_response(mock_resp, "gpt-4o", 0.0)
         assert result.content == '{"answer": "hello"}'
@@ -231,6 +296,109 @@ class TestOpenAIBackend:
     def test_streaming_flag(self):
         backend = self._make_backend()
         assert backend.supports_streaming is True
+
+    # ── Prompt caching (Phase 2) ────────────────────────────────────────
+
+    def _make_backend_with_cache(self, prompt_cache=True):
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        cfg = LLMConfig(
+            enabled=True,
+            providers={
+                "openai": {
+                    "type": "openai",
+                    "api_key_env": "OPENAI_API_KEY",
+                    "model": "gpt-4o",
+                    "prompt_cache": prompt_cache,
+                }
+            },
+        )
+        return _OpenAIBackend(cfg, provider_key="openai")
+
+    def test_prompt_cache_enabled_provider_bool(self):
+        assert self._make_backend_with_cache(True)._prompt_cache_enabled() is True
+
+    def test_prompt_cache_disabled_default(self):
+        assert self._make_backend()._prompt_cache_enabled() is False
+
+    def test_prompt_cache_cfg_fallback(self):
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        cfg = LLMConfig(
+            enabled=True,
+            prompt_cache=True,
+            providers={"local": {"type": "openai", "model": "gpt-4o"}},
+        )
+        backend = _OpenAIBackend(cfg, provider_key="local")
+        assert backend._prompt_cache_enabled() is True
+
+    def test_parse_response_emits_openai_cache_event(self, caplog):
+        import logging
+
+        backend = self._make_backend_with_cache(True)
+        mock_resp = MagicMock()
+        choice = MagicMock()
+        choice.message.content = "{}"
+        choice.finish_reason = "stop"
+        mock_resp.choices = [choice]
+        mock_resp.id = "chatcmpl-xyz"
+        mock_resp.usage.prompt_tokens = 1000
+        mock_resp.usage.completion_tokens = 20
+        details = MagicMock()
+        details.cached_tokens = 768
+        mock_resp.usage.prompt_tokens_details = details
+
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.openai_backend"):
+            backend._parse_response(mock_resp, "gpt-4o", 0.0)
+        events = [r for r in caplog.records if r.getMessage() == "openai_cache"]
+        assert len(events) == 1
+        data = events[0].data
+        assert data["cache_read_tokens"] == 768
+        assert data["input_tokens_uncached"] == 232  # 1000 - 768 (OpenAI prompt_tokens is inclusive)
+        assert data["prompt_tokens_total"] == 1000
+        assert abs(data["cache_hit_ratio"] - 0.768) < 1e-6
+        assert data["request_id"] == "chatcmpl-xyz"
+
+    def test_parse_response_no_event_when_disabled(self, caplog):
+        import logging
+
+        backend = self._make_backend()  # no prompt_cache
+        mock_resp = MagicMock()
+        choice = MagicMock()
+        choice.message.content = "{}"
+        choice.finish_reason = "stop"
+        mock_resp.choices = [choice]
+        mock_resp.usage.prompt_tokens = 1000
+        mock_resp.usage.completion_tokens = 20
+        mock_resp.usage.prompt_tokens_details = None
+        mock_resp.usage.prompt_cache_hit_tokens = 0  # real OpenAI lacks DeepSeek's field
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.openai_backend"):
+            backend._parse_response(mock_resp, "gpt-4o", 0.0)
+        assert not [r for r in caplog.records if r.getMessage() == "openai_cache"]
+
+    def test_parse_response_reads_deepseek_cache_field(self, caplog):
+        """DeepSeek reports cache hits via usage.prompt_cache_hit_tokens, not
+        prompt_tokens_details.cached_tokens."""
+        import logging
+
+        backend = self._make_backend_with_cache(True)
+        mock_resp = MagicMock()
+        choice = MagicMock()
+        choice.message.content = "{}"
+        choice.finish_reason = "stop"
+        mock_resp.choices = [choice]
+        mock_resp.id = "ds-1"
+        mock_resp.usage.prompt_tokens = 2000
+        mock_resp.usage.completion_tokens = 30
+        mock_resp.usage.prompt_tokens_details = None  # DeepSeek omits this
+        mock_resp.usage.prompt_cache_hit_tokens = 1536
+        with caplog.at_level(logging.INFO, logger="maxim.models.language.openai_backend"):
+            result = backend._parse_response(mock_resp, "deepseek-chat", 0.0)
+        events = [r for r in caplog.records if r.getMessage() == "openai_cache"]
+        assert len(events) == 1
+        assert events[0].data["cache_read_tokens"] == 1536
+        assert events[0].data["input_tokens_uncached"] == 464
+        assert result.cached_input_tokens == 1536
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -365,3 +533,105 @@ class TestLLMWorkerPhase3:
         assert "tools" in params
         assert "thinking" in params
         assert "stream" in params
+
+
+class TestPromptCacheConfigWiring:
+    """Profile → cfg.prompt_cache → synthesized provider entry wiring
+    (prompt_caching_for_cloud_backends.md Phase 1b)."""
+
+    def test_builtin_claude_profiles_enable_prompt_cache(self):
+        from maxim.models.language.config import _BUILTIN_PROFILES
+
+        for name in ("claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-opus-4-6"):
+            assert _BUILTIN_PROFILES[name].get("prompt_cache") is True, name
+
+    def test_builtin_gpt4o_profile_enables_prompt_cache(self):
+        from maxim.models.language.config import _BUILTIN_PROFILES
+
+        assert _BUILTIN_PROFILES["gpt-4o"].get("prompt_cache") is True
+
+    # ── DeepSeek / OpenAI-compatible default-path dispatch ──────────────
+
+    def test_deepseek_has_default_pricing(self):
+        from maxim.models.language.cloud_dispatch import DEFAULT_PRICING
+
+        assert "deepseek-chat" in DEFAULT_PRICING
+
+    def test_load_llm_config_deepseek_threads_base_url_and_key_env(self, monkeypatch):
+        from maxim.models.language.config import load_llm_config
+
+        monkeypatch.setenv("MAXIM_LLM_CONFIG", "/nonexistent/llm.json")
+        cfg = load_llm_config(profile_override="deepseek-chat")
+        assert cfg.base_url == "https://api.deepseek.com/v1"
+        assert cfg.api_key_env == "DEEPSEEK_API_KEY"
+        assert cfg.prompt_cache is True
+
+    def test_normalize_providers_surfaces_base_url_and_key_env(self):
+        from maxim.models.language.cloud_dispatch import normalize_providers
+
+        cfg = _make_cfg(
+            providers={},
+            backend="openai",
+            base_url="https://api.deepseek.com/v1",
+            api_key_env="DEEPSEEK_API_KEY",
+        )
+        entry = normalize_providers(cfg)["local"]
+        assert entry["base_url"] == "https://api.deepseek.com/v1"
+        assert entry["api_key_env"] == "DEEPSEEK_API_KEY"
+
+    def test_normalize_providers_omits_blank_base_url(self):
+        from maxim.models.language.cloud_dispatch import normalize_providers
+
+        cfg = _make_cfg(providers={}, backend="openai")  # no base_url / api_key_env
+        entry = normalize_providers(cfg)["local"]
+        assert "base_url" not in entry
+        assert "api_key_env" not in entry
+
+    def test_openai_backend_api_key_env_cfg_fallback(self, monkeypatch):
+        """Default cloud path: provider entry (cfg.providers) is empty, so the
+        backend must read api_key_env from the top-level LLMConfig."""
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        cfg = _make_cfg(providers={}, backend="openai", api_key_env="DEEPSEEK_API_KEY")
+        backend = _OpenAIBackend(cfg, provider_key="local")
+        assert backend._get_api_key() == "sk-deepseek-test"
+
+    def test_openai_backend_base_url_cfg_fallback(self):
+        from maxim.models.language.openai_backend import _OpenAIBackend
+
+        cfg = _make_cfg(providers={}, backend="openai", base_url="https://api.deepseek.com/v1")
+        backend = _OpenAIBackend(cfg, provider_key="local")
+        assert backend._get_base_url() == "https://api.deepseek.com/v1"
+
+    def test_normalize_providers_surfaces_prompt_cache(self):
+        from maxim.models.language.cloud_dispatch import normalize_providers
+
+        cfg = _make_cfg(prompt_cache=True, providers={})
+        synthesized = normalize_providers(cfg)
+        assert synthesized["local"]["prompt_cache"] is True
+
+    def test_normalize_providers_default_prompt_cache_false(self):
+        from maxim.models.language.cloud_dispatch import normalize_providers
+
+        cfg = _make_cfg(providers={})  # prompt_cache defaults False
+        synthesized = normalize_providers(cfg)
+        assert synthesized["local"]["prompt_cache"] is False
+
+    def test_load_llm_config_claude_profile_enables_prompt_cache(self, monkeypatch):
+        from maxim.models.language.config import load_llm_config
+
+        # Isolate from any repo-local llm.json / env profile override.
+        monkeypatch.setenv("MAXIM_LLM_CONFIG", "/nonexistent/llm.json")
+        monkeypatch.delenv("MAXIM_LLM_PROMPT_CACHE", raising=False)
+        cfg = load_llm_config(profile_override="claude-sonnet")
+        assert cfg.prompt_cache is True
+
+    def test_load_llm_config_local_profile_no_prompt_cache(self, monkeypatch):
+        from maxim.models.language.config import load_llm_config
+
+        monkeypatch.setenv("MAXIM_LLM_CONFIG", "/nonexistent/llm.json")
+        monkeypatch.delenv("MAXIM_LLM_PROMPT_CACHE", raising=False)
+        cfg = load_llm_config(profile_override="mistral-7b")
+        assert cfg.prompt_cache is False

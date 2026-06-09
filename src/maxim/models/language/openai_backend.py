@@ -9,6 +9,7 @@ from typing import Any
 
 from maxim.utils.logging import warn
 from maxim.utils.optional_deps import require_optional_dependency
+from maxim.utils.structured_logging import log_structured
 
 log = logging.getLogger(__name__)
 from maxim.models.language.cancellation import is_shutdown_requested, shutdown_wait
@@ -140,12 +141,71 @@ class _OpenAIBackend:
 
     def _get_api_key(self) -> str:
         cfg = self._provider_cfg()
-        env_key = str(cfg.get("api_key_env") or "OPENAI_API_KEY")
+        # Provider entry wins; fall back to the top-level LLMConfig.api_key_env
+        # (set from the active profile by load_llm_config) for the default cloud
+        # path where the provider entry is synthesized in the router and the
+        # backend's cfg.providers is empty — same fallback shape as model /
+        # prompt_cache. Without this, an OpenAI-compatible profile with a custom
+        # key env (e.g. DeepSeek → DEEPSEEK_API_KEY) silently reads OPENAI_API_KEY.
+        env_key = str(cfg.get("api_key_env") or getattr(self.cfg, "api_key_env", "") or "OPENAI_API_KEY")
         return str(os.getenv(env_key, "")).strip()
+
+    def _prompt_cache_enabled(self) -> bool:
+        """Whether to emit ``openai_cache`` instrumentation for this provider.
+
+        NOTE: unlike Anthropic, OpenAI Chat Completions has NO ``cache_control``
+        marker — prompt caching is fully automatic for prompts >1024 tokens and
+        keys off the stable message PREFIX (which Phase 1's system/user split
+        already provides). This flag therefore does NOT enable caching (it is
+        always on, server-side); it only gates the ``openai_cache`` measurement
+        event so cache-relevant runs produce telemetry without noise elsewhere.
+        Mirrors _AnthropicBackend._prompt_cache_enabled for config symmetry.
+        """
+        cfg = self._provider_cfg()
+        cache_cfg = cfg.get("prompt_cache")
+        if isinstance(cache_cfg, dict):
+            return bool(cache_cfg.get("enabled", False))
+        if cache_cfg is not None:
+            return bool(cache_cfg)
+        return bool(getattr(self.cfg, "prompt_cache", False))
+
+    def _log_cache_usage(
+        self,
+        *,
+        input_tokens: int,
+        cache_read: int,
+        request_id: str | None,
+    ) -> None:
+        """Emit a per-call ``openai_cache`` structured event when caching is
+        enabled. OpenAI reports cached tokens via
+        ``usage.prompt_tokens_details.cached_tokens``; ``input_tokens``
+        (prompt_tokens) is INCLUSIVE of cached on OpenAI, so uncached =
+        input_tokens - cache_read. See
+        docs/plans/prompt_caching_for_cloud_backends.md Phase 2.
+        """
+        if not self._prompt_cache_enabled():
+            return
+        uncached = max(0, input_tokens - cache_read)
+        ratio = (cache_read / input_tokens) if input_tokens > 0 else 0.0
+        log_structured(
+            log,
+            logging.INFO,
+            event="openai_cache",
+            data={
+                "provider": self._provider_key,
+                "cache_read_tokens": int(cache_read),
+                "input_tokens_uncached": int(uncached),
+                "prompt_tokens_total": int(input_tokens),
+                "cache_hit_ratio": round(ratio, 4),
+                "request_id": request_id,
+            },
+        )
 
     def _get_base_url(self) -> str | None:
         cfg = self._provider_cfg()
-        base_url = cfg.get("base_url")
+        # Provider entry wins; fall back to the top-level LLMConfig.base_url (set
+        # from the active profile) for the default cloud path — see _get_api_key.
+        base_url = cfg.get("base_url") or getattr(self.cfg, "base_url", "")
         if not base_url:
             return None
         allow_local = bool(cfg.get("allow_local_endpoints", False))
@@ -389,7 +449,19 @@ class _OpenAIBackend:
         details = getattr(usage, "prompt_tokens_details", None) if usage is not None else None
         if details is not None:
             cached = getattr(details, "cached_tokens", 0) or 0
+        if not cached and usage is not None:
+            # DeepSeek (OpenAI-compatible) reports cache hits at the usage top
+            # level as prompt_cache_hit_tokens rather than in
+            # prompt_tokens_details.cached_tokens. Read it as a fallback so the
+            # instrumentation is accurate across OpenAI-compatible providers.
+            cached = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
         uncached = max(0, input_tokens - cached) if input_tokens else 0
+
+        self._log_cache_usage(
+            input_tokens=int(input_tokens or 0),
+            cache_read=int(cached or 0),
+            request_id=getattr(resp, "id", None),
+        )
 
         return LLMResponse(
             content=content,
@@ -429,6 +501,8 @@ class _OpenAIBackend:
 
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
+        request_id: str | None = None
 
         for chunk in stream:
             # Stall-detector integration: update last_byte_at on every
@@ -437,10 +511,18 @@ class _OpenAIBackend:
             # See _register_byte_received_safe helper at module top
             # (architecture review I5).
             _register_byte_received_safe()
+            if request_id is None:
+                request_id = getattr(chunk, "id", None)
             if getattr(chunk, "usage", None):
                 usage = chunk.usage
                 input_tokens = getattr(usage, "prompt_tokens", 0) or 0
                 output_tokens = getattr(usage, "completion_tokens", 0) or 0
+                details = getattr(usage, "prompt_tokens_details", None)
+                if details is not None:
+                    cached_tokens = getattr(details, "cached_tokens", 0) or 0
+                if not cached_tokens:
+                    # DeepSeek-style top-level cache-hit field (see _parse_response).
+                    cached_tokens = getattr(usage, "prompt_cache_hit_tokens", 0) or 0
 
             choices = getattr(chunk, "choices", None)
             if not choices:
@@ -455,6 +537,13 @@ class _OpenAIBackend:
                 stop_reason = str(finish)
 
         content = "".join(text_parts).strip()
+        uncached = max(0, input_tokens - cached_tokens) if input_tokens else 0
+
+        self._log_cache_usage(
+            input_tokens=int(input_tokens or 0),
+            cache_read=int(cached_tokens or 0),
+            request_id=request_id,
+        )
 
         return LLMResponse(
             content=content,
@@ -464,6 +553,6 @@ class _OpenAIBackend:
             latency_ms=(time.time() - start) * 1000,
             provider=self._provider_key,
             stop_reason=stop_reason,
-            cached_input_tokens=0,
-            uncached_input_tokens=int(input_tokens or 0),
+            cached_input_tokens=int(cached_tokens or 0),
+            uncached_input_tokens=int(uncached or 0),
         )

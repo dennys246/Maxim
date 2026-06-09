@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Any
 
 from maxim.utils.logging import warn
 from maxim.utils.optional_deps import require_optional_dependency
+from maxim.utils.structured_logging import log_structured
 from maxim.models.language.cancellation import is_shutdown_requested, shutdown_wait
 from maxim.models.language.config import LLMConfig
 from maxim.models.language.types import LLMResponse
+
+logger = logging.getLogger(__name__)
 
 
 def _is_auth_error(err: Exception) -> bool:
@@ -98,7 +102,11 @@ class _AnthropicBackend:
 
     def _get_api_key(self) -> str:
         cfg = self._provider_cfg()
-        env_key = str(cfg.get("api_key_env") or "ANTHROPIC_API_KEY")
+        # Provider entry wins; fall back to the top-level LLMConfig.api_key_env
+        # (set from the active profile) for the default cloud path where the
+        # provider entry is synthesized in the router — same shape as the
+        # OpenAI backend. Default stays ANTHROPIC_API_KEY.
+        env_key = str(cfg.get("api_key_env") or getattr(self.cfg, "api_key_env", "") or "ANTHROPIC_API_KEY")
         return str(os.getenv(env_key, "")).strip()
 
     def _get_timeout(self) -> float:
@@ -120,7 +128,12 @@ class _AnthropicBackend:
         cache_cfg = cfg.get("prompt_cache")
         if isinstance(cache_cfg, dict):
             return bool(cache_cfg.get("enabled", False))
-        return bool(cache_cfg) if cache_cfg is not None else False
+        if cache_cfg is not None:
+            return bool(cache_cfg)
+        # Fall back to the top-level LLMConfig flag (set from the active
+        # profile by load_llm_config) for the default cloud path where the
+        # provider entry was synthesized without an explicit prompt_cache key.
+        return bool(getattr(self.cfg, "prompt_cache", False))
 
     def _thinking_config(self) -> dict[str, Any] | None:
         cfg = self._provider_cfg()
@@ -174,6 +187,41 @@ class _AnthropicBackend:
                 "cache_control": {"type": "ephemeral"},
             }
         ]
+
+    def _log_cache_usage(
+        self,
+        *,
+        input_tokens: int,
+        cache_read: int,
+        cache_write: int,
+        request_id: str | None,
+    ) -> None:
+        """Emit a per-call ``anthropic_cache`` structured event.
+
+        Only fires when prompt caching is enabled so cached runs produce one
+        event per turn (cache_read=0 on a miss is signal, not noise). Pairs with
+        ``MAXIM_LOG_FILE`` for JSONL analysis. See
+        docs/plans/prompt_caching_for_cloud_backends.md Phase 1c.
+        """
+        if not self._prompt_cache_enabled():
+            return
+        # Anthropic reports cache_read / cache_write / (uncached) input_tokens as
+        # three disjoint counts; their sum is the full prompt size.
+        total = cache_read + cache_write + input_tokens
+        ratio = (cache_read / total) if total > 0 else 0.0
+        log_structured(
+            logger,
+            logging.INFO,
+            event="anthropic_cache",
+            data={
+                "provider": self._provider_key,
+                "cache_read_tokens": int(cache_read),
+                "cache_write_tokens": int(cache_write),
+                "input_tokens_uncached": int(input_tokens),
+                "cache_hit_ratio": round(ratio, 4),
+                "request_id": request_id,
+            },
+        )
 
     def complete(
         self,
@@ -281,10 +329,19 @@ class _AnthropicBackend:
         input_tokens = getattr(usage, "input_tokens", 0) if usage is not None else 0
         output_tokens = getattr(usage, "output_tokens", 0) if usage is not None else 0
         cached = 0
+        cache_creation = 0
         if usage is not None:
             cached = getattr(usage, "cache_read_input_tokens", 0) or 0
+            cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
             # Also count cache_creation_input_tokens as uncached
         uncached = max(0, input_tokens - cached) if input_tokens else 0
+
+        self._log_cache_usage(
+            input_tokens=int(input_tokens or 0),
+            cache_read=int(cached or 0),
+            cache_write=int(cache_creation or 0),
+            request_id=getattr(resp, "id", None),
+        )
 
         text_blocks: list[str] = []
         tool_calls: list[dict[str, Any]] = []
@@ -340,6 +397,8 @@ class _AnthropicBackend:
         input_tokens = 0
         output_tokens = 0
         cached_tokens = 0
+        cache_creation_tokens = 0
+        request_id: str | None = None
         stop_reason = ""
 
         # Track tool_use blocks being built from deltas
@@ -353,10 +412,12 @@ class _AnthropicBackend:
                 if event_type == "message_start":
                     msg = getattr(event, "message", None)
                     if msg:
+                        request_id = getattr(msg, "id", None)
                         usage = getattr(msg, "usage", None)
                         if usage:
                             input_tokens = getattr(usage, "input_tokens", 0) or 0
                             cached_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
+                            cache_creation_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
 
                 elif event_type == "content_block_start":
                     block = getattr(event, "content_block", None)
@@ -399,6 +460,13 @@ class _AnthropicBackend:
 
         uncached = max(0, input_tokens - cached_tokens) if input_tokens else 0
         content = "".join(text_parts).strip()
+
+        self._log_cache_usage(
+            input_tokens=int(input_tokens or 0),
+            cache_read=int(cached_tokens or 0),
+            cache_write=int(cache_creation_tokens or 0),
+            request_id=request_id,
+        )
 
         if not content and tool_calls and len(tool_calls) == 1:
             import json as _json

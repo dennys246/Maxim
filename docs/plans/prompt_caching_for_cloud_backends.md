@@ -129,6 +129,152 @@ debugging on PromptBuilder.assemble. Zero LLM cost (read-only audit).
 **Acceptance:** every dynamic field in the system prompt is named, classified,
 and has a placement recommendation. No silent invalidators remain undocumented.
 
+#### Phase 0 — RESULTS (completed 2026-06-08, read-only audit)
+
+**Decisive architectural finding — the plan's premise does not match the code.**
+
+The mental model behind this plan was "a ~100K-token system prompt is re-sent
+every turn; mark its end with one `cache_control` breakpoint." The code does
+**not** work that way:
+
+1. `PromptBuilder.build_prompt` assembles **every** section (identity, tools,
+   observations, memories, drive states, datetime, bio-annotations, conversation
+   history — all of it) into a **single string** returned as
+   `TOOL_PROMPT|<everything>` ([prompt_builder.py:940](../../src/maxim/agents/prompt_builder.py)).
+2. The router's `_generate_tool_response`
+   ([router.py:1873-1890](../../src/maxim/models/language/router.py)) routes that
+   entire string into the **`user`** message and sets **`system`** to the tiny
+   static constant `SYSTEM_TOOL_RESPONSE` (~145 tokens,
+   [cloud_dispatch.py:49](../../src/maxim/models/language/cloud_dispatch.py)).
+3. `_AnthropicBackend.complete_with_usage` builds
+   `messages = [{"role": "user", "content": user}]` (one user message, no
+   multi-turn array — conversation history is rendered as text *inside* the
+   payload) and applies the `cache_control` marker via `_build_system_blocks`
+   **to the `system` parameter only** — i.e. to the ~145-token constant.
+
+**Consequence: flipping `prompt_cache: true` today caches the ~145-token static
+system constant and nothing else. ~0% of the per-turn ITPM is recoverable.** The
+"wiring already exists" surprise from the original audit is real but the wiring
+points at the wrong message.
+
+Two distinct problems, both must be solved for any benefit:
+
+- **P1 (placement):** the large stable content lives in the `user` message, but
+  `cache_control` only marks the `system` message. A cacheable prefix must be
+  moved into `system` (or the breakpoint moved onto the user message at the
+  stable/dynamic boundary).
+- **P2 (stability):** even within the `user` payload there is **no byte-stable
+  prefix**. Dynamic content begins at position 2 (the user-request/percept) and
+  is interleaved throughout — datetime to minute precision, per-tick drive
+  states (`body_state`, CRITICAL priority), Acting Coach bio-modulation,
+  Wire-A/W1 substrate annotations, observations, accumulating memories. The
+  `PromptBudgeter` re-emits in insertion order ([prompt_budgeter.py:152](../../src/maxim/agents/prompt_budgeter.py)),
+  and budget-driven truncation/drop of any earlier section shifts every byte
+  after it.
+
+**Hash-test artifact:** [tests/integration/test_prompt_builder_audit.py](../../tests/integration/test_prompt_builder_audit.py).
+- `test_system_block_carries_negligible_tokens_vs_user_payload` — PASSES;
+  documents that the cacheable system block is a small minority of tokens (real
+  cradle ratio ≈ 145 system vs ~120K user).
+- `test_baseline_user_payload_is_not_byte_stable_across_turns` — PASSES;
+  documents 12 distinct payload hashes across 12 turns (cache miss every turn).
+- `test_cacheable_prefix_is_byte_stable_across_turns` — `xfail(strict=True)`;
+  this is the target invariant. It stays xfail until Phase 1 introduces a
+  byte-stable prefix, at which point it XPASSes and (under `strict`) fails,
+  forcing removal of the marker. This is the Phase 1/3 acceptance gate and the
+  Phase 3 `test_system_prompt_byte_stable_across_turns` in embryo.
+
+**Per-section audit.** "Current placement" is the `user` message for *every*
+section (the `TOOL_PROMPT` single-string architecture). Classification rubric:
+**(a)** genuinely-stable → belongs in `system`, cacheable; **(b)**
+dynamic-must-move-out → keep in `user` turn; **(c)** cacheable-with-care →
+session/phase-stable, can go in `system`, invalidates only at session/phase
+boundaries (which we don't cache across anyway).
+
+| section_name | inserted at | class | recommended placement | reason |
+|---|---|---|---|---|
+| instructions | 1 | (c) | system | static per autonomy level; session-stable |
+| user_request | 2 | (b) | user turn | the percept/goal — varies per turn |
+| planning_banner | 3 | (a) | system | static; empty in autonomous cradle |
+| modification | 4 | (b) | user turn | only on user-revise; dynamic when present |
+| identity | 5 | (c) | system | mode/goal/sim/interactive flags fixed per session (date/time params unused in body) |
+| tools | 6 | (c) | system | scene roster stable **within a narrative phase**; changes at act boundary (and per-tick if imagination/sense_tools mutate roster — see caveat) |
+| failed_tools | 7 | (b)/(a) | user turn | accumulates hallucinated names; empty by default (`MAXIM_TOOL_FAILURE_HINTS` off) |
+| workspace_manifest | 8 | (b) | user turn | filesystem scan; empty for embodied cradle, dynamic when files written |
+| realtime_hint | 9 | (b) | user turn | derived from question keywords |
+| pfc_preamble | 10 | (a) | system | `PFC_PREAMBLE` static constant |
+| acting_coach | 11 | (b) | user turn | bio-modulated by `body_state`/`causal_context`/`motor_programs` — varies per tick (large in cradle) |
+| entity_context | 12 | (c) | system | composed from session-fixed `entity_spec` |
+| cluster_bias_annotations | 13 | (b) | user turn | Wire-A NAc bias, updates per tick |
+| grayscale_tools | 14 | (b) | user turn | W1 substrate annotation, per tick |
+| tool_guidance_core | 15 | (a) | system | static given `mode_name`+`is_embodied` |
+| tool_guidance_extended | 16 | (a) | system | static (empty when embodied) |
+| datetime | 17 | (b) | user turn | minute-precision timestamp — classic silent invalidator |
+| budget_context | 18 | (b) | user turn | cloud spend totals, per request |
+| conversation | 19 | (b) | user turn | grows every turn (ideally a real message array) |
+| context_pool | 20 | (b) | user turn | accumulating observations |
+| active_protocols | 21 | (c)/(b) | user turn | "re-injected each submission"; treat as dynamic unless proven stable |
+| reasoning_carryover | 22 | (b) | user turn | prior-cycle reasoning, grows |
+| prefetch_context | 23 | (b) | user turn | speculative prefetch (not in cradle) |
+| coding_guidelines | 24 | (b) | user turn | derived from question text |
+| foundational | 25 | (a) | system | `_load_foundational_context` is session-cached (Constitution/AGENTS) |
+| mode_context | 26 | (c) | system | `mode.context_prompt`, session-fixed |
+| observation | 27 | (b) | user turn | current percept |
+| speech | 28 | (b) | user turn | detected speech |
+| agent_states | 29 | (b) | user turn | multi-agent states |
+| recent_outcomes | 30 | (b) | user turn | last N tool outcomes |
+| body_state | 31 | (b) | user turn | **drive states drift every tick** — CRITICAL priority, large in cradle |
+| bio_enrichment | 32 | (b) | user turn | per-percept bio associations |
+| auto_sense | 33 | (b) | user turn | passive perception sweep |
+| deliberation_transcript | 34 | (b) | user turn | accumulating multi-cycle reasoning |
+| working_memory_thoughts | 35 | (b) | user turn | prior-cycle THOUGHT entries |
+| relevant_memories | 36 | (b) | user turn | recalled episodes, accumulate |
+| concept_context | 37 | (b) | user turn | active ATL concepts |
+| knowledge_context | 38 | (b) | user turn | semantic knowledge recalls |
+| causal_context | 39 | (b) | user turn | learned causal predictions |
+| valence_context | 40 | (b) | user turn | learned valence associations |
+| motor_programs | 41 | (b) | user turn | learned motor programs |
+| statistical_patterns | 42 | (b) | user turn | active statistical patterns |
+
+**Stable-prefix candidates (class a/c → `system`):** instructions,
+planning_banner, identity, tools (phase-scoped), pfc_preamble, entity_context,
+tool_guidance_core, tool_guidance_extended, foundational, mode_context. These
+are the only sections that can form a cacheable prefix. **Everything else — and
+notably the largest cradle contributors (acting_coach, body_state, memories,
+conversation, observation, bio annotations) — is genuinely per-tick dynamic.**
+
+**Caveat on `tools` (the most important class-(c) section).** The tool roster is
+stable *within* a cradle narrative phase but (i) changes at act boundaries when
+`world_entities` activate, and (ii) may change per-tick if imagination registers
+ephemeral entities or `sense_tools` reshapes the active window. If the roster
+churns per-tick in practice, `tools` collapses from (c) to (b) and the cacheable
+prefix shrinks further. **This must be measured on a real cradle run before
+relying on it** (the synthetic hash test holds the roster constant, so it does
+not exercise this).
+
+**Scope verdict — Standing Risk #1 is REALIZED, and larger than anticipated.**
+The risk anticipated "half the system prompt is per-turn dynamic." The reality
+is stronger: there is effectively *no* system prompt today (it's a 145-token
+constant), and realizing caching requires a **structural split** of the single
+`TOOL_PROMPT` user-string into (1) a deterministic, byte-stable `system` prefix
+assembled only from class-(a)/(c) sections and (2) a `user` turn carrying all
+class-(b) content — plus making the budgeter emit the stable prefix
+deterministically (truncation of dynamic sections must not perturb the prefix).
+This is a multi-day refactor touching `PromptBuilder.build_prompt`, the
+`PromptBudgeter` ordering/segmentation contract, the router's
+`_generate_tool_response` system/user split, and a swath of prompt-builder
+tests — **not a flag flip plus a few section moves.** Phase 1a as originally
+scoped ("move dynamic content out of system") is inverted: the work is "lift
+stable content *into* a newly-real system prefix."
+
+**Recommendation:** checkpoint with the user before starting Phase 1 (per the
+plan's own instruction and Standing Risk #1). Decision needed: (A) proceed with
+the structural prompt-architecture split, or (B) defer caching and unblock Exp 37
+cloud fires another way (e.g. tier upgrade, or pivot to higher-ITPM providers
+DeepSeek/GPT-4o per Sequencing Option B). Estimated effort for (A):
+~2–4 days including the smoke validation, dominated by the budgeter
+segmentation refactor and test churn.
+
 ### Phase 1 — Fix invalidators + enable cache + add instrumentation
 
 Goal: make `prompt_cache.enabled: true` actually deliver cache hits in
@@ -366,3 +512,159 @@ get a clean Anthropic comparison AND we ship a real engineering improvement.
   — the PromptBuilder that Phase 0 audits.
 - [src/maxim/models/language/openai_backend.py](../../src/maxim/models/language/openai_backend.py)
   — the OpenAI backend that Phase 2 extends.
+
+## Results
+
+### Phase 1 — implemented (commit `d5cd543`, 2026-06-08)
+
+The Phase 0 audit invalidated the plan's premise (see Phase 0 RESULTS above), so
+Phase 1 became the structural refactor it described as the worst case:
+
+- **`PromptBudgeter`** gained a `cacheable` flag + `build_segmented()` — stable
+  sections are budgeted first, independent of dynamic content (capped at 70% of
+  budget so dynamic MANDATORY can't starve), guaranteeing a byte-stable prefix.
+- **`PromptBuilder`** tags 10 class-(a)/(c) sections cacheable and emits
+  `TOOL_PROMPT|<stable>\x1e<dynamic>`.
+- **Router** `_generate_tool_response` splits on the delimiter → stable prefix
+  into `system` (after `SYSTEM_TOOL_RESPONSE`, so the whole system block ends at
+  the cache breakpoint), dynamic into `user`. No-delimiter payloads unchanged.
+- **Profiles/config**: `prompt_cache: true` on the 3 Claude profiles; new
+  `LLMConfig.prompt_cache` threaded profile → synthesized provider → backend.
+- **Instrumentation**: `anthropic_cache` structured event per call.
+
+Regression coverage: budgeter (6), router split (4), backend wiring +
+instrumentation (8), audit byte-stability gate flipped green (4). Full fast
+suite: 7791 passed.
+
+### Phase 1d — Sonnet smoke (2026-06-08, 1 trial, fire_pit Arm A, $0.30)
+
+Command: `benchmark_cross_session.py --scenario fire_pit --arms A --trials 1
+--seed-base 600 --model claude-sonnet --sim-max-turns 12` with
+`MAXIM_LOG_FILE` capturing `anthropic_cache` events.
+
+**Caching works and the prefix is byte-stable** (proven by 43K cache reads — a
+non-stable prefix would read ~0). Measured across the 44 LLM calls of the
+12-turn sub-sim:
+
+| metric | value |
+|---|---|
+| total input tokens (sub-sim) | 112,368 |
+| cache_read (not ITPM-counted) | 43,016 |
+| cache_write (1.25× billed) | 8,645 (2 writes) |
+| uncached input | 60,707 |
+| **ITPM-counted input (write+uncached)** | **69,352** |
+| **ITPM reduction vs no-cache** | **38.3%** |
+| calls with prompt ≥1024 tok (Anthropic min cacheable) | 24 / 44 |
+| per-call prompt size (min/median/max) | 383 / 1,147 / 7,685 |
+
+**Key corrections to the plan's assumptions:**
+
+1. **The "~120K input tokens" is the SUM across the sub-sim's 44 calls, not a
+   per-turn 120K system prompt.** Per-call median is only ~1.1K tokens.
+2. **The plan's acceptance bar (>80% hit ratio, >5× reduction) is NOT met and
+   was never achievable** — it assumed a large *stable* prefix re-sent every
+   turn. Reality: the stable prefix is ~4.2-4.4K tokens; the rest is genuinely
+   dynamic (memories, drives, conversation) or sub-1024 calls that can't cache.
+3. **The real win — ~38% ITPM reduction — still clears the tier-1 ceiling**
+   that caused the 2026-06-08 cascade (~30K → ~18.6K ITPM sustained). This is
+   the meaningful success: it unblocks Sonnet/Haiku Exp 37 fires at tier 1.
+4. **The `tools` phase-stability caveat manifested benignly:** one prefix
+   re-write at a narrative-act boundary (4,218 → 4,427 tokens, +209 when new
+   `world_entities` activated), then reuse resumed. NOT per-tick churn — `tools`
+   was correctly classified phase-stable. The default 5-min TTL held across the
+   ~6-min run; no need to bump to 1h.
+
+**Why only 24/44 calls are cache-eligible:** the cradle sub-sim makes several
+LLM call *types* (AUT tool-prompt, narrator, answer-only, imagination). Only the
+AUT tool-prompt calls (~one per turn) carry the large stable prefix and exceed
+Anthropic's 1024-token minimum; the rest are small and cannot cache. The ~38%
+is therefore close to the practical ceiling for this scenario without making
+more of the per-call content stable (out of scope — that content is genuinely
+dynamic).
+
+### Phase 2 — OpenAI caching (commit `0610d2d`, 2026-06-08)
+
+OpenAI Chat Completions has **no `cache_control` marker** — caching is automatic
+and server-side for prompts >1024 tokens, keyed on the stable message prefix
+that Phase 1's system/user split already provides. So Phase 2 added measurement,
+not a marker: `_OpenAIBackend._prompt_cache_enabled()` + `_log_cache_usage()`
+emitting an `openai_cache` event (buffered + streaming paths), `prompt_cache:
+true` on the gpt-4o profile (gates the event), and `cached_tokens` capture in the
+streaming path (previously hardcoded 0). 8 unit tests.
+
+### Phase 2d — gpt-4o smoke (2026-06-08, 1 trial, fire_pit Arm A, $0.27)
+
+| metric | value |
+|---|---|
+| LLM calls | 45 |
+| total prompt tokens | 99,165 |
+| cache_read | 30,720 (10 calls) |
+| uncached | 68,445 |
+| cache served | 31.0% of input tokens |
+| calls with prompt ≥1024 tok | 23 / 45 |
+| per-call prompt size (min/median/max) | 353 / 1,028 / 6,758 |
+
+OpenAI caching works on the same stable prefix (31% of input served from cache).
+**Important difference from Anthropic:** OpenAI cached tokens get a ~50% *cost*
+discount but, unlike Anthropic's ITPM exemption, still count toward TPM rate
+limits. So for OpenAI the benefit is **cost (~15% on input), not rate-limit
+headroom**. OpenAI tier limits are generally higher than Anthropic's anyway, so
+this is a cost optimization rather than a blocker-clearing fix.
+
+### Phase 2e — DeepSeek (deepseek-chat) smoke (2026-06-08, 1 trial, $0.03)
+
+DeepSeek routes through the OpenAI-compatible backend. The smoke surfaced — and
+this work fixed — a **pre-existing gap: DeepSeek cloud dispatch was never wired
+on the default (no user-configured providers) path.** Two missing pieces:
+
+1. **No pricing entry** → the cloud cost-gate excluded it (`attempts: []`). Added
+   `deepseek-chat` / `deepseek-reasoner` to `DEFAULT_PRICING`.
+2. **`base_url` / `api_key_env` were dropped.** The synthesized provider entry
+   lives in `router._providers`, but backends read `cfg.providers` (empty on the
+   default path) — so DeepSeek's `api.deepseek.com` endpoint and
+   `DEEPSEEK_API_KEY` never reached the backend, which silently fell back to
+   `api.openai.com` / `OPENAI_API_KEY` → `empty_response`. (claude/gpt-4o were
+   unaffected because their defaults match.) Fixed by threading `base_url` +
+   `api_key_env` through `LLMConfig` → synthesized provider entry, plus a
+   cfg-level fallback in `_OpenAIBackend._get_api_key` / `_get_base_url` and
+   `_AnthropicBackend._get_api_key` — the same fallback shape already used for
+   `model` and `prompt_cache`.
+
+| metric | value |
+|---|---|
+| LLM calls | 47 |
+| total prompt tokens | 105,532 |
+| cache_read | 49,024 |
+| uncached | 56,508 |
+| **cache served** | **46.5% of input tokens** (32/47 calls) |
+| total sub-sim cost | $0.03 |
+
+DeepSeek's automatic caching hit *more* of the workload than Anthropic/OpenAI
+(46.5%, and on smaller calls too). DeepSeek bills cached tokens at ~74% off
+(~$0.07 vs $0.27 per 1M) but, like OpenAI, does not exempt them from rate limits
+— so the benefit is **cost** (DeepSeek's limits are very high regardless). The
+`openai_cache` event captures DeepSeek's `prompt_cache_hit_tokens` field (which
+differs from OpenAI's `prompt_tokens_details.cached_tokens`).
+
+## Summary
+
+Caching is live for Anthropic (Sonnet/Haiku/Opus), OpenAI (gpt-4o), and DeepSeek
+(deepseek-chat), validated end-to-end. The plan's headline "6× / 75% ITPM reduction" was **not achievable**
+(it rested on a false premise of a large *stable* per-turn prefix). The real,
+measured outcome:
+
+- **Anthropic: ~38% ITPM reduction** — clears the tier-1 ceiling that blocked
+  the 2026-06-08 Exp 37 Sonnet/Haiku replication. **This is the blocker-clearing
+  result.**
+- **OpenAI gpt-4o: ~31% of input cached → ~15% input-cost reduction** (no
+  rate-limit benefit by OpenAI's design).
+- **DeepSeek deepseek-chat: ~46.5% of input cached → cost reduction** (~74% off
+  cached tokens); also fixed DeepSeek/OpenAI-compatible cloud dispatch on the
+  default path (pricing + base_url/api_key_env threading).
+- Byte-stable system prefix enforced structurally + by regression test, so future
+  PromptBuilder changes can't silently break caching.
+
+Out of scope / not pursued: caching for `_MaximPeerBackend` (local llama-cpp has
+KV-cache); DeepSeek/other providers (same `prompt_cache` pattern applies when
+needed); raising the cache-eligible call fraction (the non-AUT calls are small
+and the dynamic content is genuinely per-turn).
