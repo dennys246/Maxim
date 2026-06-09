@@ -1,6 +1,6 @@
 """P1 recognition sweep — runs paraphrase clusters through the substrate pipeline.
 
-Requires sentence-transformers (``pip install pymaxim[semantic]``).
+Requires sentence-transformers (``pip install 'pymaxim[semantic]'``).
 Marked ``slow`` — not part of the default test suite.
 
 Run with:
