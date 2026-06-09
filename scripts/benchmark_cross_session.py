@@ -868,6 +868,76 @@ def _load_existing_record_keys(out_path: Path) -> set[tuple[str, int, str, str |
     return keys
 
 
+def _read_all_records(out_path: Path) -> list[dict[str, Any]]:
+    """Load all JSONL records from ``out_path`` (empty if absent/unparseable)."""
+    if not out_path.exists():
+        return []
+    out: list[dict[str, Any]] = []
+    for line in out_path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def _complete_clean_groups(
+    records: list[dict[str, Any]],
+    arms_set: set[str],
+) -> set[tuple[int, str | None]]:
+    """Return the set of (trial_pair_id, scenario) groups that are COMPLETE and
+    CLEAN: every arm in ``arms_set`` is present AND made ≥1 successful LLM call
+    (total_input_tokens > 0). These are safe to skip on resume. Partial groups
+    or any containing a zero-token (systemic-failure) record are NOT clean and
+    must be re-run as a unit (B-family arms are causally chained to their
+    in-session arm A, so a group is the atomic resume unit)."""
+    by_group: dict[tuple[int, str | None], dict[str, int]] = {}
+    for r in records:
+        key = (int(r.get("trial_pair_id", -1)), r.get("scenario"))
+        by_group.setdefault(key, {})[r.get("arm", "")] = int(r.get("total_input_tokens", 0) or 0)
+    clean: set[tuple[int, str | None]] = set()
+    for key, arm_tokens in by_group.items():
+        if not arms_set.issubset(arm_tokens.keys()):
+            continue  # missing an arm → incomplete
+        if all(arm_tokens.get(a, 0) > 0 for a in arms_set):
+            clean.add(key)
+    return clean
+
+
+def _apply_resume_prune(out_path: Path, arms_set: set[str]) -> set[tuple[int, str | None]]:
+    """Prepare ``out_path`` for a resume: keep only complete-clean groups,
+    drop incomplete / systemic-failure groups so they re-run cleanly (the
+    harness has no in-place re-emit; recovery is prune-then-append). Backs up
+    the original to ``<out>.resume-bak``. Returns the set of skippable
+    (trial_pair_id, scenario) groups."""
+    records = _read_all_records(out_path)
+    if not records:
+        return set()
+    keep_groups = _complete_clean_groups(records, arms_set)
+    kept = [r for r in records if (int(r.get("trial_pair_id", -1)), r.get("scenario")) in keep_groups]
+    dropped = len(records) - len(kept)
+    if dropped:
+        backup = out_path.with_suffix(out_path.suffix + ".resume-bak")
+        out_path.replace(backup)
+        with out_path.open("w") as f:
+            for r in kept:
+                f.write(json.dumps(r) + "\n")
+        print(
+            f"RESUME: kept {len(kept)} records in {len(keep_groups)} complete-clean groups, "
+            f"pruned {dropped} incomplete/failed records (backup: {backup.name}).",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"RESUME: {len(keep_groups)} complete-clean groups already present; missing/failed groups will be (re)run.",
+            file=sys.stderr,
+        )
+    return keep_groups
+
+
 def _assert_failure_class_matches_yaml(scenario: str) -> None:
     """Cross-check FAILURE_CLASS rules against the live cradle YAMLs at
     startup so a YAML affordance rename (touch → poke) loudly fails the
@@ -1044,6 +1114,7 @@ def run_benchmark(
     mock: bool,
     cleanup_after_trial: bool = False,
     max_consecutive_failures: int = 3,
+    resume: bool = False,
 ) -> dict[str, Any]:
     """Drive paired trials across arms × scenarios. Returns a summary dict.
 
@@ -1075,6 +1146,12 @@ def run_benchmark(
     # paired trials; silent duplication of trial_pair_id ∈ {1..5} from
     # a second invocation against the same --out would poison the
     # variance-survival analysis.
+    # Resume: prune incomplete/failed groups, skip complete-clean ones. Must run
+    # BEFORE _load_existing_record_keys so existing_keys reflects the pruned file.
+    skip_groups: set[tuple[int, str | None]] = set()
+    if resume:
+        skip_groups = _apply_resume_prune(out_path, arms_set)
+
     existing_keys = _load_existing_record_keys(out_path)
 
     versions = _capture_versions()
@@ -1150,6 +1227,13 @@ def run_benchmark(
             arm_c_prior: SimResult | None = None  # shared across scenarios within a trial
 
             for scenario in scenarios:
+                # Resume: skip groups already complete+clean in the output. The
+                # group is the atomic unit (B-family arms are chained to their
+                # in-session arm A), so a whole (trial,scenario) is skipped or
+                # re-run together. Pruned/missing groups fall through and run.
+                if resume and (trial_id, scenario) in skip_groups:
+                    continue
+
                 # C3 fold: pre-pair cost projection — abort BETWEEN pairs
                 # rather than mid-pair so the analyzer never sees a half-
                 # written trial. The per-record _check_cost is the safety
@@ -1347,6 +1431,15 @@ def main(argv: list[str] | None = None) -> int:
         "auth, cloud gate) instead of grinding out zero-cost records. "
         "0 disables the guard. Default 3.",
     )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume an interrupted fire against the same --out: keep complete "
+        "+ clean (trial,scenario) groups, prune incomplete/failed ones (backed "
+        "up to <out>.resume-bak), and (re)run only what's missing. Lets a run "
+        "that died (credit exhaustion, kill) pick up where it left off instead "
+        "of a full rerun.",
+    )
     args = parser.parse_args(argv)
 
     global _PACE_S
@@ -1370,6 +1463,7 @@ def main(argv: list[str] | None = None) -> int:
             mock=args.mock_llm,
             cleanup_after_trial=args.cleanup_after_trial,
             max_consecutive_failures=args.max_consecutive_failures,
+            resume=args.resume,
         )
     except PreflightError as exc:
         print(f"ABORT: {exc}", file=sys.stderr)
