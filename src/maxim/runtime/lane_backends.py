@@ -30,7 +30,7 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-from maxim.runtime.worker_pool import LaneConfig
+from maxim.runtime.worker_pool import LaneConfig, Origin, ProviderPlacement
 
 # ─── Plan 3 R2.5: backend-class dispatch table ─────────────────────────
 #
@@ -640,6 +640,92 @@ def _is_cloud_url(remote_url: str | None) -> bool:
         return False
     host = parsed.hostname or ""
     return not _host_is_private(host)
+
+
+# ─── placement derivation (lane_capability_placement_split.md, Phase 1) ─────
+#
+# The placement axis (Origin/ProviderPlacement) is introduced additively. In
+# Phase 1 it is NOT yet wired into dispatch — ``get_backend`` / ``_build_*`` /
+# ``_classify`` still drive routing off the legacy LaneConfig fields. These
+# helpers are the one-way back-compat shim + resolver scaffolding: they derive
+# a placement tuple from the legacy fields and reproduce ``_classify``'s exact
+# kind classification, so Phase 2 can switch dispatch to read ``origin`` with a
+# proven before/after equivalence. Derivation direction is one-way: env /
+# tier-detection / auto-spawn keep landing in the legacy fields; placement is
+# computed from them when ``cfg.placement == ()``.
+
+
+def derive_placement(cfg: LaneConfig, *, peer_owned: bool) -> tuple[ProviderPlacement, ...]:
+    """Derive the ordered placement for a lane from its legacy fields.
+
+    Reproduces :meth:`LaneBackendManager._classify`'s exact origin
+    classification so that, until Phase 2 wires placement into dispatch,
+    every existing config yields identical routing:
+
+    - ``remote_url`` set + ``peer_owned`` → ``PEER`` (own infra behind a tunnel)
+    - ``remote_url`` set, not peer-owned → ``CLOUD`` if the host is public else
+      ``PEER`` (the ``_is_cloud_url`` split)
+    - no ``remote_url`` but a ``model_profile`` → ``LOCAL`` — **even when the
+      profile names a cloud model** (the ``--cloud-lane`` case). This matches
+      ``_classify`` returning ``"local"`` for a cloud-profile-with-no-URL lane,
+      which is load-bearing: such lanes must NOT count against
+      ``MAXIM_MAX_CLOUD_LANES`` (they are gated by ``_validate_cloud_config``
+      instead). Phase 3 re-expresses ``--cloud-lane`` as a real CLOUD placement
+      and preserves the cap accounting via the ``cli_utils`` cap bump.
+    - neither profile nor URL → ``()`` (the ``get_backend`` None-gate case).
+
+    If ``cfg.placement`` is already populated it is returned verbatim — an
+    explicit producer wins over derivation.
+    """
+    if cfg.placement:
+        return cfg.placement
+    if cfg.remote_url:
+        if peer_owned:
+            origin = Origin.PEER
+        else:
+            origin = Origin.CLOUD if _is_cloud_url(cfg.remote_url) else Origin.PEER
+        return (
+            ProviderPlacement(
+                origin=origin,
+                model=cfg.remote_model or cfg.model_profile,
+                url=cfg.remote_url,
+                api_key=cfg.remote_api_key,
+                timeout_s=cfg.remote_timeout_s,
+            ),
+        )
+    if cfg.model_profile:
+        return (
+            ProviderPlacement(
+                origin=Origin.LOCAL,
+                model=cfg.model_profile,
+                timeout_s=cfg.remote_timeout_s,
+            ),
+        )
+    return ()
+
+
+def active_placement(cfg: LaneConfig, *, peer_owned: bool) -> ProviderPlacement | None:
+    """The primary (first) placement entry, or ``None`` for an empty lane."""
+    placement = derive_placement(cfg, peer_owned=peer_owned)
+    return placement[0] if placement else None
+
+
+def placement_kind(placement: tuple[ProviderPlacement, ...]) -> str:
+    """Map a placement tuple to a legacy ``_classify`` kind string.
+
+    Keys off the PRIMARY (first) entry's origin so the result matches
+    ``_classify`` exactly: ``PEER`` → ``"self-hosted"``, ``CLOUD`` →
+    ``"cloud"``, ``LOCAL`` → ``"local"``. Empty → ``"local"`` (matches
+    ``get_lane_kind``'s None-cfg / no-backend default).
+    """
+    if not placement:
+        return "local"
+    origin = placement[0].origin
+    if origin is Origin.PEER:
+        return "self-hosted"
+    if origin is Origin.CLOUD:
+        return "cloud"
+    return "local"
 
 
 # ─── exceptions ───────────────────────────────────────────────────────────

@@ -69,6 +69,62 @@ class Job:
     created_at: float = field(default_factory=time.time)
 
 
+class Origin(str, Enum):
+    """Where/how a model for a lane actually runs (the *placement* axis).
+
+    Orthogonal to the capability axis (``large``/``medium``/``small`` tier,
+    which is what the *work* needs). Placement is an infrastructure property:
+
+    - ``LOCAL`` — a llama-cpp profile served on this box.
+    - ``CLOUD`` — a metered provider (Anthropic/OpenAI/…) over the public net.
+    - ``PEER``  — a self-hosted model behind a tunnel/LAN (served by the
+      one-HTTP-call ``_MaximPeerBackend``). Renames the legacy
+      ``"self-hosted"`` classification at the type layer; ``_classify``'s
+      legacy string outputs are kept during the transition.
+
+    ``str`` subclass so a value serializes to its plain string (``"local"``)
+    for JSON persistence and compares equal to the legacy kind strings.
+
+    See ``docs/plans/lane_capability_placement_split.md``.
+    """
+
+    LOCAL = "local"
+    CLOUD = "cloud"
+    PEER = "peer"
+
+
+@dataclass(frozen=True)
+class ProviderPlacement:
+    """One candidate provider for a lane's capability — the placement axis.
+
+    A lane carries an *ordered* tuple of these (``LaneConfig.placement``);
+    the first healthy/eligible one serves the work. The ordered-preference +
+    first-healthy resolution itself rides on ``LLMRouter``'s existing
+    ``provider_priority`` / ``_try_provider`` failover (a per-tier placement
+    tuple *compiles* into that router's providers); this type does NOT add a
+    second resolver. See the plan's Phase-0 design decision.
+
+    ESCAPE-HATCH at 1.0 (CC3) — path (a). ``extra`` carries genuinely
+    additive, JSON-serializable metadata that placement is likely to grow
+    (``routing_weight``, ``health_path``, …); the ``hash=False, compare=False``
+    spec is load-bearing so the ``dict`` field doesn't break ``__hash__`` /
+    inflate ``__eq__`` on this frozen type. Producers prefer declared fields.
+
+    ``api_key`` is the **resolved** credential at this runtime layer (matching
+    how ``LaneConfig.remote_api_key`` already holds a resolved value). The
+    declarative config layer (Phase 3 ``LaneTierPlacement``) carries an
+    unresolved ``api_key_ref`` and resolves it into this field at load time —
+    deliberately split so "ref" never names a resolved value.
+    """
+
+    origin: Origin
+    model: str | None = None
+    url: str | None = None
+    api_key: str | None = None
+    timeout_s: float | None = None
+    extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
+
+
 @dataclass
 class LaneConfig:
     """Configuration for a worker lane."""
@@ -105,6 +161,13 @@ class LaneConfig:
     # backend's provider config so ``_get_timeout_policy`` /
     # ``_get_timeout`` pick it up.
     remote_timeout_s: float | None = None
+    # Placement axis (lane_capability_placement_split.md). Ordered preference
+    # of candidate providers for this lane's capability. ``()`` (the default)
+    # means "derive a 1-element placement from the legacy fields above" via
+    # ``lane_backends.derive_placement`` — so existing configs are unchanged.
+    # Additive + backward-compatible; the legacy fields remain the source of
+    # truth until a producer writes ``placement`` explicitly (Phase 3).
+    placement: tuple[ProviderPlacement, ...] = ()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
