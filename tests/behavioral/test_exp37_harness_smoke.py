@@ -276,6 +276,187 @@ def test_cost_cap_exit_code(harness, workdir, out_path):
     assert rc == 3
 
 
+# ─── 5b. Systemic-failure early-abort guard (credit/auth outage) ─────────
+
+
+def test_systemic_failure_aborts_after_consecutive_zero_token(harness, workdir, out_path, monkeypatch):
+    """N consecutive zero-input-token sub-sims (the credit-exhaustion / auth
+    signature) abort the fire fast instead of grinding out garbage records."""
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    with pytest.raises(harness.SystemicLLMFailure):
+        harness.run_benchmark(
+            out_path=out_path,
+            workdir=workdir,
+            arms=harness.ARMS,
+            scenarios=harness.SCENARIOS,
+            trials=2,
+            model="claude-sonnet",
+            cost_cap=100.0,
+            max_turns=4,
+            seed_base=42,
+            mock=True,
+            max_consecutive_failures=3,
+        )
+    # Aborted at the threshold, not after all 24 records.
+    records = _read_records(out_path)
+    assert len(records) == 3, f"expected abort at 3 records, got {len(records)}"
+
+
+def test_systemic_failure_guard_disabled_with_zero_threshold(harness, workdir, out_path, monkeypatch):
+    """--max-consecutive-failures 0 disables the guard — zero-token runs still
+    complete (operator override)."""
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    summary = harness.run_benchmark(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        trials=1,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+        max_consecutive_failures=0,
+    )
+    expected = 1 * 2 * len(harness.ARMS)
+    assert summary["records_written"] == expected
+
+
+def test_systemic_failure_does_not_fire_on_healthy_run(harness, workdir, out_path):
+    """Healthy (non-zero-token) runs never trip the guard."""
+    summary = harness.run_benchmark(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        trials=2,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+        max_consecutive_failures=3,
+    )
+    assert summary["records_written"] == 2 * 2 * len(harness.ARMS)
+
+
+def test_systemic_failure_exit_code(harness, workdir, out_path, monkeypatch):
+    """CLI main() returns 5 on systemic-failure abort."""
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    argv = [
+        "--out",
+        str(out_path),
+        "--workdir",
+        str(workdir),
+        "--trials",
+        "2",
+        "--cost-cap",
+        "100.0",
+        "--sim-max-turns",
+        "4",
+        "--max-consecutive-failures",
+        "3",
+        "--mock-llm",
+    ]
+    rc = harness.main(argv)
+    assert rc == 5
+
+
+# ─── 5c. Resume: skip complete groups, prune + rerun failed/missing ──────
+
+
+def test_resume_skips_complete_groups(harness, workdir, out_path):
+    """Resuming a fully-complete run adds nothing and preserves all records."""
+    kw = dict(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        trials=1,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+    )
+    s1 = harness.run_benchmark(**kw)
+    n1 = s1["records_written"]
+    assert n1 == 1 * 2 * len(harness.ARMS)
+    s2 = harness.run_benchmark(**kw, resume=True)
+    assert s2["records_written"] == 0, "resume re-ran already-complete groups"
+    assert len(_read_records(out_path)) == n1  # nothing duplicated
+
+
+def test_resume_runs_missing_groups(harness, workdir, out_path):
+    """Resume with a larger trial count keeps pair 1 and runs pair 2."""
+    base = dict(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+    )
+    harness.run_benchmark(**base, trials=1)
+    harness.run_benchmark(**base, trials=2, resume=True)
+    records = _read_records(out_path)
+    pairs = sorted({r["trial_pair_id"] for r in records})
+    assert pairs == [1, 2]
+    assert len(records) == 2 * 2 * len(harness.ARMS)  # no dupes, both pairs present
+
+
+def test_resume_prunes_and_reruns_failed_groups(harness, workdir, out_path, monkeypatch):
+    """A run that completed with zero-token (credit-fail) records is pruned and
+    re-run cleanly on resume."""
+    base = dict(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        trials=1,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+    )
+    # First pass: simulate systemic failure (all zero-token), guard disabled so
+    # the contaminated file is fully written.
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    harness.run_benchmark(**base, max_consecutive_failures=0)
+    contaminated = _read_records(out_path)
+    assert all(r["total_input_tokens"] == 0 for r in contaminated)
+    # Resume with the provider healthy: prune the failed groups + re-run clean.
+    monkeypatch.delenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", raising=False)
+    harness.run_benchmark(**base, resume=True)
+    healed = _read_records(out_path)
+    assert len(healed) == 1 * 2 * len(harness.ARMS)
+    assert all(r["total_input_tokens"] > 0 for r in healed), "resume left failed records"
+    assert (out_path.with_suffix(out_path.suffix + ".resume-bak")).exists()
+
+
+def test_resume_no_existing_file_is_fresh(harness, workdir, out_path):
+    """--resume with no prior file behaves like a fresh run."""
+    summary = harness.run_benchmark(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        trials=1,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+        resume=True,
+    )
+    assert summary["records_written"] == 1 * 2 * len(harness.ARMS)
+
+
 # ─── 6. Failure-class detection routes through the per-scenario rules ────
 
 
