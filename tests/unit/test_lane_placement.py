@@ -20,9 +20,9 @@ import pytest
 
 from maxim.runtime.lane_backends import (
     LaneBackendManager,
-    active_placement,
     derive_placement,
     placement_kind,
+    primary_placement,
 )
 from maxim.runtime.worker_pool import LaneConfig, Origin, ProviderPlacement
 
@@ -53,6 +53,11 @@ class TestOriginEnum:
     def test_json_serializes_to_plain_string(self):
         assert json.dumps({"o": Origin.PEER}) == '{"o": "peer"}'
 
+    def test_str_returns_bare_value_not_enum_repr(self):
+        # __str__ override closes the f"{origin}" -> "Origin.PEER" trap.
+        assert str(Origin.PEER) == "peer"
+        assert f"{Origin.LOCAL}" == "local"
+
 
 class TestProviderPlacementShape:
     def test_frozen(self):
@@ -79,6 +84,16 @@ class TestProviderPlacementShape:
         a = ProviderPlacement(origin=Origin.LOCAL, model="m", extra={"x": 1})
         b = ProviderPlacement(origin=Origin.LOCAL, model="m", extra={"y": 2})
         assert a == b  # extra has compare=False
+
+    def test_extra_key_colliding_with_declared_field_rejected(self):
+        # CC3 path-(a) guard mirrors LaneTierConfig: a colliding extra key must
+        # not silently shadow a declared field on a future round-trip.
+        with pytest.raises(ValueError, match="collide with declared fields"):
+            ProviderPlacement(origin=Origin.LOCAL, extra={"model": "shadow"})
+
+    def test_extra_noncolliding_key_accepted(self):
+        p = ProviderPlacement(origin=Origin.LOCAL, extra={"routing_weight": 0.5})
+        assert p.extra == {"routing_weight": 0.5}
 
 
 class TestLaneConfigPlacementField:
@@ -146,14 +161,14 @@ class TestDerivePlacement:
         assert derive_placement(cfg, peer_owned=False) == explicit
 
 
-class TestActivePlacement:
+class TestPrimaryPlacement:
     def test_returns_primary(self):
         cfg = _lane(model_profile="mistral-7b")
-        ap = active_placement(cfg, peer_owned=False)
+        ap = primary_placement(cfg, peer_owned=False)
         assert ap is not None and ap.origin is Origin.LOCAL
 
     def test_none_for_empty_lane(self):
-        assert active_placement(_lane(), peer_owned=False) is None
+        assert primary_placement(_lane(), peer_owned=False) is None
 
 
 class TestPlacementKind:
@@ -181,6 +196,7 @@ class TestClassifyEquivalence:
 
     # (cfg-kwargs, peer_owned) covering every classification branch.
     CASES = [
+        ({}, False),  # empty lane → "local"
         ({"model_profile": "smollm-1.7b-instruct"}, False),  # local
         ({"model_profile": "claude-sonnet"}, False),  # cloud profile → still local
         ({"remote_url": _CLOUD_URL}, False),  # public → cloud

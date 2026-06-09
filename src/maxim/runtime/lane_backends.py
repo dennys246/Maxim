@@ -704,8 +704,14 @@ def derive_placement(cfg: LaneConfig, *, peer_owned: bool) -> tuple[ProviderPlac
     return ()
 
 
-def active_placement(cfg: LaneConfig, *, peer_owned: bool) -> ProviderPlacement | None:
-    """The primary (first) placement entry, or ``None`` for an empty lane."""
+def primary_placement(cfg: LaneConfig, *, peer_owned: bool) -> ProviderPlacement | None:
+    """The primary (first / index-0) placement entry, or ``None`` for an empty lane.
+
+    Purely positional — NOT a health/eligibility resolution. First-healthy
+    failover across an ordered placement rides on ``LLMRouter``'s
+    ``provider_priority`` per the plan's scope decision; do NOT bolt selection
+    logic onto this helper.
+    """
     placement = derive_placement(cfg, peer_owned=peer_owned)
     return placement[0] if placement else None
 

@@ -75,15 +75,31 @@ class Origin(str, Enum):
     Orthogonal to the capability axis (``large``/``medium``/``small`` tier,
     which is what the *work* needs). Placement is an infrastructure property:
 
-    - ``LOCAL`` — a llama-cpp profile served on this box.
-    - ``CLOUD`` — a metered provider (Anthropic/OpenAI/…) over the public net.
+    - ``LOCAL`` — the **profile-driven** ``_build_local_backend`` path on this
+      box. Usually a llama-cpp profile, but **also** how a ``--cloud-lane``
+      cloud *profile* (a cloud model with no ``remote_url``) is classified:
+      ``_classify`` returns ``"local"`` for it, so it does NOT consume a
+      ``MAXIM_MAX_CLOUD_LANES`` slot (it's gated by ``_validate_cloud_config``
+      instead). So ``LOCAL`` means "served via the profile-driven router path",
+      NOT "guaranteed llama-cpp" — a Phase-2 dispatch on ``origin`` must keep
+      routing ``LOCAL`` through ``_build_local_backend``, which transparently
+      serves cloud profiles too. Phase 3 re-expresses ``--cloud-lane`` as a real
+      ``CLOUD`` placement and moves the cap accounting accordingly.
+    - ``CLOUD`` — a metered provider (Anthropic/OpenAI/…) reached by *URL* over
+      the public net (the ``_classify`` ``"cloud"`` kind).
     - ``PEER``  — a self-hosted model behind a tunnel/LAN (served by the
       one-HTTP-call ``_MaximPeerBackend``). Renames the legacy
       ``"self-hosted"`` classification at the type layer; ``_classify``'s
-      legacy string outputs are kept during the transition.
+      legacy string outputs are kept during the transition. NOTE the rename:
+      ``Origin.PEER == "self-hosted"`` is ``False`` — map via
+      ``lane_backends.placement_kind``, never compare an ``Origin`` directly to
+      the legacy ``"self-hosted"`` string.
 
     ``str`` subclass so a value serializes to its plain string (``"local"``)
-    for JSON persistence and compares equal to the legacy kind strings.
+    for JSON persistence and compares equal to its OWN value string
+    (``Origin.LOCAL == "local"``). ``__str__`` is overridden to return the bare
+    value so ``f"{origin}"`` / ``str(origin)`` yield ``"local"`` rather than
+    ``"Origin.LOCAL"`` (the default Enum ``__str__``), closing an f-string trap.
 
     See ``docs/plans/lane_capability_placement_split.md``.
     """
@@ -91,6 +107,14 @@ class Origin(str, Enum):
     LOCAL = "local"
     CLOUD = "cloud"
     PEER = "peer"
+
+    def __str__(self) -> str:
+        return self.value
+
+
+# Declared (non-``extra``) field names — used by ProviderPlacement.__post_init__
+# to reject colliding ``extra`` keys per the CC3 path-(a) rule.
+_PROVIDER_PLACEMENT_DECLARED_FIELDS: frozenset[str] = frozenset({"origin", "model", "url", "api_key", "timeout_s"})
 
 
 @dataclass(frozen=True)
@@ -115,6 +139,11 @@ class ProviderPlacement:
     declarative config layer (Phase 3 ``LaneTierPlacement``) carries an
     unresolved ``api_key_ref`` and resolves it into this field at load time —
     deliberately split so "ref" never names a resolved value.
+
+    Per the CC3 path-(a) rule, ``__post_init__`` rejects ``extra`` keys that
+    collide with declared field names — mirroring ``LaneTierConfig`` — so a
+    colliding key cannot silently shadow a declared field on a future
+    round-trip (Phase 3's persisted ``LaneTierPlacement`` will reuse this shape).
     """
 
     origin: Origin
@@ -123,6 +152,16 @@ class ProviderPlacement:
     api_key: str | None = None
     timeout_s: float | None = None
     extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
+
+    def __post_init__(self) -> None:
+        collisions = _PROVIDER_PLACEMENT_DECLARED_FIELDS & set(self.extra.keys())
+        if collisions:
+            raise ValueError(
+                f"ProviderPlacement: extra dict contains key(s) that collide "
+                f"with declared fields: {sorted(collisions)}. extra is for "
+                f"forward-growth additive metadata only — declared fields go "
+                f"in their own slots."
+            )
 
 
 @dataclass
