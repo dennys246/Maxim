@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 import time
 from typing import Any
 
@@ -25,6 +26,47 @@ def _is_auth_error(err: Exception) -> bool:
 def _is_rate_limit_error(err: Exception) -> bool:
     msg = str(err).lower()
     return "429" in msg or "rate" in msg
+
+
+def _is_overloaded_error(err: Exception) -> bool:
+    """Anthropic 529 Overloaded — server-side capacity, not our rate budget.
+
+    Distinct from 429: 529 is Anthropic telling us *they* are overloaded (often
+    time-of-day load). It is still a transient/retryable capacity error and must
+    get the same aggressive backoff as 429 — otherwise it falls through to the
+    minimal generic backoff, exhausts retries in ~3s, and the call returns empty
+    (the 2026-06-08 Exp 37 collapse signature). See
+    docs/plans/prompt_caching_for_cloud_backends.md.
+    """
+    msg = str(err).lower()
+    return "529" in msg or "overloaded" in msg
+
+
+def _is_capacity_error(err: Exception) -> bool:
+    """429 (rate) or 529 (overloaded) — both want aggressive backoff."""
+    return _is_rate_limit_error(err) or _is_overloaded_error(err)
+
+
+def _retry_after_seconds(err: Exception) -> float | None:
+    """Best-effort extraction of the Retry-After header from an SDK error.
+
+    Anthropic 429s commonly carry Retry-After; honoring it is the correct way to
+    back off rather than guessing. Returns None when absent/unparseable.
+    """
+    resp = getattr(err, "response", None)
+    if resp is None:
+        return None
+    try:
+        headers = resp.headers
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +164,27 @@ class _AnthropicBackend:
             return int(cfg.get("max_retries", 2))
         except Exception:
             return 2
+
+    def _get_capacity_max_retries(self) -> int:
+        """Retry budget for 429/529 capacity errors — higher than the generic
+        budget so a sub-sim rides through a transient overload window instead of
+        failing the turn. Default 6 (≈ up to ~90s of backoff worst-case)."""
+        cfg = self._provider_cfg()
+        try:
+            return int(cfg.get("capacity_max_retries", 6))
+        except Exception:
+            return 6
+
+    @staticmethod
+    def _capacity_backoff(attempt: int, err: Exception) -> float:
+        """Exponential backoff with jitter for capacity errors, honoring
+        Retry-After when present. Capped at 30s (60s if Retry-After demands it)."""
+        backoff = min(2.0 * (2**attempt), 30.0)
+        retry_after = _retry_after_seconds(err)
+        if retry_after is not None:
+            backoff = min(max(backoff, retry_after), 60.0)
+        # Full jitter band to avoid synchronized retry storms across sub-sims.
+        return backoff * random.uniform(0.7, 1.3)
 
     def _prompt_cache_enabled(self) -> bool:
         cfg = self._provider_cfg()
@@ -291,7 +354,10 @@ class _AnthropicBackend:
             create_kwargs["tools"] = tools
 
         last_err: Exception | None = None
-        for attempt in range(self._get_max_retries() + 1):
+        generic_retries = self._get_max_retries()
+        capacity_retries = self._get_capacity_max_retries()
+        attempt = 0
+        while True:
             # Abort if the process is shutting down. Previously a user Ctrl+C
             # mid-retry would run the loop to completion (up to ~8s of
             # uninterruptible backoff sleeps) while burning cloud credits.
@@ -308,19 +374,27 @@ class _AnthropicBackend:
                 last_err = e
                 if _is_auth_error(e):
                     self._client = None
-                if attempt < self._get_max_retries():
+                # Capacity errors (429 rate / 529 overloaded) get a larger retry
+                # budget AND aggressive exponential backoff so a transient
+                # throttle/overload window doesn't fail the turn; everything else
+                # keeps the minimal generic backoff + small budget.
+                is_capacity = _is_capacity_error(e)
+                limit = capacity_retries if is_capacity else generic_retries
+                if attempt >= limit:
+                    break
+                if is_capacity:
+                    backoff = self._capacity_backoff(attempt, e)
+                else:
                     backoff = 0.5 * (attempt + 1)
-                    if _is_rate_limit_error(e):
-                        backoff = min(backoff * 4, 30.0)
-                    # shutdown_wait returns True early if shutdown fires
-                    # mid-backoff; we bail out on the next iteration check.
-                    if shutdown_wait(backoff):
-                        warn("Anthropic call aborted: shutdown requested during backoff")
-                        return LLMResponse(content="")
-                    continue
-                break
+                # shutdown_wait returns True early if shutdown fires
+                # mid-backoff; we bail out on the next iteration check.
+                if shutdown_wait(backoff):
+                    warn("Anthropic call aborted: shutdown requested during backoff")
+                    return LLMResponse(content="")
+                attempt += 1
+                continue
 
-        warn("Anthropic call failed: %s", last_err)
+        warn("Anthropic call failed after %d attempt(s): %s", attempt + 1, last_err)
         return LLMResponse(content="")
 
     def _parse_response(self, resp: Any, model: str, start: float) -> LLMResponse:

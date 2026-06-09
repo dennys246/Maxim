@@ -139,6 +139,107 @@ class TestAnthropicBackend:
             backend._parse_response(resp, "claude-sonnet-4-6", 0.0)
         assert not [r for r in caplog.records if r.getMessage() == "anthropic_cache"]
 
+    # ── Capacity-error backoff (429 / 529) ──────────────────────────────
+
+    def test_overloaded_error_detection(self):
+        from maxim.models.language.anthropic_backend import (
+            _is_overloaded_error,
+            _is_rate_limit_error,
+            _is_capacity_error,
+        )
+
+        ov = Exception("Error code: 529 - {'type': 'overloaded_error'}")
+        rl = Exception("Error code: 429 - rate_limit_error")
+        other = Exception("Error code: 500 - internal")
+        assert _is_overloaded_error(ov) is True
+        assert _is_overloaded_error(rl) is False  # 529-specific
+        assert _is_rate_limit_error(rl) is True
+        assert _is_capacity_error(ov) is True and _is_capacity_error(rl) is True
+        assert _is_capacity_error(other) is False
+
+    def test_retry_after_seconds_parsing(self):
+        from maxim.models.language.anthropic_backend import _retry_after_seconds
+
+        err = Exception("429")
+        err.response = MagicMock()
+        err.response.headers = {"retry-after": "12"}
+        assert _retry_after_seconds(err) == 12.0
+        # absent / no response
+        assert _retry_after_seconds(Exception("nope")) is None
+
+    def test_capacity_backoff_bounded_and_honors_retry_after(self):
+        from maxim.models.language.anthropic_backend import _AnthropicBackend
+
+        # exponential, jittered, capped at 30 (no retry-after)
+        for attempt in range(8):
+            b = _AnthropicBackend._capacity_backoff(attempt, Exception("529"))
+            assert 0 < b <= 30 * 1.3 + 0.01
+        # retry-after raises the floor
+        err = Exception("429")
+        err.response = MagicMock()
+        err.response.headers = {"retry-after": "45"}
+        b = _AnthropicBackend._capacity_backoff(0, err)
+        assert b >= 45 * 0.7  # honored (with jitter band), capped at 60*1.3
+
+    def test_capacity_max_retries_default(self):
+        backend = self._make_backend()
+        assert backend._get_capacity_max_retries() == 6
+
+    def test_529_retries_then_succeeds(self):
+        """A 529 on the first attempt must be retried (not exhaust the tiny
+        generic budget) and succeed on the next — the core 2026-06-08 fix."""
+        from unittest.mock import patch
+
+        backend = self._make_backend(capacity_max_retries=3)
+        # Build a fake client whose .messages.create raises 529 once then returns.
+        good = MagicMock()
+        good.usage = MagicMock(
+            input_tokens=10,
+            output_tokens=5,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+        )
+        good.content = []
+        good.stop_reason = "end_turn"
+        good.id = "msg_ok"
+        calls = {"n": 0}
+
+        def _create(**kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise Exception("Error code: 529 - overloaded_error")
+            return good
+
+        fake_client = MagicMock()
+        fake_client.messages.create.side_effect = _create
+        backend._client = fake_client
+
+        # Patch backoff sleep so the test is instant.
+        with patch("maxim.models.language.anthropic_backend.shutdown_wait", return_value=False):
+            resp = backend.complete_with_usage(system="s", user="u", max_tokens=16, temperature=0.0)
+        assert calls["n"] == 2  # retried once
+        assert resp.input_tokens == 10  # succeeded on retry
+
+    def test_generic_error_uses_small_budget(self):
+        """A non-capacity error exhausts the small generic budget (2) — does NOT
+        get the capacity budget."""
+        from unittest.mock import patch
+
+        backend = self._make_backend()  # generic max_retries=2
+        calls = {"n": 0}
+
+        def _create(**kw):
+            calls["n"] += 1
+            raise Exception("Error code: 500 - internal_server_error")
+
+        fake_client = MagicMock()
+        fake_client.messages.create.side_effect = _create
+        backend._client = fake_client
+        with patch("maxim.models.language.anthropic_backend.shutdown_wait", return_value=False):
+            resp = backend.complete_with_usage(system="s", user="u", max_tokens=16, temperature=0.0)
+        assert resp.content == ""  # failed
+        assert calls["n"] == 3  # 1 initial + 2 generic retries (NOT 7)
+
     # ── Thinking config ─────────────────────────────────────────────────
 
     def test_thinking_config_disabled(self):
@@ -618,6 +719,112 @@ class TestPromptCacheConfigWiring:
         cfg = _make_cfg(providers={})  # prompt_cache defaults False
         synthesized = normalize_providers(cfg)
         assert synthesized["local"]["prompt_cache"] is False
+
+    # ── Routing cost-cap env overrides (full-fire collapse fix) ──────────
+
+    def test_routing_cost_caps_default_when_no_env(self, monkeypatch):
+        from maxim.models.language.cloud_dispatch import load_routing_policy
+
+        for v in (
+            "MAXIM_LLM_MAX_COST_PER_HOUR",
+            "MAXIM_LLM_MAX_COST_PER_DAY",
+            "MAXIM_LLM_MAX_SESSION_COST",
+            "MAXIM_LLM_MAX_COST_PER_REQUEST",
+            "MAXIM_LLM_MAX_COST_PER_MONTH",
+        ):
+            monkeypatch.delenv(v, raising=False)
+        p = load_routing_policy({})
+        assert p.max_cost_per_hour == 1.00
+        assert p.max_cost_per_day == 10.00
+        assert p.max_session_cost == 5.00
+
+    def test_routing_cost_caps_env_override_to_unlimited(self, monkeypatch):
+        from maxim.models.language.cloud_dispatch import load_routing_policy
+
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_HOUR", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_DAY", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_SESSION_COST", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_REQUEST", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_MONTH", "0")
+        p = load_routing_policy({"max_cost_per_hour": 1.0, "max_cost_per_day": 10.0})
+        assert p.max_cost_per_hour == 0.0  # env wins over config
+        assert p.max_cost_per_day == 0.0
+        assert p.max_session_cost == 0.0
+
+    def test_routing_cost_cap_env_overrides_config(self, monkeypatch):
+        from maxim.models.language.cloud_dispatch import load_routing_policy
+
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_HOUR", "50")
+        p = load_routing_policy({"max_cost_per_hour": 1.0})
+        assert p.max_cost_per_hour == 50.0
+
+    def test_routing_cost_cap_malformed_env_falls_back(self, monkeypatch):
+        from maxim.models.language.cloud_dispatch import load_routing_policy
+
+        monkeypatch.setenv("MAXIM_LLM_MAX_COST_PER_HOUR", "not-a-number")
+        p = load_routing_policy({"max_cost_per_hour": 3.0})
+        assert p.max_cost_per_hour == 3.0  # falls back to config
+
+    def test_all_zero_caps_yield_normal_budget_status(self, monkeypatch):
+        """With all caps 0, the budget gate never blocks (the fix's core
+        invariant — delegate to the harness --cost-cap)."""
+        import dataclasses
+        from maxim.models.language.config import LLMConfig
+        from maxim.models.language.router import LLMRouter
+
+        for v in ("HOUR", "DAY", "MONTH", "REQUEST"):
+            monkeypatch.setenv(f"MAXIM_LLM_MAX_COST_PER_{v}", "0")
+        monkeypatch.setenv("MAXIM_LLM_MAX_SESSION_COST", "0")
+        cfg = dataclasses.replace(LLMConfig(), enabled=True)
+        router = LLMRouter(cfg)
+        # With every cap at 0, _budget_status computes no ratios and can never
+        # reach "blocked" regardless of accumulated spend — the gate is off and
+        # the harness --cost-cap is the sole ceiling.
+        assert router._routing_policy.max_cost_per_hour == 0.0
+        status, _ = router._budget_status(1000.0)
+        assert status == "normal"
+
+    def test_all_zero_caps_disable_cloud_dispatch(self, monkeypatch):
+        """SAFETY GUARD: all-zero cost caps make _validate_cloud_config refuse
+        cloud (cost limits missing). This is why the harness sets HIGH finite
+        caps, not 0 — 0 neutralizes the budget gate but trips this guard."""
+        import dataclasses
+        from maxim.models.language.config import LLMConfig
+        from maxim.models.language.router import LLMRouter
+
+        for v in ("HOUR", "DAY", "MONTH", "REQUEST"):
+            monkeypatch.setenv(f"MAXIM_LLM_MAX_COST_PER_{v}", "0")
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            enabled=True,
+            cloud_enabled=True,
+            redaction={"policy": "standard"},
+            providers={"anthropic": {"type": "anthropic", "model": "claude-sonnet-4-6"}},
+        )
+        router = LLMRouter(cfg)
+        assert router._cloud_allowed is False
+        assert "cost" in router._cloud_block_reason
+
+    def test_high_caps_keep_cloud_enabled_and_unblocked(self, monkeypatch):
+        """The harness approach: HIGH finite caps -> cloud stays allowed AND the
+        budget gate never blocks for a realistic fire."""
+        import dataclasses
+        from maxim.models.language.config import LLMConfig
+        from maxim.models.language.router import LLMRouter
+
+        for v in ("HOUR", "DAY", "MONTH", "REQUEST"):
+            monkeypatch.setenv(f"MAXIM_LLM_MAX_COST_PER_{v}", "100000")
+        monkeypatch.setenv("MAXIM_LLM_MAX_SESSION_COST", "100000")
+        cfg = dataclasses.replace(
+            LLMConfig(),
+            enabled=True,
+            cloud_enabled=True,
+            redaction={"policy": "standard"},
+            providers={"anthropic": {"type": "anthropic", "model": "claude-sonnet-4-6"}},
+        )
+        router = LLMRouter(cfg)
+        assert router._cloud_allowed is True
+        assert router._budget_status(1000.0)[0] == "normal"
 
     def test_load_llm_config_claude_profile_enables_prompt_cache(self, monkeypatch):
         from maxim.models.language.config import load_llm_config

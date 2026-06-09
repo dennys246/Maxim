@@ -6,11 +6,35 @@ These are module-level constants and static config loaders used by LLMRouter.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
 from maxim.models.language.cost_tracker import CostTrackerConfig, ModelPricing
 from maxim.models.language.types import RoutingPolicy
+
+
+def _routing_cost_cap(env_name: str, config_value: float) -> float:
+    """Resolve a routing cost cap: env override > config value.
+
+    Env vars (``MAXIM_LLM_MAX_COST_PER_HOUR`` etc.) let a controlling harness
+    relax the per-process internal cost gate when it enforces its own aggregate
+    ceiling (e.g. benchmark_cross_session.py --cost-cap). A value of 0 means
+    "unlimited" per the ``> 0`` guards in LLMRouter._budget_status /
+    _complete_text. **Caveat for cloud:** setting *all* of
+    max_cost_per_{request,hour,day,month} to 0 makes
+    LLMRouter._validate_cloud_config disable cloud dispatch entirely ("cost
+    limits missing" — a safety guard against unbounded cloud spend). To
+    effectively disable the gate while keeping cloud enabled, set a large finite
+    value instead of 0. Unparseable env values fall back to the config value.
+    """
+    raw = os.environ.get(env_name, "").strip()
+    if not raw:
+        return config_value
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return config_value
 
 
 # ─── Default pricing table ──────────────────────────────────────────────
@@ -116,11 +140,21 @@ def load_routing_policy(raw: dict[str, Any]) -> RoutingPolicy:
         fallback_on_budget_exceeded=str(data.get("fallback_on_budget_exceeded", "local") or "local"),
         require_cloud_opt_in=bool(data.get("require_cloud_opt_in", True)),
         context_window_routing=bool(data.get("context_window_routing", True)),
-        max_cost_per_request=float(data.get("max_cost_per_request", 0.50) or 0.0),
-        max_cost_per_hour=float(data.get("max_cost_per_hour", 1.00) or 0.0),
-        max_cost_per_day=float(data.get("max_cost_per_day", 10.00) or 0.0),
-        max_cost_per_month=float(data.get("max_cost_per_month", 100.00) or 0.0),
-        max_session_cost=float(data.get("max_session_cost", 5.00) or 0.0),
+        max_cost_per_request=_routing_cost_cap(
+            "MAXIM_LLM_MAX_COST_PER_REQUEST", float(data.get("max_cost_per_request", 0.50) or 0.0)
+        ),
+        max_cost_per_hour=_routing_cost_cap(
+            "MAXIM_LLM_MAX_COST_PER_HOUR", float(data.get("max_cost_per_hour", 1.00) or 0.0)
+        ),
+        max_cost_per_day=_routing_cost_cap(
+            "MAXIM_LLM_MAX_COST_PER_DAY", float(data.get("max_cost_per_day", 10.00) or 0.0)
+        ),
+        max_cost_per_month=_routing_cost_cap(
+            "MAXIM_LLM_MAX_COST_PER_MONTH", float(data.get("max_cost_per_month", 100.00) or 0.0)
+        ),
+        max_session_cost=_routing_cost_cap(
+            "MAXIM_LLM_MAX_SESSION_COST", float(data.get("max_session_cost", 5.00) or 0.0)
+        ),
         cost_warning_threshold=float(data.get("cost_warning_threshold", 0.80) or 0.0),
         cost_critical_threshold=float(data.get("cost_critical_threshold", 0.95) or 0.0),
     )

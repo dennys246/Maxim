@@ -186,8 +186,18 @@ def run_one_sim(
     """
     if mock:
         return _mock_sim(data_home, goal, model, max_turns, resume_session, mock_failure_count)
-    return _real_sim(data_home, goal, model, max_turns, resume_session, extra_env or {}, timeout_s)
+    result = _real_sim(data_home, goal, model, max_turns, resume_session, extra_env or {}, timeout_s)
+    # Inter-sub-sim pacing (--pace-s): let the cloud provider's per-minute rate
+    # bucket recover between sub-sims. Sequential runs of dense-prompt sub-sims
+    # otherwise build sustained ITPM that triggers 429s mid-run (the 2026-06-08
+    # Exp 37 collapse). No-op at the default 0.
+    if _PACE_S > 0:
+        time.sleep(_PACE_S)
+    return result
 
+
+# Inter-sub-sim pace (seconds), set from --pace-s in main(). 0 = no pacing.
+_PACE_S: float = 0.0
 
 _MAXIM_BIN_CACHE: str | None = None
 
@@ -311,6 +321,27 @@ def _real_sim(
         env["MAXIM_LLM_CLOUD_ENABLED"] = "1"
         env.setdefault("MAXIM_MAX_CLOUD_LANES", "6")
         env.setdefault("MAXIM_LLM_REDACTION_POLICY", "standard")
+        # Neutralize each sub-sim's INTERNAL RoutingPolicy cost gate. Defaults
+        # ($1/hr, $10/day, $5/session) are sized for a single interactive
+        # session, but the cost tracker persists a rolling window in shared
+        # ~/.maxim/cost_state.json across sub-sims — so a multi-run fire crosses
+        # $1/hr within the first hour and EVERY subsequent sub-sim's first
+        # request is gated ("No eligible LLM providers" -> _llm_unavailable).
+        # This was the 2026-06-08 full-fire collapse (NOT rate limiting). The
+        # harness's own --cost-cap is the real aggregate ceiling.
+        #
+        # We set the caps HIGH (not 0): 0 means "unlimited" at the budget-gate
+        # layer, but LLMRouter._validate_cloud_config treats all-zero cost
+        # limits as a misconfiguration and DISABLES cloud dispatch entirely
+        # ("cost limits missing"). A large finite value clears the budget gate
+        # for any realistic fire while satisfying the cloud-safety guard.
+        # setdefault lets an operator re-impose a real cap explicitly.
+        _HIGH_CAP = "100000"  # USD; >> any single fire, << meaningless overflow
+        env.setdefault("MAXIM_LLM_MAX_COST_PER_HOUR", _HIGH_CAP)
+        env.setdefault("MAXIM_LLM_MAX_COST_PER_DAY", _HIGH_CAP)
+        env.setdefault("MAXIM_LLM_MAX_COST_PER_MONTH", _HIGH_CAP)
+        env.setdefault("MAXIM_LLM_MAX_COST_PER_REQUEST", _HIGH_CAP)
+        env.setdefault("MAXIM_LLM_MAX_SESSION_COST", _HIGH_CAP)
         # Blank any peer.yml-derived LARGE-tier routing so the sub-sim's
         # router doesn't dispatch through ``_MaximPeerBackend`` (which
         # would still hit the leader regardless of profile). The
@@ -1228,7 +1259,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Synthetic backend — for smoke tests only. NEVER use for graduation runs.",
     )
+    parser.add_argument(
+        "--pace-s",
+        type=float,
+        default=0.0,
+        help="Seconds to sleep between sub-sims so the cloud provider's per-minute "
+        "rate bucket recovers. Mitigates the sustained-429 collapse on long cloud "
+        "fires (e.g. 20-30 for Anthropic tier-1 Sonnet). Default 0 (no pacing).",
+    )
     args = parser.parse_args(argv)
+
+    global _PACE_S
+    _PACE_S = max(0.0, float(args.pace_s))
 
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
     scenarios = SCENARIOS if args.scenario == "both" else (args.scenario,)
