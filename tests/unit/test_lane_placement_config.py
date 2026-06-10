@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from maxim.runtime.config_loader import (
+    _VALID_PLACEMENT_ORIGINS,
     ConfigurationError,
     LaneTierPlacement,
     load_config,
@@ -134,6 +135,41 @@ class TestPlacementParsing:
             {"large": {"placement": [{"origin": "local", "model": "m", "routing_weight": 0.5}]}},
         )
         assert cfg.lanes.large.placement[0].extra == {"routing_weight": 0.5}
+
+
+class TestPlacementCoherenceAtLoad:
+    """Incoherent config.json placements must fail LOUD at load (the 3a
+    fence-removal owed this; single rule set in validate_placement_coherence).
+    """
+
+    def test_peer_without_url_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match="peer.*requires a 'url'"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "peer", "model": "m"}]}})
+
+    def test_local_without_model_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match="local.*requires a 'model'"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "local", "url": "http://x/v1"}]}})
+
+    def test_cloud_without_url_or_model_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match="cloud.*requires a 'url' or a 'model'"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "cloud"}]}})
+
+    def test_coherent_placements_load(self, tmp_path):
+        cfg = _write_load(
+            tmp_path,
+            {
+                "large": {"placement": [{"origin": "cloud", "model": "claude-sonnet"}]},
+                "small": {"placement": [{"origin": "peer", "url": "http://10.0.0.9:8100/v1"}]},
+            },
+        )
+        assert len(cfg.lanes.large.placement) == 1 and len(cfg.lanes.small.placement) == 1
+
+
+def test_valid_placement_origins_track_origin_enum():
+    # L2 drift-pin: the config-layer bare-string set must equal the runtime
+    # Origin enum values (avoids importing the enum into config_loader while
+    # catching a future 4th-origin divergence).
+    assert _VALID_PLACEMENT_ORIGINS == {o.value for o in Origin}
 
 
 # ─── round-trip through config_writer ───────────────────────────────────────

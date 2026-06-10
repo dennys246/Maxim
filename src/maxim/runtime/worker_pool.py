@@ -150,10 +150,11 @@ class ProviderPlacement:
     placement names *what model, where*, not *how the box runs it*. Consequence:
     two ``LOCAL`` placements on one lane cannot carry distinct GPU budgets
     (heterogeneous-hardware local providers are a documented 1.1+ extension via
-    this ``extra`` hatch or a new declared field). Coherence validation
-    (``CLOUD``/``PEER`` require a ``url``; ``LOCAL`` requires a ``model``) is
-    deferred to Phase 3b, where the first external (config.json) producer of
-    explicit placements lands — see the Phase-3 follow-up notes in the plan.
+    this ``extra`` hatch or a new declared field). Coherence (PEER requires a
+    ``url``; LOCAL requires a ``model``; CLOUD requires a ``url`` or a ``model``)
+    is enforced by :func:`validate_placement_coherence` at the config/CLI
+    producer boundary — NOT in ``__post_init__``, so this stays a permissive
+    runtime value type (derived placements are coherent by construction).
     """
 
     origin: Origin

@@ -117,11 +117,12 @@ class LaneTierPlacement:
 
     ESCAPE-HATCH at 1.0 (CC3) — path (a). ``extra`` gathers forward-growth
     metadata; ``__post_init__`` rejects keys that collide with declared fields.
-    ``origin`` is one of ``"local"`` / ``"cloud"`` / ``"peer"`` — validated at
-    parse time (``_parse_lane_tier``) with JSON context. Field-coherence
-    (PEER needs url, LOCAL needs model, …) is validated at the producer boundary
-    via ``worker_pool.validate_placement_coherence`` when the placement is
-    resolved into a ``ProviderPlacement``.
+    ``origin`` is one of ``"local"`` / ``"cloud"`` / ``"peer"``. Both the origin
+    value AND field-coherence (PEER needs url, LOCAL needs model, CLOUD needs
+    url-or-model — the single rule set in
+    ``worker_pool.validate_placement_coherence``) are enforced at parse time
+    (``_parse_lane_tier_placement``) with JSON context, so an incoherent
+    config.json placement fails loud at load.
     """
 
     origin: str
@@ -942,14 +943,24 @@ def _parse_lane_tier_placement(raw: Any, path: str) -> tuple[LaneTierPlacement, 
     ``None`` / absent → ``()`` (derive from the legacy remote_* fields). Each
     entry is a mapping with a required ``origin`` (``local``/``cloud``/``peer``)
     and optional ``model`` / ``url`` / ``api_key_ref`` / ``timeout_s``. Origin
-    value + types + api_key_ref are validated here with JSON context; field
-    coherence is validated at the producer boundary when the entry is resolved
-    into a runtime ``ProviderPlacement``.
+    value + types + api_key_ref are validated here with JSON context. Field
+    coherence (PEER needs url, LOCAL needs model, CLOUD needs url-or-model) is
+    ALSO enforced here — config.json is the first external producer of explicit
+    placements, so the "loud at load" discipline must cover it (the 3a fence
+    removal owed this). The single source of truth for the coherence rule is
+    ``worker_pool.validate_placement_coherence``; we run it on a throwaway
+    ``ProviderPlacement`` (coherence is independent of the resolved api_key) and
+    re-raise its ``ValueError`` as a config-layer ``ConfigurationError``.
     """
     if raw is None:
         return ()
     if not isinstance(raw, list):
         raise ConfigurationError(f"config.json: {path} must be a list, got {type(raw).__name__}")
+
+    # Single source of truth for the origin↔field coherence rule (lazy import
+    # keeps config_loader's module-level surface lean; same package layer, no
+    # cycle — worker_pool does not import config_loader).
+    from maxim.runtime.worker_pool import Origin, ProviderPlacement, validate_placement_coherence
 
     entries: list[LaneTierPlacement] = []
     for i, item in enumerate(raw):
@@ -983,6 +994,17 @@ def _parse_lane_tier_placement(raw: Any, path: str) -> tuple[LaneTierPlacement, 
         api_key_ref = item.get("api_key_ref")
         if isinstance(api_key_ref, str):
             api_key_ref = _validate_api_key_ref(api_key_ref, f"{ipath}.api_key_ref")
+
+        # Coherence: surface the runtime validator's ValueError as a config-
+        # layer ConfigurationError with JSON context (config errors must
+        # present uniformly as ConfigurationError at load).
+        try:
+            validate_placement_coherence(
+                ProviderPlacement(origin=Origin(origin), model=item.get("model"), url=item.get("url")),
+                where=f"config.json: {ipath}",
+            )
+        except ValueError as e:
+            raise ConfigurationError(str(e)) from e
 
         declared = _LANE_TIER_PLACEMENT_DECLARED_FIELDS
         entry_extra = {k: v for k, v in item.items() if k not in declared}
