@@ -19,6 +19,7 @@ import json
 import pytest
 
 from maxim.runtime.lane_backends import (
+    BackendGateError,
     LaneBackendManager,
     _is_cloud_url,
     derive_placement,
@@ -241,9 +242,13 @@ class TestClassifyEquivalence:
         assert mgr._classify(cfg) == derived
 
 
-class TestExplicitPlacementDrivesDispatch:
+class TestExplicitPlacementDrivesClassification:
     """Phase 2 acceptance: classification is driven by an EXPLICIT cfg.placement
     with NO URL-sniffing — the capability and placement axes are independent.
+
+    Note: Phase 2 wires explicit placement into *classification* only; building
+    a backend from an explicit placement is fenced off until Phase 3 (see
+    test_get_backend_on_explicit_placement_raises_phase2_fence).
     """
 
     def test_explicit_placement_classifies_without_remote_url(self):
@@ -267,3 +272,13 @@ class TestExplicitPlacementDrivesDispatch:
         cfg = _lane(placement=(ProviderPlacement(origin=Origin.PEER, model="m", url="http://leader:8100/v1"),))
         mgr = LaneBackendManager({"large": cfg})
         assert mgr.get_lane_kind("large") == "self-hosted"
+
+    def test_get_backend_on_explicit_placement_raises_phase2_fence(self):
+        # Phase-2 structural fence: building a backend from an explicit
+        # placement is not wired until Phase 3, so it fails LOUD rather than
+        # silently compiling from mismatched/absent legacy fields. Classifying
+        # the same lane (above) still works.
+        cfg = _lane(placement=(ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet"),))
+        mgr = LaneBackendManager({"large": cfg}, max_cloud_lanes=1)
+        with pytest.raises(BackendGateError, match="Phase 3"):
+            mgr.get_backend("large")
