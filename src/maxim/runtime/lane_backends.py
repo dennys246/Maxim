@@ -830,7 +830,12 @@ class LaneBackendManager:
         cfg = self._configs.get(lane)
         if cfg is None:
             return None
-        if not cfg.model_profile and not cfg.remote_url:
+        # Phase 2: gate on the resolved placement (honors an explicit
+        # cfg.placement; equivalent to the legacy "no profile and no remote_url"
+        # check for every derived placement, since derive_placement returns ()
+        # iff both legacy fields are empty).
+        placement = derive_placement(cfg, peer_owned=self._peer_owned)
+        if not placement:
             return None
 
         with self._lock:
@@ -838,7 +843,7 @@ class LaneBackendManager:
             if cached is not None:
                 return cached
             self._check_backend_cap()
-            kind = self._classify(cfg)
+            kind = placement_kind(placement)
             if kind == "cloud":
                 self._check_cloud_lane_cap(lane)
             backend = self._build_backend(cfg)
@@ -893,14 +898,19 @@ class LaneBackendManager:
     # ─── classification ───────────────────────────────────────────────────
 
     def _classify(self, cfg: LaneConfig) -> str:
-        if cfg.remote_url:
-            # Peer-owned URLs (from `maxim peer connect`) are your own
-            # infrastructure behind a tunnel — not cloud providers.
-            # The flag is set by build_primary_router when peer config is loaded.
-            if self._peer_owned:
-                return "self-hosted"
-            return "cloud" if _is_cloud_url(cfg.remote_url) else "self-hosted"
-        return "local"
+        """Classify a lane as ``"local"`` / ``"self-hosted"`` / ``"cloud"``.
+
+        Phase 2 (lane_capability_placement_split.md): reads the **primary
+        placement's origin** instead of URL-sniffing ``cfg.remote_url`` here.
+        ``derive_placement`` honors an explicit ``cfg.placement`` (Phase 3
+        producers) and otherwise derives a 1-element placement from the legacy
+        fields — reproducing the prior URL-sniff classification **exactly** for
+        every existing config (the URL-sniff now lives once inside
+        ``derive_placement``'s legacy path, not at every dispatch site). The
+        equivalence to the pre-Phase-2 logic is pinned by the frozen legacy
+        oracle in ``tests/unit/test_lane_placement.py``.
+        """
+        return placement_kind(derive_placement(cfg, peer_owned=self._peer_owned))
 
     # ─── gates ────────────────────────────────────────────────────────────
 
@@ -925,9 +935,21 @@ class LaneBackendManager:
     # ─── backend construction ─────────────────────────────────────────────
 
     def _build_backend(self, cfg: LaneConfig) -> Any | None:
-        if cfg.remote_url:
-            return self._build_remote_backend(cfg)
-        return self._build_local_backend(cfg)
+        # Phase 2: dispatch on the primary placement's origin rather than
+        # sniffing cfg.remote_url. LOCAL → profile-driven local router (which
+        # also serves --cloud-lane cloud profiles); CLOUD / PEER → remote router.
+        # Equivalent to the prior `if cfg.remote_url` for every derived
+        # placement (LOCAL ⟺ no remote_url; CLOUD/PEER ⟺ remote_url set), and
+        # honors an explicit cfg.placement once Phase 3 adds producers. NOTE:
+        # the builders still read the legacy LaneConfig fields — correct for
+        # Phase 2 because no explicit-placement producer exists yet, so a
+        # derived placement mirrors those fields exactly. Making the builders
+        # compile from placement.* (so an explicit placement with no legacy
+        # fields builds correctly) is Phase 3's job.
+        primary = primary_placement(cfg, peer_owned=self._peer_owned)
+        if primary is None or primary.origin is Origin.LOCAL:
+            return self._build_local_backend(cfg)
+        return self._build_remote_backend(cfg)
 
     def _build_local_backend(self, cfg: LaneConfig) -> Any | None:
         """Construct a local LLMRouter for a lane."""
