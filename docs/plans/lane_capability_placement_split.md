@@ -202,6 +202,47 @@ directly.
    as placement edits, kept working through 1.x with one-shot deprecation INFO,
    drop in 1.2. ✅
 
+### Phase-3 follow-up notes (from the 3a two-lens review, 2026-06-09)
+
+Phase 3a (builders compile from the **primary** placement; fence removed) shipped
+clean and behavior-preserving. The review surfaced four obligations the 3b/3c
+session must honor (3a is correct for 1-element placements; these are seams, not
+3a defects):
+
+- **Multi-element compile is a builder *inversion*, not an add-on (3c).** 3a
+  dispatches the whole lane to ONE builder keyed on `placement[0].origin` and
+  emits one provider. A `[LOCAL primary, CLOUD fallback]` (or `[PEER, CLOUD]`)
+  placement is inherently cross-origin and cannot be assembled by a
+  branch-on-primary structure. 3c should introduce a single
+  `_compile_placement_to_providers(cfg, placement) -> (providers, provider_priority)`
+  that maps **each** entry to a provider dict (factoring the per-entry shape now
+  inlined in `_build_remote_backend` + the cloud-provider shape in
+  `_maybe_inject_cloud_fallback`), then build ONE `LLMRouter`. Budget for the
+  restructure rather than slotting into the current shape.
+- **Double cloud-fallback is the #1 reconciliation item (3c).**
+  `_build_local_backend` still calls the env-driven `_maybe_inject_cloud_fallback`
+  unconditionally. When `--cloud-fallback` also becomes an appended CLOUD
+  placement, the provider would be injected **twice**. Gate the env path on
+  `cfg.placement == ()` (derived-only) or fold it into the compile helper so it
+  fires exactly once. (TODO marker left at the call site.)
+- **Placement coherence validation is owed by 3b.** Removing the fence traded a
+  loud construction failure for a runtime failure on a malformed explicit
+  placement (CLOUD/PEER with `url=None` → `base_url=None`). The first external
+  producer is config.json (`LaneTierPlacement`, 3b); land
+  `ProviderPlacement.__post_init__` validation (CLOUD/PEER require `url`; LOCAL
+  requires `model`) with it so the config-loader `ConfigurationError`-at-load
+  discipline covers placement too. Derived placements are always coherent, so
+  3a-without-validation is safe in the interim.
+- **Cap semantics for multi-element placements (3c).** `MAXIM_MAX_CLOUD_LANES`
+  is keyed on `placement_kind` = `placement[0].origin` (primary only). A
+  `[LOCAL, CLOUD-fallback]` lane therefore won't consume a cap slot — which
+  *matches* legacy `--cloud-fallback` (gated by `cloud_enabled` +
+  `_validate_cloud_config`, not the cap). Confirm this is intended and document
+  it; don't let it change by accident.
+- **Hardware boundary (1.1+).** `n_gpu_layers`/`device`/`n_ctx`/`kv_quant_mode`
+  stay lane-level; heterogeneous-hardware LOCAL placements aren't expressible at
+  1.0 (documented on `ProviderPlacement`).
+
 ## Phases (proposed — the executing session should front-gate scope first)
 
 Per CLAUDE.md "Front-gate scope pressure at design time": before building,
