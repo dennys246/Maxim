@@ -132,9 +132,9 @@ class TestMultiElementTailInjection:
             (built_cfg,), _ = mock_router.call_args
             priority = built_cfg.routing.get("provider_priority", [])
             # primary + one cloud fallback, fallback AFTER primary
-            assert "placement-fallback-1" in priority
-            assert priority.index("placement-fallback-1") == len(priority) - 1
-            fb = built_cfg.providers["placement-fallback-1"]
+            assert "large-placement-fallback-1" in priority
+            assert priority.index("large-placement-fallback-1") == len(priority) - 1
+            fb = built_cfg.providers["large-placement-fallback-1"]
             assert fb["type"] in ("anthropic", "claude") and fb["model"].startswith("claude-sonnet")
             assert built_cfg.cloud_enabled is True
 
@@ -155,7 +155,7 @@ class TestMultiElementTailInjection:
             mgr.get_backend("large")
             (built_cfg,), _ = mock_router.call_args
             priority = built_cfg.routing.get("provider_priority", []) if built_cfg.routing else []
-            assert not any(k.startswith("placement-fallback") for k in priority)
+            assert not any("placement-fallback" in k for k in priority)
 
 
 class TestCloudProfilePrimaryBuild:
@@ -239,3 +239,61 @@ class TestCliReexpression:
         pl = out["large"].placement
         assert pl[0].origin is Origin.LOCAL and pl[0].model == "mistral-7b"  # primary overridden
         assert pl[1].origin is Origin.CLOUD  # fallback tail kept
+
+
+# ─── review-fold regression guards ──────────────────────────────────────────
+
+import pytest  # noqa: E402
+
+from maxim.runtime.lane_backends import BackendGateError  # noqa: E402
+
+
+class TestCloudPlacementCap:
+    def test_cloud_primary_placement_consumes_cap(self):
+        # A CLOUD *primary* (placement_kind="cloud") consumes a MAX_CLOUD_LANES
+        # slot — refused at cap=0 (the cap check fires before _build_backend).
+        cfg = LaneConfig(
+            name="large", max_workers=1, placement=(ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet"),)
+        )
+        mgr = LaneBackendManager({"large": cfg}, max_backends=5, max_cloud_lanes=0)
+        with pytest.raises(BackendGateError, match="MAX_CLOUD_LANES"):
+            mgr.get_backend("large")
+
+    def test_config_cloud_placement_bumps_cap(self, monkeypatch):
+        # Writing a CLOUD placement in config.json bumps MAX_CLOUD_LANES so the
+        # canonical declarative cloud lane isn't rejected at cap=0.
+        monkeypatch.delenv("MAXIM_MAX_CLOUD_LANES", raising=False)
+        cfg = MaximConfig(
+            lanes=LanesConfigSection(
+                large=LaneTierConfig(placement=(LaneTierPlacement(origin="cloud", model="claude-sonnet"),))
+            )
+        )
+        monkeypatch.setattr(config_loader, "get_config", lambda *a, **k: cfg)
+        _apply_config_placements({"large": LaneConfig(name="large", max_workers=1)}, None)
+        import os
+
+        assert int(os.environ.get("MAXIM_MAX_CLOUD_LANES", "0")) >= 1
+
+
+class TestFallbackKeyLaneQualified:
+    def test_fallback_provider_key_includes_lane_name(self):
+        from maxim.models.language.config import LLMConfig
+
+        cfg = LaneConfig(
+            name="medium",
+            max_workers=1,
+            placement=(
+                ProviderPlacement(origin=Origin.LOCAL, model="mistral-7b"),
+                ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet"),
+            ),
+        )
+        mgr = LaneBackendManager({"medium": cfg}, max_backends=5)
+        with (
+            patch("maxim.models.language.config.load_llm_config") as mock_load,
+            patch("maxim.models.language.router.LLMRouter") as mock_router,
+        ):
+            mock_load.return_value = LLMConfig()
+            mgr.get_backend("medium")
+            (built_cfg,), _ = mock_router.call_args
+            # lane-qualified so two tiers' fallbacks can't collide
+            assert "medium-placement-fallback-1" in built_cfg.providers

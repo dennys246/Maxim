@@ -85,8 +85,17 @@ class Origin(str, Enum):
       routing ``LOCAL`` through ``_build_local_backend``, which transparently
       serves cloud profiles too. Phase 3 re-expresses ``--cloud-lane`` as a real
       ``CLOUD`` placement and moves the cap accounting accordingly.
-    - ``CLOUD`` — a metered provider (Anthropic/OpenAI/…) reached by *URL* over
-      the public net (the ``_classify`` ``"cloud"`` kind).
+    - ``CLOUD`` — a metered provider (Anthropic/OpenAI/…). Two build sub-cases
+      (a documented seam): a CLOUD entry **with a url** is an openai-compatible
+      endpoint → ``_build_remote_backend``; a CLOUD entry that is a **cloud
+      profile with no url** (e.g. ``claude-sonnet``) builds via the
+      profile-driven ``_build_local_backend`` (which ``load_llm_config``
+      resolves to the profile's real backend, e.g. Anthropic) with
+      ``cloud_enabled`` forced on. So the ``_build_local_backend`` /
+      ``_build_remote_backend`` split is really "profile-driven" vs
+      "explicit-URL", not LOCAL vs remote (a 1.x naming cleanup is noted in the
+      plan). Derived CLOUD always carries a url, so the profile sub-case only
+      arises for explicit placements.
     - ``PEER``  — a self-hosted model behind a tunnel/LAN (served by the
       one-HTTP-call ``_MaximPeerBackend``). Renames the legacy
       ``"self-hosted"`` classification at the type layer; ``_classify``'s
