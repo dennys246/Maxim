@@ -1200,9 +1200,24 @@ def run_benchmark(
         # _llm_unavailable). One is a fluke; N in a row is a systemic outage
         # (credit exhaustion / auth / cloud gate) and the rest of the fire will
         # be garbage. Abort fast with an actionable cause instead of grinding.
-        if rec.get("total_input_tokens", 0) <= 0:
-            consecutive_zero_token += 1
+        #
+        # IMPORTANT (2026-06-10 footgun fix): this signal is CLOUD-SPECIFIC.
+        # Local llama-cpp runs do not populate ``total_input_tokens`` in
+        # records — the field stays 0 even on fully successful inference (the
+        # Qwen14B + Qwen32B + Mistral24B fires all have in_tok=0 across every
+        # successful record). Gating on cloud-model-only prevents this
+        # safety net from firing as a false positive on every local fire.
+        # For local-model fires the equivalent signal would be
+        # ``tool_class_diversity == 0`` + short duration, but that needs its
+        # own implementation; deferred to a follow-up.
+        if _is_cloud_model(model):
+            if rec.get("total_input_tokens", 0) <= 0:
+                consecutive_zero_token += 1
+            else:
+                consecutive_zero_token = 0
         else:
+            # Local model: skip the cloud-specific check. The harness still
+            # respects cost cap + per-trial timeout if configured.
             consecutive_zero_token = 0
         if max_consecutive_failures > 0 and consecutive_zero_token >= max_consecutive_failures:
             cause = _detect_systemic_cause(rec.get("data_home")) or "unknown (no known signature in logs)"

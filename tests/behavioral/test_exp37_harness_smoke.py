@@ -323,6 +323,67 @@ def test_systemic_failure_guard_disabled_with_zero_threshold(harness, workdir, o
     assert summary["records_written"] == expected
 
 
+def test_systemic_failure_guard_skipped_for_local_models(harness, workdir, out_path, monkeypatch):
+    """The total_input_tokens==0 signal is CLOUD-SPECIFIC — local llama-cpp
+    runs do not populate the field even on successful inference. The guard
+    must be gated on cloud-model-only or it fires as a false positive on
+    every local-model fire.
+
+    Regression for the 2026-06-10 Mistral24B fire crash: the fire produced 3
+    records with in_tok=0 (normal for local), the guard tripped, the harness
+    aborted as "systemic provider failure" when the LLM was actually working
+    fine. Qwen14B and Qwen32B fires would also break on re-fire under the
+    pre-fix code path.
+    """
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    summary = harness.run_benchmark(
+        out_path=out_path,
+        workdir=workdir,
+        arms=harness.ARMS,
+        scenarios=harness.SCENARIOS,
+        trials=1,
+        # Local model name — gating on _is_cloud_model(model) must skip the
+        # check, NOT abort after 3 records.
+        model="mistral-small-24b",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+        max_consecutive_failures=3,
+    )
+    # Without the gate this would have raised SystemicLLMFailure after 3
+    # records. With the gate, the local fire completes all 12.
+    expected = 1 * 2 * len(harness.ARMS)
+    assert summary["records_written"] == expected, (
+        f"local-model fire should complete all {expected} records, got "
+        f"{summary['records_written']} (regression: guard fired on local)"
+    )
+
+
+def test_systemic_failure_guard_still_fires_for_cloud(harness, workdir, out_path, monkeypatch):
+    """Cloud-model fires (claude-*, gpt-*, etc.) MUST still trip the guard
+    when token counts are zero — that's the real credit-exhaustion / auth
+    cascade signature the guard was designed for. The local-model gate must
+    not weaken cloud safety."""
+    monkeypatch.setenv("MAXIM_BENCH_MOCK_ZERO_TOKENS", "1")
+    for cloud_model in ("claude-sonnet", "gpt-4o", "deepseek-chat"):
+        out = workdir.parent / f"out_{cloud_model.replace('-', '_')}.jsonl"
+        with pytest.raises(harness.SystemicLLMFailure):
+            harness.run_benchmark(
+                out_path=out,
+                workdir=workdir.parent / f"work_{cloud_model.replace('-', '_')}",
+                arms=harness.ARMS,
+                scenarios=harness.SCENARIOS,
+                trials=2,
+                model=cloud_model,
+                cost_cap=100.0,
+                max_turns=4,
+                seed_base=42,
+                mock=True,
+                max_consecutive_failures=3,
+            )
+
+
 def test_systemic_failure_does_not_fire_on_healthy_run(harness, workdir, out_path):
     """Healthy (non-zero-token) runs never trip the guard."""
     summary = harness.run_benchmark(
