@@ -949,28 +949,29 @@ class LaneBackendManager:
             placement = derive_placement(cfg, peer_owned=self._peer_owned)
         if not placement:
             return None
-        # Phase-2 structural fence: the builders compile from the LEGACY
-        # LaneConfig fields, which are authoritative ONLY for a DERIVED
-        # placement (``cfg.placement == ()``). An explicit ``cfg.placement`` is
-        # a Phase-3 producer; compiling a backend from ``placement.*`` is not
-        # wired yet. Fail LOUD here rather than let a builder read mismatched
-        # legacy fields (e.g. a CLOUD origin with ``remote_url=None`` →
-        # ``base_url=None`` → a silently-broken backend). Phase 3 replaces this
-        # fence by teaching the builders to compile from the placement entry.
-        if cfg.placement:
-            raise BackendGateError(
-                f"Lane '{cfg.name}': building a backend from an explicit "
-                f"placement is not implemented until Phase 3 "
-                f"(lane_capability_placement_split.md). Phase 2 dispatches on "
-                f"origin but compiles from the legacy LaneConfig fields."
-            )
+        # Phase 3: the builders compile the backend from the resolved primary
+        # PLACEMENT (model / url / api_key / timeout_s), not the legacy
+        # LaneConfig fields. For a DERIVED placement these mirror the legacy
+        # fields exactly (byte-for-byte equivalent); for an EXPLICIT
+        # cfg.placement (config.json / re-expressed CLI flags) the placement is
+        # authoritative — which is what makes capability × placement
+        # independent. (This replaces the Phase-2 fence that raised on explicit
+        # placements.) Lane-level hardware tuning (n_gpu_layers, device, n_ctx,
+        # kv_quant_mode) stays on LaneConfig — it is not a placement preference.
         primary = placement[0]
         if primary.origin is Origin.LOCAL:
-            return self._build_local_backend(cfg)
-        return self._build_remote_backend(cfg, kind=placement_kind(placement))
+            return self._build_local_backend(cfg, primary)
+        return self._build_remote_backend(cfg, primary, kind=placement_kind(placement))
 
-    def _build_local_backend(self, cfg: LaneConfig) -> Any | None:
-        """Construct a local LLMRouter for a lane."""
+    def _build_local_backend(self, cfg: LaneConfig, primary: ProviderPlacement | None = None) -> Any | None:
+        """Construct a local LLMRouter for a lane.
+
+        Phase 3: the served profile comes from the resolved placement
+        (``primary.model``); for a derived placement that equals
+        ``cfg.model_profile``. Hardware tuning (``n_gpu_layers`` etc.) stays on
+        ``LaneConfig``. ``primary`` is optional for standalone/test callers,
+        who get a fresh derivation.
+        """
         try:
             from maxim.models.language.config import load_llm_config
             from maxim.models.language.router import LLMRouter
@@ -978,8 +979,10 @@ class LaneBackendManager:
             logger.warning("Language model modules not available: %s", e)
             return None
 
+        if primary is None:
+            primary = primary_placement(cfg, peer_owned=self._peer_owned)
         env_profile = os.environ.get("MAXIM_LLM_PROFILE", "").strip()
-        profile = env_profile or cfg.model_profile
+        profile = env_profile or (primary.model if primary else cfg.model_profile)
         try:
             llm_config = load_llm_config(profile_override=profile)
         except Exception as e:
@@ -1100,7 +1103,9 @@ class LaneBackendManager:
             routing=routing,
         )
 
-    def _build_remote_backend(self, cfg: LaneConfig, kind: str | None = None) -> Any | None:
+    def _build_remote_backend(
+        self, cfg: LaneConfig, primary: ProviderPlacement | None = None, kind: str | None = None
+    ) -> Any | None:
         """Construct an OpenAI-compatible remote backend via LLMRouter.
 
         Wraps _OpenAIBackend in an LLMRouter so downstream consumers get the
@@ -1110,10 +1115,12 @@ class LaneBackendManager:
         skip the cloud_enabled requirement. Cloud providers (Anthropic, OpenAI)
         require cloud_enabled=True and count against MAXIM_MAX_CLOUD_LANES.
 
-        ``kind`` is the pre-resolved classification threaded from
-        ``_build_backend`` so we don't re-classify (which re-runs the
-        ``_is_cloud_url`` DNS probe). Standalone/test callers pass ``None`` and
-        get a fresh ``self._classify(cfg)``.
+        Phase 3: ``base_url`` / ``model`` / ``api_key`` / ``timeout_s`` are
+        compiled from the resolved ``primary`` placement — for a derived
+        placement these equal the legacy ``remote_*`` fields. ``kind`` is the
+        pre-resolved classification threaded from ``_build_backend`` (avoids a
+        re-run of the ``_is_cloud_url`` DNS probe). Both are optional for
+        standalone/test callers, who get fresh derivations.
         """
         try:
             from maxim.models.language.config import load_llm_config
@@ -1122,6 +1129,8 @@ class LaneBackendManager:
             logger.warning("LLM modules not available for remote lane %s: %s", cfg.name, e)
             return None
 
+        if primary is None:
+            primary = primary_placement(cfg, peer_owned=self._peer_owned)
         if kind is None:
             kind = self._classify(cfg)
         try:
@@ -1130,10 +1139,17 @@ class LaneBackendManager:
             logger.warning("Failed to load LLM config for remote lane %s: %s", cfg.name, e)
             return None
 
+        # Compile the connection from the resolved placement; for a derived
+        # placement these mirror the legacy remote_* fields exactly.
+        remote_url = primary.url if primary else cfg.remote_url
+        remote_api_key = primary.api_key if primary else cfg.remote_api_key
+        remote_model = (primary.model if primary else None) or cfg.remote_model or cfg.model_profile or base.model
+        remote_timeout_s = primary.timeout_s if primary else cfg.remote_timeout_s
+
         provider_key = f"lane-{cfg.name}"
         api_key_env = f"MAXIM_LANE_{cfg.name.upper()}_API_KEY"
-        if cfg.remote_api_key:
-            os.environ.setdefault(api_key_env, cfg.remote_api_key)
+        if remote_api_key:
+            os.environ.setdefault(api_key_env, remote_api_key)
         else:
             os.environ.setdefault(api_key_env, "not-needed")
 
@@ -1144,9 +1160,9 @@ class LaneBackendManager:
         backend_type = _classify_backend(kind)
         provider_entry: dict[str, Any] = {
             "type": backend_type,
-            "base_url": cfg.remote_url,
+            "base_url": remote_url,
             "api_key_env": api_key_env,
-            "model": cfg.remote_model or cfg.model_profile or base.model,
+            "model": remote_model,
             "allow_local_endpoints": (kind == "self-hosted"),
             # Peer-tunnel URLs resolve to Cloudflare IPs (classified as cloud)
             # but actually serve a self-hosted model with no metered pricing.
@@ -1160,8 +1176,8 @@ class LaneBackendManager:
         # cfg.get("timeout_s", <default>) — populating the key here makes
         # the operator's per-tier override flow naturally to the read
         # site without backend-side wiring changes.
-        if cfg.remote_timeout_s is not None:
-            provider_entry["timeout_s"] = float(cfg.remote_timeout_s)
+        if remote_timeout_s is not None:
+            provider_entry["timeout_s"] = float(remote_timeout_s)
         providers[provider_key] = provider_entry
 
         # Ensure the lane provider appears in routing.provider_priority so
@@ -1178,7 +1194,7 @@ class LaneBackendManager:
                 base,
                 enabled=True,
                 backend="openai",
-                model=cfg.remote_model or cfg.model_profile or base.model,
+                model=remote_model,
                 providers=providers,
                 routing=routing,
                 # Self-hosted is not cloud; cloud lanes still require cloud_enabled.

@@ -18,8 +18,9 @@ import json
 
 import pytest
 
+from unittest.mock import patch
+
 from maxim.runtime.lane_backends import (
-    BackendGateError,
     LaneBackendManager,
     _is_cloud_url,
     derive_placement,
@@ -242,13 +243,10 @@ class TestClassifyEquivalence:
         assert mgr._classify(cfg) == derived
 
 
-class TestExplicitPlacementDrivesClassification:
-    """Phase 2 acceptance: classification is driven by an EXPLICIT cfg.placement
-    with NO URL-sniffing — the capability and placement axes are independent.
-
-    Note: Phase 2 wires explicit placement into *classification* only; building
-    a backend from an explicit placement is fenced off until Phase 3 (see
-    test_get_backend_on_explicit_placement_raises_phase2_fence).
+class TestExplicitPlacementDrivesDispatch:
+    """Acceptance: an EXPLICIT cfg.placement drives both classification (Phase 2)
+    and backend construction (Phase 3) with NO URL-sniffing and NO legacy
+    remote_* fields — the capability and placement axes are fully independent.
     """
 
     def test_explicit_placement_classifies_without_remote_url(self):
@@ -273,12 +271,42 @@ class TestExplicitPlacementDrivesClassification:
         mgr = LaneBackendManager({"large": cfg})
         assert mgr.get_lane_kind("large") == "self-hosted"
 
-    def test_get_backend_on_explicit_placement_raises_phase2_fence(self):
-        # Phase-2 structural fence: building a backend from an explicit
-        # placement is not wired until Phase 3, so it fails LOUD rather than
-        # silently compiling from mismatched/absent legacy fields. Classifying
-        # the same lane (above) still works.
-        cfg = _lane(placement=(ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet"),))
-        mgr = LaneBackendManager({"large": cfg}, max_cloud_lanes=1)
-        with pytest.raises(BackendGateError, match="Phase 3"):
+    def test_explicit_placement_builds_from_placement_fields(self):
+        # Phase 3 keystone: an explicit placement with NO legacy remote_* /
+        # model_profile fields compiles the backend from placement.url /
+        # placement.model — proving capability × placement is independently
+        # *buildable*, not just classifiable.
+        cfg = _lane(
+            placement=(ProviderPlacement(origin=Origin.PEER, model="leader-model", url="http://10.0.0.9:8100/v1"),)
+        )
+        assert cfg.remote_url is None and cfg.model_profile is None  # legacy fields empty
+        mgr = LaneBackendManager({"large": cfg}, max_backends=5)
+        with (
+            patch("maxim.models.language.config.load_llm_config") as mock_load,
+            patch("maxim.models.language.router.LLMRouter") as mock_router,
+        ):
+            from maxim.models.language.config import LLMConfig
+
+            mock_load.return_value = LLMConfig()
             mgr.get_backend("large")
+            (remote_cfg,), _ = mock_router.call_args
+            provider = remote_cfg.providers["lane-large"]
+            assert provider["base_url"] == "http://10.0.0.9:8100/v1"  # from placement.url
+            assert provider["model"] == "leader-model"  # from placement.model
+            assert provider["allow_local_endpoints"] is True  # PEER → self-hosted
+
+    def test_explicit_local_placement_builds_via_local_path(self):
+        # Explicit LOCAL placement routes to the profile-driven local builder.
+        cfg = _lane(placement=(ProviderPlacement(origin=Origin.LOCAL, model="mistral-7b-instruct-v0.2"),))
+        mgr = LaneBackendManager({"large": cfg}, max_backends=5)
+        with (
+            patch("maxim.models.language.config.load_llm_config") as mock_load,
+            patch("maxim.models.language.router.LLMRouter"),
+        ):
+            from maxim.models.language.config import LLMConfig
+
+            mock_load.return_value = LLMConfig()
+            mgr.get_backend("large")
+            # profile resolved from placement.model (no env override set)
+            _, kwargs = mock_load.call_args
+            assert kwargs.get("profile_override") == "mistral-7b-instruct-v0.2"
