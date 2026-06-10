@@ -19,7 +19,9 @@ import json
 import pytest
 
 from maxim.runtime.lane_backends import (
+    BackendGateError,
     LaneBackendManager,
+    _is_cloud_url,
     derive_placement,
     placement_kind,
     primary_placement,
@@ -184,34 +186,99 @@ class TestPlacementKind:
         assert placement_kind(placement) == expected
 
 
-# ─── equivalence: derivation must reproduce _classify EXACTLY ───────────────
+# ─── equivalence: Phase-2 classification must match the FROZEN legacy logic ──
+
+
+def _legacy_classify_oracle(cfg: LaneConfig, *, peer_owned: bool) -> str:
+    """Frozen copy of the PRE-Phase-2 ``_classify`` URL-sniff logic.
+
+    Phase 2 reimplemented ``LaneBackendManager._classify`` on top of the
+    placement layer, so comparing the new ``_classify`` to itself would be
+    tautological. This oracle pins the *original* behavior so the matrix proves
+    Phase 2 changed nothing for any existing (derived) config.
+    """
+    if cfg.remote_url:
+        if peer_owned:
+            return "self-hosted"
+        return "cloud" if _is_cloud_url(cfg.remote_url) else "self-hosted"
+    return "local"
+
+
+# (cfg-kwargs, peer_owned) covering every classification branch.
+_CLASSIFY_CASES = [
+    ({}, False),  # empty lane → "local"
+    ({"model_profile": "smollm-1.7b-instruct"}, False),  # local
+    ({"model_profile": "claude-sonnet"}, False),  # cloud profile → still local
+    ({"remote_url": _CLOUD_URL}, False),  # public → cloud
+    ({"remote_url": _CLOUD_URL, "remote_model": "m"}, False),  # public → cloud
+    ({"remote_url": _PRIVATE_URL}, False),  # private → self-hosted
+    ({"remote_url": _LOOPBACK_URL}, False),  # loopback → self-hosted
+    ({"remote_url": _CLOUD_URL}, True),  # peer-owned public → self-hosted
+    ({"remote_url": _PRIVATE_URL}, True),  # peer-owned private → self-hosted
+    ({"model_profile": "x", "remote_url": _CLOUD_URL}, False),  # remote wins
+]
 
 
 class TestClassifyEquivalence:
-    """placement_kind(derive_placement(cfg)) == manager._classify(cfg).
+    """Phase-2 placement-based ``_classify`` == the frozen legacy URL-sniff.
 
-    This is the proof obligation that lets Phase 2 swap _classify's URL-sniff
-    for an origin read with no behavior change.
+    The proof obligation that Phase 2 (routing classification/dispatch through
+    the placement layer) preserved behavior byte-for-byte for existing configs.
     """
 
-    # (cfg-kwargs, peer_owned) covering every classification branch.
-    CASES = [
-        ({}, False),  # empty lane → "local"
-        ({"model_profile": "smollm-1.7b-instruct"}, False),  # local
-        ({"model_profile": "claude-sonnet"}, False),  # cloud profile → still local
-        ({"remote_url": _CLOUD_URL}, False),  # public → cloud
-        ({"remote_url": _CLOUD_URL, "remote_model": "m"}, False),  # public → cloud
-        ({"remote_url": _PRIVATE_URL}, False),  # private → self-hosted
-        ({"remote_url": _LOOPBACK_URL}, False),  # loopback → self-hosted
-        ({"remote_url": _CLOUD_URL}, True),  # peer-owned public → self-hosted
-        ({"remote_url": _PRIVATE_URL}, True),  # peer-owned private → self-hosted
-        ({"model_profile": "x", "remote_url": _CLOUD_URL}, False),  # remote wins
-    ]
-
-    @pytest.mark.parametrize("kwargs,peer_owned", CASES)
-    def test_kind_matches_legacy_classify(self, kwargs, peer_owned):
+    @pytest.mark.parametrize("kwargs,peer_owned", _CLASSIFY_CASES)
+    def test_classify_matches_frozen_legacy_oracle(self, kwargs, peer_owned):
         cfg = _lane(**kwargs)
         mgr = LaneBackendManager({"large": cfg}, peer_owned=peer_owned)
-        legacy = mgr._classify(cfg)
+        legacy = _legacy_classify_oracle(cfg, peer_owned=peer_owned)
+        assert mgr._classify(cfg) == legacy, f"{kwargs} peer_owned={peer_owned}"
+
+    @pytest.mark.parametrize("kwargs,peer_owned", _CLASSIFY_CASES)
+    def test_classify_and_placement_helpers_agree(self, kwargs, peer_owned):
+        # _classify is now the placement path; document they are one and the same.
+        cfg = _lane(**kwargs)
+        mgr = LaneBackendManager({"large": cfg}, peer_owned=peer_owned)
         derived = placement_kind(derive_placement(cfg, peer_owned=peer_owned))
-        assert derived == legacy, f"{kwargs} peer_owned={peer_owned}: {derived!r} != {legacy!r}"
+        assert mgr._classify(cfg) == derived
+
+
+class TestExplicitPlacementDrivesClassification:
+    """Phase 2 acceptance: classification is driven by an EXPLICIT cfg.placement
+    with NO URL-sniffing — the capability and placement axes are independent.
+
+    Note: Phase 2 wires explicit placement into *classification* only; building
+    a backend from an explicit placement is fenced off until Phase 3 (see
+    test_get_backend_on_explicit_placement_raises_phase2_fence).
+    """
+
+    def test_explicit_placement_classifies_without_remote_url(self):
+        # CLOUD origin, but NO remote_url — impossible to reach "cloud" under the
+        # old URL-sniff path. Proves _classify reads origin, not the URL.
+        cfg = _lane(placement=(ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet"),))
+        assert cfg.remote_url is None
+        mgr = LaneBackendManager({"large": cfg})
+        assert mgr.get_lane_kind("large") == "cloud"
+
+    def test_independent_capability_x_placement(self):
+        # large capability placed LOCAL, small capability placed CLOUD — resolved
+        # purely from explicit placement, no URL on either lane.
+        large = _lane(name="large", placement=(ProviderPlacement(origin=Origin.LOCAL, model="mistral-7b"),))
+        small = _lane(name="small", placement=(ProviderPlacement(origin=Origin.CLOUD, model="claude-haiku"),))
+        mgr = LaneBackendManager({"large": large, "small": small})
+        assert mgr.get_lane_kind("large") == "local"
+        assert mgr.get_lane_kind("small") == "cloud"
+
+    def test_explicit_peer_placement_is_self_hosted(self):
+        cfg = _lane(placement=(ProviderPlacement(origin=Origin.PEER, model="m", url="http://leader:8100/v1"),))
+        mgr = LaneBackendManager({"large": cfg})
+        assert mgr.get_lane_kind("large") == "self-hosted"
+
+    def test_get_backend_on_explicit_placement_raises_phase2_fence(self):
+        # Phase-2 structural fence: building a backend from an explicit
+        # placement is not wired until Phase 3, so it fails LOUD rather than
+        # silently compiling from mismatched/absent legacy fields. Classifying
+        # the same lane (above) still works.
+        cfg = _lane(placement=(ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet"),))
+        mgr = LaneBackendManager({"large": cfg}, max_cloud_lanes=1)
+        with pytest.raises(BackendGateError, match="Phase 3"):
+            mgr.get_backend("large")

@@ -830,7 +830,12 @@ class LaneBackendManager:
         cfg = self._configs.get(lane)
         if cfg is None:
             return None
-        if not cfg.model_profile and not cfg.remote_url:
+        # Phase 2: gate on the resolved placement (honors an explicit
+        # cfg.placement; equivalent to the legacy "no profile and no remote_url"
+        # check for every derived placement, since derive_placement returns ()
+        # iff both legacy fields are empty).
+        placement = derive_placement(cfg, peer_owned=self._peer_owned)
+        if not placement:
             return None
 
         with self._lock:
@@ -838,10 +843,10 @@ class LaneBackendManager:
             if cached is not None:
                 return cached
             self._check_backend_cap()
-            kind = self._classify(cfg)
+            kind = placement_kind(placement)
             if kind == "cloud":
                 self._check_cloud_lane_cap(lane)
-            backend = self._build_backend(cfg)
+            backend = self._build_backend(cfg, placement)
             if backend is not None:
                 self._backends[lane] = backend
                 if kind == "cloud":
@@ -893,14 +898,19 @@ class LaneBackendManager:
     # ─── classification ───────────────────────────────────────────────────
 
     def _classify(self, cfg: LaneConfig) -> str:
-        if cfg.remote_url:
-            # Peer-owned URLs (from `maxim peer connect`) are your own
-            # infrastructure behind a tunnel — not cloud providers.
-            # The flag is set by build_primary_router when peer config is loaded.
-            if self._peer_owned:
-                return "self-hosted"
-            return "cloud" if _is_cloud_url(cfg.remote_url) else "self-hosted"
-        return "local"
+        """Classify a lane as ``"local"`` / ``"self-hosted"`` / ``"cloud"``.
+
+        Phase 2 (lane_capability_placement_split.md): reads the **primary
+        placement's origin** instead of URL-sniffing ``cfg.remote_url`` here.
+        ``derive_placement`` honors an explicit ``cfg.placement`` (Phase 3
+        producers) and otherwise derives a 1-element placement from the legacy
+        fields — reproducing the prior URL-sniff classification **exactly** for
+        every existing config (the URL-sniff now lives once inside
+        ``derive_placement``'s legacy path, not at every dispatch site). The
+        equivalence to the pre-Phase-2 logic is pinned by the frozen legacy
+        oracle in ``tests/unit/test_lane_placement.py``.
+        """
+        return placement_kind(derive_placement(cfg, peer_owned=self._peer_owned))
 
     # ─── gates ────────────────────────────────────────────────────────────
 
@@ -924,10 +934,40 @@ class LaneBackendManager:
 
     # ─── backend construction ─────────────────────────────────────────────
 
-    def _build_backend(self, cfg: LaneConfig) -> Any | None:
-        if cfg.remote_url:
-            return self._build_remote_backend(cfg)
-        return self._build_local_backend(cfg)
+    def _build_backend(self, cfg: LaneConfig, placement: tuple[ProviderPlacement, ...] | None = None) -> Any | None:
+        # Phase 2: dispatch on the primary placement's origin rather than
+        # sniffing cfg.remote_url. LOCAL → profile-driven local router (which
+        # also serves --cloud-lane cloud profiles); CLOUD / PEER → remote router.
+        # Equivalent to the prior `if cfg.remote_url` for every derived
+        # placement (LOCAL ⟺ no remote_url; CLOUD/PEER ⟺ remote_url set).
+        #
+        # ``placement`` is the already-resolved tuple threaded from
+        # ``get_backend`` so we don't re-derive (re-derivation re-runs the
+        # ``_is_cloud_url`` DNS probe). It's optional for standalone/test
+        # callers, who get a fresh derivation.
+        if placement is None:
+            placement = derive_placement(cfg, peer_owned=self._peer_owned)
+        if not placement:
+            return None
+        # Phase-2 structural fence: the builders compile from the LEGACY
+        # LaneConfig fields, which are authoritative ONLY for a DERIVED
+        # placement (``cfg.placement == ()``). An explicit ``cfg.placement`` is
+        # a Phase-3 producer; compiling a backend from ``placement.*`` is not
+        # wired yet. Fail LOUD here rather than let a builder read mismatched
+        # legacy fields (e.g. a CLOUD origin with ``remote_url=None`` →
+        # ``base_url=None`` → a silently-broken backend). Phase 3 replaces this
+        # fence by teaching the builders to compile from the placement entry.
+        if cfg.placement:
+            raise BackendGateError(
+                f"Lane '{cfg.name}': building a backend from an explicit "
+                f"placement is not implemented until Phase 3 "
+                f"(lane_capability_placement_split.md). Phase 2 dispatches on "
+                f"origin but compiles from the legacy LaneConfig fields."
+            )
+        primary = placement[0]
+        if primary.origin is Origin.LOCAL:
+            return self._build_local_backend(cfg)
+        return self._build_remote_backend(cfg, kind=placement_kind(placement))
 
     def _build_local_backend(self, cfg: LaneConfig) -> Any | None:
         """Construct a local LLMRouter for a lane."""
@@ -1060,7 +1100,7 @@ class LaneBackendManager:
             routing=routing,
         )
 
-    def _build_remote_backend(self, cfg: LaneConfig) -> Any | None:
+    def _build_remote_backend(self, cfg: LaneConfig, kind: str | None = None) -> Any | None:
         """Construct an OpenAI-compatible remote backend via LLMRouter.
 
         Wraps _OpenAIBackend in an LLMRouter so downstream consumers get the
@@ -1069,6 +1109,11 @@ class LaneBackendManager:
         Self-hosted targets (llama-cpp-server, Ollama, vLLM on private IP)
         skip the cloud_enabled requirement. Cloud providers (Anthropic, OpenAI)
         require cloud_enabled=True and count against MAXIM_MAX_CLOUD_LANES.
+
+        ``kind`` is the pre-resolved classification threaded from
+        ``_build_backend`` so we don't re-classify (which re-runs the
+        ``_is_cloud_url`` DNS probe). Standalone/test callers pass ``None`` and
+        get a fresh ``self._classify(cfg)``.
         """
         try:
             from maxim.models.language.config import load_llm_config
@@ -1077,7 +1122,8 @@ class LaneBackendManager:
             logger.warning("LLM modules not available for remote lane %s: %s", cfg.name, e)
             return None
 
-        kind = self._classify(cfg)
+        if kind is None:
+            kind = self._classify(cfg)
         try:
             base = load_llm_config()
         except Exception as e:
