@@ -959,12 +959,12 @@ class LaneBackendManager:
         # placements.) Lane-level hardware tuning (n_gpu_layers, device, n_ctx,
         # kv_quant_mode) stays on LaneConfig — it is not a placement preference.
         #
-        # Validation owed to Phase 3b: removing the fence traded loud
-        # construction-time failure for runtime failure on a MALFORMED explicit
-        # placement (e.g. CLOUD/PEER with url=None → base_url=None). Derived
-        # placements are always coherent, so this is safe today; Phase 3b (the
-        # first external config.json producer) MUST add coherence validation
-        # (CLOUD/PEER require url, LOCAL requires model) — see ProviderPlacement.
+        # Coherence note: removing the fence traded loud construction-time
+        # failure for runtime failure on a MALFORMED explicit placement. Derived
+        # placements are always coherent; explicit placements are validated at
+        # their producer boundary — config.json at load (Phase 3b, via
+        # worker_pool.validate_placement_coherence: PEER needs url, LOCAL needs
+        # model, CLOUD needs url-or-model) and CLI edits in Phase 3c.
         primary = placement[0]
         if primary.origin is Origin.LOCAL:
             return self._build_local_backend(cfg, primary)

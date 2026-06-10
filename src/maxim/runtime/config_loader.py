@@ -97,8 +97,49 @@ class LLMConfigSection:
 
 
 _LANE_TIER_DECLARED_FIELDS: frozenset[str] = frozenset(
-    {"remote_url", "remote_model", "remote_api_key_ref", "timeout_s"}
+    {"remote_url", "remote_model", "remote_api_key_ref", "timeout_s", "placement"}
 )
+
+_VALID_PLACEMENT_ORIGINS: frozenset[str] = frozenset({"local", "cloud", "peer"})
+
+_LANE_TIER_PLACEMENT_DECLARED_FIELDS: frozenset[str] = frozenset({"origin", "model", "url", "api_key_ref", "timeout_s"})
+
+
+@dataclass(frozen=True)
+class LaneTierPlacement:
+    """One declarative provider candidate for a lane tier (config.json).
+
+    The declarative twin of the runtime ``worker_pool.ProviderPlacement``: it
+    carries an **unresolved** ``api_key_ref`` (file path or ``keyring:`` URI)
+    that is resolved into ``ProviderPlacement.api_key`` when the lane is built —
+    deliberately split so "ref" never names a resolved value (mirrors
+    ``LaneTierConfig.remote_api_key_ref`` → ``LaneConfig.remote_api_key``).
+
+    ESCAPE-HATCH at 1.0 (CC3) — path (a). ``extra`` gathers forward-growth
+    metadata; ``__post_init__`` rejects keys that collide with declared fields.
+    ``origin`` is one of ``"local"`` / ``"cloud"`` / ``"peer"``. Both the origin
+    value AND field-coherence (PEER needs url, LOCAL needs model, CLOUD needs
+    url-or-model — the single rule set in
+    ``worker_pool.validate_placement_coherence``) are enforced at parse time
+    (``_parse_lane_tier_placement``) with JSON context, so an incoherent
+    config.json placement fails loud at load.
+    """
+
+    origin: str
+    model: str | None = None
+    url: str | None = None
+    api_key_ref: str | None = None
+    timeout_s: float | None = None
+    extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
+
+    def __post_init__(self) -> None:
+        collisions = _LANE_TIER_PLACEMENT_DECLARED_FIELDS & set(self.extra.keys())
+        if collisions:
+            raise ConfigurationError(
+                f"LaneTierPlacement: extra dict contains key(s) that collide "
+                f"with declared fields: {sorted(collisions)}. extra is for "
+                f"forward-growth additive metadata only."
+            )
 
 
 @dataclass(frozen=True)
@@ -140,6 +181,14 @@ class LaneTierConfig:
     # standard CLI > env > config.json > default precedence chain via
     # ``resolve_setting('lanes.<tier>.timeout_s', ...)``.
     timeout_s: float | None = None
+    # lane_capability_placement_split.md Phase 3b: explicit ordered placement
+    # for this tier (declarative twin of LaneConfig.placement). ``()`` (the
+    # default) means "derive from the remote_* fields above" — existing configs
+    # behave identically. When non-empty, it is the operator's declarative
+    # placement; CLI flags (--llm/--cloud-lane) still edit it per the
+    # CLI > config precedence chain. Resolved into worker_pool.ProviderPlacement
+    # (api_key_ref → api_key) at lane-build time.
+    placement: tuple[LaneTierPlacement, ...] = ()
     extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -843,7 +892,7 @@ def _parse_lane_tier(
     if not isinstance(section, dict):
         raise ConfigurationError(f"config.json: {path} must be a mapping, got {type(section).__name__}")
 
-    declared = {"remote_url", "remote_model", "remote_api_key_ref", "timeout_s"}
+    declared = {"remote_url", "remote_model", "remote_api_key_ref", "timeout_s", "placement"}
     extra: dict[str, Any] = {k: v for k, v in section.items() if k not in declared}
 
     remote_url = section.get("remote_url")
@@ -876,13 +925,100 @@ def _parse_lane_tier(
     if isinstance(remote_api_key_ref, str):
         remote_api_key_ref = _validate_api_key_ref(remote_api_key_ref, f"{path}.remote_api_key_ref")
 
+    placement = _parse_lane_tier_placement(section.get("placement"), f"{path}.placement")
+
     return LaneTierConfig(
         remote_url=remote_url,
         remote_model=remote_model,
         remote_api_key_ref=remote_api_key_ref,
         timeout_s=timeout_s,
+        placement=placement,
         extra=extra,
     )
+
+
+def _parse_lane_tier_placement(raw: Any, path: str) -> tuple[LaneTierPlacement, ...]:
+    """Parse a ``lanes.<tier>.placement`` array into ``LaneTierPlacement``s.
+
+    ``None`` / absent → ``()`` (derive from the legacy remote_* fields). Each
+    entry is a mapping with a required ``origin`` (``local``/``cloud``/``peer``)
+    and optional ``model`` / ``url`` / ``api_key_ref`` / ``timeout_s``. Origin
+    value + types + api_key_ref are validated here with JSON context. Field
+    coherence (PEER needs url, LOCAL needs model, CLOUD needs url-or-model) is
+    ALSO enforced here — config.json is the first external producer of explicit
+    placements, so the "loud at load" discipline must cover it (the 3a fence
+    removal owed this). The single source of truth for the coherence rule is
+    ``worker_pool.validate_placement_coherence``; we run it on a throwaway
+    ``ProviderPlacement`` (coherence is independent of the resolved api_key) and
+    re-raise its ``ValueError`` as a config-layer ``ConfigurationError``.
+    """
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise ConfigurationError(f"config.json: {path} must be a list, got {type(raw).__name__}")
+
+    # Single source of truth for the origin↔field coherence rule (lazy import
+    # keeps config_loader's module-level surface lean; same package layer, no
+    # cycle — worker_pool does not import config_loader).
+    from maxim.runtime.worker_pool import Origin, ProviderPlacement, validate_placement_coherence
+
+    entries: list[LaneTierPlacement] = []
+    for i, item in enumerate(raw):
+        ipath = f"{path}[{i}]"
+        if not isinstance(item, dict):
+            raise ConfigurationError(f"config.json: {ipath} must be a mapping, got {type(item).__name__}")
+
+        origin = item.get("origin")
+        if not isinstance(origin, str) or origin not in _VALID_PLACEMENT_ORIGINS:
+            raise ConfigurationError(
+                f"config.json: {ipath}.origin must be one of {sorted(_VALID_PLACEMENT_ORIGINS)}, got {origin!r}"
+            )
+
+        for fname in ("model", "url", "api_key_ref"):
+            fval = item.get(fname)
+            if fval is not None and not isinstance(fval, str):
+                raise ConfigurationError(
+                    f"config.json: {ipath}.{fname} must be a string or null, got {type(fval).__name__}"
+                )
+
+        timeout_s = item.get("timeout_s")
+        if timeout_s is not None:
+            if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)):
+                raise ConfigurationError(
+                    f"config.json: {ipath}.timeout_s must be a number or null, got {type(timeout_s).__name__}"
+                )
+            if timeout_s <= 0:
+                raise ConfigurationError(f"config.json: {ipath}.timeout_s must be positive, got {timeout_s}.")
+            timeout_s = float(timeout_s)
+
+        api_key_ref = item.get("api_key_ref")
+        if isinstance(api_key_ref, str):
+            api_key_ref = _validate_api_key_ref(api_key_ref, f"{ipath}.api_key_ref")
+
+        # Coherence: surface the runtime validator's ValueError as a config-
+        # layer ConfigurationError with JSON context (config errors must
+        # present uniformly as ConfigurationError at load).
+        try:
+            validate_placement_coherence(
+                ProviderPlacement(origin=Origin(origin), model=item.get("model"), url=item.get("url")),
+                where=f"config.json: {ipath}",
+            )
+        except ValueError as e:
+            raise ConfigurationError(str(e)) from e
+
+        declared = _LANE_TIER_PLACEMENT_DECLARED_FIELDS
+        entry_extra = {k: v for k, v in item.items() if k not in declared}
+        entries.append(
+            LaneTierPlacement(
+                origin=origin,
+                model=item.get("model"),
+                url=item.get("url"),
+                api_key_ref=api_key_ref,
+                timeout_s=timeout_s,
+                extra=entry_extra,
+            )
+        )
+    return tuple(entries)
 
 
 def _parse_typed_section(

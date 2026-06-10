@@ -1,0 +1,222 @@
+"""Phase 3b of lane_capability_placement_split.md — the config.json placement
+declarative surface + the reusable coherence validator.
+
+Covers the config-layer schema only (parse / validate / round-trip). The
+runtime producer (config.json placement → LaneConfig.placement), CLI
+re-expression, and multi-element compile are Phase 3c.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from maxim.runtime.config_loader import (
+    _VALID_PLACEMENT_ORIGINS,
+    ConfigurationError,
+    LaneTierPlacement,
+    load_config,
+)
+from maxim.runtime.config_writer import _serialize_for_json
+from maxim.runtime.worker_pool import Origin, ProviderPlacement, validate_placement_coherence
+
+
+def _write_load(tmp_path: Path, lanes: dict) -> object:
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({"_format_version": "1.0", "lanes": lanes}))
+    return load_config(p)
+
+
+# ─── validate_placement_coherence (worker_pool) ─────────────────────────────
+
+
+class TestValidatePlacementCoherence:
+    def test_local_requires_model(self):
+        with pytest.raises(ValueError, match="local.*requires a 'model'"):
+            validate_placement_coherence(ProviderPlacement(origin=Origin.LOCAL))
+
+    def test_peer_requires_url(self):
+        with pytest.raises(ValueError, match="peer.*requires a 'url'"):
+            validate_placement_coherence(ProviderPlacement(origin=Origin.PEER, model="m"))
+
+    def test_cloud_requires_url_or_model(self):
+        with pytest.raises(ValueError, match="cloud.*requires a 'url' or a 'model'"):
+            validate_placement_coherence(ProviderPlacement(origin=Origin.CLOUD))
+
+    def test_valid_pass(self):
+        # None of these raise.
+        validate_placement_coherence(ProviderPlacement(origin=Origin.LOCAL, model="mistral-7b"))
+        validate_placement_coherence(ProviderPlacement(origin=Origin.PEER, url="http://10.0.0.9:8100/v1"))
+        validate_placement_coherence(ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet"))  # model only
+        validate_placement_coherence(ProviderPlacement(origin=Origin.CLOUD, url="https://x/v1"))  # url only
+
+    def test_where_label_in_message(self):
+        with pytest.raises(ValueError, match="lanes.large.placement"):
+            validate_placement_coherence(
+                ProviderPlacement(origin=Origin.LOCAL), where="config.json: lanes.large.placement[0]"
+            )
+
+
+# ─── LaneTierPlacement dataclass ────────────────────────────────────────────
+
+
+class TestLaneTierPlacementShape:
+    def test_collision_guard(self):
+        with pytest.raises(ConfigurationError, match="collide with declared fields"):
+            LaneTierPlacement(origin="local", extra={"model": "shadow"})
+
+    def test_defaults(self):
+        p = LaneTierPlacement(origin="cloud")
+        assert p.model is None and p.url is None and p.api_key_ref is None and p.timeout_s is None and p.extra == {}
+
+
+# ─── config.json parsing (_parse_lane_tier_placement via load_config) ───────
+
+
+class TestPlacementParsing:
+    def test_absent_placement_is_empty(self, tmp_path):
+        cfg = _write_load(tmp_path, {"large": {"remote_url": "http://10.0.0.1:8100/v1"}})
+        assert cfg.lanes.large.placement == ()
+
+    def test_valid_multi_entry(self, tmp_path):
+        cfg = _write_load(
+            tmp_path,
+            {
+                "large": {
+                    "placement": [
+                        {"origin": "local", "model": "mistral-7b"},
+                        {"origin": "cloud", "model": "claude-sonnet", "api_key_ref": "~/.config/maxim/api_key"},
+                    ]
+                }
+            },
+        )
+        pl = cfg.lanes.large.placement
+        assert len(pl) == 2
+        assert pl[0] == LaneTierPlacement(origin="local", model="mistral-7b")
+        assert pl[1].origin == "cloud" and pl[1].api_key_ref == "~/.config/maxim/api_key"
+
+    def test_bad_origin_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match=r"origin must be one of"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "gpu"}]}})
+
+    def test_missing_origin_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match=r"origin must be one of"):
+            _write_load(tmp_path, {"large": {"placement": [{"model": "x"}]}})
+
+    def test_placement_not_a_list_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match=r"placement must be a list"):
+            _write_load(tmp_path, {"large": {"placement": {"origin": "local"}}})
+
+    def test_entry_not_a_mapping_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match=r"placement\[0\] must be a mapping"):
+            _write_load(tmp_path, {"large": {"placement": ["local"]}})
+
+    def test_non_string_field_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match=r"\.model must be a string or null"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "local", "model": 123}]}})
+
+    def test_non_positive_timeout_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match=r"timeout_s must be positive"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "peer", "url": "http://x/v1", "timeout_s": 0}]}})
+
+    def test_inline_plaintext_api_key_rejected(self, tmp_path):
+        # api_key_ref must be a path / keyring URI, never an inline key (mirrors
+        # the remote_api_key_ref validation).
+        with pytest.raises(ConfigurationError):
+            _write_load(
+                tmp_path, {"large": {"placement": [{"origin": "cloud", "model": "x", "api_key_ref": "sk-abc123"}]}}
+            )
+
+    def test_unknown_keys_gathered_into_extra(self, tmp_path):
+        cfg = _write_load(
+            tmp_path,
+            {"large": {"placement": [{"origin": "local", "model": "m", "routing_weight": 0.5}]}},
+        )
+        assert cfg.lanes.large.placement[0].extra == {"routing_weight": 0.5}
+
+
+class TestPlacementCoherenceAtLoad:
+    """Incoherent config.json placements must fail LOUD at load (the 3a
+    fence-removal owed this; single rule set in validate_placement_coherence).
+    """
+
+    def test_peer_without_url_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match="peer.*requires a 'url'"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "peer", "model": "m"}]}})
+
+    def test_local_without_model_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match="local.*requires a 'model'"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "local", "url": "http://x/v1"}]}})
+
+    def test_cloud_without_url_or_model_rejected(self, tmp_path):
+        with pytest.raises(ConfigurationError, match="cloud.*requires a 'url' or a 'model'"):
+            _write_load(tmp_path, {"large": {"placement": [{"origin": "cloud"}]}})
+
+    def test_coherent_placements_load(self, tmp_path):
+        cfg = _write_load(
+            tmp_path,
+            {
+                "large": {"placement": [{"origin": "cloud", "model": "claude-sonnet"}]},
+                "small": {"placement": [{"origin": "peer", "url": "http://10.0.0.9:8100/v1"}]},
+            },
+        )
+        assert len(cfg.lanes.large.placement) == 1 and len(cfg.lanes.small.placement) == 1
+
+
+def test_valid_placement_origins_track_origin_enum():
+    # L2 drift-pin: the config-layer bare-string set must equal the runtime
+    # Origin enum values (avoids importing the enum into config_loader while
+    # catching a future 4th-origin divergence).
+    assert _VALID_PLACEMENT_ORIGINS == {o.value for o in Origin}
+
+
+# ─── round-trip through config_writer ───────────────────────────────────────
+
+
+class TestPlacementRoundTrip:
+    """Serialize → JSON → parse fidelity. Exercises ``_serialize_for_json``
+    (the placement-specific serialization) + ``load_config`` directly; the
+    atomic-write/lock path is covered by ``test_config_writer.py`` (and calling
+    ``write_config`` here would trip the single-writer CI grep).
+    """
+
+    @staticmethod
+    def _serialize_to_file(cfg, p) -> dict:
+        payload = _serialize_for_json(cfg)
+        payload["_format_version"] = "1.0"
+        p.write_text(json.dumps(payload))
+        return payload
+
+    def test_serialize_parse_preserves_placement(self, tmp_path):
+        cfg = _write_load(
+            tmp_path,
+            {
+                "large": {
+                    "placement": [
+                        {"origin": "local", "model": "mistral-7b"},
+                        {"origin": "cloud", "model": "claude-sonnet"},
+                    ]
+                },
+                "small": {"placement": [{"origin": "peer", "url": "http://10.0.0.9:8100/v1"}]},
+            },
+        )
+        p = tmp_path / "rt.json"
+        self._serialize_to_file(cfg, p)
+        cfg2 = load_config(p)
+        assert cfg2.lanes.large.placement == cfg.lanes.large.placement
+        assert cfg2.lanes.small.placement == cfg.lanes.small.placement
+
+    def test_round_trip_preserves_entry_extra(self, tmp_path):
+        cfg = _write_load(
+            tmp_path,
+            {"large": {"placement": [{"origin": "local", "model": "m", "routing_weight": 0.5}]}},
+        )
+        p = tmp_path / "rt.json"
+        payload = self._serialize_to_file(cfg, p)
+        # the serialized JSON inlines the entry extra (no double-nesting)
+        written = payload["lanes"]["large"]["placement"][0]
+        assert written["routing_weight"] == 0.5
+        assert "extra" not in written
+        assert load_config(p).lanes.large.placement == cfg.lanes.large.placement

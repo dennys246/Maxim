@@ -227,12 +227,26 @@ session must honor (3a is correct for 1-element placements; these are seams, not
   fires exactly once. (TODO marker left at the call site.)
 - **Placement coherence validation is owed by 3b.** Removing the fence traded a
   loud construction failure for a runtime failure on a malformed explicit
-  placement (CLOUD/PEER with `url=None` → `base_url=None`). The first external
-  producer is config.json (`LaneTierPlacement`, 3b); land
-  `ProviderPlacement.__post_init__` validation (CLOUD/PEER require `url`; LOCAL
-  requires `model`) with it so the config-loader `ConfigurationError`-at-load
-  discipline covers placement too. Derived placements are always coherent, so
-  3a-without-validation is safe in the interim.
+  placement. **DISCHARGED in 3b:** `worker_pool.validate_placement_coherence`
+  (PEER needs `url`; LOCAL needs `model`; CLOUD needs `url` **or** `model` — the
+  CLOUD rule is looser than the original note because a cloud model id resolves
+  its base URL from the provider profile) is the single rule set, invoked at the
+  config-loader parse boundary (`_parse_lane_tier_placement`) and re-raised as
+  `ConfigurationError` with JSON context. It lives at the producer boundary, NOT
+  in `ProviderPlacement.__post_init__`, so the runtime value type stays
+  permissive (derived placements are coherent by construction). **3c** reuses
+  the same validator after each CLI placement edit (catching `ValueError`).
+- **Legacy `remote_*` + `placement` coexistence (3c doctor).** A tier may carry
+  both; `derive_placement` short-circuits on `cfg.placement`, so placement wins
+  and the legacy `remote_*` fields are ignored — the right default (no
+  reject-both validation; matches the env-shadows-config-with-a-WARNING
+  precedent). 3c's doctor "Resolved Config" view should WARN when both are set,
+  and surface the resolved placement so operators see what the structured field
+  produced.
+- **No env-var parity for `placement` (intentional).** `placement` is a
+  structured list → no `MAXIM_LANE_*_PLACEMENT` scalar / `_FIELD_TO_ENV` entry;
+  the scalar `MAXIM_LANE_*_REMOTE_*` family remains the env path (deriving a
+  1-element placement), and CLI flags are the runtime placement-override surface.
 - **Cap semantics for multi-element placements (3c).** `MAXIM_MAX_CLOUD_LANES`
   is keyed on `placement_kind` = `placement[0].origin` (primary only). A
   `[LOCAL, CLOUD-fallback]` lane therefore won't consume a cap slot — which

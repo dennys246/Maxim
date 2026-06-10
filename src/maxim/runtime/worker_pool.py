@@ -150,10 +150,11 @@ class ProviderPlacement:
     placement names *what model, where*, not *how the box runs it*. Consequence:
     two ``LOCAL`` placements on one lane cannot carry distinct GPU budgets
     (heterogeneous-hardware local providers are a documented 1.1+ extension via
-    this ``extra`` hatch or a new declared field). Coherence validation
-    (``CLOUD``/``PEER`` require a ``url``; ``LOCAL`` requires a ``model``) is
-    deferred to Phase 3b, where the first external (config.json) producer of
-    explicit placements lands — see the Phase-3 follow-up notes in the plan.
+    this ``extra`` hatch or a new declared field). Coherence (PEER requires a
+    ``url``; LOCAL requires a ``model``; CLOUD requires a ``url`` or a ``model``)
+    is enforced by :func:`validate_placement_coherence` at the config/CLI
+    producer boundary — NOT in ``__post_init__``, so this stays a permissive
+    runtime value type (derived placements are coherent by construction).
     """
 
     origin: Origin
@@ -172,6 +173,31 @@ class ProviderPlacement:
                 f"forward-growth additive metadata only — declared fields go "
                 f"in their own slots."
             )
+
+
+def validate_placement_coherence(p: ProviderPlacement, *, where: str = "placement") -> None:
+    """Raise ``ValueError`` if a placement entry can't construct a backend.
+
+    Coherence rules — what each origin's builder minimally needs:
+
+    - ``LOCAL`` requires ``model`` (the profile name to load).
+    - ``PEER`` requires ``url`` (the self-hosted endpoint; there is no default).
+    - ``CLOUD`` requires ``url`` **or** ``model`` (a cloud model id resolves its
+      base URL from the provider profile; a bare URL is also acceptable).
+
+    Called at the **config-loader / CLI boundary** where untrusted (operator)
+    placements enter — NOT inside ``ProviderPlacement.__post_init__``: the
+    runtime ``derive_placement`` path always emits coherent placements, and
+    keeping the dataclass a permissive value type lets internal/test code build
+    partial placements. ``where`` is a caller-supplied label for the message
+    (e.g. ``"config.json: lanes.large.placement[0]"``).
+    """
+    if p.origin is Origin.LOCAL and not p.model:
+        raise ValueError(f"{where}: a 'local' placement requires a 'model' (profile name).")
+    if p.origin is Origin.PEER and not p.url:
+        raise ValueError(f"{where}: a 'peer' placement requires a 'url' (self-hosted endpoint).")
+    if p.origin is Origin.CLOUD and not (p.url or p.model):
+        raise ValueError(f"{where}: a 'cloud' placement requires a 'url' or a 'model'.")
 
 
 @dataclass
