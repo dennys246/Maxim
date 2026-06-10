@@ -19,7 +19,7 @@ from maxim.runtime.config_loader import (
     LaneTierPlacement,
     load_config,
 )
-from maxim.runtime.config_writer import write_config
+from maxim.runtime.config_writer import _serialize_for_json
 from maxim.runtime.worker_pool import Origin, ProviderPlacement, validate_placement_coherence
 
 
@@ -176,7 +176,20 @@ def test_valid_placement_origins_track_origin_enum():
 
 
 class TestPlacementRoundTrip:
-    def test_write_read_preserves_placement(self, tmp_path):
+    """Serialize → JSON → parse fidelity. Exercises ``_serialize_for_json``
+    (the placement-specific serialization) + ``load_config`` directly; the
+    atomic-write/lock path is covered by ``test_config_writer.py`` (and calling
+    ``write_config`` here would trip the single-writer CI grep).
+    """
+
+    @staticmethod
+    def _serialize_to_file(cfg, p) -> dict:
+        payload = _serialize_for_json(cfg)
+        payload["_format_version"] = "1.0"
+        p.write_text(json.dumps(payload))
+        return payload
+
+    def test_serialize_parse_preserves_placement(self, tmp_path):
         cfg = _write_load(
             tmp_path,
             {
@@ -189,8 +202,8 @@ class TestPlacementRoundTrip:
                 "small": {"placement": [{"origin": "peer", "url": "http://10.0.0.9:8100/v1"}]},
             },
         )
-        p = tmp_path / "config.json"
-        write_config(cfg, p)
+        p = tmp_path / "rt.json"
+        self._serialize_to_file(cfg, p)
         cfg2 = load_config(p)
         assert cfg2.lanes.large.placement == cfg.lanes.large.placement
         assert cfg2.lanes.small.placement == cfg.lanes.small.placement
@@ -200,10 +213,10 @@ class TestPlacementRoundTrip:
             tmp_path,
             {"large": {"placement": [{"origin": "local", "model": "m", "routing_weight": 0.5}]}},
         )
-        p = tmp_path / "config.json"
-        write_config(cfg, p)
-        # the written JSON inlines the entry extra (no double-nesting)
-        written = json.loads(p.read_text())["lanes"]["large"]["placement"][0]
+        p = tmp_path / "rt.json"
+        payload = self._serialize_to_file(cfg, p)
+        # the serialized JSON inlines the entry extra (no double-nesting)
+        written = payload["lanes"]["large"]["placement"][0]
         assert written["routing_weight"] == 0.5
         assert "extra" not in written
         assert load_config(p).lanes.large.placement == cfg.lanes.large.placement
