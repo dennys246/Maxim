@@ -88,6 +88,120 @@ It also **subsumes** `--cloud-lane` and `--cloud-fallback` into one concept:
 both become edits to a tier's placement list (prepend/append a cloud provider).
 `local primary → cloud fallback` is just `placement=[local…, cloud…]`.
 
+## Phase 0 outcome — finalized design (2026-06-09)
+
+Read-only audit complete; every cited symbol verified against the live tree.
+**One name-drift correction:** the CLI-override fn is `_apply_cloud_cli_overrides`
+([lane_backends.py](../../src/maxim/runtime/lane_backends.py)), not
+`_apply_cloud_lane_overrides` (corrected in References below).
+
+### Front-gate scope decision (the load-bearing call)
+
+The word "placement" was conflating two separable things:
+
+1. **The placement *resolution*** (ordered preference + first-healthy failover)
+   **already exists** — in `LLMRouter` at the provider layer (`providers` dict +
+   `routing.provider_priority` + `_try_provider`'s specific-before-general
+   failover). Both `_maybe_inject_cloud_fallback` and `_build_remote_backend`
+   already compile down to an ordered `provider_priority`. A *second* resolver in
+   `LaneBackendManager` would duplicate `_try_provider` and re-introduce the
+   multi-call hazard the `_MaximPeerBackend` one-call invariant exists to kill.
+2. **The placement *type*** (explicit per-provider `origin`) **does not exist** —
+   origin is *derived* by `_classify`'s URL-sniff, and the two CLI flags express
+   it incoherently. This is the actual wart.
+
+**Decision: placement is a first-class TYPE + a compile step, NOT a new
+resolver.** It rides on `LLMRouter`'s existing provider-priority/failover as the
+resolution engine. A per-tier ordered `placement` tuple *compiles* into the
+`providers` / `provider_priority` of the single `LLMRouter` that already serves
+the lane. `_classify`'s URL-sniff becomes "read `origin`"; the two CLI flags
+become two edits (prepend cloud / append cloud) to one ordered list. This is the
+plan's "minimal win" framing and is strictly safer than a new resolver.
+
+### Subtle load-bearing behavior the compile step MUST preserve exactly
+
+Cloud gating has **two distinct, non-overlapping paths** today:
+
+- `get_backend`'s `MAXIM_MAX_CLOUD_LANES` cap fires **only** for `kind=="cloud"`,
+  which `_classify` returns **only** for a `remote_url` on a *public host*.
+- `--cloud-lane` / `--cloud-fallback` set a cloud *profile* (anthropic/openai
+  backend) with **no `remote_url`** → `_classify` returns `"local"` → they do
+  **not** consume a cap slot; they're gated instead by `MAXIM_LLM_CLOUD_ENABLED`
+  + the router's `_validate_cloud_config` (key/redaction/cost).
+
+**Invariant:** legacy-field derivation must reproduce `_classify`'s exact output
+for every existing config, and the cap/gate logic must key off the *same* origin
+values — introducing an explicit `origin` must NOT start counting cloud-*profile*
+lanes against the cap. Pinned by a before/after classification-matrix test.
+
+### Finalized type shapes
+
+```python
+# worker_pool.py — LaneConfig is a runtime (non-frozen) dataclass; field is additive
+class Origin(str, Enum):
+    LOCAL = "local"   # llama-cpp profile on this box
+    CLOUD = "cloud"   # metered provider (anthropic/openai/…)
+    PEER  = "peer"    # self-hosted behind tunnel/LAN (one-HTTP-call backend)
+
+@dataclass(frozen=True)
+class ProviderPlacement:           # NEW frozen dataclass → CC3 path (a) escape-hatch
+    origin: Origin
+    model: str | None = None       # profile name (local) | cloud model id | peer model
+    url: str | None = None
+    api_key_ref: str | None = None
+    timeout_s: float | None = None
+    extra: dict[str, Any] = field(default_factory=dict, hash=False, compare=False)
+
+placement: tuple[ProviderPlacement, ...] = ()   # () = derive from legacy fields
+```
+
+`Origin`'s `PEER` value renames the legacy `"self-hosted"` concept at the type
+layer; `_classify`'s legacy *string* outputs (`"self-hosted"`/`"cloud"`/`"local"`)
+stay during the transition so `get_lane_kind` callers/tests don't break.
+
+### Config.json schema (Phase 3, additive — confirmed declared field)
+
+`LaneTierConfig` is already CC3 **path (a)** (has an `extra` dict), so a declared
+optional `placement: tuple[LaneTierPlacement, ...] = ()` is non-breaking and
+type-validated (preferred over burying in `extra`). `_VALID_TIER_NAMES` and the
+`large/medium/small` keying stay frozen; empty tuple derives a 1-element
+placement from the existing `remote_url`/`remote_model`/`remote_api_key_ref`/
+`timeout_s` so existing config.json files behave identically.
+
+### Derivation direction (one-way, for back-compat)
+
+Env / tier-detection / auto-spawn all keep landing in the **legacy** LaneConfig
+fields; `placement` is *computed* from them when `placement == ()`. Only Phase 3's
+new config.json `placement` and the re-expressed CLI flags *write* placement
+directly.
+
+### Migration table (read-sites of the smeared origin fields, fresh grep)
+
+| Site | Reads | Phase-2 disposition |
+|---|---|---|
+| `_classify` | `remote_url`, `_peer_owned`, `_is_cloud_url` | **replace** with "read active placement `origin`"; keep `_classify` as legacy-derivation fallback |
+| `get_backend` | `model_profile`/`remote_url` (None-gate), `kind` (cap) | gate on "has ≥1 placement"; cap keys off active(primary) origin |
+| `_build_backend`/`_build_local_backend`/`_build_remote_backend` | all origin fields | dispatch on placement origin; compile placement list → `providers`/`provider_priority` |
+| `_maybe_inject_cloud_fallback` | `cfg.name`, `MAXIM_CLOUD_FALLBACK_MODEL` | Phase 3: "append cloud placement" |
+| `_apply_cloud_cli_overrides` | `MAXIM_CLOUD_LANE_<T>_MODEL` | Phase 3: "prepend cloud placement" (keep env alias) |
+| `_apply_local_llm_override` | `MAXIM_LLM_PROFILE` | unchanged (clears remote → derives local placement) |
+| `_ensure_lane_profiles_available` | `remote_url`, `model_profile` | unchanged (local-origin entries) |
+| `_maybe_auto_spawn_server` | `remote_url`, `model_profile`; rewrites both | unchanged — rewrites legacy fields → derives placement |
+| `_validate_remote_urls` | `remote_url` | unchanged |
+| `describe` / `get_lane_kind` | `model_profile`, `remote_url`, `_classify` | surface placement list |
+| `lane_models.detect_tiers`/`apply_lane_env_overrides`/`apply_tier_config_overrides` | builds/sets legacy fields | unchanged (legacy fields stay the env/detection landing zone) |
+| `doctor/checks.py` (`model_profile` @ ~105, ~2533) | `model_profile` | Phase 3: show capability × placement |
+| `config_loader.LaneTierConfig` / `_FIELD_TO_ENV` | schema | Phase 3: add `placement` |
+| `config_writer` / `peer/cli.py` / `roy_runner` / `cli_utils` | set/read lanes.large.remote_* + cloud env | unchanged P1-2; aliases preserved P3 |
+
+### Forks resolved at checkpoint (2026-06-09)
+
+1. **Scope:** type + compile step, ride on `LLMRouter` (no new resolver). ✅
+2. **Config schema:** declared optional `placement` field on `LaneTierConfig`. ✅
+3. **Alias lifetime:** `--cloud-lane`/`--cloud-fallback` (+ env vars) re-expressed
+   as placement edits, kept working through 1.x with one-shot deprecation INFO,
+   drop in 1.2. ✅
+
 ## Phases (proposed — the executing session should front-gate scope first)
 
 Per CLAUDE.md "Front-gate scope pressure at design time": before building,
@@ -162,7 +276,7 @@ section. (Working hypothesis: yes — the two overlapping CLI flags + URL-sniffi
 ## References (current-state, verified 2026-06-09)
 
 - [src/maxim/runtime/worker_pool.py](../../src/maxim/runtime/worker_pool.py) — `LaneConfig` dataclass (the fields that smear origin).
-- [src/maxim/runtime/lane_backends.py](../../src/maxim/runtime/lane_backends.py) — `LaneBackendManager._classify` (URL-sniffing), `_apply_cloud_lane_overrides`, `_maybe_inject_cloud_fallback`, `BACKEND_CLASSES`, auto-spawn/singleton.
+- [src/maxim/runtime/lane_backends.py](../../src/maxim/runtime/lane_backends.py) — `LaneBackendManager._classify` (URL-sniffing), `_apply_cloud_cli_overrides`, `_maybe_inject_cloud_fallback`, `BACKEND_CLASSES`, auto-spawn/singleton.
 - [src/maxim/runtime/function_router.py](../../src/maxim/runtime/function_router.py) — capability axis (`DEFAULT_TIER_ORDER`, function→tier map). Unchanged by this plan.
 - [src/maxim/runtime/config_loader.py](../../src/maxim/runtime/config_loader.py) — `_VALID_TIER_NAMES` (frozen), `lanes.<tier>` schema.
 - CLAUDE.md "Architectural invariants" — lane tier names; `BACKEND_CLASSES` dispatch; `_MaximPeerBackend` one-call; CC3 frozen-dataclass audit; config_unification `lanes.<tier>.timeout_s`.
