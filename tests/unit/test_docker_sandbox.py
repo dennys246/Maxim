@@ -347,6 +347,28 @@ class TestDockerSandboxReadonlyWorkspace:
 _DOCKER = check_docker_available()
 
 
+def _start_or_skip(sandbox) -> None:
+    """Start the sandbox; SKIP (don't fail) when the image can't be pulled
+    because the Docker registry is unreachable.
+
+    Docker being installed (``check_docker_available()``) does not guarantee the
+    runner can reach Docker Hub. In CI the ``docker pull python:3.12-slim`` step
+    intermittently times out (``request canceled while waiting for connection``),
+    which is an infrastructure flake — not a sandbox-code fault — and was
+    hard-failing these integration tests. Treat a pull/registry/network error as
+    a skip; re-raise anything else so real failures still surface.
+    """
+    from maxim.simulation.container_runner import ContainerRunnerError
+
+    try:
+        sandbox.start()
+    except ContainerRunnerError as e:
+        msg = str(e).lower()
+        if any(s in msg for s in ("pull", "registry", "timeout", "connection", "request canceled", "i/o timeout")):
+            pytest.skip(f"Docker registry unreachable (CI network flake): {e}")
+        raise
+
+
 @pytest.mark.skipif(not _DOCKER, reason="Docker not available")
 class TestDockerSandboxIntegration:
     """End-to-end tests that actually launch a container.
@@ -360,7 +382,7 @@ class TestDockerSandboxIntegration:
             permissions=ContainerPermissions(memory="256m", cpus=0.5),
         )
         try:
-            sandbox.start()
+            _start_or_skip(sandbox)
             assert sandbox._handle is not None
             assert sandbox.workspace_root != ""
         finally:
@@ -371,7 +393,7 @@ class TestDockerSandboxIntegration:
     def test_execute_in_container(self):
         sandbox = DockerSandbox()
         try:
-            sandbox.start()
+            _start_or_skip(sandbox)
             result = sandbox.execute("whoami", timeout=10.0)
             assert result.exit_code == 0
             assert "maxim" in result.stdout
@@ -381,7 +403,7 @@ class TestDockerSandboxIntegration:
     def test_workspace_write_visible_on_host(self):
         sandbox = DockerSandbox()
         try:
-            sandbox.start()
+            _start_or_skip(sandbox)
             sandbox.write_file("hello.txt", "hello from host")
             import os
 
@@ -398,7 +420,7 @@ class TestDockerSandboxIntegration:
         """OS-level permissions block shadow reads for maxim user."""
         sandbox = DockerSandbox()
         try:
-            sandbox.start()
+            _start_or_skip(sandbox)
             result = sandbox.execute("cat /etc/shadow 2>&1", timeout=5.0)
             # Either permission denied (shadow exists and is root-only)
             # or file not found (slim image may not have shadow). Both
@@ -411,7 +433,7 @@ class TestDockerSandboxIntegration:
     def test_timeout_kills_container_side_process(self):
         sandbox = DockerSandbox()
         try:
-            sandbox.start()
+            _start_or_skip(sandbox)
             result = sandbox.execute("sleep 10", timeout=1.0)
             assert result.exit_code in (124, 137)
         finally:
