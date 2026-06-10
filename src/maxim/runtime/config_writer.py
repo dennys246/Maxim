@@ -77,6 +77,19 @@ def _serialize_for_json(config: MaximConfig) -> dict[str, Any]:
                 f"at construction. Reached the writer — invariant bypassed."
             )
             tier[k] = v
+        # lane_capability_placement_split.md 3b: inline each placement entry's
+        # ``extra`` the same way, so a forward-grown placement field survives a
+        # write/read round-trip instead of double-nesting under an "extra" key.
+        for entry in tier.get("placement", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            entry_extras = entry.pop("extra", {}) or {}
+            for k, v in entry_extras.items():
+                assert k not in entry, (
+                    f"config_writer: LaneTierPlacement.__post_init__ should have "
+                    f"caught the collision on lanes.{tier_name}.placement extra[{k!r}]."
+                )
+                entry[k] = v
     return payload
 
 
