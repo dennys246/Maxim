@@ -144,6 +144,16 @@ class ProviderPlacement:
     collide with declared field names — mirroring ``LaneTierConfig`` — so a
     colliding key cannot silently shadow a declared field on a future
     round-trip (Phase 3's persisted ``LaneTierPlacement`` will reuse this shape).
+
+    BOUNDARY (1.0): lane-level **hardware** tuning (``n_gpu_layers`` / ``device``
+    / ``n_ctx`` / ``kv_quant_mode``) lives on :class:`LaneConfig`, NOT here — a
+    placement names *what model, where*, not *how the box runs it*. Consequence:
+    two ``LOCAL`` placements on one lane cannot carry distinct GPU budgets
+    (heterogeneous-hardware local providers are a documented 1.1+ extension via
+    this ``extra`` hatch or a new declared field). Coherence validation
+    (``CLOUD``/``PEER`` require a ``url``; ``LOCAL`` requires a ``model``) is
+    deferred to Phase 3b, where the first external (config.json) producer of
+    explicit placements lands — see the Phase-3 follow-up notes in the plan.
     """
 
     origin: Origin

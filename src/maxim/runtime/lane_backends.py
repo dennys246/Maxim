@@ -958,6 +958,13 @@ class LaneBackendManager:
         # independent. (This replaces the Phase-2 fence that raised on explicit
         # placements.) Lane-level hardware tuning (n_gpu_layers, device, n_ctx,
         # kv_quant_mode) stays on LaneConfig — it is not a placement preference.
+        #
+        # Validation owed to Phase 3b: removing the fence traded loud
+        # construction-time failure for runtime failure on a MALFORMED explicit
+        # placement (e.g. CLOUD/PEER with url=None → base_url=None). Derived
+        # placements are always coherent, so this is safe today; Phase 3b (the
+        # first external config.json producer) MUST add coherence validation
+        # (CLOUD/PEER require url, LOCAL requires model) — see ProviderPlacement.
         primary = placement[0]
         if primary.origin is Origin.LOCAL:
             return self._build_local_backend(cfg, primary)
@@ -995,7 +1002,13 @@ class LaneBackendManager:
             except Exception:
                 pass  # Non-fatal config tweak; original config is still usable
 
-        # Inject cloud fallback provider if configured via --cloud-fallback
+        # Inject cloud fallback provider if configured via --cloud-fallback.
+        # Phase 3c TODO (double-injection guard): when --cloud-fallback is
+        # re-expressed as an appended CLOUD placement entry, this env-driven
+        # path AND the multi-element placement compile would both add the cloud
+        # provider. Gate this on ``cfg.placement == ()`` (derived-only) — or
+        # fold it into the placement→providers compile — so the cloud fallback
+        # is injected exactly once. See the Phase-3 follow-up notes in the plan.
         llm_config = self._maybe_inject_cloud_fallback(cfg, llm_config)
 
         # Plan 4 C4: inject drain constraint so drained mesh nodes are
