@@ -426,6 +426,41 @@ def check_resolved_config() -> list["CheckResult"]:
     # Answers "will this config fit?" rather than "is VRAM full now?".
     results.extend(_check_vram_context_pressure())
 
+    # lane_capability_placement_split.md Phase 3c: surface the per-tier
+    # capability × placement axis. For each tier with an explicit config.json
+    # placement, show the ordered origins; WARN on legacy remote_* + placement
+    # coexistence (placement wins via derive_placement's short-circuit, so the
+    # remote_* fields are silently ignored — an easy operator foot-gun).
+    for tier in ("large", "medium", "small"):
+        tier_cfg = getattr(getattr(cfg, "lanes", None), tier, None)
+        placement = getattr(tier_cfg, "placement", ()) if tier_cfg is not None else ()
+        if not placement:
+            continue
+        chain = " → ".join(f"{p.origin}:{p.model or p.url or '?'}" for p in placement)
+        results.append(
+            CheckResult(
+                name=f"lanes.{tier}.placement",
+                status="ok",
+                message=f"capability '{tier}' → placement [{chain}]",
+            )
+        )
+        legacy_set = any(getattr(tier_cfg, f, None) for f in ("remote_url", "remote_model", "remote_api_key_ref"))
+        if legacy_set:
+            results.append(
+                CheckResult(
+                    name=f"lanes.{tier}.placement",
+                    status="warn",
+                    message=(
+                        f"lanes.{tier} sets BOTH an explicit placement AND legacy "
+                        f"remote_* fields — placement wins, the remote_* fields are ignored"
+                    ),
+                    fix=(
+                        f"Remove the redundant remote_* fields from lanes.{tier}, or drop the "
+                        f"placement to use them:\n  maxim config edit"
+                    ),
+                )
+            )
+
     return results
 
 

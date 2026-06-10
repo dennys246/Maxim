@@ -202,6 +202,14 @@ directly.
    as placement edits, kept working through 1.x with one-shot deprecation INFO,
    drop in 1.2. ✅
 
+### Phase 3 status — COMPLETE (3a + 3b + 3c, 2026-06-10)
+
+- **3a** (PR #359, merged): builders compile from the primary placement; fence removed.
+- **3b** (PR #360): config.json `placement` declarative schema (`LaneTierPlacement`) + `validate_placement_coherence` enforced at load + writer round-trip.
+- **3c** (this PR): runtime producer (`config.json placement → LaneConfig.placement`) + multi-element **tail-injection** compile (`_inject_placement_tail`/`_placement_entry_to_provider`) + `--cloud-lane`/`--cloud-fallback`/`--llm` re-expressed as placement edits + doctor capability×placement view.
+
+**Implementation finding (3c) — cloud-profile primary dispatch.** "Cloud profile" (`claude-sonnet`) vs "cloud URL" are distinct: a cloud *profile* with no url builds correctly only via the **profile-driven** `_build_local_backend` (which `load_llm_config` resolves to the right backend, e.g. anthropic), NOT the openai-assuming `_build_remote_backend`. So `_build_backend` routes a CLOUD-origin primary **without a url** to the local/profile path (forcing `cloud_enabled=True`); CLOUD-with-url and PEER go remote. Derived CLOUD always carries a url, so this only affects explicit cloud-profile placements — no regression. The CLAUDE.md `[engineering]` invariant ("Lane = capability tier; placement is a separate ordered axis") landed with 3c.
+
 ### Phase-3 follow-up notes (from the 3a two-lens review, 2026-06-09)
 
 Phase 3a (builders compile from the **primary** placement; fence removed) shipped
