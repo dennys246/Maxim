@@ -24,6 +24,7 @@ from maxim.doctor.checks import (
 )
 from maxim.runtime.config_loader import (
     LaneTierConfig,
+    LaneTierPlacement,
     LanesConfigSection,
     LLMConfigSection,
     MaximConfig,
@@ -717,3 +718,41 @@ class TestFormatValueForSet:
         from maxim.doctor.checks import _format_value_for_set
 
         assert _format_value_for_set("") == "''"
+
+
+class TestPlacementView:
+    """Phase 3c: the Resolved Config section surfaces capability × placement."""
+
+    def test_config_placement_surfaced(self, fake_home):
+        from maxim.runtime.config_writer import write_config
+
+        write_config(
+            MaximConfig(
+                lanes=LanesConfigSection(
+                    large=LaneTierConfig(placement=(LaneTierPlacement(origin="peer", url="http://leader/v1"),))
+                )
+            )
+        )
+        reset_config_cache()
+        results = check_resolved_config()
+        rows = [r for r in results if r.name == "lanes.large.placement"]
+        assert rows and rows[0].status == "ok"
+        assert "peer:" in rows[0].message and "capability 'large'" in rows[0].message
+
+    def test_coexistence_warns(self, fake_home):
+        from maxim.runtime.config_writer import write_config
+
+        write_config(
+            MaximConfig(
+                lanes=LanesConfigSection(
+                    large=LaneTierConfig(
+                        remote_url="http://x/v1",
+                        placement=(LaneTierPlacement(origin="local", model="m"),),
+                    )
+                )
+            )
+        )
+        reset_config_cache()
+        results = check_resolved_config()
+        warns = [r for r in results if r.name == "lanes.large.placement" and r.status == "warn"]
+        assert warns and "ignored" in warns[0].message

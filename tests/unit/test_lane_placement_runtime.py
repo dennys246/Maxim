@@ -156,3 +156,86 @@ class TestMultiElementTailInjection:
             (built_cfg,), _ = mock_router.call_args
             priority = built_cfg.routing.get("provider_priority", []) if built_cfg.routing else []
             assert not any(k.startswith("placement-fallback") for k in priority)
+
+
+class TestCloudProfilePrimaryBuild:
+    def test_cloud_profile_primary_builds_via_profile_path_with_cloud_enabled(self):
+        # An explicit CLOUD primary with no url (a cloud profile) must build via
+        # the profile-driven local path (correct anthropic backend), NOT the
+        # openai remote path, and have cloud_enabled forced on.
+        from maxim.models.language.config import LLMConfig
+
+        cfg = LaneConfig(
+            name="large",
+            max_workers=1,
+            placement=(ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet"),),
+        )
+        mgr = LaneBackendManager({"large": cfg}, max_backends=5, max_cloud_lanes=1)
+        with (
+            patch("maxim.models.language.config.load_llm_config") as mock_load,
+            patch("maxim.models.language.router.LLMRouter") as mock_router,
+        ):
+            mock_load.return_value = LLMConfig(backend="anthropic", model="claude-sonnet-4-6")
+            mgr.get_backend("large")
+            # profile-driven path: load_llm_config called with the cloud profile
+            _, kwargs = mock_load.call_args
+            assert kwargs.get("profile_override") == "claude-sonnet"
+            # cloud_enabled forced on
+            (built_cfg,), _ = mock_router.call_args
+            assert built_cfg.cloud_enabled is True
+            assert built_cfg.backend == "anthropic"
+
+
+# ─── CLI re-expression as placement edits ───────────────────────────────────
+
+from maxim.runtime.lane_backends import (  # noqa: E402
+    _apply_cloud_cli_overrides,
+    _apply_cloud_fallback_override,
+    _apply_local_llm_override,
+)
+
+_CLOUD = "claude-sonnet-4-6"  # canonical cloud-profile key (cli_utils normalizes)
+
+
+class TestCliReexpression:
+    def test_cloud_lane_prepends_cloud_primary(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_CLOUD_LANE_LARGE_MODEL", _CLOUD)
+        lane_configs = {"large": LaneConfig(name="large", max_workers=1, model_profile="mistral-7b")}
+        out = _apply_cloud_cli_overrides(lane_configs, None)
+        pl = out["large"].placement
+        assert pl[0].origin is Origin.CLOUD and pl[0].model == _CLOUD
+        assert out["large"].model_profile is None  # legacy field cleared
+
+    def test_cloud_lane_prepends_on_config_base(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_CLOUD_LANE_LARGE_MODEL", _CLOUD)
+        base = (ProviderPlacement(origin=Origin.PEER, url="http://leader/v1"),)
+        lane_configs = {"large": LaneConfig(name="large", max_workers=1, placement=base)}
+        out = _apply_cloud_cli_overrides(lane_configs, None)
+        pl = out["large"].placement
+        assert [p.origin for p in pl] == [Origin.CLOUD, Origin.PEER]  # cloud primary, config as fallback
+
+    def test_cloud_fallback_appends_after_derived_primary(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_CLOUD_FALLBACK_MODEL", _CLOUD)
+        lane_configs = {"large": LaneConfig(name="large", max_workers=1, model_profile="mistral-7b")}
+        out = _apply_cloud_fallback_override(lane_configs, None, peer_owned=False)
+        pl = out["large"].placement
+        assert [p.origin for p in pl] == [Origin.LOCAL, Origin.CLOUD]  # derived local primary, cloud fallback
+        assert pl[0].model == "mistral-7b" and pl[1].model == _CLOUD
+
+    def test_cloud_fallback_ignored_when_no_primary(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_CLOUD_FALLBACK_MODEL", _CLOUD)
+        lane_configs = {"large": LaneConfig(name="large", max_workers=1)}  # no profile, no url
+        out = _apply_cloud_fallback_override(lane_configs, None, peer_owned=False)
+        assert out["large"].placement == ()  # nothing to fall back from
+
+    def test_llm_overrides_placement_primary_keeping_tail(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_LLM_PROFILE", "mistral-7b")
+        base = (
+            ProviderPlacement(origin=Origin.PEER, url="http://leader/v1"),
+            ProviderPlacement(origin=Origin.CLOUD, model=_CLOUD),
+        )
+        lane_configs = {"large": LaneConfig(name="large", max_workers=1, placement=base)}
+        out = _apply_local_llm_override(lane_configs, None)
+        pl = out["large"].placement
+        assert pl[0].origin is Origin.LOCAL and pl[0].model == "mistral-7b"  # primary overridden
+        assert pl[1].origin is Origin.CLOUD  # fallback tail kept

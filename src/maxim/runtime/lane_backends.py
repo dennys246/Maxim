@@ -966,7 +966,16 @@ class LaneBackendManager:
         # worker_pool.validate_placement_coherence: PEER needs url, LOCAL needs
         # model, CLOUD needs url-or-model) and CLI edits in Phase 3c.
         primary = placement[0]
-        if primary.origin is Origin.LOCAL:
+        # Dispatch on the primary origin:
+        # - LOCAL → profile-driven local router.
+        # - CLOUD *profile* (no url, e.g. claude-sonnet) → ALSO the profile-
+        #   driven path: load_llm_config resolves the cloud profile to the right
+        #   backend (anthropic/openai). _build_remote_backend assumes an
+        #   openai-compatible base_url and would mis-build a cloud profile.
+        #   (Derived CLOUD always carries a url, so this only affects explicit
+        #   cloud-profile placements — no regression.)
+        # - CLOUD with url / PEER → explicit remote URL via _build_remote_backend.
+        if primary.origin is Origin.LOCAL or (primary.origin is Origin.CLOUD and not primary.url):
             return self._build_local_backend(cfg, primary)
         return self._build_remote_backend(cfg, primary, kind=placement_kind(placement))
 
@@ -995,6 +1004,16 @@ class LaneBackendManager:
         except Exception as e:
             logger.warning("Failed to load LLM config for profile %r: %s", profile, e)
             return None
+
+        # An explicit CLOUD-origin primary (cloud profile, no url) routes here
+        # for correct backend selection; the operator explicitly chose cloud, so
+        # enable cloud dispatch (the cloud-lane cap + _validate_cloud_config key/
+        # cost gates still apply at the get_backend + router layers).
+        if primary is not None and primary.origin is Origin.CLOUD:
+            try:
+                llm_config = dataclasses.replace(llm_config, cloud_enabled=True)
+            except Exception:
+                pass
 
         if "MAXIM_LLM_N_GPU_LAYERS" not in os.environ:
             try:
@@ -1447,12 +1466,17 @@ def _apply_cloud_cli_overrides(
     lane_configs: dict[str, Any],
     logger: Any | None,
 ) -> dict[str, Any]:
-    """Apply --cloud-lane env vars set by cli.py.
+    """Re-express ``--cloud-lane`` (``MAXIM_CLOUD_LANE_<TIER>_MODEL``) as a
+    placement edit (Phase 3c).
 
-    Rewrites the named lane to use the cloud model profile as its primary.
-    The cloud fallback (--cloud-fallback) is handled later in
-    _build_local_backend, which injects the fallback provider into the
-    LLMRouter's provider dict.
+    PREPENDS a CLOUD placement entry as the tier's PRIMARY, on top of any
+    config.json/derived placement base (CLI > config). For a tier with no prior
+    explicit placement this yields ``[CLOUD]`` — cloud-only, the legacy
+    ``--cloud-lane`` behavior; on top of a config placement it makes cloud the
+    primary and keeps the rest as fallback. Legacy ``remote_*`` / ``model_profile``
+    fields are cleared so the placement is unambiguous. ``MAXIM_CLOUD_LANE_*``
+    stays a deprecated-but-working alias through 1.x. The model name is already
+    normalized to its canonical cloud-profile key by ``cli_utils``.
     """
     out = dict(lane_configs)
     for lane_name, cfg in list(out.items()):
@@ -1463,8 +1487,7 @@ def _apply_cloud_cli_overrides(
             from maxim.models.language.config import _BUILTIN_PROFILES
         except Exception:
             continue
-        profile_data = _BUILTIN_PROFILES.get(cloud_model, {})
-        if not profile_data.get("cloud"):
+        if not _BUILTIN_PROFILES.get(cloud_model, {}).get("cloud"):
             if logger is not None:
                 logger.warning(
                     "MAXIM_CLOUD_LANE_%s_MODEL=%s is not a cloud profile — ignoring",
@@ -1472,26 +1495,66 @@ def _apply_cloud_cli_overrides(
                     cloud_model,
                 )
             continue
-        # Rewrite the lane to use the cloud profile as primary. Clear any
-        # peer/remote-URL assignment: --cloud-lane is an explicit user override
-        # and should route to the cloud provider directly, not through a peer
-        # tunnel that would reinterpret the model name as "whatever is loaded."
+        cloud_primary = ProviderPlacement(origin=Origin.CLOUD, model=cloud_model)
+        existing = tuple(cfg.placement)
         out[lane_name] = dataclasses.replace(
             cfg,
-            model_profile=cloud_model,
+            placement=(cloud_primary,) + existing,
+            model_profile=None,
             remote_url=None,
             remote_model=None,
             remote_api_key=None,
         )
         if logger is not None:
-            if cfg.remote_url:
-                logger.info(
-                    "Lane '%s' cloud override: clearing peer remote_url=%s to route to %s",
-                    lane_name,
-                    cfg.remote_url,
-                    cloud_model,
-                )
-            logger.info("Lane '%s' assigned cloud model: %s", lane_name, cloud_model)
+            logger.info("Lane '%s' --cloud-lane → CLOUD placement primary: %s", lane_name, cloud_model)
+    return out
+
+
+def _apply_cloud_fallback_override(
+    lane_configs: dict[str, Any],
+    logger: Any | None,
+    peer_owned: bool,
+) -> dict[str, Any]:
+    """Re-express ``--cloud-fallback`` (``MAXIM_CLOUD_FALLBACK_MODEL``) as an
+    APPENDED CLOUD placement on the large tier (Phase 3c).
+
+    Materializes the current primary (explicit config placement, or the derived
+    1-element placement from the legacy fields) so the cloud model becomes a
+    FALLBACK *after* it — i.e. ``[<primary>, CLOUD-fallback]`` → the
+    multi-element tail-injection compile builds "local primary → cloud
+    fallback" as one ordered list. This is the unification that subsumes the
+    old env-driven ``_maybe_inject_cloud_fallback`` injection; because placement
+    is now set, the build takes the tail-injection path (not the legacy env
+    path), so the cloud provider is added exactly once. Deprecated-but-working
+    alias through 1.x; model name already normalized by ``cli_utils``.
+    """
+    model = os.environ.get("MAXIM_CLOUD_FALLBACK_MODEL", "").strip()
+    if not model:
+        return lane_configs
+    try:
+        from maxim.models.language.config import _BUILTIN_PROFILES
+    except Exception:
+        return lane_configs
+    if not _BUILTIN_PROFILES.get(model, {}).get("cloud"):
+        if logger is not None:
+            logger.warning("MAXIM_CLOUD_FALLBACK_MODEL=%s is not a cloud profile — ignoring", model)
+        return lane_configs
+
+    out = dict(lane_configs)
+    cfg = out.get("large")
+    if cfg is None:
+        return lane_configs
+    base = tuple(cfg.placement) if cfg.placement else derive_placement(cfg, peer_owned=peer_owned)
+    if not base:
+        # Nothing to fall back FROM (no primary) — skip rather than make cloud
+        # the silent primary.
+        if logger is not None:
+            logger.warning("--cloud-fallback ignored: large lane has no primary to fall back from")
+        return lane_configs
+    fallback = ProviderPlacement(origin=Origin.CLOUD, model=model)
+    out["large"] = dataclasses.replace(cfg, placement=base + (fallback,))
+    if logger is not None:
+        logger.info("Lane 'large' --cloud-fallback → appended CLOUD placement: %s", model)
     return out
 
 
@@ -1658,7 +1721,33 @@ def _apply_local_llm_override(
     out = dict(lane_configs)
     target_lane = "large"
     cfg = out.get(target_lane)
-    if cfg is None or not cfg.remote_url:
+    if cfg is None:
+        return lane_configs
+
+    # Phase 3c: if the lane carries an explicit placement (config.json /
+    # --cloud-lane / --cloud-fallback), --llm <local> overrides its PRIMARY with
+    # the local profile while KEEPING any fallback tail (so `--llm mistral
+    # --cloud-fallback claude-sonnet` = local primary → cloud fallback). CLI >
+    # config.
+    if cfg.placement:
+        local_primary = ProviderPlacement(origin=Origin.LOCAL, model=profile_name)
+        new_placement = (local_primary,) + tuple(cfg.placement[1:])
+        out[target_lane] = dataclasses.replace(
+            cfg,
+            placement=new_placement,
+            remote_url=None,
+            remote_model=None,
+            remote_api_key=None,
+        )
+        if logger is not None:
+            logger.info(
+                "Lane 'large' --llm=%s → LOCAL placement primary (keeping %d fallback(s))",
+                profile_name,
+                len(cfg.placement) - 1,
+            )
+        return out
+
+    if not cfg.remote_url:
         return lane_configs
 
     if logger is not None:
@@ -1846,6 +1935,9 @@ def build_primary_router(
     # this base below, preserving the CLI > config precedence chain.
     lane_configs = _apply_config_placements(lane_configs, logger)
     lane_configs = _apply_cloud_cli_overrides(lane_configs, logger)
+    # --cloud-fallback: append a CLOUD fallback after the (config/derived/
+    # cloud-lane) primary, materializing it into a multi-element placement.
+    lane_configs = _apply_cloud_fallback_override(lane_configs, logger, _has_peer_config)
     # Local --llm <profile> override: runs AFTER cloud overrides so that
     # when both --llm and --cloud-lane are set, cloud wins for the
     # lane it targets while local wins for anything else. See P1 in
