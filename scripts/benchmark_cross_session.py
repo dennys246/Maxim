@@ -57,8 +57,42 @@ HARNESS_VERSION = "1.0"
 SCHEMA_VERSION = "1.0"
 EXPERIMENT_ID = "exp37_cross_session_graduation"
 
+# SCENARIOS is the DEFAULT analyzed set (Exp 37 pair). It is intentionally NOT
+# the full registry — ``deceptive_fire`` (Exp 38) is a registered scenario
+# (FAILURE_CLASS / SCENARIO_GOAL / SCENARIO_ENTITY below) but stays OUT of this
+# tuple so the analyzer's default ``--scenarios`` and existing Exp 37 tooling
+# keep their 2-scenario scope. Exp 38 runs select it explicitly via
+# ``--scenario counter_prior`` (harness) and ``--scenarios fire_pit,deceptive_fire``
+# (analyzer). The full registry is ``ALL_SCENARIOS``.
 SCENARIOS: tuple[str, ...] = ("fire_pit", "sharp_rock")
+ALL_SCENARIOS: tuple[str, ...] = ("fire_pit", "sharp_rock", "deceptive_fire")
 ARMS: tuple[str, ...] = ("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off")
+
+# Per-scenario (component_ref, entity_name). The entity_name is the prefix of
+# the entity affordance tools (``{entity_name}_{affordance}`` per
+# embodiment/tool_bridge.py::_resolve_tool_name) AND drives the warm_self /
+# first-contact metric channels in ``compute_metrics``. For fire_pit /
+# sharp_rock the entity name equals the scenario name (legacy assumption);
+# deceptive_fire breaks that — the scenario surfaces the ``hearth`` entity from
+# ``items/cradle_false_hearth`` (Exp 38, counter_prior_substrate_experiment.md).
+# ``_assert_failure_class_matches_yaml`` reads this map so the YAML cross-check
+# no longer hardcodes ``cradle_{scenario}`` / ``{scenario}_``.
+SCENARIO_ENTITY: dict[str, tuple[str, str]] = {
+    "fire_pit": ("items/cradle_fire_pit", "fire_pit"),
+    "sharp_rock": ("items/cradle_sharp_rock", "sharp_rock"),
+    "deceptive_fire": ("items/cradle_false_hearth", "hearth"),
+}
+
+# --scenario selection aliases (CLI convenience). Single scenario names route
+# directly; these aliases expand to a set. ``both`` stays the LEGACY Exp 37 pair
+# (fire_pit + sharp_rock) so an Exp 37 re-run keeps its scope; ``counter_prior``
+# is the Exp 38 matched pair (consistent control + deceptive counter-prior);
+# ``all`` runs every registered scenario.
+SCENARIO_SELECTIONS: dict[str, tuple[str, ...]] = {
+    "both": ("fire_pit", "sharp_rock"),
+    "counter_prior": ("fire_pit", "deceptive_fire"),
+    "all": ALL_SCENARIOS,
+}
 
 # Per-scenario failure-class action detection (per pre-reg §"Failed action class").
 # Entity affordance tools are named ``{entity_name}_{affordance}`` per
@@ -106,6 +140,31 @@ FAILURE_CLASS: dict[str, dict[str, Any]] = {
         "direct_engagement_tools": frozenset({"sharp_rock_examine", "sharp_rock_touch"}),
         "body_engagement_rules": (("infant_humanoid_pick_up", "object", "sharp_rock"),),
     },
+    # Exp 38 counter-prior (counter_prior_substrate_experiment.md §6.2). The
+    # ``hearth`` entity reads as an ordinary warm fire but its ``warm_self``
+    # self_effect is inverted to breach the thermal comfort band → thermal_contact
+    # failure → PainBus → NAc aversive. So in THIS scenario warm_self is a
+    # FAILURE tool, NOT a safe approach. observe stays safe; touch stays aversive.
+    "deceptive_fire": {
+        # warm_self is harmful here, so it joins touch in the failure class.
+        "direct_failure_tools": frozenset({"hearth_warm_self", "hearth_touch"}),
+        # hearth is non-acquirable, but keep the body rule for structural
+        # symmetry with fire_pit (pick_up of the engagement entity is aversive
+        # by the same reflex if it ever fires).
+        "body_failure_rules": (("infant_humanoid_pick_up", "object", "hearth"),),
+        # Only observe is a non-failure choice on the deceptive hearth.
+        "direct_safe_tools": frozenset({"hearth_observe"}),
+        # No SAFE positive-approach affordance on the deceptive hearth — warm_self
+        # is harmful. ``positive_approach_engagement_fraction`` is therefore
+        # structurally 0 for this scenario (the analyzer reports it N/A via
+        # structural-absence detection, NOT FAIL). The warm_self-preference signal
+        # the Exp 38 interaction needs lives in the dedicated
+        # ``warm_self_engagement_fraction`` metric (computed from the entity's own
+        # ``hearth_warm_self`` tool, decoupled from the safe/approach label).
+        "direct_approach_tools": frozenset(),
+        "direct_engagement_tools": frozenset({"hearth_warm_self", "hearth_observe", "hearth_touch"}),
+        "body_engagement_rules": (("infant_humanoid_pick_up", "object", "hearth"),),
+    },
 }
 
 # Ablation env vars (resumed run only — prior runs always have all bio
@@ -127,8 +186,25 @@ ARM_ENV: dict[str, dict[str, str]] = {
 SCENARIO_GOAL: dict[str, str] = {
     "fire_pit": "cradle infant explores the warm room with the fire pit",
     "sharp_rock": "cradle infant explores the play area with sharp rock and blanket",
+    # Exp 38 counter-prior: the goal surfaces the hearth as an ordinary warm
+    # fire. It must NOT hint that warming hurts (the world carries the twist,
+    # not the words) — see counter_prior_substrate_experiment.md §7.
+    "deceptive_fire": "cradle infant explores the warm room with the glowing hearth",
 }
 PEACEFUL_GOAL = "cradle infant explores the puzzle door and button"
+
+# Registry-consistency invariant: every scenario in the full registry must
+# declare its FAILURE_CLASS, SCENARIO_ENTITY (component + entity name), and
+# SCENARIO_GOAL. Without this, a scenario added to ``ALL_SCENARIOS`` but missing
+# a SCENARIO_ENTITY entry would silently fall back to the legacy
+# ``cradle_{scenario}`` / ``{scenario}_`` name assumption in the validator and
+# metric channel — validating the wrong YAML or zeroing warm_self silently.
+# Fail loudly at import instead.
+for _sc in ALL_SCENARIOS:
+    assert _sc in FAILURE_CLASS, f"scenario {_sc!r} missing from FAILURE_CLASS"
+    assert _sc in SCENARIO_ENTITY, f"scenario {_sc!r} missing from SCENARIO_ENTITY"
+    assert _sc in SCENARIO_GOAL, f"scenario {_sc!r} missing from SCENARIO_GOAL"
+del _sc
 
 # Turn-boundary tools — actions before each say/respond are grouped into one
 # turn. Documented in the protocol as the implementation operationalization
@@ -682,6 +758,38 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
     # 0 (no positive-approach affordance) → value = 0 regardless.
     positive_approach_engagement_fraction = approach_actions / engagement_actions if engagement_actions > 0 else 0.0
 
+    # Exp 38 counter-prior (counter_prior_substrate_experiment.md §6.2): the
+    # warm_self-engagement-fraction — the share of on-target engagement that is
+    # the entity's ``warm_self`` affordance — computed from the entity's OWN
+    # ``{entity}_warm_self`` tool, DECOUPLED from the safe/approach label. For
+    # fire_pit this equals ``positive_approach_engagement_fraction`` (warm_self
+    # IS the approach affordance there). For deceptive_fire warm_self is a
+    # FAILURE tool (not approach), so ``positive_approach_engagement_fraction``
+    # is structurally 0 — but this metric still measures the warm_self
+    # PREFERENCE the interaction primary needs. The Exp 38 interaction predicts
+    # B reduces this in deceptive (where warming hurts) and NOT in consistent.
+    entity_name = SCENARIO_ENTITY.get(scenario, ("", scenario))[1]
+    warm_self_tool = f"{entity_name}_warm_self"
+    warm_self_actions = sum(1 for a in actions if a.get("tool") == warm_self_tool)
+    warm_self_engagement_fraction = warm_self_actions / engagement_actions if engagement_actions > 0 else 0.0
+
+    # Exp 38 first-contact isolation (counter_prior_substrate_experiment.md §5):
+    # was the agent's FIRST engagement with the scenario entity a ``warm_self``?
+    # On Arm B this fires BEFORE any in-session pain in B's own session, so
+    # avoidance on first contact can only come from the carried (cross-session)
+    # substrate — isolating cross-session transfer from within-session learning.
+    # THREE states, do NOT collapse: True = first engagement was warm_self;
+    # False = engaged first via observe/touch (did NOT warm); None = never
+    # engaged the entity (no data for this cell — the analyzer DROPS None trials
+    # from the first-contact proportion, it does not impute them as False).
+    first_contact_warm_self: bool | None = None
+    first_contact_action_index: int | None = None
+    for idx, action in enumerate(actions):
+        if _is_engagement(action):
+            first_contact_warm_self = action.get("tool") == warm_self_tool
+            first_contact_action_index = idx
+            break
+
     # exp37_metric_pivot.md (Path 2) corroborating: index of the action
     # at which the agent first calls a positive-approach affordance.
     # None if never reached. Censored to total_actions + 1 in the analyzer
@@ -755,6 +863,14 @@ def compute_metrics(actions: list[dict[str, Any]], scenario: str) -> dict[str, A
         # robustness cross-check (analyzer's ROBUSTNESS_METRIC).
         "positive_approach_engagement_fraction": positive_approach_engagement_fraction,
         "fire_pit_engagement_count": engagement_actions,
+        # Exp 38 counter-prior (counter_prior_substrate_experiment.md §5):
+        # warm_self-preference channel + first-contact isolation. The interaction
+        # primary uses ``warm_self_engagement_fraction``; the first-contact
+        # primary uses ``first_contact_warm_self``.
+        "warm_self_engagement_fraction": warm_self_engagement_fraction,
+        "warm_self_action_count": warm_self_actions,
+        "first_contact_warm_self": first_contact_warm_self,
+        "first_contact_action_index": first_contact_action_index,
         # exp37_metric_pivot.md (Path 2) NEW corroborating: descriptive
         # turn-to-first-warm-self. ``None`` means the agent never reached
         # a positive-approach action this session; the analyzer censors
@@ -952,6 +1068,10 @@ def _assert_failure_class_matches_yaml(scenario: str) -> None:
         return  # Smoke-test contexts may not have full bio stack.
 
     rules = FAILURE_CLASS[scenario]
+    # Scenario → (component_ref, entity_name). The entity_name is the affordance
+    # tool prefix; it equals the scenario name for fire_pit / sharp_rock but NOT
+    # for deceptive_fire (entity ``hearth`` from ``items/cradle_false_hearth``).
+    component_ref, entity_name = SCENARIO_ENTITY.get(scenario, (f"items/cradle_{scenario}", scenario))
     expected_affordances: set[str] = set()
     # Include direct_approach_tools AND direct_engagement_tools so a
     # rename of ``warm_self`` / ``observe`` / ``touch`` in the YAML
@@ -964,15 +1084,14 @@ def _assert_failure_class_matches_yaml(scenario: str) -> None:
         | rules.get("direct_approach_tools", frozenset())
         | rules.get("direct_engagement_tools", frozenset())
     )
+    prefix = f"{entity_name}_"
     for tname in declared:
-        # tool names are ``{entity_name}_{affordance}``; entity_name is the
-        # scenario itself for these direct-affordance tools.
-        prefix = f"{scenario}_"
+        # tool names are ``{entity_name}_{affordance}``.
         if tname.startswith(prefix):
             expected_affordances.add(tname[len(prefix) :])
 
     try:
-        info = ComponentRegistry().get_info(f"items/cradle_{scenario}")
+        info = ComponentRegistry().get_info(component_ref)
     except Exception:
         return  # Component not registered in this environment.
     source_path = getattr(info, "source_path", None)
@@ -1403,7 +1522,14 @@ def run_benchmark(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Exp 37 cross-session graduation harness")
-    parser.add_argument("--scenario", choices=["fire_pit", "sharp_rock", "both"], default="both")
+    parser.add_argument(
+        "--scenario",
+        choices=[*ALL_SCENARIOS, *SCENARIO_SELECTIONS],
+        default="both",
+        help="Single scenario name, or an alias: 'both' = Exp 37 pair "
+        "(fire_pit, sharp_rock); 'counter_prior' = Exp 38 pair "
+        "(fire_pit, deceptive_fire); 'all' = every scenario.",
+    )
     parser.add_argument(
         "--arms", default=",".join(ARMS), help=f"Comma-separated arms ({'|'.join(ARMS)}); default: all six"
     )
@@ -1461,7 +1587,7 @@ def main(argv: list[str] | None = None) -> int:
     _PACE_S = max(0.0, float(args.pace_s))
 
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
-    scenarios = SCENARIOS if args.scenario == "both" else (args.scenario,)
+    scenarios = SCENARIO_SELECTIONS.get(args.scenario, (args.scenario,))
     workdir = args.workdir or Path(tempfile.mkdtemp(prefix="exp37_"))
 
     try:

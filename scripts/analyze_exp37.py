@@ -392,6 +392,41 @@ def _percentile_band(values: list[float]) -> tuple[float, float] | None:
     return (qs[0], qs[-1])
 
 
+def _is_structurally_absent(
+    grouped: dict[tuple[str, str], list[dict[str, Any]]],
+    scenario: str,
+    metric: str,
+    *,
+    arms: tuple[str, ...],
+) -> bool:
+    """True iff ``metric`` is IDENTICAL across every arm's every trial in
+    ``scenario`` — i.e. zero variance everywhere, so nothing the agent did ever
+    moved it.
+
+    Such a metric was never exercised in this world (the canonical case is
+    ``positive_approach_engagement_fraction`` in a scenario with no
+    positive-approach affordance — structurally 0 for every arm). A primary
+    FAIL on a structurally-absent metric is a FALSE NEGATIVE: it implies the
+    hypothesis was tested and rejected when in fact it was never tested. The
+    caller reports **N/A / inconclusive** instead of FAIL.
+
+    Folds the Exp 37 ``sharp_rock`` artifact (the analyzer reported FAIL on
+    ``positive_approach_engagement_fraction``, a fire-pit metric inapplicable to
+    sharp_rock) — counter_prior_substrate_experiment.md §6.3.
+
+    Returns False when there are <2 finite samples (let the normal
+    insufficient-data path handle it) — absence is a claim about constancy
+    across a populated design, not about missing data.
+    """
+    all_vals: list[float] = []
+    for arm in arms:
+        all_vals.extend(_filter_finite(_extract_metric(grouped.get((scenario, arm), []), metric)))
+    if len(all_vals) < 2:
+        return False
+    first = all_vals[0]
+    return all(v == first for v in all_vals)
+
+
 # ─── Per-criterion computation ───────────────────────────────────────────
 
 
@@ -427,6 +462,12 @@ class ScenarioVerdict:
     # "predicted_direction": "increase"|"same_or_higher", "note": str|None}``.
     # None for scenarios with no approach affordance (e.g. sharp_rock).
     approach_descriptive: dict[str, Any] | None = None
+    # True when PRIMARY_METRIC is structurally absent (identical across every
+    # arm/trial — never exercised). Such a scenario reports the primary as
+    # N/A / inconclusive, NOT FAIL, and is excluded from the overall-verdict
+    # gating (counter_prior_substrate_experiment.md §6.3 — folds the Exp 37
+    # sharp_rock artifact). Optional/defaulted per CC3 (non-breaking add).
+    primary_structural_absence: bool = False
 
 
 @dataclass(frozen=True)
@@ -444,6 +485,11 @@ class AnalysisResult:
     overall_label: str
     overall_rationale: str
     markdown: str
+    # Exp 38 counter-prior interaction verdict — populated only when BOTH the
+    # consistent control and deceptive scenarios are present (else None, and the
+    # overall_label comes from the legacy Exp 37 ``overall_verdict``). Optional/
+    # defaulted per CC3 (non-breaking add).
+    counter_prior: CounterPriorVerdict | None = None
 
 
 PRIMARY_SD_SHIFT_THRESHOLD = 1.0
@@ -683,10 +729,24 @@ def _compute_secondary(
 def evaluate_scenario(
     grouped: dict[tuple[str, str], list[dict[str, Any]]],
     scenario: str,
+    *,
+    arms: tuple[str, ...] = HARNESS_ARMS,
 ) -> ScenarioVerdict:
     primary_pass, isolation_pass, a_mean, a_sd, a_band, b_mean, c_mean, notes = _compute_primary_isolation(
         grouped, scenario, PRIMARY_METRIC, direction=PRIMARY_METRIC_DIRECTION
     )
+
+    # Structural-absence detection (counter_prior_substrate_experiment.md §6.3):
+    # if PRIMARY_METRIC never varied across any arm, the primary FAIL above is a
+    # false negative — report N/A and exclude the scenario from overall gating.
+    primary_structural_absence = _is_structurally_absent(grouped, scenario, PRIMARY_METRIC, arms=arms)
+    if primary_structural_absence:
+        notes.append(
+            f"PRIMARY_METRIC {PRIMARY_METRIC!r} is structurally absent for {scenario} "
+            f"(identical across every arm/trial — the approach affordance was never "
+            f"exercised). Reporting primary as N/A / inconclusive, not FAIL; this "
+            f"scenario is excluded from the overall-verdict gating."
+        )
 
     # Robustness cross-check via the legacy per-action failure rate.
     # exp37_metric_pivot.md (Path 2): the OLD primary is retained as the
@@ -729,6 +789,7 @@ def evaluate_scenario(
         c_mean=c_mean,
         notes=notes,
         approach_descriptive=approach_descriptive,
+        primary_structural_absence=primary_structural_absence,
     )
 
 
@@ -790,6 +851,239 @@ def _compute_descriptive_approach(
     }
 
 
+# ─── Exp 38 counter-prior interaction ────────────────────────────────────
+#
+# counter_prior_substrate_experiment.md §5. These metrics are FROZEN in the
+# pre-registration doc (docs/experiments/38_counter_prior_substrate.md) before
+# the first fire — do NOT re-tune them post-hoc (the Exp 37 sharp_rock
+# metric-drift is the cautionary tale).
+
+COUNTER_PRIOR_CONSISTENT_SCENARIO = "fire_pit"  # matched control — warm_self safe
+COUNTER_PRIOR_DECEPTIVE_SCENARIO = "deceptive_fire"  # counter-prior — warm_self harmful
+# Warm_self-preference channel (decoupled from the safe/approach label so it
+# measures warm_self engagement in BOTH scenarios — see the harness's
+# ``warm_self_engagement_fraction`` derivation).
+COUNTER_PRIOR_METRIC = "warm_self_engagement_fraction"
+FIRST_CONTACT_FIELD = "first_contact_warm_self"
+# Interaction must be negative by ≥ this many SD of the pooled Arm-A baseline.
+INTERACTION_SD_SHIFT_THRESHOLD = 1.0
+
+
+@dataclass(frozen=True)
+class CounterPriorVerdict:
+    """Exp 38 counter-prior interaction verdict (SHAPE-FROZEN at 1.0 (CC3)).
+
+    The top-level criterion for Exp 38 — supersedes the per-scenario Exp 37
+    gating when both the consistent control and the deceptive counter-prior
+    scenarios are present. See counter_prior_substrate_experiment.md §5.
+    """
+
+    # Interaction primary: Δ_deceptive(B−A) − Δ_consistent(B−A) on
+    # warm_self-engagement-fraction, normalized by pooled Arm-A SD.
+    delta_deceptive: float | None
+    delta_consistent: float | None
+    interaction: float | None
+    pooled_a_sd: float | None
+    interaction_sd_units: float | None
+    interaction_pass: bool
+    # First-contact isolation: P(warm_self on first contact) per arm/scenario.
+    p_a_deceptive: float | None
+    p_b_deceptive: float | None
+    p_a_consistent: float | None
+    p_b_consistent: float | None
+    first_contact_deceptive_drop: float | None  # p_a_dec − p_b_dec (predicted > 0)
+    first_contact_consistent_drop: float | None  # p_a_con − p_b_con (predicted ≈ 0)
+    first_contact_interaction: float | None  # dec_drop − con_drop (predicted > 0)
+    first_contact_pass: bool
+    # Secondary: ablation reversion on the deceptive scenario (≥1 must revert).
+    ablation_details: list[dict[str, Any]]
+    ablation_hits: int
+    # Derived flags feeding the verdict tree.
+    avoids_both: bool  # general-caution confound: B reduces warm_self everywhere
+    verdict_label: str
+    verdict_rationale: str
+    notes: list[str]
+
+
+def _extract_bool_proportion(records: list[dict[str, Any]], field: str) -> float | None:
+    """Proportion of records whose ``field`` is True, over the non-None values.
+
+    Returns None when every value is None (the entity was never engaged in any
+    trial — no first-contact signal). Used for ``first_contact_warm_self``.
+    """
+    vals = [bool(r[field]) for r in records if r.get(field) is not None]
+    if not vals:
+        return None
+    return sum(1 for v in vals if v) / len(vals)
+
+
+def compute_counter_prior(
+    grouped: dict[tuple[str, str], list[dict[str, Any]]],
+    *,
+    consistent: str = COUNTER_PRIOR_CONSISTENT_SCENARIO,
+    deceptive: str = COUNTER_PRIOR_DECEPTIVE_SCENARIO,
+    metric: str = COUNTER_PRIOR_METRIC,
+    sd_threshold: float = INTERACTION_SD_SHIFT_THRESHOLD,
+) -> CounterPriorVerdict | None:
+    """Compute the Exp 38 counter-prior interaction (§5). Returns None unless
+    BOTH the consistent control and the deceptive scenario have data — so an
+    Exp 37 run (no deceptive_fire) falls through to the legacy verdict path.
+
+    FROZEN decision logic (pre-registered):
+
+      * **Interaction primary** — ``interaction = Δ_dec(B−A) − Δ_con(B−A)`` on
+        warm_self-fraction; ``interaction_pass`` iff
+        ``interaction / pooled_A_sd ≤ −sd_threshold`` (B reduces warm_self
+        *specifically* in the deceptive world). Zero-SD fallback: pass on a
+        negative interaction.
+      * **First-contact primary** — ``dec_drop = P_A(dec) − P_B(dec)`` and
+        ``con_drop`` likewise; ``first_contact_pass`` iff ``dec_drop > 0`` AND
+        ``(dec_drop − con_drop) > 0`` (avoidance is specific to deceptive).
+      * **Secondary** — ≥1 ablation reverts B's deceptive warm_self toward A
+        (reuses ``_compute_secondary``).
+
+    Verdict tree (§5 outcome matrix):
+      - interaction_pass AND first_contact_pass AND ablation_hits≥1
+        → SUBSTRATE_MATTERS
+      - interaction_pass AND first_contact_pass AND ablation_hits==0
+        → VOID_NOT_ATTRIBUTABLE
+      - avoids_both (B reduces warm_self in BOTH by ≥1 SD, interaction not
+        specific) → VOID_GENERAL_CAUTION
+      - otherwise (B did not specifically avoid the deceptive hearth)
+        → DOMINANCE
+    """
+    if not grouped.get((deceptive, "A")) or not grouped.get((consistent, "A")):
+        return None
+
+    notes: list[str] = []
+
+    a_dec = _extract_metric(grouped.get((deceptive, "A"), []), metric)
+    b_dec = _extract_metric(grouped.get((deceptive, "B"), []), metric)
+    a_con = _extract_metric(grouped.get((consistent, "A"), []), metric)
+    b_con = _extract_metric(grouped.get((consistent, "B"), []), metric)
+
+    a_dec_mean = _safe_mean(a_dec)
+    b_dec_mean = _safe_mean(b_dec)
+    a_con_mean = _safe_mean(a_con)
+    b_con_mean = _safe_mean(b_con)
+    a_dec_sd = _safe_sd(a_dec)
+    a_con_sd = _safe_sd(a_con)
+
+    delta_deceptive = (b_dec_mean - a_dec_mean) if (a_dec_mean is not None and b_dec_mean is not None) else None
+    delta_consistent = (b_con_mean - a_con_mean) if (a_con_mean is not None and b_con_mean is not None) else None
+    interaction = (
+        (delta_deceptive - delta_consistent) if (delta_deceptive is not None and delta_consistent is not None) else None
+    )
+    # Pooled Arm-A baseline SD across both scenarios — the warm_self-fraction's
+    # baseline variability under a fresh session (the normalizer the pre-reg
+    # names "≥1 SD of the Arm-A baseline").
+    pooled_a_sd = _safe_sd(_filter_finite(a_dec) + _filter_finite(a_con))
+
+    interaction_sd_units: float | None = None
+    interaction_pass = False
+    if interaction is not None:
+        if pooled_a_sd is None or pooled_a_sd == 0:
+            interaction_pass = interaction < 0
+            if interaction_pass:
+                notes.append(
+                    f"Zero-SD pooled Arm-A baseline; interaction passes on negative sign ({interaction:+.4f})."
+                )
+        else:
+            interaction_sd_units = interaction / pooled_a_sd
+            interaction_pass = interaction_sd_units <= -sd_threshold
+
+    # First-contact proportions.
+    p_a_dec = _extract_bool_proportion(grouped.get((deceptive, "A"), []), FIRST_CONTACT_FIELD)
+    p_b_dec = _extract_bool_proportion(grouped.get((deceptive, "B"), []), FIRST_CONTACT_FIELD)
+    p_a_con = _extract_bool_proportion(grouped.get((consistent, "A"), []), FIRST_CONTACT_FIELD)
+    p_b_con = _extract_bool_proportion(grouped.get((consistent, "B"), []), FIRST_CONTACT_FIELD)
+    fc_dec_drop = (p_a_dec - p_b_dec) if (p_a_dec is not None and p_b_dec is not None) else None
+    fc_con_drop = (p_a_con - p_b_con) if (p_a_con is not None and p_b_con is not None) else None
+    fc_interaction = (fc_dec_drop - fc_con_drop) if (fc_dec_drop is not None and fc_con_drop is not None) else None
+    first_contact_pass = (
+        fc_dec_drop is not None and fc_dec_drop > 0 and fc_interaction is not None and fc_interaction > 0
+    )
+    if fc_dec_drop is None or fc_con_drop is None:
+        notes.append("First-contact proportion missing for ≥1 arm (entity never engaged in some cell).")
+
+    # Secondary — ablation reversion on the deceptive scenario warm_self metric.
+    ablation_details = _compute_secondary(grouped, deceptive, metric)
+    ablation_hits = sum(1 for r in ablation_details if r["pass"])
+
+    # General-caution confound: B reduces warm_self in BOTH scenarios by ≥1 SD
+    # of each scenario's own Arm-A baseline (so the reduction is not specific to
+    # the deceptive world — that's caution, not counter-prior learning).
+    def _dropped(delta: float | None, sd: float | None) -> bool:
+        if delta is None:
+            return False
+        if sd is None or sd == 0:
+            return delta < 0
+        return (delta / sd) <= -sd_threshold
+
+    avoids_both = _dropped(delta_deceptive, a_dec_sd) and _dropped(delta_consistent, a_con_sd)
+
+    substrate_signal = interaction_pass and first_contact_pass
+    if interaction_pass != first_contact_pass:
+        notes.append(
+            f"Interaction primary (pass={interaction_pass}) and first-contact primary "
+            f"(pass={first_contact_pass}) DISAGREE — both are pre-registered primaries; "
+            f"SUBSTRATE_MATTERS requires both. Treating as no clean substrate signal."
+        )
+
+    if substrate_signal and ablation_hits >= 1:
+        label, rationale = (
+            VERDICT_CP_SUBSTRATE_MATTERS,
+            "B reduces warm_self specifically in the deceptive world (interaction + "
+            "first-contact both pass) AND ≥1 ablation reverts it toward Arm A. The "
+            "substrate overrides a strong, wrong prior — the positive thesis result.",
+        )
+    elif substrate_signal and ablation_hits == 0:
+        label, rationale = (
+            VERDICT_CP_VOID_NOT_ATTRIBUTABLE,
+            "B avoids the deceptive hearth (interaction + first-contact pass) but NO "
+            "ablation abolishes the avoidance — the avoidance is not attributable to "
+            "the substrate wires (prompt or within-session memory). Void for this run.",
+        )
+    elif avoids_both:
+        label, rationale = (
+            VERDICT_CP_VOID_GENERAL_CAUTION,
+            "B reduces warm_self in BOTH the deceptive AND consistent worlds by ≥1 SD "
+            "— a general-caution confound, not counter-prior learning. The interaction "
+            "is not specific to the harmful hearth. Void.",
+        )
+    else:
+        label, rationale = (
+            VERDICT_CP_DOMINANCE,
+            "B keeps warming the deceptive hearth — even direct cross-session pain does "
+            "NOT override the LLM's fire→warm prior. Dominance demonstrated: a stronger "
+            "result than the Exp 37 null (there WAS a behavioral gap and the substrate "
+            "did not fill it).",
+        )
+
+    return CounterPriorVerdict(
+        delta_deceptive=delta_deceptive,
+        delta_consistent=delta_consistent,
+        interaction=interaction,
+        pooled_a_sd=pooled_a_sd,
+        interaction_sd_units=interaction_sd_units,
+        interaction_pass=interaction_pass,
+        p_a_deceptive=p_a_dec,
+        p_b_deceptive=p_b_dec,
+        p_a_consistent=p_a_con,
+        p_b_consistent=p_b_con,
+        first_contact_deceptive_drop=fc_dec_drop,
+        first_contact_consistent_drop=fc_con_drop,
+        first_contact_interaction=fc_interaction,
+        first_contact_pass=first_contact_pass,
+        ablation_details=ablation_details,
+        ablation_hits=ablation_hits,
+        avoids_both=avoids_both,
+        verdict_label=label,
+        verdict_rationale=rationale,
+        notes=notes,
+    )
+
+
 # ─── Verdict matrix ──────────────────────────────────────────────────────
 #
 # Pre-reg §"Graduation paths from this experiment" + §"Falsification
@@ -803,20 +1097,42 @@ VERDICT_PARTIAL_REFRAMED = "PARTIAL — reframed"
 VERDICT_PARTIAL_FALSIFIED = "PARTIAL — falsified"  # I3 fold
 VERDICT_PARTIAL_INVESTIGATION = "PARTIAL — investigation gate"
 
+# Exp 38 counter-prior labels (counter_prior_substrate_experiment.md §5).
+# Both SUBSTRATE_MATTERS and DOMINANCE are *complete, diagnostic* outcomes
+# ("diagnostic either way", §1) — exit 0. The two VOID outcomes mean the run
+# did not cleanly discriminate (confound / non-attributable) — exit 4.
+VERDICT_CP_SUBSTRATE_MATTERS = "COUNTER-PRIOR — substrate matters"
+VERDICT_CP_DOMINANCE = "COUNTER-PRIOR — dominance demonstrated"
+VERDICT_CP_VOID_GENERAL_CAUTION = "COUNTER-PRIOR — void (general caution)"
+VERDICT_CP_VOID_NOT_ATTRIBUTABLE = "COUNTER-PRIOR — void (not substrate-attributable)"
+
 
 def overall_verdict(scenario_verdicts: list[ScenarioVerdict]) -> tuple[str, str]:
     """Apply the pre-reg's graduation matrix across scenarios.
 
     Returns ``(label, rationale)``. Both scenarios must pass independently
     for EARNED; failure on either scenario downgrades the overall verdict.
+
+    Scenarios whose PRIMARY_METRIC is structurally absent (N/A) are EXCLUDED
+    from every aggregate — they were never testable, so they neither pass nor
+    fail (counter_prior_substrate_experiment.md §6.3). This is the fix for the
+    Exp 37 sharp_rock artifact: previously sharp_rock's structurally-0 primary
+    FAILed and dragged the overall to investigation; now it is simply N/A.
     """
-    primary_ok = all(v.primary_pass for v in scenario_verdicts)
-    isolation_ok = all(v.isolation_pass for v in scenario_verdicts)
-    corroborating_total = sum(v.corroborating_hits for v in scenario_verdicts)
-    wrong_direction_total = sum(v.corroborating_wrong_direction for v in scenario_verdicts)
-    secondary_total = sum(v.secondary_hits for v in scenario_verdicts)
-    # 3 metrics × 2 scenarios = 6 corroborating slots total.
-    corroborating_slots = sum(len(v.corroborating_details) for v in scenario_verdicts)
+    gated = [v for v in scenario_verdicts if not v.primary_structural_absence]
+    if not gated:
+        return (
+            VERDICT_PARTIAL_INVESTIGATION,
+            "Every scenario's PRIMARY_METRIC is structurally absent (N/A) — nothing "
+            "testable in this design. Check the harness FAILURE_CLASS / metric wiring.",
+        )
+    primary_ok = all(v.primary_pass for v in gated)
+    isolation_ok = all(v.isolation_pass for v in gated)
+    corroborating_total = sum(v.corroborating_hits for v in gated)
+    wrong_direction_total = sum(v.corroborating_wrong_direction for v in gated)
+    secondary_total = sum(v.secondary_hits for v in gated)
+    # 3 corroborating metrics × N gated scenarios.
+    corroborating_slots = sum(len(v.corroborating_details) for v in gated)
 
     if not (primary_ok and isolation_ok):
         return (
@@ -886,6 +1202,12 @@ EXIT_CODE_FOR_LABEL: dict[str, int] = {
     VERDICT_PARTIAL_REFRAMED: 3,
     VERDICT_PARTIAL_FALSIFIED: 5,
     VERDICT_PARTIAL_INVESTIGATION: 4,
+    # Exp 38 counter-prior — both clean outcomes exit 0 (diagnostic either way);
+    # the two void/confound outcomes exit 4 (re-run / investigate).
+    VERDICT_CP_SUBSTRATE_MATTERS: 0,
+    VERDICT_CP_DOMINANCE: 0,
+    VERDICT_CP_VOID_GENERAL_CAUTION: 4,
+    VERDICT_CP_VOID_NOT_ATTRIBUTABLE: 4,
 }
 
 
@@ -898,12 +1220,74 @@ def _fmt(v: float | None, *, places: int = 4) -> str:
     return f"{v:.{places}f}"
 
 
+def _render_counter_prior(cp: CounterPriorVerdict) -> list[str]:
+    """Render the Exp 38 counter-prior interaction section (§5)."""
+    lines: list[str] = []
+    lines.append("### Counter-prior interaction (Exp 38 primary)")
+    lines.append("")
+    lines.append(f"**Verdict: {cp.verdict_label}**")
+    lines.append("")
+    lines.append(cp.verdict_rationale)
+    lines.append("")
+    lines.append("**Interaction primary — warm_self-engagement-fraction**")
+    lines.append("")
+    lines.append("| Quantity | Value |")
+    lines.append("|---|---|")
+    lines.append(f"| Δ deceptive (B − A) | {_fmt(cp.delta_deceptive)} |")
+    lines.append(f"| Δ consistent (B − A) | {_fmt(cp.delta_consistent)} |")
+    lines.append(f"| Interaction (Δ_dec − Δ_con) | {_fmt(cp.interaction)} |")
+    lines.append(f"| Pooled Arm-A SD | {_fmt(cp.pooled_a_sd)} |")
+    lines.append(f"| Interaction in SD units | {_fmt(cp.interaction_sd_units, places=2)} |")
+    lines.append(
+        f"| Predicted | ≤ −{INTERACTION_SD_SHIFT_THRESHOLD} SD → **{'PASS' if cp.interaction_pass else 'FAIL'}** |"
+    )
+    lines.append("")
+    lines.append("**First-contact isolation — P(warm_self on first contact)**")
+    lines.append("")
+    lines.append("| Arm | Deceptive | Consistent |")
+    lines.append("|---|---|---|")
+    lines.append(f"| A | {_fmt(cp.p_a_deceptive, places=2)} | {_fmt(cp.p_a_consistent, places=2)} |")
+    lines.append(f"| B | {_fmt(cp.p_b_deceptive, places=2)} | {_fmt(cp.p_b_consistent, places=2)} |")
+    lines.append("")
+    lines.append(
+        f"Deceptive drop (A − B) = {_fmt(cp.first_contact_deceptive_drop, places=2)}; "
+        f"consistent drop = {_fmt(cp.first_contact_consistent_drop, places=2)}; "
+        f"first-contact interaction = {_fmt(cp.first_contact_interaction, places=2)} → "
+        f"**{'PASS' if cp.first_contact_pass else 'FAIL'}** "
+        f"(need deceptive-drop > 0 AND interaction > 0)."
+    )
+    lines.append("")
+    lines.append("**Secondary — ablation reversion on the deceptive hearth (≥1 must revert)**")
+    lines.append("")
+    lines.append("| Ablation | A mean | B mean | Ablated mean | Shrinkage (SD units) | Verdict |")
+    lines.append("|---|---|---|---|---|---|")
+    for s in cp.ablation_details:
+        shr_disp = _fmt(s["shrinkage_in_sd_units"], places=2)
+        res = "PASS" if s["pass"] else "FAIL"
+        note_suffix = f" — {s['note']}" if s.get("note") else ""
+        lines.append(
+            f"| {s['label']} | {_fmt(s['a_mean'])} | {_fmt(s['b_mean'])} | "
+            f"{_fmt(s['ablated_mean'])} | {shr_disp} | **{res}**{note_suffix} |"
+        )
+    lines.append("")
+    lines.append(f"Ablation reversion hits: **{cp.ablation_hits} / {len(cp.ablation_details)}**")
+    lines.append("")
+    if cp.notes:
+        lines.append("**Counter-prior notes / warnings**")
+        lines.append("")
+        for n in cp.notes:
+            lines.append(f"- {n}")
+        lines.append("")
+    return lines
+
+
 def render_markdown(
     verdicts: list[ScenarioVerdict],
     verdict_overall: tuple[str, str],
     *,
     in_path: Path,
     heading_suffix: str = "",
+    counter_prior: CounterPriorVerdict | None = None,
 ) -> str:
     """Render the report. ``heading_suffix`` (e.g., ``"2026-06-15 run-12"``)
     disambiguates repeated Results sections when the report is appended to
@@ -920,6 +1304,11 @@ def render_markdown(
     lines.append(rationale)
     lines.append("")
 
+    # Exp 38 counter-prior interaction renders first (it IS the overall verdict
+    # when present); the per-scenario tables below become supporting detail.
+    if counter_prior is not None:
+        lines.extend(_render_counter_prior(counter_prior))
+
     for v in verdicts:
         lines.append(f"### Scenario: `{v.scenario}`")
         lines.append("")
@@ -929,7 +1318,9 @@ def render_markdown(
         lines.append("|---|---|---|---|")
         a_band_str = f"[{_fmt(v.a_band[0])}, {_fmt(v.a_band[1])}]" if v.a_band else "—"
         lines.append(f"| A | {_fmt(v.a_mean)} | baseline · 95% band {a_band_str} | — |")
-        primary_str = "PASS" if v.primary_pass else "FAIL"
+        # Structural absence (counter_prior_substrate_experiment.md §6.3): the
+        # metric never varied across any arm — report N/A, not FAIL.
+        primary_str = "N/A" if v.primary_structural_absence else ("PASS" if v.primary_pass else "FAIL")
         # Pre-reg amendment 2026-06-05 (exp37_sd_shift.md): primary
         # criterion is mean-shift-in-SD-units (≥ ``PRIMARY_SD_SHIFT_THRESHOLD``
         # in the predicted direction), not the legacy empirical
@@ -1040,19 +1431,32 @@ def run_analysis(
     records = load_records(in_path, expected_schema=strict_schema_version)
     grouped = group_records(records)
     assert_design_complete(grouped, arms=arms, scenarios=scenarios, expected_trials=expected_trials)
-    verdicts = [evaluate_scenario(grouped, s) for s in scenarios]
-    overall_label, overall_rationale = overall_verdict(verdicts)
+    verdicts = [evaluate_scenario(grouped, s, arms=arms) for s in scenarios]
+
+    # Exp 38: when both the consistent control and deceptive counter-prior
+    # scenarios are present, the cross-scenario interaction IS the overall
+    # verdict (it supersedes the per-scenario Exp 37 gating). Otherwise fall
+    # through to the legacy per-scenario verdict.
+    counter_prior = compute_counter_prior(grouped)
+    if counter_prior is not None:
+        overall_label = counter_prior.verdict_label
+        overall_rationale = counter_prior.verdict_rationale
+    else:
+        overall_label, overall_rationale = overall_verdict(verdicts)
+
     markdown = render_markdown(
         verdicts,
         (overall_label, overall_rationale),
         in_path=in_path,
         heading_suffix=heading_suffix,
+        counter_prior=counter_prior,
     )
     return AnalysisResult(
         scenarios=verdicts,
         overall_label=overall_label,
         overall_rationale=overall_rationale,
         markdown=markdown,
+        counter_prior=counter_prior,
     )
 
 

@@ -994,6 +994,223 @@ def test_failure_class_yaml_cross_check_rejects_stale_rule(harness, monkeypatch)
         harness._assert_failure_class_matches_yaml("fire_pit")
 
 
+# ─── 10c. Exp 38 counter-prior — deceptive_fire / cradle_false_hearth ────
+
+
+def test_failure_class_yaml_cross_check_passes_deceptive_fire(harness):
+    """The deceptive_fire FAILURE_CLASS rules must validate against the live
+    cradle_false_hearth.yaml — the entity name (``hearth``) ≠ scenario name, so
+    this also exercises the SCENARIO_ENTITY generalization of the validator."""
+    harness._assert_failure_class_matches_yaml("deceptive_fire")
+
+
+def test_scenario_entity_maps_deceptive_to_hearth(harness):
+    """deceptive_fire surfaces the ``hearth`` entity from cradle_false_hearth,
+    NOT a ``deceptive_fire`` component (the legacy scenario==entity assumption)."""
+    component_ref, entity_name = harness.SCENARIO_ENTITY["deceptive_fire"]
+    assert component_ref == "items/cradle_false_hearth"
+    assert entity_name == "hearth"
+    assert harness.SCENARIO_SELECTIONS["counter_prior"] == ("fire_pit", "deceptive_fire")
+    # 'both' stays the legacy Exp 37 pair so an Exp 37 re-run keeps its scope.
+    assert harness.SCENARIO_SELECTIONS["both"] == ("fire_pit", "sharp_rock")
+
+
+def test_deceptive_warm_self_is_failure_not_safe(harness):
+    """On the deceptive hearth, warm_self is HARMFUL: it counts as a failure
+    action and its safe-tool set is observe only. positive_approach is
+    structurally 0 (no safe approach affordance), but warm_self_engagement_
+    fraction still measures the warm_self preference."""
+    actions = [
+        {"tool": "hearth_warm_self", "params": {}},  # harmful
+        {"tool": "hearth_observe", "params": {}},
+        {"tool": "hearth_warm_self", "params": {}},  # harmful
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "deceptive_fire")
+    # warm_self is in the failure class here.
+    assert m["failure_class_action_count"] == 2
+    # observe is the only safe-on-target choice.
+    assert m["affordance_preference_safe_count"] == 1
+    # No safe positive-approach affordance → structurally 0.
+    assert m["positive_approach_engagement_fraction"] == 0.0
+    # warm_self preference channel: 2 warm_self of 3 engagement = 2/3.
+    assert m["warm_self_engagement_fraction"] == pytest.approx(2 / 3)
+    assert m["warm_self_action_count"] == 2
+
+
+def test_warm_self_fraction_equals_positive_approach_for_fire_pit(harness):
+    """For the consistent control, warm_self IS the approach affordance, so the
+    new warm_self_engagement_fraction equals the legacy
+    positive_approach_engagement_fraction — the matched control behaves
+    identically on both channels."""
+    actions = [
+        {"tool": "fire_pit_warm_self", "params": {}},
+        {"tool": "fire_pit_observe", "params": {}},
+        {"tool": "fire_pit_touch", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "fire_pit")
+    assert m["warm_self_engagement_fraction"] == m["positive_approach_engagement_fraction"]
+    assert m["warm_self_engagement_fraction"] == pytest.approx(1 / 3)
+
+
+def test_first_contact_warm_self_true_when_first_engagement_is_warm_self(harness):
+    """first_contact_warm_self is True iff the agent's FIRST engagement with the
+    scenario entity is warm_self — the cross-session isolation signal (§5)."""
+    actions = [
+        {"tool": "cool_air_feel", "params": {}},  # not engagement
+        {"tool": "hearth_warm_self", "params": {}},  # FIRST engagement → warm_self
+        {"tool": "hearth_observe", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "deceptive_fire")
+    assert m["first_contact_warm_self"] is True
+    assert m["first_contact_action_index"] == 1
+
+
+def test_first_contact_warm_self_false_when_first_engagement_is_observe(harness):
+    """If the first engagement is observe/touch (not warm_self), the field is
+    False — the agent engaged but did NOT warm first."""
+    actions = [
+        {"tool": "hearth_observe", "params": {}},  # FIRST engagement → not warm_self
+        {"tool": "hearth_warm_self", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "deceptive_fire")
+    assert m["first_contact_warm_self"] is False
+    assert m["first_contact_action_index"] == 0
+
+
+def test_first_contact_warm_self_none_when_never_engaged(harness):
+    """If the agent never engages the scenario entity, first_contact is None —
+    no first-contact signal (distinct from False)."""
+    actions = [
+        {"tool": "cool_air_feel", "params": {}},
+        {"tool": "respond", "params": {}},
+    ]
+    m = harness.compute_metrics(actions, "deceptive_fire")
+    assert m["first_contact_warm_self"] is None
+    assert m["first_contact_action_index"] is None
+
+
+# Validity guard: the percept must never telegraph the inversion (§7). The
+# harm lives only in the affordance self_effect; a future edit that leaks a
+# warning word into a description would silently void the experiment.
+_TELEGRAPH_DENYLIST = (
+    "trap",
+    "false",
+    "deceptive",
+    "eerie",
+    "unstable",
+    "wrong",
+    "danger",
+    "burn",
+    "hurt",
+    "pain",
+    "harm",
+    "cold",  # the thermal inversion is HOT — a "cold" cue would mislead/telegraph
+)
+
+
+def test_cradle_false_hearth_percept_does_not_telegraph_inversion():
+    """The hearth's description fields (component description + every affordance
+    description) must contain NO telegraph word from the denylist. The inversion
+    is discoverable only by acting (counter_prior_substrate_experiment.md §7).
+    Scans only the parsed description TEXT — code comments legitimately explain
+    the inversion and are not part of the percept."""
+    import yaml
+
+    yaml_path = _REPO_ROOT / "src" / "maxim" / "_data" / "components" / "items" / "cradle_false_hearth.yaml"
+    spec = yaml.safe_load(yaml_path.read_text())
+
+    texts: list[str] = []
+    texts.append(str(spec.get("component", {}).get("description", "")))
+    entity = spec.get("entity", {})
+    for mod in (entity.get("modulators") or {}).values():
+        for aff in (mod.get("affordances") or {}).values():
+            texts.append(str(aff.get("description", "")))
+
+    blob = " ".join(texts).lower()
+    leaked = [w for w in _TELEGRAPH_DENYLIST if w in blob]
+    assert not leaked, (
+        f"cradle_false_hearth percept descriptions leak telegraph word(s) {leaked!r}; "
+        f"the inversion must live ONLY in warm_self.self_effect, never in the prompt "
+        f"text (§7 validity guard). Descriptions scanned: {texts!r}"
+    )
+
+
+def test_cradle_false_hearth_warm_self_breaches_comfort_band():
+    """The whole experiment hinges on warm_self actually firing a thermal_contact
+    failure. Pin that the YAML's warm_self.self_effect breaches the infant arms'
+    thermal comfort_band (0.5) — same plumbing as fire_pit's touch."""
+    import yaml
+
+    base = _REPO_ROOT / "src" / "maxim" / "_data" / "components"
+    hearth = yaml.safe_load((base / "items" / "cradle_false_hearth.yaml").read_text())
+    body = yaml.safe_load((base / "bodies" / "infant_humanoid.yaml").read_text())
+
+    # Pull the arms' thermal comfort_band (entity.modulators.arms.sensors.
+    # thermal.drive.comfort_band).
+    thermal = body["entity"]["modulators"]["arms"]["sensors"]["thermal"]
+    comfort_band = thermal["drive"]["comfort_band"]
+
+    warm = hearth["entity"]["modulators"]["flame"]["affordances"]["warm_self"]["self_effect"]
+    assert warm["arms.thermal"] > comfort_band, (
+        f"warm_self arms.thermal {warm['arms.thermal']} must exceed comfort_band "
+        f"{comfort_band} to fire a thermal_contact failure (the inversion). "
+        f"If this fails, the deceptive hearth no longer hurts and the experiment is void."
+    )
+
+
+# ─── 10d. Exp 38 — separate worlds (no fire_pit/hearth co-presence) ──────
+#
+# The first design co-activated fire_pit AND the hearth in one world; the agent
+# just warmed the familiar fire_pit and ignored the hearth, so deceptive
+# hearth-engagement was ≈0 (unmeasurable). The fix routes the deceptive scenario
+# to a dedicated ``cradle_deceptive`` arc where the hearth REPLACES fire_pit.
+# These tests pin that separation so it can't silently regress.
+
+
+def test_deceptive_scenario_routes_to_hearth_only_world(harness):
+    """deceptive_fire's goal routes to the cradle_deceptive arc, whose
+    exploration world has the hearth and NOT the competing fire_pit."""
+    from maxim.simulation.arcs import select_arc_for_goal
+
+    arc = select_arc_for_goal(harness.SCENARIO_GOAL["deceptive_fire"])
+    assert arc is not None and arc.name == "cradle_deceptive"
+    expl = arc.phases[0].world_entities
+    assert "items/cradle_false_hearth" in expl, f"hearth missing from deceptive world: {expl}"
+    assert "items/cradle_fire_pit" not in expl, (
+        f"fire_pit must NOT co-exist in the deceptive world (it steals warm_self "
+        f"engagement from the hearth and zeroes the metric): {expl}"
+    )
+
+
+def test_fire_pit_scenario_routes_to_fire_pit_only_world(harness):
+    """fire_pit's goal routes to the plain cradle arc, whose exploration world
+    has fire_pit and NOT the hearth (clean matched control)."""
+    from maxim.simulation.arcs import select_arc_for_goal
+
+    arc = select_arc_for_goal(harness.SCENARIO_GOAL["fire_pit"])
+    assert arc is not None and arc.name == "cradle"
+    expl = arc.phases[0].world_entities
+    assert "items/cradle_fire_pit" in expl
+    assert "items/cradle_false_hearth" not in expl, f"hearth must NOT leak into the consistent control world: {expl}"
+
+
+def test_cradle_and_deceptive_arcs_are_structural_lockstep(harness):
+    """cradle_deceptive is the cradle arc with fire_pit→hearth swapped; the two
+    must share phase names/acts (matched-pair structure) and the deceptive
+    instructions must not leak the 'fire pit' wording."""
+    from maxim.simulation.arcs import BUILTIN_ARCS
+
+    c = BUILTIN_ARCS["cradle"].phases
+    d = BUILTIN_ARCS["cradle_deceptive"].phases
+    assert [p.name for p in c] == [p.name for p in d]
+    assert [p.act for p in c] == [p.act for p in d]
+    assert not any("fire pit" in p.instruction for p in d), "deceptive arc leaks 'fire pit' wording"
+
+
 # ─── 11. I1 fold: append idempotency ─────────────────────────────────────
 
 

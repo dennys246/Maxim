@@ -750,7 +750,17 @@ def test_verdict_labels_appear_in_preregistration_and_protocol(analyzer):
     protocol = (
         repo_root / "docs" / "experiments" / "protocols" / "37_cross_session_graduation_reproduction.md"
     ).read_text()
+    # Exp 38 counter-prior labels live in the Exp 38 pre-registration doc, NOT
+    # the Exp 37 protocol — the analyzer is shared but the labels are
+    # experiment-scoped (counter_prior_substrate_experiment.md §5).
+    exp38_prereg = (repo_root / "docs" / "experiments" / "38_counter_prior_substrate.md").read_text()
     for label in analyzer.EXIT_CODE_FOR_LABEL.keys():
+        if label.startswith("COUNTER-PRIOR"):
+            assert label in exp38_prereg, (
+                f"counter-prior verdict label {label!r} from EXIT_CODE_FOR_LABEL is not "
+                f"present in the Exp 38 pre-registration doc. Update the doc in lockstep."
+            )
+            continue
         # Strip trailing parenthetical for the pre-reg / protocol lookup, the
         # documents may abbreviate "EARNED (footnoted)" → "EARNED with footnote".
         # We require the canonical analyzer label to appear in the protocol's
@@ -1392,3 +1402,311 @@ def test_sd_shift_zero_sd_fallback_pass_on_directional_shift(analyzer, tmp_path)
             f"{v.scenario}: zero-SD case with no shift should FAIL — "
             f"a_sd={v.a_sd}, delta={(v.b_mean or 0) - (v.a_mean or 0)}"
         )
+
+
+# ─── Exp 38: structural-absence detection (folds sharp_rock artifact) ─────
+
+
+def _build_absence_design(*, absent_scenario: str = "sharp_rock") -> list[dict[str, Any]]:
+    """Full EARNED-shape design where ``absent_scenario``'s PRIMARY_METRIC
+    (positive_approach_engagement_fraction) is identical (0.0) across EVERY arm
+    — the real-data shape of sharp_rock (no positive-approach affordance). The
+    other scenario keeps the standard EARNED variance.
+    """
+    a_vals = _arm_a_baseline()
+    b_vals = _arm_b_improved()
+    c_vals = _arm_c_within_a_band()
+    records: list[dict[str, Any]] = []
+    for scenario in ("fire_pit", "sharp_rock"):
+        absent = scenario == absent_scenario
+        pa = 0.0 if absent else None  # None → _record default (1 - primary, varies)
+        for trial_id in range(1, 6):
+            i = trial_id - 1
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="A",
+                    scenario=scenario,
+                    primary=a_vals[i],
+                    safe_fraction=0.3,
+                    positive_approach_fraction=pa,
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="B",
+                    scenario=scenario,
+                    primary=b_vals[i],
+                    safe_fraction=0.8,
+                    tool_diversity=3,
+                    time_to_steady=2,
+                    positive_approach_fraction=pa,
+                )
+            )
+            records.append(
+                _record(
+                    trial_pair_id=trial_id,
+                    arm="C",
+                    scenario=scenario,
+                    primary=c_vals[i],
+                    safe_fraction=0.3,
+                    positive_approach_fraction=pa,
+                )
+            )
+            for ab in ("B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"):
+                records.append(
+                    _record(
+                        trial_pair_id=trial_id,
+                        arm=ab,
+                        scenario=scenario,
+                        primary=b_vals[i],
+                        positive_approach_fraction=pa,
+                    )
+                )
+    return records
+
+
+def test_structural_absence_reports_na_not_fail(analyzer, tmp_path):
+    """The Exp 37 sharp_rock artifact (counter_prior_substrate_experiment.md
+    §6.3): a PRIMARY_METRIC structurally 0 across all arms must report N/A, NOT
+    FAIL, and must NOT drag the overall verdict to investigation. fire_pit
+    (with real variance) determines the verdict alone."""
+    records = _build_absence_design(absent_scenario="sharp_rock")
+    p = tmp_path / "absence.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off"),
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    by_scenario = {v.scenario: v for v in result.scenarios}
+    assert by_scenario["sharp_rock"].primary_structural_absence is True
+    assert by_scenario["fire_pit"].primary_structural_absence is False
+    # The structurally-absent primary renders as N/A, never FAIL.
+    assert "N/A" in result.markdown
+    # The artifact is folded: sharp_rock no longer forces an investigation gate.
+    # fire_pit (the only gated scenario) passes primary + isolation, so the
+    # overall can never be the investigation verdict that the pre-fix sharp_rock
+    # FAIL produced.
+    assert result.overall_label != analyzer.VERDICT_PARTIAL_INVESTIGATION
+    assert by_scenario["fire_pit"].primary_pass is True
+
+
+def test_is_structurally_absent_unit(analyzer):
+    """Direct unit: constant-across-all-arms → True; any variance → False."""
+    arms = ("A", "B", "C")
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for arm in arms:
+        grouped[("s", arm)] = [{"m": 0.0}, {"m": 0.0}]
+    assert analyzer._is_structurally_absent(grouped, "s", "m", arms=arms) is True
+    # Introduce a single varying value.
+    grouped[("s", "B")][0]["m"] = 0.5
+    assert analyzer._is_structurally_absent(grouped, "s", "m", arms=arms) is False
+    # A non-zero CONSTANT is still "absent" (no variance to discriminate on).
+    for arm in arms:
+        grouped[("s", arm)] = [{"m": 1.0}, {"m": 1.0}]
+    assert analyzer._is_structurally_absent(grouped, "s", "m", arms=arms) is True
+
+
+# ─── Exp 38: counter-prior interaction verdicts ──────────────────────────
+
+_CP_ARMS = ("A", "B", "C", "B-wire-a-off", "B-wire-1-off", "B-nac-bias-off")
+
+
+def _cp_record(*, trial_pair_id, arm, scenario, warm_self_frac, first_contact):
+    """A record carrying the Exp 38 counter-prior fields on top of the base
+    schema. positive_approach is forced to 0 for deceptive_fire (structural
+    absence, real-data shape); warm_self_engagement_fraction is the live
+    interaction channel."""
+    r = _record(
+        trial_pair_id=trial_pair_id,
+        arm=arm,
+        scenario=scenario,
+        primary=0.3,
+        positive_approach_fraction=(0.0 if scenario == "deceptive_fire" else warm_self_frac),
+    )
+    r["warm_self_engagement_fraction"] = warm_self_frac
+    r["first_contact_warm_self"] = first_contact
+    return r
+
+
+def _cp_design(*, con_ws, dec_ws, con_fc, dec_fc) -> list[dict[str, Any]]:
+    """Build a 60-record counter-prior design. Each of con_ws/dec_ws is a dict
+    arm→[5 floats] (warm_self_frac); con_fc/dec_fc is arm→[5 bools]
+    (first_contact_warm_self)."""
+    records: list[dict[str, Any]] = []
+    for scenario, ws, fc in (("fire_pit", con_ws, con_fc), ("deceptive_fire", dec_ws, dec_fc)):
+        for arm in _CP_ARMS:
+            for t in range(1, 6):
+                records.append(
+                    _cp_record(
+                        trial_pair_id=t,
+                        arm=arm,
+                        scenario=scenario,
+                        warm_self_frac=ws[arm][t - 1],
+                        first_contact=fc[arm][t - 1],
+                    )
+                )
+    return records
+
+
+def _broadcast(value, arms=_CP_ARMS):
+    """Helper: same 5-value list (or bool list) for every arm."""
+    return {arm: list(value) for arm in arms}
+
+
+def _run_cp(analyzer, tmp_path, records, name="cp.jsonl"):
+    p = tmp_path / name
+    _write_jsonl(p, records)
+    return analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=_CP_ARMS,
+        scenarios=("fire_pit", "deceptive_fire"),
+        strict_schema_version="1.0",
+    )
+
+
+# Warm_self-fraction baselines (5 trials).
+_WS_HIGH = [0.70, 0.75, 0.80, 0.85, 0.90]  # follows the fire→warm prior
+_WS_LOW = [0.15, 0.20, 0.20, 0.25, 0.20]  # avoids warming
+_WS_MID = [0.45, 0.50, 0.50, 0.55, 0.50]  # ablation: reverts PARTWAY toward A (still below)
+_FC_ALL_TRUE = [True, True, True, True, True]
+_FC_ALL_FALSE = [False, False, False, False, False]
+
+
+def test_counter_prior_substrate_matters(analyzer, tmp_path):
+    """B reduces warm_self specifically on the deceptive hearth (interaction +
+    first-contact pass) AND ablations revert → SUBSTRATE_MATTERS."""
+    con_ws = _broadcast(_WS_HIGH)  # consistent: everyone warms safely
+    dec_ws = {
+        "A": _WS_HIGH,
+        "B": _WS_LOW,
+        "C": _WS_HIGH,
+        # Ablations revert PARTWAY toward A (re-approach the hearth) — staying on
+        # B's side of A so _compute_secondary registers shrinkage.
+        "B-wire-a-off": _WS_MID,
+        "B-wire-1-off": _WS_MID,
+        "B-nac-bias-off": _WS_MID,
+    }
+    con_fc = _broadcast(_FC_ALL_TRUE)
+    dec_fc = {
+        "A": _FC_ALL_TRUE,
+        "B": _FC_ALL_FALSE,
+        "C": _FC_ALL_TRUE,
+        "B-wire-a-off": _FC_ALL_TRUE,
+        "B-wire-1-off": _FC_ALL_TRUE,
+        "B-nac-bias-off": _FC_ALL_TRUE,
+    }
+    result = _run_cp(analyzer, tmp_path, _cp_design(con_ws=con_ws, dec_ws=dec_ws, con_fc=con_fc, dec_fc=dec_fc))
+    cp = result.counter_prior
+    assert cp is not None
+    assert cp.interaction_pass is True
+    assert cp.interaction < 0  # B reduced warm_self specifically in deceptive
+    assert cp.first_contact_pass is True
+    assert cp.ablation_hits >= 1
+    assert result.overall_label == analyzer.VERDICT_CP_SUBSTRATE_MATTERS
+    assert analyzer.EXIT_CODE_FOR_LABEL[result.overall_label] == 0
+    assert "Counter-prior interaction" in result.markdown
+
+
+def test_counter_prior_dominance(analyzer, tmp_path):
+    """B keeps warming the deceptive hearth (no specific reduction) → DOMINANCE
+    (a strong result: there WAS a gap and the substrate didn't fill it)."""
+    con_ws = _broadcast(_WS_HIGH)
+    dec_ws = _broadcast(_WS_HIGH)  # B still warms despite carried pain
+    con_fc = _broadcast(_FC_ALL_TRUE)
+    dec_fc = _broadcast(_FC_ALL_TRUE)
+    result = _run_cp(analyzer, tmp_path, _cp_design(con_ws=con_ws, dec_ws=dec_ws, con_fc=con_fc, dec_fc=dec_fc))
+    cp = result.counter_prior
+    assert cp.interaction_pass is False
+    assert cp.avoids_both is False
+    assert result.overall_label == analyzer.VERDICT_CP_DOMINANCE
+    assert analyzer.EXIT_CODE_FOR_LABEL[result.overall_label] == 0
+
+
+def test_counter_prior_void_general_caution(analyzer, tmp_path):
+    """B reduces warm_self in BOTH worlds (general caution, not specific to the
+    hearth) → VOID general caution."""
+    con_ws = {arm: (_WS_LOW if arm.startswith("B") else _WS_HIGH) for arm in _CP_ARMS}
+    dec_ws = {arm: (_WS_LOW if arm.startswith("B") else _WS_HIGH) for arm in _CP_ARMS}
+    con_fc = {arm: (_FC_ALL_FALSE if arm.startswith("B") else _FC_ALL_TRUE) for arm in _CP_ARMS}
+    dec_fc = {arm: (_FC_ALL_FALSE if arm.startswith("B") else _FC_ALL_TRUE) for arm in _CP_ARMS}
+    result = _run_cp(analyzer, tmp_path, _cp_design(con_ws=con_ws, dec_ws=dec_ws, con_fc=con_fc, dec_fc=dec_fc))
+    cp = result.counter_prior
+    # Interaction ≈ 0 (both dropped equally), but both dropped ≥1 SD.
+    assert cp.interaction_pass is False
+    assert cp.avoids_both is True
+    assert result.overall_label == analyzer.VERDICT_CP_VOID_GENERAL_CAUTION
+    assert analyzer.EXIT_CODE_FOR_LABEL[result.overall_label] == 4
+
+
+def test_counter_prior_void_not_attributable(analyzer, tmp_path):
+    """B avoids the deceptive hearth specifically (interaction + first-contact
+    pass) but NO ablation reverts → VOID not-substrate-attributable."""
+    con_ws = _broadcast(_WS_HIGH)
+    dec_ws = {arm: (_WS_HIGH if arm in ("A", "C") else _WS_LOW) for arm in _CP_ARMS}  # ablations STAY low
+    con_fc = _broadcast(_FC_ALL_TRUE)
+    dec_fc = {
+        "A": _FC_ALL_TRUE,
+        "B": _FC_ALL_FALSE,
+        "C": _FC_ALL_TRUE,
+        "B-wire-a-off": _FC_ALL_FALSE,
+        "B-wire-1-off": _FC_ALL_FALSE,
+        "B-nac-bias-off": _FC_ALL_FALSE,
+    }
+    result = _run_cp(analyzer, tmp_path, _cp_design(con_ws=con_ws, dec_ws=dec_ws, con_fc=con_fc, dec_fc=dec_fc))
+    cp = result.counter_prior
+    assert cp.interaction_pass is True
+    assert cp.first_contact_pass is True
+    assert cp.ablation_hits == 0
+    assert result.overall_label == analyzer.VERDICT_CP_VOID_NOT_ATTRIBUTABLE
+    assert analyzer.EXIT_CODE_FOR_LABEL[result.overall_label] == 4
+
+
+def test_counter_prior_none_for_exp37_data(analyzer, tmp_path):
+    """An Exp 37 run (no deceptive_fire scenario) yields counter_prior=None and
+    falls through to the legacy per-scenario verdict path."""
+    records = _build_full_design(
+        a_vals=_arm_a_baseline(),
+        b_vals=_arm_b_improved(),
+        c_vals=_arm_c_within_a_band(),
+    )
+    p = tmp_path / "exp37.jsonl"
+    _write_jsonl(p, records)
+    result = analyzer.run_analysis(
+        in_path=p,
+        expected_trials=5,
+        arms=_CP_ARMS,
+        scenarios=("fire_pit", "sharp_rock"),
+        strict_schema_version="1.0",
+    )
+    assert result.counter_prior is None
+    assert "Counter-prior interaction" not in result.markdown
+    assert not result.overall_label.startswith("COUNTER-PRIOR")
+
+
+def test_counter_prior_first_contact_extraction(analyzer):
+    """_extract_bool_proportion: proportion of True over non-None; all-None → None."""
+    recs = [{"f": True}, {"f": False}, {"f": True}, {"f": None}]
+    assert analyzer._extract_bool_proportion(recs, "f") == pytest.approx(2 / 3)
+    assert analyzer._extract_bool_proportion([{"f": None}, {"f": None}], "f") is None
+    assert analyzer._extract_bool_proportion([], "f") is None
+
+
+def test_counter_prior_interaction_direction_sign(analyzer, tmp_path):
+    """The interaction is signed: only a NEGATIVE interaction (B reduces
+    warm_self in deceptive relative to consistent) passes. A positive
+    interaction (B warms MORE in deceptive) must NOT pass."""
+    con_ws = _broadcast(_WS_HIGH)
+    # B warms MORE in deceptive than A (wrong direction): interaction positive.
+    dec_ws = {arm: ([0.95, 0.96, 0.97, 0.98, 0.99] if arm == "B" else _WS_HIGH) for arm in _CP_ARMS}
+    con_fc = _broadcast(_FC_ALL_TRUE)
+    dec_fc = _broadcast(_FC_ALL_TRUE)
+    result = _run_cp(analyzer, tmp_path, _cp_design(con_ws=con_ws, dec_ws=dec_ws, con_fc=con_fc, dec_fc=dec_fc))
+    cp = result.counter_prior
+    assert cp.interaction is not None and cp.interaction > 0
+    assert cp.interaction_pass is False
