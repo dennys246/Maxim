@@ -13,11 +13,13 @@ The cross-model fires decompose the substrate-transfer question across three axe
 |---|---|---|
 | **Scale** (within Qwen family) | Family / training corpus | Qwen14B vs Qwen32B (vs Qwen72B if added post-1.0) |
 | **Family** at moderate scale | Scale ballpark | Qwen32B vs Mistral24B (open) — and vs closed-source once unblocked |
+| **Training paradigm — reasoning vs chat** | Family AND scale (cleanest isolation) | Qwen32B vs DeepSeek-R1-Distill-Qwen-32B (same base, same scale, only reasoning-training differs) |
 | **Open vs closed** | None — multi-confound but anchors the story | Open-source fires vs Claude/GPT/DeepSeek (post-prompt-caching) |
 
 Each axis informs different aspects of the interpretation:
 - Scale → "does substrate signal scale with model capacity?"
 - Family → "is the effect Qwen-specific or universal across open models?"
+- **Reasoning paradigm → "does explicit-thinking training change how substrate context is processed?"**
 - Open/closed → "does alignment regime / closed-source RLHF affect substrate-LLM interaction?"
 
 ## Model lineup
@@ -26,7 +28,9 @@ Each axis informs different aspects of the interpretation:
 |---|---|---|---|
 | Qwen2.5-14B-Instruct | leader (local) | **DONE** 2026-06-06 (60/60) | Scale baseline (small end) |
 | Qwen2.5-32B-Instruct | leader (local) | **DONE** 2026-06-08 (60/60) | Scale comparison (large end, same family) |
-| Mistral-Small-24B-Instruct-2501 | leader (local) | **RUNNING** 2026-06-10 (kicked off 11:50) | Family comparison at intermediate scale |
+| Mistral-Small-24B-Instruct-2501 | leader (local) | **RUNNING** 2026-06-10 (kicked off 11:50; re-fired 16:32 after harness safety-check fix) | Family comparison at intermediate scale |
+| DeepSeek-R1-Distill-Qwen-32B | leader (local) | **QUEUED** after Mistral24B | Reasoning-axis isolation (same base as Qwen32B) |
+| Llama 3.3 70B Instruct | leader (local) | CONDITIONAL on DeepSeek result | New family + biggest local scale; only if DeepSeek leaves open questions |
 | Claude Sonnet 4.6 | peer (cloud) | DEFERRED behind prompt-caching refactor | Closed-source anchor #1 |
 | GPT-4o | peer (cloud) | DEFERRED | Closed-source anchor #2 + OpenAI key-path validation |
 | DeepSeek-V3 | peer (cloud) | DEFERRED | Radically different training corpus + cheap |
@@ -42,6 +46,8 @@ The cradle scenario's primary metric on fire_pit, across all model fires:
 | Qwen2.5-14B-Instruct | 0.533 ± ~0.27 | 0.517 | −0.06 | **FAIL** | 0/4 | FAIL |
 | Qwen2.5-32B-Instruct | 0.420 ± 0.27 | 0.800 | **+1.43** | **PASS** | **2/4 PASS** | **PASS** |
 | Mistral-Small-24B-Instruct | TBD | TBD | TBD | TBD | TBD | TBD |
+| DeepSeek-R1-Distill-Qwen-32B | TBD (queued) | TBD | TBD | TBD | TBD | TBD |
+| Llama 3.3 70B Instruct | TBD (conditional) | — | — | — | — | — |
 | Claude Sonnet 4.6 | TBD (deferred) | — | — | — | — | — |
 | GPT-4o | TBD (deferred) | — | — | — | — | — |
 | DeepSeek-V3 | TBD (deferred) | — | — | — | — | — |
@@ -120,11 +126,87 @@ Weakens the headline claim. The 32B finding becomes more tentative — possibly 
 
 Less likely but methodologically interesting if it happens.
 
+## Cross-model interpretation — what we're trying to learn from DeepSeek-R1-Distill-Qwen-32B
+
+**Queued for after Mistral24B finishes.** The DeepSeek fire isolates a different axis from family / scale: it tests whether **explicit-thinking training** (R1's reasoning-trace distillation) changes how substrate-derived context interacts with the LLM's action selection.
+
+### Why this is the cleanest reasoning-axis test available
+
+DeepSeek-R1-Distill-Qwen-32B is the R1 reasoning-trace fine-tune of the SAME Qwen2.5-32B base we've already fired. Same architecture, same tokenizer, same scale, same pretraining. **The only methodologically-meaningful difference is the reasoning-training overlay.** That makes the comparison vs Qwen32B a clean A/B on the reasoning-paradigm axis with minimal confounds.
+
+(Llama-distill variants like DeepSeek-R1-Distill-Llama-70B would add reasoning + new family + larger scale at once — three confounded axes. We avoid that for the headline test; Llama 70B stays as a *conditional* follow-on if DeepSeek raises specific scale-ceiling questions.)
+
+### Three-bucket pre-registered interpretation
+
+#### Bucket R-A: DeepSeek stronger than Qwen32B (Δ > +1.43 SD)
+
+**Interpretation:** Reasoning training *amplifies* substrate signal. The "think before responding" pattern lets the model engage more deliberately with substrate-derived prompt context — drives are noticed, recalled episodes get weighted, valence annotations get considered rather than skimmed.
+
+**1.0 framing:** "Substrate-context utilization is enhanced by reasoning-trained models. Future work: substrate-aware reasoning models as a complementary direction to substrate-primary action selection."
+
+This would be a substantively interesting finding for the 1.1+ research agenda.
+
+#### Bucket R-B: DeepSeek similar to Qwen32B (Δ ≈ +1.43 SD, within noise)
+
+**Interpretation:** Reasoning training is neutral with respect to substrate signal. The substrate effect we see at 32B Qwen survives the R1 distillation overlay — substrate context flows through both reasoning and non-reasoning models similarly.
+
+**1.0 framing:** "Substrate signal is robust to training-paradigm shifts at the moderate scale tested. Substrate-LLM interaction does not depend on reasoning training."
+
+The "null result" outcome on this axis. Reassuring for the substrate generality claim.
+
+#### Bucket R-C: DeepSeek weaker than Qwen32B (Δ < +1.0 SD)
+
+**Interpretation:** Reasoning training *drowns* substrate signal. Explicit reasoning chains may out-compete substrate-derived context — the model "thinks past" the bio-annotations toward its own preferred reasoning trajectory, ignoring substrate suggestions it would have used in a non-reasoning mode.
+
+**1.0 framing:** "Substrate signal weakened by reasoning-training overlay. Future work: substrate context positioning + prompt-engineering for reasoning-trained models." Suggests substrate signal works better with non-reasoning models in the current Maxim architecture.
+
+This would be the most surprising finding — it would imply that bigger / smarter / more thoughtful LLMs are actually *worse* substrate consumers, with implications for the bio-inspired-harness 1.0 positioning.
+
+## Setup commands for DeepSeek-R1-Distill-Qwen-32B (copy-paste-ready, queued)
+
+When ready to fire DeepSeek (after Mistral24B completes), execute on the **leader**:
+
+```bash
+# 1. Download + add the profile to ~/.config/maxim/profiles.yml
+#    HF repo (verify before downloading — quantizer source may have updated):
+#    https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF
+maxim model add deepseek-r1-distill-qwen-32b \
+  --hf bartowski/DeepSeek-R1-Distill-Qwen-32B-GGUF:DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf \
+  --chat-format chatml \
+  --n-ctx 13312 \
+  --alias deepseek-r1-32b \
+  --alias r1-distill-32b
+
+# 2. Verify the profile is recognized + downloaded
+maxim model list | grep deepseek
+
+# 3. Swap the leader to serve DeepSeek (will replace the running Mistral24B server)
+tmux kill-session -t maxim-leader 2>/dev/null
+pkill -f "maxim --llm"
+pkill -f llama_cpp.server
+sleep 5
+maxim config set llm.profile deepseek-r1-distill-qwen-32b
+tmux new -d -s maxim-leader "source .venv/bin/activate && maxim --llm deepseek-r1-distill-qwen-32b"
+sleep 120
+curl -s -m 10 -H "Authorization: Bearer OYpVQCIwcczWmsBhlm0h2SU9xWXfVP7mKv-f_EqV2q8" http://127.0.0.1:8100/v1/models
+
+# 4. Fire the harness (use same arm/scenario structure as Qwen32B fire — direct A/B)
+mkdir -p docs/experiments/data /tmp/exp37_deepseek
+tmux new -d -s deepseek "source .venv/bin/activate && PYTHONPATH=src python scripts/benchmark_cross_session.py --scenario both --arms A,B,C,B-wire-a-off,B-wire-1-off,B-nac-bias-off --trials 5 --model deepseek-r1-distill-qwen-32b --sim-max-turns 12 --cost-cap 5 --out docs/experiments/data/37_results_deepseek_r1_distill_qwen_32b.jsonl --workdir /tmp/exp37_deepseek/workdir --cleanup-after-trial 2>&1 | tee /tmp/exp37_deepseek/harness.log"
+tmux ls
+```
+
+**Sizing notes:** Q4_K_M is ~20GB (comfortable fit on 48GB Mac Mini). Wall-time estimate matches Qwen32B (~25-30 hours). R1 distillation does add inference-time reasoning chains, so per-token latency may be slightly higher than vanilla Qwen32B — could stretch to ~32-35 hours. Watch the per-record duration of the first few trials.
+
+**Reasoning chain caveat:** R1-distilled models emit `<think>...</think>` reasoning chains before the actual response. The harness should treat these as part of the response (token counts include them; engagement metrics measure actions, not reasoning text). If we observe a regression in tool-call rate, that could be the model "thinking out" of using tools at all — note in the results writeup.
+
 ## Path forward — sequencing of remaining work
 
-- **2026-06-10/11:** Mistral24B fire completes. This results doc gets filled in with real numbers and the interpretation locked.
-- **1.0 ship:** Open-source cross-scale + cross-family story is the substantive evidence base. [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) row 1b stays PARTIAL with scale-axis nuance; cloud comparison framed as 1.1 work.
-- **Post-1.0 — prompt-caching refactor:** [prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md) Phase 1+ refactor unlocks cloud fires. Sonnet, GPT-4o, DeepSeek fires execute then.
+- **2026-06-10/11:** Mistral24B fire completes. This results doc gets filled in with real numbers and the Mistral interpretation locked (bucket A/B/C/D).
+- **2026-06-12 → 2026-06-14:** DeepSeek-R1-Distill-Qwen-32B fire (~30 hours). Adds the reasoning-axis row + R-A/R-B/R-C bucket selection.
+- **Conditional (if DeepSeek raises scale-ceiling questions):** Llama 3.3 70B Instruct fire (~30 hours). Otherwise mark Llama 70B as "future direction" in the doc.
+- **1.0 ship:** Open-source cross-scale + cross-family + reasoning-axis story is the substantive evidence base. [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) row 1b stays PARTIAL with scale-axis + paradigm-axis nuance; cloud comparison framed as 1.1 work.
+- **Post-1.0 — prompt-caching refactor:** [prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md) Phase 1+ refactor unlocks cloud fires. Sonnet, GPT-4o, DeepSeek-V3 (cloud, full model) fires execute then.
 - **Post-1.0 — Exp 38 substrate-primary:** the principled test of the strong substrate-drives-behavior claim. The mechanism-attribution open question from this exploratory work directly motivates Exp 38's design.
 
 ## Cross-references
