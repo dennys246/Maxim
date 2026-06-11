@@ -271,6 +271,23 @@ The combined cross-scale story is genuinely informative:
 - **Cross-model exploratory continuation:** Mistral24B fire (running 2026-06-09) tests the family-axis at similar scale. Cloud LLM fires (Sonnet, GPT-4o, DeepSeek) are blocked behind the prompt-caching architecture work ([prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md)) or a tier-2 upgrade. Each adds incrementally to the cross-model characterization without changing the row 1b graduation status.
 - **Post-1.0 work that this fire empirically motivates:** (a) Exp 38 substrate-primary measurement remains the principled test of the strong claim; (b) understanding WHY ablations don't shrink the delta is a substantive research question — could be multi-channel mediation, could be substrate-context-as-a-whole effects on LLM reasoning that no single annotation captures, could be that the LLM's pretraining handles most of the "what to do near fire" question and substrate channels are mild perturbations on top.
 
+## Results — 2026-06-11 Mistral24B fire (cross-model family-axis follow-up)
+
+**Verdict: PARTIAL — investigation gate** (null on primary; ceiling effect). Full analyzer output at [data/37_results_mistral24b.md](data/37_results_mistral24b.md); per-trial JSONL at [data/37_results_mistral24b.jsonl](data/37_results_mistral24b.jsonl). **The cross-cutting interpretation lives in the dedicated [37_cross_model_results.md](37_cross_model_results.md) doc — this section records the per-fire verdict only.**
+
+**Run envelope:** 60 of 60 records. Fire ran on the leader Mac Mini using local Mistral-Small-24B-Instruct-2501 (Q4_K_M), started 2026-06-10 16:32 (re-fired after the harness systemic-failure-guard fix PR #364 — the first launch tripped a false-positive abort because the guard used the cloud-specific `total_input_tokens==0` signal), completed 2026-06-11 15:51, ~23 hours wall, $0 cost. Third row of the [cross-model characterization plan](../plans/exp37_cross_model_characterization.md); exploratory, not a pre-reg amendment.
+
+**Headline — ceiling effect:** Arm A (fresh agent, no resumed substrate) solves the cradle fire task *perfectly* — A mean = **1.000, SD = 0.000** across all 5 trials (warm_self every time, zero touches, reaches warming at action index 0.4). Arm B (resumed, has substrate) = 0.600. The B-vs-A delta is **negative** (−0.40), and the primary SD-shift test fails (zero-SD fallback, wrong direction). There is no headroom for substrate to demonstrate improvement when the fresh-agent priors already produce optimal behavior.
+
+**Per-fire verdict only:**
+- Primary FAIL (B < A; ceiling)
+- Corroborating 0/4 (`time-to-first-warm-self` actually shows A reaching warming far faster than B — A=0.4 vs B=2.6 — but flagged FAIL because it's wrong-direction for the substrate-helps prediction)
+- Secondary FAIL 0/3 (structurally unmeasurable — no positive delta to attribute)
+- Arm C confound flag fires, but as a statistical artifact of A's zero variance (any non-perfect arm is "outside" a [1.000, 1.000] band); C=0.400 is the WORST arm, which is the predicted fire-specific-learning pattern, not upward cross-prior generalization
+- sharp_rock degenerate (third model in a row — now confirmed structurally broken for cross-model use, not Qwen-specific)
+
+**Why this matters (full interpretation in [37_cross_model_results.md](37_cross_model_results.md)):** Mistral24B (24B) hits a prior-saturation ceiling that Qwen32B (32B) does not — a smaller model with *stronger* cradle-task priors. Combined with Qwen14B (priors too weak) and Qwen32B (sweet spot), the three fires form a **Goldilocks zone** story: substrate-transfer signal is detectable only when the base LLM's priors leave headroom between first-encounter and optimal behavior, and that headroom is governed by training method at least as much as parameter count. This reframes the cross-model question and *strengthens* the case for Exp 38 substrate-primary measurement (remove the LLM-prior confound entirely).
+
 ## Cross-references
 
 - [docs/plans/benchmarking_1_0.md](../plans/benchmarking_1_0.md) — 1.0 benchmarking gate (this is its primary experiment).
