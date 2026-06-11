@@ -1162,6 +1162,55 @@ def test_cradle_false_hearth_warm_self_breaches_comfort_band():
     )
 
 
+# ─── 10d. Exp 38 — separate worlds (no fire_pit/hearth co-presence) ──────
+#
+# The first design co-activated fire_pit AND the hearth in one world; the agent
+# just warmed the familiar fire_pit and ignored the hearth, so deceptive
+# hearth-engagement was ≈0 (unmeasurable). The fix routes the deceptive scenario
+# to a dedicated ``cradle_deceptive`` arc where the hearth REPLACES fire_pit.
+# These tests pin that separation so it can't silently regress.
+
+
+def test_deceptive_scenario_routes_to_hearth_only_world(harness):
+    """deceptive_fire's goal routes to the cradle_deceptive arc, whose
+    exploration world has the hearth and NOT the competing fire_pit."""
+    from maxim.simulation.arcs import select_arc_for_goal
+
+    arc = select_arc_for_goal(harness.SCENARIO_GOAL["deceptive_fire"])
+    assert arc is not None and arc.name == "cradle_deceptive"
+    expl = arc.phases[0].world_entities
+    assert "items/cradle_false_hearth" in expl, f"hearth missing from deceptive world: {expl}"
+    assert "items/cradle_fire_pit" not in expl, (
+        f"fire_pit must NOT co-exist in the deceptive world (it steals warm_self "
+        f"engagement from the hearth and zeroes the metric): {expl}"
+    )
+
+
+def test_fire_pit_scenario_routes_to_fire_pit_only_world(harness):
+    """fire_pit's goal routes to the plain cradle arc, whose exploration world
+    has fire_pit and NOT the hearth (clean matched control)."""
+    from maxim.simulation.arcs import select_arc_for_goal
+
+    arc = select_arc_for_goal(harness.SCENARIO_GOAL["fire_pit"])
+    assert arc is not None and arc.name == "cradle"
+    expl = arc.phases[0].world_entities
+    assert "items/cradle_fire_pit" in expl
+    assert "items/cradle_false_hearth" not in expl, f"hearth must NOT leak into the consistent control world: {expl}"
+
+
+def test_cradle_and_deceptive_arcs_are_structural_lockstep(harness):
+    """cradle_deceptive is the cradle arc with fire_pit→hearth swapped; the two
+    must share phase names/acts (matched-pair structure) and the deceptive
+    instructions must not leak the 'fire pit' wording."""
+    from maxim.simulation.arcs import BUILTIN_ARCS
+
+    c = BUILTIN_ARCS["cradle"].phases
+    d = BUILTIN_ARCS["cradle_deceptive"].phases
+    assert [p.name for p in c] == [p.name for p in d]
+    assert [p.act for p in c] == [p.act for p in d]
+    assert not any("fire pit" in p.instruction for p in d), "deceptive arc leaks 'fire pit' wording"
+
+
 # ─── 11. I1 fold: append idempotency ─────────────────────────────────────
 
 

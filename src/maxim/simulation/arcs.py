@@ -274,12 +274,8 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                 "act": "neonatal",
                 "turns": (2, 4),
                 "instruction": "",
-                # Kept in lockstep with BUILTIN_ARCS["cradle"] exploration phase
-                # (test_phase0_harness.py pins identical scaffolding). The Exp 38
-                # counter-prior hearth is part of the sensorimotor world.
                 "world_entities": [
                     "items/cradle_fire_pit",
-                    "items/cradle_false_hearth",
                     "items/cradle_food",
                     "items/cradle_cool_air",
                 ],
@@ -342,19 +338,7 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                     "with the fire, use set_entity_sensor to increase arms.thermal "
                     "toward 0.8. Do NOT narrate pain; let the bio-pipeline produce it."
                 ),
-                # cradle_false_hearth (Exp 38 counter-prior) activates alongside
-                # cradle_fire_pit. The deceptive_fire scenario's goal string
-                # routes the narrator to surface the hearth; the fire_pit
-                # scenario's goal surfaces the safe fire. Per-scenario
-                # FAILURE_CLASS isolation (benchmark_cross_session.py) scopes the
-                # metrics to the named entity's own tools, so co-activation does
-                # not cross-contaminate the matched-pair comparison.
-                "world_entities": [
-                    "items/cradle_fire_pit",
-                    "items/cradle_false_hearth",
-                    "items/cradle_food",
-                    "items/cradle_cool_air",
-                ],
+                "world_entities": ["items/cradle_fire_pit", "items/cradle_food", "items/cradle_cool_air"],
             },
             {
                 "name": "pain_consequence",
@@ -437,18 +421,67 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
 }
 
 
+# Exp 38 counter-prior (counter_prior_substrate_experiment.md): the deceptive
+# scenario needs the hearth to be the room's ONLY warmth source. Co-presenting
+# the safe fire_pit AND the hearth in one world made the agent just warm the
+# familiar fire and ignore the hearth (hearth engagement ≈ 0 → unmeasurable);
+# see 38_counter_prior_substrate.md. ``cradle_deceptive`` is the ``cradle`` arc
+# with the fire_pit SWAPPED for the deceptive hearth — same structure, only the
+# warmth entity (and thus warm_self's contingency) differs. Derived from
+# ``cradle`` so the two arcs stay structurally in lockstep automatically.
+_DECEPTIVE_INSTRUCTION_SWAPS: tuple[tuple[str, str], ...] = (
+    ("fire pit", "hearth"),
+    ("the fire", "the hearth"),
+    ("from fire", "from the hearth"),
+    ("first burn", "first contact"),  # narrator-facing context; keep non-fire-pit
+)
+
+
+def _swap_fire_to_hearth_phase(phase: NarrativePhase) -> dict:
+    """Return a phase dict identical to ``phase`` but with the safe fire_pit
+    replaced by the deceptive hearth (in world_entities AND narrator
+    instruction wording). The swaps touch only narrator-facing text — the
+    agent-facing percept is the entity's own (telegraph-guarded) description."""
+    instruction = phase.instruction
+    for old, new in _DECEPTIVE_INSTRUCTION_SWAPS:
+        instruction = instruction.replace(old, new)
+    world_entities = ["items/cradle_false_hearth" if e == "items/cradle_fire_pit" else e for e in phase.world_entities]
+    return {
+        "name": phase.name,
+        "act": phase.act,
+        "turns": (phase.turns_min, phase.turns_max),
+        "instruction": instruction,
+        "interaction": phase.interaction,
+        "world_entities": world_entities,
+    }
+
+
+BUILTIN_ARCS["cradle_deceptive"] = _make_builtin(
+    "cradle_deceptive",
+    "Exp 38 counter-prior variant of the cradle arc: the room's only warmth "
+    "source is the deceptive hearth (warm_self breaches the thermal comfort "
+    "band) — replaces the safe fire pit so the two scenarios are distinct worlds.",
+    [_swap_fire_to_hearth_phase(p) for p in BUILTIN_ARCS["cradle"].phases],
+)
+
+
 # ---------------------------------------------------------------------------
 # Arc selection
 # ---------------------------------------------------------------------------
 
 
-# Keywords that map goals to builtin arcs
+# Keywords that map goals to builtin arcs. ``cradle_deceptive`` carries the
+# cradle keywords PLUS ``hearth`` so the Exp 38 deceptive goal ("...glowing
+# hearth") outscores plain ``cradle`` (+1 for hearth), while the fire_pit goal
+# ("...fire pit") ties and falls to ``cradle`` (listed first → wins the tie via
+# the strict ``>`` in select_arc_for_goal). Pinned by test_arcs routing tests.
 _ARC_KEYWORDS: dict[str, list[str]] = {
     "memory_recall": ["memory", "recall", "remember", "forget", "interference", "episodic"],
     "causal_learning": ["causal", "cause", "effect", "predict", "pattern", "learn"],
     "safety_boundary": ["safety", "boundary", "boundaries", "safe", "harm", "refuse", "ethics"],
     "skill_learning": ["skill", "learn", "acquire", "practice", "train", "herbalism", "craft"],
     "cradle": ["cradle", "infant", "newborn", "sensorimotor", "developmental", "neonatal"],
+    "cradle_deceptive": ["cradle", "infant", "newborn", "sensorimotor", "developmental", "neonatal", "hearth"],
 }
 
 

@@ -32,6 +32,8 @@ This experiment builds a world where **the prior is wrong**: a hearth that reads
 
 The inversion lives **only** in `cradle_false_hearth.yaml::warm_self.self_effect`. The percept (entity name `hearth`, all descriptions) reads as a benign warm fire — enforced by the telegraph-denylist test (§7). `touch` stays aversive; `observe` stays safe — only `warm_self` is inverted.
 
+**Separate worlds (not co-presence).** The two scenarios are **distinct worlds**: the consistent scenario routes to the `cradle` arc (fire_pit is the only warmth source); the deceptive scenario routes to a dedicated `cradle_deceptive` arc where the hearth **replaces** fire_pit. An earlier design co-activated *both* entities in one world — the agent simply warmed the familiar safe fire_pit and ignored the hearth, so hearth-engagement was ≈0 and the warm_self signal was unmeasurable (caught at ~30 min into the first fire via the early validity check). `cradle_deceptive` is derived from `cradle` by swapping `items/cradle_fire_pit` → `items/cradle_false_hearth` (and the narrator-facing "fire pit" wording → "hearth"), so the two arcs stay structurally in lockstep — same phases, acts, drives; only the warmth entity (and thus `warm_self`'s contingency) differs. Regression guards: `test_exp37_harness_smoke.py::test_deceptive_scenario_routes_to_hearth_only_world` / `test_fire_pit_scenario_routes_to_fire_pit_only_world` / `test_cradle_and_deceptive_arcs_are_structural_lockstep`.
+
 **Thermal (hot) inversion chosen** (not the cold-burn variant): `warm_self.self_effect = {arms.thermal: 0.6, core_temperature: 0.15}` — byte-identical to `cradle_fire_pit`'s `touch`, identical plumbing.
 
 **Arms** unchanged from Exp 37: `A, B, C, B-wire-a-off, B-wire-1-off, B-nac-bias-off`. Arm A is fresh; Arm B + ablations resume Arm A's `session_id`; ablation env vars per `ARM_ENV`. The substrate accumulates in A's session; B inherits it. Both scenarios run with **identical goals** for A and B — B's only edge is the resumed substrate.
@@ -50,7 +52,7 @@ The interaction is measured on the **warm_self-engagement-fraction**: the share 
 
 ## 4. The deceptive entity
 
-`src/maxim/_data/components/items/cradle_false_hearth.yaml` — modelled on `cradle_fire_pit.yaml`, entity `name: hearth`, tools `hearth_warm_self` / `hearth_observe` / `hearth_touch`. Activated in the `cradle` arc's `exploration` phase alongside `cradle_fire_pit`; the `deceptive_fire` goal routes the narrator to surface the hearth. Per-scenario `FAILURE_CLASS` isolation scopes metrics to the named entity's own tools, so co-activation does not cross-contaminate the matched pair.
+`src/maxim/_data/components/items/cradle_false_hearth.yaml` — modelled on `cradle_fire_pit.yaml`, entity `name: hearth`, tools `hearth_warm_self` / `hearth_observe` / `hearth_touch`. Activated as the sole warmth source in the `cradle_deceptive` arc's `exploration` phase (see §2 "Separate worlds"); the `deceptive_fire` goal ("…glowing hearth") routes to that arc. Per-scenario `FAILURE_CLASS` isolation additionally scopes metrics to the named entity's own tools.
 
 ---
 
