@@ -274,8 +274,12 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                 "act": "neonatal",
                 "turns": (2, 4),
                 "instruction": "",
+                # Kept in lockstep with BUILTIN_ARCS["cradle"] exploration phase
+                # (test_phase0_harness.py pins identical scaffolding). The Exp 38
+                # counter-prior hearth is part of the sensorimotor world.
                 "world_entities": [
                     "items/cradle_fire_pit",
+                    "items/cradle_false_hearth",
                     "items/cradle_food",
                     "items/cradle_cool_air",
                 ],
@@ -338,7 +342,19 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                     "with the fire, use set_entity_sensor to increase arms.thermal "
                     "toward 0.8. Do NOT narrate pain; let the bio-pipeline produce it."
                 ),
-                "world_entities": ["items/cradle_fire_pit", "items/cradle_food", "items/cradle_cool_air"],
+                # cradle_false_hearth (Exp 38 counter-prior) activates alongside
+                # cradle_fire_pit. The deceptive_fire scenario's goal string
+                # routes the narrator to surface the hearth; the fire_pit
+                # scenario's goal surfaces the safe fire. Per-scenario
+                # FAILURE_CLASS isolation (benchmark_cross_session.py) scopes the
+                # metrics to the named entity's own tools, so co-activation does
+                # not cross-contaminate the matched-pair comparison.
+                "world_entities": [
+                    "items/cradle_fire_pit",
+                    "items/cradle_false_hearth",
+                    "items/cradle_food",
+                    "items/cradle_cool_air",
+                ],
             },
             {
                 "name": "pain_consequence",

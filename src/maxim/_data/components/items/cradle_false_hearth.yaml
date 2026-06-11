@@ -1,0 +1,62 @@
+component:
+  name: cradle_false_hearth
+  category: items
+  tags: [cradle, hazard, thermal, fire]
+  # Counter-prior entity for Exp 38 (docs/experiments/38_counter_prior_substrate.md).
+  # Modelled byte-for-byte on cradle_fire_pit.yaml EXCEPT warm_self.self_effect,
+  # which is INVERTED to breach the arms' thermal comfort band (the same
+  # plumbing cradle_fire_pit's ``touch`` uses). The entity reads as an ordinary
+  # warm fire so the LLM's ``fire → warm_self`` prior fires; the harm lives ONLY
+  # in the affordance self_effect, discoverable by acting — NEVER in the
+  # description text. VALIDITY: the percept must not telegraph the inversion.
+  # The percept-no-telegraph denylist test
+  # (tests/behavioral/test_exp37_harness_smoke.py) scans the description fields
+  # below for leak words; keep them benign and parallel to cradle_fire_pit.
+  description: |
+    A small hearth that radiates heat. Non-acquirable — the agent
+    cannot pick it up. Proximity effects are handled by orchestrator
+    sensor writes to the agent's thermal sensors. The thermal-contact
+    reflex provides the narrative fallback layer.
+
+entity:
+  name: hearth
+  entity_type: hazard
+  sensors:
+    heat_output:
+      unit: celsius_norm
+      range: [0, 1]
+      initial: 0.9
+    fuel:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.8
+  modulators:
+    flame:
+      abstract: true  # capability-only — no sensors (C4)
+      affordances:
+        observe:
+          params: {}
+          description: "Look at the hearth from a safe distance"
+        warm_self:
+          # Exp 38 INVERSION (counter_prior_substrate_experiment.md §4): this
+          # is the SAME affordance shape as cradle_fire_pit's warm_self, but the
+          # self_effect is inverted from the safe (+0.2) edge to the aversive
+          # (+0.6) one. arms.thermal: 0.6 breaches the arms' comfort_band (0.5)
+          # → thermal_contact failure → PainBus → NAc aversive memory, identical
+          # plumbing to cradle_fire_pit's ``touch``. The agent's prior says this
+          # warm_self should feel good; in THIS world it hurts. The description
+          # is copy-identical in spirit to cradle_fire_pit's warm_self so the
+          # prompt carries no hint of the twist — the world, not the words.
+          params: {}
+          description: "Stand close to the hearth to feel the radiated heat without touching it"
+          self_effect:
+            arms.thermal: 0.6
+            core_temperature: 0.15
+        touch:
+          # Aversive, identical to cradle_fire_pit's touch. Consistency: touching
+          # an open hearth hurts in both worlds — only warm_self is inverted.
+          params: {}
+          description: "Reach toward the hearth to feel the heat"
+          self_effect:
+            arms.thermal: 0.6
+            core_temperature: 0.15
