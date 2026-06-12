@@ -1285,6 +1285,7 @@ def run_benchmark(
     cleanup_after_trial: bool = False,
     max_consecutive_failures: int = 3,
     resume: bool = False,
+    subsim_timeout_s: int = 1800,
 ) -> dict[str, Any]:
     """Drive paired trials across arms × scenarios. Returns a summary dict.
 
@@ -1447,6 +1448,7 @@ def run_benchmark(
                         resume_session=None,
                         mock=mock,
                         mock_failure_count=4,
+                        timeout_s=subsim_timeout_s,
                     )
                     if not mock and not preflight_ran:
                         assert_subsim_routed_not_local(arm_a_result.data_home)
@@ -1487,6 +1489,7 @@ def run_benchmark(
                         extra_env=ARM_ENV[arm],
                         mock=mock,
                         mock_failure_count=(1 if arm == "B" else 2),
+                        timeout_s=subsim_timeout_s,
                     )
                     _emit(
                         build_record(
@@ -1514,6 +1517,7 @@ def run_benchmark(
                             resume_session=None,
                             mock=mock,
                             mock_failure_count=0,
+                            timeout_s=subsim_timeout_s,
                         )
                         if not mock and not preflight_ran:
                             assert_subsim_routed_not_local(arm_c_prior.data_home)
@@ -1539,6 +1543,7 @@ def run_benchmark(
                         resume_session=arm_c_prior.session_id,
                         mock=mock,
                         mock_failure_count=3,
+                        timeout_s=subsim_timeout_s,
                     )
                     _emit(
                         build_record(
@@ -1624,6 +1629,18 @@ def main(argv: list[str] | None = None) -> int:
         "0 disables the guard. Default 3.",
     )
     parser.add_argument(
+        "--subsim-timeout-s",
+        type=int,
+        default=1800,
+        help="Wall-clock timeout (seconds) for each `maxim --sim` sub-sim "
+        "subprocess. Default 1800 (30 min) suits fast models. Reasoning "
+        "models (DeepSeek-R1 distills etc.) emit <think> chains that take "
+        "~150s/action, so a 12-turn cradle sub-sim can run 60-90 min — bump "
+        "this (e.g. 10800 = 3h) AND set MAXIM_SIM_AUT_TURN_TIMEOUT_S (e.g. "
+        "300) so the in-sim per-turn timeout doesn't cut the AUT off "
+        "mid-thought. Both are required for a reasoning-model fire.",
+    )
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Resume an interrupted fire against the same --out: keep complete "
@@ -1656,6 +1673,7 @@ def main(argv: list[str] | None = None) -> int:
             cleanup_after_trial=args.cleanup_after_trial,
             max_consecutive_failures=args.max_consecutive_failures,
             resume=args.resume,
+            subsim_timeout_s=args.subsim_timeout_s,
         )
     except PreflightError as exc:
         print(f"ABORT: {exc}", file=sys.stderr)

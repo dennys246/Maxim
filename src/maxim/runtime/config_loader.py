@@ -278,6 +278,25 @@ class DataConfigSection:
 
 
 @dataclass(frozen=True)
+class SimConfigSection:
+    """Simulation-runner tuning knobs.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b).
+
+    ``aut_turn_timeout_s`` is the generative runner's per-turn AUT
+    response window. 30s keeps narrator pacing snappy for fast models
+    (IDLE-detection: a confused/frozen infant shouldn't stall the
+    narrative). Reasoning models (DeepSeek-R1 distills) emit ``<think>``
+    chains taking ~150s/action, so a reasoning-model run sets this to
+    e.g. 300 via ``maxim config set sim.aut_turn_timeout_s 300`` (or the
+    ``MAXIM_SIM_AUT_TURN_TIMEOUT_S`` env override). Clamped to [5, 1800]
+    at resolve time.
+    """
+
+    aut_turn_timeout_s: float = 30.0
+
+
+@dataclass(frozen=True)
 class MaximConfig:
     """Top-level Maxim instance config.
 
@@ -302,6 +321,7 @@ class MaximConfig:
     proxy: ProxyConfigSection = field(default_factory=ProxyConfigSection)
     auto_spawn: AutoSpawnConfigSection = field(default_factory=AutoSpawnConfigSection)
     data: DataConfigSection = field(default_factory=DataConfigSection)
+    sim: SimConfigSection = field(default_factory=SimConfigSection)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -341,6 +361,7 @@ _FIELD_TO_ENV: dict[str, str] = {
     "auto_spawn.timeout_s": "MAXIM_AUTO_SPAWN_TIMEOUT_S",
     "data.home": "MAXIM_DATA_HOME",
     "data.budget_gb": "MAXIM_DATA_BUDGET_GB",
+    "sim.aut_turn_timeout_s": "MAXIM_SIM_AUT_TURN_TIMEOUT_S",
 }
 
 
@@ -542,6 +563,14 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         return _coerce_float(raw, field_path, min_val=0.0)
     if field_path == "data.budget_gb":
         return _coerce_float(raw, field_path, min_val=0.0)
+    if field_path == "sim.aut_turn_timeout_s":
+        # Tuning knob (narrator pacing vs reasoning-model thinking time):
+        # CLAMP out-of-range to [5, 1800] rather than raise. A too-large
+        # value just waits longer; a sub-5s window would starve any model.
+        # Malformed (non-numeric) still raises via _coerce_float — the
+        # sim-side reader falls back to the 30s default on that.
+        value = _coerce_float(raw, field_path)
+        return max(5.0, min(value, 1800.0))
     if field_path.startswith("lanes.") and field_path.endswith(".timeout_s"):
         # llm_timeout_scalability.md Stage 2: strictly positive (matches
         # LaneTierConfig.__post_init__ validation). Zero or negative
@@ -1234,6 +1263,7 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
         tolerate_unknown=is_future_minor,
     )
     data_section = _parse_typed_section(data.get("data"), "data", DataConfigSection, tolerate_unknown=is_future_minor)
+    sim = _parse_typed_section(data.get("sim"), "sim", SimConfigSection, tolerate_unknown=is_future_minor)
 
     return MaximConfig(
         _format_version=version,
@@ -1244,6 +1274,7 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
         proxy=proxy,
         auto_spawn=auto_spawn,
         data=data_section,
+        sim=sim,
     )
 
 

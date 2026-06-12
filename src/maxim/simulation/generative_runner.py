@@ -25,6 +25,39 @@ from typing import Any
 
 import yaml
 
+# Default AUT per-turn response timeout for the generative runner. 30s
+# keeps narrator pacing snappy for fast models — a confused/frozen infant
+# (deliberation converges to no-action after being burned) shouldn't stall
+# the narrative for 2 minutes; the narrator continues to the next scene.
+_DEFAULT_AUT_TURN_TIMEOUT_S: float = 30.0
+
+
+def _aut_turn_timeout_s() -> float:
+    """AUT per-turn response timeout, resolved via the config precedence chain.
+
+    Reads ``sim.aut_turn_timeout_s`` through
+    :func:`maxim.runtime.config_loader.resolve_setting` — precedence
+    CLI > ``MAXIM_SIM_AUT_TURN_TIMEOUT_S`` env > ``config.json`` >
+    builtin 30s default. Operators set a persistent value via
+    ``maxim config set sim.aut_turn_timeout_s 300``; the env var is the
+    one-off override (e.g. the Exp 37 harness exports it per fire).
+
+    Reasoning models (DeepSeek-R1 distills etc.) emit ``<think>`` chains
+    that take ~150s per action — far longer than the 30s default, so every
+    turn would time out mid-thought and the AUT looks permanently IDLE.
+    The resolver clamps to [5, 1800]; any resolution error (malformed
+    value, config-loader import failure in a stripped env) falls back to
+    the 30s default rather than crashing the sim.
+    """
+    try:
+        from maxim.runtime.config_loader import resolve_setting
+
+        value, _ = resolve_setting("sim.aut_turn_timeout_s")
+        return float(value)
+    except Exception:
+        return _DEFAULT_AUT_TURN_TIMEOUT_S
+
+
 from maxim.simulation.arcs import (
     BUILTIN_ARCS,
     NarrativeArc,
@@ -403,23 +436,28 @@ def run_generative_campaign(
         if narrator.is_done and not narrative:
             break
 
-        # Send to AUT via bridge.  Shorter timeout than default (120s)
-        # because the generative narrator drives pacing — if the AUT
+        # Send to AUT via bridge.  Shorter timeout than the bridge default
+        # (120s) because the generative narrator drives pacing — if the AUT
         # goes IDLE (deliberation converges to no-action, e.g., confused
-        # infant freezing after being burned), the narrator should
-        # continue with the next scene rather than waiting 2 minutes.
+        # infant freezing after being burned), the narrator should continue
+        # with the next scene rather than waiting. Overridable via
+        # MAXIM_SIM_AUT_TURN_TIMEOUT_S for slow/reasoning models whose
+        # per-action thinking exceeds the 30s default (see
+        # ``_aut_turn_timeout_s``).
+        aut_timeout = _aut_turn_timeout_s()
         try:
             bridge_result = bridge.send_and_wait(
                 narrative,
                 salience=0.8,
                 novelty=0.7,
-                timeout=30.0,
+                timeout=aut_timeout,
             )
             last_aut_response = bridge_result.get("response", "") or ""
             if bridge_result.get("timed_out"):
                 log.info(
-                    "AUT went IDLE on turn %d (no action within 30s) — narrator continuing",
+                    "AUT went IDLE on turn %d (no action within %.0fs) — narrator continuing",
                     turn_idx + 1,
+                    aut_timeout,
                 )
             elif last_aut_response:
                 # Surface the AUT's textual reply so users can see what the

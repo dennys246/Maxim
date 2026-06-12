@@ -158,6 +158,25 @@ def _reset_optional_dep_fallback_warnings():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_sim_aut_turn_timeout_env():
+    """Scrub MAXIM_SIM_AUT_TURN_TIMEOUT_S (sim-runner AUT turn timeout).
+
+    Read in the generative-runner hot path via
+    ``generative_runner._aut_turn_timeout_s`` → ``resolve_setting``. Per
+    the CLAUDE.md rule that opt-in env vars in hot startup/sim paths need
+    autouse scrubs, isolate it so a test that sets it does not leak into
+    every later sim test. Restores any user value on exit.
+    """
+    saved = os.environ.pop("MAXIM_SIM_AUT_TURN_TIMEOUT_S", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_SIM_AUT_TURN_TIMEOUT_S", None)
+        if saved is not None:
+            os.environ["MAXIM_SIM_AUT_TURN_TIMEOUT_S"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_nac_min_confidence():
     """Scrub ``MAXIM_NAC_MIN_CONFIDENCE`` across every test.
 

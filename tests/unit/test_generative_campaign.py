@@ -460,15 +460,11 @@ class TestGenerativeRunner:
             tool_registry=tool_registry,
         )
 
-        deregistered = [
-            call.args[0] for call in tool_registry.deregister.call_args_list if call.args
-        ]
+        deregistered = [call.args[0] for call in tool_registry.deregister.call_args_list if call.args]
         assert "respond" not in deregistered, (
             f"respond should NOT be deregistered post-PR D; deregistered={deregistered}"
         )
-        assert "say" not in deregistered, (
-            f"say should NOT be deregistered post-PR D; deregistered={deregistered}"
-        )
+        assert "say" not in deregistered, f"say should NOT be deregistered post-PR D; deregistered={deregistered}"
 
 
 # ---------------------------------------------------------------------------
@@ -540,3 +536,59 @@ class TestEntityNaming:
         d = {"nickname": "old_agent", "role": "worker"}
         profile = AgentProfile.from_dict(d)
         assert profile.entity_type == "agent"
+
+
+class TestAutTurnTimeout:
+    """``generative_runner._aut_turn_timeout_s`` — AUT per-turn response
+    timeout, resolved via the config precedence chain (CLI > env >
+    config.json > 30s default). Default 30s for fast models; widen to e.g.
+    300 for reasoning models whose <think> chains exceed 30s/action.
+    Regression for the 2026-06-11 DeepSeek-R1 fire where every turn timed
+    out at 30s while R1 was still reasoning (~150s/action).
+
+    Env precedence is exercised here; config.json source + full
+    resolve_setting precedence are pinned in test_config_loader.py.
+    """
+
+    def _fn(self):
+        from maxim.runtime.config_loader import reset_config_cache
+        from maxim.simulation.generative_runner import _aut_turn_timeout_s
+
+        # Clear any cached config so a config.json written by another test
+        # doesn't leak into the env-precedence resolution here. XDG is
+        # isolated to an empty dir by conftest, so the config layer is the
+        # 30s default unless a test writes one.
+        reset_config_cache()
+        return _aut_turn_timeout_s
+
+    def test_default_when_unset(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", raising=False)
+        assert self._fn()() == 30.0
+
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "300")
+        assert self._fn()() == 300.0
+
+    def test_env_clamp_floor(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "1")
+        assert self._fn()() == 5.0
+
+    def test_env_clamp_ceiling(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "99999")
+        assert self._fn()() == 1800.0
+
+    def test_malformed_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "not-a-number")
+        assert self._fn()() == 30.0
+
+    def test_empty_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "  ")
+        assert self._fn()() == 30.0
+
+    # The config.json-source path (operator-persistent
+    # ``maxim config set sim.aut_turn_timeout_s``) is covered in
+    # test_config_loader.py::TestSimAutTurnTimeoutField — that file is on
+    # the config_writer set_field allow-list (IM2 invariant restricts
+    # set_field callers). The env-precedence tests above already prove the
+    # generative helper delegates to resolve_setting; config-layer
+    # resolution is a config_loader concern.
