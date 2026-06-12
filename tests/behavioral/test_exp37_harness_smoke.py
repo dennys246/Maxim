@@ -64,6 +64,67 @@ def _read_records(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+# ─── 0. --subsim-timeout-s plumbing (reasoning-model support) ────────────
+
+
+def test_subsim_timeout_s_plumbs_through_to_run_one_sim(harness, workdir, out_path, monkeypatch):
+    """``run_benchmark(subsim_timeout_s=N)`` must reach every ``run_one_sim``
+    call's ``timeout_s``. Reasoning-model fires (DeepSeek-R1) need a longer
+    per-sub-sim subprocess ceiling than the 1800s default; this pins the
+    plumbing so the flag isn't silently dropped. Regression for the
+    2026-06-11 R1 fire where 12-turn sub-sims ran 60-90 min and the 30-min
+    default would have killed them."""
+    captured: list[int] = []
+    real_run_one_sim = harness.run_one_sim
+
+    def spy(*args, **kwargs):
+        captured.append(kwargs.get("timeout_s"))
+        return real_run_one_sim(*args, **kwargs)
+
+    monkeypatch.setattr(harness, "run_one_sim", spy)
+    harness.run_benchmark(
+        out_path=out_path,
+        workdir=workdir,
+        arms=("A", "B", "C"),
+        scenarios=("fire_pit",),
+        trials=1,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+        subsim_timeout_s=9999,
+    )
+    assert captured, "run_one_sim was never called"
+    assert all(t == 9999 for t in captured), f"subsim_timeout_s did not propagate to every run_one_sim: {captured}"
+
+
+def test_subsim_timeout_s_defaults_to_1800(harness, workdir, out_path, monkeypatch):
+    """Without --subsim-timeout-s, the default 1800s is used (fast-model
+    behavior unchanged)."""
+    captured: list[int] = []
+    real_run_one_sim = harness.run_one_sim
+
+    def spy(*args, **kwargs):
+        captured.append(kwargs.get("timeout_s"))
+        return real_run_one_sim(*args, **kwargs)
+
+    monkeypatch.setattr(harness, "run_one_sim", spy)
+    harness.run_benchmark(
+        out_path=out_path,
+        workdir=workdir,
+        arms=("A",),
+        scenarios=("fire_pit",),
+        trials=1,
+        model="claude-sonnet",
+        cost_cap=100.0,
+        max_turns=4,
+        seed_base=42,
+        mock=True,
+    )
+    assert captured and all(t == 1800 for t in captured), captured
+
+
 # ─── 1. End-to-end smoke: all arms, both scenarios, 2 trials ─────────────
 
 

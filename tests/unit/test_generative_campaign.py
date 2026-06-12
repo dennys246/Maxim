@@ -460,15 +460,11 @@ class TestGenerativeRunner:
             tool_registry=tool_registry,
         )
 
-        deregistered = [
-            call.args[0] for call in tool_registry.deregister.call_args_list if call.args
-        ]
+        deregistered = [call.args[0] for call in tool_registry.deregister.call_args_list if call.args]
         assert "respond" not in deregistered, (
             f"respond should NOT be deregistered post-PR D; deregistered={deregistered}"
         )
-        assert "say" not in deregistered, (
-            f"say should NOT be deregistered post-PR D; deregistered={deregistered}"
-        )
+        assert "say" not in deregistered, f"say should NOT be deregistered post-PR D; deregistered={deregistered}"
 
 
 # ---------------------------------------------------------------------------
@@ -540,3 +536,41 @@ class TestEntityNaming:
         d = {"nickname": "old_agent", "role": "worker"}
         profile = AgentProfile.from_dict(d)
         assert profile.entity_type == "agent"
+
+
+class TestAutTurnTimeout:
+    """``generative_runner._aut_turn_timeout_s`` — env-var-configurable AUT
+    per-turn response timeout. Default 30s for fast models; widen via
+    MAXIM_SIM_AUT_TURN_TIMEOUT_S for reasoning models whose <think> chains
+    exceed 30s/action. Regression for the 2026-06-11 DeepSeek-R1 fire where
+    every turn timed out at 30s while R1 was still reasoning (~150s/action).
+    """
+
+    def _fn(self):
+        from maxim.simulation.generative_runner import _aut_turn_timeout_s
+
+        return _aut_turn_timeout_s
+
+    def test_default_when_unset(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", raising=False)
+        assert self._fn()() == 30.0
+
+    def test_override(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "300")
+        assert self._fn()() == 300.0
+
+    def test_clamp_floor(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "1")
+        assert self._fn()() == 5.0
+
+    def test_clamp_ceiling(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "99999")
+        assert self._fn()() == 1800.0
+
+    def test_malformed_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "not-a-number")
+        assert self._fn()() == 30.0
+
+    def test_empty_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "  ")
+        assert self._fn()() == 30.0
