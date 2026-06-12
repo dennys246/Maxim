@@ -373,8 +373,56 @@ def _provider_key_env_for_model(model: str) -> str | None:
     return None
 
 
+def _registered_profile_cloud_flag(model: str) -> bool | None:
+    """Authoritative cloud/local flag for ``model`` IF it resolves to a
+    registered profile (builtin or ``maxim model add``-created), else None.
+
+    This asks "what IS this profile" — its ``cloud`` field — rather than
+    guessing from the name prefix, mirroring Maxim core's by-backend lane
+    routing. ``maxim.models.language.config`` merges user profiles from
+    ``~/.config/maxim/profiles.yml`` into ``_BUILTIN_PROFILES`` at import,
+    so a local GGUF profile added via ``maxim model add`` is visible here.
+
+    Returns:
+        True  — registered cloud profile (has ``cloud: True``)
+        False — registered local profile (no ``cloud`` flag / GGUF backend)
+        None  — name is NOT in the registry; caller should fall back to
+                prefix matching (the legitimate "bare cloud name we have
+                no local profile for", e.g. ``gpt-4o`` on a machine that
+                never added it as a profile).
+
+    See issue #367 — the prefix-only classifier misrouted a LOCAL
+    DeepSeek-R1-Distill GGUF (name starts with the cloud prefix
+    ``deepseek-``) to the cloud DeepSeek API, producing an HTTP-401
+    cascade. Import failure (stripped env, partial install) → None so the
+    caller degrades to the prior prefix-only behavior rather than crashing.
+    """
+    try:
+        from maxim.models.language.config import (
+            _BUILTIN_PROFILES,
+            normalize_llm_profile,
+        )
+    except Exception:
+        return None
+    canonical = normalize_llm_profile(model)
+    entry = _BUILTIN_PROFILES.get(canonical)
+    if entry is None:
+        return None
+    return bool(entry.get("cloud", False))
+
+
 def _is_cloud_model(model: str) -> bool:
     """Return True when ``model`` resolves to a cloud-provider profile.
+
+    Authoritative-first (issue #367): if ``model`` resolves to a
+    REGISTERED profile (builtin or ``maxim model add``-created), use that
+    profile's ``cloud`` flag — a local GGUF profile whose NAME happens to
+    start with a cloud prefix (e.g. ``deepseek-r1-distill-qwen-32b``) is
+    correctly classified LOCAL. Only when the name is unregistered do we
+    fall back to name-prefix matching against ``CLOUD_MODEL_PREFIXES`` (the
+    legitimate "bare cloud name we have no local profile for" case). This
+    also subsumes the old ``mistral-`` ambiguity: a registered local
+    ``mistral-7b`` → local; a registered cloud ``mistral-large-*`` → cloud.
 
     Cloud profiles need different sub-sim plumbing than the default
     peer-to-leader routing: the harness must pass ``--language-model`` so
@@ -383,6 +431,9 @@ def _is_cloud_model(model: str) -> bool:
     provider API key) AND must blank out any peer.yml routing so the
     sub-sim doesn't try to dispatch the LARGE tier through the leader.
     """
+    registered = _registered_profile_cloud_flag(model)
+    if registered is not None:
+        return registered
     return any(model.startswith(prefix) for prefix in CLOUD_MODEL_PREFIXES)
 
 

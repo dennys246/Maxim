@@ -1299,6 +1299,56 @@ class TestCloudModelDetection:
         # Unknown / local profile → None.
         assert harness._provider_key_env_for_model("qwen2.5-14b-instruct") is None
 
+    # ── Issue #367: registry-aware classification (authoritative-first) ──
+
+    def test_local_profile_with_cloud_prefix_name_is_local(self, harness, monkeypatch):
+        """A LOCAL profile whose name starts with a cloud prefix (e.g. a
+        DeepSeek-R1-Distill GGUF added via ``maxim model add``) must be
+        classified LOCAL — the authoritative registry flag wins over the
+        name prefix.
+
+        Regression for the 2026-06-11 misroute: ``deepseek-r1-distill-
+        qwen-32b`` matched the ``deepseek-`` prefix, got routed to the
+        cloud DeepSeek API, and cascaded HTTP 401 → _llm_unavailable on
+        every turn while a perfectly good local llama-cpp sat unused.
+        """
+        from maxim.models.language import config as _cfg
+
+        monkeypatch.setitem(
+            _cfg._BUILTIN_PROFILES,
+            "deepseek-r1-distill-qwen-32b",
+            {"backend": "llama_cpp", "model": "DeepSeek-R1-Distill-Qwen-32B-Q4_K_M.gguf"},
+        )
+        assert not harness._is_cloud_model("deepseek-r1-distill-qwen-32b"), (
+            "a registered local GGUF profile must be LOCAL even with a cloud-prefix name"
+        )
+
+    def test_registered_cloud_profile_is_cloud(self, harness, monkeypatch):
+        """A registered profile with ``cloud: True`` is classified cloud
+        via the authoritative flag, even with a non-obvious name."""
+        from maxim.models.language import config as _cfg
+
+        monkeypatch.setitem(
+            _cfg._BUILTIN_PROFILES,
+            "my-custom-cloud-endpoint",
+            {"cloud": True, "model": "whatever"},
+        )
+        assert harness._is_cloud_model("my-custom-cloud-endpoint")
+
+    def test_unregistered_cloud_prefix_falls_back_to_prefix(self, harness):
+        """A bare cloud name NOT in the registry (e.g. a provider model on
+        a machine that never added it as a profile) falls back to prefix
+        matching → cloud. The fallback preserves the legitimate cloud-
+        dispatch path for unregistered names."""
+        # A gpt-prefixed name that is definitely not a registered profile.
+        assert harness._is_cloud_model("gpt-4o-unregistered-test-name-zzz")
+
+    def test_registry_helper_returns_none_for_unregistered(self, harness):
+        """``_registered_profile_cloud_flag`` returns None (not False) for an
+        unregistered name, so the caller knows to fall back to prefix
+        matching rather than treating it as definitively local."""
+        assert harness._registered_profile_cloud_flag("totally-unknown-model-name-zzz") is None
+
 
 class TestCloudDispatchEnvSetup:
     """The cloud-dispatch branch of ``_real_sim`` must:
