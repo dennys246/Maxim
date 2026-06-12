@@ -585,16 +585,10 @@ class TestAutTurnTimeout:
         monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "  ")
         assert self._fn()() == 30.0
 
-    def test_config_json_source(self, monkeypatch, tmp_path):
-        """With the env var UNSET, a config.json value is used (the
-        operator-persistent path: ``maxim config set sim.aut_turn_timeout_s``)."""
-        monkeypatch.delenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", raising=False)
-        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-        from maxim.runtime.config_loader import reset_config_cache
-        from maxim.runtime.config_writer import set_field
-        from maxim.simulation.generative_runner import _aut_turn_timeout_s
-
-        reset_config_cache()
-        set_field("sim.aut_turn_timeout_s", "240")
-        reset_config_cache()
-        assert _aut_turn_timeout_s() == 240.0
+    # The config.json-source path (operator-persistent
+    # ``maxim config set sim.aut_turn_timeout_s``) is covered in
+    # test_config_loader.py::TestSimAutTurnTimeoutField — that file is on
+    # the config_writer set_field allow-list (IM2 invariant restricts
+    # set_field callers). The env-precedence tests above already prove the
+    # generative helper delegates to resolve_setting; config-layer
+    # resolution is a config_loader concern.

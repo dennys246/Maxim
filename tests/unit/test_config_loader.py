@@ -611,6 +611,23 @@ class TestSimAutTurnTimeoutField:
         value, source = resolve_setting("sim.aut_turn_timeout_s", config=MaximConfig())
         assert value == 30.0 and source == "default"
 
+    def test_config_json_source(self, monkeypatch, tmp_path):
+        """With the env var UNSET, a config.json value resolves (the
+        operator-persistent path: ``maxim config set sim.aut_turn_timeout_s``).
+        Exercises write (set_field) → parse (_parse_config_dict sim section)
+        → resolve round-trip."""
+        from maxim.runtime.config_loader import reset_config_cache
+        from maxim.runtime.config_writer import set_field
+
+        monkeypatch.delenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        monkeypatch.setenv("HOME", str(tmp_path))
+        reset_config_cache()
+        set_field("sim.aut_turn_timeout_s", "240")
+        reset_config_cache()
+        value, source = resolve_setting("sim.aut_turn_timeout_s")
+        assert value == 240.0 and source == "config"
+
 
 class TestCoercionEnum:
     def test_valid_role(self, monkeypatch):
