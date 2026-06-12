@@ -580,6 +580,38 @@ class TestCoercionFloat:
             resolve_setting("cloud.session_budget_usd")
 
 
+class TestSimAutTurnTimeoutField:
+    """``sim.aut_turn_timeout_s`` — reasoning-model AUT turn timeout. Unlike
+    the raise-on-out-of-range float fields, this is a tuning knob that
+    CLAMPS to [5, 1800] (a too-large value just waits longer; a sub-5s
+    window would starve any model). Malformed still raises."""
+
+    def test_valid(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "300")
+        value, source = resolve_setting("sim.aut_turn_timeout_s")
+        assert value == 300.0 and source == "env"
+
+    def test_clamp_floor(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "1")
+        value, _ = resolve_setting("sim.aut_turn_timeout_s")
+        assert value == 5.0
+
+    def test_clamp_ceiling(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "100000")
+        value, _ = resolve_setting("sim.aut_turn_timeout_s")
+        assert value == 1800.0
+
+    def test_malformed_raises(self, monkeypatch):
+        monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "nope")
+        with pytest.raises(ConfigurationError, match="expected float"):
+            resolve_setting("sim.aut_turn_timeout_s")
+
+    def test_default_is_30(self, monkeypatch):
+        monkeypatch.delenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", raising=False)
+        value, source = resolve_setting("sim.aut_turn_timeout_s", config=MaximConfig())
+        assert value == 30.0 and source == "default"
+
+
 class TestCoercionEnum:
     def test_valid_role(self, monkeypatch):
         monkeypatch.setenv("MAXIM_ROLE", "leader")

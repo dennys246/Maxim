@@ -539,31 +539,41 @@ class TestEntityNaming:
 
 
 class TestAutTurnTimeout:
-    """``generative_runner._aut_turn_timeout_s`` — env-var-configurable AUT
-    per-turn response timeout. Default 30s for fast models; widen via
-    MAXIM_SIM_AUT_TURN_TIMEOUT_S for reasoning models whose <think> chains
-    exceed 30s/action. Regression for the 2026-06-11 DeepSeek-R1 fire where
-    every turn timed out at 30s while R1 was still reasoning (~150s/action).
+    """``generative_runner._aut_turn_timeout_s`` — AUT per-turn response
+    timeout, resolved via the config precedence chain (CLI > env >
+    config.json > 30s default). Default 30s for fast models; widen to e.g.
+    300 for reasoning models whose <think> chains exceed 30s/action.
+    Regression for the 2026-06-11 DeepSeek-R1 fire where every turn timed
+    out at 30s while R1 was still reasoning (~150s/action).
+
+    Env precedence is exercised here; config.json source + full
+    resolve_setting precedence are pinned in test_config_loader.py.
     """
 
     def _fn(self):
+        from maxim.runtime.config_loader import reset_config_cache
         from maxim.simulation.generative_runner import _aut_turn_timeout_s
 
+        # Clear any cached config so a config.json written by another test
+        # doesn't leak into the env-precedence resolution here. XDG is
+        # isolated to an empty dir by conftest, so the config layer is the
+        # 30s default unless a test writes one.
+        reset_config_cache()
         return _aut_turn_timeout_s
 
     def test_default_when_unset(self, monkeypatch):
         monkeypatch.delenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", raising=False)
         assert self._fn()() == 30.0
 
-    def test_override(self, monkeypatch):
+    def test_env_override(self, monkeypatch):
         monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "300")
         assert self._fn()() == 300.0
 
-    def test_clamp_floor(self, monkeypatch):
+    def test_env_clamp_floor(self, monkeypatch):
         monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "1")
         assert self._fn()() == 5.0
 
-    def test_clamp_ceiling(self, monkeypatch):
+    def test_env_clamp_ceiling(self, monkeypatch):
         monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "99999")
         assert self._fn()() == 1800.0
 
@@ -574,3 +584,17 @@ class TestAutTurnTimeout:
     def test_empty_falls_back_to_default(self, monkeypatch):
         monkeypatch.setenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "  ")
         assert self._fn()() == 30.0
+
+    def test_config_json_source(self, monkeypatch, tmp_path):
+        """With the env var UNSET, a config.json value is used (the
+        operator-persistent path: ``maxim config set sim.aut_turn_timeout_s``)."""
+        monkeypatch.delenv("MAXIM_SIM_AUT_TURN_TIMEOUT_S", raising=False)
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        from maxim.runtime.config_loader import reset_config_cache
+        from maxim.runtime.config_writer import set_field
+        from maxim.simulation.generative_runner import _aut_turn_timeout_s
+
+        reset_config_cache()
+        set_field("sim.aut_turn_timeout_s", "240")
+        reset_config_cache()
+        assert _aut_turn_timeout_s() == 240.0

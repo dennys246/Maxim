@@ -18,7 +18,6 @@ Integrates with:
 from __future__ import annotations
 
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,23 +33,29 @@ _DEFAULT_AUT_TURN_TIMEOUT_S: float = 30.0
 
 
 def _aut_turn_timeout_s() -> float:
-    """AUT per-turn response timeout, overridable via env var.
+    """AUT per-turn response timeout, resolved via the config precedence chain.
+
+    Reads ``sim.aut_turn_timeout_s`` through
+    :func:`maxim.runtime.config_loader.resolve_setting` — precedence
+    CLI > ``MAXIM_SIM_AUT_TURN_TIMEOUT_S`` env > ``config.json`` >
+    builtin 30s default. Operators set a persistent value via
+    ``maxim config set sim.aut_turn_timeout_s 300``; the env var is the
+    one-off override (e.g. the Exp 37 harness exports it per fire).
 
     Reasoning models (DeepSeek-R1 distills etc.) emit ``<think>`` chains
     that take ~150s per action — far longer than the 30s default, so every
-    turn times out mid-thought and the AUT looks permanently IDLE. Set
-    ``MAXIM_SIM_AUT_TURN_TIMEOUT_S`` to widen the window for slow/reasoning
-    models (e.g. 300 for R1). Clamped to [5, 1800]; malformed values fall
-    back to the default.
+    turn would time out mid-thought and the AUT looks permanently IDLE.
+    The resolver clamps to [5, 1800]; any resolution error (malformed
+    value, config-loader import failure in a stripped env) falls back to
+    the 30s default rather than crashing the sim.
     """
-    raw = os.environ.get("MAXIM_SIM_AUT_TURN_TIMEOUT_S", "").strip()
-    if not raw:
-        return _DEFAULT_AUT_TURN_TIMEOUT_S
     try:
-        val = float(raw)
-    except ValueError:
+        from maxim.runtime.config_loader import resolve_setting
+
+        value, _ = resolve_setting("sim.aut_turn_timeout_s")
+        return float(value)
+    except Exception:
         return _DEFAULT_AUT_TURN_TIMEOUT_S
-    return max(5.0, min(val, 1800.0))
 
 
 from maxim.simulation.arcs import (
