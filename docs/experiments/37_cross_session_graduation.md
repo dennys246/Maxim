@@ -288,6 +288,25 @@ The combined cross-scale story is genuinely informative:
 
 **Why this matters (full interpretation in [37_cross_model_results.md](37_cross_model_results.md)):** Mistral24B (24B) hits a prior-saturation ceiling that Qwen32B (32B) does not — a smaller model with *stronger* cradle-task priors. Combined with Qwen14B (priors too weak) and Qwen32B (sweet spot), the three fires form a **Goldilocks zone** story: substrate-transfer signal is detectable only when the base LLM's priors leave headroom between first-encounter and optimal behavior, and that headroom is governed by training method at least as much as parameter count. This reframes the cross-model question and *strengthens* the case for Exp 38 substrate-primary measurement (remove the LLM-prior confound entirely).
 
+## Results — 2026-06-13 DeepSeek-R1-Distill-Qwen-32B fire (cross-model reasoning-axis follow-up)
+
+**Verdict: PARTIAL — investigation gate** (same gate as Qwen32B/Qwen14B, for the Arm-C-confound reason — but the strongest substrate signal of any fire and the first clean ablation attribution). Full analyzer output at [data/37_results_r1_distill_qwen_32b.md](data/37_results_r1_distill_qwen_32b.md); per-trial JSONL at [data/37_results_r1_distill_qwen_32b.jsonl](data/37_results_r1_distill_qwen_32b.jsonl). **The cross-cutting interpretation lives in the dedicated [37_cross_model_results.md](37_cross_model_results.md) doc (Bucket R-A section) — this section records the per-fire verdict only.**
+
+**Run envelope:** 60 of 60 records. Fire ran on the leader Mac Mini using local DeepSeek-R1-Distill-Qwen-32B (Q4_K_M — the R1 reasoning-trace distillation of the SAME Qwen2.5-32B base fired 2026-06-08), completed 2026-06-13 08:46, $0 cost. Fourth row of the [cross-model characterization plan](../plans/exp37_cross_model_characterization.md); the reasoning-paradigm axis (same base/scale/tokenizer as Qwen32B, only reasoning-training differs). Exploratory, not a pre-reg amendment. Required PR #369 (`sim.aut_turn_timeout_s` config field + `--subsim-timeout-s` flag) first — R1's `<think>` reasoning chains run ~150s/action and were truncated by the prior hardcoded 30s AUT turn timeout.
+
+**Headline — Bucket R-A (reasoning amplifies substrate):** Arm A (fresh) = 0.259 ± 0.145, Arm B (resumed) = 0.566, **Δ = +2.11 SD PASS** — the largest substrate-transfer signal of any fire (vs Qwen32B's +1.43). The reasoning overlay *lowered* Arm A relative to the Qwen32B base (0.259 vs 0.420), pushing the fresh agent deeper into the Goldilocks zone (more headroom), then the deliberate-reasoning chain filled more of that headroom than the non-reasoning base did.
+
+**Per-fire verdict:**
+- Primary **PASS** (+2.11 SD, B > A in predicted direction)
+- **Secondary 1/3 PASS** — **Wire-A annotation off shrinks B's delta by +1.13 SD (PASS, first clean ablation across all four fires).** Wire-1 off +0.69 (FAIL, sub-threshold); NAc-bias off overshoots past Arm A (opposite-direction, FAIL). The reasoning model is reading Wire-A's cluster-bias substrate-voice annotation — a mediation that was present but statistically buried at Qwen32B (+0.56 suggestive).
+- Corroborating 1/4 (time-to-first-warm-self A=0.8 → B=0.2, −1.34 SD PASS; other three FAIL)
+- Descriptive `fire_approach_action_count` A=1.40 → B=3.20, Δ=+1.80 (predicted direction, largest of any fire)
+- **Robustness FAIL — diverges from primary.** Substrate biases toward `warm_self` without proportionally reducing `touch`; the two halves of "safe engagement" move semi-independently. Investigate before claiming a clean behavioral-safety win.
+- **Arm C confound** — C=0.527 ≈ B=0.566, both above A=0.259 (outside A's band [0.145, 0.479]). Reproduces Qwen32B's upward confound: any resumed prior shifts behavior up, not fire-failure prior specifically. This is the reason the verdict stays PARTIAL rather than EARNED.
+- sharp_rock degenerate (fourth model — A=0.000, B=0.000, all ablations insufficient-data)
+
+**Why this matters (full interpretation in [37_cross_model_results.md](37_cross_model_results.md)):** The pre-registered worry was bucket R-C (reasoning *drowns* substrate — "smarter models are worse substrate consumers"). The data went the other way: reasoning-trained models are *better* substrate consumers, and the deliberate-reasoning trace makes the carrying mechanism (Wire-A) statistically legible for the first time. The Goldilocks-aware check passes (A dropped, didn't drift to ceiling), so the +2.11 SD is a genuine larger-effect reading, not a position artifact. This opens a clean 1.1+ "substrate-aware reasoning models" research direction. The strong "substrate drives action selection via a specific bio-mechanism" claim STAYS pulled from 1.0 (Arm-C confound gates it), but R1 is the first fire to put a single named mechanism (Wire-A) on the board.
+
 ## Cross-references
 
 - [docs/plans/benchmarking_1_0.md](../plans/benchmarking_1_0.md) — 1.0 benchmarking gate (this is its primary experiment).
