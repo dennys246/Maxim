@@ -1,6 +1,6 @@
 # Exp 37 — Cross-Model Results
 
-**Status:** IN PROGRESS 2026-06-11 (3 open-source fires complete: Qwen14B, Qwen32B, Mistral24B → **Goldilocks-zone finding**; DeepSeek reasoning-axis fire queued; cloud comparisons deferred behind prompt-caching refactor).
+**Status:** IN PROGRESS 2026-06-13 (4 open-source fires complete: Qwen14B, Qwen32B, Mistral24B → **Goldilocks-zone finding**; DeepSeek-R1-Distill-Qwen-32B → **reasoning amplifies substrate** [bucket R-A] + first clean Wire-A ablation; cloud comparisons deferred behind prompt-caching refactor).
 **Companion doc:** [37_cross_session_graduation.md](37_cross_session_graduation.md) — pre-registration + per-fire verdict writeups.
 **Plan:** [docs/plans/exp37_cross_model_characterization.md](../plans/exp37_cross_model_characterization.md) — methodology + sequencing.
 **Purpose:** Cross-cutting interpretation across model fires. Each per-fire verdict stays in `37_cross_session_graduation.md`; this doc compiles the cross-model story that emerges from the union.
@@ -28,8 +28,8 @@ Each axis informs different aspects of the interpretation:
 |---|---|---|---|
 | Qwen2.5-14B-Instruct | leader (local) | **DONE** 2026-06-06 (60/60) | Scale baseline (small end) |
 | Qwen2.5-32B-Instruct | leader (local) | **DONE** 2026-06-08 (60/60) | Scale comparison (large end, same family) |
-| Mistral-Small-24B-Instruct-2501 | leader (local) | **RUNNING** 2026-06-10 (kicked off 11:50; re-fired 16:32 after harness safety-check fix) | Family comparison at intermediate scale |
-| DeepSeek-R1-Distill-Qwen-32B | leader (local) | **QUEUED** after Mistral24B | Reasoning-axis isolation (same base as Qwen32B) |
+| Mistral-Small-24B-Instruct-2501 | leader (local) | **DONE** 2026-06-11 (60/60) | Family comparison at intermediate scale |
+| DeepSeek-R1-Distill-Qwen-32B | leader (local) | **DONE** 2026-06-13 (60/60) | Reasoning-axis isolation (same base as Qwen32B) |
 | Llama 3.3 70B Instruct | leader (local) | CONDITIONAL on DeepSeek result | New family + biggest local scale; only if DeepSeek leaves open questions |
 | Claude Sonnet 4.6 | peer (cloud) | DEFERRED behind prompt-caching refactor | Closed-source anchor #1 |
 | GPT-4o | peer (cloud) | DEFERRED | Closed-source anchor #2 + OpenAI key-path validation |
@@ -46,7 +46,7 @@ The cradle scenario's primary metric on fire_pit, across all model fires:
 | Qwen2.5-14B-Instruct | 0.533 ± ~0.27 | 0.517 | −0.06 | **FAIL** | 0/4 | FAIL |
 | Qwen2.5-32B-Instruct | 0.420 ± 0.27 | 0.800 | **+1.43** | **PASS** | **2/4 PASS** | **PASS** |
 | Mistral-Small-24B-Instruct | **1.000 ± 0.000** | 0.600 | **−0.40** (wrong dir; zero-SD fallback) | **FAIL** | 0/4 | FAIL |
-| DeepSeek-R1-Distill-Qwen-32B | TBD (queued) | TBD | TBD | TBD | TBD | TBD |
+| DeepSeek-R1-Distill-Qwen-32B | 0.259 ± 0.145 | 0.566 | **+2.11** | **PASS** | 1/4 PASS | FAIL (diverges) |
 | Llama 3.3 70B Instruct | TBD (conditional) | — | — | — | — | — |
 | Claude Sonnet 4.6 | TBD (deferred) | — | — | — | — | — |
 | GPT-4o | TBD (deferred) | — | — | — | — | — |
@@ -63,6 +63,7 @@ The pre-reg's secondary criterion: ≥1 of 3 ablations should shrink Arm B's del
 | Qwen2.5-14B-Instruct | −0.06 (overshoot) | −0.21 (overshoot) | −0.18 (overshoot) | **FAIL** (0/3) |
 | Qwen2.5-32B-Instruct | +0.56 (suggestive) | −0.06 (no change) | +0.03 (no change) | **FAIL** (0/3, but Wire-A directionally consistent) |
 | Mistral-Small-24B-Instruct | n/a (ablation degenerate) | n/a | n/a | **FAIL** (0/3 — not measurable; see note) |
+| DeepSeek-R1-Distill-Qwen-32B | **+1.13 (PASS)** | +0.69 (FAIL) | overshoot (FAIL) | **PASS (1/3)** — first clean ablation across all fires |
 
 **Mistral24B secondary criterion is structurally unmeasurable.** The ablation test asks "does turning off bio-mechanism X shrink B's delta toward A?" — but for Mistral24B the B-vs-A delta is already NEGATIVE (B=0.600 < A=1.000, Δ=−0.40). There is no positive delta to "shrink." The ablation arms (B-wire-a-off=0.600, B-wire-1-off=0.600, B-nac-bias-off=0.700) all sit at or near B, so the analyzer reports "insufficient data for ablation comparison." This is a direct consequence of the ceiling effect (Arm A already perfect — see headline finding below).
 
@@ -75,8 +76,9 @@ The pre-reg's secondary criterion: ≥1 of 3 ablations should shrink Arm B's del
 | Qwen2.5-14B-Instruct | 0.617 | YES (band [0.333, 0.96]) | PASS |
 | Qwen2.5-32B-Instruct | 0.667 | NO (outside band [0.033, 0.660]) | **FAIL — confound** |
 | Mistral-Small-24B-Instruct | 0.400 | NO (outside band [1.000, 1.000]) | **FAIL — but in the OPPOSITE direction** |
+| DeepSeek-R1-Distill-Qwen-32B | 0.527 | NO (outside band [0.145, 0.479]) | **FAIL — confound (C ≈ B, both above A)** |
 
-Arm C carries a peaceful-prior session (control for "any prior shifts behavior" vs "fire-failure prior shifts behavior specifically"). When C falls OUTSIDE A's empirical band AND looks more like B, that's the signal that the substrate effect generalizes across priors rather than being scenario-specific. **Qwen32B triggered this confound** in the upward direction (C ≈ B, both above A). **Mistral24B triggers it in the opposite direction:** C=0.400 is BELOW A=1.000, not above. Because Arm A is a degenerate point distribution (every value exactly 1.000, band [1.000, 1.000]), literally ANY non-perfect arm falls "outside the band." The confound flag here is a statistical artifact of A's zero variance, not evidence of cross-prior generalization. C being the WORST arm (lowest warm_self, has touches) is actually the predicted fire-specific-learning pattern — the peaceful-prior agent is the most dangerous near fire.
+Arm C carries a peaceful-prior session (control for "any prior shifts behavior" vs "fire-failure prior shifts behavior specifically"). When C falls OUTSIDE A's empirical band AND looks more like B, that's the signal that the substrate effect generalizes across priors rather than being scenario-specific. **Qwen32B triggered this confound** in the upward direction (C ≈ B, both above A). **Mistral24B triggers it in the opposite direction:** C=0.400 is BELOW A=1.000, not above. Because Arm A is a degenerate point distribution (every value exactly 1.000, band [1.000, 1.000]), literally ANY non-perfect arm falls "outside the band." The confound flag here is a statistical artifact of A's zero variance, not evidence of cross-prior generalization. C being the WORST arm (lowest warm_self, has touches) is actually the predicted fire-specific-learning pattern — the peaceful-prior agent is the most dangerous near fire. **DeepSeek-R1 reproduces Qwen32B's upward confound** (C=0.527 ≈ B=0.566, both well above A=0.259): the peaceful-prior agent behaves much more like the fire-failure-prior agent than like the fresh agent. As with Qwen32B, this means the substrate effect is not cleanly fire-failure-specific — *any* resumed prior shifts behavior up — and the per-fire verdict is gated to investigation rather than a clean substrate-attribution PASS. The reasoning overlay does not resolve the confound.
 
 ## Descriptive corroborating — `fire_approach_action_count`
 
@@ -87,10 +89,11 @@ Counts of warm_self actions per session — not pre-reg gated, but directionally
 | Qwen2.5-14B-Instruct | 1.60 | 1.40 | −0.20 | **WRONG** (B less than A) |
 | Qwen2.5-32B-Instruct | 1.60 | 3.00 | **+1.40** | **PREDICTED** (B more than A) |
 | Mistral-Small-24B-Instruct | 1.00 | 0.80 | −0.20 | **WRONG** (B less than A) — but A is at ceiling |
+| DeepSeek-R1-Distill-Qwen-32B | 1.40 | 3.20 | **+1.80** | **PREDICTED** (B more than A) — largest of any fire |
 
-## Sharp_rock scenario — degenerate at ALL THREE scales/families
+## Sharp_rock scenario — degenerate at ALL FOUR fires
 
-Qwen14B, Qwen32B, AND Mistral24B all produced zero engagement across every sharp_rock arm. The asymmetric-design concern from [exp37_metric_pivot.md](../plans/exp37_metric_pivot.md) (sharp_rock has no positive-approach analog like fire_pit's `warm_self`) is now realized at three model fires spanning two families and three scales. This is no longer a Qwen-specific quirk — **sharp_rock is structurally broken for cross-model use**, and the cradle scenario needs a positive-approach affordance for sharp_rock (or a different second scenario) before it can carry verdict weight. Tracked as cradle-redesign motivation for post-1.0 work. fire_pit alone carries the substantive evidence on all cross-model fires.
+Qwen14B, Qwen32B, Mistral24B, AND DeepSeek-R1-Distill-Qwen-32B all produced near-zero engagement across every sharp_rock arm (R1: A=0.000, B=0.000 — primary FAIL via zero-SD fallback; all three ablations report "insufficient data"). The asymmetric-design concern from [exp37_metric_pivot.md](../plans/exp37_metric_pivot.md) (sharp_rock has no positive-approach analog like fire_pit's `warm_self`) is now realized at four model fires spanning two families, three scales, and a reasoning-trained variant. This is no longer a Qwen-specific quirk — **sharp_rock is structurally broken for cross-model use**, and the cradle scenario needs a positive-approach affordance for sharp_rock (or a different second scenario) before it can carry verdict weight. Tracked as cradle-redesign motivation for post-1.0 work. fire_pit alone carries the substantive evidence on all cross-model fires.
 
 ## HEADLINE FINDING — the Goldilocks zone of prior strength
 
@@ -101,6 +104,7 @@ Qwen14B, Qwen32B, AND Mistral24B all produced zero engagement across every sharp
 | Qwen2.5-14B | 0.533 (variable) | 0.517 | −0.02 | **Below the zone** — priors too weak |
 | Qwen2.5-32B | 0.420 (variable) | 0.800 | **+0.38 (+1.43 SD, PASS)** | **Inside the zone** — sweet spot |
 | Mistral-Small-24B | **1.000 (SD=0, perfect)** | 0.600 | −0.40 | **Above the zone** — ceiling effect |
+| DeepSeek-R1-Distill-Qwen-32B | 0.259 (variable) | 0.566 | **+0.31 (+2.11 SD, PASS)** | **Deep inside the zone** — reasoning overlay lowers Arm A, widens the headroom, amplifies the signal |
 
 **The reframe:** substrate-transfer signal is detectable only in a *Goldilocks zone of prior strength* — the LLM's first-encounter priors must be good enough to act on substrate-derived context, but not so good the task is already solved on the first try.
 
@@ -137,54 +141,47 @@ This is a *stronger and more nuanced* 1.0 story than "substrate works at scale":
 
 The strong "substrate drives action selection via specific bio-mechanisms" claim STAYS pulled from 1.0 bio-framing. The Goldilocks finding actually *strengthens* the case for the post-1.0 substrate-primary direction (Exp 38): if you want to demonstrate substrate-driven behavior unambiguously, you need to remove the LLM-prior confound entirely, because under LLM-AUT the signal is only visible in a narrow prior-strength band.
 
-## Cross-model interpretation — what we're trying to learn from DeepSeek-R1-Distill-Qwen-32B
+## REASONING-AXIS RESULT — DeepSeek-R1-Distill-Qwen-32B → Bucket R-A (reasoning amplifies substrate)
 
-**Queued for after Mistral24B finishes.** The DeepSeek fire isolates a different axis from family / scale: it tests whether **explicit-thinking training** (R1's reasoning-trace distillation) changes how substrate-derived context interacts with the LLM's action selection.
+**Fire complete 2026-06-13 (60/60). Verdict: PARTIAL — investigation gate** (same gate as Qwen32B, for the same Arm-C-confound reason), **but the strongest substrate signal of any fire AND the first clean ablation attribution.** Full analyzer output: [data/37_results_r1_distill_qwen_32b.md](data/37_results_r1_distill_qwen_32b.md).
 
-### Why this is the cleanest reasoning-axis test available
+The DeepSeek fire isolates the reasoning axis: DeepSeek-R1-Distill-Qwen-32B is the R1 reasoning-trace fine-tune of the SAME Qwen2.5-32B base we already fired — same architecture, tokenizer, scale, pretraining. The only methodologically-meaningful difference is the reasoning-training overlay, so the comparison vs Qwen32B is a clean A/B on the reasoning-paradigm axis. (Llama-distill variants would confound reasoning + new family + larger scale at once; avoided for the headline test.)
 
-DeepSeek-R1-Distill-Qwen-32B is the R1 reasoning-trace fine-tune of the SAME Qwen2.5-32B base we've already fired. Same architecture, same tokenizer, same scale, same pretraining. **The only methodologically-meaningful difference is the reasoning-training overlay.** That makes the comparison vs Qwen32B a clean A/B on the reasoning-paradigm axis with minimal confounds.
+### Headline: this is Bucket R-A
 
-(Llama-distill variants like DeepSeek-R1-Distill-Llama-70B would add reasoning + new family + larger scale at once — three confounded axes. We avoid that for the headline test; Llama 70B stays as a *conditional* follow-on if DeepSeek raises specific scale-ceiling questions.)
+| Quantity | Qwen32B (base) | DeepSeek-R1 (reasoning) | Reading |
+|---|---|---|---|
+| Arm A (fresh) mean ± SD | 0.420 ± 0.27 | **0.259 ± 0.145** | reasoning overlay LOWERS fresh-agent priors — deeper in the Goldilocks zone |
+| Arm B (resumed) mean | 0.800 | 0.566 | absolute B is lower, but A is lower too |
+| Δ (SD units) | +1.43 (PASS) | **+2.11 (PASS)** | **reasoning AMPLIFIES the substrate-transfer effect** |
+| Best ablation shrinkage | Wire-A +0.56 (suggestive, FAIL) | **Wire-A +1.13 (PASS)** | **first clean ablation attribution across all four fires** |
+| `fire_approach_action_count` Δ | +1.40 | **+1.80** | largest warm_self count lift of any fire |
 
-### Three-bucket pre-registered interpretation
+**Two findings, both pointing the same way:**
 
-#### Bucket R-A: DeepSeek stronger than Qwen32B (Δ > +1.43 SD)
+1. **Reasoning amplifies substrate utilization.** The SD-shift jumps from +1.43 (Qwen32B) to +2.11 (R1) — the largest of any fire. The "think before responding" pattern lets the model engage more deliberately with substrate-derived prompt context: drives, recalled episodes, and valence annotations get weighted in an explicit reasoning chain rather than skimmed. This is bucket R-A as pre-registered.
 
-**Interpretation:** Reasoning training *amplifies* substrate signal. The "think before responding" pattern lets the model engage more deliberately with substrate-derived prompt context — drives are noticed, recalled episodes get weighted, valence annotations get considered rather than skimmed.
+2. **Reasoning makes the mechanism observable.** For the first time across all fires, a single bio-mechanism ablation cleanly bites: turning off **Wire-A's cluster-bias annotation** shrinks Arm B's delta by +1.13 SD (PASS threshold +1.0). At Qwen32B the same ablation was only +0.56 (suggestive, sub-threshold); Wire-1 (+0.69) and NAc-bias (overshoots past Arm A) still don't attribute. So Wire-A — the substrate-voice annotation that renders NAc cluster reward biases into the prompt — is the channel the reasoning model is reading. The deliberate-reasoning overlay appears to *surface* a mediation that was present but statistically buried in the non-reasoning model.
 
-**1.0 framing:** "Substrate-context utilization is enhanced by reasoning-trained models. Future work: substrate-aware reasoning models as a complementary direction to substrate-primary action selection."
+### The Goldilocks-aware check passes — this is a fair comparison, not a position artifact
 
-This would be a substantively interesting finding for the 1.1+ research agenda.
+The post-Mistral caveat demanded we report Arm A's position first, because the R1 distillation could have moved Arm A out of the zone (a ceiling effect masquerading as a reasoning effect). **It did not.** Arm A *dropped* to 0.259 — even further from the optimal-behavior ceiling than Qwen32B's 0.420, i.e. *more* headroom, deeper in the Goldilocks zone. So the +2.11 SD is a genuine larger-effect reading, not a consequence of A drifting toward saturation. The reasoning overlay made the fresh agent slightly *worse* at the cradle task on its first encounter (more exploration, less beeline-to-safe), which widened the gap substrate could fill — and then the deliberate reasoning chain filled more of it than the non-reasoning model did. Both directions of the Goldilocks logic are satisfied at once.
 
-#### Bucket R-B: DeepSeek similar to Qwen32B (Δ ≈ +1.43 SD, within noise)
+### Honest caveats (why PARTIAL, not EARNED)
 
-**Interpretation:** Reasoning training is neutral with respect to substrate signal. The substrate effect we see at 32B Qwen survives the R1 distillation overlay — substrate context flows through both reasoning and non-reasoning models similarly.
+- **Arm C confound (the reason for the investigation gate).** C=0.527 ≈ B=0.566, both well above A=0.259 — the peaceful-prior agent behaves like the fire-failure-prior agent, not like the fresh agent. As with Qwen32B, the effect is "any resumed prior shifts behavior up," not "fire-failure prior specifically." The reasoning overlay does not resolve this; clean fire-specificity attribution still requires the Exp 38 substrate-primary design.
+- **Robustness diverges from primary.** The legacy per-action-failure-rate robustness metric FAILs even though the positive-approach primary PASSes. Substrate biases the model toward `warm_self` (more warming) without proportionally reducing `touch` (dangerous contact) — the two halves of "safe engagement" move semi-independently. Investigate before claiming a clean behavioral-safety improvement.
+- **Only Wire-A attributes; Wire-1 and NAc-bias do not.** Single-channel attribution is progress over zero-channel, but it is not full mechanistic accounting. The NAc-bias-off ablation *overshoots* past Arm A (0.197 < 0.259) — an opposite-direction effect, not shrinkage.
+- **sharp_rock degenerate (4th model).** Zero engagement on every sharp_rock arm; the scenario carries no weight.
+- **Corroborating 1/4.** Only time-to-first-warm-self passes (A=0.8 → B=0.2, −1.34 SD); the other three corroborators fail. The primary + the Wire-A ablation + the descriptive count carry the story; the corroborating battery is weak.
 
-**1.0 framing:** "Substrate signal is robust to training-paradigm shifts at the moderate scale tested. Substrate-LLM interaction does not depend on reasoning training."
+### 1.0 framing implication
 
-The "null result" outcome on this axis. Reassuring for the substrate generality claim.
+The reasoning row *strengthens* the Goldilocks story rather than complicating it. The pre-registered worry was bucket R-C (reasoning *drowns* substrate — "smarter models are worse substrate consumers," a bad look for the bio-harness positioning). The data went the other way: **reasoning-trained models are *better* substrate consumers, and the deliberate-reasoning trace makes the carrying mechanism (Wire-A) statistically legible for the first time.** This is a clean 1.1+ research direction — *substrate-aware reasoning models* as a complement to the post-1.0 substrate-primary (Exp 38) direction. The strong "substrate drives action selection via a specific bio-mechanism" claim still STAYS pulled from 1.0 bio-framing (the Arm-C confound gates it), but R1 is the first fire to put a single named mechanism on the board.
 
-#### Bucket R-C: DeepSeek weaker than Qwen32B (Δ < +1.0 SD)
+## Setup commands for DeepSeek-R1-Distill-Qwen-32B (copy-paste-ready, for reproduction)
 
-**Interpretation:** Reasoning training *drowns* substrate signal. Explicit reasoning chains may out-compete substrate-derived context — the model "thinks past" the bio-annotations toward its own preferred reasoning trajectory, ignoring substrate suggestions it would have used in a non-reasoning mode.
-
-**1.0 framing:** "Substrate signal weakened by reasoning-training overlay. Future work: substrate context positioning + prompt-engineering for reasoning-trained models." Suggests substrate signal works better with non-reasoning models in the current Maxim architecture.
-
-This would be the most surprising finding — it would imply that bigger / smarter / more thoughtful LLMs are actually *worse* substrate consumers, with implications for the bio-inspired-harness 1.0 positioning.
-
-#### Goldilocks-aware caveat for the DeepSeek read (added 2026-06-11 post-Mistral)
-
-The Mistral24B ceiling effect adds a critical confound to watch for. DeepSeek-R1-Distill-Qwen-32B shares the Qwen32B BASE, so its fresh-agent (Arm A) priors should start near Qwen32B's (A≈0.42, in the Goldilocks zone). **But the R1 reasoning distillation could shift Arm A's prior strength in either direction**, and that shift — not the substrate interaction per se — could drive the result:
-
-- If R1 distillation makes Arm A *better* at the cradle task (pushes A toward the Mistral-style ceiling), we'd see a Mistral-like null even if substrate interaction is unchanged — a ceiling effect, not a reasoning-drowns-substrate effect.
-- If R1 distillation makes Arm A *worse* / more variable (more exploration, less task-focus), we'd see more headroom and possibly a Qwen32B-like PASS — again driven by prior strength, not substrate-reasoning interaction.
-
-**So the DeepSeek read MUST report Arm A's mean + SD first**, and interpret the B-vs-A delta only relative to where A sits in the Goldilocks zone. A "weaker than Qwen32B" result (bucket R-C) is only a *reasoning-drowns-substrate* finding if Arm A stayed in the zone (A still ~0.42 with headroom). If Arm A moved to the ceiling, it's the same ceiling effect Mistral showed, and reasoning-vs-substrate stays unanswered. Document Arm A's position explicitly in the DeepSeek writeup.
-
-## Setup commands for DeepSeek-R1-Distill-Qwen-32B (copy-paste-ready, queued)
-
-When ready to fire DeepSeek (after Mistral24B completes), execute on the **leader**:
+To reproduce the DeepSeek fire, execute on the **leader**:
 
 ```bash
 # 1. Download + add the profile to ~/.config/maxim/profiles.yml
@@ -218,13 +215,13 @@ tmux ls
 
 **Sizing notes:** Q4_K_M is ~20GB (comfortable fit on 48GB Mac Mini). Wall-time estimate matches Qwen32B (~25-30 hours). R1 distillation does add inference-time reasoning chains, so per-token latency may be slightly higher than vanilla Qwen32B — could stretch to ~32-35 hours. Watch the per-record duration of the first few trials.
 
-**Reasoning chain caveat:** R1-distilled models emit `<think>...</think>` reasoning chains before the actual response. The harness should treat these as part of the response (token counts include them; engagement metrics measure actions, not reasoning text). If we observe a regression in tool-call rate, that could be the model "thinking out" of using tools at all — note in the results writeup.
+**Reasoning chain note (resolved by the fire):** R1-distilled models emit `<think>...</think>` reasoning chains before the actual response. Maxim's tool-call parser handled these cleanly — no `_llm_unavailable` fallbacks across all 60 records, engagement diversity ~5.8 (comparable to non-reasoning fires), and tool-call rate did NOT regress (the model did not "think out" of using tools). The reasoning chains do raise per-action latency to ~150s (vs ~30s for vanilla Qwen32B), which is why the AUT turn timeout had to be made configurable via `sim.aut_turn_timeout_s` (PR #369) before this fire could run — the hardcoded 30s ceiling was truncating R1's reasoning mid-chain. The `--subsim-timeout-s 10800` harness flag was also added to lift the per-sub-sim wall-clock cap for the longer fire.
 
 ## Path forward — sequencing of remaining work
 
 - **2026-06-11 ✓ DONE:** Mistral24B fire complete. Revealed the **Goldilocks-zone / ceiling-effect** finding (A=1.000 SD=0, no headroom for substrate). Reframes the cross-model question from "how big must the model be?" to "is there headroom between priors and optimal behavior?"
-- **2026-06-12 → 2026-06-14:** DeepSeek-R1-Distill-Qwen-32B fire (~30 hours). Adds the reasoning-axis row + R-A/R-B/R-C bucket selection.
-- **Conditional (if DeepSeek raises scale-ceiling questions):** Llama 3.3 70B Instruct fire (~30 hours). Otherwise mark Llama 70B as "future direction" in the doc.
+- **2026-06-13 ✓ DONE:** DeepSeek-R1-Distill-Qwen-32B fire complete (60/60). **Bucket R-A** — reasoning AMPLIFIES substrate (+2.11 SD vs base +1.43) and surfaces the first clean Wire-A ablation (+1.13 SD). Goldilocks-aware check passes (A=0.259 deeper in zone than base's 0.420). Verdict PARTIAL — investigation gate (Arm C confound persists). Opens the 1.1+ "substrate-aware reasoning models" direction.
+- **Conditional (if DeepSeek raised scale-ceiling questions):** R1 did NOT raise scale-ceiling questions — it sat deeper in the Goldilocks zone, not at the ceiling. Llama 3.3 70B Instruct stays a "future direction," not a required follow-on.
 - **1.0 ship:** Open-source cross-scale + cross-family + reasoning-axis story is the substantive evidence base. [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) row 1b stays PARTIAL with scale-axis + paradigm-axis nuance; cloud comparison framed as 1.1 work.
 - **Post-1.0 — prompt-caching refactor:** [prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md) Phase 1+ refactor unlocks cloud fires. Sonnet, GPT-4o, DeepSeek-V3 (cloud, full model) fires execute then.
 - **Post-1.0 — Exp 38 substrate-primary:** the principled test of the strong substrate-drives-behavior claim. The mechanism-attribution open question from this exploratory work directly motivates Exp 38's design.
@@ -237,4 +234,6 @@ tmux ls
 - [docs/plans/prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md) — gating cloud fires; deferred post-1.0.
 - [docs/experiments/data/37_results.jsonl](data/37_results.jsonl) — Qwen14B fire records.
 - [docs/experiments/data/37_results_qwen32b.jsonl](data/37_results_qwen32b.jsonl) — Qwen32B fire records.
-- `docs/experiments/data/37_results_mistral24b.jsonl` — Mistral24B fire records (file populated as records land 2026-06-10/11).
+- `docs/experiments/data/37_results_mistral24b.jsonl` — Mistral24B fire records.
+- [docs/experiments/data/37_results_r1_distill_qwen_32b.jsonl](data/37_results_r1_distill_qwen_32b.jsonl) — DeepSeek-R1-Distill-Qwen-32B reasoning-axis fire records (60/60).
+- [docs/experiments/data/37_results_r1_distill_qwen_32b.md](data/37_results_r1_distill_qwen_32b.md) — DeepSeek-R1 analyzer output (full per-scenario tables).
