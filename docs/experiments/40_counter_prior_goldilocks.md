@@ -43,12 +43,13 @@ Identical to Exp 38 except **model** and **arm scope**:
 |---|---|
 | Model | `qwen2.5-32b-instruct` (base; the Exp 37 Goldilocks model) — local GGUF on the leader, **$0** |
 | Scenarios | `fire_pit` (consistent control) + `deceptive_fire` (counter-prior) — i.e. `--scenario counter_prior` |
-| Arms | **`A,B` only** (fresh vs resume) — a deliberate cheap screen, see §3 |
+| Arms | **all six** — `A, B, C, B-wire-a-off, B-wire-1-off, B-nac-bias-off` (= Exp 38) |
 | Trials | 5 paired |
 | `--sim-max-turns` | 12 (unchanged — keeps A's session from over-training, Exp 38 §7.3) |
 | `--seed-base` | 42 |
 
-Total: 2 scenarios × 2 arms × 5 trials = **20 sub-sims**, ~30 min/sim local ≈ **~10 h**.
+Total: 2 scenarios × 6 arms × 5 trials = **60 sub-sims**, ~30 min/sim local ≈ **~30 h**
+(no rush — runs under tmux across sessions, `--resume` recovers any interruption).
 
 The deceptive world, the matched control, the separate-worlds routing
 (`cradle_deceptive` replaces fire_pit with the hearth), and the inversion
@@ -56,7 +57,7 @@ The deceptive world, the matched control, the separate-worlds routing
 
 ---
 
-## 3. Metrics & verdict — inherited from Exp 38 §5 (FROZEN), with one scoping note
+## 3. Metrics & verdict — inherited from Exp 38 §5 (FROZEN)
 
 The two pre-registered primaries and the verdict tree are reused **verbatim**:
 
@@ -66,23 +67,19 @@ The two pre-registered primaries and the verdict tree are reused **verbatim**:
   `first_contact_warm_self`.
 - **Verdict tree:** Exp 38 §5 table, emitted verbatim by `analyze_exp37.py`.
 
-**A/B-only scoping note (pre-registered, not a post-hoc caveat).** The frozen
-verdict tree reaches **"COUNTER-PRIOR — substrate matters"** (the positive thesis
-result, exit 0) only when **≥1 ablation reverts toward Arm A**. This fire runs
-**no ablation arms**, so:
+**Full verdict tree applies (single fire, fully attributable).** All six arms run,
+so the Exp 38 §5 tree is exercised end to end — including the ablation **Secondary**
+that gates the positive node. This fire resolves the cell in one pass, no follow-up:
 
-- **If dominance** (B keeps warming the hearth) → verdict **"dominance demonstrated"**,
-  exit 0. **The cell is filled and the thesis is complete** — no further fire needed.
-  This is the expected, decisive-on-the-cheap outcome.
-- **If both primaries PASS** (B avoids the costly hearth but not the safe fire) →
-  the tree lands on **"void (not substrate-attributable)"**, exit 4, *because the
-  attribution arm wasn't run* — **not** because the signal is absent. This fire
-  cannot make a positive substrate claim by construction; it is a **screen**. A
-  pass here is the trigger to spend the follow-up **ablation fire**
-  (`A,B,B-wire-a-off,B-wire-1-off,B-nac-bias-off`) before any positive claim ships.
+- **Dominance** (B keeps warming the hearth) → **"dominance demonstrated"**, exit 0
+  — the cell is filled, the honest thesis is complete.
+- **Both primaries PASS + ≥1 ablation reverts toward Arm A** → **"substrate matters"**,
+  exit 0 — the positive thesis result, **substrate-attributable in this same fire**.
+- **Both primaries PASS, 0 ablations revert** → **"void (not substrate-attributable)"**,
+  exit 4 — a real signal the substrate can't explain (prompt / within-session); investigate.
+- **`avoids_both`** (B warms less in *both* scenarios by ≥1 SD) → **"void (general caution)"**, exit 4.
 
-In short: A/B is decisive for the likely answer (dominance) and a tripwire for the
-surprising one (signal → escalate). No new metric, no moved goalpost.
+No new metric, no moved goalpost — the full Exp 38 frozen tree, run at the Goldilocks model.
 
 ---
 
@@ -93,11 +90,11 @@ surprising one (signal → escalate). No new metric, no moved goalpost.
   is real but survives only when the task agrees with the prior; falsify the prior
   and it collapses at every size, Goldilocks band included.* Nothing in the 1.0
   framing changes — it becomes airtight.
-- **H2 — caution in the zone.** Both primaries PASS: the experienced agent treats
-  the *costly* hearth more warily than the *safe* fire. Would be the **first
-  adaptive-behavioral positive** in the line — but per §3 it requires the ablation
-  follow-up to attribute to the substrate before the 1.0 behavioral-drive claim is
-  un-pulled (in a scoped band).
+- **H2 — caution in the zone.** Both primaries PASS *and* ≥1 ablation reverts: the
+  experienced agent treats the *costly* hearth more warily than the *safe* fire,
+  attributable to the substrate **in this fire**. Would be the **first
+  adaptive-behavioral positive** in the line and would un-pull the 1.0
+  behavioral-drive claim in a scoped band — no follow-up fire needed.
 - **H3 — general caution / over-generalization** (`avoids_both`, or avoids even the
   safe fire). Verdict **"void (general caution)"**, exit 4. Maladaptive transfer;
   interesting, not a clean win.
@@ -128,19 +125,19 @@ python scripts/benchmark_cross_session.py \
 #   turns populated, warm_self_engagement_fraction non-null (NOT all-zero tokens
 #   alone — local fires are always zero-token; check the ACTIONS).
 
-# 2. FULL FIRE (~10 h, 20 sub-sims) — run under tmux; --resume recovers any kill
+# 2. FULL FIRE (~30 h, 60 sub-sims, all six arms) — tmux across sessions; --resume recovers any kill
 python scripts/benchmark_cross_session.py \
   --scenario counter_prior --model qwen2.5-32b-instruct \
-  --arms A,B --trials 5 --subsim-timeout-s 5400 \
+  --arms A,B,C,B-wire-a-off,B-wire-1-off,B-nac-bias-off --trials 5 --subsim-timeout-s 5400 \
   --out docs/experiments/data/40_results_qwen32b.jsonl
 
 # 3. ANALYZE — appends a Results section to the Exp 38 doc (shared analyzer);
-#    --arms A,B so the ablation Secondary is reported absent, not FAIL
+#    all six arms (analyzer default) so the ablation Secondary is gated, not reported absent
 python scripts/analyze_exp37.py \
   --in docs/experiments/data/40_results_qwen32b.jsonl \
-  --scenarios fire_pit,deceptive_fire --arms A,B --trials 5 \
+  --scenarios fire_pit,deceptive_fire --trials 5 \
   --out docs/experiments/38_counter_prior_substrate.md \
-  --heading-suffix "qwen32b (Exp 40, Goldilocks, A/B screen)"
+  --heading-suffix "qwen32b (Exp 40, Goldilocks)"
 ```
 
 Pre-fire validity checklist (Exp 38 §7 + the cross-model playbook):
@@ -156,10 +153,10 @@ Pre-fire validity checklist (Exp 38 §7 + the cross-model playbook):
 This fills the last cell of the counter-prior matrix in the one regime the shipped
 1.0 product actually runs in (LLM-AUT **+** substrate annotation) at the one size
 where the substrate was ever measurably doing something. **H1 makes the honest
-"substrate real but prior-dominated" thesis complete and unattackable; H2 (after
-the ablation follow-up) would be the first scoped positive that un-pulls the
-behavioral-drive claim.** Either result strengthens the release — which is exactly
-why it runs before the announcement ships.
+"substrate real but prior-dominated" thesis complete and unattackable; H2 would be
+the first scoped positive that un-pulls the behavioral-drive claim — substrate-
+attributable in this same fire (all six arms).** Either result strengthens the
+release — which is exactly why it runs before the announcement ships.
 
 ---
 
