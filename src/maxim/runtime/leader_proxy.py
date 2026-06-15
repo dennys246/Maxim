@@ -841,22 +841,60 @@ class _ProxyHandler(BaseHTTPRequestHandler):
     # ─── auth ─────────────────────────────────────────────────────────
 
     def _check_auth(self) -> bool:
-        """Enforce Bearer auth. Returns True if authorized."""
+        """Enforce Authorization-header auth. Returns True if authorized.
+
+        Parses the auth *scheme* (the first whitespace-delimited token)
+        before the credential, then dispatches on it. 1.0 supports
+        ``Bearer`` only — but an unknown scheme (a future
+        ``Signature`` / RFC 9421, ``HSM-Sig``, or mTLS variant a peer
+        might send) returns a clean ``401`` rather than being mistaken
+        for a malformed Bearer token. The dispatch is structured so
+        1.1+ adds a scheme by extending the branch table, not by
+        special-casing a second string compare (CC13 auth
+        format-freeze). Scheme names are matched case-insensitively per
+        RFC 7235; the credential comparison stays constant-time.
+        """
         if not self.api_key:
             return True
         auth = self.headers.get("Authorization", "")
-        if secrets.compare_digest(auth, f"Bearer {self.api_key}"):
-            return True
-        # Log enough to diagnose mismatches without leaking the full key
-        expected_prefix = self.api_key[:6] if self.api_key else "?"
-        got_prefix = auth[7:13] if auth.startswith("Bearer ") else repr(auth[:20])
+        scheme, _, credential = auth.partition(" ")
+
+        if scheme.lower() == "bearer":
+            # Constant-time compare on the credential only; the scheme is
+            # not secret, so comparing it directly leaks nothing.
+            # ``secrets.compare_digest`` raises TypeError on a non-ASCII
+            # ``str`` credential — treat that as a non-match (a non-ASCII
+            # credential can never equal an ASCII api_key) so a crafted
+            # ``Authorization: Bearer <non-ascii>`` yields a clean 401
+            # instead of an unhandled 500 from the request handler.
+            try:
+                credential_ok = secrets.compare_digest(credential, self.api_key)
+            except TypeError:
+                credential_ok = False
+            if credential_ok:
+                return True
+            # Log enough to diagnose mismatches without leaking the full key
+            expected_prefix = self.api_key[:6] if self.api_key else "?"
+            got_prefix = credential[:6] if credential else repr(auth[:20])
+            logger.warning(
+                "Auth failed: peer=%s expected=%s... got=%s...",
+                self.client_address[0],
+                expected_prefix,
+                got_prefix,
+            )
+            self._send_json(401, {"error": "Invalid API key"})
+            return False
+
+        # Unknown or missing scheme. Return 401 (not 400, not silent
+        # accept) so a future-scheme client gets an actionable response
+        # and a 1.0 leader never mistakes a Signature/mTLS header for a
+        # broken Bearer.
         logger.warning(
-            "Auth failed: peer=%s expected=%s... got=%s...",
+            "Auth failed: peer=%s unsupported authorization scheme=%s",
             self.client_address[0],
-            expected_prefix,
-            got_prefix,
+            scheme if scheme else "<none>",
         )
-        self._send_json(401, {"error": "Invalid API key"})
+        self._send_json(401, {"error": "Unsupported or missing authorization scheme"})
         return False
 
     # ─── debug endpoints (served directly, not proxied) ───────────────

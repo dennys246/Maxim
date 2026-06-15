@@ -23,13 +23,25 @@ math for).
 Manifest signature slot
 -----------------------
 
-The ``signature`` and ``signature_algorithm`` fields are reserved (per
-the 2026-05-30 design decision: "Reserve signature field in manifest,
-no verification yet"). At 1.0 they are always ``None`` — the slot exists
-so 1.1+ verification can land WITHOUT bumping the bundle's
-``_format_version`` and breaking 1.0 bundles. Callers that want signing
-build their own ZIP with a populated ``signature`` field and a custom
-verifier; this module does NOT validate.
+The ``signature``, ``signature_algorithm``, and ``signer_identity``
+fields are reserved (per the 2026-05-30 design decision: "Reserve
+signature field in manifest, no verification yet" + the CC13 auth
+format-freeze, which added ``signer_identity``). At 1.0 they are always
+``None`` — the slots exist so 1.1+ verification can land WITHOUT bumping
+the bundle's ``_format_version`` and breaking 1.0 bundles. Callers that
+want signing build their own ZIP with a populated ``signature`` field
+and a custom verifier; this module does NOT validate.
+
+The recognized ``signature_algorithm`` vocabulary (``ed25519``,
+``ed25519-pgp``, ``webauthn``, ``pkcs7``, reserved ``hsm:*`` / ``kms:*``
+/ ``vendor:*`` prefixes, ...) is published in
+``docs/user/hivemind_bundle_format.md`` so the 1.2 P2P protocol's
+heterogeneous producers and consumers share a string vocabulary. The
+registry is documentation-only at 1.0 (no validator), consistent with
+the no-verification-yet decision. ``signer_identity`` is the reserved
+"who claims to have signed this" string, parallel to ``contributor_id``,
+so 1.1+ can bind a verified identity to the claimed contributor without
+retrofitting the manifest shape.
 
 Format version contract
 -----------------------
@@ -220,6 +232,7 @@ def compose_bundle(
     identity_threshold: int = _DEFAULT_BUNDLE_IDENTITY_THRESHOLD,
     signature: str | None = None,
     signature_algorithm: str | None = None,
+    signer_identity: str | None = None,
 ) -> dict[str, Any]:
     """Compose a substrate snapshot bundle.
 
@@ -259,7 +272,16 @@ def compose_bundle(
     signature, signature_algorithm
         Reserved slots — populate at the caller's discretion. This
         module does NOT compute signatures and does NOT validate
-        them at extract time. Default ``None`` / ``None``.
+        them at extract time. Default ``None`` / ``None``. Recognized
+        ``signature_algorithm`` values are published in
+        ``docs/user/hivemind_bundle_format.md`` (the 1.2 P2P verifier
+        vocabulary); the registry is documentation-only at 1.0.
+    signer_identity
+        Reserved slot (CC13 auth format-freeze) — the "who claims to
+        have signed this" string, parallel to ``contributor_id``.
+        Always ``None`` at 1.0; reserved so 1.1+ bundle verification
+        can bind a verified identity to ``contributor_id`` without
+        retrofitting the manifest shape. NOT validated here.
     """
     # Fold (Executor IMPORTANT): route through the same validator
     # PR B's merge functions use, instead of duplicating the
@@ -304,6 +326,7 @@ def compose_bundle(
         },
         "signature": signature,
         "signature_algorithm": signature_algorithm,
+        "signer_identity": signer_identity,
     }
     manifest_json = json.dumps(manifest, indent=2, sort_keys=True, default=str)
 

@@ -744,6 +744,36 @@ class TestAPIKeyRefValidation:
         with pytest.raises(ConfigurationError, match="keyring URI must be"):
             load_config(path)
 
+    @pytest.mark.parametrize(
+        "reserved_ref",
+        [
+            "pkcs11:0:01",
+            "fido2:cred-abc",
+            "tpm:0x81000001",
+            "vault:secret/maxim/leader",
+            "op://Private/maxim-leader",
+            "env:MAXIM_LEADER_KEY",
+        ],
+    )
+    def test_reserved_future_schemes_rejected_at_1_0(self, tmp_path, reserved_ref):
+        """CC13 freeze guard: the URI schemes documented as *reserved for
+        future use* in stable_api.md are NOT accepted at 1.0 — the validator
+        stays deny-by-default. Adding a resolver in 1.1+ is an intentional,
+        non-breaking widening; this test pins that the widening is deliberate
+        (it must be updated, not silently bypassed, when a scheme lands).
+        """
+        path = tmp_path / "config.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "_format_version": "1.0",
+                    "lanes": {"large": {"remote_api_key_ref": reserved_ref}},
+                }
+            )
+        )
+        with pytest.raises(ConfigurationError, match="must be a file path"):
+            load_config(path)
+
     def test_inline_key_via_env_var_passes_through(self, monkeypatch):
         """The cross-confirmed I-3/IM3 fold rejects inline plaintext in
         ``config.json`` (load-time validation in ``_parse_lane_tier``).

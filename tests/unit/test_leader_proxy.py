@@ -1801,3 +1801,90 @@ class TestBackendsAlwaysSendMaxTokens:
         param = sig.parameters["max_tokens"]
         assert param.default is inspect.Parameter.empty
         assert param.kind == inspect.Parameter.KEYWORD_ONLY
+
+
+class TestProxyAuthSchemeDispatch:
+    """CC13 auth format-freeze: ``_ProxyHandler._check_auth`` parses the
+    Authorization *scheme* before the credential and dispatches on it.
+
+    1.0 supports Bearer only. The freeze guarantee is that an unknown
+    scheme (a future ``Signature`` / ``HSM-Sig`` / mTLS variant) returns
+    a clean 401 rather than being mistaken for a malformed Bearer — so
+    1.1+ can add a scheme by extending the dispatch, not by re-shaping
+    the auth path.
+    """
+
+    def _handler(self, *, api_key, auth_header):
+        from maxim.runtime.leader_proxy import _ProxyHandler
+
+        h = object.__new__(_ProxyHandler)
+        h.api_key = api_key
+        h.headers = {} if auth_header is None else {"Authorization": auth_header}
+        h.client_address = ("10.0.0.1", 5000)
+        h._sent: list[tuple[int, dict]] = []
+        h._send_json = lambda code, body: h._sent.append((code, body))
+        return h
+
+    def test_no_api_key_configured_allows_all(self):
+        h = self._handler(api_key=None, auth_header=None)
+        assert h._check_auth() is True
+        assert h._sent == []
+
+    def test_correct_bearer_authorized(self):
+        h = self._handler(api_key="sk-secret", auth_header="Bearer sk-secret")
+        assert h._check_auth() is True
+        assert h._sent == []
+
+    def test_bearer_scheme_is_case_insensitive(self):
+        """RFC 7235: auth scheme names are case-insensitive. A lowercase
+        ``bearer`` with the right credential is accepted."""
+        h = self._handler(api_key="sk-secret", auth_header="bearer sk-secret")
+        assert h._check_auth() is True
+        assert h._sent == []
+
+    def test_wrong_bearer_credential_rejected_401(self):
+        h = self._handler(api_key="sk-secret", auth_header="Bearer sk-wrong")
+        assert h._check_auth() is False
+        assert len(h._sent) == 1
+        code, body = h._sent[0]
+        assert code == 401
+        assert body == {"error": "Invalid API key"}
+
+    def test_non_ascii_bearer_credential_rejected_not_500(self):
+        """A non-ASCII Bearer credential makes ``secrets.compare_digest``
+        raise TypeError; ``_check_auth`` must catch it and return a clean
+        401, not let the exception escape to a 500 from the handler."""
+        h = self._handler(api_key="sk-secret", auth_header="Bearer sk-ééé")
+        assert h._check_auth() is False
+        assert len(h._sent) == 1
+        code, body = h._sent[0]
+        assert code == 401
+        assert body == {"error": "Invalid API key"}
+
+    def test_unknown_scheme_rejected_401_not_invalid_key(self):
+        """A future ``Signature`` header is NOT mistaken for a malformed
+        Bearer (which would say 'Invalid API key') — it gets the distinct
+        unsupported-scheme 401, and never a 400 or a silent accept."""
+        h = self._handler(
+            api_key="sk-secret",
+            auth_header='Signature keyId="peer-a",signature="abc"',
+        )
+        assert h._check_auth() is False
+        assert len(h._sent) == 1
+        code, body = h._sent[0]
+        assert code == 401
+        assert body == {"error": "Unsupported or missing authorization scheme"}
+
+    def test_hsm_sig_scheme_reserved_rejected(self):
+        h = self._handler(api_key="sk-secret", auth_header="HSM-Sig deadbeef")
+        assert h._check_auth() is False
+        code, body = h._sent[0]
+        assert code == 401
+        assert body == {"error": "Unsupported or missing authorization scheme"}
+
+    def test_missing_authorization_header_rejected_401(self):
+        h = self._handler(api_key="sk-secret", auth_header=None)
+        assert h._check_auth() is False
+        code, body = h._sent[0]
+        assert code == 401
+        assert body == {"error": "Unsupported or missing authorization scheme"}

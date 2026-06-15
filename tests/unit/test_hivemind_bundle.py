@@ -137,6 +137,7 @@ def test_compose_manifest_carries_required_fields(tmp_path: Path) -> None:
     assert manifest["domain"] == "combat"
     assert manifest["signature"] is None
     assert manifest["signature_algorithm"] is None
+    assert manifest["signer_identity"] is None
     assert "created_at" in manifest
     assert "contents" in manifest
     assert manifest["identity_filter_applied"] is True
@@ -157,6 +158,68 @@ def test_compose_signature_slot_preserved(tmp_path: Path) -> None:
     )
     assert manifest["signature"] == "deadbeef"
     assert manifest["signature_algorithm"] == "ed25519"
+
+
+def test_compose_signer_identity_defaults_null(tmp_path: Path) -> None:
+    """CC13: the reserved ``signer_identity`` slot is ``None`` at 1.0 when
+    the caller does not populate it.
+    """
+    output = tmp_path / "bundle.zip"
+    manifest = compose_bundle(
+        nac_state=_empty_nac_state(),
+        ec_substrate_nodes={},
+        output_path=output,
+        contributor_id="oasis-A",
+    )
+    assert manifest["signer_identity"] is None
+
+
+def test_compose_signer_identity_slot_round_trips(tmp_path: Path) -> None:
+    """CC13: a caller-populated ``signer_identity`` survives compose →
+    extract → read_bundle_manifest unchanged. The composer does NOT
+    validate it (no verification at 1.0).
+    """
+    output = tmp_path / "bundle.zip"
+    compose_bundle(
+        nac_state=_empty_nac_state(),
+        ec_substrate_nodes={},
+        output_path=output,
+        contributor_id="oasis-A",
+        signature="deadbeef",
+        signature_algorithm="ed25519",
+        signer_identity="did:key:z6Mk-example",
+    )
+    extracted = extract_bundle(output, tmp_path / "out")
+    assert extracted["signer_identity"] == "did:key:z6Mk-example"
+    inspected = read_bundle_manifest(output)
+    assert inspected["signer_identity"] == "did:key:z6Mk-example"
+
+
+def test_extract_tolerates_manifest_without_signer_identity(tmp_path: Path) -> None:
+    """CC13 backward-compat: a hand-built bundle whose manifest predates the
+    ``signer_identity`` field (i.e. omits it entirely) extracts cleanly —
+    the field is optional and read via ``.get(...)``.
+    """
+    output = tmp_path / "legacy.zip"
+    manifest = {
+        "_format_version": "1.0",
+        "schema_version": BUNDLE_SCHEMA_VERSION,
+        "kind": BUNDLE_KIND,
+        "contributor_id": "oasis-A",
+        "domain": None,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "identity_filter_applied": True,
+        "identity_threshold": 2,
+        "contents": {},
+        "signature": None,
+        "signature_algorithm": None,
+        # NOTE: no "signer_identity" key — predates CC13.
+    }
+    with zipfile.ZipFile(output, "w") as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
+    extracted = extract_bundle(output, tmp_path / "out")
+    assert extracted.get("signer_identity") is None
+    assert extracted["contributor_id"] == "oasis-A"
 
 
 def test_compose_rejects_reserved_contributor_id(tmp_path: Path) -> None:

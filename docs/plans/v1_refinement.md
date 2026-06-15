@@ -715,9 +715,11 @@ Modern frameworks expose `input_tokens`, `output_tokens`, `cached_tokens` in sta
 
 **Deliverable:** audit the call-site telemetry in `models/language/router.py`, `_MaximPeerBackend`, `_OpenAIBackend`, `LLMEnergyTracker`. Confirm `input_tokens` / `output_tokens` / `cached_tokens` are exposed under those exact field names in any user-visible structure. Where missing, add them. Document the contract in CC4's classification doc.
 
-### CC13. Auth format-freeze audit (~50 LOC + ~16 tests + 1 doc page)
+### CC13. Auth format-freeze audit (~50 LOC + ~16 tests + 1 doc page) — SHIPPED (2026-06-15)
 
-**Plan:** [auth_format_freeze_audit.md](auth_format_freeze_audit.md) (drafted 2026-06-04)
+**Plan:** [auth_format_freeze_audit.md](auth_format_freeze_audit.md) (drafted 2026-06-04, SHIPPED 2026-06-15)
+
+**Shipped via:** branch `feat/1-0-cc13-auth-format-freeze` — all four surfaces (A1 `api_key_ref` scheme reservation doc; A2 bundle `signer_identity` field + `signature_algorithm` registry doc; A3 `MeshConfig` reserved-null `cluster_keys`/`cluster_trust_anchors`/`cluster_auth_mode`; A4 leader-proxy auth scheme dispatch) in one PR. Two-lens pre-merge review folded (no CRITICAL; hardened non-ASCII Bearer → clean 401, CC3 docstring cross-reference, `op://` form, A1 closed-enum note, `signer_identity` namespace note, `mesh_setup.py` TODO markers). Full fast suite green (7997 passed). See the plan doc for the per-surface detail + regression-guard test paths.
 
 Narrow format-freeze pass on the four security-shaped surfaces shipping in 1.0, so the future hardware-token / signed-bundle / mTLS / WebAuthn work planned for 1.1+ alongside Hivemind P2P is not boxed out by 1.0 schema choices. **Does not implement authentication** — full pluggable auth provider abstraction stays a 1.1+ track. This is purely about whether the slots already shipping in 1.0 admit the future without a breaking change.
 

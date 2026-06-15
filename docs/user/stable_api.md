@@ -149,6 +149,32 @@ See [configuration.md](configuration.md) for the public env-var classification a
 
 ---
 
+## Credential reference URI namespace (CC13)
+
+`lanes.<tier>.remote_api_key_ref` in `config.json` references the credential a peer presents to a leader proxy. The validator ([`_validate_api_key_ref`](../../src/maxim/runtime/config_loader.py)) is **deny-by-default** — inline plaintext keys are rejected so a stray `maxim config set ... sk-abc` can never write a mode-0644 key to disk. Two reference forms are accepted at 1.0:
+
+| Form | Example | Resolves via |
+|---|---|---|
+| File path (`/...` or `~/...`) | `~/.config/maxim/api_key` | reads the file (must be mode-0600) |
+| `keyring:<service>:<account>` | `keyring:maxim:leader` | OS keyring lookup |
+
+**Reserved for future use (1.1+).** These URI scheme prefixes are reserved for hardware-token, secret-manager, and environment-indirection backends. They are **not accepted at 1.0** — the validator rejects them today. They are documented here so the namespace is frozen: each is a non-breaking *widening* of the validator when its resolver lands, never a breaking reinterpretation of an already-accepted form.
+
+| Reserved scheme | Intended backend |
+|---|---|
+| `pkcs11:<slot>:<id>` | PKCS#11 / smartcard / HSM token (e.g. YubiKey PIV) |
+| `fido2:<credential-id>` | FIDO2 / WebAuthn credential |
+| `tpm:<handle>` | TPM-sealed key |
+| `vault:<path>` | HashiCorp Vault secret path |
+| `op://<vault>/<item>` | 1Password CLI item reference (matches the `op://` URI `op` emits) |
+| `env:<VAR_NAME>` | Environment-variable indirection |
+
+The 1.0 contract: the two accepted forms above are frozen, and the reserved schemes will be added by extending the validator (and this table) in a minor release. No application should rely on a reserved scheme being *rejected* — a future `pkcs11:` ref that is rejected on 1.0 but accepted on 1.1 is an intentional, non-breaking widening, not a regression.
+
+This is intentionally a **closed enum**: each reserved scheme is a discrete name, with no open `<prefix>:*` wildcard, because the validator is deny-by-default and every accepted scheme must map to a concrete resolver. (Contrast the Hivemind bundle `signature_algorithm` [registry](hivemind_bundle_format.md), which is documentation-only with no validator and so reserves open `hsm:*` / `kms:*` / `vendor:*` prefixes.) A future cloud-KMS- or HSM-backed credential reference is added here as its own explicit scheme (e.g. `kms:aws:...`) when its resolver lands, not via a wildcard. Full pluggable credential-provider work is a 1.1+ track (see the [Auth Format-Freeze Audit](../plans/auth_format_freeze_audit.md)).
+
+---
+
 ## Async wrappability (CC10)
 
 The Maxim public verbs in [`api.py`](../../src/maxim/api.py) are **synchronous**. To call them from async code (FastAPI, Pydantic AI, LangGraph, etc.), wrap them with `asyncio.to_thread`:
