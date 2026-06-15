@@ -147,11 +147,25 @@ For documentation purposes, the failure mode this gate prevents:
 
 Shipping 1.0 without this gate means shipping a thesis we haven't measured. The gate exists to force the measurement *before* the framing goes out the door, not after.
 
+## Execution & 1.0 disposition (2026-06-13)
+
+**The gate has FIRED.** The "headline gap" this doc identified — *"the paired fresh-vs-resume Cradle behavioral measurement does not exist as a logged, reproducible experiment"* — is now closed. The full implementation plan (items 1–7 above) was executed:
+
+- **Harness:** [`scripts/benchmark_cross_session.py`](../../scripts/benchmark_cross_session.py) (paired Arms A/B/C + ablations); **analyzer:** [`scripts/analyze_exp37.py`](../../scripts/analyze_exp37.py). Pre-registered per discipline.
+- **Scenario / primary metric:** cradle `bodies/infant_humanoid` + `items/cradle_*`; repeat-failure-action rate (operationalised as the warm-self / failure-class engagement fraction), Arm-C isolation, ablation secondary — exactly the §"Acceptance criteria" committed above.
+- **Two pre-registered experiments executed across the model set:**
+  - **Exp 37 (prior-aligned)** — [37_cross_session_graduation.md](../experiments/37_cross_session_graduation.md) + [cross-model](../experiments/37_cross_model_results.md): a **Goldilocks zone** — the cross-session signal is detectable only when the base LLM's priors leave headroom (Qwen32B +1.43 SD PASS, R1-distill +2.11 SD PASS; Qwen14B null, Mistral24B ceiling). Reasoning models are better substrate consumers (R1 surfaces Wire-A as the carrying mechanism, +1.13 SD ablation).
+  - **Exp 38 (counter-prior, the disambiguator)** — [38_counter_prior_substrate.md](../experiments/38_counter_prior_substrate.md): a world where the prior is *wrong* (a hearth whose `warm_self` hurts). **Dominance across all 4 frontier models** (Sonnet / GPT-4o / DeepSeek-V3 / R1) — carried substrate does **not** override a wrong prior. R1 is the sharpest: substrate causally load-bearing (ablations drop hearth-warming *below* a fresh agent) but it **amplifies the prior, not the corrective experience**.
+
+**Primary-criterion outcome:** the measurement exists, is reproducible, and shows the cross-session *behavioral improvement does not materialise under strong LLM priors*. **Secondary-criterion (mechanism attribution):** moot in the three chat models (no delta to attribute); in R1 the substrate IS ablation-attributable, but in the counter-prior its causal effect is *maladaptive* (reinforces the wrong prior).
+
+**1.0 disposition — gate satisfied by execution, not by a green pass.** Per §"What this gate is NOT" ("ran the benchmark, recorded the result, met the threshold" — a documented outcome, not a single good number), the gate is satisfied: the thesis has been *measured before ship*, which is precisely the retraction-avoidance §"shipping 1.0 without this gate" describes. The honest 1.0 framing this forces: **bio-mechanisms are validated at the mechanism level** (the EARNED Tier 1 entries) **and the substrate is causally active in action selection (R1 ablation), but cross-session agent-performance *improvement* does not occur under LLM priors** — it is an open 1.1+ problem (substrate-primary action selection + the substrate-aware-reasoning direction R1 opened). The cross-session-learning *performance* claim is pulled from 1.0; the mechanism-reality and memory-persistence claims are not. This feeds directly into the [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) Tier 1 #2 disposition (cross-confirm per item 7).
+
 ## Status
 
 - **Scoping accepted:** 2026-05-30 (user explicit-accepted as-is during the [cross-session graduation kickoff](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/kickoff_1_0_graduation_cross_session.md); acceptance criteria above become the pre-registration template for downstream experiments).
-- **Implementation:** pre-registered at [docs/experiments/37_cross_session_graduation.md](../experiments/37_cross_session_graduation.md). Owner: cross-session graduation worktree (`feat/1-0-graduation-cross-session`). Target: Phase 2 of [v1_refinement.md §1.6](v1_refinement.md).
-- **Gate firing date:** before 1.0 ship.
+- **Implementation:** pre-registered at [37_cross_session_graduation.md](../experiments/37_cross_session_graduation.md) + [38_counter_prior_substrate.md](../experiments/38_counter_prior_substrate.md). Owner: cross-session graduation worktree (`feat/1-0-graduation-cross-session`). Target: Phase 2 of [v1_refinement.md §1.6](v1_refinement.md).
+- **EXECUTED 2026-06-11 / 2026-06-13** — Exp 37 (prior-aligned, 4 models) + Exp 38 (counter-prior, 4 models). Gate fired; result recorded in §"Execution & 1.0 disposition" above. Outcome: cross-session behavioral *improvement* does not materialise under LLM priors → the performance claim is pulled from 1.0 framing; mechanism-reality + memory-persistence claims stand.
 
 ## Cross-references
 
