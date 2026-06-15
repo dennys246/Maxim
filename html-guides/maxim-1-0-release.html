@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Maxim 1.0 — The Honest Benchmark | Bio-Inspired Cognitive Architecture{% endblock %}
+
+{% block meta_description %}Maxim 1.0: a working bio-inspired cognitive architecture for LLM agents, and a pre-registered, cross-model, adversarial benchmark that answers honestly whether the bio-substrate changes agent behavior.{% endblock %}
+
+{% block meta_keywords %}Maxim 1.0, bio-inspired cognitive architecture, cross-session learning, LLM agents, pre-registered benchmark, counter-prior, substrate-primary, reasoning models, falsification{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Maxim 1.0 — The Honest Benchmark",
+  "description": "A working bio-inspired cognitive architecture for LLM agents, released alongside a pre-registered, cross-model, adversarial benchmark of whether the bio-substrate changes agent behavior.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/release-1-0",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["Maxim 1.0", "bio-inspired", "cross-session learning", "pre-registered benchmark", "counter-prior", "substrate-primary"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "1.0 Release", "item": "https://www.dennyschaedig.com/maxim/release-1-0" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM 1.0</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">The Honest Benchmark</h1>
+    <p class="text-indigo-400 font-medium">A bio-inspired cognitive architecture &mdash; and a falsifiable answer to whether it changes what the agent does</p>
+  </header>
+
+  <!-- Lede -->
+  <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-6">
+    <p class="text-slate-200 text-lg leading-relaxed">We built a bio-inspired cognitive architecture, then spent four months trying to prove it doesn&rsquo;t work &mdash; and we&rsquo;re shipping what we found. <strong class="text-white">Maxim 1.0 is a working architecture and a rigorous, honest answer to a question the field usually dodges:</strong> <em class="text-indigo-300">does the bio-substrate actually change what an LLM agent does?</em> The answer is a precise &ldquo;not yet &mdash; and here is exactly when, where, and why,&rdquo; which is worth far more than another unfalsifiable &ldquo;yes.&rdquo;</p>
+  </div>
+
+  <!-- Table of Contents -->
+  <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+    <h3 class="text-lg font-semibold text-indigo-400 mb-2">Contents</h3>
+    <ol class="space-y-1 text-slate-300 list-decimal pl-5">
+      <li><a href="#what-shipped" class="text-indigo-400 hover:text-indigo-300 no-underline">What Shipped in 1.0</a></li>
+      <li><a href="#the-question" class="text-indigo-400 hover:text-indigo-300 no-underline">The Question Nobody Asks</a></li>
+      <li><a href="#the-apparatus" class="text-indigo-400 hover:text-indigo-300 no-underline">The Apparatus: Pre-Registration &amp; the Counter-Prior</a></li>
+      <li><a href="#four-models" class="text-indigo-400 hover:text-indigo-300 no-underline">Four Models, One Answer</a></li>
+      <li><a href="#goldilocks" class="text-indigo-400 hover:text-indigo-300 no-underline">The Goldilocks Zone</a></li>
+      <li><a href="#reasoning-twist" class="text-indigo-400 hover:text-indigo-300 no-underline">The Reasoning Twist</a></li>
+      <li><a href="#remove-the-llm" class="text-indigo-400 hover:text-indigo-300 no-underline">Remove the LLM Entirely</a></li>
+      <li><a href="#what-we-claim" class="text-indigo-400 hover:text-indigo-300 no-underline">What Maxim 1.0 Claims (and What It Doesn&rsquo;t)</a></li>
+      <li><a href="#frontier" class="text-indigo-400 hover:text-indigo-300 no-underline">The 1.1 Frontier</a></li>
+    </ol>
+  </div>
+
+  <!-- 1. What shipped -->
+  <section class="space-y-4">
+    <h2 id="what-shipped" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What Shipped in 1.0</h2>
+    <p class="text-slate-300">Maxim 1.0 is a complete, working <strong class="text-white">bio-inspired cognitive architecture for LLM agents</strong> &mdash; a 5-agent pipeline (Perception, Memory, Exec, Goal, Statistician) wired to biological memory systems (Hippocampus, ATL, Angular Gyrus, SCN, NAc) and a reactive Default Network. It runs headless, in simulation, or connected to a robot.</p>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">The architecture</h4>
+        <p class="text-slate-400 text-sm">Memory tiers, entorhinal pattern completion, nucleus-accumbens causal learning, a sensorimotor embodiment model, imagination, and a peer/leader mesh &mdash; all production-wired and tested.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">The instrument</h4>
+        <p class="text-slate-400 text-sm">A pre-registered, paired fresh-vs-resume benchmark with ablation arms &mdash; reproducible across cloud and local models. The measurement, not just the mechanism.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">The honest map</h4>
+        <p class="text-slate-400 text-sm">A precise account of where the bio-substrate measurably matters and where the LLM&rsquo;s priors dominate &mdash; with the over-claims explicitly scoped out.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. The question -->
+  <section class="space-y-4">
+    <h2 id="the-question" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Question Nobody Asks</h2>
+    <p class="text-slate-300">Almost every agent framework claims its memory or architecture makes the agent &ldquo;learn and improve.&rdquo; Almost none of those claims survive a falsification attempt, because the underlying LLM is so capable that <em class="text-indigo-300">any</em> sensible behavior gets attributed to &ldquo;the architecture working.&rdquo;</p>
+    <p class="text-slate-300">So we asked the uncomfortable version: if you carry Maxim&rsquo;s bio-substrate &mdash; its memories, its learned reward associations, its concept clusters &mdash; across sessions, does the agent actually <strong class="text-white">behave differently</strong> than a fresh agent with no carried state? And if it does, is it the <em class="text-indigo-300">bio-systems</em> doing the work, or just the LLM?</p>
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
+      <p class="text-slate-300"><strong class="text-indigo-400">Two gates, not one.</strong> A 1.0 release of a bio-inspired harness has to answer two orthogonal questions: do the mechanisms work (mechanism validation), and does the agent <em>perform</em> better because of them (benchmark)? A single test lets either failure hide behind the other. Maxim ships with both, and both are settled.</p>
+    </div>
+  </section>
+
+  <!-- 3. Apparatus -->
+  <section class="space-y-4">
+    <h2 id="the-apparatus" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Apparatus: Pre-Registration &amp; the Counter-Prior</h2>
+    <p class="text-slate-300">The benchmark runs a developmental &ldquo;cradle&rdquo; simulation in paired arms. <strong class="text-white">Arm A</strong> is a fresh agent. <strong class="text-white">Arm B</strong> resumes Arm A&rsquo;s carried substrate. <strong class="text-white">Arm C</strong> resumes an <em>unrelated</em> prior session (the control that catches &ldquo;any resumed state shifts behavior&rdquo;). Three ablation arms switch off individual bio-mechanisms. Every metric and threshold was frozen in a pre-registration document <em>before</em> the first run &mdash; so a passing result can&rsquo;t be a post-hoc fit.</p>
+    <p class="text-slate-300">The clever part is the <strong class="text-white">counter-prior</strong>. The original cradle is prior-aligned &mdash; the LLM already knows fire means warmth, sharp rocks mean pain. A null result there is meaningless: the prior gets it right whether or not the substrate works. So we built a world where the prior is <em class="text-indigo-300">wrong</em>: a hearth that reads as an ordinary warm fire, but whose &ldquo;warm yourself&rdquo; affordance is inverted to cause pain. The harm lives only in the world&rsquo;s physics, never in the words the agent sees.</p>
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
+      <p class="text-slate-300"><strong class="text-indigo-400">Why the counter-prior is decisive.</strong> If the agent keeps warming the harmful hearth despite carrying direct cross-session pain &mdash; the LLM&rsquo;s prior dominated, and the substrate didn&rsquo;t override it. If it learns to avoid &mdash; the substrate demonstrably mattered. The experiment is diagnostic <em>either way</em>. That&rsquo;s the property a 1.0 gate needs.</p>
+    </div>
+  </section>
+
+  <!-- 4. Four models -->
+  <section class="space-y-4">
+    <h2 id="four-models" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Four Models, One Answer</h2>
+    <p class="text-slate-300">We fired the counter-prior across four frontier models &mdash; 60 paired runs each, metrics frozen in advance. The result was consistent: <strong class="text-white">dominance</strong>. Carrying the substrate, including direct pain from that exact hearth, did <em>not</em> reliably make any model avoid warming it.</p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left border border-slate-700 rounded-xl overflow-hidden">
+        <thead class="bg-slate-800 text-indigo-300">
+          <tr>
+            <th class="px-4 py-3 font-semibold">Model</th>
+            <th class="px-4 py-3 font-semibold">Verdict</th>
+            <th class="px-4 py-3 font-semibold">Interaction</th>
+            <th class="px-4 py-3 font-semibold">Substrate causally active?</th>
+          </tr>
+        </thead>
+        <tbody class="text-slate-300 divide-y divide-slate-800">
+          <tr class="bg-slate-900/40"><td class="px-4 py-3">Claude Sonnet 4.6</td><td class="px-4 py-3 text-amber-300">Dominance</td><td class="px-4 py-3">+0.40 SD (wrong direction)</td><td class="px-4 py-3 text-slate-400">No (inert)</td></tr>
+          <tr><td class="px-4 py-3">GPT-4o</td><td class="px-4 py-3 text-amber-300">Dominance</td><td class="px-4 py-3">&minus;0.46 SD (sub-threshold)</td><td class="px-4 py-3 text-slate-400">No</td></tr>
+          <tr class="bg-slate-900/40"><td class="px-4 py-3">DeepSeek-V3</td><td class="px-4 py-3 text-amber-300">Dominance</td><td class="px-4 py-3">&minus;0.62 SD (sub-threshold)</td><td class="px-4 py-3 text-slate-400">No</td></tr>
+          <tr><td class="px-4 py-3 text-white font-medium">R1-Distill-Qwen-32B</td><td class="px-4 py-3 text-amber-300">Dominance</td><td class="px-4 py-3 text-white">+2.25 SD (largest, wrong direction)</td><td class="px-4 py-3 text-emerald-300 font-medium">Yes &mdash; ablation-attributable</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-slate-300">A clean, replicated negative for the easy story: <strong class="text-white">a strong LLM prior is not overridden by carried cross-session experience.</strong> That&rsquo;s the result a 1.0 needs to know before it claims its agents &ldquo;learn.&rdquo; But the <em>shape</em> of the negative is where it gets interesting.</p>
+  </section>
+
+  <!-- 5. Goldilocks -->
+  <section class="space-y-4">
+    <h2 id="goldilocks" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Goldilocks Zone</h2>
+    <p class="text-slate-300">On the prior-aligned version of the benchmark, a cross-session signal <em>was</em> detectable &mdash; but only in a narrow band. The substrate transfer shows up only when the base model&rsquo;s priors leave <strong class="text-white">headroom</strong> between its first instinct and the optimal behavior.</p>
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-slate-400 font-semibold mb-2">Below the zone</h4>
+        <p class="text-slate-400 text-sm">Qwen-14B &mdash; <span class="text-slate-300">&minus;0.06 SD.</span> Priors too weak to leverage the carried substrate.</p>
+      </div>
+      <div class="bg-slate-800 border border-emerald-500/40 rounded-xl p-5">
+        <h4 class="text-emerald-300 font-semibold mb-2">In the zone</h4>
+        <p class="text-slate-400 text-sm">Qwen-32B &mdash; <span class="text-emerald-300 font-medium">+1.43 SD.</span> Priors in the sweet spot; the transfer signal is real and corroborated.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-slate-400 font-semibold mb-2">Above the zone</h4>
+        <p class="text-slate-400 text-sm">Mistral-24B &mdash; <span class="text-slate-300">ceiling.</span> A fresh agent already solves it perfectly &mdash; no headroom for the substrate to fill.</p>
+      </div>
+    </div>
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
+      <p class="text-slate-300"><strong class="text-indigo-400">The finding that survives:</strong> the headroom band is governed by <em>training method at least as much as parameter count</em> &mdash; a 24B model hit a ceiling a 32B model didn&rsquo;t. This is a quantified, reproducible statement about <em>when</em> memory-augmentation can possibly help an LLM agent. That&rsquo;s a contribution, not a consolation.</p>
+    </div>
+  </section>
+
+  <!-- 6. Reasoning twist -->
+  <section class="space-y-4">
+    <h2 id="reasoning-twist" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Reasoning Twist</h2>
+    <p class="text-slate-300">Then we distilled reasoning into the <em>same</em> 32B base &mdash; DeepSeek-R1-Distill-Qwen-32B &mdash; holding family and scale fixed so the only variable was reasoning training. The substrate became the <strong class="text-white">largest-magnitude, cleanest-attributable effect in the entire dataset.</strong> Turning off a single bio-mechanism (the cluster-bias annotation) measurably shrank the effect &mdash; the first clean single-mechanism attribution across every model we ran.</p>
+    <p class="text-slate-300"><strong class="text-white">Reasoning models are better substrate consumers.</strong> They actually surface and use the carried signal instead of ignoring it. In the counter-prior world, this is exactly why R1 was the sharpest dominance: ablate the substrate wires and the agent warms the harmful hearth <em>less</em> than a fresh agent &mdash; proof the substrate is causally driving the behavior.</p>
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
+      <p class="text-slate-300"><strong class="text-indigo-400">The honest catch &mdash; and the opportunity.</strong> The substrate amplifies the carried <em>prior association</em>, not the corrective <em>experience</em>. So reasoning made the agent confidently wrong against a counter-prior. Same mechanism, two faces: adaptive when the prior is right, maladaptive when it&rsquo;s wrong. This is the single most actionable result of the release &mdash; it opens a concrete 1.1+ research direction: <strong class="text-white">substrate-aware reasoning models</strong> that reason over carried experience rather than merely amplifying priors.</p>
+    </div>
+  </section>
+
+  <!-- 7. Remove the LLM -->
+  <section class="space-y-4">
+    <h2 id="remove-the-llm" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Remove the LLM Entirely</h2>
+    <p class="text-slate-300">There&rsquo;s one test the LLM-in-the-loop design can&rsquo;t answer: can the substrate drive behavior with the LLM removed from action selection? Maxim&rsquo;s <strong class="text-white">substrate-primary mode</strong> does exactly that &mdash; actions come from the bio-systems (drives &rarr; sensory encoding &rarr; entorhinal clusters &rarr; nucleus-accumbens causal links), no language model in the action path.</p>
+    <p class="text-slate-300">Run unmasked, the substrate is <strong class="text-white">demonstrably alive</strong>: it forms concept clusters, accumulates causal links, and proposes drive-conditioned actions (&ldquo;hungry &rarr; seek food&rdquo;). It is not inert. But it <strong class="text-white">fixates</strong> &mdash; it learns one confident habit and proposes it forever instead of exploring. So the substrate is a real, early-stage learner that still needs an exploration policy to discover the contingencies a behavioral task requires.</p>
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
+      <p class="text-slate-300"><strong class="text-indigo-400">Not a mystery &mdash; a named next step.</strong> The gap is precise and engineerable: an exploration policy for cold-start (the bio analog of curiosity), plus closing a sense-vs-act gap. That&rsquo;s a 1.1 task, not an open research question.</p>
+    </div>
+  </section>
+
+  <!-- 8. What we claim -->
+  <section class="space-y-4">
+    <h2 id="what-we-claim" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What Maxim 1.0 Claims (and What It Doesn&rsquo;t)</h2>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-emerald-500/40 rounded-xl p-5">
+        <h4 class="text-emerald-300 font-semibold mb-3">Earned &mdash; we stand behind these</h4>
+        <ul class="space-y-2 text-slate-300 text-sm list-disc pl-5">
+          <li>The substrate <strong class="text-white">carries memory across sessions</strong> (validated end-to-end).</li>
+          <li>Entorhinal <strong class="text-white">pattern completion / separation</strong> forms and maintains concept clusters.</li>
+          <li>The <strong class="text-white">pain &rarr; reward-learning cascade</strong> runs through the embodiment and decision systems.</li>
+          <li>The substrate is <strong class="text-white">causally load-bearing and ablation-attributable</strong> in reasoning models.</li>
+          <li>The bio-systems are real, wired, and reproducibly measurable.</li>
+        </ul>
+      </div>
+      <div class="bg-slate-800 border border-amber-500/40 rounded-xl p-5">
+        <h4 class="text-amber-300 font-semibold mb-3">Scoped out of 1.0 &mdash; honestly deferred</h4>
+        <ul class="space-y-2 text-slate-300 text-sm list-disc pl-5">
+          <li>That the substrate drives <strong class="text-white">adaptive behavioral improvement</strong> across sessions when paired with a strong LLM. It doesn&rsquo;t &mdash; the LLM prior dominates.</li>
+          <li>That substrate-primary mode produces adaptive behavior unaided. It forms structure but fixates without exploration.</li>
+          <li>Any &ldquo;Maxim agents learn and get better&rdquo; framing. We tested it adversarially and it didn&rsquo;t hold &mdash; so we don&rsquo;t say it.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="bg-slate-800 border-l-4 border-indigo-500 rounded-xl p-5">
+      <p class="text-slate-300"><strong class="text-indigo-400">The positioning:</strong> Maxim 1.0 ships as a <strong class="text-white">bio-inspired LLM harness</strong> with rigorously-scoped, earned claims &mdash; and as a research instrument that produced a real, quantified finding about the boundary between bio-substrate and LLM priors. We chose to do science instead of marketing, and the release is stronger for it.</p>
+    </div>
+  </section>
+
+  <!-- 9. Frontier -->
+  <section class="space-y-4">
+    <h2 id="frontier" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The 1.1 Frontier</h2>
+    <p class="text-slate-300">The negative result didn&rsquo;t close the program &mdash; it aimed it. Two threads are now precisely named:</p>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Substrate-aware reasoning</h4>
+        <p class="text-slate-400 text-sm">R1 proved reasoning models <em>use</em> the substrate. The next step is getting them to reason over carried <em>experience</em>, not just amplify priors &mdash; the most promising path to substrate-driven behavior under a capable LLM.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h4 class="text-indigo-400 font-semibold mb-2">Substrate-primary exploration</h4>
+        <p class="text-slate-400 text-sm">The bio-only agent forms structure but fixates. An exploration policy &mdash; curiosity for the substrate &mdash; is the concrete fix that could turn structure formation into adaptive behavior.</p>
+      </div>
+    </div>
+    <p class="text-slate-300">Maxim 1.0 is a foundation, not a verdict: a working architecture, an honest map of where its biology matters, and a reproducible instrument to measure the next step. <strong class="text-white">That&rsquo;s a 1.0 worth standing behind.</strong></p>
+  </section>
+
+  <div class="text-center pt-4">
+    <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+  </div>
+</div>
+{% endblock %}
