@@ -2,7 +2,7 @@
 
 Comprehensive documentation for Maxim's systems and subsystems.
 
-**Version:** 0.9.3 | **Last updated:** 2026-06-06
+**Version:** 1.0.0 | **Last updated:** 2026-06-15
 
 > **2026-05-09 architectural pivot** — Maxim is moving toward a **parallel-mode architecture** where the bio-substrate (NAc + EC + ATL + Hippocampus + Default Network + reflexes) can drive action selection directly, with LLMs demoted to supporting roles (orchestrator, NPCs, optional AUT). The existing **LLM-AUT mode** remains the user-facing default; the new **substrate-primary AUT mode** ships in parallel as opt-in via `--aut-mode substrate-primary`. The **Maxim Hivemind** shareability layer (infrastructure shipped in 0.9.x; `maxim substrate export|import|inspect` CLI available; Oasis persistent-substrate-primary instances target 1.1+) lets multiple Maxims share distilled bio-substrate across instances. See [Substrate-Primary Mode](substrate_primary.md) and [Hivemind + Oasis](hivemind.md) for the new docs.
 

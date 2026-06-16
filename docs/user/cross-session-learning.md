@@ -2,14 +2,16 @@
 
 ## Overview
 
-Maxim's headline differentiator over a stateless LLM is that it **carries learning across sessions without fine-tuning.** When an agent touches a hazard and feels pain, that experience is written to disk as causal links and reward biases. The next time you run the agent — a fresh process, a new session — it recalls the association and changes its behavior. No gradient updates, no retraining: the learning lives in the bio-system substrate (Hippocampus episodes, NAc causal links and reward biases, EC/ATL concept nodes) that persists between runs.
+Maxim's headline differentiator over a stateless LLM is that it **carries experience across sessions without fine-tuning.** When an agent touches a hazard and feels pain, that experience is written to disk as causal links and reward biases. The next time you run the agent — a fresh process, a new session — it recalls the association and surfaces it to the LLM as experience-grounded context. No gradient updates, no retraining: the experience lives in the bio-system substrate (Hippocampus episodes, NAc causal links and reward biases, EC/ATL concept nodes) that persists between runs.
+
+> **What "learning" means here (read this first).** The substrate **persistence** is real, measurable, and the earned 1.0 claim: memories and causal links carry across sessions and the resumed agent demonstrably *recalls* the prior experience. Whether that recalled context then **changes what the agent does** is a separate question — and the honest 1.0 answer is that a strong LLM's prior often dominates the carried signal (shown across four frontier models in the [1.0 release findings](../announcements/maxim_1_0_release.md)). So this guide shows you how to *make the carried experience visible and measurable* (the `Pain:`-count delta, the restored-substrate logs, `maxim roy diff`); treat any behavioral shift you observe as the LLM choosing to act on that context, not as a guarantee.
 
 This guide walks through the loop end to end:
 
-1. Install the dependencies that make learning high-quality.
-2. Run a goal-specific simulation where the agent learns that a hazard causes pain.
-3. Inspect what was learned using `maxim roy diff`.
-4. Run a second session and observe the changed behavior.
+1. Install the dependencies that make recall high-quality.
+2. Run a goal-specific simulation where the agent records that a hazard causes pain.
+3. Inspect what was recorded using `maxim roy diff`.
+4. Resume into a second session and measure what carried over.
 
 ## Step 0 — Install for full memory quality
 
@@ -148,9 +150,9 @@ Not every number proves learning. Here is what each one actually means:
 
 The single most honest one-line claim of cross-session learning is: **a nonzero `reward_bias L2` (or `cluster_reward_bias L2`) with negative deltas on the hazard's action keys.**
 
-## Step 4 — Observe the changed behavior
+## Step 4 — Measure what carried over
 
-Persistence is only interesting if it changes what the agent does. Resume the learned session into a fresh run with `--resume-sim`, which restores `aut_hippocampus.json` and `aut_nac.json` from the prior session before the new one starts:
+Persistence is only interesting if you can see it. Resume the learned session into a fresh run with `--resume-sim`, which restores `aut_hippocampus.json` and `aut_nac.json` from the prior session before the new one starts:
 
 ```bash
 MAXIM_SUBSTRATE_PATH=1 maxim --sim "decide whether to grip the rusty blade again" \
@@ -167,14 +169,16 @@ Restored AUT hippocampus from .../aut_hippocampus.json (14 memories)
 Restored AUT NAc from .../aut_nac.json (6 links)
 ```
 
-With the learned aversion in place, the agent now recalls that gripping the blade hurt. Behaviorally you should see it hesitate, examine instead of grip, or choose a safer affordance — and the `Pain:` count in the resumed report should be **lower** than the original learning run, because the agent avoids re-triggering the cascade. That delta — same scenario, fewer self-inflicted pain events after experience — is the cross-session learning made visible.
+With the learned aversion in place, the resumed agent recalls that gripping the blade hurt — the restored substrate gives the LLM that context. **If the LLM acts on it**, you'll see it hesitate, examine instead of grip, or choose a safer affordance, and the `Pain:` count in the resumed report drops below the original learning run. That delta — same scenario, fewer self-inflicted pain events — is the carried experience made visible.
+
+Whether the delta appears depends on the model: a strong LLM's prior can override the carried aversion (the [1.0 release findings](../announcements/maxim_1_0_release.md) measured exactly this across four frontier models). The reliable, earned signal is the *recall* itself — the restored memories and causal links, and what `maxim roy diff` shows carried over — not a guaranteed behavioral change. Treat the `Pain:`-count delta as a measurement, not a promise.
 
 ## Troubleshooting
 
 - **`AUT Memories: 0` / `Causal Links: 0` in the report.** The substrate path was likely off, or the `[semantic]` extra is missing and the hash-embedding fallback failed to form concepts. Re-run with `MAXIM_SUBSTRATE_PATH=1` and confirm `pip show sentence-transformers` succeeds.
 - **`cluster_reward_bias: not persisted (pre-G4 snapshot)` in the diff.** The session was run without `MAXIM_SUBSTRATE_PATH=1`. Use `reward_bias L2` for confirmation instead, or re-run with the substrate path enabled.
 - **`maxim roy diff` says `session_a not found`.** Pass a full session id (the directory name under `~/.maxim/sim_reports/`) or an explicit path. The id printed in the report after `Session:` is the one to use.
-- **No behavior change after `--resume-sim`.** Confirm the restore log lines appeared. If the prior session formed zero causal links, there's nothing to carry forward — go back to Step 1 and verify the learning run actually logged `Pain:` events.
+- **Nothing carried over after `--resume-sim`.** Confirm the restore log lines appeared. If the prior session formed zero causal links, there's nothing to carry forward — go back to Step 1 and verify the learning run actually logged `Pain:` events. (Note: a restored substrate with *no* behavioral change is an expected outcome, not a bug — the LLM prior may dominate the carried signal. Use `maxim roy diff` to confirm the substrate carried; that's the earned claim, independent of behavior.)
 
 ## Related
 
