@@ -1888,3 +1888,42 @@ class TestProxyAuthSchemeDispatch:
         code, body = h._sent[0]
         assert code == 401
         assert body == {"error": "Unsupported or missing authorization scheme"}
+
+
+class TestKeyFingerprint:
+    """CC13: ``_key_fingerprint`` must never emit raw key material to logs
+    (CodeQL clear-text-logging). Pin the security property so a future edit
+    can't reintroduce a prefix leak.
+    """
+
+    def test_never_contains_raw_secret(self):
+        from maxim.runtime.leader_proxy import _key_fingerprint
+
+        secret = "sk-supersecret-1234567890"
+        fp = _key_fingerprint(secret)
+        assert secret not in fp
+        # No 6+ char prefix of the secret leaks either.
+        assert secret[:6] not in fp
+        assert fp.startswith("sha256:")
+
+    def test_stable_for_same_key(self):
+        from maxim.runtime.leader_proxy import _key_fingerprint
+
+        assert _key_fingerprint("sk-abc") == _key_fingerprint("sk-abc")
+
+    def test_distinguishes_different_keys(self):
+        from maxim.runtime.leader_proxy import _key_fingerprint
+
+        assert _key_fingerprint("sk-abc") != _key_fingerprint("sk-xyz")
+
+    def test_missing_value_sentinel(self):
+        from maxim.runtime.leader_proxy import _key_fingerprint
+
+        assert _key_fingerprint("") == "<missing>"
+        assert _key_fingerprint(None) == "<missing>"
+
+    def test_non_ascii_value_does_not_raise(self):
+        from maxim.runtime.leader_proxy import _key_fingerprint
+
+        fp = _key_fingerprint("sk-ééé")
+        assert fp.startswith("sha256:")

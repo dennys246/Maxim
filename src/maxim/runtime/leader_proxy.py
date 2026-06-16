@@ -20,6 +20,7 @@ Supersedes debug_status_server.py (which only served /v1/debug/status).
 from __future__ import annotations
 
 import collections
+import hashlib
 import json
 import logging
 import os
@@ -128,6 +129,24 @@ def _sanitize_git_output(text: str | None, max_len: int = 300) -> str:
     # Replace absolute paths that could leak system info
     text = re.sub(r"/[\w./-]{5,}", "<path>", text)
     return text[-max_len:] if len(text) > max_len else text
+
+
+def _key_fingerprint(value: str | None) -> str:
+    """Non-reversible short fingerprint of a secret, safe to log.
+
+    Auth-failure diagnostics want to answer "is the presented credential
+    the *same* key as the configured one, or a different one?" without
+    writing key material to the log. Even a key *prefix* in a log is a
+    real leak (CodeQL clear-text-logging flags it), so we log a one-way
+    SHA-256 digest instead: stable for a given key, distinct across
+    different keys, and impossible to reverse. Returns ``<missing>`` for
+    an empty/absent value so the log still distinguishes "no credential"
+    from "wrong credential".
+    """
+    if not value:
+        return "<missing>"
+    digest = hashlib.sha256(value.encode("utf-8", "replace")).hexdigest()
+    return f"sha256:{digest[:8]}"
 
 
 import shutil
@@ -873,14 +892,14 @@ class _ProxyHandler(BaseHTTPRequestHandler):
                 credential_ok = False
             if credential_ok:
                 return True
-            # Log enough to diagnose mismatches without leaking the full key
-            expected_prefix = self.api_key[:6] if self.api_key else "?"
-            got_prefix = credential[:6] if credential else repr(auth[:20])
+            # Log non-reversible fingerprints so an operator can tell a
+            # wrong-key mismatch from a same-key transport issue WITHOUT
+            # writing key material (not even a prefix) to the log.
             logger.warning(
-                "Auth failed: peer=%s expected=%s... got=%s...",
+                "Auth failed: peer=%s expected_fp=%s got_fp=%s",
                 self.client_address[0],
-                expected_prefix,
-                got_prefix,
+                _key_fingerprint(self.api_key),
+                _key_fingerprint(credential),
             )
             self._send_json(401, {"error": "Invalid API key"})
             return False
