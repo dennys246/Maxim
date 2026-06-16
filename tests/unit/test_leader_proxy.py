@@ -1889,41 +1889,18 @@ class TestProxyAuthSchemeDispatch:
         assert code == 401
         assert body == {"error": "Unsupported or missing authorization scheme"}
 
+    def test_auth_failure_log_contains_no_secret_material(self, caplog):
+        """CC13 / CodeQL: the auth-failure log line must carry NO key-derived
+        content — not the key, not a prefix, not a hash of it. Pin it so a
+        future edit can't reintroduce a clear-text-logging or
+        weak-sensitive-data-hashing alert."""
+        import logging as _logging
 
-class TestKeyFingerprint:
-    """CC13: ``_key_fingerprint`` must never emit raw key material to logs
-    (CodeQL clear-text-logging). Pin the security property so a future edit
-    can't reintroduce a prefix leak.
-    """
-
-    def test_never_contains_raw_secret(self):
-        from maxim.runtime.leader_proxy import _key_fingerprint
-
-        secret = "sk-supersecret-1234567890"
-        fp = _key_fingerprint(secret)
-        assert secret not in fp
-        # No 6+ char prefix of the secret leaks either.
-        assert secret[:6] not in fp
-        assert fp.startswith("sha256:")
-
-    def test_stable_for_same_key(self):
-        from maxim.runtime.leader_proxy import _key_fingerprint
-
-        assert _key_fingerprint("sk-abc") == _key_fingerprint("sk-abc")
-
-    def test_distinguishes_different_keys(self):
-        from maxim.runtime.leader_proxy import _key_fingerprint
-
-        assert _key_fingerprint("sk-abc") != _key_fingerprint("sk-xyz")
-
-    def test_missing_value_sentinel(self):
-        from maxim.runtime.leader_proxy import _key_fingerprint
-
-        assert _key_fingerprint("") == "<missing>"
-        assert _key_fingerprint(None) == "<missing>"
-
-    def test_non_ascii_value_does_not_raise(self):
-        from maxim.runtime.leader_proxy import _key_fingerprint
-
-        fp = _key_fingerprint("sk-ééé")
-        assert fp.startswith("sha256:")
+        h = self._handler(api_key="sk-supersecret-1234567890", auth_header="Bearer sk-wrong-credential-xyz")
+        with caplog.at_level(_logging.WARNING):
+            assert h._check_auth() is False
+        logged = " ".join(r.getMessage() for r in caplog.records)
+        assert "sk-supersecret-1234567890" not in logged
+        assert "sk-supersecret"[:6] not in logged  # no prefix either
+        assert "sk-wrong-credential-xyz" not in logged
+        assert "sha256" not in logged  # no hash of the secret
