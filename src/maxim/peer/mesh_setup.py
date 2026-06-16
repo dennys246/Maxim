@@ -512,6 +512,10 @@ def run_add_node(argv: Sequence[str]) -> int:
         new_nodes = mesh.nodes + (new_node,)
 
     try:
+        # TODO(1.1, CC13): when the reserved cluster_keys /
+        # cluster_trust_anchors / cluster_auth_mode fields are activated,
+        # forward them here too — otherwise add-node silently resets
+        # mesh-auth config to defaults. Harmless at 1.0 (always None).
         new_mesh = MeshConfig(
             cluster_key=mesh.cluster_key,
             self_name=mesh.self_name,
@@ -651,6 +655,9 @@ def run_remove_node(argv: Sequence[str]) -> int:
 
     new_nodes = tuple(n for n in mesh.nodes if n.name != name)
     try:
+        # TODO(1.1, CC13): forward the reserved cluster_keys /
+        # cluster_trust_anchors / cluster_auth_mode fields here once
+        # activated (see add-node above). Harmless at 1.0 (always None).
         new_mesh = MeshConfig(
             cluster_key=mesh.cluster_key,
             self_name=mesh.self_name,

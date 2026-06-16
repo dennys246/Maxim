@@ -176,13 +176,42 @@ class MeshConfig:
     is the deliberate forward-compat knob; bump that integer when the
     wire format changes incompatibly. Adding any other field post-1.0
     requires the parser, ``to_yaml`` writer, and round-trip test all
-    to land together.
+    to land together — *except* the CC13 reserved-null fields below,
+    which are a deliberate carve-out (the slot is named at 1.0; the
+    parser + writer + round-trip land together only when 1.1 activates
+    a field). See the next paragraph.
+
+    **CC13 auth format-freeze (reserved-null sibling fields).** The three
+    ``cluster_*`` fields below are reserved at 1.0 so 1.1+ mesh-auth
+    schemes (key rotation, asymmetric trust anchors, mTLS) can land
+    WITHOUT changing this frozen dataclass shape — which would itself be
+    a breaking change per the CC3 SHAPE-FROZEN contract. They are always
+    ``None`` at 1.0: no code path populates them, and the FROZEN parser /
+    ``to_yaml`` writer neither read nor emit them yet (a 1.0 ``mesh.yml``
+    cannot contain them — the parser rejects unknown top-level keys). When
+    1.1 *activates* a field it lands the parser read + writer emit +
+    round-trip test together, per the contract above; until then the
+    fields exist only on the dataclass so the names are frozen and the
+    1.1 parser widening is non-breaking. Declared as ``tuple[str, ...]``
+    (not ``list``) to keep the frozen dataclass hashable, matching
+    ``nodes``.
+
+    - ``cluster_keys`` — accepted-on-read rotation list; ``cluster_key``
+      stays the single active write key when this is populated.
+    - ``cluster_trust_anchors`` — trusted public keys for asymmetric
+      mesh auth.
+    - ``cluster_auth_mode`` — ``"bearer"`` (default / ``None``),
+      ``"asymmetric"``, or ``"mtls"``.
     """
 
     cluster_key: str
     self_name: str
     nodes: tuple[MeshNode, ...]
     protocol_version: int = 1
+    # CC13 reserved-null auth-scheme siblings — see class docstring.
+    cluster_keys: tuple[str, ...] | None = None
+    cluster_trust_anchors: tuple[str, ...] | None = None
+    cluster_auth_mode: str | None = None
 
     def __post_init__(self) -> None:
         # E3 fold: validate yaml-safe characters on the top-level

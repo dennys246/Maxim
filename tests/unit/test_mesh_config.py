@@ -382,6 +382,78 @@ class TestMeshConfigToYaml:
         assert parsed.protocol_version == 1
 
 
+class TestClusterAuthFormatFreeze:
+    """CC13 auth format-freeze: the three reserved-null ``cluster_*`` sibling
+    fields exist on the dataclass but are NOT serialized or parsed at 1.0.
+    These tests pin the freeze so 1.1's activation of any field is a
+    deliberate, reviewed change (parser + writer + round-trip land together).
+    """
+
+    def _one_node_cfg(self, **overrides):
+        base = dict(
+            cluster_key="sk-test",
+            self_name="leader",
+            nodes=(MeshNode(name="leader", url="https://x.example/v1", role="leader"),),
+        )
+        base.update(overrides)
+        return MeshConfig(**base)
+
+    def test_reserved_fields_default_to_none(self):
+        cfg = self._one_node_cfg()
+        assert cfg.cluster_keys is None
+        assert cfg.cluster_trust_anchors is None
+        assert cfg.cluster_auth_mode is None
+
+    def test_default_config_round_trips_with_reserved_fields_none(self):
+        """A config with the reserved fields at their None default round-trips
+        cleanly — the reserved slots do not perturb the wire format."""
+        cfg = self._one_node_cfg()
+        parsed = parse_mesh_config(cfg.to_yaml())
+        assert parsed == cfg
+        assert parsed.cluster_keys is None
+        assert parsed.cluster_trust_anchors is None
+        assert parsed.cluster_auth_mode is None
+
+    def test_to_yaml_does_not_emit_reserved_fields_at_1_0(self):
+        """The writer is byte-stable: even when the reserved fields are
+        populated (which no 1.0 code path does), ``to_yaml`` does not emit
+        them — activation is 1.1 work that lands the writer change with it."""
+        cfg = self._one_node_cfg(
+            cluster_keys=("sk-old", "sk-new"),
+            cluster_trust_anchors=("ed25519:AAAA",),
+            cluster_auth_mode="asymmetric",
+        )
+        yaml = cfg.to_yaml()
+        assert "cluster_keys" not in yaml
+        assert "cluster_trust_anchors" not in yaml
+        assert "cluster_auth_mode" not in yaml
+
+    @pytest.mark.parametrize(
+        "reserved_block",
+        [
+            "cluster_keys:\n  - sk-old\n  - sk-new\n",
+            "cluster_trust_anchors:\n  - ed25519:AAAA\n",
+            "cluster_auth_mode: asymmetric\n",
+        ],
+    )
+    def test_parser_rejects_reserved_keys_at_1_0(self, reserved_block):
+        """The FROZEN parser still rejects the reserved keys as unknown
+        top-level keys at 1.0. 1.1 teaching the parser to read them is a
+        non-breaking widening — but it must be a deliberate change, not a
+        silent acceptance. Mirrors ``test_drain_field_is_rejected_as_unknown_key``.
+        """
+        yaml = VALID_YAML + reserved_block
+        with pytest.raises(MeshConfigError, match="unknown top-level key"):
+            parse_mesh_config(yaml)
+
+    def test_reserved_fields_are_hashable(self):
+        """The reserved fields use ``tuple`` (not ``list``) so the frozen
+        dataclass stays hashable per the CC3 forward-compat audit."""
+        cfg = self._one_node_cfg(cluster_keys=("sk-a", "sk-b"))
+        # Must not raise — list fields would make this a TypeError.
+        assert hash(cfg) == hash(cfg)
+
+
 class TestWriteMeshConfig:
     """Disk-I/O wrapper around to_yaml(). Must use atomic_write_secret
     because mesh.yml::cluster_key is a secret per the C2 invariant.

@@ -173,10 +173,11 @@ These three properties are load-bearing -- they are why substrate sharing is saf
 
 3. **ZIP-slip protection.** Every entry in an imported bundle is routed through a path-safety check before any file is written. Absolute paths, `..` traversal, and symlink escape are all rejected. A malicious bundle with one safe slice and one escape slice writes nothing -- the safety pass runs before any disk write. This matters because the 1.2 P2P protocol will exchange bundles between peers, so the threat surface is real even before import is widely used.
 
-The manifest also reserves `signature` and `signature_algorithm` slots. At 1.0 they are always `None` -- the slot exists so 1.1+ verification can land without breaking 1.0 bundles. This build computes no signatures and validates none; if you need signing today, build your own ZIP with a populated signature field and a custom verifier.
+The manifest also reserves `signature`, `signature_algorithm`, and `signer_identity` slots. At 1.0 they are always `None` -- the slots exist so 1.1+ verification can land without breaking 1.0 bundles. This build computes no signatures and validates none; if you need signing today, build your own ZIP with a populated signature field and a custom verifier. The recognized `signature_algorithm` vocabulary and the `signer_identity` field are documented in the [Hivemind Bundle Format registry](hivemind_bundle_format.md) so a future verifier and heterogeneous producers share one string vocabulary.
 
 ## See also
 
 - [Maxim Hivemind + Oasis](../hivemind.md) -- the design rationale and the 1.1/1.2 roadmap this format feeds
+- [Hivemind Bundle Format registry](hivemind_bundle_format.md) -- the reserved signature / identity vocabulary (CC13 format-freeze)
 - [Memory User Guide](memory-user-guide.md) -- how the substrate is built in the first place
 - [Concept Decomposition](concept-decomposition.md) -- finer-grained EC nodes make for cleaner merges
