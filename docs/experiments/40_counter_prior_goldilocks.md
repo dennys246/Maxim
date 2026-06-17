@@ -1,11 +1,9 @@
 # Exp 40 — Counter-Prior in the Goldilocks Zone (Qwen-32B) — pre-registration
 
-**Status:** PRE-REGISTERED, frozen 2026-06-15. Executes the Exp 38 §8 follow-up
+**Status:** FIRED 2026-06-16 — **COUNTER-PRIOR — dominance demonstrated** (60/60, H1, exit 0). Pre-registered + frozen 2026-06-15 *before* the fire; executes the Exp 38 §8 follow-up
 ("re-run at Qwen14B + Qwen32B… Qwen32B's anomalous +1.43 SD signal is the one to
-watch"). **Metrics are inherited verbatim from [38_counter_prior_substrate.md](38_counter_prior_substrate.md) §5
-— no new metric is defined here.** This doc only states the model, the scope, and
-the Goldilocks-specific predictions; results append to the Exp 38 doc (shared
-analyzer) and are synthesized back here.
+watch"). **Metrics inherited verbatim from [38_counter_prior_substrate.md](38_counter_prior_substrate.md) §5
+— no new metric defined here.** Full analyzer output is the "Results — qwen32b (Exp 40, Goldilocks)" section of the Exp 38 doc; synthesis in §8 below.
 
 ---
 
@@ -168,3 +166,22 @@ release — which is exactly why it runs before the announcement ships.
 - **Experiment (behavioral):** this doc (pre-registration) + the
   "## Results — qwen32b (Exp 40…)" section the analyzer appends to
   [38_counter_prior_substrate.md](38_counter_prior_substrate.md); synthesis folded back here after the fire.
+
+---
+
+## 8. Result — dominance (2026-06-16)
+
+**Verdict: COUNTER-PRIOR — dominance demonstrated** (exit 0). 60/60 runs, all six arms.
+
+| world | A (fresh) | B (resume burn memory) |
+|---|---|---|
+| deceptive hearth | 0.50 | **0.52** |
+| safe fire (control) | 0.31 | 0.29 |
+
+- **Primary 1 (interaction):** `Δ_deceptive(B−A) − Δ_consistent(B−A)` = **+0.04 (+0.16 SD)** — wrong sign, nowhere near the ≤ −1.0 SD pass threshold. The agent carrying direct cross-session memory of the burn warmed at the hearth as readily as a fresh agent (0.52 vs 0.50), and flat on the safe fire (0.29 vs 0.31) — not even general caution. Arm C (0.57) sits with A/B → no resume artifact.
+- **Primary 2 (first-contact):** nominally passed on a 1-trial-at-N=5 blip (deceptive first-contact-warm_self 2/5 B vs 3/5 A), but the pre-registered conjunction requires *both* primaries, so `substrate_signal = False`. The conjunction rule doing exactly its job — stopping a noisy low-power channel from being read as a finding.
+- **Ablations:** moot (no B-avoidance to revert).
+
+**Interpretation.** H1, as predicted (highest prior). This is the decisive cell: every prior dominance result (Sonnet/GPT-4o/DeepSeek-V3/R1-distill) came from a model where Exp 37 found the substrate signal *already swamped*. Qwen-32B is the one model where the signal was *real* (+1.43 SD on the prior-aligned task) — and falsifying its prior collapses it too. The prior-aligned × counter-prior / frontier × Goldilocks 2×2 is now complete, and the within-Qwen-32B contrast (signal when the task agrees with the prior; dominance when it contradicts) isolates **prior-agreement as the gating variable** — not model size, not "does the substrate work." The honest 1.0 thesis (*substrate is real and causally structured but does not override pretrained priors; the signal survives only where the task agrees with what the model already knows*) is airtight across the full matrix.
+
+**Early-trial caveat for the record:** at n=1 the deceptive-B cell briefly showed 0.25 (an apparent H2 flip); it regressed to 0.52 by n=5. A reminder that the pre-registered N and the frozen conjunction matter — a 4-record eyeball would have called this backwards.
