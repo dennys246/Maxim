@@ -1,6 +1,6 @@
 # Exp 38 — Counter-Prior Substrate (pre-registration)
 
-**Status:** FIRED — **dominance demonstrated across all 4 frontier models** (Sonnet 4.6 / GPT-4o / DeepSeek-V3, 2026-06-11; **DeepSeek-R1-Distill-Qwen-32B reasoning axis, 2026-06-13**; 60/60 each). §5 metrics FROZEN pre-fire. R1 is the sharpest: substrate causally load-bearing (ablations drop hearth-warming below baseline) but **amplifies the wrong prior** rather than overriding it. See the Cross-model synthesis + per-model Results below. Follow-up: Qwen14B + Qwen32B (local scale axis, separate thread) per §8.
+**Status:** FIRED — **dominance demonstrated across all 4 frontier models** (Sonnet 4.6 / GPT-4o / DeepSeek-V3, 2026-06-11; **DeepSeek-R1-Distill-Qwen-32B reasoning axis, 2026-06-13**; 60/60 each). §5 metrics FROZEN pre-fire. R1 is the sharpest: substrate causally load-bearing (ablations drop hearth-warming below baseline) but **amplifies the wrong prior** rather than overriding it. See the Cross-model synthesis + per-model Results below. **Goldilocks follow-up CLOSED (Exp 40, 2026-06-16):** the counter-prior fired at base **Qwen2.5-32B-Instruct** — the one model where Exp 37 found a *positive* substrate signal (+1.43 SD) — also returned **dominance** (interaction +0.04 SD; B warmed the harmful hearth 0.52 vs fresh 0.50). This fills the last cell of the prior-aligned × counter-prior / frontier × Goldilocks 2×2: falsifying the prior collapses the signal *even where it existed*. See [40_counter_prior_goldilocks.md](40_counter_prior_goldilocks.md) + the "Results — qwen32b (Exp 40, Goldilocks)" section below. (Qwen14B counter-prior remains an optional future point per §8.)
 **Plan:** [docs/plans/counter_prior_substrate_experiment.md](../plans/counter_prior_substrate_experiment.md)
 **Extends:** the Exp 37 cross-session harness (`scripts/benchmark_cross_session.py`) + analyzer (`scripts/analyze_exp37.py`). This experiment does **not** rebuild that apparatus — it adds one scenario, one metric channel, and one analyzer verdict path.
 **Companion (reproduction):** the Exp 37 reproduction protocol ([protocols/37_cross_session_graduation_reproduction.md](protocols/37_cross_session_graduation_reproduction.md)) applies verbatim — same arms, resume mechanism, cost cap, and operational playbook. Only the scenario selection (`--scenario counter_prior`) and analyzer scenario list (`--scenarios fire_pit,deceptive_fire`) differ.
@@ -693,3 +693,140 @@ Secondary hits: **0 / 3**
 
 - PRIMARY_METRIC 'positive_approach_engagement_fraction' is structurally absent for deceptive_fire (identical across every arm/trial — the approach affordance was never exercised). Reporting primary as N/A / inconclusive, not FAIL; this scenario is excluded from the overall-verdict gating.
 - Arm C mean 0.1955 for deceptive_fire falls outside Arm A's band [0.0683, 0.1583] — 'general caution' confound.
+
+---
+
+## Results — qwen32b (Exp 40, Goldilocks)
+
+Source: `docs/experiments/data/40_results_qwen32b.jsonl` · Analyzer version: `1.0` · Schema: `1.0`
+
+### Overall verdict: **COUNTER-PRIOR — dominance demonstrated**
+
+B keeps warming the deceptive hearth — even direct cross-session pain does NOT override the LLM's fire→warm prior. Dominance demonstrated: a stronger result than the Exp 37 null (there WAS a behavioral gap and the substrate did not fill it).
+
+### Counter-prior interaction (Exp 38 primary)
+
+**Verdict: COUNTER-PRIOR — dominance demonstrated**
+
+B keeps warming the deceptive hearth — even direct cross-session pain does NOT override the LLM's fire→warm prior. Dominance demonstrated: a stronger result than the Exp 37 null (there WAS a behavioral gap and the substrate did not fill it).
+
+**Interaction primary — warm_self-engagement-fraction**
+
+| Quantity | Value |
+|---|---|
+| Δ deceptive (B − A) | 0.0167 |
+| Δ consistent (B − A) | -0.0258 |
+| Interaction (Δ_dec − Δ_con) | 0.0425 |
+| Pooled Arm-A SD | 0.2757 |
+| Interaction in SD units | 0.15 |
+| Predicted | ≤ −1.0 SD → **FAIL** |
+
+**First-contact isolation — P(warm_self on first contact)**
+
+| Arm | Deceptive | Consistent |
+|---|---|---|
+| A | 0.60 | 0.20 |
+| B | 0.40 | 0.40 |
+
+Deceptive drop (A − B) = 0.20; consistent drop = -0.20; first-contact interaction = 0.40 → **PASS** (need deceptive-drop > 0 AND interaction > 0).
+
+**Secondary — ablation reversion on the deceptive hearth (≥1 must revert)**
+
+| Ablation | A mean | B mean | Ablated mean | Shrinkage (SD units) | Verdict |
+|---|---|---|---|---|---|
+| Wire-A annotation off | 0.5000 | 0.5167 | 0.6100 | -0.26 | **FAIL** |
+| Wire 1 variance annotation off | 0.5000 | 0.5167 | 0.3800 | -0.29 | **FAIL** — Ablation overshoots past Arm A baseline (B side: +0.0167, ablated side: -0.1200). Opposite-direction effect, not shrinkage — does NOT count as secondary-criterion PASS. |
+| NAc reward bias zeroed | 0.5000 | 0.5167 | 0.2833 | -0.57 | **FAIL** — Ablation overshoots past Arm A baseline (B side: +0.0167, ablated side: -0.2167). Opposite-direction effect, not shrinkage — does NOT count as secondary-criterion PASS. |
+
+Ablation reversion hits: **0 / 3**
+
+**Counter-prior notes / warnings**
+
+- Interaction primary (pass=False) and first-contact primary (pass=True) DISAGREE — both are pre-registered primaries; SUBSTRATE_MATTERS requires both. Treating as no clean substrate signal.
+
+### Scenario: `fire_pit`
+
+**Primary + isolation**
+
+| Arm | Mean | Predicted | Verdict |
+|---|---|---|---|
+| A | 0.3122 | baseline · 95% band [0.1200, 0.4875] | — |
+| B | 0.2864 | Δ = -0.17 SD (need ≥+1.0 SD) | **FAIL** |
+| C | 0.6352 | ∈ A's band | **FAIL** |
+
+Robustness (legacy per-action failure rate, decrease): FAIL
+
+**Corroborating metrics (≥1 must pass)**
+
+| Metric | A mean ± SD | B mean | Δ in SD units | Direction | Verdict |
+|---|---|---|---|---|---|
+| Affordance-preference safe-fraction (safe-on-target / on-target total) | 1.0000 ± 0.0000 | 1.0000 | — | increase | **FAIL** — Zero SD on Arm A AND zero shift on B (degenerate). |
+| Tool-class diversity (fewer dead-end tools tried) | 4.2000 ± 0.8367 | 5.8000 | 1.91 | decrease | **FAIL** |
+| Time-to-safe-steady-state (turns to 3 consecutive zero-failure turns; None censored to turn_count_binned+1) | 1.6000 ± 0.8944 | 1.6000 | 0.00 | decrease | **FAIL** |
+| Time-to-first-warm-self (action index of first warm_self; None censored to turn_count_binned+1) | 2.4000 ± 3.7148 | 0.6000 | -0.48 | decrease | **FAIL** |
+
+Corroborating hits: **0 / 4**
+
+**Descriptive corroborating — `fire_approach_action_count` (NOT pre-reg gated)**
+
+| Arm | Mean count |
+|---|---|
+| A | 2.40 |
+| B | 2.00 |
+
+Δ (B − A) = -0.40; predicted direction: same_or_higher.
+
+_Note: Δ < 0: Arm B shows FEWER positive-approach actions than Arm A. Substrate transfer predicts the positive edge ('fire = warm') is preserved; investigate whether the agent avoided fire entirely on B (general caution) or specifically lost the approach association._
+
+**Secondary criterion — ablation attribution (≥1 must shrink Arm B's delta)**
+
+| Ablation | A mean | B mean | Ablated mean | Shrinkage (SD units) | Verdict |
+|---|---|---|---|---|---|
+| Wire-A annotation off | 0.3122 | 0.2864 | 0.3200 | 0.12 | **FAIL** — Ablation overshoots past Arm A baseline (B side: -0.0258, ablated side: +0.0078). Opposite-direction effect, not shrinkage — does NOT count as secondary-criterion PASS. |
+| Wire 1 variance annotation off | 0.3122 | 0.2864 | 0.2917 | 0.03 | **FAIL** |
+| NAc reward bias zeroed | 0.3122 | 0.2864 | 0.1933 | -0.60 | **FAIL** |
+
+Secondary hits: **0 / 3**
+
+**Notes / warnings**
+
+- Arm C mean 0.6352 for fire_pit falls outside Arm A's band [0.1200, 0.4875] — 'general caution' confound.
+
+
+### Scenario: `deceptive_fire`
+
+**Primary + isolation**
+
+| Arm | Mean | Predicted | Verdict |
+|---|---|---|---|
+| A | 0.0000 | baseline · 95% band [0.0000, 0.0000] | — |
+| B | 0.0000 | Zero-SD fallback (need ≥+1.0 SD) | **N/A** |
+| C | 0.0000 | ∈ A's band | **PASS** |
+
+Robustness (legacy per-action failure rate, decrease): FAIL
+
+**Corroborating metrics (≥1 must pass)**
+
+| Metric | A mean ± SD | B mean | Δ in SD units | Direction | Verdict |
+|---|---|---|---|---|---|
+| Affordance-preference safe-fraction (safe-on-target / on-target total) | 0.5000 ± 0.3536 | 0.4333 | -0.19 | increase | **FAIL** |
+| Tool-class diversity (fewer dead-end tools tried) | 7.2000 ± 1.3038 | 6.6000 | -0.46 | decrease | **FAIL** |
+| Time-to-safe-steady-state (turns to 3 consecutive zero-failure turns; None censored to turn_count_binned+1) | 1.8000 ± 0.4472 | 1.8000 | 0.00 | decrease | **FAIL** |
+| Time-to-first-warm-self (action index of first warm_self; None censored to turn_count_binned+1) | 2.6000 ± 1.3416 | 2.6000 | 0.00 | decrease | **FAIL** |
+
+Corroborating hits: **0 / 4**
+
+**Secondary criterion — ablation attribution (≥1 must shrink Arm B's delta)**
+
+| Ablation | A mean | B mean | Ablated mean | Shrinkage (SD units) | Verdict |
+|---|---|---|---|---|---|
+| Wire-A annotation off | 0.0000 | 0.0000 | 0.0000 | — | **FAIL** — Insufficient data for ablation comparison. |
+| Wire 1 variance annotation off | 0.0000 | 0.0000 | 0.0000 | — | **FAIL** — Insufficient data for ablation comparison. |
+| NAc reward bias zeroed | 0.0000 | 0.0000 | 0.0000 | — | **FAIL** — Insufficient data for ablation comparison. |
+
+Secondary hits: **0 / 3**
+
+**Notes / warnings**
+
+- PRIMARY_METRIC 'positive_approach_engagement_fraction' is structurally absent for deceptive_fire (identical across every arm/trial — the approach affordance was never exercised). Reporting primary as N/A / inconclusive, not FAIL; this scenario is excluded from the overall-verdict gating.
+
