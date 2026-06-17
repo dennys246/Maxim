@@ -107,6 +107,7 @@ These HTML pages provide deep narrative coverage of each subsystem — architect
 
 | Guide | Topic |
 |-------|-------|
+| [**Maxim 1.0 — The Honest Benchmark**](https://dennyschaedig.com/maxim/maxim-1-0-release.html) | The 1.0 release writeup: pre-registered cross-session experiments + where biology matters vs the LLM prior |
 | [Overview](https://dennyschaedig.com/maxim/maxim-overview.html) | Project overview and philosophy |
 | [Agent Architecture](https://dennyschaedig.com/maxim/maxim-agent-architecture.html) | The agent brain: ExecAgent, FearAgent, PerceptionAgent, agent loop |
 | [Memory Systems](https://dennyschaedig.com/maxim/maxim-memory-systems.html) | Hippocampus, ATL, EC, AngularGyrus, tier progression, consolidation |
