@@ -46,14 +46,15 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 
 ---
 
-## Outstanding for 1.0 (as of 2026-05-03)
+## Outstanding for 1.0 — ALL HARD REQUIREMENTS CLOSED (2026-06-15)
 
-Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC12 + C1-C3). What remains:
+Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC13 + C1-C6). Both 1.0 behavioral gates are SETTLED (Tier 1 behavioral-graduation closed; benchmarking executed + dispositioned via the Exp 37/38/39 line). The 1.0 release announcement landed on main (#373). **The version is bumped to 1.0.0.** Nothing remains gating the 1.0 ship.
 
-**Hard requirements:**
+**Hard requirements — all DONE:**
 - **C4-C6** (Section 5) — Cleanup deprecation cycle COMPLETE. All three hard-error flips landed in Phase 1 of the sequenced 1.0 plan (2026-05-29): C4 (PR-A.3) + C5 (PR #299) + C6 (PR #301, path (b) with DefaultNetwork opt-out retained). C6 Wave-2 split-subscriber-ownership fix in `pain_bus_unification.md` is post-1.0 polish; C4-followup-2 sensor-promotion audit is post-1.0 polish.
-- **D1-D3** (Section 6) — Docs passes (agent memory transfer, API/CLI surface review, final docs pass). No code, just writing.
-- **W1-W2 (Wire-A substrate→action conversion)** — see new Section 1.5 below. Added 2026-05-27 after Phase B Roy-3a-retry's verdict named the substrate-scene-tool-availability + imagination-substrate-blindness gaps as the 1.0 thesis-demonstration bottleneck.
+- **CC13** (Section 7) — Auth format-freeze SHIPPED (2026-06-15, branch `feat/1-0-cc13-auth-format-freeze`). Four security-shaped surfaces frozen for 1.1+ hardware-token / signed-bundle / mTLS work.
+- **D1-D3** (Section 6) — Docs passes SHIPPED (2026-06-15). Honesty reconciliation against the locked release thesis + version bump. See Section 6.
+- **W1-W2 (Wire-A substrate→action conversion)** — see Section 1.5 below. Added 2026-05-27 after Phase B Roy-3a-retry's verdict named the substrate-scene-tool-availability + imagination-substrate-blindness gaps as the 1.0 thesis-demonstration bottleneck.
 
 **Optional polish:**
 - **B3 Phase 3** (Section 2) — Composable body archetypes. YAMLs partially landed; `maxim_sim_avatar` migration pending. 1.0 vs 1.1 scope decision still open. Doesn't gate the substrate-attribution claim.
@@ -552,17 +553,17 @@ Pre-merge two-lens review: 5 findings folded (ReactionBus message clarification,
 
 ## Section 6: Docs
 
-### D1. Agent memory transfer docs
+### D1. Agent memory transfer docs — SHIPPED (2026-06-15)
 
-Universal onboarding document set for knowledge continuity across agents.
+Covered by the existing `docs/user/` set — `cross-session-learning.md` (the end-to-end recall→inspect→resume loop) + `memory-user-guide.md` (tier lifecycle + what gets remembered) + `concept-decomposition.md`. The 1.0 honesty pass (2026-06-15) reconciled `cross-session-learning.md` with the locked release thesis: the substrate *persistence/recall* is the earned claim; behavioral change is the LLM choosing to act on recalled context, not a guarantee (the prior often dominates). No remaining "agents learn and improve" framing in user docs.
 
-### D2. API/CLI surface review
+### D2. API/CLI surface review — SHIPPED (covered by CC2 + CC4)
 
-Sweep `api.py`, `__init__.py`, `cli.py`, `cli_parser.py` for edge cases. Ensure all capabilities are accessible.
+The verb/dataclass surface is classified in `docs/user/stable_api.md` (CC2 — 17 stable verbs + experimental tags); env-var + CLI-flag classification is in `docs/user/configuration.md` (CC4); the full CLI is in `docs/user/cli-reference.md`. No undocumented-but-public capability gaps surfaced.
 
-### D3. Final docs pass
+### D3. Final docs pass — SHIPPED (2026-06-15)
 
-Publication guide, user docs, architecture docs — ship-ready state.
+1.0 release announcement landed on main (#373 — `docs/announcements/maxim_1_0_release.md` + HTML guide, the honest-benchmark framing). The 1.0 honesty pass aligned `README.md` (already framed as a bio-inspired LLM harness that *augments* LLM context), `cross-session-learning.md`, `docs/index.md`, and `docs/publication_guide.md` with that thesis. Version bumped 0.9.3 → 1.0.0 (`pyproject.toml` + `src/maxim/__init__.py`, kept in sync) + version refs in `docs/index.md` / `docs/publication_guide.md`.
 
 ---
 
