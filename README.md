@@ -213,6 +213,7 @@ The [dennyschaedig.com/maxim](https://dennyschaedig.com/maxim) site hosts long-f
 
 | Guide | Topic |
 |-------|-------|
+| [**Maxim 1.0 — The Honest Benchmark**](https://dennyschaedig.com/maxim/maxim-1-0-release) | The 1.0 release: what shipped, and the pre-registered experiments that mapped where the bio-substrate helps and where the LLM prior dominates |
 | [Overview](https://dennyschaedig.com/maxim/maxim-overview) | Project introduction and design philosophy |
 | [Agent Architecture](https://dennyschaedig.com/maxim/maxim-agent-architecture) | Layered architecture, bio-system pipeline, fear circuit, cerebellum |
 | [Memory Systems](https://dennyschaedig.com/maxim/maxim-memory-systems) | Hippocampus, NAc, SCN, ATL, EC, Angular Gyrus — in depth |

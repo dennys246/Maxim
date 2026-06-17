@@ -20,6 +20,7 @@ Target: **1.0** — cross-session learning demonstrated without LLM fine-tuning.
 ## 1.0 — Validation + Stabilization + Grounding
 
 The unified plan: [v1_refinement.md](v1_refinement.md)
+Release writeup: [The Honest Benchmark](../../html-guides/maxim-1-0-release.html) ([announcement copy](../announcements/maxim_1_0_release.md)) — what shipped + the pre-registered cross-session experiments ([Exp 37](../experiments/37_cross_session_graduation.md) Goldilocks zone · [Exp 38](../experiments/38_counter_prior_substrate.md) counter-prior dominance · [Exp 40](../experiments/40_counter_prior_goldilocks.md) Goldilocks counter-prior) that mapped where the substrate helps vs where the LLM prior dominates.
 
 | Section | Items | Status |
 |---------|-------|--------|
