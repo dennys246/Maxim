@@ -308,6 +308,8 @@ def run_generative_campaign(
     session_dir: str | None = None,
     planner: Any = None,
     planner_state: Any = None,
+    embodiment: Any = None,
+    entity_map: Any = None,
 ) -> GenerativeCampaignResult:
     """Run a generative campaign.
 
@@ -414,6 +416,8 @@ def run_generative_campaign(
                         phase.world_entities,
                         tool_registry,
                         _activated_entities,
+                        embodiment=embodiment,
+                        entity_map=entity_map,
                     )
                     if n_tools > 0:
                         log.info(

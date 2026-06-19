@@ -147,15 +147,43 @@ def _nac_snapshot(nac: Any | None, agent_id: str) -> dict[str, Any]:
         # Causal link count is also useful for tracking learning rate.
         link_count = 0
         links = getattr(nac, "_links", {})
+        # Per-event positive/negative max-confidence map. This is the field that
+        # exposes whether the substrate's LEARNING SIGNAL differentiates harmful
+        # from safe actions — `reward_bias` is clamped >=0 and stays ~0 for
+        # harmful actions, so aversion lives only in negative-valence CausalLinks
+        # (which recommend_action subtracts at 0.5 weight). Without this, Exp 41's
+        # within-session-learning hypothesis (H2) is unmeasurable from telemetry.
+        # Shape: {event_signature: {"pos": max_pos_conf, "neg": max_neg_conf,
+        # "net": pos - 0.5*neg}}. Mirrors recommend_action's scoring arithmetic.
+        causal: dict[str, dict[str, float]] = {}
         if isinstance(links, dict):
-            for v in links.values():
-                if isinstance(v, list):
-                    link_count += len(v)
+            for event_sig, link_list in links.items():
+                if not isinstance(link_list, list):
+                    continue
+                link_count += len(link_list)
+                pos_max = 0.0
+                neg_max = 0.0
+                for link in link_list:
+                    valence = getattr(getattr(link, "outcome_valence", None), "value", None)
+                    conf = getattr(link, "confidence", None)
+                    if not isinstance(conf, (int, float)):
+                        continue
+                    if valence == "positive":
+                        pos_max = max(pos_max, float(conf))
+                    elif valence == "negative":
+                        neg_max = max(neg_max, float(conf))
+                if pos_max or neg_max:
+                    causal[str(event_sig)] = {
+                        "pos": round(pos_max, 4),
+                        "neg": round(neg_max, 4),
+                        "net": round(pos_max - 0.5 * neg_max, 4),
+                    }
         return {
             "available": True,
             "reward_bias_count": len(agent_biases),
             "reward_bias": agent_biases,
             "causal_link_count": link_count,
+            "causal_links": causal,
         }
     except Exception:
         return {"available": False}

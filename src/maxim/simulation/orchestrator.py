@@ -921,7 +921,7 @@ def start_simulation_mode(
                     _entity_raw = aut_component_registry.get(entity_ref)
                     aut_llm_worker.entity_spec = _entity_raw.get("entity", _entity_raw)
                 except Exception as _e:
-                    log.debug("Entity context injection failed: %s", _e)
+                    logger.debug("Entity context injection failed: %s", _e)
 
     # ── Build orchestrator pipeline ──────────────────────────────────────
     orch_env = FileSystemEnv(str(sim_tmpdir))
@@ -1603,6 +1603,15 @@ def start_simulation_mode(
         from maxim.simulation.campaign_runner import run_generative_campaign as _run_gen
         from maxim.utils.paths import sim_reports as _gen_reports_dir
 
+        # Substrate-primary scene-harm wiring (substrate_primary_cradle_readiness.md
+        # Phase A / B4): thread the AUT's embodiment + entity_map into per-phase
+        # scene-entity activation so scene-affordance self_effect writes to the
+        # agent's body. GATED to substrate-primary: LLM-AUT receives scene harm
+        # via the narrator-driven Layer-2 proximity path, so passing embodiment
+        # there would double-count and change Exp 37/38. Passing None preserves
+        # byte-identical LLM-AUT behavior (scene tools keep _embodiment=None).
+        _gen_embodiment = _aut_instance.embodiment if aut_mode == "substrate-primary" else None
+        _gen_entity_map = _aut_entity_map if aut_mode == "substrate-primary" else None
         generative_result = _run_gen(
             goal=goal,
             bridge=bridge,
@@ -1611,6 +1620,8 @@ def start_simulation_mode(
             max_turns=max_turns,
             tool_registry=aut_registry,
             session_dir_base=str(_gen_reports_dir() / time.strftime("%Y%m%d_%H%M%S")),
+            embodiment=_gen_embodiment,
+            entity_map=_gen_entity_map,
         )
         stop_event.set()
 

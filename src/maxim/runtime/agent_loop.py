@@ -705,8 +705,12 @@ def _read_drive_states(executor: Any) -> dict[str, float]:
         return {}
 
     drives: dict[str, float] = {}
+    # Derived corrective "cold" need (see below). Accumulated as the max
+    # breach across all homeostatic thermal drives, emitted once at the end.
+    cold_need = 0.0
     for ent in embodiment.root.walk():
-        for ds_name in getattr(ent, "drive_specs", {}):
+        specs = getattr(ent, "drive_specs", {})
+        for ds_name, spec in specs.items():
             if "." in ds_name:
                 mod_name, sensor_name = ds_name.split(".", 1)
                 mod = ent.modulators.get(mod_name)
@@ -718,9 +722,34 @@ def _read_drive_states(executor: Any) -> dict[str, float]:
             if value is None:
                 continue
             try:
-                drives[ds_name] = float(value)
+                fval = float(value)
             except (TypeError, ValueError):
                 continue
+            drives[ds_name] = fval
+
+            # Derive a positive corrective "cold" need from homeostatic thermal
+            # DEFICITS. The drive-affinity heuristic in NAc.recommend_action only
+            # fires on positive [0,1] need intensities (entropic drives like
+            # hunger that climb up), so a homeostatic deficit — cold = a
+            # temperature drive sitting below its set_point — is otherwise
+            # invisible to substrate-primary action selection, and warmth-seeking
+            # affordances never become salient. This completes the homeostatic
+            # drive protocol for the LLM-free path (this function is only called
+            # by propose_via_substrate; LLM-AUT reads body_state directly, so
+            # Exp 37/38 are unaffected). The derived need maps to the existing
+            # "cold" affinity → ("warm","fire","blanket","huddle"). Above-set_point
+            # (hot) has no corrective affinity entry today, so only the cold
+            # direction is derived.
+            set_point = getattr(spec, "set_point", None)
+            if set_point is not None and ("temp" in ds_name.lower() or "thermal" in ds_name.lower()):
+                comfort = float(getattr(spec, "comfort_band", 0.0) or 0.0)
+                deviation = fval - float(set_point)
+                if deviation < -comfort:  # below set_point, past the comfort band
+                    cold_need = max(cold_need, min(1.0, abs(deviation)))
+
+    if cold_need > 0.0:
+        # setdefault: never clobber a real drive literally named "cold".
+        drives.setdefault("cold", cold_need)
     return drives
 
 
@@ -2269,6 +2298,15 @@ def run_agentic_loop(
                     result = executor.execute(action)
                     exec_elapsed = time.time() - exec_start
                     success = getattr(result, "success", True)
+                    # An action that mechanically succeeded but harmed the body
+                    # (self_effect breached a sensor's comfort band → SEM
+                    # embodiment_failures) is a NEGATIVE learning outcome. Pass
+                    # this through so record_outcome doesn't book a spurious
+                    # positive that masks the aversion (substrate_primary_cradle_
+                    # readiness.md B5). The ToolPainBridge owns the primary
+                    # negative attribution; this prevents the competing positive.
+                    _side = getattr(result, "side_effects", None)
+                    _embodiment_failed = bool(_side and _side.get("embodiment_failures"))
                     logger.info(
                         "Tool execution completed in %.2fs: %s, success=%s",
                         exec_elapsed,
@@ -2435,15 +2473,21 @@ def run_agentic_loop(
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         tool_params=action.get("params"),
                         cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
+                        embodiment_failed=_embodiment_failed,
                     )
 
-                    # Record plan outcome in MemoryHub for learning
+                    # Record plan outcome in MemoryHub for learning. A plan that
+                    # led to bodily harm is a NEGATIVE plan outcome even if the
+                    # tool mechanically succeeded (B5) — otherwise the plan path
+                    # books a positive CausalLink that competes with the tool's
+                    # learned aversion (the PlanHistoryBridge records under the
+                    # same tool event signature).
                     if memory_hub_enabled and memory_hub is not None:
                         _record_plan_outcome(
                             memory_hub=memory_hub,
                             goal=ctrl.pending_proposal.reasoning or "",
                             tool_name=tool_name,
-                            success=success,
+                            success=success and not _embodiment_failed,
                         )
 
                     # If this tool has a followup_type, trigger a follow-up LLM cycle.
@@ -3772,6 +3816,11 @@ def run_agentic_loop(
                 # would silently treat "burned-by-dragon six sessions
                 # ago" as equally salient to "burned-by-dragon last tick."
                 _loop_nac.decay_percept_valences()
+                # Substrate exploration policy (substrate_exploration_policy.md
+                # Phase 2): decay per-(agent, tool) visit counts so a tool the
+                # agent stopped selecting regains novelty over time. No-op when
+                # exploration is off (empty map → early return).
+                _loop_nac.decay_exploration_visits()
             except Exception as e:
                 log_swallowed_exception(e, operation="nac_per_tick_decay")
 
