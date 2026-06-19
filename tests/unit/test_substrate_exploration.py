@@ -17,6 +17,8 @@ Invariants pinned here (see the plan's "DO NOT BREAK" section):
 
 from __future__ import annotations
 
+import pytest
+
 from maxim.decisions.nac import NAc, NACConfig
 
 TOOLS = ["safe_food", "hearth_warm_self", "hearth_touch"]
@@ -162,6 +164,7 @@ def test_exploration_first_visits_every_tool_before_repeat():
 # ── isolation: exploration must not corrupt learned state ────────────────
 
 
+@pytest.mark.single_agent_only  # selection-isolation check; genuinely 1-agent (agent_id="a")
 def test_exploration_does_not_mutate_reward_bias():
     """The novelty term is selection-local; it never writes reward_bias."""
     nac = NAc(NACConfig(substrate_explore_bonus_weight=0.5))
