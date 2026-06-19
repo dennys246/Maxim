@@ -57,7 +57,7 @@ The substrate-primary cradle produces a genuine, measurable embodied-feedback lo
 - **Analyzer:** `scripts/analyze_exp41_exploration.py` — FROZEN §4/§5 executor (H1/H2/SD, verdict matrix, exit 0/4/5, robust SD≈0 sign-test).
 - **Guards:** [tests/behavioral/test_exp41_pipeline.py](../../tests/behavioral/test_exp41_pipeline.py) (13 tests, every verdict corner + mock pipeline).
 
-The only thing left for a *published* Exp 41 result is **executing** the frozen 40-run (≈30 min/run local, $0, ~a day wall-clock) on a box and committing the analyzer output — a kickoff, not engineering. All mechanism + tooling work is done.
+**Frozen run EXECUTED 2026-06-19 → VOID.** 40/40 sub-sims on `big-mac-mini` (git `3d0c010d`, $0). Verdict: VOID (exit 4) — the mechanism is real (try → pain → avoid; harm → 0 in both arms) but the 2×2-on-exploration design can't isolate exploration's contribution: drive-tuning made the harmful action drive-tempting, so the *deterministic* arm engages-and-learns it too (A_dec ≈ B_dec; exploration even added a touch more early harm — wrong direction for H1), and the harm-rate metric floors out under try-once dynamics. The 0.10 floor was NOT lowered post-hoc. Full read + a follow-up (Exp 42: terminal-preference metric, not harm-rate) in [../experiments/41_substrate_primary_exploration.md](../experiments/41_substrate_primary_exploration.md) §9–§10. Net: all mechanism + tooling work landed and validated end to end; the strong-thesis question stays open pending the redesigned follow-up.
 
 ## Sizing
 

@@ -1,9 +1,9 @@
 # Exp 41 — Substrate-Primary Exploration: Can the unmasked substrate override its own prior? (pre-registration)
 
-**Status:** PRE-REGISTERED — not yet fired. Metrics FROZEN at write time.
-**Graduates:** [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) Tier 1 row **#6** (substrate-primary AUT mode) — the strong-thesis row reframed-settled at 1.0.
+**Status:** FIRED 2026-06-19 → **VOID** (mechanism real, design inconclusive; see §9 + Results). Pre-registration metrics FROZEN at write time and NOT re-tuned post-hoc.
+**Graduates:** [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) Tier 1 row **#6** (substrate-primary AUT mode) — the strong-thesis row reframed-settled at 1.0. (Unmoved by this run; see §9.)
 **Builds on:** [39_substrate_primary_counter_prior.md](39_substrate_primary_counter_prior.md) (harness + deceptive arc + the fixation finding) and the exploration policy shipped per [../plans/substrate_exploration_policy.md](../plans/substrate_exploration_policy.md).
-**Plan / harness:** `scripts/benchmark_cross_session.py` (substrate-primary path), `src/maxim/simulation/substrate_telemetry.py`, new analyzer `scripts/analyze_exp41_exploration.py` (setup deliverable).
+**Plan / harness:** `scripts/benchmark_exp41_exploration.py` (dedicated substrate-primary 2×2) + `scripts/analyze_exp41_exploration.py`; `src/maxim/simulation/substrate_telemetry.py`. Follow-up redesign sketched in §10 (Exp 42 candidate).
 
 ---
 
@@ -153,8 +153,6 @@ The mechanism is already validated end-to-end (B4+B5 spike: warm_self rate by
 third 0.028 → 0 → 0, switching to the safe `blanket_wrap`); the frozen run
 quantifies it across seeds for the §5 disposition.
 
-<!-- Analyzer appends "## Results" sections below this line -->
-
 ---
 
 ## 7. Relation to the thesis and the 1.0 gates
@@ -163,6 +161,58 @@ This is the one experiment that can move row #6 of [behavioral_graduation_candid
 
 ## 8. Regression guard / experiment citation
 
-- Harness path: `scripts/benchmark_cross_session.py` substrate-primary arm + `scripts/analyze_exp41_exploration.py` (mock-fixture smoke test, CI-safe).
-- The exploration toggle's off-state reproduces Exp 39's deterministic selection — pinned by the regression test named in [../plans/substrate_exploration_policy.md](../plans/substrate_exploration_policy.md) (`exploration-off ≡ legacy argmax`).
+- Harness path: `scripts/benchmark_exp41_exploration.py` (dedicated substrate-primary 2×2) + `scripts/analyze_exp41_exploration.py`; both pinned by [tests/behavioral/test_exp41_pipeline.py](../../tests/behavioral/test_exp41_pipeline.py) (CI-safe, no LLM).
+- The exploration toggle's off-state reproduces Exp 39's deterministic selection — pinned by [tests/unit/test_substrate_exploration.py](../../tests/unit/test_substrate_exploration.py) (`exploration-off ≡ legacy argmax`).
 - Deceptive arc construction reuses the Exp 38/40 `_swap_fire_to_hearth_phase` transform ([simulation/arcs.py:464](../../src/maxim/simulation/arcs.py)); the non-telegraphing description denylist is moot here (no LLM reads the description in substrate-primary mode) but the entity YAML is unchanged from Exp 38.
+
+## 9. Result & retrospective — VOID (2026-06-19)
+
+**Run:** 40/40 sub-sims, 0 failed, on `big-mac-mini` at git `3d0c010d`. Config: `--aut-mode substrate-primary`, `bodies/infant_humanoid_cold`, `--explore-weight 1.5`, `--sim-max-turns 18`, 10 seeds/arm, narrator `smollm-1.7b-instruct`, `cost=$0`. The analyzer-generated verdict block is below the marker; raw per-run records at [data/41_results.jsonl](data/41_results.jsonl).
+
+**Verdict: VOID (exit 4)** — the frozen §5 mechanism-not-ready gate fired: both deceptive arms' first-third harm sat below the 0.10 floor (A_dec ≈ 0.016, B_dec ≈ 0.029), so the harmful action was never a *high-rate* temptation the way the metric assumed.
+
+**The honest three-part read (the result is richer than "void"):**
+
+1. **The substrate-primary embodied-learning loop works.** In *both* deceptive arms the agent tries the harmful `warm_self` early and then stops — harm → 0 by the last third. Try → pain (B4 self_effect → arms.thermal breach) → negative link (B5) → avoid is real and observable, end to end with no LLM in the action path.
+
+2. **Exploration was not the differentiator — and slightly hurt.** A_dec (off) `harm=[0.016, 0, 0]` vs B_dec (on) `harm=[0.029, 0.029, 0]`. The `warm_self_rate` split shows why B_dec's harm exceeds its warm_self (≈0.0145): explore-first samples **both** harmful affordances (`warm_self` *and* `touch`), so exploration *increased* early self-harm and pushed it into the second third — H1 moved the *wrong* direction. The cause: the drive-tuning (cold body) made `warm_self` tempting enough that the **deterministic** argmax already engages-and-learns it, so the no-exploration arm needs no exploration to discover-and-avoid.
+
+3. **The harm-rate metric floored out, and the runs were near-deterministic.** Try-once dynamics (explore-first/argmax sample the harmful action ~once, the immediate aversion prevents repeats) cap harm at ~1/n_actions per third — it can never reach the high→low curve §4 envisioned. Cross-seed variance was ~0 (every A_dec ≈ 0.016, every B_dec ≈ 0.029; differences are pure `1/n_actions` rounding) — the narrator's scene-timing barely perturbs the substrate, confirming the determinism caveat the SD≈0 sign-test was built for.
+
+**Freeze discipline:** the 0.10 floor was **not** lowered post-hoc to manufacture a verdict (the Exp 37 `sharp_rock` three-pivot drift is the cautionary tale). VOID stands as the honest pre-registered outcome.
+
+**What it does / doesn't tell us.** It confirms the substrate learns from embodied harm without an LLM (mechanism real). It does **not** isolate exploration's contribution, because this design conflated *engagement* with *learning*: a drive-tempting harmful action is engaged in both arms, so the on/off contrast collapses. The strong thesis (substrate-driven *adaptive override* requiring exploration) remains open — this configuration can't adjudicate it.
+
+## 10. Follow-up — Exp 42 candidate (new pre-registration, not a re-tune)
+
+The design lesson is specific: **harm-*rate*-by-third is the wrong dependent variable** for this question (floored by try-once), and **making the harmful action drive-tempting removes exploration's job** (the deterministic arm engages it too). A clean follow-up isolates the question; sketch (to be pre-registered separately — Exp 41's metrics stay frozen as-is):
+
+- **Better DV — terminal preference, not harm rate.** Put both warmth sources in the scene (harmful `hearth` vs safe `blanket`). Measure which the agent *settles on* by the last third. "Learned to override the prior" = converges to the safe source; this captures adaptation without depending on repeated self-harm and doesn't floor out.
+- **To actually isolate exploration (if kept as a factor):** make the harmful action harmful but *not* drive-tempting (no cold→warm affinity), so the deterministic arm genuinely never tries it and exploration is the *only* path to discovery — then exploration's contribution is unconfounded. (Accept that this reframes the hypothesis from "exploration reduces harm" to "exploration enables discovery-then-avoidance.")
+- **Or remove the safe escape** so the agent *must* engage the only warmth source and the metric becomes "minimizes dwell / dose" rather than "avoids entirely."
+
+Recommend the **terminal-preference** redesign as primary — it's the most faithful operationalization of "the unmasked substrate learns to override a wrong prior," and it sidesteps both failure modes this run exposed.
+
+<!-- Analyzer appends "## Results" sections below this line -->
+
+## Results — substrate-primary, cold cradle (reconstructed from run records)
+
+**Verdict: VOID — no counter-prior temptation (harmful action never engaged)**  (exit 4)
+
+> VOID: first-third harm_rate ~0 in both deceptive arms (A_dec=0.016, B_dec=0.029); warm_self was never a live temptation — check drive tuning / cold body
+
+- `substrate_signal` (H1 ∧ H2): **False**
+- H1 (between-arm, harm drop / SD): — → —
+- H2 (within-arm, learning / SD): — → —
+- S1 (consistent no-regression, informational): —
+- S2 (interaction, informational): —
+
+### Per-arm (first-third → last-third, mean across seeds)
+
+| arm | arc | explore | seeds | channel | first | last | SD(first) |
+|---|---|---|---|---|---|---|---|
+| A_cons | consistent | OFF | 10 | warm_self_rate | 0.000 | 0.000 | 0.000 |
+| B_cons | consistent | ON | 10 | warm_self_rate | 0.010 | 0.000 | 0.000 |
+| A_dec | deceptive | OFF | 10 | harm_rate | 0.016 | 0.000 | 0.000 |
+| B_dec | deceptive | ON | 10 | harm_rate | 0.029 | 0.000 | 0.000 |
+
