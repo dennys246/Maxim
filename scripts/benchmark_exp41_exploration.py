@@ -66,7 +66,11 @@ def _is_warm_self(tool: str) -> bool:
 
 def _is_harm(tool: str) -> bool:
     # On the deceptive arc, warm_self AND touch on the hearth breach the arms'
-    # thermal comfort band (pain). Both count as harmful engagement.
+    # thermal comfort band (pain). Both count as harmful engagement. NOTE: this
+    # measures *engagement* (tool-name suffix), not the actual comfort-band
+    # *failure* the doc §4 references — equivalent on the deceptive arc (every
+    # warm_self/touch on the hearth harms), but a future non-deceptive harm
+    # variant would need to read the executed-action outcome, not the name.
     return tool.endswith("_warm_self") or tool.endswith("_touch")
 
 

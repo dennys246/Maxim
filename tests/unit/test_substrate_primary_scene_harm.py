@@ -109,3 +109,46 @@ def test_record_outcome_clean_success_still_positive():
     sig = "tool:hearth_warm_self"
     assert nac.get_positive_outcomes(sig)
     assert not nac.get_negative_outcomes(sig)
+
+
+def test_repeated_embodiment_failure_never_books_positive():
+    """Two embodiment-failed outcomes (e.g. two harmful trials) still produce
+    only negative links — no spurious positive ever sneaks in (B5)."""
+    from maxim.decisions.nac import NAc, NACConfig
+
+    nac = NAc(NACConfig())
+    _record(nac, success=True, embodiment_failed=True)
+    _record(nac, success=True, embodiment_failed=True)
+    sig = "tool:hearth_warm_self"
+    assert nac.get_negative_outcomes(sig)
+    assert not nac.get_positive_outcomes(sig)
+
+
+def test_negative_links_use_max_not_sum_in_scoring():
+    """B5's no-double-penalty correctness is load-bearing on recommend_action
+    subtracting the MAX over negative links (nac.py), NOT the sum — that's why
+    the executor-bridge negative + record_outcome negative (same event sig)
+    don't compound. Pin it: 3 negative links + a cold-affinity boost (0.7).
+    MAX → score ≈ 0.7 − 0.5·0.6 = 0.4 (selectable); a SUM would drive it well
+    below the gate (IDLE)."""
+    from maxim.decisions.causal_link import Valence
+    from maxim.decisions.nac import NAc, NACConfig
+
+    nac = NAc(NACConfig())
+    for outcome in ("failure:a", "failure:b", "failure:c"):
+        nac.observe(
+            event_type="tool",
+            event_signature="tool:hearth_warm_self",
+            outcome_type="tool_result",
+            outcome_signature=outcome,
+            outcome_valence=Valence.NEGATIVE,
+            delta_seconds=0.0,
+        )
+    assert len(nac.get_negative_outcomes("tool:hearth_warm_self")) == 3
+    rec = nac.recommend_action(
+        agent_id="a",
+        available_tools=["hearth_warm_self"],
+        current_drives={"cold": 1.0},
+        min_confidence=0.3,
+    )
+    assert rec is not None and rec["tool_name"] == "hearth_warm_self"

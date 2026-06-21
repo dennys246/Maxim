@@ -174,6 +174,17 @@ def test_exploration_does_not_mutate_reward_bias():
     assert nac._cluster_reward_bias == {}
 
 
+@pytest.mark.single_agent_only  # OFF-path isolation; genuinely 1-agent (agent_id="a")
+def test_exploration_off_leaves_new_state_untouched():
+    """OFF (weight 0.0) must not populate the exploration state at all — the
+    branch is fully short-circuited (the regression anchor for ≡-legacy)."""
+    nac = NAc(NACConfig())  # weight 0.0
+    for _ in range(8):
+        _rec(nac, drives={"food": 1.0})
+    assert nac._visit_count == {}
+    assert nac._ever_selected == set()
+
+
 # ── decay ────────────────────────────────────────────────────────────────
 
 

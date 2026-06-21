@@ -224,7 +224,22 @@ def build_bio_stack(
         _explore_weight = max(0.0, float(_explore_weight))
     except Exception:
         _explore_weight = 0.0
-    nac = NAc(NACConfig(substrate_explore_bonus_weight=_explore_weight))
+    _nac_config = NACConfig(substrate_explore_bonus_weight=_explore_weight)
+    # Loud failure for the silent-no-op footgun: an untried tool's only score is
+    # the novelty bonus, so a weight at or below the substrate min_confidence gate
+    # can never clear it — exploration silently does nothing, indistinguishable
+    # from OFF. Warn rather than fail (a valid operator may be mid-tuning), but
+    # make the dead zone visible. (substrate_exploration_policy.md review fold.)
+    if 0.0 < _explore_weight <= _nac_config.min_confidence_threshold:
+        logger.warning(
+            "sim.substrate_explore_bonus_weight=%.3f is <= the substrate "
+            "min_confidence gate (%.3f): exploration will silently no-op — an "
+            "untried tool can't clear the gate on novelty alone. Set it strictly "
+            "greater than the gate (e.g. 1.5) to enable exploration.",
+            _explore_weight,
+            _nac_config.min_confidence_threshold,
+        )
+    nac = NAc(_nac_config)
     scn = SCN()
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
     ec = EntorhinalCortex()

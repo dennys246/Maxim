@@ -259,8 +259,11 @@ class NACConfig:
 
     # Decay timescale (ticks) for the per-(agent, tool) exploration visit count.
     # Mirrors the reward_bias decay shape; lets a tool the agent stopped picking
-    # gradually regain novelty (re-explore after the world changes / phase
-    # transitions). Only consulted when substrate_explore_bonus_weight > 0.
+    # regain its *soft* novelty bonus (re-selection ordering among already-tried
+    # tools). NOTE: this does NOT re-open the explore-FIRST hard gate — that gate
+    # keys on the sticky ``_ever_selected`` set and is one-shot-per-session by
+    # design (see ``decay_exploration_visits``). Only consulted when
+    # substrate_explore_bonus_weight > 0.
     substrate_explore_decay_tau: float = 50.0
 
     # Temporal credit weight for SCN-coupled eligibility (affordance transfer).
@@ -2232,15 +2235,23 @@ class NAc:
 
         Part of the substrate exploration policy
         (substrate_exploration_policy.md, Phase 2). Called per-tick from
-        agent_loop §8.5 alongside the other ``decay_*`` methods. Lets a tool
-        the agent stopped selecting gradually regain novelty, so exploration
-        re-opens after the world changes (e.g. narrative phase transitions)
-        rather than treating an early-session habit as permanently familiar.
+        agent_loop §8.5 alongside the other ``decay_*`` methods.
+
+        SCOPE — this decays ONLY ``_visit_count`` (the *soft* novelty bonus
+        that orders re-selection among already-tried tools). It deliberately
+        does NOT touch the sticky ``_ever_selected`` set, so the explore-FIRST
+        HARD GATE is **one-shot-per-session**: every available tool is forced
+        once, then selection is driven by learned scores + soft novelty — the
+        hard gate does not re-open mid-session. That's the right semantics for
+        the cradle (no mid-session entity removal). Genuine re-exploration after
+        a world change would require ageing ``_ever_selected`` in lockstep here
+        — intentionally not implemented (no consumer needs it; the VOID Exp 41
+        result did not depend on re-exploration).
 
         No-op when exploration is off (the map is only populated when
         ``substrate_explore_bonus_weight > 0``). Uses
         ``NACConfig.substrate_explore_decay_tau``; prunes when the effective
-        count falls below 0.05 (≈ fully novel again). Returns count pruned.
+        count falls below 0.05. Returns count pruned.
         """
         if not self._visit_count:
             return 0

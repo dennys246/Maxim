@@ -1610,6 +1610,9 @@ def start_simulation_mode(
         # via the narrator-driven Layer-2 proximity path, so passing embodiment
         # there would double-count and change Exp 37/38. Passing None preserves
         # byte-identical LLM-AUT behavior (scene tools keep _embodiment=None).
+        # CC8 caveat: a future NON-sim adapter driving substrate-primary percepts
+        # won't pass through this orchestrator path at all, so it must own its own
+        # scene-harm wiring (thread the AUT embodiment into its entity activation).
         _gen_embodiment = _aut_instance.embodiment if aut_mode == "substrate-primary" else None
         _gen_entity_map = _aut_entity_map if aut_mode == "substrate-primary" else None
         generative_result = _run_gen(

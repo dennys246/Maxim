@@ -740,6 +740,11 @@ def _read_drive_states(executor: Any) -> dict[str, float]:
             # "cold" affinity → ("warm","fire","blanket","huddle"). Above-set_point
             # (hot) has no corrective affinity entry today, so only the cold
             # direction is derived.
+            # NOTE: thermal drives are detected by NAME convention ("temp"/
+            # "thermal" in the drive name) — the affinity table is keyed on the
+            # semantic "cold" need, and we have no structured drive→need-name map
+            # yet. If a thermal drive is named otherwise, add it here (or give
+            # DriveSpec a declared corrective-need name).
             set_point = getattr(spec, "set_point", None)
             if set_point is not None and ("temp" in ds_name.lower() or "thermal" in ds_name.lower()):
                 comfort = float(getattr(spec, "comfort_band", 0.0) or 0.0)

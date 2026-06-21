@@ -99,8 +99,19 @@ class GenerativeCampaignResult:
 def _load_world_entities(
     arc: NarrativeArc,
     tool_registry: Any = None,
+    *,
+    embodiment: Any = None,
+    entity_map: Any = None,
 ) -> int:
     """Load SEM world_entities from arc metadata if available.
+
+    ``embodiment``/``entity_map`` are threaded through to the affordance tools
+    (same contract as ``_activate_phase_entities``): substrate-primary passes
+    the AUT body so scene ``self_effect`` writes land on the agent, LLM-AUT
+    passes ``None`` so scene tools stay inert (harm flows via the narrator
+    proximity layer). Without this, an arc that declares arc-level
+    ``world_entities`` would silently route substrate-primary scene affordances
+    with ``embodiment=None`` → no self_effect → no harm → silent VOID.
 
     Returns the number of tools generated.
     """
@@ -115,7 +126,12 @@ def _load_world_entities(
         tools_generated = 0
         for ent_data in world_entities_data:
             entity = _parse_entity(ent_data)
-            tools = generate_tools_for_entity(entity, tool_registry)
+            tools = generate_tools_for_entity(
+                entity,
+                tool_registry,
+                embodiment=embodiment,
+                entity_map=entity_map,
+            )
             tools_generated += len(tools)
         return tools_generated
     except ImportError:
@@ -373,7 +389,7 @@ def run_generative_campaign(
     )
 
     # Load SEM world entities if available
-    entity_tools = _load_world_entities(arc, tool_registry)
+    entity_tools = _load_world_entities(arc, tool_registry, embodiment=embodiment, entity_map=entity_map)
 
     # Create narrator with enriched memory context
     narrator = Narrator(
