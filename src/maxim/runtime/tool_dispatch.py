@@ -69,6 +69,7 @@ def record_outcome(
     active_goal: str | None = None,
     tool_params: dict[str, Any] | None = None,
     cluster_id: str | None = None,
+    embodiment_failed: bool = False,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -121,13 +122,28 @@ def record_outcome(
         error=error,
     )
 
+    # For NAc / cluster / goal LEARNING, an action that harmed the body is a
+    # NEGATIVE outcome even if it mechanically "succeeded" — the harm rides in
+    # ``ToolOutput.side_effects["embodiment_failures"]`` (e.g. the deceptive
+    # hearth's warm_self raises arms.thermal past its comfort band). Without
+    # this, a harmful-but-mechanically-successful affordance books a POSITIVE
+    # causal link that competes with the ToolPainBridge's direct NEGATIVE
+    # attribution and prevents the substrate from learning to avoid it
+    # (substrate_primary_cradle_readiness.md B5). The bridge still owns the
+    # primary negative attribution; recommend_action's get_negative_outcomes
+    # takes the MAX over negative links, so the two paths don't compound
+    # harmfully — and flipping the valence here also closes the gap when no
+    # ToolPainBridge is wired. The LLM-facing sinks above keep mechanical
+    # ``success`` (the result_summary carries the failure detail).
+    learn_success = success and not embodiment_failed
+
     # NAc causal learning: record tool → outcome so predictions improve
     if nac is not None:
         try:
             from maxim.decisions.causal_link import Valence
 
             outcome_summary = (result_summary or error or "")[:50]
-            valence = Valence.POSITIVE if success else Valence.NEGATIVE
+            valence = Valence.POSITIVE if learn_success else Valence.NEGATIVE
             sig = build_tool_signature(tool_name, tool_params)
             # Tag every NAc observation with agent_id so cross-agent
             # attribution gaps surface as filterable context, not
@@ -139,7 +155,7 @@ def record_outcome(
                 event_type="tool",
                 event_signature=sig,
                 outcome_type="tool_result",
-                outcome_signature=f"{'success' if success else 'failure'}:{outcome_summary}",
+                outcome_signature=f"{'success' if learn_success else 'failure'}:{outcome_summary}",
                 outcome_valence=valence,
                 delta_seconds=elapsed_s,
                 context=ctx,
@@ -148,7 +164,7 @@ def record_outcome(
             # credit/penalize that goal so ThoughtGate learns whether
             # deliberation under this goal type produces good outcomes.
             if active_goal is not None:
-                reward = 1.0 if success else -1.0
+                reward = 1.0 if learn_success else -1.0
                 nac.credit_goal(active_goal, reward)
 
             # G4 closure: cluster-keyed reward bias for substrate-primary
@@ -166,7 +182,7 @@ def record_outcome(
                         agent_id=agent_id,
                         cluster_id=cluster_id,
                         tool_signature=sig,
-                        reward=1.0 if success else -1.0,
+                        reward=1.0 if learn_success else -1.0,
                     )
                 except Exception:
                     # Mirrors the surrounding error policy — cluster

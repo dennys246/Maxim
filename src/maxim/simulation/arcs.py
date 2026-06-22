@@ -465,6 +465,25 @@ BUILTIN_ARCS["cradle_deceptive"] = _make_builtin(
 )
 
 
+# Exp 41 substrate-primary exploration (substrate_exploration_policy.md /
+# 41_substrate_primary_exploration.md): the deceptive arc for the LLM-free path.
+# Same fire_pit→false_hearth swap as ``cradle_deceptive`` but derived from
+# ``cradle_prelinguistic`` (empty narrator instructions → no LLM in the loop),
+# so the only "prior" in play is NAc's built-in drive-affinity heuristic. Invoke
+# by exact arc name (``select_arc_for_goal`` resolves names before keywords); no
+# _ARC_KEYWORDS entry is added so the carefully-tuned cradle/hearth routing ties
+# stay untouched. The instruction text swaps are no-ops here (all instructions
+# are ""); only the world_entities fire_pit→hearth swap is load-bearing.
+BUILTIN_ARCS["cradle_prelinguistic_deceptive"] = _make_builtin(
+    "cradle_prelinguistic_deceptive",
+    "Exp 41 counter-prior variant of the prelinguistic cradle: substrate-primary "
+    "(no LLM), room's only warmth source is the deceptive hearth. Tests whether "
+    "the unmasked substrate learns from embodied pain to override its own "
+    "drive-affinity prior — the safe twin is plain cradle_prelinguistic.",
+    [_swap_fire_to_hearth_phase(p) for p in BUILTIN_ARCS["cradle_prelinguistic"].phases],
+)
+
+
 # ---------------------------------------------------------------------------
 # Arc selection
 # ---------------------------------------------------------------------------

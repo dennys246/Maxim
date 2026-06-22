@@ -291,9 +291,20 @@ class SimConfigSection:
     e.g. 300 via ``maxim config set sim.aut_turn_timeout_s 300`` (or the
     ``MAXIM_SIM_AUT_TURN_TIMEOUT_S`` env override). Clamped to [5, 1800]
     at resolve time.
+
+    ``substrate_explore_bonus_weight`` is the substrate exploration policy
+    lever (substrate_exploration_policy.md, 1.1): a novelty bonus
+    ``weight / (1 + visit_count)`` added per available tool in
+    ``NAc.recommend_action`` to break substrate-primary argmax fixation. 0.0
+    (default) == OFF == byte-identical legacy argmax (the Exp 41 control arm);
+    Exp 41's treatment arm sets it > 0 (e.g. 0.4 via
+    ``maxim config set sim.substrate_explore_bonus_weight 0.4`` or the
+    ``MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT`` env override). Clamped to
+    ``>= 0`` at resolve time. Substrate-primary only.
     """
 
     aut_turn_timeout_s: float = 30.0
+    substrate_explore_bonus_weight: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -362,6 +373,7 @@ _FIELD_TO_ENV: dict[str, str] = {
     "data.home": "MAXIM_DATA_HOME",
     "data.budget_gb": "MAXIM_DATA_BUDGET_GB",
     "sim.aut_turn_timeout_s": "MAXIM_SIM_AUT_TURN_TIMEOUT_S",
+    "sim.substrate_explore_bonus_weight": "MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT",
 }
 
 
@@ -571,6 +583,14 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         # sim-side reader falls back to the 30s default on that.
         value = _coerce_float(raw, field_path)
         return max(5.0, min(value, 1800.0))
+    if field_path == "sim.substrate_explore_bonus_weight":
+        # Exploration novelty-bonus weight (substrate_exploration_policy.md).
+        # CLAMP to >= 0 rather than raise: a negative weight is meaningless
+        # (it would penalise novel tools), 0 == off, any positive value is a
+        # valid lever magnitude. Malformed (non-numeric) still raises via
+        # _coerce_float; the bio_stack reader falls back to the 0.0 default.
+        value = _coerce_float(raw, field_path)
+        return max(0.0, value)
     if field_path.startswith("lanes.") and field_path.endswith(".timeout_s"):
         # llm_timeout_scalability.md Stage 2: strictly positive (matches
         # LaneTierConfig.__post_init__ validation). Zero or negative

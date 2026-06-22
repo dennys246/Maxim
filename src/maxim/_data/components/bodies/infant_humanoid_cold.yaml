@@ -1,0 +1,51 @@
+component:
+  name: infant_humanoid_cold
+  extends: bodies/infant_humanoid
+  category: bodies
+  archetype: humanoid
+  tags: [body, humanoid, infant, cradle, developmental, cold]
+  synonyms: [cold infant body, chilled infant, cold cradle infant]
+  description: |
+    Cold variant of infant_humanoid for the Exp 41 substrate-primary
+    counter-prior experiment (docs/plans/substrate_exploration_policy.md /
+    docs/experiments/41_substrate_primary_exploration.md). It starts and
+    STAYS cold — core_temperature well below set_point with a slow warm-back
+    drift — so warmth-seeking is a SUSTAINED, drive-relevant temptation. The
+    substrate's drive-affinity heuristic (via the derived "cold" need in
+    runtime/agent_loop._read_drive_states) then surfaces the deceptive
+    hearth's warm_self as a high-value action; the experiment measures whether
+    the agent learns to AVOID it despite the cold pull, because warm_self
+    breaches the arms' thermal comfort band (pain).
+
+    Deliberately a SEPARATE body so the shared infant_humanoid (Exp 37/38
+    LLM-AUT calibration: initial -0.15, comfort_band 0.25, pain_scale 1.5)
+    is untouched. entity.name is inherited from the parent (infant_humanoid)
+    so tool names stay identical to a normal cradle run.
+
+entity:
+  # Distinct entity.name (NOT inherited "infant_humanoid") so this variant's
+  # body tools don't collide with the base infant_humanoid component when both
+  # are generated into one registry (test_component_protocol). Body tool names
+  # become infant_humanoid_cold_* — the Exp 41 harm/warm metrics key on the
+  # SCENE hearth affordances (hearth_warm_self/touch), not the body name, so
+  # this is cosmetic for the experiment and does not affect the VOID result.
+  name: infant_humanoid_cold
+  sensors:
+    core_temperature:
+      unit: celsius_norm
+      range: [-1, 1]
+      # initial -0.7: |deviation| = 0.70 > comfort_band 0.25, so the derived
+      # cold need (= min(1.0, |deviation|)) starts ~0.70 — comfortably above
+      # the 0.5 drive-affinity firing threshold with margin.
+      initial: -0.7
+      drive:
+        drift_mode: homeostatic
+        set_point: 0.0
+        # Slow warm-back (0.0002/tick vs the parent's 0.001) so the body stays
+        # past the comfort band across a full run: from -0.7, ~0.03 of passive
+        # warming over ~150 ticks → still ~-0.67, cold need still > 0.5. A single
+        # warm_self gives +0.15 core_temperature (partial relief) AND +0.6
+        # arms.thermal (pain) — the genuine counter-prior trade-off.
+        drift_rate: 0.0002
+        comfort_band: 0.25
+        pain_scale: 1.5

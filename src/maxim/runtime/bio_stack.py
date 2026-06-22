@@ -186,7 +186,7 @@ def build_bio_stack(
             )
     """
     # -- Step 1: Core bio-systems ------------------------------------------
-    from maxim.decisions.nac import NAc
+    from maxim.decisions.nac import NAc, NACConfig
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
     from maxim.similarity.ec import EntorhinalCortex
     from maxim.time.scn import SCN
@@ -212,7 +212,34 @@ def build_bio_stack(
             persistence_path=str(p / "hippocampus.json") if p is not None else None,
         )
     )
-    nac = NAc()
+    # Substrate exploration policy (substrate_exploration_policy.md, 1.1):
+    # resolve the novelty-bonus weight from config.json (CLI > env >
+    # config.json > 0.0 default). 0.0 == OFF == legacy argmax; the Exp 41
+    # treatment arm / operator sets it > 0. Fail-soft: any resolution error
+    # falls back to the OFF default so a bad config can't brick the bio-stack.
+    try:
+        from maxim.runtime.config_loader import resolve_setting as _resolve_setting
+
+        _explore_weight, _ = _resolve_setting("sim.substrate_explore_bonus_weight")
+        _explore_weight = max(0.0, float(_explore_weight))
+    except Exception:
+        _explore_weight = 0.0
+    _nac_config = NACConfig(substrate_explore_bonus_weight=_explore_weight)
+    # Loud failure for the silent-no-op footgun: an untried tool's only score is
+    # the novelty bonus, so a weight at or below the substrate min_confidence gate
+    # can never clear it — exploration silently does nothing, indistinguishable
+    # from OFF. Warn rather than fail (a valid operator may be mid-tuning), but
+    # make the dead zone visible. (substrate_exploration_policy.md review fold.)
+    if 0.0 < _explore_weight <= _nac_config.min_confidence_threshold:
+        logger.warning(
+            "sim.substrate_explore_bonus_weight=%.3f is <= the substrate "
+            "min_confidence gate (%.3f): exploration will silently no-op — an "
+            "untried tool can't clear the gate on novelty alone. Set it strictly "
+            "greater than the gate (e.g. 1.5) to enable exploration.",
+            _explore_weight,
+            _nac_config.min_confidence_threshold,
+        )
+    nac = NAc(_nac_config)
     scn = SCN()
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
     ec = EntorhinalCortex()

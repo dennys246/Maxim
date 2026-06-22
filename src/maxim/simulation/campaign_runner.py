@@ -25,6 +25,8 @@ def run_generative_campaign(
     max_turns: int,
     tool_registry: Any,
     session_dir_base: str,
+    embodiment: Any = None,
+    entity_map: Any = None,
 ) -> Any | None:
     """Run a generative campaign — narrator drives a multi-turn story.
 
@@ -51,6 +53,8 @@ def run_generative_campaign(
             max_turns=max_turns,
             tool_registry=tool_registry,
             session_dir=session_dir_base,
+            embodiment=embodiment,
+            entity_map=entity_map,
         )
         display_summary([f"Generative campaign complete: {result.total_turns} turns"])
         return result

@@ -241,6 +241,31 @@ class NACConfig:
     # tuned without changing prune semantics.
     percept_aversion_floor: float = 0.05
 
+    # Substrate exploration policy (substrate_exploration_policy.md, 1.1).
+    # Novelty-bonus-before-gate term added to each AVAILABLE tool's score in
+    # ``recommend_action``: ``bonus = substrate_explore_bonus_weight / (1 +
+    # visit_count)``. A never-tried tool (visit_count 0) gets the full weight;
+    # heavily-tried tools decay toward their learned score. This is the lever
+    # that breaks the deterministic-argmax fixation the 2026-06-17 spike
+    # quantified (a safe tool's causal-link confidence snowballs while
+    # never-tried interaction affordances stay flat and are never selected).
+    #
+    # Default 0.0 == OFF == byte-identical legacy argmax (the regression
+    # anchor + the Exp 41 control arm). Substrate-primary-only; the LLM-primary
+    # path provides its own behavioral diversity. Wired from
+    # ``config.json::sim.substrate_explore_bonus_weight`` at build_bio_stack;
+    # the harness toggles it per-arm via MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT.
+    substrate_explore_bonus_weight: float = 0.0
+
+    # Decay timescale (ticks) for the per-(agent, tool) exploration visit count.
+    # Mirrors the reward_bias decay shape; lets a tool the agent stopped picking
+    # regain its *soft* novelty bonus (re-selection ordering among already-tried
+    # tools). NOTE: this does NOT re-open the explore-FIRST hard gate — that gate
+    # keys on the sticky ``_ever_selected`` set and is one-shot-per-session by
+    # design (see ``decay_exploration_visits``). Only consulted when
+    # substrate_explore_bonus_weight > 0.
+    substrate_explore_decay_tau: float = 50.0
+
     # Temporal credit weight for SCN-coupled eligibility (affordance transfer).
     # When fast-decay traces expire, nodes with temporal anchors still receive
     # credit at this fraction of the temporal similarity score.
@@ -396,6 +421,25 @@ class NAc:
         # Positive bias = node has been rewarded → EC should widen recognition radius.
         # Decays toward 0 over time when reinforcement stops.
         self._reward_bias: dict[tuple[str, str], float] = {}
+
+        # Substrate exploration policy (substrate_exploration_policy.md, 1.1).
+        # Per-(agent_id, tool) effective visit count for the novelty bonus in
+        # recommend_action. Incremented on selection, decayed per-tick via
+        # decay_exploration_visits(). Session-scoped (NOT persisted), like
+        # eligibility traces. Only consulted when
+        # config.substrate_explore_bonus_weight > 0.
+        self._visit_count: dict[tuple[str, str], float] = {}
+
+        # Sticky "ever selected this session" set, keyed (agent_id, tool).
+        # Drives the explore-FIRST guarantee: a never-selected available tool
+        # gets the FULL bonus weight (dominating any learned score), so every
+        # available tool is tried exactly once before exploitation begins. The
+        # 2026-06-17 spike showed that decaying novelty alone is leaky — per-tick
+        # decay lets an already-tried high-alphabetical tool recover novelty and
+        # re-win the name tiebreak, starving low-alphabetical interaction
+        # affordances (hearth_warm_self/touch) that never get their first try.
+        # The sticky set removes that re-exploration churn. NOT persisted.
+        self._ever_selected: set[tuple[str, str]] = set()
 
         # P2: Eligibility traces — nodes that were recently active and
         # should receive credit when a reward arrives. Maps
@@ -1708,6 +1752,37 @@ class NAc:
                         parts.append(f"drive:{drive_name}({drive_value:.2f}) →{keyword}")
                         break
 
+            # Component 4 (substrate exploration policy,
+            # substrate_exploration_policy.md): novelty-bonus-before-gate.
+            # Added LAST — before the ``score > 0`` filter — so a never-tried
+            # tool with zero learned/drive signal still enters ``scores`` and
+            # can cross the min_confidence gate. This is the lever that breaks
+            # the deterministic-argmax fixation (the 2026-06-17 spike: a safe
+            # tool's causal confidence snowballs to ~1.66 while never-tried
+            # interaction affordances stay flat at ~0.35 and are never picked).
+            # ``bonus = weight / (1 + visit_count)``; weight 0.0 (default) is a
+            # no-op → byte-identical legacy argmax. Substrate-primary only.
+            explore_weight = self.config.substrate_explore_bonus_weight
+            if explore_weight > 0.0:
+                key = (agent_id, tool_name)
+                if key not in self._ever_selected:
+                    # Never tried this session → full, dominating bonus.
+                    # explore-FIRST: guarantees one trial of every available
+                    # tool (incl. the harmful affordance Exp 41 must surface)
+                    # before any learned score can lock selection. Requires
+                    # weight > min_confidence to clear the gate on a zero-base
+                    # tool — that's the operator's contract for "exploration on."
+                    novelty = explore_weight
+                else:
+                    # Already tried → decaying soft novelty so a tool the agent
+                    # stopped picking can be revisited later (after the world
+                    # changes), but never ahead of a still-untried tool.
+                    visits = self._visit_count.get(key, 0.0)
+                    novelty = explore_weight / (1.0 + visits)
+                if novelty > 0.0:
+                    score += novelty
+                    parts.append(f"explore={novelty:.2f}")
+
             if score > 0:
                 scores[tool_name] = score
                 reasoning_parts[tool_name] = parts
@@ -1739,6 +1814,25 @@ class NAc:
             return None
 
         best_tool = max(scores, key=lambda t: (scores[t], t))
+
+        # Explore-FIRST hard gate (substrate_exploration_policy.md). When
+        # exploration is on AND any scored tool has never been selected this
+        # session, restrict selection to those untried tools — guaranteeing one
+        # trial of every available tool before exploitation. This is a HARD gate,
+        # not a score term, because a score term cannot guarantee it: the
+        # per-tick visit-count decay resurrects a tried tool's novelty back
+        # toward the full weight (``weight / (1 + visits)`` with ``visits → 0``),
+        # so tried high-alphabetical tools keep re-tying with untried ones and
+        # the name tiebreak starves low-alphabetical interaction affordances
+        # (the 2026-06-18 spike: ``hearth_warm_self`` sat in ``scores`` at the
+        # full bonus for 122 ticks but was never selected). The sticky
+        # ``_ever_selected`` set is the gate's source of truth; the novelty
+        # bonus still orders soft re-exploration AMONG tried tools afterwards.
+        if self.config.substrate_explore_bonus_weight > 0.0:
+            untried = [t for t in scores if (agent_id, t) not in self._ever_selected]
+            if untried:
+                best_tool = max(untried, key=lambda t: (scores[t], t))
+
         best_score = scores[best_tool]
 
         # Record the cluster_reward_bias consulted for the best tool —
@@ -1763,6 +1857,16 @@ class NAc:
                 passed_gate=False,
             )
             return None
+
+        # Exploration policy: record the selection so this tool's novelty
+        # bonus shrinks next tick (and unvisited rivals' relative novelty
+        # grows). No-op when exploration is off. Written under the lock — the
+        # read in the scoring loop above is an unlocked heuristic by design.
+        if self.config.substrate_explore_bonus_weight > 0.0:
+            with self._lock:
+                _vk = (agent_id, best_tool)
+                self._ever_selected.add(_vk)
+                self._visit_count[_vk] = self._visit_count.get(_vk, 0.0) + 1.0
 
         _emit_recommend_action_event(
             agent_id=agent_id,
@@ -2124,6 +2228,46 @@ class NAc:
                     self._cluster_reward_bias[key] = new_bias
             for key in to_remove:
                 del self._cluster_reward_bias[key]
+        return pruned
+
+    def decay_exploration_visits(self) -> int:
+        """Decay per-(agent, tool) exploration visit counts toward zero.
+
+        Part of the substrate exploration policy
+        (substrate_exploration_policy.md, Phase 2). Called per-tick from
+        agent_loop §8.5 alongside the other ``decay_*`` methods.
+
+        SCOPE — this decays ONLY ``_visit_count`` (the *soft* novelty bonus
+        that orders re-selection among already-tried tools). It deliberately
+        does NOT touch the sticky ``_ever_selected`` set, so the explore-FIRST
+        HARD GATE is **one-shot-per-session**: every available tool is forced
+        once, then selection is driven by learned scores + soft novelty — the
+        hard gate does not re-open mid-session. That's the right semantics for
+        the cradle (no mid-session entity removal). Genuine re-exploration after
+        a world change would require ageing ``_ever_selected`` in lockstep here
+        — intentionally not implemented (no consumer needs it; the VOID Exp 41
+        result did not depend on re-exploration).
+
+        No-op when exploration is off (the map is only populated when
+        ``substrate_explore_bonus_weight > 0``). Uses
+        ``NACConfig.substrate_explore_decay_tau``; prunes when the effective
+        count falls below 0.05. Returns count pruned.
+        """
+        if not self._visit_count:
+            return 0
+        decay_factor = 1.0 / self.config.substrate_explore_decay_tau
+        pruned = 0
+        with self._lock:
+            to_remove = []
+            for key, count in self._visit_count.items():
+                new_count = count * (1.0 - decay_factor)
+                if new_count < 0.05:
+                    to_remove.append(key)
+                    pruned += 1
+                else:
+                    self._visit_count[key] = new_count
+            for key in to_remove:
+                del self._visit_count[key]
         return pruned
 
     # -- Wire 2: Pavlovian percept aversion ------------------------------
