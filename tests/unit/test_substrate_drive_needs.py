@@ -33,7 +33,7 @@ def test_cold_body_instantiates_cold_and_inherits_parent_drives():
     """The Exp 41 cold body starts past the comfort band and keeps the shared
     infant's drives (deep-merge via ``extends``)."""
     e = ComponentRegistry().instantiate("bodies/infant_humanoid_cold")
-    assert e.name == "infant_humanoid"  # inherited → tool names stay stable
+    assert e.name == "infant_humanoid_cold"  # distinct name (avoids tool-name collision with base)
     assert e.vital_metrics.get("core_temperature") == -0.7
     assert "hunger" in e.drive_specs and "arms.thermal" in e.drive_specs
 

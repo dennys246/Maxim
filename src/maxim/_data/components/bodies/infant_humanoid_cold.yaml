@@ -23,7 +23,13 @@ component:
     so tool names stay identical to a normal cradle run.
 
 entity:
-  # entity.name inherited from bodies/infant_humanoid (keeps tool names stable)
+  # Distinct entity.name (NOT inherited "infant_humanoid") so this variant's
+  # body tools don't collide with the base infant_humanoid component when both
+  # are generated into one registry (test_component_protocol). Body tool names
+  # become infant_humanoid_cold_* — the Exp 41 harm/warm metrics key on the
+  # SCENE hearth affordances (hearth_warm_self/touch), not the body name, so
+  # this is cosmetic for the experiment and does not affect the VOID result.
+  name: infant_humanoid_cold
   sensors:
     core_temperature:
       unit: celsius_norm
