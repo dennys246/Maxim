@@ -220,7 +220,7 @@ def _intrinsically_harmful_sensors(root: Entity, *effect_dicts: dict[str, float]
     discomfort every tick the sensor is out of band (state-based, not
     transition-based), so there is no per-tick "which affordance caused THIS
     breach" signal to key on; the proper long-term fix is transition-based
-    drive-pain attribution. Tracked as a follow-up.
+    drive-pain attribution (docs/plans/transition_based_drive_pain.md).
     """
     specs: dict[str, Any] = {}
     for ent in root.walk():
@@ -433,8 +433,8 @@ class ModulatorAffordanceTool(Tool):
             # (context-similarity) — is NOT filtered here; it does not re-pollute
             # in Exp 42 (safe net stays +0.99), but the proper root-cause fix is
             # transition-based drive-pain in body.py (fire on band ENTRY, not
-            # every tick). Tracked as a follow-up; do NOT assume both channels
-            # are delta-attributed.
+            # every tick) — tracked in docs/plans/transition_based_drive_pain.md.
+            # Do NOT assume both channels are delta-attributed.
             #
             # On ANY filter error, fall back to the UNFILTERED events rather than
             # silently dropping the causing tool's failure (the unfiltered list is
