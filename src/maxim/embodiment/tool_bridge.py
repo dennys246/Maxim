@@ -20,6 +20,8 @@ from typing import Any
 from maxim.embodiment.sem import (
     AffordanceSchema,
     Entity,
+    EntropicDriveSpec,
+    HomeostaticDriveSpec,
     Modulator,
     Sensor,
 )
@@ -178,6 +180,70 @@ class SensorReadTool(Tool):
         }
 
 
+def _drive_failure_sensor(failure_name: str) -> str | None:
+    """Sensor name for a drive-spec failure (``drive:<sensor>:discomfort`` /
+    ``drive:<sensor>:deprived``), else ``None`` for a standard failure_mode.
+
+    The sensor is everything between the ``drive:`` prefix and the final
+    ``:<suffix>`` — so qualified sub-sensors like ``arms.thermal`` survive.
+    """
+    if not failure_name.startswith("drive:"):
+        return None
+    body = failure_name[len("drive:") :]
+    idx = body.rfind(":")
+    if idx <= 0:
+        return None
+    return body[:idx]
+
+
+def _intrinsically_harmful_sensors(root: Entity, *effect_dicts: dict[str, float] | None) -> set[str]:
+    """Sensors whose effect delta would breach a *healthy* sensor by itself.
+
+    Delta-attribution (Exp 42): a drive failure on a sensor is attributed to
+    the affordance only when the affordance's own delta is large enough to
+    cause that failure on its own — i.e. a band-exceeding thermal shock, not a
+    gentle touch. This prevents a bystander affordance (the safe warm,
+    ``arms.thermal +0.05``) from inheriting blame for a lingering breach a
+    HARMFUL affordance (``+0.6``) caused — the mis-attribution that collapsed
+    Exp 42's safe-vs-harm discrimination once dense warming kept the breach
+    omnipresent. The rule depends only on the affordance's delta and the
+    sensor's drive spec, NOT on the current (possibly polluted) sensor state,
+    so it attributes repeated harm correctly (every harmful warm is blamed,
+    not just the first).
+    """
+    specs: dict[str, Any] = {}
+    for ent in root.walk():
+        for ds_name, ds in getattr(ent, "drive_specs", {}).items():
+            specs[ds_name] = ds
+
+    harmful: set[str] = set()
+    for effects in effect_dicts:
+        if not effects:
+            continue
+        for sensor, delta in effects.items():
+            ds = specs.get(sensor)
+            if ds is None:
+                continue
+            try:
+                d = float(delta)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(ds, HomeostaticDriveSpec):
+                # Applying this delta to a sensor at set_point yields a
+                # deviation of |delta|; harmful iff that alone exceeds the band.
+                if abs(d) > ds.comfort_band:
+                    harmful.add(sensor)
+            elif isinstance(ds, EntropicDriveSpec):
+                # Harmful iff the delta alone drives a healthy (0) sensor past
+                # the deprivation threshold in the deprivation direction. Relief
+                # deltas (warming reduces cold) never qualify.
+                if ds.drift_direction == "up" and d >= ds.deprivation_threshold:
+                    harmful.add(sensor)
+                elif ds.drift_direction == "down" and d <= -ds.deprivation_threshold:
+                    harmful.add(sensor)
+    return harmful
+
+
 class ModulatorAffordanceTool(Tool):
     """Auto-generated tool: execute one affordance on a modulator.
 
@@ -333,9 +399,25 @@ class ModulatorAffordanceTool(Tool):
         if self._embodiment is not None:
             try:
                 failure_events = self._embodiment.evaluate_failures()
+                # Delta-attribution (Exp 42): a drive-spec failure is reported as
+                # caused by THIS affordance only if its own self/target_effect
+                # delta is intrinsically harmful to that sensor (would breach a
+                # healthy sensor). A gentle bystander affordance executing while
+                # a HARMFUL affordance's breach lingers is NOT blamed — that
+                # bystander mis-attribution polluted the safe source's learning
+                # and collapsed the safe-vs-harm discrimination. Standard
+                # (non-drive) failure_modes pass through unchanged so the SEM
+                # pain cascade and Exp 37/38 are preserved.
+                harmful_sensors = _intrinsically_harmful_sensors(
+                    self._embodiment.root,
+                    self._affordance_schema.self_effect,
+                    self._affordance_schema.target_effect,
+                )
                 active_failures = [
                     {"name": ev.failure_name, "entity": ev.entity_path, "pain": ev.pain_intensity}
                     for ev in failure_events
+                    if (_drive_failure_sensor(ev.failure_name) is None)
+                    or (_drive_failure_sensor(ev.failure_name) in harmful_sensors)
                 ]
             except Exception:
                 pass

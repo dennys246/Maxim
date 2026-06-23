@@ -484,6 +484,48 @@ BUILTIN_ARCS["cradle_prelinguistic_deceptive"] = _make_builtin(
 )
 
 
+# Exp 42 substrate-primary PREFERENCE (42_substrate_primary_preference.md): a
+# counterbalanced choice between a SAFE and a HARMFUL warmth source, both
+# present from phase 0 and persisting (entities accumulate across phases).
+# Thermal-focused — only the two warmth sources are activated; the chilled body
+# carries an entropic `cold` drive (recurring warm need) + rate-limited
+# hunger/thirst so warming dominates. Substrate-primary (empty instructions →
+# no LLM). Invoked by exact arc name; no _ARC_KEYWORDS entry (avoid disturbing
+# cradle routing ties). The counterbalance swaps which identity is harmful so a
+# fixed identity/position bias can't fake a feedback-driven preference.
+def _make_pref_phases(alpha_ref: str, beta_ref: str) -> list[dict]:
+    """Phases for an Exp 42 preference arc: both warmth sources activate in
+    phase 0 and persist; later phases add nothing (sustained choice window)."""
+    return [
+        {
+            "name": "exploration",
+            "act": "neonatal",
+            "turns": (4, 6),
+            "instruction": "",
+            "world_entities": [alpha_ref, beta_ref],
+        },
+        {"name": "discrimination", "act": "primary_circular", "turns": (8, 12), "instruction": ""},
+        {"name": "consolidation", "act": "consolidation", "turns": (8, 12), "instruction": ""},
+    ]
+
+
+# Keys are lowercase: select_arc_for_goal lowercases the goal before the exact
+# dict lookup, so a capitalized key would miss and fall through to the "cradle"
+# substring keyword (returning the wrong arc).
+BUILTIN_ARCS["cradle_pref_a"] = _make_builtin(
+    "cradle_pref_a",
+    "Exp 42 counterbalanced preference (arm A): warmth identity ALPHA is harmful, "
+    "BETA is safe. Predict the substrate learns to prefer BETA.",
+    _make_pref_phases("items/warmth_alpha_harm", "items/warmth_beta_safe"),
+)
+BUILTIN_ARCS["cradle_pref_b"] = _make_builtin(
+    "cradle_pref_b",
+    "Exp 42 counterbalanced preference (arm B): ALPHA safe, BETA harmful "
+    "(harm swapped vs arm A). Predict the substrate learns to prefer ALPHA.",
+    _make_pref_phases("items/warmth_alpha_safe", "items/warmth_beta_harm"),
+)
+
+
 # ---------------------------------------------------------------------------
 # Arc selection
 # ---------------------------------------------------------------------------

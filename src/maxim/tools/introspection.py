@@ -797,7 +797,33 @@ def _format_concept(c: Any) -> dict[str, Any]:
     return result
 
 
+# Read-only cognitive introspection tools — meta-cognition, not embodied
+# actions. The substrate-primary action path (runtime/agent_loop.py::
+# propose_via_substrate) filters these out of the NAc.recommend_action
+# candidate set: they always succeed, so their causal confidence snowballs and
+# drowns out the embodied affordances the mode exists to test (the meta-tool
+# fixation that VOID'd the Exp 42 triage — the agent fidgeted with
+# temporal_patterns/system_stats instead of warming). LLM-AUT never calls that
+# path, so it is unaffected. Derived from the tool classes so it cannot drift
+# from the registered names.
+INTROSPECTION_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        CausalLinksTool.name,
+        ConceptQueryTool.name,
+        EnergyStatusTool.name,
+        MemoryRecallTool.name,
+        PainHistoryTool.name,
+        PredictOutcomeTool.name,
+        SceneSummaryTool.name,
+        SimilaritySearchTool.name,
+        SystemStatsTool.name,
+        TemporalPatternsTool.name,
+    }
+)
+
+
 __all__ = [
+    "INTROSPECTION_TOOL_NAMES",
     "CausalLinksTool",
     "ConceptQueryTool",
     "EnergyStatusTool",

@@ -266,6 +266,38 @@ class NACConfig:
     # substrate_explore_bonus_weight > 0.
     substrate_explore_decay_tau: float = 50.0
 
+    # Drive-gating (motivated attention, Exp 42). When a drive's intensity
+    # exceeds ``drive_gate_threshold``, recommend_action narrows the
+    # exploitation-phase candidate set to drive-RELEVANT tools (those a
+    # >0.5 drive matched by name or affinity table) — a HARD attentional
+    # gate, mirroring the explore-first gate. Bio-rationale: a strong unmet
+    # need focuses behavior (a freezing infant orients to warmth, it does
+    # not survey the room). This is the fix for the meta-tool fixation that
+    # VOID'd the Exp 42 triage: an always-succeeding zero-stakes tool
+    # (sense_presence) snowballs its causal confidence toward the cap and
+    # wins plain argmax, while the weak drive-affinity nudge (~0.5) can't
+    # overcome it — so the cold agent fidgets instead of warming. The gate
+    # makes drive-irrelevant tools UNSELECTABLE while the drive is intense,
+    # regardless of how high their learned score climbed. A score term can't
+    # guarantee that (same reason the explore-first gate is hard, not a term).
+    # Applies in the exploitation phase only: the explore-first gate still
+    # runs first, so every tool — including the harmful affordance the
+    # discrimination needs — gets its one forced trial before gating engages.
+    # Default OFF == legacy semantics (learned link is primary, drive affinity
+    # is the cold-start fallback — the documented recommend_action design and
+    # the ``test_learned_link_dominates_drive_heuristic`` invariant). Enabling
+    # it INVERTS that for intense drives (motivated attention overrides a
+    # learned link on a drive-IRRELEVANT tool), so it is opt-in per experiment,
+    # wired from ``config.json::sim.drive_gate_enabled`` at build_bio_stack
+    # (mirroring ``substrate_explore_bonus_weight``). Substrate-primary-only
+    # (the LLM-primary path never calls recommend_action).
+    drive_gate_enabled: bool = False
+
+    # Drive intensity above which the attentional gate engages. Matches the
+    # 0.5 activation floor the drive-affinity heuristic already uses, so a
+    # drive that contributes affinity scoring is exactly one that can gate.
+    drive_gate_threshold: float = 0.5
+
     # Temporal credit weight for SCN-coupled eligibility (affordance transfer).
     # When fast-decay traces expire, nodes with temporal anchors still receive
     # credit at this fraction of the temporal similarity score.
@@ -1689,6 +1721,9 @@ class NAc:
 
         scores: dict[str, float] = {}
         reasoning_parts: dict[str, list[str]] = {}
+        # Tools a drive above the affinity floor matched (name or affinity) —
+        # the drive-relevant set the attentional gate narrows to (Exp 42).
+        drive_relevant: set[str] = set()
 
         for tool_name in tool_list:
             score = 0.0
@@ -1742,6 +1777,7 @@ class NAc:
                 if drive_lower in tool_lower:
                     score += drive_value
                     parts.append(f"drive:{drive_name}({drive_value:.2f}) name-match")
+                    drive_relevant.add(tool_name)
                     continue
 
                 # Affinity table — semantic stand-in until EC integration
@@ -1750,6 +1786,7 @@ class NAc:
                     if keyword in tool_lower:
                         score += drive_value * 0.7
                         parts.append(f"drive:{drive_name}({drive_value:.2f}) →{keyword}")
+                        drive_relevant.add(tool_name)
                         break
 
             # Component 4 (substrate exploration policy,
@@ -1828,10 +1865,31 @@ class NAc:
         # full bonus for 122 ticks but was never selected). The sticky
         # ``_ever_selected`` set is the gate's source of truth; the novelty
         # bonus still orders soft re-exploration AMONG tried tools afterwards.
+        in_explore_first = False
         if self.config.substrate_explore_bonus_weight > 0.0:
             untried = [t for t in scores if (agent_id, t) not in self._ever_selected]
             if untried:
                 best_tool = max(untried, key=lambda t: (scores[t], t))
+                in_explore_first = True
+
+        # Drive-gating hard gate (motivated attention, Exp 42). In the
+        # exploitation phase (explore-first not active this tick), when a drive
+        # exceeds ``drive_gate_threshold`` AND at least one scored tool is
+        # drive-relevant, restrict selection to the drive-relevant subset.
+        # This forbids an always-succeeding zero-stakes tool (sense_presence)
+        # from winning argmax on a snowballed causal score while the agent has
+        # an intense unmet need — the meta-tool fixation that VOID'd the Exp 42
+        # triage. HARD (not a score term) for the same reason the explore-first
+        # gate is: a maxed causal score would otherwise out-add the affinity
+        # nudge. Explore-first runs first so every tool still gets its forced
+        # trial before gating engages. No-op when disabled, no drive is intense,
+        # or nothing scored is drive-relevant.
+        if self.config.drive_gate_enabled and not in_explore_first and drive_relevant:
+            max_drive_intensity = max(drives.values(), default=0.0)
+            if max_drive_intensity > self.config.drive_gate_threshold:
+                gated = [t for t in scores if t in drive_relevant]
+                if gated:
+                    best_tool = max(gated, key=lambda t: (scores[t], t))
 
         best_score = scores[best_tool]
 

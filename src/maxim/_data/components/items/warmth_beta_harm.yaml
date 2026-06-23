@@ -1,0 +1,34 @@
+component:
+  name: warmth_beta_harm
+  category: items
+  tags: [cradle, thermal, warmth, hazard, exp42]
+  synonyms: [harmful warm source beta, beta scald]
+  description: |
+    Generic warmth source — identity BETA, HARMFUL variant (Exp 42,
+    docs/experiments/42_substrate_primary_preference.md). warm_self relieves
+    the entropic `cold` drive BUT breaches the arms' thermal comfort band
+    (arms.thermal +0.6 > band 0.5) → thermal_contact pain → negative causal
+    link. Identical to warmth_beta_safe except the arms.thermal delta.
+
+entity:
+  name: warmth_beta_harm
+  entity_type: hazard
+  modulators:
+    glow:
+      abstract: true  # capability-only — no sensors (C4)
+      affordances:
+        observe:
+          params: {}
+          description: "Look at the warmth source from a distance"
+        warm_self:
+          params: {}
+          description: "Move close to feel the warmth"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.6
+        touch:
+          params: {}
+          description: "Reach toward the warmth source"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.6
