@@ -210,6 +210,17 @@ def _intrinsically_harmful_sensors(root: Entity, *effect_dicts: dict[str, float]
     sensor's drive spec, NOT on the current (possibly polluted) sensor state,
     so it attributes repeated harm correctly (every harmful warm is blamed,
     not just the first).
+
+    LIMITATION (deliberate trade-off, review fold): this is a delta-ONLY
+    heuristic — an affordance whose delta is *below* the band but that pushes an
+    already-near-breach sensor over the line is a genuine partial cause yet is
+    spared (false-negative attribution → its negative signal is lost). Exp 42
+    avoids this because every harmful delta (+0.6) is well over the band (0.5).
+    The deeper root cause is that ``Body.evaluate_failures`` re-fires drive
+    discomfort every tick the sensor is out of band (state-based, not
+    transition-based), so there is no per-tick "which affordance caused THIS
+    breach" signal to key on; the proper long-term fix is transition-based
+    drive-pain attribution. Tracked as a follow-up.
     """
     specs: dict[str, Any] = {}
     for ent in root.walk():
@@ -397,30 +408,55 @@ class ModulatorAffordanceTool(Tool):
         # breach (e.g., arms.thermal > comfort_band) is detected here.
         active_failures: list[dict[str, Any]] = []
         if self._embodiment is not None:
+            failure_events: list[Any] = []
             try:
                 failure_events = self._embodiment.evaluate_failures()
-                # Delta-attribution (Exp 42): a drive-spec failure is reported as
-                # caused by THIS affordance only if its own self/target_effect
-                # delta is intrinsically harmful to that sensor (would breach a
-                # healthy sensor). A gentle bystander affordance executing while
-                # a HARMFUL affordance's breach lingers is NOT blamed — that
-                # bystander mis-attribution polluted the safe source's learning
-                # and collapsed the safe-vs-harm discrimination. Standard
-                # (non-drive) failure_modes pass through unchanged so the SEM
-                # pain cascade and Exp 37/38 are preserved.
+            except Exception:
+                log.debug("evaluate_failures raised during affordance execute", exc_info=True)
+
+            def _as_dict(ev: Any) -> dict[str, Any]:
+                return {"name": ev.failure_name, "entity": ev.entity_path, "pain": ev.pain_intensity}
+
+            # Delta-attribution (Exp 42): a drive-spec failure is reported as
+            # caused by THIS affordance only if its own self/target_effect delta
+            # is intrinsically harmful to that sensor (would breach a healthy
+            # sensor). A gentle bystander affordance executing while a HARMFUL
+            # affordance's breach lingers is NOT blamed — that bystander
+            # mis-attribution polluted the safe source's learning and collapsed
+            # the safe-vs-harm discrimination. Standard (non-drive) failure_modes
+            # pass through unchanged so the SEM pain cascade and Exp 37/38 are
+            # preserved.
+            #
+            # SCOPE (review fold): this filters the side_effects/direct-attribution
+            # channel only. The PARALLEL channel — evaluate_failures() →
+            # _publish_drive_pain() → PainBus → create_pain_nac_subscriber
+            # (context-similarity) — is NOT filtered here; it does not re-pollute
+            # in Exp 42 (safe net stays +0.99), but the proper root-cause fix is
+            # transition-based drive-pain in body.py (fire on band ENTRY, not
+            # every tick). Tracked as a follow-up; do NOT assume both channels
+            # are delta-attributed.
+            #
+            # On ANY filter error, fall back to the UNFILTERED events rather than
+            # silently dropping the causing tool's failure (the unfiltered list is
+            # the pre-B8 behavior) — a filter bug must not become a silent no-op
+            # on the SEM-cascade / Exp 37/38 path.
+            try:
                 harmful_sensors = _intrinsically_harmful_sensors(
                     self._embodiment.root,
                     self._affordance_schema.self_effect,
                     self._affordance_schema.target_effect,
                 )
                 active_failures = [
-                    {"name": ev.failure_name, "entity": ev.entity_path, "pain": ev.pain_intensity}
+                    _as_dict(ev)
                     for ev in failure_events
-                    if (_drive_failure_sensor(ev.failure_name) is None)
-                    or (_drive_failure_sensor(ev.failure_name) in harmful_sensors)
+                    if (s := _drive_failure_sensor(ev.failure_name)) is None or s in harmful_sensors
                 ]
             except Exception:
-                pass
+                log.debug(
+                    "delta-attribution filter raised; falling back to unfiltered failures",
+                    exc_info=True,
+                )
+                active_failures = [_as_dict(ev) for ev in failure_events]
 
         # Cerebellum observes cascade outcome for forward model training
         if self._cerebellum is not None and entity_state:

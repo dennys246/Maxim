@@ -40,6 +40,8 @@ Each dict has:
 
 A tool that succeeded at its action but produced embodiment failures still returns `success=True` — the tool did what was asked; the side-effect reports what the body felt.
 
+**Delta-attribution filter (Exp 42, 1.0.1):** for **drive-spec** failures (names of the form `drive:<sensor>:discomfort` / `drive:<sensor>:deprived`), `ModulatorAffordanceTool.execute` only includes the failure in `embodiment_failures` when the affordance's *own* `self_effect`/`target_effect` delta is intrinsically harmful to that sensor (i.e. that delta alone would breach a healthy sensor). This stops a *bystander* affordance from inheriting blame for a drive breach a different (harmful) affordance caused while the breach lingers. **Standard `failure_mode` failures pass through unchanged.** Consumers that previously saw a drive-spec breach attributed to every action executing during it will now see it only on the affordance that caused it. Note this filter applies to the `side_effects` channel only — the parallel `PainBus`/`_publish_drive_pain` channel is not delta-attributed (transition-based drive-pain is a tracked follow-up).
+
 ### `entity_acquired`
 
 ```python

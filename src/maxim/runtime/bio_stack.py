@@ -233,6 +233,16 @@ def build_bio_stack(
         _drive_gate, _ = _resolve_setting2("sim.drive_gate_enabled")
         _drive_gate = bool(_drive_gate)
     except Exception:
+        # Fail-soft to OFF, but WARN: a malformed sim.drive_gate_enabled (e.g. a
+        # typo'd MAXIM_SIM_DRIVE_GATE_ENABLED) would otherwise silently run the
+        # experiment UN-gated and report a misleading VOID/REFRAME with no signal
+        # that gating was off. Surface the misconfiguration. (review fold)
+        logger.warning(
+            "sim.drive_gate_enabled failed to resolve — defaulting drive-gating OFF. "
+            "If this is an Exp 42 run, the gating arm is silently disabled; check "
+            "MAXIM_SIM_DRIVE_GATE_ENABLED / config.json.",
+            exc_info=True,
+        )
         _drive_gate = False
     _nac_config = NACConfig(
         substrate_explore_bonus_weight=_explore_weight,
