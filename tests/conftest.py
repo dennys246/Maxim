@@ -197,6 +197,27 @@ def _isolate_maxim_sim_substrate_explore_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_sim_drive_gate_env():
+    """Scrub MAXIM_SIM_DRIVE_GATE_ENABLED (drive-gating opt-in, Exp 42).
+
+    Read in the bio-stack construction hot path via
+    ``build_bio_stack`` → ``resolve_setting("sim.drive_gate_enabled")``.
+    Per the CLAUDE.md rule that opt-in env vars in hot startup paths need
+    autouse scrubs, isolate it so a test that sets it does not leak into
+    every later test that builds a bio-stack (which would silently turn
+    drive-gating on and invert recommend_action selection). Restores any
+    user value on exit.
+    """
+    saved = os.environ.pop("MAXIM_SIM_DRIVE_GATE_ENABLED", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_SIM_DRIVE_GATE_ENABLED", None)
+        if saved is not None:
+            os.environ["MAXIM_SIM_DRIVE_GATE_ENABLED"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_nac_min_confidence():
     """Scrub ``MAXIM_NAC_MIN_CONFIDENCE`` across every test.
 

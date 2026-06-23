@@ -1,0 +1,82 @@
+component:
+  name: infant_humanoid_chilled
+  extends: bodies/infant_humanoid
+  category: bodies
+  archetype: humanoid
+  tags: [body, humanoid, infant, cradle, exp42, thermal]
+  synonyms: [chilled infant, entropic-cold infant]
+  description: |
+    Exp 42 body (docs/experiments/42_substrate_primary_preference.md). Two
+    changes vs the shared infant_humanoid:
+
+    (1) An ENTROPIC `cold` drive — it rises over time (like hunger) and is
+    relieved by a warmth source's warm_self (self_effect cold: -0.3). Entropic
+    (not homeostatic) is load-bearing: a homeostatic cold drifts toward comfort
+    and SATIATES after a few warms, so warming stops and the exploitation-phase
+    metric floors (the Exp 41 trap). An entropic cold REGENERATES → warming
+    recurs → many exploitation warm-choices. The affinity table maps
+    cold -> (warm, fire, blanket, huddle), so the raw `cold` value drives
+    warm-tool selection directly (no homeostatic-deficit derivation needed).
+
+    (2) hunger/thirst kept but RATE-LIMITED: their drift_rate is low enough that
+    their value stays < 0.5 across the run, so they never enter the substrate's
+    drive-affinity selection competition (gate is drive_value > 0.5) and warming
+    dominates. deprivation_pain also lowered for a clean pain cascade. The
+    depletion *rate*, not the valence, is what removes the competition.
+
+    Distinct entity.name (avoids the all-components-into-one-registry tool-name
+    collision). Shared infant_humanoid and Exp 41's infant_humanoid_cold are
+    left untouched.
+
+entity:
+  name: infant_humanoid_chilled
+  sensors:
+    # Entropic cold need — THE dominant drive. Starts cold, regenerates.
+    cold:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.6
+      drive:
+        drift_mode: entropic
+        drift_direction: up
+        drift_rate: 0.08          # regenerates fast → cold re-crosses the 0.5
+                                  # affinity gate every ~3 ticks → many recurring
+                                  # warm choices → dense exploitation-phase sample
+                                  # (avoids the Exp 41 flooring trap)
+        deprivation_threshold: 0.5
+        deprivation_pain: 0.15
+        satisfaction_threshold: 0.3
+    # Weakened entropic drives — present but rate-limited below the 0.5 gate.
+    hunger:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      drive:
+        drift_mode: entropic
+        drift_direction: up
+        drift_rate: 0.0008        # stays < 0.5 across the run → no selection competition
+        deprivation_threshold: 0.7
+        deprivation_pain: 0.1
+        satisfaction_threshold: 0.3
+    thirst:
+      unit: ratio
+      range: [0, 1]
+      initial: 0.0
+      drive:
+        drift_mode: entropic
+        drift_direction: up
+        drift_rate: 0.0008
+        deprivation_threshold: 0.6
+        deprivation_pain: 0.1
+        satisfaction_threshold: 0.3
+  # arms/head thermal recovery is left at the shared infant_humanoid default.
+  # NOTE (building-block spike finding): evaluate_failures() applies drift BEFORE
+  # the breach check (body.py:145-154) using wall-clock dt, so a fast recovery
+  # rate silently erases the harmful warm's breach before it can be attributed,
+  # and a slow rate lets the breach linger and mis-attribute to later safe
+  # actions. There is no drift rate that gives a clean transient breach. The
+  # discrimination the experiment relies on is therefore RELATIVE, not absolute:
+  # the harmful source takes a FRESH breach on every warm (so it accrues more
+  # negative weight than the safe source, which only ever inherits lingering
+  # noise), and the verdict is measured on the agent's late-phase BEHAVIORAL
+  # preference rather than on the absolute sign of either causal link.

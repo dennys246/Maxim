@@ -1,4 +1,4 @@
-"""Substrate-primary scene-harm wiring — regression guards (B4 + B5).
+"""Substrate-primary scene-harm wiring — regression guards (B4 + B5 + B6).
 
 Covers docs/plans/substrate_primary_cradle_readiness.md:
   * B4: phase-activated scene affordances receive the AUT embodiment in
@@ -7,6 +7,10 @@ Covers docs/plans/substrate_primary_cradle_readiness.md:
     (scene harm there arrives via the narrator-driven Layer-2 proximity path).
   * B5: record_outcome treats a tool result carrying embodiment_failures as a
     NEGATIVE outcome, not POSITIVE-on-mechanical-success.
+  * B6: propose_via_substrate filters read-only cognitive introspection tools
+    out of the recommend_action candidate set so always-succeeding meta-tools
+    can't snowball and starve the embodied affordances (the meta-tool fixation
+    that VOID'd the Exp 42 triage). LLM-AUT is unaffected (it never calls this).
 """
 
 from __future__ import annotations
@@ -152,3 +156,183 @@ def test_negative_links_use_max_not_sum_in_scoring():
         min_confidence=0.3,
     )
     assert rec is not None and rec["tool_name"] == "hearth_warm_self"
+
+
+# ── B6: introspection-tool filtering in the substrate-primary candidate set ──
+
+
+class _RecordingNac:
+    """Stub NAc that captures the candidate set propose_via_substrate passes."""
+
+    def __init__(self):
+        self.seen_tools: list[str] | None = None
+
+    def recommend_action(self, *, agent_id, available_tools, **kwargs):  # noqa: D401 - stub
+        self.seen_tools = list(available_tools)
+        return None
+
+
+class _StubRegistry:
+    def __init__(self, names):
+        self._names = list(names)
+
+    def list(self):  # noqa: D401 - stub
+        return list(self._names)
+
+
+class _StubExecutor:
+    def __init__(self, names):
+        self.registry = _StubRegistry(names)
+        self.embodiment = None  # → _read_drive_states returns {}
+
+
+def test_introspection_names_cover_the_registered_tools():
+    """The filter set is derived from the tool classes, so it stays in sync."""
+    from maxim.tools.introspection import (
+        INTROSPECTION_TOOL_NAMES,
+        SystemStatsTool,
+        TemporalPatternsTool,
+    )
+
+    assert SystemStatsTool.name in INTROSPECTION_TOOL_NAMES
+    assert TemporalPatternsTool.name in INTROSPECTION_TOOL_NAMES
+    # the meta-tools that dominated the Exp 42 triage are all covered
+    for n in (
+        "temporal_patterns",
+        "system_stats",
+        "energy_status",
+        "causal_links",
+        "concept_query",
+        "memory_recall",
+        "similarity_search",
+    ):
+        assert n in INTROSPECTION_TOOL_NAMES
+
+
+def test_propose_via_substrate_excludes_introspection_tools():
+    """Embodied affordances reach recommend_action; introspection tools do not."""
+    from maxim.runtime.agent_loop import propose_via_substrate
+    from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES
+
+    names = [
+        "temporal_patterns",
+        "system_stats",
+        "memory_recall",
+        "warmth_beta_safe_warm_self",
+        "warmth_alpha_harm_touch",
+        "sense_presence",  # sensing is NOT introspection — kept
+    ]
+    nac = _RecordingNac()
+    propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(names))
+    assert nac.seen_tools is not None, "recommend_action was not reached"
+    assert not (set(nac.seen_tools) & INTROSPECTION_TOOL_NAMES)
+    assert "warmth_beta_safe_warm_self" in nac.seen_tools
+    assert "warmth_alpha_harm_touch" in nac.seen_tools
+    assert "sense_presence" in nac.seen_tools  # sensing preserved
+
+
+def test_propose_via_substrate_idle_when_only_introspection():
+    """If every candidate is an introspection tool, the substrate has no
+    embodied action to propose → None (IDLE), not a meta-tool fidget."""
+    from maxim.runtime.agent_loop import propose_via_substrate
+
+    nac = _RecordingNac()
+    out = propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(["system_stats", "temporal_patterns"]))
+    assert out is None
+    assert nac.seen_tools is None  # filtered to empty before recommend_action
+
+
+# ── B7: drive-gating (motivated attention) in recommend_action ────────────
+
+
+def _nac_with_snowballed(tool: str, *, n: int = 6, gate: bool = True, **cfg):
+    """An NAc where ``tool`` has a strong positive causal link (snowballed).
+
+    ``gate`` defaults True because the B7 tests exercise the gate; the SHIPPED
+    NACConfig default is OFF (opt-in per experiment), so callers must enable it
+    explicitly — which is what the experiment harness/bio_stack does."""
+    from maxim.decisions.causal_link import Valence
+    from maxim.decisions.nac import NAc, NACConfig
+
+    nac = NAc(NACConfig(substrate_explore_bonus_weight=0.0, drive_gate_enabled=gate, **cfg))
+    for _ in range(n):
+        nac.observe(
+            event_type="tool",
+            event_signature=f"tool:{tool}",
+            outcome_type="tool_result",
+            outcome_signature="success",
+            outcome_valence=Valence.POSITIVE,
+            delta_seconds=0.0,
+        )
+    return nac
+
+
+_TOOLS = ["sense_presence", "fire_pit_warm_self"]  # irrelevant (snowballed) vs cold-relevant
+
+
+def test_drive_gate_forbids_irrelevant_tool_under_intense_drive():
+    """An intense cold drive narrows selection to the cold-relevant tool even
+    though the irrelevant tool has the higher learned (snowballed) score —
+    the fix for the sense_presence fixation that VOID'd the triage."""
+    nac = _nac_with_snowballed("sense_presence", gate=True)  # opt-in (experiment) gating
+    rec = nac.recommend_action(agent_id="a", available_tools=_TOOLS, current_drives={"cold": 0.9}, min_confidence=0.3)
+    assert rec is not None and rec["tool_name"] == "fire_pit_warm_self"
+
+
+def test_drive_gate_disabled_is_the_shipped_default():
+    """Gate OFF is the SHIPPED default → legacy argmax: the snowballed
+    irrelevant tool wins. Proves the gate (not some other change) is what flips
+    selection, and that enabling it is opt-in (global semantics unchanged)."""
+    nac = _nac_with_snowballed("sense_presence", gate=False)
+    rec = nac.recommend_action(agent_id="a", available_tools=_TOOLS, current_drives={"cold": 0.9}, min_confidence=0.3)
+    assert rec is not None and rec["tool_name"] == "sense_presence"
+
+
+def test_drive_gate_noop_when_drive_below_threshold():
+    """Below the gate threshold the drive isn't intense enough to narrow
+    attention → legacy argmax (the agent may sense when not cold)."""
+    nac = _nac_with_snowballed("sense_presence", gate=True)
+    rec = nac.recommend_action(agent_id="a", available_tools=_TOOLS, current_drives={"cold": 0.3}, min_confidence=0.3)
+    assert rec is not None and rec["tool_name"] == "sense_presence"
+
+
+def test_drive_gate_does_not_override_explore_first():
+    """Explore-first still guarantees a forced trial of every tool before
+    gating engages — so the harmful affordance the discrimination needs gets
+    surfaced. With exploration on and the relevant tool already tried but the
+    irrelevant one untried, explore-first picks the untried one despite the
+    intense drive."""
+    from maxim.decisions.nac import NAc, NACConfig
+
+    nac = NAc(NACConfig(substrate_explore_bonus_weight=1.5, drive_gate_enabled=True))
+    # mark fire (relevant) as already tried; sense_presence still untried
+    nac._ever_selected.add(("a", "fire_pit_warm_self"))
+    rec = nac.recommend_action(agent_id="a", available_tools=_TOOLS, current_drives={"cold": 0.9}, min_confidence=0.3)
+    assert rec is not None and rec["tool_name"] == "sense_presence"  # explore-first wins
+
+
+# ── B8: delta-attribution (bystander affordances not blamed for lingering harm) ──
+
+
+def test_drive_failure_sensor_parsing():
+    from maxim.embodiment.tool_bridge import _drive_failure_sensor
+
+    assert _drive_failure_sensor("drive:arms.thermal:discomfort") == "arms.thermal"
+    assert _drive_failure_sensor("drive:cold:deprived") == "cold"
+    assert _drive_failure_sensor("laceration") is None  # standard failure_mode → unfiltered
+    assert _drive_failure_sensor("drive:x") is None
+
+
+def test_intrinsic_harm_only_blames_band_exceeding_delta():
+    """The harmful warm (+0.6 > band 0.5) is intrinsically harmful; the safe
+    warm (+0.05) is not — so a safe affordance executing while the harmful
+    source's breach lingers is never blamed (the Exp 42 pollution fix)."""
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.embodiment.tool_bridge import _intrinsically_harmful_sensors
+
+    body = ComponentRegistry().instantiate("bodies/infant_humanoid_chilled")
+    # arms.thermal is a homeostatic sub-sensor with comfort_band 0.5
+    assert "arms.thermal" in _intrinsically_harmful_sensors(body, {"cold": -0.3, "arms.thermal": 0.6})
+    assert "arms.thermal" not in _intrinsically_harmful_sensors(body, {"cold": -0.3, "arms.thermal": 0.05})
+    # relief-direction cold delta never counts as harmful
+    assert "cold" not in _intrinsically_harmful_sensors(body, {"cold": -0.3})

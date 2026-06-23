@@ -301,10 +301,19 @@ class SimConfigSection:
     ``maxim config set sim.substrate_explore_bonus_weight 0.4`` or the
     ``MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT`` env override). Clamped to
     ``>= 0`` at resolve time. Substrate-primary only.
+
+    ``drive_gate_enabled`` is the drive-gating (motivated-attention) opt-in
+    (Exp 42): when True, ``NAc.recommend_action`` narrows exploitation-phase
+    selection to drive-relevant tools while a drive exceeds its gate threshold,
+    so an always-succeeding zero-stakes tool can't fixate the agent away from a
+    pressing need. False (default) == legacy semantics (learned-link primacy);
+    set True via ``maxim config set sim.drive_gate_enabled true`` or the
+    ``MAXIM_SIM_DRIVE_GATE_ENABLED`` env override. Substrate-primary only.
     """
 
     aut_turn_timeout_s: float = 30.0
     substrate_explore_bonus_weight: float = 0.0
+    drive_gate_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -374,6 +383,7 @@ _FIELD_TO_ENV: dict[str, str] = {
     "data.budget_gb": "MAXIM_DATA_BUDGET_GB",
     "sim.aut_turn_timeout_s": "MAXIM_SIM_AUT_TURN_TIMEOUT_S",
     "sim.substrate_explore_bonus_weight": "MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT",
+    "sim.drive_gate_enabled": "MAXIM_SIM_DRIVE_GATE_ENABLED",
 }
 
 
@@ -559,6 +569,7 @@ def _coerce_for_field(raw: str, field_path: str) -> Any:
         "cloud.enabled",
         "auto_spawn.llm_server",
         "auto_spawn.tunnel",
+        "sim.drive_gate_enabled",
     }:
         return _coerce_bool(raw, field_path)
     # Integer fields with range constraints

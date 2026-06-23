@@ -224,7 +224,20 @@ def build_bio_stack(
         _explore_weight = max(0.0, float(_explore_weight))
     except Exception:
         _explore_weight = 0.0
-    _nac_config = NACConfig(substrate_explore_bonus_weight=_explore_weight)
+    # Drive-gating (motivated attention, Exp 42): opt-in, OFF by default so
+    # global recommend_action semantics (learned-link primacy) are unchanged.
+    # Same CLI > env > config.json > default precedence; fail-soft to OFF.
+    try:
+        from maxim.runtime.config_loader import resolve_setting as _resolve_setting2
+
+        _drive_gate, _ = _resolve_setting2("sim.drive_gate_enabled")
+        _drive_gate = bool(_drive_gate)
+    except Exception:
+        _drive_gate = False
+    _nac_config = NACConfig(
+        substrate_explore_bonus_weight=_explore_weight,
+        drive_gate_enabled=_drive_gate,
+    )
     # Loud failure for the silent-no-op footgun: an untried tool's only score is
     # the novelty bonus, so a weight at or below the substrate min_confidence gate
     # can never clear it — exploration silently does nothing, indistinguishable

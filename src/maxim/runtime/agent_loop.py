@@ -826,6 +826,20 @@ def propose_via_substrate(
     if not available_tools:
         return None
 
+    # Substrate-primary is an EMBODIED action test: exclude read-only cognitive
+    # introspection tools (memory_recall, temporal_patterns, system_stats, …).
+    # They always succeed, so their causal confidence snowballs toward the cap
+    # and dominates recommend_action — starving the embodied affordances the
+    # mode exists to measure (the meta-tool fixation that VOID'd the Exp 42
+    # triage: the agent fidgeted with temporal_patterns/system_stats instead of
+    # warming). LLM-AUT is unaffected — it never calls this path. Set lives in
+    # tools/introspection.py so it can't drift from the registered tool names.
+    from maxim.tools.introspection import INTROSPECTION_TOOL_NAMES
+
+    available_tools = [t for t in available_tools if t not in INTROSPECTION_TOOL_NAMES]
+    if not available_tools:
+        return None
+
     # Substrate-primary mode owns its own clock — without an LLM submit
     # path there's no other code that calls into the embodiment, so
     # drive drift would never advance. Ticking evaluate_failures() here

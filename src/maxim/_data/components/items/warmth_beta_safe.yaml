@@ -1,0 +1,34 @@
+component:
+  name: warmth_beta_safe
+  category: items
+  tags: [cradle, thermal, warmth, exp42]
+  synonyms: [warm source beta, beta warmth]
+  description: |
+    Generic warmth source — identity BETA, SAFE variant (Exp 42,
+    docs/experiments/42_substrate_primary_preference.md). warm_self relieves
+    the entropic `cold` drive without breaching the arms' thermal comfort band
+    — no pain. Symmetric with warmth_alpha_*; differs from warmth_beta_harm
+    only in the arms.thermal delta.
+
+entity:
+  name: warmth_beta_safe
+  entity_type: item
+  modulators:
+    glow:
+      abstract: true  # capability-only — no sensors (C4)
+      affordances:
+        observe:
+          params: {}
+          description: "Look at the warmth source from a distance"
+        warm_self:
+          params: {}
+          description: "Move close to feel the warmth"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.05
+        touch:
+          params: {}
+          description: "Reach toward the warmth source"
+          self_effect:
+            cold: -0.3
+            arms.thermal: 0.05
