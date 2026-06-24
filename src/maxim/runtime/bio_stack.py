@@ -227,12 +227,26 @@ def build_bio_stack(
     # Drive-gating (motivated attention, Exp 42): opt-in, OFF by default so
     # global recommend_action semantics (learned-link primacy) are unchanged.
     # Same CLI > env > config.json > default precedence; fail-soft to OFF.
+    # DORMANT since 2026-06-23 — the Exp 42 gating-OFF ablation graduated
+    # identically, so this knob carries no behavioral weight (B8 + drive-affinity
+    # do). Resolution kept so the opt-in path stays live; see NACConfig.
+    # drive_gate_enabled + docs/experiments/42_substrate_primary_preference.md.
     try:
         from maxim.runtime.config_loader import resolve_setting as _resolve_setting2
 
         _drive_gate, _ = _resolve_setting2("sim.drive_gate_enabled")
         _drive_gate = bool(_drive_gate)
     except Exception:
+        # Fail-soft to OFF, but WARN: a malformed sim.drive_gate_enabled (e.g. a
+        # typo'd MAXIM_SIM_DRIVE_GATE_ENABLED) would otherwise silently run the
+        # experiment UN-gated and report a misleading VOID/REFRAME with no signal
+        # that gating was off. Surface the misconfiguration. (review fold)
+        logger.warning(
+            "sim.drive_gate_enabled failed to resolve — defaulting drive-gating OFF. "
+            "If this is an Exp 42 run, the gating arm is silently disabled; check "
+            "MAXIM_SIM_DRIVE_GATE_ENABLED / config.json.",
+            exc_info=True,
+        )
         _drive_gate = False
     _nac_config = NACConfig(
         substrate_explore_bonus_weight=_explore_weight,

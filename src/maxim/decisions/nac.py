@@ -266,7 +266,19 @@ class NACConfig:
     # substrate_explore_bonus_weight > 0.
     substrate_explore_decay_tau: float = 50.0
 
-    # Drive-gating (motivated attention, Exp 42). When a drive's intensity
+    # Drive-gating (motivated attention, Exp 42).
+    #
+    # DORMANT since 2026-06-23: the Exp 42 frozen run's gating-OFF ablation
+    # graduated IDENTICALLY to the gating-ON arm (safe_pref 0.984/0.965, same C1
+    # flip + C2 signs — docs/experiments/42_substrate_primary_preference.md
+    # §Results), so this gate did NOT earn behavioral weight — clean per-source
+    # credit assignment (B8 delta-attribution) + the drive-affinity heuristic
+    # carry the discrimination on their own. Kept wired + default-OFF per the
+    # dormancy-over-deletion principle; build nothing new on it. Resurrection
+    # requires a future experiment that earns it (e.g. a task where the affinity
+    # nudge genuinely can't out-compete a snowballed zero-stakes tool).
+    #
+    # When a drive's intensity
     # exceeds ``drive_gate_threshold``, recommend_action narrows the
     # exploitation-phase candidate set to drive-RELEVANT tools (those a
     # >0.5 drive matched by name or affinity table) — a HARD attentional
@@ -1769,6 +1781,13 @@ class NAc:
             # Component 3: drive-relevance (cold-start heuristic)
             tool_lower = tool_name.lower()
             for drive_name, drive_value in drives.items():
+                # NOTE: this 0.5 activation floor is intentionally the same value
+                # as ``drive_gate_threshold`` (the B7 gate below). They are
+                # coupled by design — a tool only enters ``drive_relevant`` when a
+                # drive clears this floor, and the gate only engages when a drive
+                # clears its threshold. If you retune one, retune the other (or
+                # derive both from one constant) so a drive-relevant tool can't
+                # exist that the gate excludes. (review fold)
                 if drive_value <= 0.5:
                     continue
                 drive_lower = drive_name.lower()
@@ -1884,6 +1903,13 @@ class NAc:
         # nudge. Explore-first runs first so every tool still gets its forced
         # trial before gating engages. No-op when disabled, no drive is intense,
         # or nothing scored is drive-relevant.
+        #
+        # NOTE (review fold): ``drive_relevant`` is the UNION across all intense
+        # (> floor) drives, so the gated set admits tools relevant to ANY intense
+        # drive, not only the most-intense one. With multiple simultaneous needs
+        # an always-succeeding tool that happens to match a second drive's
+        # affinity could re-enter; not reachable for the single-cold-drive Exp 42
+        # fixture, but relevant if a future body has several concurrent drives.
         if self.config.drive_gate_enabled and not in_explore_first and drive_relevant:
             max_drive_intensity = max(drives.values(), default=0.0)
             if max_drive_intensity > self.config.drive_gate_threshold:

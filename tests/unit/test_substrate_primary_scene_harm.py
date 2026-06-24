@@ -336,3 +336,51 @@ def test_intrinsic_harm_only_blames_band_exceeding_delta():
     assert "arms.thermal" not in _intrinsically_harmful_sensors(body, {"cold": -0.3, "arms.thermal": 0.05})
     # relief-direction cold delta never counts as harmful
     assert "cold" not in _intrinsically_harmful_sensors(body, {"cold": -0.3})
+
+
+def test_execute_delta_attribution_causing_vs_bystander_on_chilled_body():
+    """End-to-end through ModulatorAffordanceTool.execute on the qualified
+    `arms.thermal` path: the harmful warm (+0.6) reports its OWN breach; a safe
+    warm (+0.05) executing while that breach LINGERS is NOT blamed. This is the
+    load-bearing claim B8 exists to protect, on the real Exp 42 fixtures."""
+    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.embodiment.tool_bridge import generate_tools_for_entity
+
+    reg = ComponentRegistry()
+    body = Embodiment(root=reg.instantiate("bodies/infant_humanoid_chilled"))
+    harm = reg.instantiate("items/warmth_alpha_harm")
+    safe = reg.instantiate("items/warmth_alpha_safe")
+    treg = ToolRegistry()
+    htools = {t.name: t for t in generate_tools_for_entity(harm, treg, embodiment=body)}
+    stools = {t.name: t for t in generate_tools_for_entity(safe, treg, embodiment=body)}
+
+    def thermal_failures(out):
+        return [f for f in (out.side_effects or {}).get("embodiment_failures", []) if "arms.thermal" in f["name"]]
+
+    # Causing tool: +0.6 breaches arms.thermal → reports its own drive failure.
+    out_harm = htools["warmth_alpha_harm_warm_self"].execute()
+    assert thermal_failures(out_harm), "harmful warm must report its own arms.thermal breach (causing tool)"
+
+    # arms.thermal now lingers breached (default slow drift). The bystander safe
+    # warm (+0.05, not intrinsically harmful) must NOT inherit the blame.
+    out_safe = stools["warmth_alpha_safe_warm_self"].execute()
+    assert not thermal_failures(out_safe), "safe warm must NOT be blamed for the lingering breach (delta-attribution)"
+
+
+def test_introspection_tool_classes_all_in_filter_set():
+    """Every read-only cognitive Tool defined in tools/introspection.py is a
+    member of INTROSPECTION_TOOL_NAMES — so adding a new introspection tool that
+    forgets to join the set is caught here (the set is hand-curated by class)."""
+    import inspect
+
+    from maxim.tools import introspection as intro
+    from maxim.tools.base import Tool
+
+    missing = []
+    for _name, obj in inspect.getmembers(intro, inspect.isclass):
+        if issubclass(obj, Tool) and obj is not Tool and obj.__module__ == intro.__name__:
+            tool_name = getattr(obj, "name", None)
+            if tool_name and tool_name not in intro.INTROSPECTION_TOOL_NAMES:
+                missing.append(tool_name)
+    assert not missing, f"introspection Tool(s) missing from INTROSPECTION_TOOL_NAMES: {missing}"

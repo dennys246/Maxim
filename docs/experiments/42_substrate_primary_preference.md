@@ -1,4 +1,4 @@
-# Exp 42 — Substrate-Primary Preference: does the unmasked substrate learn to prefer the safe source over the harmful one? (DRAFT pre-registration)
+# Exp 42 — Substrate-Primary Preference: does the unmasked substrate learn to prefer the safe source over the harmful one? (GRADUATE — frozen result folded; gating-OFF ablation graduates identically → B7 redundant, B8 load-bearing)
 
 **Status:** DRAFT — not frozen, not fired. Metrics freeze on authorization **after** Phase-0 triage confirms measurability (the Exp 41 discipline: never freeze a metric that can floor).
 **Graduates:** [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) Tier 1 row **#6** (substrate-primary AUT mode).
@@ -63,7 +63,11 @@ The triage **PASSED** — but only after three substrate-primary mechanism gaps 
 
 **Result (B6+B7+B8, shipped config path, n=1/arm, 40 turns):** GRADUATE — `safe_pref` **0.990 / 0.986** (both arms ≥ 0.66), identity flip **+0.975**, per-source nets harm −0.25/−0.32 vs safe **+0.99** (distinct), K = 96/141 exploitation contacts. The counterbalance is textbook: `id_pref_a` swings 0.010 (α harmful → avoided) → 0.986 (α safe → preferred), so the preference tracks *safety*, not identity.
 
-**Load-bearing caveat (must be in the writeup).** Drive-gating is an *enabling* mechanism, analogous to exploration in Exp 41 — it does the "motivation" work (forces the agent into the drive-relevant action set). The graduated claim is therefore **discrimination within motivated attention**: given the agent is warming, the substrate's learned signal correctly routes it to the safe source. The frozen run **MUST include a gating-OFF ablation arm** (`MAXIM_SIM_DRIVE_GATE_ENABLED=0`, all else equal) to show gating is necessary and isn't masking the substrate's contribution — mirroring Exp 41's exploration-ablation discipline. (B8 is a bug fix, not a knob: it stays on in all arms.)
+**Pre-registered prediction (and how the frozen run REFUTED it).** At triage time the working hypothesis was that drive-gating was *load-bearing* — an enabling "motivation" mechanism (analogous to exploration in Exp 41) without which the agent would re-fixate on always-succeeding zero-stakes tools, so the graduated claim would be the narrower **"discrimination within motivated attention."** The frozen run **mandated a gating-OFF ablation arm** to test exactly this. **The ablation overturned the prediction:** with gating fully OFF, discrimination is statistically identical (see §Results — Arm A `safe_pref` 0.984, Arm B 0.965, same C1 flip / C2 signs). Gating changes only the *volume* of warming (treatment Arm B spikes to 106 contacts on some seeds vs the ablation's tight ~56–64; the toggle demonstrably fired), **not** the discrimination. So the honest claim is the stronger, unqualified one: the substrate discriminates safe from harmful **from its own clean credit assignment, with no motivated-attention crutch**. What carries the result is **B8 (delta-attribution: clean per-source learning) + the pre-existing drive-affinity heuristic**, not B7.
+
+**Consequence: B7 drive-gating did NOT earn its behavioral weight.** Per dormancy-over-deletion it is marked `Dormant` (kept wired, default-OFF; no new work builds on it) rather than removed; resurrection requires a future experiment that earns it. The load-bearing mechanism is **B8** — its two-channel scope limitation (the side_effects channel is delta-attributed; the parallel `_publish_drive_pain`→PainBus channel is not) is therefore the priority follow-up, tracked in [transition_based_drive_pain.md](../plans/transition_based_drive_pain.md).
+
+**Substrate-isolation evidence.** The substrate's contribution (vs residual ordering/affinity) rests on **C1 (counterbalance identity-flip: +0.96) + C2 (per-source link signs: harm net < safe net, both arms)** — C1 proves the preference tracks the *swapped* safety contingency (not a fixed bias), C2 proves the learned substrate carries the safe/harm distinction. Both hold in both treatment and ablation.
 
 ---
 
@@ -126,10 +130,9 @@ python scripts/benchmark_exp42_preference.py \
 python scripts/analyze_exp42_preference.py --in docs/experiments/data/42_results.jsonl --trials 10 \
   --out docs/experiments/42_substrate_primary_preference.md
 
-# Gating-OFF ablation arm (drive-gating is load-bearing per §3a) — same arcs,
-# gating disabled. Run the harness with the env override forced off; expect a
-# return toward the meta-tool/sensing fixation (PARTIAL/REFRAME), demonstrating
-# gating is necessary and isn't masking the substrate's contribution.
+# Gating-OFF ablation arm — same arcs, gating disabled via the env override.
+# RESULT: also GRADUATE (identical discrimination) → gating is NOT load-bearing;
+# B8 + drive-affinity carry the preference. See §Results.
 MAXIM_SIM_DRIVE_GATE_ENABLED=0 python scripts/benchmark_exp42_preference.py \
   --arms cradle_pref_a,cradle_pref_b --trials 10 --seed-base 42 --sim-max-turns 40 \
   --explore-weight 1.5 --embodiment bodies/infant_humanoid_chilled \
@@ -142,7 +145,7 @@ ablation command above works as-is — no code change needed.
 
 ## 7. Relation to the thesis and #6
 
-Cleanest available test of "the unmasked substrate drives adaptive behavior": (a) removes the LLM-prior confound (substrate-primary), (b) avoids Exp 41's flooring (exploitation-phase preference, not harm-rate), (c) controls for fixed bias by construction (counterbalance + the both-arms test). A GRADUATE is the strongest 1.x evidence the substrate is behaviorally load-bearing — the prerequisite the Oasis / Hivemind value chain assumes. A REFRAME cleanly closes the strong-thesis line with an honest negative. Either way the claim is **discrimination** in the substrate-primary regime; the LLM-AUT override result (Exp 38/40) is untouched.
+Cleanest available test of "the unmasked substrate drives adaptive behavior": (a) removes the LLM-prior confound (substrate-primary), (b) avoids Exp 41's flooring (exploitation-phase preference, not harm-rate), (c) controls for fixed bias by construction (counterbalance + the both-arms test). **Outcome: GRADUATE** (10 seeds/arm, both arms; see §Results) — and the gating-OFF ablation graduating *identically* makes the evidence stronger than pre-registered: the substrate discriminates safe from harmful from its **own clean credit assignment (B8) + drive-affinity**, with no motivated-attention crutch (B7 turned out redundant). This is the strongest 1.x evidence the substrate is behaviorally load-bearing — the prerequisite the Oasis / Hivemind value chain assumes. The claim is **discrimination** in the substrate-primary regime; the LLM-AUT override result (Exp 38/40) is untouched — substrate-primary *discriminates* where LLM-AUT *does not override* a wrong prior, and both are honest, complementary halves of #6.
 
 ## 8. Regression guard / deliverable citations (to populate as built)
 
@@ -151,3 +154,31 @@ Cleanest available test of "the unmasked substrate drives adaptive behavior": (a
 - Reuses shipped + guarded mechanism: exploration policy ([tests/unit/test_substrate_exploration.py](../../tests/unit/test_substrate_exploration.py)), drive-need derivation ([tests/unit/test_substrate_drive_needs.py](../../tests/unit/test_substrate_drive_needs.py)), B4/B5 scene-harm ([tests/unit/test_substrate_primary_scene_harm.py](../../tests/unit/test_substrate_primary_scene_harm.py)).
 
 <!-- Analyzer appends "## Results" sections below this line -->
+
+## Results
+
+Frozen run: 10 seeds/arm × 2 counterbalanced arms, substrate-primary, smollm narrator, 40 turns, `cost=$0`, git `0d6ca70f`. Treatment = exploration + drive-gating ON; ablation = drive-gating OFF (`MAXIM_SIM_DRIVE_GATE_ENABLED=0`), all else equal.
+
+**Headline: GRADUATE #6, and the gating-OFF ablation graduates *identically* → drive-gating (B7) is NOT load-bearing.** The pre-registered "discrimination within motivated attention" caveat is refuted: the substrate discriminates safe from harmful from its own clean credit assignment (B8 delta-attribution) + the pre-existing drive-affinity heuristic. Gating changed only warming *volume* (treatment Arm B spikes to 106 contacts on some seeds; the ablation sits tight at ~56–64 — the toggle demonstrably fired), not the discrimination. → B7 marked `Dormant` (did not earn behavioral weight); **B8 is the mechanism that carries #6**.
+
+### Treatment (gating ON) — GRADUATE (exit 0)
+
+- H1 (both arms ≥ 0.66): **True** — A `safe_pref` 0.984, B 0.975
+- C1 identity-flip +0.959 PASS · C2 (harm net < safe net) PASS · 10/10 valid both arms, 0 floored
+
+| arm | safe id | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 0.984 | 0.002 | 0.016 | −0.250 | 0.990 |
+| cradle_pref_b | α | 0.975 | 0.015 | 0.975 | −0.307 | 0.990 |
+
+### Gating-OFF ablation — GRADUATE (exit 0)
+
+- H1 (both arms ≥ 0.66): **True** — A `safe_pref` 0.984, B 0.965
+- C1 identity-flip +0.949 PASS · C2 PASS · 10/10 valid both arms, 0 floored
+
+| arm | safe id | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 0.984 | 0.002 | 0.016 | −0.250 | 0.990 |
+| cradle_pref_b | α | 0.965 | 0.001 | 0.965 | −0.321 | 0.990 |
+
+The counterbalance flips cleanly in both runs: `id_pref_a` ≈ 0.016 when α is harmful (avoided) → ≈ 0.97 when α is safe (preferred), so the preference tracks the *swapped safety contingency*, not source identity. **Scope:** substrate-primary is near-deterministic (LLM removed), so this is a mechanism-level result — the substrate, given correct credit assignment, learns and acts on a counterbalanced safety contingency. Override / LLM-prior dominance remains the separate Exp 38/40 line.
