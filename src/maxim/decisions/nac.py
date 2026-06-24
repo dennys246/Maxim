@@ -266,7 +266,19 @@ class NACConfig:
     # substrate_explore_bonus_weight > 0.
     substrate_explore_decay_tau: float = 50.0
 
-    # Drive-gating (motivated attention, Exp 42). When a drive's intensity
+    # Drive-gating (motivated attention, Exp 42).
+    #
+    # DORMANT since 2026-06-23: the Exp 42 frozen run's gating-OFF ablation
+    # graduated IDENTICALLY to the gating-ON arm (safe_pref 0.984/0.965, same C1
+    # flip + C2 signs — docs/experiments/42_substrate_primary_preference.md
+    # §Results), so this gate did NOT earn behavioral weight — clean per-source
+    # credit assignment (B8 delta-attribution) + the drive-affinity heuristic
+    # carry the discrimination on their own. Kept wired + default-OFF per the
+    # dormancy-over-deletion principle; build nothing new on it. Resurrection
+    # requires a future experiment that earns it (e.g. a task where the affinity
+    # nudge genuinely can't out-compete a snowballed zero-stakes tool).
+    #
+    # When a drive's intensity
     # exceeds ``drive_gate_threshold``, recommend_action narrows the
     # exploitation-phase candidate set to drive-RELEVANT tools (those a
     # >0.5 drive matched by name or affinity table) — a HARD attentional
