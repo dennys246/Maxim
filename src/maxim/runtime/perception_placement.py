@@ -20,15 +20,16 @@ no failover and no router to compile onto, so this is a typed sibling,
 not a shared runtime.
 
 This module ships the value type + target enum + coherence validator
-(commit 1). The stage DAG and the pinned/placeable model live alongside
-it in a follow-up (commit 2); pinned-ness is a property of a *stage*, not
-of a placement, so it is intentionally absent here.
+(commit 1) and the stage DAG + pinned/placeable model + resolver
+(commit 2). Pinned-ness is a property of a *stage* (``PerceptionStage``),
+not of an individual placement value.
 
 See ``docs/plans/perception_pipeline_placement.md``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -154,3 +155,113 @@ def validate_perception_placement_coherence(p: PerceptionStagePlacement, *, wher
             f"'node' — symbolic roles resolve to a node at construction time. "
             f"Use origin='node' to address a concrete node by name."
         )
+
+
+# ---------------------------------------------------------------------------
+# Stage DAG + pinned/placeable model (commit 2)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PerceptionStage:
+    """One stage in the perception pipeline DAG.
+
+    ``pinned`` is the genuinely new concept lane placement did not have:
+    a stage pinned by physics (raw capture + sub-ms DSP at the sensor;
+    substrate/cognition at the single substrate owner) cannot have its
+    placement overridden by config. ``placeable`` stages (the GPU-heavy
+    movable middle — segmentation, sensor-encode) can.
+
+    ``default_origin`` is the placement a stage takes when nothing
+    overrides it. It is always a **symbolic** role (never ``NODE``):
+    ``PerceptionStage`` carries no ``node`` field because a default cannot
+    hardcode a concrete node name — the symbolic role resolves to a
+    concrete node at construction time. ``__post_init__`` enforces this.
+
+    SHAPE-FROZEN at 1.0 (CC3). The DAG is defined in code (not operator-
+    authored), so the escape-hatch ``extra`` dict is deliberately rejected:
+    a stage definition is a fixed contract, and an ``extra`` dict would
+    invite per-stage logic the resolver could not honour. Adding a field
+    post-1.0 is a review-gated change.
+    """
+
+    name: str
+    pinned: bool
+    default_origin: StageOrigin
+
+    def __post_init__(self) -> None:
+        if self.default_origin is StageOrigin.NODE:
+            raise ValueError(
+                f"PerceptionStage {self.name!r}: default_origin must be a "
+                f"symbolic role (self/sensor/substrate_owner), not 'node' — a "
+                f"default cannot hardcode a concrete node (no node field on a "
+                f"stage). Concrete-node placement comes from a config override."
+            )
+
+
+# The canonical perception pipeline. Order is the data-flow order; pinned
+# stages are fixed by physics (see the stage model in
+# docs/plans/perception_pipeline_placement.md). An unconfigured pipeline
+# resolves every stage to its default_origin — which is all-symbolic and,
+# in the self-contained single-node case, all-local: byte-identical to
+# today's behaviour (no distribution).
+CANONICAL_PERCEPTION_PIPELINE: tuple[PerceptionStage, ...] = (
+    PerceptionStage("capture", pinned=True, default_origin=StageOrigin.SENSOR),
+    PerceptionStage("dsp", pinned=True, default_origin=StageOrigin.SENSOR),
+    PerceptionStage("segmentation", pinned=False, default_origin=StageOrigin.SELF),
+    PerceptionStage("sensor_encode", pinned=False, default_origin=StageOrigin.SELF),
+    PerceptionStage("substrate", pinned=True, default_origin=StageOrigin.SUBSTRATE_OWNER),
+    PerceptionStage("cognition", pinned=True, default_origin=StageOrigin.SUBSTRATE_OWNER),
+)
+
+
+def resolve_pipeline_placements(
+    dag: tuple[PerceptionStage, ...] = CANONICAL_PERCEPTION_PIPELINE,
+    overrides: Mapping[str, PerceptionStagePlacement] | None = None,
+    *,
+    where: str = "perception pipeline",
+) -> tuple[PerceptionStagePlacement, ...]:
+    """Resolve a stage DAG (+ optional config overrides) to ordered placements.
+
+    Mirrors the spirit of ``lane_backends.derive_placement``'s
+    empty-means-legacy back-compat: with **no overrides**, every stage
+    resolves to its ``default_origin`` — the all-local, no-distribution
+    behaviour that is byte-identical to today. Overrides (keyed by stage
+    name) move *placeable* stages only.
+
+    Fails loud at this producer boundary (Q3) on:
+
+    - an override naming an unknown stage,
+    - an override targeting a **pinned** stage (placement is fixed by
+      physics — config cannot move it),
+    - an override whose ``stage`` field disagrees with its dict key,
+    - an incoherent override (delegated to
+      :func:`validate_perception_placement_coherence`).
+    """
+    overrides = overrides or {}
+    known = {s.name for s in dag}
+    unknown = set(overrides) - known
+    if unknown:
+        raise ValueError(
+            f"{where}: override(s) for unknown stage(s) {sorted(unknown)}; known stages are {sorted(known)}."
+        )
+
+    resolved: list[PerceptionStagePlacement] = []
+    for stage in dag:
+        override = overrides.get(stage.name)
+        if override is None:
+            resolved.append(PerceptionStagePlacement(stage=stage.name, origin=stage.default_origin))
+            continue
+        if stage.pinned:
+            raise ValueError(
+                f"{where}: stage {stage.name!r} is pinned by physics and cannot "
+                f"be placed by config (attempted origin '{override.origin}'). "
+                f"Only placeable stages may be overridden."
+            )
+        if override.stage != stage.name:
+            raise ValueError(
+                f"{where}: override for key {stage.name!r} carries mismatched stage field {override.stage!r}."
+            )
+        validate_perception_placement_coherence(override, where=f"{where}: {stage.name}")
+        resolved.append(override)
+    return tuple(resolved)
