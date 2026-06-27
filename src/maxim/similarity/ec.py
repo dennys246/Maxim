@@ -208,7 +208,12 @@ class ECConfig:
     # drift collapses to one cluster"). Declared at the EC config
     # layer, not at the call site, so any future encoder routing
     # through "interoception" automatically inherits the policy.
-    frozen_centroid_modalities: frozenset[str] = frozenset({"interoception"})
+    # "audio" (exteroceptive sound-localization, perception_pipeline_placement.md
+    # Q5): a densely-streamed continuous azimuth/elevation signal would walk a
+    # running-mean centroid into the same collapse interoception suffers, so
+    # exteroceptive localization nodes are frozen-prototype too — stable
+    # per-direction clusters for NAc to attach reward-bias to.
+    frozen_centroid_modalities: frozenset[str] = frozenset({"interoception", "audio"})
 
 
 @dataclass

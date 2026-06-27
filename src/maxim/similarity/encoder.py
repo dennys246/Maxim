@@ -527,10 +527,12 @@ class SensorEncoder:
         self.atl = atl
         self._nac = nac
         self.config = config or SensorEncoderConfig()
-        self._last_sensors: dict[str, dict[str, float]] = {}  # per-agent
-        self._last_node_id: dict[str, str] = {}  # per-agent
+        self._last_sensors: dict[tuple[str, str], dict[str, float]] = {}  # per (agent_id, modality)
+        self._last_node_id: dict[tuple[str, str], str] = {}  # per (agent_id, modality)
 
-    def encode_sensors(self, *, agent_id: str, sensors: dict[str, float]) -> str | None:
+    def encode_sensors(
+        self, *, agent_id: str, sensors: dict[str, float], modality: str = "interoception"
+    ) -> str | None:
         """Encode the current sensor reading; return EC node ID.
 
         Args:
@@ -539,6 +541,19 @@ class SensorEncoder:
                 delta gate becomes process-global instead of per-agent.
             sensors: ``{sensor_name: float_value}`` snapshot. Empty
                 dict short-circuits and returns None.
+            modality: EC substrate modality tag for the encoded node.
+                Defaults to ``"interoception"`` (the cradle drive path —
+                existing callers are byte-identical). Exteroceptive
+                sensors pass a distinct tag (e.g. ``"audio"`` for sound
+                localization) so their nodes form a separate within-modality
+                cluster space and inherit the right centroid policy (audio
+                is frozen-centroid by default, like interoception — see
+                ``ECConfig.frozen_centroid_modalities`` and
+                ``docs/plans/perception_pipeline_placement.md`` Q5).
+                Per-sensor value range is the caller's responsibility:
+                values must already sit in ``[0, 1]`` or ``[-1, 1]`` (e.g.
+                emit azimuth as ``degrees/180``) so the shared
+                ``_normalize_value`` applies unchanged.
 
         Returns:
             The EC node ID the pattern resolved to, or ``None`` when
@@ -548,19 +563,24 @@ class SensorEncoder:
             return None
 
         # Delta gate — skip EC scan when nothing has moved enough.
-        prev = self._last_sensors.get(agent_id)
+        # Keyed per (agent_id, modality) so an agent encoding multiple
+        # modalities through one SensorEncoder (e.g. interoception drives +
+        # audio localization) cannot conflate delta stashes across
+        # modalities — the per-agent-stash footgun from CLAUDE.md.
+        stash_key = (agent_id, modality)
+        prev = self._last_sensors.get(stash_key)
         if prev is not None and self._max_delta(prev, sensors) < self.config.min_delta:
-            return self._last_node_id.get(agent_id)
+            return self._last_node_id.get(stash_key)
 
         embedding = _sensor_embed(sensors, dim=self.config.embedding_dim)
 
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
-            modality="interoception",
+            modality=modality,
             threshold=self.config.pattern_threshold,
         )
         if result.is_new:
-            self.ec.register_substrate_node(result.node_id, embedding, "interoception")
+            self.ec.register_substrate_node(result.node_id, embedding, modality)
 
         # ATL activation gives the node a human-readable label so
         # operator tooling that pages through EC nodes sees the
@@ -572,7 +592,7 @@ class SensorEncoder:
                 self.atl.activate_substrate_node(
                     node_id=result.node_id,
                     text=label,
-                    substrate_modality="interoception",
+                    substrate_modality=modality,
                     embedding_text=label,
                 )
             except Exception:
@@ -600,8 +620,8 @@ class SensorEncoder:
             except Exception:
                 logger.debug("SensorEncoder: NAc.update_eligibility raised", exc_info=True)
 
-        self._last_sensors[agent_id] = dict(sensors)
-        self._last_node_id[agent_id] = result.node_id
+        self._last_sensors[stash_key] = dict(sensors)
+        self._last_node_id[stash_key] = result.node_id
 
         logger.debug(
             "Encoded sensor pattern → node %s (sim=%.3f, new=%s, sensors=%d)",

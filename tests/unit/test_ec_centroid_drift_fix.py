@@ -137,11 +137,15 @@ def test_nac_threshold_override_clamps_to_floor_at_high_bias() -> None:
     )
 
 
-def test_frozen_centroid_modalities_default_unchanged() -> None:
-    """Phase 3 changed the threshold, NOT the frozen-centroid set.
+def test_frozen_centroid_modalities_default() -> None:
+    """Frozen-centroid set = interoception + audio.
 
     Phase 2 ruled out frozen-text-centroid as a fix variant
-    (d0_f1_* cells hurt P1 paraphrase recall). The frozen set should
-    still contain only "interoception".
+    (d0_f1_* cells hurt P1 paraphrase recall), so "text"/"vision" stay
+    drifting. "audio" was added (perception_pipeline_placement.md Q5,
+    2026-06-27) because a densely-streamed continuous sound-localization
+    signal would walk a running-mean centroid into the same collapse
+    interoception suffers — exteroceptive localization nodes are
+    frozen-prototype for stable per-direction clusters.
     """
-    assert ECConfig().frozen_centroid_modalities == frozenset({"interoception"})
+    assert ECConfig().frozen_centroid_modalities == frozenset({"interoception", "audio"})
