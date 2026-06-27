@@ -1,6 +1,8 @@
 # Mesh Perception Transport — peer-tunneled sensory percepts
 
 **Status:** Shell plan, drafted 2026-06-02. 1.0 prep work scoped; 1.1 implementation sketched.
+
+> **CORRECTION (2026-06-22):** This plan's "no raw frames, peer always segments, ships event-shaped percepts" framing assumed a single frozen cut point in the perception pipeline. That conflated *what a stage does* with *where it runs* — the mirror-image of the mistake [`lane_capability_placement_split.md`](lane_capability_placement_split.md) corrected for LLM lanes. **Where each perception stage runs is a placement decision, per stage** — see [`perception_pipeline_placement.md`](perception_pipeline_placement.md). The raw-frames ban demotes from invariant to **default-with-opt-out** (see the v1 non-goal below). Nothing shipped needs undoing: `Percept.to_wire_dict` remains valid as the *post-segmentation cut-point payload* — one of several, additive. The transport in this plan is the byte-mover *between* placed stages; the placement plan decides which stages sit on which side of the wire.
 **Scope:** ~80-150 LOC of refactor + wire-format reservations in 1.0; ~400-600 LOC of transport + adapter + endpoint family in 1.1.
 **Target versions:** 1.0 (prep + reservations only — no transport), 1.1 (full ship alongside Hivemind).
 **Gates:** None as a 1.0 release gate. The 1.0 prep items gate themselves on the refactor-now-or-refactor-later test (see "Why land prep in 1.0" below).
@@ -259,7 +261,7 @@ Explicitly out of scope for v1, but: does the wire envelope shape allow a future
 
 ## v1 scope cut (explicit non-goals for 1.1 ship)
 
-- **No raw video / raw audio frames over the wire.** Peer does on-device STT + segmentation, ships event-shaped percepts. Frames stay local.
+- **No raw video / raw audio frames over the wire *in the first cut point*** (demoted from invariant to default per the 2026-06-22 correction). The default placement keeps segmentation/STT on the peer and ships event-shaped percepts — frames stay local. Placing segmentation on a leader (e.g. a no-GPU sensor peer) opts into a frame-transport cut point under a size cap; that is a 1.2+ second cut point built on demand, not a banned path. See [`perception_pipeline_placement.md`](perception_pipeline_placement.md).
 - **No bidirectional perception flow.** Leader → peer "look at this" is out of scope. Perception flows peer → leader only.
 - **No multi-peer fan-in of the same modality.** Two Reachy peers reporting vision to one leader is allowed (different node names) but the leader doesn't reconcile them — agent loop sees both as independent `PerceptSource`s.
 - **No per-percept ACL / authorization beyond cluster key.** Same v1 limitation as the doc-transport plan; C7 per-peer identity layers on top later.
