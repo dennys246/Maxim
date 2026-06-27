@@ -112,6 +112,20 @@ cognition (NAc/loop)     PINNED*      co-located with the substrate
 
 Note: `PerceptContext.Modality` already includes `"audio"` (`percept_context.py:72`), so the *percept* side is partly there; the gap is the *substrate-encode* side.
 
+**RESOLVED (Q5, 2026-06-27):** per-modality tag `"audio"` (not a generic `"sensor"` umbrella — keeps audio nodes out of the interoception/future-vision within-modality scan); **frozen-centroid** (`"audio"` added to `frozen_centroid_modalities`) — the running-mean branch ([`ec.py:396-402`](../../src/maxim/similarity/ec.py#L396)) is exactly the documented centroid-drift collapse, and a densely-streamed continuous signal makes that *more* likely, not less, so frozen prototypes ([`ec.py:386-394`](../../src/maxim/similarity/ec.py#L386)) give stable per-direction clusters for NAc to attach reward-bias to; **normalize at the sensor** (emit azimuth as `[-1,1]`, e.g. `degrees/180`) so the shared `_normalize_value` is untouched (zero blast radius on interoception); `encode_sensors(..., modality="interoception")` stays the default so existing callers are byte-identical. Frozen-vs-drift is a behavioral call flagged for empirical re-check; shipping frozen as the safe default.
+
+### Multi-axis localization is a per-body declared capability
+
+Sound localization has up to two angular axes — **azimuth** (horizontal) and **elevation** (vertical). Which axes a robot can resolve is a property of its **mic-array geometry**, not of the sound source: a coplanar array recovers azimuth only (the cone-of-confusion makes elevation ambiguous from timing alone); a non-coplanar array recovers elevation too via vertical-baseline TDOA. (Spectral-cue / HRTF elevation is a harder, separate method — deferred per-hardware.)
+
+This is a capability the **SEM body declares**, exactly like every other sensor/drive/affordance — NOT a fork in cognition/substrate code:
+- a 3D-array body YAML declares `azimuth` + `elevation` sensors, a centeredness drive on each, and `turn_left`/`turn_right` + `look_up`/`look_down` affordances;
+- a coplanar body declares `azimuth` + `turn_left`/`turn_right` and stops.
+
+The substrate/placement code is axis-agnostic by construction: `_sensor_embed` already takes a multi-key dict (az+el → one joint embedding, exactly like interoception's hunger+thirst+temperature), drives are per-sensor, and orient affordances are per-axis. The generic wiring iterates whatever localization axes the body declares.
+
+**Guardrail (anti-over-engineering):** ride on the existing SEM body declarations — do **NOT** introduce a new `AxisSpec` type or an axis config schema. If one starts to appear, stop and use the body YAML. The *abstraction* is general from day one; the per-hardware **DSP** (especially spectral-cue elevation) lands only when a robot that needs it is the target. First slice validates **azimuth-only** on the Reachy; elevation flips on via body YAML for a non-coplanar robot with no cognition-code change. (Later nicety: mark a given reading's elevation low-confidence and skip that tick's elevation-drive update.)
+
 ---
 
 ## Driving consumer: the Reachy Mini sound-localization cradle
@@ -166,7 +180,7 @@ Binding "this sound source" to "that visual object." This is genuinely novel res
 2. **Where does the stage DAG live?** `config.json::perception` (declarative) vs. body-YAML vs. code. Lean: declarative `config.json` twin for *placement overrides*, DAG defined in code (stages are not operator-authored).
 3. **Pinned-override rejection: warn or fail?** Lean: fail loud at the producer boundary (consistent with `validate_placement_coherence`).
 4. **Cut-point payload registry — ownership.** The wire payload/envelope (how cut-point payloads are discriminated, e.g. a `cut_point` tag) is **owned by [`mesh_perception_transport.md`](mesh_perception_transport.md)**, not this plan — to avoid the "merge before multiplying" trap of two plans building the same registry. This plan owns only the cut-point *selection policy* (which boundary the placement implies); the transport plan owns what crosses it. Align the two when the transport ships.
-5. **Exteroceptive modality semantics.** New `"sensor"` umbrella tag vs. per-modality tags; frozen-centroid vs. drifting; normalization for azimuth. (Touches the EC centroid-drift lesson.)
+5. **Exteroceptive modality semantics — RESOLVED (2026-06-27).** Per-modality `"audio"` tag; **frozen-centroid** (added to `frozen_centroid_modalities`); normalize at the sensor (`[-1,1]`); `interoception` stays the `encode_sensors` default. Multi-axis (azimuth/elevation) is a per-body declared capability, not a code fork. Rationale + the anti-over-engineering guardrail are in the "Substrate side" section.
 6. **Verify the dim-consistency premise** before *any* cross-modal reasoning — confirm audio + visual exteroceptive sensors actually encode at the same dim in the same modality space. Do not assume.
 7. **Reuse boundary for the stage-runner.** Exactly which of `PerceptionAgent` / `CaptureManager` / `BioEnrichmentPipeline` carries the localized-source stage, and what (if anything) genuinely needs new code beyond placement resolution + the sensor front-end?
 
