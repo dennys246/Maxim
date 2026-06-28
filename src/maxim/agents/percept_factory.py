@@ -135,3 +135,52 @@ def make_intero_percept(
         metadata=metadata,
         sensory=sensory,
     )
+
+
+def make_audio_percept(
+    azimuth: float,
+    *,
+    source: str = "audio",
+    agent_id: str | None = None,
+    salience: float = 0.5,
+    novelty: float = 0.3,
+    metadata: dict[str, Any] | None = None,
+    sensory: SensoryTag | None = None,
+) -> Percept:
+    """Create an audio sound-localization Percept (sound direction).
+
+    ``azimuth`` is the normalized horizontal direction in ``[-1, 1]``
+    (``-1`` = left, ``0`` = centered/front, ``+1`` = right). It is carried
+    both in the human-readable ``content`` and in ``metadata["azimuth"]``
+    so the substrate encoder can route it through the ``"audio"`` modality
+    (see :func:`maxim.similarity.encoder.SensorEncoder.encode_sensors`).
+
+    Channel is ``"internal"`` (sensor telemetry) and the sensory tag is
+    ``SOUND``; modality is ``"audio"``. See
+    ``docs/embodiment/reachy_mini.md`` for how a real device's onboard DoA
+    feeds this factory.
+    """
+    ts = time.time()
+    ctx = PerceptContext(
+        channel="internal",
+        timestamp=ts,
+        agent_id=agent_id,
+    )
+    if sensory is None:
+        sensory = SensoryTag(modality=SensoryModality.SOUND)
+    meta: dict[str, Any] = {"azimuth": float(azimuth)}
+    if metadata:
+        meta.update(metadata)
+    content = f"sound at azimuth {azimuth:+.2f}"
+    _log_percept(source, content, "audio")
+    return Percept(
+        timestamp=ts,
+        source=source,
+        content=content,
+        salience=salience,
+        novelty=novelty,
+        context=ctx,
+        modality="audio",
+        metadata=meta,
+        sensory=sensory,
+    )
