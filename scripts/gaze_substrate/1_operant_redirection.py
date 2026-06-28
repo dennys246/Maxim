@@ -48,7 +48,6 @@ Notes / scoping (deliberate, documented per CLAUDE.md no-bandaid rule)
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 
@@ -61,9 +60,9 @@ from maxim.decisions.nac import NAc, NACConfig  # noqa: E402
 
 # ---- world / policy constants -------------------------------------------------
 GAZE_LIMIT = 90.0
-FOVEA = 10.0            # |rel| <= FOVEA  => foveated => reward
-NEAR_EDGE = 35.0        # boundary between near and far bins
-ACTIONS = {             # name -> gaze delta (degrees)
+FOVEA = 10.0  # |rel| <= FOVEA  => foveated => reward
+NEAR_EDGE = 35.0  # boundary between near and far bins
+ACTIONS = {  # name -> gaze delta (degrees)
     "pan_left_big": -15.0,
     "pan_left_small": -5.0,
     "stay": 0.0,
@@ -71,9 +70,9 @@ ACTIONS = {             # name -> gaze delta (degrees)
     "pan_right_big": +15.0,
 }
 ACTION_NAMES = list(ACTIONS)
-EPSILON = 0.15          # exploration rate (the random motor-babble prior)
-MIN_CONF = 0.05         # recommend_action gate: any single reinforced hit (0.15) clears it
-DRIFT = 3.0             # subject random-walk step (deg/tick)
+EPSILON = 0.15  # exploration rate (the random motor-babble prior)
+MIN_CONF = 0.05  # recommend_action gate: any single reinforced hit (0.15) clears it
+DRIFT = 3.0  # subject random-walk step (deg/tick)
 
 
 def bin_of(rel: float) -> str:
@@ -112,7 +111,7 @@ def run_session(arm: str, seed: int, ticks: int, nac: NAc, agent_id: str) -> lis
             rec = nac.recommend_action(
                 agent_id=agent_id,
                 available_tools=ACTION_NAMES,
-                current_drives=None,            # skip name-substring heuristic
+                current_drives=None,  # skip name-substring heuristic
                 current_cluster_id=pre_bin,
                 min_confidence=MIN_CONF,
             )
@@ -126,9 +125,9 @@ def run_session(arm: str, seed: int, ticks: int, nac: NAc, agent_id: str) -> lis
 
         # --- directedness: did this move help? (mechanism check) ---
         if foveated_before:
-            good = action == "stay"               # already centred: hold
+            good = action == "stay"  # already centred: hold
         else:
-            good = abs(rel_after) < abs(rel)       # moved subject toward centre
+            good = abs(rel_after) < abs(rel)  # moved subject toward centre
         good_series.append(1 if good else 0)
         foveated_series.append(1 if foveated_after else 0)
 
@@ -145,9 +144,8 @@ def run_session(arm: str, seed: int, ticks: int, nac: NAc, agent_id: str) -> lis
         # --- subject slow random walk ---
         if rng.random() < 0.1:
             drift_dir = -drift_dir
-        subject = float(np.clip(subject + drift_dir * DRIFT * rng.uniform(0.3, 1.0),
-                                -GAZE_LIMIT, GAZE_LIMIT))
-        if abs(subject) >= GAZE_LIMIT - 1e-6:      # bounce off the edges
+        subject = float(np.clip(subject + drift_dir * DRIFT * rng.uniform(0.3, 1.0), -GAZE_LIMIT, GAZE_LIMIT))
+        if abs(subject) >= GAZE_LIMIT - 1e-6:  # bounce off the edges
             drift_dir = -drift_dir
 
     return foveated_series, good_series
@@ -170,21 +168,19 @@ def main() -> None:
         for a in range(agents):
             nac = NAc(NACConfig())
             agent_id = f"{arm}_agent_{a}"
-            fov, good = run_session(arm, seed=1000 * a + hash(arm) % 97, ticks=ticks,
-                                    nac=nac, agent_id=agent_id)
+            fov, good = run_session(arm, seed=1000 * a + hash(arm) % 97, ticks=ticks, nac=nac, agent_id=agent_id)
             fov_curves.append(windowed(fov, n_windows))
             good_curves.append(windowed(good, n_windows))
         results[arm] = {
-            "foveation": np.array(fov_curves),   # (agents, windows)
+            "foveation": np.array(fov_curves),  # (agents, windows)
             "directed": np.array(good_curves),
         }
 
     # ---- report ----
     print(f"\nOperant gaze probe  |  {agents} agents/arm  x  {ticks} ticks  |  {n_windows} windows\n")
-    for metric, label in [("foveation", "FOVEATION RATE (outcome)"),
-                          ("directed", "DIRECTEDNESS (mechanism)")]:
+    for metric, label in [("foveation", "FOVEATION RATE (outcome)"), ("directed", "DIRECTEDNESS (mechanism)")]:
         print(f"== {label} ==")
-        print(f"  {'window':<10}" + "".join(f"w{i+1:<7}" for i in range(n_windows)))
+        print(f"  {'window':<10}" + "".join(f"w{i + 1:<7}" for i in range(n_windows)))
         for arm in arms:
             m = results[arm][metric].mean(axis=0)
             print(f"  {arm:<10}" + "".join(f"{v:<8.3f}" for v in m))
@@ -231,13 +227,15 @@ def main() -> None:
 
     wl = windowed(fov_loaded, n_windows)
     wf = windowed(fov_fresh, n_windows)
-    print(f"  {'window':<10}" + "".join(f"w{i+1:<7}" for i in range(n_windows)))
+    print(f"  {'window':<10}" + "".join(f"w{i + 1:<7}" for i in range(n_windows)))
     print(f"  {'loaded':<10}" + "".join(f"{v:<8.3f}" for v in wl))
     print(f"  {'fresh':<10}" + "".join(f"{v:<8.3f}" for v in wf))
-    early_gap = float(np.mean(wl[:3]) - np.mean(wf[:3]))   # first-half advantage
+    early_gap = float(np.mean(wl[:3]) - np.mean(wf[:3]))  # first-half advantage
     print(f"\n  early (w1-3) advantage of loaded over fresh = {early_gap:+.3f}")
-    print("  (>0 => learning survived dump/load: the loaded agent is competent"
-          "\n   sooner than a cold agent on the same world.)")
+    print(
+        "  (>0 => learning survived dump/load: the loaded agent is competent"
+        "\n   sooner than a cold agent on the same world.)"
+    )
 
 
 if __name__ == "__main__":

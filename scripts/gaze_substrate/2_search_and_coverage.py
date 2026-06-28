@@ -33,7 +33,7 @@ Reward shape (preserves "nothing without a subject in view"):
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -43,14 +43,17 @@ from maxim.decisions.nac import NAc, NACConfig  # noqa: E402
 GAZE_LIMIT = 90.0
 FOVEA = 10.0
 ACTIONS = {
-    "pan_left_big": -20.0, "pan_left_med": -10.0, "pan_left_small": -4.0,
+    "pan_left_big": -20.0,
+    "pan_left_med": -10.0,
+    "pan_left_small": -4.0,
     "stay": 0.0,
-    "pan_right_small": +4.0, "pan_right_med": +10.0, "pan_right_big": +20.0,
+    "pan_right_small": +4.0,
+    "pan_right_med": +10.0,
+    "pan_right_big": +20.0,
 }
 ACTION_NAMES = list(ACTIONS)
 EMPTY_STATES = ["empty_left", "empty_right"]
-ALL_STATES = ["far_left", "mid_left", "near_left", "center",
-              "near_right", "mid_right", "far_right"] + EMPTY_STATES
+ALL_STATES = ["far_left", "mid_left", "near_left", "center", "near_right", "mid_right", "far_right"] + EMPTY_STATES
 EPSILON = 0.15
 MIN_CONF = 0.05
 DRIFT = 3.0
@@ -62,9 +65,9 @@ class Config:
     fov_half: float = 45.0
     p_reward: float = 0.4
     habituation: bool = False
-    hab_decay: float = 0.90       # freshness *= this while foveated
-    hab_recover: float = 0.03     # freshness += this while not foveated
-    transient: bool = True        # subjects respawn on lifetime end; False = persistent (lockable)
+    hab_decay: float = 0.90  # freshness *= this while foveated
+    hab_recover: float = 0.03  # freshness += this while not foveated
+    transient: bool = True  # subjects respawn on lifetime end; False = persistent (lockable)
 
 
 @dataclass
@@ -94,10 +97,14 @@ def run_session(arm: str, cfg: Config, seed: int, nac: NAc, agent_id: str, ticks
     next_sid = [0]
 
     def spawn() -> Subject:
-        life = 10 ** 9 if not cfg.transient else int(rng.integers(150, 400))
-        s = Subject(bearing=float(rng.uniform(-GAZE_LIMIT, GAZE_LIMIT)),
-                    drift_dir=float(rng.choice([-1.0, 1.0])),
-                    freshness=1.0, life=life, sid=next_sid[0])
+        life = 10**9 if not cfg.transient else int(rng.integers(150, 400))
+        s = Subject(
+            bearing=float(rng.uniform(-GAZE_LIMIT, GAZE_LIMIT)),
+            drift_dir=float(rng.choice([-1.0, 1.0])),
+            freshness=1.0,
+            life=life,
+            sid=next_sid[0],
+        )
         next_sid[0] += 1
         return s
 
@@ -127,9 +134,13 @@ def run_session(arm: str, cfg: Config, seed: int, nac: NAc, agent_id: str, ticks
         if rng.random() < EPSILON:
             action = str(rng.choice(ACTION_NAMES))
         else:
-            rec = nac.recommend_action(agent_id=agent_id, available_tools=ACTION_NAMES,
-                                       current_drives=None, current_cluster_id=pre_state,
-                                       min_confidence=MIN_CONF)
+            rec = nac.recommend_action(
+                agent_id=agent_id,
+                available_tools=ACTION_NAMES,
+                current_drives=None,
+                current_cluster_id=pre_state,
+                min_confidence=MIN_CONF,
+            )
             action = rec["tool_name"] if rec else str(rng.choice(ACTION_NAMES))
         delta = ACTIONS[action]
         gaze = float(np.clip(gaze + delta, -GAZE_LIMIT, GAZE_LIMIT))
@@ -149,7 +160,7 @@ def run_session(arm: str, cfg: Config, seed: int, nac: NAc, agent_id: str, ticks
             foveated = fov
 
         # --- directedness (mechanism check) ---
-        if pre_tgt is None:                       # searching: pan toward last-seen side?
+        if pre_tgt is None:  # searching: pan toward last-seen side?
             good = (last_side == "left" and delta < 0) or (last_side == "right" and delta > 0)
         elif foveated_before:
             good = action == "stay"
@@ -164,7 +175,8 @@ def run_session(arm: str, cfg: Config, seed: int, nac: NAc, agent_id: str, ticks
         if arm == "contingent":
             nac.update_cluster_reward(agent_id, pre_state, f"tool:{action}", reward)
         elif arm == "yoked" and reward > 0:
-            rb = str(rng.choice(ALL_STATES)); ra = str(rng.choice(ACTION_NAMES))
+            rb = str(rng.choice(ALL_STATES))
+            ra = str(rng.choice(ACTION_NAMES))
             nac.update_cluster_reward(agent_id, rb, f"tool:{ra}", reward)
 
         # --- habituation: drain the stared-at subject, recover the rest ---
@@ -179,8 +191,7 @@ def run_session(arm: str, cfg: Config, seed: int, nac: NAc, agent_id: str, ticks
         for i, s in enumerate(subjects):
             if rng.random() < 0.1:
                 s.drift_dir = -s.drift_dir
-            s.bearing = float(np.clip(s.bearing + s.drift_dir * DRIFT * rng.uniform(0.3, 1.0),
-                                      -GAZE_LIMIT, GAZE_LIMIT))
+            s.bearing = float(np.clip(s.bearing + s.drift_dir * DRIFT * rng.uniform(0.3, 1.0), -GAZE_LIMIT, GAZE_LIMIT))
             if abs(s.bearing) >= GAZE_LIMIT - 1e-6:
                 s.drift_dir = -s.drift_dir
             s.life -= 1
@@ -188,8 +199,10 @@ def run_session(arm: str, cfg: Config, seed: int, nac: NAc, agent_id: str, ticks
                 subjects[i] = spawn()
 
     return {
-        "in_fov": fov_series, "foveated": foveated_series,
-        "directed": directed_series, "foveated_sid": foveated_sid,
+        "in_fov": fov_series,
+        "foveated": foveated_series,
+        "directed": directed_series,
+        "foveated_sid": foveated_sid,
     }
 
 
@@ -207,25 +220,27 @@ def coverage_per_window(sids, n):
 
 def run_arms(cfg: Config, label: str, agents=16, ticks=2500, n_windows=6):
     print(f"\n########## {label} ##########")
-    print(f"  subjects={cfg.num_subjects} fov_half={cfg.fov_half} p_reward={cfg.p_reward} "
-          f"habituation={cfg.habituation}  | {agents} agents x {ticks} ticks")
+    print(
+        f"  subjects={cfg.num_subjects} fov_half={cfg.fov_half} p_reward={cfg.p_reward} "
+        f"habituation={cfg.habituation}  | {agents} agents x {ticks} ticks"
+    )
     res = {}
     for arm in ["contingent", "yoked", "none"]:
         fov, foveated, directed = [], [], []
         for a in range(agents):
             nac = NAc(NACConfig())
-            r = run_session(arm, cfg, seed=1000 * a + (hash(arm + label) % 97),
-                            nac=nac, agent_id=f"{arm}_{a}")
+            r = run_session(arm, cfg, seed=1000 * a + (hash(arm + label) % 97), nac=nac, agent_id=f"{arm}_{a}")
             fov.append(win(r["in_fov"], n_windows))
             foveated.append(win(r["foveated"], n_windows))
             directed.append(win(r["directed"], n_windows))
-        res[arm] = {"in_fov": np.array(fov), "foveated": np.array(foveated),
-                    "directed": np.array(directed)}
-    for metric, name in [("foveated", "FOVEATION (pursuit)"),
-                         ("in_fov", "IN-FOV / acquisition (search, Layer 0)"),
-                         ("directed", "DIRECTEDNESS (mechanism)")]:
+        res[arm] = {"in_fov": np.array(fov), "foveated": np.array(foveated), "directed": np.array(directed)}
+    for metric, name in [
+        ("foveated", "FOVEATION (pursuit)"),
+        ("in_fov", "IN-FOV / acquisition (search, Layer 0)"),
+        ("directed", "DIRECTEDNESS (mechanism)"),
+    ]:
         print(f"  -- {name} --")
-        print(f"     {'arm':<11}" + "".join(f"w{i+1:<6}" for i in range(n_windows)))
+        print(f"     {'arm':<11}" + "".join(f"w{i + 1:<6}" for i in range(n_windows)))
         for arm in ["contingent", "yoked", "none"]:
             m = res[arm][metric].mean(axis=0)
             print(f"     {arm:<11}" + "".join(f"{v:<7.3f}" for v in m))
@@ -242,8 +257,9 @@ def cross_session(cfg: Config, label: str, pairs=16, eval_ticks=600, n_windows=6
         trained = NAc(NACConfig())
         run_session("contingent", cfg, seed=5000 + p, nac=trained, agent_id="xs", ticks=2500)
         state = trained.dump()
-        ev = 9000 + p                                   # eval dynamics shared by both
-        loaded = NAc(NACConfig()); loaded.load_state(state)
+        ev = 9000 + p  # eval dynamics shared by both
+        loaded = NAc(NACConfig())
+        loaded.load_state(state)
         rl = run_session("contingent", cfg, seed=ev, nac=loaded, agent_id="xs", ticks=eval_ticks)
         fresh = NAc(NACConfig())
         rf = run_session("contingent", cfg, seed=ev, nac=fresh, agent_id="xs2", ticks=eval_ticks)
@@ -252,13 +268,15 @@ def cross_session(cfg: Config, label: str, pairs=16, eval_ticks=600, n_windows=6
         gaps.append(float(np.mean(rl["foveated"]) - np.mean(rf["foveated"])))
     wl = np.array(loaded_curves).mean(axis=0)
     wf = np.array(fresh_curves).mean(axis=0)
-    print(f"     {'':<8}" + "".join(f"w{i+1:<6}" for i in range(n_windows)))
+    print(f"     {'':<8}" + "".join(f"w{i + 1:<6}" for i in range(n_windows)))
     print(f"     {'loaded':<8}" + "".join(f"{v:<7.3f}" for v in wl))
     print(f"     {'fresh':<8}" + "".join(f"{v:<7.3f}" for v in wf))
     g = np.array(gaps)
     se = g.std() / np.sqrt(len(g))
-    print(f"     whole-eval foveation advantage (loaded-fresh) = {g.mean():+.3f} "
-          f"+/- {se:.3f} SE  over {pairs} pairs  (v1 was +0.107, noisy single-pair)")
+    print(
+        f"     whole-eval foveation advantage (loaded-fresh) = {g.mean():+.3f} "
+        f"+/- {se:.3f} SE  over {pairs} pairs  (v1 was +0.107, noisy single-pair)"
+    )
 
 
 def dwell_concentration(sids):
@@ -281,17 +299,19 @@ def coverage_demo(agents=16, ticks=2500, n_windows=6):
         fovs, covs, conc = [], [], []
         for a in range(agents):
             nac = NAc(NACConfig())
-            r = run_session("contingent", cfg, seed=2000 + a, nac=nac,
-                            agent_id=f"cov_{hab}_{a}", ticks=ticks)
+            r = run_session("contingent", cfg, seed=2000 + a, nac=nac, agent_id=f"cov_{hab}_{a}", ticks=ticks)
             fovs.append(np.mean(r["foveated"]))
             covs.append(np.mean(coverage_per_window(r["foveated_sid"], n_windows)))
             conc.append(dwell_concentration(r["foveated_sid"]))
         tag = "habituation ON " if hab else "habituation OFF"
-        print(f"  {tag}:  foveation={np.mean(fovs):.3f}   "
-              f"distinct/window={np.mean(covs):.2f}/3   "
-              f"dwell-on-top-subject={np.mean(conc):.3f}")
-    print("  (OFF fixates -> high dwell-on-top + low distinct. "
-          "ON -> lower dwell concentration, more distinct subjects.)")
+        print(
+            f"  {tag}:  foveation={np.mean(fovs):.3f}   "
+            f"distinct/window={np.mean(covs):.2f}/3   "
+            f"dwell-on-top-subject={np.mean(conc):.3f}"
+        )
+    print(
+        "  (OFF fixates -> high dwell-on-top + low distinct. ON -> lower dwell concentration, more distinct subjects.)"
+    )
 
 
 def main():
