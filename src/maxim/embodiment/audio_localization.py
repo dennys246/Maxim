@@ -115,25 +115,28 @@ class AzimuthDoASource:
 
 
 def make_reachy_doa_reader(mini: object | None = None) -> DoAReader:
-    """Return a :data:`DoAReader` wrapping a live Reachy Mini's onboard DoA.
+    """Return a :data:`DoAReader` wrapping a Reachy Mini's onboard DoA.
 
-    Requires the optional ``reachy`` extra (``pip install pymaxim[reachy]``).
-    If ``mini`` is ``None``, constructs a ``ReachyMini`` and starts its media
-    stream so ``get_DoA()`` produces values.
+    If ``mini`` is ``None``, constructs a ``ReachyMini`` (which requires the
+    optional ``reachy`` extra, ``pip install pymaxim[reachy]``) and starts
+    its media stream so ``get_DoA()`` produces values. If a ``mini`` is
+    **injected**, no ``reachy_mini`` import happens at all — the optional
+    dependency is only needed to build the SDK object ourselves, so an
+    injected object (a real one, or a test fake) works without the extra
+    installed. This is why the adapter glue is CI-testable: the dep gate
+    lives inside the ``mini is None`` branch, not at the top.
 
     .. warning::
         The exact ``get_DoA()`` lifecycle/return shape is taken from the
-        Reachy Mini SDK docs and is **verified on-device**, not in CI (the
-        ``reachy`` extra is not installed in the test environment). The
+        Reachy Mini SDK docs and is **verified on-device**, not in CI. The
         hardware-agnostic core (:func:`doa_to_azimuth`,
-        :class:`AzimuthDoASource`) is what carries unit coverage; this
-        adapter is the thin glue to confirm against a physical unit.
+        :class:`AzimuthDoASource`) carries the unit coverage; this adapter
+        is the thin glue to confirm against a physical unit.
     """
-    from maxim.utils.optional_deps import require_optional_dependency
-
-    require_optional_dependency("reachy_mini", feature="Reachy Mini audio sound-localization")
-
     if mini is None:
+        from maxim.utils.optional_deps import require_optional_dependency
+
+        require_optional_dependency("reachy_mini", feature="Reachy Mini audio sound-localization")
         from reachy_mini import ReachyMini  # type: ignore[import-not-found]
 
         mini = ReachyMini()
