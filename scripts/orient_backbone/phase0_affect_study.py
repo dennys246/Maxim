@@ -79,8 +79,11 @@ def run(mode: str, seed: int, gain: float = 1.0, ticks: int = 2000):
             action = str(rng.choice(ANAMES))
         else:
             rec = nac.recommend_action(
-                agent_id="a", available_tools=ANAMES, current_drives=None,
-                current_cluster_id=pre_bin, min_confidence=ARGMAX,
+                agent_id="a",
+                available_tools=ANAMES,
+                current_drives=None,
+                current_cluster_id=pre_bin,
+                min_confidence=ARGMAX,
             )
             action = rec["tool_name"] if rec else str(rng.choice(ANAMES))
 
@@ -124,8 +127,11 @@ def eval_dir(nac, lo, hi, seed):
     for _ in range(400):
         az = float(rng.choice([-1.0, 1.0])) * float(rng.uniform(lo, hi))
         rec = nac.recommend_action(
-            agent_id="a", available_tools=ANAMES, current_drives=None,
-            current_cluster_id=az_bin(az), min_confidence=ARGMAX,
+            agent_id="a",
+            available_tools=ANAMES,
+            current_drives=None,
+            current_cluster_id=az_bin(az),
+            min_confidence=ARGMAX,
         )
         delta = ACTIONS[rec["tool_name"]] if rec else 0.0
         total += 1  # all eval offsets are off-center, so the correct act is never `stay`
@@ -145,7 +151,7 @@ def main():
         cent, near, far = [], [], []
         for s in seeds:
             series, nac = run(mode, s)
-            cent.append(float(np.mean(series[-len(series) // 3:])))  # last-third centering
+            cent.append(float(np.mean(series[-len(series) // 3 :])))  # last-third centering
             near.append(eval_dir(nac, 0.12, 0.34, 500 + s))
             far.append(eval_dir(nac, 0.40, 0.95, 700 + s))
         print(f"  {mode:<16}{np.mean(cent):<11.3f}{np.mean(near):<11.3f}{np.mean(far):<11.3f}")
