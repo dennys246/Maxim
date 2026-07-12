@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Phase 1, Step 1 — Reachy hardware smoke test (RUN ON THE DEVICE).
+"""Phase 1, Step 1 — Reachy hardware smoke test (RUN ON/ AGAINST THE DEVICE).
 
 docs/plans/reachy_orient_live.md Step 1. Verifies the THREE primitives the live
 orient loop needs, SEPARATELY, before we stack NAc on top:
@@ -7,29 +7,62 @@ orient loop needs, SEPARATELY, before we stack NAc on top:
   (b) read onboard DoA (make sounds left/right; azimuth should track the side),
   (c) move head_yaw +20deg / -20deg / recenter.
 
-Needs ONLY the Reachy SDK (no MediaMTX / Shredder / RTSP). Run with logging so the
-result can be read back:
+Standalone: needs ONLY the Reachy SDK (no maxim / MediaMTX / Shredder), so it can
+also run ONBOARD via `ssh pollen@reachy-mini` as a fallback if network discovery
+fails. Usage (from the laptop, on the Reachy hotspot):
 
-    MAXIM_LOG_FILE=/tmp/orient.jsonl python scripts/orient_backbone/live_1_smoke.py
+    python scripts/orient_backbone/live_1_smoke.py            # host defaults to 10.42.0.1
+    python scripts/orient_backbone/live_1_smoke.py --host 10.42.0.1
 
-STOP-if: DoA never returns, azimuth doesn't track L<->R, or the head doesn't move.
+CONNECTION NOTES (wireless Reachy Mini):
+  * The daemon runs on the robot when powered on and is at the hotspot gateway
+    (10.42.0.1). From a laptop use connection_mode="network" (multicast discovery).
+  * macOS: grant Terminal/Python "Local Network" permission (System Settings ->
+    Privacy & Security -> Local Network) or zenoh multicast discovery silently times out.
+  * Pre-flight below hits http://<host>:8000/docs — if THAT loads, the daemon is up
+    and network-reachable, and any remaining failure is zenoh discovery (perm/multicast).
 """
 
 from __future__ import annotations
 
+import argparse
 import math
 import sys
 import time
+import urllib.request
 
-from maxim.embodiment.audio_localization import doa_to_azimuth
+
+def doa_to_azimuth(doa_radians: float) -> float:
+    """Onboard DoA (0=left, pi/2=front/back, pi=right) -> azimuth [-1,1].
+    Mirrors maxim.embodiment.audio_localization.doa_to_azimuth (inlined to keep
+    this script dependency-free so it can run onboard)."""
+    az = (doa_radians - math.pi / 2.0) / (math.pi / 2.0)
+    return max(-1.0, min(1.0, az))
 
 
 def _yaw_deg(pose) -> float:
-    """Extract yaw (deg) from a 4x4 head pose (rotation about Z)."""
     return math.degrees(math.atan2(pose[1][0], pose[0][0]))
 
 
+def preflight(host: str) -> None:
+    url = f"http://{host}:8000/docs"
+    try:
+        with urllib.request.urlopen(url, timeout=3) as r:
+            print(f"[preflight] daemon HTTP reachable at {url} (status {r.status}) — "
+                  "daemon is up + network-exposed.")
+    except Exception as e:  # noqa: BLE001
+        print(f"[preflight] could NOT reach {url}: {e}")
+        print("            -> the daemon isn't network-reachable at that IP. Check the robot")
+        print("               is powered/booted and you're on its hotspot (gateway 10.42.0.1).")
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--host", default="10.42.0.1", help="Reachy daemon IP (hotspot gateway)")
+    args = ap.parse_args()
+
+    preflight(args.host)
+
     # --- (a) connect + wake ---
     try:
         from reachy_mini import ReachyMini
@@ -38,18 +71,23 @@ def main() -> int:
         print(f"[FAIL] reachy_mini not importable: {e}")
         return 2
     try:
-        mini = ReachyMini()
+        # Wireless robot from a laptop: force network (multicast) discovery — do NOT
+        # let auto waste 5s on localhost first.
+        mini = ReachyMini(connection_mode="network")
     except Exception as e:  # noqa: BLE001
-        print(f"[FAIL] could not connect to the robot ({e}).")
-        print("       Is the Reachy powered on and its daemon running?")
+        print(f"[FAIL] could not connect to the daemon ({e}).")
+        print("       If preflight above SUCCEEDED, this is zenoh discovery: (1) macOS Local")
+        print("       Network permission for your terminal, (2) same hotspot, (3) fallback:")
+        print("       ssh pollen@reachy-mini (pw root); source /venvs/apps_venv/bin/activate;")
+        print("       run this script there with default ReachyMini().")
         return 2
     print("[ok] connected. waking up...")
     mini.wake_up()
-    mini.start_recording()  # start media stream so get_DoA() produces values
+    mini.start_recording()
     time.sleep(1.0)
 
     # --- (b) DoA read (~10s) ---
-    print("\n[DoA] reading for ~10s — MAKE SOUNDS to the LEFT then RIGHT of the robot.")
+    print("\n[DoA] reading ~10s — MAKE SOUNDS to the LEFT then RIGHT of the robot.")
     print("      azimuth: -1=left  0=front/back  +1=right   (speech gate must be True)")
     valid = 0
     for _ in range(20):
@@ -71,20 +109,18 @@ def main() -> int:
 
     # --- (c) head motion ---
     print("\n[motion] moving head yaw +20deg, -20deg, recenter (watch it turn)...")
-    start_yaw = _yaw_deg(mini.get_current_head_pose())
-    print(f"      start yaw = {start_yaw:+.1f}deg")
+    print(f"      start yaw = {_yaw_deg(mini.get_current_head_pose()):+.1f}deg")
     for target in (20.0, -20.0, 0.0):
         mini.goto_target(head=create_head_pose(yaw=target, degrees=True), duration=0.6)
         time.sleep(0.9)
-        now = _yaw_deg(mini.get_current_head_pose())
-        print(f"      commanded {target:+.0f}deg -> measured {now:+.1f}deg")
+        print(f"      commanded {target:+.0f}deg -> measured {_yaw_deg(mini.get_current_head_pose()):+.1f}deg")
 
     try:
         mini.stop_recording()
     except Exception:  # noqa: BLE001
         pass
-    print("\n[done] Smoke test complete. Report: DoA valid count, whether azimuth")
-    print("       tracked L/R, and whether the head visibly moved. Then -> Step 2.")
+    print("\n[done] Report: DoA valid count, whether azimuth tracked L/R + speech flipped,")
+    print("       and whether the head visibly moved. Then -> Step 2.")
     return 0
 
 

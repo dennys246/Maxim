@@ -35,6 +35,26 @@ the next** — do NOT stack 4 unverifiable layers (the "cradle cascade" lesson).
 - `create_head_pose(yaw=<deg>, degrees=True)` → 4×4 matrix; `mini.goto_target(head=pose, duration=…)`
   (min-jerk) for a discrete step; `mini.get_current_head_pose()` to read current yaw.
 
+## Connecting to a wireless Reachy Mini (setup gotchas)
+
+The daemon runs **on the robot** when powered on; the SDK client (`ReachyMini`) finds it. Confirmed
+against the installed SDK (1.2.6) + [issue #677](https://github.com/pollen-robotics/reachy_mini/issues/677)
++ the [quickstart](https://huggingface.co/docs/reachy_mini/SDK/quickstart):
+- The robot's own hotspot puts the **robot at `10.42.0.1`** (NetworkManager shared-mode gateway); the
+  laptop gets `10.42.0.x`. Same L2 network — good.
+- From the laptop use **`ReachyMini(connection_mode="network")`** (a.k.a. `localhost_only=False`) — do
+  NOT let `auto` burn 5s on a nonexistent localhost daemon. #677: "remote SDK connections from a laptop
+  work fine using `ReachyMini(localhost_only=False)`."
+- Discovery is **zenoh multicast/gossip** (no explicit-IP option in the constructor). On **macOS this
+  needs "Local Network" permission** (System Settings → Privacy & Security → Local Network) for the
+  terminal/Python, or discovery silently times out.
+- **Decisive pre-flight:** browse/`curl http://10.42.0.1:8000/docs`. Loads → daemon is up +
+  network-exposed → any remaining failure is zenoh discovery (permission/multicast). Doesn't load →
+  robot not booted / not exposed.
+- **Fallback (sidesteps all network issues):** run onboard — `ssh pollen@reachy-mini` (pw `root`),
+  `source /venvs/apps_venv/bin/activate`, run with plain `ReachyMini()`. The Step-1 smoke test is
+  dependency-free so it runs there; the full loop needs maxim installed on the Pi.
+
 ## Steps (each gates the next)
 
 ### Step 1 — hardware smoke test  ([`scripts/orient_backbone/live_1_smoke.py`](../../scripts/orient_backbone/live_1_smoke.py))
