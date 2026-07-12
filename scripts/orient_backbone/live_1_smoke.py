@@ -3,30 +3,30 @@
 
 docs/plans/reachy_orient_live.md Step 1. Verifies the THREE primitives the live
 orient loop needs, SEPARATELY, before we stack NAc on top:
-  (a) connect + wake,
-  (b) read onboard DoA (make sounds left/right; azimuth should track the side),
-  (c) move head_yaw +20deg / -20deg / recenter.
+  (a) connect + wake,  (b) read onboard DoA,  (c) move head_yaw.
 
-Standalone: needs ONLY the Reachy SDK (no maxim / MediaMTX / Shredder), so it can
-also run ONBOARD via `ssh pollen@reachy-mini` as a fallback if network discovery
-fails. Usage (from the laptop, on the Reachy hotspot):
+Standalone (only the Reachy SDK) so it can also run ONBOARD via ssh.
 
-    python scripts/orient_backbone/live_1_smoke.py            # host defaults to 10.42.0.1
-    python scripts/orient_backbone/live_1_smoke.py --host 10.42.0.1
+CONNECTION (wireless Reachy Mini) — the daemon HTTP (:8000) and zenoh control
+(:7447) are exposed INDEPENDENTLY. The preflight probes both:
+  * :8000 reachable + :7447 reachable  -> zenoh is on the network; if the SDK still
+    times out it's macOS multicast DISCOVERY. Grant Terminal/Python "Local Network"
+    permission, or run with --via-tunnel (explicit localhost path, no multicast).
+  * :8000 reachable + :7447 NOT         -> zenoh is bound to the robot's localhost
+    only (daemon default `--localhost-only`). Use an SSH tunnel + --via-tunnel:
+        ssh -N -L 7447:127.0.0.1:7447 pollen@10.42.0.1   # pw: root   (keep open)
+        python scripts/orient_backbone/live_1_smoke.py --via-tunnel
+  * neither reachable                    -> wrong network / robot not booted.
 
-CONNECTION NOTES (wireless Reachy Mini):
-  * The daemon runs on the robot when powered on and is at the hotspot gateway
-    (10.42.0.1). From a laptop use connection_mode="network" (multicast discovery).
-  * macOS: grant Terminal/Python "Local Network" permission (System Settings ->
-    Privacy & Security -> Local Network) or zenoh multicast discovery silently times out.
-  * Pre-flight below hits http://<host>:8000/docs — if THAT loads, the daemon is up
-    and network-reachable, and any remaining failure is zenoh discovery (perm/multicast).
+BEST long-term fix: put the robot on your home Wi-Fi (station mode, via its
+dashboard/nmcli) instead of its own AP — same LAN + internet, multicast usually works.
 """
 
 from __future__ import annotations
 
 import argparse
 import math
+import socket
 import sys
 import time
 import urllib.request
@@ -34,8 +34,8 @@ import urllib.request
 
 def doa_to_azimuth(doa_radians: float) -> float:
     """Onboard DoA (0=left, pi/2=front/back, pi=right) -> azimuth [-1,1].
-    Mirrors maxim.embodiment.audio_localization.doa_to_azimuth (inlined to keep
-    this script dependency-free so it can run onboard)."""
+    Mirrors maxim.embodiment.audio_localization.doa_to_azimuth (inlined so this
+    script is dependency-free and can run onboard)."""
     az = (doa_radians - math.pi / 2.0) / (math.pi / 2.0)
     return max(-1.0, min(1.0, az))
 
@@ -44,44 +44,59 @@ def _yaw_deg(pose) -> float:
     return math.degrees(math.atan2(pose[1][0], pose[0][0]))
 
 
-def preflight(host: str) -> None:
-    url = f"http://{host}:8000/docs"
+def _tcp_open(host: str, port: int, timeout: float = 3.0) -> bool:
     try:
-        with urllib.request.urlopen(url, timeout=3) as r:
-            print(f"[preflight] daemon HTTP reachable at {url} (status {r.status}) — "
-                  "daemon is up + network-exposed.")
-    except Exception as e:  # noqa: BLE001
-        print(f"[preflight] could NOT reach {url}: {e}")
-        print("            -> the daemon isn't network-reachable at that IP. Check the robot")
-        print("               is powered/booted and you're on its hotspot (gateway 10.42.0.1).")
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def preflight(host: str) -> None:
+    http_ok = _tcp_open(host, 8000)
+    if http_ok:
+        try:
+            with urllib.request.urlopen(f"http://{host}:8000/docs", timeout=3) as r:
+                http_ok = r.status == 200
+        except Exception:  # noqa: BLE001
+            http_ok = False
+    zenoh_ok = _tcp_open(host, 7447)
+    print(f"[preflight] daemon HTTP  {host}:8000  -> {'OK' if http_ok else 'UNREACHABLE'}")
+    print(f"[preflight] zenoh ctrl   {host}:7447  -> {'OK' if zenoh_ok else 'UNREACHABLE'}")
+    if http_ok and not zenoh_ok:
+        print("            zenoh is NOT network-exposed (robot localhost-only). Use an SSH")
+        print(f"            tunnel + --via-tunnel:  ssh -N -L 7447:127.0.0.1:7447 pollen@{host}")
+    elif http_ok and zenoh_ok:
+        print("            both up. If the SDK still times out below, it's macOS multicast")
+        print("            discovery -> grant Local Network permission, or use --via-tunnel.")
+    elif not http_ok:
+        print("            robot not reachable — wrong network or not booted (want gateway 10.42.0.1).")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="10.42.0.1", help="Reachy daemon IP (hotspot gateway)")
+    ap.add_argument("--via-tunnel", action="store_true",
+                    help="connect via localhost:7447 (through an SSH -L tunnel); bypasses multicast")
     args = ap.parse_args()
 
     preflight(args.host)
 
-    # --- (a) connect + wake ---
     try:
         from reachy_mini import ReachyMini
         from reachy_mini.utils import create_head_pose
     except Exception as e:  # noqa: BLE001
         print(f"[FAIL] reachy_mini not importable: {e}")
         return 2
+    mode = "localhost_only" if args.via_tunnel else "network"
     try:
-        # Wireless robot from a laptop: force network (multicast) discovery — do NOT
-        # let auto waste 5s on localhost first.
-        mini = ReachyMini(connection_mode="network")
+        mini = ReachyMini(connection_mode=mode)
     except Exception as e:  # noqa: BLE001
-        print(f"[FAIL] could not connect to the daemon ({e}).")
-        print("       If preflight above SUCCEEDED, this is zenoh discovery: (1) macOS Local")
-        print("       Network permission for your terminal, (2) same hotspot, (3) fallback:")
-        print("       ssh pollen@reachy-mini (pw root); source /venvs/apps_venv/bin/activate;")
-        print("       run this script there with default ReachyMini().")
+        print(f"[FAIL] zenoh connect ({mode}) failed: {e}")
+        print("       If HTTP was OK but zenoh timed out: see the preflight hint above")
+        print("       (SSH tunnel + --via-tunnel, or macOS Local Network permission).")
         return 2
-    print("[ok] connected. waking up...")
+    print(f"[ok] connected ({mode}). waking up...")
     mini.wake_up()
     mini.start_recording()
     time.sleep(1.0)
@@ -100,9 +115,9 @@ def main() -> int:
             print("      (no reading yet)")
         else:
             doa_rad, is_speech = reading
-            az = doa_to_azimuth(float(doa_rad))
             valid += 1
-            print(f"      doa={float(doa_rad):+.3f}rad  speech={bool(is_speech)!s:<5}  azimuth={az:+.2f}")
+            print(f"      doa={float(doa_rad):+.3f}rad  speech={bool(is_speech)!s:<5}  "
+                  f"azimuth={doa_to_azimuth(float(doa_rad)):+.2f}")
         time.sleep(0.5)
     print(f"[DoA] {valid}/20 readings returned. "
           + ("ok" if valid else "STOP: no DoA — check the mic stream."))
@@ -119,8 +134,7 @@ def main() -> int:
         mini.stop_recording()
     except Exception:  # noqa: BLE001
         pass
-    print("\n[done] Report: DoA valid count, whether azimuth tracked L/R + speech flipped,")
-    print("       and whether the head visibly moved. Then -> Step 2.")
+    print("\n[done] Report: DoA valid count, azimuth tracked L/R + speech flipped, head moved. -> Step 2.")
     return 0
 
 
