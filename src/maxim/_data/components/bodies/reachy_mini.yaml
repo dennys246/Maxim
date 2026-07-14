@@ -58,6 +58,25 @@ entity:
       range: [0, 1]
       initial: 1.0
 
+    # Exteroceptive localization: head-relative azimuth of the current target
+    # (sound via onboard DoA, or a visual detection). 0 = centered/front,
+    # -1 = full left, +1 = full right. WORLD-COUPLED: overwritten every tick by
+    # the percept (the hardware physically re-measures after a head turn). The
+    # centeredness drive makes off-center aversive; the orient loop credits the
+    # per-step REDUCTION in |azimuth| (relief) via potential_diff (Phase 0b).
+    # drift_rate MUST be 0: a world-set sensor must not auto-return to set_point,
+    # or tick_vital_drift fabricates "centered" between re-measurements.
+    azimuth:
+      unit: normalized
+      range: [-1, 1]
+      initial: 0.0
+      drive:
+        drift_mode: homeostatic
+        set_point: 0.0
+        drift_rate: 0.0       # world-set, no auto-return (load-bearing — see note)
+        comfort_band: 0.1     # within ±0.1 = centered enough
+        pain_scale: 1.0
+
     # Battery + thermal
     battery:
       unit: ratio
@@ -75,6 +94,22 @@ entity:
       initial: 0.95
 
   modulators:
+    # Orient-to-center: discrete head turns toward the localized target. Acts on
+    # head_yaw (an entity sensor), owns no sensors of its own -> abstract (C4).
+    # The step-sign <-> azimuth mapping is a Phase-1 hardware calibration (the
+    # "shared coordinate frame" open question in audiovisual_orienting.md); the
+    # sim harness fixes a self-consistent convention.
+    orient:
+      abstract: true
+      affordances:
+        turn_left:
+          params: {}
+          self_effect: {head_yaw: 0.3}
+          description: "Turn the head left a fixed step (drives azimuth toward +)."
+        turn_right:
+          params: {}
+          self_effect: {head_yaw: -0.3}
+          description: "Turn the head right a fixed step (drives azimuth toward -)."
     motion:
       abstract: true  # capability-only — no sensors (C4)
       affordances:

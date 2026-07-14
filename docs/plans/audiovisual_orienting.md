@@ -55,15 +55,20 @@ the valuation is visual-specific and high-dimensional. They never compete.
   `recommend_action` (no LLM in the action path), per the Exp 43 probes. This **removes the audio plan's
   "sustained-sound / slow-convergence" constraint**, which assumed one LLM cognition cycle per orient
   step. The visual track's substrate-primary validation is a genuine upgrade to the audio latency story.
-- **Motor credit = a Phase 0 characterization, not a pre-picked default.** Rather than choose
-  pain-vs-positive, run **both** (pain / positive / both) as a sim study — they exercise *different* NAc
-  surfaces: positive reward → bidirectional `cluster_reward_bias` (+ positive-only `_reward_bias`);
-  drive-pain → `record_outcome` negative valence → causal-link down-weighting, which `recommend_action`
-  already blends at **0.5** weight vs **1.0** for positive. So "which is stronger" is mechanism-rich
-  (signal magnitude AND these built-in selector weights) *and* scale-dependent → measure as a
-  relative-gain **sweep + interaction**, never a single point. Doubles as architecture characterization
-  of the aversive (PainBus) vs appetitive (NAc-reward) systems on identical decisions. Ties to
-  [`transition_based_drive_pain.md`](transition_based_drive_pain.md) (fire on band entry, not per-tick).
+- **Motor credit [RESOLVED 2026-06-28, Phase 0b]: credit drive-pain REDUCTION per step (relief), as a
+  state-conditioned positive (`potential_diff` on `cluster_reward`) — NOT the off-center pain state.**
+  Phase 0b ([`scripts/orient_backbone/phase0_affect_study.py`](../../scripts/orient_backbone/phase0_affect_study.py))
+  found **pain alone cannot drive `recommend_action`**: it is positive-gated (negative-only pain has
+  nothing to select on → defaults to `stay`), the causal/`record_outcome` surface is per-tool
+  **state-blind**, and off-center pain misinforms mid-approach (it punishes correct-but-incomplete
+  actions). Reward (state-conditioned `cluster_reward`) drives a perfect orient policy; `potential_diff`
+  (dense per-step |az|-reduction credit) additionally closes the far-state gap (far-dir 1.0 vs
+  terminal-reward 0.94). **The reconciliation:** `potential_diff` *is* drive-pain *reduction* = relief =
+  negative-reinforcement — bio-faithful AND mechanically selectable — so it folds the audio (drive-pain)
+  and visual (reward) credit approaches into one signal. Ties to
+  [`transition_based_drive_pain.md`](transition_based_drive_pain.md) (credit transitions / relief, not
+  the per-tick pain state). Consistent with the existing NAc invariant (reward_bias clamps [0,max]; pain
+  is a modulator handled by edge valence, not a selection driver) — Phase 0b makes that concrete for orienting.
 - **EC modalities stay separate:** `"audio"` (frozen, [-1,1], 384-d; RESOLVED Q5 in the audio plan) and
   `"vision"` (frozen, vision-encoder dim) for category. The **spatial azimuth** from both is scalar →
   same 384-d space → dim-consistent (relevant only to binding, Phase 3b).
@@ -78,11 +83,11 @@ the valuation is visual-specific and high-dimensional. They never compete.
   substrate-primary NAc credit, consuming an azimuth-error from *any* `PerceptSource`. This is Exp 43
   Probe 1/2 generalized AND audio commit 5 generalized — both tracks' "commit 5" collapse into this.
   Validate in sim (world-coupling rule for the sim; on hardware the mic/camera physically re-measure).
-- **0b — affect-signal study:** on the 0a backbone, run **pain / positive / both** arms across a
-  relative-gain sweep; metrics = learning speed, asymptotic centering, extinction-robustness, and the
-  both-arm interaction (superadditive / redundant / one-masks-the-other). Settles the motor-credit
-  decision and characterizes PainBus-vs-NAc-reward strength on identical decisions. Keep it tight
-  (don't let it delay 0a's handoff to hardware).
+- **0b — affect-signal study [DONE 2026-06-28]:** ran pain / positive / both / `potential_diff` on the
+  0a backbone. Verdict (see Motor-credit decision above): orienting is **reward-driven**; credit
+  drive-pain **reduction** (`potential_diff`, state-conditioned); **pain-state alone does not orient**.
+  A relative-gain sweep would only refine magnitudes — the qualitative verdict is settled, so it is not
+  a 0a blocker.
 - **Prereq:** both branches' foundations on one base (see branch coordination below).
 
 **Phase 1 — hardware, AUDIO first.**
