@@ -165,3 +165,18 @@ def test_stub_has_pending_reflects_inbox_state():
 
     stub.next_percept()
     assert stub.has_pending() is False
+
+
+def test_embodiment_percept_source_satisfies_protocol():
+    """The Dormant ``EmbodimentPerceptSource`` must stay protocol-conformant —
+    it is kept (dormancy-over-deletion) specifically as the local shape
+    template for the 1.1 ``RemotePerceptSource`` adapter, so drift from the
+    ``PerceptSource`` Protocol would erase its reason to exist. See the
+    dormancy marker in ``src/maxim/embodiment/percepts.py``."""
+    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.percepts import EmbodimentPerceptSource
+    from maxim.embodiment.spec import _parse_entity
+
+    entity = _parse_entity({"name": "t", "entity_type": "body", "sensors": {}})
+    src = EmbodimentPerceptSource(Embodiment(entity))
+    assert isinstance(src, PerceptSource)

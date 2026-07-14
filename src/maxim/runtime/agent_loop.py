@@ -843,9 +843,11 @@ def propose_via_substrate(
     # Substrate-primary mode owns its own clock — without an LLM submit
     # path there's no other code that calls into the embodiment, so
     # drive drift would never advance. Ticking evaluate_failures() here
-    # mirrors what EmbodimentPerceptSource.next_percept does on the
-    # llm-primary path: applies wall-clock drift via tick_vital_drift,
-    # then evaluates failures (which publish pain signals to NAc).
+    # mirrors the llm-primary path, where the tick is event-driven via
+    # tool execution (tool_bridge / sim tools calling evaluate_failures):
+    # applies wall-clock drift via tick_vital_drift, then evaluates
+    # failures (which publish pain signals to NAc). See the CLAUDE.md
+    # embodiment-tick invariant.
     embodiment = getattr(executor, "embodiment", None)
     if embodiment is not None:
         try:

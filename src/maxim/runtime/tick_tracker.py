@@ -1,5 +1,15 @@
 """TickTypeTracker: per-tick classification for observability (Stage 5).
 
+Dormant since 2026-07-14: the intended consumer (heartbeat.py emitting
+thinking/action/noop samples + MAXIM_THINKING_STALL_S warnings, per
+docs/plans/archive/working_memory_exec_loop.md Stage 5) was never wired —
+heartbeat.py has zero TickType references; only
+tests/unit/test_tick_tracker.py exercises this. The stall-detection niche
+has since moved to the canonical ``runtime/llm_call_registry.py`` +
+``runtime/stall_threshold.py`` surface (see the CLAUDE.md stall-threshold
+invariant). Resurrection must route through that surface — do NOT wire a
+new stall detector directly on this tracker.
+
 Tracks whether each agent loop tick produced thinking, action, speech,
 or noop output.  Used by the heartbeat monitor to distinguish
 deliberation ticks from action ticks and detect wedged deliberation.

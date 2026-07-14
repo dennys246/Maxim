@@ -194,6 +194,14 @@ Current `ExplainTool` explains one decision; these give broader visibility.
 
 ### Buildable now (no prerequisites)
 
+> **Note (2026-07-14):** no implementation of these rows exists. The 0.3.1
+> draft `tools/agent_introspection.py` (NacStatsTool, MemoryPressureTool,
+> LoopStatsTool, PainTriggersActiveTool) was hard-deleted in the embodiment
+> truth-restoration pass — it was never registered in any tool registry,
+> never tested, and its single-file layout didn't match this plan (one
+> module per subsystem; `pain_triggers_active` sourced from
+> `pain_detector.py`, not `pain_bus`). Build fresh per this plan's layout.
+
 All against existing data sources. Low-risk increments (~100 LOC each):
 
 - `loop_stats`, `recent_actions` (runtime introspection)

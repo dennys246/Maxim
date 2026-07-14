@@ -1,5 +1,21 @@
 """EmbodimentPerceptSource — bridges SEM sensor readings into the agent loop.
 
+Dormant since 2026-07-14: NEVER production-wired — pickaxe-verified that
+``EmbodimentPerceptSource(`` never entered ``src/`` in any commit since the
+module's 2026-04-07 creation. The tick cycle this class was designed to own
+was relocated into ``Body.evaluate_failures`` by ``ed8b187f`` (2026-04-26)
+precisely because nothing called ``next_percept()`` and drives were frozen;
+that commit also removed this module's duplicate ``tick_vital_drift`` call
+to prevent double-drift. Kept (per CLAUDE.md dormancy-over-deletion) as the
+CC8 ``PerceptSource`` protocol-shape template — this class is exercised by
+``tests/unit/test_producer_protocols.py`` and
+``tests/unit/test_naming_events.py``; the 1.1 ``RemotePerceptSource`` adapter
+(docs/plans/mesh_perception_transport.md) is its local sibling and the
+resurrection trigger. Wiring it into a production loop is tick-safe
+(``evaluate_failures`` owns the wall-clock drift and cannot double-drift)
+but requires un-dormanting: update the CLAUDE.md embodiment-tick invariant
+in the same commit.
+
 Implements the ``PerceptSource`` protocol, polling sensors at a
 configurable rate (default 1Hz) and producing ``Percept`` objects
 from the readings.
