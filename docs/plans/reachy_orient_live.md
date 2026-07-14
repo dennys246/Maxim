@@ -89,12 +89,30 @@ section** — the operator declares it there (no magic default). The live orient
 `AtlasController(RobotController)` + `maxim.robots` entry-point + capabilities, refine the ABC if a real
 need surfaces — exactly the factory-first-engine-refine pattern, already in place.
 
-**Gap this bring-up must close:** `ReachyMiniController.connect()` hardcodes `connection_mode="network"`
-+ mDNS with **no tunnel/localhost fallback** — precisely the path failing here (multicast/mDNS on macOS).
-So the working recipe from Step 1 (Local-Network permission or the `--via-tunnel` SSH path) needs to fold
-back into `ReachyMiniController.connect()` (a `connection_mode`/tunnel option in `RobotConfig.config`).
+**Gap — CLOSED in code (2026-07, pending on-device validation at Step 1):** `ReachyMiniController.connect()`
+now honors `connection_mode` / `host` / `tunnel` from the `robots.yaml` `config:` block (backward-compatible —
+defaults = the old network+mDNS behavior). An explicit `host` **bypasses the mDNS hard-gate** (which fails
+where `reachy-mini.local` doesn't resolve) via a direct `:7447` probe; `tunnel: true` auto-starts
+`ssh -N -L 7447:127.0.0.1:7447` and forces `localhost_only`. Regression guard:
+[`tests/unit/test_reachy_connection_options.py`](../../tests/unit/test_reachy_connection_options.py).
+
+```yaml
+# ~/.maxim/robots.yaml
+robots:
+  - robot_id: reachy
+    type: reachy_mini
+    primary: true
+    config:
+      host: 10.42.0.1          # bypasses the mDNS gate; also the SSH tunnel target
+      # Option A — multicast works once Local-Network permission is granted:
+      connection_mode: network
+      # Option B — multicast/mDNS blocked -> SSH tunnel (needs key-based SSH):
+      # tunnel: true
+      # ssh_user: pollen
+```
+
 `live_1_smoke.py`'s inline `ReachyMini(...)` is a **throwaway connection debugger** (dependency-free, runs
-onboard, isolates the 3 primitives) — the production path is the controller.
+onboard, isolates the 3 primitives + the same `--via-tunnel` path); the production path is the controller.
 
 ## Steps (each gates the next)
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import socket
+import subprocess
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -38,17 +39,47 @@ class ReachyMiniController(RobotController):
         *,
         robot_name: str = "reachy_mini",
         media_backend: str = "default",
+        connection_mode: str = "network",
+        host: str | None = None,
+        tunnel: bool = False,
+        ssh_user: str = "pollen",
+        ssh_port: int = 22,
     ) -> None:
         """Initialize Reachy Mini controller.
+
+        All keyword args below are populated from ``robots.yaml``'s per-robot
+        ``config:`` block (the registry splats it as ``**config``).
 
         Args:
             robot_id: Unique identifier for this robot (defaults to robot_name).
             robot_name: mDNS name of the robot (default: "reachy_mini").
             media_backend: Media backend to use (default: "default").
+            connection_mode: SDK connection mode — ``"network"`` (zenoh multicast,
+                default, current behavior), ``"localhost_only"`` (tcp/localhost:7447 —
+                use with a tunnel or when running onboard), or ``"auto"``.
+            host: Robot IP. Set it to (a) BYPASS the mDNS pre-check (which hard-fails
+                on setups where ``reachy-mini.local`` doesn't resolve — macOS/hotspot),
+                using a direct ``host:7447`` reachability probe instead, and (b) be the
+                SSH tunnel target. In ``"network"`` mode the SDK still discovers via
+                multicast (it has no explicit-IP option); ``host`` only replaces the
+                reachability pre-check there. Explicit-IP connect requires ``tunnel``.
+            tunnel: If True (requires ``host``), auto-start
+                ``ssh -N -L 7447:127.0.0.1:7447 <ssh_user>@<host>`` and force
+                ``connection_mode="localhost_only"`` — bypasses macOS multicast/mDNS
+                entirely. Needs key-based SSH (BatchMode); else start the tunnel
+                manually and set ``tunnel: false, connection_mode: localhost_only``.
+            ssh_user: SSH user for the tunnel (default "pollen").
+            ssh_port: SSH port for the tunnel (default 22).
         """
         super().__init__(robot_id or robot_name)
         self._robot_name = robot_name
         self._media_backend = media_backend
+        self._connection_mode = connection_mode
+        self._host = host
+        self._tunnel = tunnel
+        self._ssh_user = ssh_user
+        self._ssh_port = ssh_port
+        self._tunnel_proc: subprocess.Popen | None = None
         self._mini: Any = None  # ReachyMini SDK instance
         self._video_stream: ReachyVideoStream | None = None
         self._audio_stream: ReachyAudioStream | None = None
@@ -94,6 +125,74 @@ class ReachyMiniController(RobotController):
             logger.warning("mDNS resolution failed for %s", mdns_name)
             return None
 
+    @staticmethod
+    def _port_open(host: str, port: int, timeout: float = 3.0) -> bool:
+        """Single TCP reachability probe (fast-fail replacement for the mDNS gate)."""
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    def _wait_local_port(self, port: int, timeout: float) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._port_open("127.0.0.1", port, timeout=1.0):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def _start_ssh_tunnel(self, timeout: float = 10.0) -> bool:
+        """Auto-start ``ssh -N -L 7447:127.0.0.1:7447 user@host`` (key-based / BatchMode)."""
+        cmd = [
+            "ssh",
+            "-N",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ExitOnForwardFailure=yes",
+            "-o",
+            "ServerAliveInterval=15",
+            "-p",
+            str(self._ssh_port),
+            "-L",
+            "7447:127.0.0.1:7447",
+            f"{self._ssh_user}@{self._host}",
+        ]
+        logger.info("Starting SSH tunnel: %s", " ".join(cmd))
+        try:
+            self._tunnel_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError:
+            logger.error("ssh not found — cannot auto-tunnel")
+            return False
+        if self._wait_local_port(7447, timeout=timeout):
+            logger.info("SSH tunnel up: localhost:7447 -> %s:7447", self._host)
+            return True
+        logger.error(
+            "SSH tunnel to %s did not open localhost:7447. Auto-tunnel needs key-based SSH "
+            "(BatchMode) — run `ssh-copy-id %s@%s` — OR start it manually and set "
+            "tunnel=false, connection_mode=localhost_only.",
+            self._host,
+            self._ssh_user,
+            self._host,
+        )
+        self._stop_ssh_tunnel()
+        return False
+
+    def _stop_ssh_tunnel(self) -> None:
+        if self._tunnel_proc is None:
+            return
+        try:
+            self._tunnel_proc.terminate()
+            try:
+                self._tunnel_proc.wait(timeout=3.0)
+            except subprocess.TimeoutExpired:
+                self._tunnel_proc.kill()
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Error stopping SSH tunnel: %s", e)
+        finally:
+            self._tunnel_proc = None
+
     def connect(self, timeout: float = 30.0) -> bool:
         """Connect to the Reachy Mini.
 
@@ -108,23 +207,49 @@ class ReachyMiniController(RobotController):
         try:
             from reachy_mini import ReachyMini
 
-            # Pre-resolve mDNS to verify the robot is reachable.
-            # If mDNS fails, the robot is not on the network — skip the
-            # expensive SDK connection attempt (saves ~25s on headless startup).
-            resolved_ip = self._resolve_mdns(timeout=min(timeout, 5.0))
-            if resolved_ip is None:
-                logger.warning(
-                    "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection",
-                    self._robot_name,
-                )
-                self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
-                return False
+            effective_mode = self._connection_mode
 
-            logger.info("Connecting to Reachy Mini: %s", self._robot_name)
+            # Optional SSH tunnel: localhost:7447 -> robot:7447. Lets us reach a robot
+            # whose zenoh isn't network-exposed, or where macOS multicast/mDNS fails.
+            if self._tunnel:
+                if not self._host:
+                    logger.error("tunnel=True requires host= (robot IP / SSH target)")
+                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                    return False
+                if not self._start_ssh_tunnel(timeout=min(timeout, 10.0)):
+                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                    return False
+                effective_mode = "localhost_only"
+
+            # Reachability pre-check (fast-fail so we don't wait ~25s on the SDK).
+            # Legacy default (network + no host + no tunnel) keeps the mDNS gate; an
+            # explicit host / tunnel uses a direct TCP probe of :7447 instead (the mDNS
+            # gate hard-fails where reachy-mini.local doesn't resolve — macOS/hotspot).
+            if effective_mode == "network" and self._host is None:
+                if self._resolve_mdns(timeout=min(timeout, 5.0)) is None:
+                    logger.warning(
+                        "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection",
+                        self._robot_name,
+                    )
+                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                    return False
+            else:
+                probe_host = "127.0.0.1" if effective_mode == "localhost_only" else self._host
+                if probe_host and not self._port_open(probe_host, 7447, timeout=min(timeout, 5.0)):
+                    logger.warning(
+                        "zenoh not reachable at %s:7447 — skipping SDK connection "
+                        "(check host/tunnel; on macOS grant Local Network permission)",
+                        probe_host,
+                    )
+                    self._stop_ssh_tunnel()
+                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                    return False
+
+            logger.info("Connecting to Reachy Mini: %s (mode=%s)", self._robot_name, effective_mode)
 
             self._mini = ReachyMini(
                 robot_name=self._robot_name,
-                connection_mode="network",
+                connection_mode=effective_mode,
                 media_backend=self._media_backend,
                 timeout=timeout,
             )
@@ -160,6 +285,7 @@ class ReachyMiniController(RobotController):
 
         except Exception as e:
             logger.error("Failed to connect to Reachy Mini: %s", e)
+            self._stop_ssh_tunnel()
             self._update_state(
                 connection_state=RobotConnectionState.ERROR,
                 error_message=str(e),
@@ -168,6 +294,7 @@ class ReachyMiniController(RobotController):
 
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""
+        self._stop_ssh_tunnel()
         if self._mini is None:
             return
 
