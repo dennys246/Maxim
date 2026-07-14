@@ -239,9 +239,7 @@ class _PyTorchTransformersBackend:
             # missing torch/transformers collapses into "Failed to load PyTorch
             # model" + return False — degraded and unactionable.
             require_optional_dependency("torch", extra="llm-torch", feature="Transformers backend")
-            require_optional_dependency(
-                "transformers", extra="llm-torch", feature="Transformers backend"
-            )
+            require_optional_dependency("transformers", extra="llm-torch", feature="Transformers backend")
             try:
                 import torch
                 from transformers import AutoModelForCausalLM, AutoTokenizer

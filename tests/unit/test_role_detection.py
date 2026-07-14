@@ -217,8 +217,6 @@ def test_fix9_role_divergence_back_compat_event(monkeypatch, _isolated_home, _no
         for rec in caplog.records
         if rec.levelno == _logging.DEBUG and getattr(rec, "event", None) == "role_divergence"
     ]
-    assert divergence_records, (
-        "role_divergence event must continue firing at DEBUG for back-compat"
-    )
+    assert divergence_records, "role_divergence event must continue firing at DEBUG for back-compat"
     data = getattr(divergence_records[-1], "data", {})
     assert data.get("deprecated") is True

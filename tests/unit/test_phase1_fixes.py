@@ -201,13 +201,13 @@ class TestAtomicWriteMigration:
 
 class TestTypedAnnotations:
     def test_exec_agent_nac_typed(self):
-        """ExecAgent._nac should be typed as NucleusAccumbens | None, not Any."""
+        """ExecAgent._nac should be typed as NAc | None, not Any."""
         import inspect
 
         from maxim.agents.exec_agent import ExecAgent
 
         source = inspect.getsource(ExecAgent.__init__)
-        assert "NucleusAccumbens" in source or "NucleusAccumbens | None" in source
+        assert "NAc | None" in source
 
     def test_exec_agent_hippocampus_typed(self):
         import inspect

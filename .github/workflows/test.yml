@@ -32,6 +32,18 @@ jobs:
           pip install --no-deps -e .
           pip install faster-whisper ctranslate2 onnxruntime av numpy opencv-python scipy llama-cpp-python ddgs pyyaml || echo "Some optional deps unavailable on CI"
 
+      - name: mypy public API surface
+        # CLAUDE.md required check, promoted to CI (1.0 guard promotion).
+        # --follow-imports=silent scopes error reporting to the five public
+        # API files; the rest of the codebase is not mypy-clean yet.
+        # Pinned so a mypy release can't break CI on its own. Runs before
+        # the test suite for faster failure feedback.
+        run: |
+          pip install "mypy==1.20.0"
+          mypy src/maxim/__init__.py src/maxim/api.py src/maxim/session.py \
+               src/maxim/create.py src/maxim/load.py \
+               --ignore-missing-imports --follow-imports=silent
+
       - name: Run unit tests
         run: python -m pytest tests/unit/ -x -q -m "not slow" --tb=short
 
@@ -46,6 +58,39 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Ruff lint + format check
+        # CLAUDE.md required checks, promoted to CI (1.0 guard promotion).
+        # Pinned so a ruff release's new rules/format changes can't break
+        # CI on their own — bump the pin deliberately alongside a
+        # ruff check/format pass in the same commit.
+        run: |
+          pip install "ruff==0.14.14"
+          ruff check src/ tests/
+          ruff format --check src/ tests/
+
+      - name: Version sync (pyproject.toml == src/maxim/__init__.py)
+        # CLAUDE.md "Versioning": the two version declarations must stay
+        # in sync. Promoted from a manual check to CI (1.0 guard promotion).
+        run: |
+          python3 - <<'EOF'
+          import re, sys, tomllib
+
+          with open("pyproject.toml", "rb") as f:
+              pyproject_version = tomllib.load(f)["project"]["version"]
+          init_src = open("src/maxim/__init__.py").read()
+          m = re.search(r'^__version__\s*=\s*"([^"]+)"', init_src, re.MULTILINE)
+          if m is None:
+              sys.exit("ERROR: __version__ not found in src/maxim/__init__.py")
+          init_version = m.group(1)
+          if pyproject_version != init_version:
+              sys.exit(
+                  f"ERROR: version drift — pyproject.toml={pyproject_version!r} "
+                  f"vs src/maxim/__init__.py={init_version!r}. "
+                  "Bump both in the same commit (CLAUDE.md 'Versioning')."
+              )
+          print(f"Version sync OK: {pyproject_version}")
+          EOF
 
       - name: Check all Python files parse
         run: |
@@ -438,6 +483,78 @@ jobs:
             exit 1
           fi
           echo "CI grep invariants clean"
+
+      - name: CI grep invariants (1.0 guard promotion — NAc name, backend imports, raw_proxy_forward, tier names, deleted energy classes)
+        run: |
+          # CLAUDE.md "NAc class name" lesson: the class is NAc
+          # (decisions/nac.py), NOT NucleusAccumbens. A stale reference
+          # under `if TYPE_CHECKING:` is silent at runtime (this exact
+          # bug shipped in agents/exec_agent.py and lived until the 1.0
+          # guard audit found it).
+          if grep -rn --include="*.py" "NucleusAccumbens" src/maxim/; then
+            echo "ERROR: NucleusAccumbens referenced — the class is NAc (src/maxim/decisions/nac.py)."
+            exit 1
+          fi
+          # CLAUDE.md "LLM access goes through models/language/router.py":
+          # concrete backends must not be imported outside models/language/.
+          # _MaximPeerBackend is exempt — for_url(...).health_check() is the
+          # canonical probe entry point with its own CI-audited call sites.
+          # Allow list:
+          #   - agents/llm_agent.py: grandfathered — LLMAgent is a
+          #     pre-router standalone llama.cpp agent still wired into
+          #     simulation_generator/interactive. Migrating it onto the
+          #     router is tracked follow-up work, not a drive-by change.
+          #   - agents/exec_agent.py: line-scoped to the PROPOSED_GOAL_TOOL
+          #     constant import only (a future backend-class import in the
+          #     same file still fails).
+          # Scope note: matches the `from maxim.models.language.X import`
+          # form only (the codebase-wide convention); `import maxim.models.
+          # language.X` and relative-import forms are out of scope for this
+          # first guard.
+          # Positive control: the pattern must keep matching the two
+          # allow-listed sites pre-filter — if the regex rots (module
+          # rename, import-style migration), fail loudly instead of
+          # passing vacuously forever.
+          BACKEND_IMPORT_ALL=$(grep -rnE --include="*.py" "from maxim\.models\.language\.(anthropic_backend|llama_backend|openai_backend|transformers_backend) import" src/maxim/ || true)
+          if ! echo "$BACKEND_IMPORT_ALL" | grep -q "^src/maxim/agents/llm_agent\.py:"; then
+            echo "ERROR: backend-import grep positive control failed — pattern no longer matches the"
+            echo "       grandfathered agents/llm_agent.py site. Either llm_agent migrated to the"
+            echo "       router (remove it from the allow list + this control) or the regex rotted."
+            exit 1
+          fi
+          BACKEND_IMPORT_MATCHES=$(echo "$BACKEND_IMPORT_ALL" \
+            | grep -v "^src/maxim/models/language/" \
+            | grep -v "^src/maxim/agents/llm_agent\.py:" \
+            | grep -vE "^src/maxim/agents/exec_agent\.py:.*PROPOSED_GOAL_TOOL" \
+            || true)
+          if [ -n "$BACKEND_IMPORT_MATCHES" ]; then
+            echo "ERROR: concrete LLM backend imported outside models/language/"
+            echo "$BACKEND_IMPORT_MATCHES"
+            echo ""
+            echo "Route through models/language/router.py + runtime/lane_backends.BACKEND_CLASSES."
+            echo "If genuinely sanctioned, update the allow list here AND the CLAUDE.md invariant."
+            exit 1
+          fi
+          # CLAUDE.md: raw_proxy_forward / raw_proxy_forward_streaming are
+          # reserved for leader_proxy._proxy_request ONLY.
+          if grep -rn --include="*.py" "raw_proxy_forward" src/maxim/ | grep -vE "^src/maxim/(runtime/leader_proxy|utils/http)\.py:"; then
+            echo "ERROR: raw_proxy_forward used outside leader_proxy.py / utils/http.py"
+            exit 1
+          fi
+          # CLAUDE.md "Lane tier names": canonical names are large/medium/
+          # small; legacy infer/review/record string literals must not
+          # reappear in lane_models.py.
+          if grep -nE "\"(infer|review|record)\"|'(infer|review|record)'" src/maxim/runtime/lane_models.py; then
+            echo "ERROR: legacy tier-name string literal in lane_models.py (use large/medium/small)"
+            exit 1
+          fi
+          # CLAUDE.md cradle Stage 1c: EnergyReactionBridge and
+          # MovementEnergyTracker are hard-deleted dead code.
+          if grep -rn --include="*.py" "EnergyReactionBridge\|MovementEnergyTracker" src/maxim/; then
+            echo "ERROR: deleted energy classes referenced (EnergyReactionBridge/MovementEnergyTracker)"
+            exit 1
+          fi
+          echo "1.0 promoted grep invariants clean"
 
       - name: CLAUDE.md invariant regression-guard lint (Principle 5)
         run: |

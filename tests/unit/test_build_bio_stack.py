@@ -14,7 +14,6 @@ Tests the structural-enforcement invariants from bio_stack_unification.md:
 from __future__ import annotations
 
 import dataclasses
-from pathlib import Path
 
 import pytest
 
@@ -205,7 +204,10 @@ class TestBuildBioStackPreBuiltPainBus:
 
         early_bus = PainBus(_allow_raw=True)
         calls = []
-        extra_sub = lambda signal: calls.append(signal)
+
+        def extra_sub(signal):
+            calls.append(signal)
+
         bio = build_bio_stack(
             agent_id="default_agent",
             pain_bus=early_bus,
@@ -221,7 +223,10 @@ class TestBuildBioStackAdditionalSubscribers:
         from maxim.runtime.bio_stack import build_bio_stack
 
         calls = []
-        extra_sub = lambda signal: calls.append(signal)
+
+        def extra_sub(signal):
+            calls.append(signal)
+
         bio = build_bio_stack(agent_id="default_agent", additional_pain_subscribers=(extra_sub,))
         assert extra_sub in bio.pain_bus._pain_signal_subs
 
@@ -232,7 +237,7 @@ class TestBuildBioStackDefaultNetwork:
     def test_default_network_constructed_when_requested(self):
         from maxim.runtime.bio_stack import build_bio_stack
 
-        bio = build_bio_stack(agent_id="default_agent", with_default_network=True)
+        build_bio_stack(agent_id="default_agent", with_default_network=True)
         # DN is an optional dep — may be None if not installed
         # but the builder should attempt construction
 

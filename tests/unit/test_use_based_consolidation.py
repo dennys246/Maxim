@@ -16,12 +16,10 @@ from __future__ import annotations
 import threading
 import time
 
-import pytest
 
 from maxim.agents.working_memory import WorkingMemoryKind, WorkingMemorySet
 from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
 from maxim.memory.hippocampus_consolidation import (
-    _PRESSURE_DECAY_RATE,
     _PROMOTION_PRESSURE_THRESHOLD,
     _context_signature,
 )
@@ -190,7 +188,7 @@ class TestRecallTouch:
         count_after_recall = results[0].access_count
 
         # Second recall should increase further
-        results2 = hip.recall(goal="find cup")
+        hip.recall(goal="find cup")
         # The result object from recall is a snapshot at read time, but
         # touch happens in the write phase AFTER the read. So check via get().
         mem_after = hip.get(mem_id)
@@ -278,7 +276,7 @@ class TestPromotionPressure:
         hip.recall(query="cup query two")
         mem2 = hip.get(mem_id)
         # Decay should have reduced pressure before the new increment
-        expected_decay = 100 * _PRESSURE_DECAY_RATE
+        # (decay magnitude would be 100 * _PRESSURE_DECAY_RATE).
         # New pressure = (old - decay) + new_score, so it should be less than
         # old + new_score (without decay)
         assert mem2.promotion_pressure < pressure_before + 2.0  # generous bound

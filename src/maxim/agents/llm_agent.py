@@ -1,4 +1,12 @@
-"""LLM Agent - A flexible agent powered by llama.cpp with easy model switching."""
+"""LLM Agent - A flexible agent powered by llama.cpp with easy model switching.
+
+TODO(router-migration): this module predates the LLMRouter and imports
+``_LlamaCppBackend`` directly (plus config/prompt-format private surfaces).
+It is grandfathered in the CI backend-import grep ("1.0 guard promotion"
+step in .github/workflows/test.yml). Migrating LLMAgent onto
+``models/language/router.py`` retires the allow-list entry and its
+positive control.
+"""
 
 from __future__ import annotations
 
