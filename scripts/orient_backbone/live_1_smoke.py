@@ -26,7 +26,9 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import socket
+import subprocess
 import sys
 import time
 
@@ -51,7 +53,68 @@ def _tcp_open(host: str, port: int, timeout: float = 3.0) -> bool:
         return False
 
 
+def default_gateway() -> str | None:
+    """The default-route gateway IP. On the Reachy's own Wi-Fi AP (NetworkManager
+    shared mode) the robot IS the gateway, so this auto-locates it wherever you are."""
+    try:
+        if sys.platform.startswith(("darwin", "freebsd", "openbsd")):
+            out = subprocess.run(["netstat", "-rn", "-f", "inet"], capture_output=True, text=True, timeout=3).stdout
+            for line in out.splitlines():
+                p = line.split()
+                if p and p[0] == "default" and len(p) > 1:
+                    return p[1]
+        else:  # linux
+            out = subprocess.run(["ip", "route"], capture_output=True, text=True, timeout=3).stdout
+            for line in out.splitlines():
+                if line.startswith("default") and "via" in line:
+                    return line.split()[2]
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def local_ip_toward(host: str) -> str | None:
+    """The laptop's own IP on the interface that routes to `host` (no packets sent)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((host, 1))
+        return s.getsockname()[0]
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        s.close()
+
+
+def _slash24(ip: str | None) -> str | None:
+    return ".".join(ip.split(".")[:3]) if ip and ip.count(".") == 3 else None
+
+
+def resolve_host(explicit: str | None) -> tuple[str, str]:
+    """Pick the robot IP: --host > $MAXIM_REACHY_HOST > default gateway (AP mode) > fallback."""
+    if explicit:
+        return explicit, "--host"
+    env = os.getenv("MAXIM_REACHY_HOST")
+    if env:
+        return env, "$MAXIM_REACHY_HOST"
+    gw = default_gateway()
+    if gw:
+        return gw, "default-gateway (on the robot's AP the robot IS the gateway)"
+    return "10.42.0.1", "fallback default"
+
+
 def preflight(host: str) -> None:
+    # --- network sanity: is the robot even on your network? (references YOUR ip) ---
+    gw = default_gateway()
+    mine = local_ip_toward(host)
+    print(f"[net] your IP = {mine or '?'}   gateway = {gw or '?'}   target robot = {host}")
+    if gw and host == gw:
+        print("[net] target == your gateway -> consistent with the robot's own AP. good.")
+    elif mine and _slash24(mine) != _slash24(host) and host != gw:
+        print(f"[net] ** SUBNET MISMATCH ** you're on {_slash24(mine)}.x but targeting {host}.")
+        print("[net]   You're almost certainly not on the robot's network. Either join the")
+        print(f"[net]   robot's Wi-Fi (then it's the gateway{f' = {gw}' if gw else ''}), or pass the")
+        print("[net]   robot's real IP via --host / $MAXIM_REACHY_HOST.")
+
     # zenoh :7447 is the channel the SDK actually needs; :8000 is the daemon's HTTP
     # API which may or may not be exposed depending on config (don't rely on it).
     zenoh_ok = _tcp_open(host, 7447)
@@ -73,7 +136,12 @@ def preflight(host: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="10.42.0.1", help="Reachy daemon IP (hotspot gateway)")
+    ap.add_argument(
+        "--host",
+        default=None,
+        help="Reachy daemon IP. Default: $MAXIM_REACHY_HOST, else the default "
+        "gateway (the robot on its own AP), else 10.42.0.1.",
+    )
     ap.add_argument(
         "--via-tunnel",
         action="store_true",
@@ -81,7 +149,9 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    preflight(args.host)
+    host, source = resolve_host(args.host)
+    print(f"[host] using {host}  (source: {source})")
+    preflight(host)
 
     try:
         from reachy_mini import ReachyMini
