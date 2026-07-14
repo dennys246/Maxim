@@ -89,17 +89,16 @@ def _slash24(ip: str | None) -> str | None:
     return ".".join(ip.split(".")[:3]) if ip and ip.count(".") == 3 else None
 
 
-def resolve_host(explicit: str | None) -> tuple[str, str]:
-    """Pick the robot IP: --host > $MAXIM_REACHY_HOST > default gateway (AP mode) > fallback."""
+def resolve_host(explicit: str | None) -> tuple[str | None, str]:
+    """Robot IP — the operator must DECLARE it (no magic default): --host >
+    $MAXIM_REACHY_HOST > (future: maxim config `embodiment.host`). Returns
+    (None, "") if unset so the caller can guide first-embodiment setup."""
     if explicit:
         return explicit, "--host"
     env = os.getenv("MAXIM_REACHY_HOST")
     if env:
         return env, "$MAXIM_REACHY_HOST"
-    gw = default_gateway()
-    if gw:
-        return gw, "default-gateway (on the robot's AP the robot IS the gateway)"
-    return "10.42.0.1", "fallback default"
+    return None, ""
 
 
 def preflight(host: str) -> None:
@@ -150,6 +149,14 @@ def main() -> int:
     args = ap.parse_args()
 
     host, source = resolve_host(args.host)
+    if host is None:
+        gw = default_gateway()
+        print("[FAIL] No robot address configured. Declare it (first-embodiment setup):")
+        print("       --host <ip>   or   export MAXIM_REACHY_HOST=<ip>")
+        if gw:
+            print(f"       Hint: on the robot's own Wi-Fi AP the robot is usually your gateway = {gw}")
+        print("       (Once embodiment config lands, this persists to your maxim config — see runbook.)")
+        return 2
     print(f"[host] using {host}  (source: {source})")
     preflight(host)
 
