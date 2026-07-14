@@ -46,6 +46,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def body_state_prompt_enabled() -> bool:
+    """Exp 44 opt-in: should the executor's Embodiment be wired into the hub?
+
+    ``MAXIM_ENABLE_BODY_STATE_PROMPT`` (1/true/t/yes/y/on, case-insensitive,
+    whitespace-tolerant) routes ``instance.embodiment``
+    into ``MemoryHub.embodiment`` at AgentFactory wiring time, which
+    activates ``format_body_state_for_prompt`` → ``StructuredContext.
+    body_state`` → the body_state prompt section + Acting Coach Layers 2+4.
+    Default OFF: no production path has ever populated body_state (the
+    prompt's body-state carrier is auto-sense), and flipping it on is a
+    prompt-content behavioral delta that must go through the pre-registered
+    ablation in docs/plans/acting_coach_body_state_ablation.md before it
+    can become the default. Autouse env scrub:
+    tests/conftest.py::_isolate_maxim_body_state_prompt_env.
+    """
+    import os
+
+    # Same six-value truthy set as prompts/cluster_bias_annotation.py::
+    # TRUTHY_DISABLE_VALUES — replicated here (nac.py pattern) rather than
+    # imported so the integration layer doesn't take a prompts-layer import
+    # for one frozenset; test_body_state_wiring.py pins t/y so divergence
+    # from the canonical set fails loudly.
+    truthy = {"1", "true", "t", "yes", "y", "on"}
+    return os.environ.get("MAXIM_ENABLE_BODY_STATE_PROMPT", "").strip().lower() in truthy
+
+
 @dataclass
 class MemoryHub:
     """Central hub coordinating all memory-subsystem bridges.

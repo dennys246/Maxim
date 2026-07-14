@@ -1960,9 +1960,9 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
                     llm_worker.start()
                     # B3: Enable Acting Coach when embodiment tools are available
                     if _embodiment_ref is not None:
-                        from maxim.prompts.acting_coach import ActingCoachConfig
+                        from maxim.prompts.acting_coach import acting_coach_config_from_env
 
-                        llm_worker.acting_coach = ActingCoachConfig()
+                        llm_worker.acting_coach = acting_coach_config_from_env()
                         llm_worker.is_embodied = True
 
                         # E2: Inject entity context (sensors, affordances, failure

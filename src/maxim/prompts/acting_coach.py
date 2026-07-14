@@ -32,6 +32,13 @@ class ActingCoachConfig:
         continuity_contract: What the character remembers between turns.
         embodiment_guidance: Whether to include affordance exploration directives.
             Automatically enabled when entity tools are available.
+        body_state_layers: Whether Layers 2+4 (pain anticipation + drive
+            modulation) may render. Both layers also require a non-empty
+            ``body_state`` — which no production path supplied before the
+            Exp 44 wiring (see docs/plans/acting_coach_body_state_ablation.md).
+            This flag exists for the arm-B ablation (body_state present,
+            coaching off); do NOT overload ``embodiment_guidance`` for that —
+            it gates Layers 1-4 plus the exploration directives together.
         exploration_intensity: How aggressively to encourage exploration (0.0-1.0).
             Higher values produce stronger "try everything" directives.
             Lower values produce more cautious, observation-focused guidance.
@@ -43,6 +50,27 @@ class ActingCoachConfig:
     continuity_contract: str = "You remember your past actions, their outcomes, and the lessons you drew from them."
     embodiment_guidance: bool = True
     exploration_intensity: float = 0.7
+    body_state_layers: bool = True
+
+
+def acting_coach_config_from_env() -> ActingCoachConfig:
+    """Build the production ActingCoachConfig, honoring ablation env vars.
+
+    ``MAXIM_DISABLE_COACH_BODY_LAYERS`` (parsed by the canonical
+    ``cluster_bias_annotation.annotation_disabled_via_env`` — 1/true/t/yes/
+    y/on, case-insensitive, whitespace-tolerant) turns Layers 2+4 off for
+    the Exp 44 arm-B ablation (docs/plans/acting_coach_body_state_ablation.md).
+    Producer sites (cli.py, simulation/orchestrator.py) call this instead of
+    ``ActingCoachConfig()`` so the env read lives in ONE place;
+    ``compose_acting_coach_section`` itself stays env-free (unit tests pass
+    explicit configs — Wire-A producer-site pattern).
+    """
+    import os
+
+    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+    disabled = annotation_disabled_via_env(os.environ.get("MAXIM_DISABLE_COACH_BODY_LAYERS"))
+    return ActingCoachConfig(body_state_layers=not disabled)
 
 
 def compose_acting_coach_section(
@@ -127,10 +155,11 @@ def compose_acting_coach_section(
             lines.append("")
 
         # --- Layer 2: Pain anticipation (from body_state) ---
-        pain_note = _compose_pain_anticipation(body_state)
-        if pain_note:
-            lines.append(pain_note)
-            lines.append("")
+        if config.body_state_layers:
+            pain_note = _compose_pain_anticipation(body_state)
+            if pain_note:
+                lines.append(pain_note)
+                lines.append("")
 
         # --- Layer 3: Cerebellum forward model predictions ---
         cerebellum_notes = _compose_cerebellum_predictions(motor_programs)
@@ -140,10 +169,11 @@ def compose_acting_coach_section(
             lines.append("")
 
         # --- Layer 4: Drive modulation (interoceptive needs) ---
-        drive_note = _compose_drive_modulation(body_state)
-        if drive_note:
-            lines.append(drive_note)
-            lines.append("")
+        if config.body_state_layers:
+            drive_note = _compose_drive_modulation(body_state)
+            if drive_note:
+                lines.append(drive_note)
+                lines.append("")
 
     return "\n".join(lines)
 
