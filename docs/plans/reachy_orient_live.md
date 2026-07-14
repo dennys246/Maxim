@@ -68,6 +68,31 @@ against the installed SDK (1.2.6) + [issue #677](https://github.com/pollen-robot
   `source /venvs/apps_venv/bin/activate`, run with plain `ReachyMini()`. The Step-1 smoke test is
   dependency-free so it runs there; the full loop needs maxim installed on the Pi.
 
+## Robot address — declared, not guessed (design)
+
+The robot's IP changes location-to-location, so **the operator declares it once; Maxim persists it** —
+no magic default (matches the repo's no-magic-config discipline). Resolution order (highest first):
+`--host` → `$MAXIM_REACHY_HOST` → **maxim config `embodiment.host`** (planned). If none set, the tools
+fail with first-embodiment guidance (and *hint* the gateway — on the robot's own AP the robot IS the
+gateway — but never silently use it).
+
+**Planned config shape** (route through the standard config layer per the dev standard —
+`resolve_setting` + a `*ConfigSection` + `config_writer`, NOT a new env var):
+```
+config.json :: "embodiment": { "robot_type": "reachy_mini", "host": "<ip>", "connection_mode": "network" }
+```
+First embody assigns it (`maxim embody --robot reachy_mini --host <ip>` writes it via `config_writer`);
+the runtime reads `resolve_setting("embodiment.host", cli_value=...)`. **Sequencing:** implement this
+*after* the first successful SDK connection, so we persist a *validated* config rather than design
+around an unproven path. The Step-1 smoke test stays standalone (`--host`/env only) so it runs onboard.
+
+**Robot-agnostic seam (for Atlas / other robots):** `robot_type` dispatches to a robot plugin
+(`maxim.robots` entry-point group). Each plugin owns its connection (Reachy → `ReachyMini`/zenoh;
+Atlas → its own SDK) and exposes the robot-neutral `PerceptSource`/`ActionSink` + a SEM body YAML.
+The orient backbone (drive + affordances + NAc + `potential_diff`) is already modality/robot-agnostic
+and does **not** change per robot. Build only the Reachy backend now; a real second robot proves the
+abstraction by parallel use (don't speculatively generalize the transport for a hypothetical Atlas).
+
 ## Steps (each gates the next)
 
 ### Step 1 — hardware smoke test  ([`scripts/orient_backbone/live_1_smoke.py`](../../scripts/orient_backbone/live_1_smoke.py))
