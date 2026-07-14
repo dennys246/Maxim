@@ -29,7 +29,6 @@ import math
 import socket
 import sys
 import time
-import urllib.request
 
 
 def doa_to_azimuth(doa_radians: float) -> float:
@@ -53,31 +52,33 @@ def _tcp_open(host: str, port: int, timeout: float = 3.0) -> bool:
 
 
 def preflight(host: str) -> None:
-    http_ok = _tcp_open(host, 8000)
-    if http_ok:
-        try:
-            with urllib.request.urlopen(f"http://{host}:8000/docs", timeout=3) as r:
-                http_ok = r.status == 200
-        except Exception:  # noqa: BLE001
-            http_ok = False
+    # zenoh :7447 is the channel the SDK actually needs; :8000 is the daemon's HTTP
+    # API which may or may not be exposed depending on config (don't rely on it).
     zenoh_ok = _tcp_open(host, 7447)
-    print(f"[preflight] daemon HTTP  {host}:8000  -> {'OK' if http_ok else 'UNREACHABLE'}")
-    print(f"[preflight] zenoh ctrl   {host}:7447  -> {'OK' if zenoh_ok else 'UNREACHABLE'}")
-    if http_ok and not zenoh_ok:
-        print("            zenoh is NOT network-exposed (robot localhost-only). Use an SSH")
-        print(f"            tunnel + --via-tunnel:  ssh -N -L 7447:127.0.0.1:7447 pollen@{host}")
-    elif http_ok and zenoh_ok:
-        print("            both up. If the SDK still times out below, it's macOS multicast")
-        print("            discovery -> grant Local Network permission, or use --via-tunnel.")
-    elif not http_ok:
-        print("            robot not reachable — wrong network or not booted (want gateway 10.42.0.1).")
+    http_ok = _tcp_open(host, 8000)
+    print(f"[preflight] zenoh ctrl  {host}:7447 -> {'OK' if zenoh_ok else 'UNREACHABLE'}  (SDK needs THIS)")
+    print(f"[preflight] daemon HTTP {host}:8000 -> {'OK' if http_ok else 'UNREACHABLE'}  (optional, config-dependent)")
+    if zenoh_ok:
+        print("            zenoh reachable. If the SDK still times out below, it's macOS multicast")
+        print("            DISCOVERY (not the robot) -> use --via-tunnel, or grant Local Network permission.")
+    elif http_ok:
+        print("            zenoh not network-exposed (robot localhost-only default) -> SSH tunnel + --via-tunnel:")
+        print(f"            ssh -N -L 7447:127.0.0.1:7447 pollen@{host}   (keep open)")
+    else:
+        print("            BOTH unreachable. If you're SURE you're on the robot's Wi-Fi, this is almost")
+        print("            certainly macOS LOCAL NETWORK permission for THIS terminal — an ungranted")
+        print("            process sees the LAN as dead (even ping/nc silently time out). Grant it:")
+        print("            System Settings -> Privacy & Security -> Local Network, then retry.")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="10.42.0.1", help="Reachy daemon IP (hotspot gateway)")
-    ap.add_argument("--via-tunnel", action="store_true",
-                    help="connect via localhost:7447 (through an SSH -L tunnel); bypasses multicast")
+    ap.add_argument(
+        "--via-tunnel",
+        action="store_true",
+        help="connect via localhost:7447 (through an SSH -L tunnel); bypasses multicast",
+    )
     args = ap.parse_args()
 
     preflight(args.host)
@@ -116,11 +117,12 @@ def main() -> int:
         else:
             doa_rad, is_speech = reading
             valid += 1
-            print(f"      doa={float(doa_rad):+.3f}rad  speech={bool(is_speech)!s:<5}  "
-                  f"azimuth={doa_to_azimuth(float(doa_rad)):+.2f}")
+            print(
+                f"      doa={float(doa_rad):+.3f}rad  speech={bool(is_speech)!s:<5}  "
+                f"azimuth={doa_to_azimuth(float(doa_rad)):+.2f}"
+            )
         time.sleep(0.5)
-    print(f"[DoA] {valid}/20 readings returned. "
-          + ("ok" if valid else "STOP: no DoA — check the mic stream."))
+    print(f"[DoA] {valid}/20 readings returned. " + ("ok" if valid else "STOP: no DoA — check the mic stream."))
 
     # --- (c) head motion ---
     print("\n[motion] moving head yaw +20deg, -20deg, recenter (watch it turn)...")

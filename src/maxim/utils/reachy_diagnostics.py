@@ -7,7 +7,7 @@ Run this script to verify network connectivity and check if required services ar
 
 Usage:
     python -m maxim.utils.reachy_diagnostics [--host REACHY_IP]
-    python -m maxim.utils.reachy_diagnostics --host 192.168.50.149
+    python -m maxim.utils.reachy_diagnostics --host 10.42.0.1
 """
 
 import argparse
@@ -189,7 +189,7 @@ Examples:
   python -m maxim.utils.reachy_diagnostics
 
   # Specify Reachy IP address
-  python -m maxim.utils.reachy_diagnostics --host 192.168.50.149
+  python -m maxim.utils.reachy_diagnostics --host 10.42.0.1
 
   # Use hostname
   python -m maxim.utils.reachy_diagnostics --host reachy-mini.local
@@ -200,13 +200,13 @@ Examples:
         "--host",
         type=str,
         default=None,
-        help="Reachy IP address or hostname (default: $MAXIM_REACHY_HOST or 192.168.50.149)",
+        help="Reachy IP address or hostname (default: $MAXIM_REACHY_HOST or 10.42.0.1)",
     )
 
     args = parser.parse_args()
 
     # Determine Reachy host
-    host = args.host or os.getenv("MAXIM_REACHY_HOST", "192.168.50.149")
+    host = args.host or os.getenv("MAXIM_REACHY_HOST", "10.42.0.1")
 
     try:
         return diagnose_reachy(host)

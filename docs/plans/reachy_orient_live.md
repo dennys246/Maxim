@@ -10,13 +10,19 @@ onboard DoA. Sim-validated in Phase 0a; this is the hardware-in-loop step.
 
 - [`ShredderSegmenter/docs/plans/archive/maxim_mvp_plan.md`](../../../ShredderSegmenter/docs/plans/archive/maxim_mvp_plan.md)
   + `maxim_integration.md` are the **camera-streaming / product-registration** layer: Reachy camera →
-  RTSP/MediaMTX → ShredderSegmenter site-agent records video (via the existing
-  [`scripts/rtsp_bridge.py`](../../scripts/rtsp_bridge.py)). Zero DoA / orienting / NAc content.
+  RTSP/MediaMTX → ShredderSegmenter site-agent records video. **Note (2026-07):** Maxim's own bridge
+  (`tools/rtsp_bridge.py` / `scripts/rtsp_bridge.py`) was **stripped in the v1.0 cleanup and is broken**
+  (imports a deleted module) — the working standalone producer now lives as `agent/reachy_streamer.py`
+  in ShredderSegmenter (SDK `get_frame` → ffmpeg → MediaMTX, zero `maxim.*`). Zero DoA / orienting / NAc content.
 - **This runbook is the orient / motor-control + learning layer**: DoA → head turn → NAc learns to
   point at the target. They **combine later** (Maxim orients the head → better footage → Shredder
   segments it) but bring up **independently**.
 - **This loop needs ONLY the Reachy SDK** — no MediaMTX, no Shredder, no RTSP. That makes it the
   simpler first hardware bring-up.
+- **Offline-safe (verified):** the Step-1/2/3 scripts import only the Reachy SDK + `maxim.decisions.nac`
+  / `maxim.embodiment` (all local) — **no LLM, no HF download, no cloud at runtime** — so they run on
+  the robot's internet-less AP with nothing pre-cached. (Phase 2 *visual* is the exception: the vision
+  encoder downloads from HF on first use → **pre-cache it before joining the robot's Wi-Fi**.)
 
 ## Iteration model
 
@@ -45,12 +51,19 @@ against the installed SDK (1.2.6) + [issue #677](https://github.com/pollen-robot
 - From the laptop use **`ReachyMini(connection_mode="network")`** (a.k.a. `localhost_only=False`) — do
   NOT let `auto` burn 5s on a nonexistent localhost daemon. #677: "remote SDK connections from a laptop
   work fine using `ReachyMini(localhost_only=False)`."
-- Discovery is **zenoh multicast/gossip** (no explicit-IP option in the constructor). On **macOS this
-  needs "Local Network" permission** (System Settings → Privacy & Security → Local Network) for the
-  terminal/Python, or discovery silently times out.
-- **Decisive pre-flight:** browse/`curl http://10.42.0.1:8000/docs`. Loads → daemon is up +
-  network-exposed → any remaining failure is zenoh discovery (permission/multicast). Doesn't load →
-  robot not booted / not exposed.
+- Discovery is **zenoh multicast/gossip** (no explicit-IP option in the constructor). On **macOS,
+  "Local Network" permission is MANDATORY** (System Settings → Privacy & Security → Local Network) for
+  the terminal app. Without it, discovery **silently times out and looks exactly like "robot down"** —
+  an ungranted process sees the whole LAN as dead (even `ping`/`nc` return nothing). This is the single
+  most time-wasting gotcha; grant it first.
+- **Reliable signal is zenoh `:7447`, not `:8000`.** The daemon's HTTP API (`:8000`) may or may not be
+  network-exposed depending on config (one session saw it up, another down) — don't diagnose off it.
+  `live_1_smoke.py` pre-flights `:7447` (SDK control) + `:8000` (informational) and branches the hint.
+- **If zenoh isn't network-reachable** (robot binds it to localhost — the daemon default), tunnel it:
+  `ssh -N -L 7447:127.0.0.1:7447 pollen@10.42.0.1` (pw `root`, keep open) + run with `--via-tunnel`.
+- **Best long-term fix:** put the robot on your **home Wi-Fi** (station mode, via its dashboard/`nmcli`)
+  instead of its own AP — same LAN *with internet* (the AP has **no uplink**, so pip/HF/cloud/Docker all
+  fail while joined), no network-switching, and multicast usually just works.
 - **Fallback (sidesteps all network issues):** run onboard — `ssh pollen@reachy-mini` (pw `root`),
   `source /venvs/apps_venv/bin/activate`, run with plain `ReachyMini()`. The Step-1 smoke test is
   dependency-free so it runs there; the full loop needs maxim installed on the Pi.
@@ -93,3 +106,14 @@ session; a second session (loaded NAc) starts already directed.
 ## After Step 3
 → Phase 2 (visual `PerceptSource` on the same backbone, after the P1 vision-encoder check) →
 Phase 3 (audio+visual fusion). See [`audiovisual_orienting.md`](audiovisual_orienting.md).
+
+**Phase 2 camera notes (from the streaming session's SDK findings):**
+- Frames: `mini.media.get_frame()` → BGR `uint8` ~640×480 or `None`. The camera inits on construction
+  (`start_recording()` then `get_frame()`; **no `wake_up()` needed** for the feed). `media_backend="no_media"`
+  disables it. Wireless uses GStreamer (local) / WebRTC (remote); Lite uses OpenCV.
+- **Pre-cache the vision encoder before joining the robot's internet-less AP** (first `_get_encoder()`
+  pulls `all-mpnet-base-v2` from HF) — else Phase 2 hangs offline. Phase 1 (audio) has no such fetch.
+- **Camera contention:** if Maxim's live loop *and* ShredderSegmenter's standalone streamer
+  (`agent/reachy_streamer.py`, which calls `get_frame()` directly) run at once, they fight for frames.
+  For simultaneous stream + agent, use the **coexist pattern** — the streamer reads `maxim._last_frame`
+  (+ `_last_frame_ts` dedup) instead of `get_frame()` — not the standalone path.
