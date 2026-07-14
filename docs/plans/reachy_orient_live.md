@@ -68,30 +68,33 @@ against the installed SDK (1.2.6) + [issue #677](https://github.com/pollen-robot
   `source /venvs/apps_venv/bin/activate`, run with plain `ReachyMini()`. The Step-1 smoke test is
   dependency-free so it runs there; the full loop needs maxim installed on the Pi.
 
-## Robot address — declared, not guessed (design)
+## Robot connection — the factory ALREADY exists (`maxim.hardware`)
 
-The robot's IP changes location-to-location, so **the operator declares it once; Maxim persists it** —
-no magic default (matches the repo's no-magic-config discipline). Resolution order (highest first):
-`--host` → `$MAXIM_REACHY_HOST` → **maxim config `embodiment.host`** (planned). If none set, the tools
-fail with first-embodiment guidance (and *hint* the gateway — on the robot's own AP the robot IS the
-gateway — but never silently use it).
+**Correction (2026-07): do NOT invent a new config section or factory.** Maxim already has the exact
+robot-connection-engine abstraction (built with Reachy/Atlas/Spot in mind):
+- **`hardware/controller.py::RobotController`** (ABC) — the *engine* interface: `robot_type`, `connect`,
+  `disconnect`, `capabilities`, `state`, `reconnect`.
+- **`hardware/reachy/controller.py::ReachyMiniController`** — the first engine, already mature: `connect()`
+  (constructs `ReachyMini(connection_mode="network")` + mDNS pre-resolution), `goto_target()`, `wake_up()`,
+  `start/stop_recording()`, `get_audio_stream()` / `get_video_stream()`.
+- **`hardware/registry.py::RobotRegistry`** — the factory (auto-discovers `maxim.robots` entry-point plugins).
+- **`hardware/config.py::RobotConfig` + `~/.maxim/robots.yaml`** — the per-robot config: `type` field
+  (defaults `reachy_mini`; `type: atlas`/`spot` anticipated) + a `config` dict (host/connection params).
+- **`hardware/capabilities.py::RobotCapabilities`** — per-robot capability declaration.
 
-**Planned config shape** (route through the standard config layer per the dev standard —
-`resolve_setting` + a `*ConfigSection` + `config_writer`, NOT a new env var):
-```
-config.json :: "embodiment": { "robot_type": "reachy_mini", "host": "<ip>", "connection_mode": "network" }
-```
-First embody assigns it (`maxim embody --robot reachy_mini --host <ip>` writes it via `config_writer`);
-the runtime reads `resolve_setting("embodiment.host", cli_value=...)`. **Sequencing:** implement this
-*after* the first successful SDK connection, so we persist a *validated* config rather than design
-around an unproven path. The Step-1 smoke test stays standalone (`--host`/env only) so it runs onboard.
+**So the robot address lives in `~/.maxim/robots.yaml` (`RobotConfig.config`), NOT a `config.json`
+section** — the operator declares it there (no magic default). The live orient loop **routes through
+`ReachyMiniController`** (`goto_target` for orient, `get_audio_stream` for DoA) obtained from
+`RobotRegistry` — it does **not** re-invent `ReachyMini(...)`. Adding Atlas later = a new
+`AtlasController(RobotController)` + `maxim.robots` entry-point + capabilities, refine the ABC if a real
+need surfaces — exactly the factory-first-engine-refine pattern, already in place.
 
-**Robot-agnostic seam (for Atlas / other robots):** `robot_type` dispatches to a robot plugin
-(`maxim.robots` entry-point group). Each plugin owns its connection (Reachy → `ReachyMini`/zenoh;
-Atlas → its own SDK) and exposes the robot-neutral `PerceptSource`/`ActionSink` + a SEM body YAML.
-The orient backbone (drive + affordances + NAc + `potential_diff`) is already modality/robot-agnostic
-and does **not** change per robot. Build only the Reachy backend now; a real second robot proves the
-abstraction by parallel use (don't speculatively generalize the transport for a hypothetical Atlas).
+**Gap this bring-up must close:** `ReachyMiniController.connect()` hardcodes `connection_mode="network"`
++ mDNS with **no tunnel/localhost fallback** — precisely the path failing here (multicast/mDNS on macOS).
+So the working recipe from Step 1 (Local-Network permission or the `--via-tunnel` SSH path) needs to fold
+back into `ReachyMiniController.connect()` (a `connection_mode`/tunnel option in `RobotConfig.config`).
+`live_1_smoke.py`'s inline `ReachyMini(...)` is a **throwaway connection debugger** (dependency-free, runs
+onboard, isolates the 3 primitives) — the production path is the controller.
 
 ## Steps (each gates the next)
 
