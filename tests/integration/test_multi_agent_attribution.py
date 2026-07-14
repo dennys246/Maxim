@@ -543,3 +543,52 @@ class TestCreateFullAgentBioStackAgentIdPropagation:
         # wrote under default_agent).  Post-fix, default_agent has no
         # entry for downstream_probe's bias.
         assert instance.nac.get_agent_tool_biases(agent_id="default_agent", top_n=5) == []
+
+
+class TestCreateFullAgentBodyStateWiring:
+    """Exp 44 structural guard (acting_coach_body_state_ablation.md): the
+    REAL create_full_agent path must honor the body_state opt-in — stub-level
+    tests on _maybe_wire_body_state alone would stay green if a refactor
+    dropped the call site or moved instance.embodiment population, silently
+    degrading arms B/C to arm A."""
+
+    def _config(self, tmp_path: Path, agent_id: str) -> "AgentConfig":
+        return AgentConfig(
+            agent_id=agent_id,
+            role="pc",
+            persistence_dir=str(tmp_path / agent_id),
+            with_bio_stack=True,
+            with_executor=True,
+            # entity_ref requires a PainBus at build_executor; the bio-stack
+            # provides it when the bridge is enabled.
+            with_pain_bridge=True,
+            with_fear_gate=False,
+            embodiment_ref="bodies/infant_humanoid",
+        )
+
+    @staticmethod
+    def _registry():
+        from maxim.tools.registry import ToolRegistry
+
+        return ToolRegistry()
+
+    @staticmethod
+    def _factory(tmp_path: Path) -> AgentFactory:
+        from maxim.embodiment.component_registry import ComponentRegistry
+
+        return AgentFactory(base_data_dir=tmp_path, component_registry=ComponentRegistry())
+
+    def test_default_off_leaves_hub_unwired(self, tmp_path: Path) -> None:
+        factory = self._factory(tmp_path)
+        instance = factory.create_full_agent(self._config(tmp_path, "arm_a_probe"), tool_registry=self._registry())
+        assert instance.memory_hub is not None
+        assert instance.embodiment is not None, "embodiment_ref did not resolve — test precondition broken"
+        assert instance.memory_hub.embodiment is None  # arm-A status quo
+
+    def test_enabled_wires_hub_embodiment(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "1")
+        factory = self._factory(tmp_path)
+        instance = factory.create_full_agent(self._config(tmp_path, "arm_c_probe"), tool_registry=self._registry())
+        assert instance.memory_hub is not None
+        assert instance.embodiment is not None
+        assert instance.memory_hub.embodiment is instance.embodiment

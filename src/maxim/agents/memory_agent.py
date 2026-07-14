@@ -1202,6 +1202,18 @@ class MemoryAgent(Agent, AgentOutputMixin):
                 body_str = embodiment.format_body_state_for_prompt()
                 if body_str:
                     sync_fields["body_state"] = body_str
+                    # Exp 44 smoke observability: with MAXIM_LOG_FILE (root
+                    # at DEBUG) this line proves body_state was enriched and
+                    # — via the content hash — that values CHANGE between
+                    # turns, without dumping body text into the log.
+                    import hashlib
+                    import logging
+
+                    logging.getLogger(__name__).debug(
+                        "body_state_enriched chars=%d sha8=%s",
+                        len(body_str),
+                        hashlib.sha256(body_str.encode()).hexdigest()[:8],
+                    )
         except Exception as e:
             log_swallowed_exception(e, operation="embodiment_enrich")
 

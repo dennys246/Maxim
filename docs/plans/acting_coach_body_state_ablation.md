@@ -1,6 +1,7 @@
 # Acting Coach body-state ablation (proposed Exp 44)
 
-**Status:** PROPOSED (pre-registration draft, 2026-07-14). Not yet scheduled.
+**Status:** PRE-REGISTERED + PREREQUISITES SHIPPED (2026-07-14, branch
+`exp/44-body-state-wiring`). Ready to run pending Phase 0 smoke.
 **Decision it settles:** whether to wire `embodiment=` into the production
 `build_memory_hub` call sites (activating the `body_state` prompt section and
 Acting Coach Layers 2+4), bless the auto-sense status quo, or wire the data
@@ -32,9 +33,20 @@ it must be measured as an experiment, not slipped in as a bug fix.
 
 ## Question
 
-Does giving the LLM a fresh, ticked body state — and the Acting Coach's
-bio-modulated guidance on top of it — measurably change embodied behavior
-(harm avoidance, drive regulation) relative to the auto-sense-only status quo?
+Does giving the LLM a body state read fresh at context-build time — and the
+Acting Coach's bio-modulated guidance on top of it — measurably change
+embodied behavior (harm avoidance, drive regulation) relative to the
+auto-sense-only status quo?
+
+**Scope note (what the manipulation IS):** the wiring changes the READ point
+and formatting, not the tick. `format_body_state_for_prompt` only reads
+sensors; drive drift still advances exclusively via `Body.evaluate_failures`
+(event-driven on tool execution — see the CLAUDE.md embodiment-tick
+invariant). In a turn where no body-touching tool fired, arms B/C show the
+same values as the previous read, exactly like auto-sense. Do NOT "fix" this
+by calling `evaluate_failures()` inside `_enrich_with_embodiment` — that
+would publish pain → NAc learning on every prompt build, a bio-side confound
+beyond the prompt-content manipulation this experiment isolates.
 
 ## Design
 
@@ -49,19 +61,20 @@ a ceiling model (Mistral24B) would mask the delta and a below-zone model
 
 **Harness:** the Exp 42 counterbalanced safe-vs-harm warmth arc
 (`cradle`-style, infant_humanoid body, safe/harm affordance name swap across
-seeds) run in LLM-primary mode. **Harness-prep required (Phase 0.5):**
-`simulation/substrate_telemetry.py` is constructed only under
-`aut_mode == "substrate-primary"` (orchestrator.py gate) and
-`scripts/benchmark_exp42_preference.py` hardcodes that mode — so the Exp 42
-*data plumbing* does not run in LLM-primary as-is. The exploitation-phase
-*metric* transfers (analyze_exp42_preference.py defines it behaviorally on
-contact records, mode-agnostic); the contact records for this experiment
-come from the per-session `actions.jsonl` + `MAXIM_LOG_FILE` JSONL instead.
-Phase 0.5 forks the benchmark script's contact-record derivation to consume
-those sources (preferred), or deliberately widens the telemetry gate as its
-own reviewed code change — either way the harness must run end-to-end on a
-throwaway arm before any registered arm fires. Prompt-section verification
-uses `MAXIM_LOG_FILE` JSONL.
+seeds) run in LLM-primary mode. **Harness-prep (Phase 0.5) — SHIPPED** on
+`exp/44-body-state-wiring`: the harness's primary contact source was
+already the per-session `actions.jsonl` (mode-agnostic; the substrate
+telemetry was a best-effort secondary that simply yields no learning-net
+fields in LLM-primary — acceptable). `benchmark_exp42_preference.py` now
+takes `--aut-mode {substrate-primary,llm-primary}` (default preserves
+Exp 42 byte-for-byte) + `--aut-model <profile>`, gates the substrate-only
+env injection on the mode, and records `aut_mode` +
+`env_body_state_prompt` + `env_coach_body_layers_disabled` per run for arm
+provenance. Arm env vars flow through the launching shell
+(`env = os.environ.copy()`), so each tmux arm session exports its own.
+The harness must still run end-to-end on a throwaway seed before any
+registered arm fires. Prompt-section verification uses `MAXIM_LOG_FILE`
+JSONL.
 
 **Arms (additive factorial — auto-sense stays ON in all arms so the only
 manipulation is what is ADDED):**
@@ -69,21 +82,43 @@ manipulation is what is ADDED):**
 | Arm | body_state section | Coach Layers 2+4 | Isolates |
 |---|---|---|---|
 | A (status quo) | off (unwired) | inert | baseline |
-| B | ON (wired) | disabled | fresh ticked body state as *information* |
+| B | ON (wired) | disabled | fresh-at-build body state as *information* |
 | C | ON (wired) | ON | the coach's *guidance* on top of the same information |
 
 10 seeds per arm, counterbalanced safe/harm naming per the Exp 42 protocol.
 
-**Wiring for arms B/C:** thread `embodiment=` through
-`build_bio_stack` → `build_memory_hub` at the AUT call site, plus a
-structural test pinning "embodied AUT construction ⇒
-`memory_hub.embodiment is not None`" so the silent gap cannot reopen
-(same silent-no-op class as the `build_executor(pain_bus=...)` lesson).
-Arm B requires a NEW per-layer toggle on `ActingCoachConfig` — none exists
-today, and the existing `embodiment_guidance` flag must NOT be repurposed:
-it gates Layers 1-4 plus the exploration directives together, so using it
-for arm B would remove Layers 1+3 as well and break the additive factorial.
-Config-first per the dev standard, not a new env var.
+**Pre-registration divergence (surfaced per the literal-vs-structural
+lesson):** the original registration prescribed "thread `embodiment=`
+through `build_bio_stack` → `build_memory_hub`". That is structurally
+impossible as written — the Embodiment is constructed INSIDE
+`build_executor` (Step 3), after the bio-stack/hub already exists (Step 2),
+so there is no embodiment value to thread at `build_bio_stack` time without
+hoisting its construction. The shipped shape is a late-wire helper instead
+(below). If the ablation earns default-on, the permanent fix hoists
+Embodiment construction ahead of `build_bio_stack` and makes `embodiment=`
+a required keyword with explicit `None` opt-out (the `pain_bus=` shape),
+deleting the helper + env var.
+
+**Wiring for arms B/C — SHIPPED** on `exp/44-body-state-wiring`:
+`MAXIM_ENABLE_BODY_STATE_PROMPT` (default OFF = arm A byte-identical)
+routes `instance.embodiment` into `MemoryHub.embodiment` via
+`agent_factory._maybe_wire_body_state` (helper unit-tested in
+[tests/unit/test_body_state_wiring.py](../../tests/unit/test_body_state_wiring.py);
+parser in `integration/memory_hub.py::body_state_prompt_enabled`).
+Arm B's toggle is the new `ActingCoachConfig.body_state_layers` field
+(gates Layers 2+4 only; `embodiment_guidance` deliberately NOT repurposed —
+it gates Layers 1-4 plus the exploration directives together), driven by
+`MAXIM_DISABLE_COACH_BODY_LAYERS` via `acting_coach_config_from_env()` at
+the two producer sites (cli.py, orchestrator.py — Wire-A producer-site
+pattern; compose stays env-free). Both env vars have autouse conftest
+scrubs per the opt-in-env-in-hot-paths lesson. Ablation-arm env vars (not
+config.json) follow the house pattern of MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION;
+if the ablation earns a default-on wiring, THAT ships config-first.
+
+**Arm recipes (export in the launching shell):**
+- Arm A: nothing (status quo)
+- Arm B: `MAXIM_ENABLE_BODY_STATE_PROMPT=1 MAXIM_DISABLE_COACH_BODY_LAYERS=1`
+- Arm C: `MAXIM_ENABLE_BODY_STATE_PROMPT=1`
 
 ## Metrics
 
@@ -95,10 +130,24 @@ inside the comfort band, mean |deviation from set_point|; pain events per
 turn; turns-to-first-corrective-action after a breach.
 
 **Mechanism checks (must pass for the arms to count):**
-1. Prompt telemetry confirms the `body_state` section renders in B/C and the
-   coach layers emit only in C.
-2. Byte-diff of prompts across arms confirms ONLY the intended sections
-   differ (narrator snapshot pinned per the narrator-state-confound lesson).
+1. The `prompt_sections` DEBUG event (PromptBudgeter emits one per prompt
+   build: `name:chars` pairs for every INCLUDED section) shows `body_state`
+   present in B/C and absent in A; `acting_coach` section size in C exceeds
+   B (Layers 2+4 text). The `body_state_enriched chars=N sha8=…` event
+   (memory_agent) confirms enrichment fired and — via the hash — that
+   values change across turns whenever body-touching tools fired between
+   reads. Both events land in the `MAXIM_LOG_FILE` JSONL (root logger runs
+   at DEBUG when it is set).
+2. Cross-arm section diff (amended pre-registration, 2026-07-14, BEFORE any
+   arm fired): compare `prompt_sections` name+size lists across arms —
+   only `body_state` and `acting_coach` may differ (narrator snapshot
+   pinned per the narrator-state-confound lesson). This replaces the
+   originally registered full prompt byte-diff, which has no capture
+   facility today; a prompt-text dump flag can be added later as a deeper
+   optional check if section-level diffs look suspicious. Run arms with
+   n_ctx headroom — body_state is a CRITICAL-priority section, and under a
+   tight budget arms B/C could push a lower-priority section out that arm
+   A keeps (a section-diff, which check 2 would catch).
 3. Prompt-cache stable prefix is byte-identical across turns in all arms —
    `body_state` is added without `cacheable=True` (verified in
    `prompt_builder.py:1440`), so this should hold; if it doesn't, stop and
@@ -125,11 +174,25 @@ which partitions the outcome space:
 
 ## Phase 0 smoke (run first, ~zero cost)
 
-On the wiring branch: `MAXIM_LOG_FILE=/tmp/maxim.jsonl maxim --sim "warmth
-smoke" --embodiment bodies/infant_humanoid --interactive false
---sim-max-turns 3`, then verify in the JSONL: body_state section present,
-coach layers present, drive values in the section CHANGE between turns
-(ticked, not stale), stable prefix byte-identical across turns.
+On the wiring branch (note the arm-C env var — without it the smoke runs
+arm A and body_state is correctly absent):
+
+```bash
+MAXIM_ENABLE_BODY_STATE_PROMPT=1 MAXIM_LOG_FILE=/tmp/maxim_exp44_smoke.jsonl \
+  maxim --sim "warmth smoke" --embodiment bodies/infant_humanoid \
+  --interactive false --sim-max-turns 3
+```
+
+Then verify in the JSONL:
+1. `grep body_state_enriched` — present, and `sha8` differs across turns
+   that executed body-touching tools (drift applied at tool time).
+2. `grep prompt_sections` — `body_state:` appears in the included list;
+   `acting_coach:` present.
+3. Re-run WITHOUT the env var — `body_state` absent from `prompt_sections`
+   (arm-A control).
+4. Stable-prefix stability: `prompt_sections` shows body_state only in the
+   dynamic remainder path (it is added without `cacheable=True`); no
+   stable-section size changes across turns.
 
 ## Cost
 

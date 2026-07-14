@@ -258,3 +258,64 @@ def test_mock_resume_skips_existing(harness, tmp_path):
     harness.main(["--mock", "--trials", "2", "--out", str(out), "--resume"])
     n2 = len(out.read_text().splitlines())
     assert n1 == n2 == 4  # no duplicates on resume
+
+
+# ── Exp 44 fork: aut_mode threading + provenance (CI-safe, no subprocess) ──
+
+
+class TestExp44HarnessFork:
+    """The Exp 44 additions must leave Exp 42 byte-compatible (default
+    aut_mode=substrate-primary) and record arm provenance per run."""
+
+    def test_record_default_mode_is_substrate_primary(self):
+        harness = _load(_HARNESS_PATH, "bench_exp42_fork_default")
+        rec = harness._record("cradle_pref_a", 42, ["warmth_beta_safe_warm_self"], {}, mock=True, git_hash="x")
+        assert rec["aut_mode"] == "substrate-primary"
+        assert rec["env_body_state_prompt"] == ""
+        assert rec["env_coach_body_layers_disabled"] == ""
+
+    def test_record_llm_primary_provenance(self, monkeypatch):
+        harness = _load(_HARNESS_PATH, "bench_exp42_fork_llm")
+        monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "1")
+        monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", "1")
+        rec = harness._record(
+            "cradle_pref_a", 42, ["warmth_beta_safe_warm_self"], {}, mock=True, git_hash="x", aut_mode="llm-primary"
+        )
+        assert rec["aut_mode"] == "llm-primary"
+        assert rec["env_body_state_prompt"] == "1"
+        assert rec["env_coach_body_layers_disabled"] == "1"
+
+    def test_cli_rejects_unknown_aut_mode(self):
+        harness = _load(_HARNESS_PATH, "bench_exp42_fork_cli")
+        with pytest.raises(SystemExit):
+            harness.main(["--out", "/tmp/x.jsonl", "--aut-mode", "bogus"])
+
+
+class TestExp44ArmDerivation:
+    """ablation_arm must be derived with the SAME truthy semantics the
+    runtime parsers use (1/true/t/yes/y/on) — grouping on raw env echoes
+    is fragile ("1" vs "true" vs " YES ")."""
+
+    def test_arm_a_default(self, monkeypatch):
+        harness = _load(_HARNESS_PATH, "bench_exp44_arm_a")
+        monkeypatch.delenv("MAXIM_ENABLE_BODY_STATE_PROMPT", raising=False)
+        monkeypatch.delenv("MAXIM_DISABLE_COACH_BODY_LAYERS", raising=False)
+        assert harness._ablation_arm() == "A"
+
+    def test_arm_b(self, monkeypatch):
+        harness = _load(_HARNESS_PATH, "bench_exp44_arm_b")
+        monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "y")  # t/y must count
+        monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", " TRUE ")
+        assert harness._ablation_arm() == "B"
+
+    def test_arm_c(self, monkeypatch):
+        harness = _load(_HARNESS_PATH, "bench_exp44_arm_c")
+        monkeypatch.setenv("MAXIM_ENABLE_BODY_STATE_PROMPT", "t")
+        monkeypatch.delenv("MAXIM_DISABLE_COACH_BODY_LAYERS", raising=False)
+        assert harness._ablation_arm() == "C"
+
+    def test_inconsistent_flagged(self, monkeypatch):
+        harness = _load(_HARNESS_PATH, "bench_exp44_arm_x")
+        monkeypatch.delenv("MAXIM_ENABLE_BODY_STATE_PROMPT", raising=False)
+        monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", "1")
+        assert harness._ablation_arm() == "inconsistent"

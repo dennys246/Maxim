@@ -910,9 +910,9 @@ def start_simulation_mode(
         # anticipation, cerebellum predictions) annotates the base directive
         # via existing StructuredContext fields at prompt-build time.
         if entity_ref is not None:
-            from maxim.prompts.acting_coach import ActingCoachConfig
+            from maxim.prompts.acting_coach import acting_coach_config_from_env
 
-            aut_llm_worker.acting_coach = ActingCoachConfig()
+            aut_llm_worker.acting_coach = acting_coach_config_from_env()
             aut_llm_worker.is_embodied = True
 
             # E2: Inject entity context into AUT prompt

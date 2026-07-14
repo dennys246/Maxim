@@ -218,3 +218,45 @@ class TestComposeActingCoachSection:
             available_tools={"rusty_sword_slash"},
         )
         assert "Physical Exploration" not in result
+
+
+class TestBodyStateLayersToggle:
+    """Exp 44 arm-B toggle (acting_coach_body_state_ablation.md): Layers 2+4
+    gate on ``body_state_layers`` while Layers 1+3 + exploration directives
+    stay up — ``embodiment_guidance`` must NOT be the arm-B lever (it would
+    remove Layers 1+3 too and break the additive factorial)."""
+
+    _BODY = "energy: 50%, anticipated pain in current context (intensity: 0.7), hunger: 0.9 (deprived)"
+    _TOOLS = ["dragon_fire_breath", "sense_tools"]
+
+    def test_default_on_renders_body_layers(self):
+        result = compose_acting_coach_section(
+            ActingCoachConfig(),
+            available_tools=self._TOOLS,
+            body_state=self._BODY,
+        )
+        assert "anticipated discomfort" in result  # Layer 2
+
+    def test_layers_off_removes_2_and_4_keeps_exploration(self):
+        result = compose_acting_coach_section(
+            ActingCoachConfig(body_state_layers=False),
+            available_tools=self._TOOLS,
+            body_state=self._BODY,
+        )
+        assert "anticipated discomfort" not in result  # Layer 2 gone
+        assert "Physical Exploration" in result  # directives intact (Layer 1/3 tier)
+
+    def test_env_factory_default(self):
+        from maxim.prompts.acting_coach import acting_coach_config_from_env
+
+        cfg = acting_coach_config_from_env()
+        assert cfg.body_state_layers is True
+
+    def test_env_factory_disable(self, monkeypatch):
+        from maxim.prompts.acting_coach import acting_coach_config_from_env
+
+        for val in ("1", "true", "t", " YES ", "y", "on"):
+            monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", val)
+            assert acting_coach_config_from_env().body_state_layers is False
+        monkeypatch.setenv("MAXIM_DISABLE_COACH_BODY_LAYERS", "0")
+        assert acting_coach_config_from_env().body_state_layers is True

@@ -239,6 +239,43 @@ def _isolate_maxim_nac_min_confidence():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_body_state_prompt_env():
+    """Scrub ``MAXIM_ENABLE_BODY_STATE_PROMPT`` across every test.
+
+    Exp 44 opt-in (docs/plans/acting_coach_body_state_ablation.md): when
+    set, AgentFactory wires the executor's Embodiment into
+    MemoryHub.embodiment, activating the body_state prompt section. Per
+    CLAUDE.md "opt-in env vars in hot startup paths need autouse scrubs",
+    a wiring test must not leak arm-B/C state into later tests that
+    construct agents.
+    """
+    saved = os.environ.pop("MAXIM_ENABLE_BODY_STATE_PROMPT", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_ENABLE_BODY_STATE_PROMPT", None)
+        if saved is not None:
+            os.environ["MAXIM_ENABLE_BODY_STATE_PROMPT"] = saved
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_coach_body_layers_env():
+    """Scrub ``MAXIM_DISABLE_COACH_BODY_LAYERS`` across every test.
+
+    Exp 44 arm-B toggle: disables Acting Coach Layers 2+4 while keeping
+    Layers 1+3 (read once per construction via
+    acting_coach_config_from_env at the cli/orchestrator producer sites).
+    """
+    saved = os.environ.pop("MAXIM_DISABLE_COACH_BODY_LAYERS", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_DISABLE_COACH_BODY_LAYERS", None)
+        if saved is not None:
+            os.environ["MAXIM_DISABLE_COACH_BODY_LAYERS"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_nac_reward_bias_disabled():
     """Scrub ``MAXIM_NAC_REWARD_BIAS_DISABLED`` across every test.
 
