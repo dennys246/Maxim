@@ -92,6 +92,33 @@ def test_localhost_only_probes_localhost_not_mdns():
     assert mod.ReachyMini.call_args.kwargs["connection_mode"] == "localhost_only"
 
 
+def test_mdns_path_also_probes_7447():
+    """Default network/mDNS path fails fast if :7447 is unreachable (name resolving
+    is not enough — the daemon can be down / zenoh bound to localhost)."""
+    c = ReachyMiniController()  # network, no host
+    ctx, mod = _mock_sdk()
+    with (
+        ctx,
+        patch.object(ReachyMiniController, "_resolve_mdns", return_value="10.0.0.9"),
+        patch.object(ReachyMiniController, "_port_open", return_value=False),
+    ):
+        assert c.connect(timeout=2.0) is False
+    mod.ReachyMini.assert_not_called()
+
+
+def test_mdns_path_probes_the_resolved_ip():
+    c = ReachyMiniController()
+    ctx, mod = _mock_sdk()
+    with (
+        ctx,
+        patch.object(ReachyMiniController, "_resolve_mdns", return_value="10.0.0.9"),
+        patch.object(ReachyMiniController, "_port_open", return_value=True) as probe,
+    ):
+        assert c.connect(timeout=2.0) is True
+    assert probe.call_args.args[0] == "10.0.0.9"  # probed the resolved IP, not the name
+    assert mod.ReachyMini.call_args.kwargs["connection_mode"] == "network"
+
+
 def test_disconnect_stops_tunnel():
     c = ReachyMiniController()
     proc = MagicMock()

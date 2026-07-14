@@ -222,28 +222,33 @@ class ReachyMiniController(RobotController):
                 effective_mode = "localhost_only"
 
             # Reachability pre-check (fast-fail so we don't wait ~25s on the SDK).
-            # Legacy default (network + no host + no tunnel) keeps the mDNS gate; an
-            # explicit host / tunnel uses a direct TCP probe of :7447 instead (the mDNS
-            # gate hard-fails where reachy-mini.local doesn't resolve — macOS/hotspot).
-            if effective_mode == "network" and self._host is None:
-                if self._resolve_mdns(timeout=min(timeout, 5.0)) is None:
+            # EVERY path verifies the zenoh control port :7447 is actually reachable
+            # before the SDK connect — a resolvable name / alive host is NOT enough
+            # (the daemon can be down, or zenoh bound to localhost). The legacy default
+            # additionally resolves via mDNS first; explicit host / tunnel probe directly
+            # (the mDNS gate hard-fails where reachy-mini.local doesn't resolve — macOS/hotspot).
+            if effective_mode == "localhost_only":
+                probe_host: str | None = "127.0.0.1"
+            elif self._host is not None:
+                probe_host = self._host
+            else:  # legacy network path: resolve mDNS -> then probe the resolved IP
+                probe_host = self._resolve_mdns(timeout=min(timeout, 5.0))
+                if probe_host is None:
                     logger.warning(
                         "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection",
                         self._robot_name,
                     )
                     self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
                     return False
-            else:
-                probe_host = "127.0.0.1" if effective_mode == "localhost_only" else self._host
-                if probe_host and not self._port_open(probe_host, 7447, timeout=min(timeout, 5.0)):
-                    logger.warning(
-                        "zenoh not reachable at %s:7447 — skipping SDK connection "
-                        "(check host/tunnel; on macOS grant Local Network permission)",
-                        probe_host,
-                    )
-                    self._stop_ssh_tunnel()
-                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
-                    return False
+            if probe_host and not self._port_open(probe_host, 7447, timeout=min(timeout, 5.0)):
+                logger.warning(
+                    "zenoh :7447 unreachable at %s — skipping SDK connection (daemon down / "
+                    "localhost-only, wrong host/tunnel, or on macOS grant Local Network permission)",
+                    probe_host,
+                )
+                self._stop_ssh_tunnel()
+                self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                return False
 
             logger.info("Connecting to Reachy Mini: %s (mode=%s)", self._robot_name, effective_mode)
 

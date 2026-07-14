@@ -98,7 +98,13 @@ class TestControllerConnect:
         mock_mdns.return_value = "192.168.50.150"
         ctrl = self._make_controller()
 
-        with patch.dict("sys.modules", {"reachy_mini": MagicMock()}):
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch(
+                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
+                return_value=True,
+            ),
+        ):
             import sys
 
             mock_sdk_module = sys.modules["reachy_mini"]
@@ -115,7 +121,13 @@ class TestControllerConnect:
         mock_mdns.return_value = "192.168.50.150"
         ctrl = self._make_controller()
 
-        with patch.dict("sys.modules", {"reachy_mini": MagicMock()}):
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch(
+                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
+                return_value=True,
+            ),
+        ):
             import sys
 
             mock_sdk_module = sys.modules["reachy_mini"]
@@ -132,7 +144,13 @@ class TestControllerConnect:
         mock_mdns.return_value = "192.168.50.150"
         ctrl = self._make_controller()
 
-        with patch.dict("sys.modules", {"reachy_mini": MagicMock()}):
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch(
+                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
+                return_value=True,
+            ),
+        ):
             import sys
 
             mock_sdk_module = sys.modules["reachy_mini"]
@@ -151,7 +169,13 @@ class TestControllerConnect:
         mock_mdns.return_value = None
         ctrl = self._make_controller()
 
-        with patch.dict("sys.modules", {"reachy_mini": MagicMock()}):
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch(
+                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
+                return_value=True,
+            ),
+        ):
             import sys
 
             mock_sdk_module = sys.modules["reachy_mini"]

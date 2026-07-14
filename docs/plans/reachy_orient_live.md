@@ -92,7 +92,11 @@ need surfaces — exactly the factory-first-engine-refine pattern, already in pl
 **Gap — CLOSED in code (2026-07, pending on-device validation at Step 1):** `ReachyMiniController.connect()`
 now honors `connection_mode` / `host` / `tunnel` from the `robots.yaml` `config:` block (backward-compatible —
 defaults = the old network+mDNS behavior). An explicit `host` **bypasses the mDNS hard-gate** (which fails
-where `reachy-mini.local` doesn't resolve) via a direct `:7447` probe; `tunnel: true` auto-starts
+where `reachy-mini.local` doesn't resolve). **Every path now fast-fails on the zenoh control port**:
+it TCP-probes `:7447` (host → that IP; localhost/tunnel → 127.0.0.1; default → the mDNS-resolved IP)
+before the SDK's ~25 s timeout — a name that resolves but a daemon that's down/localhost-only is caught
+immediately (not ICMP ping: ping tests host-alive not service-alive, is often filtered, and returns
+nothing on macOS without Local-Network permission). `tunnel: true` auto-starts
 `ssh -N -L 7447:127.0.0.1:7447` and forces `localhost_only`. Regression guard:
 [`tests/unit/test_reachy_connection_options.py`](../../tests/unit/test_reachy_connection_options.py).
 
