@@ -24,7 +24,9 @@ def _import_cv2():
 
         return cv2
     except ImportError:
-        raise ImportError("OpenCV is required for vision features. Install with: pip install 'pymaxim[vision]'") from None
+        raise ImportError(
+            "OpenCV is required for vision features. Install with: pip install 'pymaxim[vision]'"
+        ) from None
 
 
 from maxim.models.vision.engine import (

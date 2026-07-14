@@ -18,13 +18,12 @@ import time
 
 import pytest
 
-from maxim.agents.bus import DependencyGraph, Edge, EdgeType
+from maxim.agents.bus import DependencyGraph, EdgeType
 from maxim.decisions.causal_link import Valence
 from maxim.memory.episode import (
     CaptureEvent,
     Episode,
     PendingEpisodeState,
-    apply_hebbian_on_close,
 )
 from maxim.memory.hippocampus import (
     EpisodeConfig,

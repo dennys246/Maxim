@@ -11,9 +11,8 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from maxim.integration.bio_enrichment import (
     BioEnrichmentPipeline,
@@ -23,7 +22,7 @@ from maxim.integration.bio_enrichment import (
     EnrichmentResult,
     EpisodicSummary,
 )
-from maxim.runtime.gating import GateScore, GatingContext, TextSalienceScorer
+from maxim.runtime.gating import GateScore, TextSalienceScorer
 
 
 # ---------------------------------------------------------------------------

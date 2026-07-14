@@ -19,7 +19,6 @@ import pytest
 
 from maxim.embodiment.sem import (
     CouplingSpec,
-    DriveSpec,
     Entity,
     EntropicDriveSpec,
     HomeostaticDriveSpec,

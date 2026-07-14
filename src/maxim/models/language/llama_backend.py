@@ -32,9 +32,7 @@ class _LlamaCppBackend:
             # Requested-but-missing dependency is a SETUP error: raise loudly
             # with an actionable hint instead of returning False and letting
             # the caller mask it as a generic "no local model" failure.
-            llama_mod = require_optional_dependency(
-                "llama_cpp", extra="llm-llama", feature="Local llama.cpp backend"
-            )
+            llama_mod = require_optional_dependency("llama_cpp", extra="llm-llama", feature="Local llama.cpp backend")
             Llama = llama_mod.Llama
 
             model_path = str(self.cfg.model_path or "").strip()

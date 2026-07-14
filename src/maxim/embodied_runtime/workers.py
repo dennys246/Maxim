@@ -343,7 +343,9 @@ def video_writer_worker(
     try:
         import cv2
     except ImportError:
-        raise ImportError("OpenCV is required for video recording. Install with: pip install 'pymaxim[vision]'") from None
+        raise ImportError(
+            "OpenCV is required for video recording. Install with: pip install 'pymaxim[vision]'"
+        ) from None
 
     writer = None
     opened = False
