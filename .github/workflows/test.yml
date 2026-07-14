@@ -548,6 +548,19 @@ jobs:
             echo "ERROR: legacy tier-name string literal in lane_models.py (use large/medium/small)"
             exit 1
           fi
+          # CLAUDE.md embodiment-tick invariant: Body.evaluate_failures owns
+          # the wall-clock drive-drift tick. A second tick_vital_drift call
+          # site would double-drift (ed8b187f removed the percepts.py
+          # duplicate for exactly this). Only body.py may call it.
+          TICK_MATCHES=$(grep -rn --include="*.py" "tick_vital_drift(" src/maxim/ \
+            | grep -v "^src/maxim/embodiment/body\.py:" \
+            || true)
+          if [ -n "$TICK_MATCHES" ]; then
+            echo "ERROR: tick_vital_drift called outside embodiment/body.py — double-drift hazard"
+            echo "$TICK_MATCHES"
+            echo "       The tick lives in Body.evaluate_failures (see the CLAUDE.md embodiment-tick invariant)."
+            exit 1
+          fi
           # CLAUDE.md cradle Stage 1c: EnergyReactionBridge and
           # MovementEnergyTracker are hard-deleted dead code.
           if grep -rn --include="*.py" "EnergyReactionBridge\|MovementEnergyTracker" src/maxim/; then
