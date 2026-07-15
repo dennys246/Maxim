@@ -260,3 +260,8 @@ data/agents/MagicMock*
 dist/
 .worktrees/
 v1_phase_results/
+
+# Local TLS material at repo root (never commit)
+auto.crt
+auto.key
+*.pem

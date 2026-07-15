@@ -8,6 +8,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import socket
+import subprocess
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -38,17 +39,54 @@ class ReachyMiniController(RobotController):
         *,
         robot_name: str = "reachy_mini",
         media_backend: str = "default",
+        connection_mode: str = "network",
+        host: str | None = None,
+        tunnel: bool = False,
+        ssh_user: str = "pollen",
+        ssh_port: int = 22,
     ) -> None:
         """Initialize Reachy Mini controller.
+
+        All keyword args below are populated from ``robots.yaml``'s per-robot
+        ``config:`` block (the registry splats it as ``**config``).
 
         Args:
             robot_id: Unique identifier for this robot (defaults to robot_name).
             robot_name: mDNS name of the robot (default: "reachy_mini").
             media_backend: Media backend to use (default: "default").
+            connection_mode: SDK connection mode (WS era, SDK >= 1.5) —
+                ``"network"`` (direct WebSocket to ``ws://<host>:8000/ws/sdk``,
+                default), ``"localhost_only"`` (localhost:8000 — onboard or
+                through a tunnel), or ``"auto"`` (localhost first, then host).
+            host: Robot IP or hostname, passed straight into
+                ``ReachyMini(host=...)``. Prefer the IP: ``.local`` resolution
+                from Python is unreliable on macOS (getaddrinfo/IPv6-first),
+                even when curl resolves it. When unset, the controller
+                resolves ``<robot-name>.local`` via IPv4-only
+                ``socket.gethostbyname`` — which sidesteps the IPv6-first
+                flake — and passes the RESOLVED IP to the SDK. (TCC-blocked
+                mDNS still requires an explicit ``host:``.)
+            tunnel: DEPRECATED for wireless robots — the ``--wireless-version``
+                daemon binds 0.0.0.0:8000, no tunnel needed. Still useful for
+                loopback-bound daemons (Lite / non-wireless, Pollen PR #1205):
+                auto-starts ``ssh -N -L 8000:127.0.0.1:8000 <ssh_user>@<host>``
+                and forces ``connection_mode="localhost_only"``. Needs
+                key-based SSH (BatchMode); else start the tunnel manually and
+                set ``tunnel: false, connection_mode: localhost_only``.
+                (Zenoh-era :7447 tunnels are obsolete — see
+                docs/embodiment/reachy_mini/README.md, transport pivot.)
+            ssh_user: SSH user for the tunnel (default "pollen").
+            ssh_port: SSH port for the tunnel (default 22).
         """
         super().__init__(robot_id or robot_name)
         self._robot_name = robot_name
         self._media_backend = media_backend
+        self._connection_mode = connection_mode
+        self._host = host
+        self._tunnel = tunnel
+        self._ssh_user = ssh_user
+        self._ssh_port = ssh_port
+        self._tunnel_proc: subprocess.Popen | None = None
         self._mini: Any = None  # ReachyMini SDK instance
         self._video_stream: ReachyVideoStream | None = None
         self._audio_stream: ReachyAudioStream | None = None
@@ -94,6 +132,105 @@ class ReachyMiniController(RobotController):
             logger.warning("mDNS resolution failed for %s", mdns_name)
             return None
 
+    @staticmethod
+    def _port_open(host: str, port: int, timeout: float = 3.0) -> bool:
+        """Single TCP reachability probe (fast-fail replacement for the mDNS gate)."""
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _installed_sdk_version() -> tuple[int, int] | None:
+        """(major, minor) of the installed reachy-mini SDK; None if unknown.
+
+        Uses importlib.metadata — pre-1.5 SDKs have no ``__version__``
+        attribute, so package metadata is the only era probe that works
+        across the pivot.
+        """
+        try:
+            from importlib.metadata import version
+
+            parts = version("reachy-mini").split(".")
+            return (int(parts[0]), int(parts[1]))
+        except Exception:  # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _daemon_status(host: str, port: int = 8000, timeout: float = 3.0) -> dict | None:
+        """Best-effort ``GET /api/daemon/status`` (WS-era daemon). None on failure."""
+        from maxim.utils import http as maxim_http
+
+        try:
+            resp = maxim_http.fetch_url(f"http://{host}:{port}/api/daemon/status", timeout=timeout)
+            return resp.json() if hasattr(resp, "json") else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _wait_local_port(self, port: int, timeout: float) -> bool:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            if self._port_open("127.0.0.1", port, timeout=1.0):
+                return True
+            time.sleep(0.3)
+        return False
+
+    def _start_ssh_tunnel(self, timeout: float = 10.0) -> bool:
+        """Auto-start ``ssh -N -L 8000:127.0.0.1:8000 user@host`` (key-based / BatchMode).
+
+        WS-era (SDK >= 1.5): the daemon's single control port is 8000. Only
+        needed for loopback-bound daemons; wireless daemons bind 0.0.0.0.
+        """
+        cmd = [
+            "ssh",
+            "-N",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ExitOnForwardFailure=yes",
+            "-o",
+            "ServerAliveInterval=15",
+            "-p",
+            str(self._ssh_port),
+            "-L",
+            "8000:127.0.0.1:8000",
+            f"{self._ssh_user}@{self._host}",
+        ]
+        logger.info("Starting SSH tunnel: %s", " ".join(cmd))
+        try:
+            self._tunnel_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError:
+            logger.error("ssh not found — cannot auto-tunnel")
+            return False
+        if self._wait_local_port(8000, timeout=timeout):
+            logger.info("SSH tunnel up: localhost:8000 -> %s:8000", self._host)
+            return True
+        logger.error(
+            "SSH tunnel to %s did not open localhost:8000. Auto-tunnel needs key-based SSH "
+            "(BatchMode) — run `ssh-copy-id %s@%s` — OR start it manually and set "
+            "tunnel=false, connection_mode=localhost_only.",
+            self._host,
+            self._ssh_user,
+            self._host,
+        )
+        self._stop_ssh_tunnel()
+        return False
+
+    def _stop_ssh_tunnel(self) -> None:
+        if self._tunnel_proc is None:
+            return
+        try:
+            self._tunnel_proc.terminate()
+            try:
+                self._tunnel_proc.wait(timeout=3.0)
+            except subprocess.TimeoutExpired:
+                self._tunnel_proc.kill()
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Error stopping SSH tunnel: %s", e)
+        finally:
+            self._tunnel_proc = None
+
     def connect(self, timeout: float = 30.0) -> bool:
         """Connect to the Reachy Mini.
 
@@ -108,23 +245,86 @@ class ReachyMiniController(RobotController):
         try:
             from reachy_mini import ReachyMini
 
-            # Pre-resolve mDNS to verify the robot is reachable.
-            # If mDNS fails, the robot is not on the network — skip the
-            # expensive SDK connection attempt (saves ~25s on headless startup).
-            resolved_ip = self._resolve_mdns(timeout=min(timeout, 5.0))
-            if resolved_ip is None:
-                logger.warning(
-                    "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection",
-                    self._robot_name,
+            # Era gate: client and daemon must both be post-v1.5.0 (zenoh was
+            # removed there; this controller speaks the WS transport). A
+            # pre-pivot SDK would fail with a cryptic TypeError on host= —
+            # fail loud with the fix instead.
+            sdk_version = self._installed_sdk_version()
+            if sdk_version is not None and sdk_version < (1, 5):
+                logger.error(
+                    "reachy-mini SDK %s is pre-v1.5.0 (zenoh era) — this controller requires the "
+                    "WebSocket transport. Fix: pip install 'reachy-mini[gstreamer]>=1.8.3,<2.0' "
+                    "(and check you're running the right interpreter/venv).",
+                    ".".join(str(x) for x in sdk_version),
                 )
-                self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                self._update_state(
+                    connection_state=RobotConnectionState.ERROR,
+                    error_message="reachy-mini SDK is pre-v1.5.0 (zenoh era); upgrade to >=1.8.3",
+                )
                 return False
 
-            logger.info("Connecting to Reachy Mini: %s", self._robot_name)
+            effective_mode = self._connection_mode
 
+            # Optional SSH tunnel: localhost:8000 -> robot:8000. Only needed for
+            # loopback-bound daemons (Lite); wireless daemons bind 0.0.0.0:8000.
+            if self._tunnel:
+                if not self._host:
+                    logger.error("tunnel=True requires host= (robot IP / SSH target)")
+                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                    return False
+                if not self._start_ssh_tunnel(timeout=min(timeout, 10.0)):
+                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                    return False
+                effective_mode = "localhost_only"
+
+            # Reachability pre-check (fast-fail so we don't wait on the SDK).
+            # WS era (SDK >= 1.5): the single control port is the daemon's
+            # FastAPI :8000 (WebSocket /ws/sdk rides it). A resolvable name /
+            # alive host is NOT enough — the daemon can be down. When host is
+            # unset, resolve <robot-name>.local via the OS FIRST and hand the
+            # RESOLVED IP to the SDK (python's own .local resolution is flaky
+            # on macOS even when the OS resolver works).
+            if effective_mode == "localhost_only":
+                probe_host: str | None = "127.0.0.1"
+            elif self._host is not None:
+                probe_host = self._host
+            else:  # no explicit host: resolve mDNS -> probe + connect via the IP
+                probe_host = self._resolve_mdns(timeout=min(timeout, 5.0))
+                if probe_host is None:
+                    logger.warning(
+                        "Could not resolve %s via mDNS — robot not reachable, skipping SDK connection "
+                        "(set host: <ip> in robots.yaml; on macOS grant Local Network permission)",
+                        self._robot_name,
+                    )
+                    self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                    return False
+            if probe_host and not self._port_open(probe_host, 8000, timeout=min(timeout, 5.0)):
+                logger.warning(
+                    "daemon :8000 unreachable at %s — skipping SDK connection (daemon down, "
+                    "wrong host, or on macOS grant Local Network permission)",
+                    probe_host,
+                )
+                self._stop_ssh_tunnel()
+                self._update_state(connection_state=RobotConnectionState.DISCONNECTED)
+                return False
+            # Best-effort readiness + version visibility (never fatal).
+            status = self._daemon_status(probe_host) if probe_host else None
+            if status is not None:
+                logger.info(
+                    "Reachy daemon at %s: version=%s state=%s",
+                    probe_host,
+                    status.get("version", "?"),
+                    status.get("state", "?"),
+                )
+
+            logger.info("Connecting to Reachy Mini: %s (mode=%s)", self._robot_name, effective_mode)
+
+            connect_host = "127.0.0.1" if effective_mode == "localhost_only" else probe_host
             self._mini = ReachyMini(
                 robot_name=self._robot_name,
-                connection_mode="network",
+                host=connect_host,
+                port=8000,
+                connection_mode=effective_mode,
                 media_backend=self._media_backend,
                 timeout=timeout,
             )
@@ -160,6 +360,7 @@ class ReachyMiniController(RobotController):
 
         except Exception as e:
             logger.error("Failed to connect to Reachy Mini: %s", e)
+            self._stop_ssh_tunnel()
             self._update_state(
                 connection_state=RobotConnectionState.ERROR,
                 error_message=str(e),
@@ -168,6 +369,7 @@ class ReachyMiniController(RobotController):
 
     def disconnect(self) -> None:
         """Disconnect from the Reachy Mini."""
+        self._stop_ssh_tunnel()
         if self._mini is None:
             return
 
@@ -212,15 +414,22 @@ class ReachyMiniController(RobotController):
             return False
 
         try:
-            # Build head target (roll, pitch, yaw)
+            # Build head target. SDK >= 1.5 goto_target(head=...) requires a
+            # 4x4 pose MATRIX (the zenoh-era (roll, pitch, yaw) tuple would be
+            # flatten()ed to 3 values where the daemon expects 16). Compose
+            # the pose from euler targets via the SDK's own helper.
             head_target = None
             if any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw]):
-                # Get current pose to fill in None values
+                from reachy_mini.utils import create_head_pose
+
+                # Fill unspecified axes from the current pose so single-axis
+                # commands don't recenter the others.
                 current = self.get_current_pose()
-                head_target = (
-                    target.head_roll if target.head_roll is not None else current.get("roll", 0.0),
-                    target.head_pitch if target.head_pitch is not None else current.get("pitch", 0.0),
-                    target.head_yaw if target.head_yaw is not None else current.get("yaw", 0.0),
+                head_target = create_head_pose(
+                    roll=(target.head_roll if target.head_roll is not None else current.get("roll", 0.0)),
+                    pitch=(target.head_pitch if target.head_pitch is not None else current.get("pitch", 0.0)),
+                    yaw=(target.head_yaw if target.head_yaw is not None else current.get("yaw", 0.0)),
+                    degrees=False,
                 )
 
             # Build body yaw target
@@ -273,20 +482,26 @@ class ReachyMiniController(RobotController):
             return {}
 
         try:
-            head_joints, antenna_joints = self._mini.get_current_joint_positions()
-
             pose = {}
 
-            # Head joints: (roll, pitch, yaw)
-            if head_joints is not None and len(head_joints) >= 3:
-                pose["roll"] = float(head_joints[0])
-                pose["pitch"] = float(head_joints[1])
-                pose["yaw"] = float(head_joints[2])
+            # SDK >= 1.5: get_current_joint_positions() returns the 7 Stewart
+            # MOTOR angles — not (roll, pitch, yaw). Euler angles come from
+            # the 4x4 head pose matrix instead.
+            import math
 
-            # Antenna joints: (left, right)
-            if antenna_joints is not None and len(antenna_joints) >= 2:
-                pose["antenna_left"] = float(antenna_joints[0])
-                pose["antenna_right"] = float(antenna_joints[1])
+            m = self._mini.get_current_head_pose()
+            if m is not None:
+                pose["yaw"] = float(math.atan2(m[1][0], m[0][0]))
+                pose["pitch"] = float(math.atan2(-m[2][0], math.hypot(m[2][1], m[2][2])))
+                pose["roll"] = float(math.atan2(m[2][1], m[2][2]))
+
+            try:
+                _, antenna_joints = self._mini.get_current_joint_positions()
+                if antenna_joints is not None and len(antenna_joints) >= 2:
+                    pose["antenna_left"] = float(antenna_joints[0])
+                    pose["antenna_right"] = float(antenna_joints[1])
+            except Exception:  # noqa: BLE001 - antenna read is best-effort
+                pass
 
             self._update_state(current_pose=pose)
             return pose
@@ -300,7 +515,13 @@ class ReachyMiniController(RobotController):
     # ─────────────────────────────────────────────────────────────────────────
 
     def wake_up(self) -> bool:
-        """Wake up the robot (enable motors).
+        """Enable motor torque, then wake the robot.
+
+        SDK >= 1.5: ``wake_up()`` only moves + plays a sound — it does NOT
+        enable torque, and the daemon boots torque-off
+        (``--no-wake-up-on-start``). Without ``enable_motors()`` first, every
+        motion command is silently ignored while reads keep working (see
+        docs/embodiment/reachy_mini/troubleshooting.md).
 
         Returns:
             True if wake-up successful.
@@ -309,6 +530,10 @@ class ReachyMiniController(RobotController):
             return False
 
         try:
+            try:
+                self._mini.enable_motors()
+            except Exception as e:  # noqa: BLE001 - older SDKs may lack it
+                logger.warning("enable_motors() failed (%s) — motion may be ignored", e)
             self._mini.wake_up()
             self._update_state(is_awake=True)
             logger.info("Reachy Mini awake: %s", self._robot_name)

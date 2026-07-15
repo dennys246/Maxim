@@ -22,16 +22,16 @@ SSH into your Reachy:
 ssh pollen@<REACHY_IP>
 ```
 
-Stop the default daemon and start with wireless support:
-```bash
-sudo systemctl stop reachy-mini-daemon
-source /venvs/mini_daemon/bin/activate
-python -m reachy_mini.daemon.app.main --wireless-version --no-localhost-only
-```
+On current images (daemon >= 1.5) the stock systemd service already runs
+`--wireless-version` and binds the network — no manual daemon start needed.
+(The old recipe — `systemctl stop reachy-mini-daemon` + manual
+`--no-localhost-only` start — was a zenoh-era (SDK <= 1.4.x) workaround.)
 
 The daemon runs on:
-- Port 7447 (Zenoh) — robot communication
-- Port 8443 (WebRTC) — video streaming
+- Port 8000 (FastAPI + WebSocket `/ws/sdk`) — SDK control, REST API, dashboard
+- Port 8443 (WebRTC signaling) — video/audio streaming only
+
+Full setup + troubleshooting: [docs/embodiment/reachy_mini/](../embodiment/reachy_mini/README.md).
 
 ## Connecting Maxim
 
@@ -74,9 +74,9 @@ Diagnostics check:
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | Can't find robot | Wrong network | Ensure same LAN/Wi-Fi |
-| Port 8443 refused | Daemon not running | Restart daemon (see above) |
-| Port 7447 refused | System daemon blocking | `systemctl stop reachy-mini-daemon` |
-| Connection timeout | Firewall | Check firewall allows ports 7447, 8443 |
+| Port 8000 refused | Daemon not running / not ready | `ssh pollen@<ip>` → `systemctl status reachy-mini-daemon`; `curl http://<ip>:8000/api/daemon/status` |
+| Everything unreachable (macOS) | Local Network permission | System Settings → Privacy & Security → Local Network |
+| Connection timeout | Firewall | Check firewall allows ports 8000, 8443 |
 | Intermittent drops | Wi-Fi instability | Use wired ethernet if possible |
 
 ## RTSP Bridge (Optional)

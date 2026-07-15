@@ -5,6 +5,23 @@ from __future__ import annotations
 import socket
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_daemon_status_io(monkeypatch):
+    """connect() calls _daemon_status (urllib GET) since the WS-era rewrite —
+    never let unit tests do real network I/O (3s blackhole timeout per call;
+    on a dev box with anything on :8000 the test would consume a real HTTP
+    response)."""
+    from maxim.hardware.reachy.controller import ReachyMiniController
+
+    monkeypatch.setattr(ReachyMiniController, "_daemon_status", staticmethod(lambda *a, **k: None))
+    # Era gate reads the REAL installed reachy-mini metadata — pin it to the
+    # WS era so tests don't depend on what happens to be installed. (The
+    # era-gate tests override this per-test.)
+    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+
 
 class TestMdnsResolution:
     """Test _resolve_mdns method on ReachyMiniController."""
@@ -98,7 +115,13 @@ class TestControllerConnect:
         mock_mdns.return_value = "192.168.50.150"
         ctrl = self._make_controller()
 
-        with patch.dict("sys.modules", {"reachy_mini": MagicMock()}):
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch(
+                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
+                return_value=True,
+            ),
+        ):
             import sys
 
             mock_sdk_module = sys.modules["reachy_mini"]
@@ -115,7 +138,13 @@ class TestControllerConnect:
         mock_mdns.return_value = "192.168.50.150"
         ctrl = self._make_controller()
 
-        with patch.dict("sys.modules", {"reachy_mini": MagicMock()}):
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch(
+                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
+                return_value=True,
+            ),
+        ):
             import sys
 
             mock_sdk_module = sys.modules["reachy_mini"]
@@ -132,7 +161,13 @@ class TestControllerConnect:
         mock_mdns.return_value = "192.168.50.150"
         ctrl = self._make_controller()
 
-        with patch.dict("sys.modules", {"reachy_mini": MagicMock()}):
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch(
+                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
+                return_value=True,
+            ),
+        ):
             import sys
 
             mock_sdk_module = sys.modules["reachy_mini"]
@@ -151,7 +186,13 @@ class TestControllerConnect:
         mock_mdns.return_value = None
         ctrl = self._make_controller()
 
-        with patch.dict("sys.modules", {"reachy_mini": MagicMock()}):
+        with (
+            patch.dict("sys.modules", {"reachy_mini": MagicMock()}),
+            patch(
+                "maxim.hardware.reachy.controller.ReachyMiniController._port_open",
+                return_value=True,
+            ),
+        ):
             import sys
 
             mock_sdk_module = sys.modules["reachy_mini"]

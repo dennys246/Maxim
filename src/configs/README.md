@@ -12,7 +12,6 @@ Most runtime-editable files live under `data/`:
 - Key bindings: `data/util/key_responses.json` (override via `$MAXIM_KEY_RESPONSES`)
 - Optional local LLM config: `data/util/llm.json` (override via `$MAXIM_LLM_CONFIG`); includes `contemplation` key for plan quality settings
 - Model artifacts (weights/checkpoints): `data/models/`
-- Zenoh/networking config (optional): `data/networking/`
 - Agent/credential files (optional): `data/agents/`, `data/credentials/`
 - Agentic runtime state (per-agent): `data/agents/<AGENT_NAME>/runtime/state_<run_id>.json`
 
@@ -24,5 +23,4 @@ Copy templates from `src/configs/templates/` into `data/` (or point env vars to 
 - `src/configs/templates/default_actions.json`
 - `src/configs/templates/default_poses.json`
 - `src/configs/templates/motor_cortex.json`
-- `src/configs/templates/zenoh.json5`
 - `src/configs/templates/env.example`

@@ -5,7 +5,7 @@ that exposes only a 2-channel processed stream — there is **no
 sample-aligned 4-mic raw access**, so a custom ITD/TDOA front-end is not
 feasible on that hardware. Instead the chip computes Direction-of-Arrival
 on-chip and the SDK exposes it; we consume that. See
-``docs/embodiment/reachy_mini.md`` for the full hardware analysis and
+``docs/embodiment/reachy_mini/audio_localization.md`` for the full hardware analysis and
 ``docs/plans/perception_pipeline_placement.md`` for where this sits in the
 perception pipeline (commit 4 — the DoA-consumption front-end).
 
@@ -51,7 +51,7 @@ def doa_to_azimuth(doa_radians: float) -> float:
     NOTE (hardware limitation): a linear mic array has **front/back
     ambiguity** — a source directly behind reads the same as one in front
     (both ≈ π/2 → 0). Left/right discrimination is clean; front/back is
-    not recoverable. See ``docs/embodiment/reachy_mini.md``.
+    not recoverable. See ``docs/embodiment/reachy_mini/audio_localization.md``.
     """
     az = (doa_radians - math.pi / 2.0) / (math.pi / 2.0)
     if az < -1.0:

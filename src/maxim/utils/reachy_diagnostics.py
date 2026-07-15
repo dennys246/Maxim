@@ -7,7 +7,7 @@ Run this script to verify network connectivity and check if required services ar
 
 Usage:
     python -m maxim.utils.reachy_diagnostics [--host REACHY_IP]
-    python -m maxim.utils.reachy_diagnostics --host 192.168.50.149
+    python -m maxim.utils.reachy_diagnostics --host 10.42.0.1
 """
 
 import argparse
@@ -123,31 +123,50 @@ def diagnose_reachy(host: str) -> int:
     else:
         print_error(f"Ping to {host}: {message}")
         print_info("Solution: Check that Reachy is powered on and connected to the same network")
-        all_passed = False
-        # If ping fails, no point testing ports
-        return 1
-
-    # Test 2: Zenoh port (motor control)
-    print_header("Test 2: Zenoh Port (Motor Control)")
-    success, message = test_port(host, 7447)
-    if success:
-        print_success(f"Port 7447 (Zenoh): {message}")
-        print_info("Motor control communication is available")
-    else:
-        print_error(f"Port 7447 (Zenoh): {message}")
-        print_info("Solution: Ensure the Reachy daemon is running")
-        print_info("  SSH into Reachy: ssh pollen@{}")
-        print_info("  Check daemon: systemctl status reachy-mini-daemon")
+        print_info("NOTE (macOS): a terminal WITHOUT Local Network permission sees the whole LAN")
+        print_info("as dead — ping fails while the robot is fine. Grant it in System Settings ->")
+        print_info("Privacy & Security -> Local Network. Continuing to the TCP probe (the real")
+        print_info("discriminator) anyway...")
         all_passed = False
 
-    # Test 3: Dashboard/API port
-    print_header("Test 3: Dashboard/API Port")
+    # Test 2: SDK control channel (WebSocket on the daemon port — SDK >= 1.5;
+    # the zenoh :7447 era ended in v1.5.0, see docs/embodiment/reachy_mini/README.md)
+    print_header("Test 2: Daemon Port (SDK Control Channel)")
     success, message = test_port(host, 8000)
     if success:
-        print_success(f"Port 8000 (Dashboard): {message}")
+        print_success(f"Port 8000 (FastAPI + /ws/sdk): {message}")
+        print_info("SDK control communication is available")
+        try:
+            from maxim.utils import http as maxim_http
+
+            status = maxim_http.fetch_url(f"http://{host}:8000/api/daemon/status", timeout=3).json()
+            print_info(f"Daemon status: version={status.get('version', '?')} state={status.get('state', '?')}")
+        except Exception:
+            print_info("(/api/daemon/status not readable — pre-1.5 daemon or endpoint moved)")
+    else:
+        print_error(f"Port 8000 (daemon): {message}")
+        print_info("Solution: Ensure the Reachy daemon is running")
+        print_info(f"  SSH into Reachy: ssh pollen@{host}")
+        print_info("  Check daemon: systemctl status reachy-mini-daemon")
+        print_info("  On macOS: grant the terminal Local Network permission")
+        all_passed = False
+
+    # Test 3: Dashboard page (same port as Test 2 — this checks the HTTP app
+    # actually serves, not just that the port accepts)
+    print_header("Test 3: Dashboard Page")
+    try:
+        from maxim.utils import http as maxim_http
+
+        resp = maxim_http.fetch_url(f"http://{host}:8000/docs", timeout=3)
+        success = resp.status == 200
+        message = "HTTP 200" if success else f"HTTP {resp.status}"
+    except Exception as e:  # noqa: BLE001
+        success, message = False, str(e)
+    if success:
+        print_success(f"Dashboard /docs: {message}")
         print_info(f"Dashboard available at: http://{host}:8000")
     else:
-        print_error(f"Port 8000 (Dashboard): {message}")
+        print_error(f"Dashboard /docs: {message}")
         print_info("Solution: Check if the Reachy web dashboard is running")
         all_passed = False
 
@@ -162,7 +181,9 @@ def diagnose_reachy(host: str) -> int:
         print_info("WebRTC signaling server is not running")
         print_info("Solutions:")
         print_info("  1. Restart the Reachy (press OFF, wait 5s, press ON)")
-        print_info("  2. Use media_backend='gstreamer' or 'default' in your code")
+        print_info(
+            "  2. Use media_backend='no_media' for control/DoA work; 'default' only when you need camera/audio streaming in your code"
+        )
         print_info("  3. SSH into Reachy and run: reachyminios_check")
         print_info("Note: This is optional - motor control will work without WebRTC")
 
@@ -189,7 +210,7 @@ Examples:
   python -m maxim.utils.reachy_diagnostics
 
   # Specify Reachy IP address
-  python -m maxim.utils.reachy_diagnostics --host 192.168.50.149
+  python -m maxim.utils.reachy_diagnostics --host 10.42.0.1
 
   # Use hostname
   python -m maxim.utils.reachy_diagnostics --host reachy-mini.local
@@ -200,13 +221,13 @@ Examples:
         "--host",
         type=str,
         default=None,
-        help="Reachy IP address or hostname (default: $MAXIM_REACHY_HOST or 192.168.50.149)",
+        help="Reachy IP address or hostname (default: $MAXIM_REACHY_HOST or 10.42.0.1)",
     )
 
     args = parser.parse_args()
 
     # Determine Reachy host
-    host = args.host or os.getenv("MAXIM_REACHY_HOST", "192.168.50.149")
+    host = args.host or os.getenv("MAXIM_REACHY_HOST", "10.42.0.1")
 
     try:
         return diagnose_reachy(host)

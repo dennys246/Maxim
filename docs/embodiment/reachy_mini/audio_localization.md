@@ -1,28 +1,12 @@
-# Reachy Mini
+# Reachy Mini — audio & sound localization (deep-dive)
 
-The [Reachy Mini](https://huggingface.co/docs/reachy_mini) is a small desktop robot from Pollen Robotics / Hugging Face. This page documents how Maxim embodies it — its real sensing/actuation limits and how they map onto Maxim's perception → SEM → substrate → action loop. The centerpiece is the **audio sound-localization** section, because that's where the hardware constraints are subtle and would otherwise bite at the bench.
+Why the Reachy Mini can tell left from right but not up from down, why you
+cannot build your own TDOA front-end on it, and how Maxim consumes the
+chip's onboard direction-of-arrival instead. Platform overview, setup, and
+API reference live in the [folder README](README.md) /
+[getting_started](getting_started.md) / [engineering](engineering.md).
 
-> **Status:** scoping reference for the perception-pipeline-placement work ([plan](../plans/perception_pipeline_placement.md)). The audio findings are HIGH-confidence (official Pollen / Seeed / XMOS docs); inter-mic spacing and DoA angular resolution are undocumented and need bench measurement.
-
-## Hardware overview
-
-| Subsystem | What it is |
-|---|---|
-| **Head** | 6-DOF Stewart platform (3 rotations + 3 translations) — commanded as task-space 4×4 poses, not joint angles |
-| **Body** | 1 yaw rotation (turn the whole robot) |
-| **Antennas** | 2 expressive antennas |
-| **Vision** | Camera (single) |
-| **Audio in** | 4× PDM MEMS microphone array behind a **Seeed reSpeaker XVF3800 (XMOS)** voice-processor |
-| **Audio out** | Speaker |
-
-Both the *Lite* and *Wireless* variants carry the **same 4-mic array** — audio is not a Lite-vs-Wireless differentiator.
-
-## How Maxim embodies it
-
-Reachy Mini is a **self-contained** embodiment: one node runs the whole perception → cognition → action loop. In [perception-placement](../plans/perception_pipeline_placement.md) terms, every stage is local (`StageOrigin.SELF` / `SENSOR` / `SUBSTRATE_OWNER` all resolve to the Reachy itself) — there is no peer/leader split and nothing crosses a wire.
-
-- **Sensors / drives / affordances** are declared in the body YAML (see [`embodiment_guide.md`](../embodiment_guide.md)). For sound-orienting, that means an `azimuth` sensor, a "centeredness" homeostatic drive on it, and discrete orient affordances.
-- **Motor** is the head-pose API: build a pose with `create_head_pose(..., yaw=, degrees=True)` and command it with `set_target(...)` (immediate — for a tracking/orient loop) or `goto_target(...)` (smooth — for gestures). High-level `look_at_world(x, y, z)` / `look_at_image(u, v)` primitives also exist.
+> **Status:** scoping reference for the perception-pipeline-placement work ([plan](../../plans/perception_pipeline_placement.md)). The audio findings are HIGH-confidence (official Pollen / Seeed / XMOS docs); inter-mic spacing and DoA angular resolution are undocumented and need bench measurement.
 
 ## Capabilities & limitations
 
@@ -63,8 +47,14 @@ The 4 MEMS mics are arranged in a **linear (1-D, coplanar) array** across the he
 The XVF3800 computes **Direction-of-Arrival on-chip** and the SDK exposes it directly:
 
 ```python
+# ONBOARD (the client-side call reads the mic array over local USB —
+# SDK >= 1.5 makes this onboard-only):
 doa_radians, is_speech_detected = mini.media.get_DoA()
-# convention: 0 = left, π/2 = front/back (ambiguous), π = right
+
+# OFF-ROBOT (laptop / peer): the daemon reads the chip and serves it:
+#   GET http://<robot>:8000/api/state/doa
+#   -> {"angle": <radians>, "speech_detected": <bool>}
+# convention (both paths): 0 = left, π/2 = front/back (ambiguous), π = right
 ```
 
 So the azimuth signal the orient loop needs is **already computed** — free, running alongside the chip's echo-cancellation, with a built-in `is_speech_detected` flag. Maxim consumes it rather than computing its own:
@@ -77,14 +67,14 @@ get_DoA()  ──►  normalize  ──►  "audio" substrate modality  ──�
 
 - **Normalization:** map `doa → azimuth = (doa − π/2)/(π/2)` so left = −1, front/back = 0, right = +1. Emitting it already in `[-1, 1]` means the shared `_normalize_value` applies unchanged (see plan Q5).
 - **Gating:** only update the drive when `is_speech_detected` is true — the hardware's own "is there a sound to localize" signal, which neatly handles the "a single transient clap is gone before the head finishes turning" problem (the source must persist across the LLM-gated cognition cycle).
-- **Substrate:** the azimuth reading is encoded under the `"audio"` modality, which is **frozen-centroid** (a densely-streamed continuous signal would otherwise walk a running-mean centroid into collapse — see the [EC centroid-drift lesson](../../CLAUDE.md)).
+- **Substrate:** the azimuth reading is encoded under the `"audio"` modality, which is **frozen-centroid** (a densely-streamed continuous signal would otherwise walk a running-mean centroid into collapse — see the [EC centroid-drift lesson](../../../CLAUDE.md)).
 - **Re-measurement closes the loop:** after the head turns, `get_DoA()` re-reads the new relative angle — no world-model needed in code; the physics does it.
 
 **The thesis consequence:** because localization happens on-chip, Maxim is **not learning to localize** — it's learning the **sensorimotor orient policy** (turn which way, how much, to drive azimuth-error → 0), credited by drive-pain reduction through NAc. That's the real, defensible embodied-learning claim on this platform.
 
 ### Why this validates the capability-driven design
 
-The Reachy Mini is exactly the "**coplanar → declare azimuth + yaw, stop**" case the [placement plan](../plans/perception_pipeline_placement.md)'s multi-axis design was built for. Its body YAML declares an `azimuth` sensor + yaw orient affordances and nothing more. A *different* robot with a **non-coplanar raw multi-channel array** would declare an `elevation` sensor + pitch affordances too, and run a real TDOA front-end — **with no change to Maxim's cognition/substrate code**. The hardware difference lives entirely in the body declaration. That's the payoff of declaring capabilities instead of forking on them.
+The Reachy Mini is exactly the "**coplanar → declare azimuth + yaw, stop**" case the [placement plan](../../plans/perception_pipeline_placement.md)'s multi-axis design was built for. Its body YAML declares an `azimuth` sensor + yaw orient affordances and nothing more. A *different* robot with a **non-coplanar raw multi-channel array** would declare an `elevation` sensor + pitch affordances too, and run a real TDOA front-end — **with no change to Maxim's cognition/substrate code**. The hardware difference lives entirely in the body declaration. That's the payoff of declaring capabilities instead of forking on them.
 
 ### Limitations summary
 

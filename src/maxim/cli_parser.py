@@ -236,13 +236,13 @@ def _build_parser() -> argparse.ArgumentParser:
     hw.add_argument(
         "--robot-name",
         default=os.environ.get("MAXIM_ROBOT_NAME", "reachy_mini"),
-        help="Reachy Mini daemon robot_name / zenoh namespace (default: $MAXIM_ROBOT_NAME or 'reachy_mini').",
+        help="Reachy Mini daemon robot_name (default: $MAXIM_ROBOT_NAME or 'reachy_mini').",
     )
     hw.add_argument(
         "--timeout",
         type=float,
         default=30.0,
-        help="Seconds to wait for the Zenoh connection (default: 30).",
+        help="Seconds to wait for the robot connection (default: 30).",
     )
     hw.add_argument(
         "--segmentation-model",

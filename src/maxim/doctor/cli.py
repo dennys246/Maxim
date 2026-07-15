@@ -7,7 +7,7 @@ import sys
 import time
 from collections.abc import Sequence
 
-from maxim.doctor.checks import CheckResult, run_all_checks
+from maxim.doctor.checks import CheckResult, check_robot_reachable, run_all_checks
 from maxim.doctor.platform_detect import PlatformInfo, detect_platform
 
 
@@ -250,6 +250,10 @@ def _retry_loop(
         "key-age": check_key_age,
         "key-permissions": check_key_permissions,
         "key-auth": check_key_auth_smoke,
+        # Robot checks (docs/plans/doctor_robot_reachable.md) — one shared
+        # retry id re-runs the whole per-robot list (≤2 robots today) and
+        # surfaces the worst remaining result (the loop wants ONE CheckResult).
+        "robot": lambda: _worst_robot_result(info),
         # Peer checks
         "peer-url": lambda: check_peer_url_reachable(peer_url) if peer_url else None,
         "peer-key": check_peer_key_set,
@@ -260,6 +264,13 @@ def _retry_loop(
     # Register one re-probe callable per node that re-reads mesh.yml at
     # retry time so manual config edits between retries pick up without
     # re-running `maxim doctor` from scratch.
+    def _worst_robot_result(platform_info):
+        results = check_robot_reachable(platform_info)
+        for r in results:
+            if r.status not in ("ok", "info"):
+                return r
+        return results[0] if results else None
+
     def _make_mesh_node_reprobe(node_name: str):
         def _reprobe():
             from maxim.doctor.checks import _probe_mesh_node_to_check

@@ -7,7 +7,7 @@ This is a standalone script that doesn't require the maxim package to be install
 
 Usage:
     python scripts/check_reachy_connection.py [--host REACHY_IP]
-    python scripts/check_reachy_connection.py --host 192.168.50.149
+    python scripts/check_reachy_connection.py --host 10.42.0.1
 """
 
 import argparse
@@ -20,12 +20,13 @@ from typing import Tuple
 
 class Colors:
     """ANSI color codes for terminal output"""
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BLUE = '\033[94m'
-    BOLD = '\033[1m'
-    END = '\033[0m'
+
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    BLUE = "\033[94m"
+    BOLD = "\033[1m"
+    END = "\033[0m"
 
 
 def print_header(text: str) -> None:
@@ -69,21 +70,18 @@ def test_ping(host: str, timeout: int = 3) -> Tuple[bool, str]:
     try:
         # Use ping command with timeout
         result = subprocess.run(
-            ['ping', '-c', '3', '-W', str(timeout), host],
-            capture_output=True,
-            text=True,
-            timeout=timeout + 2
+            ["ping", "-c", "3", "-W", str(timeout), host], capture_output=True, text=True, timeout=timeout + 2
         )
 
         if result.returncode == 0:
             # Parse average latency from output
-            output_lines = result.stdout.split('\n')
+            output_lines = result.stdout.split("\n")
             for line in output_lines:
-                if 'rtt min/avg/max' in line or 'round-trip' in line:
+                if "rtt min/avg/max" in line or "round-trip" in line:
                     # Extract average latency
-                    parts = line.split('=')
+                    parts = line.split("=")
                     if len(parts) > 1:
-                        stats = parts[1].strip().split('/')
+                        stats = parts[1].strip().split("/")
                         if len(stats) >= 2:
                             avg_latency = stats[1]
                             return True, f"Average latency: {avg_latency} ms"
@@ -141,7 +139,7 @@ def diagnose_reachy(host: str) -> int:
     Returns:
         Exit code (0 = all tests passed, 1 = some tests failed)
     """
-    print_header(f"Reachy Mini Connection Diagnostics")
+    print_header("Reachy Mini Connection Diagnostics")
     print_info(f"Target: {host}")
     print_info(f"Time: {subprocess.run(['date'], capture_output=True, text=True).stdout.strip()}")
 
@@ -155,31 +153,52 @@ def diagnose_reachy(host: str) -> int:
     else:
         print_error(f"Ping to {host}: {message}")
         print_info("Solution: Check that Reachy is powered on and connected to the same network")
+        print_info("NOTE (macOS): a terminal WITHOUT Local Network permission sees the whole LAN")
+        print_info("as dead — ping fails while the robot is fine. Grant it in System Settings ->")
+        print_info("Privacy & Security -> Local Network. Continuing to the TCP probe (the real")
+        print_info("discriminator) anyway...")
         all_passed = False
-        # If ping fails, no point testing ports
-        return 1
 
-    # Test 2: Zenoh port (motor control)
-    print_header("Test 2: Zenoh Port (Motor Control)")
-    success, message = test_port(host, 7447)
+    # Test 2: SDK control channel (WebSocket on the daemon port — SDK >= 1.5;
+    # the zenoh :7447 era ended in v1.5.0, see docs/embodiment/reachy_mini/README.md)
+    print_header("Test 2: Daemon Port (SDK Control Channel)")
+    success, message = test_port(host, 8000)
     if success:
-        print_success(f"Port 7447 (Zenoh): {message}")
-        print_info("Motor control communication is available")
+        print_success(f"Port 8000 (FastAPI + /ws/sdk): {message}")
+        print_info("SDK control communication is available")
+        try:
+            import json
+            import urllib.request
+
+            with urllib.request.urlopen(f"http://{host}:8000/api/daemon/status", timeout=3) as r:
+                status = json.loads(r.read().decode())
+            print_info(f"Daemon status: version={status.get('version', '?')} state={status.get('state', '?')}")
+        except Exception:
+            print_info("(/api/daemon/status not readable — pre-1.5 daemon or endpoint moved)")
     else:
-        print_error(f"Port 7447 (Zenoh): {message}")
+        print_error(f"Port 8000 (daemon): {message}")
         print_info("Solution: Ensure the Reachy daemon is running")
         print_info(f"  SSH into Reachy: ssh pollen@{host}")
         print_info("  Check daemon: systemctl status reachy-mini-daemon")
+        print_info("  On macOS: grant the terminal Local Network permission")
         all_passed = False
 
-    # Test 3: Dashboard/API port
-    print_header("Test 3: Dashboard/API Port")
-    success, message = test_port(host, 8000)
+    # Test 3: Dashboard page (same port as Test 2 — this checks the HTTP app
+    # actually serves, not just that the port accepts)
+    print_header("Test 3: Dashboard Page")
+    try:
+        import urllib.request
+
+        with urllib.request.urlopen(f"http://{host}:8000/docs", timeout=3) as r:
+            success = r.status == 200
+        message = "HTTP 200" if success else "unexpected status"
+    except Exception as e:  # noqa: BLE001
+        success, message = False, str(e)
     if success:
-        print_success(f"Port 8000 (Dashboard): {message}")
+        print_success(f"Dashboard /docs: {message}")
         print_info(f"Dashboard available at: http://{host}:8000")
     else:
-        print_error(f"Port 8000 (Dashboard): {message}")
+        print_error(f"Dashboard /docs: {message}")
         print_info("Solution: Check if the Reachy web dashboard is running")
         all_passed = False
 
@@ -194,7 +213,9 @@ def diagnose_reachy(host: str) -> int:
         print_info("WebRTC signaling server is not running")
         print_info("Solutions:")
         print_info("  1. Restart the Reachy (press OFF, wait 5s, press ON)")
-        print_info("  2. Use media_backend='gstreamer' or 'default' in your code")
+        print_info(
+            "  2. Use media_backend='no_media' for control/DoA work; 'default' only when you need camera/audio streaming in your code"
+        )
         print_info("  3. SSH into Reachy and run: reachyminios_check")
         print_info("Note: This is optional - motor control will work without WebRTC")
 
@@ -221,24 +242,24 @@ Examples:
   python scripts/check_reachy_connection.py
 
   # Specify Reachy IP address
-  python scripts/check_reachy_connection.py --host 192.168.50.149
+  python scripts/check_reachy_connection.py --host 10.42.0.1
 
   # Use hostname
   python scripts/check_reachy_connection.py --host reachy-mini.local
-        """
+        """,
     )
 
     parser.add_argument(
-        '--host',
+        "--host",
         type=str,
         default=None,
-        help='Reachy IP address or hostname (default: $MAXIM_REACHY_HOST or 192.168.50.149)'
+        help="Reachy IP address or hostname (default: $MAXIM_REACHY_HOST or 10.42.0.1)",
     )
 
     args = parser.parse_args()
 
     # Determine Reachy host
-    host = args.host or os.getenv('MAXIM_REACHY_HOST', '192.168.50.149')
+    host = args.host or os.getenv("MAXIM_REACHY_HOST", "10.42.0.1")
 
     try:
         return diagnose_reachy(host)
