@@ -1274,6 +1274,22 @@ def start_simulation_mode(
     # When an entity_ref is present, the AUT has a ComponentRegistry.
     # Build a ComponentIndex + ImaginationTrigger so the AUT can imagine
     # novel entities it encounters during the simulation.
+    # Universal imagination gate (MAXIM_DISABLE_IMAGINATION): the single master
+    # switch for ALL imagination surfaces. ImaginationTrigger._enabled is
+    # already respected by BOTH the per-turn design path (trigger.py::process,
+    # ~L593) AND the world-builder manifest (trigger.py::process_manifest,
+    # ~L870) — so gating the trigger at construction kills both with one flag,
+    # and we ALSO skip the generate_scene_manifest LLM call below to avoid
+    # burning a call whose result process_manifest would just discard.
+    # Controlled experiments (Exp 44) set this so a controlled arc presents
+    # ONLY its declared entities — no improvised distractors. Does NOT touch
+    # the generative NARRATOR prose (a separate subsystem); use the fixture
+    # path for full scene determinism. Experiment/harness toggle (env, not
+    # config, per the carve-out). Truthy via the canonical parser.
+    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env as _adve
+
+    _imagination_off = _adve(os.environ.get("MAXIM_DISABLE_IMAGINATION"))
+
     aut_imagination_trigger: Any = None
     if aut_component_registry is not None:
         try:
@@ -1305,6 +1321,7 @@ def start_simulation_mode(
                 default_network=aut_default_network,
                 encoder=_aut_encoder,
                 agent_id="sim_aut",
+                enabled=not _imagination_off,  # universal MAXIM_DISABLE_IMAGINATION gate
             )
 
             # Wire ComponentIndex + affordance transfer deps into SenseToolsTool
@@ -1440,23 +1457,14 @@ def start_simulation_mode(
     # both ``scene_id="pre_trigger"`` and ``scene_id="fixture_pretrigger"``.
     # The two call sites now have disjoint conditions (this one handles the
     # generative path; FixtureDrivenOrchestrator handles the fixture path).
-    # Controlled-experiment scene lock (MAXIM_DISABLE_SCENE_MANIFEST): skip the
-    # imagination WORLD-BUILDER manifest so a controlled arc presents ONLY its
-    # declared world_entities. Without this, generate_scene_manifest() prompts
-    # the narrator for "5-10 entities — creatures, weapons, NPCs, ..." and a
-    # bare goal string improvises distractors (merchant/book/pedestal) on top
-    # of the arc's controlled dilemma — invalidating any controlled A/B metric
-    # (Exp 44 finding, 2026-07-15). DISTINCT from
-    # MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL, which only drops NAc biases
-    # from the manifest and KEEPS the world-builder (W2 ablation semantics).
-    # Experiment/harness toggle → env, not config (config-over-env carve-out).
-    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env as _adve
-
-    _scene_manifest_off = _adve(os.environ.get("MAXIM_DISABLE_SCENE_MANIFEST"))
-    if fixture_path is None and aut_imagination_trigger is not None and llm_router is not None and _scene_manifest_off:
+    # Skip the world-builder manifest LLM call when imagination is gated off
+    # (process_manifest would early-return on _enabled anyway; this also avoids
+    # burning the manifest LLM call). See the MAXIM_DISABLE_IMAGINATION note at
+    # the ImaginationTrigger construction above.
+    if fixture_path is None and aut_imagination_trigger is not None and llm_router is not None and _imagination_off:
         from maxim.simulation.sim_logger import sim_log
 
-        sim_log("SEM_TRACE", "Scene manifest pre-trigger: skipped via MAXIM_DISABLE_SCENE_MANIFEST (scene lock)")
+        sim_log("SEM_TRACE", "Scene manifest pre-trigger: skipped via MAXIM_DISABLE_IMAGINATION (universal gate)")
     elif fixture_path is None and aut_imagination_trigger is not None and llm_router is not None:
         try:
             from maxim.simulation.narrator import generate_scene_manifest

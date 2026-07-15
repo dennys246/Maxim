@@ -239,21 +239,22 @@ def _isolate_maxim_nac_min_confidence():
 
 
 @pytest.fixture(autouse=True)
-def _isolate_maxim_scene_manifest_env():
-    """Scrub ``MAXIM_DISABLE_SCENE_MANIFEST`` across every test.
+def _isolate_maxim_imagination_env():
+    """Scrub ``MAXIM_DISABLE_IMAGINATION`` across every test.
 
-    Controlled-experiment scene lock (Exp 44, 2026-07-15): when set, the
-    generative orchestrator skips the imagination world-builder manifest so
-    a controlled arc presents only its declared entities. Per CLAUDE.md
-    "opt-in env vars in hot startup paths need autouse scrubs".
+    Universal imagination gate (Exp 44, 2026-07-15): when set, the AUT
+    ImaginationTrigger is constructed disabled — killing BOTH the per-turn
+    design path and the world-builder manifest — so a controlled arc presents
+    only its declared entities. Per CLAUDE.md "opt-in env vars in hot startup
+    paths need autouse scrubs".
     """
-    saved = os.environ.pop("MAXIM_DISABLE_SCENE_MANIFEST", None)
+    saved = os.environ.pop("MAXIM_DISABLE_IMAGINATION", None)
     try:
         yield
     finally:
-        os.environ.pop("MAXIM_DISABLE_SCENE_MANIFEST", None)
+        os.environ.pop("MAXIM_DISABLE_IMAGINATION", None)
         if saved is not None:
-            os.environ["MAXIM_DISABLE_SCENE_MANIFEST"] = saved
+            os.environ["MAXIM_DISABLE_IMAGINATION"] = saved
 
 
 @pytest.fixture(autouse=True)
