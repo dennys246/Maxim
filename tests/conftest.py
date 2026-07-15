@@ -239,6 +239,26 @@ def _isolate_maxim_nac_min_confidence():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_deterministic_scene_embodiment_env():
+    """Scrub ``MAXIM_DETERMINISTIC_SCENE_EMBODIMENT`` across every test.
+
+    G1 (controlled_llm_primary_embodied_harness.md): forces scene-affordance
+    self_effect to write to the AUT body in LLM-primary too (deterministic
+    safe-vs-harm signal), which otherwise defaults ON only for
+    substrate-primary. Per CLAUDE.md "opt-in env vars in hot startup paths
+    need autouse scrubs" — a test that sets it must not leak into Exp 37/38-
+    shaped runs that rely on the narrator-mediated default.
+    """
+    saved = os.environ.pop("MAXIM_DETERMINISTIC_SCENE_EMBODIMENT", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_DETERMINISTIC_SCENE_EMBODIMENT", None)
+        if saved is not None:
+            os.environ["MAXIM_DETERMINISTIC_SCENE_EMBODIMENT"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_imagination_env():
     """Scrub ``MAXIM_DISABLE_IMAGINATION`` across every test.
 

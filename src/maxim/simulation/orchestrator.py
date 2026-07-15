@@ -1627,18 +1627,34 @@ def start_simulation_mode(
         from maxim.simulation.campaign_runner import run_generative_campaign as _run_gen
         from maxim.utils.paths import sim_reports as _gen_reports_dir
 
-        # Substrate-primary scene-harm wiring (substrate_primary_cradle_readiness.md
-        # Phase A / B4): thread the AUT's embodiment + entity_map into per-phase
-        # scene-entity activation so scene-affordance self_effect writes to the
-        # agent's body. GATED to substrate-primary: LLM-AUT receives scene harm
-        # via the narrator-driven Layer-2 proximity path, so passing embodiment
-        # there would double-count and change Exp 37/38. Passing None preserves
-        # byte-identical LLM-AUT behavior (scene tools keep _embodiment=None).
-        # CC8 caveat: a future NON-sim adapter driving substrate-primary percepts
-        # won't pass through this orchestrator path at all, so it must own its own
-        # scene-harm wiring (thread the AUT embodiment into its entity activation).
-        _gen_embodiment = _aut_instance.embodiment if aut_mode == "substrate-primary" else None
-        _gen_entity_map = _aut_entity_map if aut_mode == "substrate-primary" else None
+        # Scene-embodiment wiring (substrate_primary_cradle_readiness.md Phase A/B4):
+        # thread the AUT's embodiment + entity_map into per-phase scene-entity
+        # activation so scene-affordance self_effect writes DETERMINISTICALLY to
+        # the agent's body (warmth_alpha_harm's arms.thermal breach, warmth_beta_
+        # safe's clean cold relief).
+        #
+        # Default: ON for substrate-primary only. In LLM-primary the default keeps
+        # embodiment=None because scene harm is expected via the narrator-driven
+        # Layer-2 proximity path — threading it there would DOUBLE-COUNT and change
+        # Exp 37/38 (which rely on the narrator path). Exp 37/38 do NOT set the
+        # override flag, so their behavior stays byte-identical.
+        #
+        # G1 (controlled_llm_primary_embodied_harness.md): MAXIM_DETERMINISTIC_
+        # SCENE_EMBODIMENT forces embodiment threading in LLM-primary too, so a
+        # controlled experiment (Exp 44) gets deterministic, attributable safe-vs-
+        # harm signal instead of narrator-improvised harm. KNOWN follow-up: with
+        # this ON in LLM-primary the narrator-proximity path could still add harm
+        # (double-count); validate empirically whether the narrator materially
+        # re-applies harm and, if so, suppress that channel under the same flag
+        # (tracked in the plan). CC8 caveat: a future NON-sim adapter must own its
+        # own scene-harm wiring.
+        from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env as _det_scene_flag
+
+        _deterministic_scene_embodiment = aut_mode == "substrate-primary" or _det_scene_flag(
+            os.environ.get("MAXIM_DETERMINISTIC_SCENE_EMBODIMENT")
+        )
+        _gen_embodiment = _aut_instance.embodiment if _deterministic_scene_embodiment else None
+        _gen_entity_map = _aut_entity_map if _deterministic_scene_embodiment else None
         _run_gen(
             goal=goal,
             bridge=bridge,
