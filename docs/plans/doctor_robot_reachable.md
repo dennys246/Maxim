@@ -76,7 +76,7 @@ refused (1013); journalctl -u reachy-mini-daemon on the robot".
   'reachy_mini==<daemon-version>' (daemon <dv> vs SDK <lv> are on opposite
   sides of the v1.5.0 zenoh→WebSocket pivot; see
   docs/embodiment/reachy_mini/troubleshooting.md)"`.
-- **Minor drift:** same command as a `warn`-level suggestion.
+- **Minor drift** (e.g. 1.8 vs 1.9): same command as a `warn`-level suggestion. Patch-level drift (1.8.3 vs 1.8.4) is `ok` — coherence compares (major, minor).
 
 ### Retry loop
 
@@ -114,8 +114,9 @@ In `tests/unit/test_doctor.py`, one class `TestCheckRobotReachable`:
 - **Status unreadable:** port ok, `fetch_url` raises → `warn` "pre-1.5
   daemon or endpoint moved".
 - **Era matrix:** (client 1.2 / daemon 1.8) → fail; (1.8 / 1.2) → fail;
-  (1.8.3 / 1.8.4) → warn; (1.8.3 / 1.8.3) → ok. Patch
-  `importlib.metadata.version`.
+  (1.8 / 1.9) → warn (minor drift); (1.8.3 / 1.8.4) → ok (patch drift is
+  fine — coherence is compared at (major, minor) granularity). Patch
+  `maxim.doctor.checks._robot_sdk_version`.
 - **Backend not ready:** `state="starting"` → warn with the 1013 hint.
 - **retry_id** present on every non-ok result.
 
