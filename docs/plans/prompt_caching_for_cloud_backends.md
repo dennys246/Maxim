@@ -497,9 +497,9 @@ get a clean Anthropic comparison AND we ship a real engineering improvement.
 
 - 2026-06-08 Sonnet/Haiku rate-limit cascade evidence in this conversation's
   results.jsonl for the cradle sub-sims that failed.
-- [docs/plans/exp37_cross_model_characterization.md](exp37_cross_model_characterization.md)
+- [docs/plans/exp37_cross_model_characterization.md](archive/exp37_cross_model_characterization.md)
   — the cross-model study this plan unblocks for Anthropic comparison.
-- [docs/plans/cloud_dispatch_debug.md](cloud_dispatch_debug.md) — the prior
+- [docs/plans/cloud_dispatch_debug.md](archive/cloud_dispatch_debug.md) — the prior
   debug plan whose Phase 1 validated the dispatch path (2026-06-07).
 - [Anthropic rate limits](https://platform.claude.com/docs/en/api/rate-limits)
   — authoritative tier table + cache-aware ITPM rule.

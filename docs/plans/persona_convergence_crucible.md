@@ -623,7 +623,7 @@ Arm C (blank, neutral):                  2× infant_humanoid_pick_up (both FAILE
 <!-- roy-iteration:roy-2c -->
 ### Roy-2c: `min_confidence=0.0` probe (H1 vs H2 disambiguator)
 
-**Status:** SHIPPED. H1-vs-H2 disambiguator for Roy-2pc's byte-identical pick_up result. Ran end-to-end against the same healthy leader, 2026-05-13 12:27→12:46 local. **1284.2s wall (~21.4 min)** — faster than Roy-2pc's 25 min because lower gate accepts proposals faster (less wall burned on 30s timeout). Owned by [release_0_9_1.md Stage 0a](release_0_9_1.md).
+**Status:** SHIPPED. H1-vs-H2 disambiguator for Roy-2pc's byte-identical pick_up result. Ran end-to-end against the same healthy leader, 2026-05-13 12:27→12:46 local. **1284.2s wall (~21.4 min)** — faster than Roy-2pc's 25 min because lower gate accepts proposals faster (less wall burned on 30s timeout). Owned by [release_0_9_1.md Stage 0a](archive/release_0_9_1.md).
 
 > Single-variable change vs Roy-2pc: `MAXIM_NAC_MIN_CONFIDENCE=0.0` set
 > in runner environment (new env var introduced in 0.9.1). Same
@@ -674,7 +674,7 @@ Arm C (blank, neutral):                  5× infant_humanoid_pick_up (all FAILED
 
 **H2 cleanly refuted:** zero `sense_food_source` calls under gate=0.0.
 
-**What this means for 0.9.1:** Wire-A's design is **revised** per the finding. Original spec used active-cluster-restricted aggregation (`get_active_cluster_biases(cluster_ids=...)`); Roy-2c shows the active-cluster intersection with priming clusters is empty in the failure mode Wire-A is designed to fix. Revised to **agent-wide aggregation** (`get_agent_tool_biases`) — the priming substrate's tool-level signal ("this agent has experienced strong reward on `sense_food_source`") survives the encoder-alignment gap; the cluster-level signal does not. Wire-A surfaces the surviving granularity. See [release_0_9_1.md Stage 2](release_0_9_1.md).
+**What this means for 0.9.1:** Wire-A's design is **revised** per the finding. Original spec used active-cluster-restricted aggregation (`get_active_cluster_biases(cluster_ids=...)`); Roy-2c shows the active-cluster intersection with priming clusters is empty in the failure mode Wire-A is designed to fix. Revised to **agent-wide aggregation** (`get_agent_tool_biases`) — the priming substrate's tool-level signal ("this agent has experienced strong reward on `sense_food_source`") survives the encoder-alignment gap; the cluster-level signal does not. Wire-A surfaces the surviving granularity. See [release_0_9_1.md Stage 2](archive/release_0_9_1.md).
 
 **What Roy-2c definitively proves:**
 
@@ -695,7 +695,7 @@ Arm C (blank, neutral):                  5× infant_humanoid_pick_up (all FAILED
 <!-- roy-iteration:roy-3a -->
 ### Roy-3a: 0.9.1 annotation-pattern validation on original holdout
 
-**Status:** SHIPPED. First post-all-wires iteration. Wires A+1+2+3 (PRs #253 / #254 / #255 / #256 / #257) all active. Multi-arc priming identical to Roy-2 / Roy-2c / Roy-4 / Roy-5a; llm-primary at test against `roy_1_holdout.yaml`. Ran end-to-end against the same healthy leader, 2026-05-23 11:37→11:53 local. **952.5s wall (~15.9 min)** — +8% vs Roy-2's 883s (annotation rendering adds modest per-prompt overhead). Owned by [release_0_9_1.md Stage 5](release_0_9_1.md).
+**Status:** SHIPPED. First post-all-wires iteration. Wires A+1+2+3 (PRs #253 / #254 / #255 / #256 / #257) all active. Multi-arc priming identical to Roy-2 / Roy-2c / Roy-4 / Roy-5a; llm-primary at test against `roy_1_holdout.yaml`. Ran end-to-end against the same healthy leader, 2026-05-23 11:37→11:53 local. **952.5s wall (~15.9 min)** — +8% vs Roy-2's 883s (annotation rendering adds modest per-prompt overhead). Owned by [release_0_9_1.md Stage 5](archive/release_0_9_1.md).
 
 > Pre-registered diagnostic logic: Arm A > C on tool-family divergence
 > (richer than Roy-2's 17/3/2 vs 21/5/1/1) → Wire 1 + Wire 2 compound
@@ -776,7 +776,7 @@ Arm C (blank, neutral):               21× respond, 3× sense, 2× pick_up,
 <!-- roy-iteration:roy-3b -->
 ### Roy-3b: 0.9.1 annotation-pattern validation on engineered overlap
 
-**Status:** SHIPPED. Wire-A-specific behavioral test on the engineered overlap fixture. Same wires + priming as Roy-3a; llm-primary at test against `roy_2pc_holdout.yaml` (every percept evokes food / hunger / eating semantics). Ran end-to-end against the same healthy leader, 2026-05-23 12:25→12:39 local. **879.9s wall (~14.7 min)** — close to Roy-3a's 953s (same shape, slightly faster). Owned by [release_0_9_1.md Stage 5](release_0_9_1.md).
+**Status:** SHIPPED. Wire-A-specific behavioral test on the engineered overlap fixture. Same wires + priming as Roy-3a; llm-primary at test against `roy_2pc_holdout.yaml` (every percept evokes food / hunger / eating semantics). Ran end-to-end against the same healthy leader, 2026-05-23 12:25→12:39 local. **879.9s wall (~14.7 min)** — close to Roy-3a's 953s (same shape, slightly faster). Owned by [release_0_9_1.md Stage 5](archive/release_0_9_1.md).
 
 > Pre-registered diagnostic logic: Arm A `sense_food_source` count >
 > Arm B AND > Arm C → Wire-A annotation reached LLM proposer's
@@ -856,7 +856,7 @@ Arm C (blank, neutral):                4× examine, 3× pick_up, 2× eat,
 <!-- roy-iteration:roy-4 -->
 ### Roy-4: EC-activation co-activation instrumentation (1.1 binding plan gate)
 
-**Status:** SHIPPED. Cross-modal-binding validation prereq for [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stage 1. Ran end-to-end against the same healthy leader, 2026-05-13 18:00→18:26 local. **1547.5s wall (~25.8 min)** — same shape as Roy-2c since the substrate-primary 30s/turn timeout dominates. Owned by [release_0_9_1.md Stage 0d](release_0_9_1.md).
+**Status:** SHIPPED. Cross-modal-binding validation prereq for [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stage 1. Ran end-to-end against the same healthy leader, 2026-05-13 18:00→18:26 local. **1547.5s wall (~25.8 min)** — same shape as Roy-2c since the substrate-primary 30s/turn timeout dominates. Owned by [release_0_9_1.md Stage 0d](archive/release_0_9_1.md).
 
 > Single-variable change vs Roy-2c: `MAXIM_EC_TRACE_ACTIVATIONS=1` set
 > in the runner environment (new env var introduced in 0.9.1 Stage 0d).

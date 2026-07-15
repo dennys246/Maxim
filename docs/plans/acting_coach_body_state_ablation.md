@@ -205,3 +205,92 @@ no cloud spend. Runs must not share `~/.maxim/` with concurrent sessions
 - Interoception `Percept` production and Roy-5b naming-event emission stay
   out of scope (tracked in grounded_language_acquisition.md context).
 - No substrate-primary arms — the mechanism under test is prompt-side.
+
+## Session log — 2026-07-15 first launch attempt (Mac Mini, BLOCKED)
+
+First attempt to run the arms on the big Mac Mini surfaced a stack of
+**operational** blockers before any arm could produce a valid record. None
+are experiment-design problems; all are LLM-primary-path / co-located-leader
+infrastructure. Recorded so the next attempt starts clean.
+
+**What went wrong, in order:**
+1. **Wrong model served, silently.** The Mini's configured profile was
+   `r1-distill-qwen-32b`; `--aut-model qwen2.5-32b-instruct` does NOT
+   override the auto-spawned singleton on :8100. First runs executed against
+   DeepSeek-R1-Distill (a *reasoning* model that can't tool-call) → 0 actions
+   in 475s. Fix: `maxim --llm qwen2.5-32b-instruct` then
+   `maxim config set llm.profile qwen2.5-32b-instruct` (the C2
+   config.json-vs-active-model drift; the singleton check now fails loud on
+   the mismatch — that hardening worked).
+2. **LLM backend 500s under leader contention.** With the right model, the
+   AUT still took 0 embodied actions: `lane-large: down_500`,
+   `_llm_unavailable: 4 calls (0% success)`, "No eligible LLM providers".
+   Root cause: a `maxim-leader` tmux session was running alongside the
+   experiment, both driving the qwen32b llama-cpp server on :8100 → 500s
+   under double load. This is the Exp 37 cradle-cascade lesson
+   ("don't co-locate the harness and the leader"). Fix attempt: kill the
+   leader instance so ONLY the sim touches :8100. **RULED OUT 2026-07-15
+   00:41** — same `down_500` with the leader killed, so contention was not
+   the (sole) cause. The 500 persists → it is the qwen32b server rejecting
+   the AUT's request, i.e. #3 below.
+3. **PRIMARY suspect (leader ruled out) — n_ctx mismatch → prompt overflow
+   500.** Lane decisions size the large tier at `n_ctx=32768`, but the
+   server is spawned at `13312`. The PromptBudgeter composes the (large,
+   tool-heavy, embodied) AUT prompt to its believed ceiling; the server
+   rejects the oversize request with a 500. Signature: the tiny orchestrator
+   prompt (smollm) succeeds, the fat AUT prompt (qwen32b) 500s; the first
+   AUT call errors, cools down lane-large, then every call is
+   "no eligible providers" → `_llm_unavailable`. **Fix (daylight):** align
+   budgeter and server — `MAXIM_LLM_N_CTX=16384 maxim --llm
+   qwen2.5-32b-instruct` (spawns server at 16k AND sets the runtime
+   ceiling), or reduce the prompt (fewer sim tools — the "tool bloat"
+   lesson; the affordance+sim tool set may push the embodied prompt past
+   13k). Confirm the server is otherwise healthy with a small direct
+   `/v1/chat/completions` "say hi" before assuming overflow.
+
+**Harness-invocation notes (confirmed working):**
+- The harness runs each sub-sim via `subprocess.run(capture_output=True)`,
+  so the parent terminal is SILENT for the whole ~20-40 min/seed by design;
+  `harness_logs/run.log` only appears at seed end. Silence ≠ hang.
+- Direct arc run for live visibility (bypasses the capture):
+  `maxim --sim cradle_pref_a --embodiment bodies/infant_humanoid_chilled
+  --aut-mode llm-primary --aut-model qwen2.5-32b-instruct --interactive
+  false --sim-max-turns 4 2>&1 | tee /tmp/arc.log`. (NOTE: verify
+  `cradle_pref_a` loads as an ARC with warmth_alpha/warmth_beta affordances,
+  not as a free-text goal — one direct run showed the orchestrator treating
+  it as a goal string; needs checking.)
+
+**Validity threats to weigh BEFORE committing ~48h (per the operator's
+"brutal honesty" standard):**
+- **Tool-calling reliability is a NEW noise source.** Exp 37/38/42 validated
+  this harness in *substrate-primary* mode (NAc picks the tool, no LLM
+  tool-calling). Exp 44 is the first LLM-primary run. If the AUT only emits a
+  valid tool call some fraction of the time, the metric is dominated by "did
+  it call anything" not "did it choose the safe tool" — swamping the arm
+  effect. MUST confirm the AUT reliably acts (nonzero warmth affordance
+  calls) on one clean seed before launching arms.
+- **Ceiling risk.** Qwen32B-Instruct has a strong "don't touch what burns
+  you" prior; arm A may already be near-ceiling on safe-preference, leaving
+  no headroom for B/C on the primary metric. Eyeball arm A's safe_pref on
+  the first clean seed; if ~0.95+, the primary metric can't move and the
+  interesting signal (if any) will be on the secondary drive-regulation
+  metric, likely via B (fresh body_state as information) more than C.
+- **Time budget:** ~100-150s/turn on this box × ~24-40 turns × 10 seeds × 3
+  arms ≈ 1-2 days. Consider `--sim-max-turns 24` (the Exp 42 validation-spike
+  number) and fewer seeds for a first pass.
+
+**Prior (calibrated):** most probability mass on A ≈ B ≈ C within noise
+(valid null — settles "wire body_state?" and corrects the B3.1 "shipped"
+overclaim); ~20-30% on a clean separation, and if it separates, likely
+B ≈ C > A (information helps, coaching redundant) rather than C > B.
+
+**Clean-restart checklist for the next attempt:**
+1. `tmux kill-session -t maxim-leader` (no leader co-located).
+2. Confirm :8100 serves qwen2.5-32b-instruct (`curl .../v1/models`) and
+   `config.json::llm.profile` matches.
+3. Respawn qwen32b at n_ctx ≥ 16k if step 3 below still 500s.
+4. ONE direct arc run (`--sim-max-turns 4`, streamed) → confirm NO
+   `down_500`/`_llm_unavailable` AND nonzero `warmth_*` tool calls.
+5. ONE harness throwaway seed → confirm it writes a record with a sane
+   `ablation_arm` tag and nonzero contacts. Eyeball arm-A ceiling.
+6. Only then launch the arms (leader down, `--resume`, detached tmux).

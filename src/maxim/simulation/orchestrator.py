@@ -1274,6 +1274,22 @@ def start_simulation_mode(
     # When an entity_ref is present, the AUT has a ComponentRegistry.
     # Build a ComponentIndex + ImaginationTrigger so the AUT can imagine
     # novel entities it encounters during the simulation.
+    # Universal imagination gate (MAXIM_DISABLE_IMAGINATION): the single master
+    # switch for ALL imagination surfaces. ImaginationTrigger._enabled is
+    # already respected by BOTH the per-turn design path (trigger.py::process,
+    # ~L593) AND the world-builder manifest (trigger.py::process_manifest,
+    # ~L870) — so gating the trigger at construction kills both with one flag,
+    # and we ALSO skip the generate_scene_manifest LLM call below to avoid
+    # burning a call whose result process_manifest would just discard.
+    # Controlled experiments (Exp 44) set this so a controlled arc presents
+    # ONLY its declared entities — no improvised distractors. Does NOT touch
+    # the generative NARRATOR prose (a separate subsystem); use the fixture
+    # path for full scene determinism. Experiment/harness toggle (env, not
+    # config, per the carve-out). Truthy via the canonical parser.
+    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env as _adve
+
+    _imagination_off = _adve(os.environ.get("MAXIM_DISABLE_IMAGINATION"))
+
     aut_imagination_trigger: Any = None
     if aut_component_registry is not None:
         try:
@@ -1305,6 +1321,7 @@ def start_simulation_mode(
                 default_network=aut_default_network,
                 encoder=_aut_encoder,
                 agent_id="sim_aut",
+                enabled=not _imagination_off,  # universal MAXIM_DISABLE_IMAGINATION gate
             )
 
             # Wire ComponentIndex + affordance transfer deps into SenseToolsTool
@@ -1440,7 +1457,15 @@ def start_simulation_mode(
     # both ``scene_id="pre_trigger"`` and ``scene_id="fixture_pretrigger"``.
     # The two call sites now have disjoint conditions (this one handles the
     # generative path; FixtureDrivenOrchestrator handles the fixture path).
-    if fixture_path is None and aut_imagination_trigger is not None and llm_router is not None:
+    # Skip the world-builder manifest LLM call when imagination is gated off
+    # (process_manifest would early-return on _enabled anyway; this also avoids
+    # burning the manifest LLM call). See the MAXIM_DISABLE_IMAGINATION note at
+    # the ImaginationTrigger construction above.
+    if fixture_path is None and aut_imagination_trigger is not None and llm_router is not None and _imagination_off:
+        from maxim.simulation.sim_logger import sim_log
+
+        sim_log("SEM_TRACE", "Scene manifest pre-trigger: skipped via MAXIM_DISABLE_IMAGINATION (universal gate)")
+    elif fixture_path is None and aut_imagination_trigger is not None and llm_router is not None:
         try:
             from maxim.simulation.narrator import generate_scene_manifest
             from maxim.simulation.sim_logger import sim_log
@@ -1602,18 +1627,34 @@ def start_simulation_mode(
         from maxim.simulation.campaign_runner import run_generative_campaign as _run_gen
         from maxim.utils.paths import sim_reports as _gen_reports_dir
 
-        # Substrate-primary scene-harm wiring (substrate_primary_cradle_readiness.md
-        # Phase A / B4): thread the AUT's embodiment + entity_map into per-phase
-        # scene-entity activation so scene-affordance self_effect writes to the
-        # agent's body. GATED to substrate-primary: LLM-AUT receives scene harm
-        # via the narrator-driven Layer-2 proximity path, so passing embodiment
-        # there would double-count and change Exp 37/38. Passing None preserves
-        # byte-identical LLM-AUT behavior (scene tools keep _embodiment=None).
-        # CC8 caveat: a future NON-sim adapter driving substrate-primary percepts
-        # won't pass through this orchestrator path at all, so it must own its own
-        # scene-harm wiring (thread the AUT embodiment into its entity activation).
-        _gen_embodiment = _aut_instance.embodiment if aut_mode == "substrate-primary" else None
-        _gen_entity_map = _aut_entity_map if aut_mode == "substrate-primary" else None
+        # Scene-embodiment wiring (substrate_primary_cradle_readiness.md Phase A/B4):
+        # thread the AUT's embodiment + entity_map into per-phase scene-entity
+        # activation so scene-affordance self_effect writes DETERMINISTICALLY to
+        # the agent's body (warmth_alpha_harm's arms.thermal breach, warmth_beta_
+        # safe's clean cold relief).
+        #
+        # Default: ON for substrate-primary only. In LLM-primary the default keeps
+        # embodiment=None because scene harm is expected via the narrator-driven
+        # Layer-2 proximity path — threading it there would DOUBLE-COUNT and change
+        # Exp 37/38 (which rely on the narrator path). Exp 37/38 do NOT set the
+        # override flag, so their behavior stays byte-identical.
+        #
+        # G1 (controlled_llm_primary_embodied_harness.md): MAXIM_DETERMINISTIC_
+        # SCENE_EMBODIMENT forces embodiment threading in LLM-primary too, so a
+        # controlled experiment (Exp 44) gets deterministic, attributable safe-vs-
+        # harm signal instead of narrator-improvised harm. KNOWN follow-up: with
+        # this ON in LLM-primary the narrator-proximity path could still add harm
+        # (double-count); validate empirically whether the narrator materially
+        # re-applies harm and, if so, suppress that channel under the same flag
+        # (tracked in the plan). CC8 caveat: a future NON-sim adapter must own its
+        # own scene-harm wiring.
+        from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env as _det_scene_flag
+
+        _deterministic_scene_embodiment = aut_mode == "substrate-primary" or _det_scene_flag(
+            os.environ.get("MAXIM_DETERMINISTIC_SCENE_EMBODIMENT")
+        )
+        _gen_embodiment = _aut_instance.embodiment if _deterministic_scene_embodiment else None
+        _gen_entity_map = _aut_entity_map if _deterministic_scene_embodiment else None
         _run_gen(
             goal=goal,
             bridge=bridge,
