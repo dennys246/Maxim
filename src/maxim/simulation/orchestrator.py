@@ -1440,7 +1440,24 @@ def start_simulation_mode(
     # both ``scene_id="pre_trigger"`` and ``scene_id="fixture_pretrigger"``.
     # The two call sites now have disjoint conditions (this one handles the
     # generative path; FixtureDrivenOrchestrator handles the fixture path).
-    if fixture_path is None and aut_imagination_trigger is not None and llm_router is not None:
+    # Controlled-experiment scene lock (MAXIM_DISABLE_SCENE_MANIFEST): skip the
+    # imagination WORLD-BUILDER manifest so a controlled arc presents ONLY its
+    # declared world_entities. Without this, generate_scene_manifest() prompts
+    # the narrator for "5-10 entities — creatures, weapons, NPCs, ..." and a
+    # bare goal string improvises distractors (merchant/book/pedestal) on top
+    # of the arc's controlled dilemma — invalidating any controlled A/B metric
+    # (Exp 44 finding, 2026-07-15). DISTINCT from
+    # MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL, which only drops NAc biases
+    # from the manifest and KEEPS the world-builder (W2 ablation semantics).
+    # Experiment/harness toggle → env, not config (config-over-env carve-out).
+    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env as _adve
+
+    _scene_manifest_off = _adve(os.environ.get("MAXIM_DISABLE_SCENE_MANIFEST"))
+    if fixture_path is None and aut_imagination_trigger is not None and llm_router is not None and _scene_manifest_off:
+        from maxim.simulation.sim_logger import sim_log
+
+        sim_log("SEM_TRACE", "Scene manifest pre-trigger: skipped via MAXIM_DISABLE_SCENE_MANIFEST (scene lock)")
+    elif fixture_path is None and aut_imagination_trigger is not None and llm_router is not None:
         try:
             from maxim.simulation.narrator import generate_scene_manifest
             from maxim.simulation.sim_logger import sim_log

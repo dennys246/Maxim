@@ -239,6 +239,24 @@ def _isolate_maxim_nac_min_confidence():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_scene_manifest_env():
+    """Scrub ``MAXIM_DISABLE_SCENE_MANIFEST`` across every test.
+
+    Controlled-experiment scene lock (Exp 44, 2026-07-15): when set, the
+    generative orchestrator skips the imagination world-builder manifest so
+    a controlled arc presents only its declared entities. Per CLAUDE.md
+    "opt-in env vars in hot startup paths need autouse scrubs".
+    """
+    saved = os.environ.pop("MAXIM_DISABLE_SCENE_MANIFEST", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_DISABLE_SCENE_MANIFEST", None)
+        if saved is not None:
+            os.environ["MAXIM_DISABLE_SCENE_MANIFEST"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_body_state_prompt_env():
     """Scrub ``MAXIM_ENABLE_BODY_STATE_PROMPT`` across every test.
 
