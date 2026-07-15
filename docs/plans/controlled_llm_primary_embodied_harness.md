@@ -71,7 +71,29 @@ controlled deterministic-embodiment run"). The delta-attribution scope note
 (B8, `tool_bridge.py:430-437`) and the pending `transition_based_drive_pain.md`
 work both touch how this harm attributes to NAc — coordinate.
 
-### G2 — LLM-primary lacks the salience/drive-gating filter (VALIDITY)
+### Strategic reroute (2026-07-15): G2 + G3 are HELD, not scheduled here
+
+Decision after weighing against grounded_language_acquisition.md (promoted
+because of "LLM-band-aid drift: 60-70% of effort on LLM-mitigation
+scaffolding"):
+- **G1 stays here** — it is embodiment/world-model CORRECTNESS (harm should
+  fire when you touch a harmful thing, regardless of who drives action
+  selection). The substrate-native line depends on it too. DOING IT.
+- **G2 is HELD → grounded_language_acquisition.md.** A salience/drive-gating
+  filter for the LLM is substrate→action-selection gating = literally what
+  substrate-primary already does. Building it as an Exp-44 patch would BE the
+  LLM-mitigation scaffolding the substrate-native pivot exists to stop, AND it
+  would confound the arms (inject the salience the experiment measures).
+  Build it as a substrate-native primitive instead (machinery partly exists:
+  `GatingContext.drive_states`, runtime/gating.py:96).
+- **G3 is HELD** as trivial harness hygiene (the narrator is the world
+  generator, not agent cognition — unrelated to the substrate-native LM).
+- **Open question:** Exp 44 itself (body_state → LLM prompt) is in the
+  acting-coach/Wire-A/W2 family — substrate-signal-into-LLM scaffolding. Worth
+  a deliberate "run the arms vs invest in substrate-native work?" decision
+  rather than more patching. See memory `project_exp44_llm_primary_divergence`.
+
+### G2 — LLM-primary lacks the salience/drive-gating filter (VALIDITY) [HELD — see above]
 
 Substrate-primary uses NAc drive-gating (`MAXIM_SIM_DRIVE_GATE_ENABLED=1`) so
 a cold body makes warming the only rewarding act, and reward-irrelevant tools

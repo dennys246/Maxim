@@ -422,3 +422,17 @@ This plan addresses the motivation by sequencing four experiments of increasing 
 The hardest unsolved problem in the plan is **catastrophic forgetting across sessions**. Replay-based consolidation is the bet; it might not be enough. If Phase 2 fails primarily on forgetting rather than binding accuracy, the program fork is "do we invest in better consolidation or accept that this model needs offline batch training between Roys." Either fork is a real research finding worth publishing.
 
 The program might not finish. That's fine — the framing rule says each phase justifies itself.
+
+## Intake (2026-07-15): substrate-driven salience for the LLM path (from Exp 44)
+
+The Exp 44 LLM-primary divergence surfaced that the LLM-primary AUT lacks the
+drive-gating/salience filter substrate-primary has (NAc drive-gating makes a
+cold body select warming). Rather than patch a per-experiment introspection
+filter (LLM-mitigation scaffolding this plan exists to stop), **substrate→LLM
+action-salience belongs here** as a substrate-native primitive: let drive/NAc
+state gate/weight what the language model attends to and selects. Machinery
+partly exists — `GatingContext.drive_states` (runtime/gating.py:96) — and
+substrate-primary's `propose_via_substrate` + `INTROSPECTION_TOOL_NAMES`
+exclusion is the reference mechanism. Tracked from
+docs/plans/controlled_llm_primary_embodied_harness.md (G2) + memory
+`project_exp44_llm_primary_divergence`.
