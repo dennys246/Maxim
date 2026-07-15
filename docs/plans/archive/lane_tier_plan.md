@@ -694,8 +694,8 @@ These gates already prevent runaway cloud spending. Adding per-function cost cap
 | [Benchmark plan](benchmark_plan.md) | **Primary consumer.** Narrative transcriber uses `small` tier. Benchmark runner swaps `large` model per run. |
 | [Generative campaign plan](generative_campaign_plan.md) | Narrator on `large`/`medium`, entity naming on `small` |
 | [Embodiment core plan](embodiment_core_plan.md) | Cerebellum queries on `small`, novel percept generation on `large` |
-| [DM persona plan](dungeon_master_persona.md) | Choice classification on `small`, NPC dialogue on `large` |
-| [Agent mesh plan](agent_mesh.md) | Per-peer tier availability via callable `available_tiers`. `FunctionRouter.health_check` integrates with `InferenceRouter`. `AgentIdentity.inference_models` advertises available tiers. Locality routing handled by `InferenceRouter`, not the tier system. |
+| [DM persona plan](../../archive/dungeon_master_persona.md) | Choice classification on `small`, NPC dialogue on `large` |
+| [Agent mesh plan](../../archive/agent_mesh.md) | Per-peer tier availability via callable `available_tiers`. `FunctionRouter.health_check` integrates with `InferenceRouter`. `AgentIdentity.inference_models` advertises available tiers. Locality routing handled by `InferenceRouter`, not the tier system. |
 
 ## When to Implement
 

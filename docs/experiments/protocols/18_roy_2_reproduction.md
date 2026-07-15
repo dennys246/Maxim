@@ -168,5 +168,5 @@ unset MAXIM_LOG_FILE MAXIM_BACKEND_TRACE
 - [`18_roy_2.md`](../18_roy_2.md) — outcome doc with the full result table + interpretation
 - [`17_roy_1b.md`](../17_roy_1b.md) — predecessor with the three-pointer methodology refinement Roy-2 tests path (a) of
 - [`16_roy_1a.md`](../16_roy_1a.md) — first Roy iteration with the same llm-primary test mode + held-out fixture (Roy-2's A/B partner for the priming-arc-mix variable)
-- [`persona_convergence_crucible.md`](../../plans/persona_convergence_crucible.md) — three-arm methodology + Roy-2 iteration log entry
+- [`persona_convergence_crucible.md`](../../plans/deferred/persona_convergence_crucible.md) — three-arm methodology + Roy-2 iteration log entry
 - [`16_roy_1a_reproduction.md`](16_roy_1a_reproduction.md) — Roy-1a protocol Roy-2 mirrors

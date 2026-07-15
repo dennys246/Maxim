@@ -504,7 +504,7 @@ def _compose_substrate_context(nac_top_biases: list[tuple[str, float]] | None) -
     The shared renderer (above) keeps the substrate-voice unified.
 
     See [imagination_substrate_signals.md](
-    docs/plans/imagination_substrate_signals.md) Hookup 1.
+    docs/plans/deferred/imagination_substrate_signals.md) Hookup 1.
     """
     if not nac_top_biases:
         return ""

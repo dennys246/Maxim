@@ -10,7 +10,7 @@ to prevent double-drift. Kept (per CLAUDE.md dormancy-over-deletion) as the
 CC8 ``PerceptSource`` protocol-shape template — this class is exercised by
 ``tests/unit/test_producer_protocols.py`` and
 ``tests/unit/test_naming_events.py``; the 1.1 ``RemotePerceptSource`` adapter
-(docs/plans/mesh_perception_transport.md) is its local sibling and the
+(docs/plans/deferred/mesh_perception_transport.md) is its local sibling and the
 resurrection trigger. Wiring it into a production loop is tick-safe
 (``evaluate_failures`` owns the wall-clock drift and cannot double-drift)
 but requires un-dormanting: update the CLAUDE.md embodiment-tick invariant
@@ -66,7 +66,7 @@ class EmbodimentPerceptSource:
         self._exhausted = False
         self._in_demand = False
 
-        # Roy-5b naming-event scaffolding (docs/plans/roy_5_encoder_alignment_disambiguator.md
+        # Roy-5b naming-event scaffolding (docs/plans/archive/roy_5_encoder_alignment_disambiguator.md
         # Stage 3, src/maxim/embodiment/naming_events.py). When the body
         # declares ``naming_events:`` metadata, this source emits a short
         # utterance into body_state text the same tick the drive crosses

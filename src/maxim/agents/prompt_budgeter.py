@@ -202,7 +202,7 @@ class PromptBudgeter:
         sections FIRST, with a budget that does not depend on per-turn dynamic
         content. This guarantees the stable text is byte-identical across turns
         within a session/phase — the prerequisite for prompt caching
-        (docs/plans/prompt_caching_for_cloud_backends.md).
+        (docs/plans/archive/prompt_caching_for_cloud_backends.md).
 
         The stable bucket is capped at ``_STABLE_BUDGET_FRACTION`` of the prompt
         budget so a pathologically large stable set (e.g. a huge singularity

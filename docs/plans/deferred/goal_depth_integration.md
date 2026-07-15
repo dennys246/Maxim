@@ -1,7 +1,7 @@
 # Goal-Depth Integration — bio-system goal awareness
 
 **Status:** Shell plan (2026-04-22)
-**Depends on:** [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) (SHIPPED)
+**Depends on:** [archive/pfc_deliberation_cycle.md](../archive/pfc_deliberation_cycle.md) (SHIPPED)
 **Scope:** ~200-300 LOC across existing modules (no new bio-system)
 
 ---

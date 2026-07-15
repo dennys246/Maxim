@@ -127,4 +127,4 @@ Each shipped band-aid that's actually a substrate gap should be entered into the
 - [Maxim Hivemind + Oasis](hivemind.md) — The federated layer that lets substrate-primary Maxims share learning
 - [docs/plans/grounded_language_acquisition.md](plans/grounded_language_acquisition.md) — Full multi-phase plan
 - [docs/plans/maxim_hivemind.md](plans/maxim_hivemind.md) — Hivemind/Oasis architecture plan
-- [docs/plans/v1_refinement.md](plans/v1_refinement.md) §B5 — 1.0 scope for substrate-primary harness + Hivemind shareability
+- [docs/plans/archive/v1_refinement.md](plans/archive/v1_refinement.md) §B5 — 1.0 scope for substrate-primary harness + Hivemind shareability

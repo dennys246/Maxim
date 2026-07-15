@@ -1,6 +1,6 @@
 # E0 Sim Embodiment — Reproduction Protocol
 
-**Plan:** [asset_foundry_plan.md](../../plans/deferred/asset_foundry_plan.md) Stage 0
+**Plan:** [asset_foundry_plan.md](../../plans/archive/asset_foundry_plan.md) Stage 0
 **PoC results:** [e0_sim_embodiment_poc.md](../e0_sim_embodiment_poc.md)
 
 ## Quick verification (~1.5s, no deps beyond core)

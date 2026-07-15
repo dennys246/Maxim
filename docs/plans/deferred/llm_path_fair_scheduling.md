@@ -3,7 +3,7 @@
 **Status:** Deferred shell plan
 **Revive when:** multi-agent workloads consistently show one agent starving others even with per-agent rate limits, OR operators need priority classes (e.g., "interactive > batch > background").
 **Estimated scope:** ~300-500 LOC
-**Depends on:** [llm_path_operator_visibility.md](../llm_path_operator_visibility.md) (Plan 3) — which introduces per-agent rate limiting
+**Depends on:** [llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) (Plan 3) — which introduces per-agent rate limiting
 **Related deferred:** [llm_path_async_router.md](llm_path_async_router.md) — likely prerequisite for meaningful fair-share
 
 ## Why this was deferred
@@ -104,6 +104,6 @@ Per user note: when this plan revives, we're **not required to stick with indust
 
 ## Related docs
 
-- **Plan introducing simpler rate limiting:** [../llm_path_operator_visibility.md](../llm_path_operator_visibility.md)
+- **Plan introducing simpler rate limiting:** [../llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md)
 - **Prerequisite (deferred):** [llm_path_async_router.md](llm_path_async_router.md)
-- **Meta plan:** [../llm_path_refinement.md](../llm_path_refinement.md)
+- **Meta plan:** [../llm_path_refinement.md](../archive/llm_path_refinement.md)

@@ -76,7 +76,7 @@ class PoCAgent:
     learning loop requires wiring an action-recording hook into the
     executor/motor boundary. The architecture review flagged this as
     the "RC3" gap and it is explicitly out of Stage 2 scope — see
-    ``docs/plans/substrate_recognition.md`` Stage 2 "Deferred / RC3"
+    ``docs/plans/archive/substrate_recognition.md`` Stage 2 "Deferred / RC3"
     section for the tracked follow-up.
     """
 

@@ -3,11 +3,11 @@
 **Status:** Stages 1+2+3+4 SHIPPED (2026-04-14). Stage 2c SUPERSEDED by `executor_bootstrap_unification.md`. Stage 2b deferred to `agent_factory_canonicalization.md` Stage F1+.
 **Scope:** ~1,100 LOC shipped so far (Stage 1 ~490 + Stage 2 ~820). Stages 3+4 estimated ~400-600 more.
 **Target version:** Ships anytime. Not on the substrate version-gate path.
-**Gates:** NOTHING in the release matrix, but unblocks behavioral convergence experiments that need real SEM execution loops (H1, H2, H4 in [behavioral_convergence_practice.md](behavioral_convergence_practice.md)).
+**Gates:** NOTHING in the release matrix, but unblocks behavioral convergence experiments that need real SEM execution loops (H1, H2, H4 in [behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md)).
 **Depends on:** substrate_recognition (✅ shipped), P2 Stage 2 pain cascade (✅ shipped).
 **Blocks:** Any production experiment that needs an agent to invoke SEM affordances from its prompt output (most of behavioral_convergence_practice H1-H4, the multi-session cross-modal sanity runs in P4).
 **Parent:** none — cross-cutting plan, not part of substrate_binding_persistence.
-**Related:** [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) (discovery), [substrate_recognition.md](substrate_recognition.md) (Stage 2 pain cascade PoC), [../experiments/p2_sem_pain_cascade.md](../experiments/p2_sem_pain_cascade.md) (the PoC this plan generalizes to production).
+**Related:** [substrate_binding_split_proposal.md](substrate_binding_split_proposal.md) (discovery), [substrate_recognition.md](substrate_recognition.md) (Stage 2 pain cascade PoC), [../experiments/p2_sem_pain_cascade.md](../../experiments/p2_sem_pain_cascade.md) (the PoC this plan generalizes to production).
 
 ## Shipped status (2026-04-14)
 

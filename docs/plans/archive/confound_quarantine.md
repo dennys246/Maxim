@@ -2,8 +2,8 @@
 
 **Status:** draft, pre-implementation
 **Ships in:** 0.9.x (experimental); flag lifecycle decided in 1.0 conditional on Phase A outcome — see "Risks" §R1 for branches
-**Owns:** prompt-injection gates in [src/maxim/agents/prompt_builder.py](../../src/maxim/agents/prompt_builder.py), [src/maxim/agents/exec_prompts.py](../../src/maxim/agents/exec_prompts.py), [src/maxim/prompts/acting_coach.py](../../src/maxim/prompts/acting_coach.py); orchestrator state path in [src/maxim/simulation/orchestrator.py](../../src/maxim/simulation/orchestrator.py); persona default in [src/maxim/simulation/personas.py](../../src/maxim/simulation/personas.py); arc routing in [src/maxim/cli.py](../../src/maxim/cli.py); env-var contract doc in [docs/user/configuration.md](../user/configuration.md) under CC4
-**Companion plans:** [v1_refinement.md](v1_refinement.md) §V2 + §CC4, [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md)
+**Owns:** prompt-injection gates in [src/maxim/agents/prompt_builder.py](../../src/maxim/agents/prompt_builder.py), [src/maxim/agents/exec_prompts.py](../../src/maxim/agents/exec_prompts.py), [src/maxim/prompts/acting_coach.py](../../src/maxim/prompts/acting_coach.py); orchestrator state path in [src/maxim/simulation/orchestrator.py](../../src/maxim/simulation/orchestrator.py); persona default in [src/maxim/simulation/personas.py](../../src/maxim/simulation/personas.py); arc routing in [src/maxim/cli.py](../../src/maxim/cli.py); env-var contract doc in [docs/user/configuration.md](../../user/configuration.md) under CC4
+**Companion plans:** [v1_refinement.md](v1_refinement.md) §V2 + §CC4, [persona_cleanup_and_mode_transition.md](../deferred/persona_cleanup_and_mode_transition.md)
 **Branch:** `confound-quarantine`
 
 ## Motivation
@@ -147,7 +147,7 @@ Each call site imports the helper:
 
 ### CC4 doc updates
 
-Add to [docs/user/configuration.md](../user/configuration.md), section "Debug — substrate + decision-system experiments":
+Add to [docs/user/configuration.md](../../user/configuration.md), section "Debug — substrate + decision-system experiments":
 
 ```
 | `MAXIM_DISABLE_PFC_PREAMBLE`     | Skip the PFC deliberation preamble injection. Used for V1 substrate-attribution experiments. | 0 |
@@ -172,7 +172,7 @@ Add to the CLI flag table the `[experimental]` markers on `--no-acting-coach` an
 | `tests/unit/test_confound_flags.py` (NEW)                                      | Per-flag injector-skip tests (4 tests)                          | ~80  |
 | `tests/integration/test_v1_phased_metrics.py` (NEW)                            | Phase A and Phase G dry-run that asserts `confound_quarantine` block populated correctly | ~60  |
 | `docs/user/configuration.md`                                                   | CC4 entries for the four new flags                              | ~6   |
-| `docs/plans/confound_quarantine.md` (this file)                                | Plan document                                                   | ~250 |
+| `docs/plans/archive/confound_quarantine.md` (this file)                                | Plan document                                                   | ~250 |
 | `scripts/run_v1_phases.sh` (NEW, optional harness)                             | Six-phase wrapper that creates tmpdirs and aggregates reports   | ~50  |
 
 Total: ~600 LOC, mostly tests and docs. Production-code surface is **~40 LOC**.

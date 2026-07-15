@@ -1,8 +1,11 @@
 # Behavioral Convergence Practice — Living Doc
 
+> **DEFERRED (2026-07-15 plans audit):** Dormant since 2026-04-19 (Exp 1–5, 41/41 hypotheses, all logged in April). The behavioral-validation energy migrated to [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md) (mechanism-level, actively maintained); this doc's system-level "does the agent get better" question is distinct but nothing is feeding it. **Revive when:** a new system-level cross-session convergence experiment runs — most likely when P8-consolidation tuning or the Mother-NPC stimulus plan revives (H3/H4 prerequisites).
+
+
 **Status:** Living document. Not a gated phase. Not on the critical path to 1.0.
-**Kin:** [tool_refinement_plan.md](tool_refinement_plan.md) (same pattern — an ongoing practice, not a one-shot plan).
-**Related:** [substrate_recognition.md](substrate_recognition.md), [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) (this doc consumes substrate mechanisms; it does not define them). Master reference: [archive/substrate_plan.md](archive/substrate_plan.md).
+**Kin:** [tool_refinement_plan.md](../tool_refinement_plan.md) (same pattern — an ongoing practice, not a one-shot plan).
+**Related:** [substrate_recognition.md](../archive/substrate_recognition.md), [substrate_binding_persistence.md](../archive/substrate_binding_persistence.md) (this doc consumes substrate mechanisms; it does not define them). Master reference: [archive/substrate_plan.md](../archive/substrate_plan.md).
 
 ## What this document is for
 
@@ -127,7 +130,7 @@ The promotion is manual and deliberate. Not every finding here needs to change t
 
 ## Stimulus-agent experiments — isolation discipline
 
-Some hypotheses here (especially H3 NPC preference consistency, H4 consolidation-helps-behavior, and scale-dependent versions of H1/H2) will eventually benefit from a generative stimulus agent rather than hand-authored fixtures. That's the Mother NPC pattern documented in [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md).
+Some hypotheses here (especially H3 NPC preference consistency, H4 consolidation-helps-behavior, and scale-dependent versions of H1/H2) will eventually benefit from a generative stimulus agent rather than hand-authored fixtures. That's the Mother NPC pattern documented in [deferred/mother_npc_stimulus_plan.md](mother_npc_stimulus_plan.md).
 
 **Hard rule:** any experiment entry in this doc that uses a second agent (Mother, another NPC, another Maxim instance) as a stimulus source must satisfy the isolation audit from the deferred Mother NPC plan *before results count*. The audit is a gate, not a checkbox — if it can't be demonstrated that Mother and Baby shared zero state beyond the percept stream, the experiment proves nothing about Baby's substrate, only about Mother's LLM leaking through.
 
@@ -176,7 +179,7 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 
 **Interpretation:** Affective memory transfers across sessions without fine-tuning. Shared "potion" concept carries mixed valence (healing+poison). Reward bias is asymmetric (positive only widens EC). Pain spikes create clean episode boundaries.
 
-**Decision:** Tier 1 confirmed. Next: Tier 2 (LLM decisions based on valence). Blocked on [behavioral_convergence_wiring.md](archive/behavioral_convergence_wiring.md).
+**Decision:** Tier 1 confirmed. Next: Tier 2 (LLM decisions based on valence). Blocked on [behavioral_convergence_wiring.md](../archive/behavioral_convergence_wiring.md).
 
 ---
 
@@ -217,7 +220,7 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 **What this does NOT prove (Tier 3):** The agent doesn't take the action during training — reactions are injected. Tier 3 tests organic learning.
 
 **Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp3_tier2.py --model qwen2.5-14b`
-**Full protocol:** [experiments/protocols/behavioral_convergence_exp3_reproduction.md](../experiments/protocols/behavioral_convergence_exp3_reproduction.md)
+**Full protocol:** [experiments/protocols/behavioral_convergence_exp3_reproduction.md](../../experiments/protocols/behavioral_convergence_exp3_reproduction.md)
 
 ---
 
@@ -247,7 +250,7 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 **Decision:** All three testing tiers now PASS. 41/41 hypotheses confirmed across 4 experiments. The 1.0 research claim — cross-session learning without fine-tuning — is demonstrated at every tier. Version bump to 0.3.0.
 
 **Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp4_tier3.py --model qwen2.5-14b`
-**Full protocol:** [experiments/protocols/behavioral_convergence_exp4_reproduction.md](../experiments/protocols/behavioral_convergence_exp4_reproduction.md)
+**Full protocol:** [experiments/protocols/behavioral_convergence_exp4_reproduction.md](../../experiments/protocols/behavioral_convergence_exp4_reproduction.md)
 
 ---
 
@@ -284,5 +287,5 @@ Try to log at least one new experiment entry per version bump, so the empirical 
 **Decision:** 0.4 scale gate CLOSED. Track D complete. The 1.0 research claim is now validated at all three tiers plus scale.
 
 **Reproduction:** `PYTHONPATH=src python scripts/behavioral_convergence_exp4_scale.py --seeds 20`
-**Full protocol:** [experiments/protocols/tier3_scale_validation.md](../experiments/protocols/tier3_scale_validation.md)
+**Full protocol:** [experiments/protocols/tier3_scale_validation.md](../../experiments/protocols/tier3_scale_validation.md)
 **Results:** [experiments/results/tier3_scale_validation_20260419.json](../experiments/results/tier3_scale_validation_20260419.json)

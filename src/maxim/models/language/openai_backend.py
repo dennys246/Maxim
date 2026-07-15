@@ -181,7 +181,7 @@ class _OpenAIBackend:
         ``usage.prompt_tokens_details.cached_tokens``; ``input_tokens``
         (prompt_tokens) is INCLUSIVE of cached on OpenAI, so uncached =
         input_tokens - cache_read. See
-        docs/plans/prompt_caching_for_cloud_backends.md Phase 2.
+        docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 2.
         """
         if not self._prompt_cache_enabled():
             return

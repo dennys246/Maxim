@@ -36,7 +36,7 @@
 
 **Root cause:** Documented in `pain_bus_bridge_subscriber_unification.md`. Correctness is load-bearing on the context-similarity mismatch (0/1 = 0.0 < 0.5 threshold), not on any guard. If `record_tool_start`'s pending-event context is enriched in the future, double-counting will start silently.
 
-**Fix direction:** Already tracked in `docs/plans/pain_bus_bridge_subscriber_unification.md`. The tripwire test `test_subscriber_does_not_link_pending_tool_event` guards against this. No action needed now.
+**Fix direction:** Already tracked in `docs/plans/deferred/pain_bus_bridge_subscriber_unification.md`. The tripwire test `test_subscriber_does_not_link_pending_tool_event` guards against this. No action needed now.
 
 ## Issue 4: ComponentRegistry construction repeated at each call site
 

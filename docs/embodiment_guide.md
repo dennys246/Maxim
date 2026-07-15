@@ -75,7 +75,7 @@ maxim --llm mistral-7b --embodiment weapons/rusty_sword
 What happens behind the scenes:
 
 1. `cli.py` reads `--embodiment weapons/rusty_sword`.
-2. `runtime/bootstrap.py::build_executor` (the canonical agent constructor — see [docs/plans/executor_bootstrap_unification.md](plans/executor_bootstrap_unification.md)) instantiates the entity via `ComponentRegistry`, wraps it in `Embodiment(pain_bus=...)`, and calls `generate_tools_for_entity` to register the affordance tools (`rusty_sword_slash`, `rusty_sword_parry`, `rusty_sword_throw`, `rusty_sword_sharpen`, `rusty_sword_repair`) into the agent's tool registry.
+2. `runtime/bootstrap.py::build_executor` (the canonical agent constructor — see [docs/plans/archive/executor_bootstrap_unification.md](plans/archive/executor_bootstrap_unification.md)) instantiates the entity via `ComponentRegistry`, wraps it in `Embodiment(pain_bus=...)`, and calls `generate_tools_for_entity` to register the affordance tools (`rusty_sword_slash`, `rusty_sword_parry`, `rusty_sword_throw`, `rusty_sword_sharpen`, `rusty_sword_repair`) into the agent's tool registry.
 3. The agent's LLM sees those tool names alongside the standard tools and can invoke them by emitting `{"tool_name": "rusty_sword_slash", "params": {"target": "...", "force": 0.9}}`.
 4. When the agent invokes `rusty_sword_slash` on a low-durability sword, `embodiment.evaluate_failures()` fires `shatter` → `PainBus.publish(PainSignal)` → the executor's `ToolPainBridge` calls `record_tool_embodiment_failure` → NAc forms a NEGATIVE causal link on `tool:rusty_sword_slash` → on the next turn, `nac.predict()` returns NEGATIVE for that tool, informing the agent's policy.
 
@@ -129,7 +129,7 @@ See [docs/user/tools.md](user/tools.md) for the full API.
 #### Constraints
 
 - Only one entity can be loaded via the flag. Multi-entity bodies (e.g., a full robot arm with child entities) are loaded the old way via `Embodiment(spec.root_entity)` in code — see step 2 above.
-- The bridge attaches to the unwrapped inner `Executor`. If you wrap the executor with `FearGatedExecutor` or similar, do it AFTER `build_executor` returns. This is structurally enforced by the `build_executor` signature contract — see [docs/plans/executor_bootstrap_unification.md](plans/executor_bootstrap_unification.md).
+- The bridge attaches to the unwrapped inner `Executor`. If you wrap the executor with `FearGatedExecutor` or similar, do it AFTER `build_executor` returns. This is structurally enforced by the `build_executor` signature contract — see [docs/plans/archive/executor_bootstrap_unification.md](plans/archive/executor_bootstrap_unification.md).
 
 ### 3. Add virtual entities for campaigns
 

@@ -767,7 +767,7 @@ def _resolve_min_confidence(explicit: float | None) -> float:
     Precedence: explicit caller argument > ``MAXIM_NAC_MIN_CONFIDENCE`` env
     var > ``_DEFAULT_SUBSTRATE_MIN_CONFIDENCE`` (0.3). The env var exists for
     Roy-2c (H1 vs H2 disambiguator) and the Wire-A ablation surface in
-    [docs/plans/release_0_9_1.md](../../docs/plans/release_0_9_1.md). Invalid
+    [docs/plans/archive/release_0_9_1.md](../../docs/plans/archive/release_0_9_1.md). Invalid
     env values fall back to the default with a warning, not a crash.
     """
     if explicit is not None:
@@ -1336,7 +1336,7 @@ def run_agentic_loop(
                     # bypass invariant: results are injected into the
                     # next prompt as passive perception, never logged to
                     # ``actions.jsonl``. See
-                    # [docs/plans/sense_tool_registry.md] § "Phase 2".
+                    # [docs/plans/deferred/sense_tool_registry.md] § "Phase 2".
                     _presence_tool = None  # canonical sense_presence instance, for entity_map handoff
                     _auto_fire_tools = []
                     try:
@@ -3437,7 +3437,7 @@ def run_agentic_loop(
                         # annotations (orthogonal signals: somatic body
                         # damage vs. experience-acquired unpredictability).
                         # The hybrid bio-system + LLM caveat is documented
-                        # in docs/plans/bio_emergent_persona_foundations.md
+                        # in docs/plans/deferred/bio_emergent_persona_foundations.md
                         # § Wire 1 — variance reaches the LLM through
                         # description text, not a pre-filter ranker.
                         # A cleaner post-1.0 design would pre-rank tools

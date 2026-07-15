@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 # Registration-time classifier for tool provenance / lifecycle. The four
 # kinds correspond to the three independent registration regimes the
-# sense* tool family grew under (per ``docs/plans/sense_tool_registry.md``)
+# sense* tool family grew under (per ``docs/plans/deferred/sense_tool_registry.md``)
 # plus a default for everything else.
 #
 # - ``core-universal``  — registered once at boot via ``ToolRegistry.register``;
@@ -299,7 +299,7 @@ class Tool(ABC):
     rather than reading ``input_schema`` directly, so they handle both
     authored formats correctly.
 
-    See ``docs/plans/mcp_compatibility.md`` for the broader 1.1+ MCP work
+    See ``docs/plans/deferred/mcp_compatibility.md`` for the broader 1.1+ MCP work
     that this dual-format support unlocks.
     """
 
@@ -313,7 +313,7 @@ class Tool(ABC):
     # tick (alongside the LLM-chosen action) and does NOT log the call to
     # ``actions.jsonl``. Default False keeps existing tools unchanged.
     # Used today only by ``SensePresenceTool`` (auto-discovery scan).
-    # See [docs/plans/sense_tool_registry.md] § "Tool metadata" and
+    # See [docs/plans/deferred/sense_tool_registry.md] § "Tool metadata" and
     # ``runtime/agent_loop.py`` auto-sense dispatch.
     auto_fire: bool = False
     # ``kind`` — registration-time classifier. Default ``"core-universal"``

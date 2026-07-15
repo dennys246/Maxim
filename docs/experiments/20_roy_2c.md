@@ -1,7 +1,7 @@
 # Roy-2c — `min_confidence=0.0` probe (H1 vs H2 disambiguator)
 
 **Date:** 2026-05-13 (run completed 2026-05-13 12:43 local)
-**Plan:** [release_0_9_1.md § Stage 0a](../plans/release_0_9_1.md) · [persona_convergence_crucible.md § "Iteration log"](../plans/persona_convergence_crucible.md)
+**Plan:** [release_0_9_1.md § Stage 0a](../plans/archive/release_0_9_1.md) · [persona_convergence_crucible.md § "Iteration log"](../plans/deferred/persona_convergence_crucible.md)
 **Companion:** [19_roy_2pc.md](19_roy_2pc.md) (Roy-2pc shipped the A ≈ B ≈ C outcome Roy-2c disambiguates) · [18_roy_2.md](18_roy_2.md) · [17_roy_1b.md](17_roy_1b.md)
 **Spec:** [scenarios/roy/roy_2c_iteration.yaml](../../scenarios/roy/roy_2c_iteration.yaml)
 **Engineered fixture:** [scenarios/roy/roy_2pc_holdout.yaml](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged from Roy-2pc)
@@ -9,7 +9,7 @@
 
 ## Status
 
-H1-vs-H2 disambiguator. Single-variable change vs Roy-2pc: `MAXIM_NAC_MIN_CONFIDENCE=0.0` set in the runner environment (new env var introduced in [release_0_9_1.md Stage 0a](../plans/release_0_9_1.md)). Same priming, same fixture, same arms.
+H1-vs-H2 disambiguator. Single-variable change vs Roy-2pc: `MAXIM_NAC_MIN_CONFIDENCE=0.0` set in the runner environment (new env var introduced in [release_0_9_1.md Stage 0a](../plans/archive/release_0_9_1.md)). Same priming, same fixture, same arms.
 
 **Pre-registered diagnostic logic:**
 
@@ -22,7 +22,7 @@ H1-vs-H2 disambiguator. Single-variable change vs Roy-2pc: `MAXIM_NAC_MIN_CONFID
 ## What shipped
 
 - [`scenarios/roy/roy_2c_iteration.yaml`](../../scenarios/roy/roy_2c_iteration.yaml) — single-env-var variant of `roy_2pc_iteration.yaml`.
-- `MAXIM_NAC_MIN_CONFIDENCE` env-var override at `agent_loop._resolve_min_confidence` ([release_0_9_1.md Stage 0a](../plans/release_0_9_1.md)).
+- `MAXIM_NAC_MIN_CONFIDENCE` env-var override at `agent_loop._resolve_min_confidence` ([release_0_9_1.md Stage 0a](../plans/archive/release_0_9_1.md)).
 - `conftest.py` autouse scrub fixture (`_isolate_maxim_nac_min_confidence`) per [feedback_opt_in_env_in_hot_paths.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_opt_in_env_in_hot_paths.md).
 - 8 new unit tests in [`tests/unit/test_substrate_min_confidence_env.py`](../../tests/unit/test_substrate_min_confidence_env.py) covering precedence, explicit-zero honoring, invalid fallback, empty-string semantics.
 
@@ -122,7 +122,7 @@ No 0.9.1 plan changes required. Roy-2c confirms the architectural fix the plan a
 
 **Secondary observations for the 0.9.1 plan:**
 
-- **Wire-A's bias rendering should NOT depend on `current_cluster_id` matching.** Stage 2 of [release_0_9_1.md](../plans/release_0_9_1.md) currently spec'd `_collect_active_clusters` + `get_active_cluster_biases` which keyed on active cluster IDs. H1 confirmation suggests the activated-cluster intersection with priming clusters may be empty often. **Revise: Wire-A should aggregate `_cluster_reward_bias` across ALL priming-acquired clusters for the agent**, not just clusters matching the current percept. The tool-name aggregation is the right granularity. Active-cluster restriction is the bug that motivated the wire's existence.
+- **Wire-A's bias rendering should NOT depend on `current_cluster_id` matching.** Stage 2 of [release_0_9_1.md](../plans/archive/release_0_9_1.md) currently spec'd `_collect_active_clusters` + `get_active_cluster_biases` which keyed on active cluster IDs. H1 confirmation suggests the activated-cluster intersection with priming clusters may be empty often. **Revise: Wire-A should aggregate `_cluster_reward_bias` across ALL priming-acquired clusters for the agent**, not just clusters matching the current percept. The tool-name aggregation is the right granularity. Active-cluster restriction is the bug that motivated the wire's existence.
 - **min_confidence default stays at 0.3.** Roy-2c's gate=0.0 produced *more accepted-but-still-wrong* proposals. The gate is doing real work blocking sub-threshold noise; lowering it is not a winning move on its own.
 
 ## What this still does NOT prove

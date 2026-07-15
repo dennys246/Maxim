@@ -17,8 +17,8 @@ constructed by prior steps::
     MemoryHub → PainBus → DefaultNetwork
 
 See also:
-    - ``docs/plans/bio_stack_unification.md`` for the plan + audit
-    - ``docs/plans/biosystem_unification.md`` for the wave catalog
+    - ``docs/plans/archive/bio_stack_unification.md`` for the plan + audit
+    - ``docs/plans/archive/biosystem_unification.md`` for the wave catalog
     - ``docs/architecture/structural_enforcement.md`` for the meta-rule
 """
 

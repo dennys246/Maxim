@@ -76,7 +76,7 @@ Attached to each `MaximAgent` instance at construction. Bio-subsystems log throu
 | Plan | Relationship |
 |------|-------------|
 | [DM MVP](dungeon_master_persona.md) | Not required — MVP has one AUT, existing format is fine |
-| [DM Extensions](dungeon_master_extensions.md) | Soft win once DM campaigns produce heavy multi-entity log output |
+| [DM Extensions](../plans/deferred/dungeon_master_extensions.md) | Soft win once DM campaigns produce heavy multi-entity log output |
 | **Agent Mesh** (blocked) | Future consumer — multi-AUT mesh sims unreadable without this |
 | **Realtime Refinement** (core done) | Optional consumer — refinement reports clearer with named AUT |
 

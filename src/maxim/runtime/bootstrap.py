@@ -317,7 +317,7 @@ def build_executor(
     ``src/maxim/`` were either wrong, implicit, or relied on
     helper-discipline. This signature makes the failure mode a
     ``TypeError`` instead of a silent no-op. See
-    ``docs/plans/executor_bootstrap_unification.md``.
+    ``docs/plans/archive/executor_bootstrap_unification.md``.
 
     Args:
         tool_registry: Registry of tools the executor can dispatch.
@@ -634,14 +634,14 @@ def build_default_network(
     learning (the core learning subsystem DN provides).
 
     The Layer 4 → Layer 5 upgrade (see
-    ``docs/plans/default_network_unification.md`` Gap A): the previous
+    ``docs/plans/archive/default_network_unification.md`` Gap A): the previous
     version had all-optional parameters and swallowed all exceptions
     into ``None``. Post-upgrade, ``nac`` is required, and only import
     failures produce a ``None`` return (optional dep not installed).
     Config and type errors propagate to the caller.
 
     ``pain_bus`` injection closes Gap B from
-    ``docs/plans/pain_bus_unification.md``: when provided, DN uses the
+    ``docs/plans/archive/pain_bus_unification.md``: when provided, DN uses the
     injected bus (which should already have hippocampus + NAc
     subscribers from ``build_pain_bus``) instead of constructing its
     own internally. This inverts DN from bus constructor to bus

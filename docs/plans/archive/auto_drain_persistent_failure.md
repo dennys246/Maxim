@@ -1,7 +1,7 @@
 # Plan 4 Stage C4.5: Auto-Drain on Persistent Failure
 
 **Status:** PLAN (2026-04-17). User-confirmed design decisions.
-**Parent:** [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) Stage C4.5.
+**Parent:** [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) Stage C4.5.
 **Predecessor:** C4 (PR #148) wired the router to drain state. C4.5 is the first *automatic* reactive behavior -- the mesh drains nodes itself.
 **Deferred:** Auto-undrain via periodic health probe (C4.6). Ship C4.5 as auto-drain only; operator resumes manually.
 

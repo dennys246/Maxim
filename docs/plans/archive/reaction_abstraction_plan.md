@@ -178,7 +178,7 @@ The translation happens outside SEM:
 
 **Embodiment._publish_pain() migrates to emit Reaction instead of PainSignal.** This is the F0.R1 work: the sim-layer `inject_pain` detour through Percept.metadata is replaced by direct Reaction emission. `route_pain_percept()` is deleted.
 
-**Generated SEM components (Asset Foundry) work automatically** because the Cerebellum translation reads from the spec's failure mode declarations. A foundry-generated weapon with `failure_modes: [{trigger: charge < 0.05, pain: 0.9}]` produces `Reaction(kind="pain", intensity=0.9)` through the same Cerebellum path as a hand-authored one. The [foundry gauntlet's](deferred/asset_foundry_plan.md) scoring dimension "pain/failure activation" becomes: "did the generated entity produce Reactions of kind pain?"
+**Generated SEM components (Asset Foundry) work automatically** because the Cerebellum translation reads from the spec's failure mode declarations. A foundry-generated weapon with `failure_modes: [{trigger: charge < 0.05, pain: 0.9}]` produces `Reaction(kind="pain", intensity=0.9)` through the same Cerebellum path as a hand-authored one. The [foundry gauntlet's](asset_foundry_plan.md) scoring dimension "pain/failure activation" becomes: "did the generated entity produce Reactions of kind pain?"
 
 ## Isolation hygiene for reactions
 
@@ -193,7 +193,7 @@ Concretely, `ReactionContext` MUST NOT carry:
 - **Scenario/test oracles.** No `expected_reaction_kind`, no `correct_avoidance_target`. Scenario tagging for post-hoc analysis belongs in Percept.metadata (the escape hatch), not in ReactionContext.
 - **Learned-policy hints.** No `suggested_response`, no `optimal_action_from_nac`. The receiving agent's NAc computes its own policy from its own causal links.
 
-This rule is the Reaction-side complement to PerceptContext's rule. Together they define the **information barrier** for the [deferred mother_npc_stimulus_plan](deferred/mother_npc_stimulus_plan.md): Mother communicates with Baby through Percept content only; Baby generates Reactions from its own bio-stack only. No back-channel through either typed surface.
+This rule is the Reaction-side complement to PerceptContext's rule. Together they define the **information barrier** for the [deferred mother_npc_stimulus_plan](../deferred/mother_npc_stimulus_plan.md): Mother communicates with Baby through Percept content only; Baby generates Reactions from its own bio-stack only. No back-channel through either typed surface.
 
 ## NAc integration path
 
@@ -218,7 +218,7 @@ The Percept/Reaction producer protocols unify them: both runtimes register the s
 
 Specifically, Phase 4 introduces a `make_text_percept` factory (from F0.6) that implements `PerceptProducer`. AgentPool.run_turn wraps its string percept in `make_text_percept(text, agent_id=agent_id)` and the result flows through the same Percept surface that MaximAgent uses. The bio-systems all see the same data type regardless of runtime.
 
-This is a prerequisite for the [deferred mother_npc_stimulus_plan](deferred/mother_npc_stimulus_plan.md): Mother (an AgentInstance-shaped thing) needs to produce Percept objects that Baby (a MaximAgent-shaped thing) consumes.
+This is a prerequisite for the [deferred mother_npc_stimulus_plan](../deferred/mother_npc_stimulus_plan.md): Mother (an AgentInstance-shaped thing) needs to produce Percept objects that Baby (a MaximAgent-shaped thing) consumes.
 
 ## Phasing
 
@@ -241,7 +241,7 @@ This is a prerequisite for the [deferred mother_npc_stimulus_plan](deferred/moth
 
 - After Phase 1: the Reaction type exists. Plan docs can reference it. F0.R1's "drop inject_pain detour" can be scoped against the new type.
 - After Phase 2: PainBus is gone, ReactionBus exists. The second reaction kind (hunger, fear) can be added by implementing ReactionProducer + registering on the bus. ~50 LOC per new kind.
-- After Phase 3: SEM components automatically produce Percepts and Reactions. The [Asset Foundry's](deferred/asset_foundry_plan.md) gauntlet scoring becomes generic ("did the entity produce useful Percepts + Reactions?").
+- After Phase 3: SEM components automatically produce Percepts and Reactions. The [Asset Foundry's](asset_foundry_plan.md) gauntlet scoring becomes generic ("did the entity produce useful Percepts + Reactions?").
 - After Phase 4: both runtimes share the Percept surface. Mother NPC stimulus plan has its prerequisite.
 - After Phase 5: NAc can query "which percepts were involved in this causal link?" — substrate P2's per-node reward bias works correctly.
 

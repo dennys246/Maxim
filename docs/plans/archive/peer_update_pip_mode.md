@@ -6,7 +6,7 @@
 **Gates:** Nothing. Quality-of-life for non-dev deployments.
 **Depends on:** Plan 4 C3.5 (SHIPPED — `admin_core.py` + mesh-aware update verbs).
 **Blocks:** Nothing. Enables pip-only leader deployments without a git checkout.
-**Parent:** [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) (feeds C8 cross-version compatibility story).
+**Parent:** [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) (feeds C8 cross-version compatibility story).
 
 ## Goal
 
@@ -396,8 +396,8 @@ def _detect_installed_extras() -> list[str]:
 
 **What's built:**
 
-1. Update [docs/user/cli-reference.md](../../docs/user/cli-reference.md) — add pip mode examples to `maxim peer update` section.
-2. Update [docs/troubleshooting/remote_update.md](../../docs/troubleshooting/remote_update.md) — add pip deployment troubleshooting.
+1. Update [docs/user/cli-reference.md](../../user/cli-reference.md) — add pip mode examples to `maxim peer update` section.
+2. Update [docs/troubleshooting/remote_update.md](../../troubleshooting/remote_update.md) — add pip deployment troubleshooting.
 3. Update this plan's status.
 
 **Scope:** ~40 LOC docs.

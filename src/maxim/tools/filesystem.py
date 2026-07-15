@@ -969,7 +969,7 @@ class BashTool(Tool):
                 # No cwd specified — default to the first allowed_dir rather than
                 # inheriting the Python process CWD (which may be the user's repo).
                 # Closes the sandbox escape gap when sims run with allowed_dirs set
-                # to the sandbox tmpdir. See docs/plans/docker_sandbox_plan.md.
+                # to the sandbox tmpdir. See docs/plans/archive/docker_sandbox_plan.md.
                 cwd = self._allowed_dirs[0]
 
             # Check command safety

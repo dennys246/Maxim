@@ -6,7 +6,7 @@ never wired — no src/ code calls ``replay_top_episodes()`` on the SLEEP
 transition (only tests/substrate/test_p8_sleep_replay.py exercises it).
 The production session-end path is ``hippocampus_consolidation.py::sleep()``
 (promote/compress/remove — a different mechanism, NOT Hebbian replay).
-Resurrection trigger: docs/plans/memory_consolidation_practice.md (ACTIVE)
+Resurrection trigger: docs/plans/deferred/memory_consolidation_practice.md (ACTIVE)
 deciding to wire the SLEEP-transition consumer. Until then no new features
 build on this module.
 

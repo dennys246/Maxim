@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE design. Implementation phased across 1.1 + 1.2.
 **Supersedes:** [archive/mother_maxim_plan.md](archive/mother_maxim_plan.md) (2,224 lines, designed pre-substrate-primary pivot — wrong architecture for the post-pivot world).
-**Companion plans:** [grounded_language_acquisition.md](grounded_language_acquisition.md) (substrate-primary AUT mode — the cognition layer the Hivemind shares), [v1_refinement.md](v1_refinement.md) §B5 (the 1.0 shareability infrastructure that enables this).
+**Companion plans:** [grounded_language_acquisition.md](grounded_language_acquisition.md) (substrate-primary AUT mode — the cognition layer the Hivemind shares), [v1_refinement.md](archive/v1_refinement.md) §B5 (the 1.0 shareability infrastructure that enables this).
 **Operating context:** the substrate-primary pivot decided 2026-05-09 reframed Maxim's headline thesis from "LLM with bio-augmentation" toward "bio-substrate carries the cognition; LLM is one possible action selector among others." That reframing makes the substrate itself naturally shareable — which the old Mother Maxim plan didn't anticipate, because it was designed when memories (LLM dialogue + episode traces) were the unit of value rather than learned bio-substrate (NAc weights, EC concepts, reflexes).
 
 ---

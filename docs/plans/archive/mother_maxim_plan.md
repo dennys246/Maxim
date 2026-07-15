@@ -61,7 +61,7 @@ User → Maxim CLI/API → Agent Loop → Bio-Systems → JSON files on disk
     Compute routes ACROSS (by capability + capacity)
 ```
 
-Mother sits at the root of the **Pecking Order Graph** ([full plan](pecking_order_graph_plan.md)). Rather than receiving raw contributions via a flat REST API, knowledge percolates up through the graph — each intermediate node enriches contributions with its own observations before passing them up. Wisdom flows down with compounding trust discounts.
+Mother sits at the root of the **Pecking Order Graph** ([full plan](../deferred/pecking_order_graph_plan.md)). Rather than receiving raw contributions via a flat REST API, knowledge percolates up through the graph — each intermediate node enriches contributions with its own observations before passing them up. Wisdom flows down with compounding trust discounts.
 
 ```
 Users → Maxim instances (graph nodes) → cascade_up → Mother Maxim Agent
@@ -809,7 +809,7 @@ src/maxim/mother/
                └── Agent Loop  → low-freq (on contribution or 1/min idle)
 ```
 
-**Pecking Order Graph integration (POG-4):** Mother MVP ships first with direct REST endpoints. POG-4 (shipped alongside or shortly after) converts `/v1/contribute` and `/v1/recall` into graph cascade operations — contributions percolate up through intermediate nodes that enrich them, wisdom flows down with compounding trust discounts. Mother doesn't need the graph to start, but the graph makes federation natural. See [pecking_order_graph_plan.md](pecking_order_graph_plan.md).
+**Pecking Order Graph integration (POG-4):** Mother MVP ships first with direct REST endpoints. POG-4 (shipped alongside or shortly after) converts `/v1/contribute` and `/v1/recall` into graph cascade operations — contributions percolate up through intermediate nodes that enrich them, wisdom flows down with compounding trust discounts. Mother doesn't need the graph to start, but the graph makes federation natural. See [pecking_order_graph_plan.md](../deferred/pecking_order_graph_plan.md).
 
 **Why JSON is fine for MVP:** Mother is the sole writer. Contributions queue through her agent loop sequentially — no concurrent writes, no race conditions. The RTX 5080 leader can handle hundreds of thousands of memories in JSON before it becomes a bottleneck. Switch to PostgreSQL (M-1) when she outgrows it.
 
@@ -2177,7 +2177,7 @@ When Mother ships, `maxim doctor` gains new check categories via `--as contribut
 
 ### CapabilityAgent integration
 
-The CapabilityAgent (historical design — predates the current `docs/plans/` split, fully subsumed by [pecking_order_graph_plan.md](pecking_order_graph_plan.md)) absorbs Mother-awareness with `can_contribute()` (pre-flight: model tier, deidentification, Mother reachability) and `mother_health()` (live cognitive health metrics). Doctor provides formatting + fix hints + retry loop.
+The CapabilityAgent (historical design — predates the current `docs/plans/` split, fully subsumed by [pecking_order_graph_plan.md](../deferred/pecking_order_graph_plan.md)) absorbs Mother-awareness with `can_contribute()` (pre-flight: model tier, deidentification, Mother reachability) and `mother_health()` (live cognitive health metrics). Doctor provides formatting + fix hints + retry loop.
 
 ---
 

@@ -4,7 +4,7 @@ Pins the production artifact that the audio (DoA) and visual (substrate gaze)
 tracks both consume: the `bodies/reachy_mini` SEM entity must declare the
 exteroceptive `azimuth` sensor with a world-coupled centeredness drive and the
 two discrete `orient` affordances with `head_yaw` self_effect. See
-docs/plans/audiovisual_orienting.md (Phase 0a) and
+docs/plans/archive/audiovisual_orienting.md (Phase 0a) and
 docs/plans/perception_pipeline_placement.md.
 """
 

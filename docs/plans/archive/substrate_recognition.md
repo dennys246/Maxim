@@ -4,8 +4,8 @@
 **Scope:** ~2,500 LOC across three phases + text-to-prompt migration
 **Target version:** 0.3-pre (B1+P1 combined) through 0.3-minimum (P2)
 **Blocks:** substrate_binding_persistence.md (P3a onward)
-**Master reference:** [archive/substrate_plan.md](archive/substrate_plan.md) for full rationale, baselines, statistical hygiene
-**P1 results:** [experiments/p1_recognition_sweep.md](../experiments/p1_recognition_sweep.md) — 91.7% ± 2.9% collapse, paraphrase-mpnet@0.40 + centroid update
+**Master reference:** [archive/substrate_plan.md](substrate_plan.md) for full rationale, baselines, statistical hygiene
+**P1 results:** [experiments/p1_recognition_sweep.md](../../experiments/p1_recognition_sweep.md) — 91.7% ± 2.9% collapse, paraphrase-mpnet@0.40 + centroid update
 
 ## Goal
 
@@ -101,7 +101,7 @@ Files shipped in Stage 3:
 
 **Text-to-prompt migration Phases 2-4** (shadow read → cutover → legacy removal) remain on the `substrate_recognition.md` plan but are explicitly NOT part of the 0.3-minimum gate. They are tracked as a follow-up wave; the P2 core mechanism has shipped and been validated on real embeddings, which is what 0.3-minimum required.
 
-**P2 validation scheduling — runs as Phase A of the LLM path stress test.** Per the meta-plan + stress test protocol, P2 validation shares infrastructure with the Plan 3 Fast Failover stress test. See [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md) "Phase A — Baseline + substrate P2 validation (single-user, one agent)". Running them together means one setup serves both the "does substrate P2 pass mechanistic targets" question AND the "is the pre-Plan-3 52s retry loop still there" baseline. If you are running P2 validation standalone (no stress test), the test fixture in `tests/substrate/test_p2_reward_modulation.py` is the same one Phase A invokes — they are intentionally overlapping so pre-stress runs don't waste effort.
+**P2 validation scheduling — runs as Phase A of the LLM path stress test.** Per the meta-plan + stress test protocol, P2 validation shares infrastructure with the Plan 3 Fast Failover stress test. See [../experiments/protocols/llm_path_stress_test.md](../../experiments/protocols/llm_path_stress_test.md) "Phase A — Baseline + substrate P2 validation (single-user, one agent)". Running them together means one setup serves both the "does substrate P2 pass mechanistic targets" question AND the "is the pre-Plan-3 52s retry loop still there" baseline. If you are running P2 validation standalone (no stress test), the test fixture in `tests/substrate/test_p2_reward_modulation.py` is the same one Phase A invokes — they are intentionally overlapping so pre-stress runs don't waste effort.
 
 ## Modality taxonomy reconciliation
 
@@ -175,7 +175,7 @@ Text content on `Percept.transcript_chunk` currently bypasses the substrate enti
 - Node stability: <10% growth over final 20% of run
 - Modality isolation: no text cluster collapses into non-text node (mixed-modality probe)
 - Persistence round-trip: ATL subprocess reload, ≥95% node activations preserved
-- Sanity floor: within 5 pp of FAISS baseline from P0 (**pinned: 73.5%** — see [P0 results](../experiments/p0_baseline_sweep.md))
+- Sanity floor: within 5 pp of FAISS baseline from P0 (**pinned: 73.5%** — see [P0 results](../../experiments/p0_baseline_sweep.md))
 - Beats degenerate control (random node assignment) by >30 pp
 - Mean + std across ≥10 seeds
 

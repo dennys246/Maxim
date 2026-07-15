@@ -1991,7 +1991,7 @@ def build_primary_router(
     # Local --llm <profile> override: runs AFTER cloud overrides so that
     # when both --llm and --cloud-lane are set, cloud wins for the
     # lane it targets while local wins for anything else. See P1 in
-    # docs/plans/peer_leader_flexibility_plan.md for the full precedence
+    # docs/plans/archive/peer_leader_flexibility_plan.md for the full precedence
     # table and the rationale for clearing remote_url here.
     lane_configs = _apply_local_llm_override(lane_configs, logger)
 

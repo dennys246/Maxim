@@ -5,10 +5,10 @@
 **Target versions:** 0.4 → 0.7 (mesh ship). 1.0 banner is cross-session learning, separate from mesh.
 **Maintained alongside:**
 - [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) — Plan 4 (ALL SHIPPED). The Plan 4 work feeds this roadmap; this doc is the index.
-- [llm_path_refinement.md](llm_path_refinement.md) — Plan 1-3.6 ancestor.
+- [llm_path_refinement.md](archive/llm_path_refinement.md) — Plan 1-3.6 ancestor.
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — Stage C5.
 - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
-- [node_security_simplification.md](node_security_simplification.md) — feeds C7.
+- [node_security_simplification.md](deferred/node_security_simplification.md) — feeds C7.
 
 ---
 
@@ -111,7 +111,7 @@ A web TUI or terminal dashboard on top of these is a nice-to-have, **NOT** load-
 
 ### Stage C7: Cluster security hardening
 
-Tracked in [node_security_simplification.md](node_security_simplification.md), `feedback_strict_grep_caller_allowlist.md`, and the C2 invariants:
+Tracked in [node_security_simplification.md](deferred/node_security_simplification.md), `feedback_strict_grep_caller_allowlist.md`, and the C2 invariants:
 
 - **Cluster key rotation** (`maxim peer rotate-cluster-key`) — the canonical test of whether the strict CI grep allow-list rule needs to relax. The right answer is probably option (c) from `feedback_strict_grep_caller_allowlist.md`: split the secret into `~/.maxim/util/cluster_key.{role}` and have `mesh.yml::cluster_key` become a fallback. This is the spec-vs-status split applied to the secret.
 - **Cluster-key consistency doctor check** (`check_cluster_key_consistency`) — **surfaced by C3.3 fold review (Blast Radius B2)**. Today `mesh.yml::cluster_key` and `peer.yml::api_key` can diverge silently if the operator rotates one without the other, because `init-mesh` copies once but the two files evolve independently after that. `maxim peer --node X install` uses `mesh.yml::cluster_key`; `maxim peer install` uses `peer.yml::api_key`. The symptom is "one install verb 401s, the other succeeds, against the same target." The doctor check should compare both values when both files are present and warn on mismatch. **Deferred from C3.3** (docs-only warning added to `cli-reference.md` + `mesh_debug.md`) because the full cluster-key rotation story should land before the consistency check so the check has a remediation path to point at.
@@ -134,7 +134,7 @@ Tracked in [node_security_simplification.md](node_security_simplification.md), `
 
 ### Stage C9: Mesh doc transport
 
-Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The missing primitive for **peer-to-peer coordination** — today's cross-node channels are inference traffic (LLM prompts), admin verbs (one-shot side effects), and structured logs (read-only operator surface). None of them let agent A on node X deposit a structured doc that agent B on node Y can read later. Plan detail in [mesh_doc_transport.md](mesh_doc_transport.md).
+Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The missing primitive for **peer-to-peer coordination** — today's cross-node channels are inference traffic (LLM prompts), admin verbs (one-shot side effects), and structured logs (read-only operator surface). None of them let agent A on node X deposit a structured doc that agent B on node Y can read later. Plan detail in [mesh_doc_transport.md](deferred/mesh_doc_transport.md).
 
 **The killer use case:** multi-agent coordination. When Maxim agents run on separate mesh nodes, they need a standardized channel for "share this context with your sibling." Doc-drop is the smallest useful unit. The immediate operator-facing win is multi-session Claude collaboration (parallel Claude sessions on the operator's leader + peer can exchange context via an inbox/outbox), but the long-term play is agent-to-agent coordination as the foundation for C4.5 auto-drain announcements, C7 cluster-key rotation broadcasts, and the Mother Maxim precursor.
 
@@ -147,13 +147,13 @@ Standardized small-document (`.md` / `.json`) exchange between mesh nodes. The m
 - Authorization: shared cluster key (v1 limitation — C7 per-peer identity layers on top later)
 - Delivery: pure pull (recipient polls); long-poll / webhook deferred to v2+
 
-**Orthogonal to C4/C5.** Ships on its own timeline — doesn't block reactivity work and isn't blocked by it. Pre-design review round answers 5 open questions (secret-bearing policy, role-scoping, delivery semantics, namespace creation, authorization). See [mesh_doc_transport.md](mesh_doc_transport.md) §"Open design questions."
+**Orthogonal to C4/C5.** Ships on its own timeline — doesn't block reactivity work and isn't blocked by it. Pre-design review round answers 5 open questions (secret-bearing policy, role-scoping, delivery semantics, namespace creation, authorization). See [mesh_doc_transport.md](deferred/mesh_doc_transport.md) §"Open design questions."
 
 **Estimated effort:** ~3 sessions (design + implementation + review fold + docs). ~400-600 LOC + tests.
 
 ### Stage C10: Mesh perception transport
 
-Peer-tunneled sensory percepts. Drives the Reachy Mini app form-factor: the app runs as a peer node, performs on-device STT + vision segmentation + drive sensor reads, and tunnels event-shaped `Percept` instances to a leader for cognition. Generalizes to any embodiment peer with sensors but limited compute (future Minecraft adapter, multi-Maxim training rigs). Plan detail in [mesh_perception_transport.md](mesh_perception_transport.md).
+Peer-tunneled sensory percepts. Drives the Reachy Mini app form-factor: the app runs as a peer node, performs on-device STT + vision segmentation + drive sensor reads, and tunnels event-shaped `Percept` instances to a leader for cognition. Generalizes to any embodiment peer with sensors but limited compute (future Minecraft adapter, multi-Maxim training rigs). Plan detail in [mesh_perception_transport.md](deferred/mesh_perception_transport.md).
 
 **Architectural framing:** the mesh today has exactly one cross-node transport (`_MaximPeerBackend` for LLM inference, with its load-bearing "one HTTP call, no retry" invariant). Perception traffic has different failure semantics (a dropped sensor frame is a missed observation, not a router-failover event) and wants a sibling typed backend rather than an extension. C10 establishes the **typed-transport-per-purpose** pattern as an architectural invariant — Hivemind substrate-bundle exchange (1.1+) is the second consumer that proves the abstraction.
 
@@ -234,12 +234,12 @@ Update this roadmap when:
 ## 9. Related plans
 
 - [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) — Plan 4 (ALL SHIPPED), which feeds C3.x in this roadmap.
-- [llm_path_refinement.md](llm_path_refinement.md) — the Plan 1-3.6 ancestor chain.
-- [llm_path_peer_failover.md](llm_path_peer_failover.md) — Plan 3.6 (VRAM spillover detection).
+- [llm_path_refinement.md](archive/llm_path_refinement.md) — the Plan 1-3.6 ancestor chain.
+- [llm_path_peer_failover.md](archive/llm_path_peer_failover.md) — Plan 3.6 (VRAM spillover detection).
 - [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — the C5 skeleton.
 - [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — feeds C5.
-- [node_security_simplification.md](node_security_simplification.md) — feeds C7.
-- [mesh_doc_transport.md](mesh_doc_transport.md) — Stage C9 shell plan (mesh-to-mesh structured doc exchange).
-- [mesh_perception_transport.md](mesh_perception_transport.md) — Stage C10 shell plan (peer-tunneled sensory percepts; split 1.0 prep / 1.1 ship). Driving consumer: Reachy Mini app peer.
+- [node_security_simplification.md](deferred/node_security_simplification.md) — feeds C7.
+- [mesh_doc_transport.md](deferred/mesh_doc_transport.md) — Stage C9 shell plan (mesh-to-mesh structured doc exchange).
+- [mesh_perception_transport.md](deferred/mesh_perception_transport.md) — Stage C10 shell plan (peer-tunneled sensory percepts; split 1.0 prep / 1.1 ship). Driving consumer: Reachy Mini app peer.
 - [maxim_hivemind.md](maxim_hivemind.md) — 1.1+ substrate-bundle exchange; second consumer of the typed-transport-per-purpose pattern C10 establishes in 1.0.
-- [cross_platform_file_lock.md](cross_platform_file_lock.md) — shell plan to unify the two file-lock APIs (`utils/process_lock` and `filelock.FileLock`); blocks nothing, useful cleanup post-C4.
+- [cross_platform_file_lock.md](deferred/cross_platform_file_lock.md) — shell plan to unify the two file-lock APIs (`utils/process_lock` and `filelock.FileLock`); blocks nothing, useful cleanup post-C4.

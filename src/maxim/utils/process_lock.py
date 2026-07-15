@@ -7,7 +7,7 @@ Plan 4 C2 added as a core dep (``filelock>=3.0,<4.0``, imported as
 same basename was a footgun — this module is now ``process_lock`` to
 make the distinction clear. The unification of both locking APIs into
 one in-house wrapper is tracked in
-``docs/plans/cross_platform_file_lock.md``.
+``docs/plans/deferred/cross_platform_file_lock.md``.
 
 Used by the model-download path (and any future code that needs to
 serialize file access across concurrent Maxim invocations) to avoid

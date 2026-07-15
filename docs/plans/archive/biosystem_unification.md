@@ -80,12 +80,12 @@ Ranked by silent-failure blast radius (highest first). Each row links to its she
 
 | # | System | Plan | Status | Silent-failure risk | Depends on | Parallel-safe with |
 |---|---|---|---|---|---|---|
-| 0 | `ToolPainBridge` (the example) | [archive/executor_bootstrap_unification.md](archive/executor_bootstrap_unification.md) | **SHIPPED** (PR #114, 2026-04-14) | Critical — 3 instances over 3 weeks | — | — |
-| 1 | PainBus subscribers | [archive/pain_bus_unification.md](archive/pain_bus_unification.md) | **SHIPPED** (PR #125, 2026-04-15) | **Critical** — same shape as #0, 3 CLI sites | None (independent) | #2 |
-| 2 | ReactionBus subscribers | [archive/reaction_bus_unification.md](archive/reaction_bus_unification.md) | **SHIPPED** (PR #134, 2026-04-16) | High — typed isolation surface | None (independent) | #1 |
-| 3 | MemoryHub bridges | [archive/memory_hub_unification.md](archive/memory_hub_unification.md) | **SHIPPED** (PR #136, 2026-04-16) | Medium — silent partial coordination | #1, #2 (consumes both buses) | — |
-| 4 | DefaultNetwork | [archive/default_network_unification.md](archive/default_network_unification.md) | **SHIPPED** (PR #135, 2026-04-16) | Medium — silent fear-gate skip | #1 (consumes PainBus) | #3 |
-| 5 | Bio-stack umbrella | [bio_stack_unification.md](archive/bio_stack_unification.md) | DRAFT shell | The umbrella that subsumes #1-#4 in a single builder | #1, #2, #3, #4 | — |
+| 0 | `ToolPainBridge` (the example) | [archive/executor_bootstrap_unification.md](executor_bootstrap_unification.md) | **SHIPPED** (PR #114, 2026-04-14) | Critical — 3 instances over 3 weeks | — | — |
+| 1 | PainBus subscribers | [archive/pain_bus_unification.md](pain_bus_unification.md) | **SHIPPED** (PR #125, 2026-04-15) | **Critical** — same shape as #0, 3 CLI sites | None (independent) | #2 |
+| 2 | ReactionBus subscribers | [archive/reaction_bus_unification.md](reaction_bus_unification.md) | **SHIPPED** (PR #134, 2026-04-16) | High — typed isolation surface | None (independent) | #1 |
+| 3 | MemoryHub bridges | [archive/memory_hub_unification.md](memory_hub_unification.md) | **SHIPPED** (PR #136, 2026-04-16) | Medium — silent partial coordination | #1, #2 (consumes both buses) | — |
+| 4 | DefaultNetwork | [archive/default_network_unification.md](default_network_unification.md) | **SHIPPED** (PR #135, 2026-04-16) | Medium — silent fear-gate skip | #1 (consumes PainBus) | #3 |
+| 5 | Bio-stack umbrella | [bio_stack_unification.md](bio_stack_unification.md) | DRAFT shell | The umbrella that subsumes #1-#4 in a single builder | #1, #2, #3, #4 | — |
 | 6 | LearnedToolIndex registration | (notes only — separate shape) | NOTE | Low — different shape (registry coupling, not bus subscription) | — | any |
 
 ### Item 6 — LearnedToolIndex (different shape, not getting a shell yet)

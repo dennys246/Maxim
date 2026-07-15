@@ -2,7 +2,7 @@
 
 **Status:** IN PROGRESS 2026-06-13 (4 open-source fires complete: Qwen14B, Qwen32B, Mistral24B → **Goldilocks-zone finding**; DeepSeek-R1-Distill-Qwen-32B → **reasoning amplifies substrate** [bucket R-A] + first clean Wire-A ablation; cloud comparisons deferred behind prompt-caching refactor).
 **Companion doc:** [37_cross_session_graduation.md](37_cross_session_graduation.md) — pre-registration + per-fire verdict writeups.
-**Plan:** [docs/plans/exp37_cross_model_characterization.md](../plans/exp37_cross_model_characterization.md) — methodology + sequencing.
+**Plan:** [docs/plans/archive/exp37_cross_model_characterization.md](../plans/archive/exp37_cross_model_characterization.md) — methodology + sequencing.
 **Purpose:** Cross-cutting interpretation across model fires. Each per-fire verdict stays in `37_cross_session_graduation.md`; this doc compiles the cross-model story that emerges from the union.
 
 ## Methodology — three orthogonal axes
@@ -35,7 +35,7 @@ Each axis informs different aspects of the interpretation:
 | GPT-4o | peer (cloud) | DEFERRED | Closed-source anchor #2 + OpenAI key-path validation |
 | DeepSeek-V3 | peer (cloud) | DEFERRED | Radically different training corpus + cheap |
 
-Cloud fires (Sonnet/GPT/DeepSeek) blocked behind [prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md) Phase 1+ work, which is deferred to post-1.0 per the 2026-06-09 decision (Qwen32B's positive result reduced 1.0 urgency for closed-source comparison; the refactor is multi-day work better done without 1.0 ship pressure).
+Cloud fires (Sonnet/GPT/DeepSeek) blocked behind [prompt_caching_for_cloud_backends.md](../plans/archive/prompt_caching_for_cloud_backends.md) Phase 1+ work, which is deferred to post-1.0 per the 2026-06-09 decision (Qwen32B's positive result reduced 1.0 urgency for closed-source comparison; the refactor is multi-day work better done without 1.0 ship pressure).
 
 ## Headline results — primary metric (`positive_approach_engagement_fraction`)
 
@@ -52,7 +52,7 @@ The cradle scenario's primary metric on fire_pit, across all model fires:
 | GPT-4o | TBD (deferred) | — | — | — | — | — |
 | DeepSeek-V3 | TBD (deferred) | — | — | — | — | — |
 
-(SD-shift threshold for primary PASS: +1.0 SD per [exp37_sd_shift.md](../plans/exp37_sd_shift.md).)
+(SD-shift threshold for primary PASS: +1.0 SD per [exp37_sd_shift.md](../plans/archive/exp37_sd_shift.md).)
 
 ## Secondary criterion — ablation attribution
 
@@ -93,7 +93,7 @@ Counts of warm_self actions per session — not pre-reg gated, but directionally
 
 ## Sharp_rock scenario — degenerate at ALL FOUR fires
 
-Qwen14B, Qwen32B, Mistral24B, AND DeepSeek-R1-Distill-Qwen-32B all produced near-zero engagement across every sharp_rock arm (R1: A=0.000, B=0.000 — primary FAIL via zero-SD fallback; all three ablations report "insufficient data"). The asymmetric-design concern from [exp37_metric_pivot.md](../plans/exp37_metric_pivot.md) (sharp_rock has no positive-approach analog like fire_pit's `warm_self`) is now realized at four model fires spanning two families, three scales, and a reasoning-trained variant. This is no longer a Qwen-specific quirk — **sharp_rock is structurally broken for cross-model use**, and the cradle scenario needs a positive-approach affordance for sharp_rock (or a different second scenario) before it can carry verdict weight. Tracked as cradle-redesign motivation for post-1.0 work. fire_pit alone carries the substantive evidence on all cross-model fires.
+Qwen14B, Qwen32B, Mistral24B, AND DeepSeek-R1-Distill-Qwen-32B all produced near-zero engagement across every sharp_rock arm (R1: A=0.000, B=0.000 — primary FAIL via zero-SD fallback; all three ablations report "insufficient data"). The asymmetric-design concern from [exp37_metric_pivot.md](../plans/archive/exp37_metric_pivot.md) (sharp_rock has no positive-approach analog like fire_pit's `warm_self`) is now realized at four model fires spanning two families, three scales, and a reasoning-trained variant. This is no longer a Qwen-specific quirk — **sharp_rock is structurally broken for cross-model use**, and the cradle scenario needs a positive-approach affordance for sharp_rock (or a different second scenario) before it can carry verdict weight. Tracked as cradle-redesign motivation for post-1.0 work. fire_pit alone carries the substantive evidence on all cross-model fires.
 
 ## HEADLINE FINDING — the Goldilocks zone of prior strength
 
@@ -223,15 +223,15 @@ tmux ls
 - **2026-06-13 ✓ DONE:** DeepSeek-R1-Distill-Qwen-32B fire complete (60/60). **Bucket R-A** — reasoning AMPLIFIES substrate (+2.11 SD vs base +1.43) and surfaces the first clean Wire-A ablation (+1.13 SD). Goldilocks-aware check passes (A=0.259 deeper in zone than base's 0.420). Verdict PARTIAL — investigation gate (Arm C confound persists). Opens the 1.1+ "substrate-aware reasoning models" direction.
 - **Conditional (if DeepSeek raised scale-ceiling questions):** R1 did NOT raise scale-ceiling questions — it sat deeper in the Goldilocks zone, not at the ceiling. Llama 3.3 70B Instruct stays a "future direction," not a required follow-on.
 - **1.0 ship:** Open-source cross-scale + cross-family + reasoning-axis story is the substantive evidence base. [behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) row 1b stays PARTIAL with scale-axis + paradigm-axis nuance; cloud comparison framed as 1.1 work.
-- **Post-1.0 — prompt-caching refactor:** [prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md) Phase 1+ refactor unlocks cloud fires. Sonnet, GPT-4o, DeepSeek-V3 (cloud, full model) fires execute then.
+- **Post-1.0 — prompt-caching refactor:** [prompt_caching_for_cloud_backends.md](../plans/archive/prompt_caching_for_cloud_backends.md) Phase 1+ refactor unlocks cloud fires. Sonnet, GPT-4o, DeepSeek-V3 (cloud, full model) fires execute then.
 - **Post-1.0 — Exp 38 substrate-primary:** the principled test of the strong substrate-drives-behavior claim. The mechanism-attribution open question from this exploratory work directly motivates Exp 38's design.
 
 ## Cross-references
 
 - [docs/experiments/37_cross_session_graduation.md](37_cross_session_graduation.md) — pre-registration + per-fire verdicts (Qwen14B, Qwen32B; Mistral24B will be added when the fire completes).
-- [docs/plans/exp37_cross_model_characterization.md](../plans/exp37_cross_model_characterization.md) — methodology, model lineup, sequencing.
+- [docs/plans/archive/exp37_cross_model_characterization.md](../plans/archive/exp37_cross_model_characterization.md) — methodology, model lineup, sequencing.
 - [docs/plans/behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md) row 1b — the 1.0 graduation gate this evidence informs.
-- [docs/plans/prompt_caching_for_cloud_backends.md](../plans/prompt_caching_for_cloud_backends.md) — gating cloud fires; deferred post-1.0.
+- [docs/plans/archive/prompt_caching_for_cloud_backends.md](../plans/archive/prompt_caching_for_cloud_backends.md) — gating cloud fires; deferred post-1.0.
 - [docs/experiments/data/37_results.jsonl](data/37_results.jsonl) — Qwen14B fire records.
 - [docs/experiments/data/37_results_qwen32b.jsonl](data/37_results_qwen32b.jsonl) — Qwen32B fire records.
 - `docs/experiments/data/37_results_mistral24b.jsonl` — Mistral24B fire records.

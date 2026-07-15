@@ -101,7 +101,7 @@ def classify_probe_outcome(
         # stays as a secondary hint for cluster setups.
         #
         # Larger drift-detection design (option 3 from the discussion)
-        # is tracked in docs/plans/key_drift_detection.md — that
+        # is tracked in docs/plans/deferred/key_drift_detection.md — that
         # follow-up adds a /v1/admin/key-fingerprint endpoint so peers
         # can detect drift PROACTIVELY without ever waiting for a 401.
         return ProbeClassification(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Phase 0 — shared orient-to-center backbone + affect-signal study.
 
-Part of docs/plans/audiovisual_orienting.md. The shared backbone both the audio
+Part of docs/plans/archive/audiovisual_orienting.md. The shared backbone both the audio
 (DoA) and visual (substrate gaze) tracks converge on: a modality-agnostic
 orient-to-center loop where the agent turns its head to drive a target's
 head-relative azimuth to 0. Azimuth comes from ANY source (sim here; on hardware

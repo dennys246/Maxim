@@ -1,6 +1,6 @@
 # Substrate P3a Stage 2 — Episode binding fixture sweep results
 
-**Plan:** [substrate_p3a_episode_binding.md](../plans/substrate_p3a_episode_binding.md) Stage 2
+**Plan:** [substrate_p3a_episode_binding.md](../plans/archive/substrate_p3a_episode_binding.md) Stage 2
 **Results JSON:** [results/p3a_episode_binding_sweep.json](results/p3a_episode_binding_sweep.json)
 **Reproduction runbook:** [protocols/p3a_episode_binding_reproduction.md](protocols/p3a_episode_binding_reproduction.md)
 **Date:** 2026-04-14
@@ -79,7 +79,7 @@ From the results JSON:
 
 This finding came out of the Stage 2 investigation directly: the first draft of the fixture used a **clique-per-topic** topology (5 core nodes co-occurring in every episode). Both one-hop Hebbian and TF-IDF scored F1 ≈ 1.0 because cliques have no transitive structure — one-hop already reaches everything. The pivot to hub+chain topology was necessary to expose where Hebbian genuinely beats bag-of-words. See the "Design history" section of [tests/substrate/p3a_fixture_gen.py](../../tests/substrate/p3a_fixture_gen.py) for the full rationale.
 
-This framing is now codified as a load-bearing invariant in [substrate_p3a_episode_binding.md](../plans/substrate_p3a_episode_binding.md) so future P4 / P6 / P8 work inherits the correct mental model.
+This framing is now codified as a load-bearing invariant in [substrate_p3a_episode_binding.md](../plans/archive/substrate_p3a_episode_binding.md) so future P4 / P6 / P8 work inherits the correct mental model.
 
 ## Deterministic-across-seeds caveat
 

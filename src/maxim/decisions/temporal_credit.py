@@ -128,7 +128,7 @@ class TemporalCreditDistributor:
         """Dormant since 2026-05-26: B2 closed the loop in the distributor
         class but the production agent loop never registered the per-tick
         caller. Awaits a new experiment that earns the behavioral weight.
-        See ``docs/plans/scn_decay_anchoring.md`` Principle 2 fold for the
+        See ``docs/plans/deferred/scn_decay_anchoring.md`` Principle 2 fold for the
         path to revive (subscribe to SCN clock at the eligibility tier).
 
         Pre-activate eligibility traces for events the oscillator predicts.

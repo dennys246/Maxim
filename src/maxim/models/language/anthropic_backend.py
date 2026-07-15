@@ -36,7 +36,7 @@ def _is_overloaded_error(err: Exception) -> bool:
     get the same aggressive backoff as 429 — otherwise it falls through to the
     minimal generic backoff, exhausts retries in ~3s, and the call returns empty
     (the 2026-06-08 Exp 37 collapse signature). See
-    docs/plans/prompt_caching_for_cloud_backends.md.
+    docs/plans/archive/prompt_caching_for_cloud_backends.md.
     """
     msg = str(err).lower()
     return "529" in msg or "overloaded" in msg
@@ -264,7 +264,7 @@ class _AnthropicBackend:
         Only fires when prompt caching is enabled so cached runs produce one
         event per turn (cache_read=0 on a miss is signal, not noise). Pairs with
         ``MAXIM_LOG_FILE`` for JSONL analysis. See
-        docs/plans/prompt_caching_for_cloud_backends.md Phase 1c.
+        docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 1c.
         """
         if not self._prompt_cache_enabled():
             return

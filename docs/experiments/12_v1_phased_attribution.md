@@ -4,8 +4,8 @@
 **Phase:** V2 (substrate-attribution after confound quarantine)
 **Status:** recorded
 **Code version:** `f742527` (post-PR-#214 confound flags + post-PR-#213 scene-actor stages 1-2)
-**Decision:** **CLEAN PASS** — substrate alone (Phase A: all four `MAXIM_DISABLE_*=1` + `--no-persona` + `--no-embodiment`) reproduces cross-session token recall. Flag lifecycle: per [confound_quarantine.md](../plans/confound_quarantine.md) §R1 *clean-pass branch*, the four `MAXIM_DISABLE_*` flags + `--no-acting-coach` + `--no-persona` are scheduled for removal in 1.0. Reproducibility for the V1 numbers is preserved by this entry's pinned commit hash.
-**Plan:** [docs/plans/confound_quarantine.md](../plans/confound_quarantine.md) §"Phased re-run protocol" + R1 lifecycle decision.
+**Decision:** **CLEAN PASS** — substrate alone (Phase A: all four `MAXIM_DISABLE_*=1` + `--no-persona` + `--no-embodiment`) reproduces cross-session token recall. Flag lifecycle: per [confound_quarantine.md](../plans/archive/confound_quarantine.md) §R1 *clean-pass branch*, the four `MAXIM_DISABLE_*` flags + `--no-acting-coach` + `--no-persona` are scheduled for removal in 1.0. Reproducibility for the V1 numbers is preserved by this entry's pinned commit hash.
+**Plan:** [docs/plans/archive/confound_quarantine.md](../plans/archive/confound_quarantine.md) §"Phased re-run protocol" + R1 lifecycle decision.
 
 ## Hypothesis
 
@@ -148,7 +148,7 @@ None of the per-phase deltas falsify Phase A. The substrate is sufficient; the s
 
 ## Disposition
 
-Per [confound_quarantine.md](../plans/confound_quarantine.md) §R1, the 1.0 flag lifecycle is forced by Phase A's outcome:
+Per [confound_quarantine.md](../plans/archive/confound_quarantine.md) §R1, the 1.0 flag lifecycle is forced by Phase A's outcome:
 
 - **Clean pass** — Phase A reproduces cross-session recall (token recalled in session 2). 1.0 ships with flags removed; reproducibility for V1 numbers is preserved by pinning this experiment doc to commit `f742527`. **← this branch fires.**
 

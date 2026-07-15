@@ -1,7 +1,7 @@
 """Substrate exploration policy — regression guards.
 
 Covers the novelty-bonus-before-gate selection added to
-``NAc.recommend_action`` per docs/plans/substrate_exploration_policy.md
+``NAc.recommend_action`` per docs/plans/archive/substrate_exploration_policy.md
 (1.1). The policy breaks the deterministic-argmax fixation that the
 2026-06-17 spike quantified: a safe tool's causal-link confidence snowballs
 while never-tried interaction affordances stay flat and are never selected.

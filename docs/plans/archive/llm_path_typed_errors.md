@@ -9,7 +9,7 @@
 
 ## R1 learnings to apply before starting R2
 
-**Read before writing any code:** [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) + [docs/architecture/llm_routing.md](../architecture/llm_routing.md) Layer 7. The R1 implementation diverged from its plan spec in five load-bearing ways; Plan 2's own implementation should mirror R1's patterns, not invent new ones.
+**Read before writing any code:** [project_llm_path_r1_shipped.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_llm_path_r1_shipped.md) + [docs/architecture/llm_routing.md](../../architecture/llm_routing.md) Layer 7. The R1 implementation diverged from its plan spec in five load-bearing ways; Plan 2's own implementation should mirror R1's patterns, not invent new ones.
 
 **Specific R1 patterns Plan 2 must match:**
 
@@ -43,7 +43,7 @@ Plan 1 v3 bundled R0 (delete dead mesh), R1 (HTTP client), and R2 (this plan's c
 
 1. **R2's pieces are independent.** Role detection, typed exceptions, two-stage probe, and SSRF move don't need to ship together. Each is ~40-100 LOC and individually testable.
 2. **Tighter testing feedback loops.** Plan 1's hard testing checkpoint is ~4,100 tests. Splitting R2 out means R2 can reuse the existing probe cache + HTTP client test infrastructure without waiting for R1's CI grep enforcement to pass.
-3. **Cleaner architecture doc mapping.** The new [architecture/llm_routing.md](../architecture/llm_routing.md) has distinct sections for "how HTTP gets built" (Plan 1) vs "how errors are classified" (Plan 2). Splitting the plans matches the doc structure.
+3. **Cleaner architecture doc mapping.** The new [architecture/llm_routing.md](../../architecture/llm_routing.md) has distinct sections for "how HTTP gets built" (Plan 1) vs "how errors are classified" (Plan 2). Splitting the plans matches the doc structure.
 
 ## Phases
 
@@ -371,20 +371,20 @@ maxim doctor 2>&1 | grep -E "probe|liveness|readiness"
 
 ## Documentation & memory update
 
-**1. Update [../reference.md](../reference.md):**
+**1. Update [../reference.md](../../reference.md):**
 - **"Role detection"** section: `runtime/role.py::detect_role()` as single source of truth
 - **"Error taxonomy"** section: `BackendError` hierarchy with `fix_hint` convention
 - **"Two-stage probe"** section: liveness vs readiness, `inference_broken` outcome, cache TTL map
 - **"Network utilities"** section: SSRF check location
 
-**2. Update [../architecture/llm_routing.md](../architecture/llm_routing.md):**
+**2. Update [../architecture/llm_routing.md](../../architecture/llm_routing.md):**
 
 Extends the architecture doc drafted in Plan 1 (R0 commit). Adds:
 - "Error taxonomy" section with the full `BackendError` diagram
 - "Probe lifecycle" section with two-stage flow + cache TTL decisions
 - "Role detection flow" section with the 5-step decision tree
 
-**3. Update [../../CLAUDE.md](../../CLAUDE.md):**
+**3. Update [../../CLAUDE.md](../../../CLAUDE.md):**
 
 - **Lessons learned:**
   > **Role detection is the first runtime action.** `cli.py::main()` calls `detect_role()` before anything else, exports `MAXIM_ROLE`, and downstream code reads from env only. Never re-detect role; never infer role from `peer.yml` existence in downstream code.
@@ -410,5 +410,5 @@ Add `project_llm_path_typed_errors_shipped.md` with:
 - **Previous plan:** [llm_path_foundation.md](llm_path_foundation.md) — Plan 1 (prerequisite)
 - **Next plan:** [llm_path_fast_failover.md](llm_path_fast_failover.md) — Plan 3
 - **Meta plan:** [llm_path_refinement.md](llm_path_refinement.md)
-- **Architecture:** [../architecture/llm_routing.md](../architecture/llm_routing.md)
-- **Project guide:** [../../CLAUDE.md](../../CLAUDE.md)
+- **Architecture:** [../architecture/llm_routing.md](../../architecture/llm_routing.md)
+- **Project guide:** [../../CLAUDE.md](../../../CLAUDE.md)

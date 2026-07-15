@@ -18,19 +18,19 @@ co-temporal-firing-based learning produces some downstream property
 the threshold-only path cannot).
 
 **Pre-dormancy history:** Roy-5b (Stage 3 of
-docs/plans/roy_5_encoder_alignment_disambiguator.md, 2026-05-28)
+docs/plans/archive/roy_5_encoder_alignment_disambiguator.md, 2026-05-28)
 ran this scaffold and produced 1 matched binding edge at default.
 Roy-5b-confound-isolation (2026-05-29) ran the same protocol WITHOUT
 the scaffold at HEAD and produced the same arm A overlap (10/10),
 showing the recognition gap closure was threshold-driven, not
-scaffold-driven. `docs/plans/cross_modal_substrate_binding.md` was
-archived as a result; `docs/plans/jepa_cross_modal_alignment.md`
+scaffold-driven. `docs/plans/archive/cross_modal_substrate_binding.md` was
+archived as a result; `docs/plans/deferred/jepa_cross_modal_alignment.md`
 remains parked with weakened motivation.
 
 Roy-5b needs the priming arc to produce a temporally-aligned (sensor
 pattern, drive state, body-utterance) triple within a shared salience
 window so the proposed Hebbian binding rule from
-[docs/plans/cross_modal_substrate_binding.md] has co-firing to bind on.
+[docs/plans/archive/cross_modal_substrate_binding.md] has co-firing to bind on.
 
 The standard cradle arcs do NOT produce this co-firing: the
 LLM-narrator's generated prose lands as a separate text-modality EC
@@ -70,7 +70,7 @@ drops back below ``threshold - hysteresis_band``.
 (currently ``infant_humanoid_naming_v1.yaml`` for Roy-5b). The
 standard ``infant_humanoid.yaml`` is unchanged.
 
-See [docs/plans/roy_5_encoder_alignment_disambiguator.md] Stage 3.
+See [docs/plans/archive/roy_5_encoder_alignment_disambiguator.md] Stage 3.
 """
 
 from __future__ import annotations

@@ -128,7 +128,7 @@ class PainBus:
                 "Raw PainBus() construction is rejected; use "
                 "maxim.proprioception.pain_bus.build_pain_bus(hippocampus=..., nac=...) "
                 "instead. The builder enforces required learning-subject wiring "
-                "(see docs/plans/pain_bus_unification.md) — three CLI entry points "
+                "(see docs/plans/archive/pain_bus_unification.md) — three CLI entry points "
                 "previously forgot to subscribe NAc, silently disabling causal "
                 "learning for out-of-band SEM pain. Tests that need a bare bus "
                 "may pass _allow_raw=True. (C6)"
@@ -390,7 +390,7 @@ def create_percept_valence_subscriber(
     ``_links`` via ``record_outcome_full``) but on a DIFFERENT map with a
     DIFFERENT key shape — pre-merge review verified no double-attribution
     risk against the bridge×subscriber trap referenced in
-    ``docs/plans/pain_bus_unification.md``.  Wire-A's read (the
+    ``docs/plans/archive/pain_bus_unification.md``.  Wire-A's read (the
     ``_cluster_reward_bias`` annotation) is also disjoint by construction:
     Wire-A's *write* path is ``record_outcome``-driven and keys on
     ``(agent_id, cluster_id, tool_signature)``, NOT this subscriber.
@@ -580,7 +580,7 @@ def build_pain_bus(
     site cannot reproduce them.
 
     The motivating bug (audited in
-    ``docs/plans/pain_bus_unification.md``): three CLI entry points
+    ``docs/plans/archive/pain_bus_unification.md``): three CLI entry points
     constructed a ``PainBus()`` and subscribed
     ``create_pain_memory_subscriber`` but never
     ``create_pain_nac_subscriber``, even though ``_cli_nac`` was in
@@ -649,7 +649,7 @@ def build_pain_bus(
             pain_bus = build_pain_bus(hippocampus=None, nac=None)
 
     See also:
-        - ``docs/plans/pain_bus_unification.md`` for the audit + design
+        - ``docs/plans/archive/pain_bus_unification.md`` for the audit + design
         - ``docs/architecture/structural_enforcement.md`` for the rule
         - ``runtime/bootstrap.py::build_executor`` for the precedent
     """

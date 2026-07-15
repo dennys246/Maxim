@@ -24,7 +24,7 @@ This plan (multi-peer dispatch) is the **load-distribution layer on top**. Inste
 
 ## Why this was deferred
 
-The architecture audit ([llm_path_refinement.md](../llm_path_refinement.md)) revealed that `LLMRouter._complete_text_locked` already implements reactive provider fallback natively. Adding multi-peer dispatch is a ~100 LOC change to `_build_remote_backend` that feeds the router a multi-peer provider list. **But:**
+The architecture audit ([llm_path_refinement.md](../archive/llm_path_refinement.md)) revealed that `LLMRouter._complete_text_locked` already implements reactive provider fallback natively. Adding multi-peer dispatch is a ~100 LOC change to `_build_remote_backend` that feeds the router a multi-peer provider list. **But:**
 
 1. **Stress test may show it isn't needed.** Plan 2's Phase C batching PoC measures whether `llama.cpp --parallel` at the leader doubles/triples throughput. If yes, we don't need distribution.
 2. **Multi-peer adds failure modes that don't exist today.** Self-dispatch loops, uneven distribution, peer-to-peer trust. Better to ship without it and add only if the data demands.
@@ -118,6 +118,6 @@ Before reviving, ALL of the following must be true:
 
 ## Related docs
 
-- **Current plan:** [../llm_path_operator_visibility.md](../llm_path_operator_visibility.md)
+- **Current plan:** [../llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md)
 - **Previous plan:** [../llm_path_fast_failover.md](../archive/llm_path_fast_failover.md)
-- **Meta plan:** [../llm_path_refinement.md](../llm_path_refinement.md)
+- **Meta plan:** [../llm_path_refinement.md](../archive/llm_path_refinement.md)

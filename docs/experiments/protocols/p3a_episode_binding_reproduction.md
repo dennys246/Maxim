@@ -1,6 +1,6 @@
 # P3a Stage 2 reproduction runbook
 
-**Plan:** [substrate_p3a_episode_binding.md](../../plans/substrate_p3a_episode_binding.md)
+**Plan:** [substrate_p3a_episode_binding.md](../../plans/archive/substrate_p3a_episode_binding.md)
 **Results:** [p3a_episode_binding_sweep.md](../p3a_episode_binding_sweep.md) + [results/p3a_episode_binding_sweep.json](../results/p3a_episode_binding_sweep.json)
 
 This runbook reproduces the 10-seed Hebbian multi-hop vs TF-IDF head-to-head and the persistence round-trip checks from scratch. Every step is deterministic — a faithful re-run should produce **byte-identical** numbers to the results JSON.

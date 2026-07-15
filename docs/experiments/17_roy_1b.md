@@ -1,7 +1,7 @@
 # Roy-1b — substrate-primary on held-out fixture (second methodology iteration)
 
 **Date:** 2026-05-12 (run completed 2026-05-11 23:17 local)
-**Plan:** [persona_convergence_crucible.md § "Iteration log"](../plans/persona_convergence_crucible.md)
+**Plan:** [persona_convergence_crucible.md § "Iteration log"](../plans/deferred/persona_convergence_crucible.md)
 **Companion:** [16_roy_1a.md](16_roy_1a.md) (A/B partner) · [15_g4_cluster_reward_wire.md](15_g4_cluster_reward_wire.md) (Roy-0 baseline)
 **Spec:** [scenarios/roy/roy_1b_iteration.yaml](../../scenarios/roy/roy_1b_iteration.yaml)
 **Held-out fixture:** [scenarios/roy/roy_1_holdout.yaml](../../scenarios/roy/roy_1_holdout.yaml)

@@ -8,7 +8,7 @@
 **Depends on:** [gating_abstraction.md](gating_abstraction.md) (G0+G1 shipped, G3 folded here), [concept_exploration.md](concept_exploration.md) (L0-L2 shipped), [biosystem_unification.md](biosystem_unification.md) (pattern), [agent_factory_canonicalization.md](agent_factory_canonicalization.md) (soft prereq: Stage 1 needs Exec-before-MemoryAgent construction order, which `create_full_agent` already guarantees)
 **Blocks:** nothing immediate; informs future substrate work
 **Parent:** [biosystem_unification.md](biosystem_unification.md) — follows the same audit-first, one-unification-per-PR discipline
-**Related:** [memory_consolidation_practice.md](memory_consolidation_practice.md) (Stage 7 composes with P8 sleep replay), [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md)
+**Related:** [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md) (Stage 7 composes with P8 sleep replay), [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md)
 
 ---
 

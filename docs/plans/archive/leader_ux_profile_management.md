@@ -4,7 +4,7 @@
 
 **Triggered by:** the first real-user attempt to set up a Mac Mini as a *leader* (not a peer) hit a structural gap. Bundled `_BUILTIN_PROFILES` in [src/maxim/models/language/config.py](../../src/maxim/models/language/config.py) tops out at `qwen2.5-14b-instruct`. Anything larger requires either editing the source dict or running `python -m llama_cpp.server` manually and bypassing Maxim's auto-spawn — the "janky" path the user explicitly objected to. With 48 GB Apple Silicon Macs and multi-GPU consumer rigs becoming common, this is no longer an edge case. **The Mac Mini being interesting at all is also the most likely first-touch with Maxim as a leader** — the rough edge here disproportionately shapes the on-ramp impression.
 
-**Companion docs:** rides into 1.0 alongside the §B5 Hivemind shareability work; both are "leader-as-a-real-thing" surface. Does NOT block Hivemind PR D or the Tier 1 graduation work. Independent track per the [sequenced 1.0 plan](../../docs/plans/v1_refinement.md).
+**Companion docs:** rides into 1.0 alongside the §B5 Hivemind shareability work; both are "leader-as-a-real-thing" surface. Does NOT block Hivemind PR D or the Tier 1 graduation work. Independent track per the [sequenced 1.0 plan](v1_refinement.md).
 
 ---
 
@@ -37,7 +37,7 @@
 | **L2** | `~/.config/maxim/profiles.yml` loader; merges user profiles into `_BUILTIN_PROFILES` at startup with user-wins precedence | ~120 LOC + tests | **Yes — schema** (see below) |
 | **L3** | `maxim model {add,remove,list}` CLI verbs; wraps L2's YAML mutation with a CLI surface; chat-format auto-inference | ~200 LOC + tests + docs | Partially — CLI verb names + flag names are stable; auto-inference table is additive |
 
-Total: ~380 LOC + ~150 LOC tests + docs updates in [llm-setup.md](../../docs/user/llm-setup.md), [peer-setup.md](../../docs/user/peer-setup.md), [getting-started.md](../../docs/user/getting-started.md). Roughly 1-2 days plus review.
+Total: ~380 LOC + ~150 LOC tests + docs updates in [llm-setup.md](../../user/llm-setup.md), [peer-setup.md](../../user/peer-setup.md), [getting-started.md](../../user/getting-started.md). Roughly 1-2 days plus review.
 
 ---
 

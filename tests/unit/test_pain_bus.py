@@ -390,7 +390,7 @@ class TestCreatePainNacSubscriber:
 class TestBuildPainBus:
     """Regression guards for the canonical PainBus construction door.
 
-    See ``docs/plans/pain_bus_unification.md`` for the audit + design
+    See ``docs/plans/archive/pain_bus_unification.md`` for the audit + design
     that motivated this builder. The shape mirrors
     ``runtime/bootstrap.py::build_executor`` — required keyword-only
     learning subjects so forgetting either is a ``TypeError``, not a
@@ -592,7 +592,7 @@ class TestBuildPainBus:
         ``bridges/tool_pain_bridge.py:367-371``) and the bridge ×
         subscriber double-counting trap is now active. **DO NOT just
         relax the assertion.** Instead open
-        ``docs/plans/pain_bus_bridge_subscriber_unification.md`` —
+        ``docs/plans/deferred/pain_bus_bridge_subscriber_unification.md`` —
         the deeper structural fix (Option B: bridge-aware subscriber
         OR bridge-mediated NAc attribution) is now required.
         """

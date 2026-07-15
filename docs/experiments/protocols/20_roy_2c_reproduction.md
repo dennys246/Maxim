@@ -4,7 +4,7 @@
 **Iteration spec:** [scenarios/roy/roy_2c_iteration.yaml](../../../scenarios/roy/roy_2c_iteration.yaml)
 **Engineered fixture:** [scenarios/roy/roy_2pc_holdout.yaml](../../../scenarios/roy/roy_2pc_holdout.yaml) (reused from Roy-2pc)
 **A/B partner:** [19_roy_2pc.md](../19_roy_2pc.md)
-**Owning release plan:** [release_0_9_1.md § Stage 0a](../../plans/release_0_9_1.md)
+**Owning release plan:** [release_0_9_1.md § Stage 0a](../../plans/archive/release_0_9_1.md)
 
 Roy-2c is the H1-vs-H2 disambiguator for the Roy-2pc result. **Single-variable change vs Roy-2pc:** `MAXIM_NAC_MIN_CONFIDENCE=0.0` set in the runner environment. Same priming, same fixture, same arms.
 
@@ -179,5 +179,5 @@ diff scenarios/roy/roy_2pc_iteration.yaml scenarios/roy/roy_2c_iteration.yaml | 
 
 - [`20_roy_2c.md`](../20_roy_2c.md) — outcome doc with the full result table + H1 confirmation
 - [`19_roy_2pc.md`](../19_roy_2pc.md) — Roy-2pc's A ≈ B ≈ C outcome Roy-2c disambiguates
-- [`release_0_9_1.md`](../../plans/release_0_9_1.md) — owning release plan; Stage 0a is the env-var work
-- [`persona_convergence_crucible.md`](../../plans/persona_convergence_crucible.md) — three-arm methodology + Roy-2c iteration log entry
+- [`release_0_9_1.md`](../../plans/archive/release_0_9_1.md) — owning release plan; Stage 0a is the env-var work
+- [`persona_convergence_crucible.md`](../../plans/deferred/persona_convergence_crucible.md) — three-arm methodology + Roy-2c iteration log entry

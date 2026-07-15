@@ -2,7 +2,7 @@
 
 This page is the canonical, append-only registry of the **signature** vocabulary for Hivemind substrate bundles. It documents the recognized `signature_algorithm` values and the `signer_identity` field so that the 1.2 peer-to-peer Hivemind protocol's heterogeneous producers and consumers share one string vocabulary instead of guessing.
 
-**1.0 does not implement bundle signing or verification.** The `signature`, `signature_algorithm`, and `signer_identity` manifest fields are reserved-null at 1.0. This page is **documentation only** — there is no validator in the 1.0 codebase that rejects or accepts an algorithm string. It exists to freeze the vocabulary so a 1.1+ verifier can dispatch on a known registry rather than inventing names that collide with other producers'. See the [Auth Format-Freeze Audit](../plans/auth_format_freeze_audit.md) (CC13) for the why.
+**1.0 does not implement bundle signing or verification.** The `signature`, `signature_algorithm`, and `signer_identity` manifest fields are reserved-null at 1.0. This page is **documentation only** — there is no validator in the 1.0 codebase that rejects or accepts an algorithm string. It exists to freeze the vocabulary so a 1.1+ verifier can dispatch on a known registry rather than inventing names that collide with other producers'. See the [Auth Format-Freeze Audit](../plans/archive/auth_format_freeze_audit.md) (CC13) for the why.
 
 ## Manifest signature fields
 
@@ -50,5 +50,5 @@ These namespace prefixes are reserved for hardware-bound, cloud-KMS, and vendor-
 
 - [Substrate Sharing](substrate-sharing.md) — the user-facing export / import / merge workflow
 - [Maxim Hivemind + Oasis](../hivemind.md) — the 1.1 Oasis and 1.2 P2P roadmap this format feeds
-- [Auth Format-Freeze Audit](../plans/auth_format_freeze_audit.md) — CC13, the freeze decision behind this registry
+- [Auth Format-Freeze Audit](../plans/archive/auth_format_freeze_audit.md) — CC13, the freeze decision behind this registry
 - [Stable API](stable_api.md) — the broader 1.0 contract surface (including the `api_key_ref` URI namespace reservation)

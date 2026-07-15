@@ -7,7 +7,7 @@ plus each arm's session, computes three pairwise cosine matrices between
 priming and arm-A centroids, and decodes the max cosine over
 food-bearing priming centroids into one of three pre-registered
 sub-hypotheses (H1c / H1b / H1a) per
-``docs/plans/roy_5_encoder_alignment_disambiguator.md`` Stage 1.
+``docs/plans/archive/roy_5_encoder_alignment_disambiguator.md`` Stage 1.
 
 The three matrices are computed per modality pair:
 
@@ -365,7 +365,7 @@ def _max_over_food_clusters(matrix: CosineMatrix, food_clusters: set[str]) -> fl
 # H1c lower bound tracks the current ECConfig.pattern_complete_threshold
 # default. The H1c verdict means "the encoder DOES see them as similar at
 # the EC threshold floor" — that floor is wherever EC currently lives, not
-# a stale historical value. Phase 3 of docs/plans/ec_centroid_drift_fix.md
+# a stale historical value. Phase 3 of docs/plans/archive/ec_centroid_drift_fix.md
 # (2026-05-23) moved both the EC default and this boundary 0.40 → 0.44.
 # No past Roy run is affected (Roy-5a decoded to H1a via max = -inf, which
 # is independent of the H1c boundary; Roy-1a..Roy-4 didn't run this analyzer).
@@ -585,7 +585,7 @@ def main(argv: list[str] | None = None) -> int:
             "Roy-5a post-hoc cosine-localization analyzer. Decodes max "
             "cosine over food-bearing priming centroids vs arm A into one "
             "of three pre-registered sub-hypotheses (H1c / H1b / H1a) per "
-            "docs/plans/roy_5_encoder_alignment_disambiguator.md Stage 1."
+            "docs/plans/archive/roy_5_encoder_alignment_disambiguator.md Stage 1."
         )
     )
     parser.add_argument(

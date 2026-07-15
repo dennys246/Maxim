@@ -11,14 +11,14 @@
 
 ### 0.5 track (plan files created, not yet active)
 
-- [substrate_p5_stress_persistence.md](../substrate_p5_stress_persistence.md) — **Draft.** 10k+ node persistence stress.
-- [substrate_p6_extinction.md](../substrate_p6_extinction.md) — **Draft.** Decay without reinforcement vs LRU.
-- [substrate_p8_sleep_replay.md](../substrate_p8_sleep_replay.md) — **Draft.** Minimum-viable sleep replay.
+- [substrate_p5_stress_persistence.md](substrate_p5_stress_persistence.md) — **Draft.** 10k+ node persistence stress.
+- [substrate_p6_extinction.md](substrate_p6_extinction.md) — **Draft.** Decay without reinforcement vs LRU.
+- [substrate_p8_sleep_replay.md](substrate_p8_sleep_replay.md) — **Draft.** Minimum-viable sleep replay.
 
 ### Prompt track (plan files created, not yet active)
 
-- [prompt_b3_b5_track.md](../prompt_b3_b5_track.md) — **Draft.** Acting Coach + embodiment/narrative separation.
-- [prompt_b4_replanning.md](../prompt_b4_replanning.md) — **Draft. 1.0-GATING.** Replanning with failure diagnosis.
+- [prompt_b3_b5_track.md](prompt_b3_b5_track.md) — **Draft.** Acting Coach + embodiment/narrative separation.
+- [prompt_b4_replanning.md](prompt_b4_replanning.md) — **Draft. 1.0-GATING.** Replanning with failure diagnosis.
 
 ### Cross-cutting (CLOSED)
 
@@ -154,7 +154,7 @@ Two groups: A (reinforced) and B (not). Simulated time via SCN phase ticks (not 
 
 During an explicit sleep phase, replay top-N rewarded episodes with Hebbian link updates. Retrieval F1 improves on replayed probes without new input.
 
-**Deliberately not ambitious.** One strategy, one scheduling rule, one measurable improvement. Everything else goes to [memory_consolidation_practice.md](memory_consolidation_practice.md).
+**Deliberately not ambitious.** One strategy, one scheduling rule, one measurable improvement. Everything else goes to [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md).
 
 **Scope:** ~350 LOC + ~100 metric extractor.
 

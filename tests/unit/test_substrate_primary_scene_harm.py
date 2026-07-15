@@ -1,6 +1,6 @@
 """Substrate-primary scene-harm wiring — regression guards (B4 + B5 + B6).
 
-Covers docs/plans/substrate_primary_cradle_readiness.md:
+Covers docs/plans/archive/substrate_primary_cradle_readiness.md:
   * B4: phase-activated scene affordances receive the AUT embodiment in
     substrate-primary so their self_effect writes to the agent's body —
     and DEFAULT to embodiment=None so LLM-AUT (Exp 37/38) stays byte-identical

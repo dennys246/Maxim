@@ -2,13 +2,13 @@
 
 **Status:** Run complete 2026-05-25. NULL outcome with three structural findings. **Retroactive correction added 2026-05-27** — see end of doc.
 **Branch:** `feat/wire-a-tau-split-phase-3-validation`
-**Plan:** [docs/plans/cluster_reward_bias_decay_tau_split.md](../plans/cluster_reward_bias_decay_tau_split.md), Phase 3.
+**Plan:** [docs/plans/archive/cluster_reward_bias_decay_tau_split.md](../plans/archive/cluster_reward_bias_decay_tau_split.md), Phase 3.
 **Predecessor PR:** [#267](https://github.com/dennys246/Maxim/pull/267) (Phase 1 tau-split implementation).
-**Followups:** [docs/plans/sense_tool_registry.md](../plans/sense_tool_registry.md) (new) + [docs/plans/imagination_substrate_signals.md](../plans/imagination_substrate_signals.md) (new).
+**Followups:** [docs/plans/deferred/sense_tool_registry.md](../plans/deferred/sense_tool_registry.md) (new) + [docs/plans/deferred/imagination_substrate_signals.md](../plans/deferred/imagination_substrate_signals.md) (new).
 
 ## Pre-registration
 
-Per [tau-split plan Phase 3 table](../plans/cluster_reward_bias_decay_tau_split.md):
+Per [tau-split plan Phase 3 table](../plans/archive/cluster_reward_bias_decay_tau_split.md):
 
 | Measure | Roy-3a baseline (pre-split, tau=50) | Roy-3a-retry expected (tau=300) |
 |---|---|---|
@@ -100,7 +100,7 @@ Priming-end value was 0.997; arm A end was 0.753 — decayed by 0.244 over the ~
 
 ## Architectural findings surfaced by post-result investigation
 
-The PRIMARY criterion's failure is not a tau-magnitude issue (which the calibration math validates) and not just a single-layer gap. Post-result code investigation surfaced three structural concerns. Two of them get their own plan docs ([sense_tool_registry.md](../plans/sense_tool_registry.md) + [imagination_substrate_signals.md](../plans/imagination_substrate_signals.md)) since they're broader than this experiment's scope.
+The PRIMARY criterion's failure is not a tau-magnitude issue (which the calibration math validates) and not just a single-layer gap. Post-result code investigation surfaced three structural concerns. Two of them get their own plan docs ([sense_tool_registry.md](../plans/deferred/sense_tool_registry.md) + [imagination_substrate_signals.md](../plans/deferred/imagination_substrate_signals.md)) since they're broader than this experiment's scope.
 
 ### Finding 1 — Substrate-scene-tool-availability gap
 
@@ -116,7 +116,7 @@ The sense* tool family has 7 distinct tools across 3 registration regimes:
 | Auto-discovery | `sense_presence` | Once at boot | Yes (executor bypass) | n/a |
 | SEM-modulator-derived | `sense_<entity>`, `read_<entity>_<sensor>`, `sense_food_source` | Per-entity at scene load | No | **No — silently invisible** |
 
-The LLM has zero signal that SEM-derived sense tools might exist in other scenes. A unifying Sense Registry / Factory pattern could close this by adding grayscale visibility (inactive tools listed as `[not in current location]`) without breaking the existing load-bearing invariants (auto-sense bypass for hygiene, SEM scene-scoping for relevance). See [docs/plans/sense_tool_registry.md](../plans/sense_tool_registry.md) for the full scope.
+The LLM has zero signal that SEM-derived sense tools might exist in other scenes. A unifying Sense Registry / Factory pattern could close this by adding grayscale visibility (inactive tools listed as `[not in current location]`) without breaking the existing load-bearing invariants (auto-sense bypass for hygiene, SEM scene-scoping for relevance). See [docs/plans/deferred/sense_tool_registry.md](../plans/deferred/sense_tool_registry.md) for the full scope.
 
 ### Finding 3 — Imagination is substrate-blind
 
@@ -129,7 +129,7 @@ Three highest-priority fixes (sized in the plan doc):
 2. Add a substrate-signal hookup to `process_percept()` so the agent loop can request imagination for missing high-bias tools.
 3. Relax the DN arousal gate for first-reaction-to-novel-percept ticks (currently blocks imagination during LLM-primary high-load).
 
-See [docs/plans/imagination_substrate_signals.md](../plans/imagination_substrate_signals.md) for the full scope.
+See [docs/plans/deferred/imagination_substrate_signals.md](../plans/deferred/imagination_substrate_signals.md) for the full scope.
 
 ## Implications for the kickoff's three NULL branches
 
@@ -149,10 +149,10 @@ Per the kickoff's escalation rule ("do NOT silently retry with a different tau. 
 
 ## Plan-doc folding (per kickoff B6)
 
-- [docs/plans/cluster_reward_bias_decay_tau_split.md](../plans/cluster_reward_bias_decay_tau_split.md): Phase 3 outcome — "tau=300 structurally validated by decay trajectory + annotation render; PRIMARY criterion failed due to downstream scene-tool-availability gap, not tau magnitude."
-- [docs/plans/release_0_9_1.md](../plans/release_0_9_1.md) Stage 5: Roy-3 follow-up item 2 redirects to [sense_tool_registry.md](../plans/sense_tool_registry.md) + [imagination_substrate_signals.md](../plans/imagination_substrate_signals.md).
-- [docs/plans/v1_refinement.md](../plans/v1_refinement.md): checked, no existing tau-split entry to update (the 1.0 plan never tracked the tau-split work directly). No fold required.
-- [docs/plans/persona_convergence_crucible.md](../plans/persona_convergence_crucible.md): three NULL-branch open questions become next-iteration scope; Wire-A's tau parameter remains tunable per the calibration framing.
+- [docs/plans/archive/cluster_reward_bias_decay_tau_split.md](../plans/archive/cluster_reward_bias_decay_tau_split.md): Phase 3 outcome — "tau=300 structurally validated by decay trajectory + annotation render; PRIMARY criterion failed due to downstream scene-tool-availability gap, not tau magnitude."
+- [docs/plans/archive/release_0_9_1.md](../plans/archive/release_0_9_1.md) Stage 5: Roy-3 follow-up item 2 redirects to [sense_tool_registry.md](../plans/deferred/sense_tool_registry.md) + [imagination_substrate_signals.md](../plans/deferred/imagination_substrate_signals.md).
+- [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md): checked, no existing tau-split entry to update (the 1.0 plan never tracked the tau-split work directly). No fold required.
+- [docs/plans/deferred/persona_convergence_crucible.md](../plans/deferred/persona_convergence_crucible.md): three NULL-branch open questions become next-iteration scope; Wire-A's tau parameter remains tunable per the calibration framing.
 - [docs/plans/README.md](../plans/README.md): index entries added for the two new plan docs.
 
 ## Retroactive correction (2026-05-27, [32_wire_a_post_w1_w2.md](32_wire_a_post_w1_w2.md))
@@ -170,7 +170,7 @@ What stays valid from this experiment:
 - **PRIMARY criterion failure (Arm A = 0 `sense_food_source`):** valid as a behavioral measurement. The cause-attribution to "scene-tool-availability gap" is partially valid — the gap is real — but the agent_id mismatch likely contributed too.
 - **Findings 1-3 (scene-tool-availability, sense-tool heterogeneity, imagination substrate-blindness):** valid as architectural observations; they motivated W1+W2 correctly. The integration test couldn't measure their effectiveness because of the upstream wiring bug, but the architectural reasoning stands.
 
-What needs re-validation after Fix A (Roy priming uses `agent_id="sim_aut"`, [v1_refinement.md §1.5](../plans/v1_refinement.md)) lands:
+What needs re-validation after Fix A (Roy priming uses `agent_id="sim_aut"`, [v1_refinement.md §1.5](../plans/archive/v1_refinement.md)) lands:
 - Whether Wire-A's annotation ever reached the LLM during 0.9.1 Roy iterations.
 - Whether the "annotation drives the LLM toward a tool the current scene cannot supply" third NULL branch above is the actual cause of Phase B's failure, or whether annotation-empty was the actual cause.
 - Companion: experiment 32's Bug A scoping inherits this question.

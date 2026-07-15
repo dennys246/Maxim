@@ -97,7 +97,7 @@ class ThinkTool(Tool):
     # custom format (``{"thought": str}``) the validator raised
     # ``Missing required input: thought`` before the alias fallback ran,
     # producing the silent failures the cradle smoke surfaced.
-    # See docs/plans/cradle_activation_fixes.md (Finding B).
+    # See docs/plans/archive/cradle_activation_fixes.md (Finding B).
     input_schema = {
         "type": "object",
         "properties": {

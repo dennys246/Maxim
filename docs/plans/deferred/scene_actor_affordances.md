@@ -1,9 +1,12 @@
 # Scene Actor Affordances — let scene entity affordances drive AUT body sensors
 
+> **DEFERRED (2026-07-15 plans audit):** Stages 1+2 SHIPPED and stable (PR #213 — `target_effect` on AffordanceSchema + `OrchestratorActorTool`; hardened in PR #316). Stages 3–5 (orchestrator prompt rule, designer template hint, validation experiment) unbuilt; explicitly 1.1+ enrichment off the current track. **Revive when:** an adversarial/combat sim (or Minecraft-mob benchmark) needs narrated entity actions to produce real AUT body mechanics, or when re-evaluating [agent_backed_entities.md](agent_backed_entities.md) — Stage 5 is that decision's gate.
+
+
 **Status:** PARTIAL — Stages 1+2 shipped 2026-04-30 (PR #213). Stages 3-5 are 1.1+ work (orchestrator prompt update, designer template hint, validation experiment).
 **Scope:** ~110 LOC across `embodiment/sem.py`, `embodiment/tool_bridge.py`, `simulation/tools.py`, `simulation/orchestrator.py`, plus prompt updates. Stages 1+2 (target_effect field + OrchestratorActorTool) shipped under v1_refinement.md execution-order item #2 — absorbed the world-physics-engine job from the adversarial persona prompt so persona could be deprecated in PR #217 without breaking narrative→SEM coupling.
 **Depends on:** Imagination trigger (shipped 0.7), entity ownership (shipped 0.7), AUT embodiment in sim (E0, shipped 0.6), Cradle (B4, shipped 0.8 — provides three-layer sensation model this extends).
-**Diagnostic for:** [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md). If this closes the gap, the bigger plan stays deferred.
+**Diagnostic for:** [deferred/agent_backed_entities.md](agent_backed_entities.md). If this closes the gap, the bigger plan stays deferred.
 **Gates:** None.
 
 ---
@@ -22,7 +25,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 | `SetEntitySensorTool` | Same shortcoming as DamageComponentTool — direct sensor write, no affordance invocation |
 | `AffordanceSchema.self_effect` ([embodiment/sem.py](../../src/maxim/embodiment/sem.py)) | **Already the right model** — handles self-targeted sensor deltas with range-clamping, sub-sensor parsing, sim_sensor logging. Stages 1+2 extracted its application code into `_apply_sensor_deltas` and reused it for `target_effect`. Riding on existing infrastructure |
 | Adversarial persona prompt (deprecated by PR #217) | Did "world physics engine" role via LLM narration. Lost when persona deprecated — `OrchestratorActorTool` absorbs the dispatch surface so persona could be removed without breaking narrative→SEM coupling |
-| Full agent-backing for scene entities ([deferred/agent_backed_entities.md](deferred/agent_backed_entities.md)) | Larger, deferred. This plan is the **diagnostic** for whether the bigger investment is needed |
+| Full agent-backing for scene entities ([deferred/agent_backed_entities.md](agent_backed_entities.md)) | Larger, deferred. This plan is the **diagnostic** for whether the bigger investment is needed |
 
 **Verdict:** could-ride-on-existing. The `target_effect` field is a strict **extension** of the existing `self_effect` semantics (same dataclass, same write-back helper). `OrchestratorActorTool` adds one orchestrator-only Tool subclass; no new bus, bridge, registry.
 
@@ -32,7 +35,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 
 When the orchestrator narrates "the dragon breathes fire on you," that narration should produce real SEM mechanics on the AUT body — sensor changes → `evaluate_failures()` → PainBus → NAc — without requiring the dragon to be a full Maxim agent. The infrastructure to make this work is 90% already shipped via the imagination pipeline; the missing piece is the path from "scene entity has a `breathe_fire` affordance" to "calling that affordance writes to the AUT's thermal sensor."
 
-This is a **diagnostic** for the larger agent-backed-entities question ([deferred/agent_backed_entities.md](deferred/agent_backed_entities.md)). If embodied-but-scripted hostile entities close the lived-experience gap ("sims feel one-way, narrator struggles with dragon embodiment"), then full agent-backing can wait until the Minecraft demo proves the runtime value. If they don't, we've ruled out the simpler fix and earned the bigger investment.
+This is a **diagnostic** for the larger agent-backed-entities question ([deferred/agent_backed_entities.md](agent_backed_entities.md)). If embodied-but-scripted hostile entities close the lived-experience gap ("sims feel one-way, narrator struggles with dragon embodiment"), then full agent-backing can wait until the Minecraft demo proves the runtime value. If they don't, we've ruled out the simpler fix and earned the bigger investment.
 
 ---
 
@@ -179,7 +182,7 @@ The prompt update is the load-bearing-via-prompt piece — without it, local LLM
 - If yes: agent-backed entities plan stays deferred.
 - If no: surface what's still missing — likely entity agency (dragon decides when to attack), which is what cognition tier addresses.
 
-**Multi-agent attribution edge case:** when scene entity acts on a multi-agent setup (e.g., NPC in a co-op sim), which agent gets the pain attribution? Wave 1's [v1_refinement.md P4](v1_refinement.md) shipped per-agent attribution at the bio-pipeline layer; this stage should verify `OrchestratorActorTool` plumbs the resolved target's `agent_id` through `record_outcome` correctly.
+**Multi-agent attribution edge case:** when scene entity acts on a multi-agent setup (e.g., NPC in a co-op sim), which agent gets the pain attribution? Wave 1's [v1_refinement.md P4](../archive/v1_refinement.md) shipped per-agent attribution at the bio-pipeline layer; this stage should verify `OrchestratorActorTool` plumbs the resolved target's `agent_id` through `record_outcome` correctly.
 
 **Exit:** decision recorded in `docs/experiments/12_scene_actor_affordances.md` (or similar): does this close the gap, or do we need agent-backing after all?
 
@@ -219,16 +222,16 @@ The prompt update is the load-bearing-via-prompt piece — without it, local LLM
 
 ## Why 1.1 not 1.0
 
-The cradle (B4 in [v1_refinement.md](v1_refinement.md)) already validates the cross-session learning claim with a simpler scene model — single AUT, narrative-driven sensor writes via reflexes. This is enrichment for richer adversarial scenes, not gating for the cross-session story. Slotting it into the 1.1 track keeps 1.0 focused on the interface freeze.
+The cradle (B4 in [v1_refinement.md](../archive/v1_refinement.md)) already validates the cross-session learning claim with a simpler scene model — single AUT, narrative-driven sensor writes via reflexes. This is enrichment for richer adversarial scenes, not gating for the cross-session story. Slotting it into the 1.1 track keeps 1.0 focused on the interface freeze.
 
 ---
 
 ## Cross-references
 
-- [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md) — the bigger plan this diagnoses against. Revives if Stage 5 fails to close the gap.
-- [archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md) — shipped 2026-04-25 (PR #200, [exp 11](../experiments/11_cradle_sensorimotor_poc.md)). The `self_effect` field was added there; `target_effect` is the natural sister.
-- [v1_refinement.md](v1_refinement.md) Section 8 (1.1 track) — index entry.
-- [v1_refinement.md](v1_refinement.md) P4 — multi-agent attribution work shipped via PR #202; this plan composes with it for Stage 5's edge case.
+- [deferred/agent_backed_entities.md](agent_backed_entities.md) — the bigger plan this diagnoses against. Revives if Stage 5 fails to close the gap.
+- [archive/cradle_sensorimotor_development.md](../archive/cradle_sensorimotor_development.md) — shipped 2026-04-25 (PR #200, [exp 11](../../experiments/11_cradle_sensorimotor_poc.md)). The `self_effect` field was added there; `target_effect` is the natural sister.
+- [v1_refinement.md](../archive/v1_refinement.md) Section 8 (1.1 track) — index entry.
+- [v1_refinement.md](../archive/v1_refinement.md) P4 — multi-agent attribution work shipped via PR #202; this plan composes with it for Stage 5's edge case.
 - [minecraft_benchmark.md](minecraft_benchmark.md) — relevant if Minecraft mobs use the same scripted-actor pattern (zombies, creepers, skeletons).
 - `feedback_orch_prompt_strength.md` — local LLMs need forceful prompt framing for new tools.
 - `feedback_imagined_entity_affordance_encoding_gap.md` — related: imagined entities skip substrate encoding for affordances. Stage 4 of this plan touches the designer prompt; not the same fix but adjacent.

@@ -1,5 +1,8 @@
 # Stall Detector — Timeout & TTFT Awareness
 
+> **DEFERRED (2026-07-15 plans audit):** Stage 1 SHIPPED (PR #324 — `llm_call_registry.py` + `stall_threshold.py` + 3 test files). Stage 2 (heartbeat migration to `compute_stall_threshold` via `MAXIM_HEARTBEAT_USE_LANE_TIMEOUT`) not done — the CI grep in test.yml still allowlists `heartbeat.py` pointing at it. Stage 3 blocked on llm_timeout_scalability Stage 4. **Revive when:** the next 1.0.x maintenance pass runs, or the heartbeat monitor false-positives against a big-model leader.
+
+
 **Status:** DRAFT v2 2026-06-04 (post-review fold). Triggered by an Exp 37 PR #5 re-run incident where the sim orchestrator's hardcoded 30s stall threshold fired during legitimate inference on Qwen2.5-32B (TTFT 60-120s), injecting `SYSTEM: REPEATED STALL — call send_message` nudges into the orchestrator's percept stream every 30s. The cumulative prompt growth pushed the next call past PR #321 Stage 3.5's context-overflow admission gate (`_check_context_admission`), surfacing as `peer_backend_failed` / `dispatch_exhausted` at the router layer.
 **Scope:** Stage 1 ~250 LOC (combined threshold derivation + in-flight call registry + orchestrator integration — single PR per review consensus). Stage 2 ~80 LOC (heartbeat consults registry with opt-in transitional knob). Stage 3 ~60 LOC (consume `llm_timeout_scalability.md` Stage 4 adaptive prediction; 1.1).
 **Target versions:** Stage 1 → 1.0 (blocks Exp 37 PR #5 today). Stage 2 → 1.0.x (behavioral change for heartbeat operators; opt-in for 1.0, default in 1.1). Stage 3 → 1.1.

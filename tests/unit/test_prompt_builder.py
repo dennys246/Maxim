@@ -219,7 +219,7 @@ class TestBuildToolGuidanceCore:
         / planning-rule patterns from the unmasked branch must be absent.
         Without this gating, the LLM enters the silent `Tool not
         registered: 'respond'` loop documented in
-        docs/plans/cradle_activation_fixes.md (Finding B).
+        docs/plans/archive/cradle_activation_fixes.md (Finding B).
         """
         result = build_tool_guidance_core("passive", is_embodied=True)
         # Imperative patterns from the unmasked branch — none should appear.

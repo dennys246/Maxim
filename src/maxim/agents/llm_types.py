@@ -156,7 +156,7 @@ class LLMRequest:
     # for embodied arcs (the body exposes its own ``<body>_respond`` /
     # ``<body>_use`` tools), so emitting the conversational guidance produces
     # the silent `Tool not registered: 'respond'` loop documented in
-    # docs/plans/cradle_activation_fixes.md (Finding B). Set by the producer
+    # docs/plans/archive/cradle_activation_fixes.md (Finding B). Set by the producer
     # (LLMWorker) at construction; consumers (prompt_builder) read it.
     is_embodied: bool = field(default=False, compare=False)
 

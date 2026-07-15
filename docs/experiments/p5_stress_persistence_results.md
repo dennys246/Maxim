@@ -3,7 +3,7 @@
 **Date:** 2026-04-21
 **Version:** 0.8.0 (post Working Memory Stage 7)
 **Status:** PASS — all gates cleared
-**Plan:** [substrate_p5_stress_persistence.md](../plans/substrate_p5_stress_persistence.md)
+**Plan:** [substrate_p5_stress_persistence.md](../plans/archive/substrate_p5_stress_persistence.md)
 **Test file:** [tests/substrate/test_p5_stress_persistence.py](../../tests/substrate/test_p5_stress_persistence.py)
 
 ## Summary

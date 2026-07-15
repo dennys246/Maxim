@@ -2,7 +2,7 @@
 
 **Companion:** [37_cross_session_graduation.md](../37_cross_session_graduation.md)
 **Pre-registration:** locked 2026-05-30 in the companion doc (PR #304).
-**Owning plan:** [docs/plans/benchmarking_1_0.md](../../plans/benchmarking_1_0.md) §"Acceptance criteria for 1.0" + [docs/plans/behavioral_graduation_candidates.md](../../plans/behavioral_graduation_candidates.md) Tier 1 row 1.
+**Owning plan:** [docs/plans/archive/benchmarking_1_0.md](../../plans/archive/benchmarking_1_0.md) §"Acceptance criteria for 1.0" + [docs/plans/behavioral_graduation_candidates.md](../../plans/behavioral_graduation_candidates.md) Tier 1 row 1.
 **Harness:** [scripts/benchmark_cross_session.py](../../../scripts/benchmark_cross_session.py)
 **Smoke test:** [tests/behavioral/test_exp37_harness_smoke.py](../../../tests/behavioral/test_exp37_harness_smoke.py)
 
@@ -29,7 +29,7 @@ Every field needed to **re-run Exp 37 and get a comparable result** on a future 
 
 ### 1. Primary metric — current state (post pre-reg amendments 2026-05-31 and 2026-06-XX)
 
-**Current primary (Path 2 pivot per [exp37_metric_pivot.md](../../plans/exp37_metric_pivot.md)):**
+**Current primary (Path 2 pivot per [exp37_metric_pivot.md](../../plans/archive/exp37_metric_pivot.md)):**
 
 ```python
 PRIMARY_METRIC = "positive_approach_engagement_fraction"
@@ -39,7 +39,7 @@ ROBUSTNESS_METRIC = "per_action_failure_rate"
 ROBUSTNESS_METRIC_DIRECTION = "decrease"  # legacy primary, retained as robustness signal
 ```
 
-**Post-2026-06-05 statistical test:** the primary criterion is **mean-shift-in-SD-units**, not the legacy "B mean outside A's empirical percentile band." The percentile-band rule was structurally impossible for any bounded metric that frequently hits its bound — the 2026-06-05 validation smoke showed `positive_approach_engagement_fraction` on Arm A piles up at 1.0 (3 of 5 trials), making A's band collapse to [0, 1] and B's "outside band" predicate impossible. The SD-shift test handles bounded distributions cleanly and is the same statistical shape already used for corroborating metrics. See [docs/plans/exp37_sd_shift.md](../../plans/exp37_sd_shift.md) for the full rationale.
+**Post-2026-06-05 statistical test:** the primary criterion is **mean-shift-in-SD-units**, not the legacy "B mean outside A's empirical percentile band." The percentile-band rule was structurally impossible for any bounded metric that frequently hits its bound — the 2026-06-05 validation smoke showed `positive_approach_engagement_fraction` on Arm A piles up at 1.0 (3 of 5 trials), making A's band collapse to [0, 1] and B's "outside band" predicate impossible. The SD-shift test handles bounded distributions cleanly and is the same statistical shape already used for corroborating metrics. See [docs/plans/archive/exp37_sd_shift.md](../../plans/archive/exp37_sd_shift.md) for the full rationale.
 
 **Positive-approach-engagement-fraction:** `fire_pit_warm_self_count / engagement_count`, where `engagement_count = fire_pit_warm_self_count + fire_pit_observe_count + fire_pit_touch_count + pick_up_fire_pit_count`. Sessions with zero on-target engagement emit `0.0` (denominator clamped to 1). For sharp_rock the metric is structurally 0 — no positive-approach affordance in that scenario by design. This is the scenario-asymmetric design the 2026-06-XX amendment explicitly endorses.
 
@@ -278,7 +278,7 @@ Per the pre-reg's graduation matrix, the row 1 status flips based on the verdict
 ## Cross-references
 
 - [37_cross_session_graduation.md](../37_cross_session_graduation.md) — the pre-registration.
-- [benchmarking_1_0.md](../../plans/benchmarking_1_0.md) — accepted 1.0 benchmark scope.
+- [benchmarking_1_0.md](../../plans/archive/benchmarking_1_0.md) — accepted 1.0 benchmark scope.
 - [behavioral_graduation_candidates.md](../../plans/behavioral_graduation_candidates.md) — Tier 1 row 1 lifecycle.
 - [11_cradle_sensorimotor_poc.md](../11_cradle_sensorimotor_poc.md) — Cradle infrastructure substrate.
 - [10_cross_session_enrichment.md](../10_cross_session_enrichment.md) — partial prior evidence + `--resume-sim` mechanics.

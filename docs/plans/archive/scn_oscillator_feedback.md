@@ -2,7 +2,7 @@
 
 **Status:** SHIPPED (2026-04-26), Branch: `feat/v1-scn-oscillator`
 **Scope:** ~120 LOC across OscillatorNetwork, SCN, TemporalCreditDistributor, build_bio_stack
-**Depends on:** [temporal_credit_integration.md](archive/temporal_credit_integration.md) (Phases 1-7 shipped), [tool_pain_bridge_temporal_migration.md](archive/tool_pain_bridge_temporal_migration.md) (P1 shipped)
+**Depends on:** [temporal_credit_integration.md](temporal_credit_integration.md) (Phases 1-7 shipped), [tool_pain_bridge_temporal_migration.md](tool_pain_bridge_temporal_migration.md) (P1 shipped)
 
 ---
 

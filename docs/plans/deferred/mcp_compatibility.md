@@ -1,8 +1,11 @@
 # MCP Compatibility — server, client, and schema interop
 
+> **DEFERRED (2026-07-15 plans audit):** Not started — zero MCP code in tree; only the CC9 dual-format Tool schema prerequisite shipped (PR #204). **Revive when:** the MCP spec reaches a stable 1.0 AND a concrete user need appears (Claude Desktop ↔ Maxim tools, or consuming an external MCP server).
+
+
 **Status:** Design exploration, post-1.0 (1.1 track). Stub.
 **Target version:** 1.1+
-**1.0 prerequisite:** [v1_refinement.md CC9](v1_refinement.md) — Tool schema dual-format support shipped in PR #204. Door is open.
+**1.0 prerequisite:** [v1_refinement.md CC9](../archive/v1_refinement.md) — Tool schema dual-format support shipped in PR #204. Door is open.
 **Concurrent with:** 1.0 stabilization.
 
 ---
@@ -41,7 +44,7 @@ Make Maxim a first-class citizen in the MCP ecosystem: expose Maxim's tools to o
 
 ## What shipped in 1.0 (CC9 freeze hardening)
 
-[v1_refinement.md CC9](v1_refinement.md) shipped in PR #204:
+[v1_refinement.md CC9](../archive/v1_refinement.md) shipped in PR #204:
 
 1. `Tool.to_json_schema()` method converts the custom `{"name": type}` format to JSONSchema 2020-12 (the wire format MCP uses).
 2. `Tool.input_schema` accepts JSONSchema dict OR custom format (auto-detect at construction).
@@ -140,7 +143,7 @@ Lean: hidden by default. Add an opt-in flag (`?include_side_effects=true`) for c
 
 ### Q7. Tool cancellation
 
-CC11 (in [v1_refinement.md](v1_refinement.md) Section 7) adds `Tool.cancel()` to the Tool ABC. MCP supports notification-style cancellation. M1's `MCPToolBridge` should plumb cancellation both directions: when an MCP server's call is cancelled by the client, propagate to the Maxim tool's `cancel()`; when a Maxim agent's tool call is cancelled, propagate to the MCP server.
+CC11 (in [v1_refinement.md](../archive/v1_refinement.md) Section 7) adds `Tool.cancel()` to the Tool ABC. MCP supports notification-style cancellation. M1's `MCPToolBridge` should plumb cancellation both directions: when an MCP server's call is cancelled by the client, propagate to the Maxim tool's `cancel()`; when a Maxim agent's tool call is cancelled, propagate to the MCP server.
 
 ---
 
@@ -192,10 +195,10 @@ When MCP spec hits 1.0 stability and we have a concrete user need (Maxim user wa
 
 ## Cross-references
 
-- [v1_refinement.md](v1_refinement.md) CC9 — 1.0 prerequisite (dual-format Tool schema). Shipped PR #204.
-- [v1_refinement.md](v1_refinement.md) CC11 — `Tool.cancel()` hook composes with MCP cancellation semantics.
-- [v1_refinement.md](v1_refinement.md) Section 8 — 1.1 track index.
-- [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — sister concern: Maxim-to-Maxim communication. MCP is Maxim-to-other-agents.
+- [v1_refinement.md](../archive/v1_refinement.md) CC9 — 1.0 prerequisite (dual-format Tool schema). Shipped PR #204.
+- [v1_refinement.md](../archive/v1_refinement.md) CC11 — `Tool.cancel()` hook composes with MCP cancellation semantics.
+- [v1_refinement.md](../archive/v1_refinement.md) Section 8 — 1.1 track index.
+- [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) — sister concern: Maxim-to-Maxim communication. MCP is Maxim-to-other-agents.
 - [minecraft_benchmark.md](minecraft_benchmark.md) — sister 1.1 work; Minecraft adapter could be exposed via MCP server mode for stream demos.
 - Anthropic MCP spec: https://spec.modelcontextprotocol.io/
 - MCP Python SDK: https://github.com/modelcontextprotocol/python-sdk

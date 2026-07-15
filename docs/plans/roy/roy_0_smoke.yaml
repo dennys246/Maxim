@@ -19,7 +19,7 @@
 # LLM for narration which is silenced into /dev/null on the bridge side
 # per the substrate-primary narration suppression).
 #
-# Findings are appended to docs/plans/persona_convergence_crucible.md
+# Findings are appended to docs/plans/deferred/persona_convergence_crucible.md
 # §"Iteration log" via `maxim roy log roy-0-smoke` after the run.
 
 name: roy-0-smoke

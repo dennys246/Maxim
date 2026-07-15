@@ -1,7 +1,7 @@
 # Plan 4 Stage C4: Wire the Router to Drain State
 
 **Status:** PLAN (2026-04-17). Pre-design review pending.
-**Parent:** [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) Stage C4.
+**Parent:** [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) Stage C4.
 **Predecessor:** C3.4 (PR #142) shipped `/v1/debug/vram`. C4 is the first stage that changes **runtime routing behavior**, not just operator tooling.
 **Gating:** C4.5 (auto-drain), C5 (capacity-aware routing), and C6 (admin API) all depend on C4.
 

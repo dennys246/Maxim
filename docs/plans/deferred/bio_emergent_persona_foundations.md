@@ -1,8 +1,11 @@
 # Bio-system foundations for emergent persona
 
-**Status:** ESCALATED to 0.9.1 — field reservations shipped 2026-04-30 (PR #216) under the V1 Phase A clean-pass branch. Stages 0-3 implementation now lands in 0.9.1 (see [release_0_9_1.md](archive/release_0_9_1.md)). Stages 4-5 (Wires 4 + 5) remain 1.1+.
+> **DEFERRED (2026-07-15 plans audit):** Shipped scope is DONE and beyond plan — Stages 0–3 escalated into 0.9.1 and fully implemented (Wires 1/2/3 + Wire-A, PRs #253–#257 et al.). Only Wires 4 (streak/exploration meta-policy) + 5 (oscillator coupling) remain, both dormant. Roy-2c/4/5a evidence points at encoder alignment, not these wires, as the persona blocker. **Revive when:** a Roy iteration (or successor) shows Wire 4 or Wire 5 is the load-bearing missing piece for behavioral persona expression.
+
+
+**Status:** ESCALATED to 0.9.1 — field reservations shipped 2026-04-30 (PR #216) under the V1 Phase A clean-pass branch. Stages 0-3 implementation now lands in 0.9.1 (see [release_0_9_1.md](../archive/release_0_9_1.md)). Stages 4-5 (Wires 4 + 5) remain 1.1+.
 **Ships in:** ~~1.0 (Stages 0-3)~~ → ~~1.1 (Stages 0-3)~~ → **0.9.1 (Stages 0-3 + new Wire-A cluster-bias annotation)**. Roy-2pc (PR #243) reproduced the structural-vs-behavioral gap on a positive-control fixture — five Roy iterations established that the cluster_reward_bias path is behaviorally inert across both AUT modes regardless of percept overlap. The annotation pattern routes around the block.
-**1.0 disposition rationale (now superseded):** [docs/experiments/12_v1_phased_attribution.md](../experiments/12_v1_phased_attribution.md) Phase A reproduced cross-session recall without scaffolds — that result still holds, but the Roy harness produced a *different* falsification target (substrate writes correctly, doesn't translate to action selection) that the annotation wires address.
+**1.0 disposition rationale (now superseded):** [docs/experiments/12_v1_phased_attribution.md](../../experiments/12_v1_phased_attribution.md) Phase A reproduced cross-session recall without scaffolds — that result still holds, but the Roy harness produced a *different* falsification target (substrate writes correctly, doesn't translate to action selection) that the annotation wires address.
 **Owns:** decision-time wiring across [decisions/nac.py](../../src/maxim/decisions/nac.py), [runtime/agent_loop.py](../../src/maxim/runtime/agent_loop.py), [runtime/gating.py](../../src/maxim/runtime/gating.py), [embodiment/](../../src/maxim/embodiment/), [proprioception/pain_bus.py](../../src/maxim/proprioception/pain_bus.py)
 **Companion plans:** [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) (clears the cognitive dissonance), [persona_convergence_crucible.md](persona_convergence_crucible.md) (uses these foundations for Roy experiments)
 
@@ -75,7 +78,7 @@ The single biggest measurement gap: [actions.jsonl](../../src/maxim/simulation/)
 - Thread `agent_id` + `session_id` into every action record. The `RequestContext` ContextVar at [utils/http.py](../../src/maxim/utils/http.py) already exists; extend the writer to read it.
 - Add `entity_class` field to MOTOR/PERCEPT events (sim_log subsystems). Without normalized exposure counts, pain-aversion divergence is unnormalizable.
 - Save NAc snapshots at session boundary (not just final) so reward_bias evolution is plottable.
-- Add `_format_version` bump to schema check tests per [CLAUDE.md](../../CLAUDE.md) CC1 contract.
+- Add `_format_version` bump to schema check tests per [CLAUDE.md](../../../CLAUDE.md) CC1 contract.
 
 Lands first; independent of all wires.
 
@@ -112,7 +115,7 @@ Pain → causal-link wiring via `record_outcome` (action context). No path where
 ### Implementation
 - Add `NAc._percept_valences: dict[tuple[str, str], float]` keyed by `(entity_class, failure_mode)` with values in `[-1.0, +1.0]`.
 - Persist via `dump()` / `load_state()` with `_format_version` bump per CC1 contract. Backward-compatible reader: missing field → empty dict.
-- New method `NAc.record_percept_valence(entity_class, failure_mode, valence, *, agent_id)` with explicit `agent_id` keyword-only per the multi-agent attribution rules in [CLAUDE.md](../../CLAUDE.md) (`Per-agent stash dicts` rule).
+- New method `NAc.record_percept_valence(entity_class, failure_mode, valence, *, agent_id)` with explicit `agent_id` keyword-only per the multi-agent attribution rules in [CLAUDE.md](../../../CLAUDE.md) (`Per-agent stash dicts` rule).
 - New method `NAc.get_percept_valence(entity_class, failure_mode, *, agent_id) -> float`.
 - Decay: same per-tick decay shape as `_reward_bias` (the existing `decay_reward_biases` per-tick call site at [agent_loop.py](../../src/maxim/runtime/agent_loop.py) section 8.5 extends to call `decay_percept_valences`).
 - New PainBus subscriber `create_percept_valence_subscriber(nac)` registered via [proprioception/pain_bus.py](../../src/maxim/proprioception/pain_bus.py) `build_pain_bus()` — auto-wired in `build_bio_stack`. Per the build_pain_bus invariant, forgetting it is a `TypeError`, not a silent no-op.
@@ -187,11 +190,11 @@ Only Wire 2 adds persisted state. Schema impact:
 
 Reader policy (mirrors existing patterns):
 - Missing `_percept_valences` → empty dict; no warning beyond the standard `_format_version` drift log.
-- Missing `_format_version` → "0.x" sentinel per [CLAUDE.md](../../CLAUDE.md) CC1; one warning per file_type per process.
+- Missing `_format_version` → "0.x" sentinel per [CLAUDE.md](../../../CLAUDE.md) CC1; one warning per file_type per process.
 
 ## Cross-cutting: frozen contract impact
 
-Per [CLAUDE.md](../../CLAUDE.md) CC3 audit rules:
+Per [CLAUDE.md](../../../CLAUDE.md) CC3 audit rules:
 - `GatingContext` adds `learned_aversions: dict | None = None` at field-list end. Docstring update declares the addition. Frozen-safe.
 - `OutcomePrediction` adds `uncertainty_interval: tuple[float, float] = (0.0, 0.0)` at field-list end. Docstring update. Frozen-safe.
 - No new frozen dataclasses introduced.
@@ -218,7 +221,7 @@ This is the audit gate the docstrings must declare per CC3 before merge.
 3. **Wire 2 third** (percept valences) — only persistence change; lands with full schema discipline.
 4. **Wire 1 last** (risk-sensitive ranker) — depends on Wire 2 having generated data to weigh.
 
-Each stage gets its own pre-merge two-lens review (Executor + Architecture lenses, per [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md)). The latent-bridge×subscriber trap referenced in [CLAUDE.md](../../CLAUDE.md) for Wave 1 of biosystem_unification is a known shape — when adding the percept-valence subscriber in Wire 2, pre-merge review must specifically check that subscriber and bridge don't double-count.
+Each stage gets its own pre-merge two-lens review (Executor + Architecture lenses, per [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md)). The latent-bridge×subscriber trap referenced in [CLAUDE.md](../../../CLAUDE.md) for Wave 1 of biosystem_unification is a known shape — when adding the percept-valence subscriber in Wire 2, pre-merge review must specifically check that subscriber and bridge don't double-count.
 
 ## Definition of done
 

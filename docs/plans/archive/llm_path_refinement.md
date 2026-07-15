@@ -10,16 +10,16 @@
 
 | Sub-plan | Status | PR / commit | Plan doc |
 |---|---|---|---|
-| Plan 1 (Foundation) | ✅ shipped | PRs #88, #90, #91 | [archive/llm_path_foundation.md](archive/llm_path_foundation.md) |
-| Plan 2 (Typed Errors) | ✅ shipped | PRs #92, #93 | [archive/llm_path_typed_errors.md](archive/llm_path_typed_errors.md) |
-| Plan 3 (Fast Failover) | ✅ shipped | PR #94 (`ce5f034`) | [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) |
-| Plan 3.5 (Cancellation Hygiene) | ✅ shipped | PR #96 (`6a4f505`) | [archive/llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md) |
+| Plan 1 (Foundation) | ✅ shipped | PRs #88, #90, #91 | [archive/llm_path_foundation.md](llm_path_foundation.md) |
+| Plan 2 (Typed Errors) | ✅ shipped | PRs #92, #93 | [archive/llm_path_typed_errors.md](llm_path_typed_errors.md) |
+| Plan 3 (Fast Failover) | ✅ shipped | PR #94 (`ce5f034`) | [archive/llm_path_fast_failover.md](llm_path_fast_failover.md) |
+| Plan 3.5 (Cancellation Hygiene) | ✅ shipped | PR #96 (`6a4f505`) | [archive/llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md) |
 | Plan 3.6 R5 (VRAM spillover) | ✅ shipped | PR #99 (`2884e58`) | [llm_path_peer_failover.md](llm_path_peer_failover.md) — R1–R4 remain draft |
-| Plan 4 Stage A (agent_id) | ✅ shipped in review | `71f7c24` on `feat/llm-path-operator-visibility` | [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) |
+| Plan 4 Stage A (agent_id) | ✅ shipped in review | `71f7c24` on `feat/llm-path-operator-visibility` | [archive/llm_path_operator_visibility.md](llm_path_operator_visibility.md) |
 | Plan 4 Stage B (bench) | ✅ shipped in review | same | same |
 | Plan 4 Stage C (mesh.yml + admin API) | ⏳ DEFERRED | — | same (Stage C section) |
-| Stress test Phase D | ✅ shipped | [llm_path_stress_20260413.md](../experiments/results/llm_path_stress_20260413.md) | — |
-| Stress test Phase D2 (bench) | ✅ shipped | [llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md) | — |
+| Stress test Phase D | ✅ shipped | [llm_path_stress_20260413.md](../../experiments/results/llm_path_stress_20260413.md) | — |
+| Stress test Phase D2 (bench) | ✅ shipped | [llm_path_stress_plan4_20260414.md](../../experiments/results/llm_path_stress_plan4_20260414.md) | — |
 | Stress test Phases A, B, C, E | ⏳ remaining | — | — |
 | Substrate P2 validation | ⏳ remaining | — | — |
 
@@ -40,7 +40,7 @@ The original meta-plan listed four sub-plans (1, 2, 3, 4). Two more have been ad
 
 All ship under version **0.4** as a single "major stability" milestone per user decision.
 
-### Plan 1: Foundation Cleanup — [llm_path_foundation.md](archive/llm_path_foundation.md)
+### Plan 1: Foundation Cleanup — [llm_path_foundation.md](llm_path_foundation.md)
 
 **~450 LOC new, ~1,330 LOC deleted. Pure refactoring.**
 
@@ -49,7 +49,7 @@ All ship under version **0.4** as a single "major stability" milestone per user 
 
 **Ship when:** zero `urllib.request.urlopen` outside `utils/http.py`, fast suite green, manual smoke passes.
 
-### Plan 2: Typed Errors + Role Detection — [llm_path_typed_errors.md](archive/llm_path_typed_errors.md)
+### Plan 2: Typed Errors + Role Detection — [llm_path_typed_errors.md](llm_path_typed_errors.md)
 
 **~280 LOC new. Split out of former Plan 1 per user decision — each sub-phase ships and tests independently.**
 
@@ -60,7 +60,7 @@ All ship under version **0.4** as a single "major stability" milestone per user 
 
 **Ship when:** all four sub-phases have independent tests green, first startup log line is `event=role_detected`, all typed exceptions have `.fix_hint`.
 
-### Plan 3: Fast Failover — [llm_path_fast_failover.md](archive/llm_path_fast_failover.md)
+### Plan 3: Fast Failover — [llm_path_fast_failover.md](llm_path_fast_failover.md)
 
 **~420 LOC new, ~-80 LOC deleted. The single most important reliability win.**
 
@@ -71,7 +71,7 @@ All ship under version **0.4** as a single "major stability" milestone per user 
 
 **Ship when:** p99 gate met, zero `retry|backoff|gateway` in `maxim_peer_backend.py` (CI grep), stress test protocol complete.
 
-### Plan 3.5: Cancellation Hygiene — [llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md)
+### Plan 3.5: Cancellation Hygiene — [llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md)
 
 **~600 LOC new across 6 stages. Shipped 2026-04-13 (PR #96, `6a4f505`).** Inserted between Plan 3 and Plan 4 after stress test trace2 exposed a stacked-60s-timeout cascade.
 
@@ -95,7 +95,7 @@ All ship under version **0.4** as a single "major stability" milestone per user 
 
 **Ship when:** single-URL `peer.yml` works unchanged, multi-leader failover < 2s on stub backends, `maxim doctor` reports per-leader status.
 
-### Plan 4: Operator Visibility — [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md)
+### Plan 4: Operator Visibility — [archive/llm_path_operator_visibility.md](llm_path_operator_visibility.md)
 
 **~650 LOC new. Ships unconditionally — operator visibility is always valuable.** Renamed from "Reactive Mesh" per stress-test-driven scope decision.
 
@@ -137,7 +137,7 @@ Each plan has three mandatory finish steps:
 
 ## The stress test protocol (between Plan 3 and Plan 4)
 
-Full protocol in [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md). Triple duty:
+Full protocol in [../experiments/protocols/llm_path_stress_test.md](../../experiments/protocols/llm_path_stress_test.md). Triple duty:
 
 1. **Plan 3's 52-second-retry-loop kill validation** (Phase D — leader restart mid-workload)
 2. **Substrate P2 reward modulation under multi-agent load** (Phase A baseline + Phase B fan-out) — user decision to run both together
@@ -145,7 +145,7 @@ Full protocol in [../experiments/protocols/llm_path_stress_test.md](../experimen
 
 **Decision inputs from Phase C for Plan 4 scope:**
 - Batching solves saturation → Plan 4 ships as scoped (R3.0 + R3.5-lite + R3.6-lite), multi-peer dispatch stays deferred
-- Batching helps but peer overflow still needed → same Plan 4 scope + revive [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md)
+- Batching helps but peer overflow still needed → same Plan 4 scope + revive [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md)
 - Batching has no effect → investigate deeper (VRAM, context, quantization) before Plan 4 decision
 
 **Stress test report:** `docs/experiments/results/llm_path_stress_<date>.md`. Protocol doc has template.
@@ -154,9 +154,9 @@ Full protocol in [../experiments/protocols/llm_path_stress_test.md](../experimen
 
 | Deferred plan | Revive when | Scope |
 |---|---|---|
-| [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) | Post-stress-test shows leader saturation that `--parallel` doesn't solve | ~250 LOC |
-| [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md) | Multi-agent wait-time p99 > backend call p99 (lock is bottleneck) | ~800-1,200 LOC |
-| [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md) | Per-agent rate limits insufficient; need priority classes. **Aim for bio-inspired scheduling, not Kubernetes-style copy.** | ~300-500 LOC |
+| [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) | Post-stress-test shows leader saturation that `--parallel` doesn't solve | ~250 LOC |
+| [deferred/llm_path_async_router.md](../deferred/llm_path_async_router.md) | Multi-agent wait-time p99 > backend call p99 (lock is bottleneck) | ~800-1,200 LOC |
+| [deferred/llm_path_fair_scheduling.md](../deferred/llm_path_fair_scheduling.md) | Per-agent rate limits insufficient; need priority classes. **Aim for bio-inspired scheduling, not Kubernetes-style copy.** | ~300-500 LOC |
 
 Shell plans are thin design sketches — not commitments. They preserve context for when triggers fire.
 
@@ -186,7 +186,7 @@ Shell plans are thin design sketches — not commitments. They preserve context 
 
 **6. Metric cardinality bounded** — no `agent_id` on hot-path metric labels. Per-agent debugging uses JSONL logs + Plan 4 request-trace filtering. Only configured agents get metric labels; rest aggregate as `agent_id="__other__"`.
 
-**7. `_inference_lock` serialization acknowledged.** Plan 3 shortens worst-case lock hold from 52s to ~2s. Full async is [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md).
+**7. `_inference_lock` serialization acknowledged.** Plan 3 shortens worst-case lock hold from 52s to ~2s. Full async is [deferred/llm_path_async_router.md](../deferred/llm_path_async_router.md).
 
 **8. Data sovereignty documented.** Architecture doc has "What crosses node boundaries" section. Single-tenant assumption explicit.
 
@@ -253,9 +253,9 @@ The current architecture is a **star topology** — one leader (RTX 5080 + cloud
 | Step | What | Lives in | Trigger | Status |
 |---|---|---|---|---|
 | **0a** | **Multi-URL `peer.yml`** with priority-order failover + **VRAM spillover doctor check**. Reuses Plan 3's typed-exception router loop. ~190 LOC (150 multi-leader + 40 spillover detection added 2026-04-13 after 125s root-cause analysis). | [llm_path_peer_failover.md](llm_path_peer_failover.md) (Plan 3.6) | User has a hot-standby leader (RTX 3070 alongside RTX 5080) OR operator wants `maxim doctor` to catch VRAM-spillover slowdowns | ▶ READY (Draft v2) |
-| **0b** | **`mesh.yml`** as canonical multi-node config + admin API + drain/resume + per-agent rate limits. Supersedes 0a. ~650 LOC. | [archive/llm_path_operator_visibility.md](archive/llm_path_operator_visibility.md) (Plan 4) | Operator-grade visibility needed | ▶ READY |
-| **1** | **Multi-peer dispatch** with rendezvous-hash distribution + `X-Maxim-Suggested-Peer` 429 hints. Load-balances across homogeneous nodes. ~250 LOC. | [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) | Phase D shows leader saturation OR ≥2 GPU nodes serving the same model | ⏸ Revive when triggered |
-| **2** | **Capability advertisement + runtime spillover detection** — each node exposes `loaded_model`, `vram_free_gb`, `tier`, `tokens_per_sec`. Router caches + ranks providers by capability AND by measured tok/s vs baseline (catches VRAM spillover that the static doctor check misses). ~450 LOC. | [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) | ≥2 nodes with **different** loaded models OR static spillover check from step 0a proves insufficient | ⏸ Shell plan expanded 2026-04-13 |
+| **0b** | **`mesh.yml`** as canonical multi-node config + admin API + drain/resume + per-agent rate limits. Supersedes 0a. ~650 LOC. | [archive/llm_path_operator_visibility.md](llm_path_operator_visibility.md) (Plan 4) | Operator-grade visibility needed | ▶ READY |
+| **1** | **Multi-peer dispatch** with rendezvous-hash distribution + `X-Maxim-Suggested-Peer` 429 hints. Load-balances across homogeneous nodes. ~250 LOC. | [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) | Phase D shows leader saturation OR ≥2 GPU nodes serving the same model | ⏸ Revive when triggered |
+| **2** | **Capability advertisement + runtime spillover detection** — each node exposes `loaded_model`, `vram_free_gb`, `tier`, `tokens_per_sec`. Router caches + ranks providers by capability AND by measured tok/s vs baseline (catches VRAM spillover that the static doctor check misses). ~450 LOC. | [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md) | ≥2 nodes with **different** loaded models OR static spillover check from step 0a proves insufficient | ⏸ Shell plan expanded 2026-04-13 |
 | **3** | **Discovery via mDNS or gossip** — nodes find each other on the LAN without static `mesh.yml`. ~400 LOC. | (Future shell plan, not yet drafted) | ≥3 nodes OR frequent node turnover | ⏸ Not drafted |
 | **4** | **Leader election** for the cloudflared tunnel — when the current tunnel-owning node dies, another GPU node takes over. ~200 LOC. | (Future shell plan, not yet drafted) | ≥2 nodes that can BOTH run cloudflared (i.e., both have public IPs or tunnels configured) | ⏸ Not drafted |
 
@@ -294,14 +294,14 @@ Both were one-line bugs caused by responsibility scattered across many files wit
 
 ## Related docs
 
-- **Project guide:** [../../CLAUDE.md](../../CLAUDE.md)
-- **Architecture reference:** [../reference.md](../reference.md)
-- **Architecture (drafted in Plan 1 R0, extended by each plan):** [../architecture/llm_routing.md](../architecture/llm_routing.md)
+- **Project guide:** [../../CLAUDE.md](../../../CLAUDE.md)
+- **Architecture reference:** [../reference.md](../../reference.md)
+- **Architecture (drafted in Plan 1 R0, extended by each plan):** [../architecture/llm_routing.md](../../architecture/llm_routing.md)
 - **Architecture (created by Plan 4):** [../architecture/mesh_operations.md](../architecture/mesh_operations.md)
-- **Stress test protocol:** [../experiments/protocols/llm_path_stress_test.md](../experiments/protocols/llm_path_stress_test.md)
-- **Deferred plans:** [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md), [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md), [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md)
+- **Stress test protocol:** [../experiments/protocols/llm_path_stress_test.md](../../experiments/protocols/llm_path_stress_test.md)
+- **Deferred plans:** [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md), [deferred/llm_path_async_router.md](../deferred/llm_path_async_router.md), [deferred/llm_path_fair_scheduling.md](../deferred/llm_path_fair_scheduling.md)
 - **Troubleshooting (created by sub-plans):** `http_debugging.md` (Plan 1), `peer_backend_debug.md` (Plan 3), `mesh_debug.md` (Plan 4)
 - **Related plans:**
   - [substrate_recognition.md](substrate_recognition.md) — P2 validation runs alongside Plan 3's stress test (Phase A)
-  - [tool_refinement_plan.md](tool_refinement_plan.md) — tools migrate in Plan 1 R1 step 4
+  - [tool_refinement_plan.md](../tool_refinement_plan.md) — tools migrate in Plan 1 R1 step 4
 - **Related incident commits:** `d875fb9` + `8b52cbd` on main

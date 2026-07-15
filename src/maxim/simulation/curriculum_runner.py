@@ -2,7 +2,7 @@
 
 R1 of the Roy long-horizon harness build (see
 ``docs/plans/grounded_language_acquisition.md`` "Roy long-horizon harness"
-and ``docs/plans/persona_convergence_crucible.md`` "Substrate-only
+and ``docs/plans/deferred/persona_convergence_crucible.md`` "Substrate-only
 priming").
 
 Reads a curriculum YAML — a sequence of fixture / arc / goal stages —

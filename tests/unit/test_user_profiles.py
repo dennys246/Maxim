@@ -1,7 +1,7 @@
 """Tests for the L2 user profile YAML loader.
 
 Covers the schema-shape / collision-precedence / bad-schema / missing-file
-matrix from [docs/plans/leader_ux_profile_management.md]. The loader is
+matrix from [docs/plans/archive/leader_ux_profile_management.md]. The loader is
 tested via its public ``apply_user_profiles(builtins, aliases, models,
 *, path)`` entry point with fresh dicts per test — no module-level state
 is mutated, so tests stay isolated.

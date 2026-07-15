@@ -3,7 +3,7 @@
 Wraps the L2 YAML loader (``maxim.models.language.profile_loader``) with
 a CLI surface so operators don't have to hand-edit
 ``~/.config/maxim/profiles.yml``. Stage L3 of
-[docs/plans/leader_ux_profile_management.md].
+[docs/plans/archive/leader_ux_profile_management.md].
 
 CLI shape::
 

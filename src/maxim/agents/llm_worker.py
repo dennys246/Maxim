@@ -331,7 +331,7 @@ class LLMWorker:
         # alongside ``acting_coach`` / ``entity_spec``. Propagated onto every
         # ``LLMRequest`` so prompt_builder can suppress conversational
         # ``respond`` / ``speak`` guidance that the deregistered tools would
-        # silently reject. See docs/plans/cradle_activation_fixes.md (B).
+        # silently reject. See docs/plans/archive/cradle_activation_fixes.md (B).
         self.is_embodied: bool = False
 
         # PromptBuilder for prompt construction

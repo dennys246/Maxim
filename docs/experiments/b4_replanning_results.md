@@ -1,7 +1,7 @@
 # B4 Replanning — Stage 3 Blind A/B Results
 
 **Date:** 2026-04-19
-**Plan:** [prompt_b4_replanning.md](../plans/prompt_b4_replanning.md)
+**Plan:** [prompt_b4_replanning.md](../plans/archive/prompt_b4_replanning.md)
 **Test file:** [tests/substrate/test_b4_replanning_ab.py](../../tests/substrate/test_b4_replanning_ab.py)
 **Verdict:** PASS (all 4 gates cleared)
 

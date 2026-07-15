@@ -4,7 +4,7 @@
 
 **Scope:** ~400-600 LOC production code + tests. New endpoint family (`/v1/mesh/docs/*`), new state-layer namespace (`~/.maxim/util/mesh_docs/`), new CLI verb (`maxim peer docs put|get|ls|rm`), new CI grep allow-list entry for the admin endpoint.
 
-**Target version:** Roadmap stage C9 (see [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) §4). No hard release gate — parallel to C4/C5/C6, probably slots into 0.5 or 0.6 depending on when multi-agent coordination becomes a user-visible blocker.
+**Target version:** Roadmap stage C9 (see [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) §4). No hard release gate — parallel to C4/C5/C6, probably slots into 0.5 or 0.6 depending on when multi-agent coordination becomes a user-visible blocker.
 
 **Gates:** None. This is a new primitive for the "mesh as coordination substrate" thesis, not a correctness fix.
 
@@ -229,7 +229,7 @@ Revisit this plan when:
 
 ## Related plans
 
-- [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) §4 Stage C9 — this plan's home in the roadmap
+- [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) §4 Stage C9 — this plan's home in the roadmap
 - [archive/llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) — Plan 4 arc, C3.3 patterns this mirrors
 - [node_security_simplification.md](node_security_simplification.md) — C7 per-peer identity, the fix for the v1 shared-cluster-key limitation
-- [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — Mother Maxim precursor that would consume this transport
+- [deferred/mother_npc_stimulus_plan.md](mother_npc_stimulus_plan.md) — Mother Maxim precursor that would consume this transport

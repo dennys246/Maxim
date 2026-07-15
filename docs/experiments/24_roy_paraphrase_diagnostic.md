@@ -117,7 +117,7 @@ The same pairs encoded in isolation against a fresh EC trivially separate from a
 ### What this changes
 
 - The persona-convergence gap is **not purely cross-modal**. There is also a structural intra-modal failure that surfaces only under sequential streaming input — which is the production Roy regime. Any persona work that depends on text-modality EC nodes persisting as **distinct concept clusters across a session** is silently corrupted by centroid drift.
-- The JEPA / cross-modal binding direction (project_jepa_plan_drafted, [roy_5 Stage 4](../plans/roy_5_encoder_alignment_disambiguator.md)) **still stands as a separate gap**, but it is no longer the only blocker on the persona-convergence path. A learned cross-modal projection on top of a substrate that has already collapsed text concepts into one mega-node would inherit the collapse.
+- The JEPA / cross-modal binding direction (project_jepa_plan_drafted, [roy_5 Stage 4](../plans/archive/roy_5_encoder_alignment_disambiguator.md)) **still stands as a separate gap**, but it is no longer the only blocker on the persona-convergence path. A learned cross-modal projection on top of a substrate that has already collapsed text concepts into one mega-node would inherit the collapse.
 - 1.0's V1 cross-session validation silently depends on this same machinery. The current text-modality centroid behavior would cause cross-session "recall" of a previously-encoded concept to drift toward "anything second-person-sensory" the more text the substrate has seen.
 
 ### What this does NOT yet show

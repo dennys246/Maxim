@@ -4,8 +4,8 @@
 **Revive when:** the mesh has ≥2 GPU nodes with **different capabilities** (different models loaded, different VRAM, different speeds) and operators want the router to pick based on what each node can actually serve, not just static priority order. Stage 5 (runtime tok/s baseline) revives independently when the static VRAM ratio check from Plan 3.6 R5 proves insufficient — i.e., when an operator hits a slowdown that the static check missed.
 **Estimated scope:** ~450 LOC new (300 capability ranking + 150 spillover detection)
 **Depends on:**
-- [llm_path_operator_visibility.md](../llm_path_operator_visibility.md) (Plan 4) — `mesh.yml` schema, `/v1/mesh/state` admin endpoint, request-trace ring buffer
-- [llm_path_peer_failover.md](../llm_path_peer_failover.md) (Plan 3.6) — multi-leader provider list in router (the strict-priority precursor)
+- [llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) (Plan 4) — `mesh.yml` schema, `/v1/mesh/state` admin endpoint, request-trace ring buffer
+- [llm_path_peer_failover.md](../archive/llm_path_peer_failover.md) (Plan 3.6) — multi-leader provider list in router (the strict-priority precursor)
 - [llm_path_multi_peer_dispatch.md](llm_path_multi_peer_dispatch.md) — rendezvous hash + drain state (the load-distribution layer)
 **Related deferred:** [llm_path_async_router.md](llm_path_async_router.md) — if lane serialization is the bottleneck instead of capability matching
 
@@ -133,8 +133,8 @@ The robust signal is **measured tok/s vs expected tok/s for this (model, GPU cla
 
 Before reviving, all must be true:
 
-- [ ] [llm_path_peer_failover.md](../llm_path_peer_failover.md) (Plan 3.6) shipped — strict-priority failover works
-- [ ] [llm_path_operator_visibility.md](../llm_path_operator_visibility.md) (Plan 4) shipped — `mesh.yml` + admin API exist
+- [ ] [llm_path_peer_failover.md](../archive/llm_path_peer_failover.md) (Plan 3.6) shipped — strict-priority failover works
+- [ ] [llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) (Plan 4) shipped — `mesh.yml` + admin API exist
 - [ ] User has ≥2 GPU nodes with **different** loaded models (e.g., RTX 5080 with Qwen-14B + RTX 3070 with Mistral-7B)
 - [ ] There's a measurable operator pain point: requests are being routed to nodes that can't serve them, OR operator is manually editing `peer.yml` priority on every model change
 - [ ] [deferred/llm_path_multi_peer_dispatch.md](llm_path_multi_peer_dispatch.md) is shipped or shipping (rendezvous-hash distribution provides the routing primitive this plan extends)
@@ -150,8 +150,8 @@ After this ships, the term "reactive mesh" is accurate, not aspirational.
 
 ## Related
 
-- [llm_path_refinement.md](../llm_path_refinement.md) — meta plan
-- [llm_path_operator_visibility.md](../llm_path_operator_visibility.md) — Plan 4
-- [llm_path_peer_failover.md](../llm_path_peer_failover.md) — Plan 3.6 (cheap precursor)
+- [llm_path_refinement.md](../archive/llm_path_refinement.md) — meta plan
+- [llm_path_operator_visibility.md](../archive/llm_path_operator_visibility.md) — Plan 4
+- [llm_path_peer_failover.md](../archive/llm_path_peer_failover.md) — Plan 3.6 (cheap precursor)
 - [llm_path_multi_peer_dispatch.md](llm_path_multi_peer_dispatch.md) — load-distribution layer
 - [llm_path_async_router.md](llm_path_async_router.md) — concurrency layer (orthogonal but related)

@@ -148,7 +148,7 @@ jobs:
             echo "ERROR: hardcoded 30s stall threshold outside runtime/stall_threshold.py:"
             echo "$STALL_LITERAL_MATCHES"
             echo "       Use compute_stall_threshold() from runtime/stall_threshold.py"
-            echo "       See docs/plans/stall_detector_timeout_awareness.md."
+            echo "       See docs/plans/deferred/stall_detector_timeout_awareness.md."
             exit 1
           fi
           # leader_ux_profile_management.md L2 + L3 invariant: every
@@ -397,7 +397,7 @@ jobs:
             echo "  2. CLAUDE.md (the corresponding bus's lesson section)"
             echo "in the same commit, with a TODO(wave-N) comment at the call site."
             echo ""
-            echo "See docs/plans/v1_refinement.md §C6 + §1.1-T4 for the deprecation"
+            echo "See docs/plans/archive/v1_refinement.md §C6 + §1.1-T4 for the deprecation"
             echo "cycle + 1.0 hard-error flip."
             exit 1
           fi
@@ -423,7 +423,7 @@ jobs:
           # and CLAUDE.md is the canonical "silent-no-op" trap this
           # guard exists to close.
           #
-          # See docs/plans/v1_refinement.md §C4 followup-1.
+          # See docs/plans/archive/v1_refinement.md §C4 followup-1.
           # Match assignment-form calls only (`x = _parse_entity(`) so
           # docstring/comment mentions like "ready for _parse_entity()"
           # do not false-positive.
@@ -584,7 +584,7 @@ jobs:
 
       - name: Multi-agent marker lint (Stage 3 of structural invariant tests)
         run: |
-          # Diff-scoped lint per docs/plans/structural_invariant_tests.md
+          # Diff-scoped lint per docs/plans/archive/structural_invariant_tests.md
           # Stage 3. For each NEW test function on this branch in
           # tests/unit/test_nac*.py / tests/unit/test_hippocampus*.py /
           # tests/integration/test_memory_hub.py (or any test file whose

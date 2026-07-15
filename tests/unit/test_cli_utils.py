@@ -82,7 +82,7 @@ class TestNormalizeArgs:
 
 
 class TestPersonaModeResolution:
-    """Stage 1 of docs/plans/persona_cleanup_and_mode_transition.md.
+    """Stage 1 of docs/plans/deferred/persona_cleanup_and_mode_transition.md.
 
     --mode is the new flag, --persona is deprecated in 0.9 and removed
     in 1.1. After normalize_args, args.sim_persona is always set (the

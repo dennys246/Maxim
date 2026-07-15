@@ -1,7 +1,7 @@
 # Roy-5b — Cross-modal binding retest with naming-event scaffolding
 
 **Date:** 2026-05-28 (run completed 2026-05-28 22:25 local)
-**Plan:** [roy_5_encoder_alignment_disambiguator.md § Stage 3](../plans/roy_5_encoder_alignment_disambiguator.md) · [persona_convergence_crucible.md § "Iteration log"](../plans/persona_convergence_crucible.md)
+**Plan:** [roy_5_encoder_alignment_disambiguator.md § Stage 3](../plans/archive/roy_5_encoder_alignment_disambiguator.md) · [persona_convergence_crucible.md § "Iteration log"](../plans/deferred/persona_convergence_crucible.md)
 **Companion:** [21_roy_4.md](21_roy_4.md) (Roy-4 baseline — refuted Hebbian binding on standard cradle arc) · [22_roy_5a.md](22_roy_5a.md) (Stage 1 — H1a confirmed)
 **Spec:** [scenarios/roy/roy_5b_iteration.yaml](../../scenarios/roy/roy_5b_iteration.yaml)
 **Engineered fixture:** [scenarios/roy/roy_2pc_holdout.yaml](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged from Roy-2pc / Roy-2c / Roy-4)
@@ -12,7 +12,7 @@
 
 **CONDITIONAL PASS by literal pre-registration; AMBIGUOUS by structural shape — surfaced to user for explicit classification call.** This verdict has three structural caveats the user needs to weigh before authorizing Stage 4a:
 
-1. **The matched edge at default is `(drive, drive)`, not the cross-modal `(drive, linguistic)` binding the naming-event scaffold was designed to enable.** Both endpoints are priming `sense_food_source` clusters — two near-duplicate food drives co-firing. The scaffold's express bio-mechanism (drive→linguistic-channel co-firing per [docs/plans/roy_5_encoder_alignment_disambiguator.md § Stage 3 lines 164-170](../plans/roy_5_encoder_alignment_disambiguator.md)) did NOT clear the default rule. Cross-modal binding the scaffold designed for IS happening (4 `(drive, linguistic)` edges at `min_cofire ∈ {1, 2, 3}`) but drops out at the default `min_cofire=5` threshold. The disambiguator plan's pre-registration table row 3 explicitly hatches this case as **"Ambiguous: structural shape not matching the binary diagnostic → Pause, surface to user."** The literal pre-registration text in row 1 is satisfied; the structural diagnostic in row 3 is also satisfied. Both reviewers (architecture lens + bio-fidelity lens) independently cross-confirmed the over-claim risk.
+1. **The matched edge at default is `(drive, drive)`, not the cross-modal `(drive, linguistic)` binding the naming-event scaffold was designed to enable.** Both endpoints are priming `sense_food_source` clusters — two near-duplicate food drives co-firing. The scaffold's express bio-mechanism (drive→linguistic-channel co-firing per [docs/plans/archive/roy_5_encoder_alignment_disambiguator.md § Stage 3 lines 164-170](../plans/archive/roy_5_encoder_alignment_disambiguator.md)) did NOT clear the default rule. Cross-modal binding the scaffold designed for IS happening (4 `(drive, linguistic)` edges at `min_cofire ∈ {1, 2, 3}`) but drops out at the default `min_cofire=5` threshold. The disambiguator plan's pre-registration table row 3 explicitly hatches this case as **"Ambiguous: structural shape not matching the binary diagnostic → Pause, surface to user."** The literal pre-registration text in row 1 is satisfied; the structural diagnostic in row 3 is also satisfied. Both reviewers (architecture lens + bio-fidelity lens) independently cross-confirmed the over-claim risk.
 
 2. **The EC drift fix confound is unresolved.** [PR #264 (2026-05-24)](https://github.com/dennys246/Maxim/pull/264) raised `ECConfig.pattern_complete_threshold` from 0.40 to 0.44 between Roy-4 (2026-05-13) and Roy-5b (2026-05-28). The 0% → 100% recognition gap closure observed in Roy-5b (see Node-set overlap section below) could be scaffold-driven, threshold-driven, or both. **A ~25 min wall re-run of the Roy-4 spec at HEAD with `MAXIM_SUBSTRATE_PATH=1` and the standard `infant_humanoid` body would isolate the attribution.** This is a GATE on the verdict, not a phase of an already-authorized resurrection plan — if the gap closes from threshold alone, the binding mechanism was never the active ingredient and the Stage 4a authorization rationale collapses.
 
@@ -20,7 +20,7 @@
 
 **Per the kickoff's "Ambiguous → Pause" rule and the cross-confirmed reviewer convergence, this experiment does NOT authorize Stage 4a.** The Phase 2 deliverable is this surfaced verdict + the proposed confound-isolation re-run as the next experiment. Stage 4a eligibility is contingent on (a) the confound-isolation re-run isolating the scaffold's contribution, AND (b) the user's explicit classification call on whether the (drive, drive) intra-modal edge counts as evidence the cross-modal binding mechanism is rescued.
 
-## Pre-registered diagnostic logic (from [roy_5_encoder_alignment_disambiguator.md § Stage 3](../plans/roy_5_encoder_alignment_disambiguator.md))
+## Pre-registered diagnostic logic (from [roy_5_encoder_alignment_disambiguator.md § Stage 3](../plans/archive/roy_5_encoder_alignment_disambiguator.md))
 
 | Outcome | Diagnosis | Triggered |
 |---|---|---|
@@ -172,7 +172,7 @@ Both endpoints are priming `sense_food_source` clusters (verified via `cluster_r
 
 ### Conditionally eligible (NOT cleanly authorized)
 
-- **Stage 4a of [roy_5_encoder_alignment_disambiguator.md](../plans/roy_5_encoder_alignment_disambiguator.md)** is **ELIGIBLE pending two gates**, not authorized:
+- **Stage 4a of [roy_5_encoder_alignment_disambiguator.md](../plans/archive/roy_5_encoder_alignment_disambiguator.md)** is **ELIGIBLE pending two gates**, not authorized:
   - **Gate 1 — confound-isolation re-run:** Roy-4 spec at HEAD with standard `infant_humanoid` body + `MAXIM_SUBSTRATE_PATH=1` ships first. If the recognition gap closes from the EC drift fix alone (no naming-event scaffold), the binding mechanism was never the active ingredient and the resurrection rationale collapses.
   - **Gate 2 — user classification call:** the (drive, drive) matched edge is row 1 of the pre-registration (literal PASS) AND row 3 (structural Ambiguous). The user picks which row dominates the verdict. The kickoff's "force into 4a or 4b only when unambiguous" rule recommends row 3 / Pause.
 
@@ -183,18 +183,18 @@ Both endpoints are priming `sense_food_source` clusters (verified via `cluster_r
 ### Still unfalsified
 
 - **Whether the 0% → 100% recognition gap closure is scaffold-driven, threshold-driven, or both.** Confound-isolation re-run (Branch A) names the dominant cause. **This is THE gate on Stage 4a eligibility** — not a Phase 0 prereq of an already-authorized plan.
-- **Whether the (drive, drive) intra-modal edge counts as evidence the cross-modal binding mechanism is rescued.** The Hebbian binding plan's bio-defense per [cross_modal_substrate_binding.md](../plans/cross_modal_substrate_binding.md) is about **cross-modal** co-activation (visual+auditory in superior colliculus, sensorimotor in M1). Two food drives co-firing 5 ticks is intra-modality near-duplicate collapse — different mechanism, different bio-defense. Roy-5b shows the Hebbian rule CAN fire at default; it does NOT show the cross-modal flavor that's the plan's actual claim.
+- **Whether the (drive, drive) intra-modal edge counts as evidence the cross-modal binding mechanism is rescued.** The Hebbian binding plan's bio-defense per [cross_modal_substrate_binding.md](../plans/archive/cross_modal_substrate_binding.md) is about **cross-modal** co-activation (visual+auditory in superior colliculus, sensorimotor in M1). Two food drives co-firing 5 ticks is intra-modality near-duplicate collapse — different mechanism, different bio-defense. Roy-5b shows the Hebbian rule CAN fire at default; it does NOT show the cross-modal flavor that's the plan's actual claim.
 - **Whether `(drive, linguistic)` cross-modal edges become the dominant edge type under tunable scaffold variants** (lower hysteresis, finer drive thresholds, multi-tick utterance persistence). Roy-5b's cross-modal edges sit below default `min_cofire=5` because each utterance fires only a handful of times per drive crossing. Out of Roy-5b scope.
 - **Whether 100% test-percept pattern-completion onto priming nodes generalizes to non-food, non-cradle fixtures.** Roy-5b reused Roy-2c/Roy-4's `roy_2pc_holdout.yaml`. A Roy-5c on a divergent fixture would confirm. Out of Roy-5b scope.
 - **Whether the Hebbian rule generalizes beyond ONE specific co-firing shape.** Roy-5b shows the rule fires at default for two near-duplicate priming food clusters that both co-occur in narrator-driven food scenes. It does NOT show the rule fires across DIFFERENT concepts within a modality, nor across modalities at default thresholds. The generalization claim that motivates the resurrected binding plan rests on this single co-firing pattern.
 
-## What this means for [roy_5_encoder_alignment_disambiguator.md](../plans/roy_5_encoder_alignment_disambiguator.md)
+## What this means for [roy_5_encoder_alignment_disambiguator.md](../plans/archive/roy_5_encoder_alignment_disambiguator.md)
 
 **Stage 3 COMPLETE with Ambiguous verdict — surfaced.** Stage 4a is **eligible**, not authorized. Stage 4b stays parked at "candidate". The plan's front-matter status updates to "Stage 3 COMPLETE 2026-05-28 — Conditional PASS / Ambiguous; Stage 4a eligibility gated on confound-isolation re-run + user classification call".
 
-**[cross_modal_substrate_binding.md](../plans/cross_modal_substrate_binding.md)** front-matter status updates to "CANCELLED by Roy-4 (2026-05-13); CONDITIONALLY ELIGIBLE for resurrection by Roy-5b (2026-05-28) — gated on (a) confound-isolation re-run isolating scaffold contribution from EC drift fix contribution, (b) user classification call on whether the (drive, drive) intra-modal matched edge counts as evidence the cross-modal binding mechanism is rescued. **Resurrection implementation does NOT happen without explicit user authorization following the gates above.**"
+**[cross_modal_substrate_binding.md](../plans/archive/cross_modal_substrate_binding.md)** front-matter status updates to "CANCELLED by Roy-4 (2026-05-13); CONDITIONALLY ELIGIBLE for resurrection by Roy-5b (2026-05-28) — gated on (a) confound-isolation re-run isolating scaffold contribution from EC drift fix contribution, (b) user classification call on whether the (drive, drive) intra-modal matched edge counts as evidence the cross-modal binding mechanism is rescued. **Resurrection implementation does NOT happen without explicit user authorization following the gates above.**"
 
-**[jepa_cross_modal_alignment.md](../plans/jepa_cross_modal_alignment.md)** front-matter status stays at "Stage 4b candidate" — does NOT promote, does NOT archive. Annotated: "Roy-5b produced Conditional PASS / Ambiguous (not the clean FAIL that would have promoted this plan to 1.2 in-flight); parks pending Stage 4a's eligibility gates resolving."
+**[jepa_cross_modal_alignment.md](../plans/deferred/jepa_cross_modal_alignment.md)** front-matter status stays at "Stage 4b candidate" — does NOT promote, does NOT archive. Annotated: "Roy-5b produced Conditional PASS / Ambiguous (not the clean FAIL that would have promoted this plan to 1.2 in-flight); parks pending Stage 4a's eligibility gates resolving."
 
 ## What this still does NOT prove
 
@@ -216,7 +216,7 @@ See [protocols/35_roy_5b_reproduction.md](protocols/35_roy_5b_reproduction.md).
 
 **Do NOT authorize Stage 4a yet.** The confound-isolation re-run is the GATE on the verdict, not a Phase 0 of an already-authorized plan.
 
-**Do NOT promote [jepa_cross_modal_alignment.md](../plans/jepa_cross_modal_alignment.md) to 1.2 in-flight.** Roy-5b did NOT produce the clean FAIL across all parameter sweeps that the JEPA promotion needs. Plan stays parked as Stage 4b candidate.
+**Do NOT promote [jepa_cross_modal_alignment.md](../plans/deferred/jepa_cross_modal_alignment.md) to 1.2 in-flight.** Roy-5b did NOT produce the clean FAIL across all parameter sweeps that the JEPA promotion needs. Plan stays parked as Stage 4b candidate.
 
 **Surface the Ambiguous verdict to the user along with the confound-isolation re-run proposal.** Two-lens reviewers (architecture + bio-fidelity) independently confirmed the over-claim risk in the unqualified PASS reading; the user's explicit classification call resolves the (drive, drive)-counts-or-doesn't question that the literal pre-registration text cannot resolve.
 

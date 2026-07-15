@@ -254,7 +254,7 @@ Common patterns to watch for in sim logs:
 - Whether alias redirects lead to successful outcomes
 - Which models hallucinate which tool names
 
-See also: [docs/troubleshooting/tool_aliases.md](../troubleshooting/tool_aliases.md)
+See also: [docs/troubleshooting/tool_aliases.md](../../troubleshooting/tool_aliases.md)
 
 ---
 

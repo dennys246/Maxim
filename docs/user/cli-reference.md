@@ -324,7 +324,7 @@ command primes substrate via a curriculum, runs the same held-out test
 across three arms (substrate-primed neutral / blank persona-injected /
 blank neutral), and reports pairwise substrate divergence (`NAc reward_bias`
 + `cluster_reward_bias` + Hippocampus episodes + ATL concepts). See
-[persona_convergence_crucible.md](../plans/persona_convergence_crucible.md)
+[persona_convergence_crucible.md](../plans/deferred/persona_convergence_crucible.md)
 for the methodology and [substrate_diff.py](../../src/maxim/analysis/substrate_diff.py)
 for the metric definitions.
 
@@ -485,7 +485,7 @@ maxim roy run docs/plans/roy/roy_0_smoke.yaml
 maxim roy diff ~/.maxim/sim_reports/<session_a> ~/.maxim/sim_reports/<session_b>
 
 # Regenerate protocol + iteration-log entry from an existing result.json
-maxim roy log roy-0-smoke --plan docs/plans/persona_convergence_crucible.md
+maxim roy log roy-0-smoke --plan docs/plans/deferred/persona_convergence_crucible.md
 ```
 
 ### Debug with subsystem tracing

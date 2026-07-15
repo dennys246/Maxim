@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-23
 **Branch:** [`feat/0-9-1-ec-drift-phase-2-regression`](https://github.com/dennys246/Maxim/tree/feat/0-9-1-ec-drift-phase-2-regression)
-**Plan:** [docs/plans/ec_centroid_drift_fix.md § Phase 2](../plans/ec_centroid_drift_fix.md) (in PR #259)
+**Plan:** [docs/plans/archive/ec_centroid_drift_fix.md § Phase 2](../plans/archive/ec_centroid_drift_fix.md) (in PR #259)
 **Companion:** [25_ec_centroid_drift_fix_phase_1.md](25_ec_centroid_drift_fix_phase_1.md) (Phase 1 matrix sweep — original winner d0_f0_t50), [24_roy_paraphrase_diagnostic.md](24_roy_paraphrase_diagnostic.md) (motivating diagnostic)
 **Script:** [scripts/measure_p1_at_threshold.py](../../scripts/measure_p1_at_threshold.py) (new)
 **Reference fixtures:** [scenarios/substrate/paraphrase_clusters.yaml](../../scenarios/substrate/paraphrase_clusters.yaml) (P1), [data/roy_paraphrase_pairs.json](../../data/roy_paraphrase_pairs.json) (Roy, in PR #259)

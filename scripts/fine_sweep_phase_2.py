@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fine-grained threshold sweep on both P1 and Roy paraphrase fixtures.
 
-Phase 2 of docs/plans/ec_centroid_drift_fix.md — sample the
+Phase 2 of docs/plans/archive/ec_centroid_drift_fix.md — sample the
 ECConfig.pattern_complete_threshold at 0.01 granularity around the
 Phase 1 matrix's 0.05-grid winner, on BOTH fixtures, to find the
 single threshold that strictly dominates the 0.40 baseline on each.

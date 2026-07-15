@@ -1,5 +1,8 @@
 # Cradle / Exp 37 — Empirical Reframing
 
+> **ARCHIVED (2026-07-15 plans audit):** ✅ CONCLUDED. All P0/P1/P2 fixes shipped (PRs #330, #331 + drive calibration `c50670c7`); the experiment this unblocked (Exp 37) concluded and its gates settled (PR #371). P3 imagined-entity overlay was superseded by the universal `MAXIM_DISABLE_IMAGINATION` gate (`d024ba63`).
+
+
 **Status:** revised 2026-06-04 after [PE_DIAG] instrumented smoke
 **Blocks:** Exp 37 cross-session graduation
 **Supersedes:** the 2026-06-04 morning draft of this file (which speculated about Bug 3 as the killer; empirically refuted below)

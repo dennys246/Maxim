@@ -1,7 +1,10 @@
 # SCN decay anchoring — wall-clock-tying the five NAc decay functions
 
+> **DEFERRED (2026-07-15 plans audit):** DRAFT, never implemented (no SCN decay-clock surface in src; grep hits are comments). Phase A prereq (tau split) shipped; Phases 0–4 unstarted. Self-scoped as off the substrate→action critical path — addresses hardware portability of decay timescales. **Revive when:** a second hardware baseline joins Roy benchmarking (making hardware-dependent decay timescales load-bearing), or decay_consolidation_calibration is greenlit (it requires this as a hard prereq).
+
+
 **Target version:** **1.0 nice-to-have / 1.1 acceptable** (resolved 2026-05-27 — see "1.0 scope decision" below; supersedes Open Question §1).
-**Status:** Draft. Plan written 2026-05-26 as Phase C of the [cluster_reward_bias_decay_tau_split](cluster_reward_bias_decay_tau_split.md) kickoff sequence.
+**Status:** Draft. Plan written 2026-05-26 as Phase C of the [cluster_reward_bias_decay_tau_split](../archive/cluster_reward_bias_decay_tau_split.md) kickoff sequence.
 
 ## 1.0 scope decision (2026-05-27)
 
@@ -18,11 +21,11 @@ The distinction matters because:
 
 The plan stays drafted and ready to go; the implementation kickoff just isn't sequenced into the immediate 1.0 push. Open Question §1 below remains for reader context but the resolution is captured here at the top of the doc.
 **Owns:** [`src/maxim/time/scn.py`](../../src/maxim/time/scn.py) (new clock-driven surface), [`src/maxim/decisions/nac.py`](../../src/maxim/decisions/nac.py) (decay-function callers), [`src/maxim/runtime/agent_loop.py`](../../src/maxim/runtime/agent_loop.py) section 8.5 (per-tick decay calls migrated to SCN subscription).
-**Companion plans:** [cluster_reward_bias_decay_tau_split.md](cluster_reward_bias_decay_tau_split.md) (Phase A prerequisite — tau split landed via [PR #267](https://github.com/dennys246/Maxim/pull/267)), [decay_consolidation_calibration_plan.md](decay_consolidation_calibration_plan.md) (downstream framework that consumes the SCN-anchored output as input).
+**Companion plans:** [cluster_reward_bias_decay_tau_split.md](../archive/cluster_reward_bias_decay_tau_split.md) (Phase A prerequisite — tau split landed via [PR #267](https://github.com/dennys246/Maxim/pull/267)), [decay_consolidation_calibration_plan.md](decay_consolidation_calibration_plan.md) (downstream framework that consumes the SCN-anchored output as input).
 
 ## Why this plan exists
 
-The Roy-3c-bisect A2 confirmation ([29_roy_3c_bisect.md](../experiments/29_roy_3c_bisect.md)) named per-tick decay as the cause of Wire-A's magnitude regression and the tau-split shipped Phase A — splitting `cluster_reward_bias_decay_tau` from `reward_bias_decay_tau` so Wire-A could use a longer timescale. Phase B's Roy-3a-retry ([30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md)) validated tau=300 produces `[strongly rewarding]` annotations throughout the test arm.
+The Roy-3c-bisect A2 confirmation ([29_roy_3c_bisect.md](../../experiments/29_roy_3c_bisect.md)) named per-tick decay as the cause of Wire-A's magnitude regression and the tau-split shipped Phase A — splitting `cluster_reward_bias_decay_tau` from `reward_bias_decay_tau` so Wire-A could use a longer timescale. Phase B's Roy-3a-retry ([30_wire_a_tau_validation.md](../../experiments/30_wire_a_tau_validation.md)) validated tau=300 produces `[strongly rewarding]` annotations throughout the test arm.
 
 But the tau-split addresses only *which tau value gets read by the decay call*, not *how often the decay call fires*. The decay still fires once per `agent_loop` tick — and **agent_loop tick rate is hardware-dependent by ~10× across deployments** (per [feedback_decay_is_tick_anchored_not_wall_clock](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_decay_is_tick_anchored_not_wall_clock.md)):
 
@@ -210,7 +213,7 @@ For the SCN-tying migration to preserve this:
 
 **Recommendation:** ship `ASSOCIATIVE_DECAY_HZ = 1.0` + `ELIGIBILITY_DECAY_HZ = 10.0` as the defaults. Rationale: (a) the 1Hz associative-tier matches the user's leader's observed tick rate at Phase B's test arm closely (~0.93 Hz), so the existing tau=300 calibration ports nearly-1:1; (b) one-tick-per-second is the cleanest wall-clock unit for future calibration framework consumption (the downstream `decay_consolidation_calibration_plan.md` framework expresses target timescales in seconds); (c) the 10Hz eligibility tier keeps eligibility decay an order-of-magnitude faster than associative memory, matching the bio-fidelity ordering even though it's still 100× slower than biological eligibility-trace timescales (50-500ms); (d) avoids needing to rescale the four existing associative tau defaults.
 
-**Honest bio-fidelity gap:** even at 10Hz, eligibility traces are 100-1000× slower than biological eligibility (50-500ms half-life). This plan does NOT close that gap — it shrinks it from 1000-10000× (per-tick at ~0.93 Hz) to 100-1000×. The remaining gap is acceptable for engineering reasons (sub-100ms scheduling adds threading complexity disproportionate to behavioral value at the current substrate maturity) but is honestly documented here so future work can address it if the consumers grow to need real-time credit-assignment fidelity. The five-decay-function bio-coherence audit flagged in [`cluster_reward_bias_decay_tau_split.md`](cluster_reward_bias_decay_tau_split.md) Open Question §4 covers this surface.
+**Honest bio-fidelity gap:** even at 10Hz, eligibility traces are 100-1000× slower than biological eligibility (50-500ms half-life). This plan does NOT close that gap — it shrinks it from 1000-10000× (per-tick at ~0.93 Hz) to 100-1000×. The remaining gap is acceptable for engineering reasons (sub-100ms scheduling adds threading complexity disproportionate to behavioral value at the current substrate maturity) but is honestly documented here so future work can address it if the consumers grow to need real-time credit-assignment fidelity. The five-decay-function bio-coherence audit flagged in [`cluster_reward_bias_decay_tau_split.md`](../archive/cluster_reward_bias_decay_tau_split.md) Open Question §4 covers this surface.
 
 If Phase 3 behavioral re-validation finds either tier under-decays or over-decays on a specific deployment, raising/lowering the per-tier Hz is a config bump (and per-tier tau values rescale by the same factor). The Hz values themselves are knobs, not calibration constants.
 

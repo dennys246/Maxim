@@ -2,7 +2,7 @@
 
 **Status:** Run complete 2026-05-27. **PRIMARY failed (Arm A=0/B=0/C=0) BUT Wire-A demonstrably reaches the LLM for the first time.** This is the clean substrate→action conversion gap measurement that exp 30 and exp 32 could not produce because of Bug A.
 **Branch:** main @ `cdd005a` (post-PR-#290 merge — Fix A landed).
-**Plan:** [docs/plans/v1_refinement.md](../plans/v1_refinement.md) §1.5 integration test, re-run after Fix A.
+**Plan:** [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5 integration test, re-run after Fix A.
 **Predecessors:** [30_wire_a_tau_validation.md](30_wire_a_tau_validation.md) (Phase B baseline, Bug A confounded) + [32_wire_a_post_w1_w2.md](32_wire_a_post_w1_w2.md) (Bug A discovery + agent_id mismatch root cause).
 
 ## Pre-registration
@@ -139,6 +139,6 @@ Both readings are consistent with the data. **The kickoff explicitly named "Trig
 
 ## Plan-doc folding (per kickoff B6)
 
-- [docs/plans/v1_refinement.md](../plans/v1_refinement.md) §1.5: Fix A verdict — instrument now clean. PRIMARY still 0. Pre-registered divergence-in-a-row trigger met; bird's-eye to encoder pivot vs Fix B (W2 to fixture) is the open user decision.
-- [docs/plans/imagination_substrate_signals.md](../plans/imagination_substrate_signals.md): the post-Fix-A iteration confirmed W2's Bug B is still the load-bearing scene-tool-availability gap; Fix B is the natural next test before encoder pivot commits.
-- [docs/plans/sense_tool_registry.md](../plans/sense_tool_registry.md): W1's grayscale visibility worked as designed (the LLM saw `sense_food_source [strongly rewarding from prior experience] [not in current location]`) — but the LLM did not act on the inactive-tool signal. W1 is structurally correct; its operator-visibility design was validated; behavioral impact requires either the tool becoming active (W2 Bug B + Fix B) or the LLM developing the cognitive ability to use grayscale signals (cross-modal binding / JEPA territory).
+- [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5: Fix A verdict — instrument now clean. PRIMARY still 0. Pre-registered divergence-in-a-row trigger met; bird's-eye to encoder pivot vs Fix B (W2 to fixture) is the open user decision.
+- [docs/plans/deferred/imagination_substrate_signals.md](../plans/deferred/imagination_substrate_signals.md): the post-Fix-A iteration confirmed W2's Bug B is still the load-bearing scene-tool-availability gap; Fix B is the natural next test before encoder pivot commits.
+- [docs/plans/deferred/sense_tool_registry.md](../plans/deferred/sense_tool_registry.md): W1's grayscale visibility worked as designed (the LLM saw `sense_food_source [strongly rewarding from prior experience] [not in current location]`) — but the LLM did not act on the inactive-tool signal. W1 is structurally correct; its operator-visibility design was validated; behavioral impact requires either the tool becoming active (W2 Bug B + Fix B) or the LLM developing the cognitive ability to use grayscale signals (cross-modal binding / JEPA territory).

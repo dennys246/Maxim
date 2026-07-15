@@ -115,7 +115,7 @@ Before committing to the substrate architecture, run the cheapest possible sanit
 **Steps:**
 1. Author P1's fixtures first (`tests/fixtures/substrate/paraphrase_clusters.yaml`, ≥50 clusters, 2–3 days using the sim-as-fixture-debugger workflow — see "Fixture authoring workflow" below).
 2. Implement the trivial baseline against `BenchmarkRunner`'s existing `baseline_path` hook. `sentence-transformers` embeds each sentence (run both `all-MiniLM-L6-v2` and `all-mpnet-base-v2`), stored in FAISS, cluster membership by cosine threshold. ~100 LOC of baseline module + ~20 LOC of BenchmarkRunner wiring.
-3. Run it on the fixtures via the fixture-driven orchestrator from [simulator_upgrades_plan.md](archive/simulator_upgrades_plan.md) S1. Publish mean + std over 10 seeds.
+3. Run it on the fixtures via the fixture-driven orchestrator from [simulator_upgrades_plan.md](simulator_upgrades_plan.md) S1. Publish mean + std over 10 seeds.
 4. **Decision gate:**
    - **Baseline ≥85%:** the fixtures are too easy. Author harder clusters (more paraphrase variation, more near-miss distractors) and re-run. The pilot is not a plan-killer; it's a fixture-quality gate.
    - **Baseline 60–85%:** fixtures are well-calibrated. Proceed with P1, register the baseline score as P1's **regression check** — not a pass bar, just a floor.
@@ -248,7 +248,7 @@ Seed near-duplicate paraphrases of a target concept plus distractors. Baseline p
 - NAc per-node reward bias keyed by `(agent_id, node_id)` (F0.5 prereq — multi-agent correctness)
 - NAc reads from `PerceptTraceBuffer` when crediting reward events
 - EC threshold formula: `threshold = base - α × nac.reward_bias(agent_id, nearest)`
-- **Reaction abstraction Phase 5** (folded from [reaction_abstraction_plan](archive/reaction_abstraction_plan.md)): NAc causal link table gains structured `percept_refs: tuple[TraceSnapshot, ...]` column so queries can run by percept involvement, not just hash match. Per-node reward bias keys off `(agent_id, node_id)`.
+- **Reaction abstraction Phase 5** (folded from [reaction_abstraction_plan](reaction_abstraction_plan.md)): NAc causal link table gains structured `percept_refs: tuple[TraceSnapshot, ...]` column so queries can run by percept involvement, not just hash match. Per-node reward bias keys off `(agent_id, node_id)`.
 - **P2 metric extractor plugin** (~100 LOC): rewarded-node collapse delta, distractor non-interference, decay timescale, per-agent isolation verification
 - Fixture YAML reusing P1 paraphrase clusters with reward annotations on a subset
 
@@ -423,7 +423,7 @@ Loading a `SessionSnapshot` checks `schema_version` against the current code's e
 - A test harness that loads a sample 0.3 snapshot and verifies it works after a hypothetical 0.4 change
 
 **What this is not:**
-- Not a plugin discovery system (that's [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md))
+- Not a plugin discovery system (that's [deferred/bio_system_plugin_plan.md](../deferred/bio_system_plugin_plan.md))
 - Not a generic migration framework like Alembic (too heavy, YAGNI)
 - Not backwards-compatible serialization for arbitrary versions (we only support migration forward, one version at a time)
 - Not a session diff/merge tool (post-1.0 if ever)
@@ -537,7 +537,7 @@ Long-running sim with two node groups: Group A receives periodic reinforcement, 
 
 ### P8 — Minimum-viable sleep replay and consolidation
 
-**Why this exists.** Forgetting (P6) is half of what biological consolidation does. The other half is *active strengthening* of rewarded associations during offline (sleep) phases, without new input. Hippocampus-to-cortex replay is the mechanism by which episodic memory becomes semantic memory in brains. A substrate that never consolidates will show stale performance over long-session use — the agent remembers what happened but never *learns from what it remembers when offline*. P8 is the minimum mechanism that proves offline learning can happen at all; the research program on top of that mechanism lives in [memory_consolidation_practice.md](memory_consolidation_practice.md).
+**Why this exists.** Forgetting (P6) is half of what biological consolidation does. The other half is *active strengthening* of rewarded associations during offline (sleep) phases, without new input. Hippocampus-to-cortex replay is the mechanism by which episodic memory becomes semantic memory in brains. A substrate that never consolidates will show stale performance over long-session use — the agent remembers what happened but never *learns from what it remembers when offline*. P8 is the minimum mechanism that proves offline learning can happen at all; the research program on top of that mechanism lives in [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md).
 
 **Scoping discipline:** P8 is **deliberately not ambitious**. One replay strategy, one scheduling rule, one measurable improvement. Alternative strategies, episode-selection tuning, wake-vs-sleep trade-offs, hippocampus-to-ATL promotion rules, and interference management all live in the consolidation practice doc, not here. This phase exists to ship a mechanism; the living doc exists to refine it.
 
@@ -679,12 +679,12 @@ The `0.3` gate includes three prerequisite waves (Cleanup, foundations_plan, sim
 | Version | Phases that must pass | What it proves |
 |---|---|---|
 | **0.2.2** | Cleanup Wave (ships first — removes friction from the hot path B1+P1 will rewrite) | CLI rot cleared |
-| **0.3-pre** | [foundations_plan](foundations_plan.md), [simulator_upgrades_plan](archive/simulator_upgrades_plan.md), **P0** fixture-difficulty pilot, **B1+P1** combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
+| **0.3-pre** | [foundations_plan](foundations_plan.md), [simulator_upgrades_plan](simulator_upgrades_plan.md), **P0** fixture-difficulty pilot, **B1+P1** combined migration | Foundations solid; substrate phases cheap to run; fixtures calibrated; text flows through percepts end-to-end |
 | **0.3-minimum** (fallback if scope runs long) | Everything in 0.3-pre plus **P1, P2, P3.5** | Mechanism + reward modulation + persistence certification proven. Enough for a defensible version bump even if P3a/P3b/P4 slip to 0.3.1. |
 | **0.3-target** | 0.3-minimum plus **P3a, P3b, P4** (real cross-modal, OpenCLIP head-to-head — the 1.0-gating head-to-head) | Architecture's mechanism works, survives persistence, beats head-to-head baselines, cross-modal binding proven across real process boundary |
 | **0.4** | P4 re-passed with production vision + email/Slack channels, **B3 Acting Coach**, **B4 Replanning** (gates 1.0), **B5 embodiment/narrative separation** | Architecture generalizes; NPCs coherent; replanning recovers from failure |
 | **0.5** | P5 (stress persistence), P6 (extinction vs LRU), **P8** (minimum-viable sleep replay — the mechanism, not the research program) | System persists under load, forgets appropriately, actively strengthens rewarded associations offline. Consolidation lives as a biological-class mechanism, not just a metaphor. |
-| **1.0** | Stress-test sim combining all phases with full channel diversity; B4 passing; [behavioral_convergence_practice.md](behavioral_convergence_practice.md) and [memory_consolidation_practice.md](memory_consolidation_practice.md) seeded with their first rounds of experiments | Cross-session learning without fine-tuning, at realistic scale, with coherent voice, with ongoing research programs for behavior change and consolidation refinement |
+| **1.0** | Stress-test sim combining all phases with full channel diversity; B4 passing; [behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md) and [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md) seeded with their first rounds of experiments | Cross-session learning without fine-tuning, at realistic scale, with coherent voice, with ongoing research programs for behavior change and consolidation refinement |
 
 **0.3-minimum vs 0.3-target:** the plan explicitly allows a partial 0.3 to ship as a version bump if P3a/P3b/P4 slip. This prevents the "everything-or-nothing" trap where any slippage looks like failure. **Slipping P3a/P3b/P4 to 0.3.1 is normal re-planning, not plan failure.** The reason P3.5 is in 0.3-minimum and P3a/P3b are not: P3.5 is a correctness contract (serialization round-trips identically), which can be tested on P1/P2 state alone; P3a/P3b add episode binding, which is architecturally later.
 
@@ -696,7 +696,7 @@ The `0.3` gate includes three prerequisite waves (Cleanup, foundations_plan, sim
 
 **Why foundations_plan is its own wave:** the foundation fixes are load-bearing for every substrate phase and were wrongly assumed to exist in the prior plan. Fixing them as a clean block with its own CI gate is cheaper than discovering them mid-P2. See [foundations_plan.md](foundations_plan.md).
 
-**Why simulator_upgrades_plan is its own wave:** the sim upgrades drop per-phase harness cost from ~200 LOC to ~100 LOC, unlock deterministic testing without live LLMs, and enable the persistence subprocess harness that every subsequent phase depends on. ~1 week of work that saves ~1.5 weeks across the substrate phases, plus unlocks local-only substrate validation (no cloud cost). See [simulator_upgrades_plan.md](archive/simulator_upgrades_plan.md).
+**Why simulator_upgrades_plan is its own wave:** the sim upgrades drop per-phase harness cost from ~200 LOC to ~100 LOC, unlock deterministic testing without live LLMs, and enable the persistence subprocess harness that every subsequent phase depends on. ~1 week of work that saves ~1.5 weeks across the substrate phases, plus unlocks local-only substrate validation (no cloud cost). See [simulator_upgrades_plan.md](simulator_upgrades_plan.md).
 
 **Why only P0 as a pilot (not P0 + P4-mini):** earlier drafts had two pilots. P4-mini was cut because its "minimum cross-modal binding" wasn't actually testing commitment #3 — it was testing "does OpenCLIP win at vision retrieval on a toy fixture," which the literature already answers. The real test requires real substrate state (hippocampus episodes, reward-gated binding, persistence) and happens at P4 proper. P0 remains as a single fixture-difficulty pilot; the OpenCLIP baseline is authored during P0 and carried forward into P4 so the number is pinned before P4 starts, but there is no separate "feasibility" gate.
 
@@ -709,12 +709,12 @@ The `0.3` gate includes three prerequisite waves (Cleanup, foundations_plan, sim
 
 ## Scope honesty — updated
 
-**Note:** sim harness LOC dropped significantly after the [simulator_upgrades_plan](archive/simulator_upgrades_plan.md) audit found that `ConversationalSource.inject_cli()`, `ScenarioSource`, `BenchmarkRunner.baseline_path`, and the session-report builder already provide ~80% of the harness infrastructure. Per-phase harness work is now ~100 LOC for a metric extractor plugin, not ~200 LOC for a bespoke framework. The net scope savings (~1,100 LOC of harness) mostly offset the cost of the sim upgrades themselves.
+**Note:** sim harness LOC dropped significantly after the [simulator_upgrades_plan](simulator_upgrades_plan.md) audit found that `ConversationalSource.inject_cli()`, `ScenarioSource`, `BenchmarkRunner.baseline_path`, and the session-report builder already provide ~80% of the harness infrastructure. Per-phase harness work is now ~100 LOC for a metric extractor plugin, not ~200 LOC for a bespoke framework. The net scope savings (~1,100 LOC of harness) mostly offset the cost of the sim upgrades themselves.
 
 | Wave | Item | Scope | Notes |
 |---|---|---|---|
 | **Prereq** | [foundations_plan](foundations_plan.md) (F0.1–F0.7) | ~1,010 LOC | Blocks substrate phases. See separate plan. |
-| **Prereq** | [simulator_upgrades_plan](archive/simulator_upgrades_plan.md) (S1–S4) | ~800 LOC | Fixture orchestrator, mock LLM, persistence subprocess harness, deterministic seeding. Blocks P0. |
+| **Prereq** | [simulator_upgrades_plan](simulator_upgrades_plan.md) (S1–S4) | ~800 LOC | Fixture orchestrator, mock LLM, persistence subprocess harness, deterministic seeding. Blocks P0. |
 | **Prereq** | **P0** fixture-difficulty pilot | ~100 LOC (FAISS baseline wired into `BenchmarkRunner`) + ~150 LOC (OpenCLIP baseline carried forward into P4) + ~100 LOC metric extractor | Uses sim upgrades. Also pins the OpenCLIP baseline number before P4 starts. |
 | **0.3** | **B1+P1 combined migration** | ~1,100 LOC (500 assembler + 600 text-to-prompt dual-write) | Critical path. See dedicated migration section. |
 | 0.3 | P1 substrate additions | ~300 LOC (EC pattern completion + ATL modality tagging) + ~100 LOC metric extractor | |
@@ -780,8 +780,8 @@ These are all overnight-scale, not week-scale. The plan's pace is not sim-time b
 - **No p-values or Bonferroni corrections** in the pass criteria. Effect sizes across ≥10 seeds (≥20 for P4) are the right tool for small-sample engineering validation.
 - **No new LLM router features.** Use the existing [models/language/router.py](../../src/maxim/models/language/router.py).
 - **No vision or audio prompting in Track B.** Text-only scope for 1.0. Multi-modal prompt composition is 1.1+.
-- **No consolidation research program inside substrate_plan.** P8 ships the minimum mechanism; [memory_consolidation_practice.md](memory_consolidation_practice.md) hosts the research program on top of it.
-- **No behavioral-convergence gates inside substrate_plan.** Behavior change is observed, not gated — it lives in [behavioral_convergence_practice.md](behavioral_convergence_practice.md).
+- **No consolidation research program inside substrate_plan.** P8 ships the minimum mechanism; [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md) hosts the research program on top of it.
+- **No behavioral-convergence gates inside substrate_plan.** Behavior change is observed, not gated — it lives in [behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md).
 
 ## If the whole thing fails
 
@@ -793,13 +793,13 @@ Specific fallbacks per commitment:
 - **P3b fails** but P3a passes → channel boundary rules are wrong, not the architecture. Iterate per-channel boundary tuning. This is the safe failure.
 - **P4 fails vs OpenCLIP head-to-head → commitment #3 very wrong.** This is the plan's biggest risk. Fallback: hippocampus-as-binder replaced by direct cross-modal edges in ATL gated by reward, or explicit CLIP-style shared space. Near-full rewrite. ~4+ weeks, substantial replanning.
 - **P6 fails vs LRU → graded decay unjustified.** Fallback: use LRU. Simpler, less biological, works. Drop the "graded decay per tier" commitment and document it as a simplification.
-- **P8 fails to improve F1 after replay → consolidation mechanism broken.** Iterate replay swap points (source, count, update strength, budget). If all fail: promote the mechanism question into [memory_consolidation_practice.md](memory_consolidation_practice.md) and defer consolidation until the practice doc produces a working design. Do not block 1.0 on it — P8 becomes post-1.0 if the minimum mechanism doesn't work.
+- **P8 fails to improve F1 after replay → consolidation mechanism broken.** Iterate replay swap points (source, count, update strength, budget). If all fail: promote the mechanism question into [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md) and defer consolidation until the practice doc produces a working design. Do not block 1.0 on it — P8 becomes post-1.0 if the minimum mechanism doesn't work.
 
 If multiple phases fail in ways that indicate the architecture is fundamentally wrong, **stop building and write a new plan before committing more effort**.
 
 ## Living-doc discipline
 
-Living docs become graveyards without ongoing use. The goal is for [behavioral_convergence_practice.md](behavioral_convergence_practice.md) and [memory_consolidation_practice.md](memory_consolidation_practice.md) to accumulate at least one experiment entry per version bump, so the empirical base grows alongside the code. This is a soft discipline, not a CI gate — for a single-developer project, a hard gate against yourself is LARPing. Treat it as a signal: if a version ships and neither practice doc has a new entry, ask why. Usually the answer is "I skipped evaluation to hit a deadline" and that's a trade-off worth making explicit, not pretending it didn't happen.
+Living docs become graveyards without ongoing use. The goal is for [behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md) and [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md) to accumulate at least one experiment entry per version bump, so the empirical base grows alongside the code. This is a soft discipline, not a CI gate — for a single-developer project, a hard gate against yourself is LARPing. Treat it as a signal: if a version ships and neither practice doc has a new entry, ask why. Usually the answer is "I skipped evaluation to hit a deadline" and that's a trade-off worth making explicit, not pretending it didn't happen.
 
 The 1.0 release should have at least one entry in each practice doc. Enforce that one on yourself at tag time.
 
@@ -807,12 +807,12 @@ The 1.0 release should have at least one entry in each practice doc. Enforce tha
 
 Separate from the proof-obligation phase work, this plan establishes formal Protocols for the key extension points as they come up. The goal is **extensibility and platform-readiness**, not a standalone refactor. Protocols land naturally during the work that already touches each boundary:
 
-- **`LLMBackend` Protocol** — defined as the first step of [simulator_upgrades_plan](archive/simulator_upgrades_plan.md) S2, since S2 needs a target to implement against. Reverse-engineered from the four existing backends. ~50 LOC.
-- **`BioSystem` Protocol** — defined during substrate phase work (P1–P8) as each phase touches a bio-system. Captures the common contract: `save`, `load`, `snapshot`, `on_percept`, `on_tick`. Lives in `src/maxim/contracts/biosystem.py`. Not wired to a plugin discovery system — that's post-1.0 (see [deferred/bio_system_plugin_plan.md](deferred/bio_system_plugin_plan.md)).
+- **`LLMBackend` Protocol** — defined as the first step of [simulator_upgrades_plan](simulator_upgrades_plan.md) S2, since S2 needs a target to implement against. Reverse-engineered from the four existing backends. ~50 LOC.
+- **`BioSystem` Protocol** — defined during substrate phase work (P1–P8) as each phase touches a bio-system. Captures the common contract: `save`, `load`, `snapshot`, `on_percept`, `on_tick`. Lives in `src/maxim/contracts/biosystem.py`. Not wired to a plugin discovery system — that's post-1.0 (see [deferred/bio_system_plugin_plan.md](../deferred/bio_system_plugin_plan.md)).
 - **`BioSystemSnapshot` Protocol** — defined as part of P3.5's schema-versioned snapshot sub-section (see P3.5.1 above). Schema versioning is load-bearing for the 1.0 cross-session learning claim; the Protocol accretes in P3.5 rather than waiting.
 - **`Sensor` / `PerceptProducer` Protocols** — defined during foundations_plan F0.6 (Percept factory consolidation) and F0.8 (Sensor→Percept contract). These are natural landing spots because those items already touch the surface.
 - **`Reporter` Protocol** — optional, defined if/when SimulationReport gets a second implementation. Don't build it speculatively.
-- **`EventBus` Protocol + typed events** — *defined* here as part of the contracts layer, but the *implementation* is deferred to post-1.0. The current fragmented bus situation (five transports, direct callbacks, partial `MemoryHub` mediation) doesn't block the substrate claim — it's a platform-readiness concern. See [deferred/unified_event_bus_plan.md](deferred/unified_event_bus_plan.md). Definition is cheap (~100 LOC of Protocol + event dataclasses); implementation is the 3–5 week refactor that lives in the deferred plan.
+- **`EventBus` Protocol + typed events** — *defined* here as part of the contracts layer, but the *implementation* is deferred to post-1.0. The current fragmented bus situation (five transports, direct callbacks, partial `MemoryHub` mediation) doesn't block the substrate claim — it's a platform-readiness concern. See [deferred/unified_event_bus_plan.md](unified_event_bus_plan.md). Definition is cheap (~100 LOC of Protocol + event dataclasses); implementation is the 3–5 week refactor that lives in the deferred plan.
 
 **Why this matters for platform ambition:** if Maxim eventually has external contributors adding bio-systems, sensors, or LLM backends, **the Protocols have to exist before anyone writes against a duck-typed interface**. Once external code depends on a duck type, the duck type is de-facto frozen and refactoring it becomes a breaking change. Defining Protocols now — even if they're not enforced with ABC inheritance yet — gives `mypy` something to check and gives future contributors a clear target.
 

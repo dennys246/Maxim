@@ -213,7 +213,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
                 subscribers wired via ``build_pain_bus``. When ``None``,
                 DN constructs its own PainBus internally (backward compat
                 for tests and callers that haven't migrated). See
-                ``docs/plans/default_network_unification.md`` Gap B.
+                ``docs/plans/archive/default_network_unification.md`` Gap B.
         """
         # 1. Core state — config, callbacks, runtime flags, stats
         self._init_core_state(maxim, bus, behaviors, config, fear_agent, novelty_tracker)
@@ -364,7 +364,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
         becomes a bus **consumer** (publishes pain signals, wires
         PainDetector + PainCircuitBridge to it) rather than a bus
         **constructor**. This closes the split-subscriber-ownership
-        Gap B from ``docs/plans/pain_bus_unification.md``.
+        Gap B from ``docs/plans/archive/pain_bus_unification.md``.
 
         When ``pain_bus`` is ``None``, DN constructs its own ``PainBus()``
         internally (backward compat for tests and pre-migration callers).
@@ -385,7 +385,7 @@ class DefaultNetwork(GazeManagerMixin, InhibitionMixin):
             # fix). For now, opt out of the deprecation warning explicitly so
             # the legitimate-but-temporary raw call site stays loud about why.
             # TODO(wave-2): route via build_pain_bus once DN owns/consumes a
-            # MemoryHub; tracked in docs/plans/pain_bus_unification.md "Latent
+            # MemoryHub; tracked in docs/plans/archive/pain_bus_unification.md "Latent
             # bridge × subscriber attribution-asymmetry trap" + v1_refinement.md
             # §1.1-T4 C6 prerequisite.
             self._pain_bus = PainBus(_allow_raw=True)

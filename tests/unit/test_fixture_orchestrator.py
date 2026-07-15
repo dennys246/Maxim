@@ -437,7 +437,7 @@ class TestFixBSubstratePretrigger:
 
     Pins the substrate-aware pre-trigger contract on FixtureDrivenOrchestrator.run():
     fires when ALL FOUR (nac + imagination_trigger + llm_router + goal) are non-None.
-    See docs/plans/imagination_substrate_signals.md + 33_wire_a_post_fix_a.md.
+    See docs/plans/deferred/imagination_substrate_signals.md + 33_wire_a_post_fix_a.md.
 
     Pre-merge review folds (2026-05-28):
     - BLOCK 2 (observability): every gate emits a ``sim_log("SEM_TRACE", ...)``

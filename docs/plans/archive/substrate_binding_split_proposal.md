@@ -58,7 +58,7 @@ The parent `substrate_binding_persistence.md` stays as the top-level index + exi
 | `substrate_p4_cross_modal_binding.md` | **1.0-GATING.** P4 only. ~500 LOC + 100 metric. CLIP-based `VisionEncoder`, cross-modal retrieval path, mug-test fixture, OpenCLIP head-to-head baseline. | S1 mechanism (synthetic embeddings); S2 real CLIP + mug fixture; S3 20-seed sweep + OpenCLIP head-to-head | 0.3-target | p3a, p3b, p3_5 |
 | `substrate_p5_stress_persistence.md` | P5 only. ~400 LOC. 10k+ node long-running sim, serialize every 100 episodes, reload verification. | S1 mechanism; S2 mid-scale; S3 full 10k+ sweep | 0.5 | p3_5, p4 |
 | `substrate_p6_extinction.md` | P6 only. ~300 LOC + 100 metric. Decay without reinforcement, LRU head-to-head gate baseline. | S1 mechanism; S2 two-group sim; S3 LRU sweep | 0.5 | p3a |
-| `substrate_p8_sleep_replay.md` | P8 only. ~350 LOC + 100 metric. Sleep-phase replay, Hebbian link updates, F1 improvement gate. **Activates** [memory_consolidation_practice.md](memory_consolidation_practice.md). | S1 mechanism; S2 within-session replay; S3 F1 delta sweep | 0.5 | p3a, p6 |
+| `substrate_p8_sleep_replay.md` | P8 only. ~350 LOC + 100 metric. Sleep-phase replay, Hebbian link updates, F1 improvement gate. **Activates** [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md). | S1 mechanism; S2 within-session replay; S3 F1 delta sweep | 0.5 | p3a, p6 |
 
 ### Prompt track
 

@@ -536,7 +536,7 @@ After Phases 0-3 are complete:
 
 ## Pecking Order Graph Prep (POG-0) — weave into publication
 
-Three small, additive items that position the internal types for the [Pecking Order Graph](pecking_order_graph_plan.md) without changing any public API. These are optional for v0.2.0 but save rework post-publication.
+Three small, additive items that position the internal types for the [Pecking Order Graph](../deferred/pecking_order_graph_plan.md) without changing any public API. These are optional for v0.2.0 but save rework post-publication.
 
 | Item | What | LOC | Risk |
 |------|------|-----|------|

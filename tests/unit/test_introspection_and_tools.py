@@ -403,7 +403,7 @@ class TestThinkToolSchema:
     field — raising ``Missing required input: thought`` for any LLM call
     that used the ``text`` / ``prompt`` aliases or omitted the param.
     The alias fallback inside ``execute()`` never ran. See
-    docs/plans/cradle_activation_fixes.md (Finding B).
+    docs/plans/archive/cradle_activation_fixes.md (Finding B).
     """
 
     def test_schema_is_jsonschema_with_empty_required(self):

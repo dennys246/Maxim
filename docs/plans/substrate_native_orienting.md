@@ -77,7 +77,7 @@ claim (below).
 absolute post-state. This is drive-pain **reduction** = relief = negative-reinforcement,
 which is bio-faithful AND mechanically selectable. It reconciles the audio (drive-pain)
 and visual (reward) credit approaches into one signal. See the resolved-decisions table
-below; ties to [`transition_based_drive_pain.md`](transition_based_drive_pain.md). The
+below; ties to [`transition_based_drive_pain.md`](deferred/transition_based_drive_pain.md). The
 codebase already learned this the hard way (memory `recommend_action reward-driven`:
 "pain per-tool state-blind → use potential_diff").
 
@@ -112,8 +112,8 @@ This connects three of the project's deepest threads at once:
   sound-source location + a seen object is a spatially-grounded symbol). This is a
   concrete substrate-native curriculum for Phase 1's `token_id → ec_node_id` binding
   registry — space supplies the co-occurrence ground truth for free.
-- [`cross_modal_substrate_binding.md`](cross_modal_substrate_binding.md) /
-  [`jepa_cross_modal_alignment.md`](jepa_cross_modal_alignment.md) — the binding path.
+- [`cross_modal_substrate_binding.md`](archive/cross_modal_substrate_binding.md) /
+  [`jepa_cross_modal_alignment.md`](deferred/jepa_cross_modal_alignment.md) — the binding path.
   **Crucially, spatial AV has a structural reason to co-fire that the cancelled text
   case lacked:** a simultaneously-seen-and-heard target produces both percepts in the
   *same tick*. Roy-4 cancelled text-binding because priming/test clusters never
@@ -304,9 +304,9 @@ the runbook is actively used on-device; the infra is broader than orienting).
   [`scripts/gaze_substrate/`](../../scripts/gaze_substrate/)
 - Backbone scripts: [`scripts/orient_backbone/`](../../scripts/orient_backbone/)
 - Layer-2 / grounding: [`grounded_language_acquisition.md`](grounded_language_acquisition.md)
-- Binding (cancelled / gated): [`cross_modal_substrate_binding.md`](cross_modal_substrate_binding.md),
-  [`jepa_cross_modal_alignment.md`](jepa_cross_modal_alignment.md)
-- Drive-pain refinement: [`transition_based_drive_pain.md`](transition_based_drive_pain.md)
+- Binding (cancelled / gated): [`cross_modal_substrate_binding.md`](archive/cross_modal_substrate_binding.md),
+  [`jepa_cross_modal_alignment.md`](deferred/jepa_cross_modal_alignment.md)
+- Drive-pain refinement: [`transition_based_drive_pain.md`](deferred/transition_based_drive_pain.md)
 - Interoceptive-drive sibling (different axis): [`sem_environmental_proximity_sensing.md`](sem_environmental_proximity_sensing.md)
 
 ## History

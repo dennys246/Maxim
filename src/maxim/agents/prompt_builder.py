@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # The router (``LLMRouter._generate_tool_response``) splits on this to route the
 # stable segment into the ``system`` message (where ``cache_control`` lives) and
 # the dynamic segment into the ``user`` message. See
-# docs/plans/prompt_caching_for_cloud_backends.md Phase 1.
+# docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 1.
 PROMPT_SEGMENT_DELIMITER = "\x1e"
 
 
@@ -402,7 +402,7 @@ def build_tool_guidance_core(mode_name: str = "passive", *, is_embodied: bool = 
     ``<body>_respond`` / ``<body>_use`` affordances. Emitting the
     conversational guidance in embodied mode produces the silent
     ``Tool not registered: 'respond'`` loop documented in
-    docs/plans/cradle_activation_fixes.md (Finding B).
+    docs/plans/archive/cradle_activation_fixes.md (Finding B).
     """
     if is_embodied:
         return "\n".join(
@@ -939,7 +939,7 @@ class PromptBuilder:
         # tagged cacheable=True at their add sites) + a dynamic remainder. The
         # router routes the stable segment into the system message (cacheable)
         # and the dynamic segment into the user message. See
-        # docs/plans/prompt_caching_for_cloud_backends.md Phase 1.
+        # docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 1.
         stable_text, dynamic_text, dropped = budgeter.build_segmented()
         if dropped:
             notice = f"[Context note: omitted due to token budget: {', '.join(dropped)}]"
@@ -1254,7 +1254,7 @@ class PromptBuilder:
         and scenes where every biased tool is already active render no
         block.
 
-        See [docs/plans/sense_tool_registry.md] § "Phase 3".
+        See [docs/plans/deferred/sense_tool_registry.md] § "Phase 3".
         """
         annotations = getattr(request.context, "grayscale_tool_annotations", None)
         if not annotations:

@@ -66,7 +66,7 @@ class MeshMessageType(Enum):
     INFERENCE_RESPONSE = auto()
 
     # Perception transport (1.0 prep — reserved; implementation in 1.1).
-    # See docs/plans/mesh_perception_transport.md §"1.0 prep work" Prep 1.
+    # See docs/plans/deferred/mesh_perception_transport.md §"1.0 prep work" Prep 1.
     # Adding consumers post-1.0 is non-breaking (additive enum values), but
     # reserving the slots now lets the 1.1 ship land against a frozen wire
     # envelope. PERCEPT_PUSH carries a wire-dict Percept (peer → leader);

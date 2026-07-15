@@ -4,7 +4,7 @@
 >
 > **Scope:** Expansion and curation of the tool surface the agent can call. Covers introspection tools (agent → agent's own state), action tools (agent → world), and composite tools. Tracks what's shipped, what's proposed, what's been removed, and the principles guiding additions.
 
-Where [cleanup_wave.md](cleanup_wave.md) curates the human CLI surface and [archive/agent_mesh.md](../archive/agent_mesh.md) curates compute infrastructure, this plan curates **the agent's own action + introspection surface**. Those plans shape what humans can see; this one shapes what the *agent* can see and do.
+Where [cleanup_wave.md](archive/cleanup_wave.md) curates the human CLI surface and [archive/agent_mesh.md](../archive/agent_mesh.md) curates compute infrastructure, this plan curates **the agent's own action + introspection surface**. Those plans shape what humans can see; this one shapes what the *agent* can see and do.
 
 ---
 
@@ -18,7 +18,7 @@ Introspection tools → yes. Mutation tools → gated behind FearAgent + user ap
 
 ### 2. No cross-agent action in mesh setups
 
-Even in Phase 7 mesh topologies, the agent on node A MUST NOT directly command node B. Upholds "sovereign agents, cooperative network" from [agent_mesh.md](agent_mesh.md). All coordination via explicit message passing, not tool call.
+Even in Phase 7 mesh topologies, the agent on node A MUST NOT directly command node B. Upholds "sovereign agents, cooperative network" from [agent_mesh.md](../archive/agent_mesh.md). All coordination via explicit message passing, not tool call.
 
 ### 3. Secrets stay opaque
 

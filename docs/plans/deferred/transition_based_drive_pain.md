@@ -1,5 +1,8 @@
 # Transition-based drive-pain attribution
 
+> **DEFERRED (2026-07-15 plans audit):** Not shipped — `Body.evaluate_failures` is still state-based (re-fires per tick, no breach latch); B8 delta-attribution remains the only patch covering channel 1. Correct, well-scoped root-cause work (~25–40 LOC + blast-radius validation) but off the Exp 44 critical path, and touching shared embodiment code mid-experiment is the wrong moment. **Revive when:** a second drive-pain-attribution consumer appears, channel-2 (PainBus) mis-attribution actually bites an experiment (e.g. a safe source accruing spurious negative like pre-B8 Exp 42), or before any change to `evaluate_failures` cadence.
+
+
 **Status:** Draft. Written 2026-06-23 from the Exp 42 PR #380 two-lens review (the Architecture-lens A-CRIT1 + the cross-confirmed root-cause finding). Exp 42 shipped a delta-attribution *filter* (B8) at the affordance layer as a scoped unblocker; this plan addresses the underlying cause so the fix lands once, at the source, for both attribution channels — instead of being re-patched per consumer.
 
 ## Front-gate scope pressure

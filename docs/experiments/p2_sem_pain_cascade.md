@@ -187,7 +187,7 @@ Tests (modified):
 - `tests/unit/test_embodiment_failures.py::test_embodiment_evaluates_composed` (dialect update)
 
 Docs:
-- `docs/plans/substrate_recognition.md` — Stage 2 section
+- `docs/plans/archive/substrate_recognition.md` — Stage 2 section
 - `CLAUDE.md` — 2 new load-bearing invariants (NAc similarity convention, PainBus layering)
 - `docs/experiments/p2_sem_pain_cascade.md` (this file)
 

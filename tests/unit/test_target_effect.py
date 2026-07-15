@@ -3,7 +3,7 @@
 ``target_effect`` is the parallel of ``self_effect`` for affordances that
 write to a *resolved target body* — e.g. a dragon's ``breathe_fire``
 affordance writes thermal deltas onto the AUT.  Stage 1 of
-``docs/plans/scene_actor_affordances.md``.
+``docs/plans/deferred/scene_actor_affordances.md``.
 """
 
 from __future__ import annotations

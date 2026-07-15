@@ -3,7 +3,7 @@
 **Status:** Deferred. Not on the critical path to 1.0.
 **⚠ Needs heavy refinement.** This plan captures the *framing* and *known rough edges*, not a finished design. The isolation audit list in particular is a starting point — not a contract. Before reviving, expect 1–2 days of design work to turn the rough edges into concrete code-level checks against whatever the runtime looks like at revive time.
 
-**Revive when:** [behavioral_convergence_practice.md](../behavioral_convergence_practice.md) has logged at least two successful experiment entries on hand-authored fixtures AND a third experiment is blocked on "we need more stimulus variety than we can author by hand." **Do not revive before this trigger.** Mother NPC is the correct answer to a problem that isn't load-bearing yet, and building her before the trigger would dilute substrate mechanism work with stimulus-infrastructure work.
+**Revive when:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md) has logged at least two successful experiment entries on hand-authored fixtures AND a third experiment is blocked on "we need more stimulus variety than we can author by hand." **Do not revive before this trigger.** Mother NPC is the correct answer to a problem that isn't load-bearing yet, and building her before the trigger would dilute substrate mechanism work with stimulus-infrastructure work.
 
 **Prerequisites (from [reaction_abstraction_plan.md](../archive/reaction_abstraction_plan.md)):**
 - **Phase 4 (runtime unification)** — Mother (AgentInstance-shaped) must produce Percept objects that Baby (MaximAgent-shaped) consumes. Phase 4's `make_text_percept` factory + AgentPool integration is a hard prereq.
@@ -11,9 +11,9 @@
 
 **Kin:**
 - [bio_system_plugin_plan.md](bio_system_plugin_plan.md) — similar deferred-plan shape, also conditional on platform/research trigger
-- [mother_maxim_plan.md](mother_maxim_plan.md) — adjacent but different (that plan is about persistent collective memory across sessions; this plan is about a stimulus-producing NPC that never shares state with the AUT)
+- [mother_maxim_plan.md](../archive/mother_maxim_plan.md) — adjacent but different (that plan is about persistent collective memory across sessions; this plan is about a stimulus-producing NPC that never shares state with the AUT)
 - [../archive/reaction_abstraction_plan.md](../archive/reaction_abstraction_plan.md) — provides the Percept/Reaction information barrier this plan's isolation requirements depend on
-- [../behavioral_convergence_practice.md](../behavioral_convergence_practice.md) — this plan is the likely infrastructure for H1–H5 experiments at scale
+- [../behavioral_convergence_practice.md](behavioral_convergence_practice.md) — this plan is the likely infrastructure for H1–H5 experiments at scale
 - [../archive/unified_event_bus_plan.md](../archive/unified_event_bus_plan.md) (archived — scope largely absorbed by reaction_abstraction) — tangential; if the remaining AgentBus/LocalMessageBus merge ever happens, Mother NPC uses the unified bus; otherwise Mother NPC subscribes to the existing percept pipeline
 
 ## The framing
@@ -155,7 +155,7 @@ If these tests can't be written against the current runtime, the runtime needs i
 
 ### Phase 3 — First experiment (~100 LOC + authoring)
 
-A single behavioral convergence experiment from [behavioral_convergence_practice.md](../behavioral_convergence_practice.md) ported to use Mother NPC. Compare: same scenario, hand-authored fixture vs. Mother-generated. Results go in the practice doc.
+A single behavioral convergence experiment from [behavioral_convergence_practice.md](behavioral_convergence_practice.md) ported to use Mother NPC. Compare: same scenario, hand-authored fixture vs. Mother-generated. Results go in the practice doc.
 
 ### Phase 4 — Scenario library (~ongoing)
 

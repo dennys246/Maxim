@@ -54,7 +54,7 @@ heuristic (grep on field references); false positives are addressed by
 declaring ``single_agent_only`` explicitly.
 
 See CLAUDE.md L43 (P4 multi-agent rule) and
-``docs/plans/structural_invariant_tests.md`` Stage 3.
+``docs/plans/archive/structural_invariant_tests.md`` Stage 3.
 """
 
 from __future__ import annotations

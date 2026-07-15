@@ -1,15 +1,18 @@
 # Substrate-Primary Cradle Readiness — consolidated findings + path to a valid Exp 41
 
+> **ARCHIVED (2026-07-15 plans audit):** ✅ CONCLUDED — B1–B5 all resolved (B4 scene-affordance `self_effect` threading + B5 `embodiment_failed` valence flip landed 2026-06-18); Exp 41 executed → VOID, Exp 42 GRADUATED (PR #380). Open question A1 (unify LLM-AUT onto `self_effect`) handed off to the Exp 44 G1 work ([controlled_llm_primary_embodied_harness.md](../controlled_llm_primary_embodied_harness.md)).
+
+
 **Target version:** 1.1
 **Status:** FINDINGS + PLAN (bird's-eye step-back, 2026-06-18). No further shared-code changes until the approach below is agreed.
 **Owns (proposed):** `runtime/agent_loop._read_drive_states` (shipped), `decisions/nac.recommend_action` (shipped), `simulation/generative_runner._activate_phase_entities` (proposed), `runtime/tool_dispatch.record_outcome` (proposed).
-**Companion plans:** [substrate_exploration_policy.md](substrate_exploration_policy.md), [../experiments/41_substrate_primary_exploration.md](../experiments/41_substrate_primary_exploration.md), [grounded_language_acquisition.md](grounded_language_acquisition.md), [cradle_activation_fixes.md](cradle_activation_fixes.md).
+**Companion plans:** [substrate_exploration_policy.md](substrate_exploration_policy.md), [../experiments/41_substrate_primary_exploration.md](../../experiments/41_substrate_primary_exploration.md), [grounded_language_acquisition.md](../grounded_language_acquisition.md), [cradle_activation_fixes.md](cradle_activation_fixes.md).
 
 ---
 
 ## Why this doc exists
 
-Getting [Exp 41](../experiments/41_substrate_primary_exploration.md) (substrate-primary counter-prior with exploration) to a *valid measured run* surfaced a chain of blockers — each fix revealed the next. Per the CLAUDE.md "two divergence iterations → step back to a bird's-eye view" rule, this doc consolidates the chain, names the **single unifying root cause**, and lays out the remaining work + risk before more shared-code edits land. Two of the five blockers are already fixed and sound; the rest are scoped here.
+Getting [Exp 41](../../experiments/41_substrate_primary_exploration.md) (substrate-primary counter-prior with exploration) to a *valid measured run* surfaced a chain of blockers — each fix revealed the next. Per the CLAUDE.md "two divergence iterations → step back to a bird's-eye view" rule, this doc consolidates the chain, names the **single unifying root cause**, and lays out the remaining work + risk before more shared-code edits land. Two of the five blockers are already fixed and sound; the rest are scoped here.
 
 ## The unifying root cause (bird's-eye)
 
@@ -49,7 +52,7 @@ Substrate-primary spike on `cradle_prelinguistic_deceptive` + `infant_humanoid_c
 - **Negative link forms + grows:** `tool:hearth_warm_self` ends with three NEGATIVE links, **zero positive**. ✅
 - **Adaptive avoidance (H2 signal):** warm_self selection rate by session third = **0.028 → 0.0 → 0.0** — the agent tries it once (explore-first), learns it hurts, and switches to the **safe `blanket_wrap`** warmth source. ✅
 
-This is the full counter-prior loop working: cold body → warm_self tempting (drive affinity) → explore-first trial → embodied pain → all paths book negative → agent avoids and prefers the safe alternative. **Exp 41 is now measurable** — the frozen N-seed run + analyzer (`scripts/analyze_exp41_exploration.py`, still to write) are the remaining setup deliverables per [../experiments/41_substrate_primary_exploration.md](../experiments/41_substrate_primary_exploration.md) §2.
+This is the full counter-prior loop working: cold body → warm_self tempting (drive affinity) → explore-first trial → embodied pain → all paths book negative → agent avoids and prefers the safe alternative. **Exp 41 is now measurable** — the frozen N-seed run + analyzer (`scripts/analyze_exp41_exploration.py`, still to write) are the remaining setup deliverables per [../experiments/41_substrate_primary_exploration.md](../../experiments/41_substrate_primary_exploration.md) §2.
 
 ## STATUS: B1–B5 all resolved + Exp 41 plumbing landed (2026-06-19)
 The substrate-primary cradle produces a genuine, measurable embodied-feedback loop, and the Exp 41 run plumbing is complete:
@@ -57,7 +60,7 @@ The substrate-primary cradle produces a genuine, measurable embodied-feedback lo
 - **Analyzer:** `scripts/analyze_exp41_exploration.py` — FROZEN §4/§5 executor (H1/H2/SD, verdict matrix, exit 0/4/5, robust SD≈0 sign-test).
 - **Guards:** [tests/behavioral/test_exp41_pipeline.py](../../tests/behavioral/test_exp41_pipeline.py) (13 tests, every verdict corner + mock pipeline).
 
-**Frozen run EXECUTED 2026-06-19 → VOID.** 40/40 sub-sims on `big-mac-mini` (git `3d0c010d`, $0). Verdict: VOID (exit 4) — the mechanism is real (try → pain → avoid; harm → 0 in both arms) but the 2×2-on-exploration design can't isolate exploration's contribution: drive-tuning made the harmful action drive-tempting, so the *deterministic* arm engages-and-learns it too (A_dec ≈ B_dec; exploration even added a touch more early harm — wrong direction for H1), and the harm-rate metric floors out under try-once dynamics. The 0.10 floor was NOT lowered post-hoc. Full read + a follow-up (Exp 42: terminal-preference metric, not harm-rate) in [../experiments/41_substrate_primary_exploration.md](../experiments/41_substrate_primary_exploration.md) §9–§10. Net: all mechanism + tooling work landed and validated end to end; the strong-thesis question stays open pending the redesigned follow-up.
+**Frozen run EXECUTED 2026-06-19 → VOID.** 40/40 sub-sims on `big-mac-mini` (git `3d0c010d`, $0). Verdict: VOID (exit 4) — the mechanism is real (try → pain → avoid; harm → 0 in both arms) but the 2×2-on-exploration design can't isolate exploration's contribution: drive-tuning made the harmful action drive-tempting, so the *deterministic* arm engages-and-learns it too (A_dec ≈ B_dec; exploration even added a touch more early harm — wrong direction for H1), and the harm-rate metric floors out under try-once dynamics. The 0.10 floor was NOT lowered post-hoc. Full read + a follow-up (Exp 42: terminal-preference metric, not harm-rate) in [../experiments/41_substrate_primary_exploration.md](../../experiments/41_substrate_primary_exploration.md) §9–§10. Net: all mechanism + tooling work landed and validated end to end; the strong-thesis question stays open pending the redesigned follow-up.
 
 ## Sizing
 
@@ -76,7 +79,7 @@ The substrate-primary cradle produces a genuine, measurable embodied-feedback lo
 ## What is already shipped (sound, this session)
 - Exploration policy (B2): novelty-bonus + hard-gate explore-first, config `sim.substrate_explore_bonus_weight`, per-tick decay, conftest scrub, 17 tests.
 - Drive-need derivation (B3): `cold` need from homeostatic deficit (substrate-primary path only — LLM-AUT unaffected), `infant_humanoid_cold` body, 4 tests.
-- Docs: [substrate_exploration_policy.md](substrate_exploration_policy.md) (incl. corrected iteration log) + [Exp 41 pre-reg](../experiments/41_substrate_primary_exploration.md).
+- Docs: [substrate_exploration_policy.md](substrate_exploration_policy.md) (incl. corrected iteration log) + [Exp 41 pre-reg](../../experiments/41_substrate_primary_exploration.md).
 
 ## Open questions
 1. **A1 — gate vs unify** (above). *Author recommendation:* gate to substrate-primary now; defer the LLM-AUT/self_effect unification to a dedicated plan (it would let us retire the narrator-driven proximity layer, but that re-opens Exp 37/38 calibration).

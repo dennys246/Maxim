@@ -1709,12 +1709,12 @@ def register_persona(
     """Register a custom simulation persona.
 
     **Deprecated in 0.9 — removed in 1.1.** Stage 1 of
-    [docs/plans/persona_cleanup_and_mode_transition.md](../../docs/plans/persona_cleanup_and_mode_transition.md)
+    [docs/plans/deferred/persona_cleanup_and_mode_transition.md](../../docs/plans/deferred/persona_cleanup_and_mode_transition.md)
     starts the deprecation cycle: ``DeprecationWarning`` in 0.9 / 1.0,
     ``raise`` in 1.1. Orchestrator behaviour shaping is moving to
     ``--sim-mode`` (a flow-shape selector) plus the bio-emergent
     disposition mechanics tracked in
-    ``docs/plans/bio_emergent_persona_foundations.md``. Registered
+    ``docs/plans/deferred/bio_emergent_persona_foundations.md``. Registered
     personas currently flow through to reports and logs as a label; the
     orchestrator does not inject the supplied ``context_prompt`` into the
     agent prompt today (audit finding in the plan). Stage 5 of the
@@ -1747,7 +1747,7 @@ def register_persona(
         "maxim.register_persona() is deprecated and will be removed in 1.1. "
         "The persona system is being replaced by --sim-mode (orchestrator "
         "flow-shape) plus bio-emergent disposition mechanics. "
-        "See docs/plans/persona_cleanup_and_mode_transition.md.",
+        "See docs/plans/deferred/persona_cleanup_and_mode_transition.md.",
         DeprecationWarning,
         stacklevel=2,
     )

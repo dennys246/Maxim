@@ -1,7 +1,7 @@
 """Roy three-arm iteration runner — orchestrate the persona convergence crucible.
 
 R3 of the Roy long-horizon harness build (see
-``docs/plans/persona_convergence_crucible.md`` "Three-arm comparison"
+``docs/plans/deferred/persona_convergence_crucible.md`` "Three-arm comparison"
 and "What we record per Roy iteration"). Turns one Roy iteration —
 priming + held-out test across three arms + pairwise substrate
 divergence — into a single operator command.

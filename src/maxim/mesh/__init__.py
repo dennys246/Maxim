@@ -8,7 +8,7 @@ The peer_registry, peer_info, peer_channel, task_delegation, knowledge,
 clock, agent_identity, and admission modules were dead code (zero production
 imports) and have been deleted. If you're looking for rate limiting, see
 ``runtime/rate_limit.py`` which cherry-picked admission.py's logic. If you're
-looking for peer-to-peer LLM routing, see ``docs/plans/llm_path_refinement.md``
+looking for peer-to-peer LLM routing, see ``docs/plans/archive/llm_path_refinement.md``
 and the deferred plans in ``docs/plans/deferred/``.
 """
 

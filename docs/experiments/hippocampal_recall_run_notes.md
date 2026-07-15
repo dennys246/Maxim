@@ -113,7 +113,7 @@ Memory survival: **YES** (1.0). Behavioral recall from indirect cues: **NO** (AU
 
 - [x] Re-run with the miller warning softened — DONE, fixation eliminated
 - [ ] Try a different AUT model (Qwen2.5-7B? Llama-3-8B?) that may roleplay better
-- [ ] Implement AUT self-introspection (`remember` tool) — see `docs/plans/introspection_api_plan.md`
+- [ ] Implement AUT self-introspection (`remember` tool) — see `docs/plans/archive/introspection_api_plan.md`
 - [ ] Run medium variant (6 interference turns) to test memory decay
 - [ ] Run long variant (10 interference turns) for stress test
 - [ ] Fix system_stats introspection to return actual memory/edge counts
