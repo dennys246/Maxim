@@ -211,9 +211,9 @@ predicted direction) → PASS with note. No (shift is zero or wrong direction)
 
 ## Cross-references
 
-- [37_cross_session_graduation.md](../experiments/37_cross_session_graduation.md)
+- [37_cross_session_graduation.md](../../experiments/37_cross_session_graduation.md)
   — pre-registration (now carries the 2026-06-05 amendment).
-- [protocols/37_cross_session_graduation_reproduction.md](../experiments/protocols/37_cross_session_graduation_reproduction.md)
+- [protocols/37_cross_session_graduation_reproduction.md](../../experiments/protocols/37_cross_session_graduation_reproduction.md)
   — protocol (now carries the SD-shift rule in §1 and §D).
 - [exp37_metric_pivot.md](exp37_metric_pivot.md) — the prior amendment
   (metric pivot to positive_approach_engagement_fraction). This amendment
@@ -221,6 +221,6 @@ predicted direction) → PASS with note. No (shift is zero or wrong direction)
 - [cradle_activation_fixes.md](cradle_activation_fixes.md) — the source
   of PRs C/D/E that landed the drive calibration; everything from this
   amendment runs on top of that infrastructure.
-- [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md)
+- [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md)
   — Tier 1 row 1 is the recipient of the verdict; status flip happens
   after the analyzer produces its report.

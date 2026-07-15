@@ -4,7 +4,7 @@ Single source of truth for "is there an LLM call in flight right now?"
 across the codebase. Three consumers query it:
 - :mod:`maxim.simulation.orchestrator` :func:`_stall_detector` — suppresses
   spurious "REPEATED STALL" nudges during legitimate inference (the bug
-  this module exists to close — see [docs/plans/stall_detector_timeout_awareness.md]).
+  this module exists to close — see [docs/plans/deferred/stall_detector_timeout_awareness.md]).
 - :class:`maxim.runtime.heartbeat.HeartbeatMonitor` (Stage 2, pending) —
   will suppress agent-loop-idle warnings when an LLM call is the reason
   for silence. Tracked in the same plan doc.

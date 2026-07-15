@@ -6,7 +6,7 @@ Regression guards for:
 - maxim=None no longer bails early (headless/sim mode)
 - narrow exception handling (import failure → None, not broad swallow)
 
-See ``docs/plans/default_network_unification.md`` for the audit.
+See ``docs/plans/archive/default_network_unification.md`` for the audit.
 """
 
 from __future__ import annotations
@@ -156,7 +156,7 @@ class TestPainCircuitBridgeSubscriberTripwire:
 
     **If this test fails:** someone enriched ``record_action_start``'s context
     to include keys that overlap with pain signal context. Open
-    ``docs/plans/pain_bus_bridge_subscriber_unification.md`` — the deeper
+    ``docs/plans/deferred/pain_bus_bridge_subscriber_unification.md`` — the deeper
     bridge-aware subscriber fix is now needed for BOTH the ToolPainBridge
     and PainCircuitBridge paths.
     """

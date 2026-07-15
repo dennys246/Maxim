@@ -2,7 +2,7 @@
 
 **Status:** Run complete 2026-05-28. **PRIMARY failed (Arm A=0/B=0/C=0) BUT the failure mode narrowed sharply** — Fix B's pipeline works end-to-end; the residual gap is a substrate→scene-entity semantic mismatch at the **manifest LLM**, not at the runtime annotation pipeline.
 **Branch:** main @ `b1e20ee` (post-PR-#292 merge — Fix B landed).
-**Plan:** [docs/plans/v1_refinement.md](../plans/v1_refinement.md) §1.5 integration test, re-run after Fix B.
+**Plan:** [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5 integration test, re-run after Fix B.
 **Predecessors:** [33_wire_a_post_fix_a.md](33_wire_a_post_fix_a.md) (post-Fix-A clean substrate→LLM measurement).
 
 ## Pre-registration
@@ -107,7 +107,7 @@ Per the kickoff's "Triggering bird's-eye encoder work if divergence fires: NEVER
 
 ## Plan-doc folding
 
-- [docs/plans/v1_refinement.md](../plans/v1_refinement.md) §1.5: post-Fix-B verdict — pre-registered divergence-in-a-row trigger met; cheaper prompt-engineering retry (Option X1) is the natural next test before encoder pivot commits.
-- [docs/plans/imagination_substrate_signals.md](../plans/imagination_substrate_signals.md): W2 Bug B fix validated end-to-end (Fix B fires structurally correctly); the surfacing layer (`_compose_substrate_context`) needs prompt-engineering refinement to bridge tool-bias → scene-entity selection. Hookup 2 (per-tick subscriber) and Hookup 3 (arousal-gate) remain 1.1+; Hookup 1's prompt refinement is the immediate cheaper move.
-- [docs/plans/sense_tool_registry.md](../plans/sense_tool_registry.md): W1's grayscale visibility validated structurally; Arm A's tool roster still excludes `sense_food_source` (no food entity materialized because the manifest LLM didn't bridge from substrate bias to food).
-- [docs/plans/cross_modal_substrate_binding.md / jepa_plan_drafted.md] (if drafted): the post-Fix-B narrow gap (manifest LLM substrate-bias → scene-entity selection) is the strongest signal yet for the encoder-alignment thesis. JEPA plan should reference this iteration as direct motivation if Option X1 fails.
+- [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5: post-Fix-B verdict — pre-registered divergence-in-a-row trigger met; cheaper prompt-engineering retry (Option X1) is the natural next test before encoder pivot commits.
+- [docs/plans/deferred/imagination_substrate_signals.md](../plans/deferred/imagination_substrate_signals.md): W2 Bug B fix validated end-to-end (Fix B fires structurally correctly); the surfacing layer (`_compose_substrate_context`) needs prompt-engineering refinement to bridge tool-bias → scene-entity selection. Hookup 2 (per-tick subscriber) and Hookup 3 (arousal-gate) remain 1.1+; Hookup 1's prompt refinement is the immediate cheaper move.
+- [docs/plans/deferred/sense_tool_registry.md](../plans/deferred/sense_tool_registry.md): W1's grayscale visibility validated structurally; Arm A's tool roster still excludes `sense_food_source` (no food entity materialized because the manifest LLM didn't bridge from substrate bias to food).
+- [docs/plans/archive/cross_modal_substrate_binding.md / jepa_plan_drafted.md] (if drafted): the post-Fix-B narrow gap (manifest LLM substrate-bias → scene-entity selection) is the strongest signal yet for the encoder-alignment thesis. JEPA plan should reference this iteration as direct motivation if Option X1 fails.

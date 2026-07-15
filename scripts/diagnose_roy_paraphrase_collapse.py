@@ -13,7 +13,7 @@ and answers two questions:
        threshold) cell satisfies the sequential pair ≥ 70% / distractor < 30%
        gate with the smallest delta from current defaults?
 
-The matrix mode implements Phase 1 of docs/plans/ec_centroid_drift_fix.md.
+The matrix mode implements Phase 1 of docs/plans/archive/ec_centroid_drift_fix.md.
 
 Pre-registered single-cell outcomes (see docs/experiments/24_roy_paraphrase_diagnostic.md):
 
@@ -99,7 +99,7 @@ class CellConfig:
 # Current defaults — the baseline cell that single-cell mode runs by default.
 CURRENT_DEFAULTS = CellConfig(decomposition=False, frozen_text_centroid=False, threshold=0.40)
 
-# Phase 1 matrix axes per docs/plans/ec_centroid_drift_fix.md.
+# Phase 1 matrix axes per docs/plans/archive/ec_centroid_drift_fix.md.
 MATRIX_CELLS: list[CellConfig] = [
     CellConfig(decomposition=d, frozen_text_centroid=f, threshold=t)
     for d in (False, True)
@@ -381,7 +381,7 @@ def run_matrix(
 ) -> dict[str, Any]:
     """Run all 2x2x4 cells and rank the passing ones by smallest delta.
 
-    Pass criterion (per docs/plans/ec_centroid_drift_fix.md Phase 1):
+    Pass criterion (per docs/plans/archive/ec_centroid_drift_fix.md Phase 1):
       sequential pair collapse >= pair_min AND
       sequential distractor collapse < dist_max.
 
@@ -504,7 +504,7 @@ def _print_matrix(matrix: dict, pair_min: float, dist_max: float) -> None:
     else:
         print("NO CELLS PASS THE GATE.")
         print("  Phase 1 loops back — extend matrix axes or commit to a more aggressive fix")
-        print("  (member-count cap, sparse coding) per docs/plans/ec_centroid_drift_fix.md.")
+        print("  (member-count cap, sparse coding) per docs/plans/archive/ec_centroid_drift_fix.md.")
     print()
 
 
@@ -533,7 +533,7 @@ def main() -> int:
         "--matrix",
         action="store_true",
         help="Run the 2x2x4 (decomp × frozen-text × threshold) matrix sweep per "
-        "Phase 1 of docs/plans/ec_centroid_drift_fix.md.",
+        "Phase 1 of docs/plans/archive/ec_centroid_drift_fix.md.",
     )
     args = parser.parse_args()
 

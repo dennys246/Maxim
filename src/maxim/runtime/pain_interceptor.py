@@ -16,7 +16,7 @@ the ordering contract is obvious.
 
 Canonical executor stack (outermost first). The bridge is constructed
 INSIDE ``build_executor`` — never retrofitted onto an Executor after
-the fact. See ``docs/plans/executor_bootstrap_unification.md``.
+the fact. See ``docs/plans/archive/executor_bootstrap_unification.md``.
 
     from maxim.runtime.bootstrap import build_executor
 

@@ -4,7 +4,7 @@ Roy harness session R2 of 5. Reads ``aut_hippocampus.json`` /
 ``aut_nac.json`` (and, when present, ``ec.json`` / ``atl.json``) from
 two ``~/.maxim/sim_reports/<id>/`` directories and emits the per-axis
 metrics named in
-``docs/plans/persona_convergence_crucible.md`` § "What we record per
+``docs/plans/deferred/persona_convergence_crucible.md`` § "What we record per
 Roy iteration":
 
 - NAc ``_percept_valences`` L2 distance for shared entity classes

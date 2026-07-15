@@ -424,7 +424,7 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
     # Cloud providers (Anthropic). prompt_cache marks the system prompt as
     # cacheable (cache_read_input_tokens do NOT count toward ITPM on Sonnet
     # 4.x / Haiku 4.5 / Opus 4.x). See
-    # docs/plans/prompt_caching_for_cloud_backends.md.
+    # docs/plans/archive/prompt_caching_for_cloud_backends.md.
     "claude-sonnet-4-6": {
         "backend": "anthropic",
         "model": "claude-sonnet-4-6",
@@ -458,7 +458,7 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
     # Cloud providers (OpenAI). prompt_cache here gates the openai_cache
     # measurement event — OpenAI caching itself is automatic/server-side for
     # prompts >1024 tokens (no marker), enabled by Phase 1's stable system
-    # prefix. See docs/plans/prompt_caching_for_cloud_backends.md Phase 2.
+    # prefix. See docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 2.
     "gpt-4o": {
         "backend": "openai",
         "model": "gpt-4o",
@@ -572,7 +572,7 @@ _BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
         "base_url": "https://api.deepseek.com/v1",
         # DeepSeek does automatic context caching (reports prompt_cache_hit_tokens);
         # gates the openai_cache measurement event. See
-        # docs/plans/prompt_caching_for_cloud_backends.md Phase 2.
+        # docs/plans/archive/prompt_caching_for_cloud_backends.md Phase 2.
         "prompt_cache": True,
     },
     "deepseek-reasoner": {

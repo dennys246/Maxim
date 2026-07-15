@@ -558,7 +558,7 @@ class OrchestratorActorTool(Tool):
     so the AUT's NAc records the causal link to the scene entity rather
     than to a generic ``orchestrator_damage`` source.
 
-    Invariants (per ``docs/plans/scene_actor_affordances.md``):
+    Invariants (per ``docs/plans/deferred/scene_actor_affordances.md``):
     1. Self-side entities are rejected — orchestrator cannot puppet the
        AUT's body via this tool.  Use ``damage_component`` /
        ``set_entity_sensor`` for AUT-body writes.
@@ -1272,7 +1272,7 @@ class SpawnSubSimulationTool(Tool):
         )
         # Sub-AUT executor is sandboxed for tool-internal use; explicit
         # opt-out from bio-learning. See
-        # docs/plans/executor_bootstrap_unification.md audit row #6.
+        # docs/plans/archive/executor_bootstrap_unification.md audit row #6.
         sub_executor = build_executor(sub_registry, pain_bus=None)
 
         # Wrap sub-AUT executor with FearGatedExecutor

@@ -1,9 +1,12 @@
 # Wire-A cluster-reward-bias decay tau split
 
+> **ARCHIVED (2026-07-15 plans audit):** ✅ ALL 5 PHASES COMPLETE. Phase 1 shipped PR #267 (`NACConfig.cluster_reward_bias_decay_tau=300.0` + env override); Phase 3 validation complete (Exp 30 — decay fit within 0.3%). The failed PRIMARY behavioral criterion was root-caused to two downstream gaps and handed off to sense_tool_registry + imagination_substrate_signals (both since MVP-shipped). The `Draft` header below is stale. Q4 four-tau bio-coherence audit is non-gating post-1.0 work.
+
+
 **Target version:** 0.9.2 (preferred) or 0.9.1 follow-up before publish.
-**Status:** Draft. Plan written 2026-05-25 after Roy-3c-bisect ([PR #266](https://github.com/dennys246/Maxim/pull/266), [29_roy_3c_bisect.md](../experiments/29_roy_3c_bisect.md)) cleanly named Wire-A's decay rule as the cause of the magnitude-axis shift, and surfaced that the chosen tau may be too aggressive for Wire-A's actual use case.
-**Owns:** [`src/maxim/decisions/nac.py`](../../src/maxim/decisions/nac.py) (`NACConfig` field add + `decay_cluster_reward_biases` consumer change), [`tests/unit/test_nac.py`](../../tests/unit/test_nac.py) (regression guards for the new field), [`docs/experiments/30_wire_a_tau_validation.md`](../experiments/30_wire_a_tau_validation.md) (companion write-up, created during Phase 3).
-**Companion plans:** [release_0_9_1.md](archive/release_0_9_1.md) (this is the substantive Tier 2 work the Roy-3 writeup teed up), [v1_refinement.md](v1_refinement.md) (Roy-3 follow-up item 2 — "decide whether Wire-A's render needs a raw priming snapshot floor" — supersedes that decision with a cleaner tune), [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy-3 retry that depends on this lands here).
+**Status:** Draft. Plan written 2026-05-25 after Roy-3c-bisect ([PR #266](https://github.com/dennys246/Maxim/pull/266), [29_roy_3c_bisect.md](../../experiments/29_roy_3c_bisect.md)) cleanly named Wire-A's decay rule as the cause of the magnitude-axis shift, and surfaced that the chosen tau may be too aggressive for Wire-A's actual use case.
+**Owns:** [`src/maxim/decisions/nac.py`](../../src/maxim/decisions/nac.py) (`NACConfig` field add + `decay_cluster_reward_biases` consumer change), [`tests/unit/test_nac.py`](../../tests/unit/test_nac.py) (regression guards for the new field), [`docs/experiments/30_wire_a_tau_validation.md`](../../experiments/30_wire_a_tau_validation.md) (companion write-up, created during Phase 3).
+**Companion plans:** [release_0_9_1.md](release_0_9_1.md) (this is the substantive Tier 2 work the Roy-3 writeup teed up), [v1_refinement.md](v1_refinement.md) (Roy-3 follow-up item 2 — "decide whether Wire-A's render needs a raw priming snapshot floor" — supersedes that decision with a cleaner tune), [persona_convergence_crucible.md](../deferred/persona_convergence_crucible.md) (Roy-3 retry that depends on this lands here).
 
 ## Front-gate scope pressure (retroactive)
 
@@ -18,7 +21,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 | Reuse `reward_bias_decay_tau=50.0` for `_cluster_reward_bias` | **The status-quo riding-on-existing path — and it's the bug.** 50.0 was sized for EC threshold modulation; Wire-A needs ~300-400 for multi-turn substrate-voice annotation. Same field, wrong use case |
 | Reuse `percept_valence_decay_tau=200.0` | Wire 2's tune; cluster_reward_bias is associative-memory (longer timescale) than per-event Pavlovian aversion. 200 is in the right ballpark but is the wrong field by use-case discipline |
 | Add a global `bio_decay_scale` factor | A multiplier across all decays would break Wire 2's deliberate decoupling and re-introduce the same use-case-collision the plan is trying to fix |
-| Per-cluster learnable decay | Would solve the static-default problem but is a Phase 6+ scope expansion (per [decay_consolidation_calibration_plan.md](decay_consolidation_calibration_plan.md) Q12). Wrong scale for this fix |
+| Per-cluster learnable decay | Would solve the static-default problem but is a Phase 6+ scope expansion (per [decay_consolidation_calibration_plan.md](../deferred/decay_consolidation_calibration_plan.md) Q12). Wrong scale for this fix |
 
 **Verdict:** could-ride-on-existing but the existing path is the bug. The minimum-viable fix is **a new `NACConfig` field** (`cluster_reward_bias_decay_tau`) — riding on the existing `NACConfig` dataclass pattern (Wire 2 already established the per-use-case split precedent).
 
@@ -26,9 +29,9 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 
 ## Why this plan exists
 
-Roy-3 ([23_roy_3.md](../experiments/23_roy_3.md)) shipped the four 0.9.1 wires and ran the pre-registered annotation-pattern validation. The pre-registered outcome ("A ≈ B ≈ C across both fixtures") reproduced. Wire-A's annotation was wired correctly end-to-end, but the LLM saw `[neutral / mixed]` at test time (max(|bias|) = 0.036 in Roy-3a, 0.098 in Roy-3b — both below the 0.1 "mildly rewarding" floor). The annotation was present but said nothing.
+Roy-3 ([23_roy_3.md](../../experiments/23_roy_3.md)) shipped the four 0.9.1 wires and ran the pre-registered annotation-pattern validation. The pre-registered outcome ("A ≈ B ≈ C across both fixtures") reproduced. Wire-A's annotation was wired correctly end-to-end, but the LLM saw `[neutral / mixed]` at test time (max(|bias|) = 0.036 in Roy-3a, 0.098 in Roy-3b — both below the 0.1 "mildly rewarding" floor). The annotation was present but said nothing.
 
-Roy-3c-bisect ([29_roy_3c_bisect.md](../experiments/29_roy_3c_bisect.md)) decomposed Roy-3's "still unfalsified" branch into two axes:
+Roy-3c-bisect ([29_roy_3c_bisect.md](../../experiments/29_roy_3c_bisect.md)) decomposed Roy-3's "still unfalsified" branch into two axes:
 
 1. **Key count (6 → 2):** non-code environmental drift in the encoder layer (env-var refuted by A1, narrator drift refuted by A3, AUT behavior byte-identical between historical and current). Cannot be closed by bisect; doesn't change any downstream design decision.
 2. **Bias magnitude (saturated → partial → decayed-to-neutral-by-test-time):** Wire-A's pre-merge fold commit (`bee42ca`) intentionally added `NAc.decay_cluster_reward_biases()` per-tick decay in response to a Critical bio-fidelity review finding ("by-accretion contamination of the substrate-voice thesis"). Confirmed behaviorally by A2: 7 pre-decay runs all saturated +1.0/+1.0; 3 post-decay runs all `{partial, +0.98}`. The decay IS the cause.
@@ -107,7 +110,7 @@ Open to higher values (400, 500) if Phase 3 validation shows 300 is still too ag
 
 ## Downstream: calibration-by-simulation framework (1.1+)
 
-After this plan ships + SCN-anchoring ships, the natural next step is the [decay_consolidation_calibration_plan.md](decay_consolidation_calibration_plan.md) framework — tier-transition-driven calibration replaces hand-picked tau defaults. The 300 value this plan ships becomes a *baseline data point* for the calibration framework, not a permanent value. If the framework converges on a different value for `cluster_reward_bias_decay_tau`, that becomes the new default via a follow-up config-update PR.
+After this plan ships + SCN-anchoring ships, the natural next step is the [decay_consolidation_calibration_plan.md](../deferred/decay_consolidation_calibration_plan.md) framework — tier-transition-driven calibration replaces hand-picked tau defaults. The 300 value this plan ships becomes a *baseline data point* for the calibration framework, not a permanent value. If the framework converges on a different value for `cluster_reward_bias_decay_tau`, that becomes the new default via a follow-up config-update PR.
 
 ## Known limitation: decay is tick-anchored, not SCN-tied (separate follow-up)
 
@@ -122,7 +125,7 @@ Biologically, associative-memory extinction is wall-clock anchored — extinctio
 
 **SCN is the right home for wall-clock-anchored time signals.** SCN already does phase tracking, is already integrated with NAc for anticipatory pre-activation (B2, PR #198, [`project_b2_scn_oscillator_shipped.md`](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_b2_scn_oscillator_shipped.md)), and is the natural place to anchor extinction timescales. Tying all three NAc decay functions (`decay_reward_biases`, `decay_goal_reward_biases`, `decay_cluster_reward_biases`) plus `decay_eligibility` and `decay_percept_valences` to SCN ticks (wall-clock-derived) would make decay rate hardware-independent and bio-plausible.
 
-**This is a separate plan, not part of the tau split.** Tying decay to SCN touches ALL FIVE decay parameters; the tau split affects only `cluster_reward_bias`. Sequencing: ship the tau split first (closes Roy-3 follow-up item 2, validates Wire-A behaviorally), then the SCN-tying work can ship independently without invalidating the tuned tau value — `tau=300 ticks` becomes `tau=300 SCN-anchored time units` and the calibration math is preserved at whatever SCN tick rate becomes the default. **The SCN-tying plan is drafted as [scn_decay_anchoring.md](scn_decay_anchoring.md)** (Phase C of this kickoff sequence, 2026-05-26).
+**This is a separate plan, not part of the tau split.** Tying decay to SCN touches ALL FIVE decay parameters; the tau split affects only `cluster_reward_bias`. Sequencing: ship the tau split first (closes Roy-3 follow-up item 2, validates Wire-A behaviorally), then the SCN-tying work can ship independently without invalidating the tuned tau value — `tau=300 ticks` becomes `tau=300 SCN-anchored time units` and the calibration math is preserved at whatever SCN tick rate becomes the default. **The SCN-tying plan is drafted as [scn_decay_anchoring.md](../deferred/scn_decay_anchoring.md)** (Phase C of this kickoff sequence, 2026-05-26).
 
 Tracked as a candidate follow-up plan in memory: [`feedback_decay_is_tick_anchored_not_wall_clock.md`](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_decay_is_tick_anchored_not_wall_clock.md). Revisit when the tau-split work lands or when a multi-hardware deployment surfaces the symptom.
 
@@ -142,7 +145,7 @@ Tracked as a candidate follow-up plan in memory: [`feedback_decay_is_tick_anchor
 | 2 | Regression test guards: existing `decay_cluster_reward_biases` tests pin the formula; add tests pinning the new field separation, the default value, and env override | ~50 tests | none | low |
 | 3 | Roy-3 retry (Roy-3a spec, all other config unchanged) | ~30 min wall | sim_reports session | medium — runner time |
 | 4 | Companion experiment doc `30_wire_a_tau_validation.md` with cross-arm divergence measurements | ~150 doc | none | none |
-| 5 | Fold verdict into [v1_refinement.md](v1_refinement.md), [release_0_9_1.md](archive/release_0_9_1.md) Roy-3 follow-up list | ~30 doc | none | none |
+| 5 | Fold verdict into [v1_refinement.md](v1_refinement.md), [release_0_9_1.md](release_0_9_1.md) Roy-3 follow-up list | ~30 doc | none | none |
 | **Total** | | **~270 LOC + ~1 runner day** | none | low |
 
 ## Phase 1 — Config split
@@ -216,14 +219,14 @@ Re-run Roy-3a unchanged (same spec, same fixture) with the new tau default. Expe
 | Arm A `sense_food_source` tool calls | 0 | ≥1 (positive divergence signal) |
 | Pre-registered Roy-3 outcome | "annotations present but LLM not biasing on them" | "annotation present, LLM biases when annotation is meaningful" |
 
-The pre-registered Roy-3-retry pass criterion (per the persona-convergence framing in [persona_convergence_crucible.md](persona_convergence_crucible.md)):
+The pre-registered Roy-3-retry pass criterion (per the persona-convergence framing in [persona_convergence_crucible.md](../deferred/persona_convergence_crucible.md)):
 
 - **Arm A produces ≥1 `sense_food_source` call across the 10-turn test arm** — substrate-acquired bias surfaced via Wire-A's prompt annotation drove the LLM to consider the tool it would not have considered without the annotation.
 - **Stretch:** Arm A > Arms B and C on `sense_food_source` count — the annotation produces the cross-arm divergence Roy-3 was designed to validate.
 
 The null result (Arm A still zero `sense_food_source`) means:
 - The 300 tau is still too aggressive (lift to 400-500 and retry), OR
-- The annotation pattern itself doesn't drive the LLM regardless of bias magnitude (escalates to the alternative mechanisms in [persona_convergence_crucible.md](persona_convergence_crucible.md))
+- The annotation pattern itself doesn't drive the LLM regardless of bias magnitude (escalates to the alternative mechanisms in [persona_convergence_crucible.md](../deferred/persona_convergence_crucible.md))
 
 Phase 3 disambiguates which.
 
@@ -263,15 +266,15 @@ Run Phase 3 with `MAXIM_LOG_FILE=/tmp/roy_3a_tau_validation.jsonl MAXIM_SUBSTRAT
 
 ### Phase 5 outcome (2026-05-26)
 
-Phase 3 ran ([30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md)). Verdict: **tau split structurally validated** (annotation rendered `[strongly rewarding]` throughout the test arm; decay trajectory fit the model within 0.3%), but the **PRIMARY criterion (Arm A ≥1 `sense_food_source` call) failed** for a third reason the kickoff didn't anticipate.
+Phase 3 ran ([30_wire_a_tau_validation.md](../../experiments/30_wire_a_tau_validation.md)). Verdict: **tau split structurally validated** (annotation rendered `[strongly rewarding]` throughout the test arm; decay trajectory fit the model within 0.3%), but the **PRIMARY criterion (Arm A ≥1 `sense_food_source` call) failed** for a third reason the kickoff didn't anticipate.
 
 Wire-A's annotation reached the LLM with the right magnitude; the LLM could not act on it because:
 1. `sense_food_source` is a SEM-modulator-derived tool absent from the test scene's active roster, and the LLM has no signal that the tool exists elsewhere.
 2. Imagination's trigger is percept-text-bound and substrate-blind, so it can't dream up the missing entity into scene when Wire-A signals strong reward for an absent tool.
 
 Two new 1.1+ plan docs capture the downstream gaps:
-- [sense_tool_registry.md](sense_tool_registry.md) — adds grayscale visibility for SEM-derived inactive tools.
-- [imagination_substrate_signals.md](imagination_substrate_signals.md) — hooks NAc/Wire-A signals into imagination's input.
+- [sense_tool_registry.md](../deferred/sense_tool_registry.md) — adds grayscale visibility for SEM-derived inactive tools.
+- [imagination_substrate_signals.md](../deferred/imagination_substrate_signals.md) — hooks NAc/Wire-A signals into imagination's input.
 
 Either could close the Roy-3a gap independently; both together is the robust fix.
 
@@ -285,12 +288,12 @@ The bias-magnitude side of Wire-A is no longer the bottleneck. Roy-3 follow-up i
 
 ## Authorization gate
 
-Per CLAUDE.md sims-from-Claude-Code discipline, Phase 3's runner pass needs `--interactive false` and pre-confirmed test-arm length. The Roy-2 reproduction protocol ([18_roy_2_reproduction.md](../experiments/protocols/18_roy_2_reproduction.md)) covers the shape; Phase 3 follows that protocol verbatim with the new tau active.
+Per CLAUDE.md sims-from-Claude-Code discipline, Phase 3's runner pass needs `--interactive false` and pre-confirmed test-arm length. The Roy-2 reproduction protocol ([18_roy_2_reproduction.md](../../experiments/protocols/18_roy_2_reproduction.md)) covers the shape; Phase 3 follows that protocol verbatim with the new tau active.
 
 ## What this NOT solves
 
 - The 6→2 cluster count axis (Roy-3c-bisect's unclosable environmental drift). This plan only addresses magnitude; the count axis is a separate, deferred question.
-- General persona convergence (Roy-3 was never designed to close it). This plan closes the specific Wire-A-can't-be-expressive sub-question; the broader persona-convergence research question is owned by [persona_convergence_crucible.md](persona_convergence_crucible.md) and depends on Phase 3's outcome.
+- General persona convergence (Roy-3 was never designed to close it). This plan closes the specific Wire-A-can't-be-expressive sub-question; the broader persona-convergence research question is owned by [persona_convergence_crucible.md](../deferred/persona_convergence_crucible.md) and depends on Phase 3's outcome.
 - EC drift fix Phase-X retests at 0.44. The bisect closed the priming-regression confound that was blocking that retest; this plan is independent of EC threshold and runs at whatever EC default is current at Phase 3 time.
 
 ## Open questions — resolved 2026-05-25

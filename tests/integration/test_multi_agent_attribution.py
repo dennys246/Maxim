@@ -1,7 +1,7 @@
 """P4 multi-agent learning attribution regression tests.
 
 These tests lock down two correctness gaps surfaced during the
-agent-backed entities audit (see ``docs/plans/v1_refinement.md`` Section 4
+agent-backed entities audit (see ``docs/plans/archive/v1_refinement.md`` Section 4
 P4):
 
 1. ``runtime/bio_integration.py`` previously kept module-level globals

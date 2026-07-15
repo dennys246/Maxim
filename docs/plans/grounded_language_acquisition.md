@@ -2,7 +2,7 @@
 
 **Status:** ACTIVE — promoted from deferred 2026-05-09 after E4 validation surfaced the LLM-band-aid drift (60-70% of recent engineering effort spent on LLM-mitigation scaffolding, ~845 LOC of band-aid code, growing). The MVP for negative-instruction tool-failure hints failed validation (n=6 per arm, no benefit observed; default flipped OFF), making the architectural pivot urgent.
 **Begins:** Phase -1 + Phase 0 harness in 1.0 (parallel to docs work). Full Phase 0 validation, Phase 1, and Phase 2 in 1.1+. Substrate-primary AUT mode (the parallel-architecture work) interleaves with the language phases.
-**Companion plans:** [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy methodology — same long-horizon shape), [behavioral_convergence_practice.md](behavioral_convergence_practice.md), [memory_consolidation_practice.md](memory_consolidation_practice.md), [v1_refinement.md](v1_refinement.md) (Phase 0 harness scope add)
+**Companion plans:** [persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) (Roy methodology — same long-horizon shape), [behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md), [memory_consolidation_practice.md](deferred/memory_consolidation_practice.md), [v1_refinement.md](archive/v1_refinement.md) (Phase 0 harness scope add)
 **Operating context:** Roy long-horizon simulations (sim-years of subjective experience) with persistent substrate across sessions, plus deliberately text-heavy curricular sims (mom-reading, teacher-student, dialogue). The substrate-primary AUT runs in **parallel mode** — the existing LLM-AUT path remains available so users can continue running D&D campaigns and other long-horizon LLM-driven sims while this work matures.
 
 ## Front-gate scope pressure (retroactive)
@@ -17,7 +17,7 @@ Added 2026-05-27 per CLAUDE.md Principle 3. Analyzed per-phase because the plan 
 
 **Phase 1 (vocabulary-constrained language — 1.1+):** yes-needs-own (small). Token-to-EC-node binding registry has no current home — neither EC nor ATL key by `token_id`. **Specific reason:** existing identity schemes (tool-name in NAc reward biases; cluster-UUID in `_cluster_reward_bias`) don't survive cross-modality (per [feedback_two_identity_schemes.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_two_identity_schemes.md)). The new registry can either ride on `cross_modal_substrate_binding.md`'s edges (if Roy-4 PASS) or build a local co-occurrence learner.
 
-**Phase 2 (symbol binding layer — 1.1+):** yes-needs-own per [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) — see that plan's front-gate analysis. Roy-4 FAIL forced the architecture into JEPA territory; existing infrastructure cannot do cross-modal alignment across 384-dim sensor vs 768-dim linguistic spaces.
+**Phase 2 (symbol binding layer — 1.1+):** yes-needs-own per [jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) — see that plan's front-gate analysis. Roy-4 FAIL forced the architecture into JEPA territory; existing infrastructure cannot do cross-modal alignment across 384-dim sensor vs 768-dim linguistic spaces.
 
 **Phase 3 (from-scratch sequence model — research direction):** yes-needs-own. No existing sequence model in Maxim; this phase explicitly *is* the new mechanism. Specific reason: "language is I/O from substrate" thesis cannot be earned without showing language emerges from substrate — and that requires removing the pretrained LLM at the action-selection layer.
 
@@ -161,7 +161,7 @@ So: do the cheap thesis-tests first, then earn the right to the expensive build.
 
   **Why this belongs in Phase 0 not Roy:** the wire and its closure are properties of the substrate-primary architecture, not the persona-convergence harness. Roy-0 only surfaced the gap because it was the first long-horizon run with substrate-primary that captured persisted diffs across arms. Until G4 closes, every Roy iteration's "active substrate" measurements (reward_bias L2, valence KS, episode valence distribution) read 0 regardless of priming — the harness works, but the substrate has nothing active to compare.
 
-  **Cross-references:** Roy-0 iteration log entry in [persona_convergence_crucible.md § Iteration log](persona_convergence_crucible.md), commit `6d0e4a7` message, [tests/integration/test_substrate_primary_aut.py](../../tests/integration/test_substrate_primary_aut.py) (5 unit-coverage tests for `update_cluster_reward` exist already; the wire is what's missing).
+  **Cross-references:** Roy-0 iteration log entry in [persona_convergence_crucible.md § Iteration log](deferred/persona_convergence_crucible.md), commit `6d0e4a7` message, [tests/integration/test_substrate_primary_aut.py](../../tests/integration/test_substrate_primary_aut.py) (5 unit-coverage tests for `update_cluster_reward` exist already; the wire is what's missing).
 
 - **Roy long-horizon harness** — Phase 0 validation needs sim-years of subjective experience across persistent substrate sessions. Designed but unbuilt; tracked as the gating dependency for Phase 0/1 validation, persona convergence, and D&D survival testing.
 - **Pre-linguistic orchestrator narration** — the LLM-DM still emits English narration percepts the substrate-primary AUT ignores. Phase 0's "no English" goal is met on the AUT side but not the orchestrator side; eventually the orchestrator should produce sensor writes only (or be silenced entirely).
@@ -185,7 +185,7 @@ So: do the cheap thesis-tests first, then earn the right to the expensive build.
 **Gate / kill criterion:**
 - **Pass:** measurable EC cluster formation tied to repeating sensorimotor patterns; NAc reward_bias differentiates drive-resolution events from null events; cross-session re-activation > chance.
 - **Fail:** no detectable substrate structure after 50+ sessions of Roy-scale exposure. **Stops the program.** If bio-systems can't form concepts without linguistic supervision, the thesis is wrong and Phases 1-4 have nothing to ground in.
-- **Mixed:** clusters form but don't persist, or persist but don't generalize. Diagnostic, not fatal — feeds [memory_consolidation_practice.md](memory_consolidation_practice.md).
+- **Mixed:** clusters form but don't persist, or persist but don't generalize. Diagnostic, not fatal — feeds [memory_consolidation_practice.md](deferred/memory_consolidation_practice.md).
 
 **What this DOESN'T test:** language. Phase 0 is intentionally pre-linguistic. Whether words can later bind to these clusters is Phase 2's question.
 
@@ -208,7 +208,7 @@ This is the cheapest possible test of "the substrate carries the cognition" with
 **Implementation surface:**
 - [models/language/maxim_peer_backend.py](../../src/maxim/models/language/maxim_peer_backend.py) gains an optional `logit_mask_provider` parameter. The peer-backend invariants (one HTTP call, typed failure mapping) stay intact — masking is local pre/post-processing, not an extra request.
 - [decisions/nac.py](../../src/maxim/decisions/nac.py) or [similarity/ec.py](../../src/maxim/similarity/ec.py) exposes a `bound_tokens()` accessor.
-- Co-occurrence learner runs as a passive observer subscribed to the existing percept/action buses; no new orchestrator. **Coordination note (2026-05-13):** [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) ships the substrate-level binding mechanism (EC nodes binding to EC nodes via Hebbian co-activation) in 1.1. Phase 1's `token_id → ec_node_id` symbol-binding registry is a token-granularity special case of those edges. If the binding plan ships first or in parallel, Phase 1's co-occurrence learner becomes a thin lookup over `EC._binding_edges` rather than duplicate machinery. Phase 1 does not depend on the binding plan — fallback to its own co-occurrence learner if the binding plan slips — but coordinating the two reduces duplicate work.
+- Co-occurrence learner runs as a passive observer subscribed to the existing percept/action buses; no new orchestrator. **Coordination note (2026-05-13):** [cross_modal_substrate_binding.md](archive/cross_modal_substrate_binding.md) ships the substrate-level binding mechanism (EC nodes binding to EC nodes via Hebbian co-activation) in 1.1. Phase 1's `token_id → ec_node_id` symbol-binding registry is a token-granularity special case of those edges. If the binding plan ships first or in parallel, Phase 1's co-occurrence learner becomes a thin lookup over `EC._binding_edges` rather than duplicate machinery. Phase 1 does not depend on the binding plan — fallback to its own co-occurrence learner if the binding plan slips — but coordinating the two reduces duplicate work.
 
 **Gate / kill criterion:**
 - **Pass:** behavior degrades gracefully with vocabulary size; substrate-bound vocabulary is sufficient for in-distribution task success; out-of-distribution tasks fail in the predicted way.
@@ -276,7 +276,7 @@ This is the cheapest possible test of "the substrate carries the cognition" with
 
 **Question:** Does the Maxim agent retain its substrate behaviors when the pretrained LLM is fully replaced by the Phase 3 model? Are claims about the substrate's role corroborated or refuted?
 
-**Methodology:** mirror the persona-convergence three-arm comparison ([persona_convergence_crucible.md](persona_convergence_crucible.md) Methodology section).
+**Methodology:** mirror the persona-convergence three-arm comparison ([persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) Methodology section).
 
 | Arm | Language model | Substrate |
 |---|---|---|
@@ -299,7 +299,7 @@ Pretrained tokenizers (BPE from GPT-2/3/4, SentencePiece, etc.) carry priors. Th
 ### Catastrophic forgetting across sessions
 
 Online learning + persistent weights = a known disaster mode. Mitigation across all phases:
-- **Replay-based consolidation:** hippocampal episodes are already replayed during sleep ([memory_consolidation_practice.md](memory_consolidation_practice.md)). Extend the replay path to feed the binding-layer (Phase 2) and language model (Phase 3) training batches. This is biologically motivated and operationally necessary.
+- **Replay-based consolidation:** hippocampal episodes are already replayed during sleep ([memory_consolidation_practice.md](deferred/memory_consolidation_practice.md)). Extend the replay path to feed the binding-layer (Phase 2) and language model (Phase 3) training batches. This is biologically motivated and operationally necessary.
 - **Per-session checkpoints with rollback:** if a session destabilizes the model (loss spike, eval collapse), revert. The cost is one sim's worth of learning; the benefit is bounded blast radius.
 - **Importance-weighted updates:** linguistic events tied to high-valence outcomes weight more in the consolidation batch. This piggybacks on existing valence machinery.
 
@@ -357,7 +357,7 @@ Phase 4: comparison harness alongside existing Roy machinery; no new core code.
 
 ## Iteration log
 
-(Append findings here as phases run. Living doc convention per [persona_convergence_crucible.md](persona_convergence_crucible.md) and [behavioral_convergence_practice.md](behavioral_convergence_practice.md).)
+(Append findings here as phases run. Living doc convention per [persona_convergence_crucible.md](deferred/persona_convergence_crucible.md) and [behavioral_convergence_practice.md](deferred/behavioral_convergence_practice.md).)
 
 ### 2026-05-09 — Plan promoted from deferred; parallel-mode architecture decided
 

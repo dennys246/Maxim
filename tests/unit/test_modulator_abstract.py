@@ -1,6 +1,6 @@
 """Unit tests for C4 — modulator-without-sensor hard error.
 
-Per [docs/plans/v1_refinement.md](../../docs/plans/v1_refinement.md) §C4:
+Per [docs/plans/archive/v1_refinement.md](../../docs/plans/archive/v1_refinement.md) §C4:
 - A modulator that declares no sensors is silent dead weight for the
   component-damage model. Shipped as a ``DeprecationWarning`` in 0.9
   (PR #146, 2026-04-30); flipped to ``ConfigurationError`` in 1.0.

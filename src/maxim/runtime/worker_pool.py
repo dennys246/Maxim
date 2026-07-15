@@ -110,7 +110,7 @@ class Origin(str, Enum):
     value so ``f"{origin}"`` / ``str(origin)`` yield ``"local"`` rather than
     ``"Origin.LOCAL"`` (the default Enum ``__str__``), closing an f-string trap.
 
-    See ``docs/plans/lane_capability_placement_split.md``.
+    See ``docs/plans/archive/lane_capability_placement_split.md``.
     """
 
     LOCAL = "local"

@@ -1,5 +1,8 @@
 # Persona cleanup + orchestrator mode transition
 
+> **DEFERRED (2026-07-15 plans audit):** Stage 1 SHIPPED (PR #217 — `--mode` flag + deprecation warnings); Stages 2–6 untouched since April (`simulation/personas.py` ~410 LOC still shipping; Stage 2's Option A/B/C testing-strategy decision still unresolved, owner: user). **Revive when:** the 1.1 deprecation-cleanup cycle is scheduled and the Option A/B/C decision is made, or the `--persona` deprecation window is declared expired and hard-delete is due.
+
+
 **Status:** PARTIAL — Stage 1 shipped 2026-04-30 (PR #217). Stages 2-6 are 1.1+ deprecation cleanup work.
 **Ships in:** Stage 1 in 1.0 (additive `--mode` flag + deprecation warnings on `--persona` and `register_persona`); Stages 2-6 in 1.1 (resolve testing strategy, dispatch hook migration, public API migration, hard-delete the persona system, docs+memory).
 **Owns:** [src/maxim/simulation/personas.py](../../src/maxim/simulation/personas.py), [src/maxim/cli_parser.py](../../src/maxim/cli_parser.py), [src/maxim/simulation/orchestrator.py](../../src/maxim/simulation/orchestrator.py), public API surface in [src/maxim/api.py](../../src/maxim/api.py)
@@ -140,8 +143,8 @@ Strip persona-as-dispatch from the codebase:
 ## Stage 6 — Docs + memory
 
 - Update [docs/simulation.md](../../docs/simulation.md) — remove persona table at lines 83-96, replace with mode reference.
-- Update [docs/user/cli-reference.md](../../docs/user/cli-reference.md) — `--persona` → `--mode`.
-- Update [CLAUDE.md](../../CLAUDE.md) — examples at lines 213, 217, 320; module list.
+- Update [docs/user/cli-reference.md](../../user/cli-reference.md) — `--persona` → `--mode`.
+- Update [CLAUDE.md](../../../CLAUDE.md) — examples at lines 213, 217, 320; module list.
 - Archive `docs/archive/dungeon_master_persona.md` (already archived, leave).
 - Update [project_framing_strategy.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_framing_strategy.md): "personality emerges from bio-systems, not from prompt injection — orchestrator modes are flow-shapes, not character."
 
@@ -177,5 +180,5 @@ Strip persona-as-dispatch from the codebase:
   - Deprecation warning text
 - All Stage-0 baseline sims replay with `--mode` forms and produce diff-clean goldens.
 - `pymaxim` import surface no longer includes `register_persona` or `Persona`.
-- [CLAUDE.md](../../CLAUDE.md) examples + docs reflect new `--mode` flag.
+- [CLAUDE.md](../../../CLAUDE.md) examples + docs reflect new `--mode` flag.
 - Pre-merge two-lens review (Executor + Architecture per [feedback_review_before_ship.md](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_review_before_ship.md)) finds no blocking issues.

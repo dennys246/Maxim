@@ -1,5 +1,8 @@
 # Persona Convergence Crucible
 
+> **DEFERRED (2026-07-15 plans audit):** 8 Roy iterations ran 2026-05-10→05-26 with real substrate data; runs then stopped. Headline finding stands and is load-bearing negative evidence: substrate carryover writes correctly but is behaviorally inert — root-caused to the LinguisticEncoder/SensorEncoder 768-vs-384-dim split (Roy-4/5a). Roy-1 Adversarial remains designed-unrun. Do NOT archive — the iteration log is cited by bio_emergent + behavioral_graduation_candidates. **Revive when:** encoder replacement / cross-modal alignment ships (grounded_language_acquisition Phase 1 or jepa_cross_modal_alignment) so priming and test percepts share an EC region — then Roy-1 Adversarial becomes runnable.
+
+
 **Status:** living doc, ongoing practice
 **Begins:** post-1.0 (after [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md) and [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) ship)
 **Companion living docs:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md) ("does the agent get better across sessions?"), [memory_consolidation_practice.md](memory_consolidation_practice.md) ("does sleep replay actually consolidate?")
@@ -144,7 +147,7 @@ These are sketches. Each becomes a real plan only when the preceding Roy's itera
 ### Instrumentation
 - Stage 0 telemetry from [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) is prerequisite (`agent_id` in actions.jsonl).
 - Per-session NAc snapshots (also Stage 0).
-- Multi-agent attribution must be clean: each adversarial encounter writes `(other_agent_id, betrayal_kind)` into the percept context per the multi-agent stash rules in [CLAUDE.md](../../CLAUDE.md).
+- Multi-agent attribution must be clean: each adversarial encounter writes `(other_agent_id, betrayal_kind)` into the percept context per the multi-agent stash rules in [CLAUDE.md](../../../CLAUDE.md).
 - Adversary policy: scripted first (deterministic, reproducible). Upgrade to local-LLM only if scripted finding is ambiguous.
 
 ### Cost ceiling
@@ -226,7 +229,7 @@ What we'd change for Roy-2: [specific next steps]
 **What needed fixing (closed in the G3/G4 follow-up, 2026-05-11):**
 
 - **G3: LLM pre-flight probe in `run_roy_iteration`.** Resolves `MAXIM_LANE_LARGE_REMOTE_URL` / `_API_KEY` / `_MODEL` from env and probes via the canonical `_MaximPeerBackend.for_url(...).health_check()` entry point before priming starts. Failure populates `result.aborted_at = "preflight"` + `result.preflight` (with `outcome`/`detail`/`fix` for the operator) and persists `result.json` for inspection. Local-LLM and cloud-only configurations skip the probe with a documented reason — their failure modes surface fast at first dispatch without the 10-min grind. `auth_rejected` is a soft-pass (listener alive; the actual LLM calls will surface the auth error fast with their typed `BackendAuthFailed.fix_hint`). One HTTP call only (no retry loop in the runner — `health_check` owns its own two-stage budget; adding a retry here would violate the Plan 3 R2.5 "exactly one HTTP call" invariant for `_MaximPeerBackend`). Test seam: production path (no fake `sim_runner`) defaults to `_preflight_llm`; tests with a fake `sim_runner` skip the probe unless they pass `preflight_fn=` explicitly. Regression guards: `TestRoyPreflight` (4 cases — fail/pass/skip/raising) + `TestPreflightHelper` (4 cases — env resolution, probe wiring, auth soft-pass, exception handling) in [tests/integration/test_roy_runner.py](../../tests/integration/test_roy_runner.py).
-- **G4: cluster-keyed reward-update wire — CLOSED in the same session.** Originally root-caused as an architectural gap (commit `6d0e4a7` Track 2 explicitly deferred the wire; the architectural-gap writeup remains in [grounded_language_acquisition.md § Phase 0 → "G4"](grounded_language_acquisition.md)). Closure shipped end-to-end:
+- **G4: cluster-keyed reward-update wire — CLOSED in the same session.** Originally root-caused as an architectural gap (commit `6d0e4a7` Track 2 explicitly deferred the wire; the architectural-gap writeup remains in [grounded_language_acquisition.md § Phase 0 → "G4"](../grounded_language_acquisition.md)). Closure shipped end-to-end:
   - `LLMProposal.cluster_id` field captures the active EC cluster at proposal time.
   - `propose_via_substrate` stashes it on every substrate-primary proposal.
   - `record_outcome` calls `NAc.update_cluster_reward(agent_id, cluster_id, sig, ±1.0)` whenever cluster_id is set.
@@ -261,7 +264,7 @@ Re-ran the same spec against the same healthy leader after merging the G4 wire o
 | `cluster_reward_bias.available` | `false` (field absent in JSON) | `true` |
 | `reward_bias_l2` | 0.0 | 0.0 (expected — different code path; G4 doesn't touch `credit_node`) |
 
-The Phase 0 architectural-gap writeup ([grounded_language_acquisition.md](grounded_language_acquisition.md)) and the [G4 experiment outcome doc](../experiments/15_g4_cluster_reward_wire.md) carry the full empirical detail. Reproduction runbook: [protocols/15_g4_cluster_reward_wire_reproduction.md](../experiments/protocols/15_g4_cluster_reward_wire_reproduction.md).
+The Phase 0 architectural-gap writeup ([grounded_language_acquisition.md](../grounded_language_acquisition.md)) and the [G4 experiment outcome doc](../../experiments/15_g4_cluster_reward_wire.md) carry the full empirical detail. Reproduction runbook: [protocols/15_g4_cluster_reward_wire_reproduction.md](../../experiments/protocols/15_g4_cluster_reward_wire_reproduction.md).
 
 **Two latent issues surfaced by the live run (tracked as follow-ups on the same PRs):**
 
@@ -279,7 +282,7 @@ The Phase 0 architectural-gap writeup ([grounded_language_acquisition.md](ground
 **Artifacts:**
 - Pre-G4 (2026-05-10): `~/.maxim/roy/roy-0-smoke/result.json` (overwritten by the re-measurement; pre-G4 snapshot lives in `~/.maxim/sim_reports/20260510_*` session dirs). LLM trace `/tmp/roy_0_live.jsonl` (23 peer_backend_call events).
 - Post-G4 (2026-05-11): [`result.json`](/Users/dennyschaedig/.maxim/roy/roy-0-smoke/result.json) carries the new `cluster_reward_bias` field. LLM trace `/tmp/roy_g4_live/roy.jsonl`.
-- Protocol: [`roy_0_smoke.md`](../experiments/protocols/roy_0_smoke.md). Spec: [`roy_0_smoke.yaml`](./roy/roy_0_smoke.yaml).
+- Protocol: [`roy_0_smoke.md`](../../experiments/protocols/roy_0_smoke.md). Spec: [`roy_0_smoke.yaml`](./roy/roy_0_smoke.yaml).
 <!-- /roy-iteration:roy-0-smoke -->
 
 <!-- roy-iteration:roy-1a -->
@@ -296,7 +299,7 @@ The Phase 0 architectural-gap writeup ([grounded_language_acquisition.md](ground
 > run a held-out 10-percept fixture covering matching / novel / unrelated
 > percept classes.
 
-**Pre-Roy-1a stress test:** Added `tests/integration/test_multi_agent_attribution_scale.py` with 5 tests at 4 agents × N=500–1000 per agent (20× the load of the original P4 tests). All pass in <1s. Catches per-agent attribution regressions before Roy-1: Adversarial's 1,000-turn priming burn would expose them. See [docs/experiments/16_roy_1a.md § "What was caught"](../experiments/16_roy_1a.md).
+**Pre-Roy-1a stress test:** Added `tests/integration/test_multi_agent_attribution_scale.py` with 5 tests at 4 agents × N=500–1000 per agent (20× the load of the original P4 tests). All pass in <1s. Catches per-agent attribution regressions before Roy-1: Adversarial's 1,000-turn priming burn would expose them. See [docs/experiments/16_roy_1a.md § "What was caught"](../../experiments/16_roy_1a.md).
 
 **Preflight:** clean. `outcome: ok`, `detail: stage2 HTTP 200`, `latency_ms: 397.6`, `source: peer.yml`. G3's peer.yml fallback (fix shipped post-Roy-0) routed the probe correctly without operator-set env vars.
 
@@ -359,7 +362,7 @@ The Phase 0 architectural-gap writeup ([grounded_language_acquisition.md](ground
 **Artifacts:**
 - [`~/.maxim/roy/roy-1a/result.json`](/Users/dennyschaedig/.maxim/roy/roy-1a/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-1a/summary.md).
 - LLM trace `/tmp/roy_1a_live.jsonl` (22 peer_backend_call events). Run log `/tmp/roy_1a_run.log`.
-- Outcome doc: [`16_roy_1a.md`](../experiments/16_roy_1a.md). Protocol: [`16_roy_1a_reproduction.md`](../experiments/protocols/16_roy_1a_reproduction.md). Spec: [`roy_1a_iteration.yaml`](../../scenarios/roy/roy_1a_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+- Outcome doc: [`16_roy_1a.md`](../../experiments/16_roy_1a.md). Protocol: [`16_roy_1a_reproduction.md`](../../experiments/protocols/16_roy_1a_reproduction.md). Spec: [`roy_1a_iteration.yaml`](../../scenarios/roy/roy_1a_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
 <!-- /roy-iteration:roy-1a -->
 
 <!-- roy-iteration:roy-1b -->
@@ -441,7 +444,7 @@ Arm C (blank, neutral):                  2× infant_humanoid_pick_up
 **Artifacts:**
 - [`~/.maxim/roy/roy-1b/result.json`](/Users/dennyschaedig/.maxim/roy/roy-1b/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-1b/summary.md).
 - LLM trace `/tmp/roy_1b_live.jsonl` (25 peer_backend_call events). Run log `/tmp/roy_1b_run.log`.
-- Outcome doc: [`17_roy_1b.md`](../experiments/17_roy_1b.md). Protocol: [`17_roy_1b_reproduction.md`](../experiments/protocols/17_roy_1b_reproduction.md). Spec: [`roy_1b_iteration.yaml`](../../scenarios/roy/roy_1b_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+- Outcome doc: [`17_roy_1b.md`](../../experiments/17_roy_1b.md). Protocol: [`17_roy_1b_reproduction.md`](../../experiments/protocols/17_roy_1b_reproduction.md). Spec: [`roy_1b_iteration.yaml`](../../scenarios/roy/roy_1b_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
 <!-- /roy-iteration:roy-1b -->
 
 <!-- roy-iteration:roy-2 -->
@@ -528,7 +531,7 @@ If Roy-2b shows non-trivial behavioral divergence in arm A under substrate-prima
 **Artifacts:**
 - [`~/.maxim/roy/roy-2/result.json`](/Users/dennyschaedig/.maxim/roy/roy-2/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-2/summary.md).
 - LLM trace `/tmp/roy_2_live.jsonl` (23 peer_backend_call events). Run log `/tmp/roy_2_run.log`.
-- Outcome doc: [`18_roy_2.md`](../experiments/18_roy_2.md). Protocol: [`18_roy_2_reproduction.md`](../experiments/protocols/18_roy_2_reproduction.md). Spec: [`roy_2_iteration.yaml`](../../scenarios/roy/roy_2_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+- Outcome doc: [`18_roy_2.md`](../../experiments/18_roy_2.md). Protocol: [`18_roy_2_reproduction.md`](../../experiments/protocols/18_roy_2_reproduction.md). Spec: [`roy_2_iteration.yaml`](../../scenarios/roy/roy_2_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
 <!-- /roy-iteration:roy-2 -->
 
 <!-- roy-iteration:roy-2pc -->
@@ -617,13 +620,13 @@ Arm C (blank, neutral):                  2× infant_humanoid_pick_up (both FAILE
 **Artifacts:**
 - [`~/.maxim/roy/roy-2pc/result.json`](/Users/dennyschaedig/.maxim/roy/roy-2pc/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-2pc/summary.md).
 - LLM trace `/tmp/roy_2pc_live.jsonl`. Run log `/tmp/roy_2pc_run.log`.
-- Outcome doc: [`19_roy_2pc.md`](../experiments/19_roy_2pc.md). Protocol: [`19_roy_2pc_reproduction.md`](../experiments/protocols/19_roy_2pc_reproduction.md). Spec: [`roy_2pc_iteration.yaml`](../../scenarios/roy/roy_2pc_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml).
+- Outcome doc: [`19_roy_2pc.md`](../../experiments/19_roy_2pc.md). Protocol: [`19_roy_2pc_reproduction.md`](../../experiments/protocols/19_roy_2pc_reproduction.md). Spec: [`roy_2pc_iteration.yaml`](../../scenarios/roy/roy_2pc_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml).
 <!-- /roy-iteration:roy-2pc -->
 
 <!-- roy-iteration:roy-2c -->
 ### Roy-2c: `min_confidence=0.0` probe (H1 vs H2 disambiguator)
 
-**Status:** SHIPPED. H1-vs-H2 disambiguator for Roy-2pc's byte-identical pick_up result. Ran end-to-end against the same healthy leader, 2026-05-13 12:27→12:46 local. **1284.2s wall (~21.4 min)** — faster than Roy-2pc's 25 min because lower gate accepts proposals faster (less wall burned on 30s timeout). Owned by [release_0_9_1.md Stage 0a](archive/release_0_9_1.md).
+**Status:** SHIPPED. H1-vs-H2 disambiguator for Roy-2pc's byte-identical pick_up result. Ran end-to-end against the same healthy leader, 2026-05-13 12:27→12:46 local. **1284.2s wall (~21.4 min)** — faster than Roy-2pc's 25 min because lower gate accepts proposals faster (less wall burned on 30s timeout). Owned by [release_0_9_1.md Stage 0a](../archive/release_0_9_1.md).
 
 > Single-variable change vs Roy-2pc: `MAXIM_NAC_MIN_CONFIDENCE=0.0` set
 > in runner environment (new env var introduced in 0.9.1). Same
@@ -674,7 +677,7 @@ Arm C (blank, neutral):                  5× infant_humanoid_pick_up (all FAILED
 
 **H2 cleanly refuted:** zero `sense_food_source` calls under gate=0.0.
 
-**What this means for 0.9.1:** Wire-A's design is **revised** per the finding. Original spec used active-cluster-restricted aggregation (`get_active_cluster_biases(cluster_ids=...)`); Roy-2c shows the active-cluster intersection with priming clusters is empty in the failure mode Wire-A is designed to fix. Revised to **agent-wide aggregation** (`get_agent_tool_biases`) — the priming substrate's tool-level signal ("this agent has experienced strong reward on `sense_food_source`") survives the encoder-alignment gap; the cluster-level signal does not. Wire-A surfaces the surviving granularity. See [release_0_9_1.md Stage 2](archive/release_0_9_1.md).
+**What this means for 0.9.1:** Wire-A's design is **revised** per the finding. Original spec used active-cluster-restricted aggregation (`get_active_cluster_biases(cluster_ids=...)`); Roy-2c shows the active-cluster intersection with priming clusters is empty in the failure mode Wire-A is designed to fix. Revised to **agent-wide aggregation** (`get_agent_tool_biases`) — the priming substrate's tool-level signal ("this agent has experienced strong reward on `sense_food_source`") survives the encoder-alignment gap; the cluster-level signal does not. Wire-A surfaces the surviving granularity. See [release_0_9_1.md Stage 2](../archive/release_0_9_1.md).
 
 **What Roy-2c definitively proves:**
 
@@ -689,13 +692,13 @@ Arm C (blank, neutral):                  5× infant_humanoid_pick_up (all FAILED
 **Artifacts:**
 - [`~/.maxim/roy/roy-2c/result.json`](/Users/dennyschaedig/.maxim/roy/roy-2c/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-2c/summary.md).
 - LLM trace `/tmp/roy_2c_live.jsonl`. Run log `/tmp/roy_2c_run.log`.
-- Outcome doc: [`20_roy_2c.md`](../experiments/20_roy_2c.md). Protocol: [`20_roy_2c_reproduction.md`](../experiments/protocols/20_roy_2c_reproduction.md). Spec: [`roy_2c_iteration.yaml`](../../scenarios/roy/roy_2c_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged).
+- Outcome doc: [`20_roy_2c.md`](../../experiments/20_roy_2c.md). Protocol: [`20_roy_2c_reproduction.md`](../../experiments/protocols/20_roy_2c_reproduction.md). Spec: [`roy_2c_iteration.yaml`](../../scenarios/roy/roy_2c_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged).
 <!-- /roy-iteration:roy-2c -->
 
 <!-- roy-iteration:roy-3a -->
 ### Roy-3a: 0.9.1 annotation-pattern validation on original holdout
 
-**Status:** SHIPPED. First post-all-wires iteration. Wires A+1+2+3 (PRs #253 / #254 / #255 / #256 / #257) all active. Multi-arc priming identical to Roy-2 / Roy-2c / Roy-4 / Roy-5a; llm-primary at test against `roy_1_holdout.yaml`. Ran end-to-end against the same healthy leader, 2026-05-23 11:37→11:53 local. **952.5s wall (~15.9 min)** — +8% vs Roy-2's 883s (annotation rendering adds modest per-prompt overhead). Owned by [release_0_9_1.md Stage 5](archive/release_0_9_1.md).
+**Status:** SHIPPED. First post-all-wires iteration. Wires A+1+2+3 (PRs #253 / #254 / #255 / #256 / #257) all active. Multi-arc priming identical to Roy-2 / Roy-2c / Roy-4 / Roy-5a; llm-primary at test against `roy_1_holdout.yaml`. Ran end-to-end against the same healthy leader, 2026-05-23 11:37→11:53 local. **952.5s wall (~15.9 min)** — +8% vs Roy-2's 883s (annotation rendering adds modest per-prompt overhead). Owned by [release_0_9_1.md Stage 5](../archive/release_0_9_1.md).
 
 > Pre-registered diagnostic logic: Arm A > C on tool-family divergence
 > (richer than Roy-2's 17/3/2 vs 21/5/1/1) → Wire 1 + Wire 2 compound
@@ -764,9 +767,9 @@ Arm C (blank, neutral):               21× respond, 3× sense, 2× pick_up,
 **Artifacts:**
 - [`~/.maxim/roy/roy-3a/result.json`](/Users/dennyschaedig/.maxim/roy/roy-3a/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-3a/summary.md).
 - JSONL trace `/tmp/roy_3a_ec_trace.jsonl` (7.9 MB). Run log `/tmp/roy_3a_run.log`.
-- Outcome doc: [`23_roy_3.md`](../experiments/23_roy_3.md) (covers 3a + 3b). Protocol: [`23_roy_3_reproduction.md`](../experiments/protocols/23_roy_3_reproduction.md). Spec: [`roy_3a_iteration.yaml`](../../scenarios/roy/roy_3a_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
+- Outcome doc: [`23_roy_3.md`](../../experiments/23_roy_3.md) (covers 3a + 3b). Protocol: [`23_roy_3_reproduction.md`](../../experiments/protocols/23_roy_3_reproduction.md). Spec: [`roy_3a_iteration.yaml`](../../scenarios/roy/roy_3a_iteration.yaml). Fixture: [`roy_1_holdout.yaml`](../../scenarios/roy/roy_1_holdout.yaml).
 
-**Roy-3a-retry (2026-05-25):** [`30_wire_a_tau_validation.md`](../experiments/30_wire_a_tau_validation.md). Re-ran Roy-3a unchanged with `cluster_reward_bias_decay_tau=300.0` (PR #267). Wire-A's annotation rendered `[strongly rewarding]` (max\|bias\| 0.753-0.997) throughout the test arm — tau split structurally validated. PRIMARY criterion (Arm A ≥1 `sense_food_source`) still failed because of two downstream gaps:
+**Roy-3a-retry (2026-05-25):** [`30_wire_a_tau_validation.md`](../../experiments/30_wire_a_tau_validation.md). Re-ran Roy-3a unchanged with `cluster_reward_bias_decay_tau=300.0` (PR #267). Wire-A's annotation rendered `[strongly rewarding]` (max\|bias\| 0.753-0.997) throughout the test arm — tau split structurally validated. PRIMARY criterion (Arm A ≥1 `sense_food_source`) still failed because of two downstream gaps:
 1. SEM-derived tool absent from active scene roster (no food entity in Roy-1 holdout). New plan: [`sense_tool_registry.md`](sense_tool_registry.md).
 2. Imagination is substrate-blind — can't dream up the missing entity from Wire-A signals. New plan: [`imagination_substrate_signals.md`](imagination_substrate_signals.md).
 
@@ -776,7 +779,7 @@ Arm C (blank, neutral):               21× respond, 3× sense, 2× pick_up,
 <!-- roy-iteration:roy-3b -->
 ### Roy-3b: 0.9.1 annotation-pattern validation on engineered overlap
 
-**Status:** SHIPPED. Wire-A-specific behavioral test on the engineered overlap fixture. Same wires + priming as Roy-3a; llm-primary at test against `roy_2pc_holdout.yaml` (every percept evokes food / hunger / eating semantics). Ran end-to-end against the same healthy leader, 2026-05-23 12:25→12:39 local. **879.9s wall (~14.7 min)** — close to Roy-3a's 953s (same shape, slightly faster). Owned by [release_0_9_1.md Stage 5](archive/release_0_9_1.md).
+**Status:** SHIPPED. Wire-A-specific behavioral test on the engineered overlap fixture. Same wires + priming as Roy-3a; llm-primary at test against `roy_2pc_holdout.yaml` (every percept evokes food / hunger / eating semantics). Ran end-to-end against the same healthy leader, 2026-05-23 12:25→12:39 local. **879.9s wall (~14.7 min)** — close to Roy-3a's 953s (same shape, slightly faster). Owned by [release_0_9_1.md Stage 5](../archive/release_0_9_1.md).
 
 > Pre-registered diagnostic logic: Arm A `sense_food_source` count >
 > Arm B AND > Arm C → Wire-A annotation reached LLM proposer's
@@ -850,13 +853,13 @@ Arm C (blank, neutral):                4× examine, 3× pick_up, 2× eat,
 **Artifacts:**
 - [`~/.maxim/roy/roy-3b/result.json`](/Users/dennyschaedig/.maxim/roy/roy-3b/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-3b/summary.md).
 - JSONL trace `/tmp/roy_3b_ec_trace.jsonl` (7.4 MB). Run log `/tmp/roy_3b_run.log`.
-- Outcome doc: [`23_roy_3.md`](../experiments/23_roy_3.md) (covers 3a + 3b). Protocol: [`23_roy_3_reproduction.md`](../experiments/protocols/23_roy_3_reproduction.md). Spec: [`roy_3b_iteration.yaml`](../../scenarios/roy/roy_3b_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged from Roy-2pc / Roy-2c / Roy-4 / Roy-5a).
+- Outcome doc: [`23_roy_3.md`](../../experiments/23_roy_3.md) (covers 3a + 3b). Protocol: [`23_roy_3_reproduction.md`](../../experiments/protocols/23_roy_3_reproduction.md). Spec: [`roy_3b_iteration.yaml`](../../scenarios/roy/roy_3b_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged from Roy-2pc / Roy-2c / Roy-4 / Roy-5a).
 <!-- /roy-iteration:roy-3b -->
 
 <!-- roy-iteration:roy-4 -->
 ### Roy-4: EC-activation co-activation instrumentation (1.1 binding plan gate)
 
-**Status:** SHIPPED. Cross-modal-binding validation prereq for [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stage 1. Ran end-to-end against the same healthy leader, 2026-05-13 18:00→18:26 local. **1547.5s wall (~25.8 min)** — same shape as Roy-2c since the substrate-primary 30s/turn timeout dominates. Owned by [release_0_9_1.md Stage 0d](archive/release_0_9_1.md).
+**Status:** SHIPPED. Cross-modal-binding validation prereq for [cross_modal_substrate_binding.md](../archive/cross_modal_substrate_binding.md) Stage 1. Ran end-to-end against the same healthy leader, 2026-05-13 18:00→18:26 local. **1547.5s wall (~25.8 min)** — same shape as Roy-2c since the substrate-primary 30s/turn timeout dominates. Owned by [release_0_9_1.md Stage 0d](../archive/release_0_9_1.md).
 
 > Single-variable change vs Roy-2c: `MAXIM_EC_TRACE_ACTIVATIONS=1` set
 > in the runner environment (new env var introduced in 0.9.1 Stage 0d).
@@ -913,7 +916,7 @@ Arm C (blank, neutral):                4× examine, 3× pick_up, 2× eat,
 
 The most permissive rule (`min_cofire=1, min_weight=0.01`) yields 256 priming bound edges; **at every sweep point, zero of those edges connect a priming food cluster to a test-phase active node.** No reasonable parameter tuning rescues the binding hypothesis.
 
-**Pre-registered FAIL outcome confirmed.** Per [cross_modal_substrate_binding.md § Risk register](cross_modal_substrate_binding.md):
+**Pre-registered FAIL outcome confirmed.** Per [cross_modal_substrate_binding.md § Risk register](../archive/cross_modal_substrate_binding.md):
 
 > **Roy-4 fails (pairs don't co-fire even at instrumentation level)** — Cancel Stage 2. The deeper fix is replacing LinguisticEncoder with an aligned multimodal encoder — a 1.2+ research direction. Roy-4 is the cheap gate that prevents this misallocation.
 
@@ -924,21 +927,21 @@ The most permissive rule (`min_cofire=1, min_weight=0.01`) yields 256 priming bo
 - Zero priming-cluster ↔ test-cluster edges form under any reasonable Hebbian binding rule. The rule cannot close the Roy-2c gap on this priming + fixture pair.
 - Both linguistic and drive modality channels reproduce the disjointness — not an artifact of channel mismatch.
 
-**Recommendation:** **Cancel [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) Stages 2-6.** Archive the plan with a "superseded by Roy-4 FAIL" note. Promote encoder replacement to the 1.2+ research-direction priority (the natural carrier is [grounded_language_acquisition.md](grounded_language_acquisition.md), whose Phase 1 was originally scoped to consume binding edges this experiment was meant to validate). Keep the Roy-4 instrumentation surface (`MAXIM_EC_TRACE_ACTIVATIONS` + analyzer) — it's reusable for future substrate-dynamics characterization at zero runtime cost when off. **Roy-5 is cancelled** (it was the post-implementation validation for the binding mechanism that's now off the table). No 0.9.1 plan changes required — Wire-A is unaffected and Roy-3 remains the next harness iteration.
+**Recommendation:** **Cancel [cross_modal_substrate_binding.md](../archive/cross_modal_substrate_binding.md) Stages 2-6.** Archive the plan with a "superseded by Roy-4 FAIL" note. Promote encoder replacement to the 1.2+ research-direction priority (the natural carrier is [grounded_language_acquisition.md](../grounded_language_acquisition.md), whose Phase 1 was originally scoped to consume binding edges this experiment was meant to validate). Keep the Roy-4 instrumentation surface (`MAXIM_EC_TRACE_ACTIVATIONS` + analyzer) — it's reusable for future substrate-dynamics characterization at zero runtime cost when off. **Roy-5 is cancelled** (it was the post-implementation validation for the binding mechanism that's now off the table). No 0.9.1 plan changes required — Wire-A is unaffected and Roy-3 remains the next harness iteration.
 
 **Artifacts:**
 - [`~/.maxim/roy/roy-4/result.json`](/Users/dennyschaedig/.maxim/roy/roy-4/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-4/summary.md).
 - EC trace `/tmp/roy_4_ec_trace.jsonl` (306 `sim_ec_activation` events). Run log `/tmp/roy_4_run.log`. Per-session partitions `/tmp/roy_4_{priming,arm_a,arm_b,arm_c}_ec.jsonl`. Analysis bundle `/tmp/roy_4_analysis.json`.
-- Outcome doc: [`21_roy_4.md`](../experiments/21_roy_4.md). Protocol: [`21_roy_4_reproduction.md`](../experiments/protocols/21_roy_4_reproduction.md). Spec: [`roy_4_iteration.yaml`](../../scenarios/roy/roy_4_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged). Analyzer: [`scripts/analyze_roy_4_coactivation.py`](../../scripts/analyze_roy_4_coactivation.py).
+- Outcome doc: [`21_roy_4.md`](../../experiments/21_roy_4.md). Protocol: [`21_roy_4_reproduction.md`](../../experiments/protocols/21_roy_4_reproduction.md). Spec: [`roy_4_iteration.yaml`](../../scenarios/roy/roy_4_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged). Analyzer: [`scripts/analyze_roy_4_coactivation.py`](../../scripts/analyze_roy_4_coactivation.py).
 <!-- /roy-iteration:roy-4 -->
 
 ### Roy-5 — partially RECYCLED
-*The original Roy-5 (binding-mechanism post-implementation validation) is cancelled by Roy-4 FAIL. The slot is now occupied by the [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md) plan's Stage 1 (Roy-5a, below). Future Roy-5b/Roy-5c iterations on the H1c / H1b / H1a Stage 2 branches will inherit the same numbering family.*
+*The original Roy-5 (binding-mechanism post-implementation validation) is cancelled by Roy-4 FAIL. The slot is now occupied by the [roy_5_encoder_alignment_disambiguator.md](../archive/roy_5_encoder_alignment_disambiguator.md) plan's Stage 1 (Roy-5a, below). Future Roy-5b/Roy-5c iterations on the H1c / H1b / H1a Stage 2 branches will inherit the same numbering family.*
 
 <!-- roy-iteration:roy-5a -->
 ### Roy-5a: Cosine-localization disambiguator (1.1+ plan Stage 1)
 
-**Status:** SHIPPED. Stage 1 of [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md). Ran end-to-end against the same healthy leader, 2026-05-13 22:25→22:51 local. **~1547s wall (~25.8 min)** — same shape as Roy-2c / Roy-4 since the substrate-primary 30s/turn timeout dominates. Owned by [roy_5_encoder_alignment_disambiguator.md § Stage 1](roy_5_encoder_alignment_disambiguator.md).
+**Status:** SHIPPED. Stage 1 of [roy_5_encoder_alignment_disambiguator.md](../archive/roy_5_encoder_alignment_disambiguator.md). Ran end-to-end against the same healthy leader, 2026-05-13 22:25→22:51 local. **~1547s wall (~25.8 min)** — same shape as Roy-2c / Roy-4 since the substrate-primary 30s/turn timeout dominates. Owned by [roy_5_encoder_alignment_disambiguator.md § Stage 1](../archive/roy_5_encoder_alignment_disambiguator.md).
 
 > Single-variable change vs Roy-4: [PR #248](https://github.com/dennys246/Maxim/pull/248)
 > (merged before this run) wired `EC.save()` and `ATL.save()` into
@@ -1015,7 +1018,7 @@ If text-modality routing turns out to be quietly broken (rather than variance), 
 **Artifacts:**
 - [`~/.maxim/roy/roy-5a/result.json`](/Users/dennyschaedig/.maxim/roy/roy-5a/result.json), [`summary.md`](/Users/dennyschaedig/.maxim/roy/roy-5a/summary.md).
 - EC trace `/tmp/roy_5a_ec_trace.jsonl` (151 `sim_ec_activation` events, all interoception). Run log `/tmp/roy_5a_run.log`. Analysis bundle `/tmp/roy_5a_analysis.json`.
-- Outcome doc: [`22_roy_5a.md`](../experiments/22_roy_5a.md). Protocol: [`22_roy_5a_reproduction.md`](../experiments/protocols/22_roy_5a_reproduction.md). Spec: [`roy_5a_iteration.yaml`](../../scenarios/roy/roy_5a_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged). Analyzer: [`scripts/analyze_roy_5_cosine_localization.py`](../../scripts/analyze_roy_5_cosine_localization.py). Persistence prereq: [PR #248](https://github.com/dennys246/Maxim/pull/248).
+- Outcome doc: [`22_roy_5a.md`](../../experiments/22_roy_5a.md). Protocol: [`22_roy_5a_reproduction.md`](../../experiments/protocols/22_roy_5a_reproduction.md). Spec: [`roy_5a_iteration.yaml`](../../scenarios/roy/roy_5a_iteration.yaml). Fixture: [`roy_2pc_holdout.yaml`](../../scenarios/roy/roy_2pc_holdout.yaml) (reused unchanged). Analyzer: [`scripts/analyze_roy_5_cosine_localization.py`](../../scripts/analyze_roy_5_cosine_localization.py). Persistence prereq: [PR #248](https://github.com/dennys246/Maxim/pull/248).
 <!-- /roy-iteration:roy-5a -->
 
 ### Roy-1: Adversarial (planned, unrun)

@@ -15,7 +15,7 @@ between attempts. The result is a clean single number.
 **Trace:** [plan4_bench_recovery_20260414.jsonl](plan4_bench_recovery_20260414.jsonl)
 (751 events, ~92 KB — 750 attempts + 1 summary)
 **Prior report:** [llm_path_stress_20260413.md](llm_path_stress_20260413.md) — the Phase D run this closes out
-**Plan doc:** [../../plans/llm_path_operator_visibility.md](../../plans/llm_path_operator_visibility.md) — stage A+B
+**Plan doc:** [../../plans/llm_path_operator_visibility.md](../../plans/archive/llm_path_operator_visibility.md) — stage A+B
 
 ## Setup
 

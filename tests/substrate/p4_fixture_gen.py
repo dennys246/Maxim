@@ -19,7 +19,7 @@ deterministic seeding. The shape is "cluster-aware paired centroids":
   drawn from ``centroid + small_noise`` where ``small_noise`` is
   scaled so that within-pair cosine similarity stays well above the
   EC ``pattern_complete_threshold`` (0.44 as of Phase 3 of
-  docs/plans/ec_centroid_drift_fix.md; was 0.40 prior) and between-
+  docs/plans/archive/ec_centroid_drift_fix.md; was 0.40 prior) and between-
   pair cosine similarity stays below it.
 
 This guarantees:

@@ -1,7 +1,7 @@
 # E0 Sim Embodiment PoC — Results
 
 **Date:** 2026-04-19
-**Plan:** [asset_foundry_plan.md](../plans/deferred/asset_foundry_plan.md) Stage 0
+**Plan:** [asset_foundry_plan.md](../plans/archive/asset_foundry_plan.md) Stage 0
 **Reproduction:** [protocols/e0_sim_embodiment_reproduction.md](protocols/e0_sim_embodiment_reproduction.md)
 
 ## Hypothesis

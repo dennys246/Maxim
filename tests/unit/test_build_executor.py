@@ -10,7 +10,7 @@ strong enough invariant. ``build_executor`` now requires an explicit
 ``pain_bus=`` decision — forgetting becomes a ``TypeError`` instead of a
 silent no-op.
 
-See ``docs/plans/executor_bootstrap_unification.md``.
+See ``docs/plans/archive/executor_bootstrap_unification.md``.
 """
 
 from __future__ import annotations

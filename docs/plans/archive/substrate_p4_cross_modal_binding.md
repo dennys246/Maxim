@@ -7,9 +7,9 @@
 > CLIP cosine — Hebbian binding produces perfect retrieval while cosine
 > misorders semantically close classes (water lily/lotus at 0.814).
 >
-> Results: [p4_cross_modal_sweep.md](../experiments/p4_cross_modal_sweep.md).
-> Option 2 measurement: [p4_option2_measurement.md](../experiments/p4_option2_measurement.md) (decision: defer).
-> Reproduction: [protocols/p4_cross_modal_reproduction.md](../experiments/protocols/p4_cross_modal_reproduction.md).
+> Results: [p4_cross_modal_sweep.md](../../experiments/p4_cross_modal_sweep.md).
+> Option 2 measurement: [p4_option2_measurement.md](../../experiments/p4_option2_measurement.md) (decision: defer).
+> Reproduction: [protocols/p4_cross_modal_reproduction.md](../../experiments/protocols/p4_cross_modal_reproduction.md).
 
 ---
 
@@ -181,7 +181,7 @@ These were decision-point questions in the plan draft; the user's calls are bake
 
 7. **VRAM audit deliverable** (Arch I4 fold). `docs/experiments/p4_stage2_vram_audit.md` — pre/post `nvidia-smi` snapshot from the RTX 5080 leader showing combined VRAM footprint of `clip-ViT-B-32` + `paraphrase-mpnet-base-v2` + Qwen-14B Q4_K_M @ 12k context. If the combined footprint breaches the 2026-04-13 spillover-detection plan's `max(1.5, 0.55 * weights_gb)` headroom budget, **Stage 3 runs on a dedicated worktree with `MAXIM_LLM_ENABLED=0`** so the LLM path doesn't compete for VRAM during the sweep.
 
-   **Phase 2E leader audit — result + drift notes (2026-04-15, to be resolved on peer):** Audit shipped as [docs/experiments/p4_vram_audit.md](../experiments/p4_vram_audit.md). **VERDICT: WARN** at n_ctx=8096 — 3.02 GB free against 4.4 GB recommended headroom, above the 1.5 GB hard floor. Three drift notes surfaced during the run:
+   **Phase 2E leader audit — result + drift notes (2026-04-15, to be resolved on peer):** Audit shipped as [docs/experiments/p4_vram_audit.md](../../experiments/p4_vram_audit.md). **VERDICT: WARN** at n_ctx=8096 — 3.02 GB free against 4.4 GB recommended headroom, above the 1.5 GB hard floor. Three drift notes surfaced during the run:
    - **Ctx drift.** Plan + deliverable spec both say `@ 12k context` but the leader spills over at n_ctx=12000 (user-confirmed) and runs at n_ctx=8096. The 8k measurement is the honest worst case this hardware can serve — raising to e.g. 10k would tighten the verdict but still wouldn't match the formula's 12k assumption. Stage 3 planning should use 8k as the real baseline, not the aspirational 12k.
    - **Audit script docstring drift.** [scripts/p4_vram_audit.py](../../scripts/p4_vram_audit.py) module docstring claims the mug test step covers "EC pattern-complete + hippocampus episode binding", but [`_run_mug_test_encoding`](../../scripts/p4_vram_audit.py) only encodes 50 images + 10 texts through the raw encoders — no EC, no hippocampus. Peak VRAM is under-measured by whatever those two paths add (likely <100 MB, unverified).
    - **Fixture loader pre-population assumption.** [tests/substrate/p4_fixture_loader.py::load_fixture_images](../../tests/substrate/p4_fixture_loader.py) calls `Flowers102(..., download=False)`. On a clean leader the audit runs ~60s of CLIP+mpnet loads before failing at the fixture step with torchvision's misleading "Dataset not found or corrupted" message. The runbook calls this out, but the surprise-trap cost real wall clock on first leader run. Either pre-populate via `download=True` inside the audit, or raise a clearer error upstream — peer to decide.
@@ -292,9 +292,9 @@ All findings folded into "Architectural decisions" + "Stage X" + "Load-bearing i
 
 ## Stage 2/3 open design decision — `node_filter` split (COMMITTED to Option 2, timing RESOLVED: defer)
 
-**Status (2026-04-16):** Stage 2 v3 honest measurement COMPLETE. Option 2 lift = **0.0000 ± 0.0000** across 10 seeds. Decision: **defer Option 2 as post-Stage-3 cleanup.** The measurement satisfies all six post-mortem requirements (non-constructed topology via EC, real weight margin 0.7 vs 0.3, weight-aware metric via `spreading_activation` with `RetrievalConfig` defaults, 10-seed variance, build-time assertions, random-ranker swap passes at substrate 1.0 vs random 0.09). See [p4_option2_measurement.md](../experiments/p4_option2_measurement.md) for full results. The architectural commitment to Option 2 stands as the long-term answer; the timing question is resolved — same-class activation (0.490) dominates cross-class bridge activation (0.022) by 22:1, so Option 2 cannot improve top-5 precision under current `RetrievalConfig` parameters. Revisit after concept decomposition ships denser bridge topologies.
+**Status (2026-04-16):** Stage 2 v3 honest measurement COMPLETE. Option 2 lift = **0.0000 ± 0.0000** across 10 seeds. Decision: **defer Option 2 as post-Stage-3 cleanup.** The measurement satisfies all six post-mortem requirements (non-constructed topology via EC, real weight margin 0.7 vs 0.3, weight-aware metric via `spreading_activation` with `RetrievalConfig` defaults, 10-seed variance, build-time assertions, random-ranker swap passes at substrate 1.0 vs random 0.09). See [p4_option2_measurement.md](../../experiments/p4_option2_measurement.md) for full results. The architectural commitment to Option 2 stands as the long-term answer; the timing question is resolved — same-class activation (0.490) dominates cross-class bridge activation (0.022) by 22:1, so Option 2 cannot improve top-5 precision under current `RetrievalConfig` parameters. Revisit after concept decomposition ships denser bridge topologies.
 
-**Prior attempts:** v1 ("defer") and v2 ("ship with +96% lift") both withdrawn as tautological. See [p4_stage2_v2_post_mortem.md](../experiments/p4_stage2_v2_post_mortem.md).
+**Prior attempts:** v1 ("defer") and v2 ("ship with +96% lift") both withdrawn as tautological. See [p4_stage2_v2_post_mortem.md](../../experiments/p4_stage2_v2_post_mortem.md).
 
 ### The underlying problem
 
@@ -371,4 +371,4 @@ The Stage 2 v2 fold attempted to rebuild Phase 2D with distractor noise + text-t
 
 Infrastructure improvements from the fold are preserved on main: `build_and_bind` refactor (`82da6db`), 102-class pin + `class_idx` enforcement (`8d0b92f`), YAML fallback drop (`8d0b92f`), tactical fixes bundle (`f00fc0f`).
 
-**Authoritative post-mortem:** [../experiments/p4_stage2_v2_post_mortem.md](../experiments/p4_stage2_v2_post_mortem.md) — documents both v1 and v2 failure modes, the construction-identity pattern, and the six methodology requirements for the next attempt.
+**Authoritative post-mortem:** [../experiments/p4_stage2_v2_post_mortem.md](../../experiments/p4_stage2_v2_post_mortem.md) — documents both v1 and v2 failure modes, the construction-identity pattern, and the six methodology requirements for the next attempt.

@@ -1,6 +1,6 @@
 # Interactive experience fixes — 0.3.1
 
-**Status:** ✅ SHIPPED (2026-04-18, PR #156). Reviewed: 3-lens + simplification + risk, MaximDisplay wiring reinstated, introspection tools folded in as Stage 8. Known issue: display `print()` corruption tracked in [docs/bugs/display_print_corruption.md](../bugs/display_print_corruption.md) for 0.3.2.
+**Status:** ✅ SHIPPED (2026-04-18, PR #156). Reviewed: 3-lens + simplification + risk, MaximDisplay wiring reinstated, introspection tools folded in as Stage 8. Known issue: display `print()` corruption tracked in [docs/bugs/display_print_corruption.md](../../bugs/display_print_corruption.md) for 0.3.2.
 **Scope:** ~700-800 LOC across 8 stages (fixes + wiring + cleanup + introspection tools).
 **Target version:** 0.3.1 (patch release).
 **Gates:** Nothing. Quality-of-life fixes for interactive/simulation user experience.
@@ -29,7 +29,7 @@ The 0.3 release proved cross-session learning works. But the interactive experie
 
 **Dead complexity** (identified by simplification review):
 
-6. **`MaximDisplay` was never wired to `sim_logger`.** The foundational buildout plan ([foundational_buildout_plan.md:998-1002](../../docs/plans/archive/foundational_buildout_plan.md#L998)) explicitly designed the integration: "When `MaximDisplay` is active, `sim_log()` routes to `display.log()` instead." The display class is fully built — `start()`, `stop()`, `log()`, `set_status()`, `set_prompt()`, rich `Live` panel layout, extension protocol. The `create_display()` factory exists. What's missing is the routing in `sim_log()` to check for an active display and use it. With 51+ `sim_log` call sites across the runtime, wiring this one integration point gives the entire system a rich panel UI for free when `--interactive` is on.
+6. **`MaximDisplay` was never wired to `sim_logger`.** The foundational buildout plan ([foundational_buildout_plan.md:998-1002](foundational_buildout_plan.md#L998)) explicitly designed the integration: "When `MaximDisplay` is active, `sim_log()` routes to `display.log()` instead." The display class is fully built — `start()`, `stop()`, `log()`, `set_status()`, `set_prompt()`, rich `Live` panel layout, extension protocol. The `create_display()` factory exists. What's missing is the routing in `sim_log()` to check for an active display and use it. With 51+ `sim_log` call sites across the runtime, wiring this one integration point gives the entire system a rich panel UI for free when `--interactive` is on.
 
 7. **Minor dead code.** `PromptType.SHORT_TEXT`, `LONG_TEXT`, `NUMERIC`, `RATING` — zero call sites construct these. `poll_freeform()` — zero callers. `freeze_context()` — test-only. `revert_after_turns` parameter on `agent_escalate_display()` — never implemented by any caller. These are small and should be cleaned up, but are not the priority.
 
@@ -154,7 +154,7 @@ _FALLBACK_DEFAULT = "The story continues to unfold around you..."
 
 ### Stage 5 — Wire `MaximDisplay` into `sim_logger`
 
-**The missing integration.** `MaximDisplay` is fully built ([interactive/display.py](../../src/maxim/interactive/display.py)) — rich `Live` panels with agent log, status bar, input area, extension protocol. The foundational buildout plan ([foundational_buildout_plan.md:998-1002](../../docs/plans/archive/foundational_buildout_plan.md#L998)) designed the routing: "When `MaximDisplay` is active, `sim_log()` routes to `display.log()` instead." This routing was never wired. With 51+ `sim_log` call sites across the runtime, wiring this one integration point gives the entire system a rich panel UI for free.
+**The missing integration.** `MaximDisplay` is fully built ([interactive/display.py](../../src/maxim/interactive/display.py)) — rich `Live` panels with agent log, status bar, input area, extension protocol. The foundational buildout plan ([foundational_buildout_plan.md:998-1002](foundational_buildout_plan.md#L998)) designed the routing: "When `MaximDisplay` is active, `sim_log()` routes to `display.log()` instead." This routing was never wired. With 51+ `sim_log` call sites across the runtime, wiring this one integration point gives the entire system a rich panel UI for free.
 
 **What's built:**
 
@@ -177,7 +177,7 @@ _FALLBACK_DEFAULT = "The story continues to unfold around you..."
 - No `PromptHandler` ↔ `MaximDisplay` integration (showing prompts in the input panel). The display has `set_prompt()` / `clear_prompt()` but wiring it to `RequestInteractionTool` is a follow-up — the tool currently prints via `display_scene()` which will automatically route through the display once wired.
 
 **Design choices:**
-- **Module reference, not mutable global import:** Per the [mutable globals lesson](../../CLAUDE.md) (`feedback_module_extraction.md`), `sim_logger` stores the display as `_active_display` and callers use `sim_logger.get_active_display()`. The display is set via function call, not imported by name.
+- **Module reference, not mutable global import:** Per the [mutable globals lesson](../../../CLAUDE.md) (`feedback_module_extraction.md`), `sim_logger` stores the display as `_active_display` and callers use `sim_logger.get_active_display()`. The display is set via function call, not imported by name.
 - **RLock in display, Lock for module accessor:** The display needs RLock because `log()` → `_refresh()` is re-entrant. The module-level `_active_display` accessor uses a plain Lock since get/set are non-re-entrant.
 - **JSONL writes are unaffected by display routing:** The `sim_log()` JSONL path ([sim_logger.py:465-469](../../src/maxim/simulation/sim_logger.py#L465)) always persists every event regardless of display tier or active display. The display routing only replaces terminal output. This is intentional — JSONL is "recorder for everything," display is "what the user sees."
 
@@ -232,7 +232,7 @@ _FALLBACK_DEFAULT = "The story continues to unfold around you..."
 
 ### Stage 8 — Agent introspection tools
 
-**4 high-priority tools from [tool_refinement_plan.md](tool_refinement_plan.md)** — ~100 LOC each, no prerequisites, all reading from existing data sources. These give the agent self-awareness about its own learning, memory, performance, and pain state.
+**4 high-priority tools from [tool_refinement_plan.md](../tool_refinement_plan.md)** — ~100 LOC each, no prerequisites, all reading from existing data sources. These give the agent self-awareness about its own learning, memory, performance, and pain state.
 
 **What's built:**
 

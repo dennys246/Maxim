@@ -52,7 +52,7 @@ class ReactionBus:
                 "class (PainBus.__init__ constructs it internally with "
                 "_allow_raw=True), but the door is enforced here so the next "
                 "production caller cannot drift. See "
-                "docs/plans/reaction_bus_unification.md. Tests that need a bare "
+                "docs/plans/archive/reaction_bus_unification.md. Tests that need a bare "
                 "bus may pass _allow_raw=True. (C6)"
             )
         self._per_kind: dict[str, list[Callable[[Reaction], None]]] = defaultdict(list)
@@ -133,7 +133,7 @@ def build_reaction_bus(
 
     This is the canonical ReactionBus construction site for production
     code. It exists to establish the construction door that Wave 3
-    (``docs/plans/bio_stack_unification.md``) requires: ``build_bio_stack``
+    (``docs/plans/archive/bio_stack_unification.md``) requires: ``build_bio_stack``
     will construct ``reaction_bus = build_reaction_bus(...)`` BEFORE
     ``pain_bus = build_pain_bus(..., reaction_bus=reaction_bus)`` because
     PainBus depends on ReactionBus at construction time.
@@ -147,7 +147,7 @@ def build_reaction_bus(
     count. Establishing it now when the surface is clean avoids a
     refactor during Wave 3 when the surface is complex.
 
-    The audited silent gap (``docs/plans/reaction_bus_unification.md``
+    The audited silent gap (``docs/plans/archive/reaction_bus_unification.md``
     Gap A): ``cerebellum_modulator_factory`` never passes
     ``reaction_bus=`` to ``CerebellumModulator``, so every SEM modulator
     failure signal is silently dropped. That gap is fixed separately in
@@ -193,8 +193,8 @@ def build_reaction_bus(
             reaction_bus = build_reaction_bus()
 
     See also:
-        - ``docs/plans/reaction_bus_unification.md`` for the audit + design
-        - ``docs/plans/bio_stack_unification.md`` for the Wave 3 ordering
+        - ``docs/plans/archive/reaction_bus_unification.md`` for the audit + design
+        - ``docs/plans/archive/bio_stack_unification.md`` for the Wave 3 ordering
         - ``proprioception/pain_bus.py::build_pain_bus`` for the sibling
     """
     bus = ReactionBus(

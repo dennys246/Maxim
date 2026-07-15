@@ -168,7 +168,7 @@ Both reviewers agreed on five blocking items:
 
 2. **Cancellation checkpoint at the top of `_parse_llm_response`.** Closes the race window where the orphan completes HTTP between the `complete_with_usage` checkpoint and `_parse_llm_response`. Bails before the success bookkeeping path runs. **Done.**
 
-3. **Update [docs/architecture/llm_routing.md](../architecture/llm_routing.md) with the "HTTP fires first" contract.** Was in the original R2 task list, missed in implementation. The authoritative routing reference now has a "Timeout layering" section explaining the contract, the cooperative cancellation mechanism, the `copy_context()` requirement, and the known race window. **Done.**
+3. **Update [docs/architecture/llm_routing.md](../../architecture/llm_routing.md) with the "HTTP fires first" contract.** Was in the original R2 task list, missed in implementation. The authoritative routing reference now has a "Timeout layering" section explaining the contract, the cooperative cancellation mechanism, the `copy_context()` requirement, and the known race window. **Done.**
 
 4. **Raise `MAXIM_LLM_CALL_TIMEOUT_S` clamp floor above `_INFERENCE_PROXY_TIMEOUT_S`.** The original R2 clamp range `[10.0, 1800.0]` allowed operators to silently violate the contract by setting the agent-level timeout below the HTTP layer's read timeout. New clamp is `[300.0, 1800.0]` with a contract-violation warning that names the contract. **Done.**
 
@@ -178,7 +178,7 @@ Both reviewers agreed on five blocking items:
 
 Review findings that are real concerns but don't block this branch's merge. Tracked here so they don't get lost; will be folded into existing plans or a focused 0.5 cleanup pass.
 
-1. **Race window non-streaming cancellation is a known limitation** (executor lens 2.1). Documented in [`docs/architecture/llm_routing.md`](../architecture/llm_routing.md) "Timeout layering" section's "Known limitation" subsection. The 300s/300s ordering makes this rare; the post-HTTP checkpoint in `_parse_llm_response` prevents bookkeeping pollution when it does fire. No code fix needed unless Phase D stress test reveals real-world impact.
+1. **Race window non-streaming cancellation is a known limitation** (executor lens 2.1). Documented in [`docs/architecture/llm_routing.md`](../../architecture/llm_routing.md) "Timeout layering" section's "Known limitation" subsection. The 300s/300s ordering makes this rare; the post-HTTP checkpoint in `_parse_llm_response` prevents bookkeeping pollution when it does fire. No code fix needed unless Phase D stress test reveals real-world impact.
 
 2. **Two cancellation modules (`maxim.utils.cancellation` + `maxim.models.language.cancellation`)** still coexist. The first is per-request (Plan 3.5 R4); the second is process-wide shutdown (pre-existing). Architecturally distinct purposes, but the naming collision is a smell. **Action: rename `models.language.cancellation` to a clearer name like `models.language.process_shutdown` in 0.5.** Track as a follow-up bullet in [llm_path_operator_visibility.md](llm_path_operator_visibility.md) Plan 4 R3.0 cleanup.
 

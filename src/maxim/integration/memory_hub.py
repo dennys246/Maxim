@@ -206,7 +206,7 @@ class MemoryHub:
                 "maxim.integration.memory_hub.build_memory_hub(...) instead. "
                 "The builder always calls .connect() so PlanHistoryBridge, "
                 "EscalationLearningBridge, and FearCircuitBridge are alive on "
-                "every returned hub (see docs/plans/memory_hub_unification.md) — "
+                "every returned hub (see docs/plans/archive/memory_hub_unification.md) — "
                 "two production CLI sites previously constructed MemoryHub() "
                 "and never called .connect(), silently disabling all three "
                 "bridges. Tests that need a bare hub may pass _allow_raw=True. "

@@ -2,7 +2,7 @@
 
 **Status:** COMPLETE (2026-04-17). All 4 stages shipped. Experiment 2: 13/13 hypotheses confirmed. All 3 testing tiers now PASS (Tier 3 Exp 4: 5/5, organic LLM learning).
 **Scope:** ~400-600 LOC across 4 stages.
-**Target version:** 0.3 (pre-publish). Unblocks Experiment 2 in [behavioral_convergence_practice.md](behavioral_convergence_practice.md).
+**Target version:** 0.3 (pre-publish). Unblocks Experiment 2 in [behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md).
 **Depends on:** SEM learning loop (SHIPPED), concept decomposition Stage 1 (SHIPPED).
 
 ## Motivation
@@ -175,10 +175,10 @@ Stages 1 and 2 are independent. Stage 3 needs the reaction pipeline working in p
 
 ## Connection to other plans
 
-- **[behavioral_convergence_practice.md](../behavioral_convergence_practice.md):** Experiment 2 is the first Tier 2 entry.
-- **[substrate_episode_boundary_enrichment.md](../substrate_episode_boundary_enrichment.md):** Stage 2 here wires `observe_episode_event` into production, which is prerequisite for ALL episode boundary rules to fire in real agent runs — not just the salience spike rule.
+- **[behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md):** Experiment 2 is the first Tier 2 entry.
+- **[substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md):** Stage 2 here wires `observe_episode_event` into production, which is prerequisite for ALL episode boundary rules to fire in real agent runs — not just the salience spike rule.
 - **[sem_learning_loop.md](sem_learning_loop.md):** This plan extends the SEM loop from substrate-only (Tier 1) to behavioral (Tier 2).
-- **[agent_factory_canonicalization.md](../agent_factory_canonicalization.md):** Stage F5 (headless API bio-learning default) may interact with Stage 1 here — both touch how bio-systems are surfaced to the agent.
+- **[agent_factory_canonicalization.md](agent_factory_canonicalization.md):** Stage F5 (headless API bio-learning default) may interact with Stage 1 here — both touch how bio-systems are surfaced to the agent.
 
 ## Risks
 

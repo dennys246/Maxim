@@ -1,5 +1,8 @@
 # SEM World Enrichment — Rich Entity Environments
 
+> **ARCHIVED (2026-07-15 plans audit):** ✅ Phases 1+2 SHIPPED; Phase 3 SUBSTANTIALLY SHIPPED (`embodiment/archetype.py`, 7 archetype YAMLs, `archetype:` field on 75 seed components, `bodies/host_machine.yaml`) — the header's "Phase 3 partial" is stale. Only `maxim_sim_avatar` default-embodiment (Stage 3e) never landed; descoped as absorbed by the substrate-primary embodiment line (cradle bodies auto-embody). Revive that one item only if default-embodiment-in-sim becomes a real need.
+
+
 **Status:** PHASES 1+2 SHIPPED. Phase 3 (composable body archetypes) PARTIAL — archetype YAMLs exist in `_data/components/archetypes/`, avatar migration not yet done. 1.0 vs 1.1 scope decision pending.
 **Depends on:** PR #190 (sem-damage-autosense) merged
 

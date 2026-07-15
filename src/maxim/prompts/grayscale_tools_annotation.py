@@ -39,7 +39,7 @@ pollute Roy iteration ablation evidence. The producer's caller is
 responsible for honoring the env var (consumer-side gating would not
 prevent the producer hot path running).
 
-See [docs/plans/sense_tool_registry.md] § "Phase 3" and the load-bearing
+See [docs/plans/deferred/sense_tool_registry.md] § "Phase 3" and the load-bearing
 invariant "SEM-derived tools must stay scene-scoped at execution time"
 (grayscale is about visibility, not invokability).
 """

@@ -148,7 +148,7 @@ class SensePresenceTool(Tool):
     # Auto-fired every tick on new percepts; result is injected into the
     # next prompt as passive perception rather than a chosen action. The
     # executor bypass at agent_loop.py reads ``auto_fire`` and routes
-    # around actions.jsonl. See [docs/plans/sense_tool_registry.md].
+    # around actions.jsonl. See [docs/plans/deferred/sense_tool_registry.md].
     auto_fire = True
     kind = "auto-discovery"
     # Authored as JSONSchema (not the legacy description-as-value form) so

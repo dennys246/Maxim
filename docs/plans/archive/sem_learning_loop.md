@@ -6,7 +6,7 @@
 **Absorbs:**
 - [cerebellum_activation.md](cerebellum_activation.md) — wire Cerebellum into production
 - [substrate_valence_annotation.md](substrate_valence_annotation.md) Stage 4 — positive valence + success reactions
-- [substrate_episode_boundary_enrichment.md](../substrate_episode_boundary_enrichment.md) Stage 3 — pain/salience spike boundary (Stages 1-2 deferred)
+- [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) Stage 3 — pain/salience spike boundary (Stages 1-2 deferred)
 - `distribute_reward` wiring gap (documented in valence annotation plan + concept decomposition companion)
 
 ## Motivation
@@ -91,7 +91,7 @@ Add `CerebellumModulator._emit_success_reaction()` for confident Cerebellum pred
 
 ### Stage 4 — Pain/salience spike episode boundary (~130 LOC)
 
-From [substrate_episode_boundary_enrichment.md](../substrate_episode_boundary_enrichment.md) Rule 3. Tool execution (Rule 1) and semantic shift (Rule 2) are deferred — they need more calibration work and are less tightly coupled to the SEM loop.
+From [substrate_episode_boundary_enrichment.md](substrate_episode_boundary_enrichment.md) Rule 3. Tool execution (Rule 1) and semantic shift (Rule 2) are deferred — they need more calibration work and are less tightly coupled to the SEM loop.
 
 1. Add `salience_spike: float | None = None` to `CaptureEvent`
 2. Implement `salience_spike_rule(min_intensity: float = 0.5)` in `episode.py`

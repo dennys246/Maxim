@@ -115,7 +115,7 @@ class TestReactionBus:
 class TestBuildReactionBus:
     """Regression guards for the canonical ReactionBus construction door.
 
-    See ``docs/plans/reaction_bus_unification.md`` for the audit.
+    See ``docs/plans/archive/reaction_bus_unification.md`` for the audit.
     The builder exists for downstream Wave 3 sequencing
     (``build_bio_stack`` constructs ReactionBus BEFORE PainBus).
     """

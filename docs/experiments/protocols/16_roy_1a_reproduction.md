@@ -7,7 +7,7 @@
 Roy-1a is the first "real" iteration on the persona-convergence harness after the Roy-0 smoke test. Two methodology axes differ from Roy-0:
 
 1. **`aut_mode: llm-primary` at test time.** Roy-0 ran substrate-primary throughout; its cold-start regime produced a `sense_food_source` cluster monoculture (6 cluster ids, one tool). llm-primary gives the AUT the validated proposer so we can isolate the open question: *does substrate-only priming produce LLM-readable signal at test time?*
-2. **Held-out test fixture.** Roy-0 reused the priming fixture (`scenarios/cradle/warmup.yaml`, 3 percepts); arms could only be measured on rehearsal, not generalisation. Roy-1a uses [`roy_1_holdout.yaml`](../../../scenarios/roy/roy_1_holdout.yaml) — 10 percepts split across three classes (matching / novel / unrelated) per [persona_convergence_crucible.md §"Test phase"](../../plans/persona_convergence_crucible.md).
+2. **Held-out test fixture.** Roy-0 reused the priming fixture (`scenarios/cradle/warmup.yaml`, 3 percepts); arms could only be measured on rehearsal, not generalisation. Roy-1a uses [`roy_1_holdout.yaml`](../../../scenarios/roy/roy_1_holdout.yaml) — 10 percepts split across three classes (matching / novel / unrelated) per [persona_convergence_crucible.md §"Test phase"](../../plans/deferred/persona_convergence_crucible.md).
 
 ## Prerequisites
 
@@ -145,6 +145,6 @@ unset MAXIM_LOG_FILE MAXIM_BACKEND_TRACE
 ## Related docs
 
 - [`16_roy_1a.md`](../16_roy_1a.md) — outcome doc with the full result table + interpretation
-- [`persona_convergence_crucible.md`](../../plans/persona_convergence_crucible.md) — three-arm methodology + Roy-1a iteration log entry
+- [`persona_convergence_crucible.md`](../../plans/deferred/persona_convergence_crucible.md) — three-arm methodology + Roy-1a iteration log entry
 - [`15_g4_cluster_reward_wire.md`](../15_g4_cluster_reward_wire.md) — the substrate-primary cluster wire Roy-0 validated (Roy-1a inherits it; test-time learning still routes through llm-primary)
 - [`roy_0_smoke.md`](roy_0_smoke.md) — Roy-0 protocol Roy-1a builds on

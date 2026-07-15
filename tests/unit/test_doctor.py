@@ -1983,7 +1983,7 @@ class TestCheckUserProfiles:
         assert "prompt_style" in result.message
 
 
-# ─── robot reachability check (docs/plans/doctor_robot_reachable.md) ─────────
+# ─── robot reachability check (docs/plans/archive/doctor_robot_reachable.md) ─────────
 
 
 class TestCheckRobotReachable:

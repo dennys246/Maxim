@@ -1,9 +1,12 @@
 # Minecraft Live Demo + Harness Benchmark
 
+> **DEFERRED (2026-07-15 plans audit):** Stub, zero implementation (Minecraft appears only in CC8 adapter-contract docstrings). Its 1.0 must-not-preclude prerequisites (CC8 plug-replaceable adapters, CC1 `_format_version`, CC9 dual-format schema) all shipped, so nothing is decaying. **Revive when:** 1.1 splash-launch work is greenlit AND someone commits to the M0 comparison-protocol research (or a second external-world adapter consumer appears).
+
+
 **Status:** Design exploration, post-1.0 (1.1 splash launch). Stub — implementation plan pending.
 **Target version:** 1.1
 **Concurrent with:** 1.0 stabilization (this work proceeds in parallel without gating 1.0).
-**Depends on:** B4 Cradle ([archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md)) shipped — provides embodied learning foundation. Also benefits from [scene_actor_affordances.md](scene_actor_affordances.md) (1.1 track) for hostile mob mechanics.
+**Depends on:** B4 Cradle ([archive/cradle_sensorimotor_development.md](../archive/cradle_sensorimotor_development.md)) shipped — provides embodied learning foundation. Also benefits from [scene_actor_affordances.md](scene_actor_affordances.md) (1.1 track) for hostile mob mechanics.
 
 ---
 
@@ -112,11 +115,11 @@ Lean: per-Maxim-tick state buffering. Minecraft state changes within a Maxim tic
 
 For Minecraft work to slot in cleanly without 2.0-requiring refactors:
 
-- **Percept source / action sink contracts** must be plug-replaceable without modifying the agent loop. Today the sim orchestrator owns these; the Minecraft adapter would be a parallel implementation. Verify [bridge.py](../../src/maxim/simulation/bridge.py) protocols are general enough. **This is exactly [v1_refinement.md CC8](v1_refinement.md) — sim adapter contract audit.** CC8 ships in 1.0 specifically to prevent this from being a 2.0 trap.
+- **Percept source / action sink contracts** must be plug-replaceable without modifying the agent loop. Today the sim orchestrator owns these; the Minecraft adapter would be a parallel implementation. Verify [bridge.py](../../src/maxim/simulation/bridge.py) protocols are general enough. **This is exactly [v1_refinement.md CC8](../archive/v1_refinement.md) — sim adapter contract audit.** CC8 ships in 1.0 specifically to prevent this from being a 2.0 trap.
 - **Embodiment must accept non-sim sensor sources.** The three-layer sensation model (contact / proximity / narrative) needs to extend to "real game state" as a fourth layer. The pipeline `sensor change → evaluate_failures → PainBus → NAc` should not assume a specific orchestrator.
 - **Tool registration must support runtime add/remove.** Minecraft's available actions vary by inventory and world state. The scene-scoped tool window (I3, shipped 0.7) already supports this — verify it works without a sim orchestrator.
-- **Persistence file formats need version markers.** A Minecraft session in 1.1 should be able to load 1.0-era persisted bio-state (and migrate or warn). [v1_refinement.md CC1](v1_refinement.md) shipped this in PR #203 — `_format_version` is now contract.
-- **Tool dual-format schema** for any external tool integrations. [v1_refinement.md CC9](v1_refinement.md) shipped JSONSchema bridge in PR #204 — Minecraft adapter tools can declare schemas in either format.
+- **Persistence file formats need version markers.** A Minecraft session in 1.1 should be able to load 1.0-era persisted bio-state (and migrate or warn). [v1_refinement.md CC1](../archive/v1_refinement.md) shipped this in PR #203 — `_format_version` is now contract.
+- **Tool dual-format schema** for any external tool integrations. [v1_refinement.md CC9](../archive/v1_refinement.md) shipped JSONSchema bridge in PR #204 — Minecraft adapter tools can declare schemas in either format.
 - **MCP compatibility** as a parallel goal — Minecraft players who use Claude Desktop or other MCP clients should be able to configure Maxim as an MCP server providing Minecraft-aware tools. See [mcp_compatibility.md](mcp_compatibility.md).
 
 ---
@@ -172,11 +175,11 @@ A reasonable shape:
 
 ## Cross-references
 
-- [v1_refinement.md](v1_refinement.md) Section 8 — 1.1 track index.
-- [v1_refinement.md](v1_refinement.md) CC8 — sim adapter contract audit (1.0 prereq for clean Minecraft adapter integration).
-- [archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md) — embodied learning foundation this builds on.
+- [v1_refinement.md](../archive/v1_refinement.md) Section 8 — 1.1 track index.
+- [v1_refinement.md](../archive/v1_refinement.md) CC8 — sim adapter contract audit (1.0 prereq for clean Minecraft adapter integration).
+- [archive/cradle_sensorimotor_development.md](../archive/cradle_sensorimotor_development.md) — embodied learning foundation this builds on.
 - [scene_actor_affordances.md](scene_actor_affordances.md) — embodied hostile entities; relevant for Minecraft mobs (zombies, creepers, skeletons) using the same `target_effect` pattern.
-- [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md) — revives if Minecraft demo exposes a cognition gap (zombies pathfinding, villagers remembering trades, recurring antagonists).
+- [deferred/agent_backed_entities.md](agent_backed_entities.md) — revives if Minecraft demo exposes a cognition gap (zombies pathfinding, villagers remembering trades, recurring antagonists).
 - [mcp_compatibility.md](mcp_compatibility.md) — sister 1.1 concern; MCP server mode could expose Minecraft tools to other agents.
 - Voyager paper: https://arxiv.org/abs/2305.16291
 - GITM paper: https://arxiv.org/abs/2305.17144

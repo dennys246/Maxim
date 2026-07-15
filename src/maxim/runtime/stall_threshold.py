@@ -12,7 +12,7 @@ state + the provided ``lane_timeout_s`` (which callers should read once
 from the backend-facing provider cfg at construction, since sims don't
 hot-reload). This makes per-cycle calls in a daemon thread cheap.
 
-See [docs/plans/stall_detector_timeout_awareness.md] for the load-bearing
+See [docs/plans/deferred/stall_detector_timeout_awareness.md] for the load-bearing
 rationale and the consolidated review fold that produced the current
 signature shape.
 """

@@ -7,7 +7,7 @@ body declares ``naming_events:``, utterances appear in the body-state
 percept text in the SAME tick the drive crosses threshold — this is the
 within-tick co-firing guarantee Stage 3's Hebbian retest depends on.
 
-See docs/plans/roy_5_encoder_alignment_disambiguator.md Stage 3.
+See docs/plans/archive/roy_5_encoder_alignment_disambiguator.md Stage 3.
 """
 
 from __future__ import annotations

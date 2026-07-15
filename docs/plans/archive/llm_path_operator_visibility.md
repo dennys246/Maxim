@@ -5,10 +5,10 @@
 **Target version:** A+B in 0.4. C spans 0.4/0.5 depending on session cadence.
 **Part of:** [llm_path_refinement.md](llm_path_refinement.md)
 **Depends on:**
-- [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) (Plan 3) — typed-exception router loop ✅ shipped
-- [archive/llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md) (Plan 3.5) — "HTTP fires first" contract ✅ shipped
+- [archive/llm_path_fast_failover.md](llm_path_fast_failover.md) (Plan 3) — typed-exception router loop ✅ shipped
+- [archive/llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md) (Plan 3.5) — "HTTP fires first" contract ✅ shipped
 - [llm_path_peer_failover.md](llm_path_peer_failover.md) (Plan 3.6) — VRAM spillover detection + multi-leader precursor ✅ shipped
-**Note:** renamed from "Reactive Mesh" in v1. Multi-peer dispatch moved to [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md). Capability-aware ranking is [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md).
+**Note:** renamed from "Reactive Mesh" in v1. Multi-peer dispatch moved to [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md). Capability-aware ranking is [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md).
 **Bake-in target (2026-04-13):** the user's RTX 5080 + RTX 3070 setup is the concrete two-node deployment for testing `mesh.yml`'s schema validation, drain/resume, per-node admin endpoints, and per-agent rate limiting. Plan 3.6 unblocks failover testing without waiting for the full Plan 4 admin API.
 
 ---
@@ -133,8 +133,8 @@ within 3.1s (p99 = 614ms). Every one of the 750 JSONL events had
 `agent_id=bench_recovery_time` — Stage A validated end-to-end on real
 traffic.
 
-**Report:** [../experiments/results/llm_path_stress_plan4_20260414.md](../experiments/results/llm_path_stress_plan4_20260414.md)
-**Rerun runbook:** [../experiments/protocols/bench_recovery_time_rerun.md](../experiments/protocols/bench_recovery_time_rerun.md)
+**Report:** [../experiments/results/llm_path_stress_plan4_20260414.md](../../experiments/results/llm_path_stress_plan4_20260414.md)
+**Rerun runbook:** [../experiments/protocols/bench_recovery_time_rerun.md](../../experiments/protocols/bench_recovery_time_rerun.md)
 
 ### Stage C — mesh.yml + admin API + per-agent rate limiting (C1 ✅ SHIPPED, C2 ✅ SHIPPED, C3.1 ✅ SHIPPED, C3.2 ✅ SHIPPED, rest of C3 DEFERRED)
 
@@ -269,12 +269,12 @@ Four concrete outcomes:
 
 ## Non-goals
 
-- **Not multi-peer reactive overflow.** Moved to [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) per user decision + stress test results. R3.0 + R3.5-lite + R3.6-lite ship unconditionally; multi-peer dispatch extends later when triggered.
-- **Not proactive load-aware routing.** Deferred to [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md).
+- **Not multi-peer reactive overflow.** Moved to [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) per user decision + stress test results. R3.0 + R3.5-lite + R3.6-lite ship unconditionally; multi-peer dispatch extends later when triggered.
+- **Not proactive load-aware routing.** Deferred to [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md).
 - **Not auto-download.** Explicit `install` only.
 - **Not per-node JWT auth.** Shared cluster key.
-- **Not fair-share scheduling across agents.** Rate limiting is a hard cap per agent; fair-share is [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md).
-- **Not async router.** Concurrent per-lane agent calls still serialize under `_inference_lock`. Plan 3 shortens the worst-case lock duration; full async is [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md).
+- **Not fair-share scheduling across agents.** Rate limiting is a hard cap per agent; fair-share is [deferred/llm_path_fair_scheduling.md](../deferred/llm_path_fair_scheduling.md).
+- **Not async router.** Concurrent per-lane agent calls still serialize under `_inference_lock`. Plan 3 shortens the worst-case lock duration; full async is [deferred/llm_path_async_router.md](../deferred/llm_path_async_router.md).
 
 ## Context
 
@@ -616,7 +616,7 @@ MAXIM_MESH=0 maxim --sim "rollback test"
 
 **Load-bearing.** Plan 4 is the most operator-facing of the four plans.
 
-**1. Update [../architecture/llm_routing.md](../architecture/llm_routing.md):**
+**1. Update [../architecture/llm_routing.md](../../architecture/llm_routing.md):**
 
 Add sections:
 - **"Operator visibility layer"** — request-trace ring buffer, per-agent filtering, admin API
@@ -642,14 +642,14 @@ Operator-focused doc (~400 lines):
 - **Capacity planning:** what metrics to watch, when to add a peer, when batching beats distribution
 - **Troubleshooting checklist:** per "symptom" → first thing to check
 
-**3. Update [../reference.md](../reference.md):**
+**3. Update [../reference.md](../../reference.md):**
 
 - **"Mesh configuration"** section: `mesh.yml` schema including `self`, `protocol_version`, `agent_rate_limits`
 - **"Admin API surface"** list of `/v1/mesh/*` endpoints with auth + rate limiting
 - **"Request trace"** ring buffer location, retention, access pattern
 - **"Per-agent stats"** tracking + admin API endpoint
 
-**4. Update [../../CLAUDE.md](../../CLAUDE.md):**
+**4. Update [../../CLAUDE.md](../../../CLAUDE.md):**
 
 - **Env var table:** `MAXIM_MESH`, `MAXIM_MESH_VERBOSITY`, `MAXIM_CLUSTER_KEY`, `MAXIM_REQUEST_TRACE_SIZE`
 - **Key commands:** full `maxim peer --node` verb list
@@ -664,7 +664,7 @@ Operator-focused doc (~400 lines):
   > 
   > **Per-agent rate limiting happens at the router entry, BEFORE `_inference_lock` is acquired.** This is load-bearing — if the check happens inside the lock, one rate-limited agent holds the lock for nothing, starving others.
 
-**5. Create [../troubleshooting/mesh_debug.md](../troubleshooting/mesh_debug.md):**
+**5. Create [../troubleshooting/mesh_debug.md](../../troubleshooting/mesh_debug.md):**
 
 Replaces the legacy `mesh.md` (which R0 deprecated). ~250 lines covering:
 - "A request went to the wrong node" → `request-trace/<req_id>`
@@ -687,7 +687,7 @@ description: mesh.yml + admin API + per-agent observability + rate limiting
 type: project
 ---
 
-**Shipped:** <date> as part of [llm_path_operator_visibility.md](docs/plans/llm_path_operator_visibility.md).
+**Shipped:** <date> as part of [llm_path_operator_visibility.md](docs/plans/archive/llm_path_operator_visibility.md).
 
 **Key decisions:**
 - Renamed from "Reactive Mesh" — multi-peer dispatch moved to deferred per stress-test results
@@ -744,13 +744,13 @@ Update `MEMORY.md`.
 
 ## Related docs
 
-- **Previous plan:** [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) — prerequisite
+- **Previous plan:** [archive/llm_path_fast_failover.md](llm_path_fast_failover.md) — prerequisite
 - **Meta plan:** [llm_path_refinement.md](llm_path_refinement.md)
-- **Foundation:** [archive/llm_path_foundation.md](archive/llm_path_foundation.md)
-- **Architecture:** [../architecture/llm_routing.md](../architecture/llm_routing.md) — extended by this plan
+- **Foundation:** [archive/llm_path_foundation.md](llm_path_foundation.md)
+- **Architecture:** [../architecture/llm_routing.md](../../architecture/llm_routing.md) — extended by this plan
 - **Architecture:** [../architecture/mesh_operations.md](../architecture/mesh_operations.md) — created by this plan
-- **Deferred:** [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — multi-peer we chose NOT to build now
-- **Deferred:** [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md) — async router refactor
-- **Deferred:** [deferred/llm_path_fair_scheduling.md](deferred/llm_path_fair_scheduling.md) — full fair-share (rate limiting is folded into this plan; fair-share is the bigger refactor)
+- **Deferred:** [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) — multi-peer we chose NOT to build now
+- **Deferred:** [deferred/llm_path_async_router.md](../deferred/llm_path_async_router.md) — async router refactor
+- **Deferred:** [deferred/llm_path_fair_scheduling.md](../deferred/llm_path_fair_scheduling.md) — full fair-share (rate limiting is folded into this plan; fair-share is the bigger refactor)
 - **Stress test results:** `docs/experiments/results/llm_path_stress_<date>.md`
-- **Project guide:** [../../CLAUDE.md](../../CLAUDE.md)
+- **Project guide:** [../../CLAUDE.md](../../../CLAUDE.md)

@@ -6,7 +6,7 @@
 **Gates:** null (B4 gates 1.0, not B3/B5)
 **Depends on:** B1 (SHIPPED — prompt composition + PromptAssembler)
 **Blocks:** nothing directly (B4 is independent)
-**Parent:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md)
+**Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
 
 ## B3 — Acting Coach Layer
 
@@ -58,7 +58,7 @@ Formalize the boundary between SEM (embodiment layer) and DM (narrative layer). 
 
 The [interactive_experience_031.md](interactive_experience_031.md) plan (0.3.1) wired `MaximDisplay` into `sim_logger` with thread-safe routing, atexit cleanup, and the `DisplayExtension` protocol ready. `RequestInteractionTool` now uses `set_prompt()` / `clear_prompt()` for the input panel. **B3 is where `DisplayExtension` implementations live:**
 
-- **`CampaignDisplay`** — DM campaign panels: character sheet, inventory, encounter info, NPC relationships. Auto-created when `DMRuntime` starts. Designed in [foundational_buildout_plan.md:1020-1047](archive/foundational_buildout_plan.md#L1020). ~150 LOC.
+- **`CampaignDisplay`** — DM campaign panels: character sheet, inventory, encounter info, NPC relationships. Auto-created when `DMRuntime` starts. Designed in [foundational_buildout_plan.md:1020-1047](foundational_buildout_plan.md#L1020). ~150 LOC.
 - **`AgentStateDisplay`** — Acting Coach panel: current role values, speech register, active failure mode, continuity state. Shows the "acting coach" metadata alongside the agent log. ~80 LOC.
 - **`BioStateDisplay`** — condensed bio-system readout panel: NAc top links, hippocampus tier counts, active pain triggers. Surfaces the same data as the Stage 8 introspection tools but as a persistent side panel. ~100 LOC.
 

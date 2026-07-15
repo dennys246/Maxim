@@ -1165,7 +1165,7 @@ def start_simulation_mode(
 
     # ── DefaultNetwork (Phase 0b — bio-stack activation) ──────────────
     # Migrated to build_default_network per
-    # docs/plans/default_network_unification.md Gap C.
+    # docs/plans/archive/default_network_unification.md Gap C.
     # maxim=None — sim has no robot, but DN still provides pain detection.
     # pain_bus=aut_pain_bus — injected bus closes Gap B (split subscriber
     # ownership). The bus already has hippocampus + NAc subscribers from
@@ -1474,7 +1474,7 @@ def start_simulation_mode(
             # manifest LLM so the generated entity list can include entities
             # that activate substrate-favored tools (closes the imagination-
             # blindness gap surfaced by Roy-3a-retry). See
-            # docs/plans/imagination_substrate_signals.md. Env-var gate
+            # docs/plans/deferred/imagination_substrate_signals.md. Env-var gate
             # MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL preserves ablation-
             # evidence integrity for Roy iterations (parallel to Wire-A's
             # MAXIM_DISABLE_CLUSTER_BIAS_ANNOTATION); shared truthy-parser.
@@ -1727,7 +1727,7 @@ def start_simulation_mode(
         stop_event.set()
 
     # ── Fixture-driven campaign (S1) — no narrator LLM required ──────────
-    # Fix B (2026-05-27, docs/plans/imagination_substrate_signals.md): the
+    # Fix B (2026-05-27, docs/plans/deferred/imagination_substrate_signals.md): the
     # substrate-aware pre-trigger threads aut_imagination_trigger + llm_router
     # + goal so fixture-driven test arms (Roy's roy_1_holdout etc.) materialize
     # substrate-favored entities into scene BEFORE driving percepts. Closes

@@ -4,8 +4,8 @@
 **Iteration spec:** [scenarios/roy/roy_4_iteration.yaml](../../../scenarios/roy/roy_4_iteration.yaml)
 **Engineered fixture:** [scenarios/roy/roy_2pc_holdout.yaml](../../../scenarios/roy/roy_2pc_holdout.yaml) (reused from Roy-2pc / Roy-2c)
 **A/B partner:** [20_roy_2c.md](../20_roy_2c.md)
-**Owning release plan:** [release_0_9_1.md § Stage 0d](../../plans/release_0_9_1.md)
-**1.1 design plan:** [cross_modal_substrate_binding.md § Stage 1](../../plans/cross_modal_substrate_binding.md)
+**Owning release plan:** [release_0_9_1.md § Stage 0d](../../plans/archive/release_0_9_1.md)
+**1.1 design plan:** [cross_modal_substrate_binding.md § Stage 1](../../plans/archive/cross_modal_substrate_binding.md)
 
 Roy-4 is the **validation gate for the 1.1 cross-modal binding implementation**. It re-runs the same priming + fixture + arms as Roy-2c with one structural change: `MAXIM_EC_TRACE_ACTIVATIONS=1` set in the runner environment. The instrumentation emits per-tick `sim_ec_activation` JSONL events from `similarity/ec.py::pattern_complete_or_separate`; the post-hoc analyzer (`scripts/analyze_roy_4_coactivation.py`) computes a pairwise co-activation matrix over the priming session, applies a proposed Hebbian binding rule, and reports whether any test-phase active nodes have would-have-bound edges to priming `sense_food_source` clusters.
 
@@ -13,7 +13,7 @@ Roy-4 is the **validation gate for the 1.1 cross-modal binding implementation**.
 
 | Outcome | Diagnosis |
 |---|---|
-| **PASS** — at least one test-phase active node has a would-have-bound edge to a priming `sense_food_source` cluster | Cross-modal binding plan is JUSTIFIED. Greenlight Stages 2-6 of [cross_modal_substrate_binding.md](../../plans/cross_modal_substrate_binding.md). |
+| **PASS** — at least one test-phase active node has a would-have-bound edge to a priming `sense_food_source` cluster | Cross-modal binding plan is JUSTIFIED. Greenlight Stages 2-6 of [cross_modal_substrate_binding.md](../../plans/archive/cross_modal_substrate_binding.md). |
 | **FAIL** — no would-have-bound edges between priming and test clusters under the proposed rule | Encoder alignment is too severe for Hebbian binding alone. Cancel binding plan Stages 2-6; redirect to a 1.2+ encoder-replacement research direction. |
 
 The proposed Hebbian rule under test:
@@ -188,6 +188,6 @@ diff scenarios/roy/roy_2c_iteration.yaml scenarios/roy/roy_4_iteration.yaml | he
 
 - [`21_roy_4.md`](../21_roy_4.md) — outcome doc with the recorded analysis result
 - [`20_roy_2c.md`](../20_roy_2c.md) — Roy-2c's H1 confirmation that motivates Roy-4
-- [`release_0_9_1.md`](../../plans/release_0_9_1.md) — owning release plan; Stage 0d is the instrumentation work
-- [`cross_modal_substrate_binding.md`](../../plans/cross_modal_substrate_binding.md) — 1.1 plan; Stage 1 is Roy-4 itself
-- [`persona_convergence_crucible.md`](../../plans/persona_convergence_crucible.md) — Roy iteration log
+- [`release_0_9_1.md`](../../plans/archive/release_0_9_1.md) — owning release plan; Stage 0d is the instrumentation work
+- [`cross_modal_substrate_binding.md`](../../plans/archive/cross_modal_substrate_binding.md) — 1.1 plan; Stage 1 is Roy-4 itself
+- [`persona_convergence_crucible.md`](../../plans/deferred/persona_convergence_crucible.md) — Roy iteration log

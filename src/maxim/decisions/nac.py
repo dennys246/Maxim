@@ -225,10 +225,10 @@ class NACConfig:
     #
     # Subject to retune if decay feels wrong. See
     # ``feedback_nac_decay_tau_is_calibration_knob.md`` for the framing rule
-    # and ``docs/plans/cluster_reward_bias_decay_tau_split.md`` for the
+    # and ``docs/plans/archive/cluster_reward_bias_decay_tau_split.md`` for the
     # full calibration math. Currently tick-anchored per agent_loop section
     # 8.5; SCN-tying is a separate follow-up tracked in
-    # ``docs/plans/scn_decay_anchoring.md`` (TBD).
+    # ``docs/plans/deferred/scn_decay_anchoring.md`` (TBD).
     #
     # Override: MAXIM_NAC_CLUSTER_REWARD_BIAS_DECAY_TAU
     # (numeric, clamped [50, 1000]; out-of-range or invalid → default + WARN).
@@ -533,7 +533,7 @@ class NAc:
         # on ``(agent_id, entity_class, failure_mode)`` via the new
         # subscriber.  Different maps, different key shapes — pre-merge
         # review verified no double-attribution.  (See
-        # ``docs/plans/pain_bus_unification.md`` for the latent-bridge ×
+        # ``docs/plans/archive/pain_bus_unification.md`` for the latent-bridge ×
         # subscriber trap reference.)
         #
         # Persistence: ``f"{aid}\x1f{ec}\x1f{fm}"`` join mirrors
@@ -2180,8 +2180,8 @@ class NAc:
         or re-rank tools before the LLM constructs its choice set
         (post-1.0 cleanup if Roy-3 finds the annotation surface
         insufficient). Wire 1 ships the hybrid version to keep 0.9.1
-        scope tight. See ``docs/plans/release_0_9_1.md`` § Stage 4 and
-        ``docs/plans/bio_emergent_persona_foundations.md`` § Wire 1.
+        scope tight. See ``docs/plans/archive/release_0_9_1.md`` § Stage 4 and
+        ``docs/plans/deferred/bio_emergent_persona_foundations.md`` § Wire 1.
 
         Args:
             event_sig: Optional event_signature filter. When provided,
@@ -2291,7 +2291,7 @@ class NAc:
         survive a multi-turn test phase to be expressive — the same
         rationale that decoupled ``percept_valence_decay_tau`` from
         ``reward_bias_decay_tau`` in Wire 2 (B2 fold). See
-        ``docs/plans/cluster_reward_bias_decay_tau_split.md`` for the
+        ``docs/plans/archive/cluster_reward_bias_decay_tau_split.md`` for the
         calibration math.
 
         Bidirectional (mirrors ``decay_goal_reward_biases``); prunes
@@ -2728,7 +2728,7 @@ class NAc:
                 the EC default by
                 ``test_nac_threshold_override_base_tracks_ec_default``.
 
-        Phase 3.5 of docs/plans/ec_centroid_drift_fix.md (2026-05-23)
+        Phase 3.5 of docs/plans/archive/ec_centroid_drift_fix.md (2026-05-23)
         replaced a hardcoded ``base = 0.44`` with this parameterized
         form. At non-default EC thresholds (e.g., 0.80 in the P2
         validation sweep) the hardcoded form produced a coupling

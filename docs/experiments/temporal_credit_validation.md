@@ -1,6 +1,6 @@
 # Temporal Credit Validation — Experiment Results
 
-**Plan:** [temporal_credit_integration.md](../plans/temporal_credit_integration.md)
+**Plan:** [temporal_credit_integration.md](../plans/archive/temporal_credit_integration.md)
 **Protocol:** [temporal_credit_validation.md](protocols/temporal_credit_validation.md)
 **Date:** TBD
 **Model:** qwen2.5-14b-instruct on RTX 5080

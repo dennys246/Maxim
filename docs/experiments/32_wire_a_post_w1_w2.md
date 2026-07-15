@@ -2,9 +2,9 @@
 
 **Status:** Run complete 2026-05-27. **AMBIGUOUS-WITH-WIRING-BUG verdict.** PRIMARY criterion failed but two upstream wiring gaps identified — neither sits inside W1 or W2 themselves.
 **Branch:** main (post-PR-#288 merge at `5bf450b`).
-**Plan:** [docs/plans/v1_refinement.md](../plans/v1_refinement.md) §1.5 integration test.
+**Plan:** [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5 integration test.
 **Predecessor:** [30_wire_a_tau_validation.md](30_wire_a_tau_validation.md) (Phase B baseline, pre-W1+W2).
-**Companion plans:** [sense_tool_registry.md](../plans/sense_tool_registry.md) (W1 MVP) + [imagination_substrate_signals.md](../plans/imagination_substrate_signals.md) (W2 MVP).
+**Companion plans:** [sense_tool_registry.md](../plans/deferred/sense_tool_registry.md) (W1 MVP) + [imagination_substrate_signals.md](../plans/deferred/imagination_substrate_signals.md) (W2 MVP).
 
 ## Pre-registration
 
@@ -126,7 +126,7 @@ Scoping question that should land in the Fix A plan doc: how many OTHER 0.9.1 Ro
 
 ### Fix B — Extend W2 hookup to fire on fixture scene-load
 
-**Direction chosen: (b1) extend W2 to fixture scene-load.** Add a substrate-aware step to the fixture-loading code path parallel to `generate_scene_manifest`. The contract surface is larger (manifests have to mean something for a pre-set fixture) and bumps directly into W2's [Open Question 5](../plans/imagination_substrate_signals.md) (self-reinforcing preference loops — bio-fidelity reviewer's flag). Empirical-grounding constraint ("biased entities appear only if present in ≥N% of past sessions") should be re-read during scoping; if the constraint applies cleanly to fixture-driven scenes, it answers the self-reinforcement worry that originally drove the deferral.
+**Direction chosen: (b1) extend W2 to fixture scene-load.** Add a substrate-aware step to the fixture-loading code path parallel to `generate_scene_manifest`. The contract surface is larger (manifests have to mean something for a pre-set fixture) and bumps directly into W2's [Open Question 5](../plans/deferred/imagination_substrate_signals.md) (self-reinforcing preference loops — bio-fidelity reviewer's flag). Empirical-grounding constraint ("biased entities appear only if present in ≥N% of past sessions") should be re-read during scoping; if the constraint applies cleanly to fixture-driven scenes, it answers the self-reinforcement worry that originally drove the deferral.
 
 Rejected alternative (b2): Roy switches test arms to a generative-narrator path. Sidesteps the mechanism question but abandons fixture-driven reproducibility — not the right move without an explicit Roy-redesign authorization.
 
@@ -155,8 +155,8 @@ This is enough to test the **Wire-A + W1 contribution to the substrate→action 
 
 ## Plan-doc folding (per kickoff B6)
 
-- [docs/plans/v1_refinement.md](../plans/v1_refinement.md) §1.5: add ambiguous-with-wiring-bug outcome line; Fix A + Fix B become 1.0 critical path before the next Wire-A Roy iteration can run.
-- [docs/plans/sense_tool_registry.md](../plans/sense_tool_registry.md) "MVP shipment" section: integration test ran but cannot validate W1's behavior until Bug A is fixed and a clean re-run lands. The MVP code itself is structurally correct; the upstream input is empty.
-- [docs/plans/imagination_substrate_signals.md](../plans/imagination_substrate_signals.md) "W2 MVP shipment recap": integration test reveals W2's hookup site is structurally bypassed by Roy's fixture-driven test arms. Either move the hookup or change the Roy spec — surface decision to user.
-- [docs/plans/persona_convergence_crucible.md](../plans/persona_convergence_crucible.md): Roy iteration log entry. NULL outcome on PRIMARY; two distinct upstream wiring bugs; not a divergence signal.
+- [docs/plans/archive/v1_refinement.md](../plans/archive/v1_refinement.md) §1.5: add ambiguous-with-wiring-bug outcome line; Fix A + Fix B become 1.0 critical path before the next Wire-A Roy iteration can run.
+- [docs/plans/deferred/sense_tool_registry.md](../plans/deferred/sense_tool_registry.md) "MVP shipment" section: integration test ran but cannot validate W1's behavior until Bug A is fixed and a clean re-run lands. The MVP code itself is structurally correct; the upstream input is empty.
+- [docs/plans/deferred/imagination_substrate_signals.md](../plans/deferred/imagination_substrate_signals.md) "W2 MVP shipment recap": integration test reveals W2's hookup site is structurally bypassed by Roy's fixture-driven test arms. Either move the hookup or change the Roy spec — surface decision to user.
+- [docs/plans/deferred/persona_convergence_crucible.md](../plans/deferred/persona_convergence_crucible.md): Roy iteration log entry. NULL outcome on PRIMARY; two distinct upstream wiring bugs; not a divergence signal.
 - [docs/plans/behavioral_graduation_candidates.md](../plans/behavioral_graduation_candidates.md): no Earned-tier movement (Wire-A still pre-Earned; the planned validation iteration is blocked on Fix A).

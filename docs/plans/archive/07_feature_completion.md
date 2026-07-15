@@ -6,7 +6,7 @@
 **1.0 gate remaining:** P5 stress persistence (10k+ nodes)
 **Tests:** 5469+ passing (17 new integration tests for imagination wiring)
 **Review:** 5-lens pre-plan review + 2-lens pre-merge integration review. Findings integrated below.
-**Experiment:** [07_imagination_wiring.md](../experiments/07_imagination_wiring.md) — integration PoC results
+**Experiment:** [07_imagination_wiring.md](../../experiments/07_imagination_wiring.md) — integration PoC results
 
 ---
 

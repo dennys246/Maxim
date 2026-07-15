@@ -1,4 +1,4 @@
-"""Phase 0 audit harness for prompt-caching (docs/plans/prompt_caching_for_cloud_backends.md).
+"""Phase 0 audit harness for prompt-caching (docs/plans/archive/prompt_caching_for_cloud_backends.md).
 
 These tests document the BASELINE state of the prompt architecture with respect
 to prompt caching, BEFORE any Phase 1 refactor. They are the regression anchor

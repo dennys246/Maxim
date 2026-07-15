@@ -6,7 +6,7 @@ substrate-relevant bio-system state snapshots at end-of-run. No narrator,
 no live LLM required for the orchestrator itself — the AUT's LLM calls
 are handled by whatever backend is wired (including MockLLMBackend from S2).
 
-**W2 Bug B fix (Fix B, 2026-05-27, [docs/plans/imagination_substrate_signals.md]):**
+**W2 Bug B fix (Fix B, 2026-05-27, [docs/plans/deferred/imagination_substrate_signals.md]):**
 ``run()`` accepts an optional substrate-aware scene-load pre-trigger that
 calls ``Narrator.generate_scene_manifest(llm_router, goal, nac_top_biases=...)``
 and routes the result through ``imagination_trigger.process_manifest(...)``.
@@ -133,7 +133,7 @@ class FixtureDrivenOrchestrator:
         # Fix B (W2 to fixture scene-load) — optional substrate-aware
         # pre-trigger. ALL FOUR (nac, imagination_trigger, llm_router, goal)
         # must be non-None for the pre-trigger to fire. See class docstring
-        # + docs/plans/imagination_substrate_signals.md.
+        # + docs/plans/deferred/imagination_substrate_signals.md.
         imagination_trigger: Any | None = None,
         llm_router: Any | None = None,
         goal: str | None = None,

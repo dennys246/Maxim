@@ -3,8 +3,8 @@
 **Status:** COMPLETE (2026-04-12). Fixtures calibrated, baselines pinned, P1 unblocked.
 **Scope:** ~350 LOC + ~2.5 days fixture authoring
 **Blocks:** substrate_recognition.md (P1+P2) — **UNBLOCKED**
-**Master reference:** [archive/substrate_plan.md](archive/substrate_plan.md) for full rationale, baselines, statistical hygiene rules
-**Results:** [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md) | [experiments/results/p0_baseline_sweep.json](../experiments/results/p0_baseline_sweep.json)
+**Master reference:** [archive/substrate_plan.md](substrate_plan.md) for full rationale, baselines, statistical hygiene rules
+**Results:** [experiments/p0_baseline_sweep.md](../../experiments/p0_baseline_sweep.md) | [experiments/results/p0_baseline_sweep.json](../experiments/results/p0_baseline_sweep.json)
 
 ## Goal
 
@@ -87,7 +87,7 @@ Falls in the **60-85% well-calibrated** zone. Difficulty gradient works as desig
 
 **P1 sanity floor:** 78.5% - 5pp = **73.5%**
 
-**Decision: proceed to P1.** Fixtures frozen. Full results: [experiments/p0_baseline_sweep.md](../experiments/p0_baseline_sweep.md).
+**Decision: proceed to P1.** Fixtures frozen. Full results: [experiments/p0_baseline_sweep.md](../../experiments/p0_baseline_sweep.md).
 
 OpenCLIP text-encoder baseline code exists (`tests/substrate/baselines/openclip_baseline.py`) but has not been scored yet — requires `open_clip_torch` which is not installed. The OpenCLIP number is pinned at P4 time, not P0. The P0 decision gate uses sentence-transformers only.
 

@@ -1,6 +1,9 @@
 # Structural Invariant Tests — Test-Discipline Companion to the Regression-Guard Convention
 
-**Status:** Drafted 2026-05-27. Ships as three separate PRs in stage order. Companion plan to the [behavioral graduation candidates](behavioral_graduation_candidates.md) discipline.
+> **ARCHIVED (2026-07-15 plans audit):** ✅ ALL 3 STAGES SHIPPED — Stage 1 statistic-shape tests (PR #279, `tests/unit/test_statistic_shapes.py`), Stage 2 trajectory invariants (PR #280, `tests/substrate/test_trajectory_invariants.py`), Stage 3 multi-agent marker + CI lint (PR #281, `scripts/lint_multi_agent_marker.py`, wired in test.yml). The `Drafted` header below is stale.
+
+
+**Status:** Drafted 2026-05-27. Ships as three separate PRs in stage order. Companion plan to the [behavioral graduation candidates](../behavioral_graduation_candidates.md) discipline.
 **Triggered by:** the regression-guard convention work (PRs #274/#275/#276/#277) made invariants auditable by grep. Three classes of bug shape are still only caught after-the-fact (e.g., Wire 1 statistic degeneracy, P4 multi-agent silent-merge, sequential drift across operations). Lifting them into the test suite turns "remember to test this" into structural enforcement.
 
 ## Front-gate scope pressure (retroactive)
@@ -143,8 +146,8 @@ def test_nac_reward_bias_keyed_per_agent(...):
 
 ## Cross-references
 
-- [CLAUDE.md "Working principles for new mechanisms"](../../CLAUDE.md#working-principles-for-new-mechanisms) — Principle 5 (regression-guard / experiment citation) is the convention these tests structurally enforce in code.
-- [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) — sibling 1.0-gate discipline. Trajectory tests (Stage 2) are mechanical; graduation experiments are behavioral; both pair with benchmarking.
+- [CLAUDE.md "Working principles for new mechanisms"](../../../CLAUDE.md#working-principles-for-new-mechanisms) — Principle 5 (regression-guard / experiment citation) is the convention these tests structurally enforce in code.
+- [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md) — sibling 1.0-gate discipline. Trajectory tests (Stage 2) are mechanical; graduation experiments are behavioral; both pair with benchmarking.
 - CLAUDE.md L37 (Wire 1 statistic-shape lesson) — Stage 1 generalizes this into a check.
 - CLAUDE.md L43 (P4 multi-agent rule) — Stage 3 enforces this on new tests.
 - CLAUDE.md L115, L153, L157, L159, L160 — trajectory invariants assertable in Stage 2.
@@ -163,6 +166,6 @@ Combined with the regression-guard discipline already shipped, the codebase has 
 1. **Tag**: `[engineering]` / `[behavioral]` (Principle 1)
 2. **Cite**: `Regression guard:` / `Roy experiment:` (Principle 5)
 3. **Test**: structural-invariant tests (this plan)
-4. **Validate**: Roy / graduation candidates ([behavioral_graduation_candidates.md](behavioral_graduation_candidates.md))
+4. **Validate**: Roy / graduation candidates ([behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md))
 
 Each layer catches different failure modes. None is sufficient alone.

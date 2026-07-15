@@ -1,7 +1,7 @@
 """Roy iteration log + protocol scaffolding.
 
 R4 of the Roy long-horizon harness build (see
-``docs/plans/persona_convergence_crucible.md`` "Iteration log" + "What
+``docs/plans/deferred/persona_convergence_crucible.md`` "Iteration log" + "What
 we record per Roy iteration"). Every Roy iteration produces two
 artifacts:
 
@@ -52,18 +52,18 @@ logger = logging.getLogger(__name__)
 _PLAN_PREFIX_MAP: tuple[tuple[str, str], ...] = (
     # Order matters — longest prefix wins on overlap.
     ("roy-cradle-", "docs/plans/grounded_language_acquisition.md"),
-    ("roy-cautious-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-adversarial-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-explorer-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-collector-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-hider-", "docs/plans/persona_convergence_crucible.md"),
+    ("roy-cautious-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-adversarial-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-explorer-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-collector-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-hider-", "docs/plans/deferred/persona_convergence_crucible.md"),
     # Generic numeric/methodology iterations land on the crucible doc.
-    ("roy-0-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-1-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-2-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-3-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-4-", "docs/plans/persona_convergence_crucible.md"),
-    ("roy-5-", "docs/plans/persona_convergence_crucible.md"),
+    ("roy-0-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-1-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-2-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-3-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-4-", "docs/plans/deferred/persona_convergence_crucible.md"),
+    ("roy-5-", "docs/plans/deferred/persona_convergence_crucible.md"),
 )
 
 

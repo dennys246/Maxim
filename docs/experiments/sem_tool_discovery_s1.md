@@ -1,7 +1,7 @@
 # SEM Tool Discovery S1 — Hybrid Prompt Mode PoC
 
 **Date:** 2026-04-20
-**Plan:** [docs/plans/sem_tool_discovery.md](../plans/sem_tool_discovery.md)
+**Plan:** [docs/plans/archive/sem_tool_discovery.md](../plans/archive/sem_tool_discovery.md)
 **Stage:** S1 (Universal sense + discover_tools + hybrid prompt mode)
 **Status:** In progress
 

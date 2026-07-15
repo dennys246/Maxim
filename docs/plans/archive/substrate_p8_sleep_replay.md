@@ -5,9 +5,9 @@
 **Target version:** 0.5
 **Gates:** null (not 1.0-gating, but validates the consolidation claim)
 **Depends on:** P3a (episode binding), P6 (decay mechanism)
-**Blocks:** nothing — but **activates** [memory_consolidation_practice.md](memory_consolidation_practice.md)
-**Parent:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md)
-**Related:** [memory_consolidation_practice.md](memory_consolidation_practice.md) (living practice doc that refines strategies AFTER P8 ships)
+**Blocks:** nothing — but **activates** [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md)
+**Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
+**Related:** [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md) (living practice doc that refines strategies AFTER P8 ships)
 
 ## Goal
 
@@ -22,7 +22,7 @@ During a sleep phase, replaying the top-N rewarded episodes with Hebbian link we
 - One replay strategy (top-N by cumulative reward)
 - One scheduling rule (replay on explicit `sleep()` tool call)
 - One measurable improvement (F1 delta on replayed probes)
-- Everything else goes to [memory_consolidation_practice.md](memory_consolidation_practice.md)
+- Everything else goes to [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md)
 
 ## Dependencies (scaffolding audit)
 
@@ -84,7 +84,7 @@ During a sleep phase, replaying the top-N rewarded episodes with Hebbian link we
 - Interference analysis (does replaying A degrade B?)
 - Promotion rules (when does a replayed episode get promoted to LONG_TERM?)
 
-All deferred items go to [memory_consolidation_practice.md](memory_consolidation_practice.md) when P8 ships.
+All deferred items go to [memory_consolidation_practice.md](../deferred/memory_consolidation_practice.md) when P8 ships.
 
 ## Load-bearing invariants
 

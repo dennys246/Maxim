@@ -4,7 +4,7 @@
 **Iteration spec:** [scenarios/roy/roy_5a_iteration.yaml](../../../scenarios/roy/roy_5a_iteration.yaml)
 **Engineered fixture:** [scenarios/roy/roy_2pc_holdout.yaml](../../../scenarios/roy/roy_2pc_holdout.yaml) (reused from Roy-2pc / Roy-2c / Roy-4)
 **A/B partners:** [20_roy_2c.md](../20_roy_2c.md), [21_roy_4.md](../21_roy_4.md)
-**Owning plan:** [roy_5_encoder_alignment_disambiguator.md § Stage 1](../../plans/roy_5_encoder_alignment_disambiguator.md)
+**Owning plan:** [roy_5_encoder_alignment_disambiguator.md § Stage 1](../../plans/archive/roy_5_encoder_alignment_disambiguator.md)
 **Persistence prerequisite:** [PR #248](https://github.com/dennys246/Maxim/pull/248) (wires `EC.save()` + `ATL.save()` into `simulation/report.py::save_aut_state`)
 
 Roy-5a is the **disambiguating diagnostic for the three H1 sub-hypotheses** (H1c threshold tuning / H1b encoder A-B / H1a encoder subspace incompatibility). It re-runs the same priming + fixture + arms as Roy-2c / Roy-4 with one structural change: the persisted EC state (`aut_ec.json`, written by `EntorhinalCortex.save()` since PR #248) is now read post-hoc by [`scripts/analyze_roy_5_cosine_localization.py`](../../../scripts/analyze_roy_5_cosine_localization.py), which computes three pairwise cosine matrices (`M_tt` / `M_dt` / `M_dd`) between priming and arm-A centroids and decodes max cosine over food-bearing priming clusters into one of three pre-registered sub-hypotheses.

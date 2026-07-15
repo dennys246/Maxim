@@ -3,7 +3,7 @@
 **Date:** 2026-04-22
 **Version:** 0.8.x (post-PFC Stage 1+2 ship)
 **Status:** PROTOCOL DEFINED — awaiting live LLM run
-**Depends on:** [pfc_deliberation_cycle.md](../plans/pfc_deliberation_cycle.md)
+**Depends on:** [pfc_deliberation_cycle.md](../plans/archive/pfc_deliberation_cycle.md)
 
 ---
 

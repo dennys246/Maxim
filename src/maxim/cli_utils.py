@@ -57,7 +57,7 @@ def _missing_backend_dependency(backend_type: str) -> tuple[str, str] | None:
 # the historical CLI behavior (the orchestrator used "adversarial" as
 # the silent default before the persona deprecation cycle started in 0.9).
 # Once --persona is hard-removed in 1.1 and Stages 3-5 of
-# docs/plans/persona_cleanup_and_mode_transition.md migrate dispatch off
+# docs/plans/deferred/persona_cleanup_and_mode_transition.md migrate dispatch off
 # persona names entirely, this constant goes with it.
 _DEFAULT_SIM_PERSONA = "adversarial"
 
@@ -65,7 +65,7 @@ _DEFAULT_SIM_PERSONA = "adversarial"
 def _resolve_persona_mode(args: argparse.Namespace) -> None:
     """Resolve --mode / --persona precedence + emit the persona deprecation warning.
 
-    Stage 1 of docs/plans/persona_cleanup_and_mode_transition.md:
+    Stage 1 of docs/plans/deferred/persona_cleanup_and_mode_transition.md:
     --mode is the new flag, --persona is deprecated in 0.9 and removed
     in 1.1 (matches the C4-C6 timing contract in v1_refinement.md
     Section 5). Both flags are accepted through 1.0; --mode wins on
@@ -97,7 +97,7 @@ def _resolve_persona_mode(args: argparse.Namespace) -> None:
         msg = (
             f"--persona / --sim-persona is deprecated and will be removed in 1.1. "
             f"Use --sim-mode {persona_val!r} instead. "
-            f"See docs/plans/persona_cleanup_and_mode_transition.md."
+            f"See docs/plans/deferred/persona_cleanup_and_mode_transition.md."
         )
         # Stderr line for human visibility (DeprecationWarning is silenced
         # by Python's default warning filter outside __main__).

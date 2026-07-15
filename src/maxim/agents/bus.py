@@ -296,7 +296,7 @@ class Percept:
         the leader. The wire-dict is the contract a network-backed
         :class:`~maxim.simulation.sources.PerceptSource` ships through
         the perception transport (C10 prep, full transport in 1.1 —
-        see ``docs/plans/mesh_perception_transport.md``).
+        see ``docs/plans/deferred/mesh_perception_transport.md``).
 
         Carries raw observations the peer captured on-device:
         ``detections`` (vision), ``transcript_chunk_index`` +
@@ -736,7 +736,7 @@ class StructuredContext:
     # substrate bias or every biased tool is already active). Populated
     # by agent_loop.py at LLM submission; rendered by
     # PromptBuilder._add_grayscale_tools_section. See
-    # [docs/plans/sense_tool_registry.md] § "Phase 3".
+    # [docs/plans/deferred/sense_tool_registry.md] § "Phase 3".
     grayscale_tool_annotations: list[tuple[str, float, str]] | None = None
 
     # Auto-sense: passive perception results (exteroception + interoception).

@@ -1,7 +1,7 @@
 # Temporal Credit Validation — Reproduction Protocol
 
 **Experiment:** [temporal_credit_validation.md](../temporal_credit_validation.md) (results)
-**Plan:** [temporal_credit_integration.md](../../plans/temporal_credit_integration.md)
+**Plan:** [temporal_credit_integration.md](../../plans/archive/temporal_credit_integration.md)
 
 ## Overview
 

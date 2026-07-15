@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Phase 0a — closed-loop orient validation on the REAL Reachy body.
 
-docs/plans/audiovisual_orienting.md Phase 0a. The affect-study harness
+docs/plans/archive/audiovisual_orienting.md Phase 0a. The affect-study harness
 (phase0_affect_study.py) validated the credit LOGIC with toy actions; this proves
 it on the production artifact: the real `bodies/reachy_mini` SEM entity, sourcing
 the orient actions from its declared `orient` affordances' `self_effect` on

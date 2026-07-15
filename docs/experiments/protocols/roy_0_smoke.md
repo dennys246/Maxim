@@ -94,7 +94,7 @@ First Roy iteration — no prior to compare against. The "What changed" framing 
 
 ## Related docs
 
-- [`persona_convergence_crucible.md`](../../plans/persona_convergence_crucible.md) — three-arm methodology + Roy-0 iteration log entry with full finding breakdown
+- [`persona_convergence_crucible.md`](../../plans/deferred/persona_convergence_crucible.md) — three-arm methodology + Roy-0 iteration log entry with full finding breakdown
 - [`grounded_language_acquisition.md`](../../plans/grounded_language_acquisition.md) — Roy long-horizon harness context + substrate-primary AUT mode (G4 lives here)
 - `maxim.analysis.substrate_diff` — diff library (R2)
 - `maxim.simulation.roy_runner` — three-arm iteration runner (R3)

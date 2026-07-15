@@ -1,6 +1,6 @@
 # LLM Routing Architecture
 
-**Status:** Draft — written ahead of [llm_path_refinement.md](../plans/llm_path_refinement.md) implementation as a design reference
+**Status:** Draft — written ahead of [llm_path_refinement.md](../plans/archive/llm_path_refinement.md) implementation as a design reference
 **Last updated:** 2026-04-12
 **Target state:** post-0.4 LLM path refinement (four sub-plans complete)
 **Maintenance contract:** this doc is the **single authoritative reference** for how LLM requests flow through Maxim. Any refinement of the routing path must update this doc in the same PR. If the doc and code disagree, the doc is wrong and must be fixed.
@@ -195,7 +195,7 @@ def resolve_backend_class(identifier: str) -> type | None:
     to its 'unknown provider type' warning path."""
 ```
 
-**Why two OpenAI-compatible backends:** `_OpenAIBackend` has an internal retry loop + cost tracking + PII redaction — correct for cloud providers, wrong for self-hosted peers. `_MaximPeerBackend` is purpose-built for peer tunnels: single HTTP call, typed exceptions, no retry, no cost tracking. See [plans/llm_path_refinement.md](../plans/llm_path_refinement.md) for the full justification of why the backends are split.
+**Why two OpenAI-compatible backends:** `_OpenAIBackend` has an internal retry loop + cost tracking + PII redaction — correct for cloud providers, wrong for self-hosted peers. `_MaximPeerBackend` is purpose-built for peer tunnels: single HTTP call, typed exceptions, no retry, no cost tracking. See [plans/llm_path_refinement.md](../plans/archive/llm_path_refinement.md) for the full justification of why the backends are split.
 
 **The classification** (self-hosted vs cloud) happens in [`lane_backends.py::LaneBackendManager._classify`](../../src/maxim/runtime/lane_backends.py) + `_classify_backend`. By the time we reach the `BACKEND_CLASSES` lookup, the provider config's `"type"` field is already set to the canonical identifier.
 
@@ -754,8 +754,8 @@ Each of these has a deferred plan documenting when to revive it.
 
 ## Related docs
 
-- **Plans:** [llm_path_refinement.md](../plans/llm_path_refinement.md) — meta-plan
-- **Sub-plans:** [llm_path_foundation.md](../plans/archive/llm_path_foundation.md) (Plan 1 ✅), [llm_path_typed_errors.md](../plans/archive/llm_path_typed_errors.md) (Plan 2 ✅), [llm_path_fast_failover.md](../plans/archive/llm_path_fast_failover.md) (Plan 3 ✅), [llm_path_cancellation_hygiene.md](../plans/archive/llm_path_cancellation_hygiene.md) (Plan 3.5 ✅), [llm_path_peer_failover.md](../plans/llm_path_peer_failover.md) (Plan 3.6 — R5 ✅ shipped, R1–R4 draft), [llm_path_operator_visibility.md](../plans/llm_path_operator_visibility.md) (Plan 4 — Stage A+B ✅ shipped, Stage C deferred)
+- **Plans:** [llm_path_refinement.md](../plans/archive/llm_path_refinement.md) — meta-plan
+- **Sub-plans:** [llm_path_foundation.md](../plans/archive/llm_path_foundation.md) (Plan 1 ✅), [llm_path_typed_errors.md](../plans/archive/llm_path_typed_errors.md) (Plan 2 ✅), [llm_path_fast_failover.md](../plans/archive/llm_path_fast_failover.md) (Plan 3 ✅), [llm_path_cancellation_hygiene.md](../plans/archive/llm_path_cancellation_hygiene.md) (Plan 3.5 ✅), [llm_path_peer_failover.md](../plans/archive/llm_path_peer_failover.md) (Plan 3.6 — R5 ✅ shipped, R1–R4 draft), [llm_path_operator_visibility.md](../plans/archive/llm_path_operator_visibility.md) (Plan 4 — Stage A+B ✅ shipped, Stage C deferred)
 - **Deferred plans:** [../plans/deferred/llm_path_multi_peer_dispatch.md](../plans/deferred/llm_path_multi_peer_dispatch.md), [../plans/deferred/llm_path_async_router.md](../plans/deferred/llm_path_async_router.md), [../plans/deferred/llm_path_fair_scheduling.md](../plans/deferred/llm_path_fair_scheduling.md), [../plans/deferred/llm_mesh_capability_aware.md](../plans/deferred/llm_mesh_capability_aware.md)
 - **Operator runbook** — deferred to Plan 4 Stage C (`mesh_operations.md` does not exist yet; will be created when `mesh.yml` + admin API ship)
 - **Troubleshooting:** [../troubleshooting/http_debugging.md](../troubleshooting/http_debugging.md), [../troubleshooting/peer_backend_debug.md](../troubleshooting/peer_backend_debug.md), [../troubleshooting/mesh_debug.md](../troubleshooting/mesh_debug.md)

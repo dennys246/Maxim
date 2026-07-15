@@ -1,13 +1,13 @@
 # Prompt B4 — Replanning with Failure Diagnosis (1.0-GATING)
 
-**Status:** COMPLETE (2026-04-19). All 3 stages shipped. Results: [b4_replanning_results.md](../experiments/b4_replanning_results.md)
+**Status:** COMPLETE (2026-04-19). All 3 stages shipped. Results: [b4_replanning_results.md](../../experiments/b4_replanning_results.md)
 **Scope:** ~400 LOC
 **Target version:** 0.5 (formerly 0.4)
 **Gates:** **1.0** — replanning is a core capability claim
 **Depends on:** B1 (SHIPPED — prompt composition), P3a (SHIPPED — episode retrieval of prior attempts)
 **Blocks:** 1.0 release
-**Parent:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md)
-**Related:** [behavioral_convergence_practice.md](behavioral_convergence_practice.md)
+**Parent:** [substrate_binding_persistence.md](substrate_binding_persistence.md)
+**Related:** [behavioral_convergence_practice.md](../deferred/behavioral_convergence_practice.md)
 
 ## Goal
 
@@ -83,4 +83,4 @@ Given an induced failure, the agent's second plan differs structurally from its 
 - **`_build_replan_context` in loop_state.py returns a stub Phase, not a raw string** — pre-existing type bug fixed in this session. `to_llm_prompt_section()` accesses `failed_phase.description`.
 - **Jaccard distance metric is in `planning/structural_diff.py`** — operates on `list[dict]` action sequences, no imports from agents/memory/runtime. Pure utility.
 - **Anti-repetition constraint is a prompt enhancement, not a structural filter** — the LLM receives the constraint and prior attempts; structural difference is MEASURED (Jaccard > 0.3) but not ENFORCED at the code level. The measurement is for validation, not gating.
-- **B4 Stage 3 SHIPPED (2026-04-19)** — blind A/B validation across 5 seeds. Treatment (replanning) 100% vs control (no replanning) 0%. Mean Jaccard 0.894, all pairwise > 0.3. Quality judge passes on all plans. Results: [b4_replanning_results.md](../experiments/b4_replanning_results.md). Tests: `tests/substrate/test_b4_replanning_ab.py` (12 tests).
+- **B4 Stage 3 SHIPPED (2026-04-19)** — blind A/B validation across 5 seeds. Treatment (replanning) 100% vs control (no replanning) 0%. Mean Jaccard 0.894, all pairwise > 0.3. Quality judge passes on all plans. Results: [b4_replanning_results.md](../../experiments/b4_replanning_results.md). Tests: `tests/substrate/test_b4_replanning_ab.py` (12 tests).

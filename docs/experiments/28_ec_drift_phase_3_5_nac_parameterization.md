@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-23
 **Branch:** [`feat/0-9-1-ec-drift-phase-3-5-parameterize-nac`](https://github.com/dennys246/Maxim/tree/feat/0-9-1-ec-drift-phase-3-5-parameterize-nac)
-**Plan:** [docs/plans/ec_centroid_drift_fix.md § Phase 3.5](../plans/ec_centroid_drift_fix.md) (post-merge fold from PR #261's reviewer Q2)
+**Plan:** [docs/plans/archive/ec_centroid_drift_fix.md § Phase 3.5](../plans/archive/ec_centroid_drift_fix.md) (post-merge fold from PR #261's reviewer Q2)
 **Companion:** [25_ec_centroid_drift_fix_phase_1.md](25_ec_centroid_drift_fix_phase_1.md), [26_ec_drift_phase_2_regression.md](26_ec_drift_phase_2_regression.md), [results/p2_reward_modulation_sweep.json](results/p2_reward_modulation_sweep.json)
 
 ## Status

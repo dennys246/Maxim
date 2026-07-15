@@ -175,5 +175,5 @@ A cluster passes the solo-target probe if its solo `target_gain >= +30 pp` AND `
 - [../p2_reward_modulation_sweep.md](../p2_reward_modulation_sweep.md) — Stage 3 lab notebook with full methodology + pivot history + results table
 - [../p2_sem_pain_cascade.md](../p2_sem_pain_cascade.md) — Stage 2 SEM pain cascade integration PoC (sibling protocol)
 - [../p1_recognition_sweep.md](../p1_recognition_sweep.md) — P1 methodology, which P2's collapse-rate metric mirrors
-- [../../plans/substrate_recognition.md](../../plans/substrate_recognition.md) — the plan this closes
+- [../../plans/substrate_recognition.md](../../plans/archive/substrate_recognition.md) — the plan this closes
 - `tests/substrate/p2_metrics.py` module docstring — the three-iteration metric history (node count → raw pair-collapse → plurality self-collapse)

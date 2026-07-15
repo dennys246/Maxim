@@ -599,7 +599,7 @@ class Embodiment:
     # bio-fidelity pre-merge review).
     #
     # Default thresholds (also documented in
-    # docs/plans/bio_emergent_persona_foundations.md § Wire 3).
+    # docs/plans/deferred/bio_emergent_persona_foundations.md § Wire 3).
     # The agent_loop hook reads these via the method signature so a
     # non-default threshold pair can ship in a future tuning experiment
     # without touching call sites.

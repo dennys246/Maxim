@@ -3,7 +3,7 @@
 Covers the homeostatic-deficit → corrective-need derivation in
 ``runtime/agent_loop._read_drive_states`` and its downstream effect on
 ``NAc.recommend_action``'s drive-affinity heuristic, per the drive-tuning
-work for Exp 41 (docs/plans/substrate_exploration_policy.md /
+work for Exp 41 (docs/plans/archive/substrate_exploration_policy.md /
 docs/experiments/41_substrate_primary_exploration.md).
 
 The gap this closes: the drive-affinity heuristic only fires on positive

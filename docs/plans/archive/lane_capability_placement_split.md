@@ -1,5 +1,8 @@
 # Separate Lane *Capability* from *Placement* (origin)
 
+> **ARCHIVED (2026-07-15 plans audit):** ✅ ALL PHASES SHIPPED (PRs #357–#360, #362) + CLAUDE.md invariant landed. `ProviderPlacement`/`Origin`/`LaneTierPlacement` + 3 regression-test files verified in tree. Only remainder — per-placement hardware tuning — is documented in the CLAUDE.md invariant as an explicit 1.1+ extension.
+
+
 **Status:** DRAFT 2026-06-09
 **Author:** Denny + Claude
 **Target:** pre-1.0 architecture cleanup (gate item)

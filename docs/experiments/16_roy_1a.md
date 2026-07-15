@@ -1,7 +1,7 @@
 # Roy-1a — llm-primary on held-out fixture (first methodology iteration)
 
 **Date:** 2026-05-12 (run completed 2026-05-11 21:17 local)
-**Plan:** [persona_convergence_crucible.md § "Iteration log"](../plans/persona_convergence_crucible.md)
+**Plan:** [persona_convergence_crucible.md § "Iteration log"](../plans/deferred/persona_convergence_crucible.md)
 **Companion:** [15_g4_cluster_reward_wire.md](15_g4_cluster_reward_wire.md) (Roy-0 baseline this iteration builds on) · [14_g3_roy_preflight_probe.md](14_g3_roy_preflight_probe.md) (pre-flight probe)
 **Spec:** [scenarios/roy/roy_1a_iteration.yaml](../../scenarios/roy/roy_1a_iteration.yaml)
 **Held-out fixture:** [scenarios/roy/roy_1_holdout.yaml](../../scenarios/roy/roy_1_holdout.yaml)
@@ -12,13 +12,13 @@
 First "real" Roy iteration after Roy-0 smoke (2026-05-11). Two methodology axes changed vs Roy-0:
 
 1. **`aut_mode: llm-primary` at test time** (Roy-0 ran substrate-primary throughout; its cold-start regime produced a `sense_food_source` cluster monoculture).
-2. **Held-out test fixture** (Roy-0 reused the priming arc). 10-percept fixture covers three classes (matching / novel / unrelated) per [persona_convergence_crucible.md §"Test phase"](../plans/persona_convergence_crucible.md).
+2. **Held-out test fixture** (Roy-0 reused the priming arc). 10-percept fixture covers three classes (matching / novel / unrelated) per [persona_convergence_crucible.md §"Test phase"](../plans/deferred/persona_convergence_crucible.md).
 
 Priming remained **identical** to Roy-0: 5 stages × 10 turns of `cradle_prelinguistic` at substrate-primary. Single-variable change at test time + held-out fixture lets divergence-vs-Roy-0 be attributed cleanly to those two axes.
 
 ## What was caught (pre-Roy-1a)
 
-[persona_convergence_crucible.md §"Open questions" item 3](../plans/persona_convergence_crucible.md) flagged a pre-Roy-1 stress test on multi-agent attribution. The original P4 tests validated per-agent partitioning at N=50 per two agents; forward Roys will produce ~150-1000 distinct cluster updates per arm with a similar order of causal links.
+[persona_convergence_crucible.md §"Open questions" item 3](../plans/deferred/persona_convergence_crucible.md) flagged a pre-Roy-1 stress test on multi-agent attribution. The original P4 tests validated per-agent partitioning at N=50 per two agents; forward Roys will produce ~150-1000 distinct cluster updates per arm with a similar order of causal links.
 
 [tests/integration/test_multi_agent_attribution_scale.py](../../tests/integration/test_multi_agent_attribution_scale.py) adds five scale tests at 4 agents × N=500-1000 each:
 
@@ -131,7 +131,7 @@ The goal-reward asymmetry (arm A's goal +0.181, arm B's goal −0.196 on the goa
 
 ## What this still does NOT prove
 
-- **Substrate-only priming surviving an LLM-primary test as *behavior*** is unproven. The cluster_reward_bias path is consumer-coupled to substrate-primary's `recommend_action`; llm-primary at test time doesn't read it. To behaviorally express substrate priming through llm-primary, either (a) hybrid priming would expose the LLM to the priming context directly, or (b) the LLM's prompt would need to be annotated with substrate-derived bias (the Wire 1 design [bio_emergent_persona_foundations.md](../plans/bio_emergent_persona_foundations.md) calls out). Roy-1b will measure the substrate-primary AUT side of this; Roy-2 will introduce the actual question.
+- **Substrate-only priming surviving an LLM-primary test as *behavior*** is unproven. The cluster_reward_bias path is consumer-coupled to substrate-primary's `recommend_action`; llm-primary at test time doesn't read it. To behaviorally express substrate priming through llm-primary, either (a) hybrid priming would expose the LLM to the priming context directly, or (b) the LLM's prompt would need to be annotated with substrate-derived bias (the Wire 1 design [bio_emergent_persona_foundations.md](../plans/deferred/bio_emergent_persona_foundations.md) calls out). Roy-1b will measure the substrate-primary AUT side of this; Roy-2 will introduce the actual question.
 - **Cross-session persistence** is untested (single-session iteration).
 - **Persona convergence on a real persona.** Roy-1a is methodology validation — its `system_prompt` slugs are placeholders matching Roy-0. Carefully-shaped persona prompts arrive at Roy-2.
 - **The valence carryover is real-but-marginal.** KS=0.283 with p=0.402 is below significance; doesn't reproduce above α=0.05 without longer priming or seed pooling.

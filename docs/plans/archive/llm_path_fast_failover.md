@@ -26,7 +26,7 @@ Four concrete outcomes:
 
 ## Non-goals
 
-- **Not building distribution.** Single peer configured via `peer.yml` or `mesh.yml` (Plan 4). Multi-peer overflow is **deferred** in [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md).
+- **Not building distribution.** Single peer configured via `peer.yml` or `mesh.yml` (Plan 4). Multi-peer overflow is **deferred** in [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md).
 - **Not touching `_OpenAIBackend`.** Cloud providers keep existing behavior.
 - **Not changing router's fallback loop.** Already correct.
 - **Not adding heartbeats.** See deferred capability-aware mesh.
@@ -657,7 +657,7 @@ def test_multi_agent_fan_out_no_starvation(mock_leader_endpoint):
 
 **Observability during the test:** the fixture enables `MAXIM_LOG_FILE=/tmp/multi_agent_fan_out.jsonl` so wait times can be grep'd out of the JSONL log after the test. That's the data that gets folded into the stress test report Phase B.
 
-**What the test gates:** the decision to ship [deferred/llm_path_async_router.md](deferred/llm_path_async_router.md). If this test fails under Plan 3's `_MaximPeerBackend` (typical latency ~200ms, 5 concurrent agents), the async router deferred plan revives. If it passes, the lock is acceptable and async stays deferred.
+**What the test gates:** the decision to ship [deferred/llm_path_async_router.md](../deferred/llm_path_async_router.md). If this test fails under Plan 3's `_MaximPeerBackend` (typical latency ~200ms, 5 concurrent agents), the async router deferred plan revives. If it passes, the lock is acceptable and async stays deferred.
 
 ### Why these specs live in Plan 3, not earlier
 
@@ -717,7 +717,7 @@ for line in sys.stdin:
 
 **Load-bearing.** The `_MaximPeerBackend` is a new concept future sessions will wonder about.
 
-**1. Update [../reference.md](../reference.md):**
+**1. Update [../reference.md](../../reference.md):**
 
 Expand the "LLM backends" section with:
 
@@ -726,7 +726,7 @@ Expand the "LLM backends" section with:
 - **Decision table:** self-hosted URL → `_MaximPeerBackend`; cloud URL → `_OpenAIBackend`. Configurable via `"backend_class"` field.
 - **`health_check()` method** — the consolidated two-stage probe.
 
-**2. Extend [../architecture/llm_routing.md](../architecture/llm_routing.md):**
+**2. Extend [../architecture/llm_routing.md](../../architecture/llm_routing.md):**
 
 The architecture doc already exists — it was drafted upfront on 2026-04-12 before any implementation began. Plan 3 extends the following sections with what actually shipped:
 - Layer 6 ("The backends"): flip the `_MaximPeerBackend` subsection from `[Target]` → `[Present]`
@@ -762,7 +762,7 @@ For each layer: what it does, what it owns, what it delegates, what typed errors
 
 **This document is the single source of truth.** Future refinements start by updating this doc.
 
-**3. Update [../../CLAUDE.md](../../CLAUDE.md):**
+**3. Update [../../CLAUDE.md](../../../CLAUDE.md):**
 
 - **Env var table:** add `MAXIM_BACKEND_TRACE`
 - **Lessons learned:**
@@ -814,7 +814,7 @@ Add `project_llm_path_fast_failover_shipped.md` covering the two-backend decisio
 - **Meta plan:** [llm_path_refinement.md](llm_path_refinement.md)
 - **Previous plan:** [llm_path_typed_errors.md](llm_path_typed_errors.md) — Plan 2 (prerequisite)
 - **Next plan:** [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — Plan 4 (formerly reactive mesh, scope-reduced)
-- **Deferred:** [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — the multi-peer overflow we moved out of Plan 4
-- **Architecture:** [../architecture/llm_routing.md](../architecture/llm_routing.md) — created by this plan
-- **Project guide:** [../../CLAUDE.md](../../CLAUDE.md)
+- **Deferred:** [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) — the multi-peer overflow we moved out of Plan 4
+- **Architecture:** [../architecture/llm_routing.md](../../architecture/llm_routing.md) — created by this plan
+- **Project guide:** [../../CLAUDE.md](../../../CLAUDE.md)
 - **Related incident:** `_OpenAIBackend` retry-loop math from [openai_backend.py:278-374](../../src/maxim/models/language/openai_backend.py#L278-L374)

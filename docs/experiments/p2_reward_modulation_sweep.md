@@ -202,7 +202,7 @@ python -m pytest tests/substrate/test_p2_reward_modulation.py::TestP2Mechanism -
 - `tests/substrate/test_p2_reward_modulation.py` — mechanism tests + sweep test updated for new metric + new pass criteria (target_gain / distractor_drift / target_monotone_fraction).
 - `docs/experiments/p2_reward_modulation_sweep.md` (this file).
 - `docs/experiments/results/p2_reward_modulation_sweep.json` (produced by the sweep test).
-- `docs/plans/substrate_recognition.md` — Stage 3 closure marking P2 complete for 0.3-minimum.
+- `docs/plans/archive/substrate_recognition.md` — Stage 3 closure marking P2 complete for 0.3-minimum.
 - `docs/experiments/p2_sem_pain_cascade.md` + `CLAUDE.md` + memory entries — swept for stale references to the old node-count metric.
 
 ## Load-bearing Stage-3 invariants

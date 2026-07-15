@@ -1,7 +1,7 @@
 """Tests for scripts/analyze_roy_5_cosine_localization.py.
 
 The analyzer is the Stage 1 deliverable of
-``docs/plans/roy_5_encoder_alignment_disambiguator.md``. Its verdict
+``docs/plans/archive/roy_5_encoder_alignment_disambiguator.md``. Its verdict
 gates a 1.1+ implementation branch, so the H1c/H1b/H1a decoding +
 ingestion paths get pinned here against the same shape of inputs that
 the real Roy-5a run produces.
@@ -84,7 +84,7 @@ class TestVerdictDecoding:
     def test_exactly_h1c_lower_bound_decodes_h1c(self) -> None:
         """0.44 is INCLUSIVE on the H1c side — boundary is `>= 0.44`,
         and 0.44 is EC's current ``pattern_complete_threshold`` default
-        (Phase 3 of docs/plans/ec_centroid_drift_fix.md, 2026-05-23 —
+        (Phase 3 of docs/plans/archive/ec_centroid_drift_fix.md, 2026-05-23 —
         previously 0.40). The verdict "the encoder DOES see them as
         similar, EC threshold misses" must trigger exactly at the
         current EC threshold floor — see test_h1c_lower_bound_tracks_ec_default

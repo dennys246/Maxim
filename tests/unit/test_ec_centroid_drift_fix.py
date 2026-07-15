@@ -1,6 +1,6 @@
 """Regression guard for the EC text-modality centroid drift fix.
 
-Phase 3 of docs/plans/ec_centroid_drift_fix.md bumped
+Phase 3 of docs/plans/archive/ec_centroid_drift_fix.md bumped
 ``ECConfig.pattern_complete_threshold`` from 0.40 to 0.44 to close the
 sequential text-modality centroid drift surfaced by the 24 paraphrase-
 collapse diagnostic. The 0.01 fine sweep in Phase 2
@@ -51,7 +51,7 @@ def test_pattern_complete_threshold_default_is_0_44() -> None:
 
     If this fails, someone changed the default without updating Phase 3's
     diagnostic numbers, the NAc coupled constant, and the lessons in
-    CLAUDE.md. Re-read docs/plans/ec_centroid_drift_fix.md + the 24-26
+    CLAUDE.md. Re-read docs/plans/archive/ec_centroid_drift_fix.md + the 24-26
     experiment docs before bumping.
     """
     assert ECConfig().pattern_complete_threshold == 0.44

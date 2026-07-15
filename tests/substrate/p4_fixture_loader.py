@@ -37,7 +37,7 @@ FIXTURE_YAML = _REPO_ROOT / "scenarios" / "substrate" / "p4_mug_test.yaml"
 #      docs/experiments/p4_clip_calibration.md with the new numbers
 #   3. Bumping this constant with the new hash
 #
-# Per docs/plans/substrate_p4_cross_modal_binding.md Stage 2, the
+# Per docs/plans/archive/substrate_p4_cross_modal_binding.md Stage 2, the
 # "no band-aid fixture tweaks" rule forbids silent edits.
 FIXTURE_SHA256 = "74a8201cf506500959bbef02e1be20d27a7f89090a63b645c6bac75f98e984c1"
 

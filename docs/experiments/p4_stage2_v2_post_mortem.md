@@ -213,7 +213,7 @@ This post-mortem is landing on `main` as a standalone docs PR BEFORE the fold br
 
 - This file: `docs/experiments/p4_stage2_v2_post_mortem.md`
 - Withdrawal notice at the top of `docs/experiments/p4_mug_test_sweep.md` (the Stage 2 v1 report) pointing readers here
-- Updates to `docs/plans/substrate_p4_cross_modal_binding.md`: top banner, Stage 2 v2 fold status section, Option 2 decision section — reflecting the reopened state
+- Updates to `docs/plans/archive/substrate_p4_cross_modal_binding.md`: top banner, Stage 2 v2 fold status section, Option 2 decision section — reflecting the reopened state
 
 NOT in scope for the docs PR:
 

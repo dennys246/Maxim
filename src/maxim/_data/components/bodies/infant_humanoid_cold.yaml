@@ -7,7 +7,7 @@ component:
   synonyms: [cold infant body, chilled infant, cold cradle infant]
   description: |
     Cold variant of infant_humanoid for the Exp 41 substrate-primary
-    counter-prior experiment (docs/plans/substrate_exploration_policy.md /
+    counter-prior experiment (docs/plans/archive/substrate_exploration_policy.md /
     docs/experiments/41_substrate_primary_exploration.md). It starts and
     STAYS cold — core_temperature well below set_point with a slow warm-back
     drift — so warmth-seeking is a SUSTAINED, drive-relevant temptation. The

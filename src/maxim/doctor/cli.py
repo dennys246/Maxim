@@ -250,7 +250,7 @@ def _retry_loop(
         "key-age": check_key_age,
         "key-permissions": check_key_permissions,
         "key-auth": check_key_auth_smoke,
-        # Robot checks (docs/plans/doctor_robot_reachable.md) — one shared
+        # Robot checks (docs/plans/archive/doctor_robot_reachable.md) — one shared
         # retry id re-runs the whole per-robot list (≤2 robots today) and
         # surfaces the worst remaining result (the loop wants ONE CheckResult).
         "robot": lambda: _worst_robot_result(info),

@@ -351,7 +351,7 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PERSONA",
         help="[DEPRECATED in 0.9 — removed in 1.1] Orchestrator persona for simulation "
         "(adversarial, cooperative, confused, escalating, campaign, refinement). "
-        "Use --sim-mode instead. See docs/plans/persona_cleanup_and_mode_transition.md.",
+        "Use --sim-mode instead. See docs/plans/deferred/persona_cleanup_and_mode_transition.md.",
     )
     # Note: the short alias `--mode` is intentionally NOT added here because
     # the core run-mode flag at line 57 already owns that token (live/train/

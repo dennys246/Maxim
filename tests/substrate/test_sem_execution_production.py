@@ -19,8 +19,8 @@ attribution — at least one assertion in this file should fail loudly
 and name the broken layer.
 
 Read alongside:
-- ``docs/plans/sem_execution_hook.md`` Stage 3 + Stage 4 sections
-- ``docs/plans/executor_bootstrap_unification.md`` for the build_executor
+- ``docs/plans/archive/sem_execution_hook.md`` Stage 3 + Stage 4 sections
+- ``docs/plans/archive/executor_bootstrap_unification.md`` for the build_executor
   signature contract this test relies on
 - ``tests/substrate/test_sem_pain_cascade.py`` for the PoC mechanism
   tests (still useful as smaller-surface regression guards; this file

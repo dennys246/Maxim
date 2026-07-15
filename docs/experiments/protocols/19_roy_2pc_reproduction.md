@@ -189,4 +189,4 @@ diff <(jq '.pairwise_diffs.a_vs_b.nac.cluster_reward_bias.l2' ~/.maxim/roy/roy-1
 - [`19_roy_2pc.md`](../19_roy_2pc.md) — outcome doc with the full result table + H1/H2 hypothesis breakdown
 - [`18_roy_2.md`](../18_roy_2.md) — multi-arc priming Roy-2pc reuses
 - [`17_roy_1b.md`](../17_roy_1b.md) — substrate-primary at test on the original holdout (Roy-2pc's A/B partner)
-- [`persona_convergence_crucible.md`](../../plans/persona_convergence_crucible.md) — three-arm methodology + Roy-2pc iteration log entry
+- [`persona_convergence_crucible.md`](../../plans/deferred/persona_convergence_crucible.md) — three-arm methodology + Roy-2pc iteration log entry

@@ -56,8 +56,8 @@ The fix must be **backward compatible** — when `get_active_display()` is `None
 
 ## Related
 
-- [interactive_experience_031.md](../plans/interactive_experience_031.md) Stage 5 — wired the core display routing
-- [prompt_b3_b5_track.md](../plans/prompt_b3_b5_track.md) — DisplayExtension implementations build on working display
+- [interactive_experience_031.md](../plans/archive/interactive_experience_031.md) Stage 5 — wired the core display routing
+- [prompt_b3_b5_track.md](../plans/archive/prompt_b3_b5_track.md) — DisplayExtension implementations build on working display
 - Plan risk #5 identified this: "stray `print()` calls from tool outputs or third-party code could still interfere"
 
 ## Target

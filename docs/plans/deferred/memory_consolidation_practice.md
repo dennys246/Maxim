@@ -1,8 +1,11 @@
 # Memory Consolidation Practice — Living Doc
 
+> **DEFERRED (2026-07-15 plans audit):** A living doc that never lived — zero experiments logged despite its activation precondition (P8 sleep-replay) shipping 2026-04-19. All six seed questions (Q1–Q6) remain legitimate since P8 is real and in production. **Revive when:** a consolidation-tuning question becomes load-bearing (replay-selection strategy measurably affects outcomes, or Q6 over-consolidation rigidity surfaces as a bug). If 1.1 ships without touching consolidation, downgrade to archive at the next sweep.
+
+
 **Status:** Living document. Kicks in once P8 ships in 0.5. Not a gated phase; refines the mechanism P8 puts in place.
-**Kin:** [tool_refinement_plan.md](tool_refinement_plan.md), [behavioral_convergence_practice.md](behavioral_convergence_practice.md).
-**Related:** [substrate_binding_persistence.md](archive/substrate_binding_persistence.md) P8 (the minimum-viable sleep replay mechanism this doc extends). Master reference: [archive/substrate_plan.md](archive/substrate_plan.md).
+**Kin:** [tool_refinement_plan.md](../tool_refinement_plan.md), [behavioral_convergence_practice.md](behavioral_convergence_practice.md).
+**Related:** [substrate_binding_persistence.md](../archive/substrate_binding_persistence.md) P8 (the minimum-viable sleep replay mechanism this doc extends). Master reference: [archive/substrate_plan.md](../archive/substrate_plan.md).
 
 ## What this document is for
 

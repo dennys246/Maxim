@@ -147,7 +147,7 @@ def stream(name: str, path: str = "", *, context: RequestContext | None = None, 
 - `X-Maxim-Parent-Request-Id: <parent_request_id>` (when set)
 - `X-Maxim-Protocol-Version: 1` (always)
 
-These are the wire protocol between nodes. Documented in [../architecture/llm_routing.md](../architecture/llm_routing.md) as a versioned contract.
+These are the wire protocol between nodes. Documented in [../architecture/llm_routing.md](../../architecture/llm_routing.md) as a versioned contract.
 
 **Input sanitization at boundary:** every header value passes through a sanitizer that rejects control chars, CR/LF (log injection risk), non-ASCII bytes, and lengths > 256. Bad values raise `HTTPClientError` with a `fix_hint` pointing at the offending context field.
 
@@ -321,20 +321,20 @@ git revert HEAD  # restore
 
 ## Documentation & memory update
 
-**1. Update [../reference.md](../reference.md):**
+**1. Update [../reference.md](../../reference.md):**
 - **"HTTP client"** section: `maxim/utils/http.py`, registry pattern, `RequestContext`, header contract, SSRF check reference
 - **"Removed: dead mesh scaffolding"** paragraph explaining R0
 
-**2. Architecture doc** ([../architecture/llm_routing.md](../architecture/llm_routing.md)) is **drafted in the R0 commit** as the first action of this plan. R1 extends it incrementally as each migration step lands. By Plan 1 completion, the HTTP client layer is fully documented.
+**2. Architecture doc** ([../architecture/llm_routing.md](../../architecture/llm_routing.md)) is **drafted in the R0 commit** as the first action of this plan. R1 extends it incrementally as each migration step lands. By Plan 1 completion, the HTTP client layer is fully documented.
 
-**3. Update [../../CLAUDE.md](../../CLAUDE.md):**
+**3. Update [../../CLAUDE.md](../../../CLAUDE.md):**
 - **Env var table:** add `MAXIM_HTTP_TRACE`, `MAXIM_LOG_FILE`
 - **Lessons learned:**
   > **HTTP call sites must use `maxim/utils/http.py`:** raw urllib is banned in `src/maxim/` (CI grep enforced). The 2026-04-12 Cloudflare incident was a missing `User-Agent` header in one of eleven scattered call sites. The registry sets headers once at endpoint registration.
   > 
   > **`RequestContext` propagates via `contextvars.ContextVar`.** Set at the request boundary; read automatically by the logging formatter and HTTP client. Don't thread it through function signatures.
 
-**4. Create [../troubleshooting/http_debugging.md](../troubleshooting/http_debugging.md):**
+**4. Create [../troubleshooting/http_debugging.md](../../troubleshooting/http_debugging.md):**
 
 Short runbook (~100 lines):
 - Enable `MAXIM_HTTP_TRACE=1` + `MAXIM_LOG_FILE=...`
@@ -360,7 +360,7 @@ description: R0 + R1 — dead mesh deleted, unified HTTP client, RequestContext 
 type: project
 ---
 
-**Shipped:** 2026-04-12 (archived 2026-04-14 when Plans 2, 3, 3.5 also landed — this file IS `docs/plans/archive/llm_path_foundation.md`, the original lived at `docs/plans/llm_path_foundation.md` before the audit move).
+**Shipped:** 2026-04-12 (archived 2026-04-14 when Plans 2, 3, 3.5 also landed — this file IS `docs/plans/archive/llm_path_foundation.md`, the original lived at `docs/plans/archive/llm_path_foundation.md` before the audit move).
 
 **What changed:**
 - `src/maxim/mesh/` lost ~1,250 LOC of dead scaffolding
@@ -403,6 +403,6 @@ Update `MEMORY.md` with pointer.
 
 - **Meta plan:** [llm_path_refinement.md](llm_path_refinement.md)
 - **Next plan:** [llm_path_typed_errors.md](llm_path_typed_errors.md) — Plan 2
-- **Architecture:** [../architecture/llm_routing.md](../architecture/llm_routing.md)
-- **Project guide:** [../../CLAUDE.md](../../CLAUDE.md)
+- **Architecture:** [../architecture/llm_routing.md](../../architecture/llm_routing.md)
+- **Project guide:** [../../CLAUDE.md](../../../CLAUDE.md)
 - **Related incident commits:** `d875fb9` + `8b52cbd` on main

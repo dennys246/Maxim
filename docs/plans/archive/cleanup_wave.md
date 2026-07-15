@@ -46,8 +46,8 @@ Audit corrected two over-claims in the original plan: `--segmentation-model` is 
 - [utils/last_run.py](../../src/maxim/utils/last_run.py) `_SKIP_INDICATORS` drops `--list-sessions`.
 
 **Doc sweep:**
-- [docs/user/cli-reference.md](../../docs/user/cli-reference.md): entire "Exploration Mode" table + recipe + `--arc` / `--aut-name` / `--record-percepts` rows removed.
-- [docs/user/simulation.md](../../docs/user/simulation.md), [docs/generative_campaigns_guide.md](../../docs/generative_campaigns_guide.md): `--arc` / `--replay-from` examples and CLI rows removed.
+- [docs/user/cli-reference.md](../../user/cli-reference.md): entire "Exploration Mode" table + recipe + `--arc` / `--aut-name` / `--record-percepts` rows removed.
+- [docs/user/simulation.md](../../docs/user/simulation.md), [docs/generative_campaigns_guide.md](../../generative_campaigns_guide.md): `--arc` / `--replay-from` examples and CLI rows removed.
 - [htmls-guides/maxim-usage-guide.html](../../htmls-guides/maxim-usage-guide.html): exploration block + "Timed Autonomous Exploration" / "Resume a Previous Session" recipes removed.
 - [htmls-guides/maxim-simulation.html](../../htmls-guides/maxim-simulation.html): `--arc` example removed; interactive note retitled to `request_interaction`.
 
@@ -63,7 +63,7 @@ Audit corrected two over-claims in the original plan: `--segmentation-model` is 
 
 **Scope shipped:** ~80 LOC across `cli_parser.py`, `cli.py`, `cli_utils.py`. No changes to `sim_logger.py` were necessary — the existing `set_interactive_mode` / `should_prompt` machinery already handled both cases.
 
-**Doc sweep:** [docs/user/cli-reference.md](../../docs/user/cli-reference.md), [docs/user/troubleshooting.md](../../docs/user/troubleshooting.md), [docs/user/modes-guide.md](../../docs/user/modes-guide.md), [htmls-guides/maxim-usage-guide.html](../../htmls-guides/maxim-usage-guide.html) updated to reflect the new defaults, the rename, and the dropped flag.
+**Doc sweep:** [docs/user/cli-reference.md](../../user/cli-reference.md), [docs/user/troubleshooting.md](../../docs/user/troubleshooting.md), [docs/user/modes-guide.md](../../user/modes-guide.md), [htmls-guides/maxim-usage-guide.html](../../htmls-guides/maxim-usage-guide.html) updated to reflect the new defaults, the rename, and the dropped flag.
 
 **Exit:** Met. Full fast suite (3673 passed) green; lint clean.
 
@@ -81,7 +81,7 @@ Two-layer permission system shipped in [agents/permissions.py](../../src/maxim/a
 
 **Tests:** 19 unit tests in [tests/unit/test_agent_permissions.py](../../tests/unit/test_agent_permissions.py) covering: dataclass defaults, tool deny/allow gates, specific-entity and wildcard SEM rules, YAML round-trip, executor enforcement (with and without permissions), alias-resolution gating, EWMA convergence, valence clamping, and snapshot independence.
 
-**Doc sweep:** [docs/user/dm-campaigns.md](../../docs/user/dm-campaigns.md) gained a "Enforced Permissions" section with the YAML shape, the alias-resolution invariant, and the orthogonality note about enforced vs perceived authority.
+**Doc sweep:** [docs/user/dm-campaigns.md](../../user/dm-campaigns.md) gained a "Enforced Permissions" section with the YAML shape, the alias-resolution invariant, and the orthogonality note about enforced vs perceived authority.
 
 **Deferred (intentionally):**
 - NAc → `PerceivedAuthorityTracker` wiring. Tracker is shipped and tested standalone; the NAc hook is a one-line `tracker.observe(...)` call once we settle on which valence signal to use, and belongs with the next memory-consolidation pass rather than this UX cleanup wave.
@@ -109,7 +109,7 @@ Two-layer permission system shipped in [agents/permissions.py](../../src/maxim/a
 
 - **No refactor of [sim_logger.py](../../src/maxim/simulation/sim_logger.py) beyond the display-tier changes.** It's load-bearing for sims; don't touch what works.
 - **No POG integration for permissions.** POG is deferred. Ship the permissions layer standalone.
-- **No new tools.** This wave is cleanup, not feature work. Tool additions go through [tool_refinement_plan.md](tool_refinement_plan.md).
+- **No new tools.** This wave is cleanup, not feature work. Tool additions go through [tool_refinement_plan.md](../tool_refinement_plan.md).
 
 ## Risks
 

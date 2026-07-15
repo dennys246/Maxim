@@ -4,7 +4,7 @@
 **Iteration specs:** [scenarios/roy/roy_3a_iteration.yaml](../../../scenarios/roy/roy_3a_iteration.yaml) · [scenarios/roy/roy_3b_iteration.yaml](../../../scenarios/roy/roy_3b_iteration.yaml)
 **Fixtures:** [scenarios/roy/roy_1_holdout.yaml](../../../scenarios/roy/roy_1_holdout.yaml) (Roy-3a) · [scenarios/roy/roy_2pc_holdout.yaml](../../../scenarios/roy/roy_2pc_holdout.yaml) (Roy-3b — reused from Roy-2pc / Roy-2c / Roy-4 / Roy-5a)
 **A/B partners:** [18_roy_2.md](../18_roy_2.md), [19_roy_2pc.md](../19_roy_2pc.md), [20_roy_2c.md](../20_roy_2c.md)
-**Owning plan:** [release_0_9_1.md § Stage 5](../../plans/release_0_9_1.md)
+**Owning plan:** [release_0_9_1.md § Stage 5](../../plans/archive/release_0_9_1.md)
 
 Roy-3 is the 0.9.1 Stage 5 validation iteration. Two sub-iterations measure whether Wires A+1+2+3 (PRs #253 / #254 / #255 / #256 / #257, merged 2026-05-13 → 2026-05-22) produced cross-arm behavioral divergence on the Roy harness that the bare `cluster_reward_bias` path could not under Roy-1a / Roy-2 / Roy-2pc / Roy-2c.
 

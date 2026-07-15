@@ -8,7 +8,7 @@ whether any test-phase active nodes have would-have-bound edges to
 priming ``sense_food_source`` clusters.
 
 This script is the validation gate for Stage 2-6 of
-``docs/plans/cross_modal_substrate_binding.md`` (1.1 plan). Per
+``docs/plans/archive/cross_modal_substrate_binding.md`` (1.1 plan). Per
 ``release_0_9_1.md`` Stage 0d the answer is binary:
 
 - **PASS** — at least one test-phase active node has a would-have-bound

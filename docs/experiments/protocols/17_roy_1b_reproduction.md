@@ -126,5 +126,5 @@ unset MAXIM_LOG_FILE MAXIM_BACKEND_TRACE
 
 - [`17_roy_1b.md`](../17_roy_1b.md) — outcome doc with the full result table + interpretation
 - [`16_roy_1a.md`](../16_roy_1a.md) — A/B partner
-- [`persona_convergence_crucible.md`](../../plans/persona_convergence_crucible.md) — three-arm methodology
+- [`persona_convergence_crucible.md`](../../plans/deferred/persona_convergence_crucible.md) — three-arm methodology
 - [`16_roy_1a_reproduction.md`](16_roy_1a_reproduction.md) — Roy-1a protocol Roy-1b mirrors

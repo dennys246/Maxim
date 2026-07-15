@@ -519,7 +519,7 @@ class TestEncoderNAcEligibility:
         nac.credit_node(agent_id="", node_id=node_id, reward=2.0)
         # Override formula: base - reward_bias, where base tracks
         # ECConfig.pattern_complete_threshold default (Phase 3 of
-        # docs/plans/ec_centroid_drift_fix.md moved both 0.40 → 0.44).
+        # docs/plans/archive/ec_centroid_drift_fix.md moved both 0.40 → 0.44).
         # reward=2.0 produces a clamped bias of 0.20 (NAc.max_reward_bias).
         expected = ECConfig().pattern_complete_threshold - 0.20
         assert nac.get_threshold_overrides("") == {node_id: pytest.approx(expected)}

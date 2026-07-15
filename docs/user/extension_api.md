@@ -408,7 +408,7 @@ handle.unsubscribe()
 
 ## 8. Custom personas
 
-**Stability:** ⛔ **deprecated in 0.9 — removed in 1.1.** `maxim.register_persona()` emits `DeprecationWarning` in 0.9 / 1.0 and will raise in 1.1. The persona system is being replaced by `--sim-mode` (an orchestrator flow-shape selector) plus the bio-emergent disposition mechanics tracked in `docs/plans/bio_emergent_persona_foundations.md`. The CLI flag `--persona` (and its `--sim-persona` alias) is also deprecated in 0.9; use `--sim-mode` instead. See [`docs/plans/persona_cleanup_and_mode_transition.md`](../plans/persona_cleanup_and_mode_transition.md) for the migration timeline and rationale.
+**Stability:** ⛔ **deprecated in 0.9 — removed in 1.1.** `maxim.register_persona()` emits `DeprecationWarning` in 0.9 / 1.0 and will raise in 1.1. The persona system is being replaced by `--sim-mode` (an orchestrator flow-shape selector) plus the bio-emergent disposition mechanics tracked in `docs/plans/deferred/bio_emergent_persona_foundations.md`. The CLI flag `--persona` (and its `--sim-persona` alias) is also deprecated in 0.9; use `--sim-mode` instead. See [`docs/plans/deferred/persona_cleanup_and_mode_transition.md`](../plans/deferred/persona_cleanup_and_mode_transition.md) for the migration timeline and rationale.
 
 > **Note on flag naming:** the persona-cleanup plan originally proposed the short alias `--mode`, but that token is already owned by the core run-mode flag (`--mode {live,train,reflection,sleep,agentic,exploration}`). Stage 1 ships `--sim-mode` only; freeing `--mode` for sim use is a separate breaking change with its own deprecation cycle.
 

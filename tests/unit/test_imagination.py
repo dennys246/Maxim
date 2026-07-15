@@ -1135,7 +1135,7 @@ class TestGenerateSceneManifestSubstrateAware:
       "from prior experience" framing, and NO raw-float leakage.
     - All-neutral lists produce no section (matches Wire-A's filter).
 
-    See docs/plans/imagination_substrate_signals.md Hookup 1.
+    See docs/plans/deferred/imagination_substrate_signals.md Hookup 1.
     """
 
     def _capture_prompt(self, mock_llm) -> str:

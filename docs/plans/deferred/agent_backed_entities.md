@@ -10,7 +10,7 @@
 
 ## Why deferred
 
-The motivating symptom — "sims feel one-way, narrator struggles with dragon embodiment" — has a simpler root cause that the much smaller [scene_actor_affordances.md](../scene_actor_affordances.md) plan addresses directly. Imagination already generates dragon entities with `breathe_fire` affordances; the gap is that scene-entity affordances are declarative-only by design (per the entity ownership ship). Letting the orchestrator invoke them with the AUT as target — plus a `target_effect` field on `AffordanceSchema` — should produce embodied-feeling adversaries at ~110 LOC, leveraging all existing imagination work.
+The motivating symptom — "sims feel one-way, narrator struggles with dragon embodiment" — has a simpler root cause that the much smaller [scene_actor_affordances.md](scene_actor_affordances.md) plan addresses directly. Imagination already generates dragon entities with `breathe_fire` affordances; the gap is that scene-entity affordances are declarative-only by design (per the entity ownership ship). Letting the orchestrator invoke them with the AUT as target — plus a `target_effect` field on `AffordanceSchema` — should produce embodied-feeling adversaries at ~110 LOC, leveraging all existing imagination work.
 
 **Revive when:** scene_actor_affordances ships and the lived-experience gap remains. The remaining gap would be entity *agency* — entities deciding when to act, learning from outcomes, accumulating cross-session identity. That's what this plan addresses, and at that point the cost is justified.
 
@@ -230,7 +230,7 @@ Per-agent visual lanes (split panels) are deferred — the color+filter combo gi
 
 ## Stages
 
-### Stage 0 — Pre-req plumbing — **EXTRACTED to [v1_refinement.md P4](../v1_refinement.md), SHIPPED in PR #202**
+### Stage 0 — Pre-req plumbing — **EXTRACTED to [v1_refinement.md P4](../archive/v1_refinement.md), SHIPPED in PR #202**
 
 The two correctness gaps (`bio_integration.py` globals + `tool_dispatch.record_outcome` agent_id) were independently necessary regardless of cast direction, so they shipped as part of the 1.0 cleanup pipeline rather than blocking on this plan's revival. Done.
 
@@ -346,7 +346,7 @@ Deferred until Stages 1-6 ship and we have actual session-learning to evaluate.
 
 4. **Cradle role training — how many acts is enough?** The infant Cradle has 4. Dragon-specific behaviors might need 6 (more hoard-accumulation reps). No hard answer; iterate empirically per role.
 
-5. **Should cast templates version with the Maxim software version?** A bio-state file produced under 0.8 may not deserialize cleanly under 1.5. Lean: yes, cast manifest carries `maxim_version` + `compatible_versions` range; loader rejects incompatible. Composes with [v1_refinement.md CC1](../v1_refinement.md) `_format_version` (shipped PR #203) — cast manifest's compatibility check uses the same versioning scheme.
+5. **Should cast templates version with the Maxim software version?** A bio-state file produced under 0.8 may not deserialize cleanly under 1.5. Lean: yes, cast manifest carries `maxim_version` + `compatible_versions` range; loader rejects incompatible. Composes with [v1_refinement.md CC1](../archive/v1_refinement.md) `_format_version` (shipped PR #203) — cast manifest's compatibility check uses the same versioning scheme.
 
 6. **Mesh pressure when no peers are configured (solo mode)?** Telemetry is local-only. Lean: pressure is computed against local-lane capacity; solo mode just has lower budget defaults.
 
@@ -368,13 +368,13 @@ This unblocks recurring-character sims (DM campaigns with consistent antagonists
 
 ## Cross-references
 
-- [../scene_actor_affordances.md](../scene_actor_affordances.md) — diagnostic for whether this plan is needed; revives this plan if it doesn't close the dragon-narration gap.
+- [../scene_actor_affordances.md](scene_actor_affordances.md) — diagnostic for whether this plan is needed; revives this plan if it doesn't close the dragon-narration gap.
 - [../archive/cradle_sensorimotor_development.md](../archive/cradle_sensorimotor_development.md) — Cradle infrastructure this plan extends. Shipped 2026-04-25.
 - [../reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) — Mesh telemetry this plan reads.
-- [../v1_refinement.md](../v1_refinement.md) P4 — multi-agent attribution shipped PR #202; load-bearing for this plan's per-agent semantics.
-- [../v1_refinement.md](../v1_refinement.md) CC1 — `_format_version` shipped PR #203; cast manifest compatibility checks compose with this scheme.
+- [../v1_refinement.md](../archive/v1_refinement.md) P4 — multi-agent attribution shipped PR #202; load-bearing for this plan's per-agent semantics.
+- [../v1_refinement.md](../archive/v1_refinement.md) CC1 — `_format_version` shipped PR #203; cast manifest compatibility checks compose with this scheme.
 - [mother_npc_stimulus_plan.md](mother_npc_stimulus_plan.md) — Stimulus pattern subsumed by cast members.
-- [mother_maxim_plan.md](mother_maxim_plan.md) — Persistent collective memory; related but distinct (Mother Maxim is shared infrastructure; cast members are individuals).
+- [mother_maxim_plan.md](../archive/mother_maxim_plan.md) — Persistent collective memory; related but distinct (Mother Maxim is shared infrastructure; cast members are individuals).
 - [llm_path_multi_peer_dispatch.md](llm_path_multi_peer_dispatch.md) — Multi-peer load distribution. Sister concern to `MeshPressure`.
-- [../minecraft_benchmark.md](../minecraft_benchmark.md) — revival trigger if Minecraft mobs need pathfinding / villagers need trade memory.
+- [../minecraft_benchmark.md](minecraft_benchmark.md) — revival trigger if Minecraft mobs need pathfinding / villagers need trade memory.
 - CLAUDE.md "Plan review round runs BEFORE PR merge" — applies. Two-lens review (Executor + Architecture) before each stage's PR.

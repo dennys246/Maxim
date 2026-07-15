@@ -278,7 +278,7 @@ def cerebellum_modulator_factory(
     runtime startup path. Grep shows only test callers in
     ``tests/unit/test_producer_protocols.py``. Awaits a new experiment
     that earns the SEM-wiring path. See
-    ``docs/plans/reaction_bus_unification.md`` for the gap audit. Do not
+    ``docs/plans/archive/reaction_bus_unification.md`` for the gap audit. Do not
     delete (per CLAUDE.md Principle 2) — the ``reaction_bus`` parameter
     was preemptively added to close Gap A so the next caller wires it
     correctly.
@@ -307,12 +307,12 @@ def cerebellum_modulator_factory(
         ``ReactionBus`` for modulator failure reactions. When
         ``None``, ``CerebellumModulator._emit_failure_reaction``
         silently no-ops — every modulator failure signal is dropped.
-        Pre-audit (``docs/plans/reaction_bus_unification.md`` Gap A)
+        Pre-audit (``docs/plans/archive/reaction_bus_unification.md`` Gap A)
         this parameter did not exist on the factory and was ALWAYS
         ``None`` in production. Pass ``pain_bus.reaction_bus`` (or
         the standalone ReactionBus from ``build_reaction_bus``) to
         close the gap. See
-        ``docs/plans/reaction_bus_unification.md`` for the full
+        ``docs/plans/archive/reaction_bus_unification.md`` for the full
         audit.
 
     Returns

@@ -107,8 +107,8 @@ Both shapes need the same audit + design discipline as Wave 1: walk every PainBu
 
 ## Cross-references
 
-- [pain_bus_unification.md](pain_bus_unification.md) — the parent plan that surfaced this trap during pre-merge review
+- [pain_bus_unification.md](../archive/pain_bus_unification.md) — the parent plan that surfaced this trap during pre-merge review
 - [archive/biosystem_unification.md](../archive/biosystem_unification.md) — central index
-- [executor_bootstrap_unification.md](executor_bootstrap_unification.md) — `build_executor` precedent + bridge wiring rules
+- [executor_bootstrap_unification.md](../archive/executor_bootstrap_unification.md) — `build_executor` precedent + bridge wiring rules
 - `CLAUDE.md` "Tool-invoked embodiment pain attributes directly, not via context similarity" invariant — the rule the bridge guard enforces
 - `CLAUDE.md` "Context-similarity attribution is the wrong mechanism when a direct lookup key exists" lesson — the SEM execution hook Stage 1 root-cause writeup

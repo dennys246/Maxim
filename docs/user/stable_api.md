@@ -36,7 +36,7 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 |---|---|---|
 | `maxim.research(...) -> ResearchResult` | ⚠️ Experimental | Research orchestrator surface still evolving. Prompt templates, paper structure, and reviewer logic may change. |
 | `maxim.on(event_name, callback) -> EventHandle` | ⚠️ Experimental | Event names + payload fields may grow. Subscription mechanism may evolve to support filters or async callbacks. |
-| `maxim.register_persona(...)` | ⛔ Deprecated in 0.9 — removed in 1.1 | Emits `DeprecationWarning` in 0.9 / 1.0; raises in 1.1. Persona system is being replaced by `--sim-mode` (orchestrator flow-shape) plus bio-emergent disposition mechanics. See [`docs/plans/persona_cleanup_and_mode_transition.md`](../plans/persona_cleanup_and_mode_transition.md). |
+| `maxim.register_persona(...)` | ⛔ Deprecated in 0.9 — removed in 1.1 | Emits `DeprecationWarning` in 0.9 / 1.0; raises in 1.1. Persona system is being replaced by `--sim-mode` (orchestrator flow-shape) plus bio-emergent disposition mechanics. See [`docs/plans/deferred/persona_cleanup_and_mode_transition.md`](../plans/deferred/persona_cleanup_and_mode_transition.md). |
 
 ---
 
@@ -171,7 +171,7 @@ See [configuration.md](configuration.md) for the public env-var classification a
 
 The 1.0 contract: the two accepted forms above are frozen, and the reserved schemes will be added by extending the validator (and this table) in a minor release. No application should rely on a reserved scheme being *rejected* — a future `pkcs11:` ref that is rejected on 1.0 but accepted on 1.1 is an intentional, non-breaking widening, not a regression.
 
-This is intentionally a **closed enum**: each reserved scheme is a discrete name, with no open `<prefix>:*` wildcard, because the validator is deny-by-default and every accepted scheme must map to a concrete resolver. (Contrast the Hivemind bundle `signature_algorithm` [registry](hivemind_bundle_format.md), which is documentation-only with no validator and so reserves open `hsm:*` / `kms:*` / `vendor:*` prefixes.) A future cloud-KMS- or HSM-backed credential reference is added here as its own explicit scheme (e.g. `kms:aws:...`) when its resolver lands, not via a wildcard. Full pluggable credential-provider work is a 1.1+ track (see the [Auth Format-Freeze Audit](../plans/auth_format_freeze_audit.md)).
+This is intentionally a **closed enum**: each reserved scheme is a discrete name, with no open `<prefix>:*` wildcard, because the validator is deny-by-default and every accepted scheme must map to a concrete resolver. (Contrast the Hivemind bundle `signature_algorithm` [registry](hivemind_bundle_format.md), which is documentation-only with no validator and so reserves open `hsm:*` / `kms:*` / `vendor:*` prefixes.) A future cloud-KMS- or HSM-backed credential reference is added here as its own explicit scheme (e.g. `kms:aws:...`) when its resolver lands, not via a wildcard. Full pluggable credential-provider work is a 1.1+ track (see the [Auth Format-Freeze Audit](../plans/archive/auth_format_freeze_audit.md)).
 
 ---
 

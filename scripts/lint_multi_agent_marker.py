@@ -33,7 +33,7 @@ Exits:
   1 — one or more violations; details printed to stderr.
   2 — git command failed or repo state malformed.
 
-See ``docs/plans/structural_invariant_tests.md`` Stage 3 +
+See ``docs/plans/archive/structural_invariant_tests.md`` Stage 3 +
 ``tests/multi_agent_fixtures.py``.
 """
 
@@ -271,7 +271,7 @@ def main() -> int:
         "  @pytest.mark.multi_agent_modes      # opts into the 3-mode parametrization\n"
         "  @pytest.mark.single_agent_only      # explicit opt-out\n"
         "See tests/multi_agent_fixtures.py for the fixture + the tripwire warning,\n"
-        "and docs/plans/structural_invariant_tests.md Stage 3 for rationale.",
+        "and docs/plans/archive/structural_invariant_tests.md Stage 3 for rationale.",
         file=sys.stderr,
     )
     return 1

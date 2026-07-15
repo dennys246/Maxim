@@ -1,5 +1,8 @@
 # LLM Timeout Scalability — bigger models on slower hardware through tunnels
 
+> **DEFERRED (2026-07-15 plans audit):** Stages 1–3.5 SHIPPED (PRs #320/#321 — per-tier `timeout_s`, context-overflow admission gate, TTFT keepalive). Stage 4 (adaptive throughput model, `lane_throughput.py` + `predict_completion_s`) never started. **Revive when:** a self-hosted big-model soak accumulates the `(TTFT, tok/sec)` observation data Stage 4 needs, or an operator needs self-calibrating timeouts beyond the shipped explicit knob. Stall-detector Stage 3 depends on this Stage 4.
+
+
 **Status:** Shell plan, drafted 2026-06-03. Triggered by a real Mac Mini incident: qwen2.5-32b on growing context hit a 149s TTFT, broke the proxy pipe, and surfaced three independent timeout layers (client SDK, httpx read_s, cloudflared tunnel idle).
 **Scope:** Stage 1 ~30 LOC audit-fix; Stage 2 ~80 LOC config schema extension; Stage 3 ~120 LOC proxy heartbeat; Stage 4 ~250 LOC adaptive throughput model + persistence.
 **Target versions:** Stage 1 → 1.0 (bug fix). Stage 2 → 1.0 (extends shipped config-unification surface). Stage 3 → 1.0 or 1.0.x (proxy-side, tunnel-defense). Stage 4 → 1.1 (adaptive, research-y).

@@ -2,7 +2,7 @@
 """Re-measure P1 paraphrase-collapse sweep at a configurable EC threshold.
 
 Mirrors tests/substrate/test_p1_recognition.py::TestP1RecognitionSweep::test_sweep_10_seeds
-but parameterizes the threshold so Phase 2 of docs/plans/ec_centroid_drift_fix.md
+but parameterizes the threshold so Phase 2 of docs/plans/archive/ec_centroid_drift_fix.md
 can measure the regression delta at the Phase 1 winning threshold (0.50) vs
 the pinned baseline at 0.40.
 

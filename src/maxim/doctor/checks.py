@@ -3090,7 +3090,7 @@ def check_user_profiles() -> CheckResult:
     )
 
 
-# ─── robot checks (docs/plans/doctor_robot_reachable.md) ────────────────────
+# ─── robot checks (docs/plans/archive/doctor_robot_reachable.md) ────────────────────
 
 
 def _parse_major_minor(version: str) -> tuple[int, int] | None:
@@ -3228,7 +3228,7 @@ def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
 def check_robot_reachable(info: PlatformInfo) -> list[CheckResult]:
     """Per-robot reachability + era coherence for ~/.maxim/robots.yaml entries.
 
-    Full spec: docs/plans/doctor_robot_reachable.md. The gate NEVER fails —
+    Full spec: docs/plans/archive/doctor_robot_reachable.md. The gate NEVER fails —
     a machine without robots must not fail doctor because of this check.
     """
     try:

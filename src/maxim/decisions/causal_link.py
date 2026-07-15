@@ -433,8 +433,8 @@ class OutcomePrediction:
     formed. Field stays in-memory only — deliberately omitted from
     ``to_dict()`` so the serialization shape is not committed before 1.1+
     picks the representation (bounds tuple vs. ``{lower, upper, std}`` dict).
-    See docs/plans/bio_emergent_persona_foundations.md § Wire 1 and
-    docs/plans/release_0_9_1.md § Stage 4.
+    See docs/plans/deferred/bio_emergent_persona_foundations.md § Wire 1 and
+    docs/plans/archive/release_0_9_1.md § Stage 4.
     """
 
     event_signature: str

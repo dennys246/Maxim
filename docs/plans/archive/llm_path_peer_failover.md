@@ -24,9 +24,9 @@ The user has two GPU-capable nodes (RTX 5080 + RTX 3070) on the roadmap. This pl
 
 ## Non-goals
 
-- **Not capability advertisement.** Both leaders are assumed to serve the same model. Nodes don't tell the peer "I have Qwen-14B loaded" — operator declares it in `peer.yml`. (Capability advertisement is [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md).)
+- **Not capability advertisement.** Both leaders are assumed to serve the same model. Nodes don't tell the peer "I have Qwen-14B loaded" — operator declares it in `peer.yml`. (Capability advertisement is [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md).)
 - **Not discovery.** No mDNS, no gossip. Static config in `peer.yml`. (Discovery is a separate future shell plan.)
-- **Not load balancing.** Strict priority order. Leader 1 is tried first; only on `BackendDown` does the router try Leader 2. Round-robin and capacity-aware routing are [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md).
+- **Not load balancing.** Strict priority order. Leader 1 is tried first; only on `BackendDown` does the router try Leader 2. Round-robin and capacity-aware routing are [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md).
 - **Not fan-out concurrency.** A single agent request still goes to ONE leader at a time. Fan-out would require async router work.
 - **Not hot reload.** `peer.yml` changes still require a peer restart.
 - **Not the full `mesh.yml` schema from Plan 4.** This plan is the cheap pre-cursor that uses `peer.yml`. Plan 4 introduces `mesh.yml` as the more general successor.
@@ -139,7 +139,7 @@ This stage adds detection so the next operator hits a loud warning instead of a 
 
 3. **Doctor exposes the leader's vram_pressure when running in peer mode.** When `maxim doctor` runs as a peer (against a remote leader), it already calls the leader's debug status. Display the leader's `vram_pressure` flag in the doctor output so operators can detect spillover on REMOTE nodes, not just local ones.
 
-**What this stage does NOT add** (deferred to [llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) Stage 5):
+**What this stage does NOT add** (deferred to [llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md) Stage 5):
 - **Runtime tok/s baseline detection.** The static VRAM ratio is the cheap signal. The robust signal is "this node is generating at 5 tok/s when the baseline for this model+GPU is 32 tok/s, must be degraded." Requires a baseline lookup table (model × GPU class → expected tok/s) and per-call measurement. ~150 LOC; belongs in the capability-aware mesh layer where the data drives routing decisions.
 - **Automatic eviction of spilled nodes from the router's provider list.** A spilled node is degraded but still functional. Filtering it would require capability-aware ranking, which is the deferred plan's territory. For Plan 3.6, the warning is the deliverable; routing changes happen later.
 
@@ -202,8 +202,8 @@ Plan 4 (operator visibility) introduces `mesh.yml` as the more general successor
 ## Related
 
 - [llm_path_refinement.md](llm_path_refinement.md) — meta plan
-- [archive/llm_path_fast_failover.md](archive/llm_path_fast_failover.md) — Plan 3 (the typed-exception router loop this plan reuses)
-- [archive/llm_path_cancellation_hygiene.md](archive/llm_path_cancellation_hygiene.md) — Plan 3.5 (cancellation contract that makes the failover loop safe)
+- [archive/llm_path_fast_failover.md](llm_path_fast_failover.md) — Plan 3 (the typed-exception router loop this plan reuses)
+- [archive/llm_path_cancellation_hygiene.md](llm_path_cancellation_hygiene.md) — Plan 3.5 (cancellation contract that makes the failover loop safe)
 - [llm_path_operator_visibility.md](llm_path_operator_visibility.md) — Plan 4 (the canonical successor)
-- [deferred/llm_path_multi_peer_dispatch.md](deferred/llm_path_multi_peer_dispatch.md) — capability-aware multi-peer dispatch (the next step beyond strict-priority failover)
-- [deferred/llm_mesh_capability_aware.md](deferred/llm_mesh_capability_aware.md) — capability advertisement shell plan
+- [deferred/llm_path_multi_peer_dispatch.md](../deferred/llm_path_multi_peer_dispatch.md) — capability-aware multi-peer dispatch (the next step beyond strict-priority failover)
+- [deferred/llm_mesh_capability_aware.md](../deferred/llm_mesh_capability_aware.md) — capability advertisement shell plan

@@ -1,9 +1,12 @@
 # Decay + consolidation calibration framework
 
+> **DEFERRED (2026-07-15 plans audit):** DRAFT, never implemented (~1,400 LOC, 6 phases). One prereq shipped (tau split PR #267); the other (scn_decay_anchoring) is itself deferred, so this is hard-blocked. **Revive when:** multi-machine benchmarking confirms decay timescales are the remaining bottleneck, or a new NAc tau consumer inherits a wrong default again — and scn_decay_anchoring ships first.
+
+
 **Target version:** 1.1+ (post-tau-split, post-SCN-tying).
 **Status:** Draft. Plan written 2026-05-26, prompted by user's observation during the post-Roy-3c-bisect session: "the ultimate goal of decay is to enable forgetting more or less of unimportant or not used information — theoretically can't we create within a simulation have a particular percept occur and adjust the decay so it just begins to form a short term memory, then in another phase we'd do the same but for long-term memories and consolidations."
 **Owns:** [`src/maxim/decisions/nac.py`](../../src/maxim/decisions/nac.py) (NAc decay parameters), [`src/maxim/memory/`](../../src/maxim/memory/) (tier-transition mechanisms), `scripts/calibrate_decay.py` (new), `docs/experiments/3X_decay_calibration_baseline.md` (new), `docs/experiments/3X_decay_calibration_results.md` (new).
-**Companion plans:** [cluster_reward_bias_decay_tau_split.md](cluster_reward_bias_decay_tau_split.md) (Phase A of the prerequisite chain), [scn_decay_anchoring.md](scn_decay_anchoring.md) *(to be written as Phase C kickoff output)* (Phase B prerequisite), [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) (the bio-fidelity thesis this plan operationalizes), [persona_convergence_crucible.md](persona_convergence_crucible.md) (whose iterations would consume calibrated values), [memory_consolidation_practice.md](memory_consolidation_practice.md) (companion living doc — calibration framework feeds back into the consolidation mechanism this practice doc refines).
+**Companion plans:** [cluster_reward_bias_decay_tau_split.md](../archive/cluster_reward_bias_decay_tau_split.md) (Phase A of the prerequisite chain), [scn_decay_anchoring.md](scn_decay_anchoring.md) *(to be written as Phase C kickoff output)* (Phase B prerequisite), [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md) (the bio-fidelity thesis this plan operationalizes), [persona_convergence_crucible.md](persona_convergence_crucible.md) (whose iterations would consume calibrated values), [memory_consolidation_practice.md](memory_consolidation_practice.md) (companion living doc — calibration framework feeds back into the consolidation mechanism this practice doc refines).
 
 ## Why this plan exists
 
@@ -11,7 +14,7 @@ Maxim's substrate has five distinct decay functions in NAc — `reward_bias`, `g
 
 This was correct for 0.7-0.9.x when the substrate was being bootstrapped: hand-picking gives plausible values to ship, and the validation iterations (Roy series) surface when the values are wrong. But it scales badly:
 
-- Each new consumer of a decay parameter inherits an inherited-by-accident default (the canonical example: Wire-A inheriting `reward_bias_decay_tau=50.0` for `_cluster_reward_bias` even though the 50.0 was sized for EC threshold modulation, not multi-turn substrate-voice annotation — see [cluster_reward_bias_decay_tau_split.md](cluster_reward_bias_decay_tau_split.md)).
+- Each new consumer of a decay parameter inherits an inherited-by-accident default (the canonical example: Wire-A inheriting `reward_bias_decay_tau=50.0` for `_cluster_reward_bias` even though the 50.0 was sized for EC threshold modulation, not multi-turn substrate-voice annotation — see [cluster_reward_bias_decay_tau_split.md](../archive/cluster_reward_bias_decay_tau_split.md)).
 - The five decay functions don't act independently — they couple through the memory tier transitions and through downstream learning consumers (SCN temporal credit depends on eligibility, NAc reward attribution depends on cluster reward bias, etc.). Tuning one in isolation can break the implicit coordination.
 - Hand-picked values are not portable across deployments. Even after the SCN-tying follow-up makes them hardware-independent in the *time unit* sense, the *correct numeric value* still varies by hardware (because the substrate's tick rate, scenario diversity, and consumer-readout requirements differ across deployments).
 
@@ -19,7 +22,7 @@ This was correct for 0.7-0.9.x when the substrate was being bootstrapped: hand-p
 
 ## Framing rule
 
-**This plan does NOT replace Phase A/B/C of the [tau-split](cluster_reward_bias_decay_tau_split.md) and [SCN-anchoring](scn_decay_anchoring.md) work.** It depends on them as prerequisites:
+**This plan does NOT replace Phase A/B/C of the [tau-split](../archive/cluster_reward_bias_decay_tau_split.md) and [SCN-anchoring](scn_decay_anchoring.md) work.** It depends on them as prerequisites:
 
 - **Without the tau split**, each tau isn't independently addressable. The calibration framework can't tune `cluster_reward_bias_decay_tau` separately from `reward_bias_decay_tau` if they're the same field.
 - **Without SCN-anchoring**, calibrated tau values are in agent-loop-tick units. Effective decay rate is hardware-dependent (~10x across deployments per [feedback_decay_is_tick_anchored_not_wall_clock](../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/feedback_decay_is_tick_anchored_not_wall_clock.md)). Calibration produces non-portable constants.
@@ -124,7 +127,7 @@ Phase 6 is open-ended research; explicitly NOT included in the Phases 0-5 estima
 
 ## Why this is a 1.1+ target, not 1.0
 
-The 1.0 release exit criteria per [v1_refinement.md](v1_refinement.md) focus on validation + bio-system stabilization + sensorimotor grounding + cleanup + docs. The decay calibration framework is **bio-system optimization**, not stabilization — it improves on already-shipped parameters, which is post-1.0 work.
+The 1.0 release exit criteria per [v1_refinement.md](../archive/v1_refinement.md) focus on validation + bio-system stabilization + sensorimotor grounding + cleanup + docs. The decay calibration framework is **bio-system optimization**, not stabilization — it improves on already-shipped parameters, which is post-1.0 work.
 
 For 1.0, the path is:
 1. Ship the tau-split (closes the inherited-by-accident Wire-A bug)

@@ -6,7 +6,7 @@
 **Priority:** Highest — deliberation is the missing bio-plausible link
 **Depends on:** [working_memory_exec_loop.md](working_memory_exec_loop.md) (shipped), [concept_exploration.md](concept_exploration.md) (L0-L2 shipped), [gating_abstraction.md](gating_abstraction.md) (G0+G1 shipped)
 **Supersedes:** [deliberation_observability.md](deliberation_observability.md) (sim_log helpers survive, call sites move)
-**Enables:** [goal_depth_integration.md](goal_depth_integration.md) (follow-on: GOAL WMS entries, goal-tagged episodes, NAc goal-outcome learning)
+**Enables:** [goal_depth_integration.md](../deferred/goal_depth_integration.md) (follow-on: GOAL WMS entries, goal-tagged episodes, NAc goal-outcome learning)
 **Gates:** none; architectural unification + behavioral improvement
 
 ---
@@ -452,7 +452,7 @@ Terminal output at `--display bio`:
 - **Supersedes** [deliberation_observability.md](deliberation_observability.md) — the sim_log helpers survive but the call sites move into the unified cycle.
 - **Completes** [working_memory_exec_loop.md](working_memory_exec_loop.md) — that plan shipped the WorkingMemorySet and ThoughtGate. This plan makes them load-bearing by routing all deliberation through them.
 - **Composes with** [concept_exploration.md](concept_exploration.md) L0-L2 — BioEnrichmentPipeline and ThinkTool are unchanged; they're called from the cycle instead of from ExecAgent / inline code.
-- **Enables** [goal_depth_integration.md](goal_depth_integration.md) — once the PFC cycle is the canonical deliberation site, goal-depth (GOAL WMS entries, goal-tagged episodes, NAc goal-outcome learning) enriches the data the cycle sees without changing cycle logic.
+- **Enables** [goal_depth_integration.md](../deferred/goal_depth_integration.md) — once the PFC cycle is the canonical deliberation site, goal-depth (GOAL WMS entries, goal-tagged episodes, NAc goal-outcome learning) enriches the data the cycle sees without changing cycle logic.
 - **Enables** [interactive_display_overhaul.md](interactive_display_overhaul.md) — dedicated thinking panel, agent focus switching, dynamic resize. Ships after PFC; uses PFC deliberation events as content source.
 - **Informs** [cross_session_sim_validation.md](cross_session_sim_validation.md) — once deliberation is always-on, cross-session validation can measure whether enrichment improves across sessions.
 

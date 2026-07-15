@@ -158,7 +158,7 @@ All 3 testing tiers PASS with 41/41 hypotheses confirmed across 4 experiments:
 | Tier 2 | Exp 3: LLM acts on bio-system learning | 12/12 (10/10 vs 0/10) | LLM decisions change with valence context |
 | Tier 3 | Exp 4: Organic LLM learning | 5/5 (teal 0%->25%->100%) | Agent learns AND acts organically; fresh control dies |
 
-Tier 3 is the headline result: fully organic LLM-driven training with no scripted reactions. The experienced agent escapes on turn 1 in Session 3; the fresh control agent dies. See [experiments/protocols/](experiments/protocols/) for reproduction protocols and [plans/behavioral_convergence_practice.md](plans/behavioral_convergence_practice.md) for detailed writeups.
+Tier 3 is the headline result: fully organic LLM-driven training with no scripted reactions. The experienced agent escapes on turn 1 in Session 3; the fresh control agent dies. See [experiments/protocols/](experiments/protocols/) for reproduction protocols and [plans/behavioral_convergence_practice.md](plans/deferred/behavioral_convergence_practice.md) for detailed writeups.
 
 ---
 

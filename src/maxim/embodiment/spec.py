@@ -381,7 +381,7 @@ def _parse_entity(
     # consumers):
     #   - ``naming_events`` — Roy-5b interoceptive-vocalization config
     #     consumed by ``EmbodimentPerceptSource``. See
-    #     ``embodiment/naming_events.py`` + docs/plans/roy_5_encoder_alignment_disambiguator.md
+    #     ``embodiment/naming_events.py`` + docs/plans/archive/roy_5_encoder_alignment_disambiguator.md
     #     Stage 3. Research scaffolding; only ``infant_humanoid_naming_v1.yaml``
     #     opts in today.
     # Unknown keys still flow into ``metadata`` for forward-compat; the
@@ -761,7 +761,7 @@ class SpecModulator:
                 f"Modulator {self._entity_name!r}.{self._name!r} declares no sensors. "
                 "Capability-only modulators must declare `abstract: true` "
                 "in their YAML to opt out; otherwise declare at least one "
-                "sensor. See docs/plans/v1_refinement.md §C4. (C4)"
+                "sensor. See docs/plans/archive/v1_refinement.md §C4. (C4)"
             )
 
     @property

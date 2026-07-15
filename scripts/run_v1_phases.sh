@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # V1 substrate-attribution phased re-run harness
-# See docs/plans/confound_quarantine.md "Phased re-run protocol"
+# See docs/plans/archive/confound_quarantine.md "Phased re-run protocol"
 #
 # Each phase runs two sims (plant + recall) sharing one MAXIM_DATA_HOME tmpdir.
 # Per phase, we capture the plant session_id from the report, then resume it

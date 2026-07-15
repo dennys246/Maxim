@@ -1,9 +1,9 @@
 # EC text-modality centroid drift fix
 
 **Target version:** 0.9.1 or 1.0 (decision gated on Phase 2 regression results).
-**Status:** Draft. Plan written 2026-05-23 after the paraphrase-collapse diagnostic ([24_roy_paraphrase_diagnostic.md](../experiments/24_roy_paraphrase_diagnostic.md), [PR #259](https://github.com/dennys246/Maxim/pull/259)) returned `CENTROID_DRIFT_COLLAPSE`.
+**Status:** Draft. Plan written 2026-05-23 after the paraphrase-collapse diagnostic ([24_roy_paraphrase_diagnostic.md](../../experiments/24_roy_paraphrase_diagnostic.md), [PR #259](https://github.com/dennys246/Maxim/pull/259)) returned `CENTROID_DRIFT_COLLAPSE`.
 **Owns:** `scripts/diagnose_roy_paraphrase_collapse.py` (extend), `data/roy_paraphrase_pairs.json` (reuse), `src/maxim/similarity/ec.py` (Phase 3 change), `docs/experiments/24_roy_paraphrase_diagnostic.md` (companion update).
-**Companion plans:** [release_0_9_1.md](release_0_9_1.md) (0.9.1 Roy-3 ships independently; this can land alongside or in 1.0), [v1_refinement.md](v1_refinement.md) (V1 cross-session validation silently depends on this fix), [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md) (Roy-5 / JEPA direction stays a separate gap, but downstream of this fix), [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) (1.2+ research; same downstream relationship).
+**Companion plans:** [release_0_9_1.md](release_0_9_1.md) (0.9.1 Roy-3 ships independently; this can land alongside or in 1.0), [v1_refinement.md](v1_refinement.md) (V1 cross-session validation silently depends on this fix), [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md) (Roy-5 / JEPA direction stays a separate gap, but downstream of this fix), [jepa_cross_modal_alignment.md](../deferred/jepa_cross_modal_alignment.md) (1.2+ research; same downstream relationship).
 
 ## Front-gate scope pressure (retroactive)
 
@@ -103,11 +103,11 @@ If no cell satisfies (1), the diagnostic plan loops back: extend the matrix axes
 
 ### Why this is the load-bearing phase
 
-P1 ([docs/experiments/p1_recognition_sweep.md](../experiments/p1_recognition_sweep.md)) and P2 ([docs/experiments/p2_reward_modulation_sweep.md](../experiments/p2_reward_modulation_sweep.md)) shipped on the current EC behavior (running-mean centroid, threshold 0.40). Both are 0.3-minimum gate references for 1.0. Any change that "fixes Roy drift" but drops P1 below ~85% or P2 below ~+40pp is **net-negative** — it'd close one gap by re-opening two harder ones.
+P1 ([docs/experiments/p1_recognition_sweep.md](../../experiments/p1_recognition_sweep.md)) and P2 ([docs/experiments/p2_reward_modulation_sweep.md](../../experiments/p2_reward_modulation_sweep.md)) shipped on the current EC behavior (running-mean centroid, threshold 0.40). Both are 0.3-minimum gate references for 1.0. Any change that "fixes Roy drift" but drops P1 below ~85% or P2 below ~+40pp is **net-negative** — it'd close one gap by re-opening two harder ones.
 
 ### Implementation
 
-- Re-run [`docs/experiments/protocols/p2_reward_modulation_reproduction.md`](../experiments/protocols/p2_reward_modulation_reproduction.md) with the Phase 1 winning config. Compare to the pinned `+56.0 ± 29.0 pp target gain / 0.0 ± 0.0 pp distractor drift / 94% monotone / 9-of-10 seeds`.
+- Re-run [`docs/experiments/protocols/p2_reward_modulation_reproduction.md`](../../experiments/protocols/p2_reward_modulation_reproduction.md) with the Phase 1 winning config. Compare to the pinned `+56.0 ± 29.0 pp target gain / 0.0 ± 0.0 pp distractor drift / 94% monotone / 9-of-10 seeds`.
 - Re-run P1's paraphrase-collapse sweep with the winning config. Compare to the 91.7% pin.
 - Both must hold (within seed variance) for the Phase 1 winning config to graduate. If either regresses materially, **return to Phase 1 with the next-smallest-delta candidate**.
 
@@ -164,7 +164,7 @@ The most likely winning config is `frozen_text_centroid=on, threshold=0.50, deco
 ### Implementation
 
 - Re-run Roy-2c ([scenarios/roy/roy_2c_iteration.yaml](../../scenarios/roy/roy_2c_iteration.yaml)) with the fixed EC. Same priming + holdout + arms structure as Roy-2pc.
-- Compare `sense_food_source` counts across arms A / B / C against the Roy-2c baseline ([docs/experiments/20_roy_2c.md](../experiments/20_roy_2c.md)).
+- Compare `sense_food_source` counts across arms A / B / C against the Roy-2c baseline ([docs/experiments/20_roy_2c.md](../../experiments/20_roy_2c.md)).
 - Pre-registered pass criterion: **Arm A > B > C on `sense_food_source` counts AND the gap is materially larger than Roy-2c baseline's gap** (specific delta target named in the Phase 4 PR description, based on Roy-2c's pre-fix numbers).
 - Cost: ~3 arms × Roy-2c runtime (cheapest behavioral fixture in the Roy suite).
 

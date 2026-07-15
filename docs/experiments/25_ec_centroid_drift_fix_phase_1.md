@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-23
 **Branch:** [`feat/0-9-1-roy-paraphrase-diagnostic`](https://github.com/dennys246/Maxim/tree/feat/0-9-1-roy-paraphrase-diagnostic)
-**Plan:** [docs/plans/ec_centroid_drift_fix.md § Phase 1](../plans/ec_centroid_drift_fix.md#phase-1--matrix-diagnostic-one-pr)
+**Plan:** [docs/plans/archive/ec_centroid_drift_fix.md § Phase 1](../plans/archive/ec_centroid_drift_fix.md#phase-1--matrix-diagnostic-one-pr)
 **Companion:** [24_roy_paraphrase_diagnostic.md](24_roy_paraphrase_diagnostic.md) (motivating diagnostic; `CENTROID_DRIFT_COLLAPSE` verdict)
 **Script:** [scripts/diagnose_roy_paraphrase_collapse.py](../../scripts/diagnose_roy_paraphrase_collapse.py) `--matrix`
 **Fixture:** [data/roy_paraphrase_pairs.json](../../data/roy_paraphrase_pairs.json)
@@ -70,7 +70,7 @@ Comparing `d0_f0_t50` (winner) vs `d1_f0_t50` (decomposition on, same threshold)
 
 Decomposition splits "warm food rises in your belly" into noun chunks like `["food", "belly"]` and "fullness settles in your stomach" into `["fullness", "stomach"]`. The whole-sentence cosine (0.590) is well above 0.50 and would pattern-complete. But the chunk-level overlap is empty — neither "food" matches "fullness" nor "belly" matches "stomach" at threshold 0.50. The synonym substitution that humans see as paraphrase doesn't survive noun-chunk extraction.
 
-This confirms the [ec_centroid_drift_fix.md "Rejected approaches"](../plans/ec_centroid_drift_fix.md#decomposition-as-the-fix) call to skip decomposition as the production fix. It also explains why MAXIM_CONCEPT_DECOMPOSITION ships off-by-default — the fragmentation cost is real.
+This confirms the [ec_centroid_drift_fix.md "Rejected approaches"](../plans/archive/ec_centroid_drift_fix.md#decomposition-as-the-fix) call to skip decomposition as the production fix. It also explains why MAXIM_CONCEPT_DECOMPOSITION ships off-by-default — the fragmentation cost is real.
 
 ### Frozen centroid + threshold 0.40 also works
 
@@ -97,7 +97,7 @@ class ECConfig:
     # frozen_centroid_modalities unchanged: {"interoception"}
 ```
 
-Phase 2 ([plan § Phase 2](../plans/ec_centroid_drift_fix.md#phase-2--regression-guard-against-p1p2-one-pr)) re-runs the P1 paraphrase-collapse sweep ([p1_recognition_sweep.md](p1_recognition_sweep.md), 91.7% pin at threshold 0.40) and the P2 reward-modulation sweep ([p2_reward_modulation_sweep.md](p2_reward_modulation_sweep.md), +56pp target gain at threshold 0.70) with the new default. Either could regress.
+Phase 2 ([plan § Phase 2](../plans/archive/ec_centroid_drift_fix.md#phase-2--regression-guard-against-p1p2-one-pr)) re-runs the P1 paraphrase-collapse sweep ([p1_recognition_sweep.md](p1_recognition_sweep.md), 91.7% pin at threshold 0.40) and the P2 reward-modulation sweep ([p2_reward_modulation_sweep.md](p2_reward_modulation_sweep.md), +56pp target gain at threshold 0.70) with the new default. Either could regress.
 
 **Specific Phase 2 concerns surfaced by this matrix:**
 

@@ -1,7 +1,7 @@
 """Integration test for OrchestratorActorTool.
 
 Verifies the end-to-end path described in
-``docs/plans/scene_actor_affordances.md`` Stage 2:
+``docs/plans/deferred/scene_actor_affordances.md`` Stage 2:
 
     orchestrator narrates "the dragon breathes fire on you" AND
     actor(entity='dragon', affordance='breathe_fire', target='player')

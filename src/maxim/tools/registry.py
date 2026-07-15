@@ -262,7 +262,7 @@ class ToolRegistry:
         logged as a chosen action). The dispatcher's bypass of
         ``actions.jsonl`` is gated on this metadata, replacing the
         pre-W1 hardcoded ``sense_presence`` lookup. See
-        [docs/plans/sense_tool_registry.md].
+        [docs/plans/deferred/sense_tool_registry.md].
         """
         with self._lock:
             return [t for t in self._tools.values() if getattr(t, "auto_fire", False)]

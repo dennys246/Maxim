@@ -1742,10 +1742,10 @@ These are features, not architecture. Safe to add post-publication:
 
 | Existing Plan | Relationship |
 |---|---|
-| [DM Extensions](dungeon_master_extensions.md) | Extensions A + B pulled into Phases 2 + 7. Remainder deferred. |
+| [DM Extensions](../deferred/dungeon_master_extensions.md) | Extensions A + B pulled into Phases 2 + 7. Remainder deferred. |
 | [PyPI Publication](pypi_publication_plan.md) | Phases 3-6 become Phases 9-11 here. Multi-robot plugins (Ph3 of that plan) deferred. |
 | Doctor Enhancements | v2 shipped (Wave 1+2). Remaining items + CapabilityAgent design merged into [future_plans.md](future_plans.md). |
-| [Tool Refinement](tool_refinement_plan.md) | Phase 8c (tool registration) supersedes the "user-defined tools" item. |
+| [Tool Refinement](../tool_refinement_plan.md) | Phase 8c (tool registration) supersedes the "user-defined tools" item. |
 | [GitHub Fork Workflow](github_repo_management_plan.md) | Deferred to post-publication. |
 
 ---

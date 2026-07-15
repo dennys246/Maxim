@@ -45,7 +45,7 @@ Every experiment entry follows this structure:
 2. **Raw data goes in `results/`** as JSON. Markdown entries reference it. Future phases can load prior results programmatically.
 3. **Entries are append-only.** Don't edit a recorded entry — if results change, add a new entry and mark the old one as superseded with a link to the replacement.
 4. **Tie to git.** Every entry records the git hash it was run against. Results are only valid for that code version unless explicitly re-validated.
-5. **Living practice docs link here.** [behavioral_convergence_practice.md](../plans/behavioral_convergence_practice.md) and [memory_consolidation_practice.md](../plans/memory_consolidation_practice.md) reference entries by filename when citing experimental evidence.
+5. **Living practice docs link here.** [behavioral_convergence_practice.md](../plans/deferred/behavioral_convergence_practice.md) and [memory_consolidation_practice.md](../plans/deferred/memory_consolidation_practice.md) reference entries by filename when citing experimental evidence.
 6. **Plan decisions link here.** When a plan phase passes or fails, the decision entry in the plan links to the experiment that produced the evidence.
 
 ---

@@ -14,14 +14,14 @@ Restricting Wire-A's rendering to "clusters that match the current
 percept's active set" reproduces exactly the bug this wire exists to
 fix — the active-cluster intersection with priming clusters is empty
 in the failure mode. The plan calls this out explicitly in
-[release_0_9_1.md § Stage 2](docs/plans/release_0_9_1.md).
+[release_0_9_1.md § Stage 2](docs/plans/archive/release_0_9_1.md).
 
 **Why static signal-surfacing, not dynamic edge formation:** Wire-A
 renders associations the substrate already encoded via tool-name keys
 that survive the encoder gap. The *structural* fix for cross-modal
 edge formation is [cross_modal_substrate_binding.md](
-docs/plans/cross_modal_substrate_binding.md) (cancelled by Roy-4) or
-[jepa_cross_modal_alignment.md](docs/plans/jepa_cross_modal_alignment.md)
+docs/plans/archive/cross_modal_substrate_binding.md) (cancelled by Roy-4) or
+[jepa_cross_modal_alignment.md](docs/plans/deferred/jepa_cross_modal_alignment.md)
 (1.2+ research direction). Wire-A coexists with whichever structural
 fix eventually ships; the llm-primary proposer doesn't consume
 bound-edge neighborhoods anyway, so Wire-A remains the llm-primary

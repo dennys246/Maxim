@@ -1732,7 +1732,7 @@ The database grows organically as more campaigns are authored. The architect per
 | **Agent Mesh Phase 4** | **Designed** | ExperienceBroker + KnowledgeProvider/Receiver protocol enables DM-learned knowledge sharing. See cross-plan section below. |
 | **Agent Mesh Phase 5-6** | **Designed** | Task delegation + distributed planning enable multi-AUT party mode (extension, not MVP). |
 | **Agent Mesh Phase 7** | **Designed** | SCN temporal coordination — campaign timeline events across AUTs stay synchronized. |
-| [Dungeon Master Extensions](dungeon_master_extensions.md) | Not started | Follow-on: architect persona, encounter library, adaptive difficulty. Needs update to reflect SEM character model + component database. |
+| [Dungeon Master Extensions](../plans/deferred/dungeon_master_extensions.md) | Not started | Follow-on: architect persona, encounter library, adaptive difficulty. Needs update to reflect SEM character model + component database. |
 | **Simulation Decomposition** | **Complete** | DM uses `send_message` + `finish_simulation`. |
 | **Realtime Refinement** | **Complete** | Extensions plan uses `Observer` for adaptive difficulty. |
 | **Docker Sandbox** | **Complete** | DM campaigns with filesystem actions benefit from sandbox. |

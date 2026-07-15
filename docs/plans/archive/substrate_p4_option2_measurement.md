@@ -2,12 +2,12 @@
 
 **Status:** COMPLETE (2026-04-16). **Decision: DEFER.** Option 2 lift = 0.0000 ± 0.0000 across 10 seeds. Same-class activation dominates cross-class by 22:1. Ship Stage 3 on single-hop.
 **Scope:** ~350 LOC measurement script. Zero changes to production code.
-**Results:** [../experiments/p4_option2_measurement.md](../experiments/p4_option2_measurement.md)
+**Results:** [../experiments/p4_option2_measurement.md](../../experiments/p4_option2_measurement.md)
 **Parent:** [substrate_p4_cross_modal_binding.md](substrate_p4_cross_modal_binding.md), "Stage 2/3 open design decision" section.
 
 ## Context
 
-Stage 2 v1 and v2 both attempted to measure Option 2 lift and both were caught as tautological. See [../experiments/p4_stage2_v2_post_mortem.md](../experiments/p4_stage2_v2_post_mortem.md) for the full post-mortem. This plan designs a measurement that satisfies the six post-mortem requirements.
+Stage 2 v1 and v2 both attempted to measure Option 2 lift and both were caught as tautological. See [../experiments/p4_stage2_v2_post_mortem.md](../../experiments/p4_stage2_v2_post_mortem.md) for the full post-mortem. This plan designs a measurement that satisfies the six post-mortem requirements.
 
 ## The six requirements (from the post-mortem)
 
@@ -207,7 +207,7 @@ All hops survive at `threshold=0.001`. Cross-class vision nodes ARE reachable vi
 
 1. `scripts/p4_option2_measurement.py` — measurement script implementing Phases 1–5
 2. `docs/experiments/p4_option2_measurement.md` — results report with decision
-3. Update to `docs/plans/substrate_p4_cross_modal_binding.md` "Stage 2/3 open design decision" section with the empirical answer
+3. Update to `docs/plans/archive/substrate_p4_cross_modal_binding.md` "Stage 2/3 open design decision" section with the empirical answer
 4. If decision is "ship": separate PR with Option 2 implementation per the existing architectural spec
 5. If decision is "defer": update `TestStageThreeLimitation` docstring with the honest rationale
 

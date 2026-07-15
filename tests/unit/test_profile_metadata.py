@@ -207,7 +207,7 @@ class TestKnownProfileSpotChecks:
 
 class TestL1LeaderUXAdditions:
     """Cross-link guards for the three L1 profiles added per
-    [docs/plans/leader_ux_profile_management.md]. Pins (1) alias
+    [docs/plans/archive/leader_ux_profile_management.md]. Pins (1) alias
     resolution to the canonical slug, (2) the profile's ``model``
     field maps to a ``LLM_MODELS`` download entry, (3) the prompt
     style matches the family. Catches the most likely

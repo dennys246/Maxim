@@ -1,6 +1,6 @@
 # Substrate P3a — Episode binding produces retrieval on partial cue
 
-**Status:** ✅ COMPLETE — Stages 1 + 2 SHIPPED (PRs #109, #112; 2026-04-14). Stage 3 (real-data 10-seed sweep) was merged into Stage 2's head-to-head deliverable; there is no separate Stage 3 ship. **Final results: Hebbian multi-hop F1 = 0.9955 ± 0.0055 vs TF-IDF 0.6600 ± 0.0058, margin 0.324, lift over one-hop 0.3045** ([../experiments/p3a_episode_binding_sweep.md](../experiments/p3a_episode_binding_sweep.md)). The `retrieve_on_cue(multi_hop=True, node_filter=...)` seam reserved by Stage 2 is consumed by P3b Stage 1 and will be consumed by P4 Stage 1.
+**Status:** ✅ COMPLETE — Stages 1 + 2 SHIPPED (PRs #109, #112; 2026-04-14). Stage 3 (real-data 10-seed sweep) was merged into Stage 2's head-to-head deliverable; there is no separate Stage 3 ship. **Final results: Hebbian multi-hop F1 = 0.9955 ± 0.0055 vs TF-IDF 0.6600 ± 0.0058, margin 0.324, lift over one-hop 0.3045** ([../experiments/p3a_episode_binding_sweep.md](../../experiments/p3a_episode_binding_sweep.md)). The `retrieve_on_cue(multi_hop=True, node_filter=...)` seam reserved by Stage 2 is consumed by P3b Stage 1 and will be consumed by P4 Stage 1.
 **Scope:** ~400 LOC + ~100 metric extractor across 3 stages
 **Target version:** 0.3-target
 **Gates:** First of the four plans (P3a + P3b + P3.5 + P4) that together close 0.3-target.
@@ -237,9 +237,9 @@ Option 3 wins because:
 | Hebbian one-hop | 0.7000 | 0.0000 | ❌ (parity) |
 | TF-IDF baseline | 0.7000 | 0.0000 | — |
 
-Full writeup: [../experiments/p3a_episode_binding_sweep.md](../experiments/p3a_episode_binding_sweep.md)
+Full writeup: [../experiments/p3a_episode_binding_sweep.md](../../experiments/p3a_episode_binding_sweep.md)
 Results JSON: [../experiments/results/p3a_episode_binding_sweep.json](../experiments/results/p3a_episode_binding_sweep.json)
-Reproduction runbook: [../experiments/protocols/p3a_episode_binding_reproduction.md](../experiments/protocols/p3a_episode_binding_reproduction.md)
+Reproduction runbook: [../experiments/protocols/p3a_episode_binding_reproduction.md](../../experiments/protocols/p3a_episode_binding_reproduction.md)
 
 **Stage 2 pass gate (all cleared):**
 - ✅ Aggregate precision > 0.70, recall > 0.70 across 10 seeds.

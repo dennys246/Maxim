@@ -1,7 +1,7 @@
 # Roy-2pc — positive-control on engineered-overlap fixture
 
 **Date:** 2026-05-13 (run completed 2026-05-13 09:14 local)
-**Plan:** [persona_convergence_crucible.md § "Iteration log"](../plans/persona_convergence_crucible.md)
+**Plan:** [persona_convergence_crucible.md § "Iteration log"](../plans/deferred/persona_convergence_crucible.md)
 **Companion:** [18_roy_2.md](18_roy_2.md) (multi-arc priming the priming side reuses) · [17_roy_1b.md](17_roy_1b.md) (substrate-primary at test on original held-out fixture) · [16_roy_1a.md](16_roy_1a.md)
 **Spec:** [scenarios/roy/roy_2pc_iteration.yaml](../../scenarios/roy/roy_2pc_iteration.yaml)
 **Engineered fixture:** [scenarios/roy/roy_2pc_holdout.yaml](../../scenarios/roy/roy_2pc_holdout.yaml)

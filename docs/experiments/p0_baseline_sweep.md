@@ -83,7 +83,7 @@ Both models are deterministic across seeds (confirmed with 10-seed run before th
 
 ### Decision gate
 
-Per the [substrate_p0_pilot.md](../plans/substrate_p0_pilot.md) decision criteria:
+Per the [substrate_p0_pilot.md](../plans/archive/substrate_p0_pilot.md) decision criteria:
 
 | Baseline score | Interpretation | Action |
 |---|---|---|

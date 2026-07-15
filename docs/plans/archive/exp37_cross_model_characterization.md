@@ -4,7 +4,7 @@
 validates)
 **Author:** Denny + Claude
 **Purpose:** Exploratory cross-model characterization of the
-LLM-prior-dominance finding from the [2026-06-06 Qwen14B Exp 37 fire](../experiments/37_cross_session_graduation.md).
+LLM-prior-dominance finding from the [2026-06-06 Qwen14B Exp 37 fire](../../experiments/37_cross_session_graduation.md).
 Six models across scale (14B → 32B → ~200B-class), family (Qwen / Mistral),
 and open/closed dimensions. Frames as **exploratory follow-up data informing the
 1.0 results doc discussion section**, NOT a 5th pre-reg amendment.
@@ -273,17 +273,17 @@ strengthen / qualify the headline finding.
 
 ## Cross-references
 
-- [docs/experiments/37_cross_session_graduation.md](../experiments/37_cross_session_graduation.md)
+- [docs/experiments/37_cross_session_graduation.md](../../experiments/37_cross_session_graduation.md)
   — the 2026-06-06 Qwen14B fire results + LLM-prior-dominance interpretation.
-- [docs/plans/behavioral_graduation_candidates.md](behavioral_graduation_candidates.md)
+- [docs/plans/behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md)
   — row 1 split (1a EARNED memory persistence, 1b PARTIAL behavioral delta).
   This plan's cross-model data extends 1b's rationale without changing its status.
-- [docs/plans/exp37_metric_pivot.md](exp37_metric_pivot.md) — the metric pivot
+- [docs/plans/archive/exp37_metric_pivot.md](exp37_metric_pivot.md) — the metric pivot
   whose primary metric (positive_approach_engagement_fraction) is what gets
   measured across all 6 models.
-- [docs/plans/exp37_sd_shift.md](exp37_sd_shift.md) — the SD-shift test all
+- [docs/plans/archive/exp37_sd_shift.md](exp37_sd_shift.md) — the SD-shift test all
   models will be evaluated against.
-- [docs/plans/cloud_dispatch_debug.md](cloud_dispatch_debug.md) — Phase 1
+- [docs/plans/archive/cloud_dispatch_debug.md](cloud_dispatch_debug.md) — Phase 1
   validation that has to pass before this plan starts.
 - CLAUDE.md "Environment Variables" — canonical reference for the cloud
   provider API key env vars.

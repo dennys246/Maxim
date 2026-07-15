@@ -1,7 +1,7 @@
 # 0.7 Imagination Wiring — Integration PoC Results
 
 **Date:** 2026-04-20
-**Plan:** [07_feature_completion.md](../plans/07_feature_completion.md) Integration stage
+**Plan:** [07_feature_completion.md](../plans/archive/07_feature_completion.md) Integration stage
 **Reproduction:** [protocols/07_imagination_wiring_reproduction.md](protocols/07_imagination_wiring_reproduction.md)
 
 ## Hypothesis

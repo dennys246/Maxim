@@ -1560,7 +1560,7 @@ Real bugs in existing code, not design gaps in the plan. All are addressed by on
 - [download.py::download_file](../../src/maxim/models/download.py) — existing download path with atomicity bugs (F0.1)
 - [atomic_io.py](../../src/maxim/utils/atomic_io.py) — existing atomic-write pattern (reuse for probe cache)
 - [peer/config.py](../../src/maxim/peer/config.py) — peer.yml load path
-- [CLAUDE.md architectural invariants](../../CLAUDE.md) — "LLM access goes through `models/language/router.py`; backends should not be imported directly from outside `models/language/`." Preserved by this wave — nothing imports backends directly.
+- [CLAUDE.md architectural invariants](../../../CLAUDE.md) — "LLM access goes through `models/language/router.py`; backends should not be imported directly from outside `models/language/`." Preserved by this wave — nothing imports backends directly.
 - [substrate_plan.md](substrate_plan.md) — spine work (parallel execution, zero file overlap, see "Parallel execution" section above)
 - [cleanup_wave.md](cleanup_wave.md) — parallel UX wave shipping in 0.2.2
 - Commits from prior stability wave (all in `main`): `1a5eb85` (`--cloud-lane` precedence + Claude IDs), `3a30d23` (declarative mode filter), `984ac5f` (bio tier + concept quality), `cb360a9` (interruptible retries + cancellation primitive), `0a0aaad` (phantom cost fix), `c4e7cd7` (orchestrator ping-pong + max-turns termination).

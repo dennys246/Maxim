@@ -20,7 +20,7 @@ component:
 
     This body is research scaffolding for the Roy-5b iteration only —
     production cradle sims keep bodies/infant_humanoid. See
-    docs/plans/roy_5_encoder_alignment_disambiguator.md Stage 3 +
+    docs/plans/archive/roy_5_encoder_alignment_disambiguator.md Stage 3 +
     src/maxim/embodiment/naming_events.py.
 
 entity:

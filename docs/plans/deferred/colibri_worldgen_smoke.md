@@ -1,5 +1,8 @@
 # Colibrì world-generation smoke test
 
+> **DEFERRED (2026-07-15 plans audit):** Hard-blocked upstream — colibrì's OpenAI-compatible server emits degenerate output (stuck GLM chat-template/thinking-mode bug, 2026-07-14); the engine itself works via `coli chat`. Setup gotchas + pre-registered decision rule retained here for the retry. **Revive when:** upstream fixes the `openai_server.py` degenerate-generation bug (re-check its tracker in a few weeks), or the cloud-only baseline arm is run as prep. If upstream stays dead for a quarter, escalate to archive.
+
+
 **Status:** colibrì arm BLOCKED (2026-07-14) — upstream `openai_server.py` bug; engine itself works.
 Re-check upstream in a few weeks; cloud baseline arm can run any time.
 

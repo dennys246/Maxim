@@ -418,7 +418,7 @@ class TestGenerativeRunner:
         instead. This test pins the deletion: an arc whose phases declare
         ``world_entities`` must NOT cause tool_registry.deregister to be
         invoked for ``respond`` or ``say``. See
-        docs/plans/cradle_activation_fixes.md (Finding B).
+        docs/plans/archive/cradle_activation_fixes.md (Finding B).
         """
         llm = MagicMock()
         llm.generate_json = MagicMock(

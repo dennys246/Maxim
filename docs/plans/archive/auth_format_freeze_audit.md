@@ -3,8 +3,8 @@
 **Status:** SHIPPED (2026-06-15) on branch `feat/1-0-cc13-auth-format-freeze`. All four surfaces landed as a single PR (~396 insertions across 10 files + 1 new doc). Two-lens pre-merge review (Executor + Architecture) folded — no CRITICAL findings; one Executor IMPORTANT (non-ASCII Bearer credential → `TypeError`/500 hardened to a clean 401) + one Architecture IMPORTANT (CC3 docstring cross-reference) + four MINOR/NIT folds applied. Full fast suite green (7997 passed). Originally DRAFT (2026-06-04).
 
 **What shipped:**
-- **A1** — documented the reserved `api_key_ref` URI scheme namespace (`pkcs11:`/`fido2:`/`tpm:`/`vault:`/`op://`/`env:`) in [`docs/user/stable_api.md`](../user/stable_api.md) as a closed enum (deny-by-default validator unchanged) + a parametrized guard test pinning the reserved schemes are rejected at 1.0.
-- **A2** — added the reserved-null `signer_identity: str | None` field to the Hivemind bundle manifest ([`hivemind/bundle.py`](../../src/maxim/hivemind/bundle.py)) + published the `signature_algorithm` registry at [`docs/user/hivemind_bundle_format.md`](../user/hivemind_bundle_format.md). Doc-only (no validator), consistent with the no-verification-yet decision.
+- **A1** — documented the reserved `api_key_ref` URI scheme namespace (`pkcs11:`/`fido2:`/`tpm:`/`vault:`/`op://`/`env:`) in [`docs/user/stable_api.md`](../../user/stable_api.md) as a closed enum (deny-by-default validator unchanged) + a parametrized guard test pinning the reserved schemes are rejected at 1.0.
+- **A2** — added the reserved-null `signer_identity: str | None` field to the Hivemind bundle manifest ([`hivemind/bundle.py`](../../src/maxim/hivemind/bundle.py)) + published the `signature_algorithm` registry at [`docs/user/hivemind_bundle_format.md`](../../user/hivemind_bundle_format.md). Doc-only (no validator), consistent with the no-verification-yet decision.
 - **A3** — added three reserved-null sibling fields (`cluster_keys`, `cluster_trust_anchors`, `cluster_auth_mode`) to `MeshConfig` ([`peer/mesh_config.py`](../../src/maxim/peer/mesh_config.py)) as `tuple[str, ...] | None` (frozen-dataclass-hashable). Not serialized/parsed at 1.0 — 1.1 lands parser+writer+round-trip together on activation; `mesh_setup.py` add/remove-node carry `TODO(1.1)` forwarding markers.
 - **A4** — refactored leader-proxy `_check_auth` ([`runtime/leader_proxy.py`](../../src/maxim/runtime/leader_proxy.py)) to parse the auth scheme before the credential and dispatch on it; unknown schemes return a distinct 401 (never a 400, never a silent accept). Bearer matched case-insensitively per RFC 7235; constant-time credential comparison preserved.
 
@@ -174,8 +174,8 @@ Two-lens review (Executor + Architecture) — this is a freeze-decision, exactly
 
 ## Related plans
 
-- [maxim_hivemind.md](maxim_hivemind.md) — the substrate-sharing layer this audit hardens for
-- [reactive_peer_mesh_roadmap.md](reactive_peer_mesh_roadmap.md) — peer/leader mesh, where `cluster_key` lives
+- [maxim_hivemind.md](../maxim_hivemind.md) — the substrate-sharing layer this audit hardens for
+- [reactive_peer_mesh_roadmap.md](../reactive_peer_mesh_roadmap.md) — peer/leader mesh, where `cluster_key` lives
 - [config_unification.md](config_unification.md) — where `api_key_ref` validation landed
 - [v1_refinement.md](v1_refinement.md) Section 7 / CC13 — this plan's index entry
 

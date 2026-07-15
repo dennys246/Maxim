@@ -224,7 +224,7 @@ class ToolPainBridge:
         which silently failed because the pending tool event's context
         (``{"params": ...}``) shared zero keys with the rich outcome
         context emitted by ``body.py::_publish_pain``. See
-        ``docs/plans/sem_execution_hook.md`` Stage 1 for the full
+        ``docs/plans/archive/sem_execution_hook.md`` Stage 1 for the full
         root-cause writeup.
 
         This method pops the pending tool event by ``(tool_name,

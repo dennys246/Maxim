@@ -28,7 +28,7 @@ happens.
 **If a new accumulator gets added to the codebase, add a ``*_case`` entry
 below so the structural baseline keeps pace.** The companion plan
 explains the scoping at
-``docs/plans/structural_invariant_tests.md``.
+``docs/plans/archive/structural_invariant_tests.md``.
 
 **Honest caveat:** binary-alternating is one specific degenerate-shape
 probe. A statistic could be non-degenerate on alternating input but still
@@ -519,7 +519,7 @@ class TestCausalLinkMovedStatisticInvariant:
     rationale for the move needs revisiting.
 
     See CLAUDE.md L37 ("Key-embedded values produce structurally-
-    degenerate statistics") and ``docs/plans/release_0_9_1.md`` Stage 4
+    degenerate statistics") and ``docs/plans/archive/release_0_9_1.md`` Stage 4
     for the full rationale.
     """
 

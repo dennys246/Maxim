@@ -25,7 +25,7 @@ The Maxim codebase has **five separate event transports** that together form an 
 
 **Why this is tolerable today:** the substrate plan's research claim holds at the memory layer, not the message layer. ATL/Hippocampus/NAc/PerceptTraceBuffer are all per-agent and per-instance (verified by the iceberg sweep in foundations_plan's F0.5). The fragmented bus situation doesn't introduce correctness bugs for the 1.0 claim — it introduces *cognitive* cost for anyone trying to understand cross-layer event flow, which is tolerable for a single-developer project.
 
-**Why it stops being tolerable later:** platform ambition. When external contributors start writing against the `BioSystem` Protocol (see [bio_system_plugin_plan.md](bio_system_plugin_plan.md)), they'll need a predictable way to subscribe to events — "tell me when any agent captures a new ATL concept" should be one line, not a tour of five files to figure out which transport carries that event. When observability tooling is added (tracing, replay, offline analysis), having one place to hook into is worth orders of magnitude more than having five.
+**Why it stops being tolerable later:** platform ambition. When external contributors start writing against the `BioSystem` Protocol (see [bio_system_plugin_plan.md](../deferred/bio_system_plugin_plan.md)), they'll need a predictable way to subscribe to events — "tell me when any agent captures a new ATL concept" should be one line, not a tour of five files to figure out which transport carries that event. When observability tooling is added (tracing, replay, offline analysis), having one place to hook into is worth orders of magnitude more than having five.
 
 ## What the unified bus would look like
 
@@ -128,10 +128,10 @@ Wait for the demand. Don't do this speculatively.
 
 ## Relationship to other plans
 
-- **[../substrate_plan.md](../substrate_plan.md) contracts layer** — defines `EventBus` Protocol and typed events. Protocol definition can happen incrementally (during substrate work); the *implementation* is what this plan defers.
-- **[../substrate_plan.md](../substrate_plan.md) P3.5.1 snapshot protocol** — same pattern (Protocol defined during phase work, implementation is its own thing) but at a smaller scale. The snapshot protocol is in-plan because P3.5 needs it; the event bus is deferred because no current phase needs it.
-- **[bio_system_plugin_plan.md](bio_system_plugin_plan.md)** — plugin discovery for bio-systems. Has a soft dependency on the unified bus because plugin bio-systems need a predictable way to subscribe to events. If that plan revives before this one, the plugin bio-systems subscribe to `AgentBus` / direct callbacks until this plan lands too. Messy but workable.
-- **[../foundations_plan.md](../foundations_plan.md) F0.5** — clarified that multi-agent isolation means memory state, not message transport. That clarification is what makes the current fragmented bus situation tolerable — the bus fragmentation is not a correctness bug.
+- **[../substrate_plan.md](substrate_plan.md) contracts layer** — defines `EventBus` Protocol and typed events. Protocol definition can happen incrementally (during substrate work); the *implementation* is what this plan defers.
+- **[../substrate_plan.md](substrate_plan.md) P3.5.1 snapshot protocol** — same pattern (Protocol defined during phase work, implementation is its own thing) but at a smaller scale. The snapshot protocol is in-plan because P3.5 needs it; the event bus is deferred because no current phase needs it.
+- **[bio_system_plugin_plan.md](../deferred/bio_system_plugin_plan.md)** — plugin discovery for bio-systems. Has a soft dependency on the unified bus because plugin bio-systems need a predictable way to subscribe to events. If that plan revives before this one, the plugin bio-systems subscribe to `AgentBus` / direct callbacks until this plan lands too. Messy but workable.
+- **[../foundations_plan.md](foundations_plan.md) F0.5** — clarified that multi-agent isolation means memory state, not message transport. That clarification is what makes the current fragmented bus situation tolerable — the bus fragmentation is not a correctness bug.
 
 ## If you're reading this cold
 

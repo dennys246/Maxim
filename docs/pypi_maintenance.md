@@ -10,7 +10,7 @@ Long-term maintenance reference for the `pymaxim` package on PyPI. For first-tim
 - **Bump rules:**
   - **Patch** (`0.2.1 → 0.2.2`) — bug fixes, doc-only releases, packaging hotfixes, no API changes.
   - **Minor** (`0.2.x → 0.3.0`) — new features, additive API changes, may include breaking changes while in `0.x`.
-  - **Major** (`0.x → 1.0.0`) — reserved for the version that demonstrably improves on a task across sessions without fine-tuning the underlying LLM, with a test that proves it. See [plans/substrate_p0_pilot.md](plans/substrate_p0_pilot.md) and the substrate plan series.
+  - **Major** (`0.x → 1.0.0`) — reserved for the version that demonstrably improves on a task across sessions without fine-tuning the underlying LLM, with a test that proves it. See [plans/substrate_p0_pilot.md](plans/archive/substrate_p0_pilot.md) and the substrate plan series.
 - **Two version files must stay in sync:** [pyproject.toml](../pyproject.toml) and [src/maxim/__init__.py](../src/maxim/__init__.py). Mismatch = release bug.
 - **Verify after bump:**
   ```bash

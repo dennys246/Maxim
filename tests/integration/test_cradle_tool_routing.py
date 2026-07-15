@@ -1,6 +1,6 @@
 """Cradle Arm-A tool-routing smoke (slow, opt-in).
 
-PR D regression smoke for docs/plans/cradle_activation_fixes.md (Finding B).
+PR D regression smoke for docs/plans/archive/cradle_activation_fixes.md (Finding B).
 The pre-fix cradle scenario burned ~60% of turns on silent
 ``Tool not registered: 'respond'`` errors because:
 
@@ -154,5 +154,5 @@ def test_cradle_arm_a_no_respond_loop(tmp_path: Path) -> None:
         f"Found {bad} 'Tool not registered: respond' entries in {actions}. "
         "PR D's prompt-gating regressed — the LLM is being told to call "
         "respond by the prompt builder. See "
-        "docs/plans/cradle_activation_fixes.md Finding B."
+        "docs/plans/archive/cradle_activation_fixes.md Finding B."
     )

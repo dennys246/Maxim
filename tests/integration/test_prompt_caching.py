@@ -8,7 +8,7 @@ backend sees: PromptBuilder.build_prompt -> router._generate_tool_response split
 cloud backends' cache_control breakpoint misses on every turn and ITPM is
 re-spent — so this test fails loudly.
 
-See docs/plans/prompt_caching_for_cloud_backends.md.
+See docs/plans/archive/prompt_caching_for_cloud_backends.md.
 """
 
 from __future__ import annotations
@@ -147,7 +147,7 @@ def test_system_prompt_byte_stable_across_turns(monkeypatch):
                 raise AssertionError(
                     f"system prompt drifted at turn {i}: {len(hashes)} distinct of {len(systems)}. "
                     f"A per-turn-dynamic section leaked into the cacheable system prefix — "
-                    f"see docs/plans/prompt_caching_for_cloud_backends.md."
+                    f"see docs/plans/archive/prompt_caching_for_cloud_backends.md."
                 )
     assert len(hashes) == 1
 

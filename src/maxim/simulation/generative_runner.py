@@ -415,7 +415,7 @@ def run_generative_campaign(
     # the conversational tool guidance — so the LLM is steered toward the
     # body-prefixed affordances without us removing the upstream conversational
     # tools (which non-cradle producers still need). See
-    # docs/plans/cradle_activation_fixes.md (Finding B) for the prior
+    # docs/plans/archive/cradle_activation_fixes.md (Finding B) for the prior
     # silent-loop class this replaces.
 
     for turn_idx in range(max_turns):

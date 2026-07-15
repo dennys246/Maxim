@@ -3,8 +3,8 @@
 **Status:** Stages 1+2 SHIPPED (PR #183, 2026-04-23). **Stages 3, 3b, 4 ABSORBED** into [temporal_credit_integration.md](temporal_credit_integration.md) (2026-04-24).
 **Scope:** ~350-450 LOC across existing modules (no new bio-system)
 **Target version:** 0.9
-**Depends on:** [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) (shipped)
-**Extends:** [goal_depth_integration.md](goal_depth_integration.md) (Stage 3 absorbed here; Stage 1 partially absorbed as goal_tag on THOUGHTs — full GOAL WMS kind remains in goal_depth)
+**Depends on:** [archive/pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) (shipped)
+**Extends:** [goal_depth_integration.md](../deferred/goal_depth_integration.md) (Stage 3 absorbed here; Stage 1 partially absorbed as goal_tag on THOUGHTs — full GOAL WMS kind remains in goal_depth)
 **Gates:** none; behavioral improvement + architectural foundation
 
 > **Note:** Stages 3 (goal-tagged thoughts + NAc goal-outcome learning), 3b (SCN temporal correlation), and 4 (ValenceSignal) are now tracked in [temporal_credit_integration.md](temporal_credit_integration.md) Phases 4, 3, and 5 respectively.  The deliberation-specific content (goal_tag on WMEntry, _goal_reward_bias on NAc, ThoughtGate goal_reward_bias parameter) is preserved verbatim.  The attribution mechanism (how deliberation events reach NAc) is upgraded from ad-hoc _last_deliberation_event_id to the TemporalEvent protocol + TemporalCreditDistributor.  Stages 1 and 2 below are shipped and unchanged.
@@ -387,8 +387,8 @@ Stage 4 is the extensibility layer.  It doesn't change behavior — it creates t
 
 ## Relationship to existing plans
 
-- **Partially absorbs** [goal_depth_integration.md](goal_depth_integration.md) Stage 3 (NAc goal-outcome learning).  Stage 1 (GOAL WMS kind) is *partially* absorbed as goal_tag on THOUGHTs — the full GOAL kind + status tracking remains in goal_depth.  Stages 2 (episode goal tagging) and 4 (goal persistence) remain independent follow-ons.
-- **Extends** [archive/pfc_deliberation_cycle.md](archive/pfc_deliberation_cycle.md) — uses the cycle infrastructure shipped in 0.8 without modifying cycle logic.  The cycle produces richer data; the prompt builder consumes it differently.
+- **Partially absorbs** [goal_depth_integration.md](../deferred/goal_depth_integration.md) Stage 3 (NAc goal-outcome learning).  Stage 1 (GOAL WMS kind) is *partially* absorbed as goal_tag on THOUGHTs — the full GOAL kind + status tracking remains in goal_depth.  Stages 2 (episode goal tagging) and 4 (goal persistence) remain independent follow-ons.
+- **Extends** [archive/pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) — uses the cycle infrastructure shipped in 0.8 without modifying cycle logic.  The cycle produces richer data; the prompt builder consumes it differently.
 - **Enables** ThoughtGate adaptive threshold via NAc goal bias — currently ThoughtGate has no NAc input.  Stage 3 creates the signal.
 - **Enables** cross-session goal learning — once NAc has goal-tagged causal links, they persist across sessions via existing NAc serialization.  No new persistence code needed.
 

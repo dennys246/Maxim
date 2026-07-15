@@ -1,16 +1,19 @@
 # Substrate Exploration Policy — break substrate-primary fixation so the substrate can adapt
 
+> **ARCHIVED (2026-07-15 plans audit):** ✅ SHIPPED + VALIDATED. Exploration policy (`sim.substrate_explore_bonus_weight` + explore-first hard gate) landed with Exp 41 plumbing (PR #379). Exp 41 fired 2026-06-19 → VOID (design, not mechanism); successor Exp 42 GRADUATED using this exact policy (PR #380). The `Authorization gate open` header is stale.
+
+
 **Target version:** 1.1
 **Status:** Draft — **spike-validated 2026-06-17** (mechanism + lever confirmed empirically; see Empirical validation below). Authorization gate open.
 **Owns:** `decisions/nac.py::NAc.recommend_action` (selection), a new per-`(agent, tool)` visit counter on `NAc`, `runtime/agent_loop.py` §8.5 (per-tick decay), `runtime/config_loader.py` (`sim.substrate_explore_*` fields).
-**Companion plans:** [grounded_language_acquisition.md](grounded_language_acquisition.md) (substrate-primary AUT mode — the upstream this plugs into), [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) (#6).
-**Validated by:** [../experiments/41_substrate_primary_exploration.md](../experiments/41_substrate_primary_exploration.md).
+**Companion plans:** [grounded_language_acquisition.md](../grounded_language_acquisition.md) (substrate-primary AUT mode — the upstream this plugs into), [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md) (#6).
+**Validated by:** [../experiments/41_substrate_primary_exploration.md](../../experiments/41_substrate_primary_exploration.md).
 
 ---
 
 ## Why this plan exists
 
-[grounded_language_acquisition.md](grounded_language_acquisition.md) Phase -1 shipped substrate-primary action generation: `NAc.recommend_action()` produces an action from causal-link confidence + reward bias + a drive-affinity heuristic, and `propose_via_substrate()` wraps it into an `LLMProposal` with no LLM in the loop. Phase 0 shipped the cradle harness and the `SubstrateTelemetry` JSONL writer.
+[grounded_language_acquisition.md](../grounded_language_acquisition.md) Phase -1 shipped substrate-primary action generation: `NAc.recommend_action()` produces an action from causal-link confidence + reward bias + a drive-affinity heuristic, and `propose_via_substrate()` wraps it into an `LLMProposal` with no LLM in the loop. Phase 0 shipped the cradle harness and the `SubstrateTelemetry` JSONL writer.
 
 Then Exp 39 (and the 1.0 graduation triage for row #6) hit the wall: **the substrate-primary proposer fixates.** It forms EC clusters and NAc causal links and emits drive-conditioned proposals, but it **selects the same high-scoring tool every tick and never tries an alternative**, so it cannot discover that a different action is better. The 2026-05-11 re-run in `grounded_language_acquisition.md` already saw the symptom: "6 cluster updates all on the same tool (`sense_food_source`) ... the cold-start path collapses to one drive-affinity match and loops on it."
 
@@ -76,7 +79,7 @@ Replace the bare argmax with an exploration-aware selection at [nac.py:1741](../
 Decay `_visit_count` per tick in §8.5 ([agent_loop.py:3768](../../src/maxim/runtime/agent_loop.py)), alongside the existing decay calls, so the exploration bonus fades like the other biases and the agent re-explores after the world changes (phase transitions). Decay shape mirrors `decay_reward_biases` (tau-based).
 
 ### Phase 3 — behavioral validation
-Run [../experiments/41_substrate_primary_exploration.md](../experiments/41_substrate_primary_exploration.md). Outcome decides whether any invariant graduates to `[behavioral]` (GRADUATE), stays `[engineering]` (PARTIAL), or the mechanism goes Dormant (FAIL/FAIL).
+Run [../experiments/41_substrate_primary_exploration.md](../../experiments/41_substrate_primary_exploration.md). Outcome decides whether any invariant graduates to `[behavioral]` (GRADUATE), stays `[engineering]` (PARTIAL), or the mechanism goes Dormant (FAIL/FAIL).
 
 ## Sizing
 
@@ -110,7 +113,7 @@ Run [../experiments/41_substrate_primary_exploration.md](../experiments/41_subst
 1. **Novelty-bonus-before-gate vs ε-greedy vs softmax.** *Author recommendation:* ship the UCB-style novelty-bonus as primary (it lifts under-tried-but-plausible actions across the `min_confidence` gate, which pure ε-greedy among above-threshold candidates cannot do when only the fixated tool clears threshold), keep ε-greedy behind the same config field as a simpler comparator, and defer softmax (adds a temperature knob and obscures the IDLE contract). Exp 41's exploratory ε-sweep informs the default.
 2. **Should the novelty bonus be allowed to push a sub-threshold action *over* `min_confidence`?** *Author recommendation:* yes — that is precisely the fixation-breaking behavior (the alternative action is sub-threshold *because* it's never been tried). But cap the bonus so it cannot lift a truly-zero-score tool (one the substrate has no representation for) over the floor, preserving IDLE. Implement as: bonus applies only to tools with a non-zero base score component.
 3. **Visit-count decay tau.** *Author recommendation:* start at the `reward_bias_decay_tau` neighborhood (50 ticks) so exploration re-opens on roughly the same timescale the learned biases fade; expose it as a config field but do not over-tune before Exp 41.
-4. **Default-on or default-off after Exp 41 GRADUATE?** *Author recommendation:* even on GRADUATE, keep substrate-primary exploration default-off in 1.1 and flip it on only with the substrate-primary AUT mode's own maturation in [grounded_language_acquisition.md](grounded_language_acquisition.md) Phase 1+. The two should graduate together.
+4. **Default-on or default-off after Exp 41 GRADUATE?** *Author recommendation:* even on GRADUATE, keep substrate-primary exploration default-off in 1.1 and flip it on only with the substrate-primary AUT mode's own maturation in [grounded_language_acquisition.md](../grounded_language_acquisition.md) Phase 1+. The two should graduate together.
 
 ## Authorization gate
 Proceed to Phase 0+1 only on explicit authorization. Phase 3 (Exp 41) requires the experiment doc's setup deliverables (deceptive arc + analyzer) to land first.
@@ -125,7 +128,7 @@ A pre-build spike (substrate-primary on `cradle_prelinguistic_deceptive`, explor
 - **The plan's chosen lever (novelty-bonus-before-gate) is validated.** `warm_self`/`touch` have **0 visits**, so a `bonus_weight / (1 + visit_count)` term is exactly what lifts a never-tried, no-signal tool over the `min_confidence` gate and forces a trial — at which point pain → negative link → the override question becomes measurable. ε-greedy alone among above-threshold candidates would not surface them (only `sense_food_source` clears the gate once it snowballs).
 
 **Two caveats the spike surfaced (carried into Open Questions / the Exp 41 scenario design):**
-- **Drive design:** `warm_self` gets no drive-affinity boost while `sense_food_source` rides the hunger drive; the infant's `core_temperature` deficit (−0.15) recovered to 0 over the run. Even with exploration, a *sustained* thermal deficit (and a constrained food escape-valve) is needed so warmth-seeking stays salient after the first trial. This is a `cradle_prelinguistic_deceptive` arc/drive-tuning task, tracked in [41_substrate_primary_exploration.md](../experiments/41_substrate_primary_exploration.md) §2.
+- **Drive design:** `warm_self` gets no drive-affinity boost while `sense_food_source` rides the hunger drive; the infant's `core_temperature` deficit (−0.15) recovered to 0 over the run. Even with exploration, a *sustained* thermal deficit (and a constrained food escape-valve) is needed so warmth-seeking stays salient after the first trial. This is a `cradle_prelinguistic_deceptive` arc/drive-tuning task, tracked in [41_substrate_primary_exploration.md](../../experiments/41_substrate_primary_exploration.md) §2.
 - **F1 (spurious positive link):** once `warm_self` executes it returns `success=True` (the embodiment failure rides in `side_effects`), booking a positive link that competes 1:1 with the 0.5-weighted negative — the within-session learning signal (Exp 41 H2) will be shallow until this is addressed.
 
 ## Iteration log

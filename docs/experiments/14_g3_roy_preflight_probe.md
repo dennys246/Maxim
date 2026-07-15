@@ -1,7 +1,7 @@
 # G3 — Roy fail-fast LLM pre-flight probe
 
 **Date:** 2026-05-11
-**Plan:** [persona_convergence_crucible.md](../plans/persona_convergence_crucible.md) (Roy harness § Roy-0 iteration log)
+**Plan:** [persona_convergence_crucible.md](../plans/deferred/persona_convergence_crucible.md) (Roy harness § Roy-0 iteration log)
 **Status:** Shipped + follow-up fold for peer.yml fallback. The G4 Roy-0 re-run on 2026-05-11 surfaced that the original probe was a no-op for the standard peer-with-peer.yml setup (env vars are exported by `apply_peer_config_to_env` only at lane resolution, which happens AFTER `_preflight_llm`); the follow-up reads `~/.config/maxim/peer.yml` directly when env vars are absent.
 **Companion:** [G4 — substrate-primary cluster_id reward wire](15_g4_cluster_reward_wire.md) (the substrate-primary closure that motivated splitting these as paired PRs).
 

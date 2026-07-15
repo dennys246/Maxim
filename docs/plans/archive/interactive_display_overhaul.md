@@ -366,5 +366,5 @@ Adding a second scrollable panel increases `_build_layout()` work per frame. At 
 ## Relationship to other plans
 
 - **Depends on** [pfc_deliberation_cycle.md](pfc_deliberation_cycle.md) -- SHIPPED (PR #178). Deliberation reasoning text is flowing.
-- **Composes with** [goal_depth_integration.md](goal_depth_integration.md) -- when GOAL WMS entries exist, the thinking panel could show active goal context alongside reasoning.
+- **Composes with** [goal_depth_integration.md](../deferred/goal_depth_integration.md) -- when GOAL WMS entries exist, the thinking panel could show active goal context alongside reasoning.
 - **Replaces** the `DeliberationExtension` approach originally proposed in the PFC plan -- that used a column side-panel which is too narrow for reasoning text.

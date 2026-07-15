@@ -5,7 +5,7 @@
 **Engineered fixture:** [scenarios/roy/roy_2pc_holdout.yaml](../../../scenarios/roy/roy_2pc_holdout.yaml) (reused from Roy-2pc / Roy-2c / Roy-4)
 **Baseline:** [21_roy_4.md](../21_roy_4.md) — the Roy-4 FAIL that motivates Roy-5b
 **Stage 1 prereq:** [22_roy_5a.md](../22_roy_5a.md) — H1a confirmation
-**Owning plan:** [roy_5_encoder_alignment_disambiguator.md § Stage 3](../../plans/roy_5_encoder_alignment_disambiguator.md)
+**Owning plan:** [roy_5_encoder_alignment_disambiguator.md § Stage 3](../../plans/archive/roy_5_encoder_alignment_disambiguator.md)
 **Phase 1 PR (prerequisite):** #295 (merged 2026-05-28)
 
 Roy-5b retests the Hebbian binding rule that Roy-4 refuted, with the **single structural change** of a deliberate drive→linguistic co-firing scaffold via the `infant_humanoid_naming_v1` body. The analyzer (`scripts/analyze_roy_4_coactivation.py`) is reused as-is — only the upstream sim differs.
@@ -14,8 +14,8 @@ Roy-5b retests the Hebbian binding rule that Roy-4 refuted, with the **single st
 
 | Outcome | Diagnosis |
 |---|---|
-| **PASS** — at least one test-phase active node has a would-have-bound edge to a priming `sense_food_source` cluster under DEFAULT rule | Naming-event scaffold rescues the binding mechanism. Greenlight Stage 4a: resurrect [cross_modal_substrate_binding.md](../../plans/cross_modal_substrate_binding.md) with the corrected-scaffold prerequisite. |
-| **FAIL** — zero would-have-bound edges between priming and test clusters across the full Roy-4 parameter sweep | Mechanism is dead even under deliberately-scaffolded co-firing. Greenlight Stage 4b: promote [jepa_cross_modal_alignment.md](../../plans/jepa_cross_modal_alignment.md) from "Stage 4b candidate" to "1.2 implementation in flight". |
+| **PASS** — at least one test-phase active node has a would-have-bound edge to a priming `sense_food_source` cluster under DEFAULT rule | Naming-event scaffold rescues the binding mechanism. Greenlight Stage 4a: resurrect [cross_modal_substrate_binding.md](../../plans/archive/cross_modal_substrate_binding.md) with the corrected-scaffold prerequisite. |
+| **FAIL** — zero would-have-bound edges between priming and test clusters across the full Roy-4 parameter sweep | Mechanism is dead even under deliberately-scaffolded co-firing. Greenlight Stage 4b: promote [jepa_cross_modal_alignment.md](../../plans/deferred/jepa_cross_modal_alignment.md) from "Stage 4b candidate" to "1.2 implementation in flight". |
 
 The Hebbian rule under test is **unchanged** from Roy-4:
 - **Tick bucket:** events sharing the same integer `tick` field (1-second buckets).
@@ -245,7 +245,7 @@ The structural difference flows through `EmbodimentPerceptSource`: when the body
 - [`21_roy_4.md`](../21_roy_4.md) — Roy-4 baseline (FAIL on standard cradle arc)
 - [`22_roy_5a.md`](../22_roy_5a.md) — Stage 1 result, H1a confirmation
 - [`34_wire_a_post_fix_a_b.md`](../34_wire_a_post_fix_a_b.md) — the exp that authorized Stage 3
-- [`roy_5_encoder_alignment_disambiguator.md`](../../plans/roy_5_encoder_alignment_disambiguator.md) — owning plan; Stage 3 is Roy-5b itself
-- [`cross_modal_substrate_binding.md`](../../plans/cross_modal_substrate_binding.md) — Stage 4a destination (resurrected on PASS)
-- [`jepa_cross_modal_alignment.md`](../../plans/jepa_cross_modal_alignment.md) — Stage 4b destination (promoted on FAIL)
-- [`persona_convergence_crucible.md`](../../plans/persona_convergence_crucible.md) — Roy iteration log
+- [`roy_5_encoder_alignment_disambiguator.md`](../../plans/archive/roy_5_encoder_alignment_disambiguator.md) — owning plan; Stage 3 is Roy-5b itself
+- [`cross_modal_substrate_binding.md`](../../plans/archive/cross_modal_substrate_binding.md) — Stage 4a destination (resurrected on PASS)
+- [`jepa_cross_modal_alignment.md`](../../plans/deferred/jepa_cross_modal_alignment.md) — Stage 4b destination (promoted on FAIL)
+- [`persona_convergence_crucible.md`](../../plans/deferred/persona_convergence_crucible.md) — Roy iteration log

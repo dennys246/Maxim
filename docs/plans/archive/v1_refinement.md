@@ -1,5 +1,8 @@
 # v1 Refinement — Validation + Stabilization + Cleanup for 1.0 Release
 
+> **ARCHIVED (2026-07-15 plans audit):** ✅ 1.0 SHIPPED (2026-06-17, v1.0.0 tag; announcement PR #373). All hard requirements closed 2026-06-15 — C1–C6, CC1–CC13, D1–D3, B1/B2/B4, P1–P4 verified against code. The stale `PLANNING` header below is historical. Residual post-1.0 items live in their own 1.1 plans (Section 8 pointers).
+
+
 **Status:** PLANNING (pre-v1.0 release)
 **Target version:** 1.0
 **Branch:** TBD
@@ -12,12 +15,12 @@ Added 2026-05-27 per CLAUDE.md Principle 3.
 
 **Note:** this is a **1.0 release coordination doc** spanning multiple sub-plans, not a single-mechanism plan. Per the kickoff rule "do the front-gate analysis per-mechanism, not per-plan" for multi-mechanism plans, the analyses for individual mechanisms referenced here live in their respective sub-plans:
 
-- B5 substrate-primary AUT + Hivemind shareability → [grounded_language_acquisition.md](grounded_language_acquisition.md) + [maxim_hivemind.md](maxim_hivemind.md)
+- B5 substrate-primary AUT + Hivemind shareability → [grounded_language_acquisition.md](../grounded_language_acquisition.md) + [maxim_hivemind.md](../maxim_hivemind.md)
 - B3 SEM world enrichment → [sem_world_enrichment.md](sem_world_enrichment.md)
-- bio_emergent_persona_foundations wires → [bio_emergent_persona_foundations.md](bio_emergent_persona_foundations.md)
-- scene_actor_affordances → [scene_actor_affordances.md](scene_actor_affordances.md)
-- persona_cleanup → [persona_cleanup_and_mode_transition.md](persona_cleanup_and_mode_transition.md)
-- ec_centroid_drift_fix (V1 substrate prerequisite) → [ec_centroid_drift_fix.md](archive/ec_centroid_drift_fix.md)
+- bio_emergent_persona_foundations wires → [bio_emergent_persona_foundations.md](../deferred/bio_emergent_persona_foundations.md)
+- scene_actor_affordances → [scene_actor_affordances.md](../deferred/scene_actor_affordances.md)
+- persona_cleanup → [persona_cleanup_and_mode_transition.md](../deferred/persona_cleanup_and_mode_transition.md)
+- ec_centroid_drift_fix (V1 substrate prerequisite) → [ec_centroid_drift_fix.md](ec_centroid_drift_fix.md)
 
 **For the 1.0 work owned directly by this plan (Section 3 cleanup C4-C6, Section 6 docs D1-D3, Section 7 contract clarification):**
 
@@ -67,12 +70,12 @@ Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC13 + C1-C6). B
 - 1.1-T5 Agent-backed entities revival
 - 1.1-T6 B5 embodiment/narrative separation
 - MCP compatibility (CC9 prereq shipped)
-- **1.1-T7 Substrate-primary AUT mode** — full Phase 0 validation, Phase 1 (vocabulary-constrained), Phase 2 (symbol binding) per [grounded_language_acquisition.md](grounded_language_acquisition.md). Phase -1 + Phase 0 harness ship in 1.0 (see new B5 below); the substrate-primary AUT mode itself ships in 1.1.
-- **1.1-T8 Maxim Oasis** — first hostable Oasis instance per [maxim_hivemind.md](maxim_hivemind.md). Single-Oasis software (~800 LOC); LLM-AUT users opt in to contribute substrate via `maxim contribute --to oasis://...`; direct Oasis-to-Oasis sync supported (no mesh discovery yet). Builds on B5's shareability infrastructure.
+- **1.1-T7 Substrate-primary AUT mode** — full Phase 0 validation, Phase 1 (vocabulary-constrained), Phase 2 (symbol binding) per [grounded_language_acquisition.md](../grounded_language_acquisition.md). Phase -1 + Phase 0 harness ship in 1.0 (see new B5 below); the substrate-primary AUT mode itself ships in 1.1.
+- **1.1-T8 Maxim Oasis** — first hostable Oasis instance per [maxim_hivemind.md](../maxim_hivemind.md). Single-Oasis software (~800 LOC); LLM-AUT users opt in to contribute substrate via `maxim contribute --to oasis://...`; direct Oasis-to-Oasis sync supported (no mesh discovery yet). Builds on B5's shareability infrastructure.
 - **1.2 Maxim Hivemind protocol** — peer-to-peer substrate exchange + conflict resolution + poison resistance (~600 LOC). Substrate-primary Maxims pull bootstrap from Hivemind, contribute back as they learn. Multi-Oasis federation goes live.
 
 **New 1.0 add (parallel to docs work):**
-- **B5. Substrate-primary AUT mode — Phase -1 + Phase 0 harness + Hivemind shareability infrastructure** (see [grounded_language_acquisition.md](grounded_language_acquisition.md) for substrate-primary phases; [maxim_hivemind.md](maxim_hivemind.md) for the Hivemind/Oasis layer that B5's shareability infrastructure enables). Ships under experimental flag (`--aut-mode substrate-primary` or similar). **Three components:**
+- **B5. Substrate-primary AUT mode — Phase -1 + Phase 0 harness + Hivemind shareability infrastructure** (see [grounded_language_acquisition.md](../grounded_language_acquisition.md) for substrate-primary phases; [maxim_hivemind.md](../maxim_hivemind.md) for the Hivemind/Oasis layer that B5's shareability infrastructure enables). Ships under experimental flag (`--aut-mode substrate-primary` or similar). **Three components:**
   - **Phase -1** (~150 LOC) — **GATE CLEARED + SHIPPED** (PR #228, 2026-05-09). `NAc.recommend_action()` + `propose_via_substrate()` + `--aut-mode` CLI plumbing. Boolean YES on substrate-driven action generation. 22 tests across unit + integration.
   - **Phase 0 harness** (~550 LOC) — **SHIPPED** (PR #228, 2026-05-09). `cradle_prelinguistic` arc + motor-only AUT prompt renderer + `SubstrateTelemetry` JSONL writer + `--research` routing fix. 13 harness tests. Smoke run cleared: 38 actions, 61 causal links, hunger drift 0.0 → 0.65 over 5 turns. Validation gap: substrate-primary bypasses `LinguisticEncoder` so EC `node_count` stayed at 0 — the cluster-formation measurement Phase 0 actually wants is blocked on a sensor-percept encoding entry point. Next concrete work item; small (~1-2 sessions).
   - **Hivemind shareability infrastructure** (~660 LOC) — **SHIPPED** (2026-05-30 / 2026-05-31, four reviewed PRs):
@@ -94,7 +97,7 @@ Substrate work is fully shipped (V1+V2 + B1+B2+B4 + P1-P4 + CC1-CC13 + C1-C6). B
 ### V1. Cross-session sim validation — VALIDATED (2026-04-26)
 
 **Absorbed from:** `cross_session_sim_validation.md`
-**Results:** [docs/experiments/10_cross_session_enrichment.md](../experiments/10_cross_session_enrichment.md)
+**Results:** [docs/experiments/10_cross_session_enrichment.md](../../experiments/10_cross_session_enrichment.md)
 **Status:** PARTIAL PASS — memories surface (3/turn on resume), predictions/concepts/affordances need more session history.
 
 Prove that Layer 1 pre-deliberation enrichment produces measurably different behavior when the agent has prior session history vs. a fresh start.
@@ -123,12 +126,12 @@ Prove that Layer 1 pre-deliberation enrichment produces measurably different beh
 
 **Results doc:** `docs/experiments/10_cross_session_enrichment.md`
 
-**Substrate prerequisite — EC centroid drift fix (2026-05-24, PRs #259–#264).** Pre-fix V1 runs silently degraded as more text accumulated on a shared EC: the text-modality `pattern_complete_threshold` at 0.40 admitted marginal paraphrases (cosine 0.42-0.48) whose centroids drifted toward a generic "second-person body sensation" prototype that then pattern-completed everything subsequent. Cross-session recall would therefore drift toward "anything second-person-sensory" the more text the substrate had seen — the V1 result "3 memories/turn on resume" was measured under this regime. The Phase 1-5 fix in [ec_centroid_drift_fix.md](archive/ec_centroid_drift_fix.md) bumped the default to 0.44, structurally pinned the coupling, parameterized the NAc override base, and behaviorally validated on Roy-2c. The Roy-2c behavioral signal didn't move (the H1 cross-source alignment gap that Roy-2c measures is structurally upstream of drift — see [27_ec_drift_phase_4_behavioral.md](../experiments/27_ec_drift_phase_4_behavioral.md)) but the structural improvement is real (a_vs_b cluster_reward_bias_l2 2.566 → 0.535, six +1.0 priming UUIDs collapsed to one near-zero cluster). **V1 re-runs after this fix lands should show steadier cross-session recall — fewer spurious sibling clusters per concept means fewer near-miss recall failures driven by drifted-centroid pattern-completion onto the wrong prototype.** Re-running V1 on post-fix substrate is not strictly required for the 1.0 claim (V2 Phase A already passed under V1's contaminated regime, which is a stronger result than passing on the cleaner substrate), but a sanity-check re-run is on the table for any future V1 audit.
+**Substrate prerequisite — EC centroid drift fix (2026-05-24, PRs #259–#264).** Pre-fix V1 runs silently degraded as more text accumulated on a shared EC: the text-modality `pattern_complete_threshold` at 0.40 admitted marginal paraphrases (cosine 0.42-0.48) whose centroids drifted toward a generic "second-person body sensation" prototype that then pattern-completed everything subsequent. Cross-session recall would therefore drift toward "anything second-person-sensory" the more text the substrate had seen — the V1 result "3 memories/turn on resume" was measured under this regime. The Phase 1-5 fix in [ec_centroid_drift_fix.md](ec_centroid_drift_fix.md) bumped the default to 0.44, structurally pinned the coupling, parameterized the NAc override base, and behaviorally validated on Roy-2c. The Roy-2c behavioral signal didn't move (the H1 cross-source alignment gap that Roy-2c measures is structurally upstream of drift — see [27_ec_drift_phase_4_behavioral.md](../../experiments/27_ec_drift_phase_4_behavioral.md)) but the structural improvement is real (a_vs_b cluster_reward_bias_l2 2.566 → 0.535, six +1.0 priming UUIDs collapsed to one near-zero cluster). **V1 re-runs after this fix lands should show steadier cross-session recall — fewer spurious sibling clusters per concept means fewer near-miss recall failures driven by drifted-centroid pattern-completion onto the wrong prototype.** Re-running V1 on post-fix substrate is not strictly required for the 1.0 claim (V2 Phase A already passed under V1's contaminated regime, which is a stronger result than passing on the cleaner substrate), but a sanity-check re-run is on the table for any future V1 audit.
 
 ### V2. Confound quarantine for V1 re-run — gates substrate attribution claim — **CLEAN PASS** (2026-04-30, PR #214 + Experiment 12)
 
 **Companion plan:** [confound_quarantine.md](confound_quarantine.md)
-**Companion experiment:** [docs/experiments/12_v1_phased_attribution.md](../experiments/12_v1_phased_attribution.md)
+**Companion experiment:** [docs/experiments/12_v1_phased_attribution.md](../../experiments/12_v1_phased_attribution.md)
 **Status:** SHIPPED + VALIDATED. Implementation: PR #214 (confound flags + report block + tests). Re-run: 7 phases run 2026-04-30 against commit `f742527` over peer-routed qwen2.5-14b. **All 7 phases (7/7) successfully recalled `BLUE-7-DAWN` across sessions, including Phase A (substrate-only baseline)**, see Experiment 12 for the full table + recall evidence excerpts.
 
 **Disposition (per §R1 clean-pass branch):** flags removed in 1.0. `MAXIM_DISABLE_PFC_PREAMBLE`, `MAXIM_DISABLE_ACTING_COACH`, `MAXIM_DISABLE_SIM_SANDBOX_TEXT`, `MAXIM_NO_DEFAULT_PERSONA`, `--no-acting-coach`, `--no-persona`, `runtime/confound_flags.py`, the `report.json::confound_quarantine` block, and the test surface (autouse scrub + `test_confound_flags.py` + `test_v1_phased_metrics.py`) are scheduled for removal in a follow-up `chore(v1): remove confound flags after Phase A clean pass` PR. `--no-embodiment` and `MAXIM_DATA_HOME` are unrelated escape hatches and stay. The harness `scripts/run_v1_phases.sh` and the experiment doc remain in-tree for academic-ML reproducibility — re-running against post-removal main shows the env vars no-op; checking out `f742527` reproduces the full protocol.
@@ -167,13 +170,13 @@ The phase deltas attribute the V1 result to specific contributors. Phase A is th
 
 ## Section 1.5: Wire-A substrate→action conversion (added 2026-05-27)
 
-The Phase B Roy-3a-retry verdict ([30_wire_a_tau_validation.md](../experiments/30_wire_a_tau_validation.md)) confirmed Wire-A's annotation reaches the LLM at strong magnitude (`[strongly rewarding]` throughout the test arm) but **cannot convert to action** because (a) the substrate-favored tool wasn't in the scene's active roster and (b) imagination didn't dream the missing entity into existence. Until both gaps close, Roy iterations stay structurally capped at "annotation is present" findings — the 1.0 thesis-demonstration is blocked.
+The Phase B Roy-3a-retry verdict ([30_wire_a_tau_validation.md](../../experiments/30_wire_a_tau_validation.md)) confirmed Wire-A's annotation reaches the LLM at strong magnitude (`[strongly rewarding]` throughout the test arm) but **cannot convert to action** because (a) the substrate-favored tool wasn't in the scene's active roster and (b) imagination didn't dream the missing entity into existence. Until both gaps close, Roy iterations stay structurally capped at "annotation is present" findings — the 1.0 thesis-demonstration is blocked.
 
 Both gaps get MVP-scoped 1.0 plans. Full versions of each plan are deferred to 1.1+; only the MVP scope is 1.0 critical path.
 
 ### W1. Sense tool registry — grayscale visibility MVP (~150-200 LOC)
 
-**Plan:** [sense_tool_registry.md](sense_tool_registry.md) (1.0 MVP scope section).
+**Plan:** [sense_tool_registry.md](../deferred/sense_tool_registry.md) (1.0 MVP scope section).
 
 **MVP scope:**
 - `tools_block` rendering distinguishes always-active core tools from SEM-derived inactive tools, with `[not in current location]` tag for the latter. Inactive SEM tools the substrate has accumulated bias for (per `NAc.get_agent_tool_biases`) appear in the LLM-facing list.
@@ -184,7 +187,7 @@ Both gaps get MVP-scoped 1.0 plans. Full versions of each plan are deferred to 1
 
 ### W2. Imagination substrate-signal — Hookup 1 MVP (~20-30 LOC)
 
-**Plan:** [imagination_substrate_signals.md](imagination_substrate_signals.md) (1.0 MVP scope section).
+**Plan:** [imagination_substrate_signals.md](../deferred/imagination_substrate_signals.md) (1.0 MVP scope section).
 
 **MVP scope:**
 - Substrate-aware manifest — pass `NAc.get_agent_tool_biases()` results to `Narrator.generate_scene_manifest()` so the LLM-generated manifest sees Wire-A's biases at scene-load time. The manifest can then include entities that activate substrate-favored tools.
@@ -199,7 +202,7 @@ After W1 + W2 MVPs ship, run Roy-3a-retry's spec unchanged with both gaps closed
 
 **Divergence-in-a-row outcome** (Roy finds a *new* failure mode beyond the two now-closed gaps): per refined Principle 4, this is the two-divergence-in-a-row trigger to bird's-eye to encoder replacement (Roy-5a Stage 3 + JEPA, 1.2+). W1+W2 stay shipped but their behavioral weight is gated on encoder work; the 1.0 thesis-demonstration claim re-scopes.
 
-**Outcome (2026-05-27, [32_wire_a_post_w1_w2.md](../experiments/32_wire_a_post_w1_w2.md)):** AMBIGUOUS-WITH-WIRING-BUG. PRIMARY failed (0/0/0), but structural analysis identified two upstream wiring gaps neither of which lives inside the W1 or W2 MVPs:
+**Outcome (2026-05-27, [32_wire_a_post_w1_w2.md](../../experiments/32_wire_a_post_w1_w2.md)):** AMBIGUOUS-WITH-WIRING-BUG. PRIMARY failed (0/0/0), but structural analysis identified two upstream wiring gaps neither of which lives inside the W1 or W2 MVPs:
 
 - **Bug A** — Roy cross-session agent_id mismatch. Priming MemoryHub defaults to `agent_id="default_agent"`; the AUT orchestrator constructs the test-arm MemoryHub with `agent_id="sim_aut"` ([orchestrator.py:534](../../src/maxim/simulation/orchestrator.py)). `cluster_reward_bias` persists with the priming-time key; the test arm reads via `_loop_agent_id="sim_aut"` and `get_agent_tool_biases` strict-filters to empty. Wire-A and W1's grayscale (which reuses Wire-A's biases) both silently render empty. Affects every 0.9.1 Roy iteration that has claimed Wire-A reached the LLM — Experiment 30's reconstruction needs re-validation.
 - **Bug B** — W2's hookup site (`generate_scene_manifest` at [orchestrator.py:1468](../../src/maxim/simulation/orchestrator.py)) is structurally bypassed by Roy's fixture-driven test arms (`roy_1_holdout.yaml`). The W2 MVP plan correctly cites cradle as its precedent; that precedent doesn't extend to the Roy fixture path.
@@ -210,20 +213,20 @@ Both fixes are 1.0 critical path before the next Wire-A Roy iteration can run wi
 
 **Backward-compat decision for Bug A fix (architecture-lens BLOCK-3, accepted 2026-05-27):** existing persisted NAc snapshots under `~/.maxim/sim_reports/` and `~/.maxim/agents/` are keyed under `agent_id="default_agent"`. Post-fix, any agent loading those snapshots reads with its real agent_id and gets empty results — the old `default_agent`-keyed entries become orphan data. **The choice is "ship clean, no migration."** Rationale: sim sessions write to per-session tmpdirs that don't persist across runs; the V1 cross-session-learning thesis is structurally about the *invariant* being correct, not about preserving prior-session-data through the fix that makes the invariant correct. The migration-shim alternative (rewrite `default_agent` keys on load) was considered and rejected — it adds load-path complexity to preserve data the V1 thesis can regenerate cleanly. Pre-1.0 users with valuable persisted state can manually rename their NAc dump's `default_agent` keys to their canonical agent_id via `jq`.
 
-**Post-Fix-A integration test verdict (2026-05-27, [33_wire_a_post_fix_a.md](../experiments/33_wire_a_post_fix_a.md)):** Fix A shipped (PR #290 merged at `cdd005a`). Re-ran Roy-3a with the same spec. **Fix A structurally validated** — NAc `cluster_reward_bias` keys now use `sim_aut`, Wire-A's lookup returns `[('tool:sense_food_source', +0.768)]` at Arm A end (strongly-rewarding band), the annotation `sense_food_source [strongly rewarding from prior experience]` is rendered to the LLM every submission. The first clean substrate→LLM measurement in the 0.9.1 release window. **PRIMARY criterion still failed** (Arm A=0/B=0/C=0). The load-bearing follow-up cause is the scene-tool-availability gap: `sense_food_source` is NOT in Arm A's active roster (the roy_1_holdout fixture has no food entity), so W1 surfaces the tool in grayscale (`[not in current location]`) but the LLM cannot invoke it and does not reach for substitutes. **Per the pre-registered framing in this section, the divergence-in-a-row trigger condition is met on a strict reading**, formally pointing at encoder replacement (Roy-5a Stage 3 + JEPA, 1.2+). But the cheaper, more-bio-fidelity-conservative next test is **Fix B (extend W2 to fixture scene-load)** — bring a food entity into Arm A's scene and re-measure. Per the kickoff's "Triggering bird's-eye encoder work if divergence fires: NEVER without explicit authorization" rule, the encoder pivot stays unauthorized; the Fix B vs encoder-pivot decision is the next user-facing scoping question.
+**Post-Fix-A integration test verdict (2026-05-27, [33_wire_a_post_fix_a.md](../../experiments/33_wire_a_post_fix_a.md)):** Fix A shipped (PR #290 merged at `cdd005a`). Re-ran Roy-3a with the same spec. **Fix A structurally validated** — NAc `cluster_reward_bias` keys now use `sim_aut`, Wire-A's lookup returns `[('tool:sense_food_source', +0.768)]` at Arm A end (strongly-rewarding band), the annotation `sense_food_source [strongly rewarding from prior experience]` is rendered to the LLM every submission. The first clean substrate→LLM measurement in the 0.9.1 release window. **PRIMARY criterion still failed** (Arm A=0/B=0/C=0). The load-bearing follow-up cause is the scene-tool-availability gap: `sense_food_source` is NOT in Arm A's active roster (the roy_1_holdout fixture has no food entity), so W1 surfaces the tool in grayscale (`[not in current location]`) but the LLM cannot invoke it and does not reach for substitutes. **Per the pre-registered framing in this section, the divergence-in-a-row trigger condition is met on a strict reading**, formally pointing at encoder replacement (Roy-5a Stage 3 + JEPA, 1.2+). But the cheaper, more-bio-fidelity-conservative next test is **Fix B (extend W2 to fixture scene-load)** — bring a food entity into Arm A's scene and re-measure. Per the kickoff's "Triggering bird's-eye encoder work if divergence fires: NEVER without explicit authorization" rule, the encoder pivot stays unauthorized; the Fix B vs encoder-pivot decision is the next user-facing scoping question.
 
-**Post-Fix-A+B integration test verdict (2026-05-28, [34_wire_a_post_fix_a_b.md](../experiments/34_wire_a_post_fix_a_b.md)):** Fix B shipped (PR #292 merged at `b1e20ee`). Re-ran Roy-3a. **Fix B structurally validated end-to-end** — fires once per test arm, emits SEM_TRACE events at every branch, Arm A's pre-trigger called the manifest LLM with `biases=1` (sense_food_source +0.997) and materialized 1 entity into scene; Arms B+C correctly skipped on empty biases. Double-fire fix also validated (W2's hookup fired only during the priming session, not during test arms). **PRIMARY criterion still failed** (Arm A=0/B=0/C=0). **Narrowed failure mode:** the manifest LLM generated `['blue toy car', 'set of keys']` instead of a food entity when given `sense_food_source [strongly rewarding from prior experience]`. The substrate→manifest-LLM bridge has a **semantic gap at the manifest LLM's interpretation of tool-name biases as scene-entity preferences**. The AUT LLM DID engage with the materialized entity (picked up the set of keys on a relevant percept) — so the runtime pipeline works; the bottleneck is at the manifest LLM's prompt-side substrate-bias-to-entity translation. **Per refined Principle 4 + pre-registered framing, the divergence-in-a-row trigger fires** toward encoder replacement (Roy-5a Stage 3 + JEPA, 1.2+). But this iteration's narrow-failure-mode finding opens a cheaper diagnostic before encoder commit: **Option X1 — improve `_compose_substrate_context` in narrator.py to explicitly instruct the manifest LLM to bridge tool biases to scene entities** (one-line prompt addition, single Roy iteration cost). If Option X1 fails with the explicit bridging instruction, encoder-alignment work is fundamentally needed and JEPA pivot is authorized cleanly. If Option X1 succeeds, encoder pivot defers to 1.1+. Per the kickoff's authorization rule, encoder pivot stays unauthorized; Option X1 vs encoder-pivot decision is the next user scoping question.
+**Post-Fix-A+B integration test verdict (2026-05-28, [34_wire_a_post_fix_a_b.md](../../experiments/34_wire_a_post_fix_a_b.md)):** Fix B shipped (PR #292 merged at `b1e20ee`). Re-ran Roy-3a. **Fix B structurally validated end-to-end** — fires once per test arm, emits SEM_TRACE events at every branch, Arm A's pre-trigger called the manifest LLM with `biases=1` (sense_food_source +0.997) and materialized 1 entity into scene; Arms B+C correctly skipped on empty biases. Double-fire fix also validated (W2's hookup fired only during the priming session, not during test arms). **PRIMARY criterion still failed** (Arm A=0/B=0/C=0). **Narrowed failure mode:** the manifest LLM generated `['blue toy car', 'set of keys']` instead of a food entity when given `sense_food_source [strongly rewarding from prior experience]`. The substrate→manifest-LLM bridge has a **semantic gap at the manifest LLM's interpretation of tool-name biases as scene-entity preferences**. The AUT LLM DID engage with the materialized entity (picked up the set of keys on a relevant percept) — so the runtime pipeline works; the bottleneck is at the manifest LLM's prompt-side substrate-bias-to-entity translation. **Per refined Principle 4 + pre-registered framing, the divergence-in-a-row trigger fires** toward encoder replacement (Roy-5a Stage 3 + JEPA, 1.2+). But this iteration's narrow-failure-mode finding opens a cheaper diagnostic before encoder commit: **Option X1 — improve `_compose_substrate_context` in narrator.py to explicitly instruct the manifest LLM to bridge tool biases to scene entities** (one-line prompt addition, single Roy iteration cost). If Option X1 fails with the explicit bridging instruction, encoder-alignment work is fundamentally needed and JEPA pivot is authorized cleanly. If Option X1 succeeds, encoder pivot defers to 1.1+. Per the kickoff's authorization rule, encoder pivot stays unauthorized; Option X1 vs encoder-pivot decision is the next user scoping question.
 
 ### What this section does NOT include
 
-- **scn_decay_anchoring is NOT a 1.0 item** despite originating from the same tau-split kickoff sequence. It's 1.0 nice-to-have / 1.1 acceptable per its own status header — addresses hardware portability, not substrate→action conversion. See [scn_decay_anchoring.md](scn_decay_anchoring.md) for the resolution.
+- **scn_decay_anchoring is NOT a 1.0 item** despite originating from the same tau-split kickoff sequence. It's 1.0 nice-to-have / 1.1 acceptable per its own status header — addresses hardware portability, not substrate→action conversion. See [scn_decay_anchoring.md](../deferred/scn_decay_anchoring.md) for the resolution.
 - Full versions of W1 + W2 (deferred 1.1+ items in each plan's MVP scope section).
 
 ---
 
 ## Section 1.6: Post-Roy-5b roadmap (RESOLVED 2026-05-29) + sequenced 1.0 plan
 
-Added 2026-05-28; updated 2026-05-29 after Roy-5b verdict + Roy-5b-confound-isolation Branch A resolution. **Both Branch A and Branch B are now closed** — the encoder-pivot question is resolved (not via either branch, but via a third path the disambiguator plan didn't pre-register). See [docs/experiments/36_roy_5b_confound_isolation.md](../experiments/36_roy_5b_confound_isolation.md) for the verdict + [project_roy_5b_confound_isolation.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_roy_5b_confound_isolation.md) memory.
+Added 2026-05-28; updated 2026-05-29 after Roy-5b verdict + Roy-5b-confound-isolation Branch A resolution. **Both Branch A and Branch B are now closed** — the encoder-pivot question is resolved (not via either branch, but via a third path the disambiguator plan didn't pre-register). See [docs/experiments/36_roy_5b_confound_isolation.md](../../experiments/36_roy_5b_confound_isolation.md) for the verdict + [project_roy_5b_confound_isolation.md](../../../.claude/projects/-Users-dennyschaedig-Scripts-Maxim/memory/project_roy_5b_confound_isolation.md) memory.
 
 ### What happened (the resolved encoder-pivot question)
 
@@ -238,7 +241,7 @@ The Roy-2c recognition gap closes from the **EC drift fix alone** (PR #264, `pat
 
 The threshold tweak is solely responsible. **Outcomes:**
 - [cross_modal_substrate_binding.md](cross_modal_substrate_binding.md) ARCHIVED. Do not resurrect.
-- [jepa_cross_modal_alignment.md](jepa_cross_modal_alignment.md) stays at its pre-Roy-5b "Stage 4b candidate" status — 1.1+/1.2 research direction motivated by the dimensional fact (384 vs 768-dim cross-modal cosine undefined). Roy-5b's specific Branch B promotion trigger (clean FAIL across the sweep) did not fire, so JEPA does NOT promote to "1.2 in flight" today. But the plan's underlying motivation is independent of any specific Roy iteration verdict — it stands on the structural fact about different-dimensional encoders. Neither Roy-5b nor Roy-5b-confound-isolation cancel it; neither promotes it.
+- [jepa_cross_modal_alignment.md](../deferred/jepa_cross_modal_alignment.md) stays at its pre-Roy-5b "Stage 4b candidate" status — 1.1+/1.2 research direction motivated by the dimensional fact (384 vs 768-dim cross-modal cosine undefined). Roy-5b's specific Branch B promotion trigger (clean FAIL across the sweep) did not fire, so JEPA does NOT promote to "1.2 in flight" today. But the plan's underlying motivation is independent of any specific Roy iteration verdict — it stands on the structural fact about different-dimensional encoders. Neither Roy-5b nor Roy-5b-confound-isolation cancel it; neither promotes it.
 - [embodiment/naming_events.py](../../src/maxim/embodiment/naming_events.py) marked Dormant per CLAUDE.md Principle 2.
 - [roy_5_encoder_alignment_disambiguator.md](roy_5_encoder_alignment_disambiguator.md) Stage 4 disposition resolved; new Stage 5 question: what does the threshold-driven gap closure buy behaviorally?
 
@@ -248,16 +251,16 @@ User-authorized order. Two tracks run in parallel through the middle; benchmarki
 
 **Phase 1 — Warm-up (1-2 small PRs + 1 planning doc):**
 1. **C5 + C4/C6 hard-error flip — SHIPPED** (PRs #299 + PR-A.3 + #301, 2026-05-29). Small mechanical PRs; first momentum win of the sequenced 1.0 plan.
-2. **Benchmarking scope-definition planning doc.** Per [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) "Benchmarking is the **sibling** 1.0 gate to behavioral graduation." Currently undefined in plan docs. Scoping during warm-up means the criteria can inform how Tier 1 graduations get measured. Don't tail-load this — risk of late surprises that re-open graduation work.
+2. **Benchmarking scope-definition planning doc.** Per [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md) "Benchmarking is the **sibling** 1.0 gate to behavioral graduation." Currently undefined in plan docs. Scoping during warm-up means the criteria can inform how Tier 1 graduations get measured. Don't tail-load this — risk of late surprises that re-open graduation work.
 
 **Phase 2 — Parallel tracks (the calendar middle):**
 
 *Foreground track — Tier 1 behavioral graduations, in confidence order:*
-1. **Cross-session learning** (Tier 1, PARTIAL → EARNED). Closest to EARNED — 3 memories/turn already measured per [Exp 10](../experiments/10_cross_session_enrichment.md); needs predictions + concepts pending. **Tackle first** because lowest risk of taking calendar.
+1. **Cross-session learning** (Tier 1, PARTIAL → EARNED). Closest to EARNED — 3 memories/turn already measured per [Exp 10](../../experiments/10_cross_session_enrichment.md); needs predictions + concepts pending. **Tackle first** because lowest risk of taking calendar.
 2. **Affordance concept transfer** (Tier 1, PARTIAL → EARNED). Has 0.785 cosine measurement; needs broader Roy-5+ fixture validation. **Tackle second.**
 3. **Substrate-primary action selection** (Tier 1, PARTIAL → EARNED). Hardest — Roy-5b's findings inform but don't graduate this. The disambiguator's new Stage 5 question is the path forward but currently undefined. **Tackle last** because earlier graduations may inform what "threshold-driven closure buys behaviorally" looks like in practice.
 
-"Hammer each one until we **graduate or reframe**." Each Tier 1 item ends in `EARNED` status OR explicit retraction in 1.0 release notes (no silent omission). Per [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) "1.0 commitment" line.
+"Hammer each one until we **graduate or reframe**." Each Tier 1 item ends in `EARNED` status OR explicit retraction in 1.0 release notes (no silent omission). Per [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md) "1.0 commitment" line.
 
 *Background track — Hivemind shareability infrastructure (~660 LOC):*
 - Substrate snapshot bundle format (zip + manifest + signature, ~150 LOC)
@@ -271,7 +274,7 @@ Runs PARALLEL to graduations because each Roy iteration is ~25 min wall + analys
 
 **Phase 3 — Benchmarking execution:**
 
-Once graduation criteria are firm + Tier 1 graduations are in flight or done, execute against the benchmarking scope from Phase 1's planning doc. Sibling 1.0 gate per [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md).
+Once graduation criteria are firm + Tier 1 graduations are in flight or done, execute against the benchmarking scope from Phase 1's planning doc. Sibling 1.0 gate per [behavioral_graduation_candidates.md](../behavioral_graduation_candidates.md).
 
 **Phase 4 — D1-D3 docs:**
 
@@ -316,7 +319,7 @@ These are the systems that must be fully operational and standardized before 1.0
 
 ### B1. Bio-system protocol enrichment — SHIPPED (2026-04-26)
 
-**Companion plan (archived):** [archive/bio_system_protocol_enrichment.md](archive/bio_system_protocol_enrichment.md)
+**Companion plan (archived):** [archive/bio_system_protocol_enrichment.md](bio_system_protocol_enrichment.md)
 **Shipped surface:** all 5 `*Context` frozen dataclasses live at [src/maxim/models/bio_context.py](../../src/maxim/models/bio_context.py).
 
 Add standardized `*Context` dataclass parameters to each bio-system's primary methods NOW (optional, defaults to None) so future backends can consume richer input without Protocol breaks. Current implementations ignore the context; future ones use it.
@@ -357,7 +360,7 @@ Phase 1 shipped (scene manifest pre-trigger via `ImaginationTrigger.process_mani
 
 ### B4. Cradle of Artificial Civilization
 
-**Companion plan (archived):** [archive/cradle_sensorimotor_development.md](archive/cradle_sensorimotor_development.md). **SHIPPED 2026-04-25** (PR #200), validated by [exp 11](../experiments/11_cradle_sensorimotor_poc.md).
+**Companion plan (archived):** [archive/cradle_sensorimotor_development.md](cradle_sensorimotor_development.md). **SHIPPED 2026-04-25** (PR #200), validated by [exp 11](../../experiments/11_cradle_sensorimotor_poc.md).
 
 A newborn agent that learns from sensation, not language. Three-layer sensation model (contact via entity acquisition, proximity via orchestrator sensor writes, narrative fallback via keyword reflexes) all converging on the same downstream pipeline. Multi-act developmental scenario mimicking Piaget's sensorimotor stages.
 
@@ -419,7 +422,7 @@ Add semantic-shift episode boundary detection. When incoming text embedding dive
 
 **Shipped via:** PR #202 (`feat(v1-p4): per-agent stash + agent_id attribution`)
 
-**Surfaced by:** [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md) audit. Independently necessary regardless of cast direction.
+**Surfaced by:** [deferred/agent_backed_entities.md](../deferred/agent_backed_entities.md) audit. Independently necessary regardless of cast direction.
 
 Two correctness gaps in multi-agent paths surfaced while investigating SEM-backed Maxim entities. Both gaps would manifest the moment any path runs more than one cognitive agent in parallel — including the AUT + orchestrator pair shipped today, though the orchestrator's hippocampus is currently disabled so the gap is latent.
 
@@ -718,7 +721,7 @@ Modern frameworks expose `input_tokens`, `output_tokens`, `cached_tokens` in sta
 
 ### CC13. Auth format-freeze audit (~50 LOC + ~16 tests + 1 doc page) — SHIPPED (2026-06-15)
 
-**Plan:** [auth_format_freeze_audit.md](archive/auth_format_freeze_audit.md) (drafted 2026-06-04, SHIPPED 2026-06-15)
+**Plan:** [auth_format_freeze_audit.md](auth_format_freeze_audit.md) (drafted 2026-06-04, SHIPPED 2026-06-15)
 
 **Shipped via:** branch `feat/1-0-cc13-auth-format-freeze` — all four surfaces (A1 `api_key_ref` scheme reservation doc; A2 bundle `signer_identity` field + `signature_algorithm` registry doc; A3 `MeshConfig` reserved-null `cluster_keys`/`cluster_trust_anchors`/`cluster_auth_mode`; A4 leader-proxy auth scheme dispatch) in one PR. Two-lens pre-merge review folded (no CRITICAL; hardened non-ASCII Bearer → clean 401, CC3 docstring cross-reference, `op://` form, A1 closed-enum note, `signer_identity` namespace note, `mesh_setup.py` TODO markers). Full fast suite green (7997 passed). See the plan doc for the per-surface detail + regression-guard test paths.
 
@@ -745,7 +748,7 @@ Items deliberately scoped OUT of 1.0 to keep the stabilization release tight. Sh
 
 ### 1.1-T1. Minecraft live demo + harness benchmark
 
-**Plan stub:** [minecraft_benchmark.md](minecraft_benchmark.md) (design exploration, post-1.0)
+**Plan stub:** [minecraft_benchmark.md](../deferred/minecraft_benchmark.md) (design exploration, post-1.0)
 
 Compare Maxim against Voyager / GITM / SPRING on a Minecraft live demo. Builds on Cradle's embodied learning foundation. Why 1.1 not 1.0:
 
@@ -755,7 +758,7 @@ Compare Maxim against Voyager / GITM / SPRING on a Minecraft live demo. Builds o
 
 ### 1.1-T2. Scene actor affordances
 
-**Plan:** [scene_actor_affordances.md](scene_actor_affordances.md)
+**Plan:** [scene_actor_affordances.md](../deferred/scene_actor_affordances.md)
 
 `target_effect` field + `OrchestratorActorTool` so scene entities produce real SEM mechanics on the AUT body. ~110 LOC. Diagnostic for whether agent-backed entities are needed. Slips from 1.0 because it's a quality-of-life refinement, not a freeze gate.
 
@@ -777,13 +780,13 @@ All three C-series hard-error flips landed in Phase 1 of the sequenced 1.0 plan 
 
 ### 1.1-T5. Agent-backed entities (revival path)
 
-**Plan (deferred):** [deferred/agent_backed_entities.md](deferred/agent_backed_entities.md)
+**Plan (deferred):** [deferred/agent_backed_entities.md](../deferred/agent_backed_entities.md)
 
 Revives if scene_actor_affordances doesn't close the dragon-narration symptom OR if Minecraft demo exposes a cognition gap (zombies need pathfinding, villagers need trade memory).
 
 ### 1.1-T6. B5 embodiment/narrative separation
 
-**Plan (deferred):** [deferred/b5_embodiment_narrative_separation.md](deferred/b5_embodiment_narrative_separation.md)
+**Plan (deferred):** [deferred/b5_embodiment_narrative_separation.md](../deferred/b5_embodiment_narrative_separation.md)
 
 B3 Acting Coach shipped. B5 is a shell.
 

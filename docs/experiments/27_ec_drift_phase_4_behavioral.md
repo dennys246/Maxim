@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-24
 **Branch:** [`feat/0-9-1-ec-drift-phase-4-behavioral`](https://github.com/dennys246/Maxim/tree/feat/0-9-1-ec-drift-phase-4-behavioral)
-**Plan:** [docs/plans/ec_centroid_drift_fix.md § Phase 4](../plans/ec_centroid_drift_fix.md)
+**Plan:** [docs/plans/archive/ec_centroid_drift_fix.md § Phase 4](../plans/archive/ec_centroid_drift_fix.md)
 **Companion:** [20_roy_2c.md](20_roy_2c.md) (pre-fix baseline), [25_ec_centroid_drift_fix_phase_1.md](25_ec_centroid_drift_fix_phase_1.md), [26_ec_drift_phase_2_regression.md](26_ec_drift_phase_2_regression.md), [28_ec_drift_phase_3_5_nac_parameterization.md](28_ec_drift_phase_3_5_nac_parameterization.md)
 **Iteration spec:** [scenarios/roy/roy_2c_iteration.yaml](../../scenarios/roy/roy_2c_iteration.yaml) (unchanged)
 **Engineered fixture:** [scenarios/roy/roy_2pc_holdout.yaml](../../scenarios/roy/roy_2pc_holdout.yaml) (unchanged)
@@ -80,7 +80,7 @@ The Roy-2c H1 diagnosis names the failure mode: **the CLI test-percept text ("yo
 
 The centroid drift fix tightens clustering WITHIN each region (fewer spurious siblings per concept). It does NOT bridge regions. Arm A's priming reward bias accumulates on tighter, more semantically-coherent clusters — but those clusters are STILL not the clusters the test percepts activate. `recommend_action`'s consultation of the priming clusters' bias is structurally correct, but the active cluster ID on test percepts doesn't match any of those keys.
 
-**This is exactly the scenario the H1 confirmation predicted:** drift was real (post-fix shows clear hygiene improvement), but drift was downstream of the deeper alignment problem, not its cause. Fixing drift gives a cleaner substrate but doesn't bridge the cross-source alignment gap. The cross-source gap is what Wire-A (Stage 2 of [release_0_9_1.md](../plans/release_0_9_1.md)) routes around by surfacing tool-level cluster_reward_bias at the prompt regardless of active cluster, and what JEPA / cross-modal binding work in the [grounded_language_acquisition.md](../plans/grounded_language_acquisition.md) (Phase 2 deferred) and [jepa_cross_modal_alignment.md](../plans/jepa_cross_modal_alignment.md) plans is positioned to address structurally.
+**This is exactly the scenario the H1 confirmation predicted:** drift was real (post-fix shows clear hygiene improvement), but drift was downstream of the deeper alignment problem, not its cause. Fixing drift gives a cleaner substrate but doesn't bridge the cross-source alignment gap. The cross-source gap is what Wire-A (Stage 2 of [release_0_9_1.md](../plans/archive/release_0_9_1.md)) routes around by surfacing tool-level cluster_reward_bias at the prompt regardless of active cluster, and what JEPA / cross-modal binding work in the [grounded_language_acquisition.md](../plans/grounded_language_acquisition.md) (Phase 2 deferred) and [jepa_cross_modal_alignment.md](../plans/deferred/jepa_cross_modal_alignment.md) plans is positioned to address structurally.
 
 ## What this proves
 

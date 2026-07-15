@@ -199,7 +199,7 @@ Bio-plausible framing: the basal ganglia have two anatomically separate pathways
 - Negative bias → higher threshold → deliberation suppressed (indirect pathway, "no-go")
 - The caller (agent loop) passes `nac.get_goal_reward_bias(active_goal)` when NAc is available
 
-**Note on goal_depth_integration absorption:** This plan adds `goal_tag` to THOUGHT entries — the goal is *metadata on thoughts*, not a first-class WMS entry.  [goal_depth_integration.md](goal_depth_integration.md) Stage 1 adds `GOAL` to `WorkingMemoryKind` so the goal itself appears in WMS.  These are complementary.  goal_depth Stage 3 (NAc goal-outcome learning) is properly absorbed here.  Stages 1 (GOAL kind), 2 (episode goal tagging), and 4 (goal persistence) remain independent.
+**Note on goal_depth_integration absorption:** This plan adds `goal_tag` to THOUGHT entries — the goal is *metadata on thoughts*, not a first-class WMS entry.  [goal_depth_integration.md](../deferred/goal_depth_integration.md) Stage 1 adds `GOAL` to `WorkingMemoryKind` so the goal itself appears in WMS.  These are complementary.  goal_depth Stage 3 (NAc goal-outcome learning) is properly absorbed here.  Stages 1 (GOAL kind), 2 (episode goal tagging), and 4 (goal persistence) remain independent.
 
 ### Layer 4: ValenceSignal — abstract output type
 
@@ -603,7 +603,7 @@ Wire SCN oscillator into the temporal credit system.  Anticipatory credit, tempo
 
 8. **Negative valence = higher salience, not lower.** Pain thoughts are salient (survival).  The intuition "negative = drop it" is wrong for bio-plausibility.  Negative valence increases salience (you REMEMBER what hurt you); it's the *goal-level reward bias* that determines whether the agent *pursues* or *avoids* the associated goal.  Unlike `_reward_bias` (clamped to `[0, max]`), `_goal_reward_bias` allows negative values — negative bias raises ThoughtGate threshold (indirect pathway suppression: "don't bother deliberating, just act").
 
-9. **Goal tag is the active goal string, not a goal ID.** Goals don't have stable IDs yet ([goal_depth_integration.md](goal_depth_integration.md) Stage 4).  Using the description string is lossy (paraphrase collapse) but sufficient for the PoC.  When goal IDs land, swap the tag type.  Do NOT add normalization heuristics — they break on goals where casing or stopwords are semantically meaningful.  `decay_goal_reward_biases()` cleans up stale entries over time.
+9. **Goal tag is the active goal string, not a goal ID.** Goals don't have stable IDs yet ([goal_depth_integration.md](../deferred/goal_depth_integration.md) Stage 4).  Using the description string is lossy (paraphrase collapse) but sufficient for the PoC.  When goal IDs land, swap the tag type.  Do NOT add normalization heuristics — they break on goals where casing or stopwords are semantically meaningful.  `decay_goal_reward_biases()` cleans up stale entries over time.
 
 10. **NAc `_goal_reward_bias` must be serialized.** Add to `dump()` as `"goal_reward_bias": self._goal_reward_bias` and to `load_state()` as `self._goal_reward_bias = state.get("goal_reward_bias", {})`.  Old snapshots missing the field silently start fresh.
 
@@ -620,7 +620,7 @@ Wire SCN oscillator into the temporal credit system.  Anticipatory credit, tempo
 ## Relationship to existing plans
 
 - **Absorbs** [deliberative_thought_stream.md](deliberative_thought_stream.md) Stages 3 (goal-tagged thoughts + NAc goal-outcome learning), 3b (SCN temporal correlation), and 4 (ValenceSignal).  Stages 1 (transcript) and 2 (computed salience) are already shipped and untouched.
-- **Partially absorbs** [goal_depth_integration.md](goal_depth_integration.md) Stage 3 (NAc goal-outcome learning).  Stages 1 (GOAL WMS kind), 2 (episode goal tagging), and 4 (goal persistence) remain independent follow-ons.
+- **Partially absorbs** [goal_depth_integration.md](../deferred/goal_depth_integration.md) Stage 3 (NAc goal-outcome learning).  Stages 1 (GOAL WMS kind), 2 (episode goal tagging), and 4 (goal persistence) remain independent follow-ons.
 - **Extends** [affordance_concept_transfer.md](affordance_concept_transfer.md) — generalizes the shipped `_temporal_anchors` + `distribute_reward` temporal fallback path into a reusable distributor.
 - **Enables** ThoughtGate adaptive threshold via NAc goal bias — currently ThoughtGate has no NAc input.  Phase 4 creates the signal.
 - **Enables** cross-session goal learning — once NAc has `_goal_reward_bias`, it persists across sessions via existing NAc serialization.
