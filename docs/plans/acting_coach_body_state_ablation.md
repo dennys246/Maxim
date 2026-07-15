@@ -228,13 +228,25 @@ infrastructure. Recorded so the next attempt starts clean.
    Root cause: a `maxim-leader` tmux session was running alongside the
    experiment, both driving the qwen32b llama-cpp server on :8100 → 500s
    under double load. This is the Exp 37 cradle-cascade lesson
-   ("don't co-locate the harness and the leader"). Fix: kill the leader
-   instance so ONLY the sim touches :8100.
-3. **Secondary suspect — prompt overflow.** Server spawned at
-   `n_ctx=13312`; the embodied AUT prompt (full sensor dump + affordances +
-   entity context + acting coach + body_state) may exceed it, which
-   llama-cpp also returns as a 500. If 500s persist with the leader down,
-   respawn qwen32b at a larger n_ctx (16k-24k).
+   ("don't co-locate the harness and the leader"). Fix attempt: kill the
+   leader instance so ONLY the sim touches :8100. **RULED OUT 2026-07-15
+   00:41** — same `down_500` with the leader killed, so contention was not
+   the (sole) cause. The 500 persists → it is the qwen32b server rejecting
+   the AUT's request, i.e. #3 below.
+3. **PRIMARY suspect (leader ruled out) — n_ctx mismatch → prompt overflow
+   500.** Lane decisions size the large tier at `n_ctx=32768`, but the
+   server is spawned at `13312`. The PromptBudgeter composes the (large,
+   tool-heavy, embodied) AUT prompt to its believed ceiling; the server
+   rejects the oversize request with a 500. Signature: the tiny orchestrator
+   prompt (smollm) succeeds, the fat AUT prompt (qwen32b) 500s; the first
+   AUT call errors, cools down lane-large, then every call is
+   "no eligible providers" → `_llm_unavailable`. **Fix (daylight):** align
+   budgeter and server — `MAXIM_LLM_N_CTX=16384 maxim --llm
+   qwen2.5-32b-instruct` (spawns server at 16k AND sets the runtime
+   ceiling), or reduce the prompt (fewer sim tools — the "tool bloat"
+   lesson; the affordance+sim tool set may push the embodied prompt past
+   13k). Confirm the server is otherwise healthy with a small direct
+   `/v1/chat/completions` "say hi" before assuming overflow.
 
 **Harness-invocation notes (confirmed working):**
 - The harness runs each sub-sim via `subprocess.run(capture_output=True)`,
