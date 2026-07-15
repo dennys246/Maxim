@@ -910,9 +910,9 @@ def start_simulation_mode(
         # anticipation, cerebellum predictions) annotates the base directive
         # via existing StructuredContext fields at prompt-build time.
         if entity_ref is not None:
-            from maxim.prompts.acting_coach import ActingCoachConfig
+            from maxim.prompts.acting_coach import acting_coach_config_from_env
 
-            aut_llm_worker.acting_coach = ActingCoachConfig()
+            aut_llm_worker.acting_coach = acting_coach_config_from_env()
             aut_llm_worker.is_embodied = True
 
             # E2: Inject entity context into AUT prompt
@@ -1598,7 +1598,6 @@ def start_simulation_mode(
     aut_thread.start()
 
     # ── Generative campaign mode — narrator drives multi-turn story ──────
-    generative_result = None
     if generative:
         from maxim.simulation.campaign_runner import run_generative_campaign as _run_gen
         from maxim.utils.paths import sim_reports as _gen_reports_dir
@@ -1615,7 +1614,7 @@ def start_simulation_mode(
         # scene-harm wiring (thread the AUT embodiment into its entity activation).
         _gen_embodiment = _aut_instance.embodiment if aut_mode == "substrate-primary" else None
         _gen_entity_map = _aut_entity_map if aut_mode == "substrate-primary" else None
-        generative_result = _run_gen(
+        _run_gen(
             goal=goal,
             bridge=bridge,
             llm_router=llm_router,

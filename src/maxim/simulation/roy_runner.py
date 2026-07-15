@@ -322,7 +322,6 @@ def _preflight_llm() -> tuple[bool, dict[str, Any]]:
     Returns ``(ok, info)`` where ``info`` is a JSON-friendly dict with
     enough detail for the operator to act on (url, outcome, fix hint).
     """
-    import os
 
     # C4 of config_unification.md: prefer the unified config_loader
     # precedence chain (env > config.json > defaults), then fall back

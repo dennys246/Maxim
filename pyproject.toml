@@ -200,6 +200,9 @@ filterwarnings = [
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Linting Configuration
+# CI pins the tool versions (ruff==0.14.14, mypy==1.20.0 in
+# .github/workflows/test.yml). Keep local installs on the same versions;
+# bump the CI pins deliberately alongside a reformat/typecheck pass.
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tool.ruff]

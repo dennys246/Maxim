@@ -1,5 +1,15 @@
 """P8 Sleep Replay — offline consolidation during sleep phases.
 
+Dormant since 2026-07-14: the P8 experiment gate PASSED
+(docs/experiments/p8_sleep_replay_results.md) but the production consumer was
+never wired — no src/ code calls ``replay_top_episodes()`` on the SLEEP
+transition (only tests/substrate/test_p8_sleep_replay.py exercises it).
+The production session-end path is ``hippocampus_consolidation.py::sleep()``
+(promote/compress/remove — a different mechanism, NOT Hebbian replay).
+Resurrection trigger: docs/plans/memory_consolidation_practice.md (ACTIVE)
+deciding to wire the SLEEP-transition consumer. Until then no new features
+build on this module.
+
 During an explicit sleep phase, replays the top-N rewarded episodes
 with Hebbian link weight updates. Retrieval F1 improves on replayed
 probes without any new input being presented.

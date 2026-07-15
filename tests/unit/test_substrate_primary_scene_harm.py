@@ -15,6 +15,8 @@ Covers docs/plans/substrate_primary_cradle_readiness.md:
 
 from __future__ import annotations
 
+import pytest
+
 from maxim.simulation.generative_runner import _activate_phase_entities
 from maxim.tools.registry import ToolRegistry
 
@@ -384,3 +386,76 @@ def test_introspection_tool_classes_all_in_filter_set():
             if tool_name and tool_name not in intro.INTROSPECTION_TOOL_NAMES:
                 missing.append(tool_name)
     assert not missing, f"introspection Tool(s) missing from INTROSPECTION_TOOL_NAMES: {missing}"
+
+
+# ── Live tick: propose_via_substrate ticks the body BEFORE reading drives ──
+
+
+class _DriveRecordingNac:
+    """Stub NAc capturing the current_drives propose_via_substrate passes."""
+
+    def __init__(self):
+        self.seen_drives: dict | None = None
+
+    def recommend_action(self, *, agent_id, available_tools, current_drives=None, **kwargs):  # noqa: D401 - stub
+        self.seen_drives = dict(current_drives or {})
+        return None
+
+
+class TestProposeViaSubstrateTick:
+    """Regression guard: the substrate-primary per-proposal tick
+    (agent_loop.py, "Substrate-primary mode owns its own clock") calls
+    ``embodiment.evaluate_failures()`` — which applies wall-clock drive
+    drift — BEFORE ``_read_drive_states``. Without it, substrate-primary
+    drives would be frozen at initial values (the pre-ed8b187f bug class).
+    See the CLAUDE.md embodiment-tick invariant."""
+
+    def test_tick_applies_drift_before_drive_read(self, monkeypatch):
+        import maxim.embodiment.body as body_mod
+        from maxim.embodiment.body import Embodiment
+        from maxim.embodiment.spec import _parse_entity
+        from maxim.runtime.agent_loop import propose_via_substrate
+
+        class _FakeTime:
+            def __init__(self, start=1000.0):
+                self.now = start
+
+            def time(self):
+                return self.now
+
+        entity = _parse_entity(
+            {
+                "name": "test_body",
+                "entity_type": "body",
+                "sensors": {
+                    "hunger": {
+                        "unit": "ratio",
+                        "range": [0, 1],
+                        "initial": 0.0,
+                        "drive": {
+                            "drift_mode": "entropic",
+                            "drift_direction": "up",
+                            "drift_rate": 0.1,
+                            "deprivation_threshold": 0.7,
+                            "deprivation_pain": 0.3,
+                            "satisfaction_threshold": 0.3,
+                        },
+                    },
+                },
+            }
+        )
+        emb = Embodiment(entity)
+        fake = _FakeTime()
+        monkeypatch.setattr(body_mod, "time", fake)
+        emb.evaluate_failures()  # baseline poll
+
+        executor = _StubExecutor(["warm_self"])
+        executor.embodiment = emb
+
+        fake.now += 5.0  # wall-clock time passes with no embodiment call
+        nac = _DriveRecordingNac()
+        propose_via_substrate(nac=nac, agent_id="a", executor=executor)
+
+        assert nac.seen_drives is not None, "recommend_action was not reached"
+        # 0.5 (post-drift), not 0.0 (frozen) — proves the tick ran first.
+        assert nac.seen_drives.get("hunger") == pytest.approx(0.5, abs=1e-6)

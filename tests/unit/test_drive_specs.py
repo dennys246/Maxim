@@ -19,7 +19,6 @@ import pytest
 
 from maxim.embodiment.sem import (
     CouplingSpec,
-    DriveSpec,
     Entity,
     EntropicDriveSpec,
     HomeostaticDriveSpec,
@@ -532,3 +531,100 @@ class TestDriveSerialization:
         assert isinstance(restored.drive_specs["temperature"], HomeostaticDriveSpec)
         assert restored.drive_specs["hunger"].drift_rate == 0.002
         assert restored.drive_specs["temperature"].comfort_band == 0.4
+
+
+# ---------------------------------------------------------------------------
+# Live tick cycle — auto-drift inside evaluate_failures (ed8b187f)
+# ---------------------------------------------------------------------------
+
+
+class _FakeTime:
+    """Minimal stand-in for the ``time`` module binding in body.py."""
+
+    def __init__(self, start: float = 1000.0):
+        self.now = start
+
+    def time(self) -> float:
+        return self.now
+
+
+class TestEvaluateFailuresAutoDrift:
+    """Regression guard for the LIVE embodiment tick cycle.
+
+    Commit ed8b187f (2026-04-26) moved drive drift INTO
+    ``Body.evaluate_failures`` (wall-clock dt) because nothing constructed
+    ``EmbodimentPerceptSource`` and drives were frozen. It shipped without
+    tests; these pin the auto-drift semantics the production paths
+    (tool_bridge, sim tools, substrate-primary tick) rely on. See the
+    CLAUDE.md embodiment-tick invariant.
+    """
+
+    def _make_embodiment(self, initial: float = 0.0):
+        from maxim.embodiment.body import Embodiment
+        from maxim.embodiment.spec import _parse_entity
+
+        data = {
+            "name": "test_body",
+            "entity_type": "body",
+            "sensors": {
+                "hunger": {
+                    "unit": "ratio",
+                    "range": [0, 1],
+                    "initial": initial,
+                    "drive": {
+                        "drift_mode": "entropic",
+                        "drift_direction": "up",
+                        "drift_rate": 0.1,  # fast for testing
+                        "deprivation_threshold": 0.7,
+                        "deprivation_pain": 0.3,
+                        "satisfaction_threshold": 0.3,
+                    },
+                },
+            },
+        }
+        entity = _parse_entity(data)
+        return Embodiment(entity), entity
+
+    def _patch_time(self, monkeypatch, start: float = 1000.0) -> _FakeTime:
+        import maxim.embodiment.body as body_mod
+
+        fake = _FakeTime(start)
+        monkeypatch.setattr(body_mod, "time", fake)
+        return fake
+
+    def test_first_call_sets_baseline_without_drift(self, monkeypatch):
+        emb, entity = self._make_embodiment(initial=0.0)
+        self._patch_time(monkeypatch)
+        emb.evaluate_failures()
+        assert entity.vital_metrics["hunger"] == pytest.approx(0.0, abs=1e-9)
+
+    def test_wall_clock_drift_applied_on_next_call(self, monkeypatch):
+        emb, entity = self._make_embodiment(initial=0.0)
+        fake = self._patch_time(monkeypatch)
+        emb.evaluate_failures()  # baseline
+        fake.now += 5.0
+        emb.evaluate_failures()
+        # drift_rate 0.1 × 5s elapsed wall time
+        assert entity.vital_metrics["hunger"] == pytest.approx(0.5, abs=1e-6)
+
+    def test_no_double_drift_at_same_instant(self, monkeypatch):
+        emb, entity = self._make_embodiment(initial=0.0)
+        fake = self._patch_time(monkeypatch)
+        emb.evaluate_failures()  # baseline
+        fake.now += 5.0
+        emb.evaluate_failures()
+        emb.evaluate_failures()  # same instant — dt == 0, no extra drift
+        assert entity.vital_metrics["hunger"] == pytest.approx(0.5, abs=1e-6)
+
+    def test_elapsed_time_applied_lazily_across_gaps(self, monkeypatch):
+        """Time passing with NO call (e.g. LLM latency) is applied in full
+        at the next call — deferred, never lost."""
+        emb, entity = self._make_embodiment(initial=0.0)
+        fake = self._patch_time(monkeypatch)
+        emb.evaluate_failures()  # baseline
+        fake.now += 2.0
+        emb.evaluate_failures()
+        assert entity.vital_metrics["hunger"] == pytest.approx(0.2, abs=1e-6)
+        fake.now += 4.0  # long silent gap
+        emb.evaluate_failures()
+        assert entity.vital_metrics["hunger"] == pytest.approx(0.6, abs=1e-6)

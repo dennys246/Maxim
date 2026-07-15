@@ -1,5 +1,12 @@
 """KeyedRateLimiter — per-key rate limiting, burst detection, and escalating gating.
 
+Dormant since 2026-07-14: zero production callers and zero tests since the
+R0 cherry-pick. NOT superseded by ``runtime/rate_limiter.py`` (leader-proxy
+token bucket — different semantics: escalating per-key gating vs token
+bucket). Resurrection trigger: the per-agent rate limiting deferred item in
+docs/plans/reactive_peer_mesh_roadmap.md (C3), which names this primitive as
+its intended base. No new features build on this until that consumer lands.
+
 Cherry-picked from ``src/maxim/mesh/admission.py`` during R0 of the LLM path
 refinement (see ``docs/plans/archive/llm_path_foundation.md``). The mesh admission
 control module was otherwise dead code (zero production imports), but this

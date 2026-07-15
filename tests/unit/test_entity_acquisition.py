@@ -10,12 +10,9 @@ Tests cover:
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 from maxim.embodiment.entity_map import EntityMap
-from maxim.embodiment.sem import AffordanceSchema, Entity
+from maxim.embodiment.sem import Entity
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +130,7 @@ class TestEntityReparent:
 class TestAcquisitionSideEffects:
     def test_pick_up_emits_entity_acquired(self):
         """pick_up on acquirable target emits entity_acquired side_effect."""
-        from maxim.embodiment.spec import SpecModulator, _parse_entity
+        from maxim.embodiment.spec import _parse_entity
         from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
 
         body_data = {
@@ -179,7 +176,7 @@ class TestAcquisitionSideEffects:
 
     def test_pick_up_non_acquirable_no_side_effect(self):
         """pick_up on non-acquirable target does NOT emit entity_acquired."""
-        from maxim.embodiment.spec import SpecModulator, _parse_entity
+        from maxim.embodiment.spec import _parse_entity
         from maxim.embodiment.tool_bridge import ModulatorAffordanceTool
 
         body_data = {

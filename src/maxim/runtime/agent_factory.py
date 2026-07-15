@@ -73,6 +73,27 @@ class AgentConfig:
 # ---------------------------------------------------------------------------
 
 
+def _maybe_wire_body_state(instance: "AgentInstance") -> None:
+    """Exp 44 opt-in body_state wiring (arms B/C of the pre-registered
+    ablation, docs/plans/acting_coach_body_state_ablation.md).
+
+    Default OFF preserves the auto-sense status quo (arm A / all current
+    behavior). When ``MAXIM_ENABLE_BODY_STATE_PROMPT`` is truthy AND the
+    instance has both an embodiment and a memory hub, route the executor's
+    Embodiment into ``MemoryHub.embodiment`` so memory_agent's
+    ``format_body_state_for_prompt`` populates ``StructuredContext.
+    body_state``. This closes the silent gap the 2026-07-14 deep-dive found
+    (hub.embodiment was never wired at any production call site) — but only
+    behind the experiment flag until the ablation earns a default.
+    """
+    if instance.embodiment is None or instance.memory_hub is None:
+        return
+    from maxim.integration.memory_hub import body_state_prompt_enabled
+
+    if body_state_prompt_enabled():
+        instance.memory_hub.embodiment = instance.embodiment
+
+
 @dataclass
 class AgentInstance:
     """A fully independent agent with its own subsystems.
@@ -447,6 +468,7 @@ class AgentFactory:
             # The old CLI code had the identical bug — always returned None.
             instance.embodiment = getattr(executor, "embodiment", None)
             instance.executor = executor
+            _maybe_wire_body_state(instance)
 
         # Step 4: Fear gating (wraps executor with FearGatedExecutor)
         if config.with_fear_gate and instance.executor is not None:

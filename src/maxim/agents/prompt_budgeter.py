@@ -159,6 +159,24 @@ class PromptBudgeter:
         return included, dropped, used
 
     @staticmethod
+    def _log_included(included: list[PromptSection]) -> None:
+        """DEBUG observability: one event enumerating the sections that made
+        it into the prompt, with per-section char sizes.
+
+        Exists for the Exp 44 mechanism checks
+        (docs/plans/acting_coach_body_state_ablation.md): with MAXIM_LOG_FILE
+        set (root logger at DEBUG), the JSONL carries one ``prompt_sections``
+        line per prompt build, so arm verification (body_state / acting_coach
+        present, sizes changing across turns, no unintended section diffs
+        across arms) needs no prompt-text dump. Name:size pairs only — no
+        content — so the event is safe at DEBUG in every mode.
+        """
+        logger.debug(
+            "prompt_sections %s",
+            ",".join(f"{s.name}:{len(s.content)}" for s in sorted(included, key=lambda x: x.insertion_order)),
+        )
+
+    @staticmethod
     def _emit(included: list[PromptSection]) -> str:
         """Join included sections in original insertion order."""
         ordered = sorted(included, key=lambda s: s.insertion_order)
@@ -174,6 +192,7 @@ class PromptBudgeter:
         included, dropped, used = self._fit(self._sections, budget)
         if dropped:
             logger.info("Prompt budget %d/%d — dropped sections: %s", used, budget, ", ".join(dropped))
+        self._log_included(included)
         return self._emit(included), dropped
 
     def build_segmented(self) -> tuple[str, str, list[str]]:
@@ -213,6 +232,7 @@ class PromptBudgeter:
                 budget,
                 ", ".join(dropped),
             )
+        self._log_included(stable_included + dyn_included)
         return self._emit(stable_included), self._emit(dyn_included), dropped
 
 

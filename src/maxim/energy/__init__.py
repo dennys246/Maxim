@@ -9,9 +9,9 @@ This enables:
 2. Learning associations between actions and their energy costs
 3. Resource budgeting
 
-Note: ``EnergyReactionBridge`` and ``MovementEnergyTracker`` were removed in
-the cradle sensorimotor update.  Interoceptive drive signals (hunger, fatigue,
-stamina recovery) are now handled by the drive protocol in
+Note: the energy reaction bridge and movement energy tracker classes were
+removed in the cradle sensorimotor update.  Interoceptive drive signals
+(hunger, fatigue, stamina recovery) are now handled by the drive protocol in
 ``embodiment.sem.HomeostaticDriveSpec`` / ``EntropicDriveSpec``.
 
 Example:

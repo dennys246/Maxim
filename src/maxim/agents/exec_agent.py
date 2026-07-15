@@ -15,7 +15,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from maxim.decisions.nac import NucleusAccumbens
+    from maxim.decisions.nac import NAc
     from maxim.memory.hippocampus import Hippocampus
     from maxim.time.scn import SCN
 
@@ -148,7 +148,7 @@ class ExecAgent(Agent):
             "uncontemplated_success": 0,
             "uncontemplated_total": 0,
         }
-        self._nac: NucleusAccumbens | None = None  # Late-wired via wire_nac()
+        self._nac: NAc | None = None  # Late-wired via wire_nac()
 
         # Phase 3b: Acute staging
         self._staging_dir: str | None = None  # Set via wire_staging()
@@ -633,7 +633,7 @@ class ExecAgent(Agent):
 
     # ── Contemplation quality metrics (Phase 2) ──────────────────────
 
-    def wire_nac(self, nac: NucleusAccumbens) -> None:
+    def wire_nac(self, nac: NAc) -> None:
         """Late-wire NAc for contemplation outcome learning."""
         self._nac = nac
 

@@ -260,6 +260,8 @@ def _run_real(
     explore_weight: float,
     timeout_s: int,
     workdir: Path,
+    aut_mode: str = "substrate-primary",
+    aut_model: str | None = None,
 ) -> tuple[list[str], dict[str, Any]]:
     data_home = workdir / f"{arm}_seed{seed}"
     data_home.mkdir(parents=True, exist_ok=True)
@@ -278,21 +280,26 @@ def _run_real(
     env["MAXIM_AUTO_SPAWN_LLM_SERVER"] = "0"
     env["MAXIM_LLM_CLOUD_ENABLED"] = "0"
     env["MAXIM_ROLE"] = "solo"
-    # Exploration ON in BOTH arms (Exp 42 design).
-    env["MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT"] = str(explore_weight)
-    # Drive-gating ON (motivated attention) — opt-in, the Exp 42 enabling
-    # mechanism (without it the agent fixates on always-succeeding zero-stakes
-    # tools instead of warming; see the doc §3a / the B7 triage history).
-    # Respect a parent-env override so the gating-OFF ABLATION arm runs cleanly:
-    #   MAXIM_SIM_DRIVE_GATE_ENABLED=0 python scripts/benchmark_exp42_preference.py ...
-    env["MAXIM_SIM_DRIVE_GATE_ENABLED"] = os.environ.get("MAXIM_SIM_DRIVE_GATE_ENABLED", "1")
+    if aut_mode == "substrate-primary":
+        # Exploration ON in BOTH arms (Exp 42 design).
+        env["MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT"] = str(explore_weight)
+        # Drive-gating ON (motivated attention) — opt-in, the Exp 42 enabling
+        # mechanism (without it the agent fixates on always-succeeding zero-stakes
+        # tools instead of warming; see the doc §3a / the B7 triage history).
+        # Respect a parent-env override so the gating-OFF ABLATION arm runs cleanly:
+        #   MAXIM_SIM_DRIVE_GATE_ENABLED=0 python scripts/benchmark_exp42_preference.py ...
+        env["MAXIM_SIM_DRIVE_GATE_ENABLED"] = os.environ.get("MAXIM_SIM_DRIVE_GATE_ENABLED", "1")
+    # Exp 44 (LLM-primary body_state ablation): arm env vars —
+    # MAXIM_ENABLE_BODY_STATE_PROMPT / MAXIM_DISABLE_COACH_BODY_LAYERS —
+    # flow through os.environ.copy() above; export them in the launching
+    # shell per arm. They are recorded per-run for provenance (_record).
 
     cmd = [
         _resolve_maxim_binary(),
         "--sim",
         _ARM_ARC[arm],
         "--aut-mode",
-        "substrate-primary",
+        aut_mode,
         "--embodiment",
         embodiment,
         "--interactive",
@@ -303,6 +310,8 @@ def _run_real(
         str(seed),
         "--research",
     ]
+    if aut_model:
+        cmd += ["--aut-model", aut_model]
     log_dir = data_home / "harness_logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     telem_before = _telemetry_files()
@@ -341,8 +350,39 @@ def _mock_tools(arm: str, seed: int) -> list[str]:
     return seq
 
 
+# Same six-value truthy set as the runtime parsers
+# (prompts/cluster_bias_annotation.py::TRUTHY_DISABLE_VALUES, replicated in
+# integration/memory_hub.py::body_state_prompt_enabled). Replicated here
+# because this script runs standalone; tests/behavioral/test_exp42_pipeline.py
+# pins arm derivation so divergence fails loudly.
+_TRUTHY = frozenset({"1", "true", "t", "yes", "y", "on"})
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in _TRUTHY
+
+
+def _ablation_arm() -> str:
+    """Normalize the Exp 44 arm from the two env vars: A (unwired status
+    quo), B (body_state + coach layers off), C (body_state + coach on),
+    or 'inconsistent' (layers-disable set while body_state is unwired —
+    the disable is a no-op; flag it rather than mislabel)."""
+    body = _env_truthy("MAXIM_ENABLE_BODY_STATE_PROMPT")
+    layers_off = _env_truthy("MAXIM_DISABLE_COACH_BODY_LAYERS")
+    if not body:
+        return "inconsistent" if layers_off else "A"
+    return "B" if layers_off else "C"
+
+
 def _record(
-    arm: str, seed: int, tools: list[str], nets: dict[str, Any], *, mock: bool, git_hash: str
+    arm: str,
+    seed: int,
+    tools: list[str],
+    nets: dict[str, Any],
+    *,
+    mock: bool,
+    git_hash: str,
+    aut_mode: str = "substrate-primary",
 ) -> dict[str, Any]:
     rec = {
         "experiment": "exp42",
@@ -351,6 +391,13 @@ def _record(
         "seed": seed,
         "git_hash": git_hash,
         "mock": mock,
+        # Exp 44 provenance: which AUT mode ran, the NORMALIZED ablation arm
+        # (derived with the same truthy parsing the runtime uses — group on
+        # this, not the raw echoes), plus the raw env echoes as corroboration.
+        "aut_mode": aut_mode,
+        "ablation_arm": _ablation_arm(),
+        "env_body_state_prompt": os.environ.get("MAXIM_ENABLE_BODY_STATE_PROMPT", ""),
+        "env_coach_body_layers_disabled": os.environ.get("MAXIM_DISABLE_COACH_BODY_LAYERS", ""),
     }
     rec.update(compute_run_metrics(tools))
     rec.update(nets)
@@ -398,8 +445,19 @@ def run_benchmark(
     explore_weight: float,
     timeout_s: int,
     resume: bool,
+    aut_mode: str = "substrate-primary",
+    aut_model: str | None = None,
 ) -> int:
     git_hash = _git_hash()
+    if aut_mode == "substrate-primary" and _env_truthy("MAXIM_ENABLE_BODY_STATE_PROMPT"):
+        # body_state wiring is prompt-side (LLM-primary). In substrate-primary
+        # it contaminates an Exp 42 replay for no effect on the action path.
+        print(
+            "WARNING: MAXIM_ENABLE_BODY_STATE_PROMPT is set but --aut-mode is "
+            "substrate-primary — this contaminates an Exp 42 replay; unset it "
+            "or pass --aut-mode llm-primary (Exp 44).",
+            file=sys.stderr,
+        )
     done = _existing_keys(out_path) if resume else set()
     workdir = Path("data/sim_sandbox/exp42_runs")
     workdir.mkdir(parents=True, exist_ok=True)
@@ -429,12 +487,14 @@ def run_benchmark(
                             explore_weight=explore_weight,
                             timeout_s=timeout_s,
                             workdir=workdir,
+                            aut_mode=aut_mode,
+                            aut_model=aut_model,
                         )
                 except Exception as exc:  # noqa: BLE001 - log + continue per run
                     n_fail += 1
                     print(f"FAIL {arm} seed={seed}: {exc}", file=sys.stderr)
                     continue
-                rec = _record(arm, seed, tools, nets, mock=mock, git_hash=git_hash)
+                rec = _record(arm, seed, tools, nets, mock=mock, git_hash=git_hash, aut_mode=aut_mode)
                 out.write(json.dumps(rec) + "\n")
                 out.flush()
                 n_done += 1
@@ -461,6 +521,23 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--explore-weight", type=float, default=DEFAULT_EXPLORE_WEIGHT)
     p.add_argument("--timeout-s", type=int, default=2400)
     p.add_argument("--resume", action="store_true", help="skip (arm, seed) pairs already in --out")
+    p.add_argument(
+        "--aut-mode",
+        default="substrate-primary",
+        choices=["substrate-primary", "llm-primary"],
+        help="AUT action-selection mode passed to the sub-sim. substrate-primary "
+        "(default) preserves Exp 42 byte-for-byte. llm-primary is the Exp 44 "
+        "body_state ablation mode (docs/plans/acting_coach_body_state_ablation.md) — "
+        "export MAXIM_ENABLE_BODY_STATE_PROMPT / MAXIM_DISABLE_COACH_BODY_LAYERS "
+        "per arm in the launching shell; both are recorded per-run for provenance. "
+        "Raise --timeout-s: LLM-primary turns are order-of-magnitude slower.",
+    )
+    p.add_argument(
+        "--aut-model",
+        default=None,
+        help="Separate LLM profile for the agent-under-test (passed through as "
+        "the sub-sim's --aut-model). Only meaningful with --aut-mode llm-primary.",
+    )
     args = p.parse_args(argv)
 
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
@@ -481,6 +558,8 @@ def main(argv: list[str] | None = None) -> int:
         explore_weight=args.explore_weight,
         timeout_s=args.timeout_s,
         resume=args.resume,
+        aut_mode=args.aut_mode,
+        aut_model=args.aut_model,
     )
 
 
