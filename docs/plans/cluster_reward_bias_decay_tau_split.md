@@ -3,7 +3,7 @@
 **Target version:** 0.9.2 (preferred) or 0.9.1 follow-up before publish.
 **Status:** Draft. Plan written 2026-05-25 after Roy-3c-bisect ([PR #266](https://github.com/dennys246/Maxim/pull/266), [29_roy_3c_bisect.md](../experiments/29_roy_3c_bisect.md)) cleanly named Wire-A's decay rule as the cause of the magnitude-axis shift, and surfaced that the chosen tau may be too aggressive for Wire-A's actual use case.
 **Owns:** [`src/maxim/decisions/nac.py`](../../src/maxim/decisions/nac.py) (`NACConfig` field add + `decay_cluster_reward_biases` consumer change), [`tests/unit/test_nac.py`](../../tests/unit/test_nac.py) (regression guards for the new field), [`docs/experiments/30_wire_a_tau_validation.md`](../experiments/30_wire_a_tau_validation.md) (companion write-up, created during Phase 3).
-**Companion plans:** [release_0_9_1.md](release_0_9_1.md) (this is the substantive Tier 2 work the Roy-3 writeup teed up), [v1_refinement.md](v1_refinement.md) (Roy-3 follow-up item 2 — "decide whether Wire-A's render needs a raw priming snapshot floor" — supersedes that decision with a cleaner tune), [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy-3 retry that depends on this lands here).
+**Companion plans:** [release_0_9_1.md](archive/release_0_9_1.md) (this is the substantive Tier 2 work the Roy-3 writeup teed up), [v1_refinement.md](v1_refinement.md) (Roy-3 follow-up item 2 — "decide whether Wire-A's render needs a raw priming snapshot floor" — supersedes that decision with a cleaner tune), [persona_convergence_crucible.md](persona_convergence_crucible.md) (Roy-3 retry that depends on this lands here).
 
 ## Front-gate scope pressure (retroactive)
 
@@ -142,7 +142,7 @@ Tracked as a candidate follow-up plan in memory: [`feedback_decay_is_tick_anchor
 | 2 | Regression test guards: existing `decay_cluster_reward_biases` tests pin the formula; add tests pinning the new field separation, the default value, and env override | ~50 tests | none | low |
 | 3 | Roy-3 retry (Roy-3a spec, all other config unchanged) | ~30 min wall | sim_reports session | medium — runner time |
 | 4 | Companion experiment doc `30_wire_a_tau_validation.md` with cross-arm divergence measurements | ~150 doc | none | none |
-| 5 | Fold verdict into [v1_refinement.md](v1_refinement.md), [release_0_9_1.md](release_0_9_1.md) Roy-3 follow-up list | ~30 doc | none | none |
+| 5 | Fold verdict into [v1_refinement.md](v1_refinement.md), [release_0_9_1.md](archive/release_0_9_1.md) Roy-3 follow-up list | ~30 doc | none | none |
 | **Total** | | **~270 LOC + ~1 runner day** | none | low |
 
 ## Phase 1 — Config split

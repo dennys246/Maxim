@@ -191,7 +191,7 @@ The cadence has two layers: **scheduled walks** (heartbeat) and **event-driven r
 - [CLAUDE.md "Working principles for new mechanisms"](../../CLAUDE.md#working-principles-for-new-mechanisms) — Principle 1 (two-tier invariant tracking) is the gate that triggered this doc; Principle 5 (regression-guard / experiment citation) is the format convention that aligns this doc's Earned entries with the CLAUDE.md invariants surface.
 - [behavioral_convergence_practice.md](behavioral_convergence_practice.md) — "does the agent get better" (system-level, ongoing). Sibling doc, different question.
 - [v1_refinement.md](v1_refinement.md) — 1.0 unified plan. Tier 1 entries here line up with V1 validation work.
-- [release_0_9_1.md](release_0_9_1.md) — current active release. Tier 3 #2 + #3 (Wire-A + Wire 1) hinge on Roy-3 ablation arms shipping there.
+- [release_0_9_1.md](archive/release_0_9_1.md) — current active release. Tier 3 #2 + #3 (Wire-A + Wire 1) hinge on Roy-3 ablation arms shipping there.
 - [cluster_reward_bias_decay_tau_split.md](cluster_reward_bias_decay_tau_split.md) — Tier 3 #2 depends on Phase 1 implementation.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — Tier 1 substrate-primary entry lines up with B5 work.
 - [roy/](roy/) — Roy harness directory. Experimental setups for Tier 3 predicates land here.

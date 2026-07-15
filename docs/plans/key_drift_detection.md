@@ -1,6 +1,6 @@
 # Key-Drift Detection — Proactive API Key Mismatch Surface for Peer ↔ Leader
 
-**Status:** Drafted 2026-06-03. Follow-up to [config_unification.md](config_unification.md). Triggered by a real Mac Mini setup 2026-06-03 where a peer's stored API key was 2 months stale and the leader had rotated 2 days prior. The 401 the peer would have received contained no hint that the key was the problem — operators have to guess between auth, hostname, leader state, or network as the cause.
+**Status:** Drafted 2026-06-03. Follow-up to [config_unification.md](archive/config_unification.md). Triggered by a real Mac Mini setup 2026-06-03 where a peer's stored API key was 2 months stale and the leader had rotated 2 days prior. The 401 the peer would have received contained no hint that the key was the problem — operators have to guess between auth, hostname, leader state, or network as the cause.
 
 **Scope:** small follow-on PR (~150 LOC src + ~40 tests). Independent of any other 1.0 work. Ships after config_unification.md merges.
 

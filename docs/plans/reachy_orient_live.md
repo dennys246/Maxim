@@ -118,7 +118,7 @@ session; a second session (loaded NAc) starts already directed.
 
 ## After Step 3
 → Phase 2 (visual `PerceptSource` on the same backbone, after the P1 vision-encoder check) →
-Phase 3 (audio+visual fusion). See [`audiovisual_orienting.md`](audiovisual_orienting.md).
+Phase 3 (audio+visual fusion). See [`audiovisual_orienting.md`](substrate_native_orienting.md).
 
 **Phase 2 camera notes (from the streaming session's SDK findings):**
 - Frames: `mini.media.get_frame()` → BGR `uint8` ~640×480 or `None`. The camera inits on construction
