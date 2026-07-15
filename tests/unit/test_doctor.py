@@ -1981,3 +1981,161 @@ class TestCheckUserProfiles:
             f"must route through apply_user_profiles for full validation."
         )
         assert "prompt_style" in result.message
+
+
+# ─── robot reachability check (docs/plans/doctor_robot_reachable.md) ─────────
+
+
+class TestCheckRobotReachable:
+    """Offline matrix for check_robot_reachable — all network/process calls
+    mocked at the ORIGINAL module paths per the doctor testing rule."""
+
+    @staticmethod
+    def _robots_cfg(host: str | None = "10.6.0.63"):
+        from maxim.hardware.config import RobotsConfig
+
+        cfg = {"robots": {"reachy": {"type": "reachy_mini", "config": {}}}}
+        if host is not None:
+            cfg["robots"]["reachy"]["config"]["host"] = host
+        return RobotsConfig.from_dict(cfg)
+
+    def _run(self, info=None, **mocks):
+        from maxim.doctor.checks import check_robot_reachable
+
+        return check_robot_reachable(info or _info())
+
+    # ── gate ──────────────────────────────────────────────────────────────
+    def test_gate_no_config_is_info_never_fail(self):
+        from maxim.hardware.config import RobotsConfig
+
+        with patch("maxim.hardware.config.load_robots_config", return_value=RobotsConfig()):
+            results = self._run()
+        assert len(results) == 1
+        assert results[0].status == "info"
+        assert "no robots configured" in results[0].message
+
+    def test_gate_malformed_config_is_warn_never_fail(self):
+        with patch("maxim.hardware.config.load_robots_config", side_effect=ValueError("bad yaml")):
+            results = self._run()
+        assert len(results) == 1
+        assert results[0].status == "warn"
+
+    # ── happy path ────────────────────────────────────────────────────────
+    def _status_resp(self, version="1.8.3", state="running"):
+        class _R:
+            def json(self):
+                return {"version": version, "state": state}
+
+        return _R()
+
+    def test_happy_path_ok_with_version_and_state(self):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection"),
+            patch("maxim.utils.http.fetch_url", return_value=self._status_resp()),
+            patch("maxim.doctor.checks._robot_sdk_version", return_value=(1, 8)),
+        ):
+            (r,) = self._run()
+        assert r.status == "ok"
+        assert "1.8.3" in r.message and "running" in r.message
+
+    # ── resolution ────────────────────────────────────────────────────────
+    def test_resolution_failure_macos_fix_mentions_local_network(self):
+        import socket as socket_mod
+
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg(host=None)),
+            patch("socket.gethostbyname", side_effect=socket_mod.gaierror),
+        ):
+            (r,) = self._run(info=_info(os="macos"))
+        assert r.status == "fail"
+        assert "Local Network" in r.fix
+        assert r.retry_id == "robot"
+
+    def test_resolution_failure_linux_fix_omits_local_network(self):
+        import socket as socket_mod
+
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg(host=None)),
+            patch("socket.gethostbyname", side_effect=socket_mod.gaierror),
+        ):
+            (r,) = self._run(info=_info(os="linux"))
+        assert r.status == "fail"
+        assert "Local Network" not in r.fix
+        assert "host:" in r.fix
+
+    # ── port ──────────────────────────────────────────────────────────────
+    def test_port_closed_fix_carries_resolved_ip(self):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection", side_effect=OSError),
+        ):
+            (r,) = self._run()
+        assert r.status == "fail"
+        assert "ssh pollen@10.6.0.63" in r.fix
+        assert r.retry_id == "robot"
+
+    # ── status endpoint ───────────────────────────────────────────────────
+    def test_status_unreadable_is_warn_pre_15_daemon_hint(self):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection"),
+            patch("maxim.utils.http.fetch_url", side_effect=ConnectionError),
+        ):
+            (r,) = self._run()
+        assert r.status == "warn"
+        assert "pre-1.5" in r.message
+
+    # ── era matrix ────────────────────────────────────────────────────────
+    @pytest.mark.parametrize(
+        ("sdk", "daemon", "expected"),
+        [
+            ((1, 2), "1.8.3", "fail"),  # zenoh client vs WS daemon
+            ((1, 8), "1.2.6", "fail"),  # WS client vs zenoh daemon
+            ((1, 8), "1.9.0", "warn"),  # same era, minor drift
+            ((1, 8), "1.8.4", "ok"),  # same major.minor
+        ],
+    )
+    def test_era_matrix(self, sdk, daemon, expected):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection"),
+            patch("maxim.utils.http.fetch_url", return_value=self._status_resp(version=daemon)),
+            patch("maxim.doctor.checks._robot_sdk_version", return_value=sdk),
+        ):
+            (r,) = self._run()
+        assert r.status == expected, r.message
+        if expected == "fail":
+            assert f"reachy_mini=={daemon}" in r.fix
+
+    def test_sdk_not_installed_is_warn_with_pip_hint(self):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection"),
+            patch("maxim.utils.http.fetch_url", return_value=self._status_resp()),
+            patch("maxim.doctor.checks._robot_sdk_version", return_value=None),
+        ):
+            (r,) = self._run()
+        assert r.status == "warn"
+        assert "pip install" in r.fix
+
+    # ── backend readiness ─────────────────────────────────────────────────
+    def test_backend_not_ready_warns_with_1013_hint(self):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection"),
+            patch("maxim.utils.http.fetch_url", return_value=self._status_resp(state="starting")),
+            patch("maxim.doctor.checks._robot_sdk_version", return_value=(1, 8)),
+        ):
+            (r,) = self._run()
+        assert r.status == "warn"
+        assert "1013" in r.message
+
+    # ── retry contract ────────────────────────────────────────────────────
+    def test_every_non_ok_result_carries_retry_id(self):
+        with (
+            patch("maxim.hardware.config.load_robots_config", return_value=self._robots_cfg()),
+            patch("socket.create_connection", side_effect=OSError),
+        ):
+            (r,) = self._run()
+        assert r.status != "ok" and r.retry_id == "robot"

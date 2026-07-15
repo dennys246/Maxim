@@ -1,8 +1,11 @@
 # `maxim doctor` — robot reachability check (`check_robot_reachable`)
 
-**Status:** PLANNED (2026-07-15, from the Reachy WS-era review round). One
-PR-sized change. The spec below is the contract; a condensed TODO pointing
-here lives in `src/maxim/doctor/checks.py`.
+**Status:** IMPLEMENTED (2026-07-15, same day, on `feat/orient-live`) —
+`check_robot_reachable` + "Robots" doctor section + `retry_id="robot"` loop
+entry + the full offline test matrix
+(`tests/unit/test_doctor.py::TestCheckRobotReachable`, 14 tests). Remaining
+follow-through: the consolidation section below (thin-wrapper
+`maxim-diagnostics`, deprecate `scripts/check_reachy_connection.py`).
 
 ## Motivation
 

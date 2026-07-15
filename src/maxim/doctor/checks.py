@@ -5,17 +5,11 @@ Results include a status, message, and platform-specific fix hint. The fix
 hint is rendered verbatim in the doctor output — it should be copy-pasteable.
 """
 
-
-# TODO(robot-doctor): add check_robot_reachable(info) -> list[CheckResult].
-# Full spec (gate, probe order, era-coherence check, fix strings, retry_id,
-# consolidation of the two standalone Reachy diagnostics, offline test
-# matrix): docs/plans/doctor_robot_reachable.md
-
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from maxim.doctor.platform_detect import PlatformInfo, detect_wsl_ip
 
@@ -3096,6 +3090,171 @@ def check_user_profiles() -> CheckResult:
     )
 
 
+# ─── robot checks (docs/plans/doctor_robot_reachable.md) ────────────────────
+
+
+def _parse_major_minor(version: str) -> tuple[int, int] | None:
+    try:
+        parts = version.split(".")
+        return (int(parts[0]), int(parts[1]))
+    except (ValueError, IndexError, AttributeError):
+        return None
+
+
+def _robot_sdk_version() -> tuple[int, int] | None:
+    """(major, minor) of the locally installed reachy-mini SDK, or None.
+
+    Package metadata, not ``__version__`` — pre-1.5 (zenoh-era) SDKs have no
+    ``__version__`` attribute, so metadata is the only cross-era probe.
+    """
+    try:
+        from importlib.metadata import version
+
+        return _parse_major_minor(version("reachy-mini"))
+    except Exception:  # noqa: BLE001 - not installed / metadata unreadable
+        return None
+
+
+def _check_one_robot(info: PlatformInfo, robot: Any) -> CheckResult:
+    """Reachability + era coherence for one configured robot.
+
+    Probe order mirrors the hardware-validated sequence
+    (docs/embodiment/reachy_mini/troubleshooting.md): resolve → TCP :8000 →
+    GET /api/daemon/status → era/pin coherence.
+    """
+    import socket
+
+    name = f"robot:{robot.robot_id}"
+
+    # 1. Resolve — config host: verbatim; else IPv4-only gethostbyname of
+    # <robot_name>.local (sidesteps the getaddrinfo/IPv6-first flake).
+    host = robot.config.get("host")
+    if not host:
+        mdns_name = str(robot.config.get("robot_name", "reachy_mini")).replace("_", "-") + ".local"
+        old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(2.0)
+        try:
+            host = socket.gethostbyname(mdns_name)
+        except OSError:
+            fix = f"set host: <robot-ip> in ~/.maxim/robots.yaml (DHCP reservation recommended); {mdns_name} did not resolve"
+            if info.os == "macos":
+                fix = (
+                    "grant this terminal Local Network permission (System Settings → "
+                    "Privacy & Security → Local Network) and/or " + fix
+                )
+            return CheckResult(name, "fail", f"{mdns_name} does not resolve", fix=fix, retry_id="robot")
+        finally:
+            socket.setdefaulttimeout(old_timeout)
+
+    # 2. TCP :8000 — the single WS-era control port (FastAPI + /ws/sdk).
+    try:
+        with socket.create_connection((host, 8000), timeout=2.0):
+            pass
+    except OSError:
+        return CheckResult(
+            name,
+            "fail",
+            f"daemon port {host}:8000 unreachable",
+            fix=(
+                f"ssh pollen@{host} → systemctl status reachy-mini-daemon; after a Wi-Fi "
+                "change, reboot the robot (the daemon binds at startup)"
+                + ("; on macOS also check Local Network permission" if info.os == "macos" else "")
+            ),
+            retry_id="robot",
+        )
+
+    # 3. Daemon status (version + backend state).
+    daemon_version: str | None = None
+    daemon_state: str | None = None
+    try:
+        from maxim.utils import http as maxim_http
+
+        status = maxim_http.fetch_url(f"http://{host}:8000/api/daemon/status", timeout=2.0).json()
+        daemon_version = str(status.get("version", "")) or None
+        daemon_state = str(status.get("state", "")) or None
+    except Exception:  # noqa: BLE001
+        return CheckResult(
+            name,
+            "warn",
+            f"{host}:8000 open but /api/daemon/status unreadable (pre-1.5 daemon or endpoint moved)",
+            fix="check the daemon era: docs/embodiment/reachy_mini/troubleshooting.md",
+            retry_id="robot",
+        )
+
+    # 4. Era / pin coherence — daemon vs local SDK (v1.5.0 zenoh→WS pivot).
+    sdk_mm = _robot_sdk_version()
+    daemon_mm = _parse_major_minor(daemon_version or "")
+    state_note = f", state={daemon_state}" if daemon_state else ""
+    if sdk_mm is None:
+        return CheckResult(
+            name,
+            "warn",
+            f"reachable (daemon {daemon_version or '?'}{state_note}) but no local reachy-mini SDK found",
+            fix="pip install 'reachy-mini[gstreamer]>=1.8.3,<2.0' (in the interpreter you run Maxim from)",
+            retry_id="robot",
+        )
+    if daemon_mm is not None and ((sdk_mm < (1, 5)) != (daemon_mm < (1, 5)) or sdk_mm < (1, 5)):
+        return CheckResult(
+            name,
+            "fail",
+            f"era mismatch: daemon {daemon_version} vs local SDK {sdk_mm[0]}.{sdk_mm[1]}.x "
+            "(opposite sides of the v1.5.0 zenoh→WebSocket pivot)",
+            fix=(f'pip install "reachy_mini=={daemon_version}" — see docs/embodiment/reachy_mini/troubleshooting.md'),
+            retry_id="robot",
+        )
+    if daemon_mm is not None and daemon_mm != sdk_mm:
+        return CheckResult(
+            name,
+            "warn",
+            f"reachable (daemon {daemon_version}{state_note}) but SDK minor drift (local {sdk_mm[0]}.{sdk_mm[1]}.x)",
+            fix=f'pip install "reachy_mini=={daemon_version}" to match exactly',
+            retry_id="robot",
+        )
+    if daemon_state and daemon_state != "running":
+        return CheckResult(
+            name,
+            "warn",
+            f"daemon up (version {daemon_version}) but state={daemon_state} — WS connects will be refused (1013)",
+            fix=f"journalctl -u reachy-mini-daemon on the robot (ssh pollen@{host})",
+            retry_id="robot",
+        )
+    return CheckResult(
+        name,
+        "ok",
+        f"reachable at {host}:8000 (daemon {daemon_version or '?'}{state_note}, SDK match)",
+    )
+
+
+def check_robot_reachable(info: PlatformInfo) -> list[CheckResult]:
+    """Per-robot reachability + era coherence for ~/.maxim/robots.yaml entries.
+
+    Full spec: docs/plans/doctor_robot_reachable.md. The gate NEVER fails —
+    a machine without robots must not fail doctor because of this check.
+    """
+    try:
+        from maxim.hardware.config import load_robots_config
+
+        cfg = load_robots_config()
+    except Exception as e:  # noqa: BLE001 - malformed yaml etc.
+        return [
+            CheckResult(
+                "robots.yaml",
+                "warn",
+                f"could not load robots config: {e}",
+                fix="fix ~/.maxim/robots.yaml (YAML syntax / schema)",
+            )
+        ]
+    if not cfg.robots:
+        return [
+            CheckResult(
+                "robots",
+                "info",
+                "no robots configured — skipping robot checks (add ~/.maxim/robots.yaml to enable)",
+            )
+        ]
+    return [_check_one_robot(info, robot) for robot in cfg.robots]
+
+
 def run_all_checks(
     info: PlatformInfo,
     *,
@@ -3178,6 +3337,7 @@ def run_all_checks(
     else:
         # ── leader / solo sections ────────────────────────────────────────
         sections += [
+            ("Robots", check_robot_reachable(info)),
             (
                 "Local LLM",
                 [
