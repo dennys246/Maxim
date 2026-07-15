@@ -6,24 +6,10 @@ hint is rendered verbatim in the doctor output — it should be copy-pasteable.
 """
 
 
-# TODO(robot-doctor): add check_robot_reachable(info) -> list[CheckResult]
-# (spec from the 2026-07-15 Reachy WS-era review round; follow-up PR):
-#   - Gate: no ~/.maxim/robots.yaml or no robots -> single `info` result
-#     ("no robots configured — skipping robot checks"), never a fail.
-#   - Per robot: (1) resolve host (config host: verbatim, else IPv4
-#     socket.gethostbyname("<name>.local"), ~2s); (2) TCP :8000 probe,
-#     1.5-2s; (3) GET /api/daemon/status via maxim.utils.http.fetch_url ->
-#     version/state; (4) era coherence: daemon version vs local
-#     importlib.metadata.version("reachy-mini") — cross-era (<1.5 either
-#     side) -> fail, minor drift -> warn.
-#   - Fix strings, platform-aware w/ detected IP: macOS resolution fail ->
-#     Local Network permission + host: in robots.yaml; :8000 closed ->
-#     ssh pollen@<ip> + systemctl status reachy-mini-daemon + reboot after
-#     Wi-Fi change; version mismatch -> pip install "reachy_mini==<daemon>".
-#   - retry_id="robot", wire into cli._retry_loop retryable_fns.
-#   - Long-term this supersedes scripts/check_reachy_connection.py (which
-#     near-duplicates utils/reachy_diagnostics.py). See
-#     docs/embodiment/reachy_mini/troubleshooting.md for the symptom tree.
+# TODO(robot-doctor): add check_robot_reachable(info) -> list[CheckResult].
+# Full spec (gate, probe order, era-coherence check, fix strings, retry_id,
+# consolidation of the two standalone Reachy diagnostics, offline test
+# matrix): docs/plans/doctor_robot_reachable.md
 
 from __future__ import annotations
 
