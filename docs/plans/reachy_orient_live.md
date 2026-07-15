@@ -32,95 +32,58 @@ the next** — do NOT stack 4 unverifiable layers (the "cradle cascade" lesson).
 
 ## SDK surface (verified importable; calls confirmed against the installed `reachy_mini`)
 
-- `mini = ReachyMini()` → connect (blocks/TimeoutError if the robot/daemon is down).
-- `mini.wake_up()` / `mini.enable_motors()` — enable + home.
-- `mini.start_recording()` — start the media stream so DoA produces values.
-- `mini.media.get_DoA()` → `(doa_radians, is_speech_detected)` or `None`.
-  - `audio_localization.doa_to_azimuth(doa_radians)` → azimuth ∈ [-1,1] (0=front, ±1=side).
-  - `AzimuthDoASource` already wraps this as a non-blocking `PerceptSource`.
+- `mini = ReachyMini(host=<ip>, port=8000, connection_mode="network", media_backend="no_media")`
+  → WS connect (SDK >= 1.5). Off-robot, always pass the IP.
+- `mini.enable_motors()` THEN `mini.wake_up()` — torque first (wake_up alone no longer enables it).
+- DoA off-robot: poll `GET /api/state/doa` → `{"angle", "speech_detected"}` (no media stack needed;
+  `mini.start_recording()`/`mini.media.get_DoA()` are the ONBOARD path — local USB in >= 1.5).
+  - `audio_localization.doa_to_azimuth(angle)` → azimuth ∈ [-1,1] (0=front, ±1=side) — unchanged.
+  - `AzimuthDoASource` wraps the onboard read as a non-blocking `PerceptSource`; the off-robot
+    variant should poll the REST endpoint instead (same normalization).
 - `create_head_pose(yaw=<deg>, degrees=True)` → 4×4 matrix; `mini.goto_target(head=pose, duration=…)`
   (min-jerk) for a discrete step; `mini.get_current_head_pose()` to read current yaw.
 
-## Connecting to a wireless Reachy Mini (setup gotchas)
+## Connecting to a wireless Reachy Mini
 
-The daemon runs **on the robot** when powered on; the SDK client (`ReachyMini`) finds it. Confirmed
-against the installed SDK (1.2.6) + [issue #677](https://github.com/pollen-robotics/reachy_mini/issues/677)
-+ the [quickstart](https://huggingface.co/docs/reachy_mini/SDK/quickstart):
-- The robot's own hotspot puts the **robot at `10.42.0.1`** (NetworkManager shared-mode gateway); the
-  laptop gets `10.42.0.x`. Same L2 network — good.
-- From the laptop use **`ReachyMini(connection_mode="network")`** (a.k.a. `localhost_only=False`) — do
-  NOT let `auto` burn 5s on a nonexistent localhost daemon. #677: "remote SDK connections from a laptop
-  work fine using `ReachyMini(localhost_only=False)`."
-- Discovery is **zenoh multicast/gossip** (no explicit-IP option in the constructor). On **macOS,
-  "Local Network" permission is MANDATORY** (System Settings → Privacy & Security → Local Network) for
-  the terminal app. Without it, discovery **silently times out and looks exactly like "robot down"** —
-  an ungranted process sees the whole LAN as dead (even `ping`/`nc` return nothing). This is the single
-  most time-wasting gotcha; grant it first.
-- **Reliable signal is zenoh `:7447`, not `:8000`.** The daemon's HTTP API (`:8000`) may or may not be
-  network-exposed depending on config (one session saw it up, another down) — don't diagnose off it.
-  `live_1_smoke.py` pre-flights `:7447` (SDK control) + `:8000` (informational) and branches the hint.
-- **If zenoh isn't network-reachable** (robot binds it to localhost — the daemon default), tunnel it:
-  `ssh -N -L 7447:127.0.0.1:7447 pollen@10.42.0.1` (pw `root`, keep open) + run with `--via-tunnel`.
-- **Best long-term fix:** put the robot on your **home Wi-Fi** (station mode, via its dashboard/`nmcli`)
-  instead of its own AP — same LAN *with internet* (the AP has **no uplink**, so pip/HF/cloud/Docker all
-  fail while joined), no network-switching, and multicast usually just works.
-- **Fallback (sidesteps all network issues):** run onboard — `ssh pollen@reachy-mini` (pw `root`),
-  `source /venvs/apps_venv/bin/activate`, run with plain `ReachyMini()`. The Step-1 smoke test is
-  dependency-free so it runs there; the full loop needs maxim installed on the Pi.
+**(2026-07-15 rewrite — the section that previously lived here described the
+zenoh era, SDK <= 1.4.x, and was obsoleted by the robot reflash to daemon
+1.8.3. Full, hardware-validated guidance now lives in
+[docs/embodiment/reachy_mini/](../embodiment/reachy_mini/README.md):
+[getting started](../embodiment/reachy_mini/getting_started.md) ·
+[troubleshooting](../embodiment/reachy_mini/troubleshooting.md) ·
+[engineering reference](../embodiment/reachy_mini/engineering.md).)**
 
-## Robot connection — the factory ALREADY exists (`maxim.hardware`)
-
-**Correction (2026-07): do NOT invent a new config section or factory.** Maxim already has the exact
-robot-connection-engine abstraction (built with Reachy/Atlas/Spot in mind):
-- **`hardware/controller.py::RobotController`** (ABC) — the *engine* interface: `robot_type`, `connect`,
-  `disconnect`, `capabilities`, `state`, `reconnect`.
-- **`hardware/reachy/controller.py::ReachyMiniController`** — the first engine, already mature: `connect()`
-  (constructs `ReachyMini(connection_mode="network")` + mDNS pre-resolution), `goto_target()`, `wake_up()`,
-  `start/stop_recording()`, `get_audio_stream()` / `get_video_stream()`.
-- **`hardware/registry.py::RobotRegistry`** — the factory (auto-discovers `maxim.robots` entry-point plugins).
-- **`hardware/config.py::RobotConfig` + `~/.maxim/robots.yaml`** — the per-robot config: `type` field
-  (defaults `reachy_mini`; `type: atlas`/`spot` anticipated) + a `config` dict (host/connection params).
-- **`hardware/capabilities.py::RobotCapabilities`** — per-robot capability declaration.
-
-**So the robot address lives in `~/.maxim/robots.yaml` (`RobotConfig.config`), NOT a `config.json`
-section** — the operator declares it there (no magic default). The live orient loop **routes through
-`ReachyMiniController`** (`goto_target` for orient, `get_audio_stream` for DoA) obtained from
-`RobotRegistry` — it does **not** re-invent `ReachyMini(...)`. Adding Atlas later = a new
-`AtlasController(RobotController)` + `maxim.robots` entry-point + capabilities, refine the ABC if a real
-need surfaces — exactly the factory-first-engine-refine pattern, already in place.
-
-**Gap — CLOSED in code (2026-07, pending on-device validation at Step 1):** `ReachyMiniController.connect()`
-now honors `connection_mode` / `host` / `tunnel` from the `robots.yaml` `config:` block (backward-compatible —
-defaults = the old network+mDNS behavior). An explicit `host` **bypasses the mDNS hard-gate** (which fails
-where `reachy-mini.local` doesn't resolve). **Every path now fast-fails on the zenoh control port**:
-it TCP-probes `:7447` (host → that IP; localhost/tunnel → 127.0.0.1; default → the mDNS-resolved IP)
-before the SDK's ~25 s timeout — a name that resolves but a daemon that's down/localhost-only is caught
-immediately (not ICMP ping: ping tests host-alive not service-alive, is often filtered, and returns
-nothing on macOS without Local-Network permission). `tunnel: true` auto-starts
-`ssh -N -L 7447:127.0.0.1:7447` and forces `localhost_only`. Regression guard:
-[`tests/unit/test_reachy_connection_options.py`](../../tests/unit/test_reachy_connection_options.py).
-
-```yaml
-# ~/.maxim/robots.yaml
-robots:
-  - robot_id: reachy
-    type: reachy_mini
-    primary: true
-    config:
-      host: 10.42.0.1          # bypasses the mDNS gate; also the SSH tunnel target
-      # Option A — multicast works once Local-Network permission is granted:
-      connection_mode: network
-      # Option B — multicast/mDNS blocked -> SSH tunnel (needs key-based SSH):
-      # tunnel: true
-      # ssh_user: pollen
-```
-
-`live_1_smoke.py`'s inline `ReachyMini(...)` is a **throwaway connection debugger** (dependency-free, runs
-onboard, isolates the 3 primitives + the same `--via-tunnel` path); the production path is the controller.
+The load-bearing facts for this plan:
+- **Transport (SDK >= 1.5)**: WebSocket `ws://<host>:8000/ws/sdk`; pass
+  `ReachyMini(host=<ip>, port=8000, connection_mode="network")`. No zenoh,
+  no :7447, no multicast discovery, no tunnels for wireless daemons.
+- **Version-match first**: after ANY reflash, compare
+  `curl http://<robot>:8000/api/daemon/status` (daemon version) against the
+  laptop's `reachy_mini.__version__`. Cross-era mismatch = unfixable
+  connection failures. Maxim pins `>=1.8.3,<1.9`.
+- **DoA over the network is REST**: `GET /api/state/doa` (convention
+  unchanged: 0=left, pi/2=front, pi=right). Client-side
+  `mini.media.get_DoA()` is local-USB — onboard only.
+- **`enable_motors()` before anything moves** (daemon boots torque-off with
+  `--no-wake-up-on-start`; `wake_up()` no longer enables torque).
+- **`media_backend="no_media"`** for the orient loop — motion + DoA need no
+  media stack, and the default WebRTC path hits a GStreamer dylib collision
+  on macOS.
+- **goto_target(body_yaw=...) defaults to 0.0** (actively zeroes the body);
+  pass `body_yaw=None` to leave the body alone. Head-yaw workspace clamps
+  ~±15-18°; body yaw is the coarse orient axis.
 
 ## Steps (each gates the next)
 
-### Step 1 — hardware smoke test  ([`scripts/orient_backbone/live_1_smoke.py`](../../scripts/orient_backbone/live_1_smoke.py))
+### Step 1 — hardware smoke test  ([`scripts/orient_backbone/live_1_smoke.py`](../../scripts/orient_backbone/live_1_smoke.py)) — **PASSED 2026-07-15**
+
+Result (daemon 1.8.3, station mode, `--host <robot-ip>`): connect+wake OK
+(after `enable_motors()`), DoA 20/20 via REST with azimuth tracking + speech
+gate flipping, head yaw tracking commanded ±20° at ±14-18° measured
+(workspace clamp + small calibration offset — fine for the closed-loop
+orient policy). Historical context: the original version of this step
+burned a session on the zenoh-era transport; see the troubleshooting doc's
+"advice you should now IGNORE" section.
 Verify the three primitives **separately**: (a) connect + wake; (b) read `get_DoA()` for ~10 s while
 the operator makes sounds left/right — print `(doa_radians, is_speech, azimuth)`; (c) `goto_target`
 yaw +20°, −20°, recenter. **STOP-if:** DoA never returns / azimuth doesn't track L↔R / head doesn't

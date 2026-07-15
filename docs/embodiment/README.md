@@ -24,7 +24,7 @@ When a capability is absent (e.g. a microphone array that can't resolve elevatio
 
 ## Platforms
 
-- [**Reachy Mini**](reachy_mini.md) — Pollen Robotics / Hugging Face desktop robot. 6-DOF Stewart head + body yaw, camera, 4-mic array (behind an XVF3800 DSP chip), speaker. Includes a deep-dive on **audio sound-localization** (DoA vs ITD/TDOA, why elevation is impossible on its linear array, and how Maxim consumes the chip's onboard direction-of-arrival).
+- [**Reachy Mini**](reachy_mini/README.md) — Pollen Robotics / Hugging Face desktop robot. 6-DOF Stewart head + body yaw, camera, 4-mic array (behind an XVF3800 DSP chip), speaker. A full sub-guide: [getting started](reachy_mini/getting_started.md) (network + SDK **version matching** + first connect), [troubleshooting](reachy_mini/troubleshooting.md) (symptom-indexed, hardware-validated), [engineering reference](reachy_mini/engineering.md) (WS transport, REST endpoints incl. network DoA, motion semantics), and the [audio sound-localization deep-dive](reachy_mini/audio_localization.md) (DoA vs ITD/TDOA, why elevation is impossible on its linear array).
 
 ## Adding a platform page
 

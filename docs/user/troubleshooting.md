@@ -22,7 +22,7 @@ maxim --mode agentic --log-level 2 --display debug
 |-------|----------|
 | "No robot found" | Check robot is on same network, daemon is running |
 | Port 8443 refused | Restart daemon: `sudo systemctl stop reachy-mini-daemon` then start manually |
-| Port 7447 refused | Same as above — system daemon may be holding the port |
+| Port 8000 refused | Daemon down/not ready — `curl http://<robot>:8000/api/daemon/status`; see [docs/embodiment/reachy_mini/troubleshooting.md](../embodiment/reachy_mini/troubleshooting.md) |
 | Connection timeout | Increase with `--timeout 60`, check firewall |
 
 ### LLM Issues

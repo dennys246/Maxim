@@ -14,6 +14,21 @@ from unittest.mock import MagicMock, patch
 from maxim.hardware.reachy.controller import ReachyMiniController
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_daemon_status_io(monkeypatch):
+    """connect() now calls _daemon_status (urllib GET) — never let unit tests
+    do real network I/O (3s blackhole timeouts per test; on a dev box with
+    anything on :8000 the test would consume a real HTTP response)."""
+    monkeypatch.setattr(ReachyMiniController, "_daemon_status", staticmethod(lambda *a, **k: None))
+    # Era gate reads the REAL installed reachy-mini metadata — pin it to the
+    # WS era so tests don't depend on what happens to be installed. (The
+    # era-gate tests override this per-test.)
+    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+
+
 def _mock_sdk():
     """(context-manager, mock_module) with reachy_mini importable as a mock."""
     mod = MagicMock()
@@ -92,7 +107,7 @@ def test_localhost_only_probes_localhost_not_mdns():
     assert mod.ReachyMini.call_args.kwargs["connection_mode"] == "localhost_only"
 
 
-def test_mdns_path_also_probes_7447():
+def test_mdns_path_probe_failure_skips_sdk_connect():
     """Default network/mDNS path fails fast if :7447 is unreachable (name resolving
     is not enough — the daemon can be down / zenoh bound to localhost)."""
     c = ReachyMiniController()  # network, no host
@@ -126,3 +141,112 @@ def test_disconnect_stops_tunnel():
     c.disconnect()
     proc.terminate.assert_called_once()
     assert c._tunnel_proc is None
+
+
+# ── WS-era (SDK >= 1.5) transport invariants — 2026-07-15 pivot fold ──────────
+# The zenoh->WebSocket pivot (docs/embodiment/reachy_mini/README.md) changed the
+# probe port (7447->8000), the tunnel target, and added host=/port= threading
+# into the constructor. The pre-existing tests above all passed UNCHANGED
+# across that rewrite (they mock one level too high to see ports/kwargs), so
+# these pin the WS-era specifics that would otherwise regress silently.
+
+
+def test_probe_targets_daemon_port_8000_not_7447():
+    c = ReachyMiniController(host="10.6.0.63", connection_mode="network")
+    ctx, mod = _mock_sdk()
+    probed: list[tuple[str, int]] = []
+    with (
+        ctx,
+        patch.object(
+            ReachyMiniController,
+            "_port_open",
+            side_effect=lambda host, port, timeout=3.0: probed.append((host, port)) or True,
+        ),
+        patch.object(ReachyMiniController, "_daemon_status", return_value=None),
+    ):
+        c.connect(timeout=2.0)
+    assert ("10.6.0.63", 8000) in probed
+    assert all(port != 7447 for _, port in probed), "zenoh-era :7447 probe resurfaced"
+
+
+def test_explicit_host_threaded_into_sdk_constructor():
+    c = ReachyMiniController(host="10.6.0.63", connection_mode="network")
+    ctx, mod = _mock_sdk()
+    with (
+        ctx,
+        patch.object(ReachyMiniController, "_port_open", return_value=True),
+        patch.object(ReachyMiniController, "_daemon_status", return_value=None),
+    ):
+        assert c.connect(timeout=2.0) is True
+    kwargs = mod.ReachyMini.call_args.kwargs
+    assert kwargs["host"] == "10.6.0.63"
+    assert kwargs["port"] == 8000
+
+
+def test_mdns_resolved_ip_passed_to_sdk_not_dot_local():
+    """No-host path: the OS-resolved IP goes into ReachyMini(host=...) — python's
+    own .local resolution is unreliable on macOS (the 2026-07-15 failure mode)."""
+    c = ReachyMiniController(connection_mode="network")
+    ctx, mod = _mock_sdk()
+    with (
+        ctx,
+        patch.object(ReachyMiniController, "_resolve_mdns", return_value="10.6.0.63"),
+        patch.object(ReachyMiniController, "_port_open", return_value=True),
+        patch.object(ReachyMiniController, "_daemon_status", return_value=None),
+    ):
+        assert c.connect(timeout=2.0) is True
+    assert mod.ReachyMini.call_args.kwargs["host"] == "10.6.0.63"
+
+
+def test_tunnel_forwards_port_8000():
+    c = ReachyMiniController(host="10.6.0.63", tunnel=True)
+    captured: dict = {}
+
+    def _fake_popen(cmd, **kw):
+        captured["cmd"] = cmd
+        return MagicMock()
+
+    with (
+        patch("subprocess.Popen", side_effect=_fake_popen),
+        patch.object(ReachyMiniController, "_wait_local_port", return_value=True),
+    ):
+        assert c._start_ssh_tunnel(timeout=1.0) is True
+    assert "8000:127.0.0.1:8000" in captured["cmd"]
+    assert not any("7447" in str(part) for part in captured["cmd"]), "zenoh-era tunnel target resurfaced"
+
+
+def test_localhost_only_connects_via_loopback_host():
+    c = ReachyMiniController(host="10.6.0.63", connection_mode="localhost_only")
+    ctx, mod = _mock_sdk()
+    with (
+        ctx,
+        patch.object(ReachyMiniController, "_port_open", return_value=True),
+        patch.object(ReachyMiniController, "_daemon_status", return_value=None),
+    ):
+        assert c.connect(timeout=2.0) is True
+    assert mod.ReachyMini.call_args.kwargs["host"] == "127.0.0.1"
+
+
+def test_pre_pivot_sdk_fails_loud_with_fix_hint(monkeypatch):
+    """Era gate: a zenoh-era SDK (< 1.5) sneaking into the env must fail LOUD
+    at connect() with the upgrade hint — not a cryptic TypeError on host=.
+    (The 1.2.6 cap held through the entire zenoh->WS pivot; this pins the
+    guard that makes the next stale-SDK situation diagnosable.)"""
+    c = ReachyMiniController(host="10.6.0.63", connection_mode="network")
+    ctx, mod = _mock_sdk()
+    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 2)))
+    with ctx:
+        assert c.connect(timeout=2.0) is False
+    mod.ReachyMini.assert_not_called()
+    assert "pre-v1.5.0" in (c.state.error_message or "")
+
+
+def test_ws_era_sdk_passes_era_gate(monkeypatch):
+    c = ReachyMiniController(host="10.6.0.63", connection_mode="network")
+    ctx, mod = _mock_sdk()
+    monkeypatch.setattr(ReachyMiniController, "_installed_sdk_version", staticmethod(lambda: (1, 8)))
+    with (
+        ctx,
+        patch.object(ReachyMiniController, "_port_open", return_value=True),
+    ):
+        assert c.connect(timeout=2.0) is True

@@ -157,7 +157,7 @@ def make_audio_percept(
 
     Channel is ``"internal"`` (sensor telemetry) and the sensory tag is
     ``SOUND``; modality is ``"audio"``. See
-    ``docs/embodiment/reachy_mini.md`` for how a real device's onboard DoA
+    ``docs/embodiment/reachy_mini/audio_localization.md`` for how a real device's onboard DoA
     feeds this factory.
     """
     ts = time.time()

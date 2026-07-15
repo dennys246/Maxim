@@ -7,19 +7,28 @@ orient loop needs, SEPARATELY, before we stack NAc on top:
 
 Standalone (only the Reachy SDK) so it can also run ONBOARD via ssh.
 
-CONNECTION (wireless Reachy Mini) — the daemon HTTP (:8000) and zenoh control
-(:7447) are exposed INDEPENDENTLY. The preflight probes both:
-  * :8000 reachable + :7447 reachable  -> zenoh is on the network; if the SDK still
-    times out it's macOS multicast DISCOVERY. Grant Terminal/Python "Local Network"
-    permission, or run with --via-tunnel (explicit localhost path, no multicast).
-  * :8000 reachable + :7447 NOT         -> zenoh is bound to the robot's localhost
-    only (daemon default `--localhost-only`). Use an SSH tunnel + --via-tunnel:
-        ssh -N -L 7447:127.0.0.1:7447 pollen@10.42.0.1   # pw: root   (keep open)
-        python scripts/orient_backbone/live_1_smoke.py --via-tunnel
-  * neither reachable                    -> wrong network / robot not booted.
+CONNECTION (wireless Reachy Mini) — TRANSPORT DEPENDS ON SDK/DAEMON VERSION:
+  * SDK >= 1.5 (daemon 1.8.x, June-2026 reflash image): plain WebSocket to the
+    FastAPI daemon at ws://<host>:8000/ws/sdk. The constructor takes host=/port=
+    directly — NO zenoh, NO discovery in the connect path, no 7447, no tunnel.
+    Preflight = TCP :8000 + GET /api/daemon/status (backend state + version).
+    :8443 is WebRTC media signaling only (camera/audio), never motion control.
+    Failure modes behind "Network connection attempt failed":
+      - WS handshake refused (1013 "Daemon not ready"): daemon HTTP is up but its
+        robot backend/ws_server didn't start -> check /api/daemon/status +
+        `journalctl -u reachy-mini-daemon` on the robot.
+      - connect OK but no joint_positions/head_pose within ~5 s: motor bring-up
+        problem on the daemon side.
+    CLIENT<->DAEMON VERSION MUST MATCH ERAS: a 1.2.x client scouts zenoh at a
+    1.8.x daemon and times out; check the robot with
+    `/venvs/mini_daemon/bin/python -c "import reachy_mini; print(reachy_mini.__version__)"`.
+  * SDK 1.2.x (legacy zenoh era): control channel was zenoh :7447 with multicast
+    discovery; --via-tunnel (ssh -N -L 7447:127.0.0.1:7447 pollen@<host>) was the
+    localhost-bypass. Kept here only for un-reflashed robots.
 
-BEST long-term fix: put the robot on your home Wi-Fi (station mode, via its
-dashboard/nmcli) instead of its own AP — same LAN + internet, multicast usually works.
+macOS: "Local Network" permission (System Settings -> Privacy & Security) gates
+LAN traffic for Terminal/python — ungranted looks exactly like "robot down".
+BEST long-term setup: robot on home Wi-Fi (station mode) — same LAN + internet.
 """
 
 from __future__ import annotations
@@ -51,6 +60,39 @@ def _tcp_open(host: str, port: int, timeout: float = 3.0) -> bool:
             return True
     except Exception:  # noqa: BLE001
         return False
+
+
+def daemon_status(host: str, port: int = 8000, timeout: float = 3.0) -> dict | None:
+    """GET /api/daemon/status (SDK >= 1.5 daemon). None on any failure."""
+    import json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/api/daemon/status", timeout=timeout) as r:
+            return json.loads(r.read().decode())
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def get_doa_rest(host: str, port: int = 8000, timeout: float = 2.0) -> tuple[float, bool] | None:
+    """SDK >= 1.5: DoA via the daemon's REST endpoint GET /api/state/doa.
+
+    The client-side ``mini.media.get_DoA()`` reads the ReSpeaker over LOCAL
+    USB in 1.8.x — it only works onboard. Over the network the daemon reads
+    the chip and serves the value here. Convention unchanged from 1.2.6:
+    0=left, pi/2=front, pi=right (audio_localization.doa_to_azimuth applies).
+    """
+    import json
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://{host}:{port}/api/state/doa", timeout=timeout) as r:
+            data = json.loads(r.read().decode())
+    except Exception:  # noqa: BLE001
+        return None
+    if not data:
+        return None
+    return float(data["angle"]), bool(data.get("speech_detected", False))
 
 
 def default_gateway() -> str | None:
@@ -114,22 +156,24 @@ def preflight(host: str) -> None:
         print(f"[net]   robot's Wi-Fi (then it's the gateway{f' = {gw}' if gw else ''}), or pass the")
         print("[net]   robot's real IP via --host / $MAXIM_REACHY_HOST.")
 
-    # zenoh :7447 is the channel the SDK actually needs; :8000 is the daemon's HTTP
-    # API which may or may not be exposed depending on config (don't rely on it).
-    zenoh_ok = _tcp_open(host, 7447)
+    # SDK >= 1.5: the control channel IS the daemon HTTP port (WebSocket on :8000).
     http_ok = _tcp_open(host, 8000)
-    print(f"[preflight] zenoh ctrl  {host}:7447 -> {'OK' if zenoh_ok else 'UNREACHABLE'}  (SDK needs THIS)")
-    print(f"[preflight] daemon HTTP {host}:8000 -> {'OK' if http_ok else 'UNREACHABLE'}  (optional, config-dependent)")
-    if zenoh_ok:
-        print("            zenoh reachable. If the SDK still times out below, it's macOS multicast")
-        print("            DISCOVERY (not the robot) -> use --via-tunnel, or grant Local Network permission.")
-    elif http_ok:
-        print("            zenoh not network-exposed (robot localhost-only default) -> SSH tunnel + --via-tunnel:")
-        print(f"            ssh -N -L 7447:127.0.0.1:7447 pollen@{host}   (keep open)")
+    print(f"[preflight] daemon :8000 -> {'OK' if http_ok else 'UNREACHABLE'}  (WS control channel, SDK >= 1.5)")
+    if http_ok:
+        status = daemon_status(host)
+        if status is not None:
+            ver = status.get("version", "?")
+            state = status.get("state", status.get("backend_state", "?"))
+            print(f"[preflight] /api/daemon/status -> version={ver} state={state}")
+        else:
+            print("[preflight] /api/daemon/status -> no JSON (older daemon, or endpoint moved)")
+        legacy_zenoh = _tcp_open(host, 7447, timeout=1.0)
+        if legacy_zenoh:
+            print("[preflight] :7447 open -> legacy zenoh daemon (SDK 1.2.x era); use a matching 1.2.x client")
     else:
-        print("            BOTH unreachable. If you're SURE you're on the robot's Wi-Fi, this is almost")
-        print("            certainly macOS LOCAL NETWORK permission for THIS terminal — an ungranted")
-        print("            process sees the LAN as dead (even ping/nc silently time out). Grant it:")
+        print("            :8000 unreachable. If you're SURE you're on the robot's network, this is")
+        print("            almost certainly macOS LOCAL NETWORK permission for THIS terminal — an")
+        print("            ungranted process sees the LAN as dead (even ping/nc silently time out).")
         print("            System Settings -> Privacy & Security -> Local Network, then retry.")
 
 
@@ -166,17 +210,55 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001
         print(f"[FAIL] reachy_mini not importable: {e}")
         return 2
+    # Era detection MUST use package metadata: pre-1.5 SDKs (the whole zenoh
+    # line) have no __version__ attribute at all.
+    try:
+        from importlib.metadata import version as _pkg_version
+
+        sdk_ver = _pkg_version("reachy-mini")
+        _vt = tuple(int(x) for x in sdk_ver.split(".")[:2])
+    except Exception:  # noqa: BLE001 - unknown/dev install: assume current era
+        sdk_ver = "?"
+        _vt = (99, 0)
+    ws_era = _vt >= (1, 5)  # zenoh removed in v1.5.0 (PR #858)
+    print(f"[sdk] reachy_mini {sdk_ver} ({'WebSocket transport' if ws_era else 'legacy zenoh transport'})")
     mode = "localhost_only" if args.via_tunnel else "network"
     try:
-        mini = ReachyMini(connection_mode=mode)
+        if ws_era:
+            if args.via_tunnel:
+                print("[note] --via-tunnel is a zenoh-era (SDK <= 1.4.x) workaround; ignored for SDK >= 1.5.")
+                mode = "network"
+            # host= goes straight into ws://<host>:8000/ws/sdk — no discovery involved.
+            # no_media: skip WebRTC/GStreamer entirely (the pip GStreamer bundle's
+            # libgstpython can't dlopen libpython on macOS and hangs media setup).
+            # Motion rides the WS; DoA rides REST /state/doa — media not needed here.
+            mini = ReachyMini(host=host, port=8000, connection_mode="network", timeout=10.0, media_backend="no_media")
+        else:
+            mini = ReachyMini(connection_mode=mode)
     except Exception as e:  # noqa: BLE001
-        print(f"[FAIL] zenoh connect ({mode}) failed: {e}")
-        print("       If HTTP was OK but zenoh timed out: see the preflight hint above")
-        print("       (SSH tunnel + --via-tunnel, or macOS Local Network permission).")
+        print(f"[FAIL] connect ({mode}) failed: {e}")
+        if ws_era:
+            print("       Fast fail = WS handshake refused (daemon backend not ready) ->")
+            print(f"       curl http://{host}:8000/api/daemon/status ; journalctl -u reachy-mini-daemon on the robot.")
+            print("       ~10s fail = no joint/pose state stream -> motor bring-up problem on the daemon.")
+        else:
+            print("       Legacy zenoh path: see --via-tunnel / Local Network permission notes in the docstring.")
         return 2
-    print(f"[ok] connected ({mode}). waking up...")
+    print(f"[ok] connected ({mode}).")
+    if ws_era:
+        # 1.8.x: wake_up() no longer enables torque (it only moves + plays a
+        # sound). The daemon's --no-wake-up-on-start leaves torque OFF, so
+        # goto_target is silently ignored until SetTorqueCmd. Enable first.
+        try:
+            mini.enable_motors()
+            print("[motors] enable_motors() sent (torque on)")
+        except Exception as e:  # noqa: BLE001
+            print(f"[motors] enable_motors() failed: {e} — head may not move")
+        time.sleep(0.5)
+    print("[wake] waking up...")
     mini.wake_up()
-    mini.start_recording()
+    if not ws_era:
+        mini.start_recording()  # zenoh-era audio path; ws-era smoke runs no_media
     time.sleep(1.0)
 
     # --- (b) DoA read (~10s) ---
@@ -185,9 +267,12 @@ def main() -> int:
     valid = 0
     for _ in range(20):
         try:
-            reading = mini.media.get_DoA()
+            if ws_era:
+                reading = get_doa_rest(host)
+            else:
+                reading = mini.media.get_DoA()
         except Exception as e:  # noqa: BLE001
-            print(f"      get_DoA() raised: {e}")
+            print(f"      get_DoA raised: {e}")
             reading = None
         if reading is None:
             print("      (no reading yet)")
@@ -210,7 +295,8 @@ def main() -> int:
         print(f"      commanded {target:+.0f}deg -> measured {_yaw_deg(mini.get_current_head_pose()):+.1f}deg")
 
     try:
-        mini.stop_recording()
+        if not ws_era:
+            mini.stop_recording()
     except Exception:  # noqa: BLE001
         pass
     print("\n[done] Report: DoA valid count, azimuth tracked L/R + speech flipped, head moved. -> Step 2.")

@@ -325,7 +325,7 @@ python scripts/check_reachy_connection.py --host <REACHY_IP>
 | Issue | Solution |
 |-------|----------|
 | Port 8443 refused | Restart Reachy or run `reachyminios_check` |
-| Port 7447 refused | Check daemon: `systemctl status reachy-mini-daemon` |
+| Port 8000 refused (SDK control channel) | Check daemon: `systemctl status reachy-mini-daemon`; see docs/embodiment/reachy_mini/troubleshooting.md |
 | Matplotlib crash | `rm -rf ~/.cache/matplotlib && fc-cache -f` |
 | Whisper segfaults | `MAXIM_WHISPER_COMPUTE_TYPE=float32 maxim` |
 | OpenCV Qt warnings | `MAXIM_DISABLE_IMSHOW=1 maxim` |
