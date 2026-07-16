@@ -291,6 +291,19 @@ the runbook is actively used on-device; the infra is broader than orienting).
 
 ## Tracked follow-up experiments
 
+**Orient magnitude learning + the parietal/cerebellar division of labor
+([orient_magnitude_learning.md](orient_magnitude_learning.md), pre-registered
+2026-07-16).** Live observation on the Exp 45 policy: it learns direction but not
+*magnitude* — root cause is the 2-action fixed-step set (expression), NOT bin
+resolution (sensing). Four ranked, separately pre-registered steps: **S0** magnitude
+action set (the actual fix — substrate-native, gates queen-mind v0.2), **S1**
+Weber-scaled bins via IPS, **S2** cerebellar gain calibration (inverse model), **S3**
+AG abstraction of NAc's learned table (predicts unvisited bins — falsifiable). Key
+audit finding: IPS/AG/Cerebellum exist AND the Statistician already implements the
+IPS→AG escalation pathway — but **the orient loop is wired to none of them** (bare NAc),
+so this line doubles as the project's cleanest bio-region integration probe.
+
+
 **Eared-shell acoustic mod (pre-registered 2026-07-16; hardware track, runs AFTER Layer 1
 s2 + merge arm bank the stock-Reachy claims).** Redesign the Reachy head shell to add
 pinna-like structures ("ears") on both sides, creating asymmetric acoustic paths to the
