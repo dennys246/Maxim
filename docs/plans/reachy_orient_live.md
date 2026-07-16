@@ -143,16 +143,21 @@ plus `set_automatic_body_yaw(False)`. Invariant: [CLAUDE.md](../../CLAUDE.md).
 0.637; converges in **0.23 s**. Fast, stable, reproducible. No tracking estimator,
 no lag, no speech-density dependence, no lock loss.
 
-**Still unverified — do NOT cite:** the 0.605 static curve, the
-ascending/descending asymmetry (likely head-drag hysteresis: the pre-fix head read
-+14.2° vs +5.0° at the *same* body pose depending on approach direction), and the
-endfire bimodal zone (a linear array plausibly has one, but our evidence is
-contaminated). The ≤0.3 rad walk and the |az| ≤ 0.65 placement cap are kept
-conservatively; both need a clean post-headfix re-sweep to justify or drop.
+**Post-headfix sweep DONE (2026-07-16) — all retractions closed by measurement.**
+The DoA is a near-perfect linear sensor: **R² = 0.9982** over the full ±1.4 rad,
+gain **0.57/rad**, hysteresis **0.015** (was 0.109-0.176), **zero** non-monotonic
+zones, 0.23 s convergence. So: the tracking-estimator claim is refuted, the
+asc/desc asymmetry *was* head-drag hysteresis, and the endfire bimodal zone was
+**not observed** — the |az| ≤ 0.65 placement cap can widen to ~0.85, and the ≤0.3
+rad walk is unnecessary (kept only because it is harmless). Full numbers:
+[audio_localization.md](../embodiment/reachy_mini/audio_localization.md).
 
-**Re-sweep after ANY acoustic change** — still true, and now also the outstanding
-task: [`doa_sweep.py --label post-headfix`](../../scripts/orient_backbone/doa_sweep.py)
-is the first honest characterization of an array that actually rotates.
+**Derived constant worth carrying:** `az_flip = |delta_big| * gain / 2` = 0.246 —
+the boundary below which a big step overshoots. Bins must not straddle it (see
+[orient_magnitude_learning.md](orient_magnitude_learning.md) S1).
+
+**Re-sweep after ANY acoustic change** (shell mods, mounts, rooms) — the eared-shell
+experiment's before/after instrument.
 
 ## Calibration unknowns (resolve empirically on-device)
 

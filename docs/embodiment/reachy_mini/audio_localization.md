@@ -112,36 +112,44 @@ wildly variable run to run. It survived six competing hypotheses (settle lag,
 backlash, motor under-travel, speech density, increment size, slow adaptation),
 each falsified in turn, before the vendor's docs settled it.
 
-### What the chip actually does (measured with the head commanded to ride along)
+### What the chip actually does — TRUE characterization (post-headfix sweep, 2026-07-16)
 
-| | with the head bug | after the fix |
-|---|---|---|
-| `d(head)/d(body)` (world) | +0.214 | **+1.012** |
-| DoA gain | 0.19–0.39, irreproducible | **0.562** (0.574 / 0.549 across reps) |
-| convergence after a 0.9 rad turn | "60 s and still wrong" | **0.23 s** |
+The first honest sweep of an array that actually rotates. **The XVF3800 DoA is an
+excellent sensor**; every pathology previously attributed to it was our bug.
 
-The DoA is **fast and stable** — it converges in a quarter second and holds. Gain
-**≈0.56–0.58 az/rad** against the geometric 0.637 (a modest, plausible
-under-read: beamformer angular compression and/or array-vs-rotation-axis offset).
-There is **no** slow adaptation, **no** speech-density dependence, **no** lock loss.
+| property | value |
+|---|---|
+| gain | **0.57 az/rad** full-range fit (central 0.546-0.548; settle test 0.562; mag2 sign-check 0.58 — four independent measurements agreeing within 0.03) |
+| linearity | **R² = 0.9982** over the full ±1.4 rad (±80°), *both* sweep directions |
+| intercept | +0.001 / +0.014 (source centred) |
+| hysteresis | **0.015** mean asc-vs-desc (was 0.109-0.176 with the bug) |
+| monotonicity | **complete across ±1.4 rad** — zero non-monotonic zones |
+| convergence | **0.23 s** after a 0.9 rad turn, then stable |
+| per-pose noise | 0.022 spread (2× the ~1° quantization) |
+| speech gate | 23-100% (median 50%) — median-of-k + gating still required |
 
-### Still unverified (measured only WITH the bug present — do not cite)
+Gain 0.57 vs the geometric 0.637 is a modest ~10% under-read — plausibly beamformer
+angular compression and/or the array sitting off the rotation axis. Stable and
+reproducible; not a pathology.
 
-- **The 0.605 "static curve" and its ascending/descending asymmetry** (0.428/0.606,
-  0.489/0.605, 0.441/0.578 across three sweeps). The pre-fix head data showed
-  hysteretic drag (head at +14.2° vs +5.0° for the *same* body pose depending on
-  approach direction), which is the more likely explanation than anything acoustic.
-- **The "endfire bimodal zone"** (~90° off-axis, samples flipping between two
-  values). A linear array *does* have an endfire degeneracy, so this may well be
-  real — but our evidence for it is contaminated. The orient loop keeps its
-  conservative |az| ≤ 0.65 placement cap pending a clean re-measurement.
-- Any DoA number in this repo dated **before 2026-07-16 post-headfix**.
+**Retractions now closed by measurement:**
+- ~~"tracking estimator, loses lock on large jumps"~~ — **refuted**: R²=0.998, 0.23 s convergence.
+- ~~ascending/descending asymmetry~~ — **was head-drag hysteresis**: 0.109-0.176 → 0.015 once the head rides along.
+- ~~endfire bimodal zone~~ — **not observed**: monotonic to ±1.4 rad (|az| ≈ 0.87). The orient loop's conservative |az| ≤ 0.65 placement cap was chasing an artifact and can widen to ~0.85.
+- ~~"gain drifts between sessions"~~ — **refuted**: four measurements, ±0.03.
 
-**Re-sweep with the head fix in place** ([`doa_sweep.py`](../../../scripts/orient_backbone/doa_sweep.py))
-to establish the first honest characterization of an array that actually rotates.
-Behavioral results built on this sensor: [Exp 45](../../experiments/45_reachy_orient_live.md)
-(direction — unaffected, see below) and [Exp 45b](../../experiments/45b_orient_magnitude.md)
-(magnitude — required the fix).
+### The flip point — a derived design constant
+
+The magnitude question ("how far should I turn?") has a computable boundary: a step
+of `delta` overshoots when `|delta| * gain > 2 * |az|`, so the **flip point** — below
+which a big step overshoots and a normal step wins — is:
+
+    az_flip = |delta_big| * gain / 2      # Reachy: 0.9 * 0.546 / 2 = 0.246
+
+Any state bin that **straddles** `az_flip` contains two opposite correct answers and
+cannot be learned cleanly. This is measurable per robot from its own gain, and it is
+why [Exp 45b](../../experiments/45b_orient_magnitude.md) scored magnitude 0.75 rather
+than 1.00: the `near` bin spans 0.1-0.5, straddling 0.246.
 
 ### Why direction learning survived and magnitude did not
 

@@ -82,17 +82,31 @@ Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magni
 - **Note:** trips Exp 45's "orient-affordance YAML change" re-run rule → fresh NAc,
   queen-mind **v0.2**.
 
-### S1 — Weber-scaled bins (IPS). **Nearly free; the honest answer to "finer bins".**
+### S1 — bin boundaries at the FLIP POINT (was: "Weber-scaled bins"). **Sharpened by measurement; now the cheapest real win.**
 
-Carve the azimuth axis log-spaced (fine near center, coarse far out) instead of
-uniformly — matching both the psychophysics and the task (precision matters near 0;
-"it's way over there" suffices far out).
-- **Front-gate (be honest):** log-spaced bins are ~3 lines of `math.log`. Routing
-  through `IPS.categorize` is justified **only** if we want its Weber calibration +
-  confidence values, and only once the orient loop has a bio-stack to reach it through
-  (Gap 1). Otherwise this is bio-naming theater on a log function. **Decide explicitly.**
-- **Pre-registered metric:** does Weber binning beat uniform binning at equal bin count
-  (faster convergence, or finer terminal centering)? A/B on the same hardware protocol.
+**Reframed 2026-07-16 by the post-headfix sweep.** The problem is not that bins are
+uniform rather than log-spaced — it is that the `near` bin **straddles the flip
+point**, so it contains two opposite correct answers. The flip point is *derived*, not
+guessed:
+
+    az_flip = |delta_big| * gain / 2      # Reachy: 0.9 * 0.546 / 2 = 0.246
+
+Current `az_bin`: center ≤0.1, near 0.1-0.5, far >0.5 — **near spans 0.246**, which is
+exactly why Exp 45b measured magnitude 0.75 (`near_right` drew placements at 0.44/0.49,
+above the flip, and correctly learned big; `near_left` drew lower ones and learned
+normal — same bin, opposite lessons, both right).
+- **The fix:** near = [0.1, 0.25], far = [0.25, ~0.85] (the cap can widen: the sweep is
+  monotonic to |az| ≈ 0.87, so the old 0.65 endfire cap was chasing an artifact). Each
+  bin then holds ONE correct magnitude → magnitude should reach 1.00.
+- **Front-gate:** this is a boundary constant, not a mechanism — ~2 lines. **IPS
+  routing is NOT needed** and would be bio-naming theater on arithmetic; the honest
+  version of the Weber intuition is "put the boundary where the physics changes," and
+  the physics tells us where.
+- **Ties to S2:** `az_flip` depends on the robot's *measured* gain, so a robot that
+  calibrates its own gain also derives its own bin boundaries. That is a stronger
+  portability argument for S2 than the (retracted) drift claim.
+- **Pre-registered metric:** magnitude appropriateness 0.75 → **1.00** at equal trial
+  count, with the flip-point boundary and nothing else changed.
 
 ### S2 — cerebellar gain calibration (inverse model). **Motivation WEAKENED — read this before building.**
 
