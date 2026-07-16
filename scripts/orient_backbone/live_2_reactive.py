@@ -85,6 +85,7 @@ def main() -> int:
         host, source = resolve_host(args.host)
         if host is None:
             print("[FAIL] no robot address: --host <ip> or export MAXIM_REACHY_HOST=<ip>")
+            log.close()
             return 2
         print(f"[host] using {host} (source: {source})")
         preflight(host)
@@ -106,6 +107,7 @@ def main() -> int:
             if ans not in ("y", "yes"):
                 print("[STOP] body-yaw motion unverified — do not stack the loop on it.")
                 log.write("abort", reason="body_yaw_unverified")
+                log.close()
                 return 1
         log.write("body_yaw_primitive_ok")
 
@@ -115,6 +117,7 @@ def main() -> int:
 
     valid = improved = worsened = 0
     consecutive_worse = 0
+    flips = 0
     d_values: list[float] = []
     no_reading_streak = 0
     while valid < args.trials:
@@ -180,6 +183,14 @@ def main() -> int:
         )
 
         if consecutive_worse >= 4:
+            flips += 1
+            if flips > 2:
+                # Both conventions have now failed — a stale-pinned tracker or
+                # a source behind the array, not a sign problem. Don't
+                # oscillate forever; exit through the NOISY verdict.
+                print("\n[STOP] worsenings under BOTH conventions — sensor/placement problem, not sign.")
+                log.write("flip_limit")
+                break
             sign_mult = -sign_mult
             consecutive_worse = 0
             # Reset tallies: the verdict should reflect the POST-flip convention,
@@ -203,7 +214,9 @@ def main() -> int:
         rc = 0
     elif valid and worsened / valid >= 0.75:
         verdict = "SIGN CONSISTENTLY WRONG"
-        print(f"[verdict] {verdict} — rerun with {'--flip-sign' if not args.flip_sign else 'NO --flip-sign'}.")
+        # Advise the opposite of the CURRENT convention (sign_mult), not the
+        # starting flag — an auto-flip may have happened since launch.
+        print(f"[verdict] {verdict} — rerun with {'--flip-sign' if sign_mult > 0 else 'NO --flip-sign'}.")
         rc = 1
     else:
         verdict = "NOISY / INCONCLUSIVE"

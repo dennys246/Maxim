@@ -2,7 +2,7 @@
 
 {% block title %}Sound Orienting — Maxim Docs | Substrate-Learned Sensorimotor Policy on Real Hardware{% endblock %}
 
-{% block meta_description %}How Maxim's bio-substrate learned to turn a real robot toward sound — no LLM in the action path, learned in 10 trials, transferred across sessions, and mergeable across robots.{% endblock %}
+{% block meta_description %}How Maxim's bio-substrate learned to turn a real robot toward sound — no LLM in the action path, learned in 10 trials, transferred across sessions, and mergeable across independently trained learners.{% endblock %}
 
 {% block meta_keywords %}Maxim sound orienting, sound localization robot, DoA orienting, substrate learning, nucleus accumbens robot, Reachy Mini sound, sensorimotor learning, robot learns to orient, fleet learning, hivemind substrate{% endblock %}
 
@@ -16,7 +16,7 @@
   "@context": "https://schema.org",
   "@type": "TechArticle",
   "headline": "Sound Orienting — a Substrate-Learned Sensorimotor Policy on Real Hardware",
-  "description": "Maxim's nucleus-accumbens substrate learns to turn a Reachy Mini toward speech, credited only by relief (azimuth-error reduction). Learned from scratch in ~10 hardware trials, correct at trial 0 of the next session, and mergeable across independently trained robots.",
+  "description": "Maxim's nucleus-accumbens substrate learns to turn a Reachy Mini toward speech, credited only by relief (azimuth-error reduction). Learned from scratch in ~10 hardware trials, correct at trial 0 of the next session, and mergeable across independently trained learning sessions — the designed path to cross-robot fleet learning.",
   "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
   "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
   "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/sound-orientation",
@@ -86,7 +86,7 @@ NAc.update_cluster_reward(state, action, relief)
     <div class="grid md:grid-cols-3 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">1. Learning curve</h3>
-        <p class="text-slate-300 text-sm">A frozen-policy probe (pure substrate lookup, no motion, no exploration) ran every 5 trials. From an empty substrate: <strong class="text-emerald-400">0% &rarr; 75% &rarr; 100% correct by trial 10</strong>, held through 40. A servo can't have a learning curve.</p>
+        <p class="text-slate-300 text-sm">A frozen-policy probe (pure substrate lookup, no motion, no exploration) ran every 5 trials. From an empty substrate: <strong class="text-emerald-400">0% &rarr; 75% &rarr; 100% correct by trial 10</strong>, held through 40 (0% = the untrained substrate abstains; executed actions started at the 50% coin-flip baseline and reached 100%). A servo can't have a learning curve.</p>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">2. Cross-session transfer</h3>

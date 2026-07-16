@@ -102,7 +102,7 @@ instrumentation: (a) all 16 trials landed az>0 (one-sided source placement — t
 self-check now covers both sides), (b) measured |az| change per 0.25 rad step ran 2-3× the
 geometric prediction (0.16) — gain anomaly tracked by the Step-3 apparatus gain estimator.
 
-### Step 3 — learning orient loop  ([`live_3_learn.py`](../../scripts/orient_backbone/live_3_learn.py)) — **in progress 2026-07-15**
+### Step 3 — learning orient loop  ([`live_3_learn.py`](../../scripts/orient_backbone/live_3_learn.py)) — **PASSED 2026-07-16 (Exp 45, all three arms)**
 Load the real `bodies/reachy_mini`; each tick: overwrite the `azimuth` sensor from DoA (world
 re-measurement is free on hardware); `state = az_bin`; substrate-primary `recommend_action` over
 `turn_left`/`turn_right`; dispatch via `goto_target`; **`potential_diff` credit** = `|az_before| −

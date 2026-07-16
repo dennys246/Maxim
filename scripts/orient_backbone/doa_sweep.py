@@ -111,6 +111,7 @@ def main() -> int:
         host, source = resolve_host(args.host)
         if host is None:
             print("[FAIL] no robot address: --host <ip> or export MAXIM_REACHY_HOST=<ip>")
+            log.close()
             return 2
         print(f"[host] using {host} (source: {source})")
         preflight(host)
@@ -122,6 +123,8 @@ def main() -> int:
             ans = input("        Source placed and playing? [y/N] ").strip().lower()
             if ans not in ("y", "yes"):
                 print("[abort] place the source, then rerun.")
+                log.write("abort", reason="source_not_placed")
+                log.close()
                 return 1
 
     n_poses = int(round((args.max_yaw - args.min_yaw) / args.step)) + 1

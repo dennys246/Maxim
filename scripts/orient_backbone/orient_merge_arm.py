@@ -44,7 +44,8 @@ import sys
 
 from live_3_learn import load_orient_actions, probe_policy
 
-os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
+if os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None) is not None:
+    print("[env] MAXIM_NAC_REWARD_BIAS_DISABLED was set — cleared for this run (ablation flag does not apply here)")
 from maxim.decisions.nac import NAc, NACConfig  # noqa: E402
 from maxim.hivemind.merge import nac_merge  # noqa: E402
 
@@ -100,12 +101,16 @@ def main() -> int:
         print("[verdict] FAIL — do NOT promote this merge (Queen-tier gate).")
 
     if args.save_merged:
-        out = os.path.expanduser(args.save_merged)
-        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-        nac = NAc(NACConfig(persistence_path=out))
-        nac.load_state(merged)
-        nac.save(out)
-        print(f"[saved] merged NAc -> {out}  (bootstrap a robot with --nac-path {out})")
+        if not passed:
+            # Persisting a do-not-promote merge invites bootstrapping from it.
+            print("[saved] SKIPPED — gauntlet failed; not persisting a merge marked do-not-promote.")
+        else:
+            out = os.path.expanduser(args.save_merged)
+            os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+            nac = NAc(NACConfig(persistence_path=out))
+            nac.load_state(merged)
+            nac.save(out)
+            print(f"[saved] merged NAc -> {out}  (bootstrap a robot with --nac-path {out})")
 
     if args.bundle:
         if not passed:
@@ -125,9 +130,7 @@ def main() -> int:
             domain=args.domain,
         )
         print(f"[bundle] wrote {bundle_path}")
-        print(
-            f"[bundle] manifest: {json.dumps({k: manifest[k] for k in sorted(manifest) if k != 'slices'}, default=str)}"
-        )
+        print(f"[bundle] manifest: {json.dumps(dict(sorted(manifest.items())), default=str)}")
 
     return 0 if passed else 1
 

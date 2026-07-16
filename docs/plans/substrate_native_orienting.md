@@ -4,7 +4,7 @@
 plan for the orient-to-center line. It **absorbs** the former
 `audiovisual_orienting.md` (cross-track coordination) and sits above two execution
 layers it does NOT re-do:
-- [`reachy_orient_live.md`](reachy_orient_live.md) — the live hardware runbook (Phase 1; Steps 1-2 **PASSED 2026-07-15**, Step 3 live).
+- [`reachy_orient_live.md`](reachy_orient_live.md) — the live hardware runbook (Phase 1; Steps 1-3 **PASSED**, [Exp 45](../experiments/45_reachy_orient_live.md) all arms EARNED 2026-07-16).
 - [`perception_pipeline_placement.md`](perception_pipeline_placement.md) — the 1.1 placement/substrate-modality **infrastructure** the orient loop rides on (broader than orienting; stays separate).
 
 **One-line thesis:** the orient-to-center loop — turn the head/body to drive a sensed
@@ -142,7 +142,7 @@ the Roy experiments applied:
 Design the experiment so "it learned" is separable from "it's a servo," or the result
 will not earn the substrate-learning claim. The pre-registered measurement lives in
 [docs/experiments/45_reachy_orient_live.md](../experiments/45_reachy_orient_live.md)
-(arms 1-2 PASSED 2026-07-16; arm 3 merge in progress).
+(all three arms PASSED 2026-07-16).
 
 **Third, stronger arm (added 2026-07-15): cross-UNIT transfer via Hivemind.** The learned
 policy (`cluster_reward_bias`, 4 bins × 2 actions) is already a first-class `nac_merge`
@@ -222,8 +222,8 @@ Audio leads because its perception is *solved* → the cleanest path to a workin
 learning loop, and it **validates the shared motor/drive/credit substrate on-device**
 (which visual then inherits for free). Deliverable: *Reachy turns toward sounds and
 learns.* **Execution runbook + live status: [`reachy_orient_live.md`](reachy_orient_live.md)
-(Steps 1-2 PASSED 2026-07-15 — default sign calibrated, body_yaw is the orient axis;
-Step 3 live in `--perturb` mode, early operant signature confirmed).**
+(Steps 1-3 PASSED — default sign calibrated, body_yaw is the orient axis; Exp 45
+all three arms EARNED 2026-07-16: learning curve, cross-session, merge).**
 
 **Phase 2 — sim → hardware, VISUAL.** First clear **P1** (vision-encoder category
 clustering on real skier-vs-object *images* — Exp 43 prerequisite, no robot; the

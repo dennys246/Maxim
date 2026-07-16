@@ -61,11 +61,13 @@ OPERATOR PROTOCOL (--perturb):
   command minus --fresh, --session s2.
   Offline logic check: --dry-run (add --dry-flip for a flipped world).
 
-SUCCESS: probe correctness rises from ~0.5 toward 1.0 across the session;
+SUCCESS: probe correctness rises from 0.00 (an empty NAc probes None per
+bin — recommend_action admits only positive-scored tools) toward 1.00;
 session 2's trial-0 probe starts correct. STOP-IF: the sign self-check
-aborts (wrong --flip-sign) or probe correctness stays ~0.5 after 30+
-trials (credit not reaching NAc — check potential_diff vs DoA noise in
-the JSONL, and the perturb records' intended-vs-measured gain).
+aborts (wrong --flip-sign), or probe correctness PINS AT 0.00 after 30+
+trials (credit never reaching NAc, or an inverted flag forced past the
+self-check), or hovers ~0.5 (credit flows but is uninformative — check
+potential_diff vs DoA noise in the JSONL and the perturb records' gain).
 """
 
 from __future__ import annotations
@@ -79,7 +81,8 @@ import time
 
 from live_common import DryRig, JsonlLog, LiveRig, az_bin, gated_azimuth, preflight, resolve_host
 
-os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
+if os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None) is not None:
+    print("[env] MAXIM_NAC_REWARD_BIAS_DISABLED was set — cleared for this run (ablation flag does not apply here)")
 from maxim.decisions.nac import NAc, NACConfig  # noqa: E402
 from maxim.embodiment.component_registry import ComponentRegistry  # noqa: E402
 
@@ -128,6 +131,11 @@ def probe_policy(nac: NAc, names: list[str], action_signs: dict[str, float]) -> 
             current_cluster_id=b,
             min_confidence=ARGMAX,
         )
+        # rec is None on an empty bin AND on a bin holding only negative
+        # biases (only the wrong action tried so far) — recommend_action
+        # admits positive scores only. Both probe as incorrect here, which
+        # undercounts learned avoidance slightly; acceptable for a
+        # 2-action policy where convergence fills the positive side fast.
         chosen = rec["tool_name"] if rec else None
         side = -1.0 if "left" in b else 1.0  # az sign for this bin
         correct = bool(chosen) and action_signs[chosen] == -side
@@ -332,7 +340,7 @@ def main() -> int:
     names = list(action_signs)
     print(f"[body] orient affordances (yaml sign): {action_signs}   comfort_band={band}")
 
-    os.makedirs(os.path.dirname(args.nac_path), exist_ok=True)
+    os.makedirs(os.path.dirname(args.nac_path) or ".", exist_ok=True)
     nac = NAc(NACConfig(persistence_path=args.nac_path))
     if args.fresh:
         print("[nac] --fresh: starting untrained")
@@ -347,6 +355,7 @@ def main() -> int:
         host, source = resolve_host(args.host)
         if host is None:
             print("[FAIL] no robot address: --host <ip> or export MAXIM_REACHY_HOST=<ip>")
+            log.close()
             return 2
         print(f"[host] using {host} (source: {source})")
         preflight(host)
@@ -520,12 +529,18 @@ def main() -> int:
     nac.save(args.nac_path)
 
     pf = probe_policy(nac, names, action_signs)
-    g1 = sum(greedy_correct_first10) / len(greedy_correct_first10) if greedy_correct_first10 else float("nan")
-    g2 = sum(greedy_correct_last10) / len(greedy_correct_last10) if greedy_correct_last10 else float("nan")
+
+    def _rate(bucket: list[int]) -> float | None:
+        # None (not NaN) when empty — json.dumps(nan) emits a bare `NaN`
+        # token that breaks strict-JSON consumers of the summary record.
+        return round(sum(bucket) / len(bucket), 3) if bucket else None
+
+    g1 = _rate(greedy_correct_first10)
+    g2 = _rate(greedy_correct_last10)
     print(f"\n[final probe] correctness={pf['correctness']:.2f}")
     for b, v in pf["bins"].items():
         print(f"      {b:<11} argmax={str(v['argmax']):<11} correct={v['correct']}  biases={v['biases']}")
-    print(f"[learning] greedy turned-toward rate: first-10 trials {g1:.2f} -> last-10 trials {g2:.2f}")
+    print(f"[learning] greedy turned-toward rate: first-10 trials {g1} -> last-10 trials {g2}")
     if app is not None:
         print(f"[apparatus] final yaw->az gain estimate: {app.gain:.2f}/rad (geometric would be {GEOMETRIC_GAIN:.2f})")
     print(f"[nac] persisted to {args.nac_path} — rerun with --session s2 for the cross-session arm")

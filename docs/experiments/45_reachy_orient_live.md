@@ -38,8 +38,8 @@ fixed during runs. Actions: body YAML `orient` affordances (`turn_left`/`turn_ri
 dispatched as ±0.25 rad **body-yaw** steps (head clamps ±15-18°; body yaw rotates the
 head+mic assembly). State: `az_bin` ∈ {center, near/far × left/right}, band 0.1.
 Credit: `update_cluster_reward(agent, bin, tool, |az_before|−|az_after|)`. Selection:
-epsilon-greedy (ε=0.25) over `recommend_action` (ARGMAX sentinel). NAc persisted per
-10 trials (`~/.maxim/orient_live/nac_reachy.json`, `_format_version` 1.2).
+epsilon-greedy (ε=0.25) over `recommend_action` (ARGMAX sentinel). NAc checkpointed every
+5 trials (`~/.maxim/orient_live/nac_reachy.json`, `_format_version` 1.2).
 
 ## Method lineage (what it took to get a clean run — findings, not failures)
 
@@ -67,7 +67,9 @@ epsilon-greedy (ε=0.25) over `recommend_action` (ARGMAX sentinel). NAc persiste
 
 Sign self-check measured both sides correctly (+0.45→+0.27, −0.45→−0.59). Probe
 correctness trajectory: **0.00 (trial 0) → 0.75 (5) → 1.00 (10) → held 1.00 through
-40**. Every intended bin landed (balanced schedule incl. far_left, the s1 gap).
+40**. (0.00 is "abstains", not chance: an empty/negative-only bin returns no
+positive-scored action, which the probe counts incorrect; the executed-action chance
+baseline is 0.50 — exactly where m1's greedy rate started.) Every intended bin landed (balanced schedule incl. far_left, the s1 gap).
 Greedy turned-toward rate 0.78 (first 10) → 1.00 (last 10). Negative relief occurred
 ONLY on exploratory wrong actions (e.g. trial 21 explore turn_left in far_right,
 relief −0.156) — the punishment channel, visibly teaching. Final biases (all four
@@ -127,9 +129,9 @@ into a 1.00 policy — merged ≥ max(inputs) is not merely preserved, it can im
 
 ## Interpretation
 
-The policy is **learned, not engineered**: it starts at chance, converges within ~10
-hardware trials, survives process restart via the persisted substrate, and (pending
-Arm 3) merges across independent learners. The LLM is absent from the action path;
+The policy is **learned, not engineered**: it starts at zero knowledge, converges within ~10
+hardware trials, survives process restart via the persisted substrate, and merges
+across independent learners into a policy at least as correct as either input. The LLM is absent from the action path;
 the coach/prompt layers are absent entirely. This is the first real-hardware
 substrate sensorimotor policy in the project — Layer 1 of the orient line, the rung
 below spatial co-location grounding (Layer 2).
@@ -143,10 +145,14 @@ being motion-free).
 
 ## Artifacts
 
-- JSONL: `/tmp/orient_step2.jsonl` (Step 2), `/tmp/orient_step3.jsonl` (s1, s1b, s2,
-  m1), `/tmp/doa_sweep.jsonl` (baseline sweep).
-- Substrate: `~/.maxim/orient_live/nac_reachy.json` (s1b+s2),
-  `nac_reachy_b.json` (m1), `nac_merged.json` + `queen_mind_orient_v0_1.zip` (merge arm).
+- JSONL (durable, in-repo): [data/45_orient_sessions.jsonl](data/45_orient_sessions.jsonl)
+  (s1, s1b, s2, m1 — all trials/probes/perturb/apparatus events) +
+  [data/45_doa_sweep_baseline.jsonl](data/45_doa_sweep_baseline.jsonl) (baseline sweep).
+  Step 2's JSONL was lost to /tmp cleanup before archiving (summary preserved in the
+  runbook + this doc) — artifacts now archive to `docs/experiments/data/` immediately.
+- Substrate: `~/.maxim/orient_live/nac_reachy.json` (s1b+s2), `nac_reachy_b.json` (m1),
+  `nac_merged.json`; bundle archived at
+  [data/45_queen_mind_orient_v0_1.zip](data/45_queen_mind_orient_v0_1.zip).
 - **Re-run on:** NAc `cluster_reward_bias` / `recommend_action` changes; `nac_merge`
   semantics changes; body-YAML orient affordance changes; any DoA front-end or
   Reachy transport change; shell/acoustic mods (re-sweep first).

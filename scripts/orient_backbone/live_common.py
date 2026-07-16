@@ -105,13 +105,23 @@ def connect_and_wake(host: str):
     Era-gated: these scripts REQUIRE SDK >= 1.5 (WS transport). Torque
     first — wake_up() no longer enables it (daemon boots
     --no-wake-up-on-start; commands to limp motors are silently ignored).
+
+    DELIBERATE BYPASS of src/maxim/hardware/reachy/controller.py
+    (ReachyMiniController) and AzimuthDoASource: these runbook scripts stay
+    on the Step-1-verified raw primitives so device-in-loop iteration has
+    zero moving parts between the operator and the SDK. The production
+    integration (controller + PerceptSource wiring) is the 1.1
+    --embodiment-hardware work; the porting doc's "do not duplicate" table
+    addresses NEW consumers, not this bring-up harness.
     """
     from importlib.metadata import version as _pkg_version
 
     try:
         sdk_ver = _pkg_version("reachy-mini")
         vt = tuple(int(x) for x in sdk_ver.split(".")[:2])
-    except Exception:  # noqa: BLE001 - unknown/dev install: assume current era
+    except Exception:  # noqa: BLE001 - unknown/dev install: assume current era, but SAY so
+        print("[warn] reachy-mini SDK version unreadable — assuming WS era (>=1.5). A zenoh-era")
+        print("       (<=1.4) install would fail to connect; check `pip show reachy-mini`.")
         sdk_ver, vt = "?", (99, 0)
     if vt < (1, 5):
         raise RuntimeError(
@@ -158,6 +168,16 @@ class LiveRig:
             self.mini.goto_target(**kwargs)
 
     def recenter(self, duration: float = 1.0) -> None:
+        # Walk the base home in <=0.3 rad tracked increments — the DoA chip
+        # is a tracking estimator that loses lock on large jumps (sweep
+        # finding, 2026-07-16); a one-shot 1.4 rad recenter can pin the next
+        # read to a stale estimate and poison a credited trial.
+        step = 0.3
+        while abs(self.body_yaw) > step:
+            nxt = self.body_yaw - step * (1.0 if self.body_yaw > 0 else -1.0)
+            self._goto(body_yaw=nxt, duration=0.4)
+            self.body_yaw = nxt
+            time.sleep(0.7)
         self._goto(head=self._head_pose(yaw=0.0, degrees=True), body_yaw=0.0, duration=duration)
         self.body_yaw = 0.0
         time.sleep(duration + 0.3)

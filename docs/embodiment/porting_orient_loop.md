@@ -140,12 +140,18 @@ arm 3:
 3. **Distribute** — at current scale, a published release (the "queen-mind" zip) IS the
    distribution channel; consumers verify with `maxim substrate inspect`, extract with
    `maxim substrate import`, merge with `nac_merge`, and validate with the same probe.
-   A robot bootstrapped from a merged NAc starts its first session already correct
-   (probe 1.00 at trial 0 — the cross-session/cross-unit transfer claim).
+   Cross-session bootstrap is hardware-validated on one unit (Exp 45 arm 2: loaded
+   NAc probes 1.00 at trial 0); a merged NAc probes 1.00 in-memory, and bootstrapping a
+   SECOND physical unit from it is the designed cross-unit follow-on, not yet run.
 4. **Contract for new robots**: because the policy is keyed on normalized-azimuth bins
    and YAML action names — not on any hardware detail — a *different* robot that
    satisfies this document's contract can consume the same bundle. Its calibration
    (sign, gain, axis) is applied at dispatch, not baked into the learned state.
+5. **agent_id convention (load-bearing for consumption)**: `cluster_reward_bias` keys
+   are `(agent_id, bin, tool)` triples, and the orient scripts read/write under
+   `agent_id="reachy"`. A consumer probing or acting under a different agent_id sees
+   ZERO bias — the policy silently vanishes. Until a remap-at-import step exists,
+   orient bundles are consumed under the same `"reachy"` agent_id.
 
 ## Pointers
 
