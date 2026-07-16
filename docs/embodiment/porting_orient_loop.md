@@ -57,17 +57,28 @@ The procedure is robot-agnostic — it is Steps 1-3 of the
 2. **Sign calibration**: does a turn toward the sensed side *reduce* |azimuth|? Run the
    Step-2 reactive loop or the Step-3 `--perturb` startup self-check (two-sided
    commanded offsets; aborts before learning on a wrong sign). Record the flag.
-3. **Response curve — memoryless or tracker?** Run a static sweep
-   ([`doa_sweep.py`](../../scripts/orient_backbone/doa_sweep.py) pattern: step the yaw
-   axis across its range in small increments, ascending AND descending, several gated
-   reads per pose) BEFORE trusting any gain number. Reachy's chip turned out to be a
-   **tracking estimator**: near-perfect linear (0.58/rad) under small incremental
-   motion, but it loses lock on large jumps and pins to the stale estimate — so all
-   apparatus motion must be walked in small tracked increments. Also map the usable
-   range: a linear array has an **endfire degeneracy zone** (~90° off-axis) with
-   bimodal readings — cap placements inside the measured reliable range. Single-number
-   "gain" claims from ad-hoc steps were wildly inconsistent (2-3× geometric in one
-   session, 0.5× in another) until the sweep separated tracked from jump behavior.
+3. **VERIFY THE SENSOR FRAME ACTUALLY ROTATES — do this FIRST.** The most
+   expensive lesson of the Reachy bring-up (a full session, six wrong hypotheses):
+   we commanded body rotation and *assumed* the head-mounted mic array turned with
+   it. It did not — the vendor's daemon was counter-rotating the head to hold its
+   world orientation, and the array rotated 36% of what we commanded. Reading a
+   nearly-stationary sensor while believing it moved **perfectly mimics a lagging,
+   compressed, drifting sensor** — we "measured" a tracking estimator that does not
+   exist and wrote it into three docs.
+   **Procedure:** command your yaw axis and read the *sensor's own frame* back from
+   the robot (not your commanded belief). `d(sensor_frame)/d(commanded)` must be
+   **≈ +1.0**. Anything less means your sensor is not experiencing the motion you
+   think it is, and every downstream number is contaminated.
+   ([`yaw_verify.py`](../../scripts/orient_backbone/yaw_verify.py) is the Reachy
+   instance; the generalizable part is *read the frame back, never assume it*.)
+   **And read the vendor's docs on frame semantics before reverse-engineering their
+   kinematics** — Pollen documented this verbatim in `AGENTS.md` the whole time.
+4. **Response curve.** Only once step 3 passes, sweep the axis and measure gain +
+   linearity + usable range ([`doa_sweep.py`](../../scripts/orient_backbone/doa_sweep.py)
+   pattern: small increments, both directions, several gated reads per pose).
+   Reachy post-fix: **0.562-0.58 az/rad** (geometric 0.637), converging in 0.23 s —
+   fast and stable. Expect a linear array to have an **endfire degeneracy** near
+   ~90° off-axis; cap placements inside the measured reliable range.
 4. **Settle timing**: the post-turn read must reflect the *completed* turn, or
    potential_diff credits a stale re-measurement. Pick motion duration + settle so the
    bearing source has re-estimated (Reachy: 0.6 s + 0.5 s).
@@ -85,10 +96,10 @@ The procedure is robot-agnostic — it is Steps 1-3 of the
 | Contract item | Reachy answer |
 |---|---|
 | Bearing source | `GET /api/state/doa` (network) → `doa_to_azimuth`; gate = `speech_detected` |
-| Yaw primitive | `goto_target(body_yaw=<abs rad>)` (head=None leaves head alone) |
+| Yaw primitive | `goto_target(body_yaw=<abs rad>, head=create_head_pose(yaw=degrees(body_yaw)))` — **the explicit head matrix is mandatory**: `head=None` counter-rotates the head and the mics do not turn |
 | Body YAML | [bodies/reachy_mini.yaml](../../src/maxim/_data/components/bodies/reachy_mini.yaml) (PR #387) |
 | Sign | default convention (Step 2, 16/16 valid: turn_left = +yaw → azimuth +) |
-| Gain | **tracked 0.58/rad** (baseline sweep 2026-07-16); memoryless-looking anomalies were jump-induced lock loss — walk all large moves |
+| Gain | **0.562-0.58 az/rad**, stable, 0.23 s convergence (measured *after* the head-frame fix; every earlier number was contaminated by it) |
 | Settle / step / limits | 0.6 s + 0.5 s; 0.25 rad; ±1.4 rad clamp; front/back-ambiguous linear array; endfire bimodal zone → placements capped |az| ≤ 0.65 |
 
 ## Notes for an Atlas-class (biped) port

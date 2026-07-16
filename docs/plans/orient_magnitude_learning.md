@@ -54,7 +54,14 @@ is why it ranks last.
 
 ## The four candidate steps (ranked; independently pre-registered)
 
-### S0 — magnitude action set (Exp 45b). **BUILT + sim-validated 2026-07-16; hardware run pending.**
+### S0 — magnitude action set (Exp 45b). **DONE — PASSED on hardware 2026-07-16.**
+
+**Result: direction 1.00, magnitude 0.75** (the pre-registered bar, and the exact
+predicted value), stable across 8 consecutive probes. `near_left` learned `turn_left`
+(+0.185) over `turn_left_big` (+0.072) — the substrate declining to overshoot, from
+relief alone. Full record: **[Exp 45b](../experiments/45b_orient_magnitude.md)**.
+**Prerequisite discovered en route:** the `head=None` counter-rotation bug (the mics
+never turned); mag1 was incoherent, mag2 passed immediately after the fix.
 
 `bodies/reachy_mini.yaml` `orient` now declares 2×2: `turn_left`/`turn_right` (±0.3 rad,
 names+values unchanged → **queen-mind v0.1 still loads**) plus `turn_left_big`/
@@ -66,13 +73,12 @@ Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magni
   overshoots near center*. At the measured 0.58 az/rad gain, ±0.12/±0.4 never overshoots
   → the policy would learn "always big". **0.3 normal / 0.9 big** is what makes magnitude
   learnable (big: −0.16 relief from az 0.18, +0.52 from az 0.60).
-- **Sim-validated expectation (seeds 0–2):** direction **1.00 robust**; magnitude **real
-  but seed-dependent, 0.50–1.00 (mean ≈0.8)** — exploration-limited, not credit-limited
-  (a `far_right` bin ended with the better action's bias at exactly **0.0 — never
-  sampled**: the Exp 41 NAc-fixation pattern, which a 2-action set could not expose).
-  Protocol: `--epsilon 0.5`, 100 trials, `--fresh` (~30 min hardware).
-- **Lock-safety fold:** 0.9 rad in one jump would lose DoA lock → `LiveRig.goto_body_yaw`
-  now walks EVERY motion in ≤0.3 rad increments (≤0.3 steps unchanged; `_big` = 3 sub-moves).
+- **Sim predicted 0.75, hardware delivered 0.75.** Sim (seeds 0–2) said direction 1.00
+  robust, magnitude seed-dependent ~0.75–1.00; the pre-registration committed to "expect
+  0.75, not 1.00" and that is exactly what the robot did.
+- **Walked-motion fold (rationale RETRACTED):** the ≤0.3 rad walk was added for "DoA
+  lock safety" per a tracking-estimator finding that turned out to be the head-frame
+  bug. Behaviour kept (harmless), rationale withdrawn.
 - **Note:** trips Exp 45's "orient-affordance YAML change" re-run rule → fresh NAc,
   queen-mind **v0.2**.
 
@@ -88,11 +94,21 @@ uniformly — matching both the psychophysics and the task (precision matters ne
 - **Pre-registered metric:** does Weber binning beat uniform binning at equal bin count
   (faster convergence, or finer terminal centering)? A/B on the same hardware protocol.
 
-### S2 — cerebellar gain calibration (inverse model). **Real, and the right organ.**
+### S2 — cerebellar gain calibration (inverse model). **Motivation WEAKENED — read this before building.**
 
-The `0.58 az/rad` tracked gain is currently a hand-measured constant in the apparatus.
-Biologically, adaptive sensorimotor gain is *the* cerebellar job (VOR gain adaptation is
-the textbook case), and the module already learns from prediction error.
+**Honest correction (2026-07-16):** this step's original motivation was "the gain is not
+a constant — it drifted 0.58 → 0.39 between sessions, so the robot must learn its own."
+**That drift was the head-frame bug, not physics.** Post-fix the gain is *stable and
+reproducible* (0.562 / 0.574 / 0.549 / 0.58 across independent measurements). The
+"sensor is unstable, therefore adaptive calibration" argument is **retracted**.
+
+What survives is weaker but real: gain genuinely varies across *rooms, source distances,
+mounts, and robots* (and the eared-shell mod will change it deliberately), so a robot
+that measures its own transfer function is more portable than one inheriting a constant
+from a doc. Biologically, adaptive sensorimotor gain is *the* cerebellar job (VOR gain
+adaptation is the textbook case), and the module already learns from prediction error.
+But this is now a **portability** argument, not a **the-sensor-drifts** argument — and it
+should be front-gated on that weaker basis.
 - **Front-gate:** the existing cerebellum learns **forward** models; orienting needs the
   **inverse** (error → command). That is a genuine extension, not a wiring change — name
   it as such.

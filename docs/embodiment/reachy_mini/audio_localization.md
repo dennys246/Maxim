@@ -85,34 +85,72 @@ The Reachy Mini is exactly the "**coplanar → declare azimuth + yaw, stop**" ca
 
 ---
 
-## Measured DoA response (2026-07-16 static sweep — hardware-validated)
+## Measured DoA response (2026-07-16) — and the retraction that produced it
 
-[`scripts/orient_backbone/doa_sweep.py`](../../../scripts/orient_backbone/doa_sweep.py)
-mapped measured azimuth vs commanded base pose (±1.4 rad, 0.1 rad increments,
-ascending + descending, 5 speech-gated reads/pose, fixed front speech source).
-These numbers supersede any assumed-linear model — the orient learning loop
-(Exp 45) initially mis-modeled the sensor and paid for it:
+**RETRACTED (2026-07-16, same day): an earlier version of this section claimed
+"the XVF3800 DoA is a TRACKING estimator, not a memoryless measurement — tracked
+gain 0.58 az/rad, loses lock on large jumps." That finding was an ARTIFACT of a
+bug in our own motion code, not a property of the chip.** It is preserved here as
+a correction because the failure mode is instructive and the numbers are still
+cited elsewhere.
 
-1. **The DoA is a TRACKING estimator, not a memoryless measurement.** Under small
-   incremental motion it is nearly perfectly linear: **tracked gain ≈ 0.58 az/rad**
-   (geometric prediction 0.64), quantization ≈ 1°, very tight per-pose reads. After a
-   single large jump (1.4 rad in one command) it **loses lock and pins near the stale
-   estimate** — one half-sweep stayed wrong end-to-end; worst-pose hysteresis 0.63.
-   **Consequence:** any apparatus or behavior that rotates the robot substantially
-   must move in small tracked increments (the orient scripts walk ≤ 0.3 rad per step).
-   Apparent "gain" measured from ad-hoc large steps is meaningless (we variously
-   measured 2-3× and 0.15× geometric before the sweep separated tracked from jump
-   behavior).
-2. **Endfire bimodal zone.** With the source ~90° off the array axis, samples flip
-   bimodally between two stable values (~0.28 and ~0.72 normalized in our setup) —
-   the linear array's endfire degeneracy. Reliable tracked readings extend to
-   ~|azimuth| 0.69; the orient loop caps placement targets at |az| ≤ 0.65.
-3. **Speech-gate rate varies wildly by pose** (5-100%); always gate + median-of-k.
+### The bug that faked a sensor pathology
 
-Re-run the sweep after ANY acoustic change (shell mods, mounts, rooms) — it is the
-before/after instrument for the eared-shell experiment
-([substrate_native_orienting.md](../../plans/substrate_native_orienting.md) follow-ups).
-Behavioral results built on this sensor: [Exp 45](../../experiments/45_reachy_orient_live.md).
+Every measurement behind that claim commanded `goto_target(body_yaw=X)` with
+`head=None`. Per Pollen's own
+[AGENTS.md](https://github.com/pollen-robotics/reachy_mini/blob/main/AGENTS.md),
+**the head 4x4 pose is in the WORLD frame and sits above `body_yaw` in the
+kinematic chain**: `head=None` makes the daemon re-solve IK against the *retained*
+world-frame head target, so the Stewart platform **counter-rotates to hold the
+head's absolute orientation** while the body pivots underneath. **The mic array is
+in the head.** So the array barely turned: measured **0.32 rad of mic rotation for
+a 0.9 rad body command** (`d(head)/d(body)` = +0.214 in world frame).
+
+Reading a nearly-stationary array while believing it had rotated produces exactly
+the signature of a lagging sensor — proportional shortfall, step-size-independent,
+wildly variable run to run. It survived six competing hypotheses (settle lag,
+backlash, motor under-travel, speech density, increment size, slow adaptation),
+each falsified in turn, before the vendor's docs settled it.
+
+### What the chip actually does (measured with the head commanded to ride along)
+
+| | with the head bug | after the fix |
+|---|---|---|
+| `d(head)/d(body)` (world) | +0.214 | **+1.012** |
+| DoA gain | 0.19–0.39, irreproducible | **0.562** (0.574 / 0.549 across reps) |
+| convergence after a 0.9 rad turn | "60 s and still wrong" | **0.23 s** |
+
+The DoA is **fast and stable** — it converges in a quarter second and holds. Gain
+**≈0.56–0.58 az/rad** against the geometric 0.637 (a modest, plausible
+under-read: beamformer angular compression and/or array-vs-rotation-axis offset).
+There is **no** slow adaptation, **no** speech-density dependence, **no** lock loss.
+
+### Still unverified (measured only WITH the bug present — do not cite)
+
+- **The 0.605 "static curve" and its ascending/descending asymmetry** (0.428/0.606,
+  0.489/0.605, 0.441/0.578 across three sweeps). The pre-fix head data showed
+  hysteretic drag (head at +14.2° vs +5.0° for the *same* body pose depending on
+  approach direction), which is the more likely explanation than anything acoustic.
+- **The "endfire bimodal zone"** (~90° off-axis, samples flipping between two
+  values). A linear array *does* have an endfire degeneracy, so this may well be
+  real — but our evidence for it is contaminated. The orient loop keeps its
+  conservative |az| ≤ 0.65 placement cap pending a clean re-measurement.
+- Any DoA number in this repo dated **before 2026-07-16 post-headfix**.
+
+**Re-sweep with the head fix in place** ([`doa_sweep.py`](../../../scripts/orient_backbone/doa_sweep.py))
+to establish the first honest characterization of an array that actually rotates.
+Behavioral results built on this sensor: [Exp 45](../../experiments/45_reachy_orient_live.md)
+(direction — unaffected, see below) and [Exp 45b](../../experiments/45b_orient_magnitude.md)
+(magnitude — required the fix).
+
+### Why direction learning survived and magnitude did not
+
+**Direction is sign-based; magnitude is threshold-based.** A proportional gain
+error leaves every sign intact, so Exp 45's direction/cross-session/merge results
+are unaffected by the bug. Magnitude learning depends on *overshoot* — a
+threshold on `|delta| * gain` vs `2 * |az|` — which a proportional error destroys.
+That asymmetry is why Exp 45 sailed through and Exp 45b was incoherent until the
+head was fixed.
 
 ---
 

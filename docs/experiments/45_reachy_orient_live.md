@@ -2,6 +2,11 @@
 
 **Dates:** 2026-07-15 → 2026-07-16. **Status:** COMPLETE — all three pre-registered
 arms PASSED (learning curve, cross-session transfer, merge/fleet mechanics).
+**Correction notice (2026-07-16):** the *sensor characterization* in this doc's
+method section was retracted the same day (a head-frame bug in our motion code
+faked a DoA pathology). **The three result arms are unaffected** — they are
+sign-based / substrate-only and survive a proportional gain error; see "WHY THE
+RESULTS BELOW STILL STAND".
 **Plans:** [substrate_native_orienting.md](../plans/substrate_native_orienting.md)
 (umbrella + rigor bar) · [reachy_orient_live.md](../plans/reachy_orient_live.md)
 (runbook). **Scripts:** [scripts/orient_backbone/](../../scripts/orient_backbone/)
@@ -49,17 +54,54 @@ epsilon-greedy (ε=0.25) over `recommend_action` (ARGMAX sentinel). NAc checkpoi
 2. **s1 (2026-07-16, forensic):** learning visible (probe 0.75 by trial 20) but three
    byte-identical anti-physical trials at the +1.40 clamp poisoned `near_right`;
    `far_left` never visited; sign-check big rotations read ~0.
-3. **Baseline DoA sweep (2026-07-16):** ±1.4 rad, 0.1 increments, both directions.
-   **Central finding: the XVF3800 DoA is a tracking estimator** — near-linear under
-   small incremental motion (tracked gain **0.58/rad**, ~1° quantization, geometric =
-   0.64) but loses lock on large jumps (1.4 rad jump → pinned near stale estimate for
-   a half-sweep; hysteresis 0.63 worst-pose). Plus an **endfire bimodal zone** (~90°
-   off array axis: samples flip ~+0.28 ↔ ~+0.72) = s1's poison zone. Full data:
-   `/tmp/doa_sweep.jsonl` label=baseline.
-4. **Apparatus fixes:** all rig moves walked in ≤0.3 rad tracked increments;
-   placement targets capped |az| ≤ 0.65; gain prior 0.58. (Generalized into the
-   [porting doc](../embodiment/porting_orient_loop.md) as the memoryless-vs-tracker
-   calibration step.)
+3. **Baseline DoA sweep (2026-07-16) — CONCLUSION LATER RETRACTED.** The sweep
+   produced an apparent finding ("the XVF3800 DoA is a tracking estimator: tracked
+   gain 0.58/rad, loses lock on large jumps; endfire bimodal zone") that was
+   **an artifact of a bug in our own motion code** — see the correction below. The
+   apparatus fixes it motivated (walk moves in ≤0.3 rad increments; cap placements
+   at |az| ≤ 0.65) are harmless and were kept, but their stated rationale was wrong.
+
+4. **THE ACTUAL BUG (found 2026-07-16 via Pollen's docs, after six wrong
+   hypotheses of mine): `goto_target(body_yaw=X, head=None)` COUNTER-ROTATES the
+   head, and the microphones are IN THE HEAD.** Pollen's
+   [AGENTS.md](https://github.com/pollen-robotics/reachy_mini/blob/main/AGENTS.md)
+   verbatim: *"The head matrix is in world frame, so `body_yaw` alone pivots the
+   body under the head — to make the head follow the body, ship a `head` matrix in
+   the same call with the body delta added to the head yaw."* `head=None` makes the
+   daemon re-solve IK against the *retained* world-frame head target
+   (`backend/abstract.py::update_target_head_joints_from_ik`), so the Stewart
+   platform actively holds the head's absolute orientation. Measured: **0.32 rad of
+   mic rotation for a 0.9 rad body command** (`d(head)/d(body)` = +0.214 world-frame;
+   **+1.012** after shipping an explicit head matrix). Fix in
+   [`live_common.py::LiveRig._goto_aligned`](../../scripts/orient_backbone/live_common.py);
+   invariant recorded in [CLAUDE.md](../../CLAUDE.md).
+
+   | | with the bug | after the fix |
+   |---|---|---|
+   | DoA gain | 0.19–0.39, irreproducible | **0.562** (0.574/0.549) |
+   | convergence after a 0.9 rad turn | "60 s, still wrong" | **0.23 s** |
+
+   There is no tracking estimator, no settle lag, no slow adaptation, no
+   speech-density dependence. Reading a nearly-stationary array while believing it
+   had rotated produces precisely the signature of a lagging sensor — proportional,
+   step-size-independent, run-to-run variable — which is why six hypotheses each
+   looked plausible and each was wrong.
+
+**WHY THE RESULTS BELOW STILL STAND.** Every arm of this experiment is
+**sign-based or substrate-only**, and a proportional gain error preserves signs:
+- **Direction** (arms 1-2): "did |az| shrink?" is a sign test. A mic array that
+  rotated 36% of the commanded amount still rotated the *correct way*, so relief
+  stayed correctly-signed and the learned policy is unaffected.
+- **Merge** (arm 3): pure substrate arithmetic, no sensor involved.
+- **The learned-vs-servo rigor**: probe curves from an empty NAc, cross-session
+  transfer — none depend on the gain's magnitude.
+What the bug *did* destroy is **magnitude** learning, which is threshold-based on
+overshoot (`|delta| * gain` vs `2 * |az|`) — exactly the quantity a proportional
+error corrupts. That is why [Exp 45b](45b_orient_magnitude.md) was incoherent until
+the head was fixed, and passed immediately afterward. **Direction survived; the
+gain numbers did not.** Any DoA gain quoted in this document from before the fix
+(0.58, 0.605, the ascending/descending asymmetry, the endfire zone) is
+**unverified** — see [audio_localization.md](../embodiment/reachy_mini/audio_localization.md).
 
 ## Results
 

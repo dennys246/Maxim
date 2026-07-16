@@ -90,6 +90,16 @@ AGENT_ID = "reachy"
 ARGMAX = -1.0e9  # min_confidence sentinel: always return argmax (Phase 0b)
 OFF_CENTER_BINS = ("far_left", "near_left", "near_right", "far_right")
 GEOMETRIC_GAIN = 2.0 / math.pi  # d(normalized az)/d(yaw rad) if DoA is ideal
+# Measured tracked gain. NOT a constant of nature: the baseline sweep (2026-07-16)
+# fit 0.58 az/rad; the Exp 45b hardware run measured ~0.39 the next session (same
+# robot, same room — source distance/geometry move it). Any metric that hard-codes
+# a gain is therefore wrong on some other day: `--gain` overrides, and --perturb
+# runs use the apparatus's own live EMA instead. This default is the latest
+# measurement, not an authority. (Learning the gain is S2 — orient_magnitude_learning.md.)
+MEASURED_GAIN = 0.39
+# The apparatus's perturb targets per bin — the distribution the policy actually
+# experiences, which is what its expected relief must be integrated over.
+PLACEMENT_RANGES = {"near": (0.18, 0.42), "far": (0.55, 0.65)}
 
 
 def sign(x: float) -> float:
@@ -113,7 +123,56 @@ def load_orient_actions() -> tuple[dict[str, float], float]:
     return actions, band
 
 
-def probe_policy(nac: NAc, names: list[str], action_deltas: dict[str, float]) -> dict:
+def _mean_relief(abs_delta_rad: float, gain: float, lo: float, hi: float, n: int = 41) -> float:
+    """Mean per-step |az| reduction for a correct-direction step of this size.
+
+    Integrated over the bin's PLACEMENT range (what the policy actually meets).
+    A step shifts |az| by ``abs_delta_rad * gain``; overshoot is the ``abs()`` —
+    past center, further travel ADDS error back. That single term is the whole
+    reason magnitude is (or isn't) learnable from relief alone.
+    """
+    shift = abs_delta_rad * gain
+    return sum(m - abs(m - shift) for m in (lo + (hi - lo) * i / (n - 1) for i in range(n))) / n
+
+
+def optimal_action_for_bin(
+    bin_name: str,
+    action_deltas: dict[str, float],
+    *,
+    gain: float,
+    effort_lambda: float = 0.0,
+) -> str | None:
+    """The utility-optimal action for a bin GIVEN THE MEASURED PHYSICS.
+
+    utility = mean relief over the bin's placements − effort_lambda * |Δyaw|.
+    Wrong-direction actions always earn negative relief, so they never win —
+    the argmax picks direction, then magnitude by the relief/effort trade.
+
+    Deriving this from the run's own gain (rather than hard-coding "near→small")
+    is Exp 45b's metric correction: at gain 0.39 the big step does NOT overshoot
+    across most of the near bin, so "near→big" is genuinely relief-optimal and a
+    hard-coded expectation would score a correct policy as wrong.
+    """
+    side = -1.0 if "left" in bin_name else 1.0
+    lo, hi = PLACEMENT_RANGES["far" if bin_name.startswith("far") else "near"]
+    best, best_u = None, -1e9
+    for name, d in action_deltas.items():
+        if sign(d) != -side:  # wrong direction — never optimal
+            continue
+        u = _mean_relief(abs(d), gain, lo, hi) - effort_lambda * abs(d)
+        if u > best_u:
+            best_u, best = u, name
+    return best
+
+
+def probe_policy(
+    nac: NAc,
+    names: list[str],
+    action_deltas: dict[str, float],
+    *,
+    gain: float = MEASURED_GAIN,
+    effort_lambda: float = 0.0,
+) -> dict:
     """Frozen-policy probe: argmax per off-center bin, no motion, no epsilon.
 
     TWO pre-registered metrics (Exp 45 + 45b):
@@ -152,12 +211,13 @@ def probe_policy(nac: NAc, names: list[str], action_deltas: dict[str, float]) ->
         chosen = rec["tool_name"] if rec else None
         side = -1.0 if "left" in b else 1.0  # az sign for this bin
         correct = bool(chosen) and sign(action_deltas[chosen]) == -side
-        wants_big = b.startswith("far")
-        mag_ok = bool(chosen) and (chosen.endswith("_big") == wants_big)
+        opt = optimal_action_for_bin(b, action_deltas, gain=gain, effort_lambda=effort_lambda)
+        mag_ok = bool(chosen) and opt is not None and abs(action_deltas[chosen]) == abs(action_deltas[opt])
         n_correct += int(correct)
         n_mag += int(mag_ok)
         out[b] = {
             "argmax": chosen,
+            "optimal": opt,
             "correct": correct,
             "magnitude_ok": mag_ok,
             "biases": {a: round(nac.cluster_reward_bias(AGENT_ID, b, f"tool:{a}"), 4) for a in names},
@@ -166,6 +226,8 @@ def probe_policy(nac: NAc, names: list[str], action_deltas: dict[str, float]) ->
         "bins": out,
         "correctness": n_correct / len(OFF_CENTER_BINS),
         "magnitude_appropriateness": n_mag / len(OFF_CENTER_BINS),
+        "gain_used": round(gain, 3),
+        "effort_lambda": effort_lambda,
     }
 
 
@@ -333,6 +395,21 @@ def main() -> int:
     ap.add_argument(
         "--step-scale", type=float, default=1.0, help="rescale the YAML orient magnitudes (1.0 = as declared)"
     )
+    ap.add_argument(
+        "--effort-lambda",
+        type=float,
+        default=0.0,
+        help="Exp 45c: effort cost per radian turned (credit = relief - lambda*|dyaw|). "
+        "0.0 = Exp 45b pure-relief credit. Derived window at gain 0.39: 0.18 < lambda < 0.39.",
+    )
+    ap.add_argument(
+        "--az-gain",
+        type=float,
+        default=None,
+        help="az-per-radian gain the METRIC assumes (default: the apparatus's live EMA in "
+        f"--perturb mode, else {MEASURED_GAIN}). Does not affect the robot — only what "
+        "counts as the magnitude-optimal action.",
+    )
     ap.add_argument("--epsilon", type=float, default=0.25, help="exploration rate (executed choices)")
     ap.add_argument("--gain", type=float, default=1.0, help="scale on potential_diff credit")
     ap.add_argument("--flip-sign", action="store_true", help="Step-2-calibrated sign flag")
@@ -347,6 +424,13 @@ def main() -> int:
     ap.add_argument("--log", default="/tmp/orient_step3.jsonl")
     ap.add_argument("--dry-run", action="store_true", help="offline logic check (no robot)")
     ap.add_argument("--dry-flip", action="store_true", help="dry-run world uses the OPPOSITE sign convention")
+    ap.add_argument(
+        "--dry-gain",
+        type=float,
+        default=MEASURED_GAIN,
+        help=f"dry-run world's az-per-radian gain (default {MEASURED_GAIN} = the Exp 45b hardware "
+        "measurement, so sim mirrors the robot you are about to run on)",
+    )
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
@@ -363,6 +447,17 @@ def main() -> int:
     names = list(action_deltas)
     print(f"[body] orient affordances (yaml rad): {action_deltas}   comfort_band={band}")
 
+    def metric_gain() -> float:
+        """Gain the METRIC assumes: CLI > apparatus live EMA > last measurement."""
+        if args.az_gain is not None:
+            return args.az_gain
+        if app is not None:
+            return app.gain
+        return MEASURED_GAIN
+
+    def probe() -> dict:
+        return probe_policy(nac, names, action_deltas, gain=metric_gain(), effort_lambda=args.effort_lambda)
+
     os.makedirs(os.path.dirname(args.nac_path) or ".", exist_ok=True)
     nac = NAc(NACConfig(persistence_path=args.nac_path))
     if args.fresh:
@@ -372,8 +467,11 @@ def main() -> int:
         print(f"[nac] load_safe({args.nac_path}) -> ok={ok}" + (f" ({err})" if err else ""))
 
     if args.dry_run:
-        rig = DryRig(theta_src=-0.7, world_flipped=args.dry_flip, seed=args.seed)
-        print(f"[dry] source at world bearing {rig.theta_src:+.2f} rad, world_flipped={rig.world_flipped}")
+        rig = DryRig(theta_src=-0.7, world_flipped=args.dry_flip, seed=args.seed, gain=args.dry_gain)
+        print(
+            f"[dry] source at world bearing {rig.theta_src:+.2f} rad, "
+            f"world_flipped={rig.world_flipped}, gain={args.dry_gain}"
+        )
     else:
         host, source = resolve_host(args.host)
         if host is None:
@@ -391,6 +489,7 @@ def main() -> int:
         mode="perturb" if args.perturb else "manual",
         trials=args.trials,
         step_scale=args.step_scale,
+        effort_lambda=args.effort_lambda,
         epsilon=args.epsilon,
         flip_sign=args.flip_sign,
         fresh=args.fresh,
@@ -409,7 +508,7 @@ def main() -> int:
         log.write("apparatus_sign_check_ok", gain=round(app.gain, 3))
 
     # Trial-0 probe: the cross-session headline number (session 2 should start correct).
-    p0 = probe_policy(nac, names, action_deltas)
+    p0 = probe()
     print(
         f"[probe 0] correctness={p0['correctness']:.2f} magnitude={p0['magnitude_appropriateness']:.2f}  "
         + str({b: v["argmax"] for b, v in p0["bins"].items()})
@@ -421,141 +520,159 @@ def main() -> int:
     schedule: list[str] = []
     greedy_correct_first10: list[int] = []
     greedy_correct_last10: list[int] = []
+    aborted: str | None = None
     while valid < args.trials:
-        # --- acquire az_before (trial setup differs per mode; learner step is shared) ---
-        intended_bin: str | None = None
-        if app is not None:
-            if not schedule:
-                schedule = list(OFF_CENTER_BINS)
-                rng.shuffle(schedule)
-            intended_bin = schedule.pop()
-            if app.center() is None:
-                no_reading_streak += 1
-                if no_reading_streak >= 10:
-                    print("[STOP] speech gate not passing for ~1 min — check the source, then rerun.")
-                    break
-                log.write("no_reading_center")
-                continue
-            side = -1.0 if "left" in intended_bin else 1.0
-            # Far-bin ceiling 0.65 (was 0.85): the baseline sweep showed reliable
-            # tracked readings up to ~|az| 0.69, with a bimodal endfire-degeneracy
-            # zone beyond (~90° off the array axis) — s1's poisonous trials.
-            lo, hi = (0.55, 0.65) if intended_bin.startswith("far") else (0.18, 0.42)
-            target_az = side * rng.uniform(lo, hi)
-            az_before, delta_psi = app.perturb(target_az)
-            if az_before is None:
-                no_reading_streak += 1
-                if no_reading_streak >= 10:
-                    print("[STOP] speech gate not passing for ~1 min — check the source, then rerun.")
-                    break
-                log.write("no_reading_perturb", intended_bin=intended_bin)
-                continue
-            no_reading_streak = 0
-            measured_bin = az_bin(az_before, band)
-            log.write(
-                "perturb",
-                intended_bin=intended_bin,
-                target_az=round(target_az, 3),
-                delta_psi=round(delta_psi, 3),
-                az_measured=round(az_before, 3),
-                bin_measured=measured_bin,
-                gain=round(app.gain, 3),
-            )
-            if measured_bin == "center":
-                print(f"      perturb undershoot (intended {intended_bin}, az={az_before:+.2f}) — retrying")
-                schedule.append(intended_bin)  # keep the schedule balanced
-                continue
-        else:
-            az_before = gated_azimuth(rig.reader, k=3, timeout_s=6.0, poll_s=poll_s)
-            if az_before is None:
-                no_reading_streak += 1
-                if no_reading_streak >= 10:
-                    print("[STOP] speech gate not passing for ~1 min — check the source, then rerun.")
-                    break
-                log.write("no_reading_before")
-                continue
-            no_reading_streak = 0
-            if az_bin(az_before, band) == "center":
-                print(f"      az={az_before:+.2f} centered — holding (move the source to continue)")
-                log.write("centered", az=round(az_before, 3))
-                pace(0.8)
+        try:
+            # --- acquire az_before (trial setup differs per mode; learner step is shared) ---
+            intended_bin: str | None = None
+            if app is not None:
+                if not schedule:
+                    schedule = list(OFF_CENTER_BINS)
+                    rng.shuffle(schedule)
+                intended_bin = schedule.pop()
+                if app.center() is None:
+                    no_reading_streak += 1
+                    if no_reading_streak >= 10:
+                        print("[STOP] speech gate not passing for ~1 min — check the source, then rerun.")
+                        break
+                    log.write("no_reading_center")
+                    continue
+                side = -1.0 if "left" in intended_bin else 1.0
+                # PLACEMENT_RANGES: far ceiling 0.65 (the baseline sweep showed reliable
+                # tracked readings to ~|az| 0.69, with a bimodal endfire-degeneracy zone
+                # beyond — s1's poisonous trials). Shared with the metric, which must
+                # integrate expected relief over the SAME distribution the policy meets.
+                lo, hi = PLACEMENT_RANGES["far" if intended_bin.startswith("far") else "near"]
+                target_az = side * rng.uniform(lo, hi)
+                az_before, delta_psi = app.perturb(target_az)
+                if az_before is None:
+                    no_reading_streak += 1
+                    if no_reading_streak >= 10:
+                        print("[STOP] speech gate not passing for ~1 min — check the source, then rerun.")
+                        break
+                    log.write("no_reading_perturb", intended_bin=intended_bin)
+                    continue
+                no_reading_streak = 0
+                measured_bin = az_bin(az_before, band)
+                log.write(
+                    "perturb",
+                    intended_bin=intended_bin,
+                    target_az=round(target_az, 3),
+                    delta_psi=round(delta_psi, 3),
+                    az_measured=round(az_before, 3),
+                    bin_measured=measured_bin,
+                    gain=round(app.gain, 3),
+                )
+                if measured_bin == "center":
+                    print(f"      perturb undershoot (intended {intended_bin}, az={az_before:+.2f}) — retrying")
+                    schedule.append(intended_bin)  # keep the schedule balanced
+                    continue
+            else:
+                az_before = gated_azimuth(rig.reader, k=3, timeout_s=6.0, poll_s=poll_s)
+                if az_before is None:
+                    no_reading_streak += 1
+                    if no_reading_streak >= 10:
+                        print("[STOP] speech gate not passing for ~1 min — check the source, then rerun.")
+                        break
+                    log.write("no_reading_before")
+                    continue
+                no_reading_streak = 0
+                if az_bin(az_before, band) == "center":
+                    print(f"      az={az_before:+.2f} centered — holding (move the source to continue)")
+                    log.write("centered", az=round(az_before, 3))
+                    pace(0.8)
+                    continue
+
+            # --- the LEARNER's step (identical in both modes: DoA in, relief credit out) ---
+            state = az_bin(az_before, band)
+            explore = rng.random() < args.epsilon
+            if explore:
+                action = rng.choice(names)
+            else:
+                rec = nac.recommend_action(
+                    agent_id=AGENT_ID,
+                    available_tools=names,
+                    current_drives=None,
+                    current_cluster_id=state,
+                    min_confidence=ARGMAX,
+                )
+                action = rec["tool_name"] if rec else rng.choice(names)
+
+            delta = action_deltas[action] * args.step_scale * sign_mult
+            target_yaw = max(-args.max_yaw, min(args.max_yaw, rig.body_yaw + delta))
+            if target_yaw == rig.body_yaw:
+                print(f"      at yaw limit ({rig.body_yaw:+.2f}) — recentering (no credit)")
+                log.write("yaw_limit", body_yaw=round(rig.body_yaw, 3))
+                rig.recenter()
                 continue
 
-        # --- the LEARNER's step (identical in both modes: DoA in, relief credit out) ---
-        state = az_bin(az_before, band)
-        explore = rng.random() < args.epsilon
-        if explore:
-            action = rng.choice(names)
-        else:
-            rec = nac.recommend_action(
-                agent_id=AGENT_ID,
-                available_tools=names,
-                current_drives=None,
-                current_cluster_id=state,
-                min_confidence=ARGMAX,
-            )
-            action = rec["tool_name"] if rec else rng.choice(names)
+            rig.goto_body_yaw(target_yaw, duration=args.duration)
+            pace(args.duration + args.settle)
+            az_after = gated_azimuth(rig.reader, k=3, timeout_s=6.0, poll_s=poll_s)
+            if az_after is None:
+                print("      (no gated reading after turn — trial invalid, no credit)")
+                log.write("no_reading_after", state=state, action=action)
+                continue
 
-        delta = action_deltas[action] * args.step_scale * sign_mult
-        target_yaw = max(-args.max_yaw, min(args.max_yaw, rig.body_yaw + delta))
-        if target_yaw == rig.body_yaw:
-            print(f"      at yaw limit ({rig.body_yaw:+.2f}) — recentering (no credit)")
-            log.write("yaw_limit", body_yaw=round(rig.body_yaw, 3))
-            rig.recenter()
-            continue
-
-        rig.goto_body_yaw(target_yaw, duration=args.duration)
-        pace(args.duration + args.settle)
-        az_after = gated_azimuth(rig.reader, k=3, timeout_s=6.0, poll_s=poll_s)
-        if az_after is None:
-            print("      (no gated reading after turn — trial invalid, no credit)")
-            log.write("no_reading_after", state=state, action=action)
-            continue
-
-        potential_diff = abs(az_before) - abs(az_after)
-        nac.update_cluster_reward(AGENT_ID, state, f"tool:{action}", args.gain * potential_diff)
-        valid += 1
-        turned_toward = potential_diff > 0.02
-        if not explore:
-            bucket = greedy_correct_first10 if valid <= 10 else greedy_correct_last10
-            if valid <= 10 or valid > args.trials - 10:
-                bucket.append(int(turned_toward))
-        print(
-            f"      [{valid:2d}/{args.trials}] {state:<11} {action:<11} ({'explore' if explore else 'greedy'})  "
-            f"az {az_before:+.2f} -> {az_after:+.2f}  relief={potential_diff:+.3f}"
-        )
-        log.write(
-            "trial",
-            session=args.session,
-            n=valid,
-            state=state,
-            intended_bin=intended_bin,
-            action=action,
-            explore=explore,
-            az_before=round(az_before, 3),
-            az_after=round(az_after, 3),
-            potential_diff=round(potential_diff, 4),
-            body_yaw=round(rig.body_yaw, 3),
-        )
-
-        if valid % args.probe_every == 0:
-            p = probe_policy(nac, names, action_deltas)
+            potential_diff = abs(az_before) - abs(az_after)
+            # Exp 45c: effort cost. Pure relief cannot teach magnitude on this hardware —
+            # overshoot needs |delta|*gain > 2*|az|, i.e. > 2.1 rad at the measured 0.39
+            # gain, beyond the 1.4 rad yaw limit. Organisms pay for movement; so does this.
+            credit = args.gain * potential_diff - args.effort_lambda * abs(delta)
+            nac.update_cluster_reward(AGENT_ID, state, f"tool:{action}", credit)
+            valid += 1
+            turned_toward = potential_diff > 0.02
+            if not explore:
+                bucket = greedy_correct_first10 if valid <= 10 else greedy_correct_last10
+                if valid <= 10 or valid > args.trials - 10:
+                    bucket.append(int(turned_toward))
             print(
-                f"[probe {valid}] correctness={p['correctness']:.2f} "
-                f"magnitude={p['magnitude_appropriateness']:.2f}  "
-                + str({b: v["argmax"] for b, v in p["bins"].items()})
+                f"      [{valid:2d}/{args.trials}] {state:<11} {action:<11} ({'explore' if explore else 'greedy'})  "
+                f"az {az_before:+.2f} -> {az_after:+.2f}  relief={potential_diff:+.3f}"
             )
-            log.write("probe", trial=valid, **p)
-        if valid % 5 == 0:
-            # Checkpoint often — a transient SDK ack-timeout killed s2 at trial
-            # 36 with the last save at 30; the file is ~1 KB, saving is free.
-            nac.save(args.nac_path)
+            log.write(
+                "trial",
+                session=args.session,
+                n=valid,
+                state=state,
+                intended_bin=intended_bin,
+                action=action,
+                explore=explore,
+                az_before=round(az_before, 3),
+                az_after=round(az_after, 3),
+                potential_diff=round(potential_diff, 4),
+                credit=round(credit, 4),
+                body_yaw=round(rig.body_yaw, 3),
+            )
 
-    if not args.dry_run:
+            if valid % args.probe_every == 0:
+                p = probe()
+                print(
+                    f"[probe {valid}] correctness={p['correctness']:.2f} "
+                    f"magnitude={p['magnitude_appropriateness']:.2f}  "
+                    + str({b: v["argmax"] for b, v in p["bins"].items()})
+                )
+                log.write("probe", trial=valid, **p)
+            if valid % 5 == 0:
+                # Checkpoint often — a transient SDK ack-timeout killed s2 at trial
+                # 36 with the last save at 30; the file is ~1 KB, saving is free.
+                nac.save(args.nac_path)
+        except (ConnectionError, TimeoutError) as e:
+            # The robot went away and recovery could not bring it back (mag2: the
+            # daemon's backend_status.ready went false). Bank what we have and
+            # report honestly rather than tracebacking over a real result.
+            aborted = f"{type(e).__name__}: {e}"
+            print(f"\n[STOP] lost the robot at trial {valid}: {aborted}")
+            print("       Check: curl http://<host>:8000/api/daemon/status -> backend_status.ready")
+            print("       If false: sudo systemctl restart reachy-mini-daemon on the robot.")
+            log.write("abort", reason=aborted, trials_completed=valid)
+            break
+
+    if not args.dry_run and aborted is None:
         rig.recenter()
     nac.save(args.nac_path)
 
-    pf = probe_policy(nac, names, action_deltas)
+    pf = probe()
 
     def _rate(bucket: list[int]) -> float | None:
         # None (not NaN) when empty — json.dumps(nan) emits a bare `NaN`
@@ -566,12 +683,13 @@ def main() -> int:
     g2 = _rate(greedy_correct_last10)
     print(
         f"\n[final probe] correctness={pf['correctness']:.2f} "
-        f"magnitude_appropriateness={pf['magnitude_appropriateness']:.2f}"
+        f"magnitude_appropriateness={pf['magnitude_appropriateness']:.2f} "
+        f"(metric gain={pf['gain_used']}, effort_lambda={pf['effort_lambda']})"
     )
     for b, v in pf["bins"].items():
         print(
-            f"      {b:<11} argmax={str(v['argmax']):<15} dir={v['correct']!s:<5} mag={v['magnitude_ok']!s:<5} "
-            f"biases={v['biases']}"
+            f"      {b:<11} argmax={str(v['argmax']):<15} optimal={str(v['optimal']):<15} "
+            f"dir={v['correct']!s:<5} mag={v['magnitude_ok']!s:<5} biases={v['biases']}"
         )
     print(f"[learning] greedy turned-toward rate: first-10 trials {g1} -> last-10 trials {g2}")
     if app is not None:

@@ -149,52 +149,123 @@ class LiveRig:
         self.mini, self._head_pose = connect_and_wake(host)
         self.reader: Reader = make_rest_reader(host)
         self.body_yaw = 0.0
+        # The daemon may modulate a commanded body_yaw when automatic body yaw is
+        # on. The orient loop owns the yaw axis outright — turn it off so what we
+        # command is what happens.
+        try:
+            self.mini.set_automatic_body_yaw(False)
+            print("[motion] automatic_body_yaw disabled (the orient loop owns the yaw axis)")
+        except Exception as e:  # noqa: BLE001 - older daemons may not expose it
+            print(f"[motion] set_automatic_body_yaw unavailable ({e}) — proceeding")
 
     def _goto(self, **kwargs) -> None:
-        """goto_target with ONE retry on a missed completion ack.
+        """goto_target with recovery. TWO distinct transient failures seen live:
 
-        The SDK blocks on a task-completion message (timeout duration+1s);
-        a single dropped WS ack raised TimeoutError and killed a 36-trial
-        session (s2, 2026-07-16). All our targets are ABSOLUTE, so
-        re-issuing is idempotent even if the first command actually
-        completed. Two consecutive timeouts = the robot is genuinely
-        wedged (thermal/torque) — fail loud then.
+        - ``TimeoutError`` — a dropped task-completion ack (killed s2 at trial
+          36). The command itself probably landed; our targets are ABSOLUTE, so
+          re-issuing is idempotent either way.
+        - ``ConnectionError`` — the WS session itself died (killed mag1 at trial
+          27, ~300 motion commands in). Re-issuing on a dead socket cannot work:
+          rebuild the session first. The REST DoA reader is independent and
+          keeps working across this.
+
+        A SECOND failure of either kind is a real fault (daemon down, motors
+        wedged or thermally throttled) and propagates — the loop's `finally`
+        still saves the NAc, and checkpoints every 5 trials bound the loss.
         """
-        try:
-            self.mini.goto_target(**kwargs)
-        except TimeoutError:
-            print("      (goto_target ack timed out — re-issuing once)")
-            time.sleep(0.5)
-            self.mini.goto_target(**kwargs)
+        for attempt in range(2):
+            try:
+                self.mini.goto_target(**kwargs)
+                return
+            except TimeoutError:
+                if attempt:
+                    raise
+                print("      (goto_target ack timed out — re-issuing once)")
+                time.sleep(0.5)
+            except ConnectionError:
+                if attempt:
+                    raise
+                print("      (WS connection lost — reconnecting, then re-issuing once)")
+                self._reconnect()
 
-    # The DoA is a TRACKING estimator: it follows smooth motion (0.58 az/rad)
-    # but loses lock on large jumps and then reports a stale estimate for a
-    # long time (Exp 45 baseline sweep). Every motion path goes through
-    # goto_body_yaw, so all of them — apparatus, recenter, and the learner's
-    # 0.9 rad `_big` actions (Exp 45b) — inherit lock-safety here.
+    def _reconnect(self) -> None:
+        """Rebuild the WS session — LIGHTWEIGHT: connect + torque, NO wake_up.
+
+        The first version of this called connect_and_wake(), whose wake_up()
+        issues its own goto_target — so a reconnect onto a still-sick daemon
+        threw from INSIDE the recovery path and killed the run (mag2, trial 53).
+        Recovery must not itself command motion. If the daemon's backend is
+        down (``/api/daemon/status`` -> ``backend_status.ready: false``) no
+        amount of reconnecting helps: it needs
+        ``sudo systemctl restart reachy-mini-daemon`` on the robot.
+        """
+        from reachy_mini import ReachyMini
+
+        time.sleep(2.0)
+        self.mini = ReachyMini(
+            host=self.host, port=8000, connection_mode="network", timeout=10.0, media_backend="no_media"
+        )
+        try:
+            self.mini.enable_motors()
+            self.mini.set_automatic_body_yaw(False)
+        except Exception as e:  # noqa: BLE001 - torque/config best-effort on a shaky daemon
+            print(f"      (post-reconnect setup partial: {e})")
+        print("      (reconnected)")
+
+    # Walk increment. RATIONALE RETRACTED (2026-07-16): introduced for "DoA lock
+    # safety" per an Exp 45 finding that the chip loses lock on large jumps — that
+    # finding was an artifact of the head=None counter-rotation bug (the mics
+    # weren't turning at all). Post-fix the DoA is fast and stable (0.562 az/rad,
+    # 0.23s convergence) and probably needs no walking. Kept because it is harmless
+    # and cheap; drop it only after a clean post-headfix re-sweep says so.
     _TRACK_STEP = 0.3
 
     def recenter(self, duration: float = 1.0) -> None:
-        self.goto_body_yaw(0.0, duration=duration)  # walked → lock-safe
-        self._goto(head=self._head_pose(yaw=0.0, degrees=True), body_yaw=0.0, duration=duration)
-        self.body_yaw = 0.0
+        self.goto_body_yaw(0.0, duration=duration)  # walked, head-aligned
         time.sleep(duration + 0.3)
 
     def goto_body_yaw(self, yaw: float, duration: float = 0.6) -> None:
-        """Absolute body-yaw target (rad), WALKED in <=_TRACK_STEP increments.
+        """Absolute body-yaw target (rad), head RIDING ALONG, walked in increments.
 
-        head=None leaves the head alone. Motions already <= _TRACK_STEP (the
-        2-action era's 0.25 rad step, every apparatus increment) are a single
-        command — byte-identical to the pre-walk behavior.
+        THE BUG THIS FIXES (2026-07-16, found via Pollen's own AGENTS.md after
+        six wrong hypotheses of mine): the head 4x4 pose is in the **world
+        frame**, and it sits ABOVE body_yaw in the kinematic chain. Passing
+        ``head=None`` does NOT mean "leave the head alone" — the daemon
+        re-solves IK against the RETAINED world-frame head target
+        (``backend/abstract.py::update_target_head_joints_from_ik``:
+        ``if pose is None: pose = self.target_head_pose``), so the Stewart
+        platform COUNTER-ROTATES to hold the head's absolute orientation and the
+        body pivots underneath it. **The microphone array lives in the head.**
+        Every DoA reading taken while commanding body_yaw alone was therefore of
+        an array that barely turned (measured: mics rotated 0.32 rad for a 0.9
+        rad body command) — which is the whole Exp 45b gain mystery.
+
+        Pollen's prescription, verbatim: "to make the head follow the body, ship
+        a `head` matrix in the same call with the body delta added to the head
+        yaw." Commanding head world-yaw == body_yaw keeps the platform's
+        head-vs-body angle at ~0, so the head is rigid to the body and the mics
+        rotate exactly as commanded. (Head yaw reads [-180, +180] precisely
+        because body_yaw supplies most of it; the platform's own ~±15-18° is not
+        the limit here.)
+
+        Still walked in <=_TRACK_STEP increments — cheap, and the tracking-
+        estimator caution stands until re-measured on a correctly-rotating array.
         """
         target = float(yaw)
         while abs(target - self.body_yaw) > self._TRACK_STEP + 1e-9:
             nxt = self.body_yaw + self._TRACK_STEP * (1.0 if target > self.body_yaw else -1.0)
-            self._goto(body_yaw=nxt, duration=min(duration, 0.4))
-            self.body_yaw = nxt
-            time.sleep(0.5)  # let the tracker re-lock before the next increment
-        self._goto(body_yaw=target, duration=duration)
-        self.body_yaw = target
+            self._goto_aligned(nxt, duration=min(duration, 0.4))
+            time.sleep(0.5)
+        self._goto_aligned(target, duration=duration)
+
+    def _goto_aligned(self, yaw: float, duration: float) -> None:
+        """Command body_yaw with the head yawed to match (world frame) — mics ride along."""
+        self._goto(
+            head=self._head_pose(yaw=math.degrees(yaw), degrees=True),
+            body_yaw=float(yaw),
+            duration=duration,
+        )
+        self.body_yaw = float(yaw)
 
 
 class DryRig:
@@ -209,7 +280,13 @@ class DryRig:
     """
 
     def __init__(
-        self, theta_src: float = -0.7, *, world_flipped: bool = False, seed: int = 0, jump_prob: float = 0.04
+        self,
+        theta_src: float = -0.7,
+        *,
+        world_flipped: bool = False,
+        seed: int = 0,
+        jump_prob: float = 0.04,
+        gain: float = 2.0 / math.pi,
     ) -> None:
         import random
 
@@ -218,6 +295,10 @@ class DryRig:
         self.body_yaw = 0.0
         self.world_flipped = world_flipped
         self.jump_prob = jump_prob  # 0.0 = stationary source (sweep/characterization runs)
+        # az per radian of body yaw. Geometric default 2/pi=0.637; the REAL robot
+        # measured 0.58 (sweep) then 0.39 (next session) — pass the measured value
+        # to make the sim faithful to the hardware you are about to run on.
+        self.gain = gain
         self.reader: Reader = self._read
 
     def _read(self) -> tuple[float, bool] | None:
@@ -228,11 +309,10 @@ class DryRig:
         rel = self.body_yaw - self.theta_src
         if self.world_flipped:
             rel = -rel
-        az = max(-1.0, min(1.0, rel / (math.pi / 2.0)))
+        az = max(-1.0, min(1.0, rel * self.gain))
         az = max(-1.0, min(1.0, az + self._rng.gauss(0.0, 0.02)))
-        if self._rng.random() < 0.1:  # occasional no-speech tick
-            return (az * math.pi / 2.0 + math.pi / 2.0, False)
-        return (az * math.pi / 2.0 + math.pi / 2.0, True)
+        doa = az * math.pi / 2.0 + math.pi / 2.0  # invert doa_to_azimuth
+        return (doa, self._rng.random() >= 0.1)  # occasional no-speech tick
 
     def recenter(self, duration: float = 1.0) -> None:  # noqa: ARG002 - parity with LiveRig
         self.body_yaw = 0.0

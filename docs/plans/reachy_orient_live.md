@@ -121,33 +121,38 @@ stays DoA-derived, credit stays `potential_diff` on re-measured DoA; apparatus m
 Early live trials show the expected operant signature (wrong explore action → negative relief →
 next greedy visit flips correct).
 
-## Sensor characterization — baseline sweep findings (2026-07-16, RESOLVED)
+## Sensor characterization (2026-07-16) — RETRACTED and corrected
 
-[`doa_sweep.py`](../../scripts/orient_backbone/doa_sweep.py) (±1.4 rad, 0.1 increments,
-ascending+descending, 5 gated reads/pose; data `/tmp/doa_sweep.jsonl` label=baseline):
+**An earlier version of this section reported: "the XVF3800 DoA is a TRACKING
+estimator (tracked gain 0.58/rad, loses lock on large jumps) + endfire bimodal
+zone." That was an ARTIFACT of our own motion code and is retracted.**
 
-1. **The XVF3800 DoA is a TRACKING estimator, not a memoryless measurement.** Walked in
-   0.1 rad increments (descending pass) it is a nearly perfect linear sensor: az ≈
-   0.58×(ψ−ψ₀), **tracked gain 0.58/rad** (geometric = 0.64), tight ~1° quantized reads.
-   After a single 1.4 rad jump (ascending pass start) it **loses lock and stays pinned
-   near the stale estimate** for the entire half-sweep (hysteresis 0.63 at the worst
-   pose). This one fact explains every prior anomaly: Step 2's apparent 2-3× gain
-   (re-lock snaps), s1's sign-check reading ~0 for ±0.7-0.9 rad jumps (lock kept),
-   small learner steps tracking fine, and far placements landing near.
-   **Consequence (implemented):** `Apparatus._move` walks ALL moves in ≤0.3 rad
-   tracked increments; gain prior = 0.58.
-2. **Endfire bimodal zone:** at poses putting the source ~90° off the array axis
-   (ψ ≥ +1.2 in this setup), samples flip bimodally (~+0.28 ↔ ~+0.72) — the linear
-   array's endfire degeneracy. This was s1's reproducible anti-physical zone that
-   poisoned `near_right` late-session. **Consequence (implemented):** placement targets
-   capped at |az| ≤ 0.65 (far-bin range now 0.55-0.65); reliable tracked range measured
-   to ~|az| 0.69.
-3. Speech-gate rate varies 5-100% by pose; the 100%-gate pose at +1.40 (endfire) is
-   itself suspect. Median-of-k + gating stays mandatory.
+**The bug:** `goto_target(body_yaw=X, head=None)` does not leave the head alone —
+per Pollen's [AGENTS.md](https://github.com/pollen-robotics/reachy_mini/blob/main/AGENTS.md)
+the head pose is **world-frame** and sits above `body_yaw`, so the daemon
+re-solves IK against the retained head target and the Stewart platform
+**counter-rotates**. The mic array is in the head. Measured: **0.32 rad of mic
+rotation for a 0.9 rad body command** (`d(head)/d(body)` = +0.214 world-frame).
+Every DoA number taken before 2026-07-16's fix was read from an array that had
+barely moved. Fix: ship `head=create_head_pose(yaw=degrees(body_yaw))` with every
+`goto_target` ([`live_common.py::LiveRig._goto_aligned`](../../scripts/orient_backbone/live_common.py)),
+plus `set_automatic_body_yaw(False)`. Invariant: [CLAUDE.md](../../CLAUDE.md).
 
-Re-run the sweep after ANY acoustic change (shell mod, new mount, new room) — it is the
-A/B instrument for the eared-shell experiment
-([substrate_native_orienting.md](substrate_native_orienting.md) follow-ups).
+**True characterization (post-fix):** `d(head)/d(body)` = **+1.012**; DoA gain
+**0.562** (0.574/0.549 across reps, 0.58 in the mag2 sign-check) vs geometric
+0.637; converges in **0.23 s**. Fast, stable, reproducible. No tracking estimator,
+no lag, no speech-density dependence, no lock loss.
+
+**Still unverified — do NOT cite:** the 0.605 static curve, the
+ascending/descending asymmetry (likely head-drag hysteresis: the pre-fix head read
++14.2° vs +5.0° at the *same* body pose depending on approach direction), and the
+endfire bimodal zone (a linear array plausibly has one, but our evidence is
+contaminated). The ≤0.3 rad walk and the |az| ≤ 0.65 placement cap are kept
+conservatively; both need a clean post-headfix re-sweep to justify or drop.
+
+**Re-sweep after ANY acoustic change** — still true, and now also the outstanding
+task: [`doa_sweep.py --label post-headfix`](../../scripts/orient_backbone/doa_sweep.py)
+is the first honest characterization of an array that actually rotates.
 
 ## Calibration unknowns (resolve empirically on-device)
 
