@@ -97,20 +97,32 @@ def sign(x: float) -> float:
 
 
 def load_orient_actions() -> tuple[dict[str, float], float]:
-    """Affordance names + head_yaw-delta SIGNS from the real body YAML.
+    """Affordance names -> head_yaw DELTAS (rad) from the real body YAML.
 
-    The YAML magnitude (0.3 rad) is the sim head step; on hardware the
-    magnitude is --step on BODY yaw — only the sign convention carries over.
+    Exp 45b (magnitude): the YAML's self_effect magnitudes ARE the orient
+    step sizes (0.3 normal / 0.9 big) — the body declares what it can
+    express; the script no longer imposes one --step. On hardware these
+    drive BODY yaw (the orient axis — the head clamps ±15-18°);
+    --step-scale rescales them for a different robot/room without editing
+    shipped data.
     """
     ent = ComponentRegistry().instantiate("bodies/reachy_mini")
     orient = ent.modulators["orient"]
-    actions = {an: sign(sch.self_effect["head_yaw"]) for an, sch in orient.affordances.items()}
+    actions = {an: float(sch.self_effect["head_yaw"]) for an, sch in orient.affordances.items()}
     band = ent.drive_specs["azimuth"].comfort_band
     return actions, band
 
 
-def probe_policy(nac: NAc, names: list[str], action_signs: dict[str, float]) -> dict:
+def probe_policy(nac: NAc, names: list[str], action_deltas: dict[str, float]) -> dict:
     """Frozen-policy probe: argmax per off-center bin, no motion, no epsilon.
+
+    TWO pre-registered metrics (Exp 45 + 45b):
+      correctness            — does the argmax turn toward center? (direction)
+      magnitude_appropriateness — is it the right SIZE? far bins should prefer
+        the big step (it centers them: huge relief); near bins the normal step
+        (big overshoots there -> negative relief). Bin-averaged, and the near
+        bin spans the flip point — which is itself the S1 (Weber-bins)
+        motivation, not a metric defect.
 
     correct := the argmax action drives azimuth toward 0 for that bin.
     With a CORRECTLY calibrated --flip-sign, each named action's az-effect
@@ -123,6 +135,7 @@ def probe_policy(nac: NAc, names: list[str], action_signs: dict[str, float]) -> 
     """
     out: dict[str, dict] = {}
     n_correct = 0
+    n_mag = 0
     for b in OFF_CENTER_BINS:
         rec = nac.recommend_action(
             agent_id=AGENT_ID,
@@ -138,14 +151,22 @@ def probe_policy(nac: NAc, names: list[str], action_signs: dict[str, float]) -> 
         # 2-action policy where convergence fills the positive side fast.
         chosen = rec["tool_name"] if rec else None
         side = -1.0 if "left" in b else 1.0  # az sign for this bin
-        correct = bool(chosen) and action_signs[chosen] == -side
+        correct = bool(chosen) and sign(action_deltas[chosen]) == -side
+        wants_big = b.startswith("far")
+        mag_ok = bool(chosen) and (chosen.endswith("_big") == wants_big)
         n_correct += int(correct)
+        n_mag += int(mag_ok)
         out[b] = {
             "argmax": chosen,
             "correct": correct,
+            "magnitude_ok": mag_ok,
             "biases": {a: round(nac.cluster_reward_bias(AGENT_ID, b, f"tool:{a}"), 4) for a in names},
         }
-    return {"bins": out, "correctness": n_correct / len(OFF_CENTER_BINS)}
+    return {
+        "bins": out,
+        "correctness": n_correct / len(OFF_CENTER_BINS),
+        "magnitude_appropriateness": n_mag / len(OFF_CENTER_BINS),
+    }
 
 
 class Apparatus:
@@ -309,7 +330,9 @@ def main() -> int:
         "--perturb", action="store_true", help="apparatus-generated trials (fixed source, commanded base offsets)"
     )
     ap.add_argument("--trials", type=int, default=40, help="valid credited trials this session")
-    ap.add_argument("--step", type=float, default=0.25, help="body-yaw step per action (rad)")
+    ap.add_argument(
+        "--step-scale", type=float, default=1.0, help="rescale the YAML orient magnitudes (1.0 = as declared)"
+    )
     ap.add_argument("--epsilon", type=float, default=0.25, help="exploration rate (executed choices)")
     ap.add_argument("--gain", type=float, default=1.0, help="scale on potential_diff credit")
     ap.add_argument("--flip-sign", action="store_true", help="Step-2-calibrated sign flag")
@@ -336,9 +359,9 @@ def main() -> int:
         if not args.dry_run:
             time.sleep(seconds)
 
-    action_signs, band = load_orient_actions()
-    names = list(action_signs)
-    print(f"[body] orient affordances (yaml sign): {action_signs}   comfort_band={band}")
+    action_deltas, band = load_orient_actions()
+    names = list(action_deltas)
+    print(f"[body] orient affordances (yaml rad): {action_deltas}   comfort_band={band}")
 
     os.makedirs(os.path.dirname(args.nac_path) or ".", exist_ok=True)
     nac = NAc(NACConfig(persistence_path=args.nac_path))
@@ -367,7 +390,7 @@ def main() -> int:
         session=args.session,
         mode="perturb" if args.perturb else "manual",
         trials=args.trials,
-        step=args.step,
+        step_scale=args.step_scale,
         epsilon=args.epsilon,
         flip_sign=args.flip_sign,
         fresh=args.fresh,
@@ -386,8 +409,11 @@ def main() -> int:
         log.write("apparatus_sign_check_ok", gain=round(app.gain, 3))
 
     # Trial-0 probe: the cross-session headline number (session 2 should start correct).
-    p0 = probe_policy(nac, names, action_signs)
-    print(f"[probe 0] correctness={p0['correctness']:.2f}  " + str({b: v["argmax"] for b, v in p0["bins"].items()}))
+    p0 = probe_policy(nac, names, action_deltas)
+    print(
+        f"[probe 0] correctness={p0['correctness']:.2f} magnitude={p0['magnitude_appropriateness']:.2f}  "
+        + str({b: v["argmax"] for b, v in p0["bins"].items()})
+    )
     log.write("probe", trial=0, **p0)
 
     valid = 0
@@ -470,7 +496,7 @@ def main() -> int:
             )
             action = rec["tool_name"] if rec else rng.choice(names)
 
-        delta = action_signs[action] * args.step * sign_mult
+        delta = action_deltas[action] * args.step_scale * sign_mult
         target_yaw = max(-args.max_yaw, min(args.max_yaw, rig.body_yaw + delta))
         if target_yaw == rig.body_yaw:
             print(f"      at yaw limit ({rig.body_yaw:+.2f}) — recentering (no credit)")
@@ -513,9 +539,10 @@ def main() -> int:
         )
 
         if valid % args.probe_every == 0:
-            p = probe_policy(nac, names, action_signs)
+            p = probe_policy(nac, names, action_deltas)
             print(
-                f"[probe {valid}] correctness={p['correctness']:.2f}  "
+                f"[probe {valid}] correctness={p['correctness']:.2f} "
+                f"magnitude={p['magnitude_appropriateness']:.2f}  "
                 + str({b: v["argmax"] for b, v in p["bins"].items()})
             )
             log.write("probe", trial=valid, **p)
@@ -528,7 +555,7 @@ def main() -> int:
         rig.recenter()
     nac.save(args.nac_path)
 
-    pf = probe_policy(nac, names, action_signs)
+    pf = probe_policy(nac, names, action_deltas)
 
     def _rate(bucket: list[int]) -> float | None:
         # None (not NaN) when empty — json.dumps(nan) emits a bare `NaN`
@@ -537,9 +564,15 @@ def main() -> int:
 
     g1 = _rate(greedy_correct_first10)
     g2 = _rate(greedy_correct_last10)
-    print(f"\n[final probe] correctness={pf['correctness']:.2f}")
+    print(
+        f"\n[final probe] correctness={pf['correctness']:.2f} "
+        f"magnitude_appropriateness={pf['magnitude_appropriateness']:.2f}"
+    )
     for b, v in pf["bins"].items():
-        print(f"      {b:<11} argmax={str(v['argmax']):<11} correct={v['correct']}  biases={v['biases']}")
+        print(
+            f"      {b:<11} argmax={str(v['argmax']):<15} dir={v['correct']!s:<5} mag={v['magnitude_ok']!s:<5} "
+            f"biases={v['biases']}"
+        )
     print(f"[learning] greedy turned-toward rate: first-10 trials {g1} -> last-10 trials {g2}")
     if app is not None:
         print(f"[apparatus] final yaw->az gain estimate: {app.gain:.2f}/rad (geometric would be {GEOMETRIC_GAIN:.2f})")

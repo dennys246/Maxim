@@ -167,25 +167,34 @@ class LiveRig:
             time.sleep(0.5)
             self.mini.goto_target(**kwargs)
 
+    # The DoA is a TRACKING estimator: it follows smooth motion (0.58 az/rad)
+    # but loses lock on large jumps and then reports a stale estimate for a
+    # long time (Exp 45 baseline sweep). Every motion path goes through
+    # goto_body_yaw, so all of them — apparatus, recenter, and the learner's
+    # 0.9 rad `_big` actions (Exp 45b) — inherit lock-safety here.
+    _TRACK_STEP = 0.3
+
     def recenter(self, duration: float = 1.0) -> None:
-        # Walk the base home in <=0.3 rad tracked increments — the DoA chip
-        # is a tracking estimator that loses lock on large jumps (sweep
-        # finding, 2026-07-16); a one-shot 1.4 rad recenter can pin the next
-        # read to a stale estimate and poison a credited trial.
-        step = 0.3
-        while abs(self.body_yaw) > step:
-            nxt = self.body_yaw - step * (1.0 if self.body_yaw > 0 else -1.0)
-            self._goto(body_yaw=nxt, duration=0.4)
-            self.body_yaw = nxt
-            time.sleep(0.7)
+        self.goto_body_yaw(0.0, duration=duration)  # walked → lock-safe
         self._goto(head=self._head_pose(yaw=0.0, degrees=True), body_yaw=0.0, duration=duration)
         self.body_yaw = 0.0
         time.sleep(duration + 0.3)
 
     def goto_body_yaw(self, yaw: float, duration: float = 0.6) -> None:
-        # body_yaw is an ABSOLUTE angle in radians; head=None leaves the head alone.
-        self._goto(body_yaw=float(yaw), duration=duration)
-        self.body_yaw = float(yaw)
+        """Absolute body-yaw target (rad), WALKED in <=_TRACK_STEP increments.
+
+        head=None leaves the head alone. Motions already <= _TRACK_STEP (the
+        2-action era's 0.25 rad step, every apparatus increment) are a single
+        command — byte-identical to the pre-walk behavior.
+        """
+        target = float(yaw)
+        while abs(target - self.body_yaw) > self._TRACK_STEP + 1e-9:
+            nxt = self.body_yaw + self._TRACK_STEP * (1.0 if target > self.body_yaw else -1.0)
+            self._goto(body_yaw=nxt, duration=min(duration, 0.4))
+            self.body_yaw = nxt
+            time.sleep(0.5)  # let the tracker re-lock before the next increment
+        self._goto(body_yaw=target, duration=duration)
+        self.body_yaw = target
 
 
 class DryRig:

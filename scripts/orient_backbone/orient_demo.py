@@ -55,7 +55,9 @@ def main() -> int:
     ap.add_argument("--nac-path", default=None, help=f"trained NAc json (default: first of {DEFAULT_NAC_PATHS})")
     ap.add_argument("--learn", action="store_true", help="keep learning while demoing (saves on exit)")
     ap.add_argument("--flip-sign", action="store_true", help="Step-2-calibrated sign flag")
-    ap.add_argument("--step", type=float, default=0.25, help="body-yaw step per action (rad)")
+    ap.add_argument(
+        "--step-scale", type=float, default=1.0, help="rescale the YAML orient magnitudes (1.0 = as declared)"
+    )
     ap.add_argument("--max-yaw", type=float, default=1.4, help="clamp cumulative body yaw (rad)")
     ap.add_argument("--duration", type=float, default=0.6)
     ap.add_argument("--settle", type=float, default=0.4)
@@ -70,8 +72,8 @@ def main() -> int:
         if not args.dry_run:
             time.sleep(seconds)
 
-    action_signs, band = load_orient_actions()
-    names = list(action_signs)
+    action_deltas, band = load_orient_actions()
+    names = list(action_deltas)
 
     nac_path = resolve_nac_path(args.nac_path)
     if nac_path is None:
@@ -84,8 +86,11 @@ def main() -> int:
     print(f"[nac] loaded {nac_path} (ok={ok}{', ' + err if err else ''})")
 
     # Show what the substrate knows BEFORE any motion — the demo's honest opener.
-    p = probe_policy(nac, names, action_signs)
-    print(f"[policy] probe correctness={p['correctness']:.2f}  " + str({b: v["argmax"] for b, v in p["bins"].items()}))
+    p = probe_policy(nac, names, action_deltas)
+    print(
+        f"[policy] probe correctness={p['correctness']:.2f} "
+        f"magnitude={p['magnitude_appropriateness']:.2f}  " + str({b: v["argmax"] for b, v in p["bins"].items()})
+    )
     if p["correctness"] < 1.0:
         print("[warn] policy is not fully converged — bins probing None will HOLD instead of turning.")
         print("       (train more via live_3_learn.py, or run this demo with --learn)")
@@ -137,7 +142,7 @@ def main() -> int:
                 pace(0.5)
                 continue
             action = rec["tool_name"]
-            delta = action_signs[action] * args.step * sign_mult
+            delta = action_deltas[action] * args.step_scale * sign_mult
             target_yaw = max(-args.max_yaw, min(args.max_yaw, rig.body_yaw + delta))
             if target_yaw == rig.body_yaw:
                 print(f"      at yaw limit ({rig.body_yaw:+.2f}) — recentering")

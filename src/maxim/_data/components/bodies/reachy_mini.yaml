@@ -94,22 +94,44 @@ entity:
       initial: 0.95
 
   modulators:
-    # Orient-to-center: discrete head turns toward the localized target. Acts on
+    # Orient-to-center: discrete turns toward the localized target. Acts on
     # head_yaw (an entity sensor), owns no sensors of its own -> abstract (C4).
     # The step-sign <-> azimuth mapping is a Phase-1 hardware calibration (the
-    # "shared coordinate frame" open question in audiovisual_orienting.md); the
-    # sim harness fixes a self-consistent convention.
+    # "shared coordinate frame" open question in substrate_native_orienting.md);
+    # the sim harness fixes a self-consistent convention.
+    #
+    # MAGNITUDE SET (2x2: {left,right} x {normal,big}) — orient_magnitude_learning.md
+    # S0 / Exp 45b. The magnitudes are load-bearing, not arbitrary: potential_diff
+    # credit (|az| reduction) has NO cost for large moves, so a big step wins
+    # everywhere UNLESS it overshoots when the target is already near-centered.
+    # At the hardware-measured DoA gain (0.58 az/rad, Exp 45 sweep): 0.9 rad shifts
+    # azimuth ~0.52, which overshoots across most of the near bin (|az| 0.1-0.5,
+    # negative relief) while cleanly centering the far bin (|az| 0.5-0.65, relief
+    # ~0.52). The normal 0.3 rad step shifts ~0.17 — always progress, never
+    # overshoot. That asymmetry is what makes magnitude LEARNABLE from relief alone.
+    # Retuning these values re-opens Exp 45b (see its pre-registration).
+    # turn_left/turn_right keep their pre-magnitude names + values, so a policy
+    # learned on the 2-action set (queen-mind v0.1) still loads and stays valid —
+    # it simply has not met the _big actions yet.
     orient:
       abstract: true
       affordances:
         turn_left:
           params: {}
           self_effect: {head_yaw: 0.3}
-          description: "Turn the head left a fixed step (drives azimuth toward +)."
+          description: "Turn left a normal step (drives azimuth toward +)."
         turn_right:
           params: {}
           self_effect: {head_yaw: -0.3}
-          description: "Turn the head right a fixed step (drives azimuth toward -)."
+          description: "Turn right a normal step (drives azimuth toward -)."
+        turn_left_big:
+          params: {}
+          self_effect: {head_yaw: 0.9}
+          description: "Turn left a large step (drives azimuth toward + fast; overshoots when near-centered)."
+        turn_right_big:
+          params: {}
+          self_effect: {head_yaw: -0.9}
+          description: "Turn right a large step (drives azimuth toward - fast; overshoots when near-centered)."
     motion:
       abstract: true  # capability-only — no sensors (C4)
       affordances:

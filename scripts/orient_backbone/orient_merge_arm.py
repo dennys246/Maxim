@@ -55,14 +55,17 @@ def load_nac_state(path: str) -> dict:
         return json.load(f)
 
 
-def gauntlet(state: dict, names: list[str], action_signs: dict[str, float], label: str) -> float:
+def gauntlet(state: dict, names: list[str], action_deltas: dict[str, float], label: str) -> float:
     """Probe a NAc state dict's orient policy; print the per-bin report."""
     nac = NAc(NACConfig())
     nac.load_state(state)
-    p = probe_policy(nac, names, action_signs)
-    print(f"\n[{label}] probe correctness = {p['correctness']:.2f}")
+    p = probe_policy(nac, names, action_deltas)
+    print(f"\n[{label}] probe correctness = {p['correctness']:.2f} magnitude = {p['magnitude_appropriateness']:.2f}")
     for b, v in p["bins"].items():
-        print(f"    {b:<11} argmax={str(v['argmax']):<11} correct={v['correct']}  biases={v['biases']}")
+        print(
+            f"    {b:<11} argmax={str(v['argmax']):<15} dir={v['correct']!s:<5} mag={v['magnitude_ok']!s:<5} "
+            f"biases={v['biases']}"
+        )
     return p["correctness"]
 
 
@@ -79,16 +82,16 @@ def main() -> int:
     ap.add_argument("--domain", default="robotics-orient", help="bundle substrate-domain tag")
     args = ap.parse_args()
 
-    action_signs, _band = load_orient_actions()
-    names = list(action_signs)
+    action_deltas, _band = load_orient_actions()
+    names = list(action_deltas)
 
     left = load_nac_state(args.left)
     right = load_nac_state(args.right)
-    c_left = gauntlet(left, names, action_signs, f"left  ({args.left_source})")
-    c_right = gauntlet(right, names, action_signs, f"right ({args.right_source})")
+    c_left = gauntlet(left, names, action_deltas, f"left  ({args.left_source})")
+    c_right = gauntlet(right, names, action_deltas, f"right ({args.right_source})")
 
     merged = nac_merge(left, right, left_source=args.left_source, right_source=args.right_source)
-    c_merged = gauntlet(merged, names, action_signs, "MERGED")
+    c_merged = gauntlet(merged, names, action_deltas, "MERGED")
 
     print(
         f"\n[verdict] left={c_left:.2f} right={c_right:.2f} merged={c_merged:.2f} "

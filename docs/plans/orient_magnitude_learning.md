@@ -54,19 +54,27 @@ is why it ranks last.
 
 ## The four candidate steps (ranked; independently pre-registered)
 
-### S0 — magnitude action set (Exp 45b). **Do this first; it is the actual fix.**
+### S0 — magnitude action set (Exp 45b). **BUILT + sim-validated 2026-07-16; hardware run pending.**
 
-Add `turn_{left,right}_{small,big}` to
-[bodies/reachy_mini.yaml](../../src/maxim/_data/components/bodies/reachy_mini.yaml)
-(≈ ±0.12 / ±0.4 rad `self_effect`); scripts read each affordance's **actual magnitude**
-instead of sign × fixed `--step` (~10 lines; `orient_demo.py` inherits it). Retrain
-fresh (~60–80 trials, 16 state-action pairs).
+`bodies/reachy_mini.yaml` `orient` now declares 2×2: `turn_left`/`turn_right` (±0.3 rad,
+names+values unchanged → **queen-mind v0.1 still loads**) plus `turn_left_big`/
+`turn_right_big` (±0.9). Scripts read YAML magnitudes directly (`--step` → `--step-scale`).
+Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magnitude.md)**.
 - **Front-gate:** rides existing infra (YAML + NAc + `potential_diff`). No new mechanism.
-- **Pre-registered metric:** *magnitude-appropriateness* — far bins prefer `big`, near
-  bins prefer `small` — alongside direction correctness. Learned-vs-servo separation is
-  unchanged (probe curve from empty + cross-session).
-- **Note:** this trips Exp 45's own re-run rule ("orient-affordance YAML change") → new
-  pre-registration, fresh NAc, new bundle version (queen-mind v0.2).
+- **CORRECTION to this plan's first sketch (±0.12/±0.4 would have FAILED):**
+  `potential_diff` has no cost for large moves, so big wins everywhere *unless it
+  overshoots near center*. At the measured 0.58 az/rad gain, ±0.12/±0.4 never overshoots
+  → the policy would learn "always big". **0.3 normal / 0.9 big** is what makes magnitude
+  learnable (big: −0.16 relief from az 0.18, +0.52 from az 0.60).
+- **Sim-validated expectation (seeds 0–2):** direction **1.00 robust**; magnitude **real
+  but seed-dependent, 0.50–1.00 (mean ≈0.8)** — exploration-limited, not credit-limited
+  (a `far_right` bin ended with the better action's bias at exactly **0.0 — never
+  sampled**: the Exp 41 NAc-fixation pattern, which a 2-action set could not expose).
+  Protocol: `--epsilon 0.5`, 100 trials, `--fresh` (~30 min hardware).
+- **Lock-safety fold:** 0.9 rad in one jump would lose DoA lock → `LiveRig.goto_body_yaw`
+  now walks EVERY motion in ≤0.3 rad increments (≤0.3 steps unchanged; `_big` = 3 sub-moves).
+- **Note:** trips Exp 45's "orient-affordance YAML change" re-run rule → fresh NAc,
+  queen-mind **v0.2**.
 
 ### S1 — Weber-scaled bins (IPS). **Nearly free; the honest answer to "finer bins".**
 
@@ -138,9 +146,12 @@ claims — the cradle-cascade lesson (don't stack unverifiable layers) applies e
    calibration buy that justifies the coupling?
 2. **S3 deriver:** reshape the Statistician (cross-state pattern support) vs a new
    derivation step? Front-gate argument required either way.
-3. **Does S0 make S1 moot?** If near/far × small/big already produces
-   magnitude-appropriate behavior, finer/Weber bins may add nothing measurable. Check
-   before building.
+3. ~~**Does S0 make S1 moot?**~~ **ANSWERED (2026-07-16, sim): no — S0's residual noise
+   IS S1's motivation.** The `near` bin (|az| 0.1–0.5) *spans the flip point*: big is
+   wrong at az 0.18 (−0.16 relief) and right at 0.42 (+0.32). A bin whose correct action
+   changes inside it is under-resolved by construction — bin-averaging works but is noisy
+   and exploration-fragile, exactly as the seed sweep shows. Weber bins put the flip
+   *between* bins. Now evidence-backed rather than speculative.
 4. **Integration-test framing:** once Gap 1 closes, the orient task becomes the
    project's cleanest bio-region integration probe. Worth a standing "does the whole
    stack still carry a real sensorimotor policy" regression run?
