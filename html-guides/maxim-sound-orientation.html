@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Sound Orienting — Maxim Docs | Substrate-Learned Sensorimotor Policy on Real Hardware{% endblock %}
+
+{% block meta_description %}How Maxim's bio-substrate learned to turn a real robot toward sound — no LLM in the action path, learned in 10 trials, transferred across sessions, and mergeable across robots.{% endblock %}
+
+{% block meta_keywords %}Maxim sound orienting, sound localization robot, DoA orienting, substrate learning, nucleus accumbens robot, Reachy Mini sound, sensorimotor learning, robot learns to orient, fleet learning, hivemind substrate{% endblock %}
+
+{% block meta_author %}Maxim Project{% endblock %}
+{% block og_site_name %}Maxim{% endblock %}
+{% block og_type %}article{% endblock %}
+
+{% block structured_data %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "Sound Orienting — a Substrate-Learned Sensorimotor Policy on Real Hardware",
+  "description": "Maxim's nucleus-accumbens substrate learns to turn a Reachy Mini toward speech, credited only by relief (azimuth-error reduction). Learned from scratch in ~10 hardware trials, correct at trial 0 of the next session, and mergeable across independently trained robots.",
+  "author": { "@type": "Person", "name": "Denny Schaedig", "url": "https://www.dennyschaedig.com" },
+  "publisher": { "@type": "Organization", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "mainEntityOfPage": "https://www.dennyschaedig.com/maxim/sound-orientation",
+  "isPartOf": { "@type": "WebSite", "name": "Maxim", "url": "https://www.dennyschaedig.com/maxim" },
+  "keywords": ["sound orienting", "sound localization", "substrate learning", "sensorimotor policy", "Reachy Mini", "fleet learning", "hivemind"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Maxim", "item": "https://www.dennyschaedig.com/maxim" },
+    { "@type": "ListItem", "position": 2, "name": "Sound Orienting", "item": "https://www.dennyschaedig.com/maxim/sound-orientation" }
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <a href="/maxim" class="text-indigo-400 hover:text-indigo-300 text-sm font-medium">&larr; Back to Overview</a>
+
+  <header class="text-center space-y-2">
+    <p class="text-xs font-bold text-indigo-500 uppercase tracking-[0.3em]">MAXIM</p>
+    <h1 class="text-3xl md:text-4xl font-bold text-white">Sound Orienting</h1>
+    <p class="text-slate-400 text-lg">The substrate's first real-hardware sensorimotor policy &mdash; learned, not programmed</p>
+  </header>
+
+  <!-- Core Concept -->
+  <section class="space-y-4">
+    <h2 id="what-happened" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What Happened</h2>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
+      <h3 class="text-lg font-semibold text-emerald-400 mb-2">Core Result</h3>
+      <p class="text-slate-300">A Reachy Mini <strong class="text-white">learned to turn toward speech</strong> &mdash; starting from a completely empty reward substrate, with <strong class="text-white">no LLM anywhere in the action path</strong>. The policy went from chance to 100% correct within ~10 hardware trials, was already correct at trial&nbsp;0 of the next session (loaded from the persisted substrate), and two independently trained substrates merged into a policy at least as good as either &mdash; the seed of fleet learning.</p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">Nobody wrote a &ldquo;turn toward the sound&rdquo; rule. The robot's reward substrate (the <a href="/maxim/agent-architecture" class="text-indigo-400 hover:text-indigo-300 no-underline">nucleus accumbens model</a>) discovered which turn direction reduces its bearing error in each situation, purely from experiencing relief when the error shrank &mdash; the same drive-pain-reduction credit that powers Maxim's <a href="/maxim/proprioception" class="text-indigo-400 hover:text-indigo-300 no-underline">interoceptive drives</a>.</p>
+  </section>
+
+  <!-- The Loop -->
+  <section class="space-y-4">
+    <h2 id="the-loop" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Learning Loop</h2>
+
+    <div class="bg-slate-950 border border-slate-700 rounded-xl p-5 overflow-x-auto">
+      <pre class="text-sm text-slate-300 leading-relaxed"><code>mic array (XVF3800 DoA chip)          <span class="text-slate-500"># localization is on-chip; Maxim does NOT learn to localize</span>
+   &darr;  azimuth &isin; [-1, +1]              <span class="text-slate-500"># 0 = centered; the "centeredness" homeostatic drive's set-point</span>
+   &darr;  state = azimuth bin               <span class="text-slate-500"># far_left / near_left / near_right / far_right</span>
+NAc.recommend_action(state)            <span class="text-slate-500"># substrate-primary: cluster-keyed reward bias, no LLM</span>
+   &darr;  turn_left / turn_right           <span class="text-slate-500"># body-yaw step (the head's &plusmn;17&deg; clamp made body the orient axis)</span>
+robot turns &rarr; chip re-measures        <span class="text-slate-500"># the world IS the model — physics closes the loop</span>
+   &darr;  relief = |az&#8320;| &minus; |az&#8321;|           <span class="text-slate-500"># drive-pain REDUCTION: positive = progress, negative = regress</span>
+NAc.update_cluster_reward(state, action, relief)
+   &darr;  persist                          <span class="text-slate-500"># the learned policy survives restarts — and can be shared</span></code></pre>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The design splits cleanly: the <strong class="text-white">chip</strong> answers &ldquo;where is the sound?&rdquo; (that's solved hardware); the <strong class="text-white">substrate</strong> learns &ldquo;what do I do about it?&rdquo; &mdash; which action, in which state, reduces the error. Credit is <em>relief</em> (error reduction per step), not raw pain: an earlier simulation study showed pain alone cannot drive action selection &mdash; it punishes correct-but-incomplete steps mid-approach &mdash; while dense per-step relief learns a perfect policy from every state.</p>
+  </section>
+
+  <!-- Learned, not a servo -->
+  <section class="space-y-4">
+    <h2 id="learned-not-servo" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Learned &mdash; Provably Not a Servo</h2>
+
+    <p class="text-slate-300 leading-relaxed">A hard-coded servo would also drive the error to zero &mdash; and would be 100% correct from trial&nbsp;1. So a working orient loop proves nothing by itself. Three pre-registered separations make the learning claim (full data: Exp&nbsp;45 in the repo):</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">1. Learning curve</h3>
+        <p class="text-slate-300 text-sm">A frozen-policy probe (pure substrate lookup, no motion, no exploration) ran every 5 trials. From an empty substrate: <strong class="text-emerald-400">0% &rarr; 75% &rarr; 100% correct by trial 10</strong>, held through 40. A servo can't have a learning curve.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">2. Cross-session transfer</h3>
+        <p class="text-slate-300 text-sm">A new session loaded the persisted substrate and probed <strong class="text-emerald-400">100% correct at trial 0</strong> &mdash; before any new experience. All 31 greedy actions that session turned the right way.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">3. Merge across learners</h3>
+        <p class="text-slate-300 text-sm">Two independently trained substrates merged (<code class="bg-slate-950 px-1 rounded text-xs">nac_merge</code>) into a policy <strong class="text-emerald-400">at least as correct as either input</strong> &mdash; in rehearsal the merge even repaired one input's weak state. Fleet learning in miniature.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">One moment from the live run says it all: on trial 2 an exploratory wrong turn made the error worse (negative relief); on trial 3, the very next visit to that state, the greedy choice had already flipped to the correct turn. <strong class="text-white">One-trial operant learning, on hardware.</strong></p>
+  </section>
+
+  <!-- What the hardware taught us -->
+  <section class="space-y-4">
+    <h2 id="hardware-lessons" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What the Hardware Taught Us</h2>
+
+    <p class="text-slate-300 leading-relaxed">The first learning run half-worked and then poisoned itself &mdash; three identical &ldquo;impossible&rdquo; readings knocked out a learned state late in the session. Instead of patching the loop, we characterized the sensor: a static sweep stepping the base across its full range, both directions, measuring the reported azimuth at every pose.</p>
+
+    <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6 space-y-3">
+      <h3 class="text-lg font-semibold text-amber-400">The sensor is a tracker, not a measurement</h3>
+      <p class="text-slate-300 text-sm">Walked in small increments, the DoA chip is a nearly perfect linear sensor (0.58 azimuth/rad, ~1&deg; resolution). After one large jump, it <strong class="text-white">loses lock and reports its stale estimate</strong> &mdash; for a long time. And ~90&deg; off the array axis lies an <strong class="text-white">endfire degeneracy zone</strong> where readings flip bimodally between two values. Every prior anomaly &mdash; inconsistent gain measurements, the poisoned state, unreachable placements &mdash; fell out of these two facts.</p>
+      <p class="text-slate-300 text-sm">The fixes were mechanical once measured: move in small tracked steps, keep targets inside the reliable range. The lesson generalizes: <strong class="text-white">characterize the response curve of any bearing sensor before stacking learning on it</strong> &mdash; and re-sweep after any acoustic change. The sweep is now a standing calibration step and the before/after instrument for planned hardware experiments (adding pinna-like &ldquo;ears&rdquo; to break the array's front/back ambiguity).</p>
+    </div>
+  </section>
+
+  <!-- Porting -->
+  <section class="space-y-4">
+    <h2 id="porting" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Running This on Your Robot</h2>
+
+    <p class="text-slate-300 leading-relaxed">The learning core is robot-agnostic by construction &mdash; it's keyed on normalized azimuth bins and action names, never on hardware. Per the <a href="/maxim/embodiment" class="text-indigo-400 hover:text-indigo-300 no-underline">capability-driven embodiment principle</a>, a new platform declares what it has; the cognition code doesn't change. Your robot supplies exactly four things:</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">1. A gated bearing source</h3>
+        <p class="text-slate-300 text-sm">Any front-end producing a normalized azimuth (&minus;1..+1, 0 = front) plus a validity gate (speech detection, VAD, energy). On-chip DoA, a ROS audio stack, an external array &mdash; the robot's business. <strong class="text-white">Never fabricate a direction.</strong></p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">2. A discrete yaw primitive</h3>
+        <p class="text-slate-300 text-sm">&ldquo;Turn the sensing frame by &plusmn;step.&rdquo; Which joint is the robot's choice (Reachy: base turntable; a biped: torso or step-turn) &mdash; but it must rotate the <em>microphones</em>, or the loop never closes.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">3. A body declaration</h3>
+        <p class="text-slate-300 text-sm">A SEM body YAML with the azimuth sensor, the centeredness drive (set-point 0, zero drift &mdash; the world re-measures), and the two orient affordances. Copy the Reachy pattern.</p>
+      </div>
+      <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
+        <h3 class="text-white font-semibold mb-2">4. Calibration answers</h3>
+        <p class="text-slate-300 text-sm">Sign (does a &ldquo;left&rdquo; turn move azimuth + or &minus;?), the sensor's response curve (memoryless or tracker?), settle timing, step size vs noise, axis limits. All discovered by the standing protocol: primitives-smoke &rarr; sign self-check &rarr; sweep.</p>
+      </div>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">The full contract &mdash; including Atlas-class notes (external localization front-end, expensive step-turns, mics-must-turn-with-the-frame) and the apparatus-generated trial protocol that makes runs hands-off and balanced &mdash; lives in <code class="bg-slate-950 px-1 rounded text-xs">docs/embodiment/porting_orient_loop.md</code> in the repo.</p>
+  </section>
+
+  <!-- Sharing -->
+  <section class="space-y-4">
+    <h2 id="sharing" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Sharing What Your Robot Learned</h2>
+
+    <p class="text-slate-300 leading-relaxed">The learned policy is eight numbers with provenance &mdash; and <strong class="text-white">zero personal data</strong>: substrate bundles carry distilled learning (reward biases, concept prototypes), never episodes, by construction. That makes a trained orient policy the first real payload for the <a href="/maxim/hivemind" class="text-indigo-400 hover:text-indigo-300 no-underline">Hivemind</a>'s substrate-sharing layer:</p>
+
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-3">
+      <ol class="list-decimal list-inside text-slate-300 text-sm space-y-2">
+        <li><strong class="text-white">Gauntlet</strong> &mdash; the frozen-policy probe validates any contribution in milliseconds, no hardware: a flipped-calibration or poisoned policy simply fails. This is promotion gate #1 of the planned Queen-tier trust topology (curated substrate flows out freely as signed releases; contributions earn their way in through validation).</li>
+        <li><strong class="text-white">Merge</strong> &mdash; <code class="bg-slate-950 px-1 rounded text-xs">nac_merge</code> combines contributors' reward biases (provenance-tagged, clamped), and the tool refuses to bundle any merge that isn't at least as correct as its inputs.</li>
+        <li><strong class="text-white">Bundle</strong> &mdash; the gauntlet-passed result exports as a domain-tagged substrate zip (&ldquo;queen-mind&rdquo; release). Another robot imports, merges, and starts its first session already knowing how to orient &mdash; identical hardware means the policy transfers by construction.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- What's next -->
+  <section class="space-y-4">
+    <h2 id="whats-next" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Where This Goes</h2>
+    <p class="text-slate-300 leading-relaxed">Orienting is Layer 1 of a deliberate ladder. Next rungs: <strong class="text-white">ears</strong> (pinna-like shell structures + a raw two-mic binaural front-end to break the linear array's front/back ambiguity &mdash; turning a hardware blind spot into a learnable state); <strong class="text-white">vision on the same backbone</strong> (a camera bearing feeds the same centeredness drive; category recognition decides what's worth orienting to); and the north star &mdash; <strong class="text-white">spatial co-location as a grounding substrate</strong>: when the head centers on something seen, heard, and named at the same pose and moment, that shared location becomes the index that binds sound, sight, and words.</p>
+  </section>
+
+  <!-- Navigation -->
+  <div class="pt-6 border-t border-slate-700 space-y-5">
+    <div class="flex justify-between items-stretch gap-4">
+      <a href="/maxim/embodiment" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">&larr; Previous</span>
+        <span class="block text-white font-medium mt-1">Embodiment</span>
+      </a>
+      <a href="/maxim/hivemind" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl p-4 hover:border-indigo-500/50 hover:-translate-y-0.5 transition no-underline group text-right">
+        <span class="text-xs text-slate-500 group-hover:text-indigo-400 transition">Next &rarr;</span>
+        <span class="block text-white font-medium mt-1">Hivemind + Oasis</span>
+      </a>
+    </div>
+    <div class="text-center space-y-2">
+      <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">All Chapters</h3>
+      <div class="flex flex-wrap justify-center gap-2">
+        <a href="/maxim" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Overview</a>
+        <a href="/maxim/agent-architecture" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">The Agent Brain</a>
+        <a href="/maxim/memory-systems" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Memory Systems</a>
+        <a href="/maxim/attention-salience" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Attention &amp; Salience</a>
+        <a href="/maxim/proprioception" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Body Awareness</a>
+        <a href="/maxim/embodiment" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Embodiment</a>
+        <a href="/maxim/sound-orientation" class="text-xs text-indigo-400 font-medium transition px-2 py-1 rounded bg-slate-800 no-underline">Sound Orienting</a>
+        <a href="/maxim/substrate-primary" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Substrate-Primary</a>
+        <a href="/maxim/hivemind" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Hivemind + Oasis</a>
+        <a href="/maxim/experiments" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Experiments</a>
+        <a href="/maxim/communication" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Communication</a>
+        <a href="/maxim/usage-guide" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Usage Guide</a>
+        <a href="/maxim/technical-deepdive" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Technical Deep Dive</a>
+        <a href="/maxim/roadmap" class="text-xs text-slate-400 hover:text-indigo-400 transition px-2 py-1 rounded hover:bg-slate-800 no-underline">Roadmap</a>
+      </div>
+    </div>
+  </div>
+  {% include "_maxim_footer.html" %}
+</div>
+{% endblock %}

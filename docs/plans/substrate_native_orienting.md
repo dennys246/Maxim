@@ -4,7 +4,7 @@
 plan for the orient-to-center line. It **absorbs** the former
 `audiovisual_orienting.md` (cross-track coordination) and sits above two execution
 layers it does NOT re-do:
-- [`reachy_orient_live.md`](reachy_orient_live.md) — the live hardware runbook (Phase 1; Step 1 **PASSED 2026-07-15**).
+- [`reachy_orient_live.md`](reachy_orient_live.md) — the live hardware runbook (Phase 1; Steps 1-2 **PASSED 2026-07-15**, Step 3 live).
 - [`perception_pipeline_placement.md`](perception_pipeline_placement.md) — the 1.1 placement/substrate-modality **infrastructure** the orient loop rides on (broader than orienting; stays separate).
 
 **One-line thesis:** the orient-to-center loop — turn the head/body to drive a sensed
@@ -140,8 +140,19 @@ the Roy experiments applied:
   learned in one context primes another).
 
 Design the experiment so "it learned" is separable from "it's a servo," or the result
-will not earn the substrate-learning claim. The pre-registered measurement lives in a
-future `docs/experiments/NN_reachy_sound_localization.md`.
+will not earn the substrate-learning claim. The pre-registered measurement lives in
+[docs/experiments/45_reachy_orient_live.md](../experiments/45_reachy_orient_live.md)
+(arms 1-2 PASSED 2026-07-16; arm 3 merge in progress).
+
+**Third, stronger arm (added 2026-07-15): cross-UNIT transfer via Hivemind.** The learned
+policy (`cluster_reward_bias`, 4 bins × 2 actions) is already a first-class `nac_merge`
+surface, privacy-clean by construction (bundles never ship episodes), and the Reachy Mini
+fleet is hardware-homogeneous — so "policy learned on robot A, probe correctness 1.0 at
+trial 0 on robot B" is a strictly stronger learned-vs-servo demonstration than
+cross-session, and the merge mechanics are demonstrable with one robot (two independent
+`--fresh` trainings → `nac_merge` → probe). See the runbook's post-Step-3 Follow-up A and
+[maxim_hivemind.md](maxim_hivemind.md) "Trust topology" (the probe validator is promotion
+gauntlet #1 for the Queen tier).
 
 ---
 
@@ -211,7 +222,8 @@ Audio leads because its perception is *solved* → the cleanest path to a workin
 learning loop, and it **validates the shared motor/drive/credit substrate on-device**
 (which visual then inherits for free). Deliverable: *Reachy turns toward sounds and
 learns.* **Execution runbook + live status: [`reachy_orient_live.md`](reachy_orient_live.md)
-(Step 1 PASSED 2026-07-15; Steps 2-3 next).**
+(Steps 1-2 PASSED 2026-07-15 — default sign calibrated, body_yaw is the orient axis;
+Step 3 live in `--perturb` mode, early operant signature confirmed).**
 
 **Phase 2 — sim → hardware, VISUAL.** First clear **P1** (vision-encoder category
 clustering on real skier-vs-object *images* — Exp 43 prerequisite, no robot; the
@@ -277,6 +289,38 @@ the runbook is actively used on-device; the infra is broader than orienting).
 
 ---
 
+## Tracked follow-up experiments
+
+**Eared-shell acoustic mod (pre-registered 2026-07-16; hardware track, runs AFTER Layer 1
+s2 + merge arm bank the stock-Reachy claims).** Redesign the Reachy head shell to add
+pinna-like structures ("ears") on both sides, creating asymmetric acoustic paths to the
+enclosed mic array. Two hypotheses, pre-registered with the measurement instrument
+already in hand:
+
+- **H1 (acoustic access):** the stock shell's minimal openings degrade the DoA response
+  (compression/saturation observed in the 2026-07-16 baseline sweep). *Measure:* run
+  [`doa_sweep.py`](../../scripts/orient_backbone/doa_sweep.py) before (label=baseline —
+  DONE: tracked gain 0.58/rad, reliable to |az|≈0.69, endfire bimodal zone) and after
+  (label=eared-v1) — the curve diff IS the effect. Watch-item: the XVF3800 computes DoA
+  assuming factory geometry/free-field acoustics — ears may WORSEN its estimate; that is
+  a valid (publishable) outcome, not a failure of the experiment.
+- **H2 (front/back symmetry breaking — the real prize):** asymmetric pinnae create
+  direction-dependent level/spectral cues that resolve the linear array's front/back
+  ambiguity — the blind spot no software fixes. These cues will NOT appear in the chip's
+  DoA angle; they appear in the audio stream itself. The chip allows routing **2 raw
+  mics** (outermost pair = a binaural pair): build a small ILD/spectral front-end
+  (a new `PerceptSource`, per the capability-driven pattern in
+  [porting_orient_loop.md](../embodiment/porting_orient_loop.md)) and *measure:* can a
+  front-vs-back classifier on the raw pair beat chance, before vs after ears? If yes,
+  the eared body declares a `front_back` sensor, `az_bin` gains rear states, and the
+  SAME learning loop learns to turn around — a genuinely new behavior from a hardware
+  change with zero substrate-code change.
+
+Discipline: the modded robot is a **body variant** (own YAML + full calibration re-run:
+sign self-check + sweep). Baseline sweeps archived before any shell change. Test the
+raw-2-mic routing path (the chip's beamformer/AEC may normalize level cues in the
+processed stream) BEFORE investing in ear geometry.
+
 ## Open questions (pre-implementation review)
 
 1. **Empty-state arbitration** — audio-empty (no sound → wait) vs vision-empty (no
@@ -297,6 +341,9 @@ the runbook is actively used on-device; the infra is broader than orienting).
 ## Pointers
 
 - Execution runbook: [`reachy_orient_live.md`](reachy_orient_live.md)
+- New-robot porting contract: [`docs/embodiment/porting_orient_loop.md`](../embodiment/porting_orient_loop.md)
+  (what's robot-agnostic, what each robot supplies, per-robot calibration protocol;
+  code extraction deferred to the second robot per the second-consumer test)
 - Infra: [`perception_pipeline_placement.md`](perception_pipeline_placement.md),
   [`audio_localization.py`](../../src/maxim/embodiment/audio_localization.py),
   [`docs/embodiment/reachy_mini/`](../embodiment/reachy_mini/README.md)
@@ -319,3 +366,18 @@ the runbook is actively used on-device; the infra is broader than orienting).
   created: consolidates the coordination content, adds the Layer-1/Layer-2 framing + the
   spatial-grounding north star + the learned-vs-servo rigor bar. `audiovisual_orienting.md`
   archived (merged up).
+- **2026-07-15 (later)** — Step 2 PASSED on-device (16/16 valid, default sign; body_yaw
+  chosen as the orient axis over the head's ±15-18° clamp). Step 3 shipped with a
+  `--perturb` apparatus mode (fixed source, commanded base offsets, balanced bins,
+  startup sign self-check, contamination guard) and went live — early trials show the
+  one-trial operant signature. Added the cross-unit Hivemind merge arm to the rigor bar
+  (runbook Follow-up A) + the Queen-tier trust topology to
+  [maxim_hivemind.md](maxim_hivemind.md).
+- **2026-07-16** — s1 perturb run (40 trials): real learning through sensor noise (probe
+  0.75 by trial 20) but forensics exposed sensor anomalies → baseline DoA sweep run
+  on-device. **Key finding: the XVF3800 DoA is a tracking estimator** (tracked gain
+  0.58/rad, near-linear; loses lock on large jumps) with an endfire bimodal zone —
+  apparatus now walks all moves in ≤0.3 rad tracked increments, placements capped
+  |az| ≤ 0.65. Porting doc gained the memoryless-vs-tracker calibration step.
+  Eared-shell acoustic mod pre-registered as a tracked follow-up (H1 acoustic access,
+  H2 front/back symmetry breaking via raw-2-mic binaural front-end).

@@ -85,6 +85,37 @@ The Reachy Mini is exactly the "**coplanar → declare azimuth + yaw, stop**" ca
 
 ---
 
+## Measured DoA response (2026-07-16 static sweep — hardware-validated)
+
+[`scripts/orient_backbone/doa_sweep.py`](../../../scripts/orient_backbone/doa_sweep.py)
+mapped measured azimuth vs commanded base pose (±1.4 rad, 0.1 rad increments,
+ascending + descending, 5 speech-gated reads/pose, fixed front speech source).
+These numbers supersede any assumed-linear model — the orient learning loop
+(Exp 45) initially mis-modeled the sensor and paid for it:
+
+1. **The DoA is a TRACKING estimator, not a memoryless measurement.** Under small
+   incremental motion it is nearly perfectly linear: **tracked gain ≈ 0.58 az/rad**
+   (geometric prediction 0.64), quantization ≈ 1°, very tight per-pose reads. After a
+   single large jump (1.4 rad in one command) it **loses lock and pins near the stale
+   estimate** — one half-sweep stayed wrong end-to-end; worst-pose hysteresis 0.63.
+   **Consequence:** any apparatus or behavior that rotates the robot substantially
+   must move in small tracked increments (the orient scripts walk ≤ 0.3 rad per step).
+   Apparent "gain" measured from ad-hoc large steps is meaningless (we variously
+   measured 2-3× and 0.15× geometric before the sweep separated tracked from jump
+   behavior).
+2. **Endfire bimodal zone.** With the source ~90° off the array axis, samples flip
+   bimodally between two stable values (~0.28 and ~0.72 normalized in our setup) —
+   the linear array's endfire degeneracy. Reliable tracked readings extend to
+   ~|azimuth| 0.69; the orient loop caps placement targets at |az| ≤ 0.65.
+3. **Speech-gate rate varies wildly by pose** (5-100%); always gate + median-of-k.
+
+Re-run the sweep after ANY acoustic change (shell mods, mounts, rooms) — it is the
+before/after instrument for the eared-shell experiment
+([substrate_native_orienting.md](../../plans/substrate_native_orienting.md) follow-ups).
+Behavioral results built on this sensor: [Exp 45](../../experiments/45_reachy_orient_live.md).
+
+---
+
 ## Sources
 
 - Reachy Mini media stack — https://huggingface.co/blog/pollen-robotics/reachy-mini-media-stack

@@ -89,13 +89,20 @@ the operator makes sounds left/right — print `(doa_radians, is_speech, azimuth
 yaw +20°, −20°, recenter. **STOP-if:** DoA never returns / azimuth doesn't track L↔R / head doesn't
 move. **Success:** azimuth tracks the sound side; head visibly turns.
 
-### Step 2 — reactive orient, NO learning  (`live_2_reactive.py`)
+### Step 2 — reactive orient, NO learning  ([`live_2_reactive.py`](../../scripts/orient_backbone/live_2_reactive.py)) — **PASSED 2026-07-15**
 Loop: read DoA (gated on `is_speech_detected`) → azimuth → if `|az| > comfort_band`, `goto_target`
 one discrete step toward center. **Primary purpose: calibrate the coordinate-frame sign** — confirm a
 turn *reduces* `|azimuth|`; **flip the step sign if not** (the "shared coordinate frame" open question).
 **Success:** head turns toward and holds on a sustained sound.
+Result (robot at 10.6.0.63, station mode): 16/16 valid trials, 15 improved / 0 worsened, mean
+d|az| = +0.308/step → **default sign confirmed** (no `--flip-sign` for Step 3). Design note: the
+discrete step drives **body_yaw**, not head_yaw — head clamps ±15-18° (≈ ±0.2 az) vs azimuth ±1
+(±90°); body yaw rotates the whole head+mic assembly. Two open observations for Step 3's
+instrumentation: (a) all 16 trials landed az>0 (one-sided source placement — the `--perturb`
+self-check now covers both sides), (b) measured |az| change per 0.25 rad step ran 2-3× the
+geometric prediction (0.16) — gain anomaly tracked by the Step-3 apparatus gain estimator.
 
-### Step 3 — learning orient loop  (`live_3_learn.py`)
+### Step 3 — learning orient loop  ([`live_3_learn.py`](../../scripts/orient_backbone/live_3_learn.py)) — **in progress 2026-07-15**
 Load the real `bodies/reachy_mini`; each tick: overwrite the `azimuth` sensor from DoA (world
 re-measurement is free on hardware); `state = az_bin`; substrate-primary `recommend_action` over
 `turn_left`/`turn_right`; dispatch via `goto_target`; **`potential_diff` credit** = `|az_before| −
@@ -104,6 +111,43 @@ This is the Phase 0a loop with sim re-measurement swapped for live DoA. **The on
 production piece: the `potential_diff` credit as a post-affordance hook** (in-loop for now; the
 executor-dispatch integration is a follow-up). **Success:** orient directedness rises across the
 session; a second session (loaded NAc) starts already directed.
+**`--perturb` mode (recommended; addresses the learned-vs-servo rigor bar):** the source sits
+still; the APPARATUS generates each trial by rotating the base a commanded offset (balanced az-bin
+schedule, intended-vs-measured logged, two-sided sign self-check aborts before learning on a wrong
+`--flip-sign`). Contamination guard: the commanded ground truth never reaches NAc — learner state
+stays DoA-derived, credit stays `potential_diff` on re-measured DoA; apparatus moves log as
+`apparatus_*` events. Frozen-policy probes every 5 trials give an epsilon-free learning curve
+(dry-run signature: probe correctness 0.00 → 1.00 by ~trial 20; session 2 starts at 1.00).
+Early live trials show the expected operant signature (wrong explore action → negative relief →
+next greedy visit flips correct).
+
+## Sensor characterization — baseline sweep findings (2026-07-16, RESOLVED)
+
+[`doa_sweep.py`](../../scripts/orient_backbone/doa_sweep.py) (±1.4 rad, 0.1 increments,
+ascending+descending, 5 gated reads/pose; data `/tmp/doa_sweep.jsonl` label=baseline):
+
+1. **The XVF3800 DoA is a TRACKING estimator, not a memoryless measurement.** Walked in
+   0.1 rad increments (descending pass) it is a nearly perfect linear sensor: az ≈
+   0.58×(ψ−ψ₀), **tracked gain 0.58/rad** (geometric = 0.64), tight ~1° quantized reads.
+   After a single 1.4 rad jump (ascending pass start) it **loses lock and stays pinned
+   near the stale estimate** for the entire half-sweep (hysteresis 0.63 at the worst
+   pose). This one fact explains every prior anomaly: Step 2's apparent 2-3× gain
+   (re-lock snaps), s1's sign-check reading ~0 for ±0.7-0.9 rad jumps (lock kept),
+   small learner steps tracking fine, and far placements landing near.
+   **Consequence (implemented):** `Apparatus._move` walks ALL moves in ≤0.3 rad
+   tracked increments; gain prior = 0.58.
+2. **Endfire bimodal zone:** at poses putting the source ~90° off the array axis
+   (ψ ≥ +1.2 in this setup), samples flip bimodally (~+0.28 ↔ ~+0.72) — the linear
+   array's endfire degeneracy. This was s1's reproducible anti-physical zone that
+   poisoned `near_right` late-session. **Consequence (implemented):** placement targets
+   capped at |az| ≤ 0.65 (far-bin range now 0.55-0.65); reliable tracked range measured
+   to ~|az| 0.69.
+3. Speech-gate rate varies 5-100% by pose; the 100%-gate pose at +1.40 (endfire) is
+   itself suspect. Median-of-k + gating stays mandatory.
+
+Re-run the sweep after ANY acoustic change (shell mod, new mount, new room) — it is the
+A/B instrument for the eared-shell experiment
+([substrate_native_orienting.md](substrate_native_orienting.md) follow-ups).
 
 ## Calibration unknowns (resolve empirically on-device)
 
@@ -117,8 +161,30 @@ session; a second session (loaded NAc) starts already directed.
   source in front for now (vision resolves this in Phase 3).
 
 ## After Step 3
-→ Phase 2 (visual `PerceptSource` on the same backbone, after the P1 vision-encoder check) →
-Phase 3 (audio+visual fusion). See [`audiovisual_orienting.md`](substrate_native_orienting.md).
+
+**Follow-up A — Hivemind merge arm (added 2026-07-15, ~30 LOC against existing surfaces).**
+The learned orient policy (`cluster_reward_bias`: 4 az-bins × 2 actions) is the first
+concrete cross-robot Hivemind payload — tiny, privacy-clean (bundles never carry
+episodes), and hardware-homogeneous across the Reachy Mini fleet, so cross-unit transfer
+holds by construction. `nac_merge` already merges `cluster_reward_bias` (mean, clamped
+±1.0). The arm, runnable with ONE robot: train two independent fresh NAcs (Step 3
+`--fresh` runs, different seeds) → `hivemind.merge.nac_merge` → `probe_policy` the merged
+result — expect correctness 1.0 with sensibly-averaged biases. That demonstrates the
+fleet-learning mechanics on real hardware data; a second physical unit later makes it
+literally cross-unit (probe 1.0 at trial 0 on robot B = a stronger learned-vs-servo claim
+than cross-session). The probe validator doubles as **promotion gauntlet #1** for the
+Queen-tier trust topology — see [`maxim_hivemind.md`](maxim_hivemind.md) "Trust topology"
+(a poisoned/flipped-calibration policy is rejectable in milliseconds, no hardware).
+
+**Follow-up B — new-robot portability.** The contract for running this loop on another
+robot (what's already agnostic, what each robot supplies, the calibration protocol this
+runbook instantiates) is pinned in
+[`docs/embodiment/porting_orient_loop.md`](../embodiment/porting_orient_loop.md). Code
+extraction (an `OrientRig` protocol + `embodiment/orient_loop.py`) is deliberately
+deferred until robot #2 exists (second-consumer test).
+
+**Then** → Phase 2 (visual `PerceptSource` on the same backbone, after the P1 vision-encoder
+check) → Phase 3 (audio+visual fusion). See [`substrate_native_orienting.md`](substrate_native_orienting.md).
 
 **Phase 2 camera notes (from the streaming session's SDK findings):**
 - Frames: `mini.media.get_frame()` → BGR `uint8` ~640×480 or `None`. The camera inits on construction
