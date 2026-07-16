@@ -321,9 +321,47 @@ class DryRig:
         self.body_yaw = float(yaw)
 
 
-def az_bin(az: float, band: float) -> str:
-    """State discretization shared with phase0a (5 bins)."""
+def az_bin(az: float, band: float, boundary: float = 0.5) -> str:
+    """State discretization (5 bins). ``boundary`` splits near from far.
+
+    The default 0.5 is the legacy Exp 45/45b value (arbitrary). Exp 45c passes
+    the DERIVED decision boundary — see ``decision_boundary`` — so that a bin
+    never straddles the point where the correct action magnitude changes.
+    """
     if abs(az) <= band:
         return "center"
     side = "left" if az < 0 else "right"
-    return f"{'far' if abs(az) > 0.5 else 'near'}_{side}"
+    return f"{'far' if abs(az) > boundary else 'near'}_{side}"
+
+
+def decision_boundary(action_deltas: dict[str, float], gain: float) -> float:
+    """|az| at which the BIG step overtakes the NORMAL step. Derived, not guessed.
+
+    A correct-direction step of shift ``S = |delta| * gain`` takes ``|az|`` to
+    ``|az - S|``, so its relief is ``az - |az - S|``. Step A therefore beats step
+    B exactly when ``|az - S_A| < |az - S_B|`` — i.e. when az is NEARER to A's
+    shift. The boundary is the MIDPOINT of the two shifts:
+
+        boundary = gain * (|delta_big| + |delta_normal|) / 2
+
+    NOT ``gain * |delta_big| / 2`` (an earlier error of mine): that is merely
+    where big's relief crosses zero, which decides nothing on its own.
+
+    Generalizes: with N distinct magnitudes there are N-1 such boundaries, and
+    the optimal policy is nearest-neighbour quantization of |az| onto the
+    available shifts. Reachy (gain 0.546, deltas 0.3/0.9): boundary = 0.328.
+    """
+    mags = sorted({abs(d) for d in action_deltas.values()})
+    if len(mags) < 2:
+        return 0.5  # single magnitude: nothing to decide
+    return (mags[0] + mags[1]) * gain / 2.0
+
+
+def placement_ranges(band: float, boundary: float, *, az_max: float = 0.80, margin: float = 0.06) -> dict:
+    """Per-bin placement targets that do NOT straddle the decision boundary.
+
+    az_max 0.80: the post-headfix sweep is monotonic to |az| ~0.87 (R^2=0.998),
+    so the old conservative 0.65 endfire cap — which was chasing an artifact of
+    the head-frame bug — can widen.
+    """
+    return {"near": (band + margin, boundary - margin), "far": (boundary + margin, az_max)}

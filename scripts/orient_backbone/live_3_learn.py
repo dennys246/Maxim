@@ -79,7 +79,17 @@ import random
 import sys
 import time
 
-from live_common import DryRig, JsonlLog, LiveRig, az_bin, gated_azimuth, preflight, resolve_host
+from live_common import (
+    DryRig,
+    JsonlLog,
+    LiveRig,
+    az_bin,
+    decision_boundary,
+    gated_azimuth,
+    placement_ranges,
+    preflight,
+    resolve_host,
+)
 
 if os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None) is not None:
     print("[env] MAXIM_NAC_REWARD_BIAS_DISABLED was set — cleared for this run (ablation flag does not apply here)")
@@ -90,16 +100,17 @@ AGENT_ID = "reachy"
 ARGMAX = -1.0e9  # min_confidence sentinel: always return argmax (Phase 0b)
 OFF_CENTER_BINS = ("far_left", "near_left", "near_right", "far_right")
 GEOMETRIC_GAIN = 2.0 / math.pi  # d(normalized az)/d(yaw rad) if DoA is ideal
-# Measured tracked gain. NOT a constant of nature: the baseline sweep (2026-07-16)
-# fit 0.58 az/rad; the Exp 45b hardware run measured ~0.39 the next session (same
-# robot, same room — source distance/geometry move it). Any metric that hard-codes
-# a gain is therefore wrong on some other day: `--gain` overrides, and --perturb
-# runs use the apparatus's own live EMA instead. This default is the latest
-# measurement, not an authority. (Learning the gain is S2 — orient_magnitude_learning.md.)
-MEASURED_GAIN = 0.39
-# The apparatus's perturb targets per bin — the distribution the policy actually
-# experiences, which is what its expected relief must be integrated over.
-PLACEMENT_RANGES = {"near": (0.18, 0.42), "far": (0.55, 0.65)}
+# Measured az-per-radian gain, POST-HEADFIX (2026-07-16). Four independent
+# measurements agree within 0.03: sweep central 0.546/0.548, full-range fit
+# 0.571/0.578, settle traces 0.562, mag2 sign-check 0.58. The earlier 0.39 was
+# contaminated by the head=None counter-rotation bug (the mics barely turned).
+# Still not an authority — rooms/mounts/sources differ, so --az-gain overrides
+# and --perturb runs prefer the apparatus's own live EMA.
+MEASURED_GAIN = 0.55
+# Legacy placement targets (Exp 45/45b): near STRADDLES the derived decision
+# boundary (0.328), which is exactly why 45b scored magnitude 0.75. --flip-bins
+# replaces these with placement_ranges(band, decision_boundary(...)).
+LEGACY_PLACEMENT_RANGES = {"near": (0.18, 0.42), "far": (0.55, 0.65)}
 
 
 def sign(x: float) -> float:
@@ -140,6 +151,7 @@ def optimal_action_for_bin(
     action_deltas: dict[str, float],
     *,
     gain: float,
+    ranges: dict,
     effort_lambda: float = 0.0,
 ) -> str | None:
     """The utility-optimal action for a bin GIVEN THE MEASURED PHYSICS.
@@ -154,7 +166,7 @@ def optimal_action_for_bin(
     hard-coded expectation would score a correct policy as wrong.
     """
     side = -1.0 if "left" in bin_name else 1.0
-    lo, hi = PLACEMENT_RANGES["far" if bin_name.startswith("far") else "near"]
+    lo, hi = ranges["far" if bin_name.startswith("far") else "near"]
     best, best_u = None, -1e9
     for name, d in action_deltas.items():
         if sign(d) != -side:  # wrong direction — never optimal
@@ -171,6 +183,7 @@ def probe_policy(
     action_deltas: dict[str, float],
     *,
     gain: float = MEASURED_GAIN,
+    ranges: dict | None = None,
     effort_lambda: float = 0.0,
 ) -> dict:
     """Frozen-policy probe: argmax per off-center bin, no motion, no epsilon.
@@ -192,6 +205,7 @@ def probe_policy(
     correctness trends to 0 — the docstring's diagnostic signature. Also
     snapshots the raw biases so convergence is visible before argmax flips.
     """
+    ranges = ranges if ranges is not None else LEGACY_PLACEMENT_RANGES
     out: dict[str, dict] = {}
     n_correct = 0
     n_mag = 0
@@ -211,7 +225,7 @@ def probe_policy(
         chosen = rec["tool_name"] if rec else None
         side = -1.0 if "left" in b else 1.0  # az sign for this bin
         correct = bool(chosen) and sign(action_deltas[chosen]) == -side
-        opt = optimal_action_for_bin(b, action_deltas, gain=gain, effort_lambda=effort_lambda)
+        opt = optimal_action_for_bin(b, action_deltas, gain=gain, ranges=ranges, effort_lambda=effort_lambda)
         mag_ok = bool(chosen) and opt is not None and abs(action_deltas[chosen]) == abs(action_deltas[opt])
         n_correct += int(correct)
         n_mag += int(mag_ok)
@@ -425,6 +439,14 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="offline logic check (no robot)")
     ap.add_argument("--dry-flip", action="store_true", help="dry-run world uses the OPPOSITE sign convention")
     ap.add_argument(
+        "--flip-bins",
+        action="store_true",
+        help="Exp 45c: put the near/far boundary at the DERIVED decision boundary "
+        "(gain*(|d_big|+|d_normal|)/2) instead of the legacy arbitrary 0.5, so no bin "
+        "straddles the point where the correct magnitude changes. Widens placements to "
+        "the post-headfix reliable range (|az| <= 0.80).",
+    )
+    ap.add_argument(
         "--dry-gain",
         type=float,
         default=MEASURED_GAIN,
@@ -455,8 +477,29 @@ def main() -> int:
             return app.gain
         return MEASURED_GAIN
 
+    # Exp 45c: the state boundary is DERIVED from this robot's own measured gain and
+    # its declared action magnitudes — not a constant. Frozen at start (a boundary
+    # that moved mid-run would silently redefine the state space under the learner).
+    boundary_gain = args.az_gain if args.az_gain is not None else MEASURED_GAIN
+    if args.flip_bins:
+        bin_boundary = decision_boundary(action_deltas, boundary_gain)
+        ranges = placement_ranges(band, bin_boundary)
+        print(
+            f"[bins] --flip-bins: boundary DERIVED at |az|={bin_boundary:.3f} "
+            f"(gain {boundary_gain} x (|{max(map(abs, action_deltas.values())):.1f}|+"
+            f"|{min(map(abs, action_deltas.values())):.1f}|)/2)   placements={ranges}"
+        )
+    else:
+        bin_boundary = 0.5
+        ranges = LEGACY_PLACEMENT_RANGES
+        print(
+            f"[bins] legacy boundary |az|=0.5 (straddles the derived {decision_boundary(action_deltas, boundary_gain):.3f})"
+        )
+
     def probe() -> dict:
-        return probe_policy(nac, names, action_deltas, gain=metric_gain(), effort_lambda=args.effort_lambda)
+        return probe_policy(
+            nac, names, action_deltas, gain=metric_gain(), ranges=ranges, effort_lambda=args.effort_lambda
+        )
 
     os.makedirs(os.path.dirname(args.nac_path) or ".", exist_ok=True)
     nac = NAc(NACConfig(persistence_path=args.nac_path))
@@ -467,7 +510,20 @@ def main() -> int:
         print(f"[nac] load_safe({args.nac_path}) -> ok={ok}" + (f" ({err})" if err else ""))
 
     if args.dry_run:
-        rig = DryRig(theta_src=-0.7, world_flipped=args.dry_flip, seed=args.seed, gain=args.dry_gain)
+        # jump_prob=0 in --perturb: the apparatus moves the ROBOT and the source is
+        # fixed (that is the whole point of the protocol). The 0.04 default models an
+        # operator relocating the source between trials — correct for manual mode,
+        # a pure noise source in perturb mode. It was silently degrading every sim
+        # sweep today: ~10 reads/trial => ~1-in-3 trials had the source teleport
+        # mid-trial, which corrupts potential_diff and hits narrow (low-relief) bins
+        # hardest — exactly the bins Exp 45c narrows.
+        rig = DryRig(
+            theta_src=-0.7,
+            world_flipped=args.dry_flip,
+            seed=args.seed,
+            gain=args.dry_gain,
+            jump_prob=0.0 if args.perturb else 0.04,
+        )
         print(
             f"[dry] source at world bearing {rig.theta_src:+.2f} rad, "
             f"world_flipped={rig.world_flipped}, gain={args.dry_gain}"
@@ -492,6 +548,8 @@ def main() -> int:
         effort_lambda=args.effort_lambda,
         epsilon=args.epsilon,
         flip_sign=args.flip_sign,
+        flip_bins=args.flip_bins,
+        bin_boundary=round(bin_boundary, 4),
         fresh=args.fresh,
         nac_path=args.nac_path,
         dry_run=args.dry_run,
@@ -542,7 +600,7 @@ def main() -> int:
                 # tracked readings to ~|az| 0.69, with a bimodal endfire-degeneracy zone
                 # beyond — s1's poisonous trials). Shared with the metric, which must
                 # integrate expected relief over the SAME distribution the policy meets.
-                lo, hi = PLACEMENT_RANGES["far" if intended_bin.startswith("far") else "near"]
+                lo, hi = ranges["far" if intended_bin.startswith("far") else "near"]
                 target_az = side * rng.uniform(lo, hi)
                 az_before, delta_psi = app.perturb(target_az)
                 if az_before is None:
@@ -553,7 +611,7 @@ def main() -> int:
                     log.write("no_reading_perturb", intended_bin=intended_bin)
                     continue
                 no_reading_streak = 0
-                measured_bin = az_bin(az_before, band)
+                measured_bin = az_bin(az_before, band, bin_boundary)
                 log.write(
                     "perturb",
                     intended_bin=intended_bin,
@@ -577,14 +635,14 @@ def main() -> int:
                     log.write("no_reading_before")
                     continue
                 no_reading_streak = 0
-                if az_bin(az_before, band) == "center":
+                if az_bin(az_before, band, bin_boundary) == "center":
                     print(f"      az={az_before:+.2f} centered — holding (move the source to continue)")
                     log.write("centered", az=round(az_before, 3))
                     pace(0.8)
                     continue
 
             # --- the LEARNER's step (identical in both modes: DoA in, relief credit out) ---
-            state = az_bin(az_before, band)
+            state = az_bin(az_before, band, bin_boundary)
             explore = rng.random() < args.epsilon
             if explore:
                 action = rng.choice(names)

@@ -140,16 +140,26 @@ reproducible; not a pathology.
 
 ### The flip point — a derived design constant
 
-The magnitude question ("how far should I turn?") has a computable boundary: a step
-of `delta` overshoots when `|delta| * gain > 2 * |az|`, so the **flip point** — below
-which a big step overshoots and a normal step wins — is:
+The magnitude question ("how far should I turn?") has a **derived** boundary. A
+correct-direction step of shift `S = |delta| * gain` takes `|az|` to `|az - S|`, so its
+relief is `az - |az - S|`. Step A therefore beats step B exactly when `|az - S_A| <
+|az - S_B|` — when az is **nearer A's shift**. The boundary is their midpoint:
 
-    az_flip = |delta_big| * gain / 2      # Reachy: 0.9 * 0.546 / 2 = 0.246
+    az_boundary = gain * (|delta_big| + |delta_normal|) / 2    # Reachy: 0.546 * 1.2/2 = 0.328
 
-Any state bin that **straddles** `az_flip` contains two opposite correct answers and
-cannot be learned cleanly. This is measurable per robot from its own gain, and it is
-why [Exp 45b](../../experiments/45b_orient_magnitude.md) scored magnitude 0.75 rather
-than 1.00: the `near` bin spans 0.1-0.5, straddling 0.246.
+The optimal magnitude policy is simply **nearest-neighbour quantization of |az| onto
+the available shifts**, and with N magnitudes there are N-1 such boundaries.
+
+*(Correction: an earlier version of this section gave `|delta_big| * gain / 2` = 0.246.
+That is where big's relief crosses zero — a different quantity that decides nothing on
+its own. The error was caught by deriving the comparison instead of reasoning about it.)*
+
+Any state bin that **straddles** `az_boundary` contains two opposite correct answers and
+cannot be learned cleanly — it receives consistently contradictory evidence. This is
+measurable per robot from its own gain, and it is why
+[Exp 45b](../../experiments/45b_orient_magnitude.md) scored magnitude 0.75: the `near`
+bin spans 0.1-0.5, straddling 0.328. [Exp 45c](../../experiments/45c_flip_bins.md) tests
+the fix.
 
 ### Why direction learning survived and magnitude did not
 

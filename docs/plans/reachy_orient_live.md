@@ -152,9 +152,13 @@ asc/desc asymmetry *was* head-drag hysteresis, and the endfire bimodal zone was
 rad walk is unnecessary (kept only because it is harmless). Full numbers:
 [audio_localization.md](../embodiment/reachy_mini/audio_localization.md).
 
-**Derived constant worth carrying:** `az_flip = |delta_big| * gain / 2` = 0.246 —
-the boundary below which a big step overshoots. Bins must not straddle it (see
-[orient_magnitude_learning.md](orient_magnitude_learning.md) S1).
+**Derived constant worth carrying:** `az_boundary = gain * (|delta_big| + |delta_normal|) / 2`
+= **0.328** — the |az| at which the big step overtakes the normal one (step A beats B
+when az is *nearer* A's shift, so the boundary is their midpoint; the optimal magnitude
+policy is nearest-neighbour quantization of |az| onto the available shifts). Bins must
+not straddle it — see [orient_magnitude_learning.md](orient_magnitude_learning.md) S1 /
+[Exp 45c](../experiments/45c_flip_bins.md). *(First written here as `|delta_big|*gain/2`
+= 0.246 — wrong: that is where big's relief crosses zero, which decides nothing.)*
 
 **Re-sweep after ANY acoustic change** (shell mods, mounts, rooms) — the eared-shell
 experiment's before/after instrument.

@@ -27,7 +27,8 @@ import os
 import sys
 import time
 
-from live_3_learn import AGENT_ID, ARGMAX, az_bin, load_orient_actions, probe_policy
+from live_3_learn import AGENT_ID, ARGMAX, load_orient_actions, probe_policy
+from live_common import az_bin
 from live_common import DryRig, JsonlLog, LiveRig, gated_azimuth, preflight, resolve_host
 
 from maxim.decisions.nac import NAc, NACConfig

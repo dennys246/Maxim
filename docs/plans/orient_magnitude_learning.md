@@ -84,20 +84,27 @@ Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magni
 
 ### S1 — bin boundaries at the FLIP POINT (was: "Weber-scaled bins"). **Sharpened by measurement; now the cheapest real win.**
 
-**Reframed 2026-07-16 by the post-headfix sweep.** The problem is not that bins are
-uniform rather than log-spaced — it is that the `near` bin **straddles the flip
-point**, so it contains two opposite correct answers. The flip point is *derived*, not
-guessed:
+**Reframed 2026-07-16 by the post-headfix sweep.** The problem is not uniform-vs-log
+bins — it is that the `near` bin **straddles the decision boundary**, so it holds two
+opposite correct answers. The boundary is *derived*, not guessed: a step of shift
+`S = |delta| * gain` takes `|az| → |az - S|`, so step A beats B exactly when az is
+NEARER A's shift — the boundary is their midpoint:
 
-    az_flip = |delta_big| * gain / 2      # Reachy: 0.9 * 0.546 / 2 = 0.246
+    az_boundary = gain * (|delta_big| + |delta_normal|) / 2   # Reachy: 0.546 * 1.2/2 = 0.328
 
-Current `az_bin`: center ≤0.1, near 0.1-0.5, far >0.5 — **near spans 0.246**, which is
-exactly why Exp 45b measured magnitude 0.75 (`near_right` drew placements at 0.44/0.49,
-above the flip, and correctly learned big; `near_left` drew lower ones and learned
-normal — same bin, opposite lessons, both right).
-- **The fix:** near = [0.1, 0.25], far = [0.25, ~0.85] (the cap can widen: the sweep is
-  monotonic to |az| ≈ 0.87, so the old 0.65 endfire cap was chasing an artifact). Each
-  bin then holds ONE correct magnitude → magnitude should reach 1.00.
+*(Correction: first written as `|delta_big| * gain / 2` = 0.246 — that is where big's
+relief crosses zero, which decides nothing. Caught by deriving instead of reasoning.)*
+
+Current `az_bin`: center ≤0.1, near 0.1-0.5, far >0.5 — **near straddles 0.328**, which
+is why Exp 45b measured 0.75 (`near_right` drew 0.44/0.49, *above* the boundary, so
+learning big there was CORRECT; `near_left` drew lower ones and learned normal — same
+bin, opposite lessons, both right).
+- **The fix (implemented, `--flip-bins`):** boundary at the derived value; placements
+  near [0.16, 0.27], far [0.39, 0.80] (the cap widens from 0.65 — the post-headfix sweep
+  is monotonic to |az| ≈ 0.87, so the endfire cap was chasing an artifact). Each bin then
+  holds ONE correct magnitude.
+- **Sim result (6 seeds, stationary source):** legacy **0.375** vs derived **0.92**
+  (4/6 perfect). Pre-registered on hardware as [Exp 45c](../experiments/45c_flip_bins.md).
 - **Front-gate:** this is a boundary constant, not a mechanism — ~2 lines. **IPS
   routing is NOT needed** and would be bio-naming theater on arithmetic; the honest
   version of the Weber intuition is "put the boundary where the physics changes," and
