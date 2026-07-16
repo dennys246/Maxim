@@ -183,6 +183,11 @@ runbook instantiates) is pinned in
 extraction (an `OrientRig` protocol + `embodiment/orient_loop.py`) is deliberately
 deferred until robot #2 exists (second-consumer test).
 
+**Demo runtime:** [`orient_demo.py`](../../scripts/orient_backbone/orient_demo.py) — loads a
+trained/merged/imported NAc, prints the probe, then tracks sound greedily until Ctrl+C
+(`--learn` to keep improving). The show-it-off script and the embryo of the 1.1
+`--embodiment` hardware runtime; NOT the measurement harness (that's live_3_learn.py).
+
 **Then** → Phase 2 (visual `PerceptSource` on the same backbone, after the P1 vision-encoder
 check) → Phase 3 (audio+visual fusion). See [`substrate_native_orienting.md`](substrate_native_orienting.md).
 
