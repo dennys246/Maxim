@@ -41,7 +41,8 @@ Reachy Mini Wireless (daemon 1.8.3, station mode 10.6.0.63), SDK 1.8.3 (WS trans
 run env `~/Envs/maxim-env`. Sustained speech source (podcast) ~1-2 m, front hemisphere,
 fixed during runs. Actions: body YAML `orient` affordances (`turn_left`/`turn_right`)
 dispatched as ±0.25 rad **body-yaw** steps (head clamps ±15-18°; body yaw rotates the
-head+mic assembly). State: `az_bin` ∈ {center, near/far × left/right}, band 0.1.
+head+mic assembly **only when an explicit head matrix rides along** — arms 1-3 predate
+that fix and ran at ~0.21 effective actuation ratio; see Method lineage §4). State: `az_bin` ∈ {center, near/far × left/right}, band 0.1.
 Credit: `update_cluster_reward(agent, bin, tool, |az_before|−|az_after|)`. Selection:
 epsilon-greedy (ε=0.25) over `recommend_action` (ARGMAX sentinel). NAc checkpointed every
 5 trials (`~/.maxim/orient_live/nac_reachy.json`, `_format_version` 1.2).
@@ -87,21 +88,44 @@ epsilon-greedy (ε=0.25) over `recommend_action` (ARGMAX sentinel). NAc checkpoi
    step-size-independent, run-to-run variable — which is why six hypotheses each
    looked plausible and each was wrong.
 
-**WHY THE RESULTS BELOW STILL STAND.** Every arm of this experiment is
-**sign-based or substrate-only**, and a proportional gain error preserves signs:
+**WHY THE RESULTS BELOW STILL STAND — and the exact bounds of that claim.**
+
+**Disclosure first: all four arms below ran with the head-frame bug ACTIVE.** Timestamps
+(s1b 11:20, s2 11:49, m1 12:25; the post-headfix sweep starts 17:36) — so arms 1-3 learned
+at roughly **1/3 the believed effective gain** (~0.075 relief/trial against 0.022 per-pose
+noise ≈ 3:1 SNR — thin but sufficient, consistent with the reported means +0.058/+0.080).
+The results survive; the reader is entitled to know the EARNED data is bug-era.
+
+Every arm is **sign-based or substrate-only**, and a proportional gain error preserves
+signs **away from the yaw clamp** — the measured `d(head)/d(body)` was **+0.214**:
+positive, so relief stayed correctly signed:
 - **Direction** (arms 1-2): "did |az| shrink?" is a sign test. A mic array that
   rotated 36% of the commanded amount still rotated the *correct way*, so relief
   stayed correctly-signed and the learned policy is unaffected.
 - **Merge** (arm 3): pure substrate arithmetic, no sensor involved.
 - **The learned-vs-servo rigor**: probe curves from an empty NAc, cross-session
   transfer — none depend on the gain's magnitude.
+**The exception, which this document itself reports:** sign-preservation fails **at the
+±1.4 rad yaw clamp**. The bug made the clamp ~4.7x easier to hit (0.214 rad of sensor
+rotation per rad commanded), and at the clamp relief collapses to ~0 or noise-signed —
+which is exactly the "three byte-identical anti-physical trials at +1.40 poisoned
+`near_right`" reported in the lineage above. **So the honest claim is: sign-preserving
+away from the clamp; the clamp is precisely where the bug DID bite (s1).**
+
+**Consequence for the "harmless" mitigations:** the ≤0.3 rad walk and the |az| ≤ 0.65
+placement cap are described above as artifact-chasing that "could be dropped." That
+understates them: **they are what kept s1b/s2/m1 clear of the clamp that poisoned s1.**
+They were the right mitigation for a real (bug-induced) saturation problem, adopted for
+the wrong reason. **Do not drop them before the production controller carries the
+head-frame fix** — they are load-bearing until then.
+
 What the bug *did* destroy is **magnitude** learning, which is threshold-based on
-overshoot (`|delta| * gain` vs `2 * |az|`) — exactly the quantity a proportional
-error corrupts. That is why [Exp 45b](45b_orient_magnitude.md) was incoherent until
+overshoot — exactly the quantity a proportional error corrupts. That is why [Exp 45b](45b_orient_magnitude.md) was incoherent until
 the head was fixed, and passed immediately afterward. **Direction survived; the
 gain numbers did not.** Any DoA gain quoted in this document from before the fix
-(0.58, 0.605, the ascending/descending asymmetry, the endfire zone) is
-**unverified** — see [audio_localization.md](../embodiment/reachy_mini/audio_localization.md).
+(0.58 — *the pre-fix sweep's tracked gain; not to be confused with mag2's
+coincidentally-equal post-fix sign-check* — 0.605, the ascending/descending asymmetry,
+the endfire zone) is **unverified** — see [audio_localization.md](../embodiment/reachy_mini/audio_localization.md).
 
 ## Results
 

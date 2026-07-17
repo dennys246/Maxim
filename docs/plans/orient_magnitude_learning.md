@@ -71,7 +71,7 @@ Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magni
 - **Front-gate:** rides existing infra (YAML + NAc + `potential_diff`). No new mechanism.
 - **CORRECTION to this plan's first sketch (±0.12/±0.4 would have FAILED):**
   `potential_diff` has no cost for large moves, so big wins everywhere *unless it
-  overshoots near center*. At the measured 0.58 az/rad gain, ±0.12/±0.4 never overshoots
+  overshoots near center*. At the gain assumed then (0.58 — from the contaminated pre-headfix sweep; it happened to land within noise of the true post-fix 0.55-0.57), ±0.12/±0.4 never overshoots
   → the policy would learn "always big". **0.3 normal / 0.9 big** is what makes magnitude
   learnable (big: −0.16 relief from az 0.18, +0.52 from az 0.60).
 - **Sim predicted 0.75, hardware delivered 0.75.** Sim (seeds 0–2) said direction 1.00
@@ -142,7 +142,7 @@ should be front-gated on that weaker basis.
   **inverse** (error → command). That is a genuine extension, not a wiring change — name
   it as such.
 - **Pre-registered claim:** the robot learns its own gain from experience (converges to
-  ≈0.58 with no hand-measured constant), and **re-calibrates** when the gain changes
+  ≈0.55-0.57 (post-headfix; the retracted 0.58 was named here originally)), and **re-calibrates** when the gain changes
   (verifiable by changing `--step` or the sweep-measured mount/acoustics — the eared
   shell will change it for real).
 - **Rigor caution:** with one parameter, "learned the gain" is a thin claim on its own;
@@ -152,7 +152,7 @@ should be front-gated on that weaker basis.
 
 **Not** "fit a polynomial to (azimuth → turn)" — that regresses the analytic servo from
 sensor data with the substrate bypassed, and collapses the learned-vs-servo distinction
-Exp 45 exists to defend (the optimal policy here is `turn = -az/0.58`, a straight line;
+Exp 45 exists to defend (the optimal policy here is `turn = -az/gain` (~0.55-0.57 post-headfix), a straight line;
 fitting it *is* writing the controller). **Instead:** after training, NAc's bias table
 *is* a sampled function — `(bin, action) → value` over bins that carry magnitude. A
 derivation step observes the regularity **across the substrate's own learned table**

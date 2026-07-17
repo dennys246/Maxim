@@ -101,15 +101,18 @@ entity:
     # the sim harness fixes a self-consistent convention.
     #
     # MAGNITUDE SET (2x2: {left,right} x {normal,big}) — orient_magnitude_learning.md
-    # S0 / Exp 45b. The magnitudes are load-bearing, not arbitrary: potential_diff
-    # credit (|az| reduction) has NO cost for large moves, so a big step wins
-    # everywhere UNLESS it overshoots when the target is already near-centered.
-    # At the hardware-measured DoA gain (0.58 az/rad, Exp 45 sweep): 0.9 rad shifts
-    # azimuth ~0.52, which overshoots across most of the near bin (|az| 0.1-0.5,
-    # negative relief) while cleanly centering the far bin (|az| 0.5-0.65, relief
-    # ~0.52). The normal 0.3 rad step shifts ~0.17 — always progress, never
-    # overshoot. That asymmetry is what makes magnitude LEARNABLE from relief alone.
-    # Retuning these values re-opens Exp 45b (see its pre-registration).
+    # S0 / Exp 45b+45c. The magnitudes are load-bearing, not arbitrary: potential_diff
+    # credit (|az| reduction) has NO cost for large moves, so which step is best
+    # depends only on which shift lands nearest the current error. With the
+    # POST-HEADFIX measured gain (~0.55-0.57 az/rad; every pre-2026-07-16 number was
+    # contaminated by the head=None counter-rotation bug — see CLAUDE.md and
+    # docs/embodiment/reachy_mini/audio_localization.md), the two magnitudes give
+    # shifts of ~0.17 (normal) and ~0.50 (big), and the DERIVED decision boundary is
+    #     gain * (|d_normal| + |d_big|) / 2  =  0.55 * 1.2/2  ~=  0.33
+    # i.e. below |az| 0.33 the normal step wins, above it the big one does. Exp 45c
+    # reached magnitude 1.00 by binning at that derived boundary. Retuning these
+    # values MOVES the boundary and re-opens Exp 45b/45c; a rename or re-value also
+    # invalidates substrate keyed to these affordance names (queen-mind bundles).
     # turn_left/turn_right keep their pre-magnitude names + values, so a policy
     # learned on the 2-action set (queen-mind v0.1) still loads and stays valid —
     # it simply has not met the _big actions yet.

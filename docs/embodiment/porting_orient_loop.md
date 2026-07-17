@@ -115,9 +115,9 @@ answer is garbage if the previous one failed.
 4. **Response curve → gain.** Sweep the axis, both directions, several gated reads per
    pose ([`doa_sweep.py`](../../scripts/orient_backbone/doa_sweep.py)). You want gain,
    linearity, and the usable range. Reachy post-fix: **0.57 az/rad, R²=0.998 over ±80°,
-   0.23 s convergence**. Expect a linear array to have an **endfire degeneracy** near
-   ~90° off-axis — but *measure* it rather than assuming (ours turned out not to exist;
-   the "bimodal zone" was the head bug too).
+   0.23 s convergence**. Expect a linear array to have an **endfire degeneracy** near ~90° off-axis — but
+   *measure* it rather than assuming, and note whether your sweep actually reaches it
+   (ours stops at 80° and saw none; the earlier "bimodal zone" was the head bug).
 5. **Derive the boundaries** from gain + your action magnitudes (previous section). Set
    bins and placement ranges to match.
 6. **Settle timing**: the post-turn read must reflect the *completed* turn or

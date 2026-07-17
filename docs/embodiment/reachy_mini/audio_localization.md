@@ -135,7 +135,7 @@ reproducible; not a pathology.
 **Retractions now closed by measurement:**
 - ~~"tracking estimator, loses lock on large jumps"~~ — **refuted**: R²=0.998, 0.23 s convergence.
 - ~~ascending/descending asymmetry~~ — **was head-drag hysteresis**: 0.109-0.176 → 0.015 once the head rides along.
-- ~~endfire bimodal zone~~ — **not observed**: monotonic to ±1.4 rad (|az| ≈ 0.87). The orient loop's conservative |az| ≤ 0.65 placement cap was chasing an artifact and can widen to ~0.85.
+- ~~endfire bimodal zone~~ — **not observed within the swept ±80°** (monotonic throughout). True endfire is ~90°, beyond the sweep — unreproduced where we looked, not disproven in general. The |az| ≤ 0.65 cap was set for the artifact and can widen to ~0.85 **but is load-bearing for a different reason until the controller fix ships** (it keeps placements off the yaw clamp — see Exp 45).
 - ~~"gain drifts between sessions"~~ — **refuted**: four measurements, ±0.03.
 
 ### The flip point — a derived design constant

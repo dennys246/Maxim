@@ -581,6 +581,10 @@ def main() -> int:
             return 1
         log.write("apparatus_sign_check_ok", gain=round(app.gain, 3))
 
+    # Write the state space BEFORE any trial: an interrupted run must never leave a
+    # policy whose sidecar describes a different state space than it learned in.
+    save_policy()
+
     # Trial-0 probe: the cross-session headline number (session 2 should start correct).
     p0 = probe()
     print(
@@ -730,7 +734,12 @@ def main() -> int:
             if valid % 5 == 0:
                 # Checkpoint often — a transient SDK ack-timeout killed s2 at trial
                 # 36 with the last save at 30; the file is ~1 KB, saving is free.
-                nac.save(args.nac_path)
+                # MUST be save_policy(), not nac.save(): a bare save leaves the sidecar
+                # STALE, and Ctrl+C (the normal way to stop a hands-off run) would then
+                # leave a 0.33-trained policy advertising boundary 0.5 — which the demo
+                # trusts CONFIDENTLY, no warning. (An earlier patch of mine missed this
+                # line because its text anchor silently didn't match after a reindent.)
+                save_policy()
         except (ConnectionError, TimeoutError) as e:
             # The robot went away and recovery could not bring it back (mag2: the
             # daemon's backend_status.ready went false). Bank what we have and

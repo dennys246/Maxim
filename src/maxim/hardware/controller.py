@@ -67,7 +67,17 @@ class MotionTarget:
         )
     """
 
-    # Head pose (3-DOF) — common to humanoid robots
+    # Head pose (3-DOF) — common to humanoid robots.
+    #
+    # FRAME (explicit since 2026-07-16 — it was ambiguous before, and ambiguity
+    # about frames is what cost us a full session; see CLAUDE.md's Reachy
+    # head-frame invariant): head_roll/pitch/yaw are **BODY-RELATIVE** — "turn my
+    # head 30 deg left" means 30 deg left OF THE BODY, which is what a caller
+    # asking a robot to turn its head means. Controllers are responsible for
+    # converting into whatever frame their SDK wants (the Reachy SDK's head pose
+    # is WORLD-referenced, so ReachyMiniController adds the body yaw). Before this
+    # was pinned, `head_yaw=0.5` with the body at 0.9 rad put the head 0.4 rad to
+    # the RIGHT of the body — the opposite of the request.
     head_roll: float | None = None
     head_pitch: float | None = None
     head_yaw: float | None = None

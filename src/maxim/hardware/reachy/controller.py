@@ -418,22 +418,51 @@ class ReachyMiniController(RobotController):
             # 4x4 pose MATRIX (the zenoh-era (roll, pitch, yaw) tuple would be
             # flatten()ed to 3 values where the daemon expects 16). Compose
             # the pose from euler targets via the SDK's own helper.
+            #
+            # THE HEAD-FRAME RULE (CLAUDE.md invariant, 2026-07-16). The head
+            # pose is in the WORLD frame and sits ABOVE body_yaw in the
+            # kinematic chain, so:
+            #   * head=None does NOT mean "leave the head alone" — the daemon
+            #     re-solves IK against the RETAINED world head target, which
+            #     COUNTER-ROTATES the head while the body turns under it. The
+            #     head-mounted camera and mic array then barely move (measured:
+            #     0.32 rad of sensor rotation for a 0.9 rad body command).
+            #   * a head yaw expressed as if body-relative is also wrong: the
+            #     pose is world, so head_yaw=0.1 with body_yaw=0.5 pins the head
+            #     at world 0.1 instead of 0.6.
+            # Both were live here until 2026-07-16. Pollen's prescription:
+            # "to make the head follow the body, ship a `head` matrix in the same
+            # call with the body delta added to the head yaw."
+            body_yaw_target = target.body_yaw
+            head_requested = any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw])
+
             head_target = None
-            if any(x is not None for x in [target.head_roll, target.head_pitch, target.head_yaw]):
+            if head_requested or body_yaw_target is not None:
                 from reachy_mini.utils import create_head_pose
 
                 # Fill unspecified axes from the current pose so single-axis
                 # commands don't recenter the others.
                 current = self.get_current_pose()
+                current_body = current.get("body_yaw", 0.0) or 0.0
+                # get_current_pose() reports head yaw in the WORLD frame (the
+                # SDK's fk() folds body_yaw in), so the head's angle RELATIVE to
+                # the body is (world head yaw - body yaw). Callers naturally mean
+                # "point the head there relative to the body", so re-add the
+                # TARGET body yaw to keep the head riding along.
+                # target.head_yaw is interpreted BODY-RELATIVE (what callers mean by
+                # "look left"); current["yaw"] is WORLD. Convert, then re-add the
+                # target body yaw so the head ends up riding along with the body.
+                if target.head_yaw is not None:
+                    relative_yaw = target.head_yaw
+                else:
+                    relative_yaw = current.get("yaw", 0.0) - current_body
+                target_body = body_yaw_target if body_yaw_target is not None else current_body
                 head_target = create_head_pose(
                     roll=(target.head_roll if target.head_roll is not None else current.get("roll", 0.0)),
                     pitch=(target.head_pitch if target.head_pitch is not None else current.get("pitch", 0.0)),
-                    yaw=(target.head_yaw if target.head_yaw is not None else current.get("yaw", 0.0)),
+                    yaw=relative_yaw + target_body,
                     degrees=False,
                 )
-
-            # Build body yaw target
-            body_yaw_target = target.body_yaw
 
             self._mini.goto_target(
                 head=head_target,
@@ -476,7 +505,11 @@ class ReachyMiniController(RobotController):
         """Get current joint positions.
 
         Returns:
-            Dict mapping joint names to current angles.
+            Dict mapping joint names to current angles. ``yaw``/``pitch``/``roll``
+            are the head's **WORLD-frame** euler angles (the SDK's fk() folds
+            body_yaw in), and ``body_yaw`` is the base angle — so the head's angle
+            RELATIVE to the body is ``yaw - body_yaw``. Mixing those frames up is
+            the head-frame trap (see CLAUDE.md).
         """
         if self._mini is None:
             return {}
@@ -496,11 +529,20 @@ class ReachyMiniController(RobotController):
                 pose["roll"] = float(math.atan2(m[2][1], m[2][2]))
 
             try:
-                _, antenna_joints = self._mini.get_current_joint_positions()
+                head_joints, antenna_joints = self._mini.get_current_joint_positions()
+                # The SDK's joint vector is [body_yaw, *stewart_legs] — its own
+                # kinematics reads index 0 as body_yaw (analytical_kinematics.fk:
+                # `body_yaw = joint_angles[0]`; ik returns `[body_yaw] + stewart`).
+                # Load-bearing for goto_target's head-frame handling: the head pose
+                # is WORLD-referenced, so converting a body-relative head yaw needs
+                # the body's actual angle. Without this, "head rides along" silently
+                # assumes the body sits at 0.
+                if head_joints is not None and len(head_joints) >= 1:
+                    pose["body_yaw"] = float(head_joints[0])
                 if antenna_joints is not None and len(antenna_joints) >= 2:
                     pose["antenna_left"] = float(antenna_joints[0])
                     pose["antenna_right"] = float(antenna_joints[1])
-            except Exception:  # noqa: BLE001 - antenna read is best-effort
+            except Exception:  # noqa: BLE001 - joint read is best-effort
                 pass
 
             self._update_state(current_pose=pose)
