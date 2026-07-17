@@ -52,7 +52,7 @@
 
     <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6">
       <h3 class="text-lg font-semibold text-emerald-400 mb-2">Core Result</h3>
-      <p class="text-slate-300">A Reachy Mini <strong class="text-white">learned to turn toward speech</strong> &mdash; starting from a completely empty reward substrate, with <strong class="text-white">no LLM anywhere in the action path</strong>. The policy went from chance to 100% correct within ~10 hardware trials, was already correct at trial&nbsp;0 of the next session (loaded from the persisted substrate), and two independently trained substrates merged into a policy at least as good as either &mdash; the seed of fleet learning.</p>
+      <p class="text-slate-300">A Reachy Mini <strong class="text-white">learned to turn toward speech &mdash; which way <em>and how far</em></strong> &mdash; starting from a completely empty reward substrate, with <strong class="text-white">no LLM anywhere in the action path</strong>. Direction went from chance to 100% correct within ~10 hardware trials. It was already correct at trial&nbsp;0 of the next session (loaded from the persisted substrate). Two independently trained substrates merged into a policy at least as good as either &mdash; the seed of fleet learning. And with the state representation fixed, it reached <strong class="text-white">100% on step size too</strong>: near the centre it learned that a big turn is actively <em>harmful</em> &mdash; from a single punished attempt it never repeated.</p>
     </div>
 
     <p class="text-slate-300 leading-relaxed">Nobody wrote a &ldquo;turn toward the sound&rdquo; rule. The robot's reward substrate (the <a href="/maxim/agent-architecture" class="text-indigo-400 hover:text-indigo-300 no-underline">nucleus accumbens model</a>) discovered which turn direction reduces its bearing error in each situation, purely from experiencing relief when the error shrank &mdash; the same drive-pain-reduction credit that powers Maxim's <a href="/maxim/proprioception" class="text-indigo-400 hover:text-indigo-300 no-underline">interoceptive drives</a>.</p>
@@ -86,7 +86,7 @@ NAc.update_cluster_reward(state, action, relief)
     <div class="grid md:grid-cols-3 gap-4">
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">1. Learning curve</h3>
-        <p class="text-slate-300 text-sm">A frozen-policy probe (pure substrate lookup, no motion, no exploration) ran every 5 trials. From an empty substrate: <strong class="text-emerald-400">0% &rarr; 75% &rarr; 100% correct by trial 10</strong>, held through 40 (0% = the untrained substrate abstains; executed actions started at the 50% coin-flip baseline and reached 100%). A servo can't have a learning curve.</p>
+        <p class="text-slate-300 text-sm">A frozen-policy probe (pure substrate lookup, no motion, no exploration) ran every 5 trials. From an empty substrate: <strong class="text-emerald-400">0% &rarr; 75% &rarr; 100% correct by trial 10</strong>, held through 40. In the magnitude run the executed-action rate went <strong class="text-emerald-400">0.29 &rarr; 1.00</strong> &mdash; it started <em>below</em> the coin-flip baseline, meaning the untrained substrate was actively wrong, and converged to perfect. A servo can't have a learning curve, and certainly can't start out worse than chance.</p>
       </div>
       <div class="bg-slate-800 border border-slate-700 rounded-xl p-5">
         <h3 class="text-white font-semibold mb-2">2. Cross-session transfer</h3>
@@ -105,12 +105,30 @@ NAc.update_cluster_reward(state, action, relief)
   <section class="space-y-4">
     <h2 id="hardware-lessons" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">What the Hardware Taught Us</h2>
 
-    <p class="text-slate-300 leading-relaxed">The first learning run half-worked and then poisoned itself &mdash; three identical &ldquo;impossible&rdquo; readings knocked out a learned state late in the session. Instead of patching the loop, we characterized the sensor: a static sweep stepping the base across its full range, both directions, measuring the reported azimuth at every pose.</p>
+    <p class="text-slate-300 leading-relaxed">The first learning run half-worked, then poisoned itself. Chasing that produced a day of wrong answers and one lesson worth more than the result.</p>
 
     <div class="bg-slate-800 border-l-4 border-amber-500 rounded-xl p-6 space-y-3">
-      <h3 class="text-lg font-semibold text-amber-400">The sensor is a tracker, not a measurement</h3>
-      <p class="text-slate-300 text-sm">Walked in small increments, the DoA chip is a nearly perfect linear sensor (0.58 azimuth/rad, ~1&deg; resolution). After one large jump, it <strong class="text-white">loses lock and reports its stale estimate</strong> &mdash; for a long time. And ~90&deg; off the array axis lies an <strong class="text-white">endfire degeneracy zone</strong> where readings flip bimodally between two values. Every prior anomaly &mdash; inconsistent gain measurements, the poisoned state, unreachable placements &mdash; fell out of these two facts.</p>
-      <p class="text-slate-300 text-sm">The fixes were mechanical once measured: move in small tracked steps, keep targets inside the reliable range. The lesson generalizes: <strong class="text-white">characterize the response curve of any bearing sensor before stacking learning on it</strong> &mdash; and re-sweep after any acoustic change. The sweep is now a standing calibration step and the before/after instrument for planned hardware experiments (adding pinna-like &ldquo;ears&rdquo; to break the array's front/back ambiguity).</p>
+      <h3 class="text-lg font-semibold text-amber-400">A wrong actuation assumption looks exactly like a broken sensor</h3>
+      <p class="text-slate-300 text-sm">We commanded the robot's base to turn and assumed the microphones &mdash; which live in the <em>head</em> &mdash; turned with it. They didn't. The robot's firmware holds the head's orientation fixed in world space unless you explicitly tell it otherwise, so the head <strong class="text-white">counter-rotated</strong> and the mic array rotated barely a third of what we commanded.</p>
+      <p class="text-slate-300 text-sm">Reading a nearly-stationary sensor while believing it moved produces <strong class="text-white">a perfect imitation of a broken sensor</strong>: readings that lag, compress, and vary run to run. We generated six plausible explanations &mdash; a slow tracking estimator, settle lag, gear backlash, motor under-travel, speech-density effects, step-size limits &mdash; and <strong class="text-white">every one was falsifiable, tested, and false</strong>. The actual answer was one sentence in the vendor's documentation, published the whole time.</p>
+      <p class="text-slate-300 text-sm">One keyword fixed it. The sensor turned out to be <strong class="text-emerald-400">excellent</strong>: linear to R&sup2;&nbsp;=&nbsp;0.998 across &plusmn;80&deg;, converging in 0.23&nbsp;s, with no hysteresis and none of the pathologies we'd &ldquo;measured.&rdquo; The lesson now sits in the project's engineering rules: <strong class="text-white">when a measurement disagrees with your model, verify that the thing you're sensing with actually moved &mdash; before theorizing about the sensor.</strong></p>
+    </div>
+
+    <p class="text-slate-300 leading-relaxed">This also explains a curious asymmetry. <strong class="text-white">Direction learning survived the bug entirely</strong> &mdash; it's sign-based, and a mic array that rotated only a third of the commanded amount still rotated the <em>correct way</em>. <strong class="text-white">Magnitude learning was destroyed by it</strong> &mdash; it depends on <em>overshoot</em>, a threshold, and thresholds are exactly what a proportional error corrupts. The harder claim was the one that noticed the bug.</p>
+  </section>
+
+  <!-- Bins and actions are duals -->
+  <section class="space-y-4">
+    <h2 id="derived-design" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">The Design Constants Are Derived, Not Chosen</h2>
+
+    <p class="text-slate-300 leading-relaxed">With an honest sensor, magnitude learning still stalled at 75%. The instinct was &ldquo;use finer bins.&rdquo; That was wrong &mdash; and the right answer is a small piece of theory that transfers to any robot.</p>
+
+    <div class="bg-slate-800 border-l-4 border-emerald-500 rounded-xl p-6 space-y-3">
+      <h3 class="text-lg font-semibold text-emerald-400">The state bins and the action set are duals</h3>
+      <p class="text-slate-300 text-sm">A turn of size <em>d</em> moves the error by <em>S = d &times; gain</em>. So a step takes error <em>e</em> to <em>|e &minus; S|</em>, which means <strong class="text-white">one action beats another exactly when the current error is nearer to its shift</strong>. The optimal policy is just <strong class="text-white">nearest-neighbour quantization of the error onto your available step sizes</strong> &mdash; and the boundaries fall at the midpoints:</p>
+      <div class="bg-slate-950 border border-slate-700 rounded-lg p-3 overflow-x-auto"><code class="text-sm text-slate-300">boundary = gain &times; (d_small + d_big) / 2&nbsp;&nbsp;&nbsp;&nbsp;# Reachy: 0.546 &times; 1.2/2 = 0.33</code></div>
+      <p class="text-slate-300 text-sm">Our bins split at 0.5 &mdash; an arbitrary number that <strong class="text-white">straddled 0.33</strong>. A bin spanning the boundary contains <em>two opposite correct answers</em>: it hands the learner consistently contradictory evidence and caps it, no matter how much exploration or reward shaping you add. Moving the boundary to the derived value took magnitude from <strong class="text-emerald-400">0.75 to 1.00</strong>.</p>
+      <p class="text-slate-300 text-sm">So it was never about <em>resolution</em> &mdash; it was about <strong class="text-white">alignment</strong>. And because the boundary depends on the robot's own measured gain, <strong class="text-white">every robot derives its own</strong>. You cannot copy ours.</p>
     </div>
   </section>
 
@@ -160,7 +178,7 @@ NAc.update_cluster_reward(state, action, relief)
   <!-- What's next -->
   <section class="space-y-4">
     <h2 id="whats-next" class="text-2xl font-semibold text-white border-b border-indigo-500/50 pb-2 scroll-mt-32">Where This Goes</h2>
-    <p class="text-slate-300 leading-relaxed">Orienting is Layer 1 of a deliberate ladder. Next rungs: <strong class="text-white">ears</strong> (pinna-like shell structures + a raw two-mic binaural front-end to break the linear array's front/back ambiguity &mdash; turning a hardware blind spot into a learnable state); <strong class="text-white">vision on the same backbone</strong> (a camera bearing feeds the same centeredness drive; category recognition decides what's worth orienting to); and the north star &mdash; <strong class="text-white">spatial co-location as a grounding substrate</strong>: when the head centers on something seen, heard, and named at the same pose and moment, that shared location becomes the index that binds sound, sight, and words.</p>
+    <p class="text-slate-300 leading-relaxed">Orienting is Layer 1 of a deliberate ladder, and it is now complete &mdash; direction and magnitude, on real hardware, learned from relief alone. Next rungs: <strong class="text-white">ears</strong> (pinna-like shell structures + a raw two-mic binaural front-end to break the linear array's front/back ambiguity &mdash; turning a hardware blind spot into a learnable state, and now with a genuinely clean sensor baseline to measure against); <strong class="text-white">vision on the same backbone</strong> (a camera bearing feeds the same centeredness drive; category recognition decides what's worth orienting to); and the north star &mdash; <strong class="text-white">spatial co-location as a grounding substrate</strong>: when the head centers on something seen, heard, and named at the same pose and moment, that shared location becomes the index that binds sound, sight, and words.</p>
   </section>
 
   <!-- Navigation -->

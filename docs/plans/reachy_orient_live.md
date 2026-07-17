@@ -102,7 +102,7 @@ instrumentation: (a) all 16 trials landed az>0 (one-sided source placement — t
 self-check now covers both sides), (b) measured |az| change per 0.25 rad step ran 2-3× the
 geometric prediction (0.16) — gain anomaly tracked by the Step-3 apparatus gain estimator.
 
-### Step 3 — learning orient loop  ([`live_3_learn.py`](../../scripts/orient_backbone/live_3_learn.py)) — **PASSED 2026-07-16 (Exp 45, all three arms)**
+### Step 3 — learning orient loop  ([`live_3_learn.py`](../../scripts/orient_backbone/live_3_learn.py)) — **PASSED 2026-07-16** (Exp 45 all three arms; extended by 45b/45c to magnitude **1.00**)
 Load the real `bodies/reachy_mini`; each tick: overwrite the `azimuth` sensor from DoA (world
 re-measurement is free on hardware); `state = az_bin`; substrate-primary `recommend_action` over
 `turn_left`/`turn_right`; dispatch via `goto_target`; **`potential_diff` credit** = `|az_before| −
@@ -201,6 +201,13 @@ deferred until robot #2 exists (second-consumer test).
 trained/merged/imported NAc, prints the probe, then tracks sound greedily until Ctrl+C
 (`--learn` to keep improving). The show-it-off script and the embryo of the 1.1
 `--embodiment` hardware runtime; NOT the measurement harness (that's live_3_learn.py).
+
+**Follow-up C — magnitude (DONE).** The 2-action set could only learn *direction*.
+[45b](../experiments/45b_orient_magnitude.md) added a 2×2 magnitude set (±0.3/±0.9 rad)
+→ magnitude 0.75; [45c](../experiments/45c_flip_bins.md) derived the bin boundary from
+the measured gain (`--flip-bins`) → **magnitude 1.00**. Design law for any robot: the
+state bins must be the Voronoi cells of the action shifts —
+[porting doc](../embodiment/porting_orient_loop.md) §"The design constants are DERIVED".
 
 **Then** → Phase 2 (visual `PerceptSource` on the same backbone, after the P1 vision-encoder
 check) → Phase 3 (audio+visual fusion). See [`substrate_native_orienting.md`](substrate_native_orienting.md).

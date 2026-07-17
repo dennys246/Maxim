@@ -4,7 +4,7 @@
 plan for the orient-to-center line. It **absorbs** the former
 `audiovisual_orienting.md` (cross-track coordination) and sits above two execution
 layers it does NOT re-do:
-- [`reachy_orient_live.md`](reachy_orient_live.md) — the live hardware runbook (Phase 1; Steps 1-3 **PASSED**, [Exp 45](../experiments/45_reachy_orient_live.md) all arms EARNED 2026-07-16).
+- [`reachy_orient_live.md`](reachy_orient_live.md) — the live hardware runbook (Phase 1 **COMPLETE**: Steps 1-3 PASSED; [Exp 45](../experiments/45_reachy_orient_live.md) all arms EARNED + [45b](../experiments/45b_orient_magnitude.md)/[45c](../experiments/45c_flip_bins.md) magnitude **1.00**, 2026-07-16).
 - [`perception_pipeline_placement.md`](perception_pipeline_placement.md) — the 1.1 placement/substrate-modality **infrastructure** the orient loop rides on (broader than orienting; stays separate).
 
 **One-line thesis:** the orient-to-center loop — turn the head/body to drive a sensed
@@ -144,6 +144,20 @@ will not earn the substrate-learning claim. The pre-registered measurement lives
 [docs/experiments/45_reachy_orient_live.md](../experiments/45_reachy_orient_live.md)
 (all three arms PASSED 2026-07-16).
 
+**Fourth arm, delivered 2026-07-16: MAGNITUDE, and why it is the sharper claim.**
+Direction learning is *sign-based* — it survives any proportional sensor error, which is
+why it passed even while a head-frame bug meant the microphones were rotating 36% of
+what we commanded. Magnitude is *threshold-based* (on overshoot), so it is destroyed by
+exactly the errors direction shrugs off. That makes magnitude the **more demanding**
+claim and a much stronger servo-separation: a hard-coded servo has no notion of "which
+step size is right *here*", and [Exp 45c](../experiments/45c_flip_bins.md)'s substrate
+learned that a big step is actively *harmful* near centre (bias −0.570) from one
+punished trial. It also exposed a design law worth carrying to every robot: **the state
+bins and the action set are duals** — bins must be the Voronoi cells of the action
+shifts, with boundaries *derived* from the measured gain (`gain×(dᵢ+dᵢ₊₁)/2`), never
+chosen by intuition. A bin straddling a boundary holds two opposite correct answers and
+caps learning (0.75) no matter how much exploration or credit you add.
+
 **Third, stronger arm (added 2026-07-15): cross-UNIT transfer via Hivemind.** The learned
 policy (`cluster_reward_bias`, 4 bins × 2 actions) is already a first-class `nac_merge`
 surface, privacy-clean by construction (bundles never ship episodes), and the Reachy Mini
@@ -221,9 +235,13 @@ compete.
 Audio leads because its perception is *solved* → the cleanest path to a working live
 learning loop, and it **validates the shared motor/drive/credit substrate on-device**
 (which visual then inherits for free). Deliverable: *Reachy turns toward sounds and
-learns.* **Execution runbook + live status: [`reachy_orient_live.md`](reachy_orient_live.md)
-(Steps 1-3 PASSED — default sign calibrated, body_yaw is the orient axis; Exp 45
-all three arms EARNED 2026-07-16: learning curve, cross-session, merge).**
+learns.* **DELIVERED 2026-07-16.** Steps 1-3 PASSED; [Exp 45](../experiments/45_reachy_orient_live.md)
+all three arms EARNED (learning curve 0.00→1.00 in ~10 trials; cross-session 1.00 at
+trial 0; merge ≥ both inputs), then [45b](../experiments/45b_orient_magnitude.md) +
+[45c](../experiments/45c_flip_bins.md) extended it to **magnitude**: the substrate
+learns which way **and how far**, magnitude **1.00**, greedy turned-toward 0.286 →
+1.000 (starting *below* chance). No LLM in the action path. Runbook:
+[`reachy_orient_live.md`](reachy_orient_live.md).
 
 **Phase 2 — sim → hardware, VISUAL.** First clear **P1** (vision-encoder category
 clustering on real skier-vs-object *images* — Exp 43 prerequisite, no robot; the
@@ -312,9 +330,12 @@ already in hand:
 
 - **H1 (acoustic access):** the stock shell's minimal openings degrade the DoA response
   (compression/saturation observed in the 2026-07-16 baseline sweep). *Measure:* run
-  [`doa_sweep.py`](../../scripts/orient_backbone/doa_sweep.py) before (label=baseline —
-  DONE: tracked gain 0.58/rad, reliable to |az|≈0.69, endfire bimodal zone) and after
-  (label=eared-v1) — the curve diff IS the effect. Watch-item: the XVF3800 computes DoA
+  [`doa_sweep.py`](../../scripts/orient_backbone/doa_sweep.py) before (**label=post-headfix,
+  DONE 2026-07-16 — the clean baseline: gain 0.57 az/rad, R²=0.998 over ±80°, hysteresis
+  0.015, no endfire degeneracy, 0.23 s convergence**) and after (label=eared-v1) — the
+  curve diff IS the effect. Note the baseline is only trustworthy *because* the
+  head-frame bug was fixed first; an earlier "baseline" (tracked gain 0.58, endfire
+  bimodal zone) was contaminated and is retracted. Watch-item: the XVF3800 computes DoA
   assuming factory geometry/free-field acoustics — ears may WORSEN its estimate; that is
   a valid (publishable) outcome, not a failure of the experiment.
 - **H2 (front/back symmetry breaking — the real prize):** asymmetric pinnae create
@@ -386,11 +407,25 @@ processed stream) BEFORE investing in ear geometry.
   one-trial operant signature. Added the cross-unit Hivemind merge arm to the rigor bar
   (runbook Follow-up A) + the Queen-tier trust topology to
   [maxim_hivemind.md](maxim_hivemind.md).
-- **2026-07-16** — s1 perturb run (40 trials): real learning through sensor noise (probe
-  0.75 by trial 20) but forensics exposed sensor anomalies → baseline DoA sweep run
-  on-device. **Key finding: the XVF3800 DoA is a tracking estimator** (tracked gain
-  0.58/rad, near-linear; loses lock on large jumps) with an endfire bimodal zone —
-  apparatus now walks all moves in ≤0.3 rad tracked increments, placements capped
-  |az| ≤ 0.65. Porting doc gained the memoryless-vs-tracker calibration step.
-  Eared-shell acoustic mod pre-registered as a tracked follow-up (H1 acoustic access,
-  H2 front/back symmetry breaking via raw-2-mic binaural front-end).
+- **2026-07-16 (morning)** — s1 perturb run: real learning, but forensics exposed
+  apparent sensor anomalies → a sweep "found" that the DoA is a tracking estimator with
+  an endfire bimodal zone. **All of it was wrong** (see below); the finding was written
+  into three docs before being retracted the same day.
+- **2026-07-16 (the bug)** — `goto_target(body_yaw=X, head=None)` **counter-rotates the
+  head**, and the mics are in the head: they rotated 0.32 rad for a 0.9 rad command.
+  Pollen documents this verbatim in AGENTS.md. Six of my hypotheses (settle lag,
+  backlash, under-travel, speech density, increment size, slow adaptation) each died on
+  data before the vendor's docs settled it — the user's two instincts ("the source isn't
+  uniform", "check the docs") beat the entire chain. Fix: ship an explicit head matrix.
+  Invariant recorded in CLAUDE.md. Post-fix the DoA is **near-perfect**: R²=0.998 over
+  ±80°, gain 0.57, 0.23 s convergence, no hysteresis, no endfire zone. Full truth
+  restoration across audio_localization.md / Exp 45 / porting doc / plans.
+- **2026-07-16 (magnitude)** — [45b](../experiments/45b_orient_magnitude.md) PASS
+  (magnitude 0.75) → [45c](../experiments/45c_flip_bins.md) PASS (**1.00**) by fixing the
+  **state representation**, not the learning: the near bin straddled the *derived*
+  decision boundary (`gain×(|Δbig|+|Δnormal|)/2` = 0.33) and so held two opposite correct
+  answers. An effort-cost credit variant was proposed and **refuted in sim** before
+  reaching hardware. Layer 1 is complete.
+- Eared-shell acoustic mod remains pre-registered (H1 acoustic access, H2 front/back
+  symmetry breaking via raw-2-mic binaural front-end) — and now has a genuinely clean
+  baseline to A/B against.

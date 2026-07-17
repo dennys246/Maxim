@@ -1,6 +1,7 @@
 # Orient magnitude learning — and the parietal/cerebellar division of labor
 
-**Status:** DRAFT pre-registration (2026-07-16). Follow-on to
+**Status:** **S0 + S1 DONE (both PASSED on hardware 2026-07-16 — magnitude 1.00).**
+S2 motivation weakened by measurement; S3 unchanged. Original draft 2026-07-16. Follow-on to
 [substrate_native_orienting.md](substrate_native_orienting.md) Layer 1 /
 [Exp 45](../experiments/45_reachy_orient_live.md) (all arms EARNED). Scope: the
 **magnitude** half of the orient policy, and — as its natural test case — whether the
@@ -82,7 +83,14 @@ Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magni
 - **Note:** trips Exp 45's "orient-affordance YAML change" re-run rule → fresh NAc,
   queen-mind **v0.2**.
 
-### S1 — bin boundaries at the FLIP POINT (was: "Weber-scaled bins"). **Sharpened by measurement; now the cheapest real win.**
+### S1 — bin boundaries at the DECISION BOUNDARY (was: "Weber-scaled bins"). **DONE — PASSED ([Exp 45c](../experiments/45c_flip_bins.md), magnitude 1.00).**
+
+**Result: magnitude 0.75 → 1.00**, direction 1.00, stable across 13 consecutive probes;
+greedy turned-toward 0.286 → 1.000 (below chance → perfect). Every bin decisive;
+`near_right` learned the big step is *harmful* there (−0.570). Two derived constants, no
+new mechanism, no effort cost, no exploration change. Sim predicted 0.92; hardware gave
+1.00. Implemented as `--flip-bins` (`decision_boundary()` + `placement_ranges()` in
+live_common, both derived from the robot's own measured gain).
 
 **Reframed 2026-07-16 by the post-headfix sweep.** The problem is not uniform-vs-log
 bins — it is that the `near` bin **straddles the decision boundary**, so it holds two

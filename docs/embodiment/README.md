@@ -27,15 +27,20 @@ When a capability is absent (e.g. a microphone array that can't resolve elevatio
 - [**Porting the orient-to-center learning loop**](porting_orient_loop.md) — the contract
   a new robot (Atlas-class included) must satisfy to run the substrate orient-policy
   learning: what's already robot-agnostic, the four things each robot supplies, the
-  per-robot calibration protocol (including the memoryless-vs-tracking-sensor sweep),
-  and **how to submit gauntlet-passed learned substrate for fleet distribution**
-  (merge arm → Queen-tier bundle). Validated end-to-end on Reachy Mini:
-  [Exp 45](../experiments/45_reachy_orient_live.md) — probe correctness 0.00 → 1.00
-  within 10 hardware trials, cross-session transfer 1.00 at trial 0.
+  the per-robot calibration protocol (**starting with: verify your sensing frame
+  actually rotates**),
+  **why the design constants must be DERIVED from your robot's own measured gain** (the
+  state bins and the action set are duals — bins must be the Voronoi cells of the action
+  shifts), **how to submit gauntlet-passed substrate for fleet distribution**, and a
+  **failure-mode appendix** (six hypotheses died before the real bug — a wrong actuation
+  assumption is indistinguishable from a broken sensor). Validated end-to-end on Reachy
+  Mini: [Exp 45](../experiments/45_reachy_orient_live.md) (direction 0.00 → 1.00 in ~10
+  trials; cross-session 1.00 at trial 0) + [45c](../experiments/45c_flip_bins.md)
+  (**magnitude 1.00** — which way *and how far*).
 
 ## Platforms
 
-- [**Reachy Mini**](reachy_mini/README.md) — Pollen Robotics / Hugging Face desktop robot. 6-DOF Stewart head + body yaw, camera, 4-mic array (behind an XVF3800 DSP chip), speaker. A full sub-guide: [getting started](reachy_mini/getting_started.md) (network + SDK **version matching** + first connect), [troubleshooting](reachy_mini/troubleshooting.md) (symptom-indexed, hardware-validated), [engineering reference](reachy_mini/engineering.md) (WS transport, REST endpoints incl. network DoA, motion semantics), and the [audio sound-localization deep-dive](reachy_mini/audio_localization.md) (DoA vs ITD/TDOA, why elevation is impossible on its linear array, **plus the measured DoA response**: it's a tracking estimator — 0.58 az/rad tracked gain, lock loss on large jumps, endfire bimodal zone). First substrate-learned hardware policy lives here: sound orienting ([Exp 45](../experiments/45_reachy_orient_live.md)).
+- [**Reachy Mini**](reachy_mini/README.md) — Pollen Robotics / Hugging Face desktop robot. 6-DOF Stewart head + body yaw, camera, 4-mic array (behind an XVF3800 DSP chip), speaker. A full sub-guide: [getting started](reachy_mini/getting_started.md) (network + SDK **version matching** + first connect), [troubleshooting](reachy_mini/troubleshooting.md) (symptom-indexed, hardware-validated), [engineering reference](reachy_mini/engineering.md) (WS transport, REST endpoints incl. network DoA, motion semantics), and the [audio sound-localization deep-dive](reachy_mini/audio_localization.md) (DoA vs ITD/TDOA, why elevation is impossible on its linear array, **plus the measured DoA response**: a near-perfect linear sensor — gain 0.57 az/rad, R²=0.998 over ±80°, 0.23 s convergence — and the retraction of an earlier "tracking estimator" claim that turned out to be a bug in *our* motion code). **The `head=None` trap lives here too**: `goto_target(body_yaw=X)` counter-rotates the head, so head-mounted sensors do not turn — see the [CLAUDE.md](../../CLAUDE.md) invariant. First substrate-learned hardware policy: sound orienting ([Exp 45](../experiments/45_reachy_orient_live.md) direction + [45c](../experiments/45c_flip_bins.md) magnitude).
 
 ## Adding a platform page
 
