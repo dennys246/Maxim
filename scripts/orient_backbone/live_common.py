@@ -321,6 +321,42 @@ class DryRig:
         self.body_yaw = float(yaw)
 
 
+def _meta_path(nac_path: str) -> str:
+    base = os.path.expanduser(nac_path)
+    return (base[:-5] if base.endswith(".json") else base) + ".meta.json"
+
+
+def save_policy_meta(nac_path: str, **meta: object) -> None:
+    """Persist the STATE-SPACE definition next to the policy that learned in it.
+
+    A cluster_reward_bias table is keyed on bin NAMES ("near_left"), but a bin
+    name means nothing without the boundary that produced it. A consumer that
+    bins at 0.5 while the policy learned at 0.33 looks up the wrong bin for every
+    |az| in between — silently, no error. That is the third instance of this
+    exact failure class in one day (head frame; learner-vs-metric az_bin; this).
+    A flag cannot fix it: "remember how this policy was trained" is the
+    assumption that keeps breaking. So the boundary travels WITH the policy.
+
+    (This is also the local instance of the cross-robot bundle caveat in
+    docs/embodiment/porting_orient_loop.md — substrate bundles need the same
+    thing in their manifest before they can safely cross robots.)
+    """
+    with open(_meta_path(nac_path), "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2, sort_keys=True)
+
+
+def load_policy_meta(nac_path: str) -> dict | None:
+    """Read a policy's state-space definition, or None if it predates the sidecar."""
+    p = _meta_path(nac_path)
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def az_bin(az: float, band: float, boundary: float = 0.5) -> str:
     """State discretization (5 bins). ``boundary`` splits near from far.
 

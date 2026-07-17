@@ -89,6 +89,7 @@ from live_common import (
     placement_ranges,
     preflight,
     resolve_host,
+    save_policy_meta,
 )
 
 if os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None) is not None:
@@ -501,6 +502,21 @@ def main() -> int:
             nac, names, action_deltas, gain=metric_gain(), ranges=ranges, effort_lambda=args.effort_lambda
         )
 
+    def save_policy() -> None:
+        """NAc + the state-space definition that gives its bin names meaning."""
+        nac.save(args.nac_path)
+        save_policy_meta(
+            args.nac_path,
+            bin_boundary=round(bin_boundary, 4),
+            band=band,
+            gain=round(boundary_gain, 4),
+            action_deltas=action_deltas,
+            placements={k: list(v) for k, v in ranges.items()},
+            agent_id=AGENT_ID,
+            session=args.session,
+            flip_bins=bool(args.flip_bins),
+        )
+
     os.makedirs(os.path.dirname(args.nac_path) or ".", exist_ok=True)
     nac = NAc(NACConfig(persistence_path=args.nac_path))
     if args.fresh:
@@ -728,7 +744,7 @@ def main() -> int:
 
     if not args.dry_run and aborted is None:
         rig.recenter()
-    nac.save(args.nac_path)
+    save_policy()
 
     pf = probe()
 

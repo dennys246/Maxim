@@ -219,11 +219,21 @@ tiny (a handful of numbers), and privacy-clean by construction.
 4. **Cross-robot consumption** — the policy is keyed on normalized-azimuth bins and YAML
    action names, so a different robot satisfying this contract can consume the same
    bundle: its sign/gain/axis apply at *dispatch*, not in the learned state. **Caveat
-   (new, from 45c):** the bins must mean the same thing. A robot whose derived boundary
+   (from 45c): the bins must MEAN the same thing.** A robot whose derived boundary
    differs from the producer's has a *different state space* under identical bin names —
-   its `near_left` is not yours. Until bundles carry their boundary in the manifest,
-   only exchange between robots with matching derived boundaries, and treat 45b-era and
-   45c-era bundles as **different substrate generations**.
+   its `near_left` is not yours, and the mismatch is **silent**: every lookup between the
+   two boundaries returns the wrong bin with no error.
+   **This bit us locally before it could bite a stranger.** `orient_demo.py` assumed the
+   legacy 0.5 boundary while replaying a policy trained at 0.33, so the robot took small
+   steps where big ones had been learned — the same failure class as the head-frame bug,
+   third instance in one day. The fix generalizes and is **not a flag** ("remember how
+   this policy was trained" is precisely the assumption that keeps breaking): **the state
+   space travels with the policy.** `live_3_learn.py` writes a `<nac>.meta.json` sidecar
+   (`bin_boundary`, `band`, `gain`, `action_deltas`, `placements`, `agent_id`) on every
+   save; `orient_demo.py` reads it instead of assuming; policies without one load with a
+   warning that names the risk. **Substrate bundles need the same fields in their
+   manifest before they can safely cross robots** — the sidecar is the prototype. Until
+   then, treat 45b-era and 45c-era bundles as **different substrate generations**.
 5. **agent_id convention** — `cluster_reward_bias` keys are `(agent_id, bin, tool)`; the
    orient scripts use `agent_id="reachy"`. A consumer under a different agent_id sees
    ZERO bias and the policy silently vanishes. Until a remap-at-import exists, consume

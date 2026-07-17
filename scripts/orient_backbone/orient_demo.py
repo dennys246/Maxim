@@ -27,15 +27,20 @@ import os
 import sys
 import time
 
-from live_3_learn import AGENT_ID, ARGMAX, load_orient_actions, probe_policy
-from live_common import az_bin
+from live_3_learn import AGENT_ID, ARGMAX, LEGACY_PLACEMENT_RANGES, load_orient_actions, probe_policy
+from live_common import az_bin, load_policy_meta
 from live_common import DryRig, JsonlLog, LiveRig, gated_azimuth, preflight, resolve_host
 
 from maxim.decisions.nac import NAc, NACConfig
 
+# Newest/best FIRST. This list was the reason the demo only ever took small steps:
+# it led with the v0.1 merged policy, which is from the 2-ACTION era and has never
+# heard of a big step.
 DEFAULT_NAC_PATHS = (
-    "~/.maxim/orient_live/nac_merged.json",  # the merge-arm showcase artifact
-    "~/.maxim/orient_live/nac_reachy.json",  # the primary training NAc
+    "~/.maxim/orient_live/nac_reachy_flip.json",  # Exp 45c: direction + magnitude 1.00
+    "~/.maxim/orient_live/nac_reachy_mag.json",  # Exp 45b: magnitude 0.75
+    "~/.maxim/orient_live/nac_merged.json",  # v0.1 merged (2-action: direction only)
+    "~/.maxim/orient_live/nac_reachy.json",  # v0.1 primary (2-action)
 )
 
 
@@ -86,8 +91,30 @@ def main() -> int:
     ok, err = nac.load_safe(nac_path)
     print(f"[nac] loaded {nac_path} (ok={ok}{', ' + err if err else ''})")
 
+    # A bin NAME means nothing without the boundary that produced it. Read the
+    # state-space definition the policy was trained in, rather than assuming ours
+    # matches — assuming is what made every other bug today.
+    meta = load_policy_meta(nac_path)
+    if meta is not None:
+        bin_boundary = float(meta.get("bin_boundary", 0.5))
+        metric_gain = float(meta.get("gain", 0.55))
+        ranges = {k: tuple(v) for k, v in meta.get("placements", {}).items()} or LEGACY_PLACEMENT_RANGES
+        print(f"[policy] state space from sidecar: boundary |az|={bin_boundary:.3f}, gain {metric_gain}")
+    else:
+        bin_boundary, metric_gain, ranges = 0.5, 0.55, LEGACY_PLACEMENT_RANGES
+        print("[policy] no sidecar (pre-2026-07-16 policy) — assuming the legacy boundary |az|=0.5.")
+        print("         If this policy was trained with --flip-bins, its bins mean something")
+        print("         ELSE and every lookup between 0.33 and 0.5 is silently wrong. Retrain")
+        print("         or pass --nac-path to a policy that has one.")
+
+    known = sorted({k.split("\x1f")[2].removeprefix("tool:") for k in nac.dump().get("cluster_reward_bias", {})})
+    print(f"[policy] actions this policy knows: {known or '(none — untrained)'}")
+    if known and not any(a.endswith("_big") for a in known):
+        print("         ^ direction-only (2-action era): it will only ever take NORMAL steps.")
+        print("           For magnitude, use a 45b/45c policy or retrain with --flip-bins.")
+
     # Show what the substrate knows BEFORE any motion — the demo's honest opener.
-    p = probe_policy(nac, names, action_deltas)
+    p = probe_policy(nac, names, action_deltas, gain=metric_gain, ranges=ranges)
     print(
         f"[policy] probe correctness={p['correctness']:.2f} "
         f"magnitude={p['magnitude_appropriateness']:.2f}  " + str({b: v["argmax"] for b, v in p["bins"].items()})
@@ -125,7 +152,7 @@ def main() -> int:
             if az is None:
                 pace(0.3)  # quiet room — just wait for the gate
                 continue
-            state = az_bin(az, band)
+            state = az_bin(az, band, bin_boundary)
             if state == "center":
                 pace(0.3)
                 continue
