@@ -401,6 +401,26 @@ class ReachyMiniController(RobotController):
     # Motion Control
     # ─────────────────────────────────────────────────────────────────────────
 
+    # MotionTarget.method is the SDK-AGNOSTIC name (documented "minimum_jerk"). The
+    # Reachy SDK's InterpolationTechnique enum spells it "minjerk" and REJECTS
+    # anything else with a pydantic validation error — so passing target.method
+    # straight through crashed EVERY controller-driven motion on SDK >= 1.5
+    # (caught 2026-07-17 by the #397 hardware smoke, before which nothing exercised
+    # this path on hardware). Translation is the controller's job — the abstract
+    # MotionTarget must not know SDK spellings.
+    _METHOD_MAP = {
+        "minimum_jerk": "minjerk",
+        "minjerk": "minjerk",
+        "linear": "linear",
+        "ease_in_out": "ease_in_out",
+        "cartoon": "cartoon",
+    }
+
+    @classmethod
+    def _sdk_method(cls, method: str) -> str:
+        """Map a MotionTarget.method name to the Reachy SDK's InterpolationTechnique value."""
+        return cls._METHOD_MAP.get(method, "minjerk")
+
     def goto_target(self, target: MotionTarget) -> bool:
         """Move robot to target pose.
 
@@ -468,7 +488,7 @@ class ReachyMiniController(RobotController):
                 head=head_target,
                 body_yaw=body_yaw_target,
                 duration=target.duration,
-                method=target.method,
+                method=self._sdk_method(target.method),
             )
 
             return True
