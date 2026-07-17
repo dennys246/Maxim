@@ -353,6 +353,8 @@ Exp 45 orient policy runnable** — that's Track 2.
 - **P1** — give the Reachy runtime a substrate-primary path (full mode, or a hybrid where
   orienting is substrate-primary under LLM cognition). This is the architecture decision
   the operator named; it's a plan of its own, not a sub-step.
+**Track 2 is now drafted: [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md)** — the reflex-as-DN-Behavior design (P1 hybrid + P2 az_bin keying), which merges with the runtime plan's Landing 2.
+
 - **P2** — in that path, key azimuth on the **az_bin string** (+ boundary sidecar from
   Steps 1/2), bypassing `SensorEncoder`, so the queen-mind policy is directly usable
   (Track D). Alternatively, wire the reserved **`"audio"` EC modality** as the exteroceptive

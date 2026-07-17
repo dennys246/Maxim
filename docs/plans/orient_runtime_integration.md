@@ -63,6 +63,8 @@ seam. Both already have shapes (`AzimuthDoASource`, `make_reachy_doa_reader`).
 
 ---
 
+> **Merged (2026-07-17):** Landing 2 (the reflex) is the same work as the hybrid substrate-primary reconciliation — designed in [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md), which supersedes this section's sketch.
+
 ## Landing 2 — the reflex (one real problem: the credit clock)
 
 Add `behaviors/audio_orienting.py::AudioOrienting(Behavior)`:
