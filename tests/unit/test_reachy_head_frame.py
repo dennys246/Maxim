@@ -150,6 +150,28 @@ def test_head_only_command_preserves_current_body_yaw(controller):
     )
 
 
+def test_method_default_maps_to_a_valid_sdk_enum(controller):
+    """MotionTarget's default method ('minimum_jerk') must reach the SDK as a valid enum.
+
+    The SDK's InterpolationTechnique accepts only {linear, minjerk, ease_in_out,
+    cartoon} and REJECTS 'minimum_jerk' with a pydantic error — so passing it
+    through crashed every controller-driven motion on SDK >= 1.5 until 2026-07-17.
+    """
+    ctl, fake = controller
+    ctl.goto_target(MotionTarget(body_yaw=0.3))  # default method
+    (call,) = fake.calls
+    assert call["method"] in {"linear", "minjerk", "ease_in_out", "cartoon"}, (
+        f"method {call['method']!r} is not a valid SDK InterpolationTechnique value — "
+        "the daemon rejects it and the motion never happens"
+    )
+
+
+def test_default_motiontarget_method_is_what_we_map_from(controller):
+    """Pin the default so a rename of MotionTarget.method can't silently break the map."""
+    assert MotionTarget(body_yaw=0.0).method == "minimum_jerk"
+    assert ReachyMiniController._sdk_method("minimum_jerk") == "minjerk"
+
+
 def test_get_current_pose_exposes_body_yaw(controller):
     """body_yaw must be readable — the head-frame conversion depends on it."""
     ctl, fake = controller
