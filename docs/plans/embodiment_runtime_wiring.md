@@ -120,11 +120,34 @@ write the built `AzimuthDoASource`'s reading into `entity.vital_metrics["azimuth
 before the tick. The centeredness drive fires; the substrate encodes it. Steps 1+2 of
 the orient-runtime plan (the reader + builder, merged in #399) plug in here.
 
-### Layer 3 — the prompt half
+### Layer 3 — the prompt half  ✅ LANDED (2026-07-17)
 
-With `executor.embodiment` non-None, `_maybe_wire_body_state` starts working and
-azimuth surfaces through the existing `body_state` prompt section. Whether that needs
-its own wiring (if the Reachy runtime bypasses `create_full_agent`) is Track E.
+With `executor.embodiment` non-None, `body_state` surfaces through the existing prompt
+section. The Reachy runtime bypasses `create_full_agent`'s `_maybe_wire_body_state` seam
+(Track E Gap 3), so it needed its own wiring.
+
+> **SHIPPED — Layer 3a (`memory_hub.embodiment`):** `agentic_runtime._start_agentic_runtime`
+> now routes `executor.embodiment` into `memory_hub.embodiment` after executor construction,
+> gated by the **same** `body_state_prompt_enabled()` flag (`MAXIM_ENABLE_BODY_STATE_PROMPT`)
+> as the AgentFactory seam — so the live-robot prompt is unchanged by default (opt-in,
+> consistent with the Exp 44 ablation). Only fires when a body was actually wired.
+>
+> **SHIPPED — Layer 3b (the Acting Coach category-error fix):** `_compose_drive_modulation`
+> was rewritten from a hardcoded thermal branch (any homeostatic breach → "seek warmth/
+> shelter") to **per-sensor, action-neutral** reporting — it names the specific signal(s)
+> outside their comfortable range / deprived / rising and leaves the action to the LLM. Per
+> review SF-4 this is the data-driven fix (reflects whatever sensors the body declares), NOT
+> a second `if drive == "centeredness"` branch, and it touches **no** shape-frozen spec. So
+> when the flag is flipped on, an off-center sound no longer tells the robot to "seek warmth."
+> Guard: `tests/unit/test_acting_coach.py::TestComposeDriveModulation` (incl. the azimuth-breach
+> anti-regression + a behavioral no-modality-prescription sweep).
+>
+> Layers 3a+3b shipped **together** (the review was firm: turning on 3a without 3b ships the
+> misfire). Pain-anticipation (Layer 2) + drive-modulation (Layer 4) now activate coherently
+> when the flag is set. A richer *per-drive declared* guidance string (a `guidance` field on
+> the drive specs) is a deliberate follow-up — it touches the shape-frozen `HomeostaticDriveSpec`
+> / `EntropicDriveSpec` (CC3 review gate) and is worth its own change; the shipped fix already
+> removes the category error without it.
 
 ---
 

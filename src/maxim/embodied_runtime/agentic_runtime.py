@@ -406,6 +406,27 @@ class AgenticRuntimeMixin:
         else:
             executor = build_executor(registry, pain_bus=None)
             self._tool_pain_bridge = None
+
+        # Layer 3a (Track 1 of embodiment_runtime_wiring.md): route the
+        # executor's Embodiment into the memory hub so memory_agent's
+        # format_body_state_for_prompt populates StructuredContext.body_state
+        # (the prompt half — body_state section + Acting Coach Layers 2+4).
+        # The Reachy runtime builds its agent directly and so bypasses the
+        # AgentFactory seam (_maybe_wire_body_state); replicate its gate here.
+        # Only fires when a body was actually wired (executor.embodiment
+        # present) AND the same body_state_prompt_enabled() flag is set, so the
+        # live-robot prompt is unchanged by default (opt-in, consistent with
+        # the Exp 44 ablation seam).
+        try:
+            from maxim.integration.memory_hub import body_state_prompt_enabled
+
+            _exec_embodiment = getattr(executor, "embodiment", None)
+            if _exec_embodiment is not None and memory_hub is not None and body_state_prompt_enabled():
+                memory_hub.embodiment = _exec_embodiment
+                self.log.debug("body_state wiring: memory_hub.embodiment set (Layer 3a)")
+        except Exception as e:
+            self.log.debug("body_state wiring skipped: %s", e)
+
         evaluators = build_evaluators()
 
         # Register MathTool if NumericalWorkspace and AngularGyrus are available
