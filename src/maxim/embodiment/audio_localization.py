@@ -207,3 +207,51 @@ def make_reachy_doa_reader(mini: object | None = None) -> DoAReader:
         return (float(doa_radians), bool(is_speech_detected))
 
     return _read
+
+
+def build_reachy_audio_orienting_source(
+    *,
+    connection_mode: str = "network",
+    host: str | None = None,
+    mini: object | None = None,
+    agent_id: str | None = None,
+    name: str = "reachy:audio-doa",
+) -> "AzimuthDoASource | None":
+    """Assemble a runtime-ready audio-orient :class:`AzimuthDoASource` for a Reachy.
+
+    This is the ONE place that chooses the DoA transport, so the runtime wiring
+    (Landing 1 step 3) doesn't carry that decision inline:
+
+    * ``mini`` injected  -> onboard local-USB reader (``make_reachy_doa_reader``);
+      the caller already holds an SDK object, so no network hop.
+    * ``connection_mode`` in {"network", "auto"} with a ``host`` -> the REST reader
+      (``make_reachy_rest_doa_reader``): the daemon serves DoA over the network,
+      which is the off-robot topology (laptop/peer talking to the robot).
+    * neither -> ``None``. **A missing transport is not an error and never a stub**
+      — the caller simply gets no audio-orient percepts, exactly as a robot without
+      a mic would (the capability-driven principle: absent capability => absent
+      source, no dead config).
+
+    Returns ``None`` rather than raising so the runtime can treat "no audio source"
+    as a normal, capability-driven outcome — the same way vision is gated on
+    ``has_vision``. Enabling/disabling the feature is the CALLER's decision (a
+    config flag at the wiring layer, per the config-over-env-vars standard); this
+    builder only assembles what the transport allows.
+
+    Testable with no robot and no network: inject ``mini`` (a fake), or rely on the
+    REST reader's own ``fetch`` seam downstream.
+    """
+    if mini is not None:
+        reader = make_reachy_doa_reader(mini)
+    elif connection_mode in ("network", "auto") and host:
+        reader = make_reachy_rest_doa_reader(host)
+    else:
+        logger.debug(
+            "no DoA transport (connection_mode=%r, host=%r, mini=%s) — no audio-orient source",
+            connection_mode,
+            host,
+            "set" if mini is not None else "None",
+        )
+        return None
+
+    return AzimuthDoASource(reader, name=name, agent_id=agent_id)

@@ -18,6 +18,7 @@ from maxim.agents.percept_factory import make_audio_percept
 from maxim.embodiment.audio_localization import (
     AzimuthDoASource,
     doa_to_azimuth,
+    build_reachy_audio_orienting_source,
     make_reachy_doa_reader,
     make_reachy_rest_doa_reader,
 )
@@ -234,5 +235,62 @@ class TestRestDoAReader:
         maxim_http.fetch_url = _boom
         try:
             assert make_reachy_rest_doa_reader("h")() is None
+        finally:
+            maxim_http.fetch_url = orig
+
+
+class TestBuildReachyAudioOrientingSource:
+    """The builder that chooses the DoA transport. All offline — no robot, no network."""
+
+    def test_network_mode_with_host_builds_a_source(self):
+        src = build_reachy_audio_orienting_source(connection_mode="network", host="10.6.0.63")
+        assert isinstance(src, AzimuthDoASource)
+        assert "audio" in src.capabilities
+
+    def test_no_host_no_mini_returns_none(self):
+        # Absent transport => absent source (capability-driven), NOT an error.
+        assert build_reachy_audio_orienting_source(connection_mode="network", host=None) is None
+
+    def test_localhost_mode_without_mini_returns_none(self):
+        # localhost_only + no injected SDK object => no reader to build.
+        assert build_reachy_audio_orienting_source(connection_mode="localhost_only", host="x") is None
+
+    def test_injected_mini_uses_onboard_reader(self):
+        # A fake SDK object with a media.get_DoA() => onboard path, no network.
+        media = _FakeMedia((math.pi / 2, True))
+        src = build_reachy_audio_orienting_source(mini=_FakeMini(media))
+        assert isinstance(src, AzimuthDoASource)
+        percept = src.next_percept()
+        assert percept is not None
+        assert percept.metadata["azimuth"] == doa_to_azimuth(math.pi / 2)
+
+    def test_agent_id_and_name_thread_through(self):
+        # name is observable directly; agent_id is observable on the emitted percept.
+        src = build_reachy_audio_orienting_source(
+            connection_mode="network", host="h", agent_id="reachy-01", name="my-audio"
+        )
+        assert src is not None
+        assert src.name == "my-audio"
+        src._reader = lambda: (math.pi, True)  # force a reading without a network
+        percept = src.next_percept()
+        assert percept is not None
+        assert percept.context.agent_id == "reachy-01"  # agent_id lives on the PerceptContext
+
+    def test_network_source_pulls_through_the_rest_reader(self):
+        # End to end: builder -> AzimuthDoASource -> REST reader, with the fetch
+        # seam faked so no network happens.
+        import maxim.utils.http as maxim_http
+
+        class _Resp:
+            def json(self):
+                return {"angle": math.pi, "speech_detected": True}
+
+        orig = maxim_http.fetch_url
+        maxim_http.fetch_url = lambda url, timeout=None: _Resp()
+        try:
+            src = build_reachy_audio_orienting_source(connection_mode="network", host="1.2.3.4")
+            percept = src.next_percept()
+            assert percept is not None
+            assert percept.metadata["azimuth"] == doa_to_azimuth(math.pi)
         finally:
             maxim_http.fetch_url = orig
