@@ -117,8 +117,15 @@ its own wiring (if the Reachy runtime bypasses `create_full_agent`) is Track E.
 
 ## Audit findings (five tracks, 2026-07-17)
 
-### Track A — the tick / wall-clock drift invariant
+### Track A — the tick / wall-clock drift invariant  ✅ LANDED (2026-07-17)
 **VERDICT: double-drift is impossible; the real hazard is NO-drift on LLM-primary — fixable with one call.** (audit-confirmed against body.py, agent_loop.py, the CI grep)
+
+> **SHIPPED:** `run_agentic_loop` now calls `tick_embodiment_drift(executor, aut_mode)` once per
+> live iteration (after the pause check, before the 0.6 idle gate so a *sitting* body still drifts).
+> Extracted as a testable module-level helper next to `propose_via_substrate`; no-op on
+> substrate-primary + unembodied; calls the public `evaluate_failures()` (no CI-grep trip). Guard:
+> `tests/unit/test_substrate_primary_scene_harm.py::TestTickEmbodimentDriftLLMPrimary`. CLAUDE.md
+> embodiment-tick invariant updated.
 
 - **The invariant:** `Body.evaluate_failures()` self-applies wall-clock drift at the top
   (`body.py:149-154`) using elapsed `now - _last_poll`, then resets `_last_poll`. The raw
