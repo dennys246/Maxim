@@ -114,6 +114,58 @@ class AzimuthDoASource:
         return make_audio_percept(azimuth, source=self._name, agent_id=self._agent_id)
 
 
+def make_reachy_rest_doa_reader(
+    host: str,
+    *,
+    port: int = 8000,
+    timeout: float = 2.0,
+    fetch: "Callable[[str, float], DoAReading | None] | None" = None,
+) -> DoAReader:
+    """Return a :data:`DoAReader` that reads DoA over the daemon's REST endpoint.
+
+    THE OFF-ROBOT PATH. ``make_reachy_doa_reader`` reads ``mini.media.get_DoA()``,
+    which is **local-USB in SDK >= 1.5** — it only works ONBOARD. When Maxim runs
+    on a laptop / peer talking to the robot over the network (the usual topology),
+    the client-side call returns nothing; the daemon reads the XVF3800 and serves
+    the value at ``GET /api/state/doa``. Convention is unchanged from the onboard
+    path (0=left, pi/2=front, pi=right), so :func:`doa_to_azimuth` applies as-is.
+
+    Lifted from the Step-1 bring-up script (where it was duplicated inline) into
+    the library so :class:`AzimuthDoASource` has a real off-robot reader.
+
+    Network calls go through ``maxim.utils.http`` (the CI-enforced single HTTP
+    surface — raw ``urllib`` is blocked outside ``utils/http.py``), matching
+    ``ReachyMiniController._daemon_status``. The ``fetch`` parameter is a seam for
+    tests: inject a fake to exercise the reader with NO network and NO robot (the
+    same dependency-gate-inside pattern that makes ``make_reachy_doa_reader``
+    CI-testable). ``None`` is a live reading this tick (no reading / no speech
+    yet), never fabricated.
+    """
+    if fetch is not None:
+        _fetch = fetch
+    else:
+
+        def _fetch(url: str, t: float) -> "DoAReading | None":
+            from maxim.utils import http as maxim_http
+
+            try:
+                resp = maxim_http.fetch_url(url, timeout=t)
+                data = resp.json() if hasattr(resp, "json") else None
+            except Exception:
+                logger.debug("REST DoA fetch failed", exc_info=True)
+                return None
+            if not data:
+                return None
+            return (float(data["angle"]), bool(data.get("speech_detected", False)))
+
+    url = f"http://{host}:{port}/api/state/doa"
+
+    def _read() -> DoAReading | None:
+        return _fetch(url, timeout)
+
+    return _read
+
+
 def make_reachy_doa_reader(mini: object | None = None) -> DoAReader:
     """Return a :data:`DoAReader` wrapping a Reachy Mini's onboard DoA.
 
@@ -155,3 +207,51 @@ def make_reachy_doa_reader(mini: object | None = None) -> DoAReader:
         return (float(doa_radians), bool(is_speech_detected))
 
     return _read
+
+
+def build_reachy_audio_orienting_source(
+    *,
+    connection_mode: str = "network",
+    host: str | None = None,
+    mini: object | None = None,
+    agent_id: str | None = None,
+    name: str = "reachy:audio-doa",
+) -> "AzimuthDoASource | None":
+    """Assemble a runtime-ready audio-orient :class:`AzimuthDoASource` for a Reachy.
+
+    This is the ONE place that chooses the DoA transport, so the runtime wiring
+    (Landing 1 step 3) doesn't carry that decision inline:
+
+    * ``mini`` injected  -> onboard local-USB reader (``make_reachy_doa_reader``);
+      the caller already holds an SDK object, so no network hop.
+    * ``connection_mode`` in {"network", "auto"} with a ``host`` -> the REST reader
+      (``make_reachy_rest_doa_reader``): the daemon serves DoA over the network,
+      which is the off-robot topology (laptop/peer talking to the robot).
+    * neither -> ``None``. **A missing transport is not an error and never a stub**
+      — the caller simply gets no audio-orient percepts, exactly as a robot without
+      a mic would (the capability-driven principle: absent capability => absent
+      source, no dead config).
+
+    Returns ``None`` rather than raising so the runtime can treat "no audio source"
+    as a normal, capability-driven outcome — the same way vision is gated on
+    ``has_vision``. Enabling/disabling the feature is the CALLER's decision (a
+    config flag at the wiring layer, per the config-over-env-vars standard); this
+    builder only assembles what the transport allows.
+
+    Testable with no robot and no network: inject ``mini`` (a fake), or rely on the
+    REST reader's own ``fetch`` seam downstream.
+    """
+    if mini is not None:
+        reader = make_reachy_doa_reader(mini)
+    elif connection_mode in ("network", "auto") and host:
+        reader = make_reachy_rest_doa_reader(host)
+    else:
+        logger.debug(
+            "no DoA transport (connection_mode=%r, host=%r, mini=%s) — no audio-orient source",
+            connection_mode,
+            host,
+            "set" if mini is not None else "None",
+        )
+        return None
+
+    return AzimuthDoASource(reader, name=name, agent_id=agent_id)
