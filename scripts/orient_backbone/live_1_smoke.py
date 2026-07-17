@@ -81,6 +81,13 @@ def get_doa_rest(host: str, port: int = 8000, timeout: float = 2.0) -> tuple[flo
     USB in 1.8.x — it only works onboard. Over the network the daemon reads
     the chip and serves the value here. Convention unchanged from 1.2.6:
     0=left, pi/2=front, pi=right (audio_localization.doa_to_azimuth applies).
+
+    NOTE: this is INTENTIONALLY duplicated with
+    maxim.embodiment.audio_localization.make_reachy_rest_doa_reader (the
+    canonical library reader). This script is standalone-by-design so it can run
+    onboard via ssh with only the Reachy SDK and no ``maxim`` install; it must
+    not import ``maxim.*``. live_common.py (which imports maxim) uses the library
+    reader, so the duplication is confined to this one bring-up script.
     """
     import json
     import urllib.request

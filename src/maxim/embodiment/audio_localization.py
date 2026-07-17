@@ -114,6 +114,58 @@ class AzimuthDoASource:
         return make_audio_percept(azimuth, source=self._name, agent_id=self._agent_id)
 
 
+def make_reachy_rest_doa_reader(
+    host: str,
+    *,
+    port: int = 8000,
+    timeout: float = 2.0,
+    fetch: "Callable[[str, float], DoAReading | None] | None" = None,
+) -> DoAReader:
+    """Return a :data:`DoAReader` that reads DoA over the daemon's REST endpoint.
+
+    THE OFF-ROBOT PATH. ``make_reachy_doa_reader`` reads ``mini.media.get_DoA()``,
+    which is **local-USB in SDK >= 1.5** — it only works ONBOARD. When Maxim runs
+    on a laptop / peer talking to the robot over the network (the usual topology),
+    the client-side call returns nothing; the daemon reads the XVF3800 and serves
+    the value at ``GET /api/state/doa``. Convention is unchanged from the onboard
+    path (0=left, pi/2=front, pi=right), so :func:`doa_to_azimuth` applies as-is.
+
+    Lifted from the Step-1 bring-up script (where it was duplicated inline) into
+    the library so :class:`AzimuthDoASource` has a real off-robot reader.
+
+    Network calls go through ``maxim.utils.http`` (the CI-enforced single HTTP
+    surface — raw ``urllib`` is blocked outside ``utils/http.py``), matching
+    ``ReachyMiniController._daemon_status``. The ``fetch`` parameter is a seam for
+    tests: inject a fake to exercise the reader with NO network and NO robot (the
+    same dependency-gate-inside pattern that makes ``make_reachy_doa_reader``
+    CI-testable). ``None`` is a live reading this tick (no reading / no speech
+    yet), never fabricated.
+    """
+    if fetch is not None:
+        _fetch = fetch
+    else:
+
+        def _fetch(url: str, t: float) -> "DoAReading | None":
+            from maxim.utils import http as maxim_http
+
+            try:
+                resp = maxim_http.fetch_url(url, timeout=t)
+                data = resp.json() if hasattr(resp, "json") else None
+            except Exception:
+                logger.debug("REST DoA fetch failed", exc_info=True)
+                return None
+            if not data:
+                return None
+            return (float(data["angle"]), bool(data.get("speech_detected", False)))
+
+    url = f"http://{host}:{port}/api/state/doa"
+
+    def _read() -> DoAReading | None:
+        return _fetch(url, timeout)
+
+    return _read
+
+
 def make_reachy_doa_reader(mini: object | None = None) -> DoAReader:
     """Return a :data:`DoAReader` wrapping a Reachy Mini's onboard DoA.
 

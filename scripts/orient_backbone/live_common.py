@@ -59,12 +59,17 @@ class JsonlLog:
 
 
 def make_rest_reader(host: str) -> Reader:
-    """DoA reader over the daemon's REST endpoint (the network path, Step-1 verified)."""
+    """DoA reader over the daemon's REST endpoint (the network path, Step-1 verified).
 
-    def _read() -> tuple[float, bool] | None:
-        return smoke.get_doa_rest(host)
+    Delegates to the LIBRARY reader (`maxim.embodiment.audio_localization`), which
+    is the canonical off-robot DoA path and the one Landing 1 wires into the
+    runtime — so the scripts and the runtime read DoA through the exact same code.
+    (`live_1_smoke.py` keeps its own inline copy on purpose: it must run standalone
+    onboard with only the Reachy SDK, no `maxim` install.)
+    """
+    from maxim.embodiment.audio_localization import make_reachy_rest_doa_reader
 
-    return _read
+    return make_reachy_rest_doa_reader(host)
 
 
 def gated_azimuth(
