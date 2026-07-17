@@ -208,6 +208,50 @@ Adversaries try to corrupt the Hivemind by spreading bad learning. Defenses:
 
 This won't be perfect. Pure peer-to-peer systems with open contribution always have an arms race with abuse. Mitigations are practical, not theoretical.
 
+### Trust topology: Queen-tier releases + promotion gauntlet (added 2026-07-15)
+
+The poison-resistance hooks above say how bad substrate is *rejected*; they don't say how
+good substrate *earns trust*. The first concrete cross-robot payload — the Reachy orient
+policy ([substrate_native_orienting.md](substrate_native_orienting.md)) — made the gap
+concrete: one contributor with a flipped sign calibration uploads an *inverted* policy,
+and mean-merge dilutes every consumer toward zero. The answer is a tiered, asymmetric
+flow policy:
+
+- **Queen tier** — an Oasis *role* (NOT a canonical root; any personal/community/public
+  Oasis can adopt it): holds pristine substrate earned through experiments and
+  simulation gauntlets, **flows out freely** as signed, versioned releases, and
+  **admits inward only through a promotion gauntlet**. Consumers get reproducible,
+  rollback-able substrate checkpoints instead of continuous gossip.
+- **Experimental tier** — the dynamic lateral layer (Oasis↔Oasis sync, direct peer
+  exchange). Contributions land here by default, tagged with provenance, quarantined
+  from the trusted tier until promoted.
+- **Default consumer policy** — a fresh Maxim pulls Queen-tier releases by default
+  (`trusted_sources = {queen-key}`); subscribing to the experimental tier is opt-in.
+  This makes the casual user's poisoning exposure the *curation pipeline*, not N
+  strangers.
+
+**Promotion gauntlet.** Substrate graduates from experimental to Queen tier only by
+passing a per-domain validation battery — the Foundry's generate → validate → gauntlet
+→ score loop and the [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md)
+Earned/Dormant discipline, applied to substrate instead of code mechanisms. Bio frame
+(load-bearing, not decoration): individual Maxims are fast hippocampal learners; the
+Queen is the fleet's slow consolidated neocortex; **promotion = sleep-replay at fleet
+scale** — contributed substrate is re-run in simulation before it enters long-term
+storage. **Gauntlet #1 exists today**: the orient-policy probe validator
+(`scripts/orient_backbone/live_3_learn.py::probe_policy`) evaluates a contributed
+`cluster_reward_bias` orient policy in milliseconds with no hardware — reject on
+correctness below threshold.
+
+**Landing surfaces (all already reserved — no new mechanism):** the bundle manifest's
+`signature`/`signature_algorithm` slots (reserved-null at 1.0) carry the Queen's release
+signatures; the `trusted_sources` / `validate_link` / `validate_node` keyword parameters
+on `nac_merge`/`ec_merge` (default `None` at 1.0) carry the consumer-side policy and the
+Queen's inward gate; provenance tags + the `_consensus` namespace carry tier attribution.
+
+**Phasing:** orient merge-arm demo with the probe gauntlet — now (see the runbook's
+post-Step-3 follow-up); bundle-signature verification — 1.1 (decision point 2); Queen-tier
+release channel + curation tools — 1.2 (extends the existing 1.2 curation row).
+
 ---
 
 ## Architecture details
@@ -253,7 +297,7 @@ Substrate-primary Maxim (1.1+, bootstrapped from Hivemind)
 ### Key design decisions
 
 - **Oases are full agents, not databases.** Each Oasis runs her own bio-stack and has her own emergent behavior. Querying her is asking *her*, not searching a record store.
-- **No hierarchy.** Multiple Oases coexist; no single "canonical" Oasis. The Hivemind mesh has no root.
+- **No hierarchy.** Multiple Oases coexist; no single "canonical" Oasis. The Hivemind mesh has no root. (Trust *tiers* are per-consumer policy, not topology — a "Queen" is a role any Oasis can adopt, not a root node. See "Trust topology" above.)
 - **Distillation, not replication.** The Hivemind ships *learned patterns*, not raw episodes. Privacy and scale both benefit.
 - **Opt-in throughout.** Users opt in to contributing. Operators opt in to running an Oasis. Substrate domains are opt-in subscriptions. Nothing is automatic; nothing is centralized; nothing leaves a Maxim without explicit consent.
 - **Provenance is preserved, not erased.** Every pattern carries source tags. This enables trust management, debugging, and the raw-vs-primed experimental distinction.
@@ -353,6 +397,19 @@ These don't block 1.0 or even 1.1, but need design before any cross-Oasis sharin
 ---
 
 ## Iteration log
+
+### 2026-07-15 — Trust topology: Queen tier + promotion gauntlet
+
+Triggered by the Reachy orient policy (substrate_native_orienting.md Layer 1) becoming
+the first concrete cross-robot payload: `cluster_reward_bias` is tiny, privacy-clean by
+construction, hardware-homogeneous across the Reachy Mini fleet, and already a
+first-class `nac_merge` surface — which made the poisoning question concrete (a
+flipped-calibration contributor uploads an inverted policy). Added the Queen-tier /
+experimental-tier asymmetric flow policy + promotion gauntlet section; reconciled with
+the no-hierarchy principle (Queen is a per-Oasis role + per-consumer trust default, not
+a canonical root). Gauntlet #1 (orient probe validator) exists today; everything else
+lands on surfaces reserved at 1.0 (manifest signature slots, `trusted_sources` /
+`validate_*` merge kwargs).
 
 ### 2026-05-09 — Plan created from synthesis
 

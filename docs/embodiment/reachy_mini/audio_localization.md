@@ -85,6 +85,93 @@ The Reachy Mini is exactly the "**coplanar → declare azimuth + yaw, stop**" ca
 
 ---
 
+## Measured DoA response (2026-07-16) — and the retraction that produced it
+
+**RETRACTED (2026-07-16, same day): an earlier version of this section claimed
+"the XVF3800 DoA is a TRACKING estimator, not a memoryless measurement — tracked
+gain 0.58 az/rad, loses lock on large jumps." That finding was an ARTIFACT of a
+bug in our own motion code, not a property of the chip.** It is preserved here as
+a correction because the failure mode is instructive and the numbers are still
+cited elsewhere.
+
+### The bug that faked a sensor pathology
+
+Every measurement behind that claim commanded `goto_target(body_yaw=X)` with
+`head=None`. Per Pollen's own
+[AGENTS.md](https://github.com/pollen-robotics/reachy_mini/blob/main/AGENTS.md),
+**the head 4x4 pose is in the WORLD frame and sits above `body_yaw` in the
+kinematic chain**: `head=None` makes the daemon re-solve IK against the *retained*
+world-frame head target, so the Stewart platform **counter-rotates to hold the
+head's absolute orientation** while the body pivots underneath. **The mic array is
+in the head.** So the array barely turned: measured **0.32 rad of mic rotation for
+a 0.9 rad body command** (`d(head)/d(body)` = +0.214 in world frame).
+
+Reading a nearly-stationary array while believing it had rotated produces exactly
+the signature of a lagging sensor — proportional shortfall, step-size-independent,
+wildly variable run to run. It survived six competing hypotheses (settle lag,
+backlash, motor under-travel, speech density, increment size, slow adaptation),
+each falsified in turn, before the vendor's docs settled it.
+
+### What the chip actually does — TRUE characterization (post-headfix sweep, 2026-07-16)
+
+The first honest sweep of an array that actually rotates. **The XVF3800 DoA is an
+excellent sensor**; every pathology previously attributed to it was our bug.
+
+| property | value |
+|---|---|
+| gain | **0.57 az/rad** full-range fit (central 0.546-0.548; settle test 0.562; mag2 sign-check 0.58 — four independent measurements agreeing within 0.03) |
+| linearity | **R² = 0.9982** over the full ±1.4 rad (±80°), *both* sweep directions |
+| intercept | +0.001 / +0.014 (source centred) |
+| hysteresis | **0.015** mean asc-vs-desc (was 0.109-0.176 with the bug) |
+| monotonicity | **complete across ±1.4 rad** — zero non-monotonic zones |
+| convergence | **0.23 s** after a 0.9 rad turn, then stable |
+| per-pose noise | 0.022 spread (2× the ~1° quantization) |
+| speech gate | 23-100% (median 50%) — median-of-k + gating still required |
+
+Gain 0.57 vs the geometric 0.637 is a modest ~10% under-read — plausibly beamformer
+angular compression and/or the array sitting off the rotation axis. Stable and
+reproducible; not a pathology.
+
+**Retractions now closed by measurement:**
+- ~~"tracking estimator, loses lock on large jumps"~~ — **refuted**: R²=0.998, 0.23 s convergence.
+- ~~ascending/descending asymmetry~~ — **was head-drag hysteresis**: 0.109-0.176 → 0.015 once the head rides along.
+- ~~endfire bimodal zone~~ — **not observed**: monotonic to ±1.4 rad (|az| ≈ 0.87). The orient loop's conservative |az| ≤ 0.65 placement cap was chasing an artifact and can widen to ~0.85.
+- ~~"gain drifts between sessions"~~ — **refuted**: four measurements, ±0.03.
+
+### The flip point — a derived design constant
+
+The magnitude question ("how far should I turn?") has a **derived** boundary. A
+correct-direction step of shift `S = |delta| * gain` takes `|az|` to `|az - S|`, so its
+relief is `az - |az - S|`. Step A therefore beats step B exactly when `|az - S_A| <
+|az - S_B|` — when az is **nearer A's shift**. The boundary is their midpoint:
+
+    az_boundary = gain * (|delta_big| + |delta_normal|) / 2    # Reachy: 0.546 * 1.2/2 = 0.328
+
+The optimal magnitude policy is simply **nearest-neighbour quantization of |az| onto
+the available shifts**, and with N magnitudes there are N-1 such boundaries.
+
+*(Correction: an earlier version of this section gave `|delta_big| * gain / 2` = 0.246.
+That is where big's relief crosses zero — a different quantity that decides nothing on
+its own. The error was caught by deriving the comparison instead of reasoning about it.)*
+
+Any state bin that **straddles** `az_boundary` contains two opposite correct answers and
+cannot be learned cleanly — it receives consistently contradictory evidence. This is
+measurable per robot from its own gain, and it is why
+[Exp 45b](../../experiments/45b_orient_magnitude.md) scored magnitude 0.75: the `near`
+bin spans 0.1-0.5, straddling 0.328. [Exp 45c](../../experiments/45c_flip_bins.md) tests
+the fix.
+
+### Why direction learning survived and magnitude did not
+
+**Direction is sign-based; magnitude is threshold-based.** A proportional gain
+error leaves every sign intact, so Exp 45's direction/cross-session/merge results
+are unaffected by the bug. Magnitude learning depends on *overshoot* — a
+threshold on `|delta| * gain` vs `2 * |az|` — which a proportional error destroys.
+That asymmetry is why Exp 45 sailed through and Exp 45b was incoherent until the
+head was fixed.
+
+---
+
 ## Sources
 
 - Reachy Mini media stack — https://huggingface.co/blog/pollen-robotics/reachy-mini-media-stack
