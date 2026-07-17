@@ -40,6 +40,50 @@ exactly what the audit tracks below cover.
 
 ---
 
+## Design goal: fix in the GENERIC layer, so no future robot redoes this (2026-07-17)
+
+**The operator's requirement: abstract how substrate-primary wires into embodiment so a
+future robot (Atlas, Spot, …) inherits it instead of re-patching the runtime.** This is
+right, and it reconciles cleanly with the project's "don't abstract from N=1" rule
+(porting doc: abstracting from one example bakes its assumptions in) — because the two are
+about *different things*:
+
+**Most of the audit's fixes are not abstractions — they are fixes placed in the WRONG
+layer today, and moving them to the generic layer IS the generalization.** These are
+robot-agnostic by nature and must NOT live in Reachy code:
+
+- **The per-iteration `evaluate_failures()` tick (Track A)** — a *loop* concern. It belongs
+  in `agent_loop.py`, gated `embodiment is not None`, so **every** embodied robot's loop
+  ticks its body. Putting it in the Reachy runtime would force robot #2 to re-add it. This
+  is not speculative — any live SEM body needs it.
+- **The `build_executor(entity_ref=…)` wiring (Track B)** — already generic; `build_executor`
+  takes `entity_ref`. What's Reachy-specific today is the *hardcoded string* `"bodies/
+  reachy_mini"`. The fix: wire from the robot's **declared** body, not a literal.
+- **The hybrid substrate-primary-under-LLM loop mode (P1)** — a *runtime mode*, not a robot.
+  A robot doesn't implement hybrid; it *declares it wants* a substrate-primary reflex, and
+  the shared loop provides it.
+- **The exteroceptive-vs-interoceptive encoding split (P2/Track D)** — the general lesson
+  ("a signed bearing is exteroceptive; it must not route through the interoception drive
+  encoder that folds its sign") is robot-agnostic. The `"audio"` EC modality already exists
+  reserved for exactly this; wiring it is generic infra, not Reachy code.
+
+**Only ONE thing is a genuine new interface, and here the N=1 caution DOES apply — so keep
+it minimal, declarative, and validated by the one real robot:** *how a robot declares its
+body + its substrate-primary reflexes.* Do NOT build a speculative reflex-registry
+framework. Instead, extend the EXISTING capability-driven seam:
+- Add a `body:` field to `RobotConfig`/`robots.yaml` (the body YAML ref), so the runtime
+  reads `entity_ref = robot.body` instead of hardcoding. One field, reuses the pattern
+  vision already uses (`has_vision`).
+- Reuse `has_audio` (already exists) to gate the audio-orient reflex.
+- Declare the reflex as data (sensor → policy → affordance), the minimum Reachy needs — not
+  a plugin system. Robot #2 fills the same declaration; the *wiring* is shared.
+
+**The rule for this plan: every fix lands in the most generic layer that's correct, and
+Reachy becomes the first CONSUMER of robot-agnostic seams, never the special case.** Each
+track below is tagged `[generic]` (goes in the shared runtime/loop) or `[declaration]`
+(the minimal per-robot seam) so the placement is explicit and the next robot's path is
+"fill the declaration," not "re-patch the runtime."
+
 ## The three layers
 
 Landing "sound as a runtime percept" splits into three, and only the first is the real
@@ -278,12 +322,18 @@ real architecture work.**
 
 ### Track 1 — wire the SEM body live (interoceptive cascade). SAFE, offline-testable.
 
-- **Layer 1** — `build_executor(entity_ref="bodies/reachy_mini", component_registry=…)` on
-  the Reachy path (Track B: clean, reuses the pain_bus, gate on `_pain_bus is not None`)
-  **PLUS the per-iteration `evaluate_failures()` tick for LLM-primary** (Track A: without
-  it the body is wired but frozen; `evaluate_failures()` only, never raw `tick_vital_drift`).
-  Behind a default-off `config.json` flag. Ships with the tick-fires-once-per-iteration
-  integration test.
+*Placement tags: `[generic]` = shared runtime/loop (no future robot redoes it); `[declaration]` = the minimal per-robot seam.*
+
+- **Layer 1a `[generic]`** — the per-iteration `evaluate_failures()` tick in `agent_loop.py`,
+  gated `embodiment is not None` (Track A: without it a live body is frozen). Robot-agnostic;
+  `evaluate_failures()` only, never raw `tick_vital_drift` (CI grep). Every embodied robot
+  inherits it.
+- **Layer 1b `[generic]`** — `build_executor(entity_ref=<robot.body>, component_registry=…)`
+  wired from the DECLARED body, not the literal `"bodies/reachy_mini"` (Track B: clean,
+  reuses the pain_bus, gate on `_pain_bus is not None`). Behind a default-off `config.json`
+  flag. Ships with the tick-fires-once integration test.
+- **Layer 1c `[declaration]`** — add `body:` to `RobotConfig`/`robots.yaml`; Reachy declares
+  `bodies/reachy_mini`. One field, reuses the `has_vision`/`has_audio` capability pattern.
 - **Gate:** none for safety (Track C — no spurious pain). Gate is the tick test + review.
 - **Layer 3a** — explicit `memory_hub.embodiment = executor.embodiment` in
   `agentic_runtime.py` (Track E Gap 3: the runtime bypasses `_maybe_wire_body_state`).
@@ -317,10 +367,12 @@ is a significant runtime change.
 
 ## Open questions
 
-1. **P1 shape:** full substrate-primary mode on the Reachy, or a hybrid (orienting reflex
-   substrate-primary, high-level cognition LLM-primary)? The hybrid matches the biology
-   (reflex under deliberation) and the runtime plan's reflex Landing — but needs the two
-   action paths to coexist without fighting for the motor.
+1. ~~P1 shape~~ **DECIDED (2026-07-17): HYBRID** — orienting reflex substrate-primary,
+   high-level cognition LLM-primary. Matches the biology (reflex under deliberation) and the
+   runtime plan's reflex Landing. The open sub-question is motor arbitration: the two action
+   paths must share the head without fighting — and DN's `PriorityArbiter` + `InhibitionMixin`
+   (from the runtime-integration audit) are the existing seam for exactly that. As a
+   `[generic]` runtime mode, "hybrid" is declared by any robot, not implemented per-robot.
 2. **P2 representation:** az_bin-string bypass (uses the trained policy directly) vs wiring
    the `"audio"` EC modality (principled exteroceptive encoder, but retrain-from-scratch and
    must not repeat the sign-collapse). The first ships the existing result; the second is
