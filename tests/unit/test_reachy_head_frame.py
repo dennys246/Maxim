@@ -23,11 +23,51 @@ Principle 5. Everything here runs offline against a fake SDK object.
 from __future__ import annotations
 
 import math
+import sys
+import types
 
 import pytest
 
-from maxim.hardware.reachy.controller import ReachyMiniController
 from maxim.hardware.controller import MotionTarget
+from maxim.hardware.reachy.controller import ReachyMiniController
+
+
+@pytest.fixture(autouse=True)
+def _stub_reachy_sdk(monkeypatch):
+    """Supply `reachy_mini.utils.create_head_pose` WITHOUT the optional `reachy` extra.
+
+    THIS FIXTURE IS THE POINT OF THE FILE. The invariant guarded here was
+    previously "guarded" by scripts that cannot run in CI — which is not a guard
+    (CLAUDE.md Principle 5). A guard that passes only where an optional dep happens
+    to be installed is the same non-guard with extra steps: the first version of
+    this file did exactly that — green on a laptop with the `reachy` extra, RED in
+    CI, where `from reachy_mini.utils import create_head_pose` raises and
+    `goto_target` swallows it and returns False.
+
+    `create_head_pose` is pure math (euler -> 4x4), so a faithful stub is cheap and
+    keeps the guard running on every push. Composition is Rz @ Ry @ Rx, matching the
+    controller's own extraction (`atan2(m[1][0], m[0][0])`).
+    """
+
+    def create_head_pose(x=0.0, y=0.0, z=0.0, roll=0.0, pitch=0.0, yaw=0.0, mm=False, degrees=True):
+        if degrees:
+            roll, pitch, yaw = map(math.radians, (roll, pitch, yaw))
+        cr, sr = math.cos(roll), math.sin(roll)
+        cp, sp = math.cos(pitch), math.sin(pitch)
+        cy, sy = math.cos(yaw), math.sin(yaw)
+        return [
+            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr, x],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr, y],
+            [-sp, cp * sr, cp * cr, z],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+
+    pkg = sys.modules.get("reachy_mini") or types.ModuleType("reachy_mini")
+    utils = types.ModuleType("reachy_mini.utils")
+    utils.create_head_pose = create_head_pose
+    monkeypatch.setattr(pkg, "utils", utils, raising=False)
+    monkeypatch.setitem(sys.modules, "reachy_mini", pkg)
+    monkeypatch.setitem(sys.modules, "reachy_mini.utils", utils)
 
 
 def _yaw_of(pose_matrix) -> float:
