@@ -42,7 +42,8 @@ import json
 import os
 import sys
 
-from live_3_learn import load_orient_actions, probe_policy
+from live_3_learn import LEGACY_PLACEMENT_RANGES, load_orient_actions, probe_policy
+from live_common import load_policy_meta, save_policy_meta
 
 if os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None) is not None:
     print("[env] MAXIM_NAC_REWARD_BIAS_DISABLED was set — cleared for this run (ablation flag does not apply here)")
@@ -55,11 +56,11 @@ def load_nac_state(path: str) -> dict:
         return json.load(f)
 
 
-def gauntlet(state: dict, names: list[str], action_deltas: dict[str, float], label: str) -> float:
+def gauntlet(state: dict, names: list[str], action_deltas: dict[str, float], label: str, **probe_kw) -> float:
     """Probe a NAc state dict's orient policy; print the per-bin report."""
     nac = NAc(NACConfig())
     nac.load_state(state)
-    p = probe_policy(nac, names, action_deltas)
+    p = probe_policy(nac, names, action_deltas, **probe_kw)
     print(f"\n[{label}] probe correctness = {p['correctness']:.2f} magnitude = {p['magnitude_appropriateness']:.2f}")
     for b, v in p["bins"].items():
         print(
@@ -87,11 +88,39 @@ def main() -> int:
 
     left = load_nac_state(args.left)
     right = load_nac_state(args.right)
-    c_left = gauntlet(left, names, action_deltas, f"left  ({args.left_source})")
-    c_right = gauntlet(right, names, action_deltas, f"right ({args.right_source})")
+
+    # A bin NAME is identical across state spaces, so parents that learned at
+    # different boundaries CANNOT be merged — their `near_left` are different
+    # regions and the mismatch is SILENT. Refuse rather than produce nonsense.
+    ml, mr = load_policy_meta(args.left), load_policy_meta(args.right)
+    merged_meta: dict | None = None
+    probe_kw: dict = {}
+    if ml is not None and mr is not None:
+        for key in ("bin_boundary", "band", "action_deltas"):
+            if ml.get(key) != mr.get(key):
+                print(f"[FAIL] parents disagree on '{key}': {ml.get(key)!r} vs {mr.get(key)!r}")
+                print("       Their bin names mean different things — this is a category")
+                print("       error, not a merge. Retrain one to match the other.")
+                return 2
+        merged_meta = dict(ml)
+        merged_meta["session"] = f"merge({args.left_source}+{args.right_source})"
+        merged_meta.pop("backfilled", None)
+        probe_kw = {
+            "gain": float(merged_meta.get("gain", 0.55)),
+            "ranges": {k: tuple(v) for k, v in merged_meta.get("placements", {}).items()} or LEGACY_PLACEMENT_RANGES,
+        }
+        print(f"[meta] parents agree: boundary |az|={merged_meta.get('bin_boundary')}, gain {merged_meta.get('gain')}")
+    else:
+        missing = [n for n, m in ((args.left, ml), (args.right, mr)) if m is None]
+        print(f"[meta] no sidecar for: {', '.join(missing)} — the merge will carry none, so")
+        print("       consumers must assume the legacy boundary. The printed `magnitude` is")
+        print("       graded in the legacy state space and may be meaningless. Retrain to fix.")
+
+    c_left = gauntlet(left, names, action_deltas, f"left  ({args.left_source})", **probe_kw)
+    c_right = gauntlet(right, names, action_deltas, f"right ({args.right_source})", **probe_kw)
 
     merged = nac_merge(left, right, left_source=args.left_source, right_source=args.right_source)
-    c_merged = gauntlet(merged, names, action_deltas, "MERGED")
+    c_merged = gauntlet(merged, names, action_deltas, "MERGED", **probe_kw)
 
     print(
         f"\n[verdict] left={c_left:.2f} right={c_right:.2f} merged={c_merged:.2f} "
@@ -113,7 +142,14 @@ def main() -> int:
             nac = NAc(NACConfig(persistence_path=out))
             nac.load_state(merged)
             nac.save(out)
-            print(f"[saved] merged NAc -> {out}  (bootstrap a robot with --nac-path {out})")
+            # Carry the state space forward. A merged policy with no sidecar is
+            # precisely the bug this pipeline exists to prevent: the demo would
+            # assume the legacy boundary and mis-bin a 0.33-trained merge, silently.
+            if merged_meta is not None:
+                save_policy_meta(out, **merged_meta)
+                print(f"[saved] merged NAc + sidecar -> {out}  (boundary {merged_meta['bin_boundary']})")
+            else:
+                print(f"[saved] merged NAc -> {out}  (NO sidecar — parents had none)")
 
     if args.bundle:
         if not passed:
