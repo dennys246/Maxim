@@ -307,6 +307,22 @@ the runbook is actively used on-device; the infra is broader than orienting).
 
 ---
 
+## Runtime integration (1.1) — Layer 1 becomes standard equipment
+
+[`orient_runtime_integration.md`](orient_runtime_integration.md) (drafted 2026-07-16)
+turns the completed Layer 1 from a bring-up script into behavior every embodied Reachy
+gets. **The audit moved that plan a long way: DN already has the arbiter, the
+inhibition (voluntary action suppressing a reflex), novelty + inhibition-of-return, a
+30 Hz tick, a percept intake, a body-rotation action type — and a visual-only
+`OrientingResponse` with a hardcoded heuristic.** So the reflex is not a new mechanism;
+it is one more `Behavior`, and the learned policy makes DN's reflex layer
+substrate-driven rather than hand-tuned. Three landings: **(1) the audio percept**
+(separable, no motor path, and the Layer-2 prerequisite), **(2) the reflex** (one real
+problem — `Behavior.evaluate()` is 30 Hz/stateless while credit needs act→settle→credit;
+solved by mirroring `ToolPainBridge`'s pending-map, not by a new mechanism), **(3)
+learning ON** (gated on S2 online gain, because the boundary derives from a gain that
+varies per room).
+
 ## Tracked follow-up experiments
 
 **Orient magnitude learning + the parietal/cerebellar division of labor

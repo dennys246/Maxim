@@ -131,6 +131,14 @@ a constant — it drifted 0.58 → 0.39 between sessions, so the robot must lear
 reproducible* (0.562 / 0.574 / 0.549 / 0.58 across independent measurements). The
 "sensor is unstable, therefore adaptive calibration" argument is **retracted**.
 
+**Update (2026-07-16): this weaker argument just became LOAD-BEARING.** The runtime
+plan ([orient_runtime_integration.md](orient_runtime_integration.md)) gates
+"learning ON in production" on exactly it: the decision boundary derives from the gain,
+so a robot learning in a stranger's room with an inherited gain learns the *wrong
+magnitudes*, confidently. S2 is no longer a nice-to-have research step — it is the gate
+for shipping a learning reflex. Cheapest form: passive EMA over the reflex's own
+`(yaw_delta, Δaz)` trials — free, no boot ritual.
+
 What survives is weaker but real: gain genuinely varies across *rooms, source distances,
 mounts, and robots* (and the eared-shell mod will change it deliberately), so a robot
 that measures its own transfer function is more portable than one inheriting a constant
