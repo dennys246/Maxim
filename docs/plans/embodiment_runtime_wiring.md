@@ -288,8 +288,18 @@ pressure is outside the comfortable range… seek shelter/warmth."* It has no co
 "off-center → turn toward the source." **So a live-wired Reachy would tell the LLM to seek
 warmth when a sound is off to the side.** Layer 2 (pain anticipation) stays inert (looks
 for "anticipated"/"anxiety" substrings azimuth never emits). **Fix required before Layer 3
-ships with the coach on:** teach `_compose_drive_modulation` the centeredness case, or gate
-the coach's drive layer off for the azimuth drive.
+ships with the coach on.**
+
+> **Review correction (SF-4):** the fix is NOT "teach `_compose_drive_modulation` the
+> centeredness case" — that bakes a *second* drive-name-specific hardcoded branch into the
+> generic coach (the thermal branch is the first), so robot #3's new drive re-triggers the
+> identical bug in the `[generic]` layer. The robot-agnostic fix is a **data-driven
+> drive→guidance mapping**: each drive *declares* its own modulation text (or a small template)
+> in its spec, and `_compose_drive_modulation` renders whatever the drive declares — no
+> `if drive == "..."` chain. This also fixes the deeper category error (rendering an
+> *exteroceptive* bearing through a *homeostatic/interoceptive* template). Interim, if the
+> data-driven mapping is more than this plan wants to carry, **gate the coach's drive layer off
+> for the azimuth drive** rather than add the second hardcoded branch.
 
 **Gap 3 — the live Reachy runtime BYPASSES `_maybe_wire_body_state`.** `agentic_runtime.py`
 builds its agent **directly**, not via `create_full_agent` (where the seam lives,
@@ -332,14 +342,16 @@ real architecture work.**
   wired from the DECLARED body, not the literal `"bodies/reachy_mini"` (Track B: clean,
   reuses the pain_bus, gate on `_pain_bus is not None`). Behind a default-off `config.json`
   flag. Ships with the tick-fires-once integration test.
-- **Layer 1c `[declaration]`** — add `body:` to `RobotConfig`/`robots.yaml`; Reachy declares
-  `bodies/reachy_mini`. One field, reuses the `has_vision`/`has_audio` capability pattern.
+- **Layer 1c `[declaration]`** — declare `body:` in `robots.yaml`; Reachy declares
+  `bodies/reachy_mini`. `RobotConfig` has no `body` field today (NH-2) — ride the existing
+  free-form `config["body"]` rather than a schema change unless a typed field earns itself.
+  Reuses the `has_vision`/`has_audio` capability pattern.
 - **Gate:** none for safety (Track C — no spurious pain). Gate is the tick test + review.
 - **Layer 3a** — explicit `memory_hub.embodiment = executor.embodiment` in
   `agentic_runtime.py` (Track E Gap 3: the runtime bypasses `_maybe_wire_body_state`).
-- **Layer 3b [BUG, must not ship silently]** — fix or gate the Acting Coach's
-  `_compose_drive_modulation` so the centeredness drive doesn't emit "seek warmth" (Track E
-  Gap 2).
+- **Layer 3b [BUG, must not ship silently]** — data-driven drive→guidance mapping so
+  `_compose_drive_modulation` renders each drive's *declared* text (not a second hardcoded
+  branch), OR interim-gate the drive layer off for the azimuth drive (Track E Gap 2 / review SF-4).
 - **Layer 3c [optional]** — an English azimuth renderer ("a voice, to your left") if we
   want readable direction (Track E Gap 1: today it's a raw number). Plus a decision on the
   auto-sense double-up (Track E Gap 4).
