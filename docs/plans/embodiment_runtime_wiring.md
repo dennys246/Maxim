@@ -89,16 +89,29 @@ track below is tagged `[generic]` (goes in the shared runtime/loop) or `[declara
 Landing "sound as a runtime percept" splits into three, and only the first is the real
 architectural commitment:
 
-### Layer 1 — wire the SEM body into the live runtime (the unlock)
+### Layer 1 — wire the SEM body into the live runtime (the unlock)  ✅ LANDED (2026-07-17)
 
 Build the `reachy_mini` Embodiment and pass it to `build_executor` on the live path.
 This lights up the tick + drive + pain cascade the loop already runs — for ALL of the
-body's sensors, not just azimuth. Gated on `has_robot`/`has_audio` + a default-off
-`config.json` flag (config-over-env-vars standard). Ships with the integration test that
-proves the tick fires correctly (see Track A).
+body's sensors, not just azimuth.
 
 **This is broader than audio** — it's the general "the substrate has a body" wiring, and
 `body_state`, the Acting Coach layers, and the future reflex all depend on it.
+
+> **SHIPPED (the `[declaration]` seam, opt-in):** the body is declared in `robots.yaml`
+> via the free-form `config.body` (e.g. `body: bodies/reachy_mini` — same ref form as
+> `--embodiment`), read by `hardware.config.resolve_body_ref`. `agentic_runtime.
+> _resolve_body_wiring` resolves it and passes `entity_ref` + `component_registry` into
+> `build_executor`, so `executor.embodiment` is live and the Track-A per-iteration tick
+> now has a body to advance. **Opt-in by design** — absent a declaration the runtime is
+> byte-identical to before (bodiless, tick is a no-op); a declared-but-unresolvable body
+> logs loudly and falls back to bodiless (a typo never crashes the live robot). Defaulting
+> it ON per robot_type is deferred as a *deliberate* decision, bundled with Layer 3a
+> (`body_state`) + Layer 3b (the Acting Coach drive-modulation fix) so drive-pain and the
+> coach's exteroceptive-vs-homeostatic rendering land together, not silently. Guard:
+> `tests/unit/test_multi_robot.py::TestBodyDeclarationSeam`. (Deferred from the original
+> scope: the `has_robot`/`has_audio` + `config.json` flag gating — the declaration seam
+> supersedes it as the on/off control; revisit if a non-declaration gate is wanted.)
 
 ### Layer 2 — feed live DoA into the body's `azimuth` sensor (the audio-specific bit)
 

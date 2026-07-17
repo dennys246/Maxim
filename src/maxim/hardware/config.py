@@ -94,6 +94,37 @@ class RobotsConfig:
                 return robot
         return self.robots[0] if self.robots else None
 
+    def get(self, robot_id: str | None) -> RobotConfig | None:
+        """Get a robot config by id, or ``None`` if not found / id is falsy."""
+        if not robot_id:
+            return None
+        for robot in self.robots:
+            if robot.robot_id == robot_id:
+                return robot
+        return None
+
+
+def resolve_body_ref(robot_config: RobotConfig | None) -> str | None:
+    """Resolve the SEM body component ref for a robot from its config.
+
+    The body is declared in ``robots.yaml`` via the free-form ``config`` dict
+    — ``config: {body: bodies/reachy_mini}`` — NOT a typed ``RobotConfig`` field (per
+    the CC10 / review NH-2 rule: ride the existing free-form dict rather than a
+    schema change). This is the ``[declaration]`` seam the embodiment-runtime
+    wiring (Track 1) and the audio reflex (Track 2) both build on.
+
+    Returns the declared component ref, or ``None`` when no body is declared.
+    ``None`` means "wire no embodiment" — the safe default: the runtime keeps
+    its current bodiless behavior and the per-iteration drift tick is a no-op.
+    Body-wiring is therefore **opt-in**; defaulting it on per robot_type is a
+    separate, deliberate decision (bundled with body_state wiring + the Acting
+    Coach drive-modulation fix), not a silent behavior change here.
+    """
+    if robot_config is None:
+        return None
+    declared = robot_config.config.get("body")
+    return str(declared) if declared else None
+
 
 def find_config_file(search_paths: list[str] | None = None) -> Path | None:
     """Find the first existing config file in search paths."""

@@ -12,6 +12,7 @@ import os
 import threading
 import time
 import uuid
+from typing import Any
 
 from maxim.utils.gpu_compat import is_gpu_available
 from maxim.utils.logging import warn
@@ -33,6 +34,61 @@ def _compute_target_hz(capabilities) -> float:
 
 class AgenticRuntimeMixin:
     """Mixin providing agentic runtime lifecycle management for the Maxim class."""
+
+    def _resolve_body_wiring(self, pain_bus: Any, nac: Any) -> "tuple[str | None, Any]":
+        """Resolve an optional SEM body to wire into ``build_executor``.
+
+        Returns ``(entity_ref, component_registry)`` when ``robots.yaml``
+        declares a body (``config.body``) for this robot AND the pain_bus +
+        nac that ``build_executor``'s embodiment path requires are present;
+        otherwise ``(None, None)`` (bodiless — the historical default).
+
+        Body-wiring is opt-in via the declaration seam; see
+        ``hardware.config.resolve_body_ref``. A *declared but unresolvable*
+        body is operator error — logged loudly — but does NOT crash the live
+        robot: we fall back to bodiless so the runtime stays up.
+        """
+        try:
+            from maxim.hardware.config import load_robots_config, resolve_body_ref
+
+            robots_cfg = load_robots_config()
+            robot_id = getattr(self, "_robot_id", None) or getattr(self, "name", None)
+            robot_config = robots_cfg.get(robot_id) or robots_cfg.get_primary()
+            body_ref = resolve_body_ref(robot_config)
+        except Exception as e:  # config load is best-effort; never block startup
+            self.log.debug("body-ref resolution skipped: %s", e)
+            return None, None
+
+        if body_ref is None:
+            return None, None
+
+        # A body was declared but the embodiment path needs both a pain_bus
+        # (Embodiment._publish_pain emits through it) and a nac (failures need
+        # a bridge for NAc learning). Surface the gap rather than silently
+        # dropping the declared body.
+        if pain_bus is None or nac is None:
+            self.log.warning(
+                "robots.yaml declares body=%r but it cannot be wired (pain_bus=%s, nac=%s). Running bodiless.",
+                body_ref,
+                pain_bus is not None,
+                nac is not None,
+            )
+            return None, None
+
+        try:
+            from maxim.embodiment.component_registry import ComponentRegistry
+
+            registry = ComponentRegistry()
+            if not registry.has(body_ref):
+                self.log.warning(
+                    "robots.yaml declares body=%r but no such SEM component was found. Running bodiless.",
+                    body_ref,
+                )
+                return None, None
+            return body_ref, registry
+        except Exception as e:
+            self.log.warning("Failed to build ComponentRegistry for body=%r: %s. Running bodiless.", body_ref, e)
+            return None, None
 
     def _start_agentic_runtime(self, *, use_capture_manager: bool = True) -> None:
         """Start the agentic runtime.
@@ -314,9 +370,20 @@ class AgenticRuntimeMixin:
         # F4 migration: switched from legacy pain_detector subscription
         # to canonical pain_bus path. bio.pain_bus is constructed by
         # build_bio_stack (Wave 3) with hippocampus + NAc subscribers
-        # already wired. No entity_ref because the Reachy runtime
-        # doesn't load a SEM body through this path.
+        # already wired.
         _pain_bus = bio.pain_bus if bio is not None else None
+
+        # Optional SEM body (Track 1 of embodiment_runtime_wiring.md). The
+        # Reachy runtime historically loaded no body, so executor.embodiment
+        # was None and the per-iteration drift tick had nothing to advance.
+        # When robots.yaml declares one (config.body — the [declaration]
+        # seam) AND we have the pain_bus + nac that build_executor's
+        # embodiment path requires, wire it so the body is live: drives drift,
+        # evaluate_failures() publishes pain, and self_effect/entity tools are
+        # available. Opt-in by design — absent a declaration this is a no-op
+        # and behavior is byte-identical to before.
+        _body_ref, _body_registry = self._resolve_body_wiring(_pain_bus, nac)
+
         if nac is not None:
             executor = build_executor(
                 registry,
@@ -327,9 +394,15 @@ class AgenticRuntimeMixin:
                 tool_index=tool_index,
                 distributor=bio.distributor if bio is not None else None,
                 agent_id=getattr(self, "agent_id", "reachy"),
+                entity_ref=_body_ref,
+                component_registry=_body_registry,
             )
             self._tool_pain_bridge = executor._tool_pain_bridge
-            self.log.debug("ToolPainBridge wired via build_executor (pain_bus=%s)", _pain_bus is not None)
+            self.log.debug(
+                "ToolPainBridge wired via build_executor (pain_bus=%s, body=%s)",
+                _pain_bus is not None,
+                _body_ref,
+            )
         else:
             executor = build_executor(registry, pain_bus=None)
             self._tool_pain_bridge = None

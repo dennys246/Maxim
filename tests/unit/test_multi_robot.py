@@ -72,6 +72,57 @@ class TestRobotsConfig:
         assert config.get_primary() is None
 
 
+class TestBodyDeclarationSeam:
+    """The robots.yaml `config.body` declaration seam (Track 1 of
+    embodiment_runtime_wiring.md) — the source the live runtime reads to decide
+    whether to wire a SEM body into build_executor. Opt-in by design: absent a
+    declaration, no body is wired and the runtime keeps bodiless behavior."""
+
+    def test_get_by_id_returns_match(self):
+        cfg = RobotsConfig.from_dict(
+            {"robots": {"a": {"type": "simulated"}, "b": {"type": "reachy_mini", "primary": True}}}
+        )
+        assert cfg.get("b").robot_id == "b"
+        assert cfg.get("a").robot_type == "simulated"
+
+    def test_get_by_id_missing_or_falsy_returns_none(self):
+        cfg = RobotsConfig.from_dict({"robots": {"a": {"type": "simulated"}}})
+        assert cfg.get("nope") is None
+        assert cfg.get(None) is None
+        assert cfg.get("") is None
+
+    def test_resolve_body_ref_declared(self):
+        from maxim.hardware.config import resolve_body_ref
+
+        rc = RobotConfig.from_dict("reachy", {"type": "reachy_mini", "config": {"body": "bodies/reachy_mini"}})
+        assert resolve_body_ref(rc) == "bodies/reachy_mini"
+
+    def test_resolve_body_ref_absent_is_none(self):
+        """No `body` key → None → the safe bodiless default (no auto-wire)."""
+        from maxim.hardware.config import resolve_body_ref
+
+        rc = RobotConfig.from_dict("reachy", {"type": "reachy_mini", "config": {}})
+        assert resolve_body_ref(rc) is None
+        assert resolve_body_ref(None) is None
+
+    def test_resolve_body_ref_empty_string_is_none(self):
+        from maxim.hardware.config import resolve_body_ref
+
+        rc = RobotConfig.from_dict("reachy", {"type": "reachy_mini", "config": {"body": ""}})
+        assert resolve_body_ref(rc) is None
+
+    def test_declared_body_resolves_to_a_real_component(self):
+        """The reachy_mini body a declaration would name actually exists in the
+        bundled component registry (guards the declaration against drift)."""
+        from maxim.embodiment.component_registry import ComponentRegistry
+        from maxim.hardware.config import resolve_body_ref
+
+        rc = RobotConfig.from_dict("reachy", {"type": "reachy_mini", "config": {"body": "bodies/reachy_mini"}})
+        ref = resolve_body_ref(rc)
+        assert ref is not None
+        assert ComponentRegistry().has(ref)
+
+
 class TestMultiRobotConnection:
     """Test connecting multiple robots."""
 
