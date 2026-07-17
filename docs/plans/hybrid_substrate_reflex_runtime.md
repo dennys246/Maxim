@@ -287,6 +287,8 @@ robot proves the loop.
 
 ## Pointers
 
+- Behavior authoring guide (the `Behavior` contract this reflex implements): [../behaviors/README.md](../behaviors/README.md) + [../behaviors/audio_behaviors.md](../behaviors/audio_behaviors.md)
+
 - Track 1 (prereq): [embodiment_runtime_wiring.md](embodiment_runtime_wiring.md)
 - The reflex-as-DN-behavior Landing this merges with: [orient_runtime_integration.md](orient_runtime_integration.md) Landing 2
 - The policy + az_bin/sidecar convention: [substrate_native_orienting.md](substrate_native_orienting.md), [porting_orient_loop.md](../embodiment/porting_orient_loop.md)

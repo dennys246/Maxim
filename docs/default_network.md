@@ -203,6 +203,12 @@ print(f"Stability: {arbiter.behavior_stability:.2f}")
 
 Reactive behavior modules that propose actions based on current state.
 
+> **Writing a behavior?** See the authoring guide in [behaviors/](behaviors/README.md) — the
+> `Behavior` contract, the `<10 ms` non-blocking rule, the setter pattern for external state,
+> arbitration/inhibition, and the gotchas. Modality guides:
+> [vision (shipped)](behaviors/vision_behaviors.md) and
+> [audio (in progress)](behaviors/audio_behaviors.md).
+
 ### Available Behaviors
 
 | Behavior | Priority | Trigger |
