@@ -286,32 +286,78 @@ def _compose_pain_anticipation(body_state: str) -> str:
 
 
 def _compose_drive_modulation(body_state: str) -> str:
-    """Extract drive state signals from body_state and compose guidance.
+    """Report which specific drive signals need attention — per sensor, without
+    prescribing a modality-specific action.
 
-    The body_state string carries DRIVE annotations from the drive protocol
-    (e.g., "DRIVE: deprived, intensity 0.30" for hunger, "DRIVE: outside
-    comfort band" for temperature).  This function translates those into
-    actionable guidance for the LLM.
+    ``format_body_state_for_prompt`` renders one line per sensor carrying a
+    ``(DRIVE: <descriptor>)`` annotation, e.g.
+    ``- body.temperature: 0.9C (DRIVE: outside comfort band, discomfort 0.30)``
+    or ``- body.hunger: 0.8 (DRIVE: deprived, intensity 0.30)``. This function
+    names the specific signal(s) that need attention and leaves the *action* to
+    the LLM, which sees the full Body State + its affordance tools and can map
+    each signal to the right response.
+
+    Data-driven by construction — the guidance reflects whatever sensors/drives
+    the body actually declares. It deliberately does NOT hardcode a per-drive
+    branch: the pre-fix code emitted thermal "seek shelter/warmth" text for ANY
+    homeostatic breach, which is a category error for exteroceptive drives (a
+    sound-bearing "centeredness" drive would tell the robot to "seek warmth"
+    when a sound was off to the side). Adding a second ``if drive == "..."``
+    branch would just move the smell; naming the sensor and staying
+    action-neutral removes it. See review SF-4 / embodiment_runtime_wiring.md
+    Layer 3b.
     """
     if not body_state:
         return ""
 
-    lower = body_state.lower()
-    drive_notes: list[str] = []
+    _MARKER = "(DRIVE:"
+    discomfort: list[str] = []  # homeostatic breach — a signal outside its comfortable range
+    unmet: list[str] = []  # entropic deprivation — an unmet need
+    building: list[str] = []  # a need that is rising but not yet urgent
 
-    if "drive: deprived" in lower:
+    for line in body_state.splitlines():
+        idx = line.find(_MARKER)
+        if idx == -1:
+            continue
+        descriptor = line[idx + len(_MARKER) :]
+        end = descriptor.find(")")
+        if end != -1:
+            descriptor = descriptor[:end]
+        descriptor = descriptor.strip().lower()
+
+        # Sensor label: the "- {entity}.{sensor}:" prefix, when present.
+        sensor = ""
+        head = line[:idx].strip().removeprefix("- ")
+        if ":" in head:
+            sensor = head.split(":", 1)[0].strip()
+
+        if "outside comfort band" in descriptor:
+            discomfort.append(sensor)
+        elif "deprived" in descriptor:
+            unmet.append(sensor)
+        elif "rising" in descriptor:
+            # substring, not ==, for consistency with the other two branches:
+            # "deprived"/"outside comfort band" already carry trailing numbers,
+            # so if "rising" ever gains a suffix this must not silently stop.
+            building.append(sensor)
+
+    def _named(labels: list[str], fallback: str) -> str:
+        named = ", ".join(s for s in labels if s)
+        return named or fallback
+
+    drive_notes: list[str] = []
+    if discomfort:
         drive_notes.append(
-            "Your body has unmet needs. Prioritize finding ways to "
-            "address them — seek food, water, or rest as appropriate."
+            f"Outside its comfortable range: {_named(discomfort, 'a bodily signal')}. "
+            "Act to bring it back — the right action depends on which signal it is "
+            "(see the Body State above)."
         )
-    if "drive: outside comfort band" in lower:
+    if unmet:
+        drive_notes.append(f"Unmet need: {_named(unmet, 'a bodily need')}. Prioritize addressing it.")
+    if building:
         drive_notes.append(
-            "Your body temperature or pressure is outside the comfortable "
-            "range. Consider moving away from the source of discomfort, "
-            "or seek shelter/warmth as needed."
+            f"Building, not yet urgent: {_named(building, 'a need')}. Keep it in mind as you plan your next actions."
         )
-    if "drive: rising" in lower:
-        drive_notes.append("A need is building but not yet urgent. Keep it in mind as you plan your next actions.")
 
     if not drive_notes:
         return ""

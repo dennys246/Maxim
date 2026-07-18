@@ -459,3 +459,103 @@ class TestProposeViaSubstrateTick:
         assert nac.seen_drives is not None, "recommend_action was not reached"
         # 0.5 (post-drift), not 0.0 (frozen) — proves the tick ran first.
         assert nac.seen_drives.get("hunger") == pytest.approx(0.5, abs=1e-6)
+
+
+class TestTickEmbodimentDriftLLMPrimary:
+    """Regression guard: ``tick_embodiment_drift`` advances the body clock on
+    the LLM-primary path (Track 1 of embodiment_runtime_wiring.md). On
+    llm-primary the body tick is otherwise event-driven (only fires on tool
+    execution), so a Reachy body sitting through thinking turns / idle gates /
+    LLM latency would freeze. The helper ticks it every live iteration —
+    while staying a no-op on substrate-primary (which ticks itself) so the two
+    paths don't double the tick. See the CLAUDE.md embodiment-tick invariant."""
+
+    class _RecordingEmbodiment:
+        def __init__(self, *, raises: bool = False):
+            self.calls = 0
+            self._raises = raises
+
+        def evaluate_failures(self):
+            self.calls += 1
+            if self._raises:
+                raise RuntimeError("boom")
+            return []
+
+    def test_llm_primary_ticks_the_body(self):
+        from maxim.runtime.agent_loop import tick_embodiment_drift
+
+        executor = _StubExecutor(["warm_self"])
+        executor.embodiment = self._RecordingEmbodiment()
+        tick_embodiment_drift(executor, "llm-primary")
+        assert executor.embodiment.calls == 1
+
+    def test_llm_primary_applies_real_wall_clock_drift(self, monkeypatch):
+        import maxim.embodiment.body as body_mod
+        from maxim.embodiment.body import Embodiment
+        from maxim.embodiment.spec import _parse_entity
+        from maxim.runtime.agent_loop import tick_embodiment_drift
+
+        class _FakeTime:
+            def __init__(self, start=1000.0):
+                self.now = start
+
+            def time(self):
+                return self.now
+
+        entity = _parse_entity(
+            {
+                "name": "test_body",
+                "entity_type": "body",
+                "sensors": {
+                    "hunger": {
+                        "unit": "ratio",
+                        "range": [0, 1],
+                        "initial": 0.0,
+                        "drive": {
+                            "drift_mode": "entropic",
+                            "drift_direction": "up",
+                            "drift_rate": 0.1,
+                            "deprivation_threshold": 0.7,
+                            "deprivation_pain": 0.3,
+                            "satisfaction_threshold": 0.3,
+                        },
+                    },
+                },
+            }
+        )
+        emb = Embodiment(entity)
+        fake = _FakeTime()
+        monkeypatch.setattr(body_mod, "time", fake)
+        emb.evaluate_failures()  # baseline poll
+
+        executor = _StubExecutor(["warm_self"])
+        executor.embodiment = emb
+        fake.now += 5.0  # wall-clock time passes with no other embodiment call
+        tick_embodiment_drift(executor, "llm-primary")
+
+        # 0.5 (post-drift), not 0.0 (frozen) — proves the helper drove the tick.
+        assert entity.vital_metrics["hunger"] == pytest.approx(0.5, abs=1e-6)
+
+    def test_substrate_primary_is_a_noop(self):
+        """That path ticks itself in propose_via_substrate — a second tick
+        here would double it, so the helper must skip substrate-primary."""
+        from maxim.runtime.agent_loop import tick_embodiment_drift
+
+        executor = _StubExecutor(["warm_self"])
+        executor.embodiment = self._RecordingEmbodiment()
+        tick_embodiment_drift(executor, "substrate-primary")
+        assert executor.embodiment.calls == 0
+
+    def test_no_embodiment_is_a_noop(self):
+        from maxim.runtime.agent_loop import tick_embodiment_drift
+
+        executor = _StubExecutor(["warm_self"])  # .embodiment defaults to None
+        tick_embodiment_drift(executor, "llm-primary")  # must not raise
+
+    def test_evaluate_failures_exception_is_swallowed(self):
+        from maxim.runtime.agent_loop import tick_embodiment_drift
+
+        executor = _StubExecutor(["warm_self"])
+        executor.embodiment = self._RecordingEmbodiment(raises=True)
+        tick_embodiment_drift(executor, "llm-primary")  # must not propagate
+        assert executor.embodiment.calls == 1

@@ -6,6 +6,13 @@
 #   - primary: Whether this is the primary robot (only one should be true)
 #   - config: Type-specific configuration
 #
+# Optional embodiment (opt-in):
+#   - config.body: a SEM body component ref (e.g. "bodies/reachy_mini"). When
+#     set, the live runtime wires that body into the executor — drives drift,
+#     evaluate_failures() publishes pain, and the body's affordance tools are
+#     available. Omit it (the default) to run bodiless. This is the same ref
+#     form the `--embodiment` CLI flag takes.
+#
 # Example with multiple Reachy Minis:
 #
 # robots:
@@ -16,6 +23,7 @@
 #       robot_name: reachy_mini
 #       media_backend: default
 #       timeout: 30.0
+#       body: bodies/reachy_mini   # opt-in: wire the SEM body
 #
 #   reachy_secondary:
 #     type: reachy_mini

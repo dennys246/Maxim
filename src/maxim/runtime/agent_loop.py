@@ -903,6 +903,56 @@ def propose_via_substrate(
     )
 
 
+def tick_embodiment_drift(executor: Any, aut_mode: str) -> None:
+    """Advance the body's wall-clock drive drift on the llm-primary path.
+
+    On ``substrate-primary``, :func:`propose_via_substrate` already ticks the
+    body every proposal. On ``llm-primary`` the body tick is otherwise
+    *event-driven* — it only fires when a tool executes (``tool_bridge`` /
+    sim tools calling ``evaluate_failures()``). So a body sitting through
+    pure-thinking turns, idle gates, or LLM latency would never drift: its
+    drives freeze (the Track A "frozen Reachy body" finding). Calling
+    ``evaluate_failures()`` once per live loop iteration advances wall-clock
+    drift so the llm-primary body has the same clock as substrate-primary.
+
+    Idempotent w.r.t. elapsed time: ``evaluate_failures`` applies
+    ``dt = now - _last_poll`` via ``tick_vital_drift`` lazily, so calling it
+    here AND on a later tool execution in the same iteration cannot
+    double-drift (the second call sees ~0 elapsed dt). No-op on
+    substrate-primary (that path ticks itself — calling here too would double
+    the tick) and when no embodiment is wired. This calls the public
+    ``evaluate_failures()`` tick, not ``tick_vital_drift`` directly, per the
+    CLAUDE.md embodiment-tick invariant (single ``tick_vital_drift`` call site
+    in body.py).
+
+    CADENCE CAVEAT (three-lens review, 2026-07-17): ``evaluate_failures`` does
+    not only drift — it re-publishes drive-pain for any *standing* breach on
+    every call, so this per-iteration cadence makes drive-pain state-based
+    rather than onset/transition-based. This is exactly the change
+    ``docs/plans/deferred/transition_based_drive_pain.md`` names as its revival
+    trigger ("before any change to evaluate_failures cadence"). It is dampened
+    to *valence noise, not false causal links* by three existing guards — the
+    drift tick DISCARDS the returned FailureEvents (pain flows only via
+    PainBus), the PainBus ``(entity, failure_mode)`` refractory caps the rate
+    to ~2 Hz, and the ``_context_similarity`` denominator mismatch keeps these
+    events from linking to tool actions — so it is a should-fix, not a blocker.
+    Two consequences to keep in mind: (1) it is latent for the shipped reachy
+    body (its only drive, azimuth, is world-set with ``drift_rate: 0`` and
+    sits centered until DoA is fed in Track 2); (2) it DOES change the drive-
+    pain cadence for embodied llm-primary sims (Exp 44, ``--embodiment``), so
+    prior Exp 44 numbers need re-validation before being relied on.
+    """
+    if aut_mode == "substrate-primary":
+        return
+    embodiment = getattr(executor, "embodiment", None)
+    if embodiment is None:
+        return
+    try:
+        embodiment.evaluate_failures()
+    except Exception:
+        logger.debug("llm-primary embodiment tick: evaluate_failures raised", exc_info=True)
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -1211,6 +1261,17 @@ def run_agentic_loop(
         if autonomy_controller.is_paused:
             time.sleep(idle_sleep_s)
             continue
+
+        # ─────────────────────────────────────────────────────────────────
+        # 0.45 EMBODIMENT DRIFT TICK (llm-primary)
+        # ─────────────────────────────────────────────────────────────────
+        # Advance the body's wall-clock drive drift every live iteration so a
+        # Reachy body does not freeze through pure-thinking turns / idle gates
+        # / LLM latency. Placed BEFORE the 0.6 idle gate (which ``continue``s
+        # on no stimulus) so a *sitting* robot still gets cold/hungry, and
+        # AFTER the pause check so an operator-paused agent stays frozen.
+        # No-op on substrate-primary (it ticks itself) and when unembodied.
+        tick_embodiment_drift(executor, aut_mode)
 
         # 0.5 CHECK PERCEPT SOURCE EXHAUSTION (simulation mode)
         if sim.check_exhaustion(ctrl.pending_proposal):
