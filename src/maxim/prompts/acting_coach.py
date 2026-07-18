@@ -335,7 +335,10 @@ def _compose_drive_modulation(body_state: str) -> str:
             discomfort.append(sensor)
         elif "deprived" in descriptor:
             unmet.append(sensor)
-        elif descriptor == "rising":
+        elif "rising" in descriptor:
+            # substring, not ==, for consistency with the other two branches:
+            # "deprived"/"outside comfort band" already carry trailing numbers,
+            # so if "rising" ever gains a suffix this must not silently stop.
             building.append(sensor)
 
     def _named(labels: list[str], fallback: str) -> str:

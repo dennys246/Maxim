@@ -131,6 +131,9 @@ section. The Reachy runtime bypasses `create_full_agent`'s `_maybe_wire_body_sta
 > gated by the **same** `body_state_prompt_enabled()` flag (`MAXIM_ENABLE_BODY_STATE_PROMPT`)
 > as the AgentFactory seam — so the live-robot prompt is unchanged by default (opt-in,
 > consistent with the Exp 44 ablation). Only fires when a body was actually wired.
+> **TRACKED (review NH-4):** when `body_state` graduates from experiment to feature, BOTH
+> seams (`_maybe_wire_body_state` and this Reachy-runtime wiring) must promote/rename the gate
+> together, or the live path silently stays inert.
 >
 > **SHIPPED — Layer 3b (the Acting Coach category-error fix):** `_compose_drive_modulation`
 > was rewritten from a hardcoded thermal branch (any homeostatic breach → "seek warmth/
@@ -152,6 +155,9 @@ section. The Reachy runtime bypasses `create_full_agent`'s `_maybe_wire_body_sta
 ---
 
 ## Audit findings (five tracks, 2026-07-17)
+
+> **Implementation reviewed (2026-07-17):** three-lens code review — [reviews/track1_impl_three_lens_review.md](reviews/track1_impl_three_lens_review.md). Unanimous merge-able, no blockers; F1-F4 + bio SF-2/SF-3 folded.
+
 
 ### Track A — the tick / wall-clock drift invariant  ✅ LANDED (2026-07-17)
 **VERDICT: double-drift is impossible; the real hazard is NO-drift on LLM-primary — fixable with one call.** (audit-confirmed against body.py, agent_loop.py, the CI grep)

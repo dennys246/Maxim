@@ -924,6 +924,23 @@ def tick_embodiment_drift(executor: Any, aut_mode: str) -> None:
     ``evaluate_failures()`` tick, not ``tick_vital_drift`` directly, per the
     CLAUDE.md embodiment-tick invariant (single ``tick_vital_drift`` call site
     in body.py).
+
+    CADENCE CAVEAT (three-lens review, 2026-07-17): ``evaluate_failures`` does
+    not only drift — it re-publishes drive-pain for any *standing* breach on
+    every call, so this per-iteration cadence makes drive-pain state-based
+    rather than onset/transition-based. This is exactly the change
+    ``docs/plans/deferred/transition_based_drive_pain.md`` names as its revival
+    trigger ("before any change to evaluate_failures cadence"). It is dampened
+    to *valence noise, not false causal links* by three existing guards — the
+    drift tick DISCARDS the returned FailureEvents (pain flows only via
+    PainBus), the PainBus ``(entity, failure_mode)`` refractory caps the rate
+    to ~2 Hz, and the ``_context_similarity`` denominator mismatch keeps these
+    events from linking to tool actions — so it is a should-fix, not a blocker.
+    Two consequences to keep in mind: (1) it is latent for the shipped reachy
+    body (its only drive, azimuth, is world-set with ``drift_rate: 0`` and
+    sits centered until DoA is fed in Track 2); (2) it DOES change the drive-
+    pain cadence for embodied llm-primary sims (Exp 44, ``--embodiment``), so
+    prior Exp 44 numbers need re-validation before being relied on.
     """
     if aut_mode == "substrate-primary":
         return

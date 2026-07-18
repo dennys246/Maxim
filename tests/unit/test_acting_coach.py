@@ -86,6 +86,67 @@ class TestComposeDriveModulation:
                 for word in banned:
                     assert word not in out, f"{sensor}/{descriptor} leaked prescription {word!r}"
 
+    def test_rising_with_trailing_suffix_still_reported(self):
+        """F4: 'rising' is matched as a substring, not ==, so if the emitter
+        ever adds a suffix (as deprived/discomfort already carry numbers) the
+        signal is not silently dropped."""
+        body = "=== Body State ===\n- body.fatigue: 0.5 (DRIVE: rising, intensity 0.20)"
+        result = _compose_drive_modulation(body)
+        assert "Building" in result
+        assert "body.fatigue" in result
+
+    def test_roundtrip_from_real_embodiment(self):
+        """Contract test (review F3): drive a REAL Embodiment through
+        format_body_state_for_prompt into _compose_drive_modulation, so a
+        reword of the '(DRIVE: ...)' descriptors in body.py can't silently
+        break the coach parse (the two sides share only string literals)."""
+        from maxim.embodiment.body import Embodiment
+        from maxim.embodiment.spec import _parse_entity
+
+        entity = _parse_entity(
+            {
+                "name": "test_body",
+                "entity_type": "body",
+                "sensors": {
+                    "hunger": {
+                        "unit": "ratio",
+                        "range": [0, 1],
+                        "initial": 0.9,  # above deprivation_threshold → "deprived"
+                        "drive": {
+                            "drift_mode": "entropic",
+                            "drift_direction": "up",
+                            "drift_rate": 0.0,
+                            "deprivation_threshold": 0.7,
+                            "deprivation_pain": 0.3,
+                            "satisfaction_threshold": 0.3,
+                        },
+                    },
+                    "warmth": {
+                        "unit": "ratio",
+                        "range": [-1, 1],
+                        "initial": 0.9,  # deviation 0.9 > comfort_band → breach
+                        "drive": {
+                            "drift_mode": "homeostatic",
+                            "set_point": 0.0,
+                            "drift_rate": 0.0,
+                            "comfort_band": 0.1,
+                            "pain_scale": 0.5,
+                        },
+                    },
+                },
+            }
+        )
+        emb = Embodiment(entity)
+        body_state = emb.format_body_state_for_prompt()
+        assert "(DRIVE:" in body_state  # sanity: the emitter still annotates drives
+        result = _compose_drive_modulation(body_state)
+        # Both real drives surface through the round-trip, named, non-prescriptive.
+        assert "test_body.hunger" in result
+        assert "test_body.warmth" in result
+        assert "warmth range" not in result.lower()  # not prescribing thermal action
+        for banned in ("seek", "shelter"):
+            assert banned not in result.lower()
+
 
 class TestActingCoachConfig:
     """ActingCoachConfig defaults and immutability."""

@@ -66,6 +66,25 @@ entity:
     # per-step REDUCTION in |azimuth| (relief) via potential_diff (Phase 0b).
     # drift_rate MUST be 0: a world-set sensor must not auto-return to set_point,
     # or tick_vital_drift fabricates "centered" between re-measurements.
+    #
+    # BIO NOTE (three-lens review 2026-07-17): this BORROWS the homeostatic
+    # drive shape for an EXTEROCEPTIVE orienting signal (a superior-colliculus/
+    # parietal spatial-orienting error), which is not the same as an
+    # interoceptive homeostatic need (thermoregulation/hunger). The shape fits
+    # ("an error to be nulled by action, no pain when nulled") and drift_rate 0
+    # neutralizes the one homeostatic dynamic that doesn't apply (self-return),
+    # so it's an accepted 1.x simplification — but downstream consumers must NOT
+    # assume interoceptive self-return semantics here. A distinct orienting
+    # drive-kind (or routing the error through the salience/attention path
+    # rather than the pain/homeostasis path) is the long-term answer.
+    #
+    # TODO(Track 2, when DoA is fed): revisit pain_scale. At 1.0 a fully
+    # off-center sound (|az|=1 → excess 0.9 → intensity 0.9) registers LOUDER in
+    # the NAc pain channel than genuine noxious failure modes on this body
+    # (thermal_throttling 0.4, camera_lost 0.6) — a bio mis-scale that inverts
+    # "off to the side" vs "motors overheating." Latent today (azimuth sits at
+    # initial 0.0, world-set, so no breach until DoA writes it). Drop toward
+    # 0.2-0.3 when wiring the azimuth feed, and re-measure the orient loop.
     azimuth:
       unit: normalized
       range: [-1, 1]
@@ -75,7 +94,7 @@ entity:
         set_point: 0.0
         drift_rate: 0.0       # world-set, no auto-return (load-bearing — see note)
         comfort_band: 0.1     # within ±0.1 = centered enough
-        pain_scale: 1.0
+        pain_scale: 1.0       # TODO(Track 2): mis-scaled vs noxious modes — see BIO NOTE above
 
     # Battery + thermal
     battery:

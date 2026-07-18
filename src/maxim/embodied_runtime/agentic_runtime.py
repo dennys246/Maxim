@@ -53,7 +53,26 @@ class AgenticRuntimeMixin:
 
             robots_cfg = load_robots_config()
             robot_id = getattr(self, "_robot_id", None) or getattr(self, "name", None)
-            robot_config = robots_cfg.get(robot_id) or robots_cfg.get_primary()
+            robot_config = robots_cfg.get(robot_id)
+            if robot_config is None:
+                # No exact id match. Fall back to the primary ONLY when it is
+                # unambiguous — a single robot, or one explicitly marked
+                # primary. The runtime name (e.g. "reachy_mini") routinely
+                # differs from the yaml key (e.g. "primary"), so this fallback
+                # is load-bearing for the default single-robot config. But do
+                # NOT adopt the FIRST of several unmarked robots: in a genuine
+                # multi-robot file that would wire a *foreign* robot's body
+                # onto this runtime. Ambiguous → bodiless + warn.
+                has_explicit_primary = any(r.primary for r in robots_cfg.robots)
+                if len(robots_cfg.robots) == 1 or has_explicit_primary:
+                    robot_config = robots_cfg.get_primary()
+                elif robots_cfg.robots:
+                    self.log.warning(
+                        "robots.yaml has %d robots, none matching id=%r and none "
+                        "marked primary; not guessing a body. Running bodiless.",
+                        len(robots_cfg.robots),
+                        robot_id,
+                    )
             body_ref = resolve_body_ref(robot_config)
         except Exception as e:  # config load is best-effort; never block startup
             self.log.debug("body-ref resolution skipped: %s", e)
