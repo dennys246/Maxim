@@ -1507,6 +1507,12 @@ def run_agentic_loop(
             _audio_line = format_audio_orientation(getattr(sim, "current_percept", None))
             if _audio_line:
                 _auto_sense_text = f"{_auto_sense_text}\n{_audio_line}" if _auto_sense_text else _audio_line
+                try:
+                    from maxim.simulation.sim_logger import sim_log
+
+                    sim_log("PERCEPTION", f"audio-orient: {_audio_line}")
+                except Exception:
+                    pass
         except Exception as _aoe:
             log_swallowed_exception(_aoe, operation="audio_orientation", context={"step": step_num})
 
