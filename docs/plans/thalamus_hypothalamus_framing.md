@@ -150,19 +150,69 @@ surface. What looked like a "percept-channel manifest" is really the thalamus's 
 
 ---
 
-## Open design fork (decide at the first design pass — do NOT assume)
+## The design fork — sketched (decide at the first design pass; do NOT pre-commit)
 
-**Does the escalation-only `ThalamicGate` GROW into the full relay** — becoming the TRN/gating nucleus
-of a larger thalamus that also feeds the substrate — **or is the unified relay a new structure that
-subsumes all three fragments** (`ThalamicGate` + `BioEnrichmentPipeline` + the exec_agent path) and
-demotes the gate to one role inside it? This is a genuine fork with blast-radius implications (the DN
-owns `ThalamicGate` today; a thalamus that also feeds the substrate crosses into memory_hub/agent_loop
-territory). Flagged for the first design pass; not to be assumed either way here.
+**Does the escalation-only `ThalamicGate` GROW into the full relay, or does a NEW structure SUBSUME the
+three fragments** (`ThalamicGate` + `BioEnrichmentPipeline` + the exec_agent thalamus→PFC path) and
+demote each to one nucleus inside it?
 
-Secondary: the thalamus relays to **both** cortex(LLM) and substrate; today the three fragments only
-relay to the LLM/PFC, while the substrate path (`SensorEncoder`→EC) is separate. Unifying means the
-thalamus feeds both — a real routing decision, mode-aware (llm-primary vs substrate-primary consume
-different outputs; see the audit's mode-split facet).
+### Option A — grow `ThalamicGate` into the relay
+Extend the DN gate: its escalation logic becomes the "route to cortex?" nucleus; add multi-modal channel
+registration, per-channel gain, and substrate routing on top.
+- **For:** continuity; one place already named "thalamus"; DN already owns the salience/novelty
+  machinery the gate uses.
+- **Against (decisive):** `ThalamicGate` lives in `default_network/` — the **fast reactive vision/motor
+  layer**. Its actual job is "escalate *this vision percept* to the LLM?" A *universal sensory ingress
+  that also feeds the substrate* is not a DN concern; growing it either **violates DN's layer boundary**
+  (DN reaching into memory_hub/agent_loop/substrate wiring) or forces moving the gate out of DN — which
+  is "subsume" wearing "grow" clothing. And the other two fragments aren't under the gate, so growing it
+  doesn't unify them anyway.
+
+### Option B — a thin coordinator subsumes the three fragments (the lean)
+A neutral-home relay (a thin coordinator, NOT a god-object) over a **declarative channel registry**. The
+three fragments keep their focused jobs and become **nuclei**:
+- `ThalamicGate` → the **escalation/TRN nucleus** ("route to LLM?"), unchanged.
+- `BioEnrichmentPipeline` → the **relay-to-PFC nucleus** (pre-LLM enrichment), unchanged.
+- `SensorEncoder`→EC → the **relay-to-substrate nucleus**.
+The coordinator adds only the missing part: **multiplex channels, preserve modality (fix the flatten),
+apply per-channel gate/gain, route per mode.** Extensible by *registering a channel* (a `PerceptSource`
++ modality tag + gate/gain declaration), never by subclassing.
+- **For:** no DN layer violation; each fragment keeps its job (no rewrite); matches the
+  shallow-concrete-+-data extensibility principle; the "percept-channel manifest" is just this
+  coordinator's channel registry.
+- **Against:** a new component = new surface; risk of over-building if it becomes more than a thin
+  coordinator.
+
+### The lean, and how to realize it without over-building
+**Lean Option B — but realize it incrementally so it can't balloon.** The first slice does NOT introduce
+a `Thalamus` class at all. The minimum the audio experiment needs is exactly the audit's two structural
+fixes:
+1. **Un-flatten `sim_adapter.next_observation`** so `modality`/`metadata`/`salience` survive the sim
+   boundary (today's killer landmine).
+2. **A composite/multiplexing `PerceptSource`** so N channels can be attached.
+
+That pair *is* the thalamic relay body in embryo — modality-preserving multiplex — with **no new class
+and no fragment touched**. The thin `Thalamus` coordinator that subsumes the three fragments earns its
+introduction only when the **second** need arrives: per-channel gate/gain (the TRN function), or a second
+non-text channel to coordinate. Until then, Option B is the *direction*, not a built thing.
+
+**Rule:** the three-fragment subsumption is the north star; each nucleus is wrapped, never rewritten;
+the coordinator stays thin (multiplex + gate/gain + mode-routing) and is introduced by need, not up
+front. If a `Thalamus` class starts growing behavior that belongs in a nucleus, stop — push it back down.
+
+### The mode-routing constraint (applies to either option)
+The thalamus relays to **both** cortex(LLM) and substrate; today the fragments only relay to LLM/PFC while
+the substrate path (`SensorEncoder`→EC) is separate. Unifying means the relay feeds both, and the output
+shape is **mode-aware**: llm-primary consumes prompt-shaped enrichment, substrate-primary consumes
+EC-shaped encoding (audit mode-split facet). A channel's `enabled: false` therefore has a per-mode meaning
+that the coordinator (or the design pass) must pin explicitly — this is where the straddling
+percept/reaction sign-semantics bite.
+
+### Before any build
+A pre-implementation design pass (Executor + Architecture + bio-fidelity lenses, the same discipline that
+caught the Track 1 findings) answering: home for the coordinator; the un-flatten's blast radius on
+existing text/vision sims; the per-mode `enabled` semantics; and whether the substrate-routing nucleus
+re-opens the azimuth double-representation (thalamic "where" vs hypothalamic "discomfort") cleanly.
 
 ---
 
