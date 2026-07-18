@@ -72,14 +72,35 @@ class SimulationAdapter:
         self._tool_registry: Any | None = None  # set by orchestrator for deregistered-tool filtering
         self._grace_deadline: float | None = None
         self._grace_action_count: int = 0
+        # Thalamic-relay side-channel (thalamus_relay_design_pass.md Decision 2):
+        # the current tick's raw Percept, carried OFF the observation dict so it
+        # never enters state.data (RuntimeState.update absorbs every dict key and
+        # state.data is persisted — a Percept on the dict would leak as repr into
+        # state.json + episode snapshots). Modality-preserving consumers read this
+        # accessor; the observation dict stays scalar-only.
+        self._current_percept: Any | None = None
 
     @property
     def is_sim_mode(self) -> bool:
         return True
 
+    @property
+    def current_percept(self) -> Any | None:
+        """The raw ``Percept`` from the most recent ``next_observation`` tick.
+
+        ``None`` on the idle path (no percept this tick) and before the first
+        tick. Cleared every tick, so it never carries a stale percept. A
+        non-``None`` percept may still have ``None`` ``modality``/``sensory``;
+        consumers tolerate ``None`` at both levels.
+        """
+        return self._current_percept
+
     def next_observation(self, environment: Any, default_network: Any | None = None) -> dict:
         """Get observation from percept source or empty dict."""
         sim_percept = self.percept_source.next_percept()
+        # Stash on the side-channel (None on the idle path — clears any stale
+        # percept). Kept OFF the returned dict on purpose; see __init__.
+        self._current_percept = sim_percept
         if sim_percept is not None:
             # Route pain percepts through ReactionBus (Phase 2a: emit
             # Reaction directly instead of the old route_pain_percept detour).
@@ -239,6 +260,13 @@ class NullSimulationAdapter:
     @property
     def is_sim_mode(self) -> bool:
         return False
+
+    @property
+    def current_percept(self) -> Any | None:
+        """Production has no percept_source side-channel. On the non-sim path
+        the observation returned by ``next_observation`` IS the percept (a bare
+        ``Percept`` or a dict from ``environment.observe()``); read it there."""
+        return None
 
     def next_observation(self, environment: Any, default_network: Any | None = None) -> dict:
         return environment.observe()
