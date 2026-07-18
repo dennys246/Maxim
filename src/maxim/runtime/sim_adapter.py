@@ -127,11 +127,21 @@ class SimulationAdapter:
                 except Exception:
                     pass
 
-            # Convert percept to observation dict
+            # Convert percept to observation dict. A non-textual sensor percept
+            # (proprioception, or a SOUND/DoA percept whose ``content`` is just
+            # a human-readable telemetry string like "sound at azimuth -0.67")
+            # must NOT bleed into ``cli_input`` — that would mislabel passive
+            # perception as user text (triggering the text path + rendering it
+            # as "User input"). Sound percepts reach cognition via the
+            # modality-preserving side-channel (``current_percept``) + section
+            # 1.16, not the text channel.
+            _sensory = getattr(sim_percept, "sensory", None)
+            _modality = getattr(_sensory, "modality", None)
+            _is_sound = _modality is not None and getattr(_modality, "value", _modality) == "sound"
             _sim_cli = sim_percept.cli_input
             if not _sim_cli and sim_percept.transcript_chunk:
                 _sim_cli = sim_percept.transcript_chunk
-            if not _sim_cli and sim_percept.content and sim_percept.source != "proprioception":
+            if not _sim_cli and sim_percept.content and sim_percept.source != "proprioception" and not _is_sound:
                 _sim_cli = sim_percept.content
 
             observation = {

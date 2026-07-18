@@ -105,6 +105,22 @@ def test_no_percept_leaks_into_runtime_state_data():
     assert all(not isinstance(v, Percept) for v in snap["data"].values())
 
 
+def test_audio_percept_does_not_bleed_into_cli_input():
+    """A SOUND percept's human-readable content must NOT become cli_input — it
+    would mislabel passive perception as user text. It reaches cognition via
+    current_percept + the section-1.16 audio hook instead."""
+    from maxim.agents.percept_factory import make_audio_percept
+
+    audio = make_audio_percept(-0.67, source="reachy:audio-doa")
+    assert audio.content  # the factory sets a human-readable content string
+    adapter = SimulationAdapter(_OneShotSource(audio))
+    obs = adapter.next_observation(environment=None)
+    assert obs["cli_input"] is None
+    assert obs["transcript"] is None
+    # But the typed percept IS available on the side-channel.
+    assert adapter.current_percept is audio
+
+
 def test_null_adapter_current_percept_is_none():
     adapter = NullSimulationAdapter()
     assert adapter.current_percept is None

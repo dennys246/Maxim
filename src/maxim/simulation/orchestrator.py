@@ -1591,6 +1591,28 @@ def start_simulation_mode(
         try:
             with context_scope(new_request_context(agent_id="sim_aut", session_id=session_id)):
                 with sim_agent_context("sim_aut"):
+                    # Thalamic-relay stage 4 (thalamus_relay_design_pass.md):
+                    # opt-in audio-orient channel. When MAXIM_SIM_AUDIO_ORIENT is
+                    # set, multiplex a synthetic-DoA AzimuthDoASource into the AUT
+                    # percept stream via the first-slice composite; the bridge
+                    # keeps injecting into (and finishing) the underlying
+                    # ConversationalSource child, so termination is unchanged.
+                    # Default OFF → byte-identical (bare bridge.percept_source).
+                    from maxim.embodiment.audio_localization import audio_orient_enabled
+
+                    _aut_percept_source = bridge.percept_source
+                    if audio_orient_enabled():
+                        from maxim.embodiment.audio_localization import (
+                            build_audio_composite,
+                            default_sim_doa_reader,
+                        )
+
+                        _aut_percept_source = build_audio_composite(
+                            bridge.percept_source,
+                            default_sim_doa_reader(),
+                            agent_id="sim_aut",
+                        )
+                        logger.info("audio-orient channel attached to AUT percept source (synthetic DoA reader)")
                     run_agentic_loop(
                         aut_agent,
                         aut_env,
@@ -1606,7 +1628,7 @@ def start_simulation_mode(
                         max_steps=0,  # unlimited — AUT stops when bridge.finish() is called
                         stop_event=stop_event,
                         target_hz=2.0,
-                        percept_source=bridge.percept_source,
+                        percept_source=_aut_percept_source,
                         action_sink=bridge.action_sink,
                         pain_bus=aut_pain_bus,
                         imagination_trigger=aut_imagination_trigger,

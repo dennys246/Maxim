@@ -1491,6 +1491,26 @@ def run_agentic_loop(
                 log_swallowed_exception(_ase, operation="auto_sense", context={"step": step_num})
 
         # ─────────────────────────────────────────────────────────────────
+        # 1.16 AUDIO ORIENTATION — exteroceptive sound-direction (thalamic relay)
+        # ─────────────────────────────────────────────────────────────────
+        # First consumer of the modality-preserving side-channel
+        # (``sim.current_percept``): when this tick's percept is an audio/DoA
+        # percept, fold a passive azimuth observation into the auto-sense
+        # channel so it reaches the prompt like any other passive perception.
+        # Additive + self-gating — fires only when an audio source is attached
+        # to the percept stream (opt-in; default OFF). This block is OUTSIDE the
+        # text-gated section 1.15 because an audio-only tick carries no text.
+        # See docs/plans/thalamus_relay_design_pass.md (stage 4).
+        try:
+            from maxim.embodiment.audio_localization import format_audio_orientation
+
+            _audio_line = format_audio_orientation(getattr(sim, "current_percept", None))
+            if _audio_line:
+                _auto_sense_text = f"{_auto_sense_text}\n{_audio_line}" if _auto_sense_text else _audio_line
+        except Exception as _aoe:
+            log_swallowed_exception(_aoe, operation="audio_orientation", context={"step": step_num})
+
+        # ─────────────────────────────────────────────────────────────────
         # 1.2 BIO-ENRICHMENT — PFC deliberation (gate + enrich)
         # ─────────────────────────────────────────────────────────────────
         # Phase 1 of the PFC cycle: extract percept text and run

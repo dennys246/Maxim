@@ -255,3 +255,121 @@ def build_reachy_audio_orienting_source(
         return None
 
     return AzimuthDoASource(reader, name=name, agent_id=agent_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Thalamic-relay consumption + sim wiring (thalamus_relay_design_pass.md stage 4)
+#
+# These make an audio/DoA percept *recognized in the agentic loop*:
+#   - ``format_audio_orientation`` renders a passive azimuth observation that the
+#     loop folds into the auto-sense (passive-perception) prompt channel;
+#   - ``build_audio_composite`` attaches an ``AzimuthDoASource`` to an existing
+#     percept source via ``CompositePerceptSource`` (the first-slice multiplexer);
+#   - ``default_sim_doa_reader`` is a deterministic synthetic reader so the path
+#     is demonstrable offline (no hardware), standing in for the live onboard-DoA
+#     feed until Layer 2 / the motor repair.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def format_audio_orientation(percept: object) -> str:
+    """Render a passive azimuth observation from an audio/DoA percept.
+
+    Returns ``""`` for ``None``, non-audio percepts, or a percept without an
+    azimuth — so callers can unconditionally fold the result into the passive-
+    perception (auto-sense) channel. The azimuth convention matches
+    :func:`make_audio_percept`: ``-1`` = left, ``0`` = centered, ``+1`` = right.
+    """
+    if percept is None:
+        return ""
+    meta = getattr(percept, "metadata", None) or {}
+    if "azimuth" not in meta:
+        return ""
+    # Belt + suspenders: only render for a SOUND-modality percept, so an
+    # ``azimuth`` key riding some unrelated percept's metadata is ignored.
+    sensory = getattr(percept, "sensory", None)
+    modality = getattr(sensory, "modality", None)
+    if modality is not None and getattr(modality, "value", modality) != "sound":
+        return ""
+    try:
+        az = float(meta["azimuth"])
+    except (TypeError, ValueError):
+        return ""
+    az = max(-1.0, min(1.0, az))
+    if abs(az) <= 0.1:
+        return "You hear a sound directly ahead of you (centered, azimuth 0.00)."
+    side = "left" if az < 0 else "right"
+    magnitude = "slightly" if abs(az) <= 0.5 else "well"
+    return f"You hear a sound {magnitude} to your {side} (azimuth {az:+.2f})."
+
+
+def build_audio_composite(
+    base_source: object,
+    doa_reader: DoAReader,
+    *,
+    name: str = "reachy:audio-doa",
+    agent_id: str | None = None,
+    composite_name: str = "sim+audio",
+) -> object:
+    """Multiplex ``base_source`` with an ``AzimuthDoASource(doa_reader)``.
+
+    Returns a :class:`~maxim.simulation.composite_source.CompositePerceptSource`
+    whose audio child is **ambient** (perpetual-live) so it never blocks the
+    base (scripted/interactive) source from terminating the sim. The composite
+    import is lazy to avoid a module-level embodiment→simulation dependency.
+    """
+    from maxim.simulation.composite_source import CompositePerceptSource
+
+    audio = AzimuthDoASource(doa_reader, name=name, agent_id=agent_id)
+    return CompositePerceptSource([base_source, audio], ambient=[audio], name=composite_name)
+
+
+def default_sim_doa_reader(
+    *,
+    period: int = 4,
+    angles_rad: "list[float] | None" = None,
+) -> DoAReader:
+    """Deterministic synthetic DoA reader for offline sims (no hardware).
+
+    Emits ``(angle, is_speech=True)`` once every ``period`` calls, cycling
+    through ``angles_rad``; ``(0.0, False)`` otherwise (so most ticks produce no
+    audio percept, as a real transient-sound stream would). A stand-in for the
+    live onboard-DoA feed (:func:`make_reachy_rest_doa_reader`) or a future
+    sim-narrative-driven angle source — it exists to prove the recognition path
+    end-to-end offline, NOT as a permanent input. Deterministic (no RNG) so
+    experiment runs are reproducible.
+    """
+    seq = (
+        list(angles_rad)
+        if angles_rad is not None
+        else [
+            math.radians(30),  # left of front  (doa 30° → az < 0)
+            math.radians(150),  # right of front (doa 150° → az > 0)
+            math.radians(75),  # near-centered
+        ]
+    )
+    counter = {"n": 0, "i": 0}
+
+    def _reader() -> "DoAReading | None":
+        counter["n"] += 1
+        if period > 0 and counter["n"] % period == 0 and seq:
+            angle = seq[counter["i"] % len(seq)]
+            counter["i"] += 1
+            return (angle, True)
+        return (0.0, False)
+
+    return _reader
+
+
+def audio_orient_enabled() -> bool:
+    """Whether the offline audio-orient channel is opted in for this sim.
+
+    Reads ``MAXIM_SIM_AUDIO_ORIENT`` via the canonical truthy parser. Default
+    OFF → the orchestrator wiring is byte-identical. Experiment/harness toggle
+    (env, not config) — attaching a live DoA reader is a separate wiring
+    decision. Paired with an autouse conftest scrub per the hot-path rule.
+    """
+    import os
+
+    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+    return annotation_disabled_via_env(os.environ.get("MAXIM_SIM_AUDIO_ORIENT"))
