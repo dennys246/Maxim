@@ -1605,14 +1605,23 @@ def start_simulation_mode(
                         from maxim.embodiment.audio_localization import (
                             build_audio_composite,
                             default_sim_doa_reader,
+                            sim_audio_salience_novelty,
                         )
 
+                        _aud_sal, _aud_nov = sim_audio_salience_novelty()
                         _aut_percept_source = build_audio_composite(
                             bridge.percept_source,
                             default_sim_doa_reader(),
                             agent_id="sim_aut",
+                            salience=_aud_sal,
+                            novelty=_aud_nov,
                         )
-                        logger.info("audio-orient channel attached to AUT percept source (synthetic DoA reader)")
+                        logger.info(
+                            "audio-orient channel attached to AUT percept source "
+                            "(synthetic DoA reader, salience=%.2f novelty=%.2f)",
+                            _aud_sal,
+                            _aud_nov,
+                        )
                     run_agentic_loop(
                         aut_agent,
                         aut_env,

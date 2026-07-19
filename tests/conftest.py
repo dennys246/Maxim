@@ -267,13 +267,15 @@ def _isolate_maxim_sim_audio_orient_env():
     time. Per CLAUDE.md "opt-in env vars in hot startup paths need autouse
     scrubs" — a test that sets it must not leak into other sim-shaped runs.
     """
-    saved = os.environ.pop("MAXIM_SIM_AUDIO_ORIENT", None)
+    _keys = ("MAXIM_SIM_AUDIO_ORIENT", "MAXIM_SIM_AUDIO_SALIENCE", "MAXIM_SIM_AUDIO_NOVELTY")
+    saved = {k: os.environ.pop(k, None) for k in _keys}
     try:
         yield
     finally:
-        os.environ.pop("MAXIM_SIM_AUDIO_ORIENT", None)
-        if saved is not None:
-            os.environ["MAXIM_SIM_AUDIO_ORIENT"] = saved
+        for k in _keys:
+            os.environ.pop(k, None)
+            if saved[k] is not None:
+                os.environ[k] = saved[k]
 
 
 @pytest.fixture(autouse=True)

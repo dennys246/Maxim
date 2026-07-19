@@ -115,6 +115,40 @@ class _Base:
         return False
 
 
+def test_azimuth_source_salience_novelty_are_tunable():
+    """The DoA percept's attention weight is the scaling-experiment knob —
+    defaults are sub-threshold; raising them pushes the sound above the
+    `> 0.5` attention gates."""
+    from maxim.embodiment.audio_localization import AzimuthDoASource
+
+    reader = default_sim_doa_reader(period=1)
+    # default (sub-threshold)
+    p_default = AzimuthDoASource(reader).next_percept()
+    assert p_default.salience == 0.5 and p_default.novelty == 0.3
+    # scaled up (above the 0.5 gates)
+    reader2 = default_sim_doa_reader(period=1)
+    p_hot = AzimuthDoASource(reader2, salience=0.9, novelty=0.9).next_percept()
+    assert p_hot.salience == 0.9 and p_hot.novelty == 0.9
+
+
+def test_sim_audio_salience_novelty_env_override():
+    from maxim.embodiment.audio_localization import sim_audio_salience_novelty
+
+    assert sim_audio_salience_novelty() == (0.5, 0.3)  # defaults (conftest scrubs env)
+    os.environ["MAXIM_SIM_AUDIO_SALIENCE"] = "0.9"
+    os.environ["MAXIM_SIM_AUDIO_NOVELTY"] = "0.85"
+    try:
+        assert sim_audio_salience_novelty() == (0.9, 0.85)
+        # malformed → default, clamped
+        os.environ["MAXIM_SIM_AUDIO_SALIENCE"] = "nope"
+        assert sim_audio_salience_novelty()[0] == 0.5
+        os.environ["MAXIM_SIM_AUDIO_SALIENCE"] = "5"
+        assert sim_audio_salience_novelty()[0] == 1.0  # clamped to [0,1]
+    finally:
+        os.environ.pop("MAXIM_SIM_AUDIO_SALIENCE", None)
+        os.environ.pop("MAXIM_SIM_AUDIO_NOVELTY", None)
+
+
 def test_build_audio_composite_attaches_ambient_audio():
     base = _Base()
     composite = build_audio_composite(base, default_sim_doa_reader(), agent_id="sim_aut")

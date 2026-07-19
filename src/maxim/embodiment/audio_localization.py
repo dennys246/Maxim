@@ -81,10 +81,21 @@ class AzimuthDoASource:
         *,
         name: str = "reachy:audio-doa",
         agent_id: str | None = None,
+        salience: float = 0.5,
+        novelty: float = 0.3,
     ) -> None:
         self._reader = doa_reader
         self._name = name
         self._agent_id = agent_id
+        # Attention weight the emitted percept carries. The factory defaults
+        # (0.5 / 0.3) sit AT or BELOW every `> 0.5` attention/escalation gate in
+        # the pipeline (perception_agent, exec_agent proposal + attention,
+        # context_pool novelty), so a default DoA percept is passively perceived
+        # but never proactively attended. These are the experiment knobs for
+        # "does scaling audio salience/novelty change behavior?" — raise them to
+        # push the sound above the attention thresholds.
+        self._salience = salience
+        self._novelty = novelty
 
     @property
     def name(self) -> str:
@@ -111,7 +122,13 @@ class AzimuthDoASource:
             # No sound to localize this tick — don't fabricate a direction.
             return None
         azimuth = doa_to_azimuth(doa_radians)
-        return make_audio_percept(azimuth, source=self._name, agent_id=self._agent_id)
+        return make_audio_percept(
+            azimuth,
+            source=self._name,
+            agent_id=self._agent_id,
+            salience=self._salience,
+            novelty=self._novelty,
+        )
 
 
 def make_reachy_rest_doa_reader(
@@ -332,18 +349,42 @@ def build_audio_composite(
     name: str = "reachy:audio-doa",
     agent_id: str | None = None,
     composite_name: str = "sim+audio",
+    salience: float = 0.5,
+    novelty: float = 0.3,
 ) -> object:
     """Multiplex ``base_source`` with an ``AzimuthDoASource(doa_reader)``.
 
     Returns a :class:`~maxim.simulation.composite_source.CompositePerceptSource`
     whose audio child is **ambient** (perpetual-live) so it never blocks the
-    base (scripted/interactive) source from terminating the sim. The composite
-    import is lazy to avoid a module-level embodiment→simulation dependency.
+    base (scripted/interactive) source from terminating the sim. ``salience`` /
+    ``novelty`` set the attention weight of the emitted audio percepts (the
+    "does scaling audio salience matter" experiment knob). The composite import
+    is lazy to avoid a module-level embodiment→simulation dependency.
     """
     from maxim.simulation.composite_source import CompositePerceptSource
 
-    audio = AzimuthDoASource(doa_reader, name=name, agent_id=agent_id)
+    audio = AzimuthDoASource(doa_reader, name=name, agent_id=agent_id, salience=salience, novelty=novelty)
     return CompositePerceptSource([base_source, audio], ambient=[audio], name=composite_name)
+
+
+def sim_audio_salience_novelty() -> "tuple[float, float]":
+    """Resolve the sim audio-orient (salience, novelty) from env, for the
+    scaling experiment. ``MAXIM_SIM_AUDIO_SALIENCE`` / ``MAXIM_SIM_AUDIO_NOVELTY``
+    override the sub-threshold factory defaults (0.5 / 0.3); malformed or unset
+    values fall back to the defaults. Clamped to ``[0, 1]``."""
+    import os
+
+    def _resolve(var: str, default: float) -> float:
+        raw = os.environ.get(var)
+        if not raw:
+            return default
+        try:
+            return max(0.0, min(1.0, float(raw)))
+        except (TypeError, ValueError):
+            logger.warning("%s=%r is not a float — using default %.2f", var, raw, default)
+            return default
+
+    return _resolve("MAXIM_SIM_AUDIO_SALIENCE", 0.5), _resolve("MAXIM_SIM_AUDIO_NOVELTY", 0.3)
 
 
 def default_sim_doa_reader(
