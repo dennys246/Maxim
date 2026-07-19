@@ -288,16 +288,17 @@ def build_reachy_audio_orienting_source(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Thalamic-relay consumption + sim wiring (thalamus_relay_design_pass.md stage 4)
+# Thalamic-relay consumption helpers (thalamus_relay_design_pass.md stage 4)
 #
-# These make an audio/DoA percept *recognized in the agentic loop*:
-#   - ``format_audio_orientation`` renders a passive azimuth observation that the
-#     loop folds into the auto-sense (passive-perception) prompt channel;
-#   - ``build_audio_composite`` attaches an ``AzimuthDoASource`` to an existing
-#     percept source via ``CompositePerceptSource`` (the first-slice multiplexer);
-#   - ``default_sim_doa_reader`` is a deterministic synthetic reader so the path
-#     is demonstrable offline (no hardware), standing in for the live onboard-DoA
-#     feed until Layer 2 / the motor repair.
+# The runtime loop's §1.16 consumes an audio/DoA percept through these:
+#   - ``format_audio_orientation`` renders a passive azimuth observation the loop
+#     folds into the auto-sense (passive-perception) prompt channel;
+#   - ``audio_attention_profile`` reports which attention gates the percept clears
+#     (the salience-A/B trace);
+#   - ``should_emit_orientation`` is the change-gate (skip an unchanged direction).
+# The sim-side wiring (synthetic reader, env knobs, composite-attach) lives in
+# ``simulation/audio_orient_wiring.py`` — kept out of this hardware-agnostic
+# front-end per the pre-merge Architecture review.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -336,13 +337,17 @@ def audio_attention_profile(salience: float, novelty: float) -> "dict[str, float
     """Which pipeline attention/escalation gates a percept at (salience, novelty)
     would pass — the per-run trace that quantifies the salience A/B.
 
-    Every gate below is a strict ``>`` comparison in the pipeline; the reference
-    is the consuming call site. Emitted as the ``data`` of each ``audio-orient``
-    sim-log record so an ablation can ask "did the hot arm's percepts actually
-    clear the gates the baseline's didn't, and did behavior follow?" without
-    re-deriving the thresholds by hand. The default DoA weights (0.5 / 0.3) pass
-    NONE of these — the sound is perceived (via §1.16 auto-sense) but never
-    proactively attended.
+    Every gate below is a strict ``>`` comparison in the pipeline. Emitted as the
+    ``data`` of each ``audio-orient`` sim-log record so an ablation can ask "did
+    the hot arm's percepts actually clear the gates the baseline's didn't, and
+    did behavior follow?" without re-deriving the thresholds by hand. The default
+    DoA weights (0.5 / 0.3) pass NONE of these — the sound is perceived (via
+    §1.16 auto-sense) but never proactively attended.
+
+    The module:line references in the comments below are **illustrative, not
+    authoritative** — the upstream gates are bare inline literals (nothing to
+    import), so re-verify against source if this diagnostic ever disagrees with
+    observed behavior.
     """
     s = float(salience)
     n = float(novelty)
@@ -381,111 +386,3 @@ def should_emit_orientation(
         return abs(float(new_az) - float(prev_az)) >= threshold
     except (TypeError, ValueError):
         return True
-
-
-def build_audio_composite(
-    base_source: object,
-    doa_reader: DoAReader,
-    *,
-    name: str = "reachy:audio-doa",
-    agent_id: str | None = None,
-    composite_name: str = "sim+audio",
-    salience: float = 0.5,
-    novelty: float = 0.3,
-) -> object:
-    """Multiplex ``base_source`` with an ``AzimuthDoASource(doa_reader)``.
-
-    Returns a :class:`~maxim.simulation.composite_source.CompositePerceptSource`
-    whose audio child is **ambient** (perpetual-live) so it never blocks the
-    base (scripted/interactive) source from terminating the sim. ``salience`` /
-    ``novelty`` set the attention weight of the emitted audio percepts (the
-    "does scaling audio salience matter" experiment knob). The composite import
-    is lazy to avoid a module-level embodiment→simulation dependency.
-    """
-    from maxim.simulation.composite_source import CompositePerceptSource
-
-    audio = AzimuthDoASource(doa_reader, name=name, agent_id=agent_id, salience=salience, novelty=novelty)
-    return CompositePerceptSource([base_source, audio], ambient=[audio], name=composite_name)
-
-
-def sim_audio_salience_novelty() -> "tuple[float, float]":
-    """Resolve the sim audio-orient (salience, novelty) from env, for the
-    scaling experiment. ``MAXIM_SIM_AUDIO_SALIENCE`` / ``MAXIM_SIM_AUDIO_NOVELTY``
-    override the sub-threshold factory defaults (0.5 / 0.3); malformed or unset
-    values fall back to the defaults. Clamped to ``[0, 1]``."""
-    import os
-
-    def _resolve(var: str, default: float) -> float:
-        raw = os.environ.get(var)
-        if not raw:
-            return default
-        try:
-            return max(0.0, min(1.0, float(raw)))
-        except (TypeError, ValueError):
-            logger.warning("%s=%r is not a float — using default %.2f", var, raw, default)
-            return default
-
-    return _resolve("MAXIM_SIM_AUDIO_SALIENCE", 0.5), _resolve("MAXIM_SIM_AUDIO_NOVELTY", 0.3)
-
-
-def default_sim_doa_reader(
-    *,
-    period: int = 40,
-    max_events: "int | None" = None,
-    angles_rad: "list[float] | None" = None,
-) -> DoAReader:
-    """Deterministic synthetic DoA reader for offline sims (no hardware).
-
-    Emits ``(angle, is_speech=True)`` once every ``period`` calls, cycling
-    through ``angles_rad``; ``(0.0, False)`` otherwise. A stand-in for the live
-    onboard-DoA feed (:func:`make_reachy_rest_doa_reader`) or a future
-    sim-narrative-driven angle source — it exists to prove the recognition path
-    end-to-end offline, NOT as a permanent input. Deterministic (no RNG) so
-    experiment runs are reproducible.
-
-    Cadence (calibrated from the first live run, 2026-07-18): ``period`` counts
-    reader *calls*, and the agent loop calls it at its tick rate (~2 Hz), so the
-    default ``period=40`` yields a sound event roughly every ~20 s — an
-    occasional EVENT, not the every-2 s ambient hum the first demo produced
-    (which swamped the agent and confounded any behavioral read). ``max_events``
-    caps the total number of sound events (``None`` = unbounded); pass a small
-    value for a controlled stimulus set that goes silent afterward.
-    """
-    seq = (
-        list(angles_rad)
-        if angles_rad is not None
-        else [
-            math.radians(30),  # left of front  (doa 30° → az < 0)
-            math.radians(150),  # right of front (doa 150° → az > 0)
-            math.radians(75),  # near-centered
-        ]
-    )
-    counter = {"n": 0, "i": 0, "emitted": 0}
-
-    def _reader() -> "DoAReading | None":
-        counter["n"] += 1
-        if max_events is not None and counter["emitted"] >= max_events:
-            return (0.0, False)
-        if period > 0 and counter["n"] % period == 0 and seq:
-            angle = seq[counter["i"] % len(seq)]
-            counter["i"] += 1
-            counter["emitted"] += 1
-            return (angle, True)
-        return (0.0, False)
-
-    return _reader
-
-
-def audio_orient_enabled() -> bool:
-    """Whether the offline audio-orient channel is opted in for this sim.
-
-    Reads ``MAXIM_SIM_AUDIO_ORIENT`` via the canonical truthy parser. Default
-    OFF → the orchestrator wiring is byte-identical. Experiment/harness toggle
-    (env, not config) — attaching a live DoA reader is a separate wiring
-    decision. Paired with an autouse conftest scrub per the hot-path rule.
-    """
-    import os
-
-    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
-
-    return annotation_disabled_via_env(os.environ.get("MAXIM_SIM_AUDIO_ORIENT"))

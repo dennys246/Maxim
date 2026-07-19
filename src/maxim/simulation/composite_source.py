@@ -21,10 +21,13 @@ first slice of ``docs/plans/thalamus_relay_design_pass.md``. Deliberately a
   forever False) do NOT veto termination, or a live sensor would block a
   scenario-complete sim from ever self-terminating.
 - **Injection / lifecycle** (``inject_cli`` / ``inject_pain`` / ``finish`` — the
-  methods the orchestrator + bridge call on their ``percept_source``, see
-  ``bridge.py`` / ``orchestrator.py``) route to the **single** child that
-  implements each. A SECOND implementer of any of them raises at construction:
-  addressed routing is the coordinator's job, not this dumb multiplexer's.
+  injection contract a multiplexer must honor *if* it becomes the bridge's
+  ``percept_source``) route to the **single** child that implements each. A
+  SECOND implementer of any of them raises at construction: addressed routing is
+  the coordinator's job, not this dumb multiplexer's. (In the current audio
+  wiring the bridge injects into its own ``ConversationalSource`` child directly
+  and the composite is handed only to the loop, so this apparatus is
+  tested-but-latent — cheap contract-completeness for the next wiring.)
 - **Fan-out** (``advance_step`` / ``has_pending``) broadcasts to every child.
 
 ``[engineering]`` — this is un-flatten + multiplex mechanics, not a validated

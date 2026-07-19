@@ -1598,11 +1598,11 @@ def start_simulation_mode(
                     # keeps injecting into (and finishing) the underlying
                     # ConversationalSource child, so termination is unchanged.
                     # Default OFF → byte-identical (bare bridge.percept_source).
-                    from maxim.embodiment.audio_localization import audio_orient_enabled
+                    from maxim.simulation.audio_orient_wiring import audio_orient_enabled
 
                     _aut_percept_source = bridge.percept_source
                     if audio_orient_enabled():
-                        from maxim.embodiment.audio_localization import (
+                        from maxim.simulation.audio_orient_wiring import (
                             build_audio_composite,
                             default_sim_doa_reader,
                             sim_audio_salience_novelty,

@@ -19,11 +19,14 @@ from maxim.agents.modality import SensoryModality, SensoryTag
 from maxim.agents.percept_factory import make_audio_percept, make_text_percept
 from maxim.embodiment.audio_localization import (
     audio_attention_profile,
+    format_audio_orientation,
+    should_emit_orientation,
+)
+from maxim.simulation.audio_orient_wiring import (
     audio_orient_enabled,
     build_audio_composite,
     default_sim_doa_reader,
-    format_audio_orientation,
-    should_emit_orientation,
+    sim_audio_salience_novelty,
 )
 from maxim.simulation.composite_source import CompositePerceptSource
 
@@ -169,8 +172,6 @@ def test_hot_audio_escalates_baseline_does_not():
 
 
 def test_sim_audio_salience_novelty_env_override():
-    from maxim.embodiment.audio_localization import sim_audio_salience_novelty
-
     assert sim_audio_salience_novelty() == (0.5, 0.3)  # defaults (conftest scrubs env)
     os.environ["MAXIM_SIM_AUDIO_SALIENCE"] = "0.9"
     os.environ["MAXIM_SIM_AUDIO_NOVELTY"] = "0.85"
