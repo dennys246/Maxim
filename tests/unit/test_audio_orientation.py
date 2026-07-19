@@ -18,6 +18,7 @@ import os
 from maxim.agents.modality import SensoryModality, SensoryTag
 from maxim.agents.percept_factory import make_audio_percept, make_text_percept
 from maxim.embodiment.audio_localization import (
+    audio_attention_profile,
     audio_orient_enabled,
     build_audio_composite,
     default_sim_doa_reader,
@@ -113,6 +114,25 @@ class _Base:
 
     def is_exhausted(self) -> bool:
         return False
+
+
+def test_audio_attention_profile_default_passes_no_gates():
+    """The default DoA weights (0.5/0.3) clear NONE of the attention gates —
+    the mechanistic reason a default sound is perceived but not attended."""
+    p = audio_attention_profile(0.5, 0.3)
+    assert p["salience"] == 0.5 and p["novelty"] == 0.3
+    assert p["passes_salience_gate"] is False  # 0.5 is not > 0.5
+    assert p["passes_novelty_gate"] is False
+    assert p["passes_proposal_gate"] is False
+    assert p["passes_high_novelty_memory"] is False
+
+
+def test_audio_attention_profile_hot_passes_gates():
+    p = audio_attention_profile(0.9, 0.9)
+    assert p["passes_salience_gate"] is True
+    assert p["passes_novelty_gate"] is True
+    assert p["passes_proposal_gate"] is True  # both > 0.5
+    assert p["passes_high_novelty_memory"] is True  # 0.9 > 0.7
 
 
 def test_azimuth_source_salience_novelty_are_tunable():

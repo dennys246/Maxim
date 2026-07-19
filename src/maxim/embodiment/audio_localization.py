@@ -319,6 +319,34 @@ def format_audio_orientation(percept: object) -> str:
     return f"You hear a sound {magnitude} to your {side} (azimuth {az:+.2f})."
 
 
+def audio_attention_profile(salience: float, novelty: float) -> "dict[str, float | bool]":
+    """Which pipeline attention/escalation gates a percept at (salience, novelty)
+    would pass — the per-run trace that quantifies the salience A/B.
+
+    Every gate below is a strict ``>`` comparison in the pipeline; the reference
+    is the consuming call site. Emitted as the ``data`` of each ``audio-orient``
+    sim-log record so an ablation can ask "did the hot arm's percepts actually
+    clear the gates the baseline's didn't, and did behavior follow?" without
+    re-deriving the thresholds by hand. The default DoA weights (0.5 / 0.3) pass
+    NONE of these — the sound is perceived (via §1.16 auto-sense) but never
+    proactively attended.
+    """
+    s = float(salience)
+    n = float(novelty)
+    return {
+        "salience": s,
+        "novelty": n,
+        # perception_agent.py:261/357 — salience > 0.5 marks a percept salient
+        "passes_salience_gate": s > 0.5,
+        # context_pool.py:268 + exec_agent.py:1737 — novelty > 0.5
+        "passes_novelty_gate": n > 0.5,
+        # exec_agent.py:981/1709 — BOTH > 0.5 triggers a proposal / attention
+        "passes_proposal_gate": s > 0.5 and n > 0.5,
+        # memory_agent.py:734 — novelty > 0.7 stores as a high-novelty memory
+        "passes_high_novelty_memory": n > 0.7,
+    }
+
+
 def should_emit_orientation(
     prev_az: "float | None",
     new_az: float,

@@ -1503,6 +1503,7 @@ def run_agentic_loop(
         # See docs/plans/thalamus_relay_design_pass.md (stage 4).
         try:
             from maxim.embodiment.audio_localization import (
+                audio_attention_profile,
                 format_audio_orientation,
                 should_emit_orientation,
             )
@@ -1524,7 +1525,14 @@ def run_agentic_loop(
                     try:
                         from maxim.simulation.sim_logger import sim_log
 
-                        sim_log("PERCEPTION", f"audio-orient: {_audio_line}")
+                        sim_log(
+                            "PERCEPTION",
+                            f"audio-orient: {_audio_line}",
+                            data=audio_attention_profile(
+                                getattr(_ap, "salience", 0.0),
+                                getattr(_ap, "novelty", 0.0),
+                            ),
+                        )
                     except Exception:
                         pass
         except Exception as _aoe:
