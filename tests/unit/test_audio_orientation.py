@@ -22,6 +22,7 @@ from maxim.embodiment.audio_localization import (
     build_audio_composite,
     default_sim_doa_reader,
     format_audio_orientation,
+    should_emit_orientation,
 )
 from maxim.simulation.composite_source import CompositePerceptSource
 
@@ -146,6 +147,28 @@ def test_default_reader_is_periodic_and_deterministic():
     # Deterministic: a fresh reader repeats the pattern.
     r2 = default_sim_doa_reader(period=3)
     assert [flag for (_, flag) in (r2() for _ in range(6))] == speech_flags
+
+
+def test_default_reader_throttled_by_default():
+    """Default cadence is sparse (period=40) so sound is an event, not the
+    every-2s hum the first live run produced."""
+    r = default_sim_doa_reader()
+    speech = [flag for (_, flag) in (r() for _ in range(40))]
+    assert speech.count(True) == 1  # exactly one event in 40 calls
+
+
+def test_default_reader_max_events_caps_emissions():
+    r = default_sim_doa_reader(period=2, max_events=3)
+    speech = [flag for (_, flag) in (r() for _ in range(20))]
+    assert speech.count(True) == 3  # goes silent after the cap
+
+
+def test_should_emit_orientation_change_gate():
+    assert should_emit_orientation(None, -0.6) is True  # first sound always emits
+    assert should_emit_orientation(-0.6, -0.6) is False  # unchanged → suppressed
+    assert should_emit_orientation(-0.6, 0.6) is True  # big change → emit
+    assert should_emit_orientation(-0.6, -0.62) is False  # sub-threshold jitter → suppressed
+    assert should_emit_orientation(-0.6, -0.4) is True  # ≥0.15 change → emit
 
 
 # ── audio_orient_enabled ────────────────────────────────────────────────────

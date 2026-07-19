@@ -302,6 +302,29 @@ def format_audio_orientation(percept: object) -> str:
     return f"You hear a sound {magnitude} to your {side} (azimuth {az:+.2f})."
 
 
+def should_emit_orientation(
+    prev_az: "float | None",
+    new_az: float,
+    *,
+    threshold: float = 0.15,
+) -> bool:
+    """Change-gate for the §1.16 audio-orient prompt line.
+
+    Returns True when the direction is worth re-announcing: the first sound
+    (``prev_az is None``) or an azimuth that moved at least ``threshold`` from
+    the last announced one. Suppresses re-emitting an identical "sound to your
+    left" line on every tick — pure prompt noise that also burns context. Kept
+    minimal (a delta gate, not a refractory timer) so it stays deterministic and
+    loop-clock-free; a timed refractory is the coordinator's job if ever needed.
+    """
+    if prev_az is None:
+        return True
+    try:
+        return abs(float(new_az) - float(prev_az)) >= threshold
+    except (TypeError, ValueError):
+        return True
+
+
 def build_audio_composite(
     base_source: object,
     doa_reader: DoAReader,
@@ -325,18 +348,26 @@ def build_audio_composite(
 
 def default_sim_doa_reader(
     *,
-    period: int = 4,
+    period: int = 40,
+    max_events: "int | None" = None,
     angles_rad: "list[float] | None" = None,
 ) -> DoAReader:
     """Deterministic synthetic DoA reader for offline sims (no hardware).
 
     Emits ``(angle, is_speech=True)`` once every ``period`` calls, cycling
-    through ``angles_rad``; ``(0.0, False)`` otherwise (so most ticks produce no
-    audio percept, as a real transient-sound stream would). A stand-in for the
-    live onboard-DoA feed (:func:`make_reachy_rest_doa_reader`) or a future
+    through ``angles_rad``; ``(0.0, False)`` otherwise. A stand-in for the live
+    onboard-DoA feed (:func:`make_reachy_rest_doa_reader`) or a future
     sim-narrative-driven angle source — it exists to prove the recognition path
     end-to-end offline, NOT as a permanent input. Deterministic (no RNG) so
     experiment runs are reproducible.
+
+    Cadence (calibrated from the first live run, 2026-07-18): ``period`` counts
+    reader *calls*, and the agent loop calls it at its tick rate (~2 Hz), so the
+    default ``period=40`` yields a sound event roughly every ~20 s — an
+    occasional EVENT, not the every-2 s ambient hum the first demo produced
+    (which swamped the agent and confounded any behavioral read). ``max_events``
+    caps the total number of sound events (``None`` = unbounded); pass a small
+    value for a controlled stimulus set that goes silent afterward.
     """
     seq = (
         list(angles_rad)
@@ -347,13 +378,16 @@ def default_sim_doa_reader(
             math.radians(75),  # near-centered
         ]
     )
-    counter = {"n": 0, "i": 0}
+    counter = {"n": 0, "i": 0, "emitted": 0}
 
     def _reader() -> "DoAReading | None":
         counter["n"] += 1
+        if max_events is not None and counter["emitted"] >= max_events:
+            return (0.0, False)
         if period > 0 and counter["n"] % period == 0 and seq:
             angle = seq[counter["i"] % len(seq)]
             counter["i"] += 1
+            counter["emitted"] += 1
             return (angle, True)
         return (0.0, False)
 

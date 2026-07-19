@@ -1502,17 +1502,31 @@ def run_agentic_loop(
         # text-gated section 1.15 because an audio-only tick carries no text.
         # See docs/plans/thalamus_relay_design_pass.md (stage 4).
         try:
-            from maxim.embodiment.audio_localization import format_audio_orientation
+            from maxim.embodiment.audio_localization import (
+                format_audio_orientation,
+                should_emit_orientation,
+            )
 
-            _audio_line = format_audio_orientation(getattr(sim, "current_percept", None))
-            if _audio_line:
-                _auto_sense_text = f"{_auto_sense_text}\n{_audio_line}" if _auto_sense_text else _audio_line
-                try:
-                    from maxim.simulation.sim_logger import sim_log
+            _ap = getattr(sim, "current_percept", None)
+            _az = None
+            if _ap is not None:
+                _ameta = getattr(_ap, "metadata", None) or {}
+                _az = _ameta.get("azimuth")
+            # Change-gate: only fold the line in on the first sound or a
+            # meaningful direction change — an unchanged azimuth every tick is
+            # pure prompt noise (the first live run re-announced the same
+            # direction ~every 2 s for 8 minutes).
+            if _az is not None and should_emit_orientation(state.data.get("_last_audio_orient_az"), _az):
+                _audio_line = format_audio_orientation(_ap)
+                if _audio_line:
+                    state.data["_last_audio_orient_az"] = float(_az)
+                    _auto_sense_text = f"{_auto_sense_text}\n{_audio_line}" if _auto_sense_text else _audio_line
+                    try:
+                        from maxim.simulation.sim_logger import sim_log
 
-                    sim_log("PERCEPTION", f"audio-orient: {_audio_line}")
-                except Exception:
-                    pass
+                        sim_log("PERCEPTION", f"audio-orient: {_audio_line}")
+                    except Exception:
+                        pass
         except Exception as _aoe:
             log_swallowed_exception(_aoe, operation="audio_orientation", context={"step": step_num})
 
