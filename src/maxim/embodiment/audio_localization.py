@@ -109,6 +109,19 @@ class AzimuthDoASource:
         # Live hardware source — never exhausted.
         return False
 
+    def has_pending(self) -> bool:
+        """Always True — an ambient live sensor must be sampled every tick.
+
+        DoA has no queued backlog; the reader yields a reading (or None) per
+        tick, so the agent loop's idle-sleep must NOT skip the tick or the
+        sensor is starved (it would never emit). ``CompositePerceptSource``
+        treats a missing ``has_pending`` as True already; declaring it makes the
+        ambient-sample semantics explicit rather than accidental (S2). Audio is
+        a sim-only channel (orchestrator, behind ``MAXIM_SIM_AUDIO_ORIENT``), so
+        this never affects the production loop.
+        """
+        return True
+
     def next_percept(self) -> Percept | None:
         try:
             reading = self._reader()

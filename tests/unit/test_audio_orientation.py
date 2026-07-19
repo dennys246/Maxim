@@ -151,6 +151,23 @@ def test_azimuth_source_salience_novelty_are_tunable():
     assert p_hot.salience == 0.9 and p_hot.novelty == 0.9
 
 
+def test_azimuth_source_has_pending_true():
+    """Ambient live sensor must be sampled every tick (S2) — has_pending is
+    explicitly True so the loop's idle-sleep can't starve it."""
+    from maxim.embodiment.audio_localization import AzimuthDoASource
+
+    src = AzimuthDoASource(default_sim_doa_reader())
+    assert src.has_pending() is True
+
+
+def test_hot_audio_escalates_baseline_does_not():
+    """The escalation contract (B1 fix): passes_salience_gate is the thalamic
+    escalation signal. Default sound (0.5) is sub-threshold → not escalated;
+    scaled-up sound (0.9) escalates → reaches the LLM."""
+    assert audio_attention_profile(0.5, 0.3)["passes_salience_gate"] is False
+    assert audio_attention_profile(0.9, 0.9)["passes_salience_gate"] is True
+
+
 def test_sim_audio_salience_novelty_env_override():
     from maxim.embodiment.audio_localization import sim_audio_salience_novelty
 

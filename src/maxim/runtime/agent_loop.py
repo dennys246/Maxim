@@ -1365,6 +1365,7 @@ def run_agentic_loop(
                 log_swallowed_exception(e, operation="imagination_trigger", context={"step": step_num})
 
         _auto_sense_text = ""  # populated by section 1.15, set on context at submission
+        _audio_escalate_this_tick = False  # §1.16: a salient audio percept forces a submission (B1)
 
         # ─────────────────────────────────────────────────────────────────
         # 1.15 AUTO-SENSE — passive perception (exteroception + interoception)
@@ -1496,47 +1497,55 @@ def run_agentic_loop(
         # First consumer of the modality-preserving side-channel
         # (``sim.current_percept``): when this tick's percept is an audio/DoA
         # percept, fold a passive azimuth observation into the auto-sense
-        # channel so it reaches the prompt like any other passive perception.
-        # Additive + self-gating — fires only when an audio source is attached
-        # to the percept stream (opt-in; default OFF). This block is OUTSIDE the
-        # text-gated section 1.15 because an audio-only tick carries no text.
-        # See docs/plans/thalamus_relay_design_pass.md (stage 4).
-        try:
-            from maxim.embodiment.audio_localization import (
-                audio_attention_profile,
-                format_audio_orientation,
-                should_emit_orientation,
-            )
+        # channel. A SALIENT audio percept ESCALATES to a submission — the
+        # thalamic gate: a sub-threshold sound is perceived-but-ignored, an
+        # above-threshold one reaches the LLM. Escalation sets
+        # ``_audio_escalate_this_tick`` so the has_meaningful_input gate below
+        # does NOT discard the audio-only tick (B1 fix — without this the line
+        # was folded, logged, and thrown away before the model ever saw it).
+        # Gated to sim + llm-primary: ``sim.current_percept`` is a
+        # SimulationAdapter accessor (skip the per-tick work in production, N1);
+        # substrate-primary consumes the body/EC path, not auto_sense_context
+        # (S1). Opt-in; default OFF. See thalamus_relay_design_pass.md (stage 4).
+        if sim.is_sim_mode and aut_mode != "substrate-primary":
+            try:
+                from maxim.embodiment.audio_localization import (
+                    audio_attention_profile,
+                    format_audio_orientation,
+                    should_emit_orientation,
+                )
 
-            _ap = getattr(sim, "current_percept", None)
-            _az = None
-            if _ap is not None:
-                _ameta = getattr(_ap, "metadata", None) or {}
-                _az = _ameta.get("azimuth")
-            # Change-gate: only fold the line in on the first sound or a
-            # meaningful direction change — an unchanged azimuth every tick is
-            # pure prompt noise (the first live run re-announced the same
-            # direction ~every 2 s for 8 minutes).
-            if _az is not None and should_emit_orientation(state.data.get("_last_audio_orient_az"), _az):
-                _audio_line = format_audio_orientation(_ap)
-                if _audio_line:
-                    state.data["_last_audio_orient_az"] = float(_az)
-                    _auto_sense_text = f"{_auto_sense_text}\n{_audio_line}" if _auto_sense_text else _audio_line
-                    try:
-                        from maxim.simulation.sim_logger import sim_log
+                _ap = getattr(sim, "current_percept", None)
+                _az = None
+                if _ap is not None:
+                    _ameta = getattr(_ap, "metadata", None) or {}
+                    _az = _ameta.get("azimuth")
+                if _az is not None:
+                    _profile = audio_attention_profile(getattr(_ap, "salience", 0.0), getattr(_ap, "novelty", 0.0))
+                    # Thalamic escalation: a salient sound reaches cortex.
+                    _escalates = bool(_profile["passes_salience_gate"])
+                    # Change-gate: skip an unchanged direction (prompt noise —
+                    # the first live run re-announced the same direction ~every
+                    # 2 s for 8 minutes).
+                    if should_emit_orientation(state.data.get("_last_audio_orient_az"), _az):
+                        _audio_line = format_audio_orientation(_ap)
+                        if _audio_line:
+                            _auto_sense_text = f"{_auto_sense_text}\n{_audio_line}" if _auto_sense_text else _audio_line
+                            if _escalates:
+                                _audio_escalate_this_tick = True
+                                # Advance the change-gate only on DELIVERY, and
+                                # store the CLAMPED value (N2) so an out-of-range
+                                # reading can't spoof the delta gate.
+                                state.data["_last_audio_orient_az"] = max(-1.0, min(1.0, float(_az)))
+                            _profile["escalated"] = _escalates
+                            try:
+                                from maxim.simulation.sim_logger import sim_log
 
-                        sim_log(
-                            "PERCEPTION",
-                            f"audio-orient: {_audio_line}",
-                            data=audio_attention_profile(
-                                getattr(_ap, "salience", 0.0),
-                                getattr(_ap, "novelty", 0.0),
-                            ),
-                        )
-                    except Exception:
-                        pass
-        except Exception as _aoe:
-            log_swallowed_exception(_aoe, operation="audio_orientation", context={"step": step_num})
+                                sim_log("PERCEPTION", f"audio-orient: {_audio_line}", data=_profile)
+                            except Exception:
+                                pass
+            except Exception as _aoe:
+                log_swallowed_exception(_aoe, operation="audio_orientation", context={"step": step_num})
 
         # ─────────────────────────────────────────────────────────────────
         # 1.2 BIO-ENRICHMENT — PFC deliberation (gate + enrich)
@@ -3038,6 +3047,21 @@ def run_agentic_loop(
                         )
                         logger.info("Created minimal context for pending action followup")
 
+                    # §1.16 B1: a salient audio percept escalated this tick but
+                    # carries no text, so memory may have built no context — mint
+                    # a minimal one to carry the auto_sense_context (the azimuth
+                    # line) into the submission.
+                    if _audio_escalate_this_tick and context is None:
+                        from maxim.agents.bus import StructuredContext
+
+                        context = StructuredContext(
+                            timestamp=time.time(),
+                            mode=state.data.get("mode", "active"),
+                            autonomy_level=state.data.get("autonomy_level", "supervised"),
+                            internet_access=state.data.get("internet_access", True),
+                        )
+                        logger.debug("Created minimal context for audio-orient escalation")
+
                     # Inject bio-enrichment context if percept passed novelty gate
                     if context is not None and _percept_enrichment_text:
                         context.bio_enrichment_context = _percept_enrichment_text
@@ -3177,6 +3201,11 @@ def run_agentic_loop(
                     # twice is intentional and each must reach the LLM.
                     if cli_input and not is_sleeping:
                         new_cli_input = str(cli_input)
+                        has_meaningful_input = True
+                    # §1.16 B1: a salient audio percept escalated this tick — it
+                    # must reach the LLM even with no text input, or the folded
+                    # azimuth line is discarded at the `context = None` gate below.
+                    if _audio_escalate_this_tick and not is_sleeping:
                         has_meaningful_input = True
                     # Track original query from followups for conversation history
                     # This ensures followup responses are saved with the original user question
