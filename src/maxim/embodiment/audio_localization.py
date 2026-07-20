@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from maxim.agents.bus import Percept
 from maxim.agents.percept_factory import make_audio_percept
@@ -331,6 +332,89 @@ def format_audio_orientation(percept: object) -> str:
     side = "left" if az < 0 else "right"
     magnitude = "slightly" if abs(az) <= 0.5 else "well"
     return f"You hear a sound {magnitude} to your {side} (azimuth {az:+.2f})."
+
+
+@dataclass(frozen=True)
+class OrientingProfile:
+    """Per-entity sound-reactivity + orient-limit config — extend by DATA.
+
+    Declared in a body's YAML under a top-level ``orienting:`` key (which
+    ``_parse_entity`` flows into ``entity.metadata``); absent → these defaults.
+    Lets an ``elderly_humanoid`` raise its thresholds (reduced sensitivity) or a
+    limited robot declare how far it can physically orient — all without
+    per-body code. The three tiers (thalamus_hypothalamus_framing three-tier
+    gate): below ``escalate_above`` the sound is ignored; above it the agent
+    CHOOSES to attend (reaches the LLM); above BOTH reflex thresholds it triggers
+    an AUTOMATIC orient (superior-colliculus startle, bypasses the LLM).
+
+    Runtime-ephemeral config (resolved from the body each use; never persisted or
+    wire-crossing), so out of the CC3 frozen-dataclass audit scope — new fields
+    append with defaults.
+    """
+
+    escalate_above: float = 0.5  # perception: deliberative tier (reaches the LLM)
+    reflex_salience_above: float = 0.9  # perception: reflex tier — loud
+    reflex_novelty_above: float = 0.9  # perception: reflex tier — sudden
+    max_orient_azimuth: float = 0.0  # motor: closest-to-center it can orient (0 = full reach)
+
+
+_DEFAULT_ORIENTING = OrientingProfile()
+
+
+def resolve_orienting_profile(embodiment: object) -> OrientingProfile:
+    """Resolve a body's :class:`OrientingProfile` from its declared ``orienting:``
+    metadata, else the default. Data-driven — no per-body code."""
+    root = getattr(embodiment, "root", None)
+    meta = getattr(root, "metadata", None) or {}
+    cfg = meta.get("orienting")
+    if not isinstance(cfg, dict):
+        return _DEFAULT_ORIENTING
+    d = _DEFAULT_ORIENTING
+
+    def _f(key: str, default: float) -> float:
+        try:
+            return float(cfg.get(key, default))
+        except (TypeError, ValueError):
+            return default
+
+    return OrientingProfile(
+        escalate_above=_f("escalate_above", d.escalate_above),
+        reflex_salience_above=_f("reflex_salience_above", d.reflex_salience_above),
+        reflex_novelty_above=_f("reflex_novelty_above", d.reflex_novelty_above),
+        max_orient_azimuth=max(0.0, min(1.0, _f("max_orient_azimuth", d.max_orient_azimuth))),
+    )
+
+
+def is_audio_escalation(salience: float, profile: OrientingProfile = _DEFAULT_ORIENTING) -> bool:
+    """Deliberative tier: is the sound salient enough to reach the LLM (the agent
+    can then CHOOSE to listen / orient)?"""
+    return float(salience) > profile.escalate_above
+
+
+def is_orienting_reflex(salience: float, novelty: float, profile: OrientingProfile = _DEFAULT_ORIENTING) -> bool:
+    """Reflex tier: loud AND sudden enough to trigger an AUTOMATIC orient.
+
+    The top tier — a bang, not a background hum — triggers a reflexive turn
+    toward the sound (superior-colliculus startle), bypassing cortical
+    deliberation. Keyed on BOTH salience (loud) and novelty (sudden): a steady
+    loud hum is not startling. Thresholds are per-entity (``profile``) so
+    sensitivity is data-driven, not a hard 0.9 across the board.
+    """
+    return float(salience) > profile.reflex_salience_above and float(novelty) > profile.reflex_novelty_above
+
+
+def reflex_oriented_azimuth(azimuth: float, profile: OrientingProfile = _DEFAULT_ORIENTING) -> float:
+    """Where the body ends up after a reflexive orient toward ``azimuth``.
+
+    Turns to face the sound (azimuth → 0), but clamped to the body's physical
+    reach: a body with ``max_orient_azimuth > 0`` cannot get closer than that,
+    so a sound farther out leaves a residual offset (it turned as far as it
+    physically can). Data-driven physical limit — no per-body code."""
+    reach = profile.max_orient_azimuth
+    az = float(azimuth)
+    if reach > 0.0 and abs(az) > reach:
+        return reach if az > 0 else -reach
+    return 0.0
 
 
 def world_set_azimuth(embodiment: object, azimuth: float) -> bool:
