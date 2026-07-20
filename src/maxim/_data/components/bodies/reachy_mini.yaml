@@ -192,7 +192,7 @@ entity:
           description: "Snapshot the current camera frame"
         listen:
           params: {duration: float}
-          description: "Capture an audio clip from the microphone"
+          description: "Attend to the current sound: capture an audio clip AND localize it — reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it."
     lifecycle:
       abstract: true  # capability-only — no sensors (C4)
       affordances:

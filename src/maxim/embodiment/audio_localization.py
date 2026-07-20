@@ -333,6 +333,31 @@ def format_audio_orientation(percept: object) -> str:
     return f"You hear a sound {magnitude} to your {side} (azimuth {az:+.2f})."
 
 
+def world_set_azimuth(embodiment: object, azimuth: float) -> bool:
+    """World-set the body's ``azimuth`` root sensor from a DoA percept.
+
+    Capability-driven: ANY body that declares an ``azimuth`` root sensor gets
+    sound localization — no per-body code. Writes the clamped value into the
+    root entity's ``vital_metrics`` (what ``SpecSensor.read()`` returns), so the
+    ``listen`` affordance's sensor read-back surfaces the current direction and
+    the agent can act on it. Returns True if the body has the sensor and it was
+    written; False (fail-soft) for a body without sound localization — it is
+    simply unaffected. Mirrors the real robot, where live DoA world-sets the
+    same sensor (Track 2 Layer 2); the sim write is the offline dry-run.
+    """
+    root = getattr(embodiment, "root", None)
+    if root is None:
+        return False
+    sensors = getattr(root, "sensors", None) or {}
+    if "azimuth" not in sensors:
+        return False
+    vm = getattr(root, "vital_metrics", None)
+    if vm is None:
+        return False
+    vm["azimuth"] = max(-1.0, min(1.0, float(azimuth)))
+    return True
+
+
 def audio_attention_profile(salience: float, novelty: float) -> "dict[str, float | bool]":
     """Which pipeline attention/escalation gates a percept at (salience, novelty)
     would pass — the per-run trace that quantifies the salience A/B.

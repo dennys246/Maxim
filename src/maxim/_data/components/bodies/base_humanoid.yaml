@@ -29,6 +29,19 @@ entity:
       unit: ratio
       range: [0, 1]
       initial: 0.0
+    # Exteroceptive sound localization: head-relative azimuth of the current
+    # sound (-1 = left, 0 = centered/front, +1 = right). SIMULATION-ONLY on this
+    # generic body — a base_humanoid has no real mic array; the value is
+    # world-set by the audio-orient channel (agent_loop §1.16) from the delivered
+    # DoA percept so `listen` can read it back and the agent can act on it.
+    # reachy_mini's `azimuth` is the genuine hardware one. Capability-driven: any
+    # body that declares an `azimuth` root sensor gets the orient behavior — no
+    # per-body code. drift_rate 0 (world-set, no auto-return); the centeredness
+    # drive + turn affordances are Phase 2.
+    azimuth:
+      unit: normalized
+      range: [-1, 1]
+      initial: 0.0
   health: derived
   health_weights:
     head: 0.3
@@ -58,7 +71,7 @@ entity:
           description: "Observe surroundings or examine a specific object"
         listen:
           params: {}
-          description: "Listen carefully to nearby sounds"
+          description: "Attend to the current sound and localize it — reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it."
     torso:
       sensors:
         core_integrity:

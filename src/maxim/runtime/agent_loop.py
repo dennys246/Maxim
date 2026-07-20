@@ -1513,6 +1513,7 @@ def run_agentic_loop(
                     audio_attention_profile,
                     format_audio_orientation,
                     should_emit_orientation,
+                    world_set_azimuth,
                 )
 
                 _ap = getattr(sim, "current_percept", None)
@@ -1521,6 +1522,15 @@ def run_agentic_loop(
                     _ameta = getattr(_ap, "metadata", None) or {}
                     _az = _ameta.get("azimuth")
                 if _az is not None:
+                    # World-set the body's azimuth sensor on ANY audio percept
+                    # (before the escalation gate) so `listen` can read the
+                    # current sound direction — the agent can attend even to a
+                    # sub-threshold sound it chose to notice. Capability-gated +
+                    # fail-soft: bodies without an `azimuth` sensor are
+                    # unaffected. Sim mirror of live DoA → azimuth (Track 2 L2).
+                    _emb = getattr(executor, "embodiment", None)
+                    if _emb is not None:
+                        world_set_azimuth(_emb, _az)
                     _profile = audio_attention_profile(getattr(_ap, "salience", 0.0), getattr(_ap, "novelty", 0.0))
                     # Thalamic escalation: a salient sound reaches cortex.
                     _escalates = bool(_profile["passes_salience_gate"])
