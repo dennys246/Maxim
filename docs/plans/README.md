@@ -46,6 +46,10 @@ Everything in the root is in-flight or a living doc. Audited 2026-07-15.
 - [maxim_hivemind.md](maxim_hivemind.md) — **Roadmap/architecture companion** to grounded_language_acquisition (three layers: LLM-AUT default + Oasis substrate-primary + Hivemind P2P). B5 shareability SHIPPED (PRs #305–#311; `src/maxim/hivemind/` verified). Next execution slice: Oasis software (1.1, ~800 LOC) once substrate-primary is stable enough to host a persistent instance; P2P protocol 1.2.
 - [sem_environmental_proximity_sensing.md](sem_environmental_proximity_sensing.md) — **NEW (2026-07-15) design doc, P1-ready.** Grounds interoception in sensed exteroception: field-query reader for `heat_output`/ambient entity fields (currently declared-but-inert), per-turn environmental-sense pass, dual-path wiring (LLM-primary §1.15 + substrate-primary tick). Explicitly NOT an Exp 44 blocker (that was G1); the medium-term "do it right" for embodied sensing.
 
+### Tool surface / perception hygiene
+
+- [passive_sense_discovery.md](passive_sense_discovery.md) — **DRAFT (2026-07-19), Phase 0 design pass pending authorization.** Ambient (passive/async) tool-discovery channel: gated background discovery + "newly sensed since last turn" prompt delta, keeping `sense_tools` as directed attention. Rides auto-fire + the PR #402 side-channel pattern; three new contract pieces (delta/manifest prompt split, sensory-event vs causal NAc typing, turn-scoped roster coherence). Fixes two pre-existing holes found in the 2026-07-19 deep dive (mid-phase roster churn silently breaking the prompt cache; unwired discovery LRU). Phase 3 revives the deferred [sense_tool_registry.md](deferred/sense_tool_registry.md) 1.1 scope.
+
 ### Living discipline docs
 
 - [behavioral_graduation_candidates.md](behavioral_graduation_candidates.md) — **Living doc + post-1.0 behavioral-regression discipline.** Actively maintained (Exp 42 GRADUATE recorded 2026-06-23; row #11 feeds Exp 44). Earned invariants re-run on triggers (encoder swap, bio-system refactor, minor-version heartbeat); `Stale`/`Broken` entries block the next release.
