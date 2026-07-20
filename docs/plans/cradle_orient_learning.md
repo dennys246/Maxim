@@ -129,6 +129,43 @@ drive-relief run *is* Arm B of this experiment. So the cradle experiment **super
 then the three-arm cradle study, with #404's drive-only run as the built-in-reward control. One build,
 the stronger claim.
 
+## Mode split: audio-orient is scaffolded in llm-primary, learned in substrate-primary
+
+**The design decision (2026-07-19):** orienting-to-sound is *available and scaffolded* in llm-primary and
+*inherently learned* in substrate-primary. This is the clean separation between the product mode ("it
+works out of the box") and the thesis mode ("it learns"), and it falls out of what's already built.
+
+**Two things that are easy to conflate — keep them separate:**
+1. **Hearing** (the audio percept reaching cognition — the EC/substrate or the prompt). This is ON in
+   **both** modes. You cannot learn to orient to a sound you cannot hear, so substrate-primary must still
+   receive the percept.
+2. **The orienting *behavior*** — this is what differs by mode.
+
+**llm-primary — scaffolded (the product default).** The reflex tier (loud+sudden → auto-orient) + the LLM
+deliberately choosing `listen`/`turn`. User-facing "it just works." Controlled by a flag
+(`--audio-orient` / `MAXIM_SIM_AUDIO_ORIENT`); `--audio-orient false` opts the whole channel out
+(no hearing, no orient). **Keep it opt-in (default OFF) until validated; flip to default-ON-for-llm-primary
+only once the reflex + tiers are proven** — do not default-on an experimental feature.
+
+**substrate-primary — learned (the thesis).** Hearing is ON (the percept flows to EC via P3), but there is
+**no scaffolded orient** — the *value* and *calibration* of orienting are learned from reward (this plan).
+This is what the user's instinct "substrate-primary inherently makes it a learned behavior" gets right.
+
+**The one refinement the naive version misses (do NOT fully disable the innate seed):** substrate-primary
+should keep a **mild innate seed** — a *weak* centeredness drive (`pain_scale` ~0.15) and the subcortical
+orienting reflex (as a **DN reflex arc**, Track 2 — NOT the llm-primary §1.16 sim-model, which stays
+llm-primary-only). Two reasons: (a) **bio-honesty** — a newborn *does* have an orienting reflex; what's
+learned is the calibration + the deliberate value, not the reflex itself; (b) **cold-start** — with zero
+innate bias the substrate has no reason to *ever try* turning, so there's nothing for reward to reinforce.
+The seed must be *weak* so learning does the work, and the **3-arm ablation is exactly the proof** that it
+does: Arm C (seed-only, no learning reward) must *fail* while Arm A (taught) succeeds. So "substrate-primary
+disables audio-orient" is more precisely: **disables the scaffolded orient (LLM-choice + strong drive),
+keeps hearing + a weak innate seed, and learns the rest.**
+
+This already aligns with the code: §1.16 (the llm-primary scaffold) is gated `aut_mode != "substrate-primary"`,
+and P3 (route azimuth to the substrate) is the distinct learned path — so the mode-split is the existing
+architecture, not a new fork.
+
 ## Connections to the broader research program (why this is worth revisiting)
 
 The cradle orient loop looks small, but it is a **minimal sensorimotor primitive** that sits at the
