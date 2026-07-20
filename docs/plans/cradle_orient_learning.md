@@ -129,6 +129,61 @@ drive-relief run *is* Arm B of this experiment. So the cradle experiment **super
 then the three-arm cradle study, with #404's drive-only run as the built-in-reward control. One build,
 the stronger claim.
 
+## Connections to the broader research program (why this is worth revisiting)
+
+The cradle orient loop looks small, but it is a **minimal sensorimotor primitive** that sits at the
+intersection of several larger lines. That is why it is worth treating as a nucleus, not a one-off: it is
+the cheapest concrete task that exercises action-conditioned prediction, cross-modal binding, grounded
+symbols, and reward-driven policy *all at once*, developmentally. The connections, made explicit:
+
+### JEPA cross-modal alignment — the cradle is a candidate *revival trigger* and *paired-data source*
+[deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) is a learned projection
+that bridges the `SensorEncoder` (384-dim) and `LinguisticEncoder` (768-dim) spaces — cross-modal cosine
+is *mathematically undefined* across different-dimensional encoders, and JEPA is the smallest new
+mechanism that makes cross-modal binding defined. It is **deferred until** a problem appears that is
+"structurally cross-modal AND unsolvable by threshold tuning, AND the cradle arc yields sufficient
+training pairs." **The cross-modal step of *this* experiment is exactly that scenario.** When the infant
+turns toward a sound and the source *resolves into a named/visible entity*, the audio bearing (sensor
+space) must bind to the entity/word (language space) — a cross-dimensional alignment that threshold
+tuning cannot close. And the *successful orient* is the event that **produces the paired data**
+(azimuth-at-orient ↔ resolved-source) that JEPA consumes. So the cradle orient study is a leading
+candidate to both **fire JEPA's revival condition** and **generate its training set** — worth flagging so
+a future JEPA revisit starts here rather than from scratch.
+
+### Cross-modal substrate binding (cancelled by Roy-4) — same wall, and the evidence for the projection
+[archive/cross_modal_substrate_binding.md](archive/cross_modal_substrate_binding.md) tried Hebbian
+audio↔visual binding edges and was cancelled because raw cross-modal cosine is undefined. The cradle
+cross-modal step hits the *same wall* — which is not a dead end but the concrete demonstration that *some*
+projection (JEPA) is required. If the cradle run needs cross-modal binding and can't get it in raw encoder
+space, that is the resurrection evidence the binding plan's Stage-4a conditions asked for.
+
+### Grounded language acquisition — orienting is how a symbol gets its referent
+[grounded_language_acquisition.md](grounded_language_acquisition.md) Phase 2's "symbol-binding layer" is
+structurally a JEPA. The cradle's cross-modal step — turn → the sound *becomes a nameable thing* — ties
+into the existing `infant_humanoid_naming` line: **orienting is the act that binds an audio percept to a
+referent.** A word/entity acquires its meaning partly *because* orienting to the sound reliably reveals
+the same thing. So learning-to-orient is upstream of grounded naming, not parallel to it.
+
+### Forward models / world-model prediction — the orient loop *is* action-conditioned prediction
+The `Cerebellum` already learns "forward models for predicting sensory consequences" of actions
+([src/maxim/embodiment/cerebellum.py](../../src/maxim/embodiment/cerebellum.py)). The orient loop is the
+minimal such model: *"if I turn_left, azimuth will increase by ~δ."* Learning the turn→azimuth mapping
+(Act 3 calibration) is forward-model learning; JEPA generalizes it from a scalar sensor to a *latent*
+predictive model. So the cradle orient study is a concrete, measurable instance of the same predictive-
+world-model thesis JEPA pursues at scale — a place to validate the primitive before the general machinery.
+
+### The orient-specific substrate this rides
+[substrate_native_orienting.md](substrate_native_orienting.md) (the azimuth "two learning signals" —
+signed EC state + folded drive reward) and [orient_magnitude_learning.md](orient_magnitude_learning.md)
+(Exp 45's magnitude calibration = Act 3) are the substrate + calibration mechanics; the innate reflex
+scaffold is [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md) (Track 2); imagined/
+resolved sources ride [deferred/imagination_substrate_signals.md](deferred/imagination_substrate_signals.md).
+
+**Net:** revisit this as the *entry point* for the cross-modal / world-model program. A future plan that
+wants to fire JEPA, resurrect cross-modal binding, or ground the first symbol should start from the
+cradle orient loop — it is the smallest task where all four threads are simultaneously live and
+measurable, and it produces the paired data the rest of the program needs.
+
 ## Related
 
 - [substrate_primary_orient_learning.md](substrate_primary_orient_learning.md) — the substrate mechanics (P1–P3) + the drive-relief arm (= Arm B here).
