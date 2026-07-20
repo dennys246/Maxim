@@ -161,6 +161,7 @@ useful and independently testable.
 
 ## Related
 
+- [cradle_orient_learning.md](cradle_orient_learning.md) — **the developmental reframing that SUPERSETS this plan.** P1–P3 here are shared prerequisites; this plan's drive-relief run becomes *Arm B* (the built-in-reward control) of the three-arm cradle study, where orienting is *taught* (caregiver + cross-modal feedback) rather than assumed innately rewarding. Prefer the cradle framing; keep this doc as the P1–P3 mechanics + the drive-only arm.
 - [productive_orienting_affordance.md](productive_orienting_affordance.md) — the llm-primary orient this extends (incl. the 2-D elevation extension path).
 - [thalamus_relay_design_pass.md](thalamus_relay_design_pass.md) — Decision-4 first named these two preconditions.
 - [grounded_language_acquisition.md](grounded_language_acquisition.md) — the substrate-primary sensor-encode + cluster-reward-bias path this rides.
