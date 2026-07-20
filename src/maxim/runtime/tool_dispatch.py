@@ -182,13 +182,16 @@ def record_outcome(
             # side_effects when present — that is the STATE-CONDITIONED signal
             # (turn TOWARD the sound reduced |azimuth| -> positive; turning away
             # -> negative), which the ±1 tool-EXECUTION-success cannot express
-            # (both turns "succeed"). Fall back to ±1 for actions that touched
-            # no drive sensor (drive_potential_diff is None/0). A harmful drive
-            # breach already forces learn_success False via embodiment_failed,
-            # so the fallback stays negative there. See tool_side_effects.md +
-            # reference_orient_motor_credit_gap.
+            # (both turns "succeed"). ``is not None`` (not truthiness) so a real
+            # 0.0 relief books 0.0, not a spurious +1. The producer
+            # (tool_bridge) sets it to None when the action touched no drive
+            # sensor OR caused COLLATERAL harm (a failure on a sensor its relief
+            # didn't account for) — so the harm-dominates decision lives there,
+            # where the failure sensors are visible; here we just honor it and
+            # fall back to ±1 (which is -1 under embodiment_failed). See
+            # tool_side_effects.md + reference_orient_motor_credit_gap.
             if cluster_id:
-                if drive_potential_diff:
+                if drive_potential_diff is not None:
                     cluster_reward = float(drive_potential_diff)
                 else:
                     cluster_reward = 1.0 if learn_success else -1.0

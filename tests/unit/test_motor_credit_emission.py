@@ -144,3 +144,54 @@ def test_feeding_relief_on_entropic_hunger_drive_is_positive():
     # hunger 0.8 -> 0.4: pain 0.5 -> 0.0 -> relief +0.5
     diff = result.side_effects["drive_potential_diff"]
     assert abs(diff - 0.5) < 1e-6
+
+
+# ── collateral-harm gate (pre-merge review fold) ─────────────────────────────
+# The Exp 42 attractive-but-harmful pattern on the REAL fixtures: warm_self
+# relieves the `cold` drive (accounted) BUT breaches `arms.thermal` (a modulator
+# sub-sensor, NOT in body.drive_specs → collateral). The relief signal must be
+# suppressed (None) so the consumer's harm fallback (-1) dominates — otherwise a
+# self-harming-but-relieving action would be credited POSITIVE, defeating the
+# safe-vs-harm discrimination Exp 42 graduated. The identical SAFE item (thermal
+# +0.05, no breach) keeps its cold relief.
+
+
+def test_collateral_harm_nulls_relief_but_safe_relief_survives():
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.embodiment.tool_bridge import generate_tools_for_entity
+    from maxim.tools.registry import ToolRegistry
+
+    reg = ComponentRegistry()
+    body = Embodiment(root=reg.instantiate("bodies/infant_humanoid_chilled"))
+    harm = reg.instantiate("items/warmth_alpha_harm")
+    safe = reg.instantiate("items/warmth_alpha_safe")
+    treg = ToolRegistry()
+    htools = {t.name: t for t in generate_tools_for_entity(harm, treg, embodiment=body)}
+
+    # Harmful warm: cold relief (accounted) + arms.thermal +0.6 breach (collateral)
+    # → relief suppressed to None so harm dominates the cluster reward.
+    out_harm = htools["warmth_alpha_harm_warm_self"].execute()
+    dpd_harm = (out_harm.side_effects or {}).get("drive_potential_diff")
+    assert dpd_harm is None, "collateral thermal harm must suppress the cold-relief signal (harm dominates)"
+    # sanity: the harm DID register as an embodiment failure (so the consumer books -1)
+    assert (out_harm.side_effects or {}).get("embodiment_failures")
+
+    # Fresh body so the harm's breach doesn't linger onto the safe item.
+    body2 = Embodiment(root=reg.instantiate("bodies/infant_humanoid_chilled"))
+    stools = {t.name: t for t in generate_tools_for_entity(safe, treg, embodiment=body2)}
+    out_safe = stools["warmth_alpha_safe_warm_self"].execute()
+    dpd_safe = (out_safe.side_effects or {}).get("drive_potential_diff")
+    # Safe warm relieves cold with no collateral breach → positive relief survives.
+    assert dpd_safe is not None and dpd_safe > 0, "safe relief (no collateral harm) must keep its positive signal"
+
+
+def test_orient_discomfort_is_not_collateral_relief_survives():
+    """The same-sensor guard: a correct toward-turn leaves azimuth still off-
+    center, so drive:azimuth:discomfort fires — but azimuth is the sensor the
+    relief accounts for, so it is NOT collateral and the +relief must survive.
+    Without this distinction every orient turn would lose its reward."""
+    body, emb = _orienting_body(-0.7)
+    result = _run(body, emb, "turn_left")
+    se = result.side_effects or {}
+    assert se.get("embodiment_failures"), "toward-turn still trips azimuth discomfort (state-based)"
+    assert se.get("drive_potential_diff") is not None and se["drive_potential_diff"] > 0

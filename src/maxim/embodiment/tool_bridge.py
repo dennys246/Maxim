@@ -423,7 +423,12 @@ class ModulatorAffordanceTool(Tool):
         # sensors it will touch, apply, then diff — positive = relief, so
         # substrate-primary selection learns "turn toward the sound," not just
         # "turning succeeds." Emitted on side_effects["drive_potential_diff"].
-        drive_potential_diff = 0.0
+        # ``None`` = no drive sensor touched (or collateral harm — see the harm
+        # gate after failure evaluation); a float (incl 0.0 / negatives) = the
+        # measured net relief. ``accounted_sensors`` are the drive sensors this
+        # diff represents, used by the collateral-harm gate below.
+        drive_potential_diff: float | None = None
+        accounted_sensors: set[str] = set()
         if self._affordance_schema.self_effect and self._embodiment is not None:
             _body = self._embodiment.root
             _drive_specs = getattr(_body, "drive_specs", {}) or {}
@@ -433,6 +438,7 @@ class ModulatorAffordanceTool(Tool):
                 for name in self._affordance_schema.self_effect
                 if name in _drive_specs and name in _metrics
             }
+            accounted_sensors = set(pre_values)
             _apply_sensor_deltas(
                 self._embodiment.root,
                 self._affordance_schema.self_effect,
@@ -516,6 +522,26 @@ class ModulatorAffordanceTool(Tool):
                 )
                 active_failures = [_as_dict(ev) for ev in failure_events]
 
+        # Motor-credit harm gate (GAP 1, pre-merge review fold): a positive
+        # relief signal is trustworthy only if the action caused no COLLATERAL
+        # harm — a failure on a sensor its potential_diff did NOT account for.
+        #   - SAME-sensor drive discomfort (e.g. azimuth still off-center after a
+        #     relieving turn) is NOT collateral: potential_diff already reflects
+        #     that sensor's net change (relief or worsening). Nulling on it would
+        #     make EVERY orient turn — which leaves the body still off-center and
+        #     so always trips drive:azimuth:discomfort — lose its relief and be
+        #     mis-credited as harm. That would silently defeat GAP 1.
+        #   - A non-drive failure_mode (thermal shock, laceration) or a failure on
+        #     an UNTOUCHED drive sensor IS collateral — not captured by this
+        #     action's relief — so drop the signal (None) and let the consumer's
+        #     harm fallback (learn_success False -> -1) dominate. This is the
+        #     attractive-but-harmful (deceptive-hearth) case the review flagged.
+        if drive_potential_diff is not None and active_failures:
+            for _f in active_failures:
+                if _drive_failure_sensor(_f.get("name", "")) not in accounted_sensors:
+                    drive_potential_diff = None
+                    break
+
         # Cerebellum observes cascade outcome for forward model training
         if self._cerebellum is not None and entity_state:
             try:
@@ -570,12 +596,14 @@ class ModulatorAffordanceTool(Tool):
         if active_failures:
             side_effects = {"embodiment_failures": active_failures}
 
-        # Motor-credit signal (GAP 1): the drive relief this action produced.
-        # Non-zero only for affordances whose self_effect touched an entity-level
-        # drive sensor (orient/turn on azimuth, eat/drink on hunger/thirst).
-        # runtime/tool_dispatch.py consumes it as the cluster-reward magnitude in
-        # place of the ±1 tool-success signal. See docs/user/tool_side_effects.md.
-        if drive_potential_diff:
+        # Motor-credit signal (GAP 1): the net drive relief this action produced.
+        # Emitted (incl. 0.0 and negatives) whenever the self_effect touched an
+        # entity-level drive sensor AND caused no collateral harm; ``None`` (key
+        # absent) means "no drive sensor touched, or collateral harm" → the
+        # consumer falls back to the ±1 tool-success signal. ``is not None`` (not
+        # truthiness) so a genuine 0.0 relief books 0.0, not a spurious +1.
+        # runtime/tool_dispatch.py consumes it. See docs/user/tool_side_effects.md.
+        if drive_potential_diff is not None:
             if side_effects is None:
                 side_effects = {}
             side_effects["drive_potential_diff"] = drive_potential_diff
