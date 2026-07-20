@@ -1,6 +1,14 @@
 #!/usr/bin/env python
 """Orient motor-credit probe on Maxim's REAL substrate machinery.
 
+NOTE: this probe exercises the CLUSTER CHANNEL IN ISOLATION
+(update_cluster_reward + recommend_action). It does NOT model the negative
+causal link production also books via record_outcome when a turn leaves the
+body off-center — so on its own it OVER-STATES GAP 1. The authoritative gate is
+``2_full_path_probe.py``, which runs the full execute -> record_outcome path and
+shows the causal-negative does not suppress the policy (identical numbers). Keep
+this file as the isolated-channel measurement; cite #2 for the end-to-end claim.
+
 The gate before building the mother-scaffolded cradle (docs/plans/
 cradle_orient_learning.md): does GAP 1 (the drive-relief motor-credit just
 wired — drive_pain_for_value + drive_potential_diff + tool_dispatch consumption)
