@@ -140,11 +140,7 @@ class Embodiment:
           (handled via auto-generated failure modes at parse time, or
           checked here for entities loaded without failure mode generation).
         """
-        from maxim.embodiment.sem import (
-            EntropicDriveSpec,
-            HomeostaticDriveSpec,
-            drive_pain_for_value,
-        )
+        from maxim.embodiment.sem import EntropicDriveSpec, HomeostaticDriveSpec
 
         # Apply drive drift before failure evaluation.  This ensures
         # drives advance even in code paths that don't use
@@ -244,28 +240,21 @@ class Embodiment:
                     pass
 
                 if isinstance(ds, HomeostaticDriveSpec):
-                    # drive_pain_for_value is the single source of truth for the
-                    # pain formula (shared with the motor-credit potential_diff).
-                    # Behaviour-preserving: the FailureEvent and _publish_drive_pain
-                    # both already clamped to [0, 1], which is exactly what the
-                    # helper returns.
-                    pain = drive_pain_for_value(ds, current)
-                    if pain > 0:
+                    deviation = abs(current - ds.set_point)
+                    excess = deviation - ds.comfort_band
+                    if excess > 0:
+                        intensity = excess * ds.pain_scale
                         event = FailureEvent(
                             entity_path=ent.full_path,
                             failure_name=f"drive:{ds_name}:discomfort",
-                            pain_intensity=pain,
+                            pain_intensity=min(1.0, intensity),
                             sensor_readings=dict(readings),
                         )
                         events.append(event)
                         self._failure_history.append(event)
-                        self._publish_drive_pain(ent, ds_name, pain, readings)
+                        self._publish_drive_pain(ent, ds_name, intensity, readings)
 
                 elif isinstance(ds, EntropicDriveSpec):
-                    # NB: this inline threshold check mirrors the entropic branch
-                    # of drive_pain_for_value; kept explicit here to preserve the
-                    # exact fire-on-threshold semantics regardless of the
-                    # (degenerate) deprivation_pain == 0 config.
                     if ds.drift_direction == "up" and current >= ds.deprivation_threshold:
                         event = FailureEvent(
                             entity_path=ent.full_path,
