@@ -420,6 +420,18 @@ def reflex_oriented_azimuth(azimuth: float, profile: OrientingProfile = _DEFAULT
 def world_set_azimuth(embodiment: object, azimuth: float) -> bool:
     """World-set the body's ``azimuth`` root sensor from a DoA percept.
 
+    Dimensionality note: orientation here is deliberately **1-D (horizontal
+    azimuth)** — reachy's XVF3800 gives azimuth only (no elevation, and
+    front/back ambiguous). Extension to 2-D (elevation/altitude, e.g. a
+    spherical mic array or vision-driven ``head_pitch``) is a clean, mechanical
+    generalization — axis-parameterize this + ``reflex_oriented_azimuth`` +
+    ``OrientingProfile.max_orient_azimuth`` + the ``metadata["azimuth"]`` reads
+    in agent_loop §1.16, add ``turn_up``/``turn_down`` affordances, and pick the
+    2-D magnitude model. NOT done now (one axis = N=1; would force guessing the
+    magnitude model). Full plan + the one open design decision:
+    docs/plans/productive_orienting_affordance.md § "Dimensionality".
+
+
     Capability-driven: ANY body that declares an ``azimuth`` root sensor gets
     sound localization — no per-body code. Writes the clamped value into the
     root entity's ``vital_metrics`` (what ``SpecSensor.read()`` returns), so the
