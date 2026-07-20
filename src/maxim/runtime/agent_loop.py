@@ -1512,7 +1512,12 @@ def run_agentic_loop(
                 from maxim.embodiment.audio_localization import (
                     audio_attention_profile,
                     format_audio_orientation,
+                    is_audio_escalation,
+                    is_orienting_reflex,
+                    reflex_oriented_azimuth,
+                    resolve_orienting_profile,
                     should_emit_orientation,
+                    world_set_azimuth,
                 )
 
                 _ap = getattr(sim, "current_percept", None)
@@ -1521,13 +1526,57 @@ def run_agentic_loop(
                     _ameta = getattr(_ap, "metadata", None) or {}
                     _az = _ameta.get("azimuth")
                 if _az is not None:
-                    _profile = audio_attention_profile(getattr(_ap, "salience", 0.0), getattr(_ap, "novelty", 0.0))
-                    # Thalamic escalation: a salient sound reaches cortex.
-                    _escalates = bool(_profile["passes_salience_gate"])
-                    # Change-gate: skip an unchanged direction (prompt noise —
-                    # the first live run re-announced the same direction ~every
-                    # 2 s for 8 minutes).
-                    if should_emit_orientation(state.data.get("_last_audio_orient_az"), _az):
+                    _sal = getattr(_ap, "salience", 0.0)
+                    _nov = getattr(_ap, "novelty", 0.0)
+                    _emb = getattr(executor, "embodiment", None)
+                    # Per-entity reactivity + orient limits (data-driven; default
+                    # profile when the body declares no `orienting:` config).
+                    _oprofile = resolve_orienting_profile(_emb)
+                    # World-set the body's azimuth sensor on ANY audio percept
+                    # (before the tier gate) so `listen` can read the current
+                    # sound direction — the agent can attend even to a
+                    # sub-threshold sound it chose to notice. Capability-gated +
+                    # fail-soft: bodies without an `azimuth` sensor are
+                    # unaffected. Sim mirror of live DoA → azimuth (Track 2 L2).
+                    if _emb is not None:
+                        world_set_azimuth(_emb, _az)
+
+                    _trace = audio_attention_profile(_sal, _nov)
+                    _reflex = _emb is not None and is_orienting_reflex(_sal, _nov, _oprofile)
+                    _escalates = is_audio_escalation(_sal, _oprofile)
+
+                    if _reflex:
+                        # REFLEX tier: loud AND sudden → AUTOMATIC orient toward
+                        # the sound (superior-colliculus startle), bypassing LLM
+                        # deliberation. Model the turn by moving the azimuth
+                        # toward center, clamped to the body's physical reach
+                        # (max_orient_azimuth). The agent becomes aware AFTER — a
+                        # delivered post-reflex notice.
+                        _oriented = reflex_oriented_azimuth(_az, _oprofile)
+                        world_set_azimuth(_emb, _oriented)
+                        state.data["_last_audio_orient_az"] = _oriented
+                        _reflex_line = (
+                            f"A loud, sudden sound made you orient toward it (it was at azimuth {float(_az):+.2f})."
+                        )
+                        _auto_sense_text = f"{_auto_sense_text}\n{_reflex_line}" if _auto_sense_text else _reflex_line
+                        _audio_escalate_this_tick = True
+                        _trace["reflex"] = True
+                        _trace["escalated"] = True
+                        try:
+                            from maxim.simulation.sim_logger import sim_log
+
+                            sim_log(
+                                "REACTION",
+                                f"orienting reflex: turned toward a loud, sudden sound "
+                                f"(was {float(_az):+.2f}, now {_oriented:+.2f})",
+                                data=_trace,
+                            )
+                        except Exception:
+                            pass
+                    elif should_emit_orientation(state.data.get("_last_audio_orient_az"), _az):
+                        # DELIBERATIVE tier: the agent CHOOSES to attend. Change-
+                        # gate skips an unchanged direction (prompt noise — the
+                        # first live run re-announced the same direction ~every 2s).
                         _audio_line = format_audio_orientation(_ap)
                         if _audio_line:
                             _auto_sense_text = f"{_auto_sense_text}\n{_audio_line}" if _auto_sense_text else _audio_line
@@ -1537,11 +1586,12 @@ def run_agentic_loop(
                                 # store the CLAMPED value (N2) so an out-of-range
                                 # reading can't spoof the delta gate.
                                 state.data["_last_audio_orient_az"] = max(-1.0, min(1.0, float(_az)))
-                            _profile["escalated"] = _escalates
+                            _trace["reflex"] = False
+                            _trace["escalated"] = _escalates
                             try:
                                 from maxim.simulation.sim_logger import sim_log
 
-                                sim_log("PERCEPTION", f"audio-orient: {_audio_line}", data=_profile)
+                                sim_log("PERCEPTION", f"audio-orient: {_audio_line}", data=_trace)
                             except Exception:
                                 pass
             except Exception as _aoe:

@@ -431,6 +431,7 @@ def _parse_entity(
                 requires=requires,
                 self_effect=self_effect,
                 target_effect=target_effect,
+                always_active=bool(aff_spec.get("always_active", False)),
             )
 
         # Latent motor programs (surfaces when reflexes fire)

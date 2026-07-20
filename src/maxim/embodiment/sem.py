@@ -113,6 +113,13 @@ class AffordanceSchema:
     requires: dict[str, float] = field(default_factory=dict)
     self_effect: dict[str, float] = field(default_factory=dict)  # agent sensor deltas on voluntary use
     target_effect: dict[str, float] = field(default_factory=dict)  # sensor deltas applied to resolved target
+    # When True, the goal-relevance top-k (``select_goal_relevant_tools``) keeps
+    # this affordance active regardless of goal keyword overlap — for body
+    # actions that are always available (you can always turn your head / attend
+    # to a sound), not gated on the static goal mentioning them. Prevents the
+    # orient affordances (listen/turn) from being deactivated turn-1 and then
+    # failing "not active" when a sound actually arrives.
+    always_active: bool = False
 
 
 # ---------------------------------------------------------------------------

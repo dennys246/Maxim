@@ -138,6 +138,50 @@ azimuth" — which nulls the centeredness drive and is the actual orienting refl
    already large and under review, lean fresh PR.)
 3. Do we want the *turn* affordance (Track 2) scoped now as a follow-up, or held until the motor repair?
 
+## Dimensionality: 1-D azimuth today, and the clean path to 2-D (elevation / altitude)
+
+**State (Phase 1+2):** orientation is deliberately **1-D — horizontal azimuth only** — because that is
+what the hardware gives and what the experiment needs. Two hardware ceilings are baked in, not chosen:
+
+- **Azimuth-only** — reachy's XVF3800 mic array yields a horizontal bearing, no elevation. A robot with
+  a spherical / 3-D array could resolve elevation; reachy cannot.
+- **Front/back ambiguous** — a linear array reads a sound *behind* the same as *in front* (both ≈
+  centered), so the azimuth is really a half-plane. A circular/3-D array resolves this too.
+
+Magnitude is 1-D in both senses: *off-center magnitude* = `|azimuth|` (the centeredness drive's
+deviation from set-point 0); *turn magnitude* = discrete step sizes (base_humanoid a fixed 0.3;
+reachy's calibrated 0.17 / 0.50 set with learned step-selection — the Exp 45 orient-magnitude line).
+The orient loop turns only on azimuth (`head_yaw`), even though reachy physically *has* `head_pitch` /
+`body_yaw` (its motor could orient in elevation — nothing drives it from sound because sound gives no
+elevation).
+
+**Why we are NOT generalizing to N-D now:** we have exactly one axis. A multi-axis "orienting axes"
+framework built before a second axis exists is the *abstract-at-N=1* mistake this codebase has scars
+from — and it would force guessing the 2-D magnitude model (below) with no body to validate against.
+The 1-D design is correct for current hardware and is **not painted into a corner**.
+
+**The extension is clean and mechanical when a 2-axis body arrives** (elevation-capable localization, or
+a vision-driven pitch-orient use case — reachy's `head_pitch` supports the latter *today* if ever
+wired). It requires, and only requires:
+
+1. The DoA reader / percept producing **(azimuth, elevation)** — the percept `metadata` dict is already
+   extensible, so `metadata["elevation"]` needs no schema change; only `make_audio_percept` grows an
+   optional `elevation=` param.
+2. **Axis-parameterizing the ~6 azimuth-named surfaces** — `doa_to_azimuth`, `world_set_azimuth`,
+   `reflex_oriented_azimuth`, `OrientingProfile.max_orient_azimuth`, the `metadata["azimuth"]` reads in
+   agent_loop §1.16, and the turn `self_effect` — e.g. `world_set_axis(emb, "elevation", v)` alongside
+   the azimuth one. `turn_up`/`turn_down` affordances (self_effect on the elevation sensor) join
+   `turn_left`/`turn_right`, capability-declared per body.
+3. **One real design decision that does not exist yet** — is 2-D "off-center magnitude" *two
+   independent drives* (azimuth centeredness + elevation centeredness, orient each axis separately) or
+   *one combined angular distance* (`√(az² + el²)`, orient toward the point)? Bio-honestly, orienting is
+   toward a *point*, so a combined-magnitude drive is more faithful; independent axes are simpler and
+   more learnable. **Make this choice when a 2-axis body forces it, not by guessing now.**
+
+Everything else — capability-driven declaration, the per-entity `OrientingProfile`, the three-tier gate,
+the physical-reach clamp — is axis-agnostic and carries over unchanged. So: build 2-D the day a body
+actually has the second axis; until then, 1-D is the honest and correct shape.
+
 ## Related
 
 - [thalamus_relay_design_pass.md](thalamus_relay_design_pass.md) — the audio recognition this builds on.
