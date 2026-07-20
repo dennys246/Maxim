@@ -81,10 +81,21 @@ class AzimuthDoASource:
         *,
         name: str = "reachy:audio-doa",
         agent_id: str | None = None,
+        salience: float = 0.5,
+        novelty: float = 0.3,
     ) -> None:
         self._reader = doa_reader
         self._name = name
         self._agent_id = agent_id
+        # Attention weight the emitted percept carries. The factory defaults
+        # (0.5 / 0.3) sit AT or BELOW every `> 0.5` attention/escalation gate in
+        # the pipeline (perception_agent, exec_agent proposal + attention,
+        # context_pool novelty), so a default DoA percept is passively perceived
+        # but never proactively attended. These are the experiment knobs for
+        # "does scaling audio salience/novelty change behavior?" — raise them to
+        # push the sound above the attention thresholds.
+        self._salience = salience
+        self._novelty = novelty
 
     @property
     def name(self) -> str:
@@ -97,6 +108,19 @@ class AzimuthDoASource:
     def is_exhausted(self) -> bool:
         # Live hardware source — never exhausted.
         return False
+
+    def has_pending(self) -> bool:
+        """Always True — an ambient live sensor must be sampled every tick.
+
+        DoA has no queued backlog; the reader yields a reading (or None) per
+        tick, so the agent loop's idle-sleep must NOT skip the tick or the
+        sensor is starved (it would never emit). ``CompositePerceptSource``
+        treats a missing ``has_pending`` as True already; declaring it makes the
+        ambient-sample semantics explicit rather than accidental (S2). Audio is
+        a sim-only channel (orchestrator, behind ``MAXIM_SIM_AUDIO_ORIENT``), so
+        this never affects the production loop.
+        """
+        return True
 
     def next_percept(self) -> Percept | None:
         try:
@@ -111,7 +135,13 @@ class AzimuthDoASource:
             # No sound to localize this tick — don't fabricate a direction.
             return None
         azimuth = doa_to_azimuth(doa_radians)
-        return make_audio_percept(azimuth, source=self._name, agent_id=self._agent_id)
+        return make_audio_percept(
+            azimuth,
+            source=self._name,
+            agent_id=self._agent_id,
+            salience=self._salience,
+            novelty=self._novelty,
+        )
 
 
 def make_reachy_rest_doa_reader(
@@ -255,3 +285,104 @@ def build_reachy_audio_orienting_source(
         return None
 
     return AzimuthDoASource(reader, name=name, agent_id=agent_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Thalamic-relay consumption helpers (thalamus_relay_design_pass.md stage 4)
+#
+# The runtime loop's §1.16 consumes an audio/DoA percept through these:
+#   - ``format_audio_orientation`` renders a passive azimuth observation the loop
+#     folds into the auto-sense (passive-perception) prompt channel;
+#   - ``audio_attention_profile`` reports which attention gates the percept clears
+#     (the salience-A/B trace);
+#   - ``should_emit_orientation`` is the change-gate (skip an unchanged direction).
+# The sim-side wiring (synthetic reader, env knobs, composite-attach) lives in
+# ``simulation/audio_orient_wiring.py`` — kept out of this hardware-agnostic
+# front-end per the pre-merge Architecture review.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def format_audio_orientation(percept: object) -> str:
+    """Render a passive azimuth observation from an audio/DoA percept.
+
+    Returns ``""`` for ``None``, non-audio percepts, or a percept without an
+    azimuth — so callers can unconditionally fold the result into the passive-
+    perception (auto-sense) channel. The azimuth convention matches
+    :func:`make_audio_percept`: ``-1`` = left, ``0`` = centered, ``+1`` = right.
+    """
+    if percept is None:
+        return ""
+    meta = getattr(percept, "metadata", None) or {}
+    if "azimuth" not in meta:
+        return ""
+    # Belt + suspenders: only render for a SOUND-modality percept, so an
+    # ``azimuth`` key riding some unrelated percept's metadata is ignored.
+    sensory = getattr(percept, "sensory", None)
+    modality = getattr(sensory, "modality", None)
+    if modality is not None and getattr(modality, "value", modality) != "sound":
+        return ""
+    try:
+        az = float(meta["azimuth"])
+    except (TypeError, ValueError):
+        return ""
+    az = max(-1.0, min(1.0, az))
+    if abs(az) <= 0.1:
+        return "You hear a sound directly ahead of you (centered, azimuth 0.00)."
+    side = "left" if az < 0 else "right"
+    magnitude = "slightly" if abs(az) <= 0.5 else "well"
+    return f"You hear a sound {magnitude} to your {side} (azimuth {az:+.2f})."
+
+
+def audio_attention_profile(salience: float, novelty: float) -> "dict[str, float | bool]":
+    """Which pipeline attention/escalation gates a percept at (salience, novelty)
+    would pass — the per-run trace that quantifies the salience A/B.
+
+    Every gate below is a strict ``>`` comparison in the pipeline. Emitted as the
+    ``data`` of each ``audio-orient`` sim-log record so an ablation can ask "did
+    the hot arm's percepts actually clear the gates the baseline's didn't, and
+    did behavior follow?" without re-deriving the thresholds by hand. The default
+    DoA weights (0.5 / 0.3) pass NONE of these — the sound is perceived (via
+    §1.16 auto-sense) but never proactively attended.
+
+    The module:line references in the comments below are **illustrative, not
+    authoritative** — the upstream gates are bare inline literals (nothing to
+    import), so re-verify against source if this diagnostic ever disagrees with
+    observed behavior.
+    """
+    s = float(salience)
+    n = float(novelty)
+    return {
+        "salience": s,
+        "novelty": n,
+        # perception_agent.py:261/357 — salience > 0.5 marks a percept salient
+        "passes_salience_gate": s > 0.5,
+        # context_pool.py:268 + exec_agent.py:1737 — novelty > 0.5
+        "passes_novelty_gate": n > 0.5,
+        # exec_agent.py:981/1709 — BOTH > 0.5 triggers a proposal / attention
+        "passes_proposal_gate": s > 0.5 and n > 0.5,
+        # memory_agent.py:734 — novelty > 0.7 stores as a high-novelty memory
+        "passes_high_novelty_memory": n > 0.7,
+    }
+
+
+def should_emit_orientation(
+    prev_az: "float | None",
+    new_az: float,
+    *,
+    threshold: float = 0.15,
+) -> bool:
+    """Change-gate for the §1.16 audio-orient prompt line.
+
+    Returns True when the direction is worth re-announcing: the first sound
+    (``prev_az is None``) or an azimuth that moved at least ``threshold`` from
+    the last announced one. Suppresses re-emitting an identical "sound to your
+    left" line on every tick — pure prompt noise that also burns context. Kept
+    minimal (a delta gate, not a refractory timer) so it stays deterministic and
+    loop-clock-free; a timed refractory is the coordinator's job if ever needed.
+    """
+    if prev_az is None:
+        return True
+    try:
+        return abs(float(new_az) - float(prev_az)) >= threshold
+    except (TypeError, ValueError):
+        return True

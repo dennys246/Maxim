@@ -259,6 +259,26 @@ def _isolate_maxim_deterministic_scene_embodiment_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_sim_audio_orient_env():
+    """Scrub ``MAXIM_SIM_AUDIO_ORIENT`` across every test.
+
+    Thalamic-relay stage 4 (thalamus_relay_design_pass.md): opts a synthetic
+    audio-orient channel into the AUT percept stream at orchestrator wiring
+    time. Per CLAUDE.md "opt-in env vars in hot startup paths need autouse
+    scrubs" — a test that sets it must not leak into other sim-shaped runs.
+    """
+    _keys = ("MAXIM_SIM_AUDIO_ORIENT", "MAXIM_SIM_AUDIO_SALIENCE", "MAXIM_SIM_AUDIO_NOVELTY")
+    saved = {k: os.environ.pop(k, None) for k in _keys}
+    try:
+        yield
+    finally:
+        for k in _keys:
+            os.environ.pop(k, None)
+            if saved[k] is not None:
+                os.environ[k] = saved[k]
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_imagination_env():
     """Scrub ``MAXIM_DISABLE_IMAGINATION`` across every test.
 

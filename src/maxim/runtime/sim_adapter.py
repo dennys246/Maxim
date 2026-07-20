@@ -72,14 +72,35 @@ class SimulationAdapter:
         self._tool_registry: Any | None = None  # set by orchestrator for deregistered-tool filtering
         self._grace_deadline: float | None = None
         self._grace_action_count: int = 0
+        # Thalamic-relay side-channel (thalamus_relay_design_pass.md Decision 2):
+        # the current tick's raw Percept, carried OFF the observation dict so it
+        # never enters state.data (RuntimeState.update absorbs every dict key and
+        # state.data is persisted — a Percept on the dict would leak as repr into
+        # state.json + episode snapshots). Modality-preserving consumers read this
+        # accessor; the observation dict stays scalar-only.
+        self._current_percept: Any | None = None
 
     @property
     def is_sim_mode(self) -> bool:
         return True
 
+    @property
+    def current_percept(self) -> Any | None:
+        """The raw ``Percept`` from the most recent ``next_observation`` tick.
+
+        ``None`` on the idle path (no percept this tick) and before the first
+        tick. Cleared every tick, so it never carries a stale percept. A
+        non-``None`` percept may still have ``None`` ``modality``/``sensory``;
+        consumers tolerate ``None`` at both levels.
+        """
+        return self._current_percept
+
     def next_observation(self, environment: Any, default_network: Any | None = None) -> dict:
         """Get observation from percept source or empty dict."""
         sim_percept = self.percept_source.next_percept()
+        # Stash on the side-channel (None on the idle path — clears any stale
+        # percept). Kept OFF the returned dict on purpose; see __init__.
+        self._current_percept = sim_percept
         if sim_percept is not None:
             # Route pain percepts through ReactionBus (Phase 2a: emit
             # Reaction directly instead of the old route_pain_percept detour).
@@ -106,11 +127,21 @@ class SimulationAdapter:
                 except Exception:
                     pass
 
-            # Convert percept to observation dict
+            # Convert percept to observation dict. A non-textual sensor percept
+            # (proprioception, or a SOUND/DoA percept whose ``content`` is just
+            # a human-readable telemetry string like "sound at azimuth -0.67")
+            # must NOT bleed into ``cli_input`` — that would mislabel passive
+            # perception as user text (triggering the text path + rendering it
+            # as "User input"). Sound percepts reach cognition via the
+            # modality-preserving side-channel (``current_percept``) + section
+            # 1.16, not the text channel.
+            _sensory = getattr(sim_percept, "sensory", None)
+            _modality = getattr(_sensory, "modality", None)
+            _is_sound = _modality is not None and getattr(_modality, "value", _modality) == "sound"
             _sim_cli = sim_percept.cli_input
             if not _sim_cli and sim_percept.transcript_chunk:
                 _sim_cli = sim_percept.transcript_chunk
-            if not _sim_cli and sim_percept.content and sim_percept.source != "proprioception":
+            if not _sim_cli and sim_percept.content and sim_percept.source != "proprioception" and not _is_sound:
                 _sim_cli = sim_percept.content
 
             observation = {
@@ -239,6 +270,13 @@ class NullSimulationAdapter:
     @property
     def is_sim_mode(self) -> bool:
         return False
+
+    @property
+    def current_percept(self) -> Any | None:
+        """Production has no percept_source side-channel. On the non-sim path
+        the observation returned by ``next_observation`` IS the percept (a bare
+        ``Percept`` or a dict from ``environment.observe()``); read it there."""
+        return None
 
     def next_observation(self, environment: Any, default_network: Any | None = None) -> dict:
         return environment.observe()
