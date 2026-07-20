@@ -228,21 +228,27 @@ DriveSpec = HomeostaticDriveSpec | EntropicDriveSpec
 def drive_pain_for_value(spec: DriveSpec, value: float) -> float:
     """Pain intensity a drive spec produces at a given sensor value, in [0, 1].
 
-    Single source of truth for the drive-pain formula. Reused by:
+    The drive-pain formula for BOTH spec kinds, used by:
 
-    - ``Embodiment.evaluate_failures`` — the per-tick discomfort / deprivation
-      pain intensity (both the ``FailureEvent`` and the published ``PainSignal``
-      already clamp to ``[0, 1]``, so routing them through this helper is a
-      behaviour-preserving refactor, not a change);
-    - the motor-credit ``potential_diff`` (orient reward) — the *reduction* in
-      this value from before to after an action IS the relief that action
-      produced, which is the state-conditioned POSITIVE reward substrate-primary
-      selection needs (drive-pain reduction is bio-faithful negative
-      reinforcement AND mechanically selectable — see the June orient study,
-      ``reference_recommend_action_reward_driven``).
+    - ``Embodiment.evaluate_failures`` — the **homeostatic** branch is routed
+      through this helper (behaviour-preserving: the ``FailureEvent`` and the
+      published ``PainSignal`` already clamped to ``[0, 1]``, which is what this
+      returns). The **entropic** branch keeps its threshold check inline to
+      preserve exact fire-on-threshold semantics for the degenerate
+      ``deprivation_pain == 0`` config, so this helper is *not* the single call
+      site for entropic pain there — the two are pinned equal by
+      ``tests/unit/test_drive_pain_helper.py`` (entropic parametrizations);
+    - the motor-credit ``drive_potential_diff`` (orient reward) — for BOTH kinds,
+      the *reduction* in this value from before to after an action IS the relief
+      that action produced, the state-conditioned POSITIVE reward
+      substrate-primary selection needs (drive-pain reduction is bio-faithful
+      negative reinforcement AND mechanically selectable — see the June orient
+      study, ``reference_recommend_action_reward_driven``).
 
     Homeostatic: ``min(1, (|value - set_point| - comfort_band) * pain_scale)``
-    when outside the comfort band, else ``0``.
+    when outside the comfort band, else ``0``. (The firing guard the failure
+    path uses is ``pain > 0``, equivalent to the pre-refactor ``excess > 0`` for
+    the ``pain_scale > 0`` of every shipped config.)
     Entropic: ``deprivation_pain`` once ``value`` is past
     ``deprivation_threshold`` in the drift direction, else ``0``.
     """

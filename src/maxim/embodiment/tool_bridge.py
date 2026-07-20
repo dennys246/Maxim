@@ -143,6 +143,11 @@ def _drive_potential_diff(
     centeredness (azimuth) and hunger/thirst/energy drives all live there.
     Qualified modulator sub-sensors (``arms.thermal``) carry no drive spec today
     and are skipped; those affordances fall back to the ±1 tool-success signal.
+
+    Scores the acting body's own ``self_effect`` only; a ``target_effect`` (a
+    caregiver acting on another body, e.g. a mother feeding an infant) is
+    intentionally NOT scored here — that relief is the other body's state, not
+    the actor's learned policy. The caller passes ``self_effect`` as ``effect``.
     """
     from maxim.embodiment.sem import drive_pain_for_value
 
