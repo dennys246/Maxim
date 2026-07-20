@@ -83,6 +83,7 @@ entity:
           description: "Observe surroundings or examine a specific object"
         listen:
           params: {}
+          always_active: true   # a body can always attend to a sound (not goal-gated)
           description: "Attend to the current sound and localize it — reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it."
     # Orient toward a localized sound (Phase 2). Turning reduces the head-
     # relative azimuth toward 0 (centered). SIMULATION model: a discrete turn
@@ -96,10 +97,12 @@ entity:
       affordances:
         turn_left:
           params: {}
+          always_active: true   # you can always turn your head (not goal-gated)
           self_effect: {azimuth: 0.3}
           description: "Turn to face left (toward a sound on your left; moves azimuth toward center/+)."
         turn_right:
           params: {}
+          always_active: true
           self_effect: {azimuth: -0.3}
           description: "Turn to face right (toward a sound on your right; moves azimuth toward center/-)."
     torso:

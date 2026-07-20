@@ -140,18 +140,22 @@ entity:
       affordances:
         turn_left:
           params: {}
+          always_active: true   # you can always turn (not goal-gated); the orient loop needs it live
           self_effect: {head_yaw: 0.3}
           description: "Turn left a normal step (drives azimuth toward +)."
         turn_right:
           params: {}
+          always_active: true
           self_effect: {head_yaw: -0.3}
           description: "Turn right a normal step (drives azimuth toward -)."
         turn_left_big:
           params: {}
+          always_active: true
           self_effect: {head_yaw: 0.9}
           description: "Turn left a large step (drives azimuth toward + fast; overshoots when near-centered)."
         turn_right_big:
           params: {}
+          always_active: true
           self_effect: {head_yaw: -0.9}
           description: "Turn right a large step (drives azimuth toward - fast; overshoots when near-centered)."
     motion:
@@ -192,6 +196,7 @@ entity:
           description: "Snapshot the current camera frame"
         listen:
           params: {duration: float}
+          always_active: true   # a body can always attend to a sound (not goal-gated)
           description: "Attend to the current sound: capture an audio clip AND localize it — reports the head-relative azimuth (-1 left, 0 centered, +1 right) so you can turn toward it."
     lifecycle:
       abstract: true  # capability-only — no sensors (C4)

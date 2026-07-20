@@ -577,6 +577,7 @@ def select_goal_relevant_tools(
 
     goal_keywords = set(goal.lower().split())
     scores: list[tuple[str, float]] = []
+    always: list[str] = []
 
     for tool_name in registry.list_all():
         try:
@@ -584,6 +585,13 @@ def select_goal_relevant_tools(
         except KeyError:
             continue
         if not isinstance(tool, ModulatorAffordanceTool):
+            continue
+        # Always-available body actions (e.g. the orient affordances) stay
+        # active regardless of goal overlap — declared via `always_active: true`
+        # on the affordance. Without this a body cannot use its own listen/turn
+        # unless the static goal happens to mention them.
+        if getattr(getattr(tool, "_affordance_schema", None), "always_active", False):
+            always.append(tool_name)
             continue
         tool_words = set(tool.description.lower().split())
         tool_words.add(tool._modulator.name.lower())
@@ -593,7 +601,7 @@ def select_goal_relevant_tools(
             scores.append((tool_name, float(overlap)))
 
     scores.sort(key=lambda x: x[1], reverse=True)
-    top_k = [name for name, _ in scores[:max_tools]]
+    top_k = always + [name for name, _ in scores[:max_tools]]
 
     # Vague goal fallback: one affordance per self entity if top-k is thin
     if len(top_k) < min_tools:

@@ -71,6 +71,30 @@ def _load_entity(body: str):
 
 
 @pytest.mark.parametrize("body", ["base_humanoid", "reachy_mini"])
+def test_orient_affordances_stay_active_for_unrelated_goal(body):
+    """The bug that blocked orienting: the goal-relevance top-k deactivated the
+    body's own listen/turn affordances (they scored 0 against a goal that didn't
+    mention sound), so the agent's `listen`/`turn` failed 'not active'. The
+    `always_active: true` marker exempts them — a body can always attend to a
+    sound / turn its head, regardless of the static goal."""
+    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.entity_map import EntityMap
+    from maxim.embodiment.tool_bridge import generate_tools_for_entity
+    from maxim.tools.discovery import select_goal_relevant_tools
+    from maxim.tools.registry import ToolRegistry
+
+    entity = _load_entity(body)
+    reg = ToolRegistry()
+    generate_tools_for_entity(entity, reg, embodiment=Embodiment(entity), entity_map=EntityMap())
+
+    # a goal with zero keyword overlap with the orient affordances
+    kept = set(select_goal_relevant_tools("wait calmly and report anything new", EntityMap(), reg))
+    for aff in ("listen", "turn_left", "turn_right"):
+        name = f"{body}_{aff}"
+        assert name in kept, f"{name} must stay active (always_active) — it was deactivated pre-fix"
+
+
+@pytest.mark.parametrize("body", ["base_humanoid", "reachy_mini"])
 def test_listen_returns_world_set_azimuth(body):
     from maxim.embodiment.body import Embodiment
     from maxim.embodiment.tool_bridge import generate_tools_for_entity
