@@ -1,229 +1,242 @@
-# Cradle: learning to orient — orienting-to-sound as a *taught* developmental behavior
+# Cradle: learning to orient — a hungry infant, a mother who feeds, and the scaffold that fades
 
-**Status:** Design draft (2026-07-19). The developmental reframing of
-[substrate_primary_orient_learning.md](substrate_primary_orient_learning.md), prompted by the
-observation that **a baby doesn't innately know that turning toward a sound localizes its source — it's
-learned, as a caregiver guides them successfully to things.** This draft asks whether Maxim can *learn
-to orient* the way an infant does: an innate reflex + a mild tendency as scaffolding, and the calibrated,
-*useful* orienting learned via caregiver + cross-modal feedback.
+**Status:** Design (2026-07-19, rewritten around the mother-scaffolded feeding scenario). The
+developmental grounding of [substrate_primary_orient_learning.md](substrate_primary_orient_learning.md).
+The productive-orient work (PR #403, merged) shipped the orient *action* in llm-primary — but a live run
+confirmed the LLM won't reliably sequence `listen → turn`, which is the LLM-scaffolding treadmill the
+project decided to step off. This plan is the substrate-primary answer: **the agent learns to orient
+because orienting is *taught and rewarded*, the way an infant learns to turn to its mother for food.**
 
-Still `[engineering]`. If it works, it's a strong `[behavioral]` claim: **cross-session developmental
-acquisition of a sensorimotor skill, no LLM in the action path, no fine-tuning** — learned, not built in.
-
----
-
-## The insight — separate what's innate from what's learned
-
-The productive-orienting work (PR #403) and the drive-relief plan (#404) quietly assume the *value* of
-orienting is innate: the centeredness drive makes off-center aversive, so nulling it is intrinsically
-rewarding. The developmental reality is subtler, and splits cleanly:
-
-**Innate (the scaffold — small, seeds behavior, doesn't dictate it):**
-- The **orienting reflex** — a loud + sudden sound triggers an automatic head-turn (the reflex tier we
-  built; superior-colliculus, subcortical). Present at birth.
-- A **mild** attend-toward tendency — a *weak* centeredness drive (small `pain_scale`), enough to bias
-  exploration toward stimuli, not enough to be the whole reward.
-- The **motor + sensory hardware** — the ability to turn (turn affordances) and to hear a bearing (the
-  `azimuth` sensor).
-
-**Learned (the developmental target):**
-- **Audio→spatial calibration** — *which* turn (direction, magnitude) actually reduces `|azimuth|`. This
-  is exactly the Exp-45 magnitude-learning, but acquired developmentally rather than pre-calibrated.
-- **The *value* of orienting** — that turning toward a sound *reveals its source* / earns caregiver
-  approval. This is the part #404 hardcoded and the part an infant actually learns.
-
-So the experiment is not "does the agent null azimuth because it's uncomfortable" — it's "**does the
-agent learn that orienting is worth doing, and how to do it well, from feedback.**"
+Still `[engineering]`. If it works it is a strong `[behavioral]` claim: **developmental acquisition of a
+sensorimotor skill from a caregiver, cross-session, no LLM in the action path, no fine-tuning.**
 
 ---
 
-## The teaching loop — where the reward *comes from*
+## The scenario (the core)
 
-Instead of (only) the built-in drive relief, orienting is rewarded by two developmentally-honest signals:
+A **hungry infant** and a **mother** who speaks, feeds, and gently turns the infant's head toward her.
+The loop, one feeding episode:
 
-1. **Caregiver guidance** — when the infant orients correctly (reduces `|azimuth|` toward a sounding
-   source), a **caregiver reacts positively** ("there it is!" / a warm response). This is the parent
-   guiding the child to things. *First version:* the **narrator** emits the approval (available now);
-   *richer version:* the deferred [mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md)
-   Mother NPC.
-2. **Cross-modal confirmation** — turning toward the sound makes the source *resolve* into something
-   perceivable/nameable (the sound becomes a recognized entity — ties into the existing
-   `infant_humanoid_naming` cradle line). Discovering the source is intrinsically rewarding; the audio
-   bearing gets *bound* to a visual/entity identity, which is how the audio-spatial map calibrates.
+1. The infant's **hunger** drive rises (interoceptive discomfort). It looks around, not knowing why its
+   stomach hurts — it cannot yet reliably orient itself.
+2. The **mother guides its head toward her** — a SEM `target_effect` writing the infant's `azimuth` toward
+   center (facing mom). This is the *scaffold*: the caregiver produces the oriented state the infant
+   can't yet produce.
+3. Now oriented, the infant **sees and hears her** — her face (visual) and her voice ("here comes the
+   choo-choo train," rich infant-directed speech). Audio + visual co-occur, bound to what follows.
+4. The mother **feeds it** — a `target_effect` reducing the infant's `hunger`. The discomfort resolves.
+5. The substrate credits the *oriented state* with the hunger relief → **NAc reward on the orient
+   action**, keyed to the audio-visual "mom" cluster.
+6. Across episodes, the **scaffold fades**: the mother guides less, the infant completes the turn itself,
+   and eventually orients to her voice/face *autonomously* — because it has learned that orienting toward
+   mom ends the hunger.
 
-Both flow through the same substrate path as #404 — `NAc` reward → `cluster_reward_bias` on the turn
-actions, keyed on the `"audio"` EC cluster — so the mechanics are shared; only the **reward source**
-changes from "innate drive relief" to "taught + discovered."
-
----
-
-## The developmental arc (a cradle variant)
-
-Rides the existing 4-act cradle machinery (`BUILTIN_ARCS["cradle"]`, `infant_humanoid` body):
-
-- **Act 1 — reflexive / random.** Sounds occur; the infant reflex-turns to the loudest and otherwise
-  turns near-randomly. No calibration, no learned value. Baseline orient-correctness ≈ chance.
-- **Act 2 — guided.** The caregiver rewards correct orients; correct turns also reveal the source
-  (cross-modal). The infant begins associating *turn-toward-sound → good*. `cluster_reward_bias` starts
-  favoring the correct-direction turn.
-- **Act 3 — calibration.** With direction learned, the infant learns *magnitude* — which step size best
-  reduces `|azimuth|` (the Exp-45 boundary, but discovered from reward, not pre-set).
-- **Act 4 — mastery.** Reliable, calibrated, *self-motivated* orienting — it orients even without the
-  caregiver present, because the value has been internalized (persisted `cluster_reward_bias`).
+**The whole thesis in one sentence:** the infant doesn't discover orienting on its own — it is *guided*
+into the rewarded state, then *learns to reproduce it*, then generalizes to orienting on mom's voice
+alone. Taught, not innate; and not hand-prompted either.
 
 ---
 
-## Measurement — and the ablation that proves it was *taught*
+## Why this scenario (the design rationale)
 
-Port the orient_backbone / M3 metrics into the orchestrator (shared with #404):
-direction-correctness, `|az|` reduction per event, latency-to-center, and the load-bearing
-**cross-act / cross-session improvement** (persisted `aut_nac.json`).
-
-**The decisive ablation — is orienting *learned* or merely *driven*?**
-- **Arm A (taught):** caregiver + cross-modal reward, mild innate drive.
-- **Arm B (drive-only, = #404):** the centeredness drive alone, no caregiver, no cross-modal reward.
-- **Arm C (scaffold-only):** reflex + mild drive, *no* learning reward at all.
-
-If Arm A reaches reliable calibrated orienting and Arm C does not, orienting is **learned**, not innate.
-If Arm A markedly outperforms Arm B (faster, more robust, generalizes to novel azimuths/sources), the
-**developmental/taught signal carries more than the built-in drive** — which is the whole thesis of this
-reframing, and a stronger claim than #404's drive-relief in isolation.
-
-**Graduation:** Arm A cross-act improvement, absent in Arm C, superior to Arm B → a `[behavioral]` entry:
-*developmental acquisition of a sensorimotor skill from caregiver + cross-modal feedback, cross-session,
-no LLM in the action path.*
-
----
-
-## Prerequisites (what has to land first)
-
-1. **The `always_active` affordance fix** (shipped, PR #403) — the infant must be able to *use* its
-   `listen`/`turn` affordances; the goal-top-k was deactivating them.
-2. **Give `infant_humanoid` the orient capability** — add an `azimuth` root sensor + `turn_left/turn_right`
-   affordances (+ a *mild* centeredness drive, `pain_scale` ~0.15, smaller than base_humanoid's 0.3 —
-   the *scaffold*, not the reward). Capability-driven, same declaration pattern.
-3. **The Decision-4 substrate fixes (from #404)** — P1 `_normalize_value` range-aware, P2 azimuth
-   de-bundled to the `"audio"` modality, P3 world-set azimuth in the substrate-primary tick. The cradle
-   run is substrate-primary, so it depends on all three.
-4. **A caregiver-reward hook** — narrator-emitted approval on a correct orient (first version); the
-   Mother NPC (deferred) later.
-5. **Cross-modal source-binding** — turning toward the sound resolves the source into a nameable entity
-   (rides `infant_humanoid_naming` + the imagination/entity system). This is the richest prerequisite
-   and can be staged: start with caregiver-reward-only (Arm A′), add cross-modal in a second pass.
+- **It's the most fundamental learned orienting behavior there is** — rooting/orienting toward the
+  caregiver for food is *the* first thing an infant learns to orient for. Not an abstract sound source.
+- **The reward is concrete and strong, not abstract.** Hunger → oriented → fed → relief. No "caregiver
+  approval" hand-waving; the reward is a real interoceptive drive resolving.
+- **The mother's guidance *solves cold-start.*** The hard problem with "learn to orient" is: with only a
+  weak innate seed, why would the agent *ever try* orienting, so what does reward reinforce? Answer: it
+  doesn't have to try — the **mother guides it into the oriented state (`target_effect`), so it
+  experiences "oriented → fed" immediately**, and learns to reproduce it. This is Vygotsky's
+  scaffolding / zone-of-proximal-development, and it is far more bio-honest than "infant learns to orient
+  from scratch." The scaffold *is* the cold-start solution.
+- **It is inherently audio-visual.** The mother speaks (audio) and is seen (visual) at the moment of
+  feeding, so cross-modal binding falls out of the scenario instead of being contrived.
+- **It grounds the first symbols.** Her words ("choo-choo," "here comes") acquire meaning by being tied
+  to a referent (her) and an outcome (food) — the grounded-language / `infant_humanoid_naming` line, now
+  with a *reason* the symbol matters.
+- **Cleaner substrate path than pure audio-orient.** The reward is *hunger relief* — **interoception**,
+  already correctly encoded — so this **sidesteps the Decision-4 P2 de-bundle** that the exteroceptive
+  azimuth path needs. Fewer prerequisites, less risk.
+- **Mostly-existing machinery.** The gaze stack (`attention/gaze_controller.py`,
+  `default_network/gaze_manager.py`) + the `scripts/gaze_substrate/` probes already showed **operant
+  gaze redirection DECISIVE and cross-session learning STRONG** (2026-06-28, scratchpad). `infant_humanoid`
+  already has a `hunger` drive. `target_effect` (caregiver acts on infant) and `speak` already exist. This
+  is mostly *grounding proven machinery in a bio-honest scenario*, not building from zero — and it
+  **promotes that scratchpad gaze result to a graduated developmental claim.**
 
 ---
 
-## Why this is the stronger experiment
+## Innate vs learned (the split, refined by the scaffold)
 
-#404 asks *does the substrate learn the orient policy given a built-in reward.* This asks *does the agent
-learn the orient behavior — policy AND value — the way a developing organism does.* The second is closer
-to the project's actual thesis (learning without fine-tuning), harder to fake (the Arm C control has no
-reward to exploit), and it retires an assumption we'd otherwise smuggle in (that centering is innately
-rewarding). It also unifies three existing lines — the reflex tier, the Exp-45 magnitude learning, and
-the `infant_humanoid_naming` cross-modal binding — into one developmental story.
+- **Innate (weak seed):** the rooting/orienting reflex (loud/sudden → auto-turn, a DN reflex arc — Track 2),
+  the hunger drive, and the *ability* to gaze/turn. Kept **weak** so learning does the work.
+- **Learned (the target):** that orienting toward mom's voice/face *ends the hunger* — the **value** — and
+  *which* turn achieves it — the **calibration**.
+- **The scaffold bridges the two:** the mother produces the oriented+rewarded experience *before* the
+  infant can, so there is a reward signal to learn from on day one. The learning is the transfer of the
+  orienting from the mother's `target_effect` to the infant's own `turn`/gaze.
 
-## Sequencing relative to #404
+---
 
-Not either/or. **#404's mechanics (P1–P3) are shared prerequisites** — do them first. Then #404's
-drive-relief run *is* Arm B of this experiment. So the cradle experiment **supersets** #404: run P1–P3,
-then the three-arm cradle study, with #404's drive-only run as the built-in-reward control. One build,
-the stronger claim.
+## The developmental arc (mother-scaffolded, the scaffold fades)
 
-## Mode split: audio-orient is scaffolded in llm-primary, learned in substrate-primary
+Rides the existing 4-act cradle machinery (`BUILTIN_ARCS["cradle"]`, `infant_humanoid`):
 
-**The design decision (2026-07-19):** orienting-to-sound is *available and scaffolded* in llm-primary and
-*inherently learned* in substrate-primary. This is the clean separation between the product mode ("it
-works out of the box") and the thesis mode ("it learns"), and it falls out of what's already built.
+- **Act 1 — fully guided.** Mother guides the head all the way (`target_effect` → azimuth ≈ 0) + speaks +
+  feeds. Infant passive; it *experiences* oriented-paired-with-relief. Baseline: infant produces ~0% of
+  the orient itself.
+- **Act 2 — co-active.** Mother guides *partway*; the infant must complete the turn to face her and be
+  fed. Reward now credits the infant's *own* orient action. `cluster_reward_bias` on `turn` rises.
+- **Act 3 — autonomous (visual).** Mother stops guiding; the infant orients to her *face* itself to be
+  fed. Learned visual orienting.
+- **Act 4 — autonomous (cross-modal).** The infant orients to mom's *voice* before seeing her — because
+  the voice has been bound (audio ↔ visual ↔ food) — i.e. it has learned *why a sound is worth turning
+  toward.* This is where the audio-orient work we built (PR #403) becomes meaningful: "orient to mom's
+  voice," grounded in feeding.
 
-**Two things that are easy to conflate — keep them separate:**
-1. **Hearing** (the audio percept reaching cognition — the EC/substrate or the prompt). This is ON in
-   **both** modes. You cannot learn to orient to a sound you cannot hear, so substrate-primary must still
-   receive the percept.
-2. **The orienting *behavior*** — this is what differs by mode.
+**The fade schedule is the experiment's primary knob:** too slow and the infant never has to learn; too
+fast and it cold-starts anyway. The fade *curve* — how quickly guidance can be withdrawn while the infant
+keeps getting fed — is itself the measured learning signal.
 
-**llm-primary — scaffolded (the product default).** The reflex tier (loud+sudden → auto-orient) + the LLM
-deliberately choosing `listen`/`turn`. User-facing "it just works." Controlled by a flag
-(`--audio-orient` / `MAXIM_SIM_AUDIO_ORIENT`); `--audio-orient false` opts the whole channel out
-(no hearing, no orient). **Keep it opt-in (default OFF) until validated; flip to default-ON-for-llm-primary
-only once the reflex + tiers are proven** — do not default-on an experimental feature.
+---
 
-**substrate-primary — learned (the thesis).** Hearing is ON (the percept flows to EC via P3), but there is
-**no scaffolded orient** — the *value* and *calibration* of orienting are learned from reward (this plan).
-This is what the user's instinct "substrate-primary inherently makes it a learned behavior" gets right.
+## The concrete build (scope)
 
-**The one refinement the naive version misses (do NOT fully disable the innate seed):** substrate-primary
-should keep a **mild innate seed** — a *weak* centeredness drive (`pain_scale` ~0.15) and the subcortical
-orienting reflex (as a **DN reflex arc**, Track 2 — NOT the llm-primary §1.16 sim-model, which stays
-llm-primary-only). Two reasons: (a) **bio-honesty** — a newborn *does* have an orienting reflex; what's
-learned is the calibration + the deliberate value, not the reflex itself; (b) **cold-start** — with zero
-innate bias the substrate has no reason to *ever try* turning, so there's nothing for reward to reinforce.
-The seed must be *weak* so learning does the work, and the **3-arm ablation is exactly the proof** that it
-does: Arm C (seed-only, no learning reward) must *fail* while Arm A (taught) succeeds. So "substrate-primary
-disables audio-orient" is more precisely: **disables the scaffolded orient (LLM-choice + strong drive),
-keeps hearing + a weak innate seed, and learns the rest.**
+**New — the mother component** (`_data/components/npcs/mother.yaml` or similar):
+- `speak` (exists) — rich, scripted infant-directed lines (motherese), emitted each episode.
+- `feed` — a `target_effect` reducing the infant's `hunger` (caregiver acts on infant; `target_effect`
+  already resolves a target body and applies deltas — confirmed in `tool_bridge`).
+- `guide_head` — a `target_effect` moving the infant's `azimuth` toward center, **sign-aware** (a fixed
+  delta won't null a signed value — reuse the `reflex_oriented_azimuth`-style toward-center logic, applied
+  to the target). The *amount* it guides per episode is the fade knob.
 
-This already aligns with the code: §1.16 (the llm-primary scaffold) is gated `aut_mode != "substrate-primary"`,
-and P3 (route azimuth to the substrate) is the distinct learned path — so the mode-split is the existing
-architecture, not a new fork.
+**Mother behavior — reactive/scripted v1** (NOT a full NPC agent to start): narrator- or reaction-driven —
+*infant hungry AND not-yet-oriented → guide (per fade schedule) + speak + feed*. The full
+[deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) agent is the richer later
+version; the reactive script is enough for the experiment.
+
+**Infant** — `infant_humanoid` + an `azimuth` root sensor + `turn`/gaze affordances + the existing `hunger`
+drive (mostly there; add azimuth + turns, `always_active`, mild centeredness seed).
+
+**Substrate wiring** — the oriented-state + feeding reward → `NAc` `cluster_reward_bias` on the infant's
+orient action, keyed to the audio-visual "mom" cluster, so it learns to *reproduce* the orient. Hunger
+reward is interoception (already clean); the audio-orient cross-modal step (Act 4) is where the Decision-4
+fixes (P1–P3) and eventually JEPA come in.
+
+**Measurement** (port orient_backbone / M3 metrics + gaze metrics into the orchestrator):
+- **fraction of the orient the infant produces itself** (vs mother-guided) per act — the fade curve, the
+  headline signal;
+- latency-to-fed, hunger-relief per episode;
+- **cross-session persistence** (`aut_nac.json`) — does an infant that learned in session N start session
+  N+1 already orienting?
+
+---
+
+## The decisive ablation (is it *taught*, or just *driven*?)
+
+- **Arm A (taught):** full scenario — mother guides (fading) + speaks + feeds.
+- **Arm B (drive-only, = #404):** the centeredness/hunger drive alone, no mother, no guidance.
+- **Arm C (scaffold-only):** mother guides + feeds but the *learning reward is disabled*
+  (`MAXIM_NAC_REWARD_BIAS_DISABLED`) — the infant is guided-and-fed but cannot *learn* from it.
+
+If **A** reaches autonomous orienting (the scaffold successfully fades) and **C** does not (guided-and-fed
+but never learns to do it itself), orienting is **learned, not innate or hand-fed**. If **A** markedly
+beats **B** (the drive alone is a weak, slow teacher vs. the caregiver-scaffolded one), the **taught
+signal carries more than the built-in drive** — the whole point of the reframing.
+
+**Graduation:** Arm A's fade curve (guided → autonomous), absent in Arm C, cross-session-persistent → a
+`[behavioral]` entry: *developmental acquisition of a caregiver-scaffolded sensorimotor skill, no LLM in
+the action path, no fine-tuning.*
+
+---
+
+## Mode split: scaffolded in llm-primary, learned in substrate-primary
+
+Orienting is *available and scaffolded* in llm-primary and *inherently learned* in substrate-primary — the
+clean separation between the product mode and the thesis mode. Two things that are easy to conflate:
+**hearing** (the audio percept reaching cognition) is ON in **both** modes (you cannot learn to orient to
+a sound you cannot hear); the orienting **behavior** is what differs.
+
+- **llm-primary — scaffolded (product default).** Reflex tier + the LLM choosing `listen`/`turn`.
+  Controlled by `--audio-orient` / `MAXIM_SIM_AUDIO_ORIENT`; `--audio-orient false` opts the whole channel
+  out. **Keep opt-in (default OFF) until validated; flip to default-ON-for-llm-primary only once proven.**
+- **substrate-primary — learned (thesis).** Hearing ON (percept → EC via P3), **no scaffolded orient** —
+  value + calibration learned from reward (this plan). Keep a **weak innate seed** (mild drive ~0.15 + the
+  DN reflex arc, Track 2 — NOT the llm-primary §1.16 sim-model) for bio-honesty (newborns *have* the
+  reflex) and cold-start; the mother's guidance is the *external* scaffold that seeds the reward. So
+  "substrate-primary disables audio-orient" means: **disables the scaffolded/LLM orient, keeps hearing +
+  a weak seed + the caregiver scaffold, and learns the rest.**
+
+Already aligns with the code: §1.16 (the llm-primary scaffold) is gated `aut_mode != "substrate-primary"`;
+P3 (route azimuth to the substrate) is the distinct learned path.
+
+---
 
 ## Connections to the broader research program (why this is worth revisiting)
 
-The cradle orient loop looks small, but it is a **minimal sensorimotor primitive** that sits at the
-intersection of several larger lines. That is why it is worth treating as a nucleus, not a one-off: it is
-the cheapest concrete task that exercises action-conditioned prediction, cross-modal binding, grounded
-symbols, and reward-driven policy *all at once*, developmentally. The connections, made explicit:
+The mother-feeding cradle is a **minimal sensorimotor primitive** that sits at the intersection of several
+larger lines — the cheapest concrete task that exercises action-conditioned prediction, cross-modal
+binding, grounded symbols, and reward-driven policy *all at once*, developmentally, on a real reward.
 
-### JEPA cross-modal alignment — the cradle is a candidate *revival trigger* and *paired-data source*
+### JEPA cross-modal alignment — the cradle is a *revival trigger* and *paired-data source*
 [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) is a learned projection
-that bridges the `SensorEncoder` (384-dim) and `LinguisticEncoder` (768-dim) spaces — cross-modal cosine
-is *mathematically undefined* across different-dimensional encoders, and JEPA is the smallest new
-mechanism that makes cross-modal binding defined. It is **deferred until** a problem appears that is
-"structurally cross-modal AND unsolvable by threshold tuning, AND the cradle arc yields sufficient
-training pairs." **The cross-modal step of *this* experiment is exactly that scenario.** When the infant
-turns toward a sound and the source *resolves into a named/visible entity*, the audio bearing (sensor
-space) must bind to the entity/word (language space) — a cross-dimensional alignment that threshold
-tuning cannot close. And the *successful orient* is the event that **produces the paired data**
-(azimuth-at-orient ↔ resolved-source) that JEPA consumes. So the cradle orient study is a leading
-candidate to both **fire JEPA's revival condition** and **generate its training set** — worth flagging so
-a future JEPA revisit starts here rather than from scratch.
+bridging the `SensorEncoder` (384-dim) and `LinguisticEncoder` (768-dim) spaces — cross-modal cosine is
+mathematically undefined across different-dimensional encoders. It is **deferred until** a problem appears
+that is "structurally cross-modal, unsolvable by threshold tuning, and comes with sufficient paired data."
+**Act 4 of this scenario is exactly that:** the mother's *voice* (sensor/audio) must bind to her *face*
+(visual) and her *words* (language) — a cross-dimensional alignment — and every feeding episode
+**produces the paired data** (voice ↔ face ↔ hunger-relief). Grounded in a real reward, not an abstract
+source. This scenario is a leading candidate to both **fire JEPA's revival condition** and **generate its
+training set**.
 
 ### Cross-modal substrate binding (cancelled by Roy-4) — same wall, and the evidence for the projection
 [archive/cross_modal_substrate_binding.md](archive/cross_modal_substrate_binding.md) tried Hebbian
-audio↔visual binding edges and was cancelled because raw cross-modal cosine is undefined. The cradle
-cross-modal step hits the *same wall* — which is not a dead end but the concrete demonstration that *some*
-projection (JEPA) is required. If the cradle run needs cross-modal binding and can't get it in raw encoder
-space, that is the resurrection evidence the binding plan's Stage-4a conditions asked for.
+audio↔visual binding and was cancelled because raw cross-modal cosine is undefined. Act 4 hits the same
+wall — which is the concrete demonstration that a projection (JEPA) is required.
 
-### Grounded language acquisition — orienting is how a symbol gets its referent
+### Grounded language acquisition — the mother's words are the first grounded symbols
 [grounded_language_acquisition.md](grounded_language_acquisition.md) Phase 2's "symbol-binding layer" is
-structurally a JEPA. The cradle's cross-modal step — turn → the sound *becomes a nameable thing* — ties
-into the existing `infant_humanoid_naming` line: **orienting is the act that binds an audio percept to a
-referent.** A word/entity acquires its meaning partly *because* orienting to the sound reliably reveals
-the same thing. So learning-to-orient is upstream of grounded naming, not parallel to it.
+structurally a JEPA. Motherese ("here comes the choo-choo train") tied to her presence and to feeding is
+the most concrete symbol-grounding setup there is — ties into `infant_humanoid_naming`.
 
-### Forward models / world-model prediction — the orient loop *is* action-conditioned prediction
-The `Cerebellum` already learns "forward models for predicting sensory consequences" of actions
-([src/maxim/embodiment/cerebellum.py](../../src/maxim/embodiment/cerebellum.py)). The orient loop is the
-minimal such model: *"if I turn_left, azimuth will increase by ~δ."* Learning the turn→azimuth mapping
-(Act 3 calibration) is forward-model learning; JEPA generalizes it from a scalar sensor to a *latent*
-predictive model. So the cradle orient study is a concrete, measurable instance of the same predictive-
-world-model thesis JEPA pursues at scale — a place to validate the primitive before the general machinery.
+### The gaze machinery — proven, and this promotes it
+`attention/gaze_controller.py` + `default_network/gaze_manager.py` + the `scripts/gaze_substrate/` probes
+(operant redirection, category transfer) already demonstrated substrate gaze learning. This scenario
+grounds that proven mechanism in a bio-honest developmental task and promotes it to a graduated claim.
 
-### The orient-specific substrate this rides
-[substrate_native_orienting.md](substrate_native_orienting.md) (the azimuth "two learning signals" —
-signed EC state + folded drive reward) and [orient_magnitude_learning.md](orient_magnitude_learning.md)
-(Exp 45's magnitude calibration = Act 3) are the substrate + calibration mechanics; the innate reflex
-scaffold is [hybrid_substrate_reflex_runtime.md](hybrid_substrate_reflex_runtime.md) (Track 2); imagined/
-resolved sources ride [deferred/imagination_substrate_signals.md](deferred/imagination_substrate_signals.md).
+### Forward models / world-model — the orient loop is action-conditioned prediction
+The `Cerebellum` learns "forward models for predicting sensory consequences"
+([src/maxim/embodiment/cerebellum.py](../../src/maxim/embodiment/cerebellum.py)). The
+guide→see→feed→relief loop is a minimal predictive model (orient predicts food); JEPA generalizes it from
+scalar sensors to a latent. This scenario validates the primitive before the general machinery.
 
-**Net:** revisit this as the *entry point* for the cross-modal / world-model program. A future plan that
-wants to fire JEPA, resurrect cross-modal binding, or ground the first symbol should start from the
-cradle orient loop — it is the smallest task where all four threads are simultaneously live and
-measurable, and it produces the paired data the rest of the program needs.
+**Net:** revisit this as the *entry point* for the cross-modal / world-model program — the smallest task
+where all four threads are simultaneously live and measurable, on a real reward, and it produces the
+paired data the rest of the program needs.
+
+---
+
+## Prerequisites & sequencing
+
+1. **`always_active` affordance fix** — SHIPPED (PR #403), so the infant can use its own `listen`/`turn`.
+2. **Mother component + 3 affordances** (`speak`, `feed` via `target_effect` hunger, `guide_head` via
+   sign-aware `target_effect` azimuth) + the reactive behavior script + the **fade schedule**.
+3. **`infant_humanoid` prep** — azimuth sensor + turn/gaze affordances (`always_active`) + mild
+   centeredness seed; hunger drive exists.
+4. **Decision-4 P1–P3** (from #404) — needed for the *audio-orient* cross-modal step (Act 4). The visual
+   gaze + hunger-reward core (Acts 1–3) largely sidesteps them (hunger is interoception).
+5. **transition-based drive-pain** (near-path) — clean the hunger/centeredness reward signal.
+6. **M3 + gaze telemetry** in the orchestrator so the fade curve is measurable.
+
+**Order:** the visual gaze + hunger + mother-scaffold core (Acts 1–3) is the first, cleanest slice and does
+*not* depend on the Decision-4 fixes; the audio-voice cross-modal step (Act 4) folds in P1–P3 and sets up
+JEPA. So: build the mother + infant + fade + reward-wiring → run Acts 1–3 (visual) → add the voice (Act 4).
 
 ## Related
 
-- [substrate_primary_orient_learning.md](substrate_primary_orient_learning.md) — the substrate mechanics (P1–P3) + the drive-relief arm (= Arm B here).
-- [productive_orienting_affordance.md](productive_orienting_affordance.md) — the orient action + tiers + the `always_active` fix this depends on.
-- [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — the caregiver mechanism (richer version of the reward source).
-- `BUILTIN_ARCS["cradle"]` + `infant_humanoid*` bodies + `infant_humanoid_naming` — the cradle developmental machinery this rides.
+- [substrate_primary_orient_learning.md](substrate_primary_orient_learning.md) — the substrate mechanics (P1–P3); Arm B (drive-only) is defined here as the built-in-reward control.
+- [productive_orienting_affordance.md](productive_orienting_affordance.md) — the orient action + tiers + the `always_active` fix (shipped) this builds on; the 2-D elevation extension path.
+- [deferred/mother_npc_stimulus_plan.md](deferred/mother_npc_stimulus_plan.md) — the full caregiver-NPC mechanism (the reactive script is the v1 stand-in).
+- [deferred/jepa_cross_modal_alignment.md](deferred/jepa_cross_modal_alignment.md) — the cross-modal projection Act 4 sets up + feeds.
+- [grounded_language_acquisition.md](grounded_language_acquisition.md) — motherese → grounded symbols.
+- `BUILTIN_ARCS["cradle"]` + `infant_humanoid*` + `attention/gaze_*` + `scripts/gaze_substrate/` — the developmental + gaze machinery this rides.
