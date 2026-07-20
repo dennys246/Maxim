@@ -116,7 +116,7 @@ def run(arm, regime, *, seed, ticks=3000):
     for _ in range(ticks):
         az = sound_azimuth(rng, regime)
         body.vital_metrics["azimuth"] = az  # place the sound
-        state = enc.encode_sensors(agent_id=AGENT, sensors={"azimuth": az})
+        state = enc.encode_sensors(agent_id=AGENT, sensors={"azimuth": az}, ranges={"azimuth": (-1.0, 1.0)})
         if rng.random() < EPSILON:
             action = ACTIONS[int(rng.integers(len(ACTIONS)))]
         else:
@@ -161,7 +161,7 @@ def run(arm, regime, *, seed, ticks=3000):
     correct = total = lc = ln = rc = rn = 0
     for _ in range(400):
         az = sound_azimuth(er, regime)
-        state = enc.encode_sensors(agent_id=AGENT, sensors={"azimuth": az})
+        state = enc.encode_sensors(agent_id=AGENT, sensors={"azimuth": az}, ranges={"azimuth": (-1.0, 1.0)})
         rec = nac.recommend_action(
             agent_id=AGENT,
             available_tools=ACTIONS,

@@ -402,17 +402,35 @@ def _stable_basis(name: str, dim: int, salt: str = "") -> list[float]:
     return out
 
 
-def _normalize_value(value: float) -> float:
-    """Map any float to [0, 1] for low/high basis interpolation.
+def _normalize_value(value: float, value_range: "tuple[float, float] | None" = None) -> float:
+    """Map a sensor value to [0, 1] for low/high basis interpolation.
 
-    Sensors in the cradle live on either [0, 1] (hunger, thirst,
-    pressure) or [-1, 1] (core_temperature, thermal). Both ranges
-    collapse onto [0, 1] so the same low/high bases can interpolate
-    every sensor consistently. Values outside the canonical ranges
-    clip rather than raise — telemetry should never crash on a
-    weird sensor reading.
+    **Range-aware path (P1):** when ``value_range = (lo, hi)`` is supplied, maps
+    linearly ``(v - lo) / (hi - lo)`` and clamps to ``[0, 1]``. A ``[0, 1]``
+    range is the identity (unchanged from legacy). A ``[-1, 1]`` range becomes
+    the monotonic ``(v + 1) / 2`` across the WHOLE range — center ``0.0 -> 0.5``,
+    left ``< 0.5``, right ``> 0.5`` — so a signed sensor's left / center / right
+    stay distinct. **This is what a signed azimuth needs**: the legacy
+    range-blind map below folds it (see below).
+
+    **Legacy range-blind fallback:** with no ``value_range`` (existing callers),
+    reproduces the pre-P1 bimodal map EXACTLY — ``[-1, 0] -> [0, 0.5]`` via
+    ``(v + 1) / 2``, ``[0, 1]`` identity — so those callers are byte-identical.
+    But it CANNOT tell a ``[-1, 1]`` sensor's positive half from a ``[0, 1]``
+    sensor: ``az = +0.5`` and ``hunger = 0.5`` both map to ``0.5``, and the fold
+    at ``0`` collides opposite-signed values (``az = -0.5 -> 0.25`` equals
+    ``az = +0.25 -> 0.25``). Supply a range for any ``[-1, 1]`` sensor.
+
+    Values outside the range clip rather than raise — telemetry should never
+    crash on a weird sensor reading.
     """
     v = float(value)
+    if value_range is not None:
+        lo, hi = value_range
+        if hi > lo:
+            return max(0.0, min(1.0, (v - lo) / (hi - lo)))
+        return max(0.0, min(1.0, v))  # degenerate range -> clamp
+    # --- legacy range-blind fallback (byte-identical to pre-P1) ---
     if v < -1.0:
         v = -1.0
     elif v > 1.0:
@@ -424,16 +442,25 @@ def _normalize_value(value: float) -> float:
     return v if v <= 1.0 else 1.0
 
 
-def _sensor_embed(sensors: dict[str, float], dim: int = 384) -> list[float]:
+def _sensor_embed(
+    sensors: dict[str, float],
+    ranges: "dict[str, tuple[float, float]] | None" = None,
+    dim: int = 384,
+) -> list[float]:
     """Hash a ``{sensor_name: value}`` dict into a fixed-dim embedding.
 
     Each sensor contributes ``(1 - v) * basis_low(name) + v * basis_high(name)``
-    to the sum, where ``v = _normalize_value(value)`` lives in [0, 1]
-    and ``basis_low``/``basis_high`` are two uncorrelated SHA-derived
-    bases for the same sensor name. This makes value changes *rotate*
-    the embedding direction (rather than just scaling magnitude, which
-    cosine similarity ignores) so EC pattern_complete_or_separate can
-    actually tell "hunger=0" from "hunger=1".
+    to the sum, where ``v = _normalize_value(value, ranges.get(name))`` lives in
+    [0, 1] and ``basis_low``/``basis_high`` are two uncorrelated SHA-derived
+    bases for the same sensor name. This makes value changes *rotate* the
+    embedding direction (rather than just scaling magnitude, which cosine
+    similarity ignores) so EC pattern_complete_or_separate can actually tell
+    "hunger=0" from "hunger=1".
+
+    ``ranges`` (P1) maps a sensor to its ``(lo, hi)`` range so signed sensors
+    (azimuth, thermal on ``[-1, 1]``) normalize monotonically instead of folding.
+    A sensor absent from ``ranges`` (or ``ranges=None``) uses the legacy
+    range-blind map — byte-identical to pre-P1.
 
     Geometry sanity check — single-sensor sweep, all other sensors
     fixed at neutral, ``dim=384``:
@@ -452,7 +479,8 @@ def _sensor_embed(sensors: dict[str, float], dim: int = 384) -> list[float]:
     if not sensors:
         return vec
     for name in sorted(sensors):  # deterministic ordering
-        v = _normalize_value(sensors[name])
+        vr = ranges.get(name) if ranges else None
+        v = _normalize_value(sensors[name], vr)
         basis_low = _stable_basis(name, dim, salt="low")
         basis_high = _stable_basis(name, dim, salt="high")
         for i in range(dim):
@@ -531,7 +559,12 @@ class SensorEncoder:
         self._last_node_id: dict[tuple[str, str], str] = {}  # per (agent_id, modality)
 
     def encode_sensors(
-        self, *, agent_id: str, sensors: dict[str, float], modality: str = "interoception"
+        self,
+        *,
+        agent_id: str,
+        sensors: dict[str, float],
+        modality: str = "interoception",
+        ranges: "dict[str, tuple[float, float]] | None" = None,
     ) -> str | None:
         """Encode the current sensor reading; return EC node ID.
 
@@ -550,10 +583,14 @@ class SensorEncoder:
                 is frozen-centroid by default, like interoception — see
                 ``ECConfig.frozen_centroid_modalities`` and
                 ``docs/plans/perception_pipeline_placement.md`` Q5).
-                Per-sensor value range is the caller's responsibility:
-                values must already sit in ``[0, 1]`` or ``[-1, 1]`` (e.g.
-                emit azimuth as ``degrees/180``) so the shared
-                ``_normalize_value`` applies unchanged.
+            ranges: (P1) ``{sensor_name: (lo, hi)}`` per-sensor value range so
+                signed sensors (azimuth / thermal on ``[-1, 1]``) normalize
+                MONOTONICALLY instead of folding (left / center / right stay
+                distinct EC clusters). A sensor absent from ``ranges`` (or
+                ``ranges=None``) uses the legacy range-blind map — byte-identical
+                to pre-P1, so callers that don't pass ranges are unchanged. A
+                ``[0, 1]`` range is the identity, also unchanged. Supply ranges
+                for any ``[-1, 1]`` sensor whose SIGN must be preserved.
 
         Returns:
             The EC node ID the pattern resolved to, or ``None`` when
@@ -572,7 +609,7 @@ class SensorEncoder:
         if prev is not None and self._max_delta(prev, sensors) < self.config.min_delta:
             return self._last_node_id.get(stash_key)
 
-        embedding = _sensor_embed(sensors, dim=self.config.embedding_dim)
+        embedding = _sensor_embed(sensors, ranges=ranges, dim=self.config.embedding_dim)
 
         result = self.ec.pattern_complete_or_separate(
             embedding=embedding,
