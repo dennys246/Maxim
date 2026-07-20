@@ -123,6 +123,44 @@ def _apply_sensor_deltas(
             pass
 
 
+def _drive_potential_diff(
+    body: Entity,
+    effect: dict[str, float],
+    pre_values: dict[str, float],
+) -> float:
+    """Relief an affordance's ``effect`` produced on the body's drive sensors.
+
+    For each sensor the ``effect`` touched that carries an entity-level drive
+    spec, returns the SUM of
+    ``drive_pain_for_value(spec, before) - drive_pain_for_value(spec, after)``
+    — POSITIVE when the action reduced drive discomfort (relief), NEGATIVE when
+    it made it worse. This is GAP 1 of the orient credit path: the
+    state-conditioned reward substrate-primary selection needs so it can learn
+    "turn TOWARD the sound" rather than merely "turning succeeds" (the June
+    orient study — pain alone is positive-gated out of ``recommend_action``).
+
+    Only entity-level drive sensors (``body.drive_specs``) are scored — the
+    centeredness (azimuth) and hunger/thirst/energy drives all live there.
+    Qualified modulator sub-sensors (``arms.thermal``) carry no drive spec today
+    and are skipped; those affordances fall back to the ±1 tool-success signal.
+    """
+    from maxim.embodiment.sem import drive_pain_for_value
+
+    drive_specs = getattr(body, "drive_specs", {}) or {}
+    metrics = getattr(body, "vital_metrics", {}) or {}
+    total = 0.0
+    for name in effect:
+        spec = drive_specs.get(name)
+        if spec is None:
+            continue
+        before = pre_values.get(name)
+        after = metrics.get(name)
+        if before is None or after is None:
+            continue
+        total += drive_pain_for_value(spec, before) - drive_pain_for_value(spec, after)
+    return total
+
+
 # ---------------------------------------------------------------------------
 # Name resolution
 # ---------------------------------------------------------------------------
@@ -380,12 +418,32 @@ class ModulatorAffordanceTool(Tool):
         # executor's own body.  Fires when the agent explicitly called the
         # tool (not reflex/orchestrator).  Supports entity-level sensors
         # ("hunger") and qualified modulator sub-sensors ("arms.thermal").
+        # Motor-credit (GAP 1): score the drive relief this affordance's own
+        # self_effect produces. Snapshot the pre-effect values of the drive
+        # sensors it will touch, apply, then diff — positive = relief, so
+        # substrate-primary selection learns "turn toward the sound," not just
+        # "turning succeeds." Emitted on side_effects["drive_potential_diff"].
+        drive_potential_diff = 0.0
         if self._affordance_schema.self_effect and self._embodiment is not None:
+            _body = self._embodiment.root
+            _drive_specs = getattr(_body, "drive_specs", {}) or {}
+            _metrics = getattr(_body, "vital_metrics", {}) or {}
+            pre_values = {
+                name: _metrics[name]
+                for name in self._affordance_schema.self_effect
+                if name in _drive_specs and name in _metrics
+            }
             _apply_sensor_deltas(
                 self._embodiment.root,
                 self._affordance_schema.self_effect,
                 delta_kind="self_effect",
             )
+            if pre_values:
+                drive_potential_diff = _drive_potential_diff(
+                    self._embodiment.root,
+                    self._affordance_schema.self_effect,
+                    pre_values,
+                )
 
         # Target-effect: when the affordance fires WITH a target parameter,
         # write deltas to the resolved target's body sensors.  Silent
@@ -511,6 +569,16 @@ class ModulatorAffordanceTool(Tool):
         side_effects: dict[str, Any] | None = None
         if active_failures:
             side_effects = {"embodiment_failures": active_failures}
+
+        # Motor-credit signal (GAP 1): the drive relief this action produced.
+        # Non-zero only for affordances whose self_effect touched an entity-level
+        # drive sensor (orient/turn on azimuth, eat/drink on hunger/thirst).
+        # runtime/tool_dispatch.py consumes it as the cluster-reward magnitude in
+        # place of the ±1 tool-success signal. See docs/user/tool_side_effects.md.
+        if drive_potential_diff:
+            if side_effects is None:
+                side_effects = {}
+            side_effects["drive_potential_diff"] = drive_potential_diff
 
         # Entity acquisition: if this is a pick_up affordance and the target
         # is acquirable, signal the executor to reparent + register tools.
