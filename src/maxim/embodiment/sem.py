@@ -225,6 +225,39 @@ class EntropicDriveSpec:
 DriveSpec = HomeostaticDriveSpec | EntropicDriveSpec
 
 
+def drive_pain_for_value(spec: DriveSpec, value: float) -> float:
+    """Pain intensity a drive spec produces at a given sensor value, in [0, 1].
+
+    Single source of truth for the drive-pain formula. Reused by:
+
+    - ``Embodiment.evaluate_failures`` — the per-tick discomfort / deprivation
+      pain intensity (both the ``FailureEvent`` and the published ``PainSignal``
+      already clamp to ``[0, 1]``, so routing them through this helper is a
+      behaviour-preserving refactor, not a change);
+    - the motor-credit ``potential_diff`` (orient reward) — the *reduction* in
+      this value from before to after an action IS the relief that action
+      produced, which is the state-conditioned POSITIVE reward substrate-primary
+      selection needs (drive-pain reduction is bio-faithful negative
+      reinforcement AND mechanically selectable — see the June orient study,
+      ``reference_recommend_action_reward_driven``).
+
+    Homeostatic: ``min(1, (|value - set_point| - comfort_band) * pain_scale)``
+    when outside the comfort band, else ``0``.
+    Entropic: ``deprivation_pain`` once ``value`` is past
+    ``deprivation_threshold`` in the drift direction, else ``0``.
+    """
+    if isinstance(spec, HomeostaticDriveSpec):
+        excess = abs(value - spec.set_point) - spec.comfort_band
+        return min(1.0, excess * spec.pain_scale) if excess > 0 else 0.0
+    if isinstance(spec, EntropicDriveSpec):
+        if spec.drift_direction == "up" and value >= spec.deprivation_threshold:
+            return spec.deprivation_pain
+        if spec.drift_direction == "down" and value <= spec.deprivation_threshold:
+            return spec.deprivation_pain
+        return 0.0
+    return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Protocols
 # ---------------------------------------------------------------------------
