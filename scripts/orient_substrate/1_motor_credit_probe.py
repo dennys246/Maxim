@@ -56,7 +56,7 @@ import numpy as np
 os.environ.pop("MAXIM_NAC_REWARD_BIAS_DISABLED", None)
 
 from maxim.decisions.nac import NAc, NACConfig  # noqa: E402
-from maxim.embodiment.sem import HomeostaticDriveSpec, drive_pain_for_value  # noqa: E402
+from maxim.embodiment.sem import HomeostaticDriveSpec, drive_comfort_progress  # noqa: E402
 from maxim.similarity.ec import ECConfig, EntorhinalCortex  # noqa: E402
 from maxim.similarity.encoder import SensorEncoder  # noqa: E402
 
@@ -75,8 +75,10 @@ def apply_turn(az: float, action: str) -> float:
 
 
 def relief(az_before: float, az_after: float) -> float:
-    """The exact GAP-1 signal: reduction in centeredness drive-pain."""
-    return drive_pain_for_value(CENTEREDNESS, az_before) - drive_pain_for_value(CENTEREDNESS, az_after)
+    """The motor-credit signal: value-progress toward center (matches production
+    drive_comfort_progress). The reward path signs this (+1/-1); this probe uses
+    the raw value for the isolated-channel measurement."""
+    return drive_comfort_progress(CENTEREDNESS, az_before, az_after)
 
 
 def make_encoder():

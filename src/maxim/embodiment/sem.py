@@ -264,6 +264,39 @@ def drive_pain_for_value(spec: DriveSpec, value: float) -> float:
     return 0.0
 
 
+def drive_comfort_progress(spec: DriveSpec, before: float, after: float) -> float:
+    """How far an action moved a drive TOWARD comfort (before → after).
+
+    Positive = toward comfort, negative = away. This is the motor-credit signal,
+    and it is deliberately **value-based, not pain-based** — ``drive_pain_for_value``
+    is a STEP function for entropic drives (``deprivation_pain`` past the threshold,
+    ``0`` below), so a ``warm_self`` / ``feed`` that reduces cold/hunger but stays
+    past the threshold registers ZERO pain-reduction even though it made real
+    progress. Rewarding on pain-reduction therefore starves entropic-relief
+    actions (warmth, feeding) of credit and the substrate-primary agent abandons
+    them (the #405 Exp-42 floor). Value-progress is graded and nonzero for any
+    real movement toward comfort:
+
+    - **Homeostatic** (regulate to ``set_point``): reduction in absolute deviation,
+      ``|before - set_point| - |after - set_point|`` (positive = moved toward the
+      set point; this is what orient/azimuth centeredness needs).
+    - **Entropic** ``drift_direction == "up"`` (high is bad, e.g. cold/hunger):
+      ``before - after`` (positive = value decreased toward comfort).
+    - **Entropic** ``drift_direction == "down"`` (low is bad): ``after - before``.
+
+    The consumer takes the SIGN of the net progress across the touched drives so
+    the cluster reward is ``±1`` — the same scale as the tool-success signal
+    non-drive actions get (a graded magnitude would still lose the argmax to a
+    flat ``+1``). Direction (orient toward vs away) and the collateral-harm gate
+    are preserved; only the entropic starvation is fixed.
+    """
+    if isinstance(spec, HomeostaticDriveSpec):
+        return abs(before - spec.set_point) - abs(after - spec.set_point)
+    if isinstance(spec, EntropicDriveSpec):
+        return (before - after) if spec.drift_direction == "up" else (after - before)
+    return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Protocols
 # ---------------------------------------------------------------------------

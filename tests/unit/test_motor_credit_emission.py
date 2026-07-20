@@ -64,9 +64,9 @@ def test_turn_toward_sound_emits_positive_relief():
     assert result.success
     assert result.side_effects is not None
     diff = result.side_effects["drive_potential_diff"]
-    # pain(-0.7)=0.18, pain(-0.4)=0.09 -> relief +0.09
+    # value-progress toward set_point 0: |-0.7| - |-0.4| = +0.3
     assert diff > 0
-    assert abs(diff - 0.09) < 1e-6
+    assert abs(diff - 0.3) < 1e-6
 
 
 def test_turn_away_from_sound_emits_negative_reward():
@@ -75,9 +75,9 @@ def test_turn_away_from_sound_emits_negative_reward():
     result = _run(body, emb, "turn_right")
     assert result.success
     diff = result.side_effects["drive_potential_diff"]
-    # pain(-0.7)=0.18, pain(-1.0)=0.27 -> -0.09
+    # value-progress: |-0.7| - |-1.0| = -0.3 (moved away from center)
     assert diff < 0
-    assert abs(diff - (-0.09)) < 1e-6
+    assert abs(diff - (-0.3)) < 1e-6
 
 
 def test_no_drive_sensor_emits_no_potential_diff():
@@ -141,9 +141,49 @@ def test_feeding_relief_on_entropic_hunger_drive_is_positive():
     mod = body.modulators["belly"]
     tool = ModulatorAffordanceTool(body, mod, "eat", mod.affordances["eat"], "eat", embodiment=emb)
     result = tool.execute()
-    # hunger 0.8 -> 0.4: pain 0.5 -> 0.0 -> relief +0.5
+    # value-progress (entropic up): before - after = 0.8 - 0.4 = +0.4
     diff = result.side_effects["drive_potential_diff"]
-    assert abs(diff - 0.5) < 1e-6
+    assert abs(diff - 0.4) < 1e-6
+
+
+def test_entropic_subthreshold_relief_is_still_positive():
+    """The #405 fix: an entropic reduction that does NOT cross the deprivation
+    threshold used to book 0.0 (pain step function) and starved feeding of credit.
+    Value-progress makes it positive."""
+    body_data = {
+        "name": "agent",
+        "entity_type": "body",
+        "sensors": {
+            "hunger": {
+                "unit": "ratio",
+                "range": [0, 1],
+                "initial": 0.9,  # stays deprived after eating (threshold 0.6)
+                "drive": {
+                    "drift_mode": "entropic",
+                    "drift_direction": "up",
+                    "drift_rate": 0.01,
+                    "deprivation_threshold": 0.6,
+                    "deprivation_pain": 0.5,
+                    "satisfaction_threshold": 0.2,
+                },
+            },
+        },
+        "modulators": {
+            "belly": {
+                "abstract": True,
+                "affordances": {"eat": {"params": {}, "description": "Eat", "self_effect": {"hunger": -0.2}}},
+            },
+        },
+    }
+    body = _parse_entity(body_data)
+    emb = Embodiment(body)
+    mod = body.modulators["belly"]
+    tool = ModulatorAffordanceTool(body, mod, "eat", mod.affordances["eat"], "eat", embodiment=emb)
+    result = tool.execute()
+    # hunger 0.9 -> 0.7: both ABOVE threshold 0.6 -> pain-based would be 0.0.
+    # value-progress = 0.9 - 0.7 = +0.2 (real progress credited).
+    diff = result.side_effects["drive_potential_diff"]
+    assert abs(diff - 0.2) < 1e-6, f"sub-threshold feeding must credit progress, got {diff}"
 
 
 # ── collateral-harm gate (pre-merge review fold) ─────────────────────────────

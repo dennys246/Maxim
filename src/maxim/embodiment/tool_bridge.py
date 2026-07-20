@@ -128,16 +128,22 @@ def _drive_potential_diff(
     effect: dict[str, float],
     pre_values: dict[str, float],
 ) -> float:
-    """Relief an affordance's ``effect`` produced on the body's drive sensors.
+    """Net progress an affordance's ``effect`` moved the body's drives TOWARD comfort.
 
     For each sensor the ``effect`` touched that carries an entity-level drive
-    spec, returns the SUM of
-    ``drive_pain_for_value(spec, before) - drive_pain_for_value(spec, after)``
-    — POSITIVE when the action reduced drive discomfort (relief), NEGATIVE when
-    it made it worse. This is GAP 1 of the orient credit path: the
-    state-conditioned reward substrate-primary selection needs so it can learn
-    "turn TOWARD the sound" rather than merely "turning succeeds" (the June
+    spec, returns the SUM of ``drive_comfort_progress(spec, before, after)`` —
+    POSITIVE when the action moved drives toward comfort, NEGATIVE when away. This
+    is the state-conditioned reward substrate-primary selection needs so it can
+    learn "turn TOWARD the sound" rather than merely "turning succeeds" (the June
     orient study — pain alone is positive-gated out of ``recommend_action``).
+
+    **Value-based, not pain-based** (the #405 fix): ``drive_pain_for_value`` is a
+    STEP function for entropic drives, so a warm/feed that reduces cold/hunger
+    without crossing the deprivation threshold registered ZERO relief and starved
+    warmth/feeding of credit (Exp 42 floored 60→8 contacts). ``drive_comfort_progress``
+    is graded and nonzero for any real movement. The consumer signs the net so the
+    cluster reward is ``±1`` — comparable to the tool-success signal non-drive
+    actions get (a small magnitude would still lose the argmax to a flat ``+1``).
 
     Only entity-level drive sensors (``body.drive_specs``) are scored — the
     centeredness (azimuth) and hunger/thirst/energy drives all live there.
@@ -149,7 +155,7 @@ def _drive_potential_diff(
     intentionally NOT scored here — that relief is the other body's state, not
     the actor's learned policy. The caller passes ``self_effect`` as ``effect``.
     """
-    from maxim.embodiment.sem import drive_pain_for_value
+    from maxim.embodiment.sem import drive_comfort_progress
 
     drive_specs = getattr(body, "drive_specs", {}) or {}
     metrics = getattr(body, "vital_metrics", {}) or {}
@@ -162,7 +168,7 @@ def _drive_potential_diff(
         after = metrics.get(name)
         if before is None or after is None:
             continue
-        total += drive_pain_for_value(spec, before) - drive_pain_for_value(spec, after)
+        total += drive_comfort_progress(spec, before, after)
     return total
 
 

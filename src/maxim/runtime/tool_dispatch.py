@@ -177,22 +177,25 @@ def record_outcome(
             # None/empty, so this is safe to call unconditionally. See:
             # docs/plans/grounded_language_acquisition.md § Phase 0 G4.
             #
-            # Reward magnitude (GAP 1 of the orient credit path): prefer the
-            # drive-relief ``drive_potential_diff`` from the affordance's
-            # side_effects when present — that is the STATE-CONDITIONED signal
-            # (turn TOWARD the sound reduced |azimuth| -> positive; turning away
-            # -> negative), which the ±1 tool-EXECUTION-success cannot express
-            # (both turns "succeed"). ``is not None`` (not truthiness) so a real
-            # 0.0 relief books 0.0, not a spurious +1. The producer
-            # (tool_bridge) sets it to None when the action touched no drive
-            # sensor OR caused COLLATERAL harm (a failure on a sensor its relief
-            # didn't account for) — so the harm-dominates decision lives there,
-            # where the failure sensors are visible; here we just honor it and
-            # fall back to ±1 (which is -1 under embodiment_failed). See
-            # tool_side_effects.md + reference_orient_motor_credit_gap.
+            # Reward magnitude (orient credit path): prefer the drive-comfort
+            # ``drive_potential_diff`` from the affordance's side_effects when
+            # present — that is the STATE-CONDITIONED signal (turn TOWARD the
+            # sound moved azimuth toward center -> positive; away -> negative;
+            # warm/feed moved cold/hunger toward comfort -> positive), which the
+            # tool-EXECUTION-success signal cannot express (both turns / all warms
+            # "succeed"). **Take its SIGN, not its magnitude**: the value is graded
+            # progress toward comfort, but a small magnitude (e.g. one warm step
+            # ~0.15-0.3, or an azimuth step 0.09) would lose the argmax to the flat
+            # +1 non-drive actions get — the #405 Exp-42 floor. Signing to ±1 puts
+            # drive-relief actions on the same scale as tool-success while keeping
+            # the direction. Exactly-0 net progress -> tool-success fallback. The
+            # producer (tool_bridge) sets it to None when the action touched no
+            # drive sensor OR caused COLLATERAL harm (a failure on a sensor its
+            # progress didn't account for), so harm-dominates lives there and we
+            # fall back to ±1 (=-1 under embodiment_failed). See tool_side_effects.md.
             if cluster_id:
-                if drive_potential_diff is not None:
-                    cluster_reward = float(drive_potential_diff)
+                if drive_potential_diff is not None and drive_potential_diff != 0.0:
+                    cluster_reward = 1.0 if drive_potential_diff > 0.0 else -1.0
                 else:
                     cluster_reward = 1.0 if learn_success else -1.0
                 try:

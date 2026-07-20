@@ -260,13 +260,15 @@ class TestClusterRewardMotorCredit:
             return None
         return nac.update_cluster_reward.call_args.kwargs["reward"]
 
-    def test_positive_relief_used_as_reward(self):
-        # Turn toward the sound: relief +0.09 must be the reward, NOT +1.0.
-        assert self._cluster_reward(drive_potential_diff=0.09) == 0.09
+    def test_positive_progress_books_plus_one(self):
+        # Progress toward comfort -> +1 (SIGN, not magnitude): a small +0.09 would
+        # otherwise lose the argmax to the flat +1 non-drive actions get (#405 floor).
+        assert self._cluster_reward(drive_potential_diff=0.09) == 1.0
+        assert self._cluster_reward(drive_potential_diff=0.3) == 1.0
 
-    def test_negative_relief_overrides_success(self):
-        # Turn away: worse (-0.09) must be the reward even though success=True.
-        assert self._cluster_reward(success=True, drive_potential_diff=-0.09) == -0.09
+    def test_negative_progress_books_minus_one(self):
+        # Moved away from comfort -> -1, even though the tool "succeeded".
+        assert self._cluster_reward(success=True, drive_potential_diff=-0.09) == -1.0
 
     def test_absent_falls_back_to_success_plus_one(self):
         assert self._cluster_reward(drive_potential_diff=None) == 1.0
@@ -274,22 +276,21 @@ class TestClusterRewardMotorCredit:
     def test_absent_failure_falls_back_to_minus_one(self):
         assert self._cluster_reward(success=False, drive_potential_diff=None) == -1.0
 
-    def test_zero_relief_books_zero_not_fallback(self):
-        # A drive-touching action with a MEASURED net-zero relief books 0.0 (no
-        # bias change), NOT a spurious +1 — `is not None`, not truthiness. The
-        # producer emits None (absent) for "no drive sensor touched"; a present
-        # 0.0 means "touched a drive, relief was exactly zero."
-        assert self._cluster_reward(drive_potential_diff=0.0) == 0.0
+    def test_zero_progress_falls_back_to_tool_success(self):
+        # Exactly-0 net progress (touched a drive but no net movement) -> the
+        # tool-success fallback, not a 0 bias update.
+        assert self._cluster_reward(drive_potential_diff=0.0) == 1.0
+        assert self._cluster_reward(success=False, drive_potential_diff=0.0) == -1.0
 
     def test_harm_gate_lives_in_the_producer_not_here(self):
         # The harm-dominates decision is made in tool_bridge (which sees the
         # failure sensors), NOT here: on COLLATERAL harm the producer emits None,
         # so the consumer sees None + embodiment_failed and books -1. A gate here
         # (`not embodiment_failed`) would be WRONG — it would also discard the
-        # relief of a correct orient turn, which trips embodiment_failed via
-        # same-sensor azimuth discomfort. So a PRESENT drive_potential_diff is
-        # honored even under embodiment_failed.
-        assert self._cluster_reward(success=True, embodiment_failed=True, drive_potential_diff=0.09) == 0.09
+        # positive progress of a correct orient turn, which trips embodiment_failed
+        # via same-sensor azimuth discomfort. So a PRESENT positive progress is
+        # honored (+1) even under embodiment_failed.
+        assert self._cluster_reward(success=True, embodiment_failed=True, drive_potential_diff=0.09) == 1.0
         # producer already nulled it (collateral harm) -> fallback -> -1
         assert self._cluster_reward(success=True, embodiment_failed=True, drive_potential_diff=None) == -1.0
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 from maxim.embodiment.sem import (
     EntropicDriveSpec,
     HomeostaticDriveSpec,
+    drive_comfort_progress,
     drive_pain_for_value,
 )
 
@@ -57,22 +58,46 @@ def test_homeostatic_clamped_to_one():
     assert drive_pain_for_value(ds, 1.0) == 1.0  # 1.0 * 10 clamps to 1.0
 
 
-def test_potential_diff_sign_toward_vs_away():
-    """The load-bearing motor-credit property: relief is positive, worsening is
-    negative. Sound on the left (azimuth -0.7); turn_right moves azimuth toward
-    0 (relief); turn_left moves it further negative (worse)."""
+# ── drive_comfort_progress (the motor-credit signal — value-based) ───────────
+
+
+def test_comfort_progress_homeostatic_toward_vs_away():
+    """The load-bearing motor-credit property: moving toward the set_point is
+    positive, away is negative. Sound on the left (azimuth -0.7); turn_left moves
+    it toward 0 (progress), turn_right further negative (regress)."""
     ds = _centeredness()
-    az_before = -0.7
-    # turn_right self_effect {azimuth: -0.3} would push MORE negative here — but
-    # the correct action for a left sound is turn_left (self_effect {azimuth:+0.3}).
-    az_toward = az_before + 0.3  # -0.4, less off-centre → relief
-    az_away = az_before - 0.3  # -1.0, more off-centre → worse
+    # value-based: reduction in |value - set_point|, graded (not pain-stepped)
+    assert drive_comfort_progress(ds, -0.7, -0.4) > 0  # toward center
+    assert abs(drive_comfort_progress(ds, -0.7, -0.4) - 0.3) < 1e-9
+    assert drive_comfort_progress(ds, -0.7, -1.0) < 0  # away from center
+    # symmetric in sign of the deviation (left and right behave the same)
+    assert drive_comfort_progress(ds, 0.7, 0.4) > 0
 
-    diff_toward = drive_pain_for_value(ds, az_before) - drive_pain_for_value(ds, az_toward)
-    diff_away = drive_pain_for_value(ds, az_before) - drive_pain_for_value(ds, az_away)
 
-    assert diff_toward > 0, "turning toward the sound must yield positive relief"
-    assert diff_away < 0, "turning away from the sound must yield negative reward"
+def test_comfort_progress_entropic_subthreshold_still_positive():
+    """The #405 fix: an entropic reduction that does NOT cross the deprivation
+    threshold is 0.0 under drive_pain_for_value (step) but POSITIVE under
+    drive_comfort_progress (graded) — so feeding/warmth keeps its credit."""
+    ds = _hunger()  # drift up, threshold 0.6
+    # both 0.9 and 0.7 are ABOVE the threshold -> pain-diff is 0.0
+    assert drive_pain_for_value(ds, 0.9) - drive_pain_for_value(ds, 0.7) == 0.0
+    # value-progress credits the real reduction
+    assert abs(drive_comfort_progress(ds, 0.9, 0.7) - 0.2) < 1e-9
+    # increasing hunger (worse) is negative
+    assert drive_comfort_progress(ds, 0.5, 0.8) < 0
+
+
+def test_comfort_progress_entropic_down_direction():
+    ds = EntropicDriveSpec(
+        drift_direction="down",
+        drift_rate=0.01,
+        deprivation_threshold=0.3,
+        deprivation_pain=0.4,
+        satisfaction_threshold=0.8,
+    )
+    # low is bad -> increasing the value is progress
+    assert drive_comfort_progress(ds, 0.2, 0.6) > 0
+    assert drive_comfort_progress(ds, 0.6, 0.2) < 0
 
 
 # ── entropic ────────────────────────────────────────────────────────────────
