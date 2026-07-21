@@ -94,3 +94,70 @@ def test_zero_one_sensor_embedding_unchanged_by_supplying_its_range():
     # Supplying (0,1) for a [0,1] sensor must not change its embedding.
     s = {"hunger": 0.8}
     assert _sensor_embed(s) == _sensor_embed(s, {"hunger": (0.0, 1.0)})
+
+
+# ── P1 review fold: two-walk drift guard ─────────────────────────────────────
+
+
+def test_read_drive_ranges_covers_every_signed_drive():
+    """_read_drive_ranges and _read_drive_states walk the same drive_specs; if a
+    future edit makes a (signed) drive appear in one walk but not the other, that
+    sensor silently RE-FOLDS. Pin agreement on the real reachy + infant bodies:
+    every drive the value-walk emits (minus the derived, sensorless `cold` need)
+    must have a range, and every declared signed sensor must be covered."""
+    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.runtime.agent_loop import _read_drive_ranges, _read_drive_states
+
+    class _Exec:
+        def __init__(self, emb):
+            self.embodiment = emb
+
+    for body_ref in ("bodies/infant_humanoid_chilled", "bodies/reachy_mini"):
+        ex = _Exec(Embodiment(root=ComponentRegistry().instantiate(body_ref)))
+        drives = _read_drive_states(ex)
+        ranges = _read_drive_ranges(ex)
+        # Every drive that gets a VALUE must also get a RANGE, or it silently
+        # re-folds — except the derived, sensorless "cold" need (setdefault'd in
+        # _read_drive_states only when there is no real cold drive; it has no
+        # sensor/range and correctly falls back to the legacy [0,1] map).
+        missing = set(drives) - set(ranges) - {"cold"}
+        assert not missing, f"{body_ref}: drives with a value but no range (would fold): {missing}"
+        # and there IS at least one signed drive covered (else the fix is inert here)
+        assert any(lo < 0 for lo, _ in ranges.values()), f"{body_ref}: no signed drive got a range"
+
+
+def test_read_drive_ranges_skips_malformed_range_without_disabling():
+    """A malformed range (non-iterable scalar / non-numeric bounds) must NOT
+    raise — it is evaluated inside the encode_sensors try/except, so a raise would
+    silently disable ALL substrate encoding for the agent every tick. The bad
+    sensor is skipped (falls back to the legacy map); good ones still get ranges."""
+    from maxim.runtime.agent_loop import _read_drive_ranges
+
+    class _Sensor:
+        def __init__(self, rng):
+            self.reading_schema = {"range": rng}
+
+    class _Ent:
+        def __init__(self, sensors, specs):
+            self.sensors = sensors
+            self.drive_specs = specs
+            self.modulators = {}
+
+        def walk(self):
+            return [self]
+
+    class _Emb:
+        def __init__(self, root):
+            self.root = root
+
+    class _Exec:
+        def __init__(self, emb):
+            self.embodiment = emb
+
+    root = _Ent(
+        sensors={"good": _Sensor([-1, 1]), "bad_scalar": _Sensor(5), "bad_str": _Sensor(["a", "b"])},
+        specs={"good": object(), "bad_scalar": object(), "bad_str": object()},
+    )
+    ranges = _read_drive_ranges(_Exec(_Emb(root)))  # must not raise
+    assert ranges == {"good": (-1.0, 1.0)}  # malformed skipped, good kept
