@@ -70,6 +70,7 @@ def record_outcome(
     tool_params: dict[str, Any] | None = None,
     cluster_id: str | None = None,
     embodiment_failed: bool = False,
+    drive_potential_diff: float | None = None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -172,17 +173,34 @@ def record_outcome(
             # interoception cluster id at proposal time (only fires from
             # propose_via_substrate today; LLM-primary proposals leave
             # ``cluster_id`` as None), credit the ``(agent, cluster, tool)``
-            # triple with +1/-1 on success/failure. ``update_cluster_reward``
-            # is a no-op when cluster_id is None/empty, so this is safe to
-            # call unconditionally. See:
+            # triple. ``update_cluster_reward`` is a no-op when cluster_id is
+            # None/empty, so this is safe to call unconditionally. See:
             # docs/plans/grounded_language_acquisition.md § Phase 0 G4.
+            #
+            # Reward magnitude (GAP 1 of the orient credit path): prefer the
+            # drive-relief ``drive_potential_diff`` from the affordance's
+            # side_effects when present — that is the STATE-CONDITIONED signal
+            # (turn TOWARD the sound reduced |azimuth| -> positive; turning away
+            # -> negative), which the ±1 tool-EXECUTION-success cannot express
+            # (both turns "succeed"). ``is not None`` (not truthiness) so a real
+            # 0.0 relief books 0.0, not a spurious +1. The producer
+            # (tool_bridge) sets it to None when the action touched no drive
+            # sensor OR caused COLLATERAL harm (a failure on a sensor its relief
+            # didn't account for) — so the harm-dominates decision lives there,
+            # where the failure sensors are visible; here we just honor it and
+            # fall back to ±1 (which is -1 under embodiment_failed). See
+            # tool_side_effects.md + reference_orient_motor_credit_gap.
             if cluster_id:
+                if drive_potential_diff is not None:
+                    cluster_reward = float(drive_potential_diff)
+                else:
+                    cluster_reward = 1.0 if learn_success else -1.0
                 try:
                     nac.update_cluster_reward(
                         agent_id=agent_id,
                         cluster_id=cluster_id,
                         tool_signature=sig,
-                        reward=1.0 if learn_success else -1.0,
+                        reward=cluster_reward,
                     )
                 except Exception:
                     # Mirrors the surrounding error policy — cluster

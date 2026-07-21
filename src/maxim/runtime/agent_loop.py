@@ -2496,6 +2496,13 @@ def run_agentic_loop(
                     # negative attribution; this prevents the competing positive.
                     _side = getattr(result, "side_effects", None)
                     _embodiment_failed = bool(_side and _side.get("embodiment_failures"))
+                    # Motor-credit (GAP 1): the drive relief this action produced,
+                    # if it touched a drive sensor (orient→azimuth, eat→hunger).
+                    # record_outcome prefers this as the cluster-reward magnitude
+                    # over the ±1 tool-success — the state-conditioned signal that
+                    # lets substrate-primary selection learn "turn toward the
+                    # sound." None/absent → ±1 fallback. See tool_side_effects.md.
+                    _drive_potential_diff = _side.get("drive_potential_diff") if _side else None
                     logger.info(
                         "Tool execution completed in %.2fs: %s, success=%s",
                         exec_elapsed,
@@ -2663,6 +2670,7 @@ def run_agentic_loop(
                         tool_params=action.get("params"),
                         cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                         embodiment_failed=_embodiment_failed,
+                        drive_potential_diff=_drive_potential_diff,
                     )
 
                     # Record plan outcome in MemoryHub for learning. A plan that

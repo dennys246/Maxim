@@ -225,6 +225,78 @@ class TestRecordOutcome:
         )
 
 
+class TestClusterRewardMotorCredit:
+    """GAP 1c: record_outcome prefers side_effects drive_potential_diff as the
+    cluster-reward magnitude over the ±1 tool-success signal.
+
+    This is the consumer half of the orient motor-credit: the state-conditioned
+    relief signal (turn toward the sound -> +, away -> -) must reach
+    NAc.update_cluster_reward instead of the direction-blind ±1.
+    """
+
+    def _cluster_reward(self, **overrides):
+        """Run record_outcome with a mock NAc + cluster_id; return the reward
+        passed to update_cluster_reward (or None if it wasn't called)."""
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        nac = MagicMock()
+        kwargs = dict(
+            agent_id="a",
+            tool_name="turn_left",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+            cluster_id="cluster-xyz",
+        )
+        kwargs.update(overrides)
+        record_outcome(**kwargs)
+        if not nac.update_cluster_reward.called:
+            return None
+        return nac.update_cluster_reward.call_args.kwargs["reward"]
+
+    def test_positive_relief_used_as_reward(self):
+        # Turn toward the sound: relief +0.09 must be the reward, NOT +1.0.
+        assert self._cluster_reward(drive_potential_diff=0.09) == 0.09
+
+    def test_negative_relief_overrides_success(self):
+        # Turn away: worse (-0.09) must be the reward even though success=True.
+        assert self._cluster_reward(success=True, drive_potential_diff=-0.09) == -0.09
+
+    def test_absent_falls_back_to_success_plus_one(self):
+        assert self._cluster_reward(drive_potential_diff=None) == 1.0
+
+    def test_absent_failure_falls_back_to_minus_one(self):
+        assert self._cluster_reward(success=False, drive_potential_diff=None) == -1.0
+
+    def test_zero_relief_books_zero_not_fallback(self):
+        # A drive-touching action with a MEASURED net-zero relief books 0.0 (no
+        # bias change), NOT a spurious +1 — `is not None`, not truthiness. The
+        # producer emits None (absent) for "no drive sensor touched"; a present
+        # 0.0 means "touched a drive, relief was exactly zero."
+        assert self._cluster_reward(drive_potential_diff=0.0) == 0.0
+
+    def test_harm_gate_lives_in_the_producer_not_here(self):
+        # The harm-dominates decision is made in tool_bridge (which sees the
+        # failure sensors), NOT here: on COLLATERAL harm the producer emits None,
+        # so the consumer sees None + embodiment_failed and books -1. A gate here
+        # (`not embodiment_failed`) would be WRONG — it would also discard the
+        # relief of a correct orient turn, which trips embodiment_failed via
+        # same-sensor azimuth discomfort. So a PRESENT drive_potential_diff is
+        # honored even under embodiment_failed.
+        assert self._cluster_reward(success=True, embodiment_failed=True, drive_potential_diff=0.09) == 0.09
+        # producer already nulled it (collateral harm) -> fallback -> -1
+        assert self._cluster_reward(success=True, embodiment_failed=True, drive_potential_diff=None) == -1.0
+
+    def test_no_cluster_id_no_cluster_reward(self):
+        assert self._cluster_reward(cluster_id=None, drive_potential_diff=0.09) is None
+
+
 class TestExecuteParallelActions:
     """Test parallel action batch execution."""
 
