@@ -9,6 +9,7 @@ agent name extraction.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from typing import Any
@@ -17,6 +18,22 @@ from maxim.utils.logging import log_swallowed_exception
 from maxim.utils.structured_logging import log_agentic
 
 logger = logging.getLogger(__name__)
+
+
+def _operant_only_credit_enabled() -> bool:
+    """True when ``MAXIM_OPERANT_ONLY_CREDIT`` is set (cradle_mother experiment).
+
+    In this mode a learner's action value comes SOLELY from a caregiver's
+    contingent operant reward (``NAc.credit_operant_reward``): the substrate
+    remembers each action but does NOT book the uniform tool-success cluster
+    reward for a driveless action. Probe 3 (``scripts/orient_substrate/
+    3_operant_feed_probe.py``) proved the floor otherwise saturates the cluster
+    cap and drowns the operant signal. Experiment/harness toggle (env, not
+    config) — read per call so tests can flip it; the hot-path cost is one
+    ``os.environ.get``. Autouse scrub: tests/conftest.py."""
+    from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
+
+    return annotation_disabled_via_env(os.environ.get("MAXIM_OPERANT_ONLY_CREDIT"))
 
 
 def safe_agent_name(agent: Any) -> str:
@@ -194,6 +211,25 @@ def record_outcome(
             # progress didn't account for), so harm-dominates lives there and we
             # fall back to ±1 (=-1 under embodiment_failed). See tool_side_effects.md.
             if cluster_id:
+                # Operant-only mode (cradle_mother): when the learner's action
+                # value must come SOLELY from a caregiver's contingent reward
+                # (mother feeds the infant *because* it oriented), the intrinsic
+                # tool-success floor is poison — probe 3's ``tool_floor`` arm
+                # showed the uniform +1 saturates both directions to the cluster
+                # cap and drowns the operant signal (all arms → chance). So in
+                # this mode we (a) remember the action for the mother's later
+                # ``credit_operant_reward``, and (b) book a cluster reward ONLY
+                # when a REAL drive signal is present — never the tool-success
+                # fallback. A driveless turn accrues no cluster bias; the mother
+                # is the sole teacher.
+                operant_only = _operant_only_credit_enabled()
+                if operant_only:
+                    # Remember this action so the mother's later
+                    # ``credit_operant_reward`` can reinforce it.
+                    try:
+                        nac.set_pending_operant_action(agent_id=agent_id, cluster_id=cluster_id, tool_signature=sig)
+                    except Exception:
+                        logger.debug("set_pending_operant_action raised", exc_info=True)
                 # abs(...) > epsilon, NOT `!= 0.0`: drive_comfort_progress is a
                 # difference of floats, so a genuine zero-progress move (e.g. a
                 # mirror move across a nonzero set_point) can leave a ~1e-17
@@ -201,21 +237,29 @@ def record_outcome(
                 # exactly-0 -> tool-success boundary is load-bearing, so guard it
                 # with an epsilon rather than float identity.
                 if drive_potential_diff is not None and abs(drive_potential_diff) > 1e-9:
-                    cluster_reward = 1.0 if drive_potential_diff > 0.0 else -1.0
+                    cluster_reward: float | None = 1.0 if drive_potential_diff > 0.0 else -1.0
+                elif operant_only:
+                    # Operant-only mode: NO tool-success floor. The uniform +1
+                    # saturates both directions to the cluster cap and drowns the
+                    # caregiver's operant signal (probe 3 ``tool_floor`` arm → all
+                    # arms chance). A driveless action accrues no cluster bias;
+                    # the mother is the sole teacher via credit_operant_reward.
+                    cluster_reward = None
                 else:
                     cluster_reward = 1.0 if learn_success else -1.0
-                try:
-                    nac.update_cluster_reward(
-                        agent_id=agent_id,
-                        cluster_id=cluster_id,
-                        tool_signature=sig,
-                        reward=cluster_reward,
-                    )
-                except Exception:
-                    # Mirrors the surrounding error policy — cluster
-                    # learning is best-effort; an exception here must
-                    # not crash the agent loop.
-                    logger.debug("update_cluster_reward raised", exc_info=True)
+                if cluster_reward is not None:
+                    try:
+                        nac.update_cluster_reward(
+                            agent_id=agent_id,
+                            cluster_id=cluster_id,
+                            tool_signature=sig,
+                            reward=cluster_reward,
+                        )
+                    except Exception:
+                        # Mirrors the surrounding error policy — cluster
+                        # learning is best-effort; an exception here must
+                        # not crash the agent loop.
+                        logger.debug("update_cluster_reward raised", exc_info=True)
 
             # Sim trace
             try:
