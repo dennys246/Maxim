@@ -53,6 +53,20 @@ def _resolve_maxim() -> list[str]:
     return [sys.executable, "-m", "maxim"]
 
 
+def _git_hash() -> str:
+    """Short git HEAD, recorded per result so a stale checkout is detectable
+    (verify the results' git_hash before trusting them — the hard-won lesson)."""
+    try:
+        return (
+            subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=Path(__file__).parent
+            ).stdout.strip()
+            or "unknown"
+        )
+    except Exception:
+        return "unknown"
+
+
 # ── mother-telemetry parsing (the fade metric) ──────────────────────────────
 
 
@@ -246,7 +260,14 @@ def main() -> int:
                             workdir=workdir,
                         )
                     )
-                    rec = {"experiment": "cradle_mother", "arm": arm, "seed": seed, "mock": args.mock, "fade": fade}
+                    rec = {
+                        "experiment": "cradle_mother",
+                        "arm": arm,
+                        "seed": seed,
+                        "mock": args.mock,
+                        "git_hash": _git_hash(),
+                        "fade": fade,
+                    }
                     fh.write(json.dumps(rec) + "\n")
                     fh.flush()
                     n_ok += 1
