@@ -64,6 +64,10 @@ class MotherScaffold:
         mother — the contingency that unlocks feeding (default matches the
         base_humanoid centeredness comfort_band, 0.1).
     thirst_ratio: thirst relief as a fraction of ``feed_amount``.
+    stimulus_azimuths: the sequence of directions the mother "calls" from,
+        rotated per turn (world-set onto the infant's azimuth each turn as the
+        thing to orient toward). Empty = no stimulus (the tick only feeds/guides —
+        e.g. a non-orient act). Values in ``[-1, 1]``.
     speech: motherese lines rotated per turn; empty = silent.
     """
 
@@ -71,6 +75,7 @@ class MotherScaffold:
     feed_amount: float = 0.5
     oriented_threshold: float = 0.1
     thirst_ratio: float = 0.6
+    stimulus_azimuths: tuple[float, ...] = ()
     speech: tuple[str, ...] = field(default_factory=lambda: DEFAULT_MOTHERESE)
 
 
@@ -83,17 +88,37 @@ def reactive_mother_tick(
 ) -> dict[str, Any]:
     """Apply one turn of the reactive mother's caregiving to the infant body.
 
-    Order is load-bearing: **guide, then check oriented, then feed** — so in Act 1
-    the full guide centers the head (oriented) and the infant experiences
-    oriented-paired-with-feeding before it can orient itself; in Act 3 (no guide)
-    it is fed only if its *own* prior turns left it oriented.
+    Order is LOAD-BEARING: **feed-if-oriented (on the PRIOR azimuth) → place the
+    stimulus → guide (fading) → speak.** Feeding must read the azimuth the
+    infant's *previous* turn left, BEFORE the new stimulus overwrites it — that is
+    what rewards the infant's own orient (and gives the temporal structure
+    "orient this turn → fed next turn"). Feeding on the post-stimulus/post-guide
+    azimuth would let each new stimulus erase the infant's orient before it could
+    be rewarded, and the infant would never learn.
 
-    Returns a telemetry dict for the fade-curve analyzer: whether it guided/fed/
-    spoke, and the azimuth before/after (so the harness can attribute the orient
-    to the infant vs. the mother). Fail-soft: a missing body / azimuth sensor is a
-    no-op (unembodied or non-orienting bodies are unaffected).
+    - **Feed** relieves hunger/thirst when the prior azimuth is within
+      ``oriented_threshold`` (the infant faced the mother last turn).
+    - **Stimulus** world-sets ``azimuth`` to the mother's direction this turn
+      (``stimulus_azimuths`` rotated by ``turn_idx``) — the thing to orient
+      toward. Substrate-primary's §1.16 audio world-set is gated out, so the
+      mother sets it directly (world-driven, not the AUT path).
+    - **Guide** world-sets ``azimuth`` toward center by ``guide_strength`` (the
+      fading scaffold; the caregiver can center beyond the infant's own reach).
+    - **Speak** injects motherese via the caller's substrate-safe ``inject``.
+
+    Returns telemetry for the fade-curve analyzer: ``fed``/``guided``/``spoke``
+    plus ``az_prior`` (what the infant left), ``az_stimulus`` (mother's direction),
+    ``az_guided`` (after the scaffold). Fail-soft: missing body / azimuth sensor
+    is a no-op.
     """
-    out: dict[str, Any] = {"guided": False, "fed": False, "spoke": None, "az_before": None, "az_after": None}
+    out: dict[str, Any] = {
+        "fed": False,
+        "guided": False,
+        "spoke": None,
+        "az_prior": None,
+        "az_stimulus": None,
+        "az_guided": None,
+    }
     root = getattr(embodiment, "root", None)
     if root is None:
         return out
@@ -101,28 +126,12 @@ def reactive_mother_tick(
     if vm is None:
         return out
 
-    az_before = vm.get("azimuth")
-    out["az_before"] = az_before
+    from maxim.embodiment.audio_localization import world_set_azimuth
 
-    # 1. Fading guidance — world-SET azimuth toward center by guide_strength.
-    #    NOT clamped to the infant's own motor reach: the caregiver turns the head.
-    if scaffold.guide_strength > 0.0 and az_before is not None and abs(az_before) > scaffold.oriented_threshold:
-        target = float(az_before) * (1.0 - min(1.0, scaffold.guide_strength))
-        try:
-            from maxim.embodiment.audio_localization import world_set_azimuth
-
-            world_set_azimuth(embodiment, target)
-            out["guided"] = True
-        except Exception:
-            logger.debug("reactive_mother_tick: world_set_azimuth failed", exc_info=True)
-
-    az_after = vm.get("azimuth")
-    out["az_after"] = az_after
-
-    # 2. Feed — CONTINGENT on the infant being oriented toward the mother. This
-    #    contingency is what makes orienting worth learning: in Act 1 the guide
-    #    delivers oriented→fed; in Act 3 the infant must orient itself to be fed.
-    if scaffold.feed_amount > 0.0 and az_after is not None and abs(float(az_after)) <= scaffold.oriented_threshold:
+    # 1. FEED if the infant's PRIOR turn left it oriented — rewards its own orient.
+    az_prior = vm.get("azimuth")
+    out["az_prior"] = az_prior
+    if scaffold.feed_amount > 0.0 and az_prior is not None and abs(float(az_prior)) <= scaffold.oriented_threshold:
         deltas = {"hunger": -scaffold.feed_amount}
         if scaffold.thirst_ratio > 0.0:
             deltas["thirst"] = -scaffold.feed_amount * scaffold.thirst_ratio
@@ -134,7 +143,28 @@ def reactive_mother_tick(
         except Exception:
             logger.debug("reactive_mother_tick: feed (_apply_sensor_deltas) failed", exc_info=True)
 
-    # 3. Speak — motherese as a text percept (caller supplies a substrate-safe inject).
+    # 2. STIMULUS — the mother calls from a direction this turn (world-set azimuth).
+    if scaffold.stimulus_azimuths:
+        stim = scaffold.stimulus_azimuths[turn_idx % len(scaffold.stimulus_azimuths)]
+        try:
+            world_set_azimuth(embodiment, float(stim))
+            out["az_stimulus"] = stim
+        except Exception:
+            logger.debug("reactive_mother_tick: stimulus world_set_azimuth failed", exc_info=True)
+
+    # 3. GUIDE (fading scaffold) — world-SET azimuth toward center by guide_strength.
+    #    NOT clamped to the infant's own motor reach: the caregiver turns the head.
+    az_now = vm.get("azimuth")
+    if scaffold.guide_strength > 0.0 and az_now is not None and abs(float(az_now)) > scaffold.oriented_threshold:
+        target = float(az_now) * (1.0 - min(1.0, scaffold.guide_strength))
+        try:
+            world_set_azimuth(embodiment, target)
+            out["guided"] = True
+        except Exception:
+            logger.debug("reactive_mother_tick: guide world_set_azimuth failed", exc_info=True)
+    out["az_guided"] = vm.get("azimuth")
+
+    # 4. SPEAK — motherese as a text percept (caller supplies a substrate-safe inject).
     if scaffold.speech and inject is not None:
         line = scaffold.speech[turn_idx % len(scaffold.speech)]
         try:
