@@ -289,6 +289,13 @@ def drive_comfort_progress(spec: DriveSpec, before: float, after: float) -> floa
     non-drive actions get (a graded magnitude would still lose the argmax to a
     flat ``+1``). Direction (orient toward vs away) and the collateral-harm gate
     are preserved; only the entropic starvation is fixed.
+
+    Note: this is a REWARD gradient, not the pain formula — it deliberately
+    ignores ``comfort_band``/``pain_scale`` and credits movement toward the set
+    point even *inside* the comfort band (where ``drive_pain_for_value`` is 0).
+    That is desirable for orient (keep centering when already "centered enough")
+    and is why reward and pain can diverge for homeostatic drives too, not only
+    for the entropic step function.
     """
     if isinstance(spec, HomeostaticDriveSpec):
         return abs(before - spec.set_point) - abs(after - spec.set_point)

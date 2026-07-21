@@ -282,6 +282,17 @@ class TestClusterRewardMotorCredit:
         assert self._cluster_reward(drive_potential_diff=0.0) == 1.0
         assert self._cluster_reward(success=False, drive_potential_diff=0.0) == -1.0
 
+    def test_float_residue_progress_falls_back_not_mis_credited(self):
+        # drive_comfort_progress is a difference of floats: a genuine zero-progress
+        # move (e.g. a mirror move across a nonzero set_point) can leave a ~1e-17
+        # residue. The epsilon guard must treat that as no-progress -> tool-success
+        # fallback, NOT a spurious +1. A real (small but meaningful) progress still
+        # books its sign.
+        assert self._cluster_reward(drive_potential_diff=1.4e-17) == 1.0  # residue -> fallback
+        assert self._cluster_reward(success=False, drive_potential_diff=-1.4e-17) == -1.0
+        assert self._cluster_reward(drive_potential_diff=1e-6) == 1.0  # real progress -> +1
+        assert self._cluster_reward(drive_potential_diff=-1e-6) == -1.0
+
     def test_harm_gate_lives_in_the_producer_not_here(self):
         # The harm-dominates decision is made in tool_bridge (which sees the
         # failure sensors), NOT here: on COLLATERAL harm the producer emits None,

@@ -607,13 +607,13 @@ class ModulatorAffordanceTool(Tool):
         if active_failures:
             side_effects = {"embodiment_failures": active_failures}
 
-        # Motor-credit signal (GAP 1): the net drive relief this action produced.
-        # Emitted (incl. 0.0 and negatives) whenever the self_effect touched an
-        # entity-level drive sensor AND caused no collateral harm; ``None`` (key
-        # absent) means "no drive sensor touched, or collateral harm" → the
-        # consumer falls back to the ±1 tool-success signal. ``is not None`` (not
-        # truthiness) so a genuine 0.0 relief books 0.0, not a spurious +1.
-        # runtime/tool_dispatch.py consumes it. See docs/user/tool_side_effects.md.
+        # Motor-credit signal: the net value-progress toward comfort this action
+        # produced (drive_comfort_progress). Emitted (incl. 0.0 and negatives)
+        # whenever the self_effect touched an entity-level drive sensor AND caused
+        # no collateral harm; ``None`` (key absent) means "no drive sensor touched,
+        # or collateral harm". The consumer (runtime/tool_dispatch.py) takes the
+        # SIGN (±1); a present 0.0 (no net progress) falls back to the tool-success
+        # signal. See docs/user/tool_side_effects.md.
         if drive_potential_diff is not None:
             if side_effects is None:
                 side_effects = {}

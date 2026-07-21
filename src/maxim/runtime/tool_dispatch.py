@@ -194,7 +194,13 @@ def record_outcome(
             # progress didn't account for), so harm-dominates lives there and we
             # fall back to ±1 (=-1 under embodiment_failed). See tool_side_effects.md.
             if cluster_id:
-                if drive_potential_diff is not None and drive_potential_diff != 0.0:
+                # abs(...) > epsilon, NOT `!= 0.0`: drive_comfort_progress is a
+                # difference of floats, so a genuine zero-progress move (e.g. a
+                # mirror move across a nonzero set_point) can leave a ~1e-17
+                # residue that exact-equality would mis-credit as ±1. The
+                # exactly-0 -> tool-success boundary is load-bearing, so guard it
+                # with an epsilon rather than float identity.
+                if drive_potential_diff is not None and abs(drive_potential_diff) > 1e-9:
                     cluster_reward = 1.0 if drive_potential_diff > 0.0 else -1.0
                 else:
                     cluster_reward = 1.0 if learn_success else -1.0
