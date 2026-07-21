@@ -119,24 +119,27 @@ def _match_plan_to_builtin(
     best_arc = None
     best_score = 0
 
+    # WORD-level matching (not substring): the old `word in goal_lower` /
+    # `word in plan_text` matched a word as a *substring*, so short words ("a",
+    # "co") false-matched inside longer words (e.g. "a" inside "scenario"),
+    # letting any verbose arc description over-score an unrelated plan. Require a
+    # full-word match of a word longer than 3 chars.
+    goal_words = {w for w in goal_lower.split() if len(w) > 3}
+    plan_words = {w for w in plan_text.split() if len(w) > 3}
+    plan_phases = {str(a.get("phase", "")).lower() for a in plan_actions}
+
     for arc_name, arc in arcs.items():
-        score = 0
-        # Check if goal keywords match arc description
-        for word in arc.description.lower().split():
-            if word in goal_lower:
-                score += 1
+        # goal keywords overlap arc description (word-level)
+        desc_words = {w for w in arc.description.lower().split() if len(w) > 3}
+        score = len(goal_words & desc_words)
 
-        # Check if plan phase names overlap with arc phase names
-        plan_phases = {str(a.get("phase", "")).lower() for a in plan_actions}
+        # plan phase names overlap arc phase names
         arc_phases = {p.name.lower() for p in arc.phases}
-        overlap = plan_phases & arc_phases
-        score += len(overlap) * 2
+        score += len(plan_phases & arc_phases) * 2
 
-        # Check if plan descriptions mention arc-related terms
-        for phase in arc.phases:
-            for word in phase.name.split("_"):
-                if word in plan_text:
-                    score += 1
+        # plan text mentions arc phase-name words (word-level, meaningful terms)
+        arc_phase_words = {w for p in arc.phases for w in p.name.split("_") if len(w) > 3}
+        score += len(arc_phase_words & plan_words)
 
         if score > best_score and score >= 3:
             best_score = score

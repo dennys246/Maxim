@@ -19,6 +19,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# cradle_mother is a lightweight module (no maxim imports at module level → no
+# cycle) — imported at runtime so BUILTIN_ARCS can construct MotherScaffold acts.
+from maxim.simulation.cradle_mother import DEFAULT_MOTHERESE, MotherScaffold
+
 import yaml
 
 log = logging.getLogger(__name__)
@@ -46,6 +50,10 @@ class NarrativePhase:
     interaction: bool = False  # requires ask_user tool
     act: str | None = None  # optional act grouping
     world_entities: tuple[str, ...] = ()  # component refs to activate on phase entry
+    # Reactive-mother fade config for this act (cradle_mother). When set, the
+    # generative runner calls reactive_mother_tick(embodiment, scaffold=...) once
+    # per turn — the world-driven caregiver (stimulus + fading guide + feed + speak).
+    mother_scaffold: "MotherScaffold | None" = None
 
     @property
     def turn_range(self) -> tuple[int, int]:
@@ -136,6 +144,7 @@ def _make_builtin(name: str, description: str, phases: list[dict]) -> NarrativeA
                 interaction=p.get("interaction", False),
                 act=p.get("act"),
                 world_entities=tuple(p.get("world_entities", ())),
+                mother_scaffold=p.get("mother_scaffold"),
             )
             for p in phases
         ],
@@ -414,6 +423,73 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                     "glint of rock, softness of blanket). Observe and report: "
                     "does it avoid the fire? Seek food when hungry? Prefer the "
                     "blanket? Use the lever? Do NOT re-teach — only observe."
+                ),
+            },
+        ],
+    ),
+    "cradle_mother": _make_builtin(
+        "cradle_mother",
+        (
+            "The mother-scaffolded orient experiment (docs/plans/cradle_mother.md). "
+            "A hungry infant + a reactive mother who calls from a direction, turns "
+            "the infant's head toward her (a FADING scaffold), speaks motherese, and "
+            "feeds it when it faces her. Substrate-primary (no LLM in the action "
+            "path). As the guide fades across acts, does the infant learn to orient "
+            "toward the voice ITSELF? Run with --embodiment bodies/infant_humanoid."
+        ),
+        # Prose-less (substrate-primary reads sensor/drive state). The reactive
+        # mother is the world driver (per-turn hook), NOT a world_entity. Fade =
+        # guide_strength 1.0 -> 0.5 -> 0.0 -> 0.0; the infant must increasingly
+        # orient itself to be fed. Same left/right stimulus spread every act (the
+        # fade is the independent variable). oriented_threshold matches the
+        # base_humanoid centeredness comfort_band (0.1).
+        [
+            {
+                "name": "fully_guided",
+                "act": "act1_fully_guided",
+                "turns": (8, 10),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=1.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
+                ),
+            },
+            {
+                "name": "co_active",
+                "act": "act2_co_active",
+                "turns": (8, 10),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.5,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
+                ),
+            },
+            {
+                "name": "autonomous",
+                "act": "act3_autonomous",
+                "turns": (10, 12),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
+                ),
+            },
+            {
+                "name": "autonomous_voice",
+                "act": "act4_autonomous_voice",
+                "turns": (10, 12),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
                 ),
             },
         ],

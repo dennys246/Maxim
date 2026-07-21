@@ -456,6 +456,40 @@ def run_generative_campaign(
         if narrator.is_done and not narrative:
             break
 
+        # Reactive mother (cradle): a world-driven caregiver acts on the PASSIVE
+        # infant each turn BEFORE its substrate-primary turn — feed-if-oriented
+        # (rewards the prior orient) → place the sound stimulus → guide the head
+        # (fading scaffold) → speak motherese. ``embodiment`` is already in scope;
+        # motherese uses the NON-gated percept-source inject (send_and_wait is
+        # suppressed in substrate-primary). See docs/plans/cradle_mother.md.
+        _phase = arc.phases[narrator._phase_idx] if narrator._phase_idx < len(arc.phases) else None
+        if _phase is not None and getattr(_phase, "mother_scaffold", None) is not None and embodiment is not None:
+            try:
+                from maxim.simulation.cradle_mother import reactive_mother_tick
+
+                def _mother_inject(text: str) -> None:
+                    src = getattr(bridge, "percept_source", None)
+                    fn = getattr(src, "inject_cli", None)
+                    if callable(fn):
+                        fn(text)
+
+                mtel = reactive_mother_tick(
+                    embodiment,
+                    scaffold=_phase.mother_scaffold,
+                    turn_idx=turn_idx,
+                    inject=_mother_inject,
+                )
+                try:
+                    sim_log(
+                        "mother",
+                        f"act={_phase.act or '?'} fed={mtel['fed']} guided={mtel['guided']} "
+                        f"az_prior={mtel['az_prior']} az_stimulus={mtel['az_stimulus']} az_guided={mtel['az_guided']}",
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                log.debug("reactive mother tick failed at turn %d", turn_idx, exc_info=True)
+
         # Send to AUT via bridge.  Shorter timeout than the bridge default
         # (120s) because the generative narrator drives pacing — if the AUT
         # goes IDLE (deliberation converges to no-action, e.g., confused
