@@ -178,6 +178,36 @@ class TestDriveParsing:
         assert "hunger" in entity.drive_specs
         assert isinstance(entity.drive_specs["hunger"], EntropicDriveSpec)
 
+    def test_null_drive_means_no_drive(self):
+        """``drive: null`` on a sensor means NO drive — lets an ``extends`` child
+        REMOVE an inherited drive (deep_merge replaces the parent's drive dict
+        with null). Used by bodies/infant_operant to null base_humanoid's
+        intrinsic centeredness drive so a caregiver's operant feed is the sole
+        teacher. Before this, a present-but-null drive key crashed _parse_entity."""
+        from maxim.embodiment.spec import _parse_entity
+
+        data = {
+            "name": "test_body",
+            "entity_type": "body",
+            "sensors": {
+                "azimuth": {"unit": "normalized", "range": [-1, 1], "initial": 0.0, "drive": None},
+            },
+        }
+        entity = _parse_entity(data)
+        assert "azimuth" in entity.sensors  # sensor kept (perceivable)
+        assert "azimuth" not in entity.drive_specs  # but no drive
+
+    def test_infant_operant_body_removes_azimuth_drive(self):
+        """The operant infant body inherits infant_humanoid but nulls the
+        azimuth centeredness drive; hunger + orient affordances survive."""
+        from maxim.embodiment.component_registry import ComponentRegistry
+        from maxim.embodiment.spec import _parse_entity
+
+        body = _parse_entity(ComponentRegistry().get("bodies/infant_operant")["entity"])
+        assert "azimuth" in body.sensors and "azimuth" not in body.drive_specs
+        assert "hunger" in body.drive_specs
+        assert set(body.modulators["orient"].affordances) == {"turn_left", "turn_right"}
+
     def test_modulator_level_drive_from_yaml(self):
         from maxim.embodiment.spec import _parse_entity
 
