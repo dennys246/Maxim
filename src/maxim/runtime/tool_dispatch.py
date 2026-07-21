@@ -70,6 +70,7 @@ def record_outcome(
     tool_params: dict[str, Any] | None = None,
     cluster_id: str | None = None,
     embodiment_failed: bool = False,
+    drive_potential_diff: float | None = None,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -172,17 +173,43 @@ def record_outcome(
             # interoception cluster id at proposal time (only fires from
             # propose_via_substrate today; LLM-primary proposals leave
             # ``cluster_id`` as None), credit the ``(agent, cluster, tool)``
-            # triple with +1/-1 on success/failure. ``update_cluster_reward``
-            # is a no-op when cluster_id is None/empty, so this is safe to
-            # call unconditionally. See:
+            # triple. ``update_cluster_reward`` is a no-op when cluster_id is
+            # None/empty, so this is safe to call unconditionally. See:
             # docs/plans/grounded_language_acquisition.md § Phase 0 G4.
+            #
+            # Reward magnitude (orient credit path): prefer the drive-comfort
+            # ``drive_potential_diff`` from the affordance's side_effects when
+            # present — that is the STATE-CONDITIONED signal (turn TOWARD the
+            # sound moved azimuth toward center -> positive; away -> negative;
+            # warm/feed moved cold/hunger toward comfort -> positive), which the
+            # tool-EXECUTION-success signal cannot express (both turns / all warms
+            # "succeed"). **Take its SIGN, not its magnitude**: the value is graded
+            # progress toward comfort, but a small magnitude (e.g. one warm step
+            # ~0.15-0.3, or an azimuth step 0.09) would lose the argmax to the flat
+            # +1 non-drive actions get — the #405 Exp-42 floor. Signing to ±1 puts
+            # drive-relief actions on the same scale as tool-success while keeping
+            # the direction. Exactly-0 net progress -> tool-success fallback. The
+            # producer (tool_bridge) sets it to None when the action touched no
+            # drive sensor OR caused COLLATERAL harm (a failure on a sensor its
+            # progress didn't account for), so harm-dominates lives there and we
+            # fall back to ±1 (=-1 under embodiment_failed). See tool_side_effects.md.
             if cluster_id:
+                # abs(...) > epsilon, NOT `!= 0.0`: drive_comfort_progress is a
+                # difference of floats, so a genuine zero-progress move (e.g. a
+                # mirror move across a nonzero set_point) can leave a ~1e-17
+                # residue that exact-equality would mis-credit as ±1. The
+                # exactly-0 -> tool-success boundary is load-bearing, so guard it
+                # with an epsilon rather than float identity.
+                if drive_potential_diff is not None and abs(drive_potential_diff) > 1e-9:
+                    cluster_reward = 1.0 if drive_potential_diff > 0.0 else -1.0
+                else:
+                    cluster_reward = 1.0 if learn_success else -1.0
                 try:
                     nac.update_cluster_reward(
                         agent_id=agent_id,
                         cluster_id=cluster_id,
                         tool_signature=sig,
-                        reward=1.0 if learn_success else -1.0,
+                        reward=cluster_reward,
                     )
                 except Exception:
                     # Mirrors the surrounding error policy — cluster

@@ -225,6 +225,90 @@ class TestRecordOutcome:
         )
 
 
+class TestClusterRewardMotorCredit:
+    """GAP 1c: record_outcome prefers side_effects drive_potential_diff as the
+    cluster-reward magnitude over the ±1 tool-success signal.
+
+    This is the consumer half of the orient motor-credit: the state-conditioned
+    relief signal (turn toward the sound -> +, away -> -) must reach
+    NAc.update_cluster_reward instead of the direction-blind ±1.
+    """
+
+    def _cluster_reward(self, **overrides):
+        """Run record_outcome with a mock NAc + cluster_id; return the reward
+        passed to update_cluster_reward (or None if it wasn't called)."""
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        nac = MagicMock()
+        kwargs = dict(
+            agent_id="a",
+            tool_name="turn_left",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+            cluster_id="cluster-xyz",
+        )
+        kwargs.update(overrides)
+        record_outcome(**kwargs)
+        if not nac.update_cluster_reward.called:
+            return None
+        return nac.update_cluster_reward.call_args.kwargs["reward"]
+
+    def test_positive_progress_books_plus_one(self):
+        # Progress toward comfort -> +1 (SIGN, not magnitude): a small +0.09 would
+        # otherwise lose the argmax to the flat +1 non-drive actions get (#405 floor).
+        assert self._cluster_reward(drive_potential_diff=0.09) == 1.0
+        assert self._cluster_reward(drive_potential_diff=0.3) == 1.0
+
+    def test_negative_progress_books_minus_one(self):
+        # Moved away from comfort -> -1, even though the tool "succeeded".
+        assert self._cluster_reward(success=True, drive_potential_diff=-0.09) == -1.0
+
+    def test_absent_falls_back_to_success_plus_one(self):
+        assert self._cluster_reward(drive_potential_diff=None) == 1.0
+
+    def test_absent_failure_falls_back_to_minus_one(self):
+        assert self._cluster_reward(success=False, drive_potential_diff=None) == -1.0
+
+    def test_zero_progress_falls_back_to_tool_success(self):
+        # Exactly-0 net progress (touched a drive but no net movement) -> the
+        # tool-success fallback, not a 0 bias update.
+        assert self._cluster_reward(drive_potential_diff=0.0) == 1.0
+        assert self._cluster_reward(success=False, drive_potential_diff=0.0) == -1.0
+
+    def test_float_residue_progress_falls_back_not_mis_credited(self):
+        # drive_comfort_progress is a difference of floats: a genuine zero-progress
+        # move (e.g. a mirror move across a nonzero set_point) can leave a ~1e-17
+        # residue. The epsilon guard must treat that as no-progress -> tool-success
+        # fallback, NOT a spurious +1. A real (small but meaningful) progress still
+        # books its sign.
+        assert self._cluster_reward(drive_potential_diff=1.4e-17) == 1.0  # residue -> fallback
+        assert self._cluster_reward(success=False, drive_potential_diff=-1.4e-17) == -1.0
+        assert self._cluster_reward(drive_potential_diff=1e-6) == 1.0  # real progress -> +1
+        assert self._cluster_reward(drive_potential_diff=-1e-6) == -1.0
+
+    def test_harm_gate_lives_in_the_producer_not_here(self):
+        # The harm-dominates decision is made in tool_bridge (which sees the
+        # failure sensors), NOT here: on COLLATERAL harm the producer emits None,
+        # so the consumer sees None + embodiment_failed and books -1. A gate here
+        # (`not embodiment_failed`) would be WRONG — it would also discard the
+        # positive progress of a correct orient turn, which trips embodiment_failed
+        # via same-sensor azimuth discomfort. So a PRESENT positive progress is
+        # honored (+1) even under embodiment_failed.
+        assert self._cluster_reward(success=True, embodiment_failed=True, drive_potential_diff=0.09) == 1.0
+        # producer already nulled it (collateral harm) -> fallback -> -1
+        assert self._cluster_reward(success=True, embodiment_failed=True, drive_potential_diff=None) == -1.0
+
+    def test_no_cluster_id_no_cluster_reward(self):
+        assert self._cluster_reward(cluster_id=None, drive_potential_diff=0.09) is None
+
+
 class TestExecuteParallelActions:
     """Test parallel action batch execution."""
 

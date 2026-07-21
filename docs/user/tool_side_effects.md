@@ -19,6 +19,7 @@ This page is the canonical, append-only registry of well-known `side_effects` ke
 | `entity_acquired` | `str` — entity name (matches `EntityMap.resolve(name)`) | [`ModulatorAffordanceTool.execute`](../../src/maxim/embodiment/tool_bridge.py) on a successful `pick_up` affordance against an entity whose `metadata["acquirable"]` is True | [`runtime/executor.py::_handle_entity_acquisition`](../../src/maxim/runtime/executor.py) reparents the entity to the agent body and registers its tools | 0.7 |
 | `entity_released` | `str` — entity name | [`ModulatorAffordanceTool.execute`](../../src/maxim/embodiment/tool_bridge.py) on a successful `drop` affordance | [`runtime/executor.py::_handle_entity_acquisition`](../../src/maxim/runtime/executor.py) deregisters the entity's tools and returns it to the scene | 0.7 |
 | `affordance_blocked` | `dict` — see schema below | [`ModulatorAffordanceTool.execute`](../../src/maxim/embodiment/tool_bridge.py) when a `requires` precondition fails (e.g., damaged body part) | informational — currently no automated consumer; logged for telemetry and replay | 0.6 |
+| `drive_potential_diff` | `float` — signed value-progress toward comfort (consumer uses its SIGN), see schema below | [`ModulatorAffordanceTool.execute`](../../src/maxim/embodiment/tool_bridge.py) when a `self_effect` touches an entity-level drive sensor (orient→azimuth, eat→hunger) | [`runtime/tool_dispatch.py`](../../src/maxim/runtime/tool_dispatch.py) uses its sign as the ±1 cluster reward for substrate-primary action selection in place of the flat tool-success signal | 1.0.1 |
 
 ## Value schemas
 
@@ -70,6 +71,28 @@ Releasing an entity that was never acquired is a no-op at the executor layer (lo
 ```
 
 Currently informational only — no automated learning hook reads this key. Useful for telemetry, replay, and prompt construction (the LLM also sees the reason in `ToolOutput.error`).
+
+### `drive_potential_diff`
+
+```python
+float  # signed VALUE-progress toward comfort; positive = moved toward comfort. Consumer uses its SIGN. Key ABSENT (None) = no signal
+```
+
+The net **value-progress** the affordance's *own* `self_effect` moved the body's drives toward comfort, summed over the entity-level drive sensors it touched:
+`Σ drive_comfort_progress(spec, before, after)` — **value-based, not pain-based** (homeostatic = reduction in `|value − set_point|`; entropic = value moved toward comfort per drift direction).
+
+**Why value-based:** `drive_pain_for_value` is a *step function* for entropic drives (`deprivation_pain` past threshold, `0` below), so a pain-based signal books **zero** relief for a `warm`/`eat` that reduces cold/hunger without crossing the threshold — which starved entropic-relief actions of credit and floored substrate-primary engagement (the #405 Exp-42 regression). Value-progress is graded and nonzero for any real movement.
+
+**The consumer ([`runtime/tool_dispatch.py`](../../src/maxim/runtime/tool_dispatch.py)) takes the SIGN, not the magnitude** (`+1` progress / `−1` regress), so drive-relief actions sit on the same `±1` scale as the tool-success signal non-drive actions get (a small graded magnitude would lose the argmax to a flat `+1`).
+
+- **Positive** — moved drives toward comfort (`turn_left` reduced `|azimuth|`; `eat` reduced `hunger`) → cluster reward `+1`.
+- **Negative** — moved drives away (turned away from the sound) → cluster reward `−1`.
+- **`0.0` (present)** — a drive sensor was touched but net progress was exactly zero (e.g. turning into a `±1.0` azimuth wall) → the consumer falls back to the tool-success signal.
+- **Key ABSENT** (the producer emits `None`) — either the affordance touched no entity-level drive sensor, **or** it caused *collateral harm* (see below). The consumer falls back to the `±1` tool-execution-success signal.
+
+**Collateral-harm gate:** the signal is suppressed (key absent) when the action caused a failure on a sensor its relief did **not** account for — a non-drive `failure_mode` (e.g. `arms.thermal` thermal shock) or an untouched drive sensor. This stops an *attractive-but-harmful* action (relieves `cold` but breaches `arms.thermal`) from being credited positively, which would defeat the safe-vs-harm discrimination. A *same-sensor* drive discomfort (azimuth still off-center after a relieving turn) is **not** collateral — the relief already reflects that sensor's net change — so it does not suppress the signal.
+
+**`target_effect` is intentionally NOT scored.** Motor-credit attributes only to the *acting* body's own `self_effect`; relief a caregiver's `target_effect` produces on another body (e.g. a mother feeding an infant) is that other body's state, not the actor's learned policy. Only entity-level drive sensors (`body.drive_specs`: azimuth-centeredness, hunger, thirst, energy) are scored; qualified modulator sub-sensors (`arms.thermal`) carry no drive spec today and are skipped. Single source of truth for the pain term is [`drive_pain_for_value`](../../src/maxim/embodiment/sem.py) (the homeostatic + entropic pain formula, shared with `Embodiment.evaluate_failures`' homeostatic branch).
 
 ## Adding a new key
 

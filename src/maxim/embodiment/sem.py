@@ -225,6 +225,85 @@ class EntropicDriveSpec:
 DriveSpec = HomeostaticDriveSpec | EntropicDriveSpec
 
 
+def drive_pain_for_value(spec: DriveSpec, value: float) -> float:
+    """Pain intensity a drive spec produces at a given sensor value, in [0, 1].
+
+    The drive-pain formula for BOTH spec kinds, used by:
+
+    - ``Embodiment.evaluate_failures`` — the **homeostatic** branch is routed
+      through this helper (behaviour-preserving: the ``FailureEvent`` and the
+      published ``PainSignal`` already clamped to ``[0, 1]``, which is what this
+      returns). The **entropic** branch keeps its threshold check inline to
+      preserve exact fire-on-threshold semantics for the degenerate
+      ``deprivation_pain == 0`` config, so this helper is *not* the single call
+      site for entropic pain there — the two are pinned equal by
+      ``tests/unit/test_drive_pain_helper.py`` (entropic parametrizations);
+    - the motor-credit ``drive_potential_diff`` (orient reward) — for BOTH kinds,
+      the *reduction* in this value from before to after an action IS the relief
+      that action produced, the state-conditioned POSITIVE reward
+      substrate-primary selection needs (drive-pain reduction is bio-faithful
+      negative reinforcement AND mechanically selectable — see the June orient
+      study, ``reference_recommend_action_reward_driven``).
+
+    Homeostatic: ``min(1, (|value - set_point| - comfort_band) * pain_scale)``
+    when outside the comfort band, else ``0``. (The firing guard the failure
+    path uses is ``pain > 0``, equivalent to the pre-refactor ``excess > 0`` for
+    the ``pain_scale > 0`` of every shipped config.)
+    Entropic: ``deprivation_pain`` once ``value`` is past
+    ``deprivation_threshold`` in the drift direction, else ``0``.
+    """
+    if isinstance(spec, HomeostaticDriveSpec):
+        excess = abs(value - spec.set_point) - spec.comfort_band
+        return min(1.0, excess * spec.pain_scale) if excess > 0 else 0.0
+    if isinstance(spec, EntropicDriveSpec):
+        if spec.drift_direction == "up" and value >= spec.deprivation_threshold:
+            return spec.deprivation_pain
+        if spec.drift_direction == "down" and value <= spec.deprivation_threshold:
+            return spec.deprivation_pain
+        return 0.0
+    return 0.0
+
+
+def drive_comfort_progress(spec: DriveSpec, before: float, after: float) -> float:
+    """How far an action moved a drive TOWARD comfort (before → after).
+
+    Positive = toward comfort, negative = away. This is the motor-credit signal,
+    and it is deliberately **value-based, not pain-based** — ``drive_pain_for_value``
+    is a STEP function for entropic drives (``deprivation_pain`` past the threshold,
+    ``0`` below), so a ``warm_self`` / ``feed`` that reduces cold/hunger but stays
+    past the threshold registers ZERO pain-reduction even though it made real
+    progress. Rewarding on pain-reduction therefore starves entropic-relief
+    actions (warmth, feeding) of credit and the substrate-primary agent abandons
+    them (the #405 Exp-42 floor). Value-progress is graded and nonzero for any
+    real movement toward comfort:
+
+    - **Homeostatic** (regulate to ``set_point``): reduction in absolute deviation,
+      ``|before - set_point| - |after - set_point|`` (positive = moved toward the
+      set point; this is what orient/azimuth centeredness needs).
+    - **Entropic** ``drift_direction == "up"`` (high is bad, e.g. cold/hunger):
+      ``before - after`` (positive = value decreased toward comfort).
+    - **Entropic** ``drift_direction == "down"`` (low is bad): ``after - before``.
+
+    The consumer takes the SIGN of the net progress across the touched drives so
+    the cluster reward is ``±1`` — the same scale as the tool-success signal
+    non-drive actions get (a graded magnitude would still lose the argmax to a
+    flat ``+1``). Direction (orient toward vs away) and the collateral-harm gate
+    are preserved; only the entropic starvation is fixed.
+
+    Note: this is a REWARD gradient, not the pain formula — it deliberately
+    ignores ``comfort_band``/``pain_scale`` and credits movement toward the set
+    point even *inside* the comfort band (where ``drive_pain_for_value`` is 0).
+    That is desirable for orient (keep centering when already "centered enough")
+    and is why reward and pain can diverge for homeostatic drives too, not only
+    for the entropic step function.
+    """
+    if isinstance(spec, HomeostaticDriveSpec):
+        return abs(before - spec.set_point) - abs(after - spec.set_point)
+    if isinstance(spec, EntropicDriveSpec):
+        return (before - after) if spec.drift_direction == "up" else (after - before)
+    return 0.0
+
+
 # ---------------------------------------------------------------------------
 # Protocols
 # ---------------------------------------------------------------------------

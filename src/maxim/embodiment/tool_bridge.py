@@ -123,6 +123,55 @@ def _apply_sensor_deltas(
             pass
 
 
+def _drive_potential_diff(
+    body: Entity,
+    effect: dict[str, float],
+    pre_values: dict[str, float],
+) -> float:
+    """Net progress an affordance's ``effect`` moved the body's drives TOWARD comfort.
+
+    For each sensor the ``effect`` touched that carries an entity-level drive
+    spec, returns the SUM of ``drive_comfort_progress(spec, before, after)`` —
+    POSITIVE when the action moved drives toward comfort, NEGATIVE when away. This
+    is the state-conditioned reward substrate-primary selection needs so it can
+    learn "turn TOWARD the sound" rather than merely "turning succeeds" (the June
+    orient study — pain alone is positive-gated out of ``recommend_action``).
+
+    **Value-based, not pain-based** (the #405 fix): ``drive_pain_for_value`` is a
+    STEP function for entropic drives, so a warm/feed that reduces cold/hunger
+    without crossing the deprivation threshold registered ZERO relief and starved
+    warmth/feeding of credit (Exp 42 floored 60→8 contacts). ``drive_comfort_progress``
+    is graded and nonzero for any real movement. The consumer signs the net so the
+    cluster reward is ``±1`` — comparable to the tool-success signal non-drive
+    actions get (a small magnitude would still lose the argmax to a flat ``+1``).
+
+    Only entity-level drive sensors (``body.drive_specs``) are scored — the
+    centeredness (azimuth) and hunger/thirst/energy drives all live there.
+    Qualified modulator sub-sensors (``arms.thermal``) carry no drive spec today
+    and are skipped; those affordances fall back to the ±1 tool-success signal.
+
+    Scores the acting body's own ``self_effect`` only; a ``target_effect`` (a
+    caregiver acting on another body, e.g. a mother feeding an infant) is
+    intentionally NOT scored here — that relief is the other body's state, not
+    the actor's learned policy. The caller passes ``self_effect`` as ``effect``.
+    """
+    from maxim.embodiment.sem import drive_comfort_progress
+
+    drive_specs = getattr(body, "drive_specs", {}) or {}
+    metrics = getattr(body, "vital_metrics", {}) or {}
+    total = 0.0
+    for name in effect:
+        spec = drive_specs.get(name)
+        if spec is None:
+            continue
+        before = pre_values.get(name)
+        after = metrics.get(name)
+        if before is None or after is None:
+            continue
+        total += drive_comfort_progress(spec, before, after)
+    return total
+
+
 # ---------------------------------------------------------------------------
 # Name resolution
 # ---------------------------------------------------------------------------
@@ -380,12 +429,38 @@ class ModulatorAffordanceTool(Tool):
         # executor's own body.  Fires when the agent explicitly called the
         # tool (not reflex/orchestrator).  Supports entity-level sensors
         # ("hunger") and qualified modulator sub-sensors ("arms.thermal").
+        # Motor-credit (GAP 1): score the drive relief this affordance's own
+        # self_effect produces. Snapshot the pre-effect values of the drive
+        # sensors it will touch, apply, then diff — positive = relief, so
+        # substrate-primary selection learns "turn toward the sound," not just
+        # "turning succeeds." Emitted on side_effects["drive_potential_diff"].
+        # ``None`` = no drive sensor touched (or collateral harm — see the harm
+        # gate after failure evaluation); a float (incl 0.0 / negatives) = the
+        # measured net relief. ``accounted_sensors`` are the drive sensors this
+        # diff represents, used by the collateral-harm gate below.
+        drive_potential_diff: float | None = None
+        accounted_sensors: set[str] = set()
         if self._affordance_schema.self_effect and self._embodiment is not None:
+            _body = self._embodiment.root
+            _drive_specs = getattr(_body, "drive_specs", {}) or {}
+            _metrics = getattr(_body, "vital_metrics", {}) or {}
+            pre_values = {
+                name: _metrics[name]
+                for name in self._affordance_schema.self_effect
+                if name in _drive_specs and name in _metrics
+            }
+            accounted_sensors = set(pre_values)
             _apply_sensor_deltas(
                 self._embodiment.root,
                 self._affordance_schema.self_effect,
                 delta_kind="self_effect",
             )
+            if pre_values:
+                drive_potential_diff = _drive_potential_diff(
+                    self._embodiment.root,
+                    self._affordance_schema.self_effect,
+                    pre_values,
+                )
 
         # Target-effect: when the affordance fires WITH a target parameter,
         # write deltas to the resolved target's body sensors.  Silent
@@ -458,6 +533,26 @@ class ModulatorAffordanceTool(Tool):
                 )
                 active_failures = [_as_dict(ev) for ev in failure_events]
 
+        # Motor-credit harm gate (GAP 1, pre-merge review fold): a positive
+        # relief signal is trustworthy only if the action caused no COLLATERAL
+        # harm — a failure on a sensor its potential_diff did NOT account for.
+        #   - SAME-sensor drive discomfort (e.g. azimuth still off-center after a
+        #     relieving turn) is NOT collateral: potential_diff already reflects
+        #     that sensor's net change (relief or worsening). Nulling on it would
+        #     make EVERY orient turn — which leaves the body still off-center and
+        #     so always trips drive:azimuth:discomfort — lose its relief and be
+        #     mis-credited as harm. That would silently defeat GAP 1.
+        #   - A non-drive failure_mode (thermal shock, laceration) or a failure on
+        #     an UNTOUCHED drive sensor IS collateral — not captured by this
+        #     action's relief — so drop the signal (None) and let the consumer's
+        #     harm fallback (learn_success False -> -1) dominate. This is the
+        #     attractive-but-harmful (deceptive-hearth) case the review flagged.
+        if drive_potential_diff is not None and active_failures:
+            for _f in active_failures:
+                if _drive_failure_sensor(_f.get("name", "")) not in accounted_sensors:
+                    drive_potential_diff = None
+                    break
+
         # Cerebellum observes cascade outcome for forward model training
         if self._cerebellum is not None and entity_state:
             try:
@@ -511,6 +606,18 @@ class ModulatorAffordanceTool(Tool):
         side_effects: dict[str, Any] | None = None
         if active_failures:
             side_effects = {"embodiment_failures": active_failures}
+
+        # Motor-credit signal: the net value-progress toward comfort this action
+        # produced (drive_comfort_progress). Emitted (incl. 0.0 and negatives)
+        # whenever the self_effect touched an entity-level drive sensor AND caused
+        # no collateral harm; ``None`` (key absent) means "no drive sensor touched,
+        # or collateral harm". The consumer (runtime/tool_dispatch.py) takes the
+        # SIGN (±1); a present 0.0 (no net progress) falls back to the tool-success
+        # signal. See docs/user/tool_side_effects.md.
+        if drive_potential_diff is not None:
+            if side_effects is None:
+                side_effects = {}
+            side_effects["drive_potential_diff"] = drive_potential_diff
 
         # Entity acquisition: if this is a pick_up affordance and the target
         # is acquirable, signal the executor to reparent + register tools.
