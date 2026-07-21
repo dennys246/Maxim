@@ -758,6 +758,59 @@ def _read_drive_states(executor: Any) -> dict[str, float]:
     return drives
 
 
+def _read_drive_ranges(executor: Any) -> "dict[str, tuple[float, float]]":
+    """Per-sensor ``(lo, hi)`` range for the drive sensors ``_read_drive_states``
+    reads, so ``SensorEncoder.encode_sensors`` normalizes SIGNED sensors
+    (azimuth / thermal on ``[-1, 1]``) MONOTONICALLY instead of folding (P1 —
+    the range-blind map aliases center with hard-left and collides opposite-sign
+    values near center, so a left sound and a right sound could share one EC
+    cluster and the orient policy couldn't condition on direction).
+
+    Mirrors ``_read_drive_states``' walk (they iterate the same ``drive_specs``);
+    the ``test_read_drive_ranges_covers_every_signed_drive`` guard pins that they
+    agree so a future signed drive can't silently re-fold. A drive sensor with no
+    declared range is omitted → the encoder falls back to the legacy ``[0, 1]``-ish
+    map, which is correct for ``[0, 1]`` drives (hunger/thirst/energy) and the
+    derived ``"cold"`` need (also ``[0, 1]``). Only signed sensors need a range.
+
+    UNITS INVARIANT: ``reading_schema["range"]`` MUST be in the same units as the
+    values ``_read_drive_states`` reads from ``vital_metrics`` (which ``spec.py``
+    initializes from the declared range, so this holds for every YAML drive). A
+    drive that declared a raw-unit range (e.g. ``[0, 360]``) but wrote normalized
+    values would map every value near 0 — worse than the fold. Do not mix units.
+    """
+    embodiment = getattr(executor, "embodiment", None)
+    if embodiment is None or getattr(embodiment, "root", None) is None:
+        return {}
+    ranges: dict[str, tuple[float, float]] = {}
+    for ent in embodiment.root.walk():
+        for ds_name in getattr(ent, "drive_specs", {}):
+            rng = None
+            if "." in ds_name:
+                mod_name, sub_name = ds_name.split(".", 1)
+                mod = ent.modulators.get(mod_name)
+                if mod is not None and hasattr(mod, "_sensors"):
+                    sub = mod._sensors.get(sub_name, {})
+                    if isinstance(sub, dict):
+                        rng = sub.get("range")
+            else:
+                sensor = ent.sensors.get(ds_name)
+                if sensor is not None:
+                    rng = sensor.reading_schema.get("range")
+            # Per-sensor guard: a malformed range (non-iterable scalar, wrong
+            # length, non-numeric bounds) must NOT bubble — this function is
+            # evaluated as an argument inside the encode_sensors try/except, so a
+            # raise here would silently disable ALL substrate encoding for the
+            # agent, every tick. Skip just the bad sensor → it falls back to the
+            # legacy [0,1] map instead.
+            try:
+                if rng is not None and len(rng) == 2:
+                    ranges[ds_name] = (float(rng[0]), float(rng[1]))
+            except (TypeError, ValueError):
+                logger.debug("drive %r has a malformed range %r; skipping (legacy map)", ds_name, rng)
+    return ranges
+
+
 _DEFAULT_SUBSTRATE_MIN_CONFIDENCE = 0.3
 
 
@@ -868,7 +921,9 @@ def propose_via_substrate(
     cluster_id: str | None = None
     if sensor_encoder is not None and drives:
         try:
-            cluster_id = sensor_encoder.encode_sensors(agent_id=agent_id, sensors=drives)
+            cluster_id = sensor_encoder.encode_sensors(
+                agent_id=agent_id, sensors=drives, ranges=_read_drive_ranges(executor)
+            )
         except Exception:
             logger.debug("substrate-primary tick: sensor encoding raised", exc_info=True)
 
