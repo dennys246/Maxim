@@ -465,6 +465,9 @@ def run_generative_campaign(
         _phase = arc.phases[narrator._phase_idx] if narrator._phase_idx < len(arc.phases) else None
         if _phase is not None and getattr(_phase, "mother_scaffold", None) is not None and embodiment is not None:
             try:
+                import os
+                from dataclasses import replace
+
                 from maxim.simulation.cradle_mother import reactive_mother_tick
 
                 def _mother_inject(text: str) -> None:
@@ -473,9 +476,18 @@ def run_generative_campaign(
                     if callable(fn):
                         fn(text)
 
+                _scaffold = _phase.mother_scaffold
+                # Ablation arm B (drive-only): the mother still PLACES the sound
+                # (stimulus) so there is something to orient toward, but does NOT
+                # guide the head or feed — the infant must orient from its own
+                # centeredness drive alone (no caregiver scaffold/reward). Env
+                # toggle so the harness selects the arm; the arc is unchanged.
+                if os.environ.get("MAXIM_CRADLE_MOTHER_DISABLE_CARE"):
+                    _scaffold = replace(_scaffold, guide_strength=0.0, feed_amount=0.0)
+
                 mtel = reactive_mother_tick(
                     embodiment,
-                    scaffold=_phase.mother_scaffold,
+                    scaffold=_scaffold,
                     turn_idx=turn_idx,
                     inject=_mother_inject,
                 )
