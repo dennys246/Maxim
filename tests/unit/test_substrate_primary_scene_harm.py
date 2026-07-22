@@ -241,6 +241,8 @@ def test_propose_via_substrate_idle_when_only_introspection():
     nac = _RecordingNac()
     out = propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(["system_stats", "temporal_patterns"]))
     assert out is None
+    # introspection-only → available_tools empties → recommend_action never sees them
+    assert nac.seen_tools is None
 
 
 def test_substrate_tool_whitelist_restricts_to_minimal_repertoire(monkeypatch):

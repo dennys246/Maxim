@@ -1,12 +1,29 @@
-"""Reactive mother — the fading caregiver scaffold for the cradle orient sim.
+"""Reactive mother — the cradle orient sim's caregiver scaffold.
 
-The mother is a per-turn, world-driven effect on the PASSIVE infant body (the
-opposite of an AUT-initiated affordance): each turn she (1) guides the infant's
-head toward her by the current act's *fade* strength, (2) feeds it (hunger/thirst
-relief) *iff* it is oriented toward her, and (3) speaks motherese the infant
-hears. Across the 4-act cradle arc the guidance fades (full → partway → none), so
-the infant must increasingly orient itself to be fed — and the fraction it orients
-itself per act is the measured learning curve.
+**Dormant since 2026-07-22: DEMO ONLY, not a measurement.** The embodied
+``cradle_mother`` sim built on this module measured at CHANCE (experiment
+docs/experiments/46_operant_orient_creche.md): the sim's machinery (LLM narrator
+non-determinism, the confidence gate, 22-tool competition where the infant chose
+``sense_presence`` over turning, turn caps, response timeouts) wraps the operant
+signal in confounds that fight it. The operant-teaching CLAIM was validated
+instead on the clean scripted substrate — ``scripts/orient_substrate/{4,5,6,7}``
+(taught 0.90 vs chance; a crèche pools partial learners) — which call ONLY the
+``NAc.credit_operant_reward`` primitive, none of this embodied wiring. Per the
+dormancy-over-deletion rule this module stays wired but is a demo: do NOT build
+new features on it, and do NOT read the "teaches" language below as an embodied
+result. Resurrecting the embodied path requires the credit-on-progress root-cause
+fix (docs/plans/deferred/credit_on_progress_not_execution.md) so the operant
+contingency isn't drowned by every mechanically-successful tool.
+
+The mother is a per-turn, world-driven effect on the PASSIVE infant body: each
+turn she (1) rewards the infant for its prior turn TOWARD the sound (feed +
+``credit_operant_reward``, IN THE SCRIPTED MODEL this teaches; in the embodied sim
+it is drowned out), (2) places the next stimulus, (3) optionally guides, and (4)
+speaks motherese. NOTE: the operant credit requires ``nac`` + a non-empty
+``agent_id`` that MATCHES the substrate loop's ``_loop_agent_id`` (=
+``memory_hub.agent_id``, "sim_aut" via ``create_full_agent``); if it is ever empty
+the credit silently no-ops (acceptable for a dormant demo — hardened at
+resurrection).
 
 This is the **reactive-script v1** from the cradle plan, NOT the deferred
 generative Mother NPC (no separate LLM, deterministic, a scripted stimulus). Every
@@ -96,12 +113,12 @@ def reactive_mother_tick(
     rewards the infant when its *own* turn moved TOWARD that sound. The reward is
     a feed (hunger/thirst relief) AND — the load-bearing part — a call to
     ``nac.credit_operant_reward`` that reinforces the infant's own recent action
-    on the action-selection surface (validated by
-    ``scripts/orient_substrate/3_operant_feed_probe.py``). With the infant body's
-    intrinsic centeredness drive removed (``bodies/infant_operant``), this operant
-    credit is the SOLE teacher of orienting — remove the mother (``no_feed`` arm)
-    and the infant never learns. Run with ``MAXIM_OPERANT_ONLY_CREDIT=1`` so the
-    tool-success floor doesn't drown the signal (probe 3 ``tool_floor`` arm).
+    on the action-selection surface. In the SCRIPTED model
+    (``scripts/orient_substrate/4``) — infant_operant body (no intrinsic orient
+    drive) + ``MAXIM_OPERANT_ONLY_CREDIT=1`` — this credit is the sole teacher of
+    orienting (taught 0.90 vs chance; remove the mother and it stays at chance).
+    In the EMBODIED sim this path measures at CHANCE (see the module Dormant note):
+    the credit is drowned by every mechanically-successful tool. DEMO ONLY.
 
     Order is LOAD-BEARING: **reward-for-prior-progress (on the PRIOR azimuth) →
     place the new stimulus → (optional guide) → speak.** The reward must read the

@@ -430,6 +430,8 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
     "cradle_mother": _make_builtin(
         "cradle_mother",
         (
+            "DEMO ONLY (Dormant 2026-07-22 — measured at chance; the operant claim was "
+            "validated on the scripted substrate, scripts/orient_substrate/4-7 + exp 46). "
             "The mother-taught OPERANT orient experiment (docs/plans/cradle_mother.md). "
             "A hungry infant with NO intrinsic orient drive + a reactive mother who "
             "calls from a direction and feeds it (hunger relief) when its own turn "

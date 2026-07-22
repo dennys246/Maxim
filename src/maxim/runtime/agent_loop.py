@@ -962,6 +962,13 @@ def propose_via_substrate(
     # the artificial part. Substring match (tools are body-prefixed, e.g.
     # infant_operant_turn_left). Experiment/harness toggle (env, not config).
     # Autouse scrub: tests/conftest.py.
+    #
+    # BAND-AID (tracked): this masks the ROOT cause rather than fixing it — a tool
+    # that merely EXECUTES accrues causal credit as if it made goal/drive progress,
+    # so mechanically-successful tools drown a specific operant/drive signal. The
+    # real fix (credit-on-progress-not-execution) is
+    # docs/plans/deferred/credit_on_progress_not_execution.md; this whitelist is a
+    # scoped work-around for the dormant cradle_mother demo until that lands.
     _tool_whitelist = os.environ.get("MAXIM_SUBSTRATE_TOOL_WHITELIST", "").strip()
     if _tool_whitelist:
         _wl_terms = [w.strip() for w in _tool_whitelist.split(",") if w.strip()]

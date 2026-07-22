@@ -1,6 +1,6 @@
 # Cradle: the mother-taught OPERANT orient experiment
 
-**Status:** Built + smoke-verified (2026-07-21), calibrating turn count before the behavioral run. Branch `feat/cradle-mother` (commits `3b478e6d`→`03ad8a0c`). Supersedes the earlier *fading-scaffold* design (below), which a pre-run adversarial review showed was confounded.
+**Status:** SUPERSEDED / DORMANT (2026-07-22). The embodied `cradle_mother` sim built from this plan **measured at chance** — the sim's machinery (LLM narrator, confidence gate, 22-tool competition, turn caps) drowns the operant signal. The operant-teaching claim was validated instead on the **clean scripted substrate**: [`scripts/orient_substrate/4-7`](../../scripts/orient_substrate/) + experiment [46](../experiments/46_operant_orient_creche.md) (taught 0.90 vs chance; a crèche pools partial learners). The embodied wiring ships as a **demo only** (dormancy markers in `simulation/cradle_mother.py` + the arc). Resurrecting it needs the credit-on-progress root-cause fix ([deferred/credit_on_progress_not_execution.md](deferred/credit_on_progress_not_execution.md)). The design below is kept for that resurrection.
 
 ## Why the earlier design was scrapped (the honest part)
 
