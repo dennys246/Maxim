@@ -57,8 +57,21 @@ We first built this end-to-end in the `cradle_mother` embodied sim (all of it sh
 
 With the place code (8 seeds): taught **0.19 → 0.82** (0.82 is the ε=0.2 exploitation ceiling — a mastered policy), yoked 0.03, none 0.17. **LEARNED + MOTHER-TAUGHT PASS.** The infant learned to face the sound's direction, taught by feeding alone.
 
+## Result 4 — graded federation (coverage pooling)
+
+[`7_graded_creche_federation.py`](../../scripts/orient_substrate/7_graded_creche_federation.py), 12 infants × 25 ticks, 8 seeds, chance ≈ 0.17. On the graded task a sample-limited infant only hears a few of the six directions, so its policy has *holes*; different infants have different holes.
+
+| arm | centering rate |
+|---|---|
+| single_partial (1 infant, 25 ticks) | 0.59 |
+| single_full (1 infant, 300 ticks) | 1.00 |
+| **creche_taught (12 × 25, MERGED)** | **1.00** |
+| creche_none (12 × 25, no mother) | 0.16 |
+
+The crèche's coverage pooling recovers the full graded policy that no single partial infant has — this is where federation earns its keep (vs the modest payoff on the trivially-easy 2-alternative task). The merge pools learning, not noise (creche_none at chance).
+
 ## Next
 
-- **Experiment 47 (planned):** federation on the *graded* task — each sample-limited infant masters only the directions it happened to hear; the crèche's coverage pooling should be dramatic (a single partial infant covers a few directions, the merged crèche covers all six).
+- **Experiment 48 (planned) — habituation, individual vs collective:** modulate the orient response by novelty so the infant habituates to a constant familiar sound (city traffic) and still orients to novel ones (dishabituation). The novelty-decay machinery already exists (`tools/novelty.py::NoveltyRecord.novelty_score` decays with repetition; `attention/salience_map.py` weights novelty + inhibition-of-return). The new wire: familiarity (poolable EC cluster count) modulates orienting. **The novel question:** run habituation WITH and WITHOUT federation — because `ec_merge` accumulates cluster counts across contributors, a crèche-raised agent may habituate to sounds it never personally heard but the collective did (collective vs individual habituation in a hivemind). The rewarded direction (mother's voice) should *resist* habituation while unrewarded background habituates away — the "cocktail party" effect.
 - **Extension (under discussion):** habituation — modulate the orient response by novelty so the infant habituates to constant familiar sounds (city traffic) and still orients to novel ones (dishabituation). Rides on the existing novelty/salience machinery (`attention/salience_map.py`, `tools/novelty.py`) + the place-cell code (a familiar *direction* is a high-count cluster).
 - **Extension (under discussion):** habituation — modulate the orient response by novelty, so the infant habituates to constant familiar sounds (city traffic) and still orients to novel ones (dishabituation). Rides on the existing novelty/salience machinery (`attention/salience_map.py`, `tools/novelty.py`).
