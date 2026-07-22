@@ -46,7 +46,16 @@ ARMS = ("taught", "no_feed")
 #   MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT — the infant must EXPLORE turns to
 #     bootstrap (no intrinsic drive, cold-start bias). Without it it never turns
 #     and stays inert (the original review's B1, confirmed in the operant smoke).
-_SHARED_ENV = {"MAXIM_OPERANT_ONLY_CREDIT": "1", "MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT": "1.5"}
+#   MAXIM_SUBSTRATE_TOOL_WHITELIST — restrict the infant's repertoire to the
+#     orient loop. Without it, generic always-succeed tools (sense_presence,
+#     causal_pos 0.99) out-compete the turns and the infant never orients (found
+#     in the mac-mini sweep). A newborn's motor repertoire is small; the 22
+#     generic tools are the artificial part.
+_SHARED_ENV = {
+    "MAXIM_OPERANT_ONLY_CREDIT": "1",
+    "MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT": "1.5",
+    "MAXIM_SUBSTRATE_TOOL_WHITELIST": "turn_left,turn_right,listen",
+}
 # Per-arm environment (the arc is identical; the arm is selected by env toggles).
 _ARM_ENV: dict[str, dict[str, str]] = {
     # Full operant teaching: mother shapes (feeds + credits toward-turns).

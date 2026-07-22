@@ -952,6 +952,24 @@ def propose_via_substrate(
     if not available_tools:
         return None
 
+    # Optional experiment-scoped whitelist: restrict substrate-primary action
+    # selection to a MINIMAL affordance repertoire. The introspection filter above
+    # only removes read-only cognitive tools; non-introspection tools that also
+    # "always succeed" (sense_presence, sense, examine, say, …) still snowball
+    # causal confidence and out-compete the affordances under test — the cradle
+    # orient infant kept choosing sense_presence (causal_pos 0.99) over turn_left/
+    # turn_right. A newborn's motor repertoire is small; the 22 generic tools are
+    # the artificial part. Substring match (tools are body-prefixed, e.g.
+    # infant_operant_turn_left). Experiment/harness toggle (env, not config).
+    # Autouse scrub: tests/conftest.py.
+    _tool_whitelist = os.environ.get("MAXIM_SUBSTRATE_TOOL_WHITELIST", "").strip()
+    if _tool_whitelist:
+        _wl_terms = [w.strip() for w in _tool_whitelist.split(",") if w.strip()]
+        if _wl_terms:
+            available_tools = [t for t in available_tools if any(term in t for term in _wl_terms)]
+            if not available_tools:
+                return None
+
     # Substrate-primary mode owns its own clock — without an LLM submit
     # path there's no other code that calls into the embodiment, so
     # drive drift would never advance. Ticking evaluate_failures() here

@@ -241,7 +241,45 @@ def test_propose_via_substrate_idle_when_only_introspection():
     nac = _RecordingNac()
     out = propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(["system_stats", "temporal_patterns"]))
     assert out is None
-    assert nac.seen_tools is None  # filtered to empty before recommend_action
+
+
+def test_substrate_tool_whitelist_restricts_to_minimal_repertoire(monkeypatch):
+    """cradle_mother: MAXIM_SUBSTRATE_TOOL_WHITELIST restricts substrate-primary
+    action selection to a minimal repertoire (substring match on body-prefixed
+    tools) so generic always-succeed tools (sense_presence) can't out-compete the
+    orient turns — the mac-mini failure where the infant chose sense_presence
+    (causal_pos 0.99) over turning."""
+    from maxim.runtime.agent_loop import propose_via_substrate
+
+    monkeypatch.setenv("MAXIM_SUBSTRATE_TOOL_WHITELIST", "turn_left,turn_right,listen")
+    names = [
+        "sense_presence",
+        "examine",
+        "say",
+        "infant_operant_turn_left",
+        "infant_operant_turn_right",
+        "infant_operant_listen",
+    ]
+    nac = _RecordingNac()
+    propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(names))
+    assert nac.seen_tools is not None
+    assert set(nac.seen_tools) == {
+        "infant_operant_turn_left",
+        "infant_operant_turn_right",
+        "infant_operant_listen",
+    }
+    # the always-succeed distractors are gone
+    assert "sense_presence" not in nac.seen_tools
+
+
+def test_substrate_tool_whitelist_absent_keeps_all(monkeypatch):
+    """No whitelist → existing behavior (sense_presence still competes)."""
+    from maxim.runtime.agent_loop import propose_via_substrate
+
+    monkeypatch.delenv("MAXIM_SUBSTRATE_TOOL_WHITELIST", raising=False)
+    nac = _RecordingNac()
+    propose_via_substrate(nac=nac, agent_id="a", executor=_StubExecutor(["sense_presence", "infant_operant_turn_left"]))
+    assert "sense_presence" in (nac.seen_tools or [])
 
 
 # ── B7: drive-gating (motivated attention) in recommend_action ────────────

@@ -259,6 +259,25 @@ def _isolate_maxim_deterministic_scene_embodiment_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_substrate_tool_whitelist_env():
+    """Scrub ``MAXIM_SUBSTRATE_TOOL_WHITELIST`` across every test.
+
+    cradle_mother: restricts substrate-primary action selection to a minimal
+    affordance repertoire so generic always-succeed tools (sense_presence, …)
+    don't out-compete the orient turns. Read in propose_via_substrate — per
+    CLAUDE.md "opt-in env vars in hot paths need autouse scrubs" — a test that
+    sets it must not leak into other substrate-primary runs.
+    """
+    saved = os.environ.pop("MAXIM_SUBSTRATE_TOOL_WHITELIST", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_SUBSTRATE_TOOL_WHITELIST", None)
+        if saved is not None:
+            os.environ["MAXIM_SUBSTRATE_TOOL_WHITELIST"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_operant_only_credit_env():
     """Scrub ``MAXIM_OPERANT_ONLY_CREDIT`` across every test.
 
