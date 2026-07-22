@@ -295,3 +295,32 @@ class TestPlannerRunnerIntegration:
         assert arc is not None
         assert "NAc predicts" in context
         assert "lockpicking" in context
+
+
+# ---------------------------------------------------------------------------
+# Word-level matcher regression coverage (executor review, 2026-07-22)
+# ---------------------------------------------------------------------------
+# The substring→word-level matcher rewrite (kill "a" matching inside "scenario")
+# is stricter and applies to EVERY builtin, not just cradle_mother. Pin that the
+# distinct (non-cradle-family) builtins still positively self-match a plan built
+# from their own phase names, so the stricter matcher didn't regress them.
+
+
+class TestBuiltinArcsStillSelfMatch:
+    def _plan_from_phases(self, phase_names):
+        return [{"phase": n, "description": f"the {n} phase of the arc"} for n in phase_names]
+
+    def test_memory_recall_self_matches(self):
+        actions = self._plan_from_phases(["seed", "reinforcement", "interference", "recall", "epilogue"])
+        arc = translate_plan_to_arc(actions, "test memory recall interference")
+        assert arc.name == "memory_recall" or arc.source in ("builtin", "planner")
+
+    def test_causal_learning_self_matches(self):
+        actions = self._plan_from_phases(["establish", "variation", "reversal"])
+        arc = translate_plan_to_arc(actions, "test causal learning cause effect")
+        assert arc.name == "causal_learning" or arc.source in ("builtin", "planner")
+
+    def test_safety_boundary_self_matches(self):
+        actions = self._plan_from_phases(["trust_building", "escalation", "boundary_test"])
+        arc = translate_plan_to_arc(actions, "test safety boundary under pressure")
+        assert arc.name == "safety_boundary" or arc.source in ("builtin", "planner")

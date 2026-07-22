@@ -309,6 +309,79 @@ class TestClusterRewardMotorCredit:
         assert self._cluster_reward(cluster_id=None, drive_potential_diff=0.09) is None
 
 
+class TestOperantOnlyCreditMode:
+    """cradle_mother: with MAXIM_OPERANT_ONLY_CREDIT set, a driveless action gets
+    NO tool-success cluster reward (the floor drowns the caregiver's operant
+    signal — probe 3 tool_floor arm) but IS remembered for the mother's later
+    ``credit_operant_reward``. A real drive signal still books its sign."""
+
+    def _run(self, monkeypatch, **overrides):
+        monkeypatch.setenv("MAXIM_OPERANT_ONLY_CREDIT", "1")
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        nac = MagicMock()
+        kwargs = dict(
+            agent_id="infant",
+            tool_name="turn_left",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+            cluster_id="cluster-xyz",
+        )
+        kwargs.update(overrides)
+        record_outcome(**kwargs)
+        return nac
+
+    def test_driveless_action_books_no_tool_success_floor(self, monkeypatch):
+        nac = self._run(monkeypatch, drive_potential_diff=None)
+        assert not nac.update_cluster_reward.called  # no floor
+        # ... but the action is remembered for the mother's operant credit
+        assert nac.set_pending_operant_action.called
+        assert nac.set_pending_operant_action.call_args.kwargs["tool_signature"] == "tool:turn_left"
+
+    def test_zero_progress_also_books_no_floor(self, monkeypatch):
+        nac = self._run(monkeypatch, drive_potential_diff=0.0)
+        assert not nac.update_cluster_reward.called
+        assert nac.set_pending_operant_action.called
+
+    def test_real_drive_signal_still_books_its_sign(self, monkeypatch):
+        nac = self._run(monkeypatch, drive_potential_diff=0.3)
+        assert nac.update_cluster_reward.called
+        assert nac.update_cluster_reward.call_args.kwargs["reward"] == 1.0
+        nac2 = self._run(monkeypatch, drive_potential_diff=-0.3)
+        assert nac2.update_cluster_reward.call_args.kwargs["reward"] == -1.0
+
+    def test_off_by_default_keeps_the_floor(self, monkeypatch):
+        # Without the env var, a driveless action still books the tool-success +1.
+        monkeypatch.delenv("MAXIM_OPERANT_ONLY_CREDIT", raising=False)
+        pool = MagicMock()
+        pool.add_outcome = MagicMock()
+        nac = MagicMock()
+        record_outcome(
+            agent_id="a",
+            tool_name="turn_left",
+            success=True,
+            result_summary="ok",
+            error=None,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=10,
+            llm_worker=None,
+            context_pool=pool,
+            nac=nac,
+            cluster_id="cluster-xyz",
+            drive_potential_diff=None,
+        )
+        assert nac.update_cluster_reward.call_args.kwargs["reward"] == 1.0
+        assert not nac.set_pending_operant_action.called
+
+
 class TestExecuteParallelActions:
     """Test parallel action batch execution."""
 

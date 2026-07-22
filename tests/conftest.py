@@ -259,6 +259,63 @@ def _isolate_maxim_deterministic_scene_embodiment_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_cradle_mother_disable_care_env():
+    """Scrub ``MAXIM_CRADLE_MOTHER_DISABLE_CARE`` across every test.
+
+    cradle_mother (dormant demo) no_feed arm — zeroes the mother's feed/guide.
+    Read in the generative-runner per-turn loop; per CLAUDE.md "opt-in env vars in
+    hot paths need autouse scrubs" (its two siblings MAXIM_OPERANT_ONLY_CREDIT /
+    MAXIM_SUBSTRATE_TOOL_WHITELIST each got one) — a test that sets it must not
+    leak into other generative-campaign tests.
+    """
+    saved = os.environ.pop("MAXIM_CRADLE_MOTHER_DISABLE_CARE", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_CRADLE_MOTHER_DISABLE_CARE", None)
+        if saved is not None:
+            os.environ["MAXIM_CRADLE_MOTHER_DISABLE_CARE"] = saved
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_substrate_tool_whitelist_env():
+    """Scrub ``MAXIM_SUBSTRATE_TOOL_WHITELIST`` across every test.
+
+    cradle_mother: restricts substrate-primary action selection to a minimal
+    affordance repertoire so generic always-succeed tools (sense_presence, …)
+    don't out-compete the orient turns. Read in propose_via_substrate — per
+    CLAUDE.md "opt-in env vars in hot paths need autouse scrubs" — a test that
+    sets it must not leak into other substrate-primary runs.
+    """
+    saved = os.environ.pop("MAXIM_SUBSTRATE_TOOL_WHITELIST", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_SUBSTRATE_TOOL_WHITELIST", None)
+        if saved is not None:
+            os.environ["MAXIM_SUBSTRATE_TOOL_WHITELIST"] = saved
+
+
+@pytest.fixture(autouse=True)
+def _isolate_maxim_operant_only_credit_env():
+    """Scrub ``MAXIM_OPERANT_ONLY_CREDIT`` across every test.
+
+    cradle_mother: suppresses the tool-success cluster-reward floor so a
+    caregiver's operant feed is the sole teacher (``NAc.credit_operant_reward``).
+    Read in the ``record_outcome`` hot path — per CLAUDE.md "opt-in env vars in
+    hot startup paths need autouse scrubs" — a test that sets it must not leak
+    into other substrate-primary runs that rely on the tool-success floor.
+    """
+    saved = os.environ.pop("MAXIM_OPERANT_ONLY_CREDIT", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_OPERANT_ONLY_CREDIT", None)
+        if saved is not None:
+            os.environ["MAXIM_OPERANT_ONLY_CREDIT"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_sim_audio_orient_env():
     """Scrub ``MAXIM_SIM_AUDIO_ORIENT`` across every test.
 

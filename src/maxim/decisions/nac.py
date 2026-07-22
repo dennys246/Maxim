@@ -508,6 +508,23 @@ class NAc:
         # id once per tick and passes it to recommend_action.
         self._cluster_reward_bias: dict[tuple[str, str, str], float] = {}
 
+        # Operant delayed-reward memory (cradle_mother, 2026-07-21): the
+        # last ``(cluster_id, tool_signature)`` the agent executed, per
+        # agent. Set by the substrate-primary action path when an action
+        # runs; consumed by ``credit_operant_reward`` when an EXTERNAL,
+        # caregiver-caused drive relief arrives (e.g. a mother feeding the
+        # infant *because* it oriented). This is the mirror image of the
+        # ``_drive_potential_diff`` self_effect motor-credit: that path
+        # deliberately EXCLUDES a caregiver's ``target_effect`` (so the
+        # caregiver's own policy isn't credited by the recipient's relief);
+        # operant conditioning credits the RECIPIENT's own recent action by
+        # the relief IT experienced. Session-scoped, NOT persisted — an
+        # operant contingency is a within-episode learning signal; the
+        # durable trace lives in ``_cluster_reward_bias`` (which IS
+        # persisted). Overwritten on each action, so the feed at turn T
+        # credits the action from T-1 that produced the fed orientation.
+        self._pending_operant_action: dict[str, tuple[str, str]] = {}
+
         # Goal-level reward bias: tracks whether deliberation under a goal
         # type historically produces good outcomes.  Keyed by goal string.
         # Range: [-max_reward_bias, +max_reward_bias] — UNLIKE _reward_bias
@@ -2087,6 +2104,76 @@ class NAc:
         if not cluster_id:
             return 0.0
         return self._cluster_reward_bias.get((agent_id, cluster_id, tool_signature), 0.0)
+
+    # -- Operant delayed-reward credit (cradle_mother) --------------------
+
+    def set_pending_operant_action(
+        self,
+        agent_id: str,
+        cluster_id: str | None,
+        tool_signature: str,
+    ) -> None:
+        """Remember the agent's most-recent ``(cluster_id, tool_signature)``.
+
+        The substrate-primary action path calls this when an action runs so
+        a later EXTERNAL, caregiver-caused drive relief can be attributed to
+        the recipient's own preceding action (operant conditioning). A
+        no-op when ``cluster_id`` is missing/empty — without cluster context
+        the operant reward has no action-selection key to credit, matching
+        ``update_cluster_reward``'s guard. Overwrites any prior pending
+        action for the agent (one-step memory): the relief that arrives next
+        credits exactly the action that produced the rewarded state.
+        """
+        if not agent_id:
+            raise ValueError("set_pending_operant_action requires non-empty agent_id")
+        if not cluster_id:
+            return
+        with self._lock:
+            self._pending_operant_action[agent_id] = (cluster_id, tool_signature)
+
+    def credit_operant_reward(
+        self,
+        agent_id: str,
+        reward: float,
+    ) -> tuple[str, str] | None:
+        """Credit the agent's pending operant action with an external reward.
+
+        Operant conditioning: an environmental reward the agent did NOT
+        cause through its own ``self_effect`` (e.g. a mother feeding the
+        infant *because* it oriented toward her) reinforces the agent's own
+        most-recent action on the ``_cluster_reward_bias`` action-selection
+        surface — the SAME surface ``update_cluster_reward`` writes and
+        ``recommend_action`` reads, so the credit actually shapes future
+        action choice (unlike ``distribute_reward``/``credit_node``, which
+        writes the recognition-widening ``_reward_bias`` surface).
+
+        This is deliberately NOT ``distribute_reward``: that path credits
+        recognition (which node a percept maps to), not motor selection
+        (which action to take in a cluster). Teaching "turn toward the
+        voice" requires the motor surface.
+
+        The pending action is NOT cleared on credit — the substrate path
+        overwrites it on the next action, so a sustained contingency (fed
+        every turn the agent stays oriented) keeps reinforcing whatever the
+        agent most recently did, as real operant reinforcement does.
+
+        Returns the credited ``(cluster_id, tool_signature)``, or ``None``
+        when the agent has no pending action (nothing to credit).
+        """
+        if not agent_id:
+            raise ValueError("credit_operant_reward requires non-empty agent_id")
+        with self._lock:
+            pending = self._pending_operant_action.get(agent_id)
+        if pending is None:
+            return None
+        cluster_id, tool_signature = pending
+        self.update_cluster_reward(
+            agent_id=agent_id,
+            cluster_id=cluster_id,
+            tool_signature=tool_signature,
+            reward=reward,
+        )
+        return pending
 
     def get_agent_tool_biases(
         self,

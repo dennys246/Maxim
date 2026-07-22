@@ -409,8 +409,12 @@ def _parse_entity(
             _initial=sensor_spec.get("initial"),
             _entity_ref=entity,
         )
-        # Parse drive spec from entity-level sensors
-        if isinstance(sensor_spec, dict) and "drive" in sensor_spec:
+        # Parse drive spec from entity-level sensors. A ``drive: null`` (None)
+        # means "no drive" — this lets an ``extends`` child REMOVE a drive it
+        # inherited (deep_merge replaces the parent's drive dict with null),
+        # e.g. the operant infant body nulling base_humanoid's intrinsic
+        # centeredness drive so a caregiver's operant feed is the sole teacher.
+        if isinstance(sensor_spec, dict) and sensor_spec.get("drive") is not None:
             entity.drive_specs[sensor_name] = _parse_drive_spec(sensor_spec["drive"])
 
     # -- modulators ---------------------------------------------------------

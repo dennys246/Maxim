@@ -127,6 +127,43 @@ def test_read_drive_ranges_covers_every_signed_drive():
         assert any(lo < 0 for lo, _ in ranges.values()), f"{body_ref}: no signed drive got a range"
 
 
+def test_read_exteroceptive_states_encodes_driveless_azimuth():
+    """cradle_mother: bodies/infant_operant nulls the azimuth centeredness drive,
+    so _read_drive_states never sees azimuth. _read_exteroceptive_states must still
+    read it (perception != drive) so the substrate cluster can condition on sound
+    direction — without this the operant orient policy is blind to left-vs-right."""
+    from maxim.embodiment.body import Embodiment
+    from maxim.embodiment.component_registry import ComponentRegistry
+    from maxim.runtime.agent_loop import (
+        _read_drive_states,
+        _read_exteroceptive_ranges,
+        _read_exteroceptive_states,
+    )
+
+    class _Exec:
+        def __init__(self, emb):
+            self.embodiment = emb
+
+    root = ComponentRegistry().instantiate("bodies/infant_operant")
+    root.vital_metrics["azimuth"] = -0.7  # a sound to the left
+    ex = _Exec(Embodiment(root=root))
+    # azimuth is NOT a drive here...
+    assert "azimuth" not in _read_drive_states(ex)
+    # ...but it IS perceived exteroceptively, with its signed range for the P1 fold.
+    extero = _read_exteroceptive_states(ex)
+    assert extero.get("azimuth") == -0.7
+    assert _read_exteroceptive_ranges(ex).get("azimuth") == (-1.0, 1.0)
+
+
+def test_read_exteroceptive_states_empty_without_embodiment():
+    from maxim.runtime.agent_loop import _read_exteroceptive_states
+
+    class _Exec:
+        embodiment = None
+
+    assert _read_exteroceptive_states(_Exec()) == {}
+
+
 def test_read_drive_ranges_skips_malformed_range_without_disabling():
     """A malformed range (non-iterable scalar / non-numeric bounds) must NOT
     raise — it is evaluated inside the encode_sensors try/except, so a raise would

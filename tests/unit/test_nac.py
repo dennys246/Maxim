@@ -997,6 +997,96 @@ class TestContextSimilarity:
         assert links[0].outcome_valence == valence_negative
 
 
+class TestOperantRewardCredit:
+    """Operant delayed-reward credit (cradle_mother, 2026-07-21).
+
+    ``set_pending_operant_action`` + ``credit_operant_reward`` let an
+    EXTERNAL, caregiver-caused drive relief (a mother feeding the infant
+    *because* it oriented) reinforce the infant's OWN recent action on the
+    ``_cluster_reward_bias`` action-selection surface. Validated end-to-end
+    by ``scripts/orient_substrate/3_operant_feed_probe.py`` (contingent
+    1.000 vs yoked/none ~0.48); these pin the unit contract.
+    """
+
+    def test_credit_lands_on_the_pending_action(self):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig())
+        nac.set_pending_operant_action("infant", "c1", "tool:turn_left")
+        credited = nac.credit_operant_reward("infant", 1.0)
+        assert credited == ("c1", "tool:turn_left")
+        # Credit landed on the ACTION-SELECTION surface recommend_action reads.
+        assert nac.cluster_reward_bias("infant", "c1", "tool:turn_left") > 0.0
+        # ... and nowhere else.
+        assert nac.cluster_reward_bias("infant", "c1", "tool:turn_right") == 0.0
+
+    def test_credit_targets_the_action_selection_surface_not_recognition(self):
+        """Regression: operant credit must NOT write ``_reward_bias`` (the
+        recognition-widening surface ``distribute_reward``/``credit_node``
+        use) — that surface does not shape motor action choice."""
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig())
+        nac.set_pending_operant_action("infant", "c1", "tool:turn_left")
+        nac.credit_operant_reward("infant", 1.0)
+        # recognition surface untouched
+        assert nac._reward_bias.get(("infant", "c1")) in (None, 0.0)
+        # action-selection surface credited
+        assert nac._cluster_reward_bias.get(("infant", "c1", "tool:turn_left"), 0.0) > 0.0
+
+    def test_overwrite_is_one_step(self):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig())
+        nac.set_pending_operant_action("infant", "c1", "tool:turn_left")
+        nac.set_pending_operant_action("infant", "c2", "tool:turn_right")  # overwrite
+        credited = nac.credit_operant_reward("infant", 1.0)
+        assert credited == ("c2", "tool:turn_right")
+        assert nac.cluster_reward_bias("infant", "c1", "tool:turn_left") == 0.0
+
+    def test_credit_with_no_pending_is_a_noop(self):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig())
+        assert nac.credit_operant_reward("infant", 1.0) is None
+
+    def test_negative_reward_punishes_the_pending_action(self):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig())
+        nac.set_pending_operant_action("infant", "c1", "tool:turn_left")
+        nac.credit_operant_reward("infant", -1.0)
+        assert nac.cluster_reward_bias("infant", "c1", "tool:turn_left") < 0.0
+
+    def test_per_agent_isolation(self):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig())
+        nac.set_pending_operant_action("a", "c1", "tool:turn_left")
+        nac.set_pending_operant_action("b", "c1", "tool:turn_right")
+        nac.credit_operant_reward("a", 1.0)
+        assert nac.cluster_reward_bias("a", "c1", "tool:turn_left") > 0.0
+        # b's pending is untouched by a's credit
+        assert nac.cluster_reward_bias("b", "c1", "tool:turn_right") == 0.0
+
+    def test_empty_agent_id_rejected(self):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig())
+        with pytest.raises(ValueError):
+            nac.set_pending_operant_action("", "c1", "tool:turn_left")
+        with pytest.raises(ValueError):
+            nac.credit_operant_reward("", 1.0)
+
+    def test_missing_cluster_id_is_a_noop(self):
+        from maxim.decisions.nac import NAc, NACConfig
+
+        nac = NAc(config=NACConfig())
+        nac.set_pending_operant_action("infant", None, "tool:turn_left")
+        nac.set_pending_operant_action("infant", "", "tool:turn_left")
+        assert nac.credit_operant_reward("infant", 1.0) is None
+
+
 class TestClusterRewardBiasDecayTauSplit:
     """Phase 1 of cluster_reward_bias_decay_tau_split.md.
 

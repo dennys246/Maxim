@@ -19,6 +19,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# cradle_mother is a lightweight module (no maxim imports at module level → no
+# cycle) — imported at runtime so BUILTIN_ARCS can construct MotherScaffold acts.
+from maxim.simulation.cradle_mother import DEFAULT_MOTHERESE, MotherScaffold
+
 import yaml
 
 log = logging.getLogger(__name__)
@@ -46,6 +50,10 @@ class NarrativePhase:
     interaction: bool = False  # requires ask_user tool
     act: str | None = None  # optional act grouping
     world_entities: tuple[str, ...] = ()  # component refs to activate on phase entry
+    # Reactive-mother fade config for this act (cradle_mother). When set, the
+    # generative runner calls reactive_mother_tick(embodiment, scaffold=...) once
+    # per turn — the world-driven caregiver (stimulus + fading guide + feed + speak).
+    mother_scaffold: "MotherScaffold | None" = None
 
     @property
     def turn_range(self) -> tuple[int, int]:
@@ -136,6 +144,7 @@ def _make_builtin(name: str, description: str, phases: list[dict]) -> NarrativeA
                 interaction=p.get("interaction", False),
                 act=p.get("act"),
                 world_entities=tuple(p.get("world_entities", ())),
+                mother_scaffold=p.get("mother_scaffold"),
             )
             for p in phases
         ],
@@ -414,6 +423,78 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                     "glint of rock, softness of blanket). Observe and report: "
                     "does it avoid the fire? Seek food when hungry? Prefer the "
                     "blanket? Use the lever? Do NOT re-teach — only observe."
+                ),
+            },
+        ],
+    ),
+    "cradle_mother": _make_builtin(
+        "cradle_mother",
+        (
+            "DEMO ONLY (Dormant 2026-07-22 — measured at chance; the operant claim was "
+            "validated on the scripted substrate, scripts/orient_substrate/4-7 + exp 46). "
+            "The mother-taught OPERANT orient experiment (docs/plans/cradle_mother.md). "
+            "A hungry infant with NO intrinsic orient drive + a reactive mother who "
+            "calls from a direction and feeds it (hunger relief) when its own turn "
+            "moved TOWARD her, reinforcing that action (operant shaping). "
+            "Substrate-primary, no LLM in the action path. Does the infant learn to "
+            "orient toward the voice PURELY from the mother's contingent feeding? "
+            "Run with --embodiment bodies/infant_operant and MAXIM_OPERANT_ONLY_CREDIT=1."
+        ),
+        # Prose-less (substrate-primary reads sensor/drive state). The reactive
+        # mother is the world driver (per-turn hook), NOT a world_entity. This is
+        # PURE operant shaping — guide_strength 0 in every act (physically turning
+        # the head then crediting the infant's own action would be dishonest; see
+        # cradle_mother.py). The 4 acts are just EARLY→LATE time-bins for the
+        # learning curve: directedness (progress > 0) should rise across them in
+        # ``taught`` and stay ~chance in ``no_feed``. Same left/right stimulus
+        # spread every act (the time-bin is the independent variable).
+        [
+            {
+                "name": "early",
+                "act": "act1_early",
+                "turns": (10, 12),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
+                ),
+            },
+            {
+                "name": "warming",
+                "act": "act2_warming",
+                "turns": (10, 12),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
+                ),
+            },
+            {
+                "name": "consolidating",
+                "act": "act3_consolidating",
+                "turns": (10, 12),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
+                ),
+            },
+            {
+                "name": "autonomous",
+                "act": "act4_autonomous",
+                "turns": (10, 12),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
                 ),
             },
         ],

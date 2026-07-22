@@ -15,15 +15,15 @@
         "per_concept": [
           {
             "concept": "blue mug",
-            "concept_node": "4320ca0c-d53",
-            "expected_vision_node": "f12535be-ed4",
+            "concept_node": "f6e1cb04-e9f",
+            "expected_vision_node": "2209744e-3d5",
             "hit": true,
             "n_results": 2
           },
           {
             "concept": "wooden table",
-            "concept_node": "4d098276-64b",
-            "expected_vision_node": "7e103692-f92",
+            "concept_node": "2906e555-d97",
+            "expected_vision_node": "e7aae3a0-edf",
             "hit": false,
             "n_results": 0
           }
@@ -38,15 +38,15 @@
         "per_concept": [
           {
             "concept": "rusty sword",
-            "concept_node": "c6e6c436-da8",
-            "expected_vision_node": "988e65b1-fe8",
+            "concept_node": "9e420785-9cf",
+            "expected_vision_node": "79e86ad7-99a",
             "hit": true,
             "n_results": 2
           },
           {
             "concept": "leather shield",
-            "concept_node": "a529de39-6f9",
-            "expected_vision_node": "f04b44a3-9c5",
+            "concept_node": "54f1cd4f-094",
+            "expected_vision_node": "6cafcf5f-4b3",
             "hit": false,
             "n_results": 0
           }
@@ -61,22 +61,22 @@
         "per_concept": [
           {
             "concept": "red ball",
-            "concept_node": "b8253c73-a44",
-            "expected_vision_node": "13e85b6d-e7e",
+            "concept_node": "c58a3f26-8b7",
+            "expected_vision_node": "0099cede-ffb",
             "hit": false,
             "n_results": 0
           },
           {
             "concept": "cardboard box",
-            "concept_node": "9024a2e4-af5",
-            "expected_vision_node": "9e9f3a92-94b",
+            "concept_node": "f09e968b-37f",
+            "expected_vision_node": "13ff424a-c28",
             "hit": false,
             "n_results": 0
           },
           {
             "concept": "glass window",
-            "concept_node": "881a4569-f8b",
-            "expected_vision_node": "3a6cb107-7d1",
+            "concept_node": "76de4c3b-031",
+            "expected_vision_node": "2f3841ab-4c9",
             "hit": false,
             "n_results": 0
           }
@@ -91,15 +91,15 @@
         "per_concept": [
           {
             "concept": "old book",
-            "concept_node": "edc5a0e3-69b",
-            "expected_vision_node": "daf60569-90f",
+            "concept_node": "cbee4af6-45b",
+            "expected_vision_node": "100a0cb5-e5f",
             "hit": true,
             "n_results": 2
           },
           {
             "concept": "marble shelf",
-            "concept_node": "be51e808-40d",
-            "expected_vision_node": "2007bfcf-0d4",
+            "concept_node": "be119a41-616",
+            "expected_vision_node": "d8f5c772-9c8",
             "hit": false,
             "n_results": 0
           }
@@ -114,15 +114,15 @@
         "per_concept": [
           {
             "concept": "golden key",
-            "concept_node": "708db473-437",
-            "expected_vision_node": "8d033a05-f3b",
+            "concept_node": "ec395823-7bb",
+            "expected_vision_node": "0ad88b5d-951",
             "hit": true,
             "n_results": 2
           },
           {
             "concept": "iron chain",
-            "concept_node": "83b34a79-1fb",
-            "expected_vision_node": "d40d9f36-c04",
+            "concept_node": "005afc5a-59a",
+            "expected_vision_node": "48739397-12c",
             "hit": false,
             "n_results": 0
           }
@@ -146,15 +146,15 @@
         "per_concept": [
           {
             "concept": "blue mug",
-            "concept_node": "299b4103-f42",
-            "expected_vision_node": "da158db0-5ee",
+            "concept_node": "e18b4927-6e6",
+            "expected_vision_node": "38e9b827-771",
             "hit": true,
             "n_results": 2
           },
           {
             "concept": "wooden table",
-            "concept_node": "0b109e4a-722",
-            "expected_vision_node": "dee376d1-f41",
+            "concept_node": "4fae7a50-d73",
+            "expected_vision_node": "ef92d5cc-550",
             "hit": true,
             "n_results": 2
           }
@@ -169,15 +169,15 @@
         "per_concept": [
           {
             "concept": "rusty sword",
-            "concept_node": "b5983b57-a1e",
-            "expected_vision_node": "b6bbf523-826",
+            "concept_node": "4f43d795-992",
+            "expected_vision_node": "a83f7a9a-482",
             "hit": true,
             "n_results": 2
           },
           {
             "concept": "leather shield",
-            "concept_node": "fb3a71aa-baa",
-            "expected_vision_node": "f7b49120-bcd",
+            "concept_node": "f4b2360e-677",
+            "expected_vision_node": "5b17de8e-c14",
             "hit": true,
             "n_results": 2
           }
@@ -192,22 +192,22 @@
         "per_concept": [
           {
             "concept": "red ball",
-            "concept_node": "8fdf498b-424",
-            "expected_vision_node": "8babbbca-704",
+            "concept_node": "be1ca387-e4c",
+            "expected_vision_node": "3e485b5b-680",
             "hit": true,
             "n_results": 3
           },
           {
             "concept": "cardboard box",
-            "concept_node": "53555ebf-9c7",
-            "expected_vision_node": "aeef28a9-d98",
+            "concept_node": "c4a08446-572",
+            "expected_vision_node": "5cf1343b-de6",
             "hit": true,
             "n_results": 3
           },
           {
             "concept": "glass window",
-            "concept_node": "9e18302e-6ec",
-            "expected_vision_node": "ef5f7a6f-333",
+            "concept_node": "846c801c-857",
+            "expected_vision_node": "748d7385-139",
             "hit": true,
             "n_results": 3
           }
@@ -222,15 +222,15 @@
         "per_concept": [
           {
             "concept": "old book",
-            "concept_node": "b738a5da-42f",
-            "expected_vision_node": "cb6fd5b7-779",
+            "concept_node": "604201f6-093",
+            "expected_vision_node": "55fd8959-271",
             "hit": true,
             "n_results": 2
           },
           {
             "concept": "marble shelf",
-            "concept_node": "88cf2d67-fc1",
-            "expected_vision_node": "d6393c3c-c65",
+            "concept_node": "aa4b24b8-c85",
+            "expected_vision_node": "087c4b86-3e5",
             "hit": true,
             "n_results": 2
           }
@@ -245,15 +245,15 @@
         "per_concept": [
           {
             "concept": "golden key",
-            "concept_node": "0ac814d9-5e6",
-            "expected_vision_node": "d5c2199f-fa4",
+            "concept_node": "51e55843-c76",
+            "expected_vision_node": "a13a285f-1af",
             "hit": true,
             "n_results": 2
           },
           {
             "concept": "iron chain",
-            "concept_node": "e03f26c4-3f9",
-            "expected_vision_node": "187c69b1-fcb",
+            "concept_node": "5abee3ed-045",
+            "expected_vision_node": "a8b67380-1e7",
             "hit": true,
             "n_results": 2
           }

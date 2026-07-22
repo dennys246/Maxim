@@ -1,0 +1,30 @@
+component:
+  name: infant_operant
+  extends: bodies/infant_humanoid
+  category: bodies
+  archetype: humanoid
+  tags: [body, humanoid, infant, cradle, operant, developmental]
+  synonyms: [operant infant, mother-taught infant, infant operant body]
+  description: |
+    Infant body for the cradle_mother OPERANT orient experiment. Identical to
+    infant_humanoid EXCEPT the inherited azimuth centeredness drive is REMOVED
+    (drive: null). Rationale (2026-07-21 design pass): probes 1/2 proved the
+    intrinsic centeredness drive teaches orienting ALL BY ITSELF — an infant
+    with that drive orients whether or not a mother is present, which confounds
+    the "raised by a mother" claim. With the drive gone, turning relieves
+    nothing intrinsically; the infant perceives direction (the azimuth sensor
+    stays) but has no innate reason to orient. Its ONLY reward for orienting is
+    the mother's contingent feeding via NAc.credit_operant_reward — so orienting
+    is LEARNED from her, not innate (run with MAXIM_OPERANT_ONLY_CREDIT=1 so the
+    tool-success floor doesn't drown the operant signal — see probe 3).
+
+entity:
+  name: infant_operant
+  entity_type: body
+  sensors:
+    # Remove base_humanoid's intrinsic centeredness drive. deep_merge replaces
+    # the inherited drive dict with null; spec.py treats null as "no drive".
+    # The azimuth SENSOR itself (unit/range/initial) is inherited and kept, so
+    # the infant still perceives direction and encodes an EC cluster from it.
+    azimuth:
+      drive: null
