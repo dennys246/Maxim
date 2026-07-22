@@ -149,8 +149,10 @@ def _extract_fade(log_path: Path) -> dict[str, dict[str, float]]:
 # ── one sub-sim run ─────────────────────────────────────────────────────────
 
 
-def _run_one(arm: str, seed: int, *, model: str, max_turns: int, timeout_s: int, workdir: Path) -> dict[str, Any]:
-    data_home = workdir / f"{arm}_seed{seed}"
+def _run_one(
+    arm: str, seed: int, *, model: str, max_turns: int, timeout_s: int, workdir: Path, explore_weight: float
+) -> dict[str, Any]:
+    data_home = workdir / f"{arm}_seed{seed}_ew{explore_weight}"
     data_home.mkdir(parents=True, exist_ok=True)
     src_models = Path(os.path.expanduser("~/.maxim/models"))
     link = data_home / "models"
@@ -169,6 +171,8 @@ def _run_one(arm: str, seed: int, *, model: str, max_turns: int, timeout_s: int,
     env["MAXIM_ROLE"] = "solo"
     env["MAXIM_LOG_FILE"] = str(log_path)
     env.update(_ARM_ENV[arm])
+    # CLI override wins over the arm default (explore-weight sweep).
+    env["MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT"] = str(explore_weight)
 
     cmd = _resolve_maxim() + [
         "--sim",
@@ -229,8 +233,15 @@ def main() -> int:
     p.add_argument("--timeout-s", type=int, default=1800)
     p.add_argument("--out", required=True)
     p.add_argument("--workdir", default="/tmp/cradle_mother_runs")
+    p.add_argument(
+        "--explore-weight",
+        type=float,
+        default=1.5,
+        help="MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT (sweepable). 1.5 bootstraps but may cap the ceiling; "
+        "lower exploits the (small ~2-cluster) orient policy sooner.",
+    )
     p.add_argument("--mock", action="store_true", help="synthetic fade (CI smoke, no subprocess)")
-    p.add_argument("--resume", action="store_true", help="skip (arm,seed) already in --out")
+    p.add_argument("--resume", action="store_true", help="skip (arm,seed,explore_weight) already in --out")
     args = p.parse_args()
 
     arms = [a.strip() for a in args.arms.split(",") if a.strip()]
@@ -241,12 +252,12 @@ def main() -> int:
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    done: set[tuple[str, int]] = set()
+    done: set[tuple[str, int, float]] = set()
     if args.resume and out_path.exists():
         for line in out_path.read_text().splitlines():
             try:
                 r = json.loads(line)
-                done.add((r["arm"], r["seed"]))
+                done.add((r["arm"], r["seed"], float(r.get("explore_weight", 1.5))))
             except (json.JSONDecodeError, KeyError):
                 pass
 
@@ -259,7 +270,7 @@ def main() -> int:
         for arm in arms:
             for trial in range(args.trials):
                 seed = args.seed_base + trial
-                if (arm, seed) in done:
+                if (arm, seed, float(args.explore_weight)) in done:
                     continue
                 t0 = _t.monotonic() if hasattr(_t, "monotonic") else 0
                 try:
@@ -273,12 +284,14 @@ def main() -> int:
                             max_turns=args.sim_max_turns,
                             timeout_s=args.timeout_s,
                             workdir=workdir,
+                            explore_weight=args.explore_weight,
                         )
                     )
                     rec = {
                         "experiment": "cradle_mother",
                         "arm": arm,
                         "seed": seed,
+                        "explore_weight": args.explore_weight,
                         "mock": args.mock,
                         "git_hash": _git_hash(),
                         "fade": fade,
