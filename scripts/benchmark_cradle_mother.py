@@ -46,15 +46,17 @@ ARMS = ("taught", "no_feed")
 #   MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT — the infant must EXPLORE turns to
 #     bootstrap (no intrinsic drive, cold-start bias). Without it it never turns
 #     and stays inert (the original review's B1, confirmed in the operant smoke).
-#   MAXIM_SUBSTRATE_TOOL_WHITELIST — restrict the infant's repertoire to the
-#     orient loop. Without it, generic always-succeed tools (sense_presence,
+#   MAXIM_SUBSTRATE_TOOL_WHITELIST — restrict the infant's repertoire to the two
+#     turn actions. Without it, generic always-succeed tools (sense_presence,
 #     causal_pos 0.99) out-compete the turns and the infant never orients (found
-#     in the mac-mini sweep). A newborn's motor repertoire is small; the 22
-#     generic tools are the artificial part.
+#     in the mac-mini sweep). ``listen`` is deliberately EXCLUDED: in substrate-
+#     primary the infant already perceives azimuth via the sensor encoding, so
+#     listen is a no-op that scores progress=0 and only dilutes directedness.
+#     The task is a clean 2-alternative motor choice (turn toward the sound).
 _SHARED_ENV = {
     "MAXIM_OPERANT_ONLY_CREDIT": "1",
     "MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT": "1.5",
-    "MAXIM_SUBSTRATE_TOOL_WHITELIST": "turn_left,turn_right,listen",
+    "MAXIM_SUBSTRATE_TOOL_WHITELIST": "turn_left,turn_right",
 }
 # Per-arm environment (the arc is identical; the arm is selected by env toggles).
 _ARM_ENV: dict[str, dict[str, str]] = {
