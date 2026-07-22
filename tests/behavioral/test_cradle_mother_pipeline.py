@@ -129,4 +129,3 @@ def test_analyzer_flags_no_learning(tmp_path):
     code, report = _run_analyzer(out)
     assert code == 1, report  # NOT GRADUATED
     assert "NOT GRADUATED" in report
-    assert "NOT GRADUATED" in report
