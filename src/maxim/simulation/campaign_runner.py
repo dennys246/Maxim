@@ -27,8 +27,13 @@ def run_generative_campaign(
     session_dir_base: str,
     embodiment: Any = None,
     entity_map: Any = None,
+    nac: Any = None,
+    agent_id: str = "",
 ) -> Any | None:
     """Run a generative campaign — narrator drives a multi-turn story.
+
+    ``nac`` + ``agent_id`` are threaded to the reactive-mother operant credit
+    (cradle_mother): the mother's feed reinforces the AUT's own orient action.
 
     Returns the GenerativeCampaignResult, or None on failure.
     """
@@ -55,6 +60,8 @@ def run_generative_campaign(
             session_dir=session_dir_base,
             embodiment=embodiment,
             entity_map=entity_map,
+            nac=nac,
+            agent_id=agent_id,
         )
         display_summary([f"Generative campaign complete: {result.total_turns} turns"])
         return result

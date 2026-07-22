@@ -811,6 +811,65 @@ def _read_drive_ranges(executor: Any) -> "dict[str, tuple[float, float]]":
     return ranges
 
 
+# Exteroceptive world-set sensors the substrate encodes for PERCEPTION (not as
+# drives/needs). ``azimuth`` = head-relative sound direction (base_humanoid's
+# capability-driven orient sensor). Kept a named set so a future exteroceptive
+# sensor (e.g. a light-direction) is one entry, not a code change at the read site.
+_EXTEROCEPTIVE_ROOT_SENSORS: tuple[str, ...] = ("azimuth",)
+
+
+def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
+    """Read world-set EXTEROCEPTIVE root sensors (``azimuth``) into the substrate-
+    encoded state so an agent can condition its action on WHERE a stimulus is,
+    even when it carries no drive/need about it.
+
+    Distinct from ``_read_drive_states``: those are interoceptive needs that also
+    drive the affinity heuristic; these are pure perception and are merged only
+    into the ENCODED sensors, never into ``current_drives``. Load-bearing for
+    ``bodies/infant_operant`` (cradle_mother operant experiment), whose azimuth
+    sensor has ``drive: null`` — without this the orient cluster is blind to
+    direction. A body whose azimuth already carries a drive gets the same value
+    from both reads (same key) — no double-count, no behavior change.
+    """
+    embodiment = getattr(executor, "embodiment", None)
+    root = getattr(embodiment, "root", None)
+    if root is None:
+        return {}
+    sensors = getattr(root, "sensors", {}) or {}
+    vm = getattr(root, "vital_metrics", {}) or {}
+    out: dict[str, float] = {}
+    for name in _EXTEROCEPTIVE_ROOT_SENSORS:
+        if name in sensors and name in vm:
+            try:
+                out[name] = float(vm[name])
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]":
+    """Declared ``(lo, hi)`` for the exteroceptive sensors ``_read_exteroceptive_
+    states`` reads, so signed sensors (azimuth on ``[-1, 1]``) fold MONOTONICALLY
+    (P1) — a left sound and a right sound must not collapse into one cluster."""
+    embodiment = getattr(executor, "embodiment", None)
+    root = getattr(embodiment, "root", None)
+    if root is None:
+        return {}
+    sensors = getattr(root, "sensors", {}) or {}
+    ranges: dict[str, tuple[float, float]] = {}
+    for name in _EXTEROCEPTIVE_ROOT_SENSORS:
+        sensor = sensors.get(name)
+        if sensor is None:
+            continue
+        rng = sensor.reading_schema.get("range")
+        try:
+            if rng is not None and len(rng) == 2:
+                ranges[name] = (float(rng[0]), float(rng[1]))
+        except (TypeError, ValueError):
+            logger.debug("exteroceptive %r has a malformed range %r; skipping (legacy map)", name, rng)
+    return ranges
+
+
 _DEFAULT_SUBSTRATE_MIN_CONFIDENCE = 0.3
 
 
@@ -909,6 +968,16 @@ def propose_via_substrate(
             logger.debug("substrate-primary tick: evaluate_failures raised", exc_info=True)
 
     drives = _read_drive_states(executor)
+    # Exteroceptive perception (world-set sound direction) is merged into the
+    # ENCODED state so the agent's action can condition on WHERE the sound is —
+    # not just its interoceptive drives. This is load-bearing when the body
+    # perceives direction WITHOUT a centeredness drive (bodies/infant_operant,
+    # cradle_mother operant experiment): azimuth is a sensor, not a drive, so
+    # _read_drive_states never sees it and the cluster would otherwise be blind
+    # to left-vs-right. Kept OUT of ``current_drives`` (below) so the drive-
+    # affinity heuristic stays drive-only — perception is not a need.
+    extero = _read_exteroceptive_states(executor)
+    encoded = {**drives, **extero} if extero else drives
 
     # Phase 0 sensor encoding — feed the current drive snapshot to EC
     # so substrate-primary mode produces nodes the way the LLM-primary
@@ -919,11 +988,12 @@ def propose_via_substrate(
     # (NAc.cluster_reward_bias) competes with the cold-start drive
     # affinity heuristic for tool selection.
     cluster_id: str | None = None
-    if sensor_encoder is not None and drives:
+    if sensor_encoder is not None and encoded:
         try:
-            cluster_id = sensor_encoder.encode_sensors(
-                agent_id=agent_id, sensors=drives, ranges=_read_drive_ranges(executor)
-            )
+            _ranges = _read_drive_ranges(executor)
+            if extero:
+                _ranges = {**_ranges, **_read_exteroceptive_ranges(executor)}
+            cluster_id = sensor_encoder.encode_sensors(agent_id=agent_id, sensors=encoded, ranges=_ranges)
         except Exception:
             logger.debug("substrate-primary tick: sensor encoding raised", exc_info=True)
 

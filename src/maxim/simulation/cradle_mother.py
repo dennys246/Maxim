@@ -85,39 +85,57 @@ def reactive_mother_tick(
     scaffold: MotherScaffold,
     turn_idx: int = 0,
     inject: Callable[[str], None] | None = None,
+    nac: Any | None = None,
+    agent_id: str = "",
+    feed_reward: float = 1.0,
+    prev_stimulus: float | None = None,
 ) -> dict[str, Any]:
-    """Apply one turn of the reactive mother's caregiving to the infant body.
+    """Apply one turn of the reactive mother's OPERANT caregiving to the infant.
 
-    Order is LOAD-BEARING: **feed-if-oriented (on the PRIOR azimuth) → place the
-    stimulus → guide (fading) → speak.** Feeding must read the azimuth the
-    infant's *previous* turn left, BEFORE the new stimulus overwrites it — that is
-    what rewards the infant's own orient (and gives the temporal structure
-    "orient this turn → fed next turn"). Feeding on the post-stimulus/post-guide
-    azimuth would let each new stimulus erase the infant's orient before it could
-    be rewarded, and the infant would never learn.
+    The mother is an operant SHAPER (2026-07-21 redesign): she places a sound and
+    rewards the infant when its *own* turn moved TOWARD that sound. The reward is
+    a feed (hunger/thirst relief) AND — the load-bearing part — a call to
+    ``nac.credit_operant_reward`` that reinforces the infant's own recent action
+    on the action-selection surface (validated by
+    ``scripts/orient_substrate/3_operant_feed_probe.py``). With the infant body's
+    intrinsic centeredness drive removed (``bodies/infant_operant``), this operant
+    credit is the SOLE teacher of orienting — remove the mother (``no_feed`` arm)
+    and the infant never learns. Run with ``MAXIM_OPERANT_ONLY_CREDIT=1`` so the
+    tool-success floor doesn't drown the signal (probe 3 ``tool_floor`` arm).
 
-    - **Feed** relieves hunger/thirst when the prior azimuth is within
-      ``oriented_threshold`` (the infant faced the mother last turn).
-    - **Stimulus** world-sets ``azimuth`` to the mother's direction this turn
-      (``stimulus_azimuths`` rotated by ``turn_idx``) — the thing to orient
-      toward. Substrate-primary's §1.16 audio world-set is gated out, so the
-      mother sets it directly (world-driven, not the AUT path).
-    - **Guide** world-sets ``azimuth`` toward center by ``guide_strength`` (the
-      fading scaffold; the caregiver can center beyond the infant's own reach).
-    - **Speak** injects motherese via the caller's substrate-safe ``inject``.
+    Order is LOAD-BEARING: **reward-for-prior-progress (on the PRIOR azimuth) →
+    place the new stimulus → (optional guide) → speak.** The reward must read the
+    azimuth the infant's *previous* turn left, BEFORE the new stimulus overwrites
+    it — that is what rewards the infant's own orient and gives the temporal
+    structure "orient this turn → fed + credited next turn". The pending operant
+    action (set in ``tool_dispatch`` at the infant's action) is likewise from the
+    previous turn, so the credit lands on the action that produced the progress.
 
-    Returns telemetry for the fade-curve analyzer: ``fed``/``guided``/``spoke``
-    plus ``az_prior`` (what the infant left), ``az_stimulus`` (mother's direction),
-    ``az_guided`` (after the scaffold). Fail-soft: missing body / azimuth sensor
-    is a no-op.
+    Shaping contingency: when ``prev_stimulus`` (the sound placed last turn) is
+    known, the infant is rewarded iff ``|prev_stimulus| - |az_prior| > 0`` — it
+    turned toward the sound. Without ``prev_stimulus`` (legacy / non-operant use)
+    it falls back to the oriented-threshold contingency.
+
+    ``guide_strength`` (the old fading-scaffold knob) is retained for back-compat
+    but the operant arc sets it to 0: physically turning the head and then
+    crediting the infant's own action for the mother's guide would be dishonest,
+    so the honest operant curriculum is pure shaping and the "fade" is the
+    EMERGENT learning curve (directedness rising across the session).
+
+    Returns telemetry: ``fed``/``credited``/``guided``/``spoke`` plus ``az_prior``
+    (what the infant left), ``az_stimulus`` (mother's direction this turn — the
+    caller feeds it back as next turn's ``prev_stimulus``), ``az_guided``,
+    ``progress``. Fail-soft: missing body / azimuth sensor is a no-op.
     """
     out: dict[str, Any] = {
         "fed": False,
+        "credited": False,
         "guided": False,
         "spoke": None,
         "az_prior": None,
         "az_stimulus": None,
         "az_guided": None,
+        "progress": None,
     }
     root = getattr(embodiment, "root", None)
     if root is None:
@@ -128,10 +146,25 @@ def reactive_mother_tick(
 
     from maxim.embodiment.audio_localization import world_set_azimuth
 
-    # 1. FEED if the infant's PRIOR turn left it oriented — rewards its own orient.
+    # 1. REWARD the infant's PRIOR turn — operant shaping toward the sound.
     az_prior = vm.get("azimuth")
     out["az_prior"] = az_prior
-    if scaffold.feed_amount > 0.0 and az_prior is not None and abs(float(az_prior)) <= scaffold.oriented_threshold:
+    # Compute directedness (turned toward last turn's sound) UNCONDITIONALLY when
+    # we can — the ``no_feed`` control arm (feed_amount 0) must still log
+    # ``progress`` so the analyzer can compare directedness across arms
+    # independent of whether the infant was fed.
+    progress: float | None = None
+    if prev_stimulus is not None and az_prior is not None:
+        progress = abs(float(prev_stimulus)) - abs(float(az_prior))
+        out["progress"] = progress
+    should_feed = False
+    if scaffold.feed_amount > 0.0 and az_prior is not None:
+        if progress is not None:
+            should_feed = progress > 1e-6  # turned TOWARD the sound (shaping)
+        else:
+            # Legacy / non-operant fallback: reward being oriented.
+            should_feed = abs(float(az_prior)) <= scaffold.oriented_threshold
+    if should_feed:
         deltas = {"hunger": -scaffold.feed_amount}
         if scaffold.thirst_ratio > 0.0:
             deltas["thirst"] = -scaffold.feed_amount * scaffold.thirst_ratio
@@ -142,6 +175,14 @@ def reactive_mother_tick(
             out["fed"] = True
         except Exception:
             logger.debug("reactive_mother_tick: feed (_apply_sensor_deltas) failed", exc_info=True)
+        # Operant credit: the relief reinforces the infant's OWN recent action on
+        # the action-selection surface. This is the teacher (drive removed).
+        if nac is not None and agent_id:
+            try:
+                credited = nac.credit_operant_reward(agent_id, feed_reward)
+                out["credited"] = credited is not None
+            except Exception:
+                logger.debug("reactive_mother_tick: credit_operant_reward failed", exc_info=True)
 
     # 2. STIMULUS — the mother calls from a direction this turn (world-set azimuth).
     if scaffold.stimulus_azimuths:

@@ -166,3 +166,88 @@ def test_body_without_azimuth_is_noop_for_orient():
     assert out["guided"] is False  # no azimuth sensor to place/guide
     # az_prior is None -> feed contingency (oriented) not met -> not fed
     assert out["fed"] is False
+
+
+# ── operant shaping + credit (the 2026-07-21 redesign) ───────────────────────
+
+
+class _RecordingNac:
+    """Captures credit_operant_reward calls for the operant-shaping tests."""
+
+    def __init__(self):
+        self.credits: list[tuple[str, float]] = []
+
+    def credit_operant_reward(self, agent_id, reward):
+        self.credits.append((agent_id, reward))
+        return ("cluster", "tool:turn_left")  # non-None => credited
+
+
+def test_shaping_rewards_movement_toward_the_sound():
+    # Last turn the sound was at -0.7; the infant is now at -0.3 -> it turned
+    # TOWARD the sound (|−0.7| − |−0.3| = 0.4 > 0) -> fed AND credited.
+    body, emb = _infant(azimuth=-0.3)
+    nac = _RecordingNac()
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.5, stimulus_azimuths=(0.6,)),
+        nac=nac,
+        agent_id="infant",
+        feed_reward=1.0,
+        prev_stimulus=-0.7,
+    )
+    assert out["fed"] is True and out["credited"] is True
+    assert out["progress"] > 0
+    assert nac.credits == [("infant", 1.0)]
+
+
+def test_shaping_does_not_reward_movement_away():
+    # Sound was at -0.3; infant is now at -0.7 -> moved AWAY -> no feed, no credit.
+    body, emb = _infant(azimuth=-0.7)
+    nac = _RecordingNac()
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.5, stimulus_azimuths=(0.6,)),
+        nac=nac,
+        agent_id="infant",
+        prev_stimulus=-0.3,
+    )
+    assert out["fed"] is False and out["credited"] is False
+    assert nac.credits == []
+
+
+def test_no_feed_arm_never_credits():
+    # feed_amount 0 (no_feed arm) -> no feed, no operant credit even with progress.
+    body, emb = _infant(azimuth=-0.1)
+    nac = _RecordingNac()
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.0, stimulus_azimuths=(0.6,)),
+        nac=nac,
+        agent_id="infant",
+        prev_stimulus=-0.7,
+    )
+    assert out["fed"] is False and out["credited"] is False
+    assert nac.credits == []
+
+
+def test_credit_skipped_without_nac_or_agent_id():
+    # Shaping still feeds, but no credit when nac/agent_id are absent (feed is
+    # fidelity; the credit is the teacher).
+    body, emb = _infant(azimuth=-0.3)
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.5),
+        prev_stimulus=-0.7,
+    )
+    assert out["fed"] is True and out["credited"] is False
+
+
+def test_stimulus_is_returned_for_next_turn_prev_stimulus():
+    # The caller feeds az_stimulus back as next turn's prev_stimulus.
+    body, emb = _infant(azimuth=0.0)
+    out = reactive_mother_tick(
+        emb,
+        scaffold=MotherScaffold(feed_amount=0.5, stimulus_azimuths=(-0.7, 0.6), guide_strength=0.0),
+        turn_idx=0,
+    )
+    assert out["az_stimulus"] == -0.7

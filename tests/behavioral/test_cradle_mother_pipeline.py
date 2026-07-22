@@ -46,23 +46,23 @@ def test_parse_mother_record_none_value_and_non_record():
     assert harness._parse_mother_record("some other log line") is None
 
 
-def test_extract_fade_computes_self_orient_rate(tmp_path):
+def test_extract_fade_computes_directedness(tmp_path):
     log = tmp_path / "log.jsonl"
     lines = [
-        # act1: fully guided (guided=True) — fed but NOT self-orient
-        {"message": "act=act1_fully_guided fed=True guided=True az_prior=0.0 az_stimulus=-0.7 az_guided=0.0"},
-        {"message": "act=act1_fully_guided fed=True guided=True az_prior=0.0 az_stimulus=0.6 az_guided=0.0"},
-        # act3: autonomous (guided=False) — fed==self-orient
-        {"message": "act=act3_autonomous fed=True guided=False az_prior=0.05 az_stimulus=-0.7 az_guided=-0.7"},
-        {"message": "act=act3_autonomous fed=False guided=False az_prior=0.6 az_stimulus=0.6 az_guided=0.6"},
+        # act1: two turns toward the sound (progress > 0), one away (progress < 0)
+        {"message": "act=act1_early fed=True credited=True progress=0.3 az_prior=-0.4"},
+        {"message": "act=act1_early fed=True credited=True progress=0.2 az_prior=0.5"},
+        {"message": "act=act1_early fed=False credited=False progress=-0.3 az_prior=-0.8"},
+        # a turn-1 record with progress=None (no prev_stimulus) is not counted
+        {"message": "act=act1_early fed=True credited=False progress=None az_prior=0.0"},
         {"message": "unrelated line, no act"},
     ]
     log.write_text("\n".join(json.dumps(x) for x in lines))
     fade = harness._extract_fade(log)
-    assert fade["act1_fully_guided"]["fed_rate"] == 1.0
-    assert fade["act1_fully_guided"]["self_orient_rate"] == 0.0  # all guided → none self
-    assert fade["act3_autonomous"]["guided_rate"] == 0.0
-    assert fade["act3_autonomous"]["self_orient_rate"] == 0.5  # 1 of 2 fed while unguided
+    # 3 measured turns (progress numeric), 2 moved toward → directedness 2/3
+    assert fade["act1_early"]["measured"] == 3
+    assert abs(fade["act1_early"]["directedness"] - 2 / 3) < 1e-9
+    assert abs(fade["act1_early"]["credited_rate"] - 2 / 4) < 1e-9  # 2 of 4 records credited
 
 
 def test_extract_fade_missing_log_is_empty(tmp_path):
@@ -70,17 +70,20 @@ def test_extract_fade_missing_log_is_empty(tmp_path):
 
 
 def test_arm_env_mapping():
-    assert harness._ARM_ENV["taught"] == {}
-    assert harness._ARM_ENV["drive_only"] == {"MAXIM_CRADLE_MOTHER_DISABLE_CARE": "1"}
-    assert harness._ARM_ENV["scaffold_only"] == {"MAXIM_NAC_REWARD_BIAS_DISABLED": "1"}
+    # Both arms share the operant-only + explore conditions; no_feed adds the
+    # disable-care toggle (the control).
+    assert harness._ARM_ENV["taught"]["MAXIM_OPERANT_ONLY_CREDIT"] == "1"
+    assert harness._ARM_ENV["taught"]["MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT"] == "1.5"
+    assert harness._ARM_ENV["no_feed"]["MAXIM_CRADLE_MOTHER_DISABLE_CARE"] == "1"
+    assert "MAXIM_CRADLE_MOTHER_DISABLE_CARE" not in harness._ARM_ENV["taught"]
 
 
 def test_mock_fade_shapes_the_arms():
-    # taught rises across acts; scaffold_only stays low; drive_only in between.
+    # taught directedness rises to learned; no_feed stays at chance.
     t = harness._mock_fade("taught", 42)
-    c = harness._mock_fade("scaffold_only", 42)
-    assert t["act4_autonomous_voice"]["self_orient_rate"] > 0.8
-    assert c["act4_autonomous_voice"]["self_orient_rate"] < 0.2
+    c = harness._mock_fade("no_feed", 42)
+    assert t["act4_autonomous"]["directedness"] > 0.8
+    assert abs(c["act4_autonomous"]["directedness"] - 0.5) < 0.1
 
 
 # ── analyzer verdict via the mock pipeline ──────────────────────────────────
@@ -110,18 +113,20 @@ def test_mock_pipeline_taught_graduates(tmp_path):
 
 
 def test_analyzer_flags_no_learning(tmp_path):
-    # taught with a FLAT autonomous curve (no learning) must not graduate.
+    # taught with a FLAT directedness curve (never learned) must not graduate.
     out = tmp_path / "flat.jsonl"
     rows = []
     flat = {
-        "act1_fully_guided": {"self_orient_rate": 0.0},
-        "act3_autonomous": {"self_orient_rate": 0.1},
-        "act4_autonomous_voice": {"self_orient_rate": 0.1},
+        "act1_early": {"directedness": 0.5},
+        "act2_warming": {"directedness": 0.5},
+        "act3_consolidating": {"directedness": 0.5},
+        "act4_autonomous": {"directedness": 0.5},
     }
-    for arm in ("taught", "drive_only", "scaffold_only"):
+    for arm in ("taught", "no_feed"):
         for seed in (42, 43, 44):
             rows.append({"experiment": "cradle_mother", "arm": arm, "seed": seed, "fade": flat})
     out.write_text("\n".join(json.dumps(r) for r in rows))
     code, report = _run_analyzer(out)
-    assert code == 1  # NOT GRADUATED
+    assert code == 1, report  # NOT GRADUATED
+    assert "NOT GRADUATED" in report
     assert "NOT GRADUATED" in report

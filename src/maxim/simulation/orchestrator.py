@@ -1686,6 +1686,13 @@ def start_simulation_mode(
         )
         _gen_embodiment = _aut_instance.embodiment if _deterministic_scene_embodiment else None
         _gen_entity_map = _aut_entity_map if _deterministic_scene_embodiment else None
+        # cradle_mother operant credit: thread the AUT's NAc + its canonical
+        # agent_id so the reactive mother's feed reinforces the AUT's OWN orient
+        # action (credit_operant_reward). agent_id MUST match the substrate loop's
+        # ``_loop_agent_id = memory_hub.agent_id or agent_name`` or the credit
+        # lands on a different key than the pending action — smoke-verified via
+        # the ``credited=True`` mother telemetry.
+        _gen_agent_id = (getattr(aut_memory_hub, "agent_id", "") if aut_memory_hub is not None else "") or ""
         _run_gen(
             goal=goal,
             bridge=bridge,
@@ -1696,6 +1703,8 @@ def start_simulation_mode(
             session_dir_base=str(_gen_reports_dir() / time.strftime("%Y%m%d_%H%M%S")),
             embodiment=_gen_embodiment,
             entity_map=_gen_entity_map,
+            nac=aut_nac,
+            agent_id=_gen_agent_id,
         )
         stop_event.set()
 

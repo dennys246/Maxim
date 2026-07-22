@@ -430,47 +430,26 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
     "cradle_mother": _make_builtin(
         "cradle_mother",
         (
-            "The mother-scaffolded orient experiment (docs/plans/cradle_mother.md). "
-            "A hungry infant + a reactive mother who calls from a direction, turns "
-            "the infant's head toward her (a FADING scaffold), speaks motherese, and "
-            "feeds it when it faces her. Substrate-primary (no LLM in the action "
-            "path). As the guide fades across acts, does the infant learn to orient "
-            "toward the voice ITSELF? Run with --embodiment bodies/infant_humanoid."
+            "The mother-taught OPERANT orient experiment (docs/plans/cradle_mother.md). "
+            "A hungry infant with NO intrinsic orient drive + a reactive mother who "
+            "calls from a direction and feeds it (hunger relief) when its own turn "
+            "moved TOWARD her, reinforcing that action (operant shaping). "
+            "Substrate-primary, no LLM in the action path. Does the infant learn to "
+            "orient toward the voice PURELY from the mother's contingent feeding? "
+            "Run with --embodiment bodies/infant_operant and MAXIM_OPERANT_ONLY_CREDIT=1."
         ),
         # Prose-less (substrate-primary reads sensor/drive state). The reactive
-        # mother is the world driver (per-turn hook), NOT a world_entity. Fade =
-        # guide_strength 1.0 -> 0.5 -> 0.0 -> 0.0; the infant must increasingly
-        # orient itself to be fed. Same left/right stimulus spread every act (the
-        # fade is the independent variable). oriented_threshold matches the
-        # base_humanoid centeredness comfort_band (0.1).
+        # mother is the world driver (per-turn hook), NOT a world_entity. This is
+        # PURE operant shaping — guide_strength 0 in every act (physically turning
+        # the head then crediting the infant's own action would be dishonest; see
+        # cradle_mother.py). The 4 acts are just EARLY→LATE time-bins for the
+        # learning curve: directedness (progress > 0) should rise across them in
+        # ``taught`` and stay ~chance in ``no_feed``. Same left/right stimulus
+        # spread every act (the time-bin is the independent variable).
         [
             {
-                "name": "fully_guided",
-                "act": "act1_fully_guided",
-                "turns": (8, 10),
-                "instruction": "",
-                "mother_scaffold": MotherScaffold(
-                    guide_strength=1.0,
-                    feed_amount=0.5,
-                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
-                    speech=DEFAULT_MOTHERESE,
-                ),
-            },
-            {
-                "name": "co_active",
-                "act": "act2_co_active",
-                "turns": (8, 10),
-                "instruction": "",
-                "mother_scaffold": MotherScaffold(
-                    guide_strength=0.5,
-                    feed_amount=0.5,
-                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
-                    speech=DEFAULT_MOTHERESE,
-                ),
-            },
-            {
-                "name": "autonomous",
-                "act": "act3_autonomous",
+                "name": "early",
+                "act": "act1_early",
                 "turns": (10, 12),
                 "instruction": "",
                 "mother_scaffold": MotherScaffold(
@@ -481,8 +460,32 @@ BUILTIN_ARCS: dict[str, NarrativeArc] = {
                 ),
             },
             {
-                "name": "autonomous_voice",
-                "act": "act4_autonomous_voice",
+                "name": "warming",
+                "act": "act2_warming",
+                "turns": (10, 12),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
+                ),
+            },
+            {
+                "name": "consolidating",
+                "act": "act3_consolidating",
+                "turns": (10, 12),
+                "instruction": "",
+                "mother_scaffold": MotherScaffold(
+                    guide_strength=0.0,
+                    feed_amount=0.5,
+                    stimulus_azimuths=(-0.7, 0.6, -0.5, 0.8, -0.9, 0.4),
+                    speech=DEFAULT_MOTHERESE,
+                ),
+            },
+            {
+                "name": "autonomous",
+                "act": "act4_autonomous",
                 "turns": (10, 12),
                 "instruction": "",
                 "mother_scaffold": MotherScaffold(

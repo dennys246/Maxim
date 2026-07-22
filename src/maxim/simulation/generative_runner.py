@@ -326,6 +326,8 @@ def run_generative_campaign(
     planner_state: Any = None,
     embodiment: Any = None,
     entity_map: Any = None,
+    nac: Any = None,
+    agent_id: str = "",
 ) -> GenerativeCampaignResult:
     """Run a generative campaign.
 
@@ -408,6 +410,10 @@ def run_generative_campaign(
     # Track per-phase entity activation
     _activated_entities: set[str] = set()
     _last_phase_idx: int = -1
+    # Reactive-mother operant shaping: the sound placed last turn, fed back as
+    # this turn's ``prev_stimulus`` so the mother can reward the infant for
+    # having turned TOWARD it (cradle_mother operant redesign).
+    _mother_prev_stimulus: float | None = None
 
     # Embodied arcs (any arc with world_entities) no longer deregister the
     # conversational ``respond`` / ``say`` tools. Instead, ``LLMWorker.is_embodied``
@@ -477,11 +483,12 @@ def run_generative_campaign(
                         fn(text)
 
                 _scaffold = _phase.mother_scaffold
-                # Ablation arm B (drive-only): the mother still PLACES the sound
-                # (stimulus) so there is something to orient toward, but does NOT
-                # guide the head or feed — the infant must orient from its own
-                # centeredness drive alone (no caregiver scaffold/reward). Env
-                # toggle so the harness selects the arm; the arc is unchanged.
+                # Ablation arm ``no_feed`` (the control): the mother still PLACES
+                # the sound (stimulus) so there is something to orient toward, but
+                # does NOT feed/credit — with the intrinsic orient drive removed
+                # (bodies/infant_operant) the infant then has NO teacher and stays
+                # at chance. Isolates the mother's operant contribution. Env toggle
+                # so the harness selects the arm; the arc is unchanged.
                 if os.environ.get("MAXIM_CRADLE_MOTHER_DISABLE_CARE"):
                     _scaffold = replace(_scaffold, guide_strength=0.0, feed_amount=0.0)
 
@@ -490,11 +497,18 @@ def run_generative_campaign(
                     scaffold=_scaffold,
                     turn_idx=turn_idx,
                     inject=_mother_inject,
+                    nac=nac,
+                    agent_id=agent_id,
+                    prev_stimulus=_mother_prev_stimulus,
                 )
+                # Feed this turn's sound back as next turn's shaping reference.
+                if mtel.get("az_stimulus") is not None:
+                    _mother_prev_stimulus = float(mtel["az_stimulus"])
                 try:
                     sim_log(
                         "mother",
-                        f"act={_phase.act or '?'} fed={mtel['fed']} guided={mtel['guided']} "
+                        f"act={_phase.act or '?'} fed={mtel['fed']} credited={mtel['credited']} "
+                        f"guided={mtel['guided']} progress={mtel['progress']} "
                         f"az_prior={mtel['az_prior']} az_stimulus={mtel['az_stimulus']} az_guided={mtel['az_guided']}",
                     )
                 except Exception:
