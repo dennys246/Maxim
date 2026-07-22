@@ -1,44 +1,51 @@
-# Cradle: the mother-scaffolded orient experiment (build plan)
+# Cradle: the mother-taught OPERANT orient experiment
 
-**Status:** Building (2026-07-20). The current, buildable spec — supersedes the closed #404 draft (whose specifics predated GAP-1/P1/the motor-credit value-progress fix). Rides the now-complete orient substrate foundation on `main`: the **value-progress motor-credit** (drive-relief → cluster reward) + the **range-aware fold fix** (signed azimuth separates left/center/right). No LLM in the infant's action path (substrate-primary).
+**Status:** Built + smoke-verified (2026-07-21), calibrating turn count before the behavioral run. Branch `feat/cradle-mother` (commits `3b478e6d`→`03ad8a0c`). Supersedes the earlier *fading-scaffold* design (below), which a pre-run adversarial review showed was confounded.
 
-## The claim
-A hungry infant, and a mother who calls from a direction, physically turns the infant's head toward her (a fading scaffold), speaks motherese, and feeds it when it faces her. Does the infant **learn to orient toward the mother's voice itself** as the scaffold fades — cross-session, no fine-tuning? The fraction of the orient the infant produces *itself* per act is the measured learning curve.
+## Why the earlier design was scrapped (the honest part)
 
-## The per-turn loop (load-bearing order)
-Each turn the world (reactive mother) acts on the PASSIVE infant, then the infant takes its substrate-primary turn. Order inside the mother tick:
+The first design gave the infant an intrinsic **centeredness drive** (azimuth homeostatic set_point 0) and measured whether it self-orients as a mother's *guide* fades. A pre-overnight review found the fatal flaw: **the intrinsic drive teaches orienting all by itself** — probes 1+2 (`scripts/orient_substrate/1_motor_credit_probe.py`, `2_full_path_probe.py`) show contingent **1.000** vs ~0.50 chance with *no mother anywhere*. So the drive was present in every arm and ablated by none; a rising curve wouldn't prove the mother taught anything. (Also: no exploration weight → inert run; the "scaffold_only" arm didn't disable the surface the policy actually learns on; the metric was fed-gated so the control read 0 by construction.)
 
-1. **Feed if oriented** — reads the azimuth the infant's *prior* turn left (`|azimuth| ≤ oriented_threshold`) and, if facing the mother, relieves hunger/thirst. **This must come first**: it rewards the infant's own prior orient. If feeding read the post-stimulus/post-guide azimuth instead, each new stimulus would overwrite the infant's orient before it could be rewarded → the infant never learns (the silent-break this ordering avoids). Feed-then-stimulus also gives the temporal structure *orient this turn → fed next turn*.
-2. **Place the stimulus** — world-set the infant's `azimuth` to the mother's direction for this turn (a deterministic per-seed sequence, e.g. alternating/spread left–right). This is "the mother calls from over there." In substrate-primary the #403 §1.16 audio world-set is gated out, so the mother tick sets it directly (world-driven, not the AUT path).
-3. **Guide (the fading scaffold)** — world-set `azimuth` toward center by `guide_strength` (Act 1 fully centers; Act 3 not at all). The caregiver can center beyond the infant's own motor reach.
-4. **Speak** — inject motherese as a text percept (the non-gated `bridge.percept_source.inject_cli`, since `send_and_wait` is suppressed in substrate-primary). The audio-visual + language-grounding channel.
+## The claim (now honest)
 
-Then the infant's substrate-primary turn runs (`propose_via_substrate` → orient action). Because azimuth is now range-encoded (P1) and relief is value-progress-credited (motor-credit), turning toward the sound is a positively-credited, direction-conditioned action.
+A hungry infant with **no intrinsic orient drive** learns to orient toward a sound **purely because a mother feeds it** when its own turn moved toward the sound (operant conditioning). Remove the mother → it never learns. No LLM in the action path (substrate-primary).
 
-## The fade curriculum (4-act arc `cradle_mother`)
-`MotherScaffold` per act (`guide_strength`, `feed_amount`, `oriented_threshold`, `stimulus_azimuths`, `speech`):
+## The mechanism
 
-| Act | guide_strength | infant must | fed when |
-|---|---|---|---|
-| 1 fully guided | 1.0 | nothing (passive) | mother centers it → fed |
-| 2 co-active | 0.5 | complete the turn | it finishes orienting |
-| 3 autonomous | 0.0 | orient itself | it orients |
-| 4 autonomous (voice) | 0.0 | orient to the voice | it orients |
+- **`NAc.credit_operant_reward(agent_id, reward)`** (+ `set_pending_operant_action`): an EXTERNAL, caregiver-caused drive relief reinforces the recipient's OWN recent action on `_cluster_reward_bias` (the action-SELECTION surface `recommend_action` reads) — NOT `distribute_reward`/`credit_node` (the recognition surface). This is the mirror image of `_drive_potential_diff`, which deliberately excludes caregiver `target_effect` so a caregiver's policy isn't credited by the recipient's relief. Validated in isolation by **`scripts/orient_substrate/3_operant_feed_probe.py`**: contingent **1.000**, yoked/none **~0.48** (`none` at chance = the "mother necessary" proof); with the tool-success floor ON, all arms collapse to chance (→ operant-only mode below).
+- **`bodies/infant_operant`**: extends `infant_humanoid`, `azimuth: {drive: null}` (needs the spec.py "null drive = no drive" fix). Perceives direction, no innate reason to orient.
+- **`MAXIM_OPERANT_ONLY_CREDIT`** (tool_dispatch): remembers each action for the mother's credit and suppresses the uniform tool-success cluster-reward floor (which otherwise saturates the cap and drowns the operant signal — probe 3's `tool_floor` arm).
+- **Exteroceptive encoding** (agent_loop `_read_exteroceptive_states/_ranges`): substrate-primary now encodes the azimuth SENSOR into the cluster (perception ≠ drive), kept out of `current_drives` so affinity stays drive-only. Load-bearing: without it the driveless-azimuth infant is blind to left-vs-right.
 
-**Measured signal:** per act, the fraction of turns the infant is oriented *by its own action* (vs by the mother's guide) — the fade curve. Plus latency-to-fed and cross-session (`aut_nac.json`).
+## The per-turn loop
 
-## 3-arm ablation (taught vs driven)
-- **A (taught):** full scenario (fading guide + feed + speak + stimulus).
-- **B (drive-only):** stimulus + hunger/centeredness drives, no mother guide/feed.
-- **C (scaffold-only):** guide + feed but learning reward disabled (`MAXIM_NAC_REWARD_BIAS_DISABLED=1`).
-A reaches autonomous orienting and C does not → learned, not innate or hand-fed; A ≫ B → the taught signal beats the built-in drive.
+Each turn the reactive mother acts, then the infant takes its substrate-primary turn:
+1. **Reward prior progress** — reads the azimuth the infant's *prior* turn left; if it moved TOWARD last turn's sound (`|prev_stimulus| − |az_prior| > 0`), feed (hunger relief) + `credit_operant_reward` on the infant's pending action (operant shaping). `progress` is logged in BOTH arms → the directedness metric is arm-independent.
+2. **Place the stimulus** — world-set azimuth to the mother's direction this turn.
+3. **(No guide)** — pure shaping. Physically turning the head and then crediting the infant's own action for the mother's guide would be dishonest; the "fade" is the EMERGENT learning curve.
+4. **Speak** — motherese via the substrate-safe inject.
 
-## Build pieces
-1. **`reactive_mother_tick` redesign** (feed-prior → stimulus → guide → speak; `MotherScaffold.stimulus_azimuths`) + unit tests. ← *this step*
-2. **`NarrativePhase.mother_scaffold` field** + the generative-runner per-turn hook (call the tick before `send_and_wait`, embodiment in scope) with a substrate-safe inject.
-3. **`cradle_mother` 4-act arc** in `BUILTIN_ARCS` with the fade schedule.
-4. **Harness + analyzer** (mirror `benchmark_exp42_preference.py`) measuring the fade curve.
-5. Validate (offline mechanism + a real substrate-primary run) → two-lens review → land → the mac-mini behavioral run.
+## Arms + metric (arc `cradle_mother`, 4 time-bins)
 
-## Connections (why this is foundational)
-Act 4 (orient to the *voice*) is the cross-modal step JEPA sets up + feeds (voice ↔ face ↔ food paired data); the motherese grounds first symbols (grounded-language); the gaze machinery + the value-progress motor-credit are the proven substrate this rides. The smallest task exercising action-conditioned prediction, cross-modal binding, grounded symbols, and reward-driven policy at once, on a real reward.
+- **taught** — mother shapes (feeds + credits toward-turns). `MAXIM_OPERANT_ONLY_CREDIT=1`.
+- **no_feed** (control) — mother places the sound but never feeds/credits (`MAXIM_CRADLE_MOTHER_DISABLE_CARE=1`). With no drive, no teacher → chance.
+- Both set `MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT=1.5` (B1 — the infant must explore turns to bootstrap).
+
+**Metric:** per time-bin, **directedness** = fraction of turns the infant's own turn moved TOWARD the sound (`progress > 0`). Verdict (`analyze_cradle_mother.py`): **LEARNED** (taught late ≥ 0.65 and rose ≥ 0.15) AND **MOTHER-TAUGHT** (taught late ≥ no_feed late + 0.20).
+
+## Status / open question
+
+Wiring smoke-verified: `credited=True`, infant moves toward the sound, agent_id alignment (`memory_hub.agent_id`) holds. **Open:** is the turn count enough for operant credit (slow) to build a directional policy? The probe needed 3000 ticks but had continuous azimuth (many clusters); the sim has ~6 discrete stimulus directions. Calibrating a 60-turn taught run; bump turns if directedness doesn't rise (operant is slow — longer sims pre-approved).
+
+## Build pieces (all shipped)
+1. `NAc.credit_operant_reward` + `set_pending_operant_action` + probe 3 + 8 unit tests — `3b478e6d`.
+2. `MAXIM_OPERANT_ONLY_CREDIT` operant-only mode + conftest scrub + 4 tests — `acd6360b`.
+3. `bodies/infant_operant` + `drive:null` support + 2 tests — `5072abe0`.
+4. Mother shaper + credit wiring (runner→campaign→orchestrator) + exteroceptive encoding + operant arc + harness/analyzer + tests — `03ad8a0c`.
+5. Calibrate → two-lens review → the mac-mini behavioral run.
+
+---
+
+## Archived: the original fading-scaffold design (confounded — kept for the record)
+
+The infant had an intrinsic azimuth centeredness drive; a reactive mother guided its head toward her with a `guide_strength` that faded 1.0→0.5→0.0→0.0 across 4 acts, feeding it when oriented; the metric was the fraction it self-oriented per act, across 3 arms (taught / drive_only / scaffold_only). Scrapped because the intrinsic drive teaches orienting in every arm (no arm isolates the mother), plus three blocking harness bugs (no explore weight → inert; `MAXIM_NAC_REWARD_BIAS_DISABLED` doesn't gate the cluster-reward path; fed-gated metric reads 0 in the no-feed arm). See the memory `reference_cradle_mother_experiment_design_flaw.md`.
