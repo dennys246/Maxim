@@ -78,7 +78,12 @@ def main() -> int:
     ap.add_argument(
         "--model",
         default="",
-        help="Force an encoder model name; empty = production default.",
+        help="Force an encoder model name; empty = production default (torch) / fastembed default (--onnx).",
+    )
+    ap.add_argument(
+        "--onnx",
+        action="store_true",
+        help="Measure the torch-FREE path: fastembed/onnxruntime instead of sentence-transformers.",
     )
     ap.add_argument("--json", action="store_true", help="Emit a machine-readable JSON summary too.")
     args = ap.parse_args()
@@ -99,26 +104,40 @@ def main() -> int:
     stack = build_bio_stack(agent_id="fit_probe", persistence_dir=tmp)
     snapshot(stages, "after build_bio_stack (substrate wired)")
 
-    # 3. Force the encoder to load its model — the dominant footprint. This is the
-    #    line where torch + the sentence-transformers weights land (or the
-    #    bag-of-words fallback, which adds ~nothing).
-    from maxim.similarity import encoder as _enc
+    # 3. Force the encoder to load its model — the dominant footprint. This is where
+    #    torch + the sentence-transformers weights land (~430 MB), OR (--onnx) the
+    #    torch-free onnxruntime path (~a fraction of that), OR the bag-of-words
+    #    fallback (~nothing).
+    if args.onnx:
+        from fastembed import TextEmbedding
 
-    model = _enc._get_encoder(args.model) if args.model else _enc._get_encoder()
-    if model is not None:
-        try:
-            model.encode(["warmup: the robot turned toward the sound"])
-        except Exception as e:  # pragma: no cover - defensive
-            print(f"  (warmup encode failed: {e})", file=sys.stderr)
-    backend = "sentence-transformers (torch)" if model is not None else "bag-of-words fallback (no torch)"
+        onnx_name = args.model or "BAAI/bge-small-en-v1.5"
+        emb = TextEmbedding(model_name=onnx_name)
+
+        def encode_fn(texts: list[str]) -> None:
+            list(emb.embed(texts))  # fastembed .embed yields; force it
+
+        backend = f"onnxruntime/fastembed [{onnx_name}] (NO torch)"
+    else:
+        from maxim.similarity import encoder as _enc
+
+        model = _enc._get_encoder(args.model) if args.model else _enc._get_encoder()
+        backend = "sentence-transformers (torch)" if model is not None else "bag-of-words fallback (no torch)"
+
+        def encode_fn(texts: list[str]) -> None:
+            if model is not None:
+                model.encode(texts)
+
+    try:
+        encode_fn(["warmup: the robot turned toward the sound"])
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"  (warmup encode failed: {e})", file=sys.stderr)
     snapshot(stages, "after encoder warmup (model loaded)")
 
-    # 4. Exercise — encode N percept-like strings to reach a realistic steady state
-    #    (EC clusters accrue, caches warm). Uses the production singleton encoder.
+    # 4. Exercise — encode N percept-like strings to reach a realistic steady state.
     for i in range(args.exercise):
         text = f"percept {i}: a warm hand, a cold draft, a sound at bearing {i % 360} degrees"
-        if model is not None:
-            model.encode([text])
+        encode_fn([text])
     snapshot(stages, f"after exercise (+{args.exercise} encodes)")
 
     # keep `stack` alive to the end so its structures count.

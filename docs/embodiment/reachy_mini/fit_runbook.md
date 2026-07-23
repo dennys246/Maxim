@@ -35,14 +35,19 @@ The encoder backend is the lever, not the bio-stack. (Aarch64 torch RSS typicall
 
 Ran the harness against smaller 384-dim models to find a footprint middle ground — there isn't one *within torch*:
 
-| encoder | weights (disk) | substrate RSS |
+| encoder | runtime | substrate RSS |
 |---|---|---|
-| all-mpnet-base-v2 (768) | ~420 MB | ~488 MB |
-| all-MiniLM-L6-v2 (384) | ~80 MB | ~477 MB |
-| paraphrase-MiniLM-L3-v2 (384) | ~61 MB | ~539 MB |
-| bag-of-words fallback | 0 | ~70 MB |
+| all-mpnet-base-v2 (768) | torch | ~488 MB |
+| all-MiniLM-L6-v2 (384) | torch | ~477 MB |
+| paraphrase-MiniLM-L3-v2 (384) | torch | ~539 MB |
+| **bge-small-en-v1.5 (384)** | **onnxruntime/fastembed** | **~441 MB** |
+| bag-of-words fallback | none | ~70 MB |
 
-A 7× smaller model saved ~nothing (L3 was even heavier). **RSS is torch-framework-dominated (~400 MB floor), not weight-dominated** — the model on top is noise. So the choice is binary: **torch (any model, ~480–540 MB) vs no-torch (~70 MB)**. The genuine middle path is dropping torch, not shrinking the model.
+Two negative results, both important:
+1. **A 7× smaller torch model saves ~nothing** (MiniLM-L3 was even heavier) — RSS is not weight-dominated.
+2. **Dropping torch for onnxruntime saves only ~10%** (~441 vs ~488) — *and* onnxruntime grows its arena during inference (+59 MB over 100 encodes). **The neural-inference RUNTIME is the ~350–430 MB floor, torch or onnx alike** — not the model, not the framework choice.
+
+⚠️ Correction: an earlier draft of this doc claimed onnxruntime would land ~100 MB. **Measured, it does not** (~441 MB). There is **no cheap middle path with real embeddings on-device** — the choice is genuinely **neural (~440–490 MB) vs bag-of-words (~70 MB)**.
 
 ## Run it on the actual Pi (the real answer)
 
@@ -65,6 +70,7 @@ Which encoder ships on the Reachy shell:
 
 - **Torch path** if it fits with headroom — best substrate quality (real embeddings feed EC pattern-separation; the bag-of-words fallback measurably degrades clustering).
 - **Lean/fallback path** if torch doesn't fit (or the aarch64 wheel / SD-card cost is prohibitive) — the app still works; substrate quality is lower. This is a conscious, documented trade, not a silent degrade (`warn_optional_fallback` already logs it once).
-- **The real middle path — a torch-free embedding runtime.** Smaller torch models don't help (above); dropping torch does. `onnxruntime` / `fastembed` running a MiniLM exported to ONNX gives real MiniLM-quality embeddings at ~100 MB (onnxruntime is ~5× lighter than torch). This is the option that actually buys quality-without-the-430MB, and it's the next thing to price (needs `onnxruntime`/`fastembed` — a light new dep). A GGUF embedding model via llama.cpp is a second torch-free route.
+- **Place the encoder on the leader (the architecturally clean answer).** If ~450 MB doesn't fit the Pi, don't shrink the encoder — *move* it. Per [`perception_pipeline_placement.md`](../../plans/perception_pipeline_placement.md), the encoder is a **placeable stage**: the Pi ships raw text percepts, the leader (e.g. a Mac Mini) encodes them at full neural quality, and embeddings return to the Pi's substrate. Keeps quality, moves the runtime floor off the constrained device. FIT's outcome feeds this placement decision directly.
+- **A tuned onnxruntime is an open measurement, not a promise** — int8-quantized model + `enable_cpu_mem_arena=False` might shave more off the ~441 MB, but the runtime floor is real; measure before relying on it. (The earlier ~100 MB claim was falsified above.)
 
-Record on-Pi numbers (both torch + fallback, under daemon+GStreamer load) and any ONNX-path number back in the tables above when they exist.
+Record on-Pi numbers (torch + fallback, under daemon+GStreamer load) back in the tables above when they exist; add any tuned-onnx or encoder-on-leader numbers as they're measured.
