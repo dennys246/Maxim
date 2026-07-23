@@ -1,0 +1,4 @@
+{"seed": 0, "arm": "s1_learning", "session": "s1", "flip_bins": true, "n_trials": 40, "trial0_correctness": 0.0, "trial0_magnitude": 0.0, "final_correctness": 1.0, "final_magnitude": 0.75, "starved_bins": ["far_left"]}
+{"seed": 2, "arm": "s1_learning", "session": "s1_seed2", "flip_bins": true, "n_trials": 40, "trial0_correctness": 0.0, "trial0_magnitude": 0.0, "final_correctness": 1.0, "final_magnitude": 1.0, "starved_bins": []}
+{"seed": 3, "arm": "s1_learning", "session": "s1_seed3", "flip_bins": true, "n_trials": 40, "trial0_correctness": 0.0, "trial0_magnitude": 0.0, "final_correctness": 1.0, "final_magnitude": 0.75, "starved_bins": ["far_left"]}
+{"seed": 2, "arm": "s2_cross_session", "session": "s2_seed2", "flip_bins": true, "n_trials": 40, "trial0_correctness": 1.0, "trial0_magnitude": 1.0, "final_correctness": 1.0, "final_magnitude": 1.0, "starved_bins": []}
