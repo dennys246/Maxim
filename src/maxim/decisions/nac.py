@@ -31,6 +31,82 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# ── Multi-modality cluster set (extero/intero seam) ──────────────────────
+#
+# ``{modality_tag: ec_cluster_id}`` — the per-modality active-cluster set a
+# substrate-primary proposer captures (one entry per ModalityChannel that
+# encoded this tick) and threads through ``recommend_action`` (additive
+# cluster_reward_bias sum) and the outcome path (credit routing). Cluster
+# ids are UUID-unique per modality, so the ``_cluster_reward_bias`` key
+# ``(agent_id, cluster_id, tool_signature)`` is unchanged — the modality
+# tag exists for ROUTING and observability, not for keying.
+# See docs/plans/exteroception_interoception_seam.md.
+ModalityClusters = dict[str, str]
+
+# The interoceptive modality tag (mirrors
+# ``embodiment.sensory_streams.INTEROCEPTION_TAG`` — duplicated here because
+# ``decisions/`` must not depend on ``embodiment/``; the value is pinned by
+# a cross-module test in tests/unit/test_modality_seam.py).
+INTEROCEPTION_MODALITY = "interoception"
+
+
+def require_valid_modality_clusters(clusters: "ModalityClusters | None") -> "ModalityClusters":
+    """Validate a ``{modality: cluster_id}`` set at the NAc boundary.
+
+    An empty modality tag or empty cluster id would silently key learning
+    onto a degenerate slot — the same silent-dilution class the seam exists
+    to kill — so both are a loud ``ValueError`` per the CLAUDE.md
+    silent-no-op rule. ``None`` (no cluster context — the LLM-primary /
+    single-cluster legacy path) normalizes to an empty dict.
+
+    Returns a shallow copy so callers can't mutate the validated set out
+    from under the consumer.
+    """
+    if clusters is None:
+        return {}
+    validated: ModalityClusters = {}
+    for tag, cluster_id in clusters.items():
+        if not isinstance(tag, str) or not tag:
+            raise ValueError(
+                f"ModalityClusters contains an empty/non-string modality tag: {tag!r} (clusters={clusters!r})"
+            )
+        if not isinstance(cluster_id, str) or not cluster_id:
+            raise ValueError(
+                f"ModalityClusters[{tag!r}] has an empty/non-string cluster id: {cluster_id!r} — "
+                "a degenerate key would silently swallow cluster-keyed learning"
+            )
+        validated[tag] = cluster_id
+    return validated
+
+
+def fold_legacy_cluster_id(
+    clusters: "ModalityClusters | None",
+    cluster_id: str | None,
+) -> "ModalityClusters":
+    """Fold the legacy single-cluster scalar into the modality set.
+
+    The pre-seam surfaces carried one scalar (``current_cluster_id`` /
+    ``LLMProposal.cluster_id``) that was always the interoception cluster.
+    Callers that still pass only the scalar get ``{"interoception": id}``;
+    when both are passed the explicit set wins for the interoception slot
+    (the scalar is the alias, not a second opinion). The RESULT is
+    validated: a truthy non-string scalar raises the same loud
+    ``ValueError`` as a malformed set entry (pre-merge review caught the
+    scalar slipping past the guard unvalidated). A falsy scalar (``None``,
+    ``""``) is silently skipped — that matches the legacy
+    ``update_cluster_reward`` no-op contract for empty cluster ids.
+    """
+    folded = require_valid_modality_clusters(clusters)
+    if cluster_id and INTEROCEPTION_MODALITY not in folded:
+        if not isinstance(cluster_id, str):
+            raise ValueError(
+                f"legacy cluster_id must be a string, got {cluster_id!r} — "
+                "a non-string key would silently corrupt cluster-keyed learning"
+            )
+        folded[INTEROCEPTION_MODALITY] = cluster_id
+    return folded
+
+
 # NAc persistence schema version.
 #
 # - 1.0 → 1.1 (Wire 2, release_0_9_1.md Stage 3): added ``percept_valences``.
@@ -85,6 +161,8 @@ def _emit_recommend_action_event(
     best_score: float,
     min_confidence: float,
     passed_gate: bool,
+    current_clusters: "ModalityClusters | None" = None,
+    consulted_bias_by_modality: dict[str, float] | None = None,
 ) -> None:
     """Emit a ``sim_recommend_action`` event for Stage 0c telemetry.
 
@@ -123,6 +201,17 @@ def _emit_recommend_action_event(
                 "tick": tick,
                 "current_cluster_id": current_cluster_id,
                 "cluster_reward_bias_consulted": cluster_reward_bias_consulted,
+                # Seam observability: the per-modality active-cluster set and
+                # the per-modality bias consulted for the best tool, so a run
+                # can SEE whether the audio channel was present-and-consulted
+                # or silently missing (the dilution failure mode). Legacy
+                # fields above stay populated for existing analyzers.
+                "current_clusters": dict(current_clusters) if current_clusters else None,
+                "consulted_bias_by_modality": (
+                    {k: round(v, 4) for k, v in consulted_bias_by_modality.items()}
+                    if consulted_bias_by_modality
+                    else None
+                ),
                 "best_tool": best_tool,
                 "best_score": round(best_score, 4),
                 "min_confidence": min_confidence,
@@ -168,6 +257,12 @@ class NACConfig:
     # score (it competes with causal_pos and the cold-start drive-affinity
     # heuristic, both of which contribute up to ~1.0), not a recognition
     # modulator like _reward_bias.
+    # Extero/intero seam: this caps PER cluster — recommend_action sums the
+    # bias across the active {modality: cluster} set, so an N-modality agent's
+    # summed cluster term can reach ±N (deliberately flat/binding-free; a
+    # total cap would be arbitration, which is deferred). Adding a substrate
+    # channel is therefore a selection-dynamics change — re-check gate
+    # calibration when the channel registry grows.
     max_cluster_reward_bias: float = 1.0
 
     # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
@@ -1674,6 +1769,7 @@ class NAc:
         available_tools: "list[str] | set[str] | tuple[str, ...]",
         current_drives: dict[str, float] | None = None,
         current_cluster_id: str | None = None,
+        current_clusters: "ModalityClusters | None" = None,
         min_confidence: float = 0.3,
     ) -> dict[str, Any] | None:
         """Substrate-driven action proposal — Phase -1 prototype.
@@ -1711,12 +1807,21 @@ class NAc:
             current_drives: Optional ``{drive_name: value in [0, 1]}``.
                 Drives with value > 0.5 contribute drive-relevance
                 scoring. ``None`` skips the cold-start heuristic.
-            current_cluster_id: Optional EC node id for the active
+            current_cluster_id: LEGACY single-cluster alias — the active
                 interoception cluster (from
-                ``SensorEncoder.encode_sensors``). When set, tools with
-                positive ``cluster_reward_bias`` in this cluster
-                outscore drive affinity. ``None`` skips cluster-keyed
-                scoring (only path before Track 2 wired this in).
+                ``SensorEncoder.encode_sensors``). Folded into
+                ``current_clusters`` as ``{"interoception": id}`` when the
+                explicit set doesn't already carry an interoception entry.
+                Kept through 1.x for single-cluster callers.
+            current_clusters: ``{modality: cluster_id}`` active-cluster set
+                (extero/intero seam — one entry per ModalityChannel that
+                encoded this tick, e.g. ``{"interoception": I, "audio": A}``).
+                ``cluster_reward_bias`` is summed ADDITIVELY across the set,
+                so a policy learned on the audio cluster (orient toward the
+                sound) and interoceptive cluster history coexist as
+                different additive terms — no arbitration, deliberately
+                binding-free (cross-modal binding is deferred). Validated
+                loudly: empty tags/ids raise ``ValueError``.
             min_confidence: Threshold below which we return ``None``
                 instead of proposing a low-confidence action. Default
                 ``0.3`` matches ``NACConfig.min_confidence_threshold``.
@@ -1729,6 +1834,12 @@ class NAc:
         """
         if not agent_id:
             raise ValueError("recommend_action requires non-empty agent_id")
+        # Extero/intero seam: fold the legacy scalar into the modality set
+        # (loud validation — empty tags/ids raise, never silently dilute).
+        active_clusters = fold_legacy_cluster_id(current_clusters, current_cluster_id)
+        # Legacy telemetry field: the interoception entry (identical to the
+        # scalar for pre-seam callers, so existing analyzers see no change).
+        _intero_cluster = active_clusters.get(INTEROCEPTION_MODALITY)
         if not available_tools:
             # Stage 0c: empty available_tools is a legitimate early return
             # (e.g., the scene_actor filter trimmed the executor's tool set
@@ -1736,12 +1847,13 @@ class NAc:
             # available" from "no tools scored above gate."
             _emit_recommend_action_event(
                 agent_id=agent_id,
-                current_cluster_id=current_cluster_id,
+                current_cluster_id=_intero_cluster,
                 cluster_reward_bias_consulted=None,
                 best_tool=None,
                 best_score=0.0,
                 min_confidence=min_confidence,
                 passed_gate=False,
+                current_clusters=active_clusters or None,
             )
             return None
 
@@ -1783,17 +1895,21 @@ class NAc:
                 score += bias
                 parts.append(f"reward_bias={bias:.2f}")
 
-            # Component 2b (Track 2 of grounded_language_acquisition.md):
-            # cluster-keyed reward bias. Positive value = this tool worked
-            # in this interoception cluster; negative = it failed here.
-            # Added directly to score (range [-1, +1]) so it competes
-            # with causal_pos and dominates cold-start drive affinity
-            # once any history exists for the active cluster.
-            if current_cluster_id:
-                cluster_bias = self.cluster_reward_bias(agent_id, current_cluster_id, event_sig)
+            # Component 2b (Track 2 of grounded_language_acquisition.md +
+            # the extero/intero seam): cluster-keyed reward bias, summed
+            # ADDITIVELY across the active per-modality cluster set.
+            # Positive value = this tool worked in this cluster; negative =
+            # it failed here. Added directly to score (range [-1, +1] per
+            # cluster) so it competes with causal_pos and dominates
+            # cold-start drive affinity once any history exists. The
+            # additive sum is deliberately binding-free: an orient policy
+            # learned on the audio cluster and interoceptive history are
+            # separate terms — late convergence at selection, no arbitration.
+            for _mod_tag, _mod_cluster in active_clusters.items():
+                cluster_bias = self.cluster_reward_bias(agent_id, _mod_cluster, event_sig)
                 if cluster_bias != 0.0:
                     score += cluster_bias
-                    parts.append(f"cluster_bias={cluster_bias:+.2f}")
+                    parts.append(f"cluster_bias[{_mod_tag}]={cluster_bias:+.2f}")
 
             # Component 3: drive-relevance (cold-start heuristic)
             tool_lower = tool_name.lower()
@@ -1874,15 +1990,16 @@ class NAc:
             # current_cluster_id at all). Roy-3 needs this distinction
             # to expose the Wire-A vs recommend_action gap; collapsing
             # both into None would elide the H1 signal.
-            _consulted_on_empty: float | None = 0.0 if current_cluster_id else None
+            _consulted_on_empty: float | None = 0.0 if active_clusters else None
             _emit_recommend_action_event(
                 agent_id=agent_id,
-                current_cluster_id=current_cluster_id,
+                current_cluster_id=_intero_cluster,
                 cluster_reward_bias_consulted=_consulted_on_empty,
                 best_tool=None,
                 best_score=0.0,
                 min_confidence=min_confidence,
                 passed_gate=False,
+                current_clusters=active_clusters or None,
             )
             return None
 
@@ -1944,18 +2061,27 @@ class NAc:
         # H1 sub-hypothesis branches (cross_modal_substrate_binding.md /
         # jepa_cross_modal_alignment.md) eventually address.
         consulted_bias: float | None = None
-        if current_cluster_id:
-            consulted_bias = self.cluster_reward_bias(agent_id, current_cluster_id, f"tool:{best_tool}")
+        consulted_by_modality: dict[str, float] | None = None
+        if active_clusters:
+            consulted_by_modality = {
+                tag: self.cluster_reward_bias(agent_id, cid, f"tool:{best_tool}")
+                for tag, cid in active_clusters.items()
+            }
+            # Legacy scalar = the total the additive sum consulted (identical
+            # to the single-cluster value for pre-seam callers).
+            consulted_bias = sum(consulted_by_modality.values())
 
         if best_score < min_confidence:
             _emit_recommend_action_event(
                 agent_id=agent_id,
-                current_cluster_id=current_cluster_id,
+                current_cluster_id=_intero_cluster,
                 cluster_reward_bias_consulted=consulted_bias,
                 best_tool=best_tool,
                 best_score=best_score,
                 min_confidence=min_confidence,
                 passed_gate=False,
+                current_clusters=active_clusters or None,
+                consulted_bias_by_modality=consulted_by_modality,
             )
             return None
 
@@ -1971,12 +2097,14 @@ class NAc:
 
         _emit_recommend_action_event(
             agent_id=agent_id,
-            current_cluster_id=current_cluster_id,
+            current_cluster_id=_intero_cluster,
             cluster_reward_bias_consulted=consulted_bias,
             best_tool=best_tool,
             best_score=best_score,
             min_confidence=min_confidence,
             passed_gate=True,
+            current_clusters=active_clusters or None,
+            consulted_bias_by_modality=consulted_by_modality,
         )
         return {
             "tool_name": best_tool,

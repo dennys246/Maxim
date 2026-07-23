@@ -1,6 +1,6 @@
 # Credit on progress, not execution (deferred)
 
-**Status:** Deferred / tracked (2026-07-22). Surfaced by the cradle_mother embodied-sim investigation (experiment [46](../../experiments/46_operant_orient_creche.md)) and **cross-confirmed by both lenses of the PR #-pending pre-merge review**. This is the root cause the `MAXIM_SUBSTRATE_TOOL_WHITELIST` band-aid masks.
+**Status:** Deferred / DOWNGRADED (2026-07-22). Originally proposed as *the* root cause of the embodied cradle_mother chance result (cross-confirmed by both PR #410 review lenses). **A reproduction probe (`scripts/orient_substrate/9_tool_competition_repro.py`) DISPROVED that:** with a properly-formed orient policy, the always-succeed `sense` distractor does NOT suppress orienting (orient rate 1.00) — the tool competition doesn't beat a *formed* policy. The ACTUAL embodied root cause is **exteroceptive-vs-interoceptive dilution** (see the memory `reference_extero_intero_dilution_root_cause.md` + `docs/plans/exteroception_interoception_seam.md`): the embodied body co-encodes `{hunger, thirst, temp, …, azimuth}` in one text-embedding cluster, and direction drowns in the drives, so left/right collapse to ONE cluster and the policy never forms. That is *perception*, not credit. **This credit-on-progress change is therefore NOT the embodied fix** — keep it only as an optional cleanliness improvement (a no-progress tool arguably shouldn't snowball causal confidence), NOT a priority and NOT the thing that makes the baby learn.
 
 ## The problem
 

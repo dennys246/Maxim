@@ -1,0 +1,80 @@
+# The exteroception/interoception (multi-modality) seam
+
+**Status:** MVP SHIPPED (2026-07-22, branch `feat/credit-on-progress`) — design synthesized from a 3-lens parallel review (substrate-encoding / bio-fidelity / abstraction). Fixes the root cause of the embodied cradle orient failure (memory `reference_extero_intero_dilution_root_cause.md`): exteroceptive direction dilutes among interoceptive drives in one text-embedding cluster → the agent is blind to direction.
+
+## Shipped results (MVP, probe-first)
+
+- **Probe-first regression test written FIRST and verified failing** on the pre-seam code: a 5-drive body + driveless azimuth, left(-0.7) vs right(+0.7) → IDENTICAL cluster context (`{'interoception': '6692c207…'}` for both) — the exact measured dilution. [tests/unit/test_modality_seam.py::TestDilutionRegression](../../tests/unit/test_modality_seam.py).
+- **Closing test PASSES:** the probe-4-shaped operant orient loop on the multi-drive body, through the REAL production paths (`propose_via_substrate` → `record_outcome(clusters=)` → `credit_operant_reward`), 5/5 seeds: first-bin **0.56 (chance)** → settled **0.91 (the ε=0.2 ceiling ≈ 0.9)**. Pre-seam this shape measured at chance. CI-guarded as `TestMultiDriveOrientLearnsEndToEnd` in the same file (~400 ticks, no LLM, <1 s).
+- Shipped surfaces: `embodiment/sensory_streams.py::{ModalityChannel, INTEROCEPTION_TAG, AUDIO_TAG}` (+ `_SUBSTRATE_CHANNELS` registry in `runtime/agent_loop.py`), `decisions/nac.py::{ModalityClusters, require_valid_modality_clusters, fold_legacy_cluster_id}` + `recommend_action(current_clusters=)` additive sum + per-modality `consulted_bias_by_modality` telemetry, `LLMProposal.clusters`, `runtime/tool_dispatch.py::record_outcome(clusters=)` credit routing (drive-relief/generic → interoception ONLY; operant pending → audio), `execute_parallel_actions(clusters=)` batch passthrough. `current_cluster_id`/`cluster_id` kept as folded legacy aliases.
+- **Two-lens pre-merge review round ran (2026-07-22, Executor + Architecture/bio-fidelity) and folded before merge.** Blocking catch (Architecture, corroborated by Executor): the agent-loop batch site passed `clusters=` to `execute_parallel_actions` before the parameter existed → TypeError on every parallel-actions batch — the SECOND recurrence of that signature's missing-parameter class; now signature-contract-pinned (`TestParallelDispatchSignatureContract`). Cross-confirmed: bare `"audio"` literal in the operant router (→ `AUDIO_TAG` constant + pin). Also folded: non-string legacy scalar bypassing the type guard, sinks-before-validation ordering in `record_outcome`, per-channel encode exception elevated to WARNING, dropped-credit debug log, docstring overclaim on the location-vs-discomfort caveat (→ named deferred item below), selection-dynamics note on `max_cluster_reward_bias`, telemetry semantics note, `SubstrateModality` open-vocabulary note.
+
+## The pivotal finding (all three lenses agree)
+
+**The substrate is already N-modality-ready — do NOT build a modality system.** Ride existing infra:
+- `similarity/ec.py::EntorhinalCortex.pattern_complete_or_separate` scans **within-modality only** (`if stored_mod != modality: continue`, ec.py:378) — an `"audio"` node and an `"interoception"` node NEVER compete for pattern completion. Modality is already a first-class namespace (a string tag per node); save/load/merge already carry it.
+- `ECConfig.frozen_centroid_modalities` already contains `"audio"` (ec.py:216).
+- `similarity/encoder.py::SensorEncoder.encode_sensors` already takes a `modality=` param with a per-`(agent_id, modality)` delta stash (encoder.py:558, 607) — one encoder encodes N modalities into N separate cluster spaces today.
+
+**The entire bug is one caller.** `runtime/agent_loop.py::propose_via_substrate:1005` merges `encoded = {**drives, **extero}` and calls `encode_sensors(sensors=encoded)` with **no `modality=`** → defaults to `"interoception"`, so azimuth is one term in a 384-dim sum dominated by ~6 drives (`_sensor_embed`, encoder.py:445; single-sensor swing leaves cos≈0.83 vs `pattern_threshold=0.85`) → left/right pattern-complete onto the same node → one `cluster_id` → blind. `_read_exteroceptive_states` (shipped #410) is the stopgap this replaces.
+
+## Bio-fidelity framing (labeled lines + late convergence)
+
+Brains do NOT hash all senses into one vector: per-modality thalamic relays (LGN/MGN/VPL) → within-modality primary cortex maps (V1/A1/S1, auditory-space map) → convergence only at association cortex for binding/action. Interoception is a separate axis (insula + hypothalamus/drives) that *modulates* gain but is represented apart. Sound localization: superior olive/inferior colliculus → auditory-space map → superior colliculus orienting reflex (fast, bypasses cortex) while cortico-collicular/BG loops learn the *value* of orienting.
+
+Maps onto Maxim: **hypothalamus = drives/SCN → `current_drives`; thalamus = per-modality exteroceptive relays → per-modality EC clusters; NAc = association-for-action.** The intero/extero seam is ALREADY honored at the *read* layer (`_read_drive_states` vs `_read_exteroceptive_states`, kept separate because "perception is not a need", agent_loop.py:1002) — the only violation is re-merging before the encode. Connects to [thalamus/hypothalamus framing](../../.claude/.../project_thalamus_hypothalamus_framing.md)'s "Decision-4: de-bundle exteroception from interoception".
+
+## Layer boundaries (separation of concerns)
+
+- **(a) Perception/encoding** — `propose_via_substrate` + `SensorEncoder`. Sensors → a *set* of per-modality cluster ids `{modality: cluster_id}`. Knows nothing about tools/reward/binding.
+- **(b) Learning surfaces** — `NAc._cluster_reward_bias` keyed `(agent_id, cluster_id, tool)` (unchanged — cluster ids are already UUID-unique per modality). One entry PER modality cluster; **credit is ROUTED by the reward's source**: drive-relief → interoception cluster; operant/direction → the exteroceptive cluster; generic tool-success → interoception ONLY (never writes an exteroceptive cluster — the write-side complement of de-dilution).
+- **(c) Integration/selection** — `NAc.recommend_action` sums `cluster_reward_bias` ADDITIVELY across the active cluster set. The orient policy (learned on the audio cluster) and the drive-affinity heuristic (on interoceptive state) coexist as different additive terms — no arbitration. The additive sum is deliberately *binding-free*.
+- **(d) Cross-modal binding (voice↔face)** — a RELATION between clusters (same external object → reward on one generalizes to the other). **DEFERRED** — the additive sum stands in; MVP does not bind.
+
+## MVP (fixes the dilution, structurally N-modality)
+
+1. **Split the encode (layer a).** Replace the `{**drives, **extero}` merge with a declarative channel list — adding vision/touch later is one tuple entry, not code:
+   ```python
+   @dataclass(frozen=True)
+   class ModalityChannel:  # embodiment/sensory_streams.py (new)
+       tag: str; read_values: Callable; read_ranges: Callable
+   _SUBSTRATE_CHANNELS = (
+       ModalityChannel("interoception", _read_drive_states, _read_drive_ranges),
+       ModalityChannel("audio", _read_exteroceptive_states, _read_exteroceptive_ranges),
+   )
+   ```
+   Loop: `clusters[ch.tag] = encode_sensors(sensors=vals, modality=ch.tag, ranges=...)` per non-empty channel; WARN if a channel has sensors but yields no cluster. `current_drives` stays interoception-only.
+2. **Multi-cluster selection (layer c).** `recommend_action(current_clusters: ModalityClusters|None=None, current_cluster_id: str|None=None)` — fold the legacy scalar into `{"interoception": X}`; sum `cluster_reward_bias` over `clusters.items()` (generalize nac.py:1792). Everything else (causal, reward_bias, drive-affinity, gates) unchanged.
+3. **Credit routing (layer b).** `LLMProposal.clusters` (keep `cluster_id`=interoception alias); `record_outcome(clusters=...)` routes: drive-relief→interoception, operant→exteroceptive cluster, generic→interoception. `set_pending_operant_action`/`credit_operant_reward` keep single-`cluster_id` sigs — the CALLER now passes the audio cluster.
+4. **Push the invariant into a type.** `ModalityClusters = Mapping[str,str]` + `require_valid_modality_clusters()` loud guard at the NAc boundary (empty tag/id = `ValueError`, not silent dilution — the CLAUDE.md silent-no-op rule). Per-modality `consulted_bias` in telemetry so a run can SEE audio present-or-missing.
+
+## Backward-compat (zero migration)
+
+- EC/encoder already multi-modality → interoception encoding byte-identical; `"audio"` already frozen. No persistence bump (`_cluster_reward_bias` key unchanged).
+- Single-cluster / LLM-primary agents pass no clusters → empty sum → byte-identical to today. Exp 37/38 (LLM-AUT, never on this path) unaffected. reachy / Exp 42 bodies declare no exteroceptive channel → one interoception call → identical.
+- `current_cluster_id` / `LLMProposal.cluster_id` kept as deprecated aliases through 1.x.
+
+## Deferred (front-gate scope pressure — do NOT build now)
+
+- **Cross-modal binding (voice↔face)** — enters when an experiment earns it; home is JEPA / `grounded_language_acquisition` / `cross_modal_substrate_binding`.
+- **`modality` in the reward key** `(agent, modality, cluster, tool)` — pure observability; UUID cluster ids already separate. Costs a migration. Defer.
+- **Cross-modality attention weighting** ("trust audio more now") — rides the gating layer, not a new resolver. MVP is a flat sum.
+- **No `Thalamus` ABC / no percept manifest / no new package** — the modality STRING tag is the extensibility seam (the N=1-inheritance + bio-over-engineering traps).
+- **Discomfort-fold for drive-bearing signed sensors** (pre-merge review fold, Architecture #4): today `_read_drive_states` reads the raw signed value, so a body whose azimuth carries a centeredness drive encodes the SAME signed value in both channels — the honest caveat's location-vs-discomfort split is structurally reachable but NOT enforced, and drive-relief (interoception) + operant (audio) credit can reinforce one directional contingency on two stacking clusters. **Trigger: the first body that gives azimuth (or any signed exteroceptive sensor) a drive** — fold the intero read to comfort-distance magnitude then (small change to `_read_drive_states`/`_read_drive_ranges`, but it changes intero cluster identity for such bodies, so it lands deliberately, with its own regression run).
+- **Operant credit target under MULTIPLE exteroceptive channels** (review fold, Architecture #9): today the pending operant action prefers `AUDIO_TAG`, else the first *alphabetically sorted* extero tag. Once a second extero channel (vision) ships, "which cluster does the caregiver's reward condition on" is a real binding/attention question — the vision channel's author inherits it explicitly here, not implicitly from sort order.
+- **Credit-on-progress interaction** (review fold, Executor #8): `drive_potential_diff` routes to interoception by design, and the audio cluster is credited ONLY via `credit_operant_reward` (operant mode). A mother-less multi-drive body with an azimuth *drive* therefore still cannot learn direction from drive relief alone — if the deferred `credit_on_progress_not_execution` plan expects `potential_diff` to teach orientation without operant mode, it must first give direction-progress credit an extero routing rule.
+
+## Telemetry note (review fold, Architecture #7 / Executor #6)
+
+`sim_recommend_action` legacy fields changed semantics for MULTI-modality runs only: `current_cluster_id` is now "the interoception entry of the active set" (was "the active cluster" — `null` for an extero-only set even though a cluster is active), and `cluster_reward_bias_consulted` is the CROSS-MODALITY SUM for the best tool. Single-cluster/legacy producers are byte-identical on both fields. Analyzers doing per-cluster attribution must read the new `current_clusters` + `consulted_bias_by_modality` fields instead of the legacy pair. All events now carry the two new keys (`null` on legacy paths).
+
+## Honest caveat (bio-fidelity lens)
+
+Azimuth is sometimes represented TWICE — a signed EC audio cluster ("where", thalamic) AND a sign-folded centeredness *drive* with `pain_scale` ("discomfort", hypothalamic). Bio-plausible (a stimulus can be both localized and aversive), but when splitting the relay, keep them as two representations of two DIFFERENT things (location vs discomfort), not two encodings of one value — else it's a double-count wearing bio-language. (`bodies/infant_operant` gives azimuth NO drive, so this only bites bodies that do.)
+
+## Regression guards (BUILT — all in [tests/unit/test_modality_seam.py](../../tests/unit/test_modality_seam.py))
+
+- Unit: multi-drive body with an `audio` channel → left(-0.7)/right(+0.7) get DISTINCT clusters (the exact dilution assertion, verified failing pre-fix, now passing); interoception cluster stays direction-blind (labeled lines). Single-channel body → one interoception cluster + populated legacy scalar, byte-identical (`TestDilutionRegression`).
+- Unit: `recommend_action` sums bias additively across two clusters, opposite audio clusters flip the recommended turn, legacy scalar ≡ folded set, no-clusters path byte-identical (`TestMultiClusterSelection`); `require_valid_modality_clusters` raises on empty tag/id, cross-module tag pin (`TestModalityClustersGuard`).
+- Unit: credit routing — generic/drive-relief write interoception ONLY (never audio), operant pending keys on the audio cluster with interoception fallback, malformed clusters raise loudly (`TestCreditRouting`); `LLMProposal.clusters` + both-alias population (`TestProposalClusters`).
+- Integration: the scripted orient probe (probe 4-shape) on a *multi-drive* body now learns (was chance) — credit-routing + split-encode end to end (`TestMultiDriveOrientLearnsEndToEnd`; multi-seed readout: 0.56 → 0.91, 5/5 seeds).
