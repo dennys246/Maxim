@@ -5,6 +5,8 @@ Now: **1.1** — embodiment grounding + substrate-primary validation (orient-to-
 
 **Directory audited 2026-07-15** (deep plans review): every top-level plan verified against code + git history; 12 concluded plans archived, 19 paused plans moved to deferred/ with revive triggers. Root = active work only.
 
+**New here?** [glossary.md](glossary.md) decodes the coded IDs (`CC3`, `Wire-A`, `Roy-4`, `P2`, `NAc`, GRADUATE, …) — including the prefixes that mean different things in different plans.
+
 ## Version Roadmap
 
 | Version | Theme | Status |
