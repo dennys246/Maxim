@@ -223,6 +223,25 @@ class TestModalityClustersGuard:
                 current_clusters={"audio": ""},
             )
 
+    def test_fold_rejects_non_string_scalar(self):
+        """Review fold (Architecture #2): the legacy scalar must pass the same
+        type guard as set entries — a truthy non-string cluster_id raises
+        instead of silently corrupting the reward-bias key space."""
+        from maxim.decisions.nac import fold_legacy_cluster_id
+
+        with pytest.raises(ValueError, match="string"):
+            fold_legacy_cluster_id(None, 42)  # type: ignore[arg-type]
+
+    def test_audio_tag_pinned_against_registry_and_router(self):
+        """Review fold (both lenses): AUDIO_TAG is the operant-routing
+        preference in tool_dispatch AND a registry channel tag — a rename in
+        one place must trip here, not silently de-preference operant credit."""
+        from maxim.embodiment.sensory_streams import AUDIO_TAG
+        from maxim.runtime.agent_loop import _SUBSTRATE_CHANNELS
+
+        assert AUDIO_TAG == "audio"
+        assert AUDIO_TAG in {ch.tag for ch in _SUBSTRATE_CHANNELS}
+
 
 # ── recommend_action: additive multi-cluster bias ─────────────────────────
 
@@ -412,6 +431,126 @@ class TestCreditRouting:
     def test_malformed_clusters_raise_loudly(self):
         with pytest.raises(ValueError):
             _record(self._nac(), clusters={"audio": ""})
+
+    def test_production_pairing_both_args_from_one_proposal(self):
+        """Review fold (Executor #7): every agent-loop site passes BOTH
+        cluster_id and clusters from the same proposal (scalar == the set's
+        interoception entry). Pin the composed behavior: set wins, routing
+        identical to passing the set alone."""
+        nac = self._nac()
+        _record(nac, clusters={"interoception": "I1", "audio": "A1"}, cluster_id="I1")
+        assert nac.cluster_reward_bias("a", "I1", "tool:turn_left") > 0.0
+        assert nac.cluster_reward_bias("a", "A1", "tool:turn_left") == 0.0
+
+
+# ── Parallel dispatch: seam-aware batch path ──────────────────────────────
+
+
+class TestParallelDispatchSignatureContract:
+    """Review fold (Architecture #1, BLOCKING): the agent-loop batch site
+    passes ``clusters=`` to ``execute_parallel_actions`` — the SECOND
+    recurrence of the missing-parameter TypeError class on this signature
+    (the first was ``active_goal=``, memorialized in its docstring). These
+    tests make a third recurrence fail in CI, not at runtime."""
+
+    def _batch_kwargs(self, nac, actions, **overrides):
+        class _Autonomy:
+            def can_execute_action(self, action, confidence=0.0):
+                return True, "ok"
+
+        class _Exec:
+            def execute(self, action):
+                class _R:
+                    success = True
+                    output = "ok"
+                    error = None
+
+                return _R()
+
+        kwargs = dict(
+            agent_id="a",
+            actions=actions,
+            executor=_Exec(),
+            autonomy_controller=_Autonomy(),
+            confidence=0.9,
+            reasoning="",
+            recent_outcomes=[],
+            max_recent=5,
+            llm_worker=None,
+            context_pool=_CtxStub(),
+            nac=nac,
+            active_goal=None,
+        )
+        kwargs.update(overrides)
+        return kwargs
+
+    def test_accepts_every_kwarg_the_agent_loop_batch_site_passes(self):
+        """Signature-contract pin: the exact kwarg set the agent-loop
+        parallel-actions call site passes must be accepted."""
+        import inspect
+
+        from maxim.runtime.tool_dispatch import execute_parallel_actions
+
+        params = set(inspect.signature(execute_parallel_actions).parameters)
+        call_site_kwargs = {
+            "agent_id",
+            "actions",
+            "executor",
+            "autonomy_controller",
+            "confidence",
+            "reasoning",
+            "recent_outcomes",
+            "max_recent",
+            "llm_worker",
+            "context_pool",
+            "nac",
+            "active_goal",
+            "cluster_id",
+            "clusters",
+        }
+        missing = call_site_kwargs - params
+        assert not missing, (
+            f"execute_parallel_actions is missing kwargs the agent-loop batch "
+            f"site passes: {sorted(missing)} — this is the TypeError-on-batch "
+            "bug class recurring a third time"
+        )
+
+    def test_batch_forwards_clusters_into_per_action_credit_routing(self, monkeypatch):
+        """The batch path must route credit like single-action dispatch:
+        operant pending on the audio cluster, generic floor withheld in
+        operant-only mode."""
+        from maxim.decisions.nac import NAc, NACConfig
+        from maxim.runtime.tool_dispatch import execute_parallel_actions
+
+        monkeypatch.setenv("MAXIM_OPERANT_ONLY_CREDIT", "1")
+        nac = NAc(NACConfig())
+        actions = [{"tool_name": "turn_left", "params": {}}]
+        execute_parallel_actions(
+            **self._batch_kwargs(
+                nac,
+                actions,
+                cluster_id="I1",
+                clusters={"interoception": "I1", "audio": "A1"},
+            )
+        )
+        assert nac.credit_operant_reward("a", 1.0) == ("A1", "tool:turn_left")
+
+    def test_batch_generic_credit_stays_interoception_only(self):
+        from maxim.decisions.nac import NAc, NACConfig
+        from maxim.runtime.tool_dispatch import execute_parallel_actions
+
+        nac = NAc(NACConfig())
+        actions = [{"tool_name": "turn_left", "params": {}}]
+        execute_parallel_actions(
+            **self._batch_kwargs(
+                nac,
+                actions,
+                cluster_id="I1",
+                clusters={"interoception": "I1", "audio": "A1"},
+            )
+        )
+        assert nac.cluster_reward_bias("a", "I1", "tool:turn_left") > 0.0
+        assert nac.cluster_reward_bias("a", "A1", "tool:turn_left") == 0.0
 
 
 # ── LLMProposal carries the cluster set ───────────────────────────────────

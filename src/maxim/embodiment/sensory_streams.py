@@ -36,6 +36,14 @@ from typing import Any, Callable
 # de-dilution — see tool_dispatch.record_outcome).
 INTEROCEPTION_TAG = "interoception"
 
+# The shipped exteroceptive channel tag (sound localization / azimuth).
+# Consumers special-case it by NAME: the credit router prefers it as the
+# operant pending-action key (``tool_dispatch.record_outcome``), and EC
+# gives it frozen-centroid semantics. A rename must go through this
+# constant — a bare string literal would silently de-preference operant
+# routing (pre-merge review finding, cross-confirmed by both lenses).
+AUDIO_TAG = "audio"
+
 
 @dataclass(frozen=True)
 class ModalityChannel:

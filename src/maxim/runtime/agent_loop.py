@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 # Import LLMProposal for runtime use (multi-step action creation)
 from maxim.agents.llm_worker import LLMProposal
 from maxim.agents.bus import StreamEvent
-from maxim.embodiment.sensory_streams import INTEROCEPTION_TAG, ModalityChannel
+from maxim.embodiment.sensory_streams import AUDIO_TAG, INTEROCEPTION_TAG, ModalityChannel
 
 # Import Hippocampus and MemoryHub for episodic memory (optional)
 try:
@@ -833,9 +833,18 @@ def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
     docs/plans/exteroception_interoception_seam.md). Load-bearing for
     ``bodies/infant_operant`` (cradle_mother operant experiment), whose azimuth
     sensor has ``drive: null``. A body whose azimuth ALSO carries a drive gets
-    two representations of two DIFFERENT things by design — location (audio
-    cluster, this read) vs discomfort (interoception cluster, the drive read)
-    — not a double-count.
+    the value in BOTH encodes. The plan's intent is two representations of two
+    DIFFERENT things — location (audio cluster, this read) vs discomfort
+    (interoception cluster, the drive read) — but that split is only
+    STRUCTURALLY REACHABLE today, not enforced: ``_read_drive_states`` reads
+    the raw signed value (not a comfort-distance fold), so for such a body the
+    interoception encode carries the same signed azimuth as the audio encode,
+    and drive-relief credit (interoception) plus operant credit (audio) can
+    reinforce the same directional contingency on two stacking clusters. No
+    shipped body has an azimuth drive + this sensor; folding drive-bearing
+    signed sensors to discomfort magnitude in the intero read is a named
+    deferred item in docs/plans/exteroception_interoception_seam.md (trigger:
+    the first body that gives azimuth a drive).
     """
     embodiment = getattr(executor, "embodiment", None)
     root = getattr(embodiment, "root", None)
@@ -887,9 +896,14 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
 # Adding a future modality (vision, touch) is one tuple entry here.
 # EC scans within-modality only and "audio" is already frozen-centroid, so
 # each channel gets its own cluster space with the right centroid policy.
+# NOTE (selection dynamics): ``max_cluster_reward_bias`` caps PER cluster, so
+# the summed cluster term in ``recommend_action`` scales with the number of
+# active channels (±N for N modalities) — adding a channel here is a
+# selection-dynamics change; re-check gate calibration (min_confidence)
+# when you add one.
 _SUBSTRATE_CHANNELS: "tuple[ModalityChannel, ...]" = (
     ModalityChannel(INTEROCEPTION_TAG, _read_drive_states, _read_drive_ranges),
-    ModalityChannel("audio", _read_exteroceptive_states, _read_exteroceptive_ranges),
+    ModalityChannel(AUDIO_TAG, _read_exteroceptive_states, _read_exteroceptive_ranges),
 )
 
 
@@ -1048,7 +1062,17 @@ def propose_via_substrate(
                     ranges=ch.read_ranges(executor) or None,
                 )
             except Exception:
-                logger.debug("substrate-primary tick: %s channel encoding raised", ch.tag, exc_info=True)
+                # WARNING, not debug: a channel with sensors that failed to
+                # encode IS "sensors but no cluster" — downstream, the credit
+                # router silently falls back (operant pending keys on
+                # interoception when audio is missing), so a quiet failure
+                # here becomes invisible mis-routed credit (pre-merge review,
+                # both lenses).
+                logger.warning(
+                    "substrate channel %r encoding raised — its cluster is absent this tick",
+                    ch.tag,
+                    exc_info=True,
+                )
                 continue
             if node_id:
                 clusters[ch.tag] = node_id

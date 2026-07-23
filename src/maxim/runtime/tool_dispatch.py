@@ -132,20 +132,6 @@ def record_outcome(
             "Tool outcome recording is per-agent — empty / missing values "
             "would silently merge attribution across agents."
         )
-    # Validate + fold the legacy scalar BEFORE the fail-soft NAc block so a
-    # malformed set raises loudly instead of vanishing into logger.debug.
-    from maxim.decisions.nac import INTEROCEPTION_MODALITY, fold_legacy_cluster_id
-
-    active_clusters = fold_legacy_cluster_id(clusters, cluster_id)
-    intero_cluster = active_clusters.get(INTEROCEPTION_MODALITY)
-    # Operant credit target: the direction-bearing exteroceptive cluster.
-    # Prefer "audio" (the shipped exteroceptive channel), else the first
-    # non-interoception entry (deterministic: sorted by tag), else fall back
-    # to interoception (single-cluster bodies — pre-seam behavior).
-    _extero_tags = sorted(t for t in active_clusters if t != INTEROCEPTION_MODALITY)
-    operant_cluster = active_clusters.get("audio") or (
-        active_clusters[_extero_tags[0]] if _extero_tags else intero_cluster
-    )
     ts = time.time()
     recent_outcomes.append(
         {
@@ -188,6 +174,31 @@ def record_outcome(
     # ToolPainBridge is wired. The LLM-facing sinks above keep mechanical
     # ``success`` (the result_summary carries the failure detail).
     learn_success = success and not embodiment_failed
+
+    # Validate + fold the legacy scalar AFTER the always-on sinks (a
+    # malformed set must not lose the outcome record) but BEFORE the
+    # fail-soft NAc block, so a degenerate key raises loudly instead of
+    # vanishing into logger.debug (pre-merge review: Executor lens flagged
+    # the raise-before-sinks ordering; Architecture lens confirmed the
+    # loud-guard placement).
+    from maxim.decisions.nac import INTEROCEPTION_MODALITY, fold_legacy_cluster_id
+
+    active_clusters = fold_legacy_cluster_id(clusters, cluster_id)
+    intero_cluster = active_clusters.get(INTEROCEPTION_MODALITY)
+    # Operant credit target: the direction-bearing exteroceptive cluster.
+    # Prefer AUDIO_TAG (the shipped exteroceptive channel), else the first
+    # non-interoception entry (deterministic: sorted by tag — which cluster
+    # the caregiver's reward conditions on under MULTIPLE extero channels is
+    # a deferred binding/attention question, see the seam plan), else fall
+    # back to interoception (single-cluster bodies — pre-seam behavior; the
+    # fallback ALSO captures a transient extero-encode failure upstream,
+    # which the encode loop surfaces with its own WARNING).
+    from maxim.embodiment.sensory_streams import AUDIO_TAG
+
+    _extero_tags = sorted(t for t in active_clusters if t != INTEROCEPTION_MODALITY)
+    operant_cluster = active_clusters.get(AUDIO_TAG) or (
+        active_clusters[_extero_tags[0]] if _extero_tags else intero_cluster
+    )
 
     # NAc causal learning: record tool → outcome so predictions improve
     if nac is not None:
@@ -295,6 +306,17 @@ def record_outcome(
                 # credit_operant_reward via the pending action above); letting
                 # the uniform tool-success floor leak onto them would re-drown
                 # the direction signal on the write side (probe 3).
+                if cluster_reward is not None and not intero_cluster:
+                    # Cluster context exists (extero) but no interoception
+                    # slot: either a designed extero-only body (test-pinned)
+                    # or the interoception encode failed this tick — the
+                    # reward is dropped by design, but not silently.
+                    logger.debug(
+                        "cluster reward %+.1f for %s dropped: no interoception cluster in %r",
+                        cluster_reward,
+                        sig,
+                        sorted(active_clusters),
+                    )
                 if cluster_reward is not None and intero_cluster:
                     try:
                         nac.update_cluster_reward(
@@ -359,6 +381,7 @@ def execute_parallel_actions(
     nac: Any | None = None,
     active_goal: str | None = None,
     cluster_id: str | None = None,
+    clusters: dict[str, str] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
     """Execute a batch of parallel actions with autonomy gating.
 
@@ -374,6 +397,16 @@ def execute_parallel_actions(
     Pre-fix the parameter was missing from this signature even though
     the agent-loop call site already passed ``active_goal=`` — any
     parallel-actions batch would have raised TypeError.
+
+    ``cluster_id`` / ``clusters`` (extero/intero seam) are likewise
+    forwarded to per-action ``record_outcome`` so the batch's credit
+    routing matches single-action dispatch. The seam's pre-merge
+    architecture review caught the SECOND recurrence of the
+    missing-parameter bug class on this exact signature (``clusters=``
+    passed by the agent-loop call site before this parameter existed);
+    ``tests/unit/test_modality_seam.py::TestParallelDispatchSignatureContract``
+    pins that every kwarg the agent-loop batch site passes is accepted
+    here, so a third recurrence fails in CI, not at runtime.
     """
     if not isinstance(agent_id, str) or not agent_id:
         raise ValueError(f"agent_id must be a non-empty string, got {agent_id!r}.")
@@ -458,6 +491,7 @@ def execute_parallel_actions(
             active_goal=active_goal,
             tool_params=pr.get("params"),
             cluster_id=cluster_id,
+            clusters=clusters,
         )
 
     log_agentic(

@@ -89,10 +89,20 @@ def fold_legacy_cluster_id(
     ``LLMProposal.cluster_id``) that was always the interoception cluster.
     Callers that still pass only the scalar get ``{"interoception": id}``;
     when both are passed the explicit set wins for the interoception slot
-    (the scalar is the alias, not a second opinion). Validates the result.
+    (the scalar is the alias, not a second opinion). The RESULT is
+    validated: a truthy non-string scalar raises the same loud
+    ``ValueError`` as a malformed set entry (pre-merge review caught the
+    scalar slipping past the guard unvalidated). A falsy scalar (``None``,
+    ``""``) is silently skipped — that matches the legacy
+    ``update_cluster_reward`` no-op contract for empty cluster ids.
     """
     folded = require_valid_modality_clusters(clusters)
     if cluster_id and INTEROCEPTION_MODALITY not in folded:
+        if not isinstance(cluster_id, str):
+            raise ValueError(
+                f"legacy cluster_id must be a string, got {cluster_id!r} — "
+                "a non-string key would silently corrupt cluster-keyed learning"
+            )
         folded[INTEROCEPTION_MODALITY] = cluster_id
     return folded
 
@@ -247,6 +257,12 @@ class NACConfig:
     # score (it competes with causal_pos and the cold-start drive-affinity
     # heuristic, both of which contribute up to ~1.0), not a recognition
     # modulator like _reward_bias.
+    # Extero/intero seam: this caps PER cluster — recommend_action sums the
+    # bias across the active {modality: cluster} set, so an N-modality agent's
+    # summed cluster term can reach ±N (deliberately flat/binding-free; a
+    # total cap would be arbitration, which is deferred). Adding a substrate
+    # channel is therefore a selection-dynamics change — re-check gate
+    # calibration when the channel registry grows.
     max_cluster_reward_bias: float = 1.0
 
     # Wire 2 (release_0_9_1.md Stage 3): Pavlovian percept aversion.
