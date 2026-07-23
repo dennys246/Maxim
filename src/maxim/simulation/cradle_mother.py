@@ -1,29 +1,33 @@
 """Reactive mother — the cradle orient sim's caregiver scaffold.
 
-**Dormant since 2026-07-22: DEMO ONLY, not a measurement.** The embodied
-``cradle_mother`` sim built on this module measured at CHANCE (experiment
-docs/experiments/46_operant_orient_creche.md): the sim's machinery (LLM narrator
-non-determinism, the confidence gate, 22-tool competition where the infant chose
-``sense_presence`` over turning, turn caps, response timeouts) wraps the operant
-signal in confounds that fight it. The operant-teaching CLAIM was validated
-instead on the clean scripted substrate — ``scripts/orient_substrate/{4,5,6,7}``
-(taught 0.90 vs chance; a crèche pools partial learners) — which call ONLY the
-``NAc.credit_operant_reward`` primitive, none of this embodied wiring. Per the
-dormancy-over-deletion rule this module stays wired but is a demo: do NOT build
-new features on it, and do NOT read the "teaches" language below as an embodied
-result. Resurrecting the embodied path requires the credit-on-progress root-cause
-fix (docs/plans/deferred/credit_on_progress_not_execution.md) so the operant
-contingency isn't drowned by every mechanically-successful tool.
+**Validated embodied since 2026-07-23 (Exp 48).** This module WAS dormant
+("DEMO ONLY") because the embodied ``cradle_mother`` sim measured at CHANCE in
+[Exp 46](docs/experiments/46_operant_orient_creche.md). The root cause was the
+exteroception/interoception DILUTION (not the tool-competition confound the
+dormancy note first blamed): ``propose_via_substrate`` merged azimuth into the
+interoception encode, so left/right collapsed onto one EC cluster and the infant
+was blind to direction. The [extero/intero seam](docs/plans/exteroception_interoception_seam.md)
+(PR #411) fixed it, and [Exp 48](docs/experiments/48_cradle_mother_seam.md)
+re-ran this embodied sim: **taught late-bin directedness 0.875 vs no_feed control
+0.448 (+0.427), a clean developmental rise 0.51→0.90 — GRADUATE**. The infant
+learns to orient purely from the mother's contingent feeding, embodied, no LLM in
+the action path. The scripted substrate (``scripts/orient_substrate/{4,5,6,7}``)
+remains the clean mechanism-level proof; Exp 48 is the embodied confound-check
+that the seam's payoff survives the sim machinery. The ``MAXIM_SUBSTRATE_TOOL_
+WHITELIST`` (turn_left,turn_right) is still applied — the seam de-dilutes
+direction but does not by itself out-compete a snowballing always-succeed tool;
+lifting that whitelist is the separate credit-on-progress question
+(docs/plans/deferred/credit_on_progress_not_execution.md), still open.
 
 The mother is a per-turn, world-driven effect on the PASSIVE infant body: each
 turn she (1) rewards the infant for its prior turn TOWARD the sound (feed +
-``credit_operant_reward``, IN THE SCRIPTED MODEL this teaches; in the embodied sim
-it is drowned out), (2) places the next stimulus, (3) optionally guides, and (4)
-speaks motherese. NOTE: the operant credit requires ``nac`` + a non-empty
-``agent_id`` that MATCHES the substrate loop's ``_loop_agent_id`` (=
-``memory_hub.agent_id``, "sim_aut" via ``create_full_agent``); if it is ever empty
-the credit silently no-ops (acceptable for a dormant demo — hardened at
-resurrection).
+``credit_operant_reward`` — post-seam this teaches embodied, validated in Exp 48),
+(2) places the next stimulus, (3) optionally guides, and (4) speaks motherese.
+NOTE: the operant credit requires ``nac`` + a non-empty ``agent_id`` that MATCHES
+the substrate loop's ``_loop_agent_id`` (= ``memory_hub.agent_id``, "sim_aut" via
+``create_full_agent``); if it is ever empty the credit silently no-ops. This is a
+real footgun now that the path is a live measurement, not a demo — the harness
+smoke-checks ``credited=True`` and the agent_id alignment before a run.
 
 This is the **reactive-script v1** from the cradle plan, NOT the deferred
 generative Mother NPC (no separate LLM, deterministic, a scripted stimulus). Every
