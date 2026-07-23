@@ -86,6 +86,7 @@ def record_outcome(
     active_goal: str | None = None,
     tool_params: dict[str, Any] | None = None,
     cluster_id: str | None = None,
+    clusters: dict[str, str] | None = None,
     embodiment_failed: bool = False,
     drive_potential_diff: float | None = None,
 ) -> None:
@@ -105,6 +106,25 @@ def record_outcome(
     no-op invariants into the type. The ``agent_id`` is included in
     the NAc context dict so links can be filtered per-agent at query
     time.
+
+    ``clusters`` is the extero/intero-seam per-modality active-cluster set
+    (``LLMProposal.clusters``, ``{modality: cluster_id}``); ``cluster_id``
+    is the legacy interoception alias, folded in when the set has no
+    interoception entry. Credit is ROUTED by the reward's source:
+
+    * drive-relief (``drive_potential_diff``) and generic tool-success →
+      the **interoception** cluster ONLY — never an exteroceptive cluster
+      (the write-side complement of de-dilution; probe 3 showed the uniform
+      tool-success floor drowns any direction signal it leaks onto).
+    * operant/direction (``set_pending_operant_action`` →
+      ``credit_operant_reward``) → the **exteroceptive** cluster (audio
+      when present) — a caregiver's contingent reward is conditioned on
+      WHERE the stimulus is, so the pending action is keyed on the
+      direction-bearing cluster.
+
+    Malformed clusters (empty tag/id) raise ``ValueError`` here, OUTSIDE
+    the fail-soft NAc block — a degenerate key must be loud, not a
+    silently-swallowed no-op.
     """
     if not isinstance(agent_id, str) or not agent_id:
         raise ValueError(
@@ -112,6 +132,20 @@ def record_outcome(
             "Tool outcome recording is per-agent — empty / missing values "
             "would silently merge attribution across agents."
         )
+    # Validate + fold the legacy scalar BEFORE the fail-soft NAc block so a
+    # malformed set raises loudly instead of vanishing into logger.debug.
+    from maxim.decisions.nac import INTEROCEPTION_MODALITY, fold_legacy_cluster_id
+
+    active_clusters = fold_legacy_cluster_id(clusters, cluster_id)
+    intero_cluster = active_clusters.get(INTEROCEPTION_MODALITY)
+    # Operant credit target: the direction-bearing exteroceptive cluster.
+    # Prefer "audio" (the shipped exteroceptive channel), else the first
+    # non-interoception entry (deterministic: sorted by tag), else fall back
+    # to interoception (single-cluster bodies — pre-seam behavior).
+    _extero_tags = sorted(t for t in active_clusters if t != INTEROCEPTION_MODALITY)
+    operant_cluster = active_clusters.get("audio") or (
+        active_clusters[_extero_tags[0]] if _extero_tags else intero_cluster
+    )
     ts = time.time()
     recent_outcomes.append(
         {
@@ -210,7 +244,7 @@ def record_outcome(
             # drive sensor OR caused COLLATERAL harm (a failure on a sensor its
             # progress didn't account for), so harm-dominates lives there and we
             # fall back to ±1 (=-1 under embodiment_failed). See tool_side_effects.md.
-            if cluster_id:
+            if active_clusters:
                 # Operant-only mode (cradle_mother): when the learner's action
                 # value must come SOLELY from a caregiver's contingent reward
                 # (mother feeds the infant *because* it oriented), the intrinsic
@@ -223,11 +257,18 @@ def record_outcome(
                 # fallback. A driveless turn accrues no cluster bias; the mother
                 # is the sole teacher.
                 operant_only = _operant_only_credit_enabled()
-                if operant_only:
+                if operant_only and operant_cluster:
                     # Remember this action so the mother's later
-                    # ``credit_operant_reward`` can reinforce it.
+                    # ``credit_operant_reward`` can reinforce it. Keyed on the
+                    # DIRECTION-BEARING cluster (audio when present): the
+                    # caregiver's contingency is "you turned toward me", so the
+                    # credited (cluster, tool) pair must condition on where the
+                    # stimulus was, not on the interoceptive state (seam
+                    # routing: operant/direction → exteroceptive cluster).
                     try:
-                        nac.set_pending_operant_action(agent_id=agent_id, cluster_id=cluster_id, tool_signature=sig)
+                        nac.set_pending_operant_action(
+                            agent_id=agent_id, cluster_id=operant_cluster, tool_signature=sig
+                        )
                     except Exception:
                         logger.debug("set_pending_operant_action raised", exc_info=True)
                 # abs(...) > epsilon, NOT `!= 0.0`: drive_comfort_progress is a
@@ -247,11 +288,18 @@ def record_outcome(
                     cluster_reward = None
                 else:
                     cluster_reward = 1.0 if learn_success else -1.0
-                if cluster_reward is not None:
+                # Seam routing: drive-relief AND generic tool-success write the
+                # INTEROCEPTION cluster only — never an exteroceptive cluster.
+                # Direction-bearing clusters (audio) are credited exclusively
+                # by source-attributable signals (the caregiver's
+                # credit_operant_reward via the pending action above); letting
+                # the uniform tool-success floor leak onto them would re-drown
+                # the direction signal on the write side (probe 3).
+                if cluster_reward is not None and intero_cluster:
                     try:
                         nac.update_cluster_reward(
                             agent_id=agent_id,
-                            cluster_id=cluster_id,
+                            cluster_id=intero_cluster,
                             tool_signature=sig,
                             reward=cluster_reward,
                         )

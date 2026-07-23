@@ -1,6 +1,12 @@
 # The exteroception/interoception (multi-modality) seam
 
-**Status:** Design (2026-07-22), synthesized from a 3-lens parallel review (substrate-encoding / bio-fidelity / abstraction). Fixes the root cause of the embodied cradle orient failure (memory `reference_extero_intero_dilution_root_cause.md`): exteroceptive direction dilutes among interoceptive drives in one text-embedding cluster → the agent is blind to direction.
+**Status:** MVP SHIPPED (2026-07-22, branch `feat/credit-on-progress`) — design synthesized from a 3-lens parallel review (substrate-encoding / bio-fidelity / abstraction). Fixes the root cause of the embodied cradle orient failure (memory `reference_extero_intero_dilution_root_cause.md`): exteroceptive direction dilutes among interoceptive drives in one text-embedding cluster → the agent is blind to direction.
+
+## Shipped results (MVP, probe-first)
+
+- **Probe-first regression test written FIRST and verified failing** on the pre-seam code: a 5-drive body + driveless azimuth, left(-0.7) vs right(+0.7) → IDENTICAL cluster context (`{'interoception': '6692c207…'}` for both) — the exact measured dilution. [tests/unit/test_modality_seam.py::TestDilutionRegression](../../tests/unit/test_modality_seam.py).
+- **Closing test PASSES:** the probe-4-shaped operant orient loop on the multi-drive body, through the REAL production paths (`propose_via_substrate` → `record_outcome(clusters=)` → `credit_operant_reward`), 5/5 seeds: first-bin **0.56 (chance)** → settled **0.91 (the ε=0.2 ceiling ≈ 0.9)**. Pre-seam this shape measured at chance. CI-guarded as `TestMultiDriveOrientLearnsEndToEnd` in the same file (~400 ticks, no LLM, <1 s).
+- Shipped surfaces: `embodiment/sensory_streams.py::ModalityChannel` (+ `_SUBSTRATE_CHANNELS` registry in `runtime/agent_loop.py`), `decisions/nac.py::{ModalityClusters, require_valid_modality_clusters, fold_legacy_cluster_id}` + `recommend_action(current_clusters=)` additive sum + per-modality `consulted_bias_by_modality` telemetry, `LLMProposal.clusters`, `runtime/tool_dispatch.py::record_outcome(clusters=)` credit routing (drive-relief/generic → interoception ONLY; operant pending → audio). `current_cluster_id`/`cluster_id` kept as folded legacy aliases.
 
 ## The pivotal finding (all three lenses agree)
 
@@ -58,8 +64,9 @@ Maps onto Maxim: **hypothalamus = drives/SCN → `current_drives`; thalamus = pe
 
 Azimuth is sometimes represented TWICE — a signed EC audio cluster ("where", thalamic) AND a sign-folded centeredness *drive* with `pain_scale` ("discomfort", hypothalamic). Bio-plausible (a stimulus can be both localized and aversive), but when splitting the relay, keep them as two representations of two DIFFERENT things (location vs discomfort), not two encodings of one value — else it's a double-count wearing bio-language. (`bodies/infant_operant` gives azimuth NO drive, so this only bites bodies that do.)
 
-## Regression guards (when built)
+## Regression guards (BUILT — all in [tests/unit/test_modality_seam.py](../../tests/unit/test_modality_seam.py))
 
-- Unit: multi-drive body with an `audio` channel → left(-0.7)/right(+0.7) get DISTINCT clusters (the exact dilution assertion, now passing). Single-channel body → one interoception cluster, byte-identical.
-- Unit: `recommend_action` sums bias across two clusters; `require_valid_modality_clusters` raises on empty tag/id.
-- Integration: the scripted orient probe (probe 4-shape) on a *multi-drive* body now learns (was chance) — the credit-routing + split-encode end to end.
+- Unit: multi-drive body with an `audio` channel → left(-0.7)/right(+0.7) get DISTINCT clusters (the exact dilution assertion, verified failing pre-fix, now passing); interoception cluster stays direction-blind (labeled lines). Single-channel body → one interoception cluster + populated legacy scalar, byte-identical (`TestDilutionRegression`).
+- Unit: `recommend_action` sums bias additively across two clusters, opposite audio clusters flip the recommended turn, legacy scalar ≡ folded set, no-clusters path byte-identical (`TestMultiClusterSelection`); `require_valid_modality_clusters` raises on empty tag/id, cross-module tag pin (`TestModalityClustersGuard`).
+- Unit: credit routing — generic/drive-relief write interoception ONLY (never audio), operant pending keys on the audio cluster with interoception fallback, malformed clusters raise loudly (`TestCreditRouting`); `LLMProposal.clusters` + both-alias population (`TestProposalClusters`).
+- Integration: the scripted orient probe (probe 4-shape) on a *multi-drive* body now learns (was chance) — credit-routing + split-encode end to end (`TestMultiDriveOrientLearnsEndToEnd`; multi-seed readout: 0.56 → 0.91, 5/5 seeds).

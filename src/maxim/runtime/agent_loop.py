@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 # Import LLMProposal for runtime use (multi-step action creation)
 from maxim.agents.llm_worker import LLMProposal
 from maxim.agents.bus import StreamEvent
+from maxim.embodiment.sensory_streams import INTEROCEPTION_TAG, ModalityChannel
 
 # Import Hippocampus and MemoryHub for episodic memory (optional)
 try:
@@ -819,17 +820,22 @@ _EXTEROCEPTIVE_ROOT_SENSORS: tuple[str, ...] = ("azimuth",)
 
 
 def _read_exteroceptive_states(executor: Any) -> dict[str, float]:
-    """Read world-set EXTEROCEPTIVE root sensors (``azimuth``) into the substrate-
-    encoded state so an agent can condition its action on WHERE a stimulus is,
-    even when it carries no drive/need about it.
+    """Read world-set EXTEROCEPTIVE root sensors (``azimuth``) — the value
+    source for the ``"audio"`` ModalityChannel, encoded in its OWN
+    ``encode_sensors(modality="audio")`` call so an agent can condition its
+    action on WHERE a stimulus is, even when it carries no drive/need about it.
 
-    Distinct from ``_read_drive_states``: those are interoceptive needs that also
-    drive the affinity heuristic; these are pure perception and are merged only
-    into the ENCODED sensors, never into ``current_drives``. Load-bearing for
+    Distinct from ``_read_drive_states``: those are interoceptive needs that
+    also drive the affinity heuristic; these are pure perception and NEVER
+    enter ``current_drives`` — nor the interoception encode (the pre-seam
+    ``{**drives, **extero}`` merge diluted direction among the drives and
+    collapsed left/right onto one cluster; see
+    docs/plans/exteroception_interoception_seam.md). Load-bearing for
     ``bodies/infant_operant`` (cradle_mother operant experiment), whose azimuth
-    sensor has ``drive: null`` — without this the orient cluster is blind to
-    direction. A body whose azimuth already carries a drive gets the same value
-    from both reads (same key) — no double-count, no behavior change.
+    sensor has ``drive: null``. A body whose azimuth ALSO carries a drive gets
+    two representations of two DIFFERENT things by design — location (audio
+    cluster, this read) vs discomfort (interoception cluster, the drive read)
+    — not a double-count.
     """
     embodiment = getattr(executor, "embodiment", None)
     root = getattr(embodiment, "root", None)
@@ -868,6 +874,23 @@ def _read_exteroceptive_ranges(executor: Any) -> "dict[str, tuple[float, float]]
         except (TypeError, ValueError):
             logger.debug("exteroceptive %r has a malformed range %r; skipping (legacy map)", name, rng)
     return ranges
+
+
+# ── Substrate modality channels (extero/intero seam) ─────────────────────
+#
+# Declarative registry: one entry per sensory stream, one
+# ``encode_sensors(modality=tag)`` call per non-empty channel — NEVER merged
+# into a single encode (docs/plans/exteroception_interoception_seam.md: the
+# pre-seam ``{**drives, **extero}`` merge diluted exteroceptive direction
+# among the interoceptive drives in one text-embed cluster, collapsing
+# left/right onto the same EC node → the embodied orient sim at chance).
+# Adding a future modality (vision, touch) is one tuple entry here.
+# EC scans within-modality only and "audio" is already frozen-centroid, so
+# each channel gets its own cluster space with the right centroid policy.
+_SUBSTRATE_CHANNELS: "tuple[ModalityChannel, ...]" = (
+    ModalityChannel(INTEROCEPTION_TAG, _read_drive_states, _read_drive_ranges),
+    ModalityChannel("audio", _read_exteroceptive_states, _read_exteroceptive_ranges),
+)
 
 
 _DEFAULT_SUBSTRATE_MIN_CONFIDENCE = 0.3
@@ -992,35 +1015,52 @@ def propose_via_substrate(
         except Exception:
             logger.debug("substrate-primary tick: evaluate_failures raised", exc_info=True)
 
-    drives = _read_drive_states(executor)
-    # Exteroceptive perception (world-set sound direction) is merged into the
-    # ENCODED state so the agent's action can condition on WHERE the sound is —
-    # not just its interoceptive drives. This is load-bearing when the body
-    # perceives direction WITHOUT a centeredness drive (bodies/infant_operant,
-    # cradle_mother operant experiment): azimuth is a sensor, not a drive, so
-    # _read_drive_states never sees it and the cluster would otherwise be blind
-    # to left-vs-right. Kept OUT of ``current_drives`` (below) so the drive-
-    # affinity heuristic stays drive-only — perception is not a need.
-    extero = _read_exteroceptive_states(executor)
-    encoded = {**drives, **extero} if extero else drives
+    # Per-modality channel reads (extero/intero seam). Each channel is read
+    # once; interoception feeds ``current_drives`` (the drive-affinity
+    # heuristic — perception is not a need, so exteroceptive channels stay
+    # out of it) and EVERY non-empty channel gets its OWN encode below.
+    channel_values: dict[str, dict[str, float]] = {ch.tag: ch.read_values(executor) for ch in _SUBSTRATE_CHANNELS}
+    drives = channel_values.get(INTEROCEPTION_TAG, {})
 
-    # Phase 0 sensor encoding — feed the current drive snapshot to EC
-    # so substrate-primary mode produces nodes the way the LLM-primary
-    # text-percept path does. Fail-soft: encoding errors must not block
-    # the action proposal. The returned node_id is the active
-    # interoception cluster — Track 2 of grounded_language_acquisition.md
-    # passes it into recommend_action so cluster-keyed reward bias
-    # (NAc.cluster_reward_bias) competes with the cold-start drive
-    # affinity heuristic for tool selection.
-    cluster_id: str | None = None
-    if sensor_encoder is not None and encoded:
-        try:
-            _ranges = _read_drive_ranges(executor)
-            if extero:
-                _ranges = {**_ranges, **_read_exteroceptive_ranges(executor)}
-            cluster_id = sensor_encoder.encode_sensors(agent_id=agent_id, sensors=encoded, ranges=_ranges)
-        except Exception:
-            logger.debug("substrate-primary tick: sensor encoding raised", exc_info=True)
+    # Phase 0 sensor encoding — feed the current sensor snapshot to EC so
+    # substrate-primary mode produces nodes the way the LLM-primary
+    # text-percept path does. ONE ``encode_sensors(modality=tag)`` call per
+    # non-empty channel — NEVER merged: the pre-seam ``{**drives, **extero}``
+    # merge encoded exteroceptive direction as one term in a text-embed sum
+    # dominated by the drives, so left/right collapsed onto one EC cluster
+    # and the agent was blind to direction (the dilution root cause,
+    # docs/plans/exteroception_interoception_seam.md). Fail-soft per channel:
+    # an encoding error must not block the action proposal or the other
+    # channels. The resulting ``{modality: cluster_id}`` set flows into
+    # recommend_action (additive cluster_reward_bias sum) and onto the
+    # proposal for the outcome path's credit routing.
+    clusters: dict[str, str] = {}
+    if sensor_encoder is not None:
+        for ch in _SUBSTRATE_CHANNELS:
+            vals = channel_values.get(ch.tag)
+            if not vals:
+                continue
+            try:
+                node_id = sensor_encoder.encode_sensors(
+                    agent_id=agent_id,
+                    sensors=vals,
+                    modality=ch.tag,
+                    ranges=ch.read_ranges(executor) or None,
+                )
+            except Exception:
+                logger.debug("substrate-primary tick: %s channel encoding raised", ch.tag, exc_info=True)
+                continue
+            if node_id:
+                clusters[ch.tag] = node_id
+            else:
+                # A channel with sensors that yields no cluster is the
+                # dilution failure mode's silent sibling — surface it.
+                logger.warning(
+                    "substrate channel %r has %d sensor(s) but yielded no cluster",
+                    ch.tag,
+                    len(vals),
+                )
+    cluster_id = clusters.get(INTEROCEPTION_TAG)
 
     resolved_min_confidence = _resolve_min_confidence(min_confidence)
     recommendation = nac.recommend_action(
@@ -1028,6 +1068,7 @@ def propose_via_substrate(
         available_tools=available_tools,
         current_drives=drives or None,
         current_cluster_id=cluster_id,
+        current_clusters=clusters or None,
         min_confidence=resolved_min_confidence,
     )
     if recommendation is None:
@@ -1045,11 +1086,15 @@ def propose_via_substrate(
         confidence=float(recommendation.get("confidence", resolved_min_confidence)),
         mode_goal_achieved=False,
         triggering_input="",
-        # G4: stash the active EC cluster on the proposal so the outcome
-        # path can credit ``NAc._cluster_reward_bias[(agent, cluster, tool)]``
-        # — see record_outcome in tool_dispatch.py. ``None`` when no
-        # sensor encoder was wired or drives produced no cluster.
+        # G4 + seam: stash the active EC cluster set on the proposal so the
+        # outcome path can route credit per modality into
+        # ``NAc._cluster_reward_bias[(agent, cluster, tool)]`` — see
+        # record_outcome in tool_dispatch.py. ``cluster_id`` is the legacy
+        # interoception alias; ``clusters`` is the full per-modality set.
+        # Both ``None``/empty when no sensor encoder was wired or no channel
+        # produced a cluster.
         cluster_id=cluster_id,
+        clusters=clusters or None,
     )
 
 
@@ -2409,6 +2454,7 @@ def run_agentic_loop(
                                         nac=_loop_nac,
                                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                                         cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
+                                        clusters=getattr(ctrl.pending_proposal, "clusters", None),
                                     )
                             else:
                                 # Log rejected action
@@ -2527,6 +2573,7 @@ def run_agentic_loop(
                     nac=_loop_nac,
                     active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                     cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
+                    clusters=getattr(ctrl.pending_proposal, "clusters", None),
                 )
 
                 # Queue as a followup for the next LLM call
@@ -2819,6 +2866,7 @@ def run_agentic_loop(
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         tool_params=action.get("params"),
                         cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
+                        clusters=getattr(ctrl.pending_proposal, "clusters", None),
                         embodiment_failed=_embodiment_failed,
                         drive_potential_diff=_drive_potential_diff,
                     )
@@ -2966,6 +3014,7 @@ def run_agentic_loop(
                         nac=_loop_nac,
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
+                        clusters=getattr(ctrl.pending_proposal, "clusters", None),
                     )
 
                     # Mark failure in state
@@ -3083,6 +3132,7 @@ def run_agentic_loop(
                         nac=_loop_nac,
                         active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                         cluster_id=ctrl.pending_proposal.cluster_id,
+                        clusters=ctrl.pending_proposal.clusters,
                     )
                     logger.info("Hard rejection recorded for LLM: %s", rejection_msg)
                 ctrl.pending_proposal = None
@@ -3126,6 +3176,7 @@ def run_agentic_loop(
                             nac=_loop_nac,
                             active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                             cluster_id=proposal.cluster_id,
+                            clusters=proposal.clusters,
                         )
 
                         # L2: Reset deliberation state on non-think tool execution
@@ -3167,6 +3218,7 @@ def run_agentic_loop(
                             nac=_loop_nac,
                             active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                             cluster_id=proposal.cluster_id,
+                            clusters=proposal.clusters,
                         )
 
         # ─────────────────────────────────────────────────────────────────

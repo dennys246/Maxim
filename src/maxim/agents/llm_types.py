@@ -222,7 +222,20 @@ class LLMProposal:
     # ``recommend_action`` for *selection* but deliberately deferred the
     # ``record_outcome`` plumbing for *learning*. Without this field the
     # cluster_id is captured at proposal time and lost before outcome.
+    # LEGACY single-cluster alias since the extero/intero seam: equals
+    # ``clusters["interoception"]`` when that channel encoded. Kept
+    # through 1.x for single-cluster consumers.
     cluster_id: str | None = None
+
+    # Extero/intero seam: the FULL per-modality active-cluster set at
+    # proposal time, ``{modality_tag: ec_cluster_id}`` (e.g.
+    # ``{"interoception": I, "audio": A}``) — one entry per ModalityChannel
+    # that encoded this tick. The outcome path routes credit by source
+    # across this set (drive-relief → interoception, operant/direction →
+    # the exteroceptive cluster, generic tool-success → interoception
+    # ONLY). ``None`` for LLM-primary proposals and pre-seam producers —
+    # consumers fold ``cluster_id`` in as the interoception entry.
+    clusters: dict[str, str] | None = None
 
     def get_all_actions(self) -> list[dict[str, Any]]:
         """Get the primary action followed by any next_actions."""
