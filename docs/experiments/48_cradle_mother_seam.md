@@ -59,14 +59,27 @@ PYTHONPATH=src python scripts/analyze_cradle_mother.py --in ~/exp48_cradle_mothe
 
 ## Results
 
-_(pre-registered; fill only from a completed seam-hash run)_
+**Run 2026-07-23, big-mac-mini leader, 12 seeds/arm, 56 turns, mistral-7b narrator. 24 runs, 0 failed.**
+
+Per-act directedness (4 time-bins: early / warmup / consolidation / autonomy):
+
+| arm | early | warmup | consol | autonomy (late) |
+|---|---|---|---|---|
+| **taught** | 0.51 | 0.82 | 0.85 | **0.90** |
+| **no_feed** (control) | 0.43 | 0.33 | 0.44 | 0.45 |
+
+Pooled verdict bins (analyzer):
 
 | arm | early | late | Δ (late−early) |
 |---|---|---|---|
-| taught | — | — | — |
-| no_feed | — | — | — |
+| taught | 0.664 | 0.875 | **+0.211** |
+| no_feed | — | 0.448 | — |
 
-- LEARNED (taught late ≥ 0.65 and rose ≥ 0.15): —
-- MOTHER-TAUGHT (taught late ≥ no_feed late + 0.20): —
-- **VERDICT:** —
-- git_hash: —
+- **LEARNED** (taught late ≥ 0.65 and rose ≥ 0.15): **PASS** (0.875 ≥ 0.65; rose +0.211 ≥ 0.15)
+- **MOTHER-TAUGHT** (taught late ≥ no_feed late + 0.20): **PASS** (0.875 − 0.448 = **+0.427**, > 2× the 0.20 margin)
+- **VERDICT: GRADUATE** — the embodied infant learned to orient toward the mother's voice, taught by her contingent feeding alone. The instrument that measured at chance in [Exp 46](46_operant_orient_creche.md) is off chance.
+- git_hash: `39314368` (verified from the results JSONL; a descendant of the seam merge `26d8f901`, so the run contains the fix)
+
+### Reading
+
+The seam carried to the embodied instrument. The `taught` curve is a clean developmental rise (0.51 → 0.82 → 0.85 → 0.90) while the control sits flat at chance across all four acts (0.43 → 0.45) — the +0.427 late-bin gap is the mother's operant teaching, isolated. This is the narrow claim the pre-registration scoped: **no longer at chance, and the mother is why** — a confound-check that the seam's de-dilution payoff survives the embodied machinery (narrator, gates, turn caps) that pinned Exp 46 at chance. It does NOT re-derive the mechanism (that is the scripted closing test, `TestMultiDriveOrientLearnsEndToEnd`); it confirms the fix reaches the embodied path. Per the pre-registered PASS branch: Exp 46's "embodied = chance" note updated, the `simulation/cradle_mother.py` dormancy marker lifted, and a `[behavioral]` graduation-candidate row filed.
