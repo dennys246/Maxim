@@ -254,7 +254,7 @@
       },
       "ProbeRequest": {
         "properties": {
-          "api_key_ref": {
+          "api_key": {
             "anyOf": [
               {
                 "type": "string"
@@ -263,7 +263,7 @@
                 "type": "null"
               }
             ],
-            "title": "Api Key Ref"
+            "title": "Api Key"
           },
           "model": {
             "anyOf": [
@@ -315,13 +315,15 @@
             "title": "Message",
             "type": "string"
           },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
           "status": {
             "enum": [
               "ok",
-              "auth_failed",
-              "unreachable",
-              "model_missing",
-              "error"
+              "warn",
+              "fail"
             ],
             "title": "Status",
             "type": "string"
@@ -329,6 +331,7 @@
         },
         "required": [
           "status",
+          "outcome",
           "message"
         ],
         "title": "ProbeResult",

@@ -68,7 +68,6 @@ def test_live_verb_models_ok(app):
 @pytest.mark.parametrize(
     "method,path,body",
     [
-        ("post", "/api/probe", {"url": "http://x"}),
         ("post", "/api/setup/mesh", {"leader_url": "http://x", "api_key": "k"}),
         ("get", "/api/recall", None),
         ("post", "/api/run", {"mode": "talk"}),
@@ -78,6 +77,31 @@ def test_seam_stubs_are_501(app, method, path, body):
     c = TestClient(app)
     r = c.get(path) if method == "get" else c.post(path, json=body)
     assert r.status_code == 501
+
+
+def test_probe_wires_classifier(app, monkeypatch):
+    """PROBE maps the peer health_check outcome through the shared classifier to the
+    wire shape — mocked so no network. Same classifier path `maxim doctor` uses."""
+    from types import SimpleNamespace
+
+    fake = SimpleNamespace(url="http://leader", outcome="auth_rejected", detail="HTTP 401", latency_ms=12.3)
+
+    class _FakeBackend:
+        def health_check(self, **kw):
+            return fake
+
+    monkeypatch.setattr(
+        "maxim.models.language.maxim_peer_backend._MaximPeerBackend.for_url",
+        classmethod(lambda cls, url, **kw: _FakeBackend()),
+    )
+    r = TestClient(app).post("/api/probe", json={"url": "http://leader", "api_key": "k"})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["status"] == "fail"  # auth_rejected → fail
+    assert j["outcome"] == "auth_rejected"
+    assert j["latency_ms"] == 12.3
+    assert "auth rejected" in j["message"]
+    assert j["fix_hint"]  # classifier supplies an actionable fix
 
 
 def test_seam_request_validation_is_typed(app):
