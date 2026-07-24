@@ -686,28 +686,38 @@ def main() -> int:
                 action = rng.choice(names)
                 delta = action_deltas[action] * args.step_scale * sign_mult
             elif args.readout == "population":
-                # S4: continuous bias-weighted delta, magnitude pooled across the
-                # same-eccentricity bins so a starved far cell borrows its mirror
-                # (orient_magnitude_learning.md S4). ``action`` is the nearest
-                # discrete action, so the greedy trial still credits the tabular
-                # table and progressively fills the starved cell.
-                cont_delta, action = population_readout(
-                    lambda b, a: nac.cluster_reward_bias(AGENT_ID, b, f"tool:{a}"),
-                    state,
-                    action_deltas,
+                # S4: argmax owns DIRECTION (its None->random fallback escapes cold
+                # bins — the seed-3 near_right trap a deterministic direction vote
+                # caused); the population vector supplies only the pooled MAGNITUDE,
+                # sharing "far->big" across same-eccentricity bins so a starved far
+                # cell borrows its mirror (orient_magnitude_learning.md S4). Learning
+                # is unchanged: ``action`` is the nearest discrete action, credited
+                # normally.
+                rec = nac.recommend_action(
+                    agent_id=AGENT_ID,
+                    available_tools=names,
+                    current_drives=None,
+                    current_cluster_id=state,
+                    min_confidence=ARGMAX,
                 )
-                if action is None:  # center / no positive evidence — argmax fallback
-                    rec = nac.recommend_action(
-                        agent_id=AGENT_ID,
-                        available_tools=names,
-                        current_drives=None,
-                        current_cluster_id=state,
-                        min_confidence=ARGMAX,
-                    )
-                    action = rec["tool_name"] if rec else rng.choice(names)
+                if rec is None:
+                    # Cold bin, no positive evidence — random escape, same as argmax.
+                    action = rng.choice(names)
                     delta = action_deltas[action] * args.step_scale * sign_mult
                 else:
-                    delta = cont_delta * args.step_scale * sign_mult
+                    argmax_action = rec["tool_name"]
+                    direction_sign = 1.0 if action_deltas[argmax_action] > 0 else -1.0
+                    cont_delta, action = population_readout(
+                        lambda b, a: nac.cluster_reward_bias(AGENT_ID, b, f"tool:{a}"),
+                        state,
+                        action_deltas,
+                        direction_sign,
+                    )
+                    if action is None or cont_delta is None:  # center — keep argmax
+                        action = argmax_action
+                        delta = action_deltas[action] * args.step_scale * sign_mult
+                    else:
+                        delta = cont_delta * args.step_scale * sign_mult
             else:
                 rec = nac.recommend_action(
                     agent_id=AGENT_ID,
