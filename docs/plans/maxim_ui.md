@@ -86,9 +86,9 @@ Phase 0 ──► Phase 1 ──► Phase 2 (Reachy MVP) ──┬──► Phas
 
 | # | Deliverable | Repo | Phase | Depends on | Status |
 |---|---|---|---|---|---|
-| 1 | FIT (Pi measurement) | pymaxim | 0 | — | ☐ planned |
-| 2 | Monorepo scaffold + DesignSystem | maxim-pulse | 0 | — | ☐ planned |
-| 3 | `maxim serve` skeleton | pymaxim | 0 | — | ☐ planned |
+| 1 | FIT (Pi measurement) | pymaxim | 0 | — | ◑ harness + dev-box finding (PR #415); on-Pi run pending hardware |
+| 2 | Monorepo scaffold + DesignSystem | maxim-pulse | 0 | — | ✅ done — merged (shadcn/ui, react-flow+visx, code-split proven; Reachy 62 KB gz) |
+| 3 | `maxim serve` skeleton | pymaxim | 0 | — | ✅ done — PR #416 (OpenAPI contract + committed snapshot, 8765, /api+/ws, ui-dist handoff) |
 | 4 | SETUP / PROBE / RECALL / PKG | pymaxim | 1 | — | ☐ planned |
 | 5 | HANDLE (embodied + headless) | pymaxim | 1 | — | ☐ planned |
 | 6 | Kit components (MVP subset) | maxim-pulse | 2 | 2,4,5 | ☐ planned |
