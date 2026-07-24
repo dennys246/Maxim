@@ -87,6 +87,7 @@ from live_common import (
     decision_boundary,
     gated_azimuth,
     placement_ranges,
+    population_readout,
     preflight,
     resolve_host,
     save_policy_meta,
@@ -426,6 +427,16 @@ def main() -> int:
         "counts as the magnitude-optimal action.",
     )
     ap.add_argument("--epsilon", type=float, default=0.25, help="exploration rate (executed choices)")
+    ap.add_argument(
+        "--readout",
+        choices=["argmax", "population"],
+        default="argmax",
+        help="S4 (orient_magnitude_learning.md): 'population' reads out a CONTINUOUS "
+        "bias-weighted turn, magnitude pooled across same-eccentricity bins so a starved "
+        "far cell borrows its mirror's learned 'big' (fixes the Exp 45d 0.75 residual). "
+        "'argmax' (default) = the discrete tabular readout, byte-identical to before. "
+        "Learning is unchanged in both; only the greedy readout differs.",
+    )
     ap.add_argument("--gain", type=float, default=1.0, help="scale on potential_diff credit")
     ap.add_argument("--flip-sign", action="store_true", help="Step-2-calibrated sign flag")
     ap.add_argument("--probe-every", type=int, default=5, help="frozen-policy probe cadence (trials)")
@@ -598,6 +609,10 @@ def main() -> int:
     schedule: list[str] = []
     greedy_correct_first10: list[int] = []
     greedy_correct_last10: list[int] = []
+    # S4 metric: continuous residual |az_after| on GREEDY trials — the yardstick
+    # discrete argmax-correctness can't see. Lower = better centering. Comparable
+    # across --readout argmax vs population (both log it).
+    greedy_residuals: list[float] = []
     aborted: str | None = None
     while valid < args.trials:
         try:
@@ -665,7 +680,34 @@ def main() -> int:
             state = az_bin(az_before, band, bin_boundary)
             explore = rng.random() < args.epsilon
             if explore:
+                # Exploration is always DISCRETE (both readouts) so the tabular
+                # bias table — the thing that merges + transfers — is built
+                # identically; only the GREEDY readout differs.
                 action = rng.choice(names)
+                delta = action_deltas[action] * args.step_scale * sign_mult
+            elif args.readout == "population":
+                # S4: continuous bias-weighted delta, magnitude pooled across the
+                # same-eccentricity bins so a starved far cell borrows its mirror
+                # (orient_magnitude_learning.md S4). ``action`` is the nearest
+                # discrete action, so the greedy trial still credits the tabular
+                # table and progressively fills the starved cell.
+                cont_delta, action = population_readout(
+                    lambda b, a: nac.cluster_reward_bias(AGENT_ID, b, f"tool:{a}"),
+                    state,
+                    action_deltas,
+                )
+                if action is None:  # center / no positive evidence — argmax fallback
+                    rec = nac.recommend_action(
+                        agent_id=AGENT_ID,
+                        available_tools=names,
+                        current_drives=None,
+                        current_cluster_id=state,
+                        min_confidence=ARGMAX,
+                    )
+                    action = rec["tool_name"] if rec else rng.choice(names)
+                    delta = action_deltas[action] * args.step_scale * sign_mult
+                else:
+                    delta = cont_delta * args.step_scale * sign_mult
             else:
                 rec = nac.recommend_action(
                     agent_id=AGENT_ID,
@@ -675,8 +717,7 @@ def main() -> int:
                     min_confidence=ARGMAX,
                 )
                 action = rec["tool_name"] if rec else rng.choice(names)
-
-            delta = action_deltas[action] * args.step_scale * sign_mult
+                delta = action_deltas[action] * args.step_scale * sign_mult
             target_yaw = max(-args.max_yaw, min(args.max_yaw, rig.body_yaw + delta))
             if target_yaw == rig.body_yaw:
                 print(f"      at yaw limit ({rig.body_yaw:+.2f}) — recentering (no credit)")
@@ -701,6 +742,7 @@ def main() -> int:
             valid += 1
             turned_toward = potential_diff > 0.02
             if not explore:
+                greedy_residuals.append(abs(az_after))
                 bucket = greedy_correct_first10 if valid <= 10 else greedy_correct_last10
                 if valid <= 10 or valid > args.trials - 10:
                     bucket.append(int(turned_toward))
@@ -775,15 +817,26 @@ def main() -> int:
             f"dir={v['correct']!s:<5} mag={v['magnitude_ok']!s:<5} biases={v['biases']}"
         )
     print(f"[learning] greedy turned-toward rate: first-10 trials {g1} -> last-10 trials {g2}")
+    resid_all = round(sum(greedy_residuals) / len(greedy_residuals), 4) if greedy_residuals else None
+    resid_last = (
+        round(sum(greedy_residuals[-10:]) / len(greedy_residuals[-10:]), 4) if greedy_residuals else None
+    )
+    print(
+        f"[S4 metric] greedy residual |az_after| (readout={args.readout}): "
+        f"overall {resid_all} -> settled last-10 {resid_last}   (lower = better centering)"
+    )
     if app is not None:
         print(f"[apparatus] final yaw->az gain estimate: {app.gain:.2f}/rad (geometric would be {GEOMETRIC_GAIN:.2f})")
     print(f"[nac] persisted to {args.nac_path} — rerun with --session s2 for the cross-session arm")
     log.write(
         "summary",
         session=args.session,
+        readout=args.readout,
         final_probe=pf,
         greedy_first10=g1,
         greedy_last10=g2,
+        greedy_residual_overall=resid_all,
+        greedy_residual_last10=resid_last,
         gain=None if app is None else round(app.gain, 3),
     )
     log.close()
