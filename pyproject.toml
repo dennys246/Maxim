@@ -79,6 +79,12 @@ reachy = [
 search = [
     "ddgs>=6.0.0",
 ]
+# Local Console web UI backend (`maxim serve`) — FastAPI auto-emits the OpenAPI
+# facade contract the maxim-pulse frontend generates its FacadeClient from.
+console = [
+    "fastapi>=0.110,<1.0",
+    "uvicorn>=0.29,<1.0",
+]
 # Training support (MotorCortex model training)
 training = [
     "tensorflow>=2.20,<3.0",

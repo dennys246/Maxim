@@ -317,6 +317,19 @@ class SimConfigSection:
 
 
 @dataclass(frozen=True)
+class ConsoleConfigSection:
+    """Local Console (``maxim serve``) settings.
+
+    SHAPE-FROZEN at 1.0 (CC3) — path (b). ``port`` matches the maxim-pulse Vite
+    dev-proxy default; ``ui_dist`` points at the built Console static bundle
+    (unset → the packaged default / a "not installed" page).
+    """
+
+    port: int = 8765
+    ui_dist: str | None = None
+
+
+@dataclass(frozen=True)
 class MaximConfig:
     """Top-level Maxim instance config.
 
@@ -342,6 +355,7 @@ class MaximConfig:
     auto_spawn: AutoSpawnConfigSection = field(default_factory=AutoSpawnConfigSection)
     data: DataConfigSection = field(default_factory=DataConfigSection)
     sim: SimConfigSection = field(default_factory=SimConfigSection)
+    console: ConsoleConfigSection = field(default_factory=ConsoleConfigSection)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -351,6 +365,8 @@ class MaximConfig:
 
 _FIELD_TO_ENV: dict[str, str] = {
     "role": "MAXIM_ROLE",
+    "console.port": "MAXIM_CONSOLE_PORT",
+    "console.ui_dist": "MAXIM_CONSOLE_UI_DIST",
     "llm.enabled": "MAXIM_LLM_ENABLED",
     "llm.profile": "MAXIM_LLM_PROFILE",
     "llm.n_ctx": "MAXIM_LLM_N_CTX",
