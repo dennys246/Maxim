@@ -609,6 +609,10 @@ def _main_impl(argv: Sequence[str] | None = None) -> int:
     print_startup_warning_if_enabled()
 
     # Subcommand dispatch — intercepts positional subcommands before argparse.
+    if raw_argv and raw_argv[0] == "serve":
+        from maxim.console import run_serve_subcommand
+
+        return run_serve_subcommand(raw_argv[1:])
     if raw_argv and raw_argv[0] == "tunnel":
         from maxim.tunnel import run_tunnel_subcommand
 
