@@ -1,9 +1,16 @@
 # Orient magnitude learning — and the parietal/cerebellar division of labor
 
-**Status:** **S0 + S1 DONE (both PASSED on hardware 2026-07-16 — magnitude 1.00).**
-S2 motivation weakened by measurement; S3 unchanged. Original draft 2026-07-16. Follow-on to
-[substrate_native_orienting.md](substrate_native_orienting.md) Layer 1 /
-[Exp 45](../experiments/45_reachy_orient_live.md) (all arms EARNED). Scope: the
+**Status:** **S0 DONE; S1 SHIPPED but NOT sufficient (replication correction below).**
+S0 (magnitude action set) + S1 (`--flip-bins`) both passed on hardware 2026-07-16, and 45c
+scored magnitude 1.00 — but that was **n=1**. The [Exp 45d](../experiments/45d_magnitude_replication.md)
+replication (2026-07-23, 3 clean seeds) lands magnitude at **0.75–1.00, mode 0.75**: direction
+unanimous 1.00, but the 1.00-magnitude draw does not reliably recur. **S1 is necessary but not
+sufficient** — the residual is a **single-far-bin big-turn-cell starvation** (per seed, exactly
+one far bin never gets a positive exploration sample of its big turn), which is a coverage limit
+of per-cell tabular argmax. That residual is now S3's concrete motivation and the new S4's target
+(below). S2 motivation weakened by measurement. Original draft 2026-07-16; replication +
+S3/S4 update 2026-07-23. Follow-on to [substrate_native_orienting.md](substrate_native_orienting.md)
+Layer 1 / [Exp 45](../experiments/45_reachy_orient_live.md) (all arms EARNED). Scope: the
 **magnitude** half of the orient policy, and — as its natural test case — whether the
 bio-regions that *should* own continuous magnitude (IPS, Angular Gyrus, Cerebellum) are
 wired to carry this kind of learning.
@@ -83,14 +90,27 @@ Full design + metrics + diagnostics: **[Exp 45b](../experiments/45b_orient_magni
 - **Note:** trips Exp 45's "orient-affordance YAML change" re-run rule → fresh NAc,
   queen-mind **v0.2**.
 
-### S1 — bin boundaries at the DECISION BOUNDARY (was: "Weber-scaled bins"). **DONE — PASSED ([Exp 45c](../experiments/45c_flip_bins.md), magnitude 1.00).**
+### S1 — bin boundaries at the DECISION BOUNDARY (was: "Weber-scaled bins"). **SHIPPED, necessary-not-sufficient ([Exp 45c](../experiments/45c_flip_bins.md) n=1 got 1.00; [Exp 45d](../experiments/45d_magnitude_replication.md) replication says 0.75–1.00, mode 0.75).**
 
-**Result: magnitude 0.75 → 1.00**, direction 1.00, stable across 13 consecutive probes;
-greedy turned-toward 0.286 → 1.000 (below chance → perfect). Every bin decisive;
-`near_right` learned the big step is *harmful* there (−0.570). Two derived constants, no
+**Original result (45c, n=1): magnitude 0.75 → 1.00**, direction 1.00, stable across 13
+consecutive probes; greedy turned-toward 0.286 → 1.000 (below chance → perfect). Every bin
+decisive; `near_right` learned the big step is *harmful* there (−0.570). Two derived constants, no
 new mechanism, no effort cost, no exploration change. Sim predicted 0.92; hardware gave
 1.00. Implemented as `--flip-bins` (`decision_boundary()` + `placement_ranges()` in
 live_common, both derived from the robot's own measured gain).
+
+**REPLICATION CORRECTION (Exp 45d, 2026-07-23, 3 clean seeds, boundary frozen at the derived
+0.330 via `--az-gain 0.55`):** direction stays **unanimous 1.00**, but magnitude lands
+**{0.75, 1.00, 0.75}** — the 45c 1.00 was the lucky draw (the sim already flagged 0.75 on 2 of 6
+seeds). So the flip-point boundary **removes the straddle** (the near bins now resolve cleanly —
+that half of the fix is real and replicated) but does **not** by itself deliver reliable 1.00
+magnitude. The residual is a *different* failure from the straddle: **single-far-bin big-turn-cell
+starvation** — both far bins need the big turn, they are learned independently, and 40 trials at
+ε=0.25 doesn't guarantee every (far bin × big) cell draws a positive sample (seed 3: far_right
+learned `turn_right_big` at +0.585 while far_left stayed exactly 0.0). Seed 2 proves 1.00 is
+reachable when both far cells happen to be covered → **coverage limit of per-cell tabular argmax,
+not a capability limit.** This is what promotes S3 from speculative to motivated and defines the
+new S4 target below.
 
 **Reframed 2026-07-16 by the post-headfix sweep.** The problem is not uniform-vs-log
 bins — it is that the `near` bin **straddles the decision boundary**, so it holds two
@@ -156,7 +176,18 @@ should be front-gated on that weaker basis.
 - **Rigor caution:** with one parameter, "learned the gain" is a thin claim on its own;
   it earns its weight from the *re-calibration* arm, not the initial fit.
 
-### S3 — AG abstraction of the learned table. **Most interesting, most speculative.**
+### S3 — AG abstraction of the learned table. **Most interesting — and now empirically motivated (Exp 45d).**
+
+**Concrete motivation added 2026-07-23:** S3 was "most speculative" until 45d's replication
+handed it a *measured, reproducing* failure to fix. The far-bin starvation IS this step's
+falsifiable test case in the flesh: far_left×big is a bin the tabular policy **never positively
+visited**, so tabular NAc leaves it at 0.0 and mis-picks `turn_left` there — exactly "predict the
+right action in bins NAc never visited." An AG abstraction that observes "far → big" learned
+decisively at far_right should fill far_left from the *symmetry of its own learned table*, with no
+new far_left×big sample. So S3's held-out-bin claim is no longer a thought experiment; 45d says
+which held-out bin, how often (~⅔ of seeds at 40 trials), and gives the baseline it must beat
+(tabular = 0.75). (S4 below attacks the same failure with a lighter, non-declarative mechanism —
+they are alternatives, not a stack; whichever earns it, the *other* becomes the comparison arm.)
 
 **Not** "fit a polynomial to (azimuth → turn)" — that regresses the analytic servo from
 sensor data with the substrate bypassed, and collapses the learned-vs-servo distinction
@@ -174,24 +205,66 @@ the AG's actual biological job.
   AG-abstracted relationship correctly predict the right action in **bins NAc never
   visited**? Tabular NAc cannot; an abstraction can. Held-out bins are the test.
 
+### S4 — population-vector readout (graded selection over the tabular biases). **NEW (Exp 45d-motivated).**
+
+The starvation is a *readout* problem before it is an abstraction problem: the learned biases
+are hard-`argmax`'d over a hard `az_bin`. Two hard steps. S4 softens the **selection** without
+learning any new model: read out the commanded turn as a `cluster_reward_bias`-weighted average
+of the action deltas across the active + *neighbouring* bins (optionally with graded EC membership
+instead of a hard bin). This is the superior-colliculus population-vector: discrete substrate
+(unchanged — still merges via `nac_merge`, still transfers cross-session), continuous output. It
+attacks the exact 45d failure — the two symmetric far bins **share** the "far → big" evidence
+through the weighted blend, so far_left borrows what far_right learned decisively instead of
+needing its own big-cell sample.
+- **Distinct from S2 and S3:** S2 learns a new (inverse) model; S3 derives a declarative
+  abstraction; S4 changes only how the *existing* tabular values are combined at selection time.
+  Cheapest of the three, keeps the learning primitive intact (learn discrete, act continuous).
+- **Front-gate:** rides the existing `NAc.recommend_action` chokepoint + `cluster_reward_bias`
+  surface — a readout change, not a new mechanism. Keeps the discrete probe available (argmax is
+  still computable) so the learned-vs-servo rigor bar survives.
+- **Honest IPS caveat (self-correction, 2026-07-23):** S1 already, correctly, rejected
+  IPS/Weber-scaled **bins** as "bio-naming theater on arithmetic" — the *boundary* is derivable
+  from physics, so log-spacing the boundary buys nothing. That verdict stands and S4 does **not**
+  reopen it. Where the Weber/log-magnitude intuition *might* still apply is the **readout
+  geometry** (the SC amplitude map is roughly log-scaled), and whether that beats a linear blend is
+  an *arm to test*, not an assumption — the default S4 is a flat weighted average; the log-scaled
+  readout is a secondary arm that must earn its coupling to `math/ips.py`, same bar S1 held it to.
+- **Pre-registered metric:** the RIGHT yardstick here is NOT discrete argmax-correctness (it can't
+  see continuous improvement) but a **continuous residual** — mean `|az_after|` per trial (or
+  steps-to-center). Claim: S4 pushes residual `|az|` below the tabular quantizer's floor AND
+  dissolves the far-bin starvation (no per-far-cell coverage requirement, boundary-tuning-free).
+- **Pre-registered risk (the make-or-break):** sample efficiency. Argmax commits on one bin's data;
+  a population vector needs enough of the map populated to average well. Does it still converge in
+  ~40 hardware trials, or need ~80? If the continuous residual gain is marginal at 2–3× the
+  hardware cost, the pragmatic ship stays tabular-with-`--flip-bins` and S4 is a research result —
+  which is why the tabular baseline (45d) is kept as the comparison arm.
+
 ---
 
 ## Sequencing
 
-1. **S0 now** — it fixes the observed gap, is substrate-native, costs ~25 min of robot
-   time, and *strengthens* the Exp 45 claim ("learned which way **and how far**, from
-   relief alone"). Gate the queen-mind v0.2 release on it.
-2. **Gap 1 next (prerequisite for S1/S3)** — run the orient loop through
-   `build_bio_stack` instead of a bare NAc. Converges with the 1.1
-   `--embodiment` hardware-runtime work; do it there, not twice.
-3. **S1** after Gap 1, with the front-gate decision made explicitly.
-4. **S2** independently (needs no bio-stack — the cerebellum sits next to the
-   embodiment layer); natural pairing with the eared-shell experiment, which changes the
-   gain for real.
-5. **S3** last, only if S0/S1 leave magnitude structure the tabular policy can't hold.
+1. ~~**S0**~~ **DONE** (Exp 45b) — magnitude action set; strengthened the Exp 45 claim
+   ("learned which way **and how far**, from relief alone"). Gated queen-mind v0.2.
+2. ~~**S1**~~ **SHIPPED** (`--flip-bins`, Exp 45c) — removed the near-bin straddle. Replicated
+   (Exp 45d): necessary-not-sufficient; residual = far-bin starvation.
+3. **S4 next (the cheapest attack on the 45d residual)** — population-vector readout. Rides the
+   existing `recommend_action` chokepoint, keeps the substrate mergeable/transferable, and its
+   continuous-residual metric measures the thing S1's argmax-correctness can't see. Pairs with
+   **Gap 1** (run the orient loop through `build_bio_stack` rather than a bare `NAc`) since a graded
+   EC-membership readout wants the real substrate; converge with the 1.1 `--embodiment`
+   hardware-runtime work, do it once.
+4. **S3** as the S4 alternative / comparison arm — AG declarative abstraction of the learned table.
+   Same held-out-bin target as S4, heavier mechanism (needs a cross-state deriver, Gap 2). Run it
+   *against* S4's result, not before: whichever earns the starvation fix, the other is its baseline.
+5. **S2** independently on the **portability/ship-gate** track (not the starvation track) — the
+   inverse-model gain calibration that [orient_runtime_integration.md](orient_runtime_integration.md)
+   gates "learning ON in production" on; natural pairing with the eared-shell experiment, which
+   changes the gain for real. Needs no bio-stack.
 
-**Do not blob these.** Four steps, four separate pre-registrations, four separable
-claims — the cradle-cascade lesson (don't stack unverifiable layers) applies exactly.
+**Do not blob these.** Separate pre-registrations, separable claims — the cradle-cascade lesson
+(don't stack unverifiable layers) applies exactly. S3 and S4 are **alternatives** for the same
+failure, not a stack: run one, keep the tabular 45d result and the other mechanism as comparison
+arms.
 
 ## Open questions
 
@@ -208,3 +281,11 @@ claims — the cradle-cascade lesson (don't stack unverifiable layers) applies e
 4. **Integration-test framing:** once Gap 1 closes, the orient task becomes the
    project's cleanest bio-region integration probe. Worth a standing "does the whole
    stack still carry a real sensorimotor policy" regression run?
+5. **S3 vs S4 for the starvation (NEW, Exp 45d):** both target the same held-out-bin failure —
+   S4 shares evidence at *readout* time (population vector, no new model), S3 abstracts it
+   *declaratively* (AG pattern memory, needs a deriver). Front-gate favours S4 first (cheaper,
+   rides existing infra); S3 earns its place only if the graded readout still can't fill a bin the
+   learned table has no neighbouring evidence for. Which mechanism the substrate *should* own this
+   with is itself the interesting question — run S4, then decide whether S3 adds anything.
+6. **S4 readout geometry (NEW):** flat weighted average vs log/Weber-scaled (SC-map-like). Default
+   flat; the log arm must clear the same "what does IPS buy that arithmetic doesn't" bar S1 held.
