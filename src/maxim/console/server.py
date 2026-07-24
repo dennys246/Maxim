@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import dataclasses
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,18 @@ from maxim.console.schemas import (
 
 _HEARTBEAT_INTERVAL_S = 15.0
 _NOT_IMPLEMENTED = "Seam not yet implemented (Phase 1) — shape is contract-complete for type-gen."
+
+# Committed OpenAPI snapshot — the cross-repo contract artifact. maxim-pulse
+# generates its FacadeClient from this file (no running server needed); a pytest
+# freshness check fails if it drifts from build_app().openapi(). Refresh with
+# `maxim serve --dump-openapi`.
+_OPENAPI_SNAPSHOT = Path(__file__).parent / "openapi.json"
+
+
+def openapi_schema() -> dict[str, Any]:
+    """The canonical OpenAPI schema (from the app with no static bundle mounted)."""
+    return build_app(None).openapi()
+
 
 api = APIRouter(prefix="/api", tags=["facade"])
 
@@ -179,7 +192,21 @@ def run_serve(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="maxim serve", description="Run the localhost Maxim Console.")
     ap.add_argument("--port", type=int, default=None, help="Port (default: config console.port / 8765).")
     ap.add_argument("--ui-dist", default=None, help="Path to the built Console static bundle.")
+    ap.add_argument(
+        "--dump-openapi",
+        nargs="?",
+        const=str(_OPENAPI_SNAPSHOT),
+        default=None,
+        metavar="PATH",
+        help="Write the OpenAPI schema to PATH (default: the committed snapshot) and exit — no server.",
+    )
     args = ap.parse_args(argv)
+
+    if args.dump_openapi is not None:
+        out = Path(args.dump_openapi)
+        out.write_text(json.dumps(openapi_schema(), indent=2, sort_keys=True) + "\n")
+        print(f"wrote OpenAPI schema → {out}")
+        return 0
 
     port = int(_resolve("console.port", args.port))
     ui_dist_val = _resolve("console.ui_dist", args.ui_dist)

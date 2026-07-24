@@ -91,3 +91,16 @@ def test_console_port_default_is_8765():
 
     value, _source = resolve_setting("console.port", cli_value=None)
     assert value == 8765
+
+
+def test_openapi_snapshot_is_fresh():
+    """The committed openapi.json must match the live schema — maxim-pulse generates
+    its FacadeClient from this file, so drift here is silent cross-repo drift.
+    Regenerate with: ``maxim serve --dump-openapi``."""
+    import json
+
+    from maxim.console.server import _OPENAPI_SNAPSHOT, openapi_schema
+
+    assert _OPENAPI_SNAPSHOT.exists(), "snapshot missing — run: maxim serve --dump-openapi"
+    committed = json.loads(_OPENAPI_SNAPSHOT.read_text())
+    assert committed == openapi_schema(), "OpenAPI snapshot stale — run: maxim serve --dump-openapi"
