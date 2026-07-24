@@ -55,12 +55,18 @@ class DiagnoseResponse(BaseModel):
 
 class ProbeRequest(BaseModel):
     url: str
-    api_key_ref: str | None = None
+    # Raw key to TEST (transient, localhost-only, NOT stored) — you probe a key
+    # before saving it as a ref, so a ref can't exist yet. Mirrors SetupRequest.
+    api_key: str | None = None
     model: str | None = None
 
 
 class ProbeResult(BaseModel):
-    status: Literal["ok", "auth_failed", "unreachable", "model_missing", "error"]
+    # Traffic-light — mirrors ProbeClassification.Status (the internal classifier).
+    status: Literal["ok", "warn", "fail"]
+    # Granular probe outcome: ok / auth_rejected / inference_broken / timeout /
+    # connection_refused / dns_fail / tls_error / http_5xx / other.
+    outcome: str
     message: str
     fix_hint: str | None = None
     latency_ms: float | None = None

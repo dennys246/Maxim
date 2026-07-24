@@ -100,7 +100,21 @@ def get_diagnose() -> DiagnoseResponse:
 
 @api.post("/probe", response_model=ProbeResult, summary="Test a mesh/cloud connection")
 def post_probe(body: ProbeRequest) -> ProbeResult:
-    raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
+    # PROBE seam: the canonical peer-probe entry point + the shared classifier —
+    # same path `maxim doctor` uses, so the console and doctor agree on verdicts.
+    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+    from maxim.peer.probe_classify import classify_probe_outcome
+
+    backend = _MaximPeerBackend.for_url(body.url, api_key=body.api_key, model=body.model)
+    result = backend.health_check()  # runtime.llm_server.ProbeResult(url, outcome, detail, latency_ms)
+    cls = classify_probe_outcome(result.outcome, result.detail, result.latency_ms, result.url)
+    return ProbeResult(
+        status=cls.status,
+        outcome=result.outcome,
+        message=cls.message,
+        fix_hint=cls.fix,
+        latency_ms=result.latency_ms,
+    )
 
 
 @api.post("/setup/mesh", response_model=SetupResult, summary="Write mesh (peer→leader) config")
