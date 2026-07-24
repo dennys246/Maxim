@@ -83,6 +83,24 @@ A new localhost web server (**FastAPI** — chosen for the OpenAPI contract belo
 
 **UI-dist handoff — how the built Console bundle reaches `maxim serve`** (also surfaced by the bootstrap review; our earlier drafts left it unspecified). The bundle is built in maxim-pulse; the server that serves it lives here. Resolution: `maxim serve` serves the static dist from a **configurable path with a packaged default** — resolution order `--ui-dist <path>` flag > `config.json::console.ui_dist` > a bundled default location (populated at pymaxim release from a pinned maxim-pulse build artifact). maxim-pulse CI uploads the Console `dist/` as a build artifact for that release-time vendoring. A missing/empty dist degrades to a clear "console UI not installed — run `…`" message, never a blank page. Do NOT auto-download the bundle at runtime (supply-chain surface); it's vendored at release or pointed at a local dev build.
 
+## Distribution & hosting model (local-first — the differentiator)
+
+Three **outputs from the one monorepo**, for three audiences — and the hard line that keeps the thesis intact:
+
+| Output | Audience | Where it runs | Backend |
+|---|---|---|---|
+| **Reachy app** | robot owners | **on-device** (the Pi); distributed via **one HF Space** | embodied `HANDLE` |
+| **Console** | has-a-computer, no robot | **the user's own machine** (`localhost:8765`), pip-installed | real `maxim serve` |
+| **Demo** | just-curious | **the website** (`pulse.`/`demo.pymaxim.bio`), static | **MockFacade** (no real keys/agent) |
+
+The demo is a **near-free third output**: the Console shell built against the kit's `MockFacade`, exported static — same components, fake data. So keep the Console shell buildable with `MockFacade` as its data source (no hard dependency on a live `maxim serve`).
+
+**The hard line — do NOT host the functional Console.** It is `127.0.0.1`-only *by design*: it holds keys and can run/configure Maxim, so a hosted console would centralize keys + agents on someone's server. A hosted console is an **explicit non-goal** (open q #1). The *demo* (MockFacade) is the only thing that runs "through the website."
+
+**The tunnel carries the RESOURCE, not the UI.** The Console UI stays local; what crosses the network is the *inference request* (Console/Reachy → your leader's LLM over a Cloudflare tunnel — the existing mesh) and, later, *substrate contributions* to an Oasis. Nobody "logs into Maxim"; each person runs their own Maxim pointed at their own compute. This is the difference between a *tunnel* (centralizes nothing — your own devices talk) and a *server interface* (centralizes UI + keys + compute + liability).
+
+**Oasis contribution is a LOCAL decision; the website is discovery-only** (1.1+). "What to commit to the Oasis" is a consent/curation screen **in the local Console** (domain-scoped, identity/episodes excluded *by construction* per `hivemind/`), and the contribution goes **local → Oasis peer-to-peer over a tunnel** — never routed through the website. The website is at most a **read-only directory** of public Oases (a phonebook), never a hub instances connect to. Rebuilding "instances log into the website" would quietly undo the local-first thesis.
+
 ## Honest accounting
 
 | Piece | Reuse / new |
