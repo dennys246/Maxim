@@ -131,8 +131,14 @@ class PairedPromptCapture:
         return self
 
     def uninstall(self) -> None:
+        # instance-level restore
         if self._builder is not None and self._orig is not None:
             self._builder.build_prompt = self._orig
+        # class-level restore (install_classlevel_capture)
+        target = getattr(self, "_classlevel_target", None)
+        orig = getattr(self, "_classlevel_orig", None)
+        if target is not None and orig is not None:
+            target.build_prompt = orig
 
     def __enter__(self) -> "PairedPromptCapture":
         return self
@@ -160,7 +166,7 @@ class PairedPromptCapture:
 
 
 def install_capture(worker: Any, log_path: str | Path) -> PairedPromptCapture:
-    """Convenience: install and return the capture handle.
+    """Convenience: install and return the capture handle (instance-level).
 
     Usage from an Exp 44 runner (after the AUT's LLMWorker is constructed,
     before the loop starts)::
@@ -171,3 +177,38 @@ def install_capture(worker: Any, log_path: str | Path) -> PairedPromptCapture:
         cap.uninstall()
     """
     return PairedPromptCapture(log_path).install(worker)
+
+
+def install_classlevel_capture(log_path: str | Path, *, embodied_only: bool = True) -> PairedPromptCapture:
+    """Patch ``PromptBuilder.build_prompt`` at the CLASS level.
+
+    This is the CLI path — it needs no reference to the AUT worker (which is
+    constructed deep inside ``start_simulation_mode``). Every PromptBuilder
+    instance is covered; ``embodied_only=True`` filters to the AUT's embodied
+    *decision* prompts (``request.is_embodied``) so the orchestrator/narrator
+    LLM's prompts are NOT captured — only the agent-under-test's choices.
+    """
+    from maxim.agents.prompt_builder import PromptBuilder
+
+    cap = PairedPromptCapture(log_path)
+    orig = PromptBuilder.build_prompt
+
+    def _wrapped(self: Any, request: Any) -> str:
+        prompt_full = orig(self, request)
+        if embodied_only and not getattr(request, "is_embodied", False):
+            return prompt_full
+        try:
+            ablated_req = _ablate(request)
+            prompt_ablated = orig(self, ablated_req)
+            assert_fully_ablated(prompt_ablated, arm_a_body_state=getattr(request.context, "body_state", None))
+            cap._append(request, prompt_full, prompt_ablated)
+        except AssertionError:
+            raise  # ablation leak — fail the run, do not swallow
+        except Exception as e:  # capture must never break the live run
+            cap._append_error(e)
+        return prompt_full
+
+    PromptBuilder.build_prompt = _wrapped  # type: ignore[method-assign]
+    cap._classlevel_orig = orig  # type: ignore[attr-defined]
+    cap._classlevel_target = PromptBuilder  # type: ignore[attr-defined]
+    return cap

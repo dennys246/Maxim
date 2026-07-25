@@ -122,3 +122,34 @@ def test_guard_fires_on_leak():
     leaked = f"prompt with {CLUSTER_BIAS_MARKER} still in it"
     with pytest.raises(AssertionError):
         assert_fully_ablated(leaked, arm_a_body_state=None)
+
+
+def test_classlevel_capture_logs_embodied_and_skips_others(tmp_path, monkeypatch):
+    """The CLI path: class-level patch logs the AUT's embodied decisions, skips
+    non-embodied (narrator/orch) prompts, and restores build_prompt on uninstall."""
+    import json
+
+    from maxim.agents.prompt_builder import PromptBuilder
+
+    log = tmp_path / "paired.jsonl"
+    orig = PromptBuilder.build_prompt
+    cap = _capture.install_classlevel_capture(log, embodied_only=True)
+    try:
+        builder = _make_builder()
+        # embodied AUT request → captured
+        embodied = _make_request()  # is_embodied defaults? set explicitly
+        embodied.is_embodied = True
+        builder.build_prompt(embodied)
+        # non-embodied (narrator) request → skipped
+        narrator = _make_request()
+        narrator.is_embodied = False
+        builder.build_prompt(narrator)
+    finally:
+        cap.uninstall()
+
+    # build_prompt restored
+    assert PromptBuilder.build_prompt is orig
+    rows = [json.loads(x) for x in log.read_text().splitlines() if x.strip()]
+    assert len(rows) == 1  # only the embodied one
+    assert CLUSTER_BIAS_MARKER in rows[0]["prompt_full"]
+    assert CLUSTER_BIAS_MARKER not in rows[0]["prompt_ablated"]
