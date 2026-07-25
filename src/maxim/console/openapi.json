@@ -72,8 +72,7 @@
       "DiagnoseResponse": {
         "properties": {
           "platform": {
-            "title": "Platform",
-            "type": "string"
+            "$ref": "#/components/schemas/PlatformWire"
           },
           "sections": {
             "items": {
@@ -83,9 +82,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "platform"
-        ],
         "title": "DiagnoseResponse",
         "type": "object"
       },
@@ -186,6 +182,11 @@
             ],
             "title": "Context Length"
           },
+          "curated": {
+            "default": false,
+            "title": "Curated",
+            "type": "boolean"
+          },
           "downloaded": {
             "default": false,
             "title": "Downloaded",
@@ -226,6 +227,33 @@
           "groups"
         ],
         "title": "ModelsResponse",
+        "type": "object"
+      },
+      "PlatformWire": {
+        "description": "Structured platform identity for the StatusChip.\n\nContract fix (maxim-pulse): ``DiagnoseResponse.platform`` used to be a\nstringified ``PlatformInfo`` repr (``\"PlatformInfo(os='macos', \u2026)\"``) \u2014\nuseless for display. These are the display-relevant fields, mapped from\n``doctor.platform_detect.PlatformInfo``.",
+        "properties": {
+          "arch": {
+            "default": "",
+            "title": "Arch",
+            "type": "string"
+          },
+          "os": {
+            "default": "",
+            "title": "Os",
+            "type": "string"
+          },
+          "os_release": {
+            "default": "",
+            "title": "Os Release",
+            "type": "string"
+          },
+          "runtime": {
+            "default": "",
+            "title": "Runtime",
+            "type": "string"
+          }
+        },
+        "title": "PlatformWire",
         "type": "object"
       },
       "Preference": {
@@ -276,14 +304,29 @@
             ],
             "title": "Model"
           },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
           "url": {
-            "title": "Url",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
           }
         },
-        "required": [
-          "url"
-        ],
         "title": "ProbeRequest",
         "type": "object"
       },

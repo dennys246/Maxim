@@ -68,7 +68,7 @@ def test_live_verb_models_ok(app):
 @pytest.mark.parametrize(
     "method,path,body",
     [
-        ("post", "/api/setup/mesh", {"leader_url": "http://x", "api_key": "k"}),
+        ("post", "/api/setup/cloud", {"provider": "anthropic", "profile": "claude-sonnet", "api_key": "k"}),
         ("get", "/api/recall", None),
         ("post", "/api/run", {"mode": "talk"}),
     ],
@@ -77,6 +77,58 @@ def test_seam_stubs_are_501(app, method, path, body):
     c = TestClient(app)
     r = c.get(path) if method == "get" else c.post(path, json=body)
     assert r.status_code == 501
+
+
+def test_setup_mesh_writes_ref_config(app, tmp_path, monkeypatch):
+    """SETUP mesh is live: writes a resolvable peer placement with the key as a
+    0600 ref (never inline). Routed to a temp config so no real state is touched."""
+    import stat
+
+    cfg = tmp_path / "config.json"
+    # config_writer imports config_path by name, so patch ITS binding (the
+    # by-name-import gotcha), which apply_mesh_setup + mutate_config both use.
+    monkeypatch.setattr("maxim.runtime.config_writer.config_path", lambda: cfg)
+    r = TestClient(app).post("/api/setup/mesh", json={"leader_url": "https://leader.example", "api_key": "sk-xyz"})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["ok"] is True and j["placement"] == "mesh"
+    # key is a ref, never inline; secret is 0600
+    from maxim.runtime.config_loader import load_config
+
+    conf = load_config(cfg)
+    ref = conf.lanes.large.remote_api_key_ref
+    assert ref and "sk-xyz" not in cfg.read_text()
+    from pathlib import Path
+
+    assert stat.S_IMODE(Path(ref).stat().st_mode) == 0o600
+    assert conf.role == "peer" and conf.lanes.large.remote_url == "https://leader.example"
+
+
+def test_probe_cloud_shape_dispatches(app):
+    """PROBE now accepts the cloud shape (provider, no url): a missing key fails,
+    a present key warns (no false-green — a live round-trip isn't faked)."""
+    c = TestClient(app)
+    r_missing = c.post("/api/probe", json={"provider": "anthropic"})
+    assert r_missing.status_code == 200 and r_missing.json()["status"] == "fail"
+    r_key = c.post("/api/probe", json={"provider": "anthropic", "api_key": "sk-x"})
+    assert r_key.status_code == 200 and r_key.json()["status"] == "warn"
+    # neither url nor provider → typed 422
+    assert c.post("/api/probe", json={}).status_code == 422
+
+
+def test_diagnose_platform_is_structured(app):
+    """DiagnoseResponse.platform is now a structured object (os/arch/...), not a
+    stringified PlatformInfo repr."""
+    j = TestClient(app).get("/api/diagnose").json()
+    assert isinstance(j["platform"], dict)
+    assert "os" in j["platform"] and "arch" in j["platform"]
+
+
+def test_models_carry_curated_marker(app):
+    """ModelInfoWire exposes the curated marker so the wizard picks by intent."""
+    groups = TestClient(app).get("/api/models").json()["groups"]
+    everything = [m for members in groups.values() for m in members]
+    assert everything and all("curated" in m for m in everything)
 
 
 def test_probe_wires_classifier(app, monkeypatch):

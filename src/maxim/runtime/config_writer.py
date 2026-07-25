@@ -24,6 +24,7 @@ regression-guard pattern is the same as
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable
@@ -36,7 +37,7 @@ from maxim.runtime.config_loader import (
     config_path,
     load_config,
 )
-from maxim.utils.atomic_io import atomic_write_json
+from maxim.utils.atomic_io import atomic_write_json, atomic_write_secret
 from maxim.utils.format_version import with_format_version
 
 logger = logging.getLogger(__name__)
@@ -208,6 +209,66 @@ def set_field(
         return _apply_field_to_config(current, field_path, coerced)
 
     return mutate_config(mutator, path=path)
+
+
+def apply_mesh_setup(
+    leader_url: str,
+    api_key: str,
+    *,
+    remote_model: str | None = None,
+    path: Path | None = None,
+) -> tuple[Path, Path]:
+    """Console SETUP seam helper — connect this box to a leader as a peer.
+
+    Writes a resolvable large-tier PEER placement (``role=peer`` +
+    ``lanes.large.{remote_url, remote_api_key_ref[, remote_model]}``) so
+    ``resolve_setting`` / ``derive_placement`` read it back as a remote large
+    lane. The API key lands as a **ref**: it is written to a mode-0600 file via
+    :func:`atomic_write_secret` and only that file PATH is stored in config —
+    never the inline key (which ``_validate_api_key_ref`` rejects at load time).
+
+    This is a thin convenience over the sanctioned single-writer path: the config
+    fields are applied atomically through :func:`mutate_config` (one RMW under the
+    file lock). The app must NOT hand-assemble the nested lane dict or know the
+    ``remote_api_key_ref`` rules — that is what this helper is for.
+
+    Args:
+        leader_url: the leader's inference URL (e.g. ``https://maxim.example.com``).
+        api_key: the raw key to store as a ref (written to a 0600 file, not config).
+        remote_model: optional served-model name to request from the leader.
+        path: config.json path override (tests). Secrets land next to it.
+
+    Returns ``(secret_path, config_path_written)``.
+    """
+    if not leader_url:
+        raise ConfigurationError("apply_mesh_setup: leader_url is required")
+    if not api_key:
+        raise ConfigurationError("apply_mesh_setup: api_key is required")
+
+    target = path if path is not None else config_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    secret_path = target.parent / "mesh_leader_api_key"
+    # atomic_write_secret PRESERVES an existing mode but does not set one on a
+    # fresh file (it inherits umask → 0644). A key file must be 0600, so tighten
+    # umask around the create AND chmod explicitly — the same belt-and-suspenders
+    # the peer.yml→config migration uses (config_unification C4).
+    _prev_umask = os.umask(0o077)
+    try:
+        atomic_write_secret(str(secret_path), api_key)
+        os.chmod(str(secret_path), 0o600)
+    finally:
+        os.umask(_prev_umask)
+
+    def mutator(current: MaximConfig) -> MaximConfig:
+        new = _apply_field_to_config(current, "role", "peer")
+        new = _apply_field_to_config(new, "lanes.large.remote_url", leader_url)
+        new = _apply_field_to_config(new, "lanes.large.remote_api_key_ref", str(secret_path))
+        if remote_model:
+            new = _apply_field_to_config(new, "lanes.large.remote_model", remote_model)
+        return new
+
+    _, written = mutate_config(mutator, path=path)
+    return secret_path, written
 
 
 def _apply_field_to_config(
