@@ -68,7 +68,6 @@ def test_live_verb_models_ok(app):
 @pytest.mark.parametrize(
     "method,path,body",
     [
-        ("post", "/api/setup/cloud", {"provider": "anthropic", "profile": "claude-sonnet", "api_key": "k"}),
         ("get", "/api/recall", None),
         ("post", "/api/run", {"mode": "talk"}),
     ],
@@ -77,6 +76,31 @@ def test_seam_stubs_are_501(app, method, path, body):
     c = TestClient(app)
     r = c.get(path) if method == "get" else c.post(path, json=body)
     assert r.status_code == 501
+
+
+def test_setup_cloud_writes_placement_ref(app, tmp_path, monkeypatch):
+    """SETUP cloud is live: writes a resolvable large-tier CLOUD placement with
+    the key as a 0600 ref (never inline) + cloud.enabled + budget."""
+    import stat
+    from pathlib import Path
+
+    cfg = tmp_path / "config.json"
+    monkeypatch.setattr("maxim.runtime.config_writer.config_path", lambda: cfg)
+    r = TestClient(app).post(
+        "/api/setup/cloud",
+        json={"provider": "anthropic", "profile": "claude-sonnet", "api_key": "sk-cl", "monthly_budget_usd": 20.0},
+    )
+    assert r.status_code == 200
+    j = r.json()
+    assert j["ok"] is True and j["placement"] == "cloud"
+    from maxim.runtime.config_loader import load_config
+
+    conf = load_config(cfg)
+    pl = conf.lanes.large.placement
+    assert len(pl) == 1 and pl[0].origin == "cloud" and pl[0].model == "claude-sonnet"
+    assert pl[0].api_key_ref and "sk-cl" not in cfg.read_text()  # ref, never inline
+    assert stat.S_IMODE(Path(pl[0].api_key_ref).stat().st_mode) == 0o600
+    assert conf.cloud.enabled and conf.cloud.max_lanes >= 1 and conf.cloud.session_budget_usd == 20.0
 
 
 def test_setup_mesh_writes_ref_config(app, tmp_path, monkeypatch):

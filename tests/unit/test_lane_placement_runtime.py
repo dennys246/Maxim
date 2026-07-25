@@ -5,6 +5,7 @@ re-expression of --cloud-lane / --cloud-fallback as placement edits.
 
 from __future__ import annotations
 
+import os
 from unittest.mock import patch
 
 import maxim.runtime.config_loader as config_loader
@@ -105,6 +106,30 @@ class TestPlacementEntryToProvider:
             ProviderPlacement(origin=Origin.CLOUD, model="definitely-not-a-profile-xyz"), "k"
         )
         assert prov is None
+
+    def test_cloud_profile_entry_injects_key_into_env(self, monkeypatch):
+        # The Console cloud-setup path: a cloud *profile* placement carries its
+        # resolved key on entry.api_key. It MUST reach the backend's api_key_env
+        # (symmetric with the PEER + CLOUD-with-url branches), else inference gets
+        # no credentials. Regression guard for the 2-site injection fix.
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        prov, is_cloud = _placement_entry_to_provider(
+            ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet", api_key="sk-injected"), "large"
+        )
+        assert prov is not None and is_cloud is True
+        assert os.environ.get(prov["api_key_env"]) == "sk-injected"
+
+    def test_cloud_profile_entry_setdefault_respects_explicit_export(self, monkeypatch):
+        # An explicit `export ANTHROPIC_API_KEY` wins over the placement key
+        # (setdefault semantics) — the operator's live env is never clobbered.
+        from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+
+        env = _BUILTIN_PROFILES.get(normalize_llm_profile("claude-sonnet"), {}).get("api_key_env", "ANTHROPIC_API_KEY")
+        monkeypatch.setenv(env, "sk-operator")
+        prov, _ = _placement_entry_to_provider(
+            ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet", api_key="sk-injected"), "large"
+        )
+        assert os.environ.get(prov["api_key_env"]) == "sk-operator"
 
 
 # ─── multi-element tail injection (end to end through get_backend) ──────────
