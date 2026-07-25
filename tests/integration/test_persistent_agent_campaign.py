@@ -131,6 +131,16 @@ class TestAdoption:
         with pytest.raises(ValueError, match="agent_id"):
             _adopt_persistent_agent(inst)
 
+    def test_adoption_requires_full_bio_surface(self, tmp_path):
+        """pain_bus/hippocampus/nac are REQUIRED — a missing pain_bus would
+        make the sandbox silently build a learner-less bus and orphan every
+        pain signal (review fold: Exec #6 / bio-fidelity F5)."""
+        for attr in ("pain_bus", "hippocampus", "nac"):
+            inst = _build_persistent_agent(tmp_path / attr)
+            setattr(inst, attr, None)
+            with pytest.raises(ValueError, match="missing"):
+                _adopt_persistent_agent(inst)
+
     def test_adoption_rejects_hub_agent_id_mismatch(self, tmp_path):
         """Producer/consumer key alignment: the loop keys attribution off
         memory_hub.agent_id — a divergent instance.agent_id would silently
@@ -158,6 +168,17 @@ class TestAdoption:
 
 
 class TestImaginedFictionProvenance:
+    """Pins the NAc tag/decay MECHANISM on a persistent agent's NAc.
+
+    HONESTY NOTE (three-lens review, cross-confirmed): the orchestrator's
+    branch-6 block is structurally INERT on the injected DM path today (the
+    imagination trigger requires entity_ref, which injection forbids) —
+    campaign-DECLARED fiction persists as real learning by design intent;
+    provenance for campaign-declared entities is a tracked follow-up in
+    docs/plans/console_handle_campaign_injection.md. This test guards the
+    mechanism that follow-up will wire, not the current wiring.
+    """
+
     def test_imagined_link_decays_real_link_persists(self, tmp_path):
         from maxim.decisions.causal_link import CausalLink, TemporalDelta, Valence
 
@@ -204,16 +225,18 @@ class TestImaginedFictionProvenance:
 class TestCampaignToolLease:
     def test_restore_returns_registry_to_precampaign_state(self):
         registry = ToolRegistry()
-        registry.register(_stub_tool("persistent_tool"))
-        registry.register(_stub_tool("bash"))
+        persistent = _stub_tool("persistent_tool")
+        bash = _stub_tool("bash")
+        registry.register(persistent)
+        registry.register(bash)
 
         lease = _CampaignToolLease.snapshot(registry)
 
         # Campaign mutations: add sim tools, drop a "noisy" persistent tool
-        # (the orchestrator's _irrelevant_tools loop shape).
+        # (the orchestrator's _irrelevant_tools loop shape — no bookkeeping
+        # needed; the snapshot holds the baseline objects).
         registry.register(_stub_tool("choose"))
         registry.register(_stub_tool("memory_recall"))
-        lease.record_removal("bash", registry)
         registry.deregister("bash")
 
         assert set(registry.list_all()) == {"persistent_tool", "choose", "memory_recall"}
@@ -221,17 +244,38 @@ class TestCampaignToolLease:
         dropped, restored = lease.restore(registry)
         assert set(dropped) == {"choose", "memory_recall"}
         assert restored == ["bash"]
-        assert set(registry.list_all()) == lease.baseline == {"persistent_tool", "bash"}
+        assert set(registry.list_all()) == set(lease.baseline) == {"persistent_tool", "bash"}
+        assert registry.get("bash") is bash, "the ORIGINAL persistent tool object must come back"
 
-    def test_record_removal_ignores_campaign_added_tools(self):
+    def test_restore_rebinds_replaced_baseline_tools(self):
+        """ToolRegistry.register silently overwrites same-name entries; a
+        name-only diff cannot see a campaign registration that REPLACED a
+        persistent tool (pinning dead sim state). The object-identity
+        snapshot must rebind the baseline object. (Review fold: Exec #7.)"""
         registry = ToolRegistry()
+        original = _stub_tool("memory_recall")
+        registry.register(original)
+
+        lease = _CampaignToolLease.snapshot(registry)
+        registry.register(_stub_tool("memory_recall"))  # campaign shadows it
+        assert registry.get("memory_recall") is not original
+
+        dropped, restored = lease.restore(registry)
+        assert dropped == [] and restored == ["memory_recall"]
+        assert registry.get("memory_recall") is original
+
+    def test_restore_is_idempotent(self):
+        """The handle's exception-path safety net calls restore() after the
+        orchestrator's normal-path restore — the second call must no-op."""
+        registry = ToolRegistry()
+        registry.register(_stub_tool("persistent_tool"))
         lease = _CampaignToolLease.snapshot(registry)
         registry.register(_stub_tool("choose"))
-        lease.record_removal("choose", registry)  # not in baseline → not captured
-        registry.deregister("choose")
+
+        lease.restore(registry)
         dropped, restored = lease.restore(registry)
         assert dropped == [] and restored == []
-        assert registry.list_all() == []
+        assert set(registry.list_all()) == {"persistent_tool"}
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -243,6 +287,22 @@ class TestNonePathUnchanged:
     def test_persistent_agent_defaults_to_none(self):
         sig = inspect.signature(start_simulation_mode)
         assert sig.parameters["persistent_agent"].default is None
+
+    def test_injection_branch_gates_are_wired(self):
+        """Source pins for branches 1-3 (matching the branch-5 pin below):
+        reverting any of these gates would silently mis-route learning while
+        every helper-level test still passes (review fold: Exec #9)."""
+        src = inspect.getsource(start_simulation_mode)
+        # Branch 1: factory call skipped on adoption
+        assert "_aut_instance = _adopted.instance" in src
+        # Branch 2: resume-session file-load gated
+        assert "if persistent_agent is None and resume_session" in src
+        # Branch 3: session-dir AUT snapshot skipped
+        assert "if persistent_agent is not None:" in src and "no session AUT snapshot" in src
+        # Bash env not armed for adopted agents
+        assert "if _adopted is None:\n        os.environ.setdefault" in src
+        # /new recursion keeps the injection
+        assert "persistent_agent=persistent_agent" in src
 
     def test_sandbox_helper_builds_own_bus_by_default(self):
         sandbox, _, pain_bus = _setup_sim_sandbox(backend="tmpdir", populate=False)
@@ -317,6 +377,89 @@ class TestStopConsolidation:
         (today's derive-from-sim-flag behavior) otherwise."""
         src = inspect.getsource(start_simulation_mode)
         assert 'consolidation="full" if persistent_agent is not None else None' in src
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Repeated sessions on one persistent hub (review fold: Arch #1 / Exec #4)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestRepeatedSessions:
+    def test_sleep_with_autosave_does_not_deadlock(self, tmp_path):
+        """Pre-fix, hippocampus.sleep() self-deadlocked whenever
+        auto_save_after_sleep=True (the default) met a live persistence_path:
+        _sleep saved UNDER the write lock, and save→dump takes a read lock on
+        the same non-reentrant RWLock. CI never saw it because conftest sets
+        auto_save_after_sleep=False; every persistent agent's full
+        consolidation hits this combination. Run in a thread with a bounded
+        join so a regression FAILS rather than hanging the suite."""
+        import threading
+
+        from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
+
+        path = tmp_path / "hippocampus.json"
+        hippo = Hippocampus(HippocampusConfig(persistence_path=str(path), auto_save_after_sleep=True))
+        hippo.store_observation("a memory to consolidate and save")
+
+        done = threading.Event()
+        results: dict = {}
+
+        def _run() -> None:
+            results.update(hippo.sleep())
+            done.set()
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        assert done.wait(timeout=30.0), "hippocampus.sleep() deadlocked (auto-save under write lock)"
+        assert path.exists(), "auto-save after sleep must still write the persistence file"
+
+    def test_concept_extractor_revives_on_next_session(self, tmp_path):
+        """Full consolidation shuts the ConceptExtractor worker down; a
+        persistent agent's NEXT session (campaign #2, Talk mode) must revive
+        it — otherwise episodes capture while ATL concept extraction is
+        silently dead."""
+        inst = _build_persistent_agent(tmp_path)
+        hub = inst.memory_hub
+        ce = hub._concept_extractor
+        assert ce is not None, "persistent hub must have a concept extractor wired"
+        assert ce._worker.is_alive()
+
+        hub.on_session_start()
+        hub.on_session_end()
+        assert not ce._worker.is_alive(), "full consolidation stops the worker"
+
+        hub.on_session_start()
+        assert ce._worker.is_alive(), "second session must revive concept extraction"
+        hub.on_session_end()
+
+    def test_dn_pain_bridge_unsubscribe_leaves_persistent_learners(self, tmp_path):
+        """A sim-scoped DefaultNetwork subscribes its PainCircuitBridge to
+        the persistent bus; teardown must unsubscribe it or every campaign
+        accumulates a dead subscriber (latent duplicate NAc pain learner).
+        Pins the mechanism + the orchestrator teardown wiring."""
+        from maxim.default_network import DefaultNetworkConfig
+        from maxim.runtime.bootstrap import build_default_network
+
+        inst = _build_persistent_agent(tmp_path)
+        bus = inst.pain_bus
+        before = len(bus._pain_signal_subs)
+
+        dn = build_default_network(
+            nac=inst.nac,
+            maxim=None,
+            pain_bus=bus,
+            config=DefaultNetworkConfig(enabled=True, publish_actions=False, fear_gate_enabled=False),
+        )
+        if dn is None or dn.pain_bridge is None:
+            pytest.skip("DefaultNetwork unavailable in this environment")
+        assert len(bus._pain_signal_subs) > before, "DN bridge subscribes to the persistent bus"
+
+        bus.unsubscribe(dn.pain_bridge._on_pain)
+        assert len(bus._pain_signal_subs) == before, "unsubscribe must fully un-pin the sim DN"
+
+        # Wiring pin: the orchestrator's adopted teardown performs this.
+        src = inspect.getsource(start_simulation_mode)
+        assert "aut_pain_bus.unsubscribe(_dn_bridge._on_pain)" in src
 
 
 # ─────────────────────────────────────────────────────────────────────────

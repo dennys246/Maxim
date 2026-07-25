@@ -308,6 +308,16 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
     )
     app.include_router(api)
 
+    @app.on_event("shutdown")
+    def _stop_handle() -> None:
+        # Server exit mid-campaign would otherwise kill the daemon run thread
+        # with the hippocampus capture queue unflushed — silent learning loss.
+        # stop() is idempotent (safe when no adventure ever ran).
+        global _handle
+        with _handle_lock:
+            if _handle is not None:
+                _handle.stop()
+
     @app.websocket("/ws")
     async def ws_events(websocket: WebSocket) -> None:
         """EventClient stream — skeleton heartbeat (full api.on() bridge in Phase 3)."""

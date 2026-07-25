@@ -59,6 +59,16 @@ class ConsolidationMixin:
         with self._rwlock.write():
             results = self._sleep(strategy)
 
+        # Auto-save AFTER releasing the write lock. save_with_backup → dump
+        # acquires a READ lock on the same non-reentrant RWLock — running it
+        # inside the write block (as the pre-fix _sleep did) self-deadlocks
+        # the calling thread forever. Masked in CI because tests set
+        # auto_save_after_sleep=False; surfaced by the HANDLE seam's
+        # repeated-session guard, where a persistent agent runs full
+        # consolidation with a live persistence_path every campaign.
+        if self.config.auto_save_after_sleep and self.config.persistence_path:
+            self.save_with_backup(self.config.persistence_path)
+
         # Log consolidation activity OUTSIDE rwlock (P3f — Tier 2)
         if hasattr(self, "_collector") and self._collector and self._collector.verbosity >= 1:
             from maxim.provenance.types import PipelineStage
@@ -159,9 +169,10 @@ class ConsolidationMixin:
         self._stats["compressions"] = self._stats.get("compressions", 0) + results["compressed"]
         self._stats["removals"] = self._stats.get("removals", 0) + results["removed"]
 
-        # Auto-save if configured
-        if self.config.auto_save_after_sleep and self.config.persistence_path:
-            self.save_with_backup(self.config.persistence_path)
+        # NOTE: auto-save happens in the public sleep()/sleep_with_clustering()
+        # wrappers AFTER the write lock is released — saving here (under the
+        # caller's write lock) self-deadlocks the non-reentrant RWLock because
+        # save_with_backup → dump takes a read lock.
 
         logger.info(
             "Sleep consolidation complete: compressed=%d, removed=%d, preserved=%d, promoted=%d",
@@ -526,7 +537,15 @@ class ConsolidationMixin:
             raise RuntimeError("SCN must be connected for cluster-based consolidation")
 
         with self._rwlock.write():
-            return self._sleep_with_clustering(max_per_cluster)
+            results = self._sleep_with_clustering(max_per_cluster)
+
+        # Auto-save AFTER releasing the write lock (same self-deadlock hazard
+        # as sleep(): save_with_backup → dump takes a read lock on this
+        # non-reentrant RWLock).
+        if self.config.auto_save_after_sleep and self.config.persistence_path:
+            self.save_with_backup(self.config.persistence_path)
+
+        return results
 
     def _sleep_with_clustering(
         self,
@@ -684,9 +703,8 @@ class ConsolidationMixin:
         self._stats["compressions"] = self._stats.get("compressions", 0) + results["compressed"]
         self._stats["removals"] = self._stats.get("removals", 0) + results["removed"]
 
-        # Auto-save if configured
-        if self.config.auto_save_after_sleep and self.config.persistence_path:
-            self.save_with_backup(self.config.persistence_path)
+        # NOTE: auto-save lives in the public wrapper AFTER the write lock is
+        # released (read-lock-under-write self-deadlock — see sleep()).
 
         logger.info(
             "Cluster consolidation complete: clusters=%d, compressed=%d, removed=%d, preserved=%d",

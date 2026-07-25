@@ -207,45 +207,51 @@ class _CampaignToolLease:
     The design rule (branch 4) is "register the sim/DM tools onto the
     PERSISTENT agent's registry for the campaign's duration, then restore on
     stop — do NOT swap the registry wholesale". The lease is the restore
-    mechanism: snapshot the pre-campaign tool set, record any persistent
-    tools the sim deregisters (noise-reduction loop), then on ``restore()``
-    drop campaign-added tools and re-register the removed ones.
+    mechanism: snapshot the pre-campaign ``{name: tool_object}`` map, then on
+    ``restore()`` drop campaign-added tools, re-register removed baseline
+    tools, and re-register baseline tools a campaign registration silently
+    REPLACED (``ToolRegistry.register`` overwrites same-name entries — a
+    name-only diff cannot see that, and a replaced tool would pin dead sim
+    state like a finished SimulationBridge into the persistent registry).
+
+    ``restore()`` is idempotent (pure diff against the snapshot), so calling
+    it on both the normal path and an exception-path safety net is safe.
 
     ``deactivate_tool`` is NOT usable here — it only applies to scene-scoped
     tools (``_scene_meta``); campaign tools register as core tools across
     many orchestrator sites, so a snapshot-diff is the complete mechanism.
+    (Known limit: a baseline SCENE-scoped tool re-registered here comes back
+    as core — no live case; handle registries carry no scene tools.)
     """
 
-    def __init__(self, baseline: set[str]) -> None:
+    def __init__(self, baseline: dict[str, Any]) -> None:
         self.baseline = baseline
-        self.removed: dict[str, Any] = {}
 
     @classmethod
     def snapshot(cls, registry: Any) -> "_CampaignToolLease":
-        return cls(baseline=set(registry.list_all()))
-
-    def record_removal(self, name: str, registry: Any) -> None:
-        """Capture a persistent tool object about to be deregistered (so
-        restore() can re-register it). No-op for campaign-added tools."""
-        if name in self.removed or name not in self.baseline:
-            return
-        try:
-            self.removed[name] = registry.get(name)
-        except KeyError:
-            pass
+        baseline: dict[str, Any] = {}
+        for name in list(registry.list_all()):
+            try:
+                baseline[name] = registry.get(name)
+            except KeyError:
+                pass
+        return cls(baseline=baseline)
 
     def restore(self, registry: Any) -> tuple[list[str], list[str]]:
-        """Return the registry to its pre-campaign state.
+        """Return the registry to its pre-campaign state (idempotent).
 
         Returns (dropped_campaign_tools, restored_persistent_tools).
         """
         dropped = [name for name in list(registry.list_all()) if name not in self.baseline]
         for name in dropped:
             registry.deregister(name)
-        present = set(registry.list_all())
         restored = []
-        for name, tool in self.removed.items():
-            if name not in present:
+        for name, tool in self.baseline.items():
+            try:
+                current: Any = registry.get(name)
+            except KeyError:
+                current = None
+            if current is not tool:
                 registry.register(tool)
                 restored.append(name)
         return dropped, restored
@@ -277,8 +283,16 @@ def _adopt_persistent_agent(persistent_agent: Any) -> _AdoptedAgent:
             "persistent_agent.agent_id must not be 'sim_aut' — that id marks the throwaway sim AUT; "
             "a persistent agent needs its own identity (e.g. 'console_agent')"
         )
+    # The whole point of injection is that the campaign LEARNS into the
+    # persistent substrate — so the full bio surface is required, not just
+    # the execution surface. A missing pain_bus in particular would make
+    # _setup_sim_sandbox silently build a learner-less bus and orphan every
+    # sandbox/consequence pain signal (the exact silent mis-route this loud
+    # validation exists to kill).
     missing = [
-        attr for attr in ("executor", "tool_registry", "memory_hub") if getattr(persistent_agent, attr, None) is None
+        attr
+        for attr in ("executor", "tool_registry", "memory_hub", "hippocampus", "nac", "pain_bus")
+        if getattr(persistent_agent, attr, None) is None
     ]
     if missing:
         raise ValueError(
@@ -532,7 +546,11 @@ def start_simulation_mode(
     # The AUT's BashTool checks MAXIM_ALLOW_BASH env var; without it, every
     # bash call fails with "BashTool disabled" even though autonomy allows it.
     # Simulation mode is sandboxed (tmpdir + FearGatedExecutor), so bash is safe.
-    os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
+    # NOT set for an adopted persistent agent: bash is deregistered during the
+    # campaign anyway, and the env var outlives the sim — arming the persistent
+    # agent's (CWD-scoped, unsandboxed) bash for later Talk-mode turns.
+    if _adopted is None:
+        os.environ.setdefault("MAXIM_ALLOW_BASH", "1")
 
     # Constrain AUT filesystem tools to sandbox tmpdir (if available)
     sandbox_dirs = [sandbox_root, str(sim_tmpdir)] if sandbox_root else None
@@ -580,6 +598,19 @@ def start_simulation_mode(
         # the lease snapshot was taken at adoption, restore happens at
         # shutdown so the agent's registry returns to its pre-campaign state.
         aut_registry = _adopted.registry
+        # respond/speak are how SimulationBridge.send_and_wait collects the
+        # AUT's reply text; the handle's registry (built without a
+        # response_output) lacks them, so every DM turn would silently read
+        # back None. Registered AFTER the lease snapshot → campaign-scoped,
+        # dropped at restore. (Review fold: Executor #1 / Architecture #5.)
+        if aut_response_output is not None:
+            try:
+                from maxim.tools.response import RespondTool, SpeakTool
+
+                aut_registry.register(RespondTool(aut_response_output))
+                aut_registry.register(SpeakTool(aut_response_output))
+            except Exception as e:
+                logger.warning("Failed to lease respond/speak onto adopted registry: %s", e)
     else:
         aut_registry = build_tool_registry(
             operational_mode="active",
@@ -909,11 +940,9 @@ def start_simulation_mode(
         "read_file",
         "write_file",
     ]
+    # When adopted, dropped persistent tools come back at lease restore —
+    # the snapshot holds the baseline {name: tool_object} map.
     for _rt in _irrelevant_tools:
-        if _adopted is not None:
-            # Lease bookkeeping: capture the persistent agent's tool object
-            # before dropping it, so restore() re-registers it at stop.
-            _adopted.lease.record_removal(_rt, aut_registry)
         if aut_registry.deregister(_rt):
             logger.debug("Deregistered irrelevant tool from AUT: %s", _rt)
 
@@ -2851,7 +2880,12 @@ def start_simulation_mode(
 
     display_status("Waiting for AUT to finish...")
     try:
-        aut_thread.join(timeout=5.0)
+        # Adopted persistent agent: the loop's tail runs FULL consolidation
+        # (sleep replay + saves) which routinely exceeds 5s on a real history.
+        # Returning early would (a) restore the tool lease under a live loop
+        # and (b) let a second campaign's on_session_start race the first's
+        # on_session_end on the same MemoryHub. (Review fold: Executor #5.)
+        aut_thread.join(timeout=5.0 if _adopted is None else 300.0)
         if aut_thread.is_alive():
             display_status("AUT thread did not stop in time (continuing anyway)")
     except Exception as e:
@@ -2885,6 +2919,8 @@ def start_simulation_mode(
     # its pre-campaign state (drop leased sim/DM tools, re-register the
     # persistent tools the noise-reduction loop removed). Runs AFTER the AUT
     # loop has fully stopped so no dispatch races a half-restored registry.
+    # Exception paths that bail before this point are covered by the
+    # idempotent safety-net restore in MaximHandle.play_campaign's finally.
     if _adopted is not None:
         try:
             _dropped, _restored = _adopted.lease.restore(aut_registry)
@@ -2896,6 +2932,20 @@ def start_simulation_mode(
             )
         except Exception as e:
             logger.warning("Campaign tool lease restore failed for %r: %s", _aut_agent_id, e)
+
+        # Un-pin the sim-scoped DefaultNetwork's PainCircuitBridge from the
+        # PERSISTENT pain bus. In the throwaway path the bus dies with the
+        # sim; here it lives on — without this, every campaign accumulates a
+        # dead DN subscriber on the agent's bus (a latent duplicate NAc pain
+        # learner). (Review fold: Executor #3 / bio-fidelity F2.)
+        if aut_default_network is not None and aut_pain_bus is not None:
+            try:
+                _dn_bridge = getattr(aut_default_network, "pain_bridge", None)
+                if _dn_bridge is not None:
+                    aut_pain_bus.unsubscribe(_dn_bridge._on_pain)
+                    logger.info("DefaultNetwork pain bridge unsubscribed from persistent bus")
+            except Exception as e:
+                logger.warning("Failed to unsubscribe DN pain bridge from persistent bus: %s", e)
 
     # Clean up sandbox
     if sim_sandbox:
@@ -2912,9 +2962,16 @@ def start_simulation_mode(
     # 2. Decay tagged links by 50%
     # 3. Clear ephemeral registry entries
     # HANDLE seam (a), branch 6: aut_nac derives from the adopted persistent
-    # instance when injected, so tag_imagined_links / decay_imagined_links
-    # land on the PERSISTENT agent's NAc — in-fiction facts decay while real
-    # episodes persist in the same substrate the Talk mode reads.
+    # instance, so WHEN this block runs, tag/decay land on the PERSISTENT
+    # agent's NAc. HONESTY NOTE (three-lens review, cross-confirmed): on the
+    # injected DM path this block is structurally INERT today — the
+    # imagination trigger requires entity_ref, which injection forbids, so
+    # campaign-DECLARED fiction (the DM's ghost merchant) persists as real
+    # learning. Episodes-as-real is the design's stated intent; fiction
+    # provenance for campaign-declared entities is a tracked follow-up in
+    # docs/plans/console_handle_campaign_injection.md (needs a session-scoped
+    # tag set — decay_imagined_links decays ALL imagined links per call,
+    # which compounds across a persistent agent's repeated campaigns).
     if aut_imagination_trigger is not None:
         try:
             stats = aut_imagination_trigger.stats()
@@ -3239,6 +3296,10 @@ def start_simulation_mode(
             # (each level requires typing a new goal + running a full sim).
             # RecursionError after ~50-100 is theoretically possible but
             # extremely unlikely in practice.
+            # persistent_agent threads through: dropping it would silently
+            # rebuild a throwaway sim_aut for the follow-up goal — the exact
+            # mis-route this seam kills. Re-adoption re-snapshots the lease
+            # (the outer restore already ran above). (Review fold: Arch #3.)
             return start_simulation_mode(
                 goal=_new_goal,
                 persona=persona,
@@ -3246,6 +3307,7 @@ def start_simulation_mode(
                 response_timeout=response_timeout,
                 no_sim_env=no_sim_env,
                 debug=debug,
+                persistent_agent=persistent_agent,
             )
     else:
         # Non-interactive: just print the report

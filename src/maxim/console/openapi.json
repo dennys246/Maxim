@@ -436,6 +436,7 @@
             "type": "string"
           },
           "session_id": {
+            "description": "Console-side run id (minted at accept; not the sim's internal session_id).",
             "title": "Session Id",
             "type": "string"
           },

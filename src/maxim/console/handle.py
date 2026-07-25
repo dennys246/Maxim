@@ -25,7 +25,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -117,25 +117,51 @@ class MaximHandle:
         try:
             # Headless surface: force non-interactive so the sim never grabs
             # stdin (the console serves this from a FastAPI worker thread).
-            from maxim.simulation.sim_logger import InteractiveMode, set_interactive_mode
+            # Prior mode is restored on exit — a library user embedding the
+            # handle next to interactive CLI usage keeps their setting.
+            from maxim.simulation.sim_logger import (
+                InteractiveMode,
+                get_interactive_mode,
+                set_interactive_mode,
+            )
 
+            _prior_mode = get_interactive_mode()
             set_interactive_mode(InteractiveMode.OFF)
 
-            from maxim.simulation.orchestrator import start_simulation_mode
+            from maxim.simulation.orchestrator import _CampaignToolLease, start_simulation_mode
 
-            return start_simulation_mode(
-                goal=f"dm:{campaign.name}",
-                persona="dungeon_master",
-                dm_campaign=campaign,
-                max_turns=max_turns,
-                persistent_agent=self.instance,
-            )
+            # Exception-path safety net (three-lens review, cross-confirmed
+            # Executor #2 / Architecture #2): the orchestrator restores its
+            # tool lease on the normal path, but a mid-sim raise would
+            # otherwise leave the LIVE persistent registry stripped of its
+            # own tools + polluted with sim tools for every later mode.
+            # restore() is an idempotent snapshot-diff, so running it again
+            # after a clean finish is a no-op.
+            _safety_lease = _CampaignToolLease.snapshot(self.instance.tool_registry)
+            try:
+                return start_simulation_mode(
+                    goal=f"dm:{campaign.name}",
+                    persona="dungeon_master",
+                    dm_campaign=campaign,
+                    max_turns=max_turns,
+                    persistent_agent=self.instance,
+                )
+            finally:
+                dropped, restored = _safety_lease.restore(self.instance.tool_registry)
+                if dropped or restored:
+                    logger.warning(
+                        "Campaign exited without a clean lease restore — safety net dropped %d "
+                        "leaked campaign tools and re-registered %d persistent tools",
+                        len(dropped),
+                        len(restored),
+                    )
+                set_interactive_mode(_prior_mode)
         finally:
             self._campaign_lock.release()
 
     # ── lifecycle ───────────────────────────────────────────────────────
 
-    def stop(self, *, consolidation: str = "full") -> None:
+    def stop(self, *, consolidation: Literal["full", "lightweight"] = "full") -> None:
         """Shut the persistent agent down with an EXPLICIT consolidation flavor.
 
         ``"full"`` (default): blocking sleep/replay consolidation +

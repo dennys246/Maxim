@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 log = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ class AgentInstance:
 
         return result
 
-    def shutdown(self, *, consolidation: str = "full") -> None:
+    def shutdown(self, *, consolidation: Literal["full", "lightweight"] = "full") -> None:
         """Flush memories and clean up resources.
 
         Args:
