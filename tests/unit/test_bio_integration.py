@@ -214,7 +214,7 @@ class TestEndBioSession:
         hub.on_session_end.assert_called_once()
 
     def test_lightweight_consolidation_in_sim_mode(self):
-        """Sim mode calls lightweight consolidation, not full on_session_end."""
+        """Sim mode (deprecated is_sim_mode fallback) → lightweight consolidation."""
         hub = MagicMock()
         end_bio_session(
             memory_hub=hub,
@@ -224,6 +224,40 @@ class TestEndBioSession:
         )
         hub.on_session_end.assert_not_called()
         hub.on_session_end_lightweight.assert_called_once()
+
+    def test_default_consolidation_is_full(self):
+        """HANDLE seam (b): with neither param set, default is FULL consolidation
+        (the count-silent-failures default — wrongly-lightweight loses data)."""
+        hub = MagicMock()
+        end_bio_session(memory_hub=hub, memory_hub_enabled=True, hippocampus=None)
+        hub.on_session_end.assert_called_once()
+        hub.on_session_end_lightweight.assert_not_called()
+
+    def test_explicit_consolidation_full_overrides_sim_flag(self):
+        """A persistent HANDLE forces "full" even when driven through the sim loop:
+        explicit consolidation wins over the deprecated is_sim_mode proxy."""
+        hub = MagicMock()
+        end_bio_session(
+            memory_hub=hub,
+            memory_hub_enabled=True,
+            hippocampus=None,
+            consolidation="full",
+            is_sim_mode=True,  # would say lightweight — explicit param wins
+        )
+        hub.on_session_end.assert_called_once()
+        hub.on_session_end_lightweight.assert_not_called()
+
+    def test_explicit_consolidation_lightweight(self):
+        """CC8 preserved: an explicit "lightweight" still gets the lightweight path."""
+        hub = MagicMock()
+        end_bio_session(
+            memory_hub=hub,
+            memory_hub_enabled=True,
+            hippocampus=None,
+            consolidation="lightweight",
+        )
+        hub.on_session_end_lightweight.assert_called_once()
+        hub.on_session_end.assert_not_called()
 
     def test_skips_hub_when_not_enabled(self):
         hub = MagicMock()
