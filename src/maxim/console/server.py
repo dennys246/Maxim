@@ -195,7 +195,20 @@ def post_setup_cloud(body: CloudSetupRequest) -> SetupResult:
 
 @api.get("/recall", response_model=RecallResponse, summary="What Maxim remembers about you")
 def get_recall() -> RecallResponse:
-    raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
+    # RECALL seam: wrap the consumer-shaped api.recall() — a provenance-filtered,
+    # salience-ranked, curated blend across pluggable recall sources. The console
+    # never touches the bio-stack directly (thin-app rule); it maps the curated
+    # dataclass to the wire shape.
+    import maxim
+    from maxim.console.schemas import Preference, StoryMemory
+
+    r = maxim.recall()
+    return RecallResponse(
+        name=r.name,
+        player_model=list(r.player_model),
+        story_memories=[StoryMemory(summary=m.text, when=None, salience=m.salience) for m in r.story_memories],
+        preferences=[Preference(about=p.text, learned_from=p.learned_from) for p in r.preferences],
+    )
 
 
 @api.post("/run", response_model=RunAccepted, summary="Run a mode (talk/adventure/sim/rest)")

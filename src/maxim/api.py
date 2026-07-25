@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from maxim.doctor.checks import CheckResult
     from maxim.doctor.platform_detect import PlatformInfo
     from maxim.hardware.controller import RobotController
+    from maxim.integration.recall import CuratedRecall
     from maxim.session import Session
 
 logger = logging.getLogger(__name__)
@@ -977,6 +978,44 @@ def _build_observer(home_dir: str) -> Any:
 
 # Alias: introspect = observe
 introspect = observe
+
+
+def recall(*, home_dir: str | None = None, limit: int = 8) -> "CuratedRecall":
+    """ "What Maxim remembers about you" — a curated, provenance-filtered,
+    salience-ranked read (the consumer-shaped sibling of :func:`observe`).
+
+    Where ``observe`` is the developer's raw introspection surface, ``recall`` is
+    the *product* read behind the Console MemoryView: it drops in-fiction
+    (imagined) memories, ranks by salience not recency, summarizes rather than
+    dumps, and **under-claims** (an empty result is honest, not a failure). It
+    composes pluggable :class:`~maxim.integration.recall.RecallSource`s (episodic
+    story memories, NAc traits, …), so it is not episode-specific — new sources
+    plug in without changing this verb.
+
+    Read-only; loads persisted state from ``~/.maxim`` (or ``home_dir``). Returns
+    a :class:`~maxim.integration.recall.CuratedRecall`.
+    """
+    from maxim.integration.recall import (
+        CuratedRecall,
+        EpisodicRecallSource,
+        NacTraitSource,
+        RecallSource,
+        curate_recall,
+    )
+
+    effective_home = os.path.expanduser(home_dir or "~/.maxim")
+    observer = _build_observer(effective_home)
+    if observer is None:
+        return CuratedRecall()  # no persisted state → honestly empty
+
+    sources: list[RecallSource] = []
+    hippocampus = getattr(observer, "_hippocampus", None)
+    nac = getattr(observer, "_nac", None)
+    if hippocampus is not None:
+        sources.append(EpisodicRecallSource(hippocampus))
+    if nac is not None:
+        sources.append(NacTraitSource(nac))
+    return curate_recall(sources, per_kind_limit=limit)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

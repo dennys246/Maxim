@@ -24,6 +24,7 @@ _API_VERBS = frozenset(
         "imagine",
         "introspect",
         "observe",
+        "recall",
         "run",
         # Phase 8 additions:
         "campaign",
@@ -90,6 +91,7 @@ __all__ = [
     "imagine",
     "introspect",
     "observe",
+    "recall",
     "run",
     # Phase 8 verbs
     "campaign",

@@ -69,7 +69,6 @@ def test_live_verb_models_ok(app):
     "method,path,body",
     [
         ("post", "/api/setup/cloud", {"provider": "anthropic", "profile": "claude-sonnet", "api_key": "k"}),
-        ("get", "/api/recall", None),
         ("post", "/api/run", {"mode": "talk"}),
     ],
 )
@@ -77,6 +76,27 @@ def test_seam_stubs_are_501(app, method, path, body):
     c = TestClient(app)
     r = c.get(path) if method == "get" else c.post(path, json=body)
     assert r.status_code == 501
+
+
+def test_recall_maps_curated_blend_to_wire(app, monkeypatch):
+    """RECALL wraps api.recall()'s curated blend → the wire shape (story summaries
+    + traits + preferences), never raw episodes."""
+    from maxim.integration.recall import CuratedRecall, RecalledItem
+
+    blend = CuratedRecall(
+        name="Ada",
+        player_model=["gravitates toward diplomacy"],
+        story_memories=[RecalledItem(text="your rogue betrayed the party", kind="story", salience=0.9)],
+        preferences=[RecalledItem(text="prefers stealth", kind="preference", salience=0.7, learned_from="play")],
+    )
+    monkeypatch.setattr("maxim.recall", lambda **kw: blend)
+    j = TestClient(app).get("/api/recall").json()
+    assert j["name"] == "Ada"
+    assert j["player_model"] == ["gravitates toward diplomacy"]
+    assert j["story_memories"][0]["summary"] == "your rogue betrayed the party"
+    assert j["story_memories"][0]["salience"] == 0.9
+    assert j["preferences"][0]["about"] == "prefers stealth"
+    assert j["preferences"][0]["learned_from"] == "play"
 
 
 def test_setup_mesh_writes_ref_config(app, tmp_path, monkeypatch):
