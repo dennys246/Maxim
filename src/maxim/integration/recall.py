@@ -168,46 +168,84 @@ class EpisodicRecallSource:
         return best_text, best_salience
 
 
-class NacTraitSource:
-    """Player-model traits from NAc reward biases — deliberately conservative.
+# Trait vocabulary: map a tool-name keyword (substring) to a (positive, negative)
+# human phrasing. This is the editable curation point the seams plan flags — add
+# entries as the tool surface grows; anything unmatched gets the readable generic
+# fallback in ``_trait_phrase``. Keep phrases dispositional ("prefers stealth"),
+# not tool-literal ("gravitates toward sneak_attack").
+_TRAIT_PHRASES: dict[str, tuple[str, str]] = {
+    "warm": ("seeks warmth", "avoids the cold's remedy"),
+    "sneak": ("prefers stealth", "shuns stealth"),
+    "stealth": ("prefers stealth", "shuns stealth"),
+    "hide": ("prefers stealth", "shuns stealth"),
+    "attack": ("favors direct confrontation", "avoids confrontation"),
+    "strike": ("favors direct confrontation", "avoids confrontation"),
+    "fight": ("favors direct confrontation", "avoids confrontation"),
+    "talk": ("leans on dialogue", "is sparing with words"),
+    "respond": ("leans on dialogue", "is sparing with words"),
+    "speak": ("leans on dialogue", "is sparing with words"),
+    "say": ("leans on dialogue", "is sparing with words"),
+    "flee": ("errs toward caution", "rarely retreats"),
+    "dodge": ("errs toward caution", "rarely retreats"),
+    "examine": ("investigates carefully", "acts without inspecting"),
+    "look": ("investigates carefully", "acts without inspecting"),
+    "sense": ("investigates carefully", "acts without inspecting"),
+    "rest": ("paces itself", "pushes through fatigue"),
+    "sleep": ("paces itself", "pushes through fatigue"),
+}
 
-    NAc biases are the AGENT's learned action tendencies; turning them into
-    "traits about you" is an under-claim by design. Only biases above a high
-    confidence gate are surfaced, phrased generically. The gate + the phrasing
-    are the tuning points the seams plan flags as open (trait vocabulary,
-    confidence threshold); until they're designed this source stays quiet.
+
+def _trait_phrase(tool_sig: str, bias: float) -> str:
+    """A dispositional phrase for a (tool, bias). Vocabulary first, then a
+    readable generic fallback — never the raw ``tool:foo`` signature."""
+    # "tool:warm_self" -> "warm_self"; "tool:use:dodge" -> "dodge"
+    tool = tool_sig.split(":")[-1] if ":" in tool_sig else tool_sig
+    for keyword, (positive, negative) in _TRAIT_PHRASES.items():
+        if keyword in tool:
+            return positive if bias > 0 else negative
+    pretty = tool.replace("_", " ").strip()
+    return f"gravitates toward {pretty}" if bias > 0 else f"avoids {pretty}"
+
+
+class NacTraitSource:
+    """Player-model traits from NAc reward biases — conservative + gated.
+
+    NAc biases are the AGENT's learned action tendencies; reading them as
+    "traits about you" is an under-claim by design. Only biases whose magnitude
+    clears ``min_abs_bias`` are surfaced (cluster biases range to ±1.0, so the
+    0.4 default means "a clear lean," not a faint one), phrased dispositionally
+    via ``_TRAIT_PHRASES`` — the vocabulary + gate are the tuning points the
+    seams plan flags. Duplicate phrases (same disposition from several tools /
+    agents) collapse to the strongest.
     """
 
-    def __init__(self, nac: Any, *, min_abs_bias: float = 0.5) -> None:
+    def __init__(self, nac: Any, *, min_abs_bias: float = 0.4) -> None:
         self._nac = nac
         self._gate = min_abs_bias
 
     def recalled_items(self, *, limit: int) -> list[RecalledItem]:
         get_biases = getattr(self._nac, "get_agent_tool_biases", None)
-        agents = getattr(self._nac, "known_agent_ids", None)
-        if get_biases is None or agents is None:
+        enumerate_agents = getattr(self._nac, "known_agent_ids", None)
+        if get_biases is None or enumerate_agents is None:
             return []  # under-claim: no clean read path → say nothing
-        out: list[RecalledItem] = []
         try:
-            agent_ids = list(agents() if callable(agents) else agents)
+            agent_ids = list(enumerate_agents())
         except Exception:  # noqa: BLE001
             return []
+        # Collapse duplicate dispositions to the strongest observation.
+        strongest: dict[str, float] = {}
         for agent_id in agent_ids:
             try:
-                for tool_sig, bias in get_biases(agent_id=agent_id, top_n=limit):
-                    if abs(bias) < self._gate:
-                        continue  # confidence gate — under-claim below it
-                    tool = tool_sig.replace("tool:", "")
-                    verb = "gravitates toward" if bias > 0 else "steers clear of"
-                    out.append(
-                        RecalledItem(
-                            text=f"{verb} {tool}",
-                            kind="trait",
-                            salience=abs(bias),
-                            real=True,
-                            learned_from="learned reward",
-                        )
-                    )
+                biases = get_biases(agent_id=agent_id, top_n=limit)
             except Exception:  # noqa: BLE001
                 continue
-        return out
+            for tool_sig, bias in biases:
+                if abs(bias) < self._gate:
+                    continue  # confidence gate — under-claim below it
+                phrase = _trait_phrase(tool_sig, bias)
+                if abs(bias) > strongest.get(phrase, 0.0):
+                    strongest[phrase] = abs(bias)
+        return [
+            RecalledItem(text=phrase, kind="trait", salience=sal, real=True, learned_from="learned reward")
+            for phrase, sal in strongest.items()
+        ]

@@ -101,3 +101,33 @@ def test_recall_verb_empty_when_no_state(tmp_path):
     r = maxim.recall(home_dir=str(tmp_path))
     assert isinstance(r.story_memories, list) and r.story_memories == []
     assert r.name is None and r.player_model == []
+
+
+def test_nac_trait_source_end_to_end():
+    """Full chain: real NAc reward biases → known_agent_ids → get_agent_tool_biases
+    → dispositional trait phrases (vocabulary + gate + dedup)."""
+    from maxim.decisions.nac import NAc, NACConfig
+    from maxim.integration.recall import NacTraitSource
+
+    nac = NAc(NACConfig())
+    for _ in range(30):  # saturate a positive warm bias + a negative flee bias
+        nac.update_cluster_reward(agent_id="hero", cluster_id="c1", tool_signature="tool:warm_self", reward=1.0)
+        nac.update_cluster_reward(agent_id="hero", cluster_id="c1", tool_signature="tool:flee", reward=-1.0)
+    assert nac.known_agent_ids() == ["hero"]
+
+    out = curate_recall([NacTraitSource(nac, min_abs_bias=0.3)])
+    assert "seeks warmth" in out.player_model  # positive warm → vocabulary phrase
+    assert "rarely retreats" in out.player_model  # negative flee → negative phrase
+    # nothing below the gate leaks in
+    assert all(isinstance(t, str) and "tool:" not in t for t in out.player_model)
+
+
+def test_nac_trait_source_gate_under_claims():
+    """A weak bias (below the gate) surfaces no trait — under-claim."""
+    from maxim.decisions.nac import NAc, NACConfig
+    from maxim.integration.recall import NacTraitSource
+
+    nac = NAc(NACConfig())
+    nac.update_cluster_reward(agent_id="hero", cluster_id="c1", tool_signature="tool:warm_self", reward=1.0)  # ~0.15
+    out = curate_recall([NacTraitSource(nac, min_abs_bias=0.4)])
+    assert out.player_model == []
