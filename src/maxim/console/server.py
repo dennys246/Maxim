@@ -22,6 +22,7 @@ import argparse
 import asyncio
 import dataclasses
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -211,9 +212,77 @@ def get_recall() -> RecallResponse:
     )
 
 
+# ── RUN seam state (HANDLE seam a) ──────────────────────────────────────────
+# One MaximHandle per server process (the console fronts ONE persistent
+# agent), one campaign at a time. The handle is built lazily on the first
+# adventure run so `maxim serve` startup stays instant.
+_handle_lock = threading.Lock()
+_handle: Any | None = None
+_active_run: dict[str, Any] = {"session_id": None, "thread": None}
+
+
+def _get_handle() -> Any:
+    global _handle
+    with _handle_lock:
+        if _handle is None:
+            from maxim.console.handle import MaximHandle
+
+            _handle = MaximHandle()
+        return _handle
+
+
+def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
+    import logging
+
+    log = logging.getLogger(__name__)
+    try:
+        result = handle.play_campaign(campaign_path)
+        log.info("console run %s finished: %s", run_id, getattr(result, "finish_reason", "?"))
+    except Exception:
+        log.exception("console run %s failed", run_id)
+
+
 @api.post("/run", response_model=RunAccepted, summary="Run a mode (talk/adventure/sim/rest)")
 def post_run(body: RunRequest) -> RunAccepted:
-    raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
+    # HANDLE seam (a): mode="adventure" runs a DM campaign AS the persistent
+    # agent (campaign injection — the "Adventure teaches Talk" surface).
+    # talk/sim/rest stay 501 until Phase 3 streaming lands.
+    if body.mode != "adventure":
+        raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
+    if not body.campaign:
+        raise HTTPException(status_code=422, detail="mode='adventure' requires 'campaign' (a campaign YAML path).")
+    campaign_path = Path(body.campaign).expanduser()
+    if not campaign_path.exists():
+        raise HTTPException(status_code=404, detail=f"Campaign not found: {campaign_path}")
+
+    handle = _get_handle()
+    with _handle_lock:
+        prev = _active_run["thread"]
+        if prev is not None and prev.is_alive():
+            return RunAccepted(
+                session_id=str(_active_run["session_id"]),
+                mode="adventure",
+                status="rejected",
+                detail="A run is already active on this handle (one campaign at a time).",
+            )
+        # The sim generates its own internal session_id after boot; this run
+        # id is the console-side tracking handle returned at accept time.
+        run_id = time.strftime("%Y%m%d_%H%M%S")
+        thread = threading.Thread(
+            target=_run_campaign_thread,
+            args=(handle, str(campaign_path), run_id),
+            name=f"console.run.{run_id}",
+            daemon=True,
+        )
+        _active_run["session_id"] = run_id
+        _active_run["thread"] = thread
+        thread.start()
+    return RunAccepted(
+        session_id=run_id,
+        mode="adventure",
+        status="started",
+        detail=f"Campaign {campaign_path.name} running as persistent agent {handle.agent_id!r}.",
+    )
 
 
 @api.get(

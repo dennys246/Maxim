@@ -86,6 +86,7 @@ def _setup_sim_sandbox(
     network: str = "none",
     populate: bool = True,
     announce: bool = False,
+    pain_bus: Any | None = None,
 ) -> tuple[Any, str | None, Any]:
     """Build the AUT pain bus + sandbox for a simulation run.
 
@@ -104,6 +105,11 @@ def _setup_sim_sandbox(
         populate: Whether to populate honeypot environment files.
         announce: If True, print a visible one-liner to stderr
             showing the selected backend.
+        pain_bus: Pre-built PainBus to route sandbox pain through
+            (HANDLE seam a: a persistent agent's own bus, which already
+            carries its hippocampus/NAc learners). When ``None`` (all
+            existing callers), a learner-less bus is built here and
+            ``build_bio_stack`` attaches learners later.
 
     Returns:
         (sim_sandbox, sandbox_root, aut_pain_bus). Any element may
@@ -112,13 +118,17 @@ def _setup_sim_sandbox(
     # Build the pain bus first — the sandbox's PainTriggerLayer needs it.
     # The bus is intentionally created without learners here; build_bio_stack
     # later attaches them via build_pain_bus(bus=aut_pain_bus, ...).
-    aut_pain_bus: Any = None
-    try:
-        from maxim.proprioception.pain_bus import build_pain_bus
+    # HANDLE seam (a): an injected persistent agent supplies its OWN bus so
+    # sandbox pain lands on the bus its learners are already subscribed to —
+    # building a second bus here would silently orphan those signals.
+    aut_pain_bus: Any = pain_bus
+    if aut_pain_bus is None:
+        try:
+            from maxim.proprioception.pain_bus import build_pain_bus
 
-        aut_pain_bus = build_pain_bus(hippocampus=None, nac=None)
-    except Exception as e:
-        logger.debug("AUT PainBus creation deferred: %s", e)
+            aut_pain_bus = build_pain_bus(hippocampus=None, nac=None)
+        except Exception as e:
+            logger.debug("AUT PainBus creation deferred: %s", e)
 
     sim_sandbox = None
     sandbox_root: str | None = None
@@ -183,6 +193,111 @@ def _setup_sim_sandbox(
     return sim_sandbox, sandbox_root, aut_pain_bus
 
 
+# ── HANDLE seam (a): persistent-agent campaign injection ────────────────────
+# docs/plans/console_handle_campaign_injection.md. A campaign run may ADOPT a
+# live persistent AgentInstance instead of constructing a throwaway "sim_aut".
+# Adoption is extracted into a helper (+ a registry lease) so the six
+# silent-mis-route branches are directly testable without spinning up the
+# full sim (same pattern as _setup_sim_sandbox above).
+
+
+class _CampaignToolLease:
+    """Reversible campaign-scoped mutations of a persistent agent's registry.
+
+    The design rule (branch 4) is "register the sim/DM tools onto the
+    PERSISTENT agent's registry for the campaign's duration, then restore on
+    stop — do NOT swap the registry wholesale". The lease is the restore
+    mechanism: snapshot the pre-campaign tool set, record any persistent
+    tools the sim deregisters (noise-reduction loop), then on ``restore()``
+    drop campaign-added tools and re-register the removed ones.
+
+    ``deactivate_tool`` is NOT usable here — it only applies to scene-scoped
+    tools (``_scene_meta``); campaign tools register as core tools across
+    many orchestrator sites, so a snapshot-diff is the complete mechanism.
+    """
+
+    def __init__(self, baseline: set[str]) -> None:
+        self.baseline = baseline
+        self.removed: dict[str, Any] = {}
+
+    @classmethod
+    def snapshot(cls, registry: Any) -> "_CampaignToolLease":
+        return cls(baseline=set(registry.list_all()))
+
+    def record_removal(self, name: str, registry: Any) -> None:
+        """Capture a persistent tool object about to be deregistered (so
+        restore() can re-register it). No-op for campaign-added tools."""
+        if name in self.removed or name not in self.baseline:
+            return
+        try:
+            self.removed[name] = registry.get(name)
+        except KeyError:
+            pass
+
+    def restore(self, registry: Any) -> tuple[list[str], list[str]]:
+        """Return the registry to its pre-campaign state.
+
+        Returns (dropped_campaign_tools, restored_persistent_tools).
+        """
+        dropped = [name for name in list(registry.list_all()) if name not in self.baseline]
+        for name in dropped:
+            registry.deregister(name)
+        present = set(registry.list_all())
+        restored = []
+        for name, tool in self.removed.items():
+            if name not in present:
+                registry.register(tool)
+                restored.append(name)
+        return dropped, restored
+
+
+class _AdoptedAgent:
+    """The derived bindings for an injected persistent agent (branch 1)."""
+
+    def __init__(self, instance: Any) -> None:
+        self.instance = instance
+        self.agent_id: str = instance.agent_id
+        self.registry = instance.tool_registry
+        self.pain_bus = getattr(instance, "pain_bus", None)
+        self.lease = _CampaignToolLease.snapshot(self.registry)
+
+
+def _adopt_persistent_agent(persistent_agent: Any) -> _AdoptedAgent:
+    """Validate + adopt a live persistent AgentInstance for a campaign run.
+
+    Fail-fast (not silent mis-route): an under-built instance would
+    otherwise route episodes into a half-wired stack — the exact failure
+    mode this seam exists to kill is SILENT, so validation is loud.
+    """
+    agent_id = getattr(persistent_agent, "agent_id", "") or ""
+    if not agent_id.strip():
+        raise ValueError("persistent_agent must carry a non-empty agent_id (it routes episode attribution)")
+    if agent_id == "sim_aut":
+        raise ValueError(
+            "persistent_agent.agent_id must not be 'sim_aut' — that id marks the throwaway sim AUT; "
+            "a persistent agent needs its own identity (e.g. 'console_agent')"
+        )
+    missing = [
+        attr for attr in ("executor", "tool_registry", "memory_hub") if getattr(persistent_agent, attr, None) is None
+    ]
+    if missing:
+        raise ValueError(
+            f"persistent_agent is missing {missing} — build it via "
+            "AgentFactory.create_full_agent(with_bio_stack=True, with_executor=True, tool_registry=...) "
+            "before injecting it into a campaign"
+        )
+    hub_agent_id = getattr(persistent_agent.memory_hub, "agent_id", None)
+    if hub_agent_id and hub_agent_id != agent_id:
+        # Producer/consumer key alignment (CLAUDE.md per-agent stash lesson):
+        # the loop derives _loop_agent_id from memory_hub.agent_id — a mismatch
+        # here silently splits attribution across two keys.
+        raise ValueError(
+            f"persistent_agent.agent_id={agent_id!r} disagrees with its "
+            f"memory_hub.agent_id={hub_agent_id!r} — attribution would silently split across two keys"
+        )
+    return _AdoptedAgent(persistent_agent)
+
+
 def start_simulation_mode(
     goal: str,
     persona: str = "adversarial",
@@ -207,6 +322,7 @@ def start_simulation_mode(
     experiment_log: Any = None,
     fixture_path: str | None = None,
     entity_ref: str | None = None,
+    persistent_agent: Any = None,
 ) -> SimulationResult:
     """Boot simulation mode: AUT + orchestrator + stdin reader.
 
@@ -226,6 +342,18 @@ def start_simulation_mode(
             ``ComponentRegistry`` and registers affordance tools. Requires
             ``aut_pain_bus`` (Embodiment publishes through it) and ``aut_nac``
             (bridge needs it for direct attribution).
+        persistent_agent: HANDLE seam (a) — a live ``AgentInstance`` to ADOPT
+            as the AUT instead of constructing a throwaway ``sim_aut``
+            (docs/plans/console_handle_campaign_injection.md). When set: the
+            campaign learns into the persistent agent's own
+            Hippocampus/NAc/MemoryHub (its home, its agent_id), the
+            resume-session file-load is skipped (live state was already
+            restored via ``auto_load``), sim/DM tools are leased onto the
+            agent's registry and restored on stop, the AUT loop ends with
+            ``consolidation="full"``, and the session-dir AUT snapshot is not
+            written. Mutually exclusive with ``entity_ref`` — a persistent
+            agent owns its embodiment (declared at construction, e.g. the
+            Reachy-flavored handle), the sim must not graft one on.
 
     Returns:
         SimulationResult with session summary
@@ -267,11 +395,25 @@ def start_simulation_mode(
 
     start_time = time.time()
 
+    # ── HANDLE seam (a): adopt an injected persistent agent EARLY ────────
+    # Validation is loud + first so a mis-built instance fails before any
+    # heavy construction (LLM router, sandbox). The adopted bindings replace
+    # the sim_aut factory path below.
+    _adopted: _AdoptedAgent | None = None
+    if persistent_agent is not None:
+        if entity_ref is not None:
+            raise ValueError(
+                "entity_ref is incompatible with persistent_agent — a persistent agent owns its "
+                "embodiment (declare it at AgentConfig.embodiment_ref when building the handle)"
+            )
+        _adopted = _adopt_persistent_agent(persistent_agent)
+    _aut_agent_id = _adopted.agent_id if _adopted is not None else "sim_aut"
+
     # Register well-known sim agent nicknames for display logging.
     # Must happen early — before any sim_log calls that might carry agent_id.
     from maxim.simulation.sim_logger import register_agent_nickname, sim_agent_context
 
-    register_agent_nickname("sim_aut", "AUT")
+    register_agent_nickname(_aut_agent_id, "AUT")
     register_agent_nickname("sim_orchestrator", "Orch")
 
     # Plan 4 follow-up (2026-04-14): generate session_id AT ENTRY so
@@ -370,6 +512,9 @@ def start_simulation_mode(
         network=sandbox_network,
         populate=not no_sim_env,
         announce=True,
+        # HANDLE seam (a): an adopted agent's own bus (with its learners)
+        # carries sandbox pain; None keeps today's build-here behavior.
+        pain_bus=_adopted.pain_bus if _adopted is not None else None,
     )
 
     # ── Build AUT pipeline ───────────────────────────────────────────────
@@ -428,12 +573,20 @@ def start_simulation_mode(
         logger.debug("PromptHandler unavailable for AUT: %s", _ph_exc)
         aut_prompt_handler = None
 
-    aut_registry = build_tool_registry(
-        operational_mode="active",
-        allowed_dirs_override=sandbox_dirs,
-        response_output=aut_response_output,
-        prompt_handler=aut_prompt_handler,
-    )
+    if _adopted is not None:
+        # HANDLE seam (a), branch 4: the campaign runs on the PERSISTENT
+        # agent's registry (its executor is bound to it — a fresh registry
+        # would dispatch nothing). Sim/DM tools registered below are leased:
+        # the lease snapshot was taken at adoption, restore happens at
+        # shutdown so the agent's registry returns to its pre-campaign state.
+        aut_registry = _adopted.registry
+    else:
+        aut_registry = build_tool_registry(
+            operational_mode="active",
+            allowed_dirs_override=sandbox_dirs,
+            response_output=aut_response_output,
+            prompt_handler=aut_prompt_handler,
+        )
     # Inject user-registered tools from maxim.register_tool() / @maxim.tool
     from maxim.api import _inject_pending_tools
 
@@ -530,26 +683,33 @@ def start_simulation_mode(
     # layers (PainInterceptor + AnticipatoryPain) so the fear gate is
     # outermost. The factory wraps fear gate directly on the executor
     # which would put it under the pain layers (wrong order).
-    _aut_config = AgentConfig(
-        agent_id="sim_aut",
-        role="pc",
-        persistence_dir=str(sim_tmpdir),
-        with_bio_stack=True,
-        with_executor=True,
-        with_pain_bridge=entity_ref is not None,
-        with_fear_gate=False,
-        embodiment_ref=entity_ref,
-    )
-    _aut_factory = AgentFactory(
-        component_registry=aut_component_registry,
-        base_data_dir=sim_tmpdir,
-    )
-    _aut_instance = _aut_factory.create_full_agent(
-        _aut_config,
-        tool_registry=aut_registry,
-        pain_bus=aut_pain_bus,
-        fear_llm=llm_router,
-    )
+    if _adopted is not None:
+        # HANDLE seam (a), branch 1: ADOPT the live persistent instance —
+        # no create_full_agent, no "sim_aut", no sim_tmpdir persistence.
+        # Every aut_* binding below derives from this instance, which is
+        # what routes campaign episodes into the persistent agent's home.
+        _aut_instance = _adopted.instance
+    else:
+        _aut_config = AgentConfig(
+            agent_id="sim_aut",
+            role="pc",
+            persistence_dir=str(sim_tmpdir),
+            with_bio_stack=True,
+            with_executor=True,
+            with_pain_bridge=entity_ref is not None,
+            with_fear_gate=False,
+            embodiment_ref=entity_ref,
+        )
+        _aut_factory = AgentFactory(
+            component_registry=aut_component_registry,
+            base_data_dir=sim_tmpdir,
+        )
+        _aut_instance = _aut_factory.create_full_agent(
+            _aut_config,
+            tool_registry=aut_registry,
+            pain_bus=aut_pain_bus,
+            fear_llm=llm_router,
+        )
 
     # Extract bio-system references for downstream sim-specific wiring.
     aut_hippocampus = _aut_instance.hippocampus
@@ -573,8 +733,11 @@ def start_simulation_mode(
             entity_ref,
         )
 
-    # Restore AUT state from previous session if resuming
-    if resume_session and (aut_hippocampus is not None or aut_nac is not None):
+    # Restore AUT state from previous session if resuming.
+    # HANDLE seam (a), branch 2: gated on persistent_agent is None — an
+    # adopted agent already restored its live state via auto_load at handle
+    # construction; re-loading a session AUT file here would CLOBBER it.
+    if persistent_agent is None and resume_session and (aut_hippocampus is not None or aut_nac is not None):
         from maxim.utils.paths import sim_reports as _sim_reports_dir
 
         prev_dir = _sim_reports_dir() / resume_session
@@ -747,6 +910,10 @@ def start_simulation_mode(
         "write_file",
     ]
     for _rt in _irrelevant_tools:
+        if _adopted is not None:
+            # Lease bookkeeping: capture the persistent agent's tool object
+            # before dropping it, so restore() re-registers it at stop.
+            _adopted.lease.record_removal(_rt, aut_registry)
         if aut_registry.deregister(_rt):
             logger.debug("Deregistered irrelevant tool from AUT: %s", _rt)
 
@@ -1320,7 +1487,7 @@ def start_simulation_mode(
                 tool_registry=aut_registry,
                 default_network=aut_default_network,
                 encoder=_aut_encoder,
-                agent_id="sim_aut",
+                agent_id=_aut_agent_id,
                 enabled=not _imagination_off,  # universal MAXIM_DISABLE_IMAGINATION gate
             )
 
@@ -1331,7 +1498,7 @@ def start_simulation_mode(
                 _sense_tools = aut_registry.get("sense_tools")
                 _sense_tools._component_index = _aut_component_index
                 _sense_tools._atl = _aut_atl
-                _sense_tools._agent_id = "sim_aut"
+                _sense_tools._agent_id = _aut_agent_id
                 # NAc is already wired at construction if passed, but
                 # the tool was constructed with nac=None — patch it now.
                 if _sense_tools._nac is None and _aut_nac is not None:
@@ -1349,7 +1516,7 @@ def start_simulation_mode(
                 _presence_tool._imagination_trigger = aut_imagination_trigger
                 _presence_tool._nac = _aut_nac
                 _presence_tool._atl = _aut_atl
-                _presence_tool._agent_id = "sim_aut"
+                _presence_tool._agent_id = _aut_agent_id
             except KeyError:
                 pass
 
@@ -1357,7 +1524,7 @@ def start_simulation_mode(
             if aut_bio_enrichment_pipeline is not None:
                 aut_bio_enrichment_pipeline._component_index = _aut_component_index
                 aut_bio_enrichment_pipeline._component_registry = aut_component_registry
-                aut_bio_enrichment_pipeline._agent_id = "sim_aut"
+                aut_bio_enrichment_pipeline._agent_id = _aut_agent_id
 
             # Wire percept reflex system into BioEnrichmentPipeline.
             # Reflexes detect keyword patterns in percept text and invoke
@@ -1424,7 +1591,7 @@ def start_simulation_mode(
                 from maxim.imagination.trigger import encode_entity_affordances
 
                 for _self_entity in _aut_entity_map.list_self_entities():
-                    encode_entity_affordances(_self_entity, _aut_encoder, agent_id="sim_aut")
+                    encode_entity_affordances(_self_entity, _aut_encoder, agent_id=_aut_agent_id)
 
             logger.info("AUT ImaginationTrigger wired (ComponentIndex + EntityDesigner + DN arousal gate)")
             try:
@@ -1483,11 +1650,10 @@ def start_simulation_mode(
                 from maxim.prompts.cluster_bias_annotation import annotation_disabled_via_env
 
                 if not annotation_disabled_via_env(os.environ.get("MAXIM_DISABLE_IMAGINATION_SUBSTRATE_SIGNAL")):
-                    # Resolve agent_id from the canonical AUT MemoryHub stash
-                    # (same precedent as substrate_telemetry at line 1487)
-                    # instead of a fresh literal — a future agent_id refactor
-                    # then can't silently null this lookup.
-                    _aut_agent_id = getattr(aut_memory_hub, "agent_id", None) or "sim_aut"
+                    # agent_id comes from the function-level _aut_agent_id —
+                    # the single canonical binding (adopted persistent id or
+                    # "sim_aut"), validated against MemoryHub.agent_id at
+                    # adoption so this lookup can't silently mis-key.
                     try:
                         _aut_nac_biases = aut_nac.get_agent_tool_biases(
                             agent_id=_aut_agent_id,
@@ -1589,8 +1755,8 @@ def start_simulation_mode(
         from maxim.utils.http import context_scope, new_request_context
 
         try:
-            with context_scope(new_request_context(agent_id="sim_aut", session_id=session_id)):
-                with sim_agent_context("sim_aut"):
+            with context_scope(new_request_context(agent_id=_aut_agent_id, session_id=session_id)):
+                with sim_agent_context(_aut_agent_id):
                     # Thalamic-relay stage 4 (thalamus_relay_design_pass.md):
                     # opt-in audio-orient channel. When MAXIM_SIM_AUDIO_ORIENT is
                     # set, multiplex a synthetic-DoA AzimuthDoASource into the AUT
@@ -1612,7 +1778,7 @@ def start_simulation_mode(
                         _aut_percept_source = build_audio_composite(
                             bridge.percept_source,
                             default_sim_doa_reader(),
-                            agent_id="sim_aut",
+                            agent_id=_aut_agent_id,
                             salience=_aud_sal,
                             novelty=_aud_nov,
                         )
@@ -1645,6 +1811,10 @@ def start_simulation_mode(
                         thought_gate=_aut_thought_gate,
                         aut_mode=aut_mode,
                         substrate_telemetry=aut_substrate_telemetry,
+                        # HANDLE seam (a), branch 5: a persistent agent must
+                        # NOT get the sim default ("lightweight") — its
+                        # session-end consolidation is explicit "full" (#427).
+                        consolidation="full" if persistent_agent is not None else None,
                     )
         except Exception as e:
             aut_error.append(e)
@@ -2711,6 +2881,22 @@ def start_simulation_mode(
     except Exception as e:
         logger.debug("Failed to shutdown orchestrator instance: %s", e)
 
+    # HANDLE seam (a), branch 4: restore the persistent agent's registry to
+    # its pre-campaign state (drop leased sim/DM tools, re-register the
+    # persistent tools the noise-reduction loop removed). Runs AFTER the AUT
+    # loop has fully stopped so no dispatch races a half-restored registry.
+    if _adopted is not None:
+        try:
+            _dropped, _restored = _adopted.lease.restore(aut_registry)
+            logger.info(
+                "Campaign tool lease restored on %r: dropped %d campaign tools, re-registered %d persistent tools",
+                _aut_agent_id,
+                len(_dropped),
+                len(_restored),
+            )
+        except Exception as e:
+            logger.warning("Campaign tool lease restore failed for %r: %s", _aut_agent_id, e)
+
     # Clean up sandbox
     if sim_sandbox:
         pain_count = len(sim_sandbox.pain_events)
@@ -2725,6 +2911,10 @@ def start_simulation_mode(
     # 1. Retroactively tag causal links involving imagined entities
     # 2. Decay tagged links by 50%
     # 3. Clear ephemeral registry entries
+    # HANDLE seam (a), branch 6: aut_nac derives from the adopted persistent
+    # instance when injected, so tag_imagined_links / decay_imagined_links
+    # land on the PERSISTENT agent's NAc — in-fiction facts decay while real
+    # episodes persist in the same substrate the Talk mode reads.
     if aut_imagination_trigger is not None:
         try:
             stats = aut_imagination_trigger.stats()
@@ -2881,18 +3071,26 @@ def start_simulation_mode(
     display_status(f"Saving action log ({action_count} records)...")
     save_action_log(bridge, base_dir=report_dir, session_id=report.session_id)
 
-    if aut_hippocampus is not None or aut_nac is not None:
-        aut_mem = len(aut_hippocampus) if aut_hippocampus else 0
-        aut_links = sum(len(v) for v in aut_nac._links.values()) if aut_nac else 0
-        display_status(f"Saving AUT state ({aut_mem} memories, {aut_links} causal links)...")
-    save_aut_state(
-        hippocampus=aut_hippocampus,
-        nac=aut_nac,
-        base_dir=report_dir,
-        session_id=report.session_id,
-        ec=aut_memory_hub.ec if aut_memory_hub is not None else None,
-        atl=aut_memory_hub.atl if aut_memory_hub is not None else None,
-    )
+    if persistent_agent is not None:
+        # HANDLE seam (a), branch 3: the persistent agent's state lives in
+        # its OWN home (saved by the loop's full session-end + the handle's
+        # shutdown). Do NOT also snapshot it into the session dir — that
+        # duplicates the whole memory per campaign and creates a stale
+        # second source a later --resume-session load would clobber from.
+        display_status("Persistent agent — state saved to its own home (no session AUT snapshot)")
+    else:
+        if aut_hippocampus is not None or aut_nac is not None:
+            aut_mem = len(aut_hippocampus) if aut_hippocampus else 0
+            aut_links = sum(len(v) for v in aut_nac._links.values()) if aut_nac else 0
+            display_status(f"Saving AUT state ({aut_mem} memories, {aut_links} causal links)...")
+        save_aut_state(
+            hippocampus=aut_hippocampus,
+            nac=aut_nac,
+            base_dir=report_dir,
+            session_id=report.session_id,
+            ec=aut_memory_hub.ec if aut_memory_hub is not None else None,
+            atl=aut_memory_hub.atl if aut_memory_hub is not None else None,
+        )
 
     # Copy experiment log to report directory (if any experiments were recorded)
     if experiment_log is not None and len(experiment_log) > 0:
