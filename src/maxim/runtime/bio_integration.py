@@ -8,7 +8,7 @@ and RPE-based salience boosting.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from maxim.utils.structured_logging import log_agentic
 
@@ -127,16 +127,35 @@ def end_bio_session(
     memory_hub: Any | None,
     memory_hub_enabled: bool,
     hippocampus: Any | None,
-    is_sim_mode: bool,
+    consolidation: Literal["full", "lightweight"] | None = None,
+    is_sim_mode: bool | None = None,
 ) -> None:
     """Drain hippocampus capture queue and end MemoryHub session.
+
+    The consolidation flavor is an **explicit choice** (HANDLE seam, part b):
+    ``"full"`` runs the blocking sleep/replay + bridge consolidation
+    (``on_session_end``); ``"lightweight"`` persists NAc decay + embeddings +
+    subsystem state but skips the expensive replay (``on_session_end_lightweight``).
+
+    **Default is ``"full"``** — the count-silent-failures choice: wrongly
+    lightweight loses consolidation *silently*; wrongly full is a slightly slow
+    shutdown that is loud and harmless. Sims must opt into ``"lightweight"``.
 
     Args:
         memory_hub: MemoryHub instance (may be None).
         memory_hub_enabled: Whether the session was started successfully.
         hippocampus: Hippocampus instance (may be None).
-        is_sim_mode: If True, skip MemoryHub session_end (avoids blocking consolidation).
+        consolidation: Explicit consolidation flavor. When ``None`` (unset), the
+            flavor is derived from the deprecated ``is_sim_mode`` proxy for
+            back-compat; an explicit value always wins (this is how a persistent
+            HANDLE forces ``"full"`` even when driven through the sim loop).
+        is_sim_mode: **Deprecated** back-compat fallback — only consulted when
+            ``consolidation`` is ``None``. New callers pass ``consolidation``
+            directly rather than inferring end-of-session from a proxy flag.
     """
+    if consolidation is None:
+        consolidation = "lightweight" if is_sim_mode else "full"
+    use_lightweight = consolidation == "lightweight"
     # Drain async capture queue and save hippocampus
     if hippocampus is not None:
         try:
@@ -156,7 +175,7 @@ def end_bio_session(
     # NAc decay, semantic embeddings, and subsystem state so learning is not lost.
     if memory_hub_enabled and memory_hub is not None:
         try:
-            if is_sim_mode:
+            if use_lightweight:
                 session_stats = memory_hub.on_session_end_lightweight()
             else:
                 session_stats = memory_hub.on_session_end()
