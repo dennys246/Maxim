@@ -38,6 +38,7 @@ from maxim.console.schemas import (
     MeshSetupRequest,
     ModelInfoWire,
     ModelsResponse,
+    PlatformWire,
     ProbeRequest,
     ProbeResult,
     RecallResponse,
@@ -48,6 +49,18 @@ from maxim.console.schemas import (
 
 _HEARTBEAT_INTERVAL_S = 15.0
 _NOT_IMPLEMENTED = "Seam not yet implemented (Phase 1) — shape is contract-complete for type-gen."
+
+# The wizard's "2-3 curated ▾ / Advanced" picker: profiles flagged ``curated`` are
+# surfaced by default; the rest live under Advanced. This is the single editable
+# curation point — a small span of fast-local / capable-local / flagship-cloud.
+# Edit freely; unknown names are simply never marked curated.
+_CURATED_PROFILES: frozenset[str] = frozenset(
+    {
+        "gemma-2b-it",  # tiny — Pi / low-RAM
+        "llama-3-8b-instruct",  # capable local default
+        "claude-sonnet-4-6",  # flagship cloud
+    }
+)
 
 # Committed OpenAPI snapshot — the cross-repo contract artifact. maxim-pulse
 # generates its FacadeClient from this file (no running server needed); a pytest
@@ -72,9 +85,12 @@ def get_models() -> ModelsResponse:
     import maxim
 
     groups = maxim.list_models()  # dict[str, list[ModelInfo]]
-    return ModelsResponse(
-        groups={group: [ModelInfoWire(**dataclasses.asdict(m)) for m in members] for group, members in groups.items()}
-    )
+
+    def _wire(m: Any) -> ModelInfoWire:
+        d = dataclasses.asdict(m)
+        return ModelInfoWire(**d, curated=d.get("name") in _CURATED_PROFILES)
+
+    return ModelsResponse(groups={group: [_wire(m) for m in members] for group, members in groups.items()})
 
 
 @api.get("/diagnose", response_model=DiagnoseResponse, summary="Environment diagnostics")
@@ -92,7 +108,14 @@ def get_diagnose() -> DiagnoseResponse:
                 detail=d.get("detail"),
             )
         )
-    return DiagnoseResponse(platform=str(getattr(report, "platform", "")), sections=sections)
+    p = getattr(report, "platform", None)
+    platform = PlatformWire(
+        os=str(getattr(p, "os", "") or ""),
+        arch=str(getattr(p, "arch", "") or ""),
+        os_release=str(getattr(p, "os_release", "") or ""),
+        runtime=str(getattr(p, "runtime", "") or ""),
+    )
+    return DiagnoseResponse(platform=platform, sections=sections)
 
 
 # ── seam stubs (typed; 501 until Phase 1) ───────────────────────────────────
@@ -100,26 +123,69 @@ def get_diagnose() -> DiagnoseResponse:
 
 @api.post("/probe", response_model=ProbeResult, summary="Test a mesh/cloud connection")
 def post_probe(body: ProbeRequest) -> ProbeResult:
-    # PROBE seam: the canonical peer-probe entry point + the shared classifier —
-    # same path `maxim doctor` uses, so the console and doctor agree on verdicts.
-    from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
-    from maxim.peer.probe_classify import classify_probe_outcome
+    # PROBE seam. Dispatches on the request shape (contract fix): a MESH probe
+    # (``url`` present) goes through the canonical peer-probe entry point + the
+    # shared classifier — the same path `maxim doctor` uses, so console and
+    # doctor agree on verdicts. A CLOUD probe (``provider`` present, no ``url``)
+    # is a cheap pre-save key check.
+    if body.url:
+        from maxim.models.language.maxim_peer_backend import _MaximPeerBackend
+        from maxim.peer.probe_classify import classify_probe_outcome
 
-    backend = _MaximPeerBackend.for_url(body.url, api_key=body.api_key, model=body.model)
-    result = backend.health_check()  # runtime.llm_server.ProbeResult(url, outcome, detail, latency_ms)
-    cls = classify_probe_outcome(result.outcome, result.detail, result.latency_ms, result.url)
-    return ProbeResult(
-        status=cls.status,
-        outcome=result.outcome,
-        message=cls.message,
-        fix_hint=cls.fix,
-        latency_ms=result.latency_ms,
-    )
+        backend = _MaximPeerBackend.for_url(body.url, api_key=body.api_key, model=body.model)
+        result = backend.health_check()  # runtime.llm_server.ProbeResult(url, outcome, detail, latency_ms)
+        cls = classify_probe_outcome(result.outcome, result.detail, result.latency_ms, result.url)
+        return ProbeResult(
+            status=cls.status,
+            outcome=result.outcome,
+            message=cls.message,
+            fix_hint=cls.fix,
+            latency_ms=result.latency_ms,
+        )
+
+    if body.provider:
+        # Cloud pre-save check. A live provider round-trip is deliberately NOT
+        # faked here — returning "ok" without a real call would be a false green
+        # that lets a bad key sail through the wizard. We validate what we can
+        # locally (a key was supplied) and return a WARN so the wizard may
+        # proceed to save but the operator isn't told the key is verified.
+        # A live cheap cloud-key round-trip is tracked follow-up (needs a
+        # per-provider models-list/1-token probe surface).
+        if not body.api_key:
+            return ProbeResult(
+                status="fail",
+                outcome="missing_key",
+                message=f"No API key supplied for cloud provider {body.provider!r}.",
+                fix_hint="Paste the provider key to test before saving.",
+            )
+        return ProbeResult(
+            status="warn",
+            outcome="cloud_key_not_live_tested",
+            message=f"Key accepted for {body.provider!r}; a live cloud round-trip test is pending.",
+            fix_hint=None,
+        )
+
+    raise HTTPException(status_code=422, detail="Probe requires either 'url' (mesh) or 'provider' (cloud).")
 
 
 @api.post("/setup/mesh", response_model=SetupResult, summary="Write mesh (peer→leader) config")
 def post_setup_mesh(body: MeshSetupRequest) -> SetupResult:
-    raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
+    # SETUP seam. Thin call into the sanctioned single-writer helper: writes a
+    # resolvable large-tier PEER placement (role=peer + lanes.large.remote_*),
+    # with the key stored as a REF (atomic_write_secret → 0600 file), never
+    # inline. The app does not hand-assemble the lane dict or know the ref rules.
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_writer import apply_mesh_setup
+
+    try:
+        secret_path, written = apply_mesh_setup(body.leader_url, body.api_key)
+    except ConfigurationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return SetupResult(
+        ok=True,
+        placement="mesh",
+        detail=f"Wrote peer→leader config to {written}; key stored as a ref at {secret_path}.",
+    )
 
 
 @api.post("/setup/cloud", response_model=SetupResult, summary="Write cloud provider config")

@@ -30,6 +30,10 @@ class ModelInfoWire(BaseModel):
     context_length: int | None = None
     downloaded: bool = False
     ready: bool = False
+    # Contract fix (maxim-pulse): a curation marker so the wizard's picker can
+    # show "2-3 curated ▾ / Advanced" by INTENT, not collapse by count (first 3).
+    # Set server-side from a small editable allow-list (server._CURATED_PROFILES).
+    curated: bool = False
 
 
 class ModelsResponse(BaseModel):
@@ -45,8 +49,23 @@ class DiagnoseSection(BaseModel):
     extra: dict[str, Any] = Field(default_factory=dict)
 
 
+class PlatformWire(BaseModel):
+    """Structured platform identity for the StatusChip.
+
+    Contract fix (maxim-pulse): ``DiagnoseResponse.platform`` used to be a
+    stringified ``PlatformInfo`` repr (``"PlatformInfo(os='macos', …)"``) —
+    useless for display. These are the display-relevant fields, mapped from
+    ``doctor.platform_detect.PlatformInfo``.
+    """
+
+    os: str = ""
+    arch: str = ""
+    os_release: str = ""
+    runtime: str = ""
+
+
 class DiagnoseResponse(BaseModel):
-    platform: str
+    platform: PlatformWire = Field(default_factory=PlatformWire)
     sections: list[DiagnoseSection] = Field(default_factory=list)
 
 
@@ -54,9 +73,19 @@ class DiagnoseResponse(BaseModel):
 
 
 class ProbeRequest(BaseModel):
-    url: str
+    # Contract fix (maxim-pulse): ``url`` is now OPTIONAL so the SAME endpoint
+    # serves both probe shapes (the seams plan: "covers both the mesh probe and a
+    # cheap cloud-key probe"):
+    #   * MESH probe  — ``url`` (+ optional ``api_key`` / ``model``): peer/leader
+    #     reachability + auth via ``_MaximPeerBackend.health_check``.
+    #   * CLOUD probe — ``provider`` (+ ``api_key``): a cheap pre-save key check
+    #     against a cloud provider, no ``url``.
+    # Exactly one of ``url`` / ``provider`` should be set; the handler dispatches
+    # on which is present.
+    url: str | None = None
+    provider: str | None = None
     # Raw key to TEST (transient, localhost-only, NOT stored) — you probe a key
-    # before saving it as a ref, so a ref can't exist yet. Mirrors SetupRequest.
+    # before saving it as a ref, so a ref can't exist yet. Mirrors the setup requests.
     api_key: str | None = None
     model: str | None = None
 
