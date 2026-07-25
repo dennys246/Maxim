@@ -251,8 +251,15 @@ def post_run(body: RunRequest) -> RunAccepted:
         raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
     if not body.campaign:
         raise HTTPException(status_code=422, detail="mode='adventure' requires 'campaign' (a campaign YAML path).")
-    campaign_path = Path(body.campaign).expanduser()
-    if not campaign_path.exists():
+    # The console is a 127.0.0.1-only OPERATOR surface: naming a local
+    # campaign file here is the same trust level as `maxim --sim <path>` on
+    # the CLI (CodeQL flags the request→path flow; it is by-design for a
+    # local-first tool). Constrain to what a campaign can be: an existing
+    # YAML file, resolved without following into surprises.
+    campaign_path = Path(body.campaign).expanduser().resolve()
+    if campaign_path.suffix.lower() not in (".yaml", ".yml"):
+        raise HTTPException(status_code=422, detail="'campaign' must point at a campaign YAML (.yaml/.yml).")
+    if not campaign_path.is_file():
         raise HTTPException(status_code=404, detail=f"Campaign not found: {campaign_path}")
 
     handle = _get_handle()
