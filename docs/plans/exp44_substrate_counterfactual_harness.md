@@ -119,3 +119,15 @@ trajectory-matched *by construction* — its only risk is the carrier enumeratio
 which `assert_fully_ablated` neutralizes. Recommend offline reconstruction unless
 a reviewer wants the live counterfactual. The free-running paired-seed arms
 (flags on vs off, N seeds) remain the separate end-to-end confirmation.
+
+## Wiring reality (2026-07-25) — direct `maxim --sim`, not the benchmark
+
+`benchmark_exp42_preference.py` **subprocesses `maxim --sim`** and forces
+`MAXIM_AUTO_SPAWN_LLM_SERVER=0` (it was built for substrate-primary, LLM-free
+AUT). Both break the counterfactual: (1) a class-level patch in the parent never
+reaches the AUT in the child; (2) an llm-primary AUT has no backend → "No
+eligible LLM providers" → no report. **Vehicle = a direct `maxim --sim` run**
+(auto-spawn ON, single process). Capture is installed by a DORMANT gated hook in
+`orchestrator.py` (after `aut_llm_worker.start()`) that fires only when
+`MAXIM_EXP44_CAPTURE_LOG` is set and installs `install_capture` on the AUT worker
+in-process. The narrator uses a separate worker and is not captured.
