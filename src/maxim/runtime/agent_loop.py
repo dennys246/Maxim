@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from maxim.evaluation.base import Evaluator
 from maxim.utils.logging import log_swallowed_exception, warn
@@ -1206,6 +1206,7 @@ def run_agentic_loop(
     aut_mode: str = "llm-primary",  # "llm-primary" | "substrate-primary" — Phase -1 of grounded_language_acquisition.md
     substrate_telemetry: Any
     | None = None,  # SubstrateTelemetry writer (Phase 0). Called after each substrate-primary tick when set.
+    consolidation: Literal["full", "lightweight"] | None = None,  # HANDLE seam (b): explicit session-end flavor
 ) -> None:
     """
     Non-blocking agentic loop with LLM worker integration.
@@ -4282,12 +4283,20 @@ def run_agentic_loop(
     except Exception as e:
         logger.debug(f"Failed to save context pool: {e}")
 
-    # End bio-system session (hippocampus flush/save + MemoryHub session_end)
+    # End bio-system session (hippocampus flush/save + MemoryHub session_end).
+    # Consolidation flavor is explicit (HANDLE seam b): a caller-supplied
+    # `consolidation` override wins (a persistent HANDLE forces "full" even when
+    # driven through the sim loop); absent an override we derive it from the sim
+    # flag at THIS call site — the choice is explicit at end_bio_session, not
+    # inferred from a proxy flag inside it. Default when neither: "full".
+    _resolved_consolidation = (
+        consolidation if consolidation is not None else ("lightweight" if sim.is_sim_mode else "full")
+    )
     _end_bio_session(
         memory_hub=memory_hub,
         memory_hub_enabled=memory_hub_enabled,
         hippocampus=hippocampus,
-        is_sim_mode=sim.is_sim_mode,
+        consolidation=_resolved_consolidation,
     )
 
     # Stop Default Network if running (skip in sim — no DN)
