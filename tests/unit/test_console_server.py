@@ -68,7 +68,8 @@ def test_live_verb_models_ok(app):
 @pytest.mark.parametrize(
     "method,path,body",
     [
-        ("get", "/api/recall", None),
+        # recall + setup/cloud are both LIVE now (#425 + this seam) — only
+        # the Phase-3 run modes remain 501.
         ("post", "/api/run", {"mode": "talk"}),
     ],
 )
@@ -101,6 +102,27 @@ def test_setup_cloud_writes_placement_ref(app, tmp_path, monkeypatch):
     assert pl[0].api_key_ref and "sk-cl" not in cfg.read_text()  # ref, never inline
     assert stat.S_IMODE(Path(pl[0].api_key_ref).stat().st_mode) == 0o600
     assert conf.cloud.enabled and conf.cloud.max_lanes >= 1 and conf.cloud.session_budget_usd == 20.0
+
+
+def test_recall_maps_curated_blend_to_wire(app, monkeypatch):
+    """RECALL wraps api.recall()'s curated blend → the wire shape (story summaries
+    + traits + preferences), never raw episodes."""
+    from maxim.integration.recall import CuratedRecall, RecalledItem
+
+    blend = CuratedRecall(
+        name="Ada",
+        player_model=["gravitates toward diplomacy"],
+        story_memories=[RecalledItem(text="your rogue betrayed the party", kind="story", salience=0.9)],
+        preferences=[RecalledItem(text="prefers stealth", kind="preference", salience=0.7, learned_from="play")],
+    )
+    monkeypatch.setattr("maxim.recall", lambda **kw: blend)
+    j = TestClient(app).get("/api/recall").json()
+    assert j["name"] == "Ada"
+    assert j["player_model"] == ["gravitates toward diplomacy"]
+    assert j["story_memories"][0]["summary"] == "your rogue betrayed the party"
+    assert j["story_memories"][0]["salience"] == 0.9
+    assert j["preferences"][0]["about"] == "prefers stealth"
+    assert j["preferences"][0]["learned_from"] == "play"
 
 
 def test_setup_mesh_writes_ref_config(app, tmp_path, monkeypatch):

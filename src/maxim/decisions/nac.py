@@ -2303,6 +2303,21 @@ class NAc:
         )
         return pending
 
+    def known_agent_ids(self) -> list[str]:
+        """Distinct agent ids that have any learned reward-bias signal.
+
+        Extracted from the reward-bias surfaces (``_cluster_reward_bias`` +
+        ``_reward_bias``) — the keys carry ``agent_id`` as their first element.
+        Lets a consumer that lacks an agent_id (e.g. the Console RECALL read,
+        which loads a persisted NAc standalone) enumerate whose biases to
+        surface via :meth:`get_agent_tool_biases`. Sorted for stable output;
+        empty for a cold-start NAc.
+        """
+        with self._lock:
+            ids = {key[0] for key in self._cluster_reward_bias}
+            ids |= {key[0] for key in self._reward_bias}
+        return sorted(a for a in ids if a)
+
     def get_agent_tool_biases(
         self,
         *,
