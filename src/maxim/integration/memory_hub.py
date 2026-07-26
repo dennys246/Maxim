@@ -19,6 +19,7 @@ Architecture:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
@@ -138,6 +139,14 @@ class MemoryHub:
     # Session state
     _session_active: bool = False
     _session_start_time: float = 0.0
+    # Guards the _session_active transitions. Post-merge review round
+    # (2026-07-26, Exec #4 / Arch #1 cross-confirmed): the unlocked
+    # check-then-act let a console shutdown-hook stop() and the campaign
+    # loop's own session-end BOTH pass `if not _session_active` and run
+    # full consolidation concurrently (double sleep/saves interleaving).
+    # Session-end now atomically test-and-CLEARS the flag at entry: exactly
+    # one caller wins; the loser gets the honest no-op {}.
+    _session_flag_lock: Any = field(default_factory=threading.Lock, repr=False, compare=False)
 
     # Disabled bridges (for fault isolation)
     _disabled_bridges: set[str] = field(default_factory=set)
@@ -590,8 +599,9 @@ class MemoryHub:
         Returns:
             Dict with counts of restored items per bridge
         """
-        self._session_active = True
-        self._session_start_time = time.time()
+        with self._session_flag_lock:
+            self._session_active = True
+            self._session_start_time = time.time()
 
         results = {}
 
@@ -685,8 +695,12 @@ class MemoryHub:
         Returns:
             Dict with consolidation statistics
         """
-        if not self._session_active:
-            return {}
+        # Atomic test-and-CLEAR: exactly one concurrent session-end caller
+        # runs consolidation (see _session_flag_lock field comment).
+        with self._session_flag_lock:
+            if not self._session_active:
+                return {}
+            self._session_active = False
 
         results = {}
 
@@ -829,7 +843,7 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("Provenance session end failed: %s", e)
 
-        self._session_active = False
+        # (_session_active was cleared atomically at entry.)
         session_duration = time.time() - self._session_start_time
         results["session_duration_seconds"] = session_duration
 
@@ -845,8 +859,11 @@ class MemoryHub:
         ensures ATL concept extraction completes), and saves all persistence-backed
         subsystems so learning from sim sessions is not silently lost.
         """
-        if not self._session_active:
-            return {}
+        # Atomic test-and-CLEAR — same discipline as on_session_end.
+        with self._session_flag_lock:
+            if not self._session_active:
+                return {}
+            self._session_active = False
 
         results: dict[str, Any] = {"lightweight": True}
 
@@ -916,7 +933,7 @@ class MemoryHub:
             except Exception as e:
                 logger.warning("Failed to save cross-layer graph: %s", e)
 
-        self._session_active = False
+        # (_session_active was cleared atomically at entry.)
         session_duration = time.time() - self._session_start_time
         results["session_duration_seconds"] = session_duration
 

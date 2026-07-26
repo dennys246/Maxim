@@ -1590,12 +1590,32 @@ def get_config(path: Path | None = None) -> MaximConfig:
         return _loaded_config
 
 
+def invalidate_config_cache() -> None:
+    """Production-sanctioned invalidation of the lazy config singleton.
+
+    Called by ``runtime/config_writer.py`` after every successful
+    ``config.json`` write (post-merge review round, 2026-07-26): the
+    singleton was designed for one-shot CLI processes, but ``maxim serve``
+    is a long-lived process that both WRITES config (``/api/setup/*``) and
+    rebuilds routers in-process (``/api/run``) — without invalidation the
+    wizard's setup was silently inert until process restart (the next lane
+    build read the stale cached config). Clears ONLY the singleton; the
+    IM5 migration flag and env-warn dedup are startup-scoped and stay.
+    The next :func:`get_config` re-loads from disk.
+    """
+    global _loaded_config, _loaded_config_path
+    with _loaded_config_lock:
+        _loaded_config = None
+        _loaded_config_path = None
+
+
 def reset_config_cache() -> None:
     """Test-only helper: clear the lazy-loaded config singleton + the
     IM5 fold auto-migration idempotency flag.
 
     Pairs with :func:`_reset_warned_envs` for test isolation. Production
-    code must not call this — the singleton is process-wide by design.
+    code uses the narrower :func:`invalidate_config_cache` (writer-driven);
+    only tests reset the migration flag.
     """
     global _loaded_config, _loaded_config_path, _migration_attempted
     with _loaded_config_lock:
@@ -1617,6 +1637,7 @@ __all__ = [
     "config_path",
     "get_config",
     "load_config",
+    "invalidate_config_cache",
     "reset_config_cache",
     "resolve_api_key_ref",
     "resolve_setting",

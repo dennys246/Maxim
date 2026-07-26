@@ -980,7 +980,7 @@ def _build_observer(home_dir: str) -> Any:
 introspect = observe
 
 
-def recall(*, home_dir: str | None = None, limit: int = 8) -> "CuratedRecall":
+def recall(*, home_dir: str | None = None, agent_id: str | None = None, limit: int = 8) -> "CuratedRecall":
     """ "What Maxim remembers about you" — a curated, provenance-filtered,
     salience-ranked read (the consumer-shaped sibling of :func:`observe`).
 
@@ -992,8 +992,18 @@ def recall(*, home_dir: str | None = None, limit: int = 8) -> "CuratedRecall":
     story memories, NAc traits, …), so it is not episode-specific — new sources
     plug in without changing this verb.
 
-    Read-only; loads persisted state from ``~/.maxim`` (or ``home_dir``). Returns
-    a :class:`~maxim.integration.recall.CuratedRecall`.
+    Two persisted layouts (post-merge review round, 2026-07-26 — the Console's
+    MemoryView read MUST match the home its HANDLE agent writes, or campaign
+    learning is silently invisible):
+
+    * ``recall()`` — the api-session layout: ``~/.maxim/memory/{hippocampus,nac}.json``
+      (or ``home_dir`` in place of ``~/.maxim``). Unchanged legacy behavior.
+    * ``recall(agent_id="console_agent")`` — the **AgentFactory layout**:
+      ``<data_home>/agents/<agent_id>/{hippocampus,nac}.json`` (files at the
+      agent home's root, no ``memory/`` subdir). ``home_dir`` then overrides the
+      agent home directly, mirroring ``AgentConfig.persistence_dir``.
+
+    Read-only. Returns a :class:`~maxim.integration.recall.CuratedRecall`.
     """
     from maxim.integration.recall import (
         CuratedRecall,
@@ -1003,19 +1013,68 @@ def recall(*, home_dir: str | None = None, limit: int = 8) -> "CuratedRecall":
         curate_recall,
     )
 
-    effective_home = os.path.expanduser(home_dir or "~/.maxim")
-    observer = _build_observer(effective_home)
-    if observer is None:
+    hippocampus = None
+    nac = None
+    if agent_id is not None:
+        if home_dir is not None:
+            agent_home = os.path.expanduser(home_dir)
+        else:
+            from maxim.utils.paths import data_home
+
+            agent_home = os.path.join(str(data_home()), "agents", agent_id)
+        hippocampus, nac = _load_agent_home_state(agent_home)
+    else:
+        effective_home = os.path.expanduser(home_dir or "~/.maxim")
+        observer = _build_observer(effective_home)
+        if observer is not None:
+            hippocampus = getattr(observer, "_hippocampus", None)
+            nac = getattr(observer, "_nac", None)
+
+    if hippocampus is None and nac is None:
         return CuratedRecall()  # no persisted state → honestly empty
 
     sources: list[RecallSource] = []
-    hippocampus = getattr(observer, "_hippocampus", None)
-    nac = getattr(observer, "_nac", None)
     if hippocampus is not None:
         sources.append(EpisodicRecallSource(hippocampus))
     if nac is not None:
         sources.append(NacTraitSource(nac))
     return curate_recall(sources, per_kind_limit=limit)
+
+
+def _load_agent_home_state(agent_home: str) -> tuple[Any, Any]:
+    """Load (hippocampus, nac) from an AgentFactory-layout agent home.
+
+    Factory agents persist ``hippocampus.json`` / ``nac.json`` at the home's
+    ROOT (``AgentFactory._create_hippocampus`` / ``_create_nac``), not under a
+    ``memory/`` subdir like the api-session layout — the two layouts must not
+    be conflated (that conflation was the MemoryView split-brain). Missing or
+    unloadable files return None slots; the caller under-claims honestly.
+    """
+    hippocampus = None
+    try:
+        from maxim.memory.hippocampus import Hippocampus
+
+        hippo_file = os.path.join(agent_home, "hippocampus.json")
+        if os.path.isfile(hippo_file):
+            hippocampus = Hippocampus()
+            hippocampus.load(hippo_file)
+    except Exception as e:
+        logger.warning("Could not load agent-home hippocampus for recall: %s", e)
+        hippocampus = None
+
+    nac = None
+    try:
+        from maxim.decisions.nac import NAc
+
+        nac_file = os.path.join(agent_home, "nac.json")
+        if os.path.isfile(nac_file):
+            nac = NAc()
+            nac.load(nac_file)
+    except Exception as e:
+        logger.warning("Could not load agent-home NAc for recall: %s", e)
+        nac = None
+
+    return hippocampus, nac
 
 
 # ─────────────────────────────────────────────────────────────────────────────

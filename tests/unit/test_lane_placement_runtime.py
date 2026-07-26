@@ -107,29 +107,51 @@ class TestPlacementEntryToProvider:
         )
         assert prov is None
 
-    def test_cloud_profile_entry_injects_key_into_env(self, monkeypatch):
+    def test_cloud_profile_entry_carries_key_in_provider_not_env(self, monkeypatch):
         # The Console cloud-setup path: a cloud *profile* placement carries its
-        # resolved key on entry.api_key. It MUST reach the backend's api_key_env
-        # (symmetric with the PEER + CLOUD-with-url branches), else inference gets
-        # no credentials. Regression guard for the 2-site injection fix.
+        # resolved key on entry.api_key. Post-merge review Exec #3: the key is
+        # carried IN the provider entry (backends read env first, then it) and
+        # the build must NOT mutate os.environ — a setdefault'd key made a
+        # re-keyed setup unrecoverable in-process (the stale first key was
+        # indistinguishable from an operator export and won forever).
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         prov, is_cloud = _placement_entry_to_provider(
             ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet", api_key="sk-injected"), "large"
         )
         assert prov is not None and is_cloud is True
-        assert os.environ.get(prov["api_key_env"]) == "sk-injected"
+        assert prov["api_key"] == "sk-injected"
+        assert os.environ.get(prov["api_key_env"]) is None, "lane build must not mutate os.environ"
 
-    def test_cloud_profile_entry_setdefault_respects_explicit_export(self, monkeypatch):
-        # An explicit `export ANTHROPIC_API_KEY` wins over the placement key
-        # (setdefault semantics) — the operator's live env is never clobbered.
-        from maxim.models.language.config import _BUILTIN_PROFILES, normalize_llm_profile
+    def test_backend_prefers_env_over_carried_key(self, monkeypatch):
+        # Precedence at the backend stays env > config-carried key (CLI > env >
+        # config invariant): an explicit operator export wins over the
+        # placement key.
+        from maxim.models.language.anthropic_backend import _AnthropicBackend
+        from maxim.models.language.config import LLMConfig
 
-        env = _BUILTIN_PROFILES.get(normalize_llm_profile("claude-sonnet"), {}).get("api_key_env", "ANTHROPIC_API_KEY")
-        monkeypatch.setenv(env, "sk-operator")
-        prov, _ = _placement_entry_to_provider(
-            ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet", api_key="sk-injected"), "large"
+        cfg = LLMConfig(providers={"p": {"api_key_env": "ANTHROPIC_API_KEY", "api_key": "sk-carried"}})
+        backend = _AnthropicBackend.__new__(_AnthropicBackend)
+        backend.cfg = cfg
+        backend._provider_key = "p"
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-operator")
+        assert backend._get_api_key() == "sk-operator"
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        assert backend._get_api_key() == "sk-carried"
+
+    def test_rekeyed_setup_takes_effect_without_process_restart(self, monkeypatch):
+        # The wizard's fix-the-key-and-retry flow: build with a wrong key, then
+        # rebuild with the corrected key → the second build's provider entry
+        # carries the NEW key (pre-fix, the first build's setdefault poisoned
+        # the env var and the stale key won until restart).
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        prov1, _ = _placement_entry_to_provider(
+            ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet", api_key="sk-wrong"), "large"
         )
-        assert os.environ.get(prov["api_key_env"]) == "sk-operator"
+        prov2, _ = _placement_entry_to_provider(
+            ProviderPlacement(origin=Origin.CLOUD, model="claude-sonnet", api_key="sk-corrected"), "large"
+        )
+        assert prov1["api_key"] == "sk-wrong" and prov2["api_key"] == "sk-corrected"
+        assert os.environ.get(prov2["api_key_env"]) is None
 
 
 # ─── multi-element tail injection (end to end through get_backend) ──────────

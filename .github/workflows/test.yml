@@ -332,6 +332,23 @@ jobs:
           if [ -n "$CONFIG_WRITER_MATCHES" ]; then
             echo "ERROR: new caller of config_writer.write_config / mutate_config / set_field detected (config_unification.md IM2)"
             echo "$CONFIG_WRITER_MATCHES"
+            exit 1
+          fi
+          # Post-merge review round 2026-07-26 (Arch #3): the setup verbs
+          # (apply_mesh_setup / apply_cloud_setup) are un-grepped WRAPPERS of
+          # the writer surface — without their own caller gate any module
+          # could mutate config.json through them, silently bypassing the
+          # single-writer boundary above. Allow-list: the console's operator-
+          # explicit setup endpoints + tests.
+          SETUP_VERB_MATCHES=$(grep -rn --include="*.py" -E "\bapply_(mesh|cloud)_setup\(" src/maxim/ tests/ \
+            | grep -vE "^src/maxim/runtime/config_writer\.py:" \
+            | grep -vE "^src/maxim/console/server\.py:" \
+            | grep -vE "^tests/unit/test_config_writer\.py:" \
+            | grep -vE "^tests/unit/test_console_server\.py:" \
+            || true)
+          if [ -n "$SETUP_VERB_MATCHES" ]; then
+            echo "ERROR: new caller of apply_mesh_setup / apply_cloud_setup detected (single-writer boundary, post-merge round 2026-07-26)"
+            echo "$SETUP_VERB_MATCHES"
             echo ""
             echo "runtime/config_writer.py is the only sanctioned writer of"
             echo "~/.config/maxim/config.json. Mirror the mesh_setup.py /"

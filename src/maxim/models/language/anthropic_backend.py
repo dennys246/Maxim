@@ -149,7 +149,13 @@ class _AnthropicBackend:
         # provider entry is synthesized in the router — same shape as the
         # OpenAI backend. Default stays ANTHROPIC_API_KEY.
         env_key = str(cfg.get("api_key_env") or getattr(self.cfg, "api_key_env", "") or "ANTHROPIC_API_KEY")
-        return str(os.getenv(env_key, "")).strip()
+        env_val = str(os.getenv(env_key, "")).strip()
+        if env_val:
+            return env_val
+        # Config-carried key (placement api_key_ref resolved at lane build) —
+        # read directly so the build never mutates os.environ (Exec #3).
+        # Env-first keeps the CLI > env > config precedence invariant.
+        return str(cfg.get("api_key") or getattr(self.cfg, "api_key", "") or "").strip()
 
     def _get_timeout(self) -> float:
         cfg = self._provider_cfg()

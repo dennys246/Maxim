@@ -1010,22 +1010,18 @@ class LaneBackendManager:
         # enable cloud dispatch (the cloud-lane cap + _validate_cloud_config key/
         # cost gates still apply at the get_backend + router layers).
         if primary is not None and primary.origin is Origin.CLOUD:
-            try:
-                llm_config = dataclasses.replace(llm_config, cloud_enabled=True)
-            except Exception:
-                pass
-            # Inject the primary placement's resolved key into the provider env
-            # var so a cloud-profile PRIMARY (the Console cloud-setup path) works
-            # from config alone — the profile backend reads ``api_key_env`` from
-            # os.environ. Symmetric with the fallback path in
-            # ``_placement_entry_to_provider``. ``setdefault`` respects an
-            # already-exported key.
+            # Carry the placement's resolved key IN CONFIG (LLMConfig.api_key)
+            # so the backend reads it directly — never via os.environ mutation.
+            # The previous setdefault made a re-keyed cloud setup unrecoverable
+            # in-process: the first build's stale key was indistinguishable
+            # from an operator export and won forever (post-merge review
+            # Exec #3; also removes that fold's silent except-pass, Arch #2).
+            # An operator-exported env key still wins at the backend (env >
+            # config precedence).
+            replace_kwargs: dict[str, Any] = {"cloud_enabled": True}
             if primary.api_key:
-                try:
-                    _key_env = str(getattr(llm_config, "api_key_env", "") or "ANTHROPIC_API_KEY")
-                    os.environ.setdefault(_key_env, primary.api_key)
-                except Exception:
-                    pass
+                replace_kwargs["api_key"] = primary.api_key
+            llm_config = dataclasses.replace(llm_config, **replace_kwargs)
 
         if "MAXIM_LLM_N_GPU_LAYERS" not in os.environ:
             try:
@@ -1439,20 +1435,19 @@ def _placement_entry_to_provider(entry: ProviderPlacement, key: str) -> tuple[di
         if not profile.get("cloud"):
             return None, False
         api_key_env = profile.get("api_key_env", "ANTHROPIC_API_KEY")
-        # Inject the placement's resolved key into the provider env var, SYMMETRIC
-        # with the PEER and CLOUD-with-url branches above. Without this a cloud
-        # *profile* placement's ``api_key_ref`` (the Console cloud-setup path)
-        # resolved to ``entry.api_key`` but never reached the backend, which reads
-        # ``api_key_env`` from os.environ. ``setdefault`` respects an already-set
-        # key (an explicit ``export ANTHROPIC_API_KEY`` still wins).
-        if entry.api_key:
-            os.environ.setdefault(api_key_env, entry.api_key)
+        # Carry the placement's resolved key in the PROVIDER ENTRY (backends
+        # prefer env, then the entry's ``api_key``) instead of mutating
+        # os.environ — a setdefault'd key made re-keyed setup unrecoverable
+        # in-process (post-merge review Exec #3). An explicit
+        # ``export ANTHROPIC_API_KEY`` still wins at the backend.
         prov = {
             "type": profile.get("backend", "anthropic"),
             "model": resolved_model,
             "api_key_env": api_key_env,
             "n_ctx": profile.get("n_ctx", 200000),
         }
+        if entry.api_key:
+            prov["api_key"] = entry.api_key
         if entry.timeout_s is not None:
             prov["timeout_s"] = float(entry.timeout_s)
         return prov, True
