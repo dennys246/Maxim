@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 log = logging.getLogger(__name__)
 
@@ -159,11 +159,27 @@ class AgentInstance:
 
         return result
 
-    def shutdown(self) -> None:
-        """Flush memories and clean up resources."""
+    def shutdown(self, *, consolidation: Literal["full", "lightweight"] = "full") -> None:
+        """Flush memories and clean up resources.
+
+        Args:
+            consolidation: Explicit session-end flavor (HANDLE seam, part b —
+                mirrors ``end_bio_session``): ``"full"`` (default) runs the
+                blocking sleep/replay consolidation via ``on_session_end``;
+                ``"lightweight"`` persists state but skips the replay via
+                ``on_session_end_lightweight``. The default keeps every
+                existing caller byte-identical, and is the count-silent-
+                failures choice: wrongly lightweight loses consolidation
+                silently, wrongly full is loud-but-harmless slowness.
+        """
+        if consolidation not in ("full", "lightweight"):
+            raise ValueError(f"consolidation must be 'full' or 'lightweight', got {consolidation!r}")
         if self.memory_hub is not None:
             try:
-                self.memory_hub.on_session_end()
+                if consolidation == "lightweight":
+                    self.memory_hub.on_session_end_lightweight()
+                else:
+                    self.memory_hub.on_session_end()
             except Exception as e:
                 log.warning("Agent %s: memory_hub shutdown failed: %s", self.agent_id, e)
 

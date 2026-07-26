@@ -153,7 +153,12 @@ class RunRequest(BaseModel):
 
 
 class RunAccepted(BaseModel):
-    session_id: str
+    # session_id is the CONSOLE-side run id minted at accept time. The sim
+    # generates its own internal session_id after boot, so the two do NOT
+    # match; correlating a run with ~/.maxim/sessions/{id} needs the future
+    # run-status/ws surface (Phase 3). Documented so the generated TS client
+    # doesn't assume filesystem correlation.
+    session_id: str = Field(description="Console-side run id (minted at accept; not the sim's internal session_id).")
     mode: str
     status: Literal["started", "rejected"]
     detail: str | None = None

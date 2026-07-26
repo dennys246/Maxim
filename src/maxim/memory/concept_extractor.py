@@ -462,6 +462,30 @@ class ConceptExtractor:
         self._stop.set()
         self._worker.join(timeout=5.0)
 
+    def restart_worker(self) -> bool:
+        """Revive the worker after a ``shutdown()`` (repeated-session support).
+
+        ``MemoryHub.on_session_end`` shuts the worker down, but a persistent
+        agent (HANDLE seam) starts a NEW session on the same hub — without a
+        restart, every session after the first captures episodes while ATL
+        concept extraction is silently dead (the hippocampus capture worker
+        restarts per session; this is the matching half). Callbacks stay
+        registered on the hippocampus — they are bound methods of THIS object,
+        so no re-wiring (and no double-registration) is needed.
+
+        Returns True if a new worker was started, False if one was alive.
+        """
+        if self._worker.is_alive():
+            return False
+        self._stop.clear()
+        self._worker = threading.Thread(
+            target=self._worker_loop,
+            name="concept-extractor-worker",
+            daemon=True,
+        )
+        self._worker.start()
+        return True
+
     def flush(self, timeout: float = 5.0) -> bool:
         """Block until the extraction queue is drained.
 

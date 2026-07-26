@@ -595,6 +595,18 @@ class MemoryHub:
 
         results = {}
 
+        # Repeated-session support (HANDLE seam): on_session_end shuts the
+        # ConceptExtractor worker down; a persistent agent's NEXT session on
+        # the same hub must revive it or ATL concept extraction is silently
+        # dead while episode capture visibly continues (the asymmetry that
+        # makes the loss invisible). restart_worker() is a no-op when alive.
+        if self._concept_extractor is not None:
+            try:
+                if self._concept_extractor.restart_worker():
+                    results["concept_extractor_restarted"] = 1
+            except Exception as e:
+                logger.warning("ConceptExtractor restart failed: %s", e)
+
         # Phase 4: Load semantic embeddings
         if self.ec.semantic_enabled and self.ec._embedding_store is not None:
             try:
