@@ -191,7 +191,24 @@ def post_setup_mesh(body: MeshSetupRequest) -> SetupResult:
 
 @api.post("/setup/cloud", response_model=SetupResult, summary="Write cloud provider config")
 def post_setup_cloud(body: CloudSetupRequest) -> SetupResult:
-    raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
+    # SETUP seam. Thin call into the sanctioned single-writer helper: writes a
+    # resolvable large-tier CLOUD placement (cloud.enabled + profile + budget),
+    # key stored as a REF (0600 file), never inline. The placement's api_key_ref
+    # is resolved into the provider env var at lane-build time.
+    from maxim.exceptions import ConfigurationError
+    from maxim.runtime.config_writer import apply_cloud_setup
+
+    try:
+        secret_path, written = apply_cloud_setup(
+            body.provider, body.profile, body.api_key, monthly_budget_usd=body.monthly_budget_usd
+        )
+    except ConfigurationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return SetupResult(
+        ok=True,
+        placement="cloud",
+        detail=f"Wrote {body.provider}/{body.profile} cloud config to {written}; key stored as a ref at {secret_path}.",
+    )
 
 
 @api.get("/recall", response_model=RecallResponse, summary="What Maxim remembers about you")

@@ -1014,6 +1014,18 @@ class LaneBackendManager:
                 llm_config = dataclasses.replace(llm_config, cloud_enabled=True)
             except Exception:
                 pass
+            # Inject the primary placement's resolved key into the provider env
+            # var so a cloud-profile PRIMARY (the Console cloud-setup path) works
+            # from config alone — the profile backend reads ``api_key_env`` from
+            # os.environ. Symmetric with the fallback path in
+            # ``_placement_entry_to_provider``. ``setdefault`` respects an
+            # already-exported key.
+            if primary.api_key:
+                try:
+                    _key_env = str(getattr(llm_config, "api_key_env", "") or "ANTHROPIC_API_KEY")
+                    os.environ.setdefault(_key_env, primary.api_key)
+                except Exception:
+                    pass
 
         if "MAXIM_LLM_N_GPU_LAYERS" not in os.environ:
             try:
@@ -1426,10 +1438,19 @@ def _placement_entry_to_provider(entry: ProviderPlacement, key: str) -> tuple[di
         profile = _BUILTIN_PROFILES.get(resolved_model, {})
         if not profile.get("cloud"):
             return None, False
+        api_key_env = profile.get("api_key_env", "ANTHROPIC_API_KEY")
+        # Inject the placement's resolved key into the provider env var, SYMMETRIC
+        # with the PEER and CLOUD-with-url branches above. Without this a cloud
+        # *profile* placement's ``api_key_ref`` (the Console cloud-setup path)
+        # resolved to ``entry.api_key`` but never reached the backend, which reads
+        # ``api_key_env`` from os.environ. ``setdefault`` respects an already-set
+        # key (an explicit ``export ANTHROPIC_API_KEY`` still wins).
+        if entry.api_key:
+            os.environ.setdefault(api_key_env, entry.api_key)
         prov = {
             "type": profile.get("backend", "anthropic"),
             "model": resolved_model,
-            "api_key_env": profile.get("api_key_env", "ANTHROPIC_API_KEY"),
+            "api_key_env": api_key_env,
             "n_ctx": profile.get("n_ctx", 200000),
         }
         if entry.timeout_s is not None:

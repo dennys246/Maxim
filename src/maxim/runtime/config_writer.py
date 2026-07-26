@@ -33,6 +33,7 @@ from maxim.exceptions import ConfigurationError
 from maxim.runtime.config_loader import (
     CONFIG_FORMAT_VERSION,
     LaneTierConfig,
+    LaneTierPlacement,
     MaximConfig,
     config_path,
     load_config,
@@ -247,17 +248,7 @@ def apply_mesh_setup(
 
     target = path if path is not None else config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
-    secret_path = target.parent / "mesh_leader_api_key"
-    # atomic_write_secret PRESERVES an existing mode but does not set one on a
-    # fresh file (it inherits umask → 0644). A key file must be 0600, so tighten
-    # umask around the create AND chmod explicitly — the same belt-and-suspenders
-    # the peer.yml→config migration uses (config_unification C4).
-    _prev_umask = os.umask(0o077)
-    try:
-        atomic_write_secret(str(secret_path), api_key)
-        os.chmod(str(secret_path), 0o600)
-    finally:
-        os.umask(_prev_umask)
+    secret_path = _write_secret_ref(target.parent / "mesh_leader_api_key", api_key)
 
     def mutator(current: MaximConfig) -> MaximConfig:
         new = _apply_field_to_config(current, "role", "peer")
@@ -266,6 +257,84 @@ def apply_mesh_setup(
         if remote_model:
             new = _apply_field_to_config(new, "lanes.large.remote_model", remote_model)
         return new
+
+    _, written = mutate_config(mutator, path=path)
+    return secret_path, written
+
+
+def _write_secret_ref(secret_path: Path, key: str) -> Path:
+    """Write ``key`` to ``secret_path`` as a mode-0600 file and return the path.
+
+    ``atomic_write_secret`` PRESERVES an existing mode but does not set one on a
+    fresh file (it inherits umask → 0644). A key file must be 0600, so tighten
+    umask around the create AND chmod explicitly — the belt-and-suspenders the
+    peer.yml→config migration uses (config_unification C4). The stored ref is
+    always the file PATH; the inline key never touches config.json.
+    """
+    _prev_umask = os.umask(0o077)
+    try:
+        atomic_write_secret(str(secret_path), key)
+        os.chmod(str(secret_path), 0o600)
+    finally:
+        os.umask(_prev_umask)
+    return secret_path
+
+
+def apply_cloud_setup(
+    provider: str,
+    profile: str,
+    api_key: str,
+    *,
+    monthly_budget_usd: float | None = None,
+    path: Path | None = None,
+) -> tuple[Path, Path]:
+    """Console SETUP seam helper — configure a cloud provider as the large lane.
+
+    Writes a resolvable large-tier **CLOUD placement** (``lanes.large.placement``
+    = one ``cloud`` entry carrying ``model=<profile>`` + ``api_key_ref``) plus
+    ``cloud.enabled=true``, a non-zero ``cloud.max_lanes`` (so the cloud gate
+    admits the lane), and the session budget. The key lands as a **ref** (0600
+    file), never inline — the placement's ``api_key_ref`` is resolved into the
+    provider env var at lane-build time (the two-site injection fix in
+    ``lane_backends`` makes a cloud-profile placement actually reach the backend).
+
+    Mirrors :func:`apply_mesh_setup`: one atomic RMW through :func:`mutate_config`,
+    the app never hand-assembles the placement dict or knows the ref rules.
+
+    Args:
+        provider: provider label (e.g. ``anthropic``) — used only to name the
+            secret file so multiple providers don't collide.
+        profile: the cloud model profile to run (e.g. ``claude-sonnet``).
+        api_key: the raw provider key to store as a ref.
+        monthly_budget_usd: optional cap → ``cloud.session_budget_usd``.
+        path: config.json path override (tests). Secrets land next to it.
+
+    Returns ``(secret_path, config_path_written)``.
+    """
+    from dataclasses import replace
+
+    if not provider:
+        raise ConfigurationError("apply_cloud_setup: provider is required")
+    if not profile:
+        raise ConfigurationError("apply_cloud_setup: profile is required")
+    if not api_key:
+        raise ConfigurationError("apply_cloud_setup: api_key is required")
+
+    target = path if path is not None else config_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Sanitize the provider label for the filename (never trust it as a path).
+    safe_provider = "".join(c for c in provider if c.isalnum() or c in ("-", "_")) or "cloud"
+    secret_path = _write_secret_ref(target.parent / f"cloud_{safe_provider}_api_key", api_key)
+
+    def mutator(current: MaximConfig) -> MaximConfig:
+        placement = LaneTierPlacement(origin="cloud", model=profile, api_key_ref=str(secret_path))
+        large = replace(current.lanes.large, placement=(placement,))
+        lanes = replace(current.lanes, large=large)
+        cloud_kwargs: dict[str, Any] = {"enabled": True, "max_lanes": max(1, current.cloud.max_lanes)}
+        if monthly_budget_usd is not None:
+            cloud_kwargs["session_budget_usd"] = float(monthly_budget_usd)
+        cloud = replace(current.cloud, **cloud_kwargs)
+        return replace(current, lanes=lanes, cloud=cloud)
 
     _, written = mutate_config(mutator, path=path)
     return secret_path, written
