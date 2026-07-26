@@ -1100,6 +1100,28 @@ def start_simulation_mode(
             session_id=session_id,
         )
         aut_llm_worker.start()
+
+        # Exp 44 counterfactual capture (DORMANT unless MAXIM_EXP44_CAPTURE_LOG
+        # is set). Installs the paired-prompt capture on THIS process's AUT worker
+        # — the one place reachable in-process, since the benchmark vehicle
+        # subprocesses `maxim --sim`. Gated experiment hook, mirrors how
+        # substrate_telemetry is threaded through the sim; never runs in prod.
+        _exp44_log = os.environ.get("MAXIM_EXP44_CAPTURE_LOG")
+        if _exp44_log:
+            try:
+                import importlib.util as _ilu
+                from pathlib import Path as _P
+
+                _cap_path = _P(__file__).resolve().parents[3] / "scripts" / "exp44" / "capture_paired_prompts.py"
+                _spec = _ilu.spec_from_file_location("_exp44_capture", _cap_path)
+                if _spec and _spec.loader:
+                    _mod = _ilu.module_from_spec(_spec)
+                    _spec.loader.exec_module(_mod)
+                    _mod.install_capture(aut_llm_worker, _exp44_log)
+                    logger.info("Exp44 paired-prompt capture installed -> %s", _exp44_log)
+            except Exception as _e:  # capture must never break the sim
+                logger.warning("Exp44 capture install failed (continuing): %s", _e)
+
         # B3: Enable Acting Coach when embodiment tools are available.
         # The coach encourages the agent to explore affordances instead of
         # entering respond loops. Bio-system modulation (NAc valence, pain
