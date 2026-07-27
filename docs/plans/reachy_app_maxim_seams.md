@@ -142,6 +142,7 @@ CONTENT  campaigns + safety
 Remaining sub-decisions (deferred to build, not blocking):
 - Exact `player_model` trait vocabulary + the confidence threshold for surfacing a preference (RECALL).
 - Whether `story_memories` summaries are pre-stored episode summaries or a per-view LLM summarization pass (RECALL).
+- `CuratedRecall.name` source: shipped as `None` (#425 — no clean "the player's name" store exists yet). Candidate sources: an explicit console setting, or an ATL concept tagged as the operator's identity. (Re-homed here from the #425 PR body — post-merge review round 2026-07-26.)
 
 ## References
 

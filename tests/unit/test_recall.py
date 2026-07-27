@@ -103,6 +103,44 @@ def test_recall_verb_empty_when_no_state(tmp_path):
     assert r.name is None and r.player_model == []
 
 
+def test_recall_agent_id_reads_factory_agent_home(tmp_path):
+    """Post-merge review B1 (the MemoryView split-brain): a persistent HANDLE
+    agent persists to the AgentFactory layout — files at the agent home's ROOT
+    (``<home>/nac.json``), NOT the api-session ``<home>/memory/`` layout.
+    ``recall(agent_id=)`` must read the factory layout, and the legacy
+    no-agent_id read must NOT see it (the two layouts are distinct on purpose;
+    conflating them was the bug's disguise). Uses the NAc trait chain — a real
+    NAc round-trips through save/load cleanly, which is exactly what the
+    campaign leaves on disk."""
+    import maxim
+    from maxim.decisions.nac import NAc, NACConfig
+
+    agent_home = tmp_path / "agents" / "console_agent"
+    agent_home.mkdir(parents=True)
+    nac = NAc(NACConfig(persistence_path=str(agent_home / "nac.json")))
+    for _ in range(30):
+        nac.update_cluster_reward(
+            agent_id="console_agent", cluster_id="c1", tool_signature="tool:warm_self", reward=1.0
+        )
+    nac.save(str(agent_home / "nac.json"))
+
+    # agent_id + home_dir → the agent home directly (mirrors persistence_dir).
+    r = maxim.recall(agent_id="console_agent", home_dir=str(agent_home))
+    assert r.player_model, "campaign-learned traits must be recallable via the agent-home layout"
+
+    # The api-session layout at the same root sees NOTHING — reading the wrong
+    # home is exactly the silent-empty failure this guard pins.
+    legacy = maxim.recall(home_dir=str(agent_home))
+    assert legacy.player_model == []
+
+
+def test_recall_agent_id_missing_home_is_honestly_empty(tmp_path):
+    import maxim
+
+    r = maxim.recall(agent_id="nobody_yet", home_dir=str(tmp_path / "nope"))
+    assert r.story_memories == [] and r.preferences == []
+
+
 def test_nac_trait_source_end_to_end():
     """Full chain: real NAc reward biases → known_agent_ids → get_agent_tool_biases
     → dispositional trait phrases (vocabulary + gate + dedup)."""

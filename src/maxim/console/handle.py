@@ -161,15 +161,41 @@ class MaximHandle:
 
     # ── lifecycle ───────────────────────────────────────────────────────
 
-    def stop(self, *, consolidation: Literal["full", "lightweight"] = "full") -> None:
+    def stop(
+        self,
+        *,
+        consolidation: Literal["full", "lightweight"] = "full",
+        campaign_wait_s: float = 60.0,
+    ) -> None:
         """Shut the persistent agent down with an EXPLICIT consolidation flavor.
 
         ``"full"`` (default): blocking sleep/replay consolidation +
         hippocampus/NAc/cerebellum saves — the right flavor for a persistent
         agent. ``"lightweight"`` skips the replay (still persists state).
         Idempotent: a second stop is a no-op.
+
+        Waits up to ``campaign_wait_s`` for a live campaign to finish (post-
+        merge review, Exec #4 / Arch #1: stopping under a live loop raced its
+        own session-end — the MemoryHub's atomic test-and-clear now guarantees
+        single consolidation either way, but stopping mid-campaign would still
+        steal the loop's consolidation slot, so we wait). On expiry, proceeds
+        LOUDLY — a hung campaign must not make stop() unbounded.
         """
         if self._stopped:
             return
-        self._stopped = True
-        self.instance.shutdown(consolidation=consolidation)
+        acquired = self._campaign_lock.acquire(timeout=campaign_wait_s)
+        if not acquired:
+            logger.warning(
+                "MaximHandle.stop(): campaign still running after %.0fs wait — "
+                "proceeding with shutdown; the campaign loop's own session-end "
+                "becomes a no-op (atomic session flag)",
+                campaign_wait_s,
+            )
+        try:
+            if self._stopped:  # settled while we waited
+                return
+            self._stopped = True
+            self.instance.shutdown(consolidation=consolidation)
+        finally:
+            if acquired:
+                self._campaign_lock.release()

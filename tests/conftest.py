@@ -259,6 +259,26 @@ def _isolate_maxim_deterministic_scene_embodiment_env():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_maxim_exp44_capture_log_env():
+    """Scrub ``MAXIM_EXP44_CAPTURE_LOG`` across every test.
+
+    Exp 44 counterfactual capture (scripts/exp44): when set, the sim
+    orchestrator wraps the AUT's PromptBuilder and appends paired
+    (full/ablated) prompts to the named JSONL. Per CLAUDE.md "opt-in env
+    vars in hot startup paths need autouse scrubs" — a test that sets it
+    must not leak capture-file writes into later orchestrator-touching
+    tests. (Post-merge review round 2026-07-26.)
+    """
+    saved = os.environ.pop("MAXIM_EXP44_CAPTURE_LOG", None)
+    try:
+        yield
+    finally:
+        os.environ.pop("MAXIM_EXP44_CAPTURE_LOG", None)
+        if saved is not None:
+            os.environ["MAXIM_EXP44_CAPTURE_LOG"] = saved
+
+
+@pytest.fixture(autouse=True)
 def _isolate_maxim_cradle_mother_disable_care_env():
     """Scrub ``MAXIM_CRADLE_MOTHER_DISABLE_CARE`` across every test.
 

@@ -368,6 +368,12 @@ def start_simulation_mode(
             written. Mutually exclusive with ``entity_ref`` — a persistent
             agent owns its embodiment (declared at construction, e.g. the
             Reachy-flavored handle), the sim must not graft one on.
+            Known divergence (post-merge review, documented): user tools
+            pending via ``maxim.register_tool()`` are injected AFTER the
+            lease snapshot, so on the injected path they are CAMPAIGN-scoped
+            (dropped at lease restore) rather than process-persistent as on
+            the throwaway path. Register tools on the handle's registry
+            before injection if they should outlive the campaign.
 
     Returns:
         SimulationResult with session summary

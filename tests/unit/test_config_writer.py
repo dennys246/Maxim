@@ -309,3 +309,41 @@ class TestSerializationCollision:
                     ),
                 ),
             )
+
+
+class TestSingletonInvalidation:
+    """Post-merge review B2 (reproduced live): the get_config singleton was
+    cached at server startup and never invalidated by writes, so a long-lived
+    `maxim serve` process served STALE config to every post-setup lane build —
+    the wizard's /api/setup/cloud was silently inert until restart. Writers
+    now invalidate; the next get_config re-reads from disk."""
+
+    def test_mutate_config_invalidates_get_config_singleton(self, tmp_path):
+        from dataclasses import replace
+
+        from maxim.runtime.config_loader import MaximConfig, get_config
+        from maxim.runtime.config_writer import mutate_config, write_config
+
+        cfg_path = tmp_path / "config.json"
+        write_config(MaximConfig(), path=cfg_path)
+        before = get_config(cfg_path)
+        assert before.cloud.enabled is False
+
+        def mutator(current: MaximConfig) -> MaximConfig:
+            return replace(current, cloud=replace(current.cloud, enabled=True))
+
+        mutate_config(mutator, path=cfg_path)
+        after = get_config(cfg_path)
+        assert after.cloud.enabled is True, "singleton must re-read after a write (was the inert-setup bug)"
+
+    def test_write_config_invalidates_get_config_singleton(self, tmp_path):
+        from dataclasses import replace
+
+        from maxim.runtime.config_loader import MaximConfig, get_config
+        from maxim.runtime.config_writer import write_config
+
+        cfg_path = tmp_path / "config.json"
+        write_config(MaximConfig(), path=cfg_path)
+        assert get_config(cfg_path).cloud.enabled is False
+        write_config(replace(MaximConfig(), cloud=replace(MaximConfig().cloud, enabled=True)), path=cfg_path)
+        assert get_config(cfg_path).cloud.enabled is True

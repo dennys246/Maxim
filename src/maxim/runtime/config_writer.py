@@ -131,6 +131,12 @@ def write_config(
     with lock:
         atomic_write_json(str(target), payload)
 
+    # Long-lived processes (maxim serve) re-read config after setup writes —
+    # without this the get_config singleton serves stale config to the next
+    # in-process lane build (post-merge review Exec B2).
+    from maxim.runtime.config_loader import invalidate_config_cache
+
+    invalidate_config_cache()
     logger.info("config_writer: wrote %s", target)
     return target
 
@@ -172,6 +178,11 @@ def mutate_config(
         payload["_format_version"] = CONFIG_FORMAT_VERSION
         atomic_write_json(str(target), payload)
 
+    # Same invalidation as write_config — mutate_config writes directly and
+    # does NOT route through write_config (post-merge review Exec B2).
+    from maxim.runtime.config_loader import invalidate_config_cache
+
+    invalidate_config_cache()
     logger.info("config_writer: mutated %s", target)
     return new, target
 

@@ -217,10 +217,21 @@ def get_recall() -> RecallResponse:
     # salience-ranked, curated blend across pluggable recall sources. The console
     # never touches the bio-stack directly (thin-app rule); it maps the curated
     # dataclass to the wire shape.
+    #
+    # Post-merge review fix (Exec B1): the read MUST target the HANDLE agent's
+    # home (~/.maxim/agents/<agent_id>/) — the home campaign runs write to —
+    # not the api-session home (~/.maxim/memory/). Reading the wrong home made
+    # "Adventure teaches Talk" silently invisible to MemoryView, and the
+    # curator's honest-empty rule masked the loss as correct behavior. This is
+    # a file-based read of last-SAVED state (campaign end runs full
+    # consolidation + saves), which keeps the thin-app rule: no live bio-stack
+    # objects cross the server boundary.
     import maxim
     from maxim.console.schemas import Preference, StoryMemory
 
-    r = maxim.recall()
+    with _handle_lock:
+        agent_id = _handle.agent_id if _handle is not None else _HANDLE_AGENT_ID
+    r = maxim.recall(agent_id=agent_id)
     return RecallResponse(
         name=r.name,
         player_model=list(r.player_model),
@@ -233,6 +244,9 @@ def get_recall() -> RecallResponse:
 # One MaximHandle per server process (the console fronts ONE persistent
 # agent), one campaign at a time. The handle is built lazily on the first
 # adventure run so `maxim serve` startup stays instant.
+# _HANDLE_AGENT_ID is the single source of the console agent's identity —
+# get_recall reads the same agent home the handle writes (Exec B1).
+_HANDLE_AGENT_ID = "console_agent"
 _handle_lock = threading.Lock()
 _handle: Any | None = None
 _active_run: dict[str, Any] = {"session_id": None, "thread": None}
@@ -244,7 +258,7 @@ def _get_handle() -> Any:
         if _handle is None:
             from maxim.console.handle import MaximHandle
 
-            _handle = MaximHandle()
+            _handle = MaximHandle(agent_id=_HANDLE_AGENT_ID)
         return _handle
 
 
@@ -325,22 +339,35 @@ def get_event_envelope() -> ConsoleEvent:
 
 def build_app(ui_dist: Path | None = None) -> FastAPI:
     """Construct the Console FastAPI app. ``ui_dist`` = the built static bundle."""
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> Any:
+        yield
+        # Shutdown: server exit mid-campaign would otherwise kill the daemon
+        # run thread with the hippocampus capture queue unflushed — silent
+        # learning loss. Join the live run (bounded) BEFORE stopping so the
+        # campaign's own session-end wins when it can (post-merge review
+        # Exec #4); then stop() — idempotent, safe when no adventure ever ran.
+        with _handle_lock:
+            handle = _handle
+            run_thread = _active_run["thread"]
+
+        def _drain_and_stop() -> None:
+            if run_thread is not None and run_thread.is_alive():
+                run_thread.join(timeout=30.0)
+            if handle is not None:
+                handle.stop()
+
+        await asyncio.to_thread(_drain_and_stop)
+
     app = FastAPI(
         title="Maxim Console",
         version="0.1.0",
         summary="Localhost Console backend + the OpenAPI facade contract for maxim-pulse.",
+        lifespan=_lifespan,
     )
     app.include_router(api)
-
-    @app.on_event("shutdown")
-    def _stop_handle() -> None:
-        # Server exit mid-campaign would otherwise kill the daemon run thread
-        # with the hippocampus capture queue unflushed — silent learning loss.
-        # stop() is idempotent (safe when no adventure ever ran).
-        global _handle
-        with _handle_lock:
-            if _handle is not None:
-                _handle.stop()
 
     @app.websocket("/ws")
     async def ws_events(websocket: WebSocket) -> None:

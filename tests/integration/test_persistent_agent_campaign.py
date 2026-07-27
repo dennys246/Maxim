@@ -463,6 +463,60 @@ class TestRepeatedSessions:
 
 
 # ─────────────────────────────────────────────────────────────────────────
+# Post-merge round: stop-vs-loop session-end race (Exec #4 / Arch #1)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class TestSessionEndRace:
+    def test_concurrent_session_end_consolidates_exactly_once(self, tmp_path):
+        """The unlocked check-then-act on _session_active let a shutdown-hook
+        stop() and the campaign loop's own session-end BOTH run full
+        consolidation concurrently. The atomic test-and-clear admits exactly
+        one; the loser gets the honest no-op {}."""
+        import threading
+
+        inst = _build_persistent_agent(tmp_path)
+        hub = inst.memory_hub
+        hub.on_session_start()
+
+        barrier = threading.Barrier(2)
+        results: list[dict] = []
+
+        def _end() -> None:
+            barrier.wait()
+            results.append(hub.on_session_end())
+
+        threads = [threading.Thread(target=_end) for _ in range(2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30.0)
+        assert len(results) == 2
+        non_empty = [r for r in results if r]
+        assert len(non_empty) == 1, f"exactly one caller must consolidate, got {len(non_empty)}"
+
+    def test_handle_stop_waits_for_campaign_then_proceeds_loudly(self, tmp_path, caplog):
+        """stop() waits (bounded) on the campaign lock; on expiry it proceeds
+        with a WARNING rather than hanging forever on a wedged campaign."""
+        import logging
+
+        from maxim.console.handle import MaximHandle
+
+        handle = MaximHandle(agent_id="console_agent", home=tmp_path / "home")
+        hub = _SpyHub()
+        handle.instance.memory_hub = hub
+
+        handle._campaign_lock.acquire()  # simulate a live (wedged) campaign
+        try:
+            with caplog.at_level(logging.WARNING, logger="maxim.console.handle"):
+                handle.stop(campaign_wait_s=0.2)
+        finally:
+            handle._campaign_lock.release()
+        assert hub.full_calls == 1, "stop must still consolidate after the bounded wait"
+        assert any("campaign still running" in r.message for r in caplog.records)
+
+
+# ─────────────────────────────────────────────────────────────────────────
 # MaximHandle — the headless HANDLE flavor
 # ─────────────────────────────────────────────────────────────────────────
 

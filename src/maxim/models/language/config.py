@@ -717,6 +717,15 @@ class LLMConfig:
     # defaults so they leave these blank.
     base_url: str = ""
     api_key_env: str = ""
+    # Direct config-carried API key (post-merge review Exec #3, 2026-07-26).
+    # Populated ONLY from a resolved placement api_key_ref (Console cloud
+    # setup) at lane-build time — carried in config so the backend can read
+    # it WITHOUT the build mutating os.environ (a setdefault'd key made a
+    # re-keyed setup unrecoverable in-process: the stale first key was
+    # indistinguishable from an operator export and won forever). Precedence
+    # at the backend stays env > this field, matching CLI > env > config.
+    # Never persisted; runtime-ephemeral (config.json stores only refs).
+    api_key: str = ""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
