@@ -164,17 +164,59 @@ class RunAccepted(BaseModel):
     detail: str | None = None
 
 
-# ── /ws event envelope — the EventClient stream contract ────────────────────
+# ── /ws event envelope — the EventClient stream contract (EVENT seam) ────────
 
 
 class ConsoleEvent(BaseModel):
-    # Skeleton envelope. The v2 shape is spec'd as the EVENT seam
-    # (reachy_app_maxim_seams.md § EVENT): kind = lowercased sim_log subsystem
-    # (open string — a closed Literal would fight the _SUBSYSTEM_TIERS
-    # unknown→BIO opt-out invariant) + server-computed tier, seq, run_id,
-    # epoch ts. `data` is the documented per-producer escape hatch (the
-    # DiagnoseSection.extra precedent) — the envelope fields are the contract.
-    kind: str  # lowercased sim_log subsystem, plus meta-kinds: "heartbeat" | "run" | "dropped" | "display"
+    """v2 envelope (reachy_app_maxim_seams.md § EVENT) — the wire event IS the
+    ``sim_log`` record, bridged via ``register_sim_sink``.
+
+    ``kind`` stays an OPEN string (lowercased sim_log subsystem) — a closed
+    Literal would fight the ``_SUBSYSTEM_TIERS`` unknown→BIO opt-out invariant
+    (new subsystems must surface by default). The typed axis clients filter on
+    is ``tier`` (server-computed per event, unknown subsystem → "bio").
+
+    ``data`` is the documented per-producer escape hatch (the
+    ``DiagnoseSection.extra`` precedent): the payload varies across 30+
+    subsystems; the envelope fields are the contract. Per-kind typed models for
+    headline kinds are a later additive step if a panel needs them.
+    """
+
+    # Lowercased sim_log subsystem ("hippocampus", "nac", "deliberation", …)
+    # plus the meta-kinds: "heartbeat" | "run" | "dropped".
+    kind: str
+    # Server-computed from _SUBSYSTEM_TIERS; meta-kinds are "clean".
+    tier: Literal["clean", "bio", "debug"] = "bio"
+    # Per-connection monotonic, assigned at enqueue — a gap means drops.
+    seq: int = 0
+    # Console-side run id (RunAccepted.session_id); None outside a run. The
+    # "run" meta-kind's data binds this to the sim's internal session id.
+    run_id: str | None = None
+    # Epoch seconds, stamped at bridge time. sim_log's own `t` is SIM-ELAPSED
+    # and travels as elapsed_s — the definition travels with the data.
     ts: float
+    elapsed_s: float | None = None
     agent_id: str | None = None
+    agent: str | None = None  # display nickname, when registered
+    message: str = ""
     data: dict[str, Any] = Field(default_factory=dict)
+
+
+class SubscribeFrame(BaseModel):
+    """Client→server ``/ws`` filter frame — the terminal's ``_show_channels`` /
+    ``DisplayTier`` model lifted to the socket (a thin UI subscribes to less).
+
+    Semantics: axes AND together; within the subsystem axis, ``channels`` and
+    ``kinds`` union. ``tier`` passes events whose tier ≤ the requested tier
+    (requesting "clean" = headline only; "debug" = everything). No frame (or
+    all-None) = everything. Meta-kinds (heartbeat/run/dropped and the agent's
+    "display" suggestions) bypass filtering — they carry stream/UI state, not
+    subsystem traffic.
+
+    OpenAPI does not model WS payloads, so ``GET /events/subscribe-frame``
+    documents this shape for type-gen (same trick as ``/events/envelope``).
+    """
+
+    channels: list[str] | None = None  # _CHANNEL_MAP names ("bio", "memory", …) or raw subsystem names
+    tier: Literal["clean", "bio", "debug"] | None = None
+    kinds: list[str] | None = None  # exact kinds, case-insensitive

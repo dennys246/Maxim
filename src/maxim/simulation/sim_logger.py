@@ -188,7 +188,7 @@ def get_interactive_mode() -> InteractiveMode:
     return _interactive_mode
 
 
-def agent_escalate_display(tier: DisplayTier) -> bool:
+def agent_escalate_display(tier: DisplayTier, reason: str = "") -> bool:
     """Allow the agent to temporarily escalate display tier.
 
     Returns True if escalation was applied, False if tier is below floor.
@@ -197,13 +197,28 @@ def agent_escalate_display(tier: DisplayTier) -> bool:
     if tier < _display_floor:
         return False  # Agent can't suppress below user's floor
     _display_tier = tier
+    # EVENT seam: surface the agent's display suggestion on the record stream
+    # (kind="display" on the wire). The web UI keeps the floor semantics
+    # client-side — the wire carries the suggestion, never enforces it.
+    sim_log(
+        "DISPLAY",
+        f"agent escalated display → {tier.name.lower()}",
+        {"tier": tier.name.lower(), "reason": reason, "action": "escalate"},
+    )
     return True
 
 
 def revert_display_to_floor() -> None:
     """Revert display tier to user's --display setting."""
     global _display_tier
+    reverted = _display_tier != _display_floor
     _display_tier = _display_floor
+    if reverted:
+        sim_log(
+            "DISPLAY",
+            f"display reverted to floor ({_display_floor.name.lower()})",
+            {"tier": _display_floor.name.lower(), "reason": "", "action": "revert"},
+        )
 
 
 def reset_sim_display_state() -> None:
@@ -454,6 +469,10 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
     # Debug-tier: implementation details, pipeline traces.
     "EXEC": DisplayTier.DEBUG,
     "PIPELINE": DisplayTier.DEBUG,
+    # Display-suggestion events (EVENT seam): persisted + streamed always
+    # (sinks/JSONL fire before this gate); terminal only in debug — the
+    # terminal already SHOWS the tier change itself, a log line would be noise.
+    "DISPLAY": DisplayTier.DEBUG,
 }
 
 _sim_active = False
@@ -463,6 +482,57 @@ _log_file = None
 _log_records: list[dict[str, Any]] = []
 _debug_mode = False
 _show_channels: set[str] | None = None  # None = show all, set = filter
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Sim sinks — the EVENT seam's Maxim-side hook (reachy_app_maxim_seams.md
+# § EVENT). Registered callables receive every structured sim_log record
+# (same all-events rule as JSONL persistence: dispatch happens BEFORE the
+# display-tier gate, regardless of terminal tier / --show filters; per-client
+# filtering is the consumer's job). Sinks run ON THE PUBLISHING THREAD — they
+# must be non-blocking (enqueue-and-return) and must not mutate the record.
+# A raising sink is logged once (per sink) and never propagates into sim_log's
+# caller. The console server's /ws bridge is the first consumer.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_sim_sinks: list[Any] = []
+_sim_sinks_lock = threading.Lock()
+_warned_sinks: set[int] = set()
+
+
+def register_sim_sink(sink: Any) -> None:
+    """Register a callable receiving every sim_log record dict.
+
+    The record shape is the persisted JSONL shape: ``t`` (sim-elapsed seconds),
+    ``subsystem`` (UPPERCASE), ``message``, ``data``, plus ``agent_id`` /
+    ``agent`` when present. Treat it as read-only.
+    """
+    with _sim_sinks_lock:
+        if sink not in _sim_sinks:
+            _sim_sinks.append(sink)
+
+
+def unregister_sim_sink(sink: Any) -> None:
+    """Remove a previously-registered sink (no-op if absent)."""
+    with _sim_sinks_lock:
+        if sink in _sim_sinks:
+            _sim_sinks.remove(sink)
+        _warned_sinks.discard(id(sink))
+
+
+def _dispatch_to_sinks(record: dict[str, Any]) -> None:
+    with _sim_sinks_lock:
+        sinks = list(_sim_sinks)
+    for sink in sinks:
+        try:
+            sink(record)
+        except Exception:
+            # A broken sink must not take down the agent loop — but don't
+            # swallow silently either: warn ONCE per sink (sim_log is a hot
+            # path; per-event warnings would flood).
+            if id(sink) not in _warned_sinks:
+                _warned_sinks.add(id(sink))
+                logger.warning("sim sink %r raised; suppressing further warnings for it", sink, exc_info=True)
+
 
 # Channel → subsystem mapping for --show flag
 _CHANNEL_MAP: dict[str, set[str]] = {
@@ -511,6 +581,32 @@ _CHANNEL_MAP: dict[str, set[str]] = {
 }
 
 
+def expand_channels(channels: "list[str] | tuple[str, ...]") -> set[str]:
+    """Expand channel names to UPPERCASE subsystem names via ``_CHANNEL_MAP``.
+
+    Unknown names are treated as raw subsystem names (uppercased). Shared by
+    the terminal's ``--show`` filter and the console ``/ws`` SubscribeFrame
+    (EVENT seam) so the two filter surfaces cannot drift.
+    """
+    allowed: set[str] = set()
+    for ch in channels:
+        c = ch.strip().lower()
+        if c in _CHANNEL_MAP:
+            allowed |= _CHANNEL_MAP[c]
+        else:
+            allowed.add(ch.strip().upper())
+    return allowed
+
+
+def subsystem_wire_tier(subsystem: str) -> str:
+    """Wire ``tier`` for a subsystem (EVENT seam): ``clean``/``bio``/``debug``.
+
+    Unknown subsystems → ``"bio"`` — the same opt-out-not-opt-in default the
+    terminal gate uses (``_SUBSYSTEM_TIERS.get(..., BIO)``).
+    """
+    return _SUBSYSTEM_TIERS.get(subsystem, DisplayTier.BIO).name.lower()
+
+
 def set_show_channels(channels: str | None) -> None:
     """Set which subsystem channels to show in terminal output.
 
@@ -534,14 +630,7 @@ def set_show_channels(channels: str | None) -> None:
         _show_channels = None
         return
 
-    allowed: set[str] = set()
-    for ch in channels.split(","):
-        ch = ch.strip().lower()
-        if ch in _CHANNEL_MAP:
-            allowed |= _CHANNEL_MAP[ch]
-        else:
-            # Treat as a raw subsystem name (e.g., "HIPPOCAMPUS")
-            allowed.add(ch.upper())
+    allowed = expand_channels(channels.split(","))
     _show_channels = allowed if allowed else None
 
 
@@ -811,6 +900,10 @@ def sim_log(
 
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
+
+    # EVENT seam: fan out to registered sinks (console /ws bridge). Same rule
+    # as JSONL persistence — before the display-tier gate, all events.
+    _dispatch_to_sinks(record)
 
     # Bridge into the unified MAXIM_LOG_FILE stream. The sim-session JSONL
     # above stays the canonical session artifact; this second emission lets
@@ -1544,6 +1637,28 @@ def sim_deliberation_update(
             enrichment_details=enrichment_details,
         )
 
+    # EVENT seam (work item 7): the thinking-panel content previously reached
+    # ONLY display.set_thinking — no record, so JSONL and the /ws stream missed
+    # all deliberation. Emit the record the docstring always claimed.
+    # _force_debug keeps the terminal path unchanged (the panel renders the
+    # reasoning; a scrolling log line would duplicate it) while JSONL + sinks
+    # always fire. `text` is the reasoning key the web ThinkingPanel reads.
+    sim_log(
+        "DELIBERATION",
+        f"deliberation cycle {cycle}/{max_cycles}",
+        {
+            "text": reasoning,
+            "cycle": cycle,
+            "max_cycles": max_cycles,
+            "enrichment_tags": list(enrichment_tags) if enrichment_tags else [],
+            "salience": salience,
+            "enrichment_details": enrichment_details or {},
+            "completed": False,
+        },
+        agent_id=agent_id,
+        _force_debug=True,
+    )
+
 
 def sim_deliberation_end(
     cycle: int,
@@ -1570,3 +1685,17 @@ def sim_deliberation_end(
             agent=nickname,
             completed=True,
         )
+
+    # EVENT seam (work item 7): mirror the completion onto the record stream.
+    sim_log(
+        "DELIBERATION",
+        f"deliberation complete after {cycle} cycle(s)",
+        {
+            "text": summary or f"Deliberation complete after {cycle} cycle(s)",
+            "cycle": cycle,
+            "max_cycles": max_cycles,
+            "completed": True,
+        },
+        agent_id=agent_id,
+        _force_debug=True,
+    )

@@ -36,7 +36,19 @@
         "type": "object"
       },
       "ConsoleEvent": {
+        "description": "v2 envelope (reachy_app_maxim_seams.md \u00a7 EVENT) \u2014 the wire event IS the\n``sim_log`` record, bridged via ``register_sim_sink``.\n\n``kind`` stays an OPEN string (lowercased sim_log subsystem) \u2014 a closed\nLiteral would fight the ``_SUBSYSTEM_TIERS`` unknown\u2192BIO opt-out invariant\n(new subsystems must surface by default). The typed axis clients filter on\nis ``tier`` (server-computed per event, unknown subsystem \u2192 \"bio\").\n\n``data`` is the documented per-producer escape hatch (the\n``DiagnoseSection.extra`` precedent): the payload varies across 30+\nsubsystems; the envelope fields are the contract. Per-kind typed models for\nheadline kinds are a later additive step if a panel needs them.",
         "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent"
+          },
           "agent_id": {
             "anyOf": [
               {
@@ -53,8 +65,50 @@
             "title": "Data",
             "type": "object"
           },
+          "elapsed_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed S"
+          },
           "kind": {
             "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "seq": {
+            "default": 0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "tier": {
+            "default": "bio",
+            "enum": [
+              "clean",
+              "bio",
+              "debug"
+            ],
+            "title": "Tier",
             "type": "string"
           },
           "ts": {
@@ -560,6 +614,57 @@
         "title": "StoryMemory",
         "type": "object"
       },
+      "SubscribeFrame": {
+        "description": "Client\u2192server ``/ws`` filter frame \u2014 the terminal's ``_show_channels`` /\n``DisplayTier`` model lifted to the socket (a thin UI subscribes to less).\n\nSemantics: axes AND together; within the subsystem axis, ``channels`` and\n``kinds`` union. ``tier`` passes events whose tier \u2264 the requested tier\n(requesting \"clean\" = headline only; \"debug\" = everything). No frame (or\nall-None) = everything. Meta-kinds (heartbeat/run/dropped and the agent's\n\"display\" suggestions) bypass filtering \u2014 they carry stream/UI state, not\nsubsystem traffic.\n\nOpenAPI does not model WS payloads, so ``GET /events/subscribe-frame``\ndocuments this shape for type-gen (same trick as ``/events/envelope``).",
+        "properties": {
+          "channels": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channels"
+          },
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kinds"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "enum": [
+                  "clean",
+                  "bio",
+                  "debug"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          }
+        },
+        "title": "SubscribeFrame",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -639,6 +744,27 @@
           }
         },
         "summary": "WS event envelope shape (type-gen only; live stream is /ws)",
+        "tags": [
+          "facade"
+        ]
+      }
+    },
+    "/api/events/subscribe-frame": {
+      "get": {
+        "operationId": "get_subscribe_frame_api_events_subscribe_frame_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscribeFrame"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "WS filter frame shape (type-gen only; send frames on /ws)",
         "tags": [
           "facade"
         ]
