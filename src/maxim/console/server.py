@@ -273,17 +273,22 @@ def _get_handle() -> Any:
         return _handle
 
 
-def campaign_search_roots() -> list[Path]:
-    """Where ``GET /api/campaigns`` looks, in precedence order.
+def campaign_search_roots() -> list[tuple[Path, str]]:
+    """Where ``GET /api/campaigns`` looks, in precedence order, with each
+    root's ``source`` label.
 
     ``~/.maxim/campaigns/`` is the durable user location; ``./scenarios/
     campaigns/`` is the dev-checkout convenience (CWD-relative, the same
     convention ``api.benchmark`` documents per CC10). Nothing is bundled in
     the wheel today, so a pip-install user sees only their own campaigns.
+
+    Returns (root, source) PAIRS rather than a bare list: a parallel label
+    tuple at the call site silently truncated if a third root were ever added
+    — that root would be neither searched nor reported (review finding).
     """
     from maxim.utils.paths import data_home
 
-    return [data_home() / "campaigns", Path("scenarios") / "campaigns"]
+    return [(data_home() / "campaigns", "user"), (Path("scenarios") / "campaigns", "repo")]
 
 
 def _campaign_info(path: Path, source: str) -> CampaignInfo:
@@ -297,7 +302,7 @@ def _campaign_info(path: Path, source: str) -> CampaignInfo:
     try:
         import yaml
 
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             doc = yaml.safe_load(f) or {}
         head = doc.get("campaign") or {}
         if isinstance(head, dict):
@@ -315,11 +320,18 @@ def get_campaigns() -> CampaignsResponse:
     seen: set[Path] = set()
     out: list[CampaignInfo] = []
     searched: list[str] = []
-    for root, source in zip(campaign_search_roots(), ("user", "repo")):
+    for root, source in campaign_search_roots():
         searched.append(str(root))
         if not root.is_dir():
             continue
-        for p in sorted(root.iterdir()):
+        try:
+            entries = sorted(root.iterdir())
+        except OSError:
+            # An unreadable root (perms, removed mid-listing) must not 500 the
+            # whole picker — report it as searched and move on (review finding).
+            logger.warning("campaign listing: could not read %s", root, exc_info=True)
+            continue
+        for p in entries:
             if p.suffix.lower() not in (".yaml", ".yml") or not p.is_file():
                 continue
             resolved = p.resolve()
@@ -412,13 +424,14 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
         )
     if not _talk_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="A talk turn is already in flight.")
+    turn_id = f"talk_{time.strftime('%Y%m%d_%H%M%S')}"
     try:
         handle = _get_handle()
-        _event_hub.set_run(_TALK_RUN_ID)
+        prev_run = _event_hub.set_run(_TALK_RUN_ID)
         try:
             result = handle.talk(text)
         finally:
-            _event_hub.set_run(None)
+            _event_hub.set_run(prev_run)
     except HTTPException:
         raise
     except Exception as e:
@@ -429,13 +442,17 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
 
     timed_out = bool(result.get("timed_out"))
     return RunAccepted(
-        session_id=_TALK_RUN_ID,
+        # Per-turn id so a client can correlate a turn with its event burst;
+        # events during the turn carry run_id=_TALK_RUN_ID (the scope), while
+        # this identifies the turn itself.
+        session_id=turn_id,
         mode="talk",
-        status="started",
+        status="completed",
+        reply=result.get("response"),
         detail=(
             "Turn timed out before a reply — the response may still arrive on /ws."
             if timed_out
-            else f"Turn complete ({len(result.get('actions') or [])} action(s)); reply is on /ws as kind='response'."
+            else f"Turn complete ({len(result.get('actions') or [])} action(s)); also on /ws as kind='response'."
         ),
     )
 
@@ -474,6 +491,12 @@ def post_run(body: RunRequest) -> RunAccepted:
             raise HTTPException(status_code=422, detail="'campaign' must point at a campaign YAML (.yaml/.yml).")
         if not campaign_path.is_file():
             raise HTTPException(status_code=404, detail=f"Campaign not found: {campaign_path}")
+
+    if _talk_lock.locked():
+        # Symmetric to the talk path's adventure check — without this an
+        # adventure could start under an in-flight talk turn and stop its
+        # loop mid-send (review finding).
+        raise HTTPException(status_code=409, detail="A talk turn is in flight — try again in a moment.")
 
     handle = _get_handle()
     with _handle_lock:
@@ -632,9 +655,14 @@ class _EventHub:
             self._conns.discard(conn)
 
     # ── run correlation (run-thread side) ──
-    def set_run(self, run_id: str | None) -> None:
+    def set_run(self, run_id: str | None) -> str | None:
+        """Set the active run id; returns the PREVIOUS one so a nested scope
+        (a talk turn) can restore rather than clobber a live adventure's id
+        (review finding: an unconditional clear stranded the rest of a
+        campaign's events with run_id=None)."""
         with self._lock:
-            self._run_id = run_id
+            prev, self._run_id = self._run_id, run_id
+        return prev
 
     # ── producers ──
     def sink(self, record: dict[str, Any]) -> None:
@@ -716,23 +744,16 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> Any:
         # EVENT seam: bridge sim_log records into the hub for /ws fan-out.
-        from maxim.simulation.sim_logger import (
-            enable_sim_logging,
-            get_active_display,
-            register_sim_sink,
-            unregister_sim_sink,
-        )
+        from maxim.simulation.sim_logger import register_sim_sink, unregister_sim_sink
 
         _event_hub.attach(asyncio.get_running_loop())
+        # Registering the sink is SUFFICIENT: sim_log dispatches to sinks
+        # independently of `_sim_active` (the terminal-verbosity switch a sim
+        # owns and turns OFF at every campaign end). The console deliberately
+        # does NOT call enable_sim_logging — that would also opt this
+        # long-lived process into the in-memory record trail and the stdout
+        # print path, neither of which a server wants.
         register_sim_sink(_event_hub.sink)
-        # sim_log is a no-op until logging is enabled, and only the sim
-        # orchestrator enables it — so without this, TALK (which never goes
-        # through the orchestrator) produced zero wire events. Headless:
-        # record-only, no Rich display, no color. A later sim re-enables with
-        # its own session log path, which is fine (and desirable — the session
-        # artifact still gets written).
-        if get_active_display() is None:
-            enable_sim_logging(use_color=False)
         try:
             yield
         finally:

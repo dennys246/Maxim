@@ -99,6 +99,36 @@ class TestSimSinks:
         warnings = [r for r in caplog.records if "sim sink" in r.getMessage()]
         assert len(warnings) == 1
 
+    def test_sinks_survive_disable_sim_logging(self):
+        # CROSS-CONFIRMED BLOCKER: start_simulation_mode calls
+        # disable_sim_logging() at the end of EVERY campaign. When sink
+        # dispatch was gated on _sim_active, one finished adventure
+        # permanently silenced the console's /ws stream — and talk's reply
+        # travels ONLY on the wire, so it was unrecoverable and silent.
+        seen: list[dict] = []
+        register_sim_sink(seen.append)
+        try:
+            enable_sim_logging(use_color=False)
+            sim_log("USER", "before")
+            disable_sim_logging()  # what every campaign end does
+            sim_log("RESPONSE", "after")
+        finally:
+            unregister_sim_sink(seen.append)
+            disable_sim_logging()
+        assert [r["subsystem"] for r in seen if r["subsystem"] in ("USER", "RESPONSE")] == ["USER", "RESPONSE"]
+
+    def test_sink_fires_with_no_sim_ever_enabled(self):
+        # The console registers a sink and never calls enable_sim_logging.
+        seen: list[dict] = []
+        register_sim_sink(seen.append)
+        try:
+            sim_log("LEARN", "no sim active")
+        finally:
+            unregister_sim_sink(seen.append)
+        assert [r["message"] for r in seen] == ["no sim active"]
+        # …and sim-elapsed stays sane rather than being an epoch timestamp.
+        assert 0.0 <= seen[0]["t"] < 10_000_000.0
+
     def test_unregister_is_idempotent(self, sim_logging):
         sink = lambda r: None  # noqa: E731
         register_sim_sink(sink)

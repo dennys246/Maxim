@@ -507,7 +507,9 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
 }
 
 _sim_active = False
-_sim_start: float = 0.0
+# Initialized at import so a SINK-only consumer (no sim ever enabled) still
+# gets a sane sim-elapsed `t`; enable_sim_logging() re-stamps it per session.
+_sim_start: float = time.time()
 _use_color = True
 _log_file = None
 _log_records: list[dict[str, Any]] = []
@@ -911,7 +913,16 @@ def sim_log(
             Persisted as-is in JSONL records.
         _force_debug: If True, only show on terminal in debug mode
     """
-    if not _sim_active:
+    # Registered SINKS are a first-class output, independent of `_sim_active`
+    # (which is a TERMINAL-verbosity switch owned by whoever ran a sim).
+    # Cross-confirmed review finding: the console's /ws bridge is a sink with a
+    # PROCESS-lifetime consumer, and `start_simulation_mode` calls
+    # `disable_sim_logging()` at the end of EVERY campaign — so gating sinks on
+    # `_sim_active` meant one finished adventure permanently silenced the whole
+    # stream, with talk's reply (which travels only on the wire) unrecoverable
+    # and silent on both sides. This mirrors the EVENT seam's own rule: all
+    # events reach sinks regardless of terminal tier.
+    if not _sim_active and not _sim_sinks:
         return
 
     # Resolve agent_id: explicit parameter > contextvar > None
@@ -945,12 +956,19 @@ def sim_log(
         record["agent_id"] = agent_id
     if nickname is not None:
         record["agent"] = nickname
+
+    # Sinks FIRST and unconditionally — see the gate note above.
+    _dispatch_to_sinks(record)
+
+    # Everything below is the sim-session trail + terminal rendering, which
+    # only exist while a sim owns the logger.
+    if not _sim_active:
+        return
+
     _log_records.append(record)
 
-    # Bound the in-memory trail. A sim is short-lived, but the console's
-    # `maxim serve` enables sim logging for the whole process lifetime (that
-    # is how talk/adventure reach /ws), so an unbounded list would be a slow
-    # leak. Trim the oldest quarter and say so ONCE — a silent truncation
+    # Bound the in-memory trail so a long-lived process cannot grow it without
+    # limit. Trim the oldest quarter and say so ONCE — a silent truncation
     # would quietly hollow out a long session's report/telemetry.
     if len(_log_records) > _MAX_LOG_RECORDS:
         global _records_trimmed
@@ -969,10 +987,6 @@ def sim_log(
 
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
-
-    # EVENT seam: fan out to registered sinks (console /ws bridge). Same rule
-    # as JSONL persistence — before the display-tier gate, all events.
-    _dispatch_to_sinks(record)
 
     # Bridge into the unified MAXIM_LOG_FILE stream. The sim-session JSONL
     # above stays the canonical session artifact; this second emission lets

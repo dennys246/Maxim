@@ -183,8 +183,17 @@ class RunAccepted(BaseModel):
     # doesn't assume filesystem correlation.
     session_id: str = Field(description="Console-side run id (minted at accept; not the sim's internal session_id).")
     mode: str
-    status: Literal["started", "rejected"]
+    # "started" = accepted, running in the background (adventure).
+    # "completed" = the call BLOCKED and the work is done (talk turn) — the
+    #   client should not wait for a background finish.
+    # "rejected" = not accepted.
+    status: Literal["started", "completed", "rejected"]
     detail: str | None = None
+    # Talk turns only: the agent's words. Also delivered on /ws as
+    # kind="response" (the live channel the chat renders from); this field
+    # makes delivery robust when the client connected late or the stream
+    # dropped events under backpressure. None for background modes.
+    reply: str | None = None
 
 
 # ── /ws event envelope — the EventClient stream contract (EVENT seam) ────────

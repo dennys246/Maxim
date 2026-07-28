@@ -126,8 +126,13 @@ class TestCampaignDiscovery:
         from maxim.console.server import campaign_search_roots
 
         roots = campaign_search_roots()
-        assert str(roots[0]).endswith("campaigns")
-        assert ".maxim" in str(roots[0])  # user dir wins over the repo dir
+        # (root, source) PAIRS — a parallel label tuple at the call site would
+        # silently truncate if a third root were added (review fold).
+        assert all(len(entry) == 2 for entry in roots)
+        first_root, first_source = roots[0]
+        assert str(first_root).endswith("campaigns")
+        assert ".maxim" in str(first_root)  # user dir wins over the repo dir
+        assert first_source == "user"
 
     def test_malformed_yaml_still_lists(self, tmp_path):
         # A campaign that cannot be parsed must still appear (by filename) —

@@ -548,6 +548,17 @@
             "title": "Mode",
             "type": "string"
           },
+          "reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply"
+          },
           "session_id": {
             "description": "Console-side run id (minted at accept; not the sim's internal session_id).",
             "title": "Session Id",
@@ -556,6 +567,7 @@
           "status": {
             "enum": [
               "started",
+              "completed",
               "rejected"
             ],
             "title": "Status",

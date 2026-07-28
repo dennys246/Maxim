@@ -164,6 +164,52 @@ class TestReplyExtraction:
         assert _extract_reply(turn) == "First.\nSecond."
 
 
+class TestTalkPermissions:
+    """CROSS-CONFIRMED BLOCKER: SupervisionPolicy.allowed_tools is NEVER
+    consulted at AUTONOMOUS ("only safety constraints apply"), so the original
+    allow-list was a silent no-op and bash/write_file — scoped to the SERVER'S
+    CWD — were reachable from small talk. The restriction must live in
+    SafetyConstraints, which IS enforced at every level."""
+
+    def _controller(self, registry_tools):
+        from maxim.agents.autonomy import (
+            AutonomyController,
+            AutonomyLevel,
+            SafetyConstraints,
+            SupervisionPolicy,
+        )
+
+        conversational = {"respond", "speak", "read_file", "list_directory", "glob", "recall", "sense_tools"}
+        mutating = {t for t in registry_tools if t not in conversational}
+        return AutonomyController(
+            initial_level=AutonomyLevel.AUTONOMOUS,
+            supervision_policy=SupervisionPolicy(allowed_tools=set(conversational)),
+            safety_constraints=SafetyConstraints(
+                forbidden_tools=frozenset(mutating | set(SafetyConstraints().forbidden_tools))
+            ),
+        )
+
+    @pytest.mark.parametrize("tool", ["bash", "write_file", "edit_file", "git_commit"])
+    def test_mutating_tools_are_refused_at_autonomous(self, tool):
+        ctrl = self._controller({"respond", "bash", "write_file", "edit_file", "git_commit"})
+        allowed, reason = ctrl.can_execute_action({"tool_name": tool})
+        assert allowed is False, f"{tool} must not be reachable from a talk turn"
+        assert reason
+
+    @pytest.mark.parametrize("tool", ["respond", "speak", "read_file"])
+    def test_conversational_tools_still_allowed(self, tool):
+        # The fix must not break talk's own reply path.
+        ctrl = self._controller({"respond", "speak", "read_file", "bash"})
+        allowed, _ = ctrl.can_execute_action({"tool_name": tool})
+        assert allowed is True
+
+    def test_restriction_is_derived_not_enumerated(self):
+        # A newly-registered tool is denied by construction, not by someone
+        # remembering to add it to a list.
+        ctrl = self._controller({"respond", "some_brand_new_tool"})
+        assert ctrl.can_execute_action({"tool_name": "some_brand_new_tool"})[0] is False
+
+
 class TestTalkLifecycle:
     def test_campaign_stops_the_talk_loop_first(self, monkeypatch):
         # Two agent loops on one bio-stack is the failure to design out.
@@ -251,7 +297,9 @@ class TestTalkEndpoint:
         assert r.status_code == 200
         body = r.json()
         assert body["mode"] == "talk"
-        assert body["session_id"] == srv._TALK_RUN_ID
+        assert body["session_id"].startswith("talk_")  # per-turn id, not a constant
+        assert body["status"] == "completed"  # the call blocked; work is done
+        assert body["reply"] == "hi"  # also on /ws, but robust to a late client
         assert "/ws" in body["detail"]  # points the caller at the stream
         assert seen_run_ids == [srv._TALK_RUN_ID]  # stamped during the turn
         assert srv._event_hub._run_id is None  # and cleared after

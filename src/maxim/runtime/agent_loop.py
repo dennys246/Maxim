@@ -1184,7 +1184,12 @@ def _maybe_auto_revert_display() -> None:
     """
     from maxim.simulation.sim_logger import maybe_auto_revert_display
 
-    maybe_auto_revert_display()
+    try:
+        maybe_auto_revert_display()
+    except Exception:
+        # Mirrors tick_embodiment_drift's containment: a display-tier bookkeeping
+        # failure must never take down the main loop.
+        logger.debug("display auto-revert tick raised", exc_info=True)
 
 
 def run_agentic_loop(
