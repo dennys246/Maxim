@@ -5,7 +5,7 @@
 **Target:** MVP-enabling seams (HANDLE, RECALL, PROBE, SETUP, PKG) for the 1.1-era app MVP; DM-track seams (VOICE, CONTENT) post-1.1 alongside [reachy_dm_app.md](reachy_dm_app.md).
 **Gates:** **FIT (substrate fits the Pi)** is the hard prerequisite for the whole app — do it first. Nothing here is a pymaxim *release* gate; it's additive integration surface.
 
-**Seam IDs are mnemonic** (not sequential): each names what it delivers. Prerequisite: `FIT`. MVP: `HANDLE`, `RECALL`, `PROBE`, `SETUP`, `PKG`. DM-track: `VOICE`, `CONTENT`.
+**Seam IDs are mnemonic** (not sequential): each names what it delivers. Prerequisite: `FIT`. MVP: `HANDLE`, `RECALL`, `PROBE`, `SETUP`, `PKG`. Console Phase 3: `EVENT`. DM-track: `VOICE`, `CONTENT`.
 
 **These seams are Layer 1 of the shared UI stack** ([maxim_console.md](maxim_console.md)) — the backend contract that **both** the Reachy app *and* the general Maxim Console compose over. They are **not Reachy-specific**: `SETUP`/`PROBE`/`RECALL`/`HANDLE` back the shared UI kit's SetupWizard / ConnectionTest / MemoryView / RunSurface. Every kit component binds to a seam here (never a shell-specific back-channel) — that's what lets the full dashboard be composition, not a rewrite. **`HANDLE` has two flavors** — embodied (Reachy) and headless (console) — same interface; fold the headless constructor into the HANDLE spec below.
 
@@ -88,6 +88,25 @@ Three rules make it work: **(1) provenance-filter** — show real memories; in-f
 
 **Regression guard:** each helper produces a config that `resolve_setting` reads back as a resolvable large-tier placement / cloud profile; secret lands as a ref, never inline.
 
+### EVENT — typed live event stream (the Phase-3 `/ws` bridge lands as a seam, not plumbing)
+
+**Front-gate:** ride existing infra? **Yes — the vocabulary, the tier taxonomy, the channel model, and every producer already exist in `sim_logger.py`.** The wire event IS the `sim_log` record (`subsystem`, `message`, `data`, `agent_id` — [sim_logger.py:797](../../src/maxim/simulation/sim_logger.py)); the terminal display gets a pre-flattened string, the web needs the record. The gap is the wire contract + the sync→async crossing. Do NOT invent a new event system, and do NOT build the bridge on `api.on()` — that surface has 4 coarse events of which only `tool_call`/`pain_signal` are bus-wired (`_bridge_event_subscriptions`, [api.py:1590](../../src/maxim/api.py)); `sim_log` carries the full ~30-subsystem taxonomy the terminal already renders. (The `server.py` `/ws` docstring's "full api.on() bridge in Phase 3" assumption is hereby reversed.)
+
+**Gaps this closes** (four-agent review of both repos, 2026-07-28, all verified): `ConsoleEvent.kind` is an open string whose vocabulary is a comment; the envelope has no `seq`/`run_id` (event↔run correlation impossible — and `RunAccepted.session_id` ≠ the sim's internal session id, documented at [schemas.py:155](../../src/maxim/console/schemas.py)); `/ws` is a push-only heartbeat with no filter path; `sim_log` sinks would run synchronously on the publishing thread while `/ws` is async — no queue/drop policy exists; `ConsoleEvent.data` is the only bare `dict` on a seam surface with no carve-out (violating this plan's own no-bare-`dict`/`Any` rule); and `sim_deliberation_update`/`sim_deliberation_end` are **display-only** (they call `display.set_thinking` and never emit a record — [sim_logger.py:1511](../../src/maxim/simulation/sim_logger.py)), so thinking-panel content would silently miss any record-based bridge.
+
+**Work:**
+
+1. **Envelope (`ConsoleEvent` v2)** — typed fields: `kind: str` (lowercased `sim_log` subsystem; stays OPEN — the unknown-subsystem→BIO default in `_SUBSYSTEM_TIERS` is a deliberate opt-out-not-opt-in invariant and a closed `Literal` would fight it), `tier: Literal["clean","bio","debug"]` (server-computed from `_SUBSYSTEM_TIERS`, unknown→`"bio"`), `seq: int` (per-connection monotonic, assigned at enqueue so gaps = drops), `run_id: str | None` (the console-side run id from `RunAccepted`; `None` outside a run), `ts: float` (**epoch** seconds, stamped at bridge time — `sim_log`'s `t` is sim-elapsed, carried as `elapsed_s`), `agent_id`/`agent` (id + nickname), `message: str`, `data: dict[str, Any]` with an **explicit documented carve-out** (same precedent as `DiagnoseSection.extra`: the payload varies per producer across 30+ subsystems; the envelope is typed, the payload is the observability escape hatch — per-kind typed models for headline kinds are a later additive step if a panel needs them).
+2. **Maxim-side hook: `register_sim_sink(fn)`** in `sim_logger.py` — a registered-sinks list `sim_log` dispatches the structured record to, alongside JSONL persistence and **before** the display-tier gate (same rule as JSONL: all events reach sinks regardless of terminal tier; filtering is per-connection). Sinks must be non-blocking and exception-swallowed (a broken sink must not take down the agent loop). The console's HANDLE run path enables sim logging headless (record-only, no Rich display) so the stream flows for talk/adventure alike.
+3. **The sync→async crossing** — the console server's single sink stamps `run_id`+`tier`+`ts` and `loop.call_soon_threadsafe`-enqueues onto **bounded per-connection queues** (e.g. maxsize 512). On full: **drop-oldest** + increment a per-connection counter; periodically emit a `kind="dropped"` meta-event with the count so the UI can render a gap marker. Never block the publishing thread; never grow unbounded.
+4. **Filter frame** — a typed client→server message `SubscribeFrame {channels?: list[str], tier?: str, kinds?: list[str]}`: the terminal's `_show_channels`/`_CHANNEL_MAP` + `DisplayTier` model lifted to the socket, so the Pi's thin UI can subscribe to less than the Console does. Server-side filter per connection; no frame = everything. Type-gen via the same trick as the envelope (a 501 `GET /events/subscribe-frame` documenting the shape, since OpenAPI doesn't model WS payloads).
+5. **RUN lifecycle events** — the run thread emits `kind="run"` events (`{run_id, sim_session_id, status: started|ended, report_path?}`) at boot and end. This closes the documented `RunAccepted.session_id` ≠ sim-internal-id correlation gap: the binding arrives on the stream instead of a future run-status endpoint.
+6. **DISPLAY suggestion events** — `DisplayModeTool.execute` / `agent_escalate_display` / `revert_display_to_floor` emit `kind="display"` records (`{tier, reason}`) so the agent can suggest surfaces to the web UI too. The UI keeps the floor semantics client-side (user-closed panels only get suggestions) — the wire carries the suggestion, never enforces it.
+7. **Thinking-panel plumbing** — route `sim_deliberation_update`/`sim_deliberation_end` content through `sim_log("DELIBERATION", ...)` (data carries the reasoning text + cycle info) so `kind="deliberation"` reaches the stream; their docstrings already claim a JSONL entry that the implementation never emits. Keep the `display.set_thinking` call — the terminal path is unchanged.
+8. **`api.on()` cleanup (orthogonal, same PR or a sibling)** — `memory_capture` and `prompt` are declared in `_EVENT_TYPES` but never bridged: wire them in `_bridge_event_subscriptions` or remove them from the declared set (the surface is Experimental/CC2; a dead name is worse than a smaller list). `api.on()` remains the *embedder SDK* surface; the console stream deliberately does not ride it.
+
+**Regression guards:** (1) envelope round-trip — a `sim_log` emission with an active run surfaces on a connected `/ws` client with correct `kind` (lowercased), `tier` (incl. unknown-subsystem→bio), `run_id`, epoch `ts`, and monotonic `seq`; (2) backpressure — a slow consumer with a full queue drops oldest, keeps the newest, and surfaces a `dropped` count; publishing thread never blocks (bounded-time assertion); (3) filter — a `SubscribeFrame` with `channels: ["memory"]` delivers HIPPOCAMPUS/NAc/SCN/ATL kinds and suppresses others; (4) a sink that raises does not propagate into `sim_log`'s caller; (5) `kind="deliberation"` events carry the reasoning text that previously only reached `set_thinking`.
+
 ### PKG — ARM/Pi packaging hygiene
 
 **Front-gate:** ride existing infra? **Extras exist but the aarch64 lean combo is unverified.**
@@ -126,6 +145,8 @@ PROBE   structured conn test       ├─ setup page
 RECALL  what-it-remembers facade   ├─ main page differentiator
 HANDLE  runtime handle + stop      ├─ Talk + clean persistence + the play_campaign injection surface
 PKG     ARM packaging              ┘  (parallelizable)
+─── Console Phase 3 (maxim_console.md) ─────────────────────────
+EVENT   typed live event stream    — rides HANDLE's run path; fills the /ws 501s
 ─── Adventure (reachy_dm_app.md), post-1.1 ─────────────────────
 VOICE    voice loop (+ STT placement if latency demands)   — rides HANDLE.play_campaign
 CONTENT  campaigns + safety
@@ -138,6 +159,9 @@ CONTENT  campaigns + safety
 1. **Campaign injection — inject at `campaign_runner`, not a new/changed public verb.** Params already exist; `handle.play_campaign` passes the live bio-stack; `api.campaign` unchanged for standalone use. Lives inside HANDLE.
 2. **Session-end consolidation — decouple, don't add `is_external_adapter`.** Explicit `consolidation: "full" | "lightweight"`, default `"full"`; sims opt into lightweight. (HANDLE part b.)
 3. **Memory-read shape — curated typed blend, not raw.** Name + player-model + salience-ranked real story memories + confidence-gated preferences; provenance-filtered; under-claiming. (RECALL.)
+4. **Event stream rides `sim_log`, not `api.on()`.** The sim_log record already carries the full subsystem taxonomy, the tier map, agent attribution, and structured data; `api.on()` has 4 coarse events (2 dead) and stays the embedder-SDK surface. Reverses the `/ws` docstring's earlier assumption. (EVENT.)
+5. **`kind` stays an open string; `tier` is the typed axis.** A closed `Literal` for kind would fight the `_SUBSYSTEM_TIERS` unknown→BIO opt-out invariant (new subsystems must surface by default). The server computes `tier` per event; clients filter on tier/channel, match on kind. `ConsoleEvent.data` is the explicitly-documented escape hatch (DiagnoseSection.extra precedent), not a silent rule violation. (EVENT.)
+6. **`ts` is epoch; sim-elapsed travels as `elapsed_s`.** The record's `t` is sim-relative and useless for cross-run ordering in a browser; the definition travels with the data. (EVENT.)
 
 Remaining sub-decisions (deferred to build, not blocking):
 - Exact `player_model` trait vocabulary + the confidence threshold for surfacing a preference (RECALL).
