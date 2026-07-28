@@ -89,12 +89,20 @@ python -c "import maxim; print(maxim.__version__)"
 # 1. Clean old builds
 rm -rf dist/ build/ *.egg-info
 
+# 1b. VENDOR THE CONSOLE UI (release-only step — see below)
+python scripts/vendor_console_ui.py <path-to>/Maxim-pulse/apps/console/dist
+python scripts/vendor_console_ui.py --check     # confirms it took
+
 # 2. Build wheel + sdist
 python -m build
 
 # 3. Validate package metadata
 twine check dist/pymaxim-*
 # Expected: PASSED for both .whl and .tar.gz
+
+# 4. Confirm the Console bundle actually shipped in the wheel
+python -c "import zipfile,glob; n=zipfile.ZipFile(sorted(glob.glob('dist/pymaxim-*.whl'))[-1]).namelist(); \
+assert any(x.endswith('console/ui_dist/index.html') for x in n), 'Console UI MISSING from wheel'; print('Console UI: OK')"
 
 # 4. Verify bundled data is in the wheel
 python -c "
@@ -113,6 +121,39 @@ with zipfile.ZipFile(whl) as z:
 ```
 
 ---
+
+## Vendoring the Console UI
+
+The Console web UI is built in the **maxim-pulse** repo and *vendored* into
+this package at release time, so `pip install pymaxim[console] && maxim serve`
+serves a working Console with no flag and no config.
+
+- **Destination:** `src/maxim/console/ui_dist/` — shipped as package data,
+  `.gitignore`'d. Vendoring is a release step, **never a commit**; a source
+  checkout has no bundle and falls back to the "no UI installed" page.
+- **Sources:** a local pulse checkout (`apps/console/dist`) or an unzipped
+  `ui-dist` CI artifact from a maxim-pulse run on `main` — no `v*` tag needed.
+- **Validation:** the script refuses a bundle whose `maxim-ui.json` names a
+  different `target` (pointing at the *reachy* build is the easy slip) or a
+  `contract_version` that disagrees with `ui_bundle.CONSOLE_CONTRACT_VERSION`.
+  `--force` overrides; you probably don't want it.
+- **At runtime:** a mismatched bundle still boots but logs a loud WARNING
+  naming both versions — refusing to start over a version string would be
+  worse for a local tool, and mismatches are often benign.
+
+Resolution order is `--ui-dist` > `config.json::console.ui_dist` > packaged.
+
+```bash
+python scripts/vendor_console_ui.py <path>   # vendor
+python scripts/vendor_console_ui.py --check  # is one vendored?
+python scripts/vendor_console_ui.py --clean  # back to checkout state
+```
+
+**Bump `CONSOLE_CONTRACT_VERSION`** ([ui_bundle.py](../src/maxim/console/ui_bundle.py))
+when the wire contract changes in a way a stale bundle would notice — an
+endpoint removed or renamed, a required field added, an envelope reshaped.
+It is also the FastAPI app `version`, so the OpenAPI schema and the check
+cannot drift.
 
 ## Publish to Test PyPI (safe, reversible)
 

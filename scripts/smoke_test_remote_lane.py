@@ -5,6 +5,7 @@ Usage:
     MAXIM_LANE_INFER_REMOTE_MODEL=mistral-7b-instruct-v0.2 \
     python scripts/smoke_test_remote_lane.py
 """
+
 import logging
 import time
 
@@ -44,6 +45,6 @@ else:
         temperature=0.0,
         max_tokens=20,
     )
-    print(f"  elapsed={time.time()-t0:.2f}s")
+    print(f"  elapsed={time.time() - t0:.2f}s")
     print(f"  text: {text!r}")
     print(f"  usage: {usage}")

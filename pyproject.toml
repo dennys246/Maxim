@@ -179,7 +179,12 @@ where = ["src"]
 include = ["maxim*"]
 
 [tool.setuptools.package-data]
-maxim = ["_data/**/*", "py.typed", "console/openapi.json"]
+# console/ui_dist/** is the VENDORED Console web bundle (built in maxim-pulse,
+# copied in at release time by scripts/vendor_console_ui.py). It is
+# .gitignore'd — a source checkout has none, and `maxim serve` then falls back
+# to the "no UI installed" page. A wheel built after vendoring ships it, so a
+# pip-installed user gets a working Console with no flag and no config.
+maxim = ["_data/**/*", "py.typed", "console/openapi.json", "console/ui_dist/**/*"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Testing Configuration

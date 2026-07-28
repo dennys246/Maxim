@@ -265,3 +265,7 @@ v1_phase_results/
 auto.crt
 auto.key
 *.pem
+
+# Vendored Console UI bundle — copied in at RELEASE time by
+# scripts/vendor_console_ui.py, shipped as package data, never committed.
+src/maxim/console/ui_dist/
