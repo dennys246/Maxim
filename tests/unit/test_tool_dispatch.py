@@ -290,6 +290,25 @@ class TestClusterRewardMotorCredit:
         # books its sign.
         assert self._cluster_reward(drive_potential_diff=1.4e-17) == 1.0  # residue -> fallback
         assert self._cluster_reward(success=False, drive_potential_diff=-1.4e-17) == -1.0
+
+    # ── Phase 1 (substrate_learns_from_experience.md): drive_relief_only guardrail ──
+    def test_drive_relief_only_suppresses_tool_success_floor(self):
+        # llm-primary: a driveless always-succeed action (no drive_potential_diff)
+        # must NOT book cluster reward — else the LLM's broad say/sense/examine
+        # stream floods the interoception cluster with "this tool ran".
+        assert self._cluster_reward(drive_relief_only=True, success=True, drive_potential_diff=None) is None
+        assert self._cluster_reward(drive_relief_only=True, success=False, drive_potential_diff=None) is None
+
+    def test_drive_relief_only_still_credits_real_drive_signal(self):
+        # The body's real drive relief/pain STILL reinforces — only the tool-success
+        # floor is suppressed. This is the whole point: learn from the body, not the tool.
+        assert self._cluster_reward(drive_relief_only=True, drive_potential_diff=0.3) == 1.0
+        assert self._cluster_reward(drive_relief_only=True, success=True, drive_potential_diff=-0.3) == -1.0
+
+    def test_default_keeps_tool_success_floor(self):
+        # substrate-primary (drive_relief_only defaults False) keeps the floor —
+        # contained there by the action whitelist. Guardrail is opt-in per caller.
+        assert self._cluster_reward(success=True, drive_potential_diff=None) == 1.0
         assert self._cluster_reward(drive_potential_diff=1e-6) == 1.0  # real progress -> +1
         assert self._cluster_reward(drive_potential_diff=-1e-6) == -1.0
 

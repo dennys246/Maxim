@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+import functools
 import itertools
 import logging
 import os
@@ -907,6 +909,44 @@ _SUBSTRATE_CHANNELS: "tuple[ModalityChannel, ...]" = (
 )
 
 
+def _encode_current_clusters(sensor_encoder: Any, agent_id: str, executor: Any) -> dict[str, str]:
+    """Encode the CURRENT sensor state into ``{modality: cluster_id}``.
+
+    The same per-channel encode ``propose_via_substrate`` does, but callable at
+    outcome time so an llm-primary / real-hardware action (where the LLM, not the
+    substrate, chose the action) can still key its real drive-relief outcome onto
+    the interoception (and audio) cluster — closing the substrate WRITE path in
+    those modes (Phase 1, substrate_learns_from_experience.md). Returns ``{}`` on
+    no encoder / no sensors / encode failure (never raises into the loop).
+    """
+    clusters: dict[str, str] = {}
+    if sensor_encoder is None:
+        return clusters
+    for ch in _SUBSTRATE_CHANNELS:
+        vals = ch.read_values(executor)
+        if not vals:
+            continue
+        try:
+            node_id = sensor_encoder.encode_sensors(
+                agent_id=agent_id,
+                sensors=vals,
+                modality=ch.tag,
+                ranges=ch.read_ranges(executor) or None,
+            )
+        except Exception:
+            # Same policy as propose_via_substrate: a channel that fails to encode
+            # is "sensors but no cluster" — surface it, don't crash.
+            logger.warning(
+                "substrate channel %r encoding raised at outcome time — cluster absent",
+                ch.tag,
+                exc_info=True,
+            )
+            continue
+        if node_id:
+            clusters[ch.tag] = node_id
+    return clusters
+
+
 _DEFAULT_SUBSTRATE_MIN_CONFIDENCE = 0.3
 
 
@@ -1393,6 +1433,14 @@ def run_agentic_loop(
     # that don't construct a MemoryHub.
     _loop_agent_id: str = (getattr(memory_hub, "agent_id", None) if memory_hub is not None else None) or agent_name
 
+    # Phase 1 (substrate_learns_from_experience.md): outside substrate-primary the
+    # LLM issues a broad always-succeed action stream, so the tool-success floor in
+    # record_outcome would flood the interoception cluster with "this tool ran".
+    # Credit the cluster surface from the body's real drive signal ONLY.
+    _drive_relief_only: bool = aut_mode != "substrate-primary"
+    # Bind the flag once so every outcome site inherits it (no per-call threading).
+    _rec_outcome = functools.partial(_record_outcome, drive_relief_only=_drive_relief_only)
+
     # Phase 0 sensor encoder — built once per loop when substrate-primary
     # is active and EC is reachable through memory_hub. Without this,
     # substrate-primary bypasses the LinguisticEncoder text path and EC
@@ -1400,8 +1448,13 @@ def run_agentic_loop(
     # smoke run from being a measurement). See
     # docs/plans/grounded_language_acquisition.md Phase 0 + the
     # SensorEncoder docstring in similarity/encoder.py.
+    # Built in ALL modes (Phase 1, substrate_learns_from_experience.md), not just
+    # substrate-primary: llm-primary / real-hardware actions also encode the
+    # current interoception cluster at outcome time (section 4) so their real
+    # drive-relief outcomes reinforce the cluster-reward substrate. Harmless when
+    # unused (an unembodied chat agent never calls encode); cheap to construct.
     _loop_sensor_encoder: Any | None = None
-    if aut_mode == "substrate-primary" and memory_hub is not None:
+    if memory_hub is not None:
         _ec = getattr(memory_hub, "ec", None)
         if _ec is not None:
             try:
@@ -2463,7 +2516,7 @@ def run_agentic_loop(
                                     logger.debug(f"Agent fallback action failed: {e}")
 
                                     # Track exception in recent_outcomes for LLM learning
-                                    _record_outcome(
+                                    _rec_outcome(
                                         agent_id=_loop_agent_id,
                                         tool_name=action["tool_name"],
                                         success=False,
@@ -2510,6 +2563,27 @@ def run_agentic_loop(
         if ctrl.pending_proposal and ctrl.pending_proposal.action:
             action = ctrl.pending_proposal.action
             confidence = ctrl.pending_proposal.confidence
+
+            # Phase 1 (substrate_learns_from_experience.md): in llm-primary the LLM
+            # chose the action, so propose_via_substrate never ran and no substrate
+            # cluster was captured. Encode the current interoception (+audio) state
+            # HERE — from the PRE-action drive state, the correct credit key — so the
+            # real drive-relief outcome reinforces the cluster-reward substrate via
+            # record_outcome (drive_relief_only → no tool-success floor). No-op in
+            # substrate-primary (clusters already captured) and when unembodied.
+            if (
+                aut_mode != "substrate-primary"
+                and _loop_sensor_encoder is not None
+                and getattr(ctrl.pending_proposal, "clusters", None) is None
+                and getattr(executor, "embodiment", None) is not None
+            ):
+                _live_clusters = _encode_current_clusters(_loop_sensor_encoder, _loop_agent_id, executor)
+                if _live_clusters:
+                    ctrl.pending_proposal = dataclasses.replace(
+                        ctrl.pending_proposal,
+                        cluster_id=_live_clusters.get(INTEROCEPTION_TAG),
+                        clusters=_live_clusters,
+                    )
 
             # ── Consecutive same-tool cap (respond loop prevention) ──────
             # Content-aware: only counts consecutive calls with the SAME
@@ -2876,7 +2950,7 @@ def run_agentic_loop(
                         else:
                             result_str = None
 
-                    _record_outcome(
+                    _rec_outcome(
                         agent_id=_loop_agent_id,
                         tool_name=tool_name or "unknown",
                         success=success,
@@ -3025,7 +3099,7 @@ def run_agentic_loop(
                     )
 
                     # Track exception in recent_outcomes for LLM learning
-                    _record_outcome(
+                    _rec_outcome(
                         agent_id=_loop_agent_id,
                         tool_name=action.get("tool_name", "unknown"),
                         success=False,
@@ -3143,7 +3217,7 @@ def run_agentic_loop(
                     )
                     # Record rejection so LLM knows not to re-propose
                     rejection_msg = f"Rejected by autonomy: {reason}"
-                    _record_outcome(
+                    _rec_outcome(
                         agent_id=_loop_agent_id,
                         tool_name=action.get("tool_name", "unknown"),
                         success=False,
@@ -3187,7 +3261,7 @@ def run_agentic_loop(
 
                         # Record outcome so LLM sees the result
                         result_str = str(output)[:3000] if output is not None else None
-                        _record_outcome(
+                        _rec_outcome(
                             agent_id=_loop_agent_id,
                             tool_name=tool_name,
                             success=success,
@@ -3229,7 +3303,7 @@ def run_agentic_loop(
                     except Exception as e:
                         logger.error(f"Approved action failed: {e}")
                         # Record failure so LLM knows (also fixes missing llm_worker call)
-                        _record_outcome(
+                        _rec_outcome(
                             agent_id=_loop_agent_id,
                             tool_name=tool_name,
                             success=False,
