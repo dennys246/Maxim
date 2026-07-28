@@ -97,9 +97,9 @@ class TestPlacementResolvable:
         cw.apply_mesh_setup("https://leader.example.com", "sk-test", path=cfg)
         ok, kind, detail = cw.placement_resolvable()
         assert (ok, kind) == (True, "mesh")
-        # Compare the whole URL, not a substring (a substring check on a URL is
-        # its own vulnerability pattern and CodeQL rightly flags it).
-        assert detail.endswith("https://leader.example.com")
+        # Compare the whole detail string — a substring/suffix check against a
+        # URL is its own vulnerability pattern, so don't model one even here.
+        assert detail == "remote lane → https://leader.example.com"
         assert "sk-test" not in detail  # never leak the key into UI text
 
 
@@ -173,15 +173,34 @@ class TestAdventurePremise:
         assert client.post("/api/run", json={"mode": "adventure"}).status_code == 422
 
     def test_campaign_outside_a_discovery_root_is_refused(self, client, tmp_path):
-        # 127.0.0.1-only is NOT sufficient justification for an arbitrary
-        # request-controlled path: a page in the operator's browser can POST to
-        # localhost. The run path is contained to the same roots /api/campaigns
-        # lists (CodeQL path-injection alert; the containment is the real fix).
+        # The request NAMES a campaign; the server SELECTS the path from
+        # discovery. A page in the operator's browser can POST to localhost,
+        # so request data must never reach a path expression.
         outside = tmp_path / "rogue.yaml"
         outside.write_text("campaign:\n  name: rogue\n")
         r = client.post("/api/run", json={"mode": "adventure", "campaign": str(outside)})
         assert r.status_code == 403
-        assert "discovery root" in r.json()["detail"]
+        assert "Unknown campaign" in r.json()["detail"]
+
+    def test_traversal_attempt_is_refused(self, client):
+        r = client.post("/api/run", json={"mode": "adventure", "campaign": "../../../../etc/passwd"})
+        assert r.status_code == 403
+
+    def test_a_listed_campaign_resolves_by_path_name_or_stem(self):
+        # The picker hands back `path`; humans/CLI may use the display name or
+        # the file stem. All three must select the SAME discovery-derived Path.
+        from maxim.console.server import _select_discovered_campaign, get_campaigns
+
+        listing = get_campaigns()
+        if not listing.campaigns:
+            pytest.skip("no campaigns discoverable in this environment")
+        info = listing.campaigns[0]
+        from pathlib import Path as _P
+
+        assert _select_discovered_campaign(info.path) == _P(info.path)
+        assert _select_discovered_campaign(info.name) == _P(info.path)
+        assert _select_discovered_campaign(_P(info.path).stem) == _P(info.path)
+        assert _select_discovered_campaign("definitely-not-a-campaign") is None
 
     def test_blank_premise_is_not_a_premise(self, client):
         # Whitespace-only input must not be mistaken for a premise (it would

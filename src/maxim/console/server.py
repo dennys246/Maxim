@@ -362,6 +362,24 @@ def get_campaigns() -> CampaignsResponse:
     return CampaignsResponse(campaigns=out, searched=searched)
 
 
+def _select_discovered_campaign(requested: str) -> Path | None:
+    """Map a requested campaign to a DISCOVERY-DERIVED path, or ``None``.
+
+    The returned Path is built by discovery (``iterdir`` under a known root),
+    never constructed from request data — so no request-controlled string ever
+    reaches a path expression. A request may name either the full path exactly
+    as ``/api/campaigns`` reported it, or the campaign's display name / file
+    stem (convenient for humans and CLI callers).
+    """
+    if not requested:
+        return None
+    listing = get_campaigns()
+    for info in listing.campaigns:
+        if requested == info.path or requested == info.name or requested == Path(info.path).stem:
+            return Path(info.path)
+    return None
+
+
 def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str, premise: str | None = None) -> None:
     import logging
 
@@ -501,28 +519,28 @@ def post_run(body: RunRequest) -> RunAccepted:
 
     campaign_path: Path | None = None
     if body.campaign:
-        # 127.0.0.1-only is NOT sufficient justification for an arbitrary
-        # request-controlled filesystem path: a page in the operator's browser
-        # can POST to localhost, so "the operator named the file" is not
-        # guaranteed. Constrain the path to the SAME discovery roots
-        # /api/campaigns lists (which is also exactly what the picker hands
-        # back), so the endpoint can only run campaigns the console already
-        # advertises. Dev escape hatch: drop or symlink the file into
-        # ~/.maxim/campaigns.
-        campaign_path = Path(body.campaign).expanduser().resolve()
-        if campaign_path.suffix.lower() not in (".yaml", ".yml"):
-            raise HTTPException(status_code=422, detail="'campaign' must point at a campaign YAML (.yaml/.yml).")
-        if not _is_within_search_root(campaign_path):
+        # The request NAMES a campaign; the server SELECTS the path.
+        #
+        # 127.0.0.1-only is not sufficient justification for building a
+        # filesystem path out of request data — a page in the operator's
+        # browser can POST to localhost, so "the operator named the file" is
+        # not guaranteed. Rather than construct-then-validate (which leaves
+        # request data flowing into a path expression), we resolve the request
+        # against the ALREADY-DISCOVERED set and use the discovery-derived
+        # Path. The picker hands back exactly what /api/campaigns returned, so
+        # the normal flow is unchanged; anything else is refused.
+        # Dev escape hatch: drop or symlink the file into ~/.maxim/campaigns.
+        requested = body.campaign.strip()
+        campaign_path = _select_discovered_campaign(requested)
+        if campaign_path is None:
             roots = ", ".join(str(r) for r, _ in campaign_search_roots())
             raise HTTPException(
                 status_code=403,
                 detail=(
-                    f"Campaign must live under a discovery root ({roots}). "
-                    "Copy or symlink it there — see GET /api/campaigns."
+                    f"Unknown campaign {requested!r}. Runnable campaigns are the ones "
+                    f"GET /api/campaigns lists (searched: {roots}). Copy or symlink yours there."
                 ),
             )
-        if not campaign_path.is_file():
-            raise HTTPException(status_code=404, detail=f"Campaign not found: {campaign_path}")
 
     if _talk_lock.locked():
         # Symmetric to the talk path's adventure check — without this an
