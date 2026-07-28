@@ -168,7 +168,13 @@ class RunAccepted(BaseModel):
 
 
 class ConsoleEvent(BaseModel):
-    kind: str  # "heartbeat" | "log" | "thinking" | "status" | ...
+    # Skeleton envelope. The v2 shape is spec'd as the EVENT seam
+    # (reachy_app_maxim_seams.md § EVENT): kind = lowercased sim_log subsystem
+    # (open string — a closed Literal would fight the _SUBSYSTEM_TIERS
+    # unknown→BIO opt-out invariant) + server-computed tier, seq, run_id,
+    # epoch ts. `data` is the documented per-producer escape hatch (the
+    # DiagnoseSection.extra precedent) — the envelope fields are the contract.
+    kind: str  # lowercased sim_log subsystem, plus meta-kinds: "heartbeat" | "run" | "dropped" | "display"
     ts: float
     agent_id: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)

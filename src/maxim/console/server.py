@@ -9,7 +9,9 @@ console is an explicit non-goal). Three surfaces:
   Pydantic shapes are in OpenAPI so the maxim-pulse kit can generate the full
   ``FacadeClient`` now (Phase 1 fills in the bodies without touching the schema).
 * ``/ws`` — the EventClient stream. Skeleton pushes a typed heartbeat; the full
-  ``api.on()`` bridge lands in Phase 3.
+  bridge is spec'd as the EVENT seam ([reachy_app_maxim_seams.md] § EVENT):
+  it rides ``sim_log`` records via ``register_sim_sink`` — NOT ``api.on()``,
+  which stays the embedder-SDK surface (that earlier assumption is reversed).
 * ``/`` — the static Console bundle (resolved from ``--ui-dist`` / config).
 
 **FastAPI is justified specifically by the OpenAPI auto-emit** (the cross-repo
@@ -371,7 +373,7 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
 
     @app.websocket("/ws")
     async def ws_events(websocket: WebSocket) -> None:
-        """EventClient stream — skeleton heartbeat (full api.on() bridge in Phase 3)."""
+        """EventClient stream — skeleton heartbeat (full bridge = the EVENT seam, which rides sim_log, not api.on())."""
         await websocket.accept()
         try:
             while True:

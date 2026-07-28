@@ -11,7 +11,7 @@
 
 ## Front-gate (Principle 3)
 
-**Does a web console need its own mechanism, or ride existing infra?** **Rides — it's presentation over `api.py`.** The 17 facade verbs (`configure`, `run`, `connect`, `diagnose`, `observe`, `campaign`, `list_models`, `download_model`, `benchmark`, `research`, `on()` event stream, …) plus the `Observer` are exactly a web UI's backend, and there's partial HTTP-control-plane precedent (leader-proxy admin endpoints, `metrics_snapshot` "for admin API"). **Genuinely new (small):** the `maxim serve` web server + an event bridge (`api.on()` → WS/SSE) + the UI kit itself. **Business logic stays in pymaxim** — the console MUST NOT reimplement anything the facades do (same cardinal rule as the app: thin front-end, fixes go into pymaxim/`api.py`).
+**Does a web console need its own mechanism, or ride existing infra?** **Rides — it's presentation over `api.py`.** The 17 facade verbs (`configure`, `run`, `connect`, `diagnose`, `observe`, `campaign`, `list_models`, `download_model`, `benchmark`, `research`, `on()` event stream, …) plus the `Observer` are exactly a web UI's backend, and there's partial HTTP-control-plane precedent (leader-proxy admin endpoints, `metrics_snapshot` "for admin API"). **Genuinely new (small):** the `maxim serve` web server + an event bridge (the EVENT seam: `sim_log` records → WS; `api.on()` stays embedder-SDK) + the UI kit itself. **Business logic stays in pymaxim** — the console MUST NOT reimplement anything the facades do (same cardinal rule as the app: thin front-end, fixes go into pymaxim/`api.py`).
 
 ---
 
@@ -53,12 +53,12 @@ Both front-ends are **a thin shell composing shared kit components over the pyma
 | **StatusChip** — where it thinks · health · spend | `api.diagnose` | ✓ | ✓ |
 | **MemoryView** — "what Maxim remembers about you" | `RECALL` | main page | ✓ |
 | **RunSurface** — run a mode + stream output | `HANDLE` (`talk`/`play_campaign`/`rest`) + `api.run`/`campaign` | Adventure / Talk / Rest | chat / sim / DM / benchmark |
-| **EventClient** — live thinking/telemetry stream | `api.on()` / `observe` | thinking panel | observe / telemetry |
+| **EventClient** — live thinking/telemetry stream | `sim_log` records via the EVENT seam ([reachy_app_maxim_seams.md](reachy_app_maxim_seams.md) § EVENT; not `api.on()` — reversed 2026-07-28) | thinking panel | observe / telemetry |
 | **DesignSystem** — tokens, theme, layout primitives | — | ✓ | ✓ |
 
 **RunSurface is the key abstraction:** Reachy's "Adventure" and the console's "run a DM campaign" are the *same component* with a different mode config and a different `HANDLE` flavor. Define it once.
 
-**RunSurface's panel model — port the interactive `Live` display's information architecture.** The existing Rich `MaximDisplay` ([interactive/display.py](../../src/maxim/interactive/display.py)) already validated the immersive-session spread in the terminal: status bar + **narrative/dialogue (bright)** + **bio-subsystem activity log (dimmed)** + a **thinking/deliberation panel** (accumulates the reasoning chain + which bio-systems enriched each cycle) + input/choices + **pluggable domain panels via the `DisplayExtension` ABC** (explicitly built for DM character-sheet/inventory/encounter, research, robot-joint panels). RunSurface should port this *IA* (not the Rich code): a **core layout** (narrative + input + activity + thinking) + **pluggable mode-panels** mirroring `DisplayExtension`. Crucially, **the terminal and the web are two renderers over one event model** — `sim_log()` / `observe` / `api.on()` — so the kit's `EventClient` consumes the same stream `MaximDisplay` does. The "show Maxim think + learn *while the story unfolds*" surface (bio-dim under scene-bright) is what makes Adventure legible and is available from the start, since it's already an event stream, not a new mechanism.
+**RunSurface's panel model — port the interactive `Live` display's information architecture.** The existing Rich `MaximDisplay` ([interactive/display.py](../../src/maxim/interactive/display.py)) already validated the immersive-session spread in the terminal: status bar + **narrative/dialogue (bright)** + **bio-subsystem activity log (dimmed)** + a **thinking/deliberation panel** (accumulates the reasoning chain + which bio-systems enriched each cycle) + input/choices + **pluggable domain panels via the `DisplayExtension` ABC** (explicitly built for DM character-sheet/inventory/encounter, research, robot-joint panels). RunSurface should port this *IA* (not the Rich code): a **core layout** (narrative + input + activity + thinking) + **pluggable mode-panels** mirroring `DisplayExtension`. Crucially, **the terminal and the web are two renderers over one event model** — the `sim_log` record (the EVENT seam pins this: `subsystem`→`kind`, server-computed tier from `_SUBSYSTEM_TIERS`; `api.on()` stays the embedder-SDK surface) — so the kit's `EventClient` consumes the same stream `MaximDisplay` does. The "show Maxim think + learn *while the story unfolds*" surface (bio-dim under scene-bright) is what makes Adventure legible and is available from the start, since it's already an event stream, not a new mechanism.
 
 ## One generalization the seams need: HANDLE has two flavors
 
@@ -74,7 +74,7 @@ The Reachy app uses a *subset* of the kit (setup, memory, status, RunSurface for
 
 ## Backend — `maxim serve`
 
-A new localhost web server (**FastAPI** — chosen for the OpenAPI contract below) that (a) serves the kit's static bundle, (b) exposes a thin JSON API mapping 1:1 to `api.py` verbs, (c) bridges `api.on()` → WS/SSE for the EventClient. **Security:** bind **`127.0.0.1` only** (never `0.0.0.0`); it holds cloud keys and can run/configure Maxim. The leader-proxy admin endpoints (on-network by design) are the cautionary counter-example — the user console stays local. Auth model for any future non-local exposure is open q #1.
+A new localhost web server (**FastAPI** — chosen for the OpenAPI contract below) that (a) serves the kit's static bundle, (b) exposes a thin JSON API mapping 1:1 to `api.py` verbs, (c) bridges the live event stream → WS for the EventClient (spec'd as the EVENT seam in [reachy_app_maxim_seams.md](reachy_app_maxim_seams.md) — rides `sim_log` records via `register_sim_sink`, not `api.on()`). **Security:** bind **`127.0.0.1` only** (never `0.0.0.0`); it holds cloud keys and can run/configure Maxim. The leader-proxy admin endpoints (on-network by design) are the cautionary counter-example — the user console stays local. Auth model for any future non-local exposure is open q #1.
 
 **The facade contract is OpenAPI-typed — this is the load-bearing cross-repo seam (surfaced by the maxim-pulse bootstrap review).** The single highest-risk failure of a Python-backend / TypeScript-frontend split is *silent drift* between the seam signatures and the kit's `FacadeClient`. FastAPI already emits an OpenAPI schema from its Pydantic request/response models, so:
 - `maxim serve` MUST expose a stable, typed OpenAPI schema for every facade verb (typed request + response models — no bare `dict`/`Any` on the wire surface). This is a hard requirement on the serve layer, not optional polish.
@@ -107,7 +107,7 @@ The demo is a **near-free third output**: the Console shell built against the ki
 |---|---|
 | The 17 `api.py` facades + `Observer` + `on()` | **Reuse** — the whole backend |
 | The seams (`SETUP`/`PROBE`/`RECALL`/`HANDLE`) | **Reuse** — defined in the seams plan; shared by both front-ends |
-| `maxim serve` web server + `api.on()`→WS/SSE bridge | **New (small)** |
+| `maxim serve` web server + the WS event bridge (EVENT seam — `sim_log`-based) | **New (small)** |
 | OpenAPI-typed facade schema (typed models on every seam) + UI-dist serving | **New (small, load-bearing)** — the cross-repo contract; see Backend |
 | The shared UI kit (Layer 2 components) | **New (the real work)** — but built once, consumed twice |
 | HANDLE headless flavor | **New (small)** — generalizes an existing seam |

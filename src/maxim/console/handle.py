@@ -12,8 +12,10 @@ with ``auto_load=True`` over a ``~/.maxim`` home. Modes are methods:
 * ``stop(consolidation="full")`` — clean shutdown: full sleep/replay
   consolidation + hippocampus/NAc/cerebellum saves (#427's explicit flavor).
 
-``talk(...)`` / ``rest(...)`` live-loop modes and the ``/ws`` ``api.on()``
-stream are Phase 3 — this module deliberately ships only injection + stop.
+``talk(...)`` / ``rest(...)`` live-loop modes and the ``/ws`` stream (the
+EVENT seam — rides ``sim_log`` records, not ``api.on()``; see
+[reachy_app_maxim_seams.md] § EVENT) are Phase 3 — this module deliberately
+ships only injection + stop.
 
 The constructor is **body-agnostic**: the embodied (Reachy) flavor is the
 same interface with ``body="bodies/reachy_mini"`` — ``RunSurface`` drives a
