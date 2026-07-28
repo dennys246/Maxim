@@ -22,7 +22,7 @@ Decisions locked (see [maxim_console.md](maxim_console.md) for rationale): **mon
 |---|---|---|
 | **FIT** — measure substrate RSS on the Pi (mesh: LLM remote, substrate local) | pymaxim | Hard gate on the whole on-device/mesh story. If it fails, the architecture changes shape. |
 | **Monorepo scaffold** — Vite, two build targets, shared kit package, `DesignSystem` skeleton, CI | maxim-pulse | Proves the two-target build works before any component is written (the second-biggest unknown). |
-| **`maxim serve` skeleton** — FastAPI, `127.0.0.1`, `api.on()`→WS bridge stub, **typed OpenAPI schema + UI-dist serving** | pymaxim | The backend both shells' web layer needs; stub it early. The OpenAPI schema is the cross-repo facade contract (kit generates its TS `FacadeClient` from it — no bare `dict`/`Any` on the wire). |
+| **`maxim serve` skeleton** — FastAPI, `127.0.0.1`, WS heartbeat stub (full bridge = the EVENT seam, `sim_log`-based — the original `api.on()` assumption was reversed), **typed OpenAPI schema + UI-dist serving** | pymaxim | The backend both shells' web layer needs; stub it early. The OpenAPI schema is the cross-repo facade contract (kit generates its TS `FacadeClient` from it — no bare `dict`/`Any` on the wire). |
 
 **Ships:** a go/no-go answer on the Pi + an empty-but-building two-target monorepo + a serve stub. *No user-facing surface yet — this is the risk-retirement phase.*
 
