@@ -97,7 +97,9 @@ class TestPlacementResolvable:
         cw.apply_mesh_setup("https://leader.example.com", "sk-test", path=cfg)
         ok, kind, detail = cw.placement_resolvable()
         assert (ok, kind) == (True, "mesh")
-        assert "leader.example.com" in detail
+        # Compare the whole URL, not a substring (a substring check on a URL is
+        # its own vulnerability pattern and CodeQL rightly flags it).
+        assert detail.endswith("https://leader.example.com")
         assert "sk-test" not in detail  # never leak the key into UI text
 
 
@@ -169,6 +171,17 @@ class TestAdventurePremise:
 
     def test_neither_is_rejected(self, client):
         assert client.post("/api/run", json={"mode": "adventure"}).status_code == 422
+
+    def test_campaign_outside_a_discovery_root_is_refused(self, client, tmp_path):
+        # 127.0.0.1-only is NOT sufficient justification for an arbitrary
+        # request-controlled path: a page in the operator's browser can POST to
+        # localhost. The run path is contained to the same roots /api/campaigns
+        # lists (CodeQL path-injection alert; the containment is the real fix).
+        outside = tmp_path / "rogue.yaml"
+        outside.write_text("campaign:\n  name: rogue\n")
+        r = client.post("/api/run", json={"mode": "adventure", "campaign": str(outside)})
+        assert r.status_code == 403
+        assert "discovery root" in r.json()["detail"]
 
     def test_blank_premise_is_not_a_premise(self, client):
         # Whitespace-only input must not be mistaken for a premise (it would

@@ -501,14 +501,26 @@ def post_run(body: RunRequest) -> RunAccepted:
 
     campaign_path: Path | None = None
     if body.campaign:
-        # The console is a 127.0.0.1-only OPERATOR surface: naming a local
-        # campaign file here is the same trust level as `maxim --sim <path>` on
-        # the CLI (CodeQL flags the request→path flow; it is by-design for a
-        # local-first tool). Constrain to what a campaign can be: an existing
-        # YAML file, resolved without following into surprises.
+        # 127.0.0.1-only is NOT sufficient justification for an arbitrary
+        # request-controlled filesystem path: a page in the operator's browser
+        # can POST to localhost, so "the operator named the file" is not
+        # guaranteed. Constrain the path to the SAME discovery roots
+        # /api/campaigns lists (which is also exactly what the picker hands
+        # back), so the endpoint can only run campaigns the console already
+        # advertises. Dev escape hatch: drop or symlink the file into
+        # ~/.maxim/campaigns.
         campaign_path = Path(body.campaign).expanduser().resolve()
         if campaign_path.suffix.lower() not in (".yaml", ".yml"):
             raise HTTPException(status_code=422, detail="'campaign' must point at a campaign YAML (.yaml/.yml).")
+        if not _is_within_search_root(campaign_path):
+            roots = ", ".join(str(r) for r, _ in campaign_search_roots())
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Campaign must live under a discovery root ({roots}). "
+                    "Copy or symlink it there — see GET /api/campaigns."
+                ),
+            )
         if not campaign_path.is_file():
             raise HTTPException(status_code=404, detail=f"Campaign not found: {campaign_path}")
 
