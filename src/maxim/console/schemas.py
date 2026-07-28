@@ -183,12 +183,21 @@ class ConsoleEvent(BaseModel):
     """
 
     # Lowercased sim_log subsystem ("hippocampus", "nac", "deliberation", …)
-    # plus the meta-kinds: "heartbeat" | "run" | "dropped".
+    # plus the meta-kinds: "heartbeat" | "run" | "dropped" | "display".
+    # "run" data carries status: "started" | "ended" | "failed" (+ run_id,
+    # sim_session_id, report_path on "ended").
     kind: str
-    # Server-computed from _SUBSYSTEM_TIERS; meta-kinds are "clean".
-    tier: Literal["clean", "bio", "debug"] = "bio"
+    # Server-computed from _SUBSYSTEM_TIERS (unknown subsystem → "bio").
+    # Console-published meta-kinds (heartbeat/run/dropped) are "clean";
+    # "display" arrives as a real DISPLAY sim_log record and carries that
+    # subsystem's tier ("debug").
+    # REQUIRED (no default): the server always populates it — a default here
+    # would mark the generated TS field optional and force null-guards on
+    # every consumer path (review fold).
+    tier: Literal["clean", "bio", "debug"]
     # Per-connection monotonic, assigned at enqueue — a gap means drops.
-    seq: int = 0
+    # REQUIRED for the same TS-optionality reason.
+    seq: int
     # Console-side run id (RunAccepted.session_id); None outside a run. The
     # "run" meta-kind's data binds this to the sim's internal session id.
     run_id: str | None = None
@@ -198,7 +207,8 @@ class ConsoleEvent(BaseModel):
     elapsed_s: float | None = None
     agent_id: str | None = None
     agent: str | None = None  # display nickname, when registered
-    message: str = ""
+    # REQUIRED (may be empty string) — same TS-optionality reason.
+    message: str
     data: dict[str, Any] = Field(default_factory=dict)
 
 

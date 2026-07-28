@@ -106,6 +106,27 @@ class TestSimSinks:
         unregister_sim_sink(sink)  # no-op
         sim_log("NAc", "after unregister")  # must not call the removed sink
 
+    def test_unregister_by_equal_bound_method_clears_warned_entry(self, sim_logging):
+        # Cross-confirmed review fold: unregistering via a FRESH bound-method
+        # object (equal, not identical — the console's unregister_sim_sink(
+        # hub.sink) shape) must discard the STORED object's warned-set entry;
+        # discarding id(argument) was a no-op → id-reuse could suppress a
+        # future sink's only warning.
+        from maxim.simulation import sim_logger as sl
+
+        class Hub:
+            def sink(self, record):
+                raise RuntimeError("boom")
+
+        hub = Hub()
+        register_sim_sink(hub.sink)  # bound-method object A
+        stored = sl._sim_sinks[-1]
+        sim_log("NAc", "trigger warn")  # warns once; id(stored) enters the set
+        assert id(stored) in sl._warned_sinks
+        unregister_sim_sink(hub.sink)  # DIFFERENT object B, == A
+        assert stored not in sl._sim_sinks
+        assert id(stored) not in sl._warned_sinks
+
 
 class TestDeliberationRecords:
     def test_deliberation_update_emits_record_with_text(self, sim_logging):
@@ -287,6 +308,14 @@ class TestSubscribeFilter:
         assert conn.matches("nac", "bio", "NAc") is True  # via channels
         assert conn.matches("scene", "clean", "SCENE") is False
 
+    def test_mixed_case_subsystem_reachable_via_raw_channel_name(self):
+        # Cross-confirmed review fold: "NAc" is the one mixed-case canonical
+        # subsystem; pre-fold, channels=["nac"]→"NAC" never matched it —
+        # silent empty stream on that axis. Matching is now case-insensitive.
+        for spelling in ("nac", "NAc", "NAC"):
+            conn = self._conn_with_frame(channels=[spelling])
+            assert conn.matches("nac", "bio", "NAc") is True, spelling
+
     def test_meta_kinds_bypass_filters(self):
         conn = self._conn_with_frame(channels=["memory"], tier="clean")
         for kind in ("heartbeat", "run", "dropped", "display"):
@@ -324,6 +353,10 @@ class TestWsEndToEnd:
                 ConsoleEvent.model_validate(evt)
 
     def test_subscribe_frame_filters_stream(self, sim_logging):
+        # Deterministic (review fold — the original 0.2s sleep raced the recv
+        # task applying the frame): emit MOTOR+HIPPOCAMPUS rounds until a
+        # round's hippocampus arrives WITHOUT its paired motor — that round
+        # proves the filter is live. Bounded, fails loudly if never applied.
         import threading
 
         from fastapi.testclient import TestClient
@@ -332,21 +365,122 @@ class TestWsEndToEnd:
         with TestClient(app) as client:
             with client.websocket_connect("/ws") as ws:
                 ws.send_json({"channels": ["memory"]})
-                # Give the receive task a beat to apply the frame, then emit a
-                # suppressed kind followed by a passing kind.
-                time.sleep(0.2)
+                motor_seen: set[int] = set()
+                for i in range(50):
+                    t = threading.Thread(
+                        target=lambda i=i: (
+                            sim_log("MOTOR", f"m{i}", {"i": i}),
+                            sim_log("HIPPOCAMPUS", f"h{i}", {"i": i}),
+                        )
+                    )
+                    t.start()
+                    t.join()
+                    # Drain until this round's hippocampus event arrives.
+                    while True:
+                        evt = ws.receive_json()
+                        if evt["kind"] == "motor":
+                            motor_seen.add(evt["data"]["i"])
+                        elif evt["kind"] == "hippocampus" and evt["data"]["i"] == i:
+                            break
+                    if i not in motor_seen:
+                        return  # filter provably applied: hippo passed, motor suppressed
+                pytest.fail("SubscribeFrame never took effect after 50 rounds")
 
-                def _emit():
-                    sim_log("MOTOR", "should be filtered")
-                    sim_log("HIPPOCAMPUS", "should pass")
+    def test_malformed_frame_keeps_connection_alive(self, sim_logging):
+        # Cross-confirmed review fold: non-JSON text (and binary frames)
+        # previously killed the recv task and escaped the endpoint as an
+        # unhandled ASGI exception. Now: ignored, filter unchanged.
+        import threading
 
-                t = threading.Thread(target=_emit)
+        from fastapi.testclient import TestClient
+
+        app = build_app(None)
+        with TestClient(app) as client:
+            with client.websocket_connect("/ws") as ws:
+                ws.send_text("not json {{{")
+                time.sleep(0.1)  # let the recv task process (and survive) it
+                t = threading.Thread(target=sim_log, args=("LEARN", "still alive"))
                 t.start()
                 t.join()
                 evt = ws.receive_json()
-                assert evt["kind"] == "hippocampus", f"MOTOR leaked through the filter: {evt}"
+                assert evt["kind"] == "learn"
 
     def test_openapi_carries_subscribe_frame(self):
         schema = build_app(None).openapi()
         assert "SubscribeFrame" in schema["components"]["schemas"]
         assert "/api/events/subscribe-frame" in schema["paths"]
+        # Review fold: tier/seq/message are REQUIRED so the generated TS type
+        # is non-optional (the server always populates them).
+        required = set(schema["components"]["schemas"]["ConsoleEvent"]["required"])
+        assert {"kind", "tier", "seq", "ts", "message"} <= required
+
+
+class TestRunLifecycleEvents:
+    def test_run_ended_payload_derives_report_path(self):
+        # Review fold (BLOCKING): SimulationResult has session_id/session_dir,
+        # NOT report_path — the pre-fold getattr(result, "report_path") was
+        # structurally always None on the wire.
+        from maxim.console.server import _event_hub, _run_campaign_thread
+        from maxim.simulation.sim_types import SimulationResult
+
+        result = SimulationResult(
+            goal="g",
+            persona="p",
+            turns=1,
+            total_actions=1,
+            blocked_actions=0,
+            duration_s=0.1,
+            finish_reason="completed",
+            session_id="sim_abc",
+            session_dir="/tmp/sessions/sim_abc",
+        )
+
+        class FakeHandle:
+            def play_campaign(self, path):
+                return result
+
+        conn = _WsConn()
+        loop = asyncio.new_event_loop()
+        try:
+            _event_hub.attach(loop)
+            _event_hub.add_conn(conn)
+            _run_campaign_thread(FakeHandle(), "camp.yaml", "run_1")
+            loop.run_until_complete(asyncio.sleep(0))
+            events = _drain(conn)
+        finally:
+            _event_hub.remove_conn(conn)
+            _event_hub.detach()
+            loop.close()
+        assert [e["data"]["status"] for e in events] == ["started", "ended"]
+        ended = events[-1]["data"]
+        assert ended["sim_session_id"] == "sim_abc"
+        assert ended["report_path"].endswith("sim_abc/report.json")
+        # Started is stamped with the console run_id; ended cleared it after.
+        assert events[0]["run_id"] == "run_1"
+
+    def test_run_ended_empty_result_fields_coerce_to_none(self):
+        from maxim.console.server import _event_hub, _run_campaign_thread
+        from maxim.simulation.sim_types import SimulationResult
+
+        result = SimulationResult(goal="g", persona="p", turns=0, total_actions=0, blocked_actions=0, duration_s=0.0)
+
+        class FakeHandle:
+            def play_campaign(self, path):
+                return result
+
+        conn = _WsConn()
+        loop = asyncio.new_event_loop()
+        try:
+            _event_hub.attach(loop)
+            _event_hub.add_conn(conn)
+            _run_campaign_thread(FakeHandle(), "camp.yaml", "run_2")
+            loop.run_until_complete(asyncio.sleep(0))
+            events = _drain(conn)
+        finally:
+            _event_hub.remove_conn(conn)
+            _event_hub.detach()
+            loop.close()
+        ended = events[-1]["data"]
+        # Dataclass defaults are "" — the wire must carry None, not "".
+        assert ended["sim_session_id"] is None
+        assert ended["report_path"] is None

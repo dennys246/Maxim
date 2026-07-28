@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any, Callable, Generator
 
 logger = logging.getLogger(__name__)
 
@@ -196,15 +196,19 @@ def agent_escalate_display(tier: DisplayTier, reason: str = "") -> bool:
     global _display_tier
     if tier < _display_floor:
         return False  # Agent can't suppress below user's floor
+    changed = _display_tier != tier
     _display_tier = tier
     # EVENT seam: surface the agent's display suggestion on the record stream
     # (kind="display" on the wire). The web UI keeps the floor semantics
     # client-side — the wire carries the suggestion, never enforces it.
-    sim_log(
-        "DISPLAY",
-        f"agent escalated display → {tier.name.lower()}",
-        {"tier": tier.name.lower(), "reason": reason, "action": "escalate"},
-    )
+    # Only on an actual change — repeat tool calls at the same tier would be
+    # stream noise (review fold).
+    if changed:
+        sim_log(
+            "DISPLAY",
+            f"agent escalated display → {tier.name.lower()}",
+            {"tier": tier.name.lower(), "reason": reason, "action": "escalate"},
+        )
     return True
 
 
@@ -494,12 +498,12 @@ _show_channels: set[str] | None = None  # None = show all, set = filter
 # caller. The console server's /ws bridge is the first consumer.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_sim_sinks: list[Any] = []
+_sim_sinks: list["Callable[[dict[str, Any]], None]"] = []
 _sim_sinks_lock = threading.Lock()
 _warned_sinks: set[int] = set()
 
 
-def register_sim_sink(sink: Any) -> None:
+def register_sim_sink(sink: "Callable[[dict[str, Any]], None]") -> None:
     """Register a callable receiving every sim_log record dict.
 
     The record shape is the persisted JSONL shape: ``t`` (sim-elapsed seconds),
@@ -511,12 +515,21 @@ def register_sim_sink(sink: Any) -> None:
             _sim_sinks.append(sink)
 
 
-def unregister_sim_sink(sink: Any) -> None:
-    """Remove a previously-registered sink (no-op if absent)."""
+def unregister_sim_sink(sink: "Callable[[dict[str, Any]], None]") -> None:
+    """Remove a previously-registered sink (no-op if absent).
+
+    Matching is by ``==`` (a fresh bound-method object like ``hub.sink``
+    compares equal to the stored one), so the warned-set entry must be
+    discarded by the STORED element's id — discarding ``id(sink)`` would be a
+    no-op for bound methods and could suppress a future sink's first warning
+    on id reuse (cross-confirmed review finding).
+    """
     with _sim_sinks_lock:
-        if sink in _sim_sinks:
-            _sim_sinks.remove(sink)
-        _warned_sinks.discard(id(sink))
+        for i, stored in enumerate(_sim_sinks):
+            if stored == sink:
+                _warned_sinks.discard(id(stored))
+                del _sim_sinks[i]
+                break
 
 
 def _dispatch_to_sinks(record: dict[str, Any]) -> None:
@@ -582,11 +595,15 @@ _CHANNEL_MAP: dict[str, set[str]] = {
 
 
 def expand_channels(channels: "list[str] | tuple[str, ...]") -> set[str]:
-    """Expand channel names to UPPERCASE subsystem names via ``_CHANNEL_MAP``.
+    """Expand channel names to subsystem names via ``_CHANNEL_MAP``.
 
-    Unknown names are treated as raw subsystem names (uppercased). Shared by
-    the terminal's ``--show`` filter and the console ``/ws`` SubscribeFrame
-    (EVENT seam) so the two filter surfaces cannot drift.
+    Unknown names are treated as raw subsystem names (uppercased). NOTE: the
+    returned set is NOT uniformly uppercase — canonical subsystem spellings
+    like ``"NAc"`` come through mixed-case from the map — so consumers MUST
+    compare case-insensitively (uppercase both sides; the terminal gate and
+    the ``/ws`` filter both do). Shared by the terminal's ``--show`` filter
+    and the console ``/ws`` SubscribeFrame (EVENT seam) so the two filter
+    surfaces cannot drift.
     """
     allowed: set[str] = set()
     for ch in channels:
@@ -630,7 +647,10 @@ def set_show_channels(channels: str | None) -> None:
         _show_channels = None
         return
 
-    allowed = expand_channels(channels.split(","))
+    # Stored uppercased; the sim_log gate compares subsystem.upper() — makes
+    # `--show nac` work (pre-fix, raw-name "nac"→"NAC" never matched the
+    # mixed-case canonical "NAc"; cross-confirmed review finding).
+    allowed = {s.upper() for s in expand_channels(channels.split(","))}
     _show_channels = allowed if allowed else None
 
 
@@ -938,8 +958,10 @@ def sim_log(
         if _display_tier < min_tier:
             return
 
-    # Channel filter — skip subsystems not in the active show set
-    if _show_channels is not None and subsystem not in _show_channels:
+    # Channel filter — skip subsystems not in the active show set (stored
+    # uppercased; compare case-insensitively so mixed-case canonical
+    # spellings like "NAc" are reachable).
+    if _show_channels is not None and subsystem.upper() not in _show_channels:
         return
 
     # Build the display line
@@ -1640,9 +1662,11 @@ def sim_deliberation_update(
     # EVENT seam (work item 7): the thinking-panel content previously reached
     # ONLY display.set_thinking — no record, so JSONL and the /ws stream missed
     # all deliberation. Emit the record the docstring always claimed.
-    # _force_debug keeps the terminal path unchanged (the panel renders the
-    # reasoning; a scrolling log line would duplicate it) while JSONL + sinks
-    # always fire. `text` is the reasoning key the web ThinkingPanel reads.
+    # _force_debug keeps the terminal path unchanged at CLEAN/BIO (the panel
+    # renders the reasoning; a scrolling log line would duplicate it); in
+    # debug modes the reasoning ALSO appears as a log line — opt-in verbosity.
+    # JSONL + sinks always fire regardless. `text` is the reasoning key the
+    # web ThinkingPanel reads.
     sim_log(
         "DELIBERATION",
         f"deliberation cycle {cycle}/{max_cycles}",

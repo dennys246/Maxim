@@ -81,7 +81,6 @@
             "type": "string"
           },
           "message": {
-            "default": "",
             "title": "Message",
             "type": "string"
           },
@@ -97,12 +96,10 @@
             "title": "Run Id"
           },
           "seq": {
-            "default": 0,
             "title": "Seq",
             "type": "integer"
           },
           "tier": {
-            "default": "bio",
             "enum": [
               "clean",
               "bio",
@@ -118,7 +115,10 @@
         },
         "required": [
           "kind",
-          "ts"
+          "tier",
+          "seq",
+          "ts",
+          "message"
         ],
         "title": "ConsoleEvent",
         "type": "object"

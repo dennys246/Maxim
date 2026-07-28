@@ -27,6 +27,7 @@ import asyncio
 import contextlib
 import dataclasses
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -53,6 +54,8 @@ from maxim.console.schemas import (
     SetupResult,
     SubscribeFrame,
 )
+
+logger = logging.getLogger(__name__)
 
 _HEARTBEAT_INTERVAL_S = 15.0
 _NOT_IMPLEMENTED = "Seam not yet implemented (Phase 1) — shape is contract-complete for type-gen."
@@ -285,15 +288,20 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
     try:
         result = handle.play_campaign(campaign_path)
         log.info("console run %s finished: %s", run_id, getattr(result, "finish_reason", "?"))
+        # SimulationResult has session_id/session_dir (empty-string defaults),
+        # NOT a report_path field — the report convention is
+        # session_dir/report.json (review fold: getattr(result, "report_path")
+        # was structurally always None, a dead wire field).
+        session_dir = str(getattr(result, "session_dir", "") or "")
         _event_hub.publish(
             "run",
             f"run {run_id} ended",
             {
                 "run_id": run_id,
                 "status": "ended",
-                "finish_reason": str(getattr(result, "finish_reason", "") or ""),
-                "sim_session_id": getattr(result, "session_id", None),
-                "report_path": str(getattr(result, "report_path", "") or "") or None,
+                "finish_reason": str(getattr(result, "finish_reason", "") or "") or None,
+                "sim_session_id": str(getattr(result, "session_id", "") or "") or None,
+                "report_path": str(Path(session_dir) / "report.json") if session_dir else None,
             },
         )
     except Exception as e:
@@ -304,6 +312,9 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
             {"run_id": run_id, "status": "failed", "error": f"{type(e).__name__}: {e}"},
         )
     finally:
+        # After this, late emissions from the campaign's worker-pool threads
+        # arrive with run_id=None (correlation loss only — the "ended" event
+        # above is the run's wire boundary).
         _event_hub.set_run(None)
 
 
@@ -406,9 +417,10 @@ class _WsConn:
         self._seq = 0
         self.dropped = 0
         self.dropped_reported = 0
+        self.warned_unserializable = False
         # Compiled filter (None on every axis = everything).
         self._tier_max: int | None = None
-        self._subsystems: set[str] | None = None  # UPPERCASE subsystem names
+        self._subsystems: set[str] | None = None  # subsystem names, uppercased for matching
         self._kinds: set[str] | None = None  # lowercase kinds
 
     def apply_frame(self, frame: SubscribeFrame) -> None:
@@ -416,7 +428,10 @@ class _WsConn:
         from maxim.simulation.sim_logger import expand_channels
 
         self._tier_max = _TIER_ORDER[frame.tier] if frame.tier is not None else None
-        self._subsystems = expand_channels(frame.channels) if frame.channels is not None else None
+        # Uppercase for CASE-INSENSITIVE subsystem matching (review finding:
+        # the one mixed-case canonical subsystem, "NAc", was unreachable via
+        # raw-name channels — "nac"→"NAC" never equaled "NAc").
+        self._subsystems = {s.upper() for s in expand_channels(frame.channels)} if frame.channels is not None else None
         self._kinds = {k.strip().lower() for k in frame.kinds} if frame.kinds is not None else None
 
     def matches(self, kind: str, tier: str, subsystem: str) -> bool:
@@ -425,7 +440,7 @@ class _WsConn:
         if self._tier_max is not None and _TIER_ORDER.get(tier, 1) > self._tier_max:
             return False
         if self._subsystems is not None or self._kinds is not None:
-            in_subsystems = self._subsystems is not None and subsystem in self._subsystems
+            in_subsystems = self._subsystems is not None and subsystem.upper() in self._subsystems
             in_kinds = self._kinds is not None and kind in self._kinds
             if not (in_subsystems or in_kinds):
                 return False
@@ -459,6 +474,12 @@ class _EventHub:
     # ── lifecycle (event loop side) ──
     def attach(self, loop: asyncio.AbstractEventLoop) -> None:
         with self._lock:
+            if self._loop is not None and self._loop is not loop:
+                # Two live apps sharing the process-wide hub would fan out to
+                # the first app's queues from the second app's loop —
+                # violating _WsConn's loop-only contract. One server per
+                # process by design; make the violation loud.
+                logger.warning("EventHub.attach: replacing a live loop — two concurrent build_app() servers?")
             self._loop = loop
 
     def detach(self) -> None:
@@ -500,7 +521,11 @@ class _EventHub:
             "agent_id": record.get("agent_id"),
             "agent": record.get("agent"),
             "message": str(record.get("message", "")),
-            "data": record.get("data") or {},
+            # Shallow-copy at bridge time (review finding): the record's data
+            # dict is the PRODUCER'S object; sim_log takes it by reference. A
+            # producer mutating it after sim_log returns would race
+            # send_json's iteration on the loop thread.
+            "data": dict(record.get("data") or {}),
         }
         try:
             loop.call_soon_threadsafe(self._fanout, subsystem, evt)
@@ -558,9 +583,13 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
 
         _event_hub.attach(asyncio.get_running_loop())
         register_sim_sink(_event_hub.sink)
-        yield
-        unregister_sim_sink(_event_hub.sink)
-        _event_hub.detach()
+        try:
+            yield
+        finally:
+            # finally: an exception through shutdown must not strand the sink
+            # registration (review fold).
+            unregister_sim_sink(_event_hub.sink)
+            _event_hub.detach()
         # Shutdown: server exit mid-campaign would otherwise kill the daemon
         # run thread with the hippocampus capture queue unflushed — silent
         # learning loss. Join the live run (bounded) BEFORE stopping so the
@@ -595,19 +624,23 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
         filter. Heartbeats fire when the stream is idle; a "dropped" meta-event
         reports backpressure losses (seq gaps mark where).
         """
-        from pydantic import ValidationError
-
         await websocket.accept()
         conn = _WsConn()
         _event_hub.add_conn(conn)
 
         async def _recv_frames() -> None:
             while True:
-                msg = await websocket.receive_json()
                 try:
+                    msg = await websocket.receive_json()
                     frame = SubscribeFrame.model_validate(msg)
-                except ValidationError:
-                    continue  # malformed frame — keep the current filter
+                except (ValueError, KeyError):
+                    # Malformed frame — keep the current filter. ValueError
+                    # covers both json.JSONDecodeError (non-JSON text) and
+                    # pydantic ValidationError; KeyError is starlette's raise
+                    # for a binary frame. Cross-confirmed review finding: any
+                    # of these previously killed the recv task and escaped the
+                    # endpoint as an unhandled ASGI exception.
+                    continue
                 conn.apply_frame(frame)
 
         recv_task = asyncio.create_task(_recv_frames())
@@ -620,9 +653,23 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
                 except (asyncio.TimeoutError, TimeoutError):
                     # Idle: enqueue the heartbeat so it flows the one path
                     # (same seq counter — monotonicity holds on the wire).
-                    conn.enqueue(ConsoleEvent(kind="heartbeat", tier="clean", ts=time.time()).model_dump())
+                    conn.enqueue(
+                        ConsoleEvent(kind="heartbeat", tier="clean", seq=0, ts=time.time(), message="").model_dump()
+                    )
                     continue
-                await websocket.send_json(evt)
+                try:
+                    await websocket.send_json(evt)
+                except TypeError:
+                    # Non-JSON-serializable producer data (review finding):
+                    # without this, ONE poison record fans out to every
+                    # matching connection and kills them all. Drop the event,
+                    # warn once per connection, keep the stream alive.
+                    if not conn.warned_unserializable:
+                        conn.warned_unserializable = True
+                        logger.warning(
+                            "dropped non-JSON-serializable event kind=%r on /ws", evt.get("kind"), exc_info=True
+                        )
+                    continue
                 if conn.dropped > conn.dropped_reported:
                     count = conn.dropped - conn.dropped_reported
                     conn.dropped_reported = conn.dropped
@@ -630,6 +677,7 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
                         ConsoleEvent(
                             kind="dropped",
                             tier="clean",
+                            seq=0,
                             ts=time.time(),
                             message=f"{count} event(s) dropped (slow consumer)",
                             data={"count": count, "total": conn.dropped},
