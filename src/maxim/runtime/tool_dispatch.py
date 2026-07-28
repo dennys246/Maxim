@@ -89,6 +89,7 @@ def record_outcome(
     clusters: dict[str, str] | None = None,
     embodiment_failed: bool = False,
     drive_potential_diff: float | None = None,
+    drive_relief_only: bool = False,
 ) -> None:
     """Record a tool outcome to all sinks including NAc causal learning.
 
@@ -290,12 +291,17 @@ def record_outcome(
                 # with an epsilon rather than float identity.
                 if drive_potential_diff is not None and abs(drive_potential_diff) > 1e-9:
                     cluster_reward: float | None = 1.0 if drive_potential_diff > 0.0 else -1.0
-                elif operant_only:
-                    # Operant-only mode: NO tool-success floor. The uniform +1
-                    # saturates both directions to the cluster cap and drowns the
-                    # caregiver's operant signal (probe 3 ``tool_floor`` arm → all
-                    # arms chance). A driveless action accrues no cluster bias;
-                    # the mother is the sole teacher via credit_operant_reward.
+                elif operant_only or drive_relief_only:
+                    # NO tool-success floor. Two callers need this:
+                    # - operant_only (cradle_mother): the mother is the sole teacher.
+                    # - drive_relief_only (llm-primary / imagination, Phase 1 of
+                    #   substrate_learns_from_experience.md): the LLM issues a BROAD
+                    #   always-succeed action stream (say/sense/examine), so the
+                    #   uniform +1 floor would flood the interoception cluster with
+                    #   "this tool ran" and drown the real drive-relief differential
+                    #   (the credit_on_progress hazard, amplified). The substrate
+                    #   learns from the body's real drive signal ONLY, never from
+                    #   tool execution. A driveless action accrues no cluster bias.
                     cluster_reward = None
                 else:
                     cluster_reward = 1.0 if learn_success else -1.0
@@ -382,6 +388,7 @@ def execute_parallel_actions(
     active_goal: str | None = None,
     cluster_id: str | None = None,
     clusters: dict[str, str] | None = None,
+    drive_relief_only: bool = False,
 ) -> tuple[list[dict[str, Any]], str]:
     """Execute a batch of parallel actions with autonomy gating.
 
@@ -492,6 +499,12 @@ def execute_parallel_actions(
             tool_params=pr.get("params"),
             cluster_id=cluster_id,
             clusters=clusters,
+            # Phase 1 guardrail must reach the BATCH path too: without this, an
+            # llm-primary parallel action stream (populated clusters, no
+            # drive_potential_diff) would fall to the tool-success floor and flood
+            # the interoception cluster — the exact flooding the guard prevents on
+            # the single-action path (two-lens review, both lenses CONFIRMED).
+            drive_relief_only=drive_relief_only,
         )
 
     log_agentic(

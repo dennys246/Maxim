@@ -290,6 +290,25 @@ class TestClusterRewardMotorCredit:
         # books its sign.
         assert self._cluster_reward(drive_potential_diff=1.4e-17) == 1.0  # residue -> fallback
         assert self._cluster_reward(success=False, drive_potential_diff=-1.4e-17) == -1.0
+
+    # ── Phase 1 (substrate_learns_from_experience.md): drive_relief_only guardrail ──
+    def test_drive_relief_only_suppresses_tool_success_floor(self):
+        # llm-primary: a driveless always-succeed action (no drive_potential_diff)
+        # must NOT book cluster reward — else the LLM's broad say/sense/examine
+        # stream floods the interoception cluster with "this tool ran".
+        assert self._cluster_reward(drive_relief_only=True, success=True, drive_potential_diff=None) is None
+        assert self._cluster_reward(drive_relief_only=True, success=False, drive_potential_diff=None) is None
+
+    def test_drive_relief_only_still_credits_real_drive_signal(self):
+        # The body's real drive relief/pain STILL reinforces — only the tool-success
+        # floor is suppressed. This is the whole point: learn from the body, not the tool.
+        assert self._cluster_reward(drive_relief_only=True, drive_potential_diff=0.3) == 1.0
+        assert self._cluster_reward(drive_relief_only=True, success=True, drive_potential_diff=-0.3) == -1.0
+
+    def test_default_keeps_tool_success_floor(self):
+        # substrate-primary (drive_relief_only defaults False) keeps the floor —
+        # contained there by the action whitelist. Guardrail is opt-in per caller.
+        assert self._cluster_reward(success=True, drive_potential_diff=None) == 1.0
         assert self._cluster_reward(drive_potential_diff=1e-6) == 1.0  # real progress -> +1
         assert self._cluster_reward(drive_potential_diff=-1e-6) == -1.0
 
@@ -616,6 +635,37 @@ class TestExecuteParallelActiveGoal:
         )
         # credit_goal is what active_goal triggers inside record_outcome.
         nac.credit_goal.assert_called_with("explore_room", 1.0)
+
+    def test_drive_relief_only_reaches_the_batch_path(self):
+        # Phase 1 two-lens-review finding: the hook populates proposal.clusters,
+        # so the parallel path now carries a cluster. Without threading
+        # drive_relief_only, an always-succeed batched action (no
+        # drive_potential_diff) falls to the tool-success floor and floods the
+        # interoception cluster. With it, the floor is suppressed → no write.
+        from maxim.runtime.tool_dispatch import execute_parallel_actions
+
+        def _run(drive_relief_only):
+            nac = MagicMock()
+            execute_parallel_actions(
+                agent_id="test",
+                actions=[{"tool_name": "look", "params": {}}],
+                executor=self._make_executor(success=True),
+                autonomy_controller=self._make_autonomy(),
+                confidence=0.9,
+                reasoning="r",
+                recent_outcomes=[],
+                max_recent=10,
+                llm_worker=None,
+                context_pool=self._make_context_pool(),
+                nac=nac,
+                cluster_id="cluster-xyz",  # hook-populated in llm-primary
+                clusters={"interoception": "cluster-xyz"},
+                drive_relief_only=drive_relief_only,
+            )
+            return nac.update_cluster_reward.called
+
+        assert _run(drive_relief_only=True) is False  # floor suppressed on the batch path
+        assert _run(drive_relief_only=False) is True  # default keeps the floor (baseline)
 
 
 class TestImportPaths:
