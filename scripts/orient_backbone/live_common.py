@@ -406,3 +406,82 @@ def placement_ranges(band: float, boundary: float, *, az_max: float = 0.80, marg
     the head-frame bug — can widen.
     """
     return {"near": (band + margin, boundary - margin), "far": (boundary + margin, az_max)}
+
+
+def population_readout(bias_fn, state, action_deltas, direction_sign):
+    """S4 population-vector MAGNITUDE readout (orient_magnitude_learning.md S4).
+
+    The starvation Exp 45d measured is a *magnitude* readout problem: the tabular
+    biases are hard-argmax'd over a hard bin, so a far bin whose big-turn cell was
+    never positively sampled mis-picks the small turn even though its MIRROR bin
+    learned "far -> big" decisively. This is the superior-colliculus population
+    vector — discrete substrate (unchanged; still merges + transfers), continuous
+    output — reading out a **magnitude** that pools the magnitude-class evidence
+    across the SAME-ECCENTRICITY bins of BOTH sides. So far_left borrows
+    far_right's learned "big" without ever sampling far_left x big itself. It does
+    NOT hard-code "far -> big": the substrate still LEARNED that at far_right from
+    relief; the readout only lets it generalise across the amplitude-map
+    neighbourhood, the way a real population code does. Only positive biases vote
+    (ReLU) — a punished action does not pull the average.
+
+    **DIRECTION IS NOT DECIDED HERE.** ``direction_sign`` is passed in from the
+    argmax action. Hardware (seed-3, near_right) showed why: a deterministic
+    direction vote traps a *cold* bin (0-vs-0 tie -> defaults one way -> keeps
+    turning wrong -> punished -> never escapes), whereas argmax's own None ->
+    random fallback escapes cold bins. Direction learns fine on its own; only
+    magnitude needed the sharing — so the two concerns are split, and this owns
+    magnitude only. The caller uses argmax for direction (and its cold-bin random
+    fallback) and calls this only once a direction is confidently chosen.
+
+    Args:
+        bias_fn: ``(bin_name, action_name) -> float`` — the learned
+            ``cluster_reward_bias`` (a closure over the live NAc).
+        state: the active bin (``near_left`` / ``far_right`` / ...).
+        action_deltas: ``{action_name: yaml_delta_rad}`` — sign is direction
+            (+ left / - right), ``abs`` is magnitude.
+        direction_sign: +1 (left) / -1 (right), from the argmax action's sign.
+
+    Returns:
+        ``(continuous_delta_rad, credit_action_name)`` in the YAML sign convention
+        (before ``step_scale`` / ``sign_mult``). ``credit_action_name`` is the
+        chosen-direction action with the nearest magnitude class, so the greedy
+        trial still credits the tabular table and progressively fills the starved
+        cell. ``(None, None)`` for the center bin (caller keeps its argmax action).
+    """
+    if "_" not in state:  # center — no directional turn to make
+        return None, None
+    ecc = state.split("_", 1)[0]
+
+    mags = sorted({abs(d) for d in action_deltas.values()})
+    small_m, big_m = mags[0], mags[-1]
+
+    def relu(x):
+        return x if x > 0.0 else 0.0
+
+    # Magnitude: pool the magnitude-class evidence across same-eccentricity bins
+    # of BOTH sides (direction-agnostic amplitude map).
+    ecc_bins = [f"{ecc}_left", f"{ecc}_right"]
+
+    def class_score(target_mag):
+        s = 0.0
+        for b in ecc_bins:
+            for a, d in action_deltas.items():
+                if abs(abs(d) - target_mag) < 1e-9:
+                    s += relu(bias_fn(b, a))
+        return s
+
+    small_score = class_score(small_m)
+    big_score = class_score(big_m)
+    total = small_score + big_score
+    if total <= 1e-12:
+        magnitude = small_m  # no positive evidence at this eccentricity -> gentlest step
+    else:
+        magnitude = (small_score * small_m + big_score * big_m) / total
+
+    cont_delta = direction_sign * magnitude
+
+    # Nearest discrete action (chosen direction, snapped magnitude) for crediting.
+    nearest_m = small_m if abs(magnitude - small_m) <= abs(magnitude - big_m) else big_m
+    dir_acts = {a: d for a, d in action_deltas.items() if (d > 0.0) == (direction_sign > 0.0)}
+    credit_action = next((a for a, d in dir_acts.items() if abs(abs(d) - nearest_m) < 1e-9), None)
+    return cont_delta, credit_action
