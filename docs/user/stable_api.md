@@ -60,9 +60,9 @@ This page lists what is **stable** in pymaxim 1.0 and what is **experimental**. 
 | `ResearchResult` | ⚠️ Experimental | Returned by `research()`. Field set may grow. |
 | `EventHandle` | ⚠️ Experimental | Returned by `on()`. |
 | `ToolCallEvent` | ⚠️ Experimental | Payload type for `on("tool_call", ...)`. |
-| `MemoryCaptureEvent` | ⚠️ Experimental | Payload type for `on("memory_capture", ...)`. |
+| `MemoryCaptureEvent` | ⚠️ Experimental | RESERVED payload type — `"memory_capture"` is not yet a bridged event name (it was declared but never fired; removed from `on()`'s supported set in the EVENT-seam cleanup). |
 | `PainSignalEvent` | ⚠️ Experimental | Payload type for `on("pain_signal", ...)`. |
-| `PromptEvent` | ⚠️ Experimental | Payload type for `on("prompt", ...)`. |
+| `PromptEvent` | ⚠️ Experimental | RESERVED payload type — `"prompt"` is not yet a bridged event name (same EVENT-seam cleanup as `MemoryCaptureEvent`). |
 
 ---
 

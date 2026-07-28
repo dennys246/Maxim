@@ -62,7 +62,7 @@ class DisplayModeTool(Tool):
             )
 
         current = get_display_tier()
-        applied = agent_escalate_display(target)
+        applied = agent_escalate_display(target, reason=reason)
 
         if applied:
             msg = f"Display changed to {level}"

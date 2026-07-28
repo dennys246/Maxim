@@ -1488,12 +1488,18 @@ class PromptEvent:
     timestamp: float = 0.0
 
 
-# Supported event names → payload type (for documentation and validation)
+# Supported event names → payload type (for documentation and validation).
+# EVENT-seam cleanup (reachy_app_maxim_seams.md § EVENT, work item 8):
+# "memory_capture" and "prompt" were declared here but NEVER bridged in
+# _bridge_event_subscriptions — subscribing to them silently received nothing
+# (a dead name is worse than a smaller list). Removed from the supported set;
+# MemoryCaptureEvent / PromptEvent stay exported as RESERVED payload types
+# (hippocampus capture is a callback list, not a bus message — wiring it is
+# real plumbing, not cleanup). Re-adding a name here REQUIRES the matching
+# bridge branch in _bridge_event_subscriptions in the same commit.
 _EVENT_TYPES: dict[str, type] = {
     "tool_call": ToolCallEvent,
-    "memory_capture": MemoryCaptureEvent,
     "pain_signal": PainSignalEvent,
-    "prompt": PromptEvent,
 }
 
 
@@ -1547,14 +1553,15 @@ def on(event_name: str, callback: Any) -> EventHandle:
         ``"tool_call"`` → :class:`ToolCallEvent`
             Fired when the agent executes a tool.
 
-        ``"memory_capture"`` → :class:`MemoryCaptureEvent`
-            Fired when hippocampus captures an episode.
-
         ``"pain_signal"`` → :class:`PainSignalEvent`
             Fired when a pain signal is detected.
 
-        ``"prompt"`` → :class:`PromptEvent`
-            Fired when the system needs user input.
+    :class:`MemoryCaptureEvent` and :class:`PromptEvent` are RESERVED payload
+    types — their event names are not yet bridged and subscribing to them
+    logs an unknown-event warning (EVENT-seam cleanup; they were previously
+    declared but silently never fired). For a live event stream of the full
+    bio-subsystem taxonomy, use the console's ``/ws`` stream (the EVENT seam)
+    rather than this SDK surface.
 
     Args:
         event_name: Name of the event to subscribe to.

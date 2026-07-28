@@ -8,10 +8,12 @@ console is an explicit non-goal). Three surfaces:
   ``/api/setup/*``, ``/api/recall``, ``/api/run``) are typed **501 stubs** — their
   Pydantic shapes are in OpenAPI so the maxim-pulse kit can generate the full
   ``FacadeClient`` now (Phase 1 fills in the bodies without touching the schema).
-* ``/ws`` — the EventClient stream. Skeleton pushes a typed heartbeat; the full
-  bridge is spec'd as the EVENT seam ([reachy_app_maxim_seams.md] § EVENT):
-  it rides ``sim_log`` records via ``register_sim_sink`` — NOT ``api.on()``,
-  which stays the embedder-SDK surface (that earlier assumption is reversed).
+* ``/ws`` — the EventClient stream (the EVENT seam, LIVE —
+  [reachy_app_maxim_seams.md] § EVENT): ``sim_log`` records bridged via
+  ``register_sim_sink`` into per-connection bounded queues (drop-oldest +
+  a ``dropped`` meta-event), filtered per client by ``SubscribeFrame``,
+  correlated to runs by ``run_id`` + ``run`` lifecycle events. NOT built on
+  ``api.on()`` — that stays the embedder-SDK surface.
 * ``/`` — the static Console bundle (resolved from ``--ui-dist`` / config).
 
 **FastAPI is justified specifically by the OpenAPI auto-emit** (the cross-repo
@@ -22,8 +24,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import dataclasses
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -48,7 +52,10 @@ from maxim.console.schemas import (
     RunAccepted,
     RunRequest,
     SetupResult,
+    SubscribeFrame,
 )
+
+logger = logging.getLogger(__name__)
 
 _HEARTBEAT_INTERVAL_S = 15.0
 _NOT_IMPLEMENTED = "Seam not yet implemented (Phase 1) — shape is contract-complete for type-gen."
@@ -268,11 +275,47 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
     import logging
 
     log = logging.getLogger(__name__)
+    # EVENT seam: run lifecycle events close the RunAccepted.session_id ≠
+    # sim-internal-session-id correlation gap — the binding (and the report
+    # path) arrives on the stream at run end. Events emitted by the campaign
+    # while this thread runs are stamped with run_id via set_run.
+    _event_hub.set_run(run_id)
+    _event_hub.publish(
+        "run",
+        f"run {run_id} started",
+        {"run_id": run_id, "status": "started", "mode": "adventure", "campaign": campaign_path},
+    )
     try:
         result = handle.play_campaign(campaign_path)
         log.info("console run %s finished: %s", run_id, getattr(result, "finish_reason", "?"))
-    except Exception:
+        # SimulationResult has session_id/session_dir (empty-string defaults),
+        # NOT a report_path field — the report convention is
+        # session_dir/report.json (review fold: getattr(result, "report_path")
+        # was structurally always None, a dead wire field).
+        session_dir = str(getattr(result, "session_dir", "") or "")
+        _event_hub.publish(
+            "run",
+            f"run {run_id} ended",
+            {
+                "run_id": run_id,
+                "status": "ended",
+                "finish_reason": str(getattr(result, "finish_reason", "") or "") or None,
+                "sim_session_id": str(getattr(result, "session_id", "") or "") or None,
+                "report_path": str(Path(session_dir) / "report.json") if session_dir else None,
+            },
+        )
+    except Exception as e:
         log.exception("console run %s failed", run_id)
+        _event_hub.publish(
+            "run",
+            f"run {run_id} failed",
+            {"run_id": run_id, "status": "failed", "error": f"{type(e).__name__}: {e}"},
+        )
+    finally:
+        # After this, late emissions from the campaign's worker-pool threads
+        # arrive with run_id=None (correlation loss only — the "ended" event
+        # above is the run's wire boundary).
+        _event_hub.set_run(None)
 
 
 @api.post("/run", response_model=RunAccepted, summary="Run a mode (talk/adventure/sim/rest)")
@@ -336,6 +379,196 @@ def get_event_envelope() -> ConsoleEvent:
     raise HTTPException(status_code=501, detail="Envelope shape only — subscribe to /ws for the live stream.")
 
 
+@api.get(
+    "/events/subscribe-frame",
+    response_model=SubscribeFrame,
+    summary="WS filter frame shape (type-gen only; send frames on /ws)",
+)
+def get_subscribe_frame() -> SubscribeFrame:
+    # Same type-gen trick as /events/envelope: documents the client→server
+    # filter frame so the kit generates the SubscribeFrame type.
+    raise HTTPException(status_code=501, detail="Frame shape only — send it as JSON on the /ws socket.")
+
+
+# ── EVENT seam — the /ws bridge (sim_log records → ConsoleEvent stream) ──────
+# reachy_app_maxim_seams.md § EVENT. One _EventHub per process: sim_log's
+# publishing thread hands records to `sink()` (registered via
+# register_sim_sink at app startup), which crosses into the event loop with
+# call_soon_threadsafe and fans out to bounded per-connection queues.
+# Backpressure: drop-oldest + a "dropped" meta-event; the publishing thread
+# NEVER blocks. Filtering is per-connection via SubscribeFrame; meta-kinds
+# (heartbeat/run/dropped/display) bypass filters — they carry stream/UI state.
+
+_META_KINDS = frozenset({"heartbeat", "run", "dropped", "display"})
+_WS_QUEUE_MAXSIZE = 512
+_TIER_ORDER = {"clean": 0, "bio": 1, "debug": 2}
+
+
+class _WsConn:
+    """One /ws connection: bounded queue + compiled filter + monotonic seq.
+
+    All mutable state is touched ONLY on the event loop (enqueue via
+    call_soon_threadsafe, filter updates from the receive task, drains from
+    the sender loop) — no lock needed.
+    """
+
+    def __init__(self) -> None:
+        self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=_WS_QUEUE_MAXSIZE)
+        self._seq = 0
+        self.dropped = 0
+        self.dropped_reported = 0
+        self.warned_unserializable = False
+        # Compiled filter (None on every axis = everything).
+        self._tier_max: int | None = None
+        self._subsystems: set[str] | None = None  # subsystem names, uppercased for matching
+        self._kinds: set[str] | None = None  # lowercase kinds
+
+    def apply_frame(self, frame: SubscribeFrame) -> None:
+        """Each frame REPLACES the filter (send a full frame; all-None resets)."""
+        from maxim.simulation.sim_logger import expand_channels
+
+        self._tier_max = _TIER_ORDER[frame.tier] if frame.tier is not None else None
+        # Uppercase for CASE-INSENSITIVE subsystem matching (review finding:
+        # the one mixed-case canonical subsystem, "NAc", was unreachable via
+        # raw-name channels — "nac"→"NAC" never equaled "NAc").
+        self._subsystems = {s.upper() for s in expand_channels(frame.channels)} if frame.channels is not None else None
+        self._kinds = {k.strip().lower() for k in frame.kinds} if frame.kinds is not None else None
+
+    def matches(self, kind: str, tier: str, subsystem: str) -> bool:
+        if kind in _META_KINDS:
+            return True
+        if self._tier_max is not None and _TIER_ORDER.get(tier, 1) > self._tier_max:
+            return False
+        if self._subsystems is not None or self._kinds is not None:
+            in_subsystems = self._subsystems is not None and subsystem.upper() in self._subsystems
+            in_kinds = self._kinds is not None and kind in self._kinds
+            if not (in_subsystems or in_kinds):
+                return False
+        return True
+
+    def enqueue(self, evt: dict[str, Any]) -> None:
+        """Assign seq + put; on full, drop the OLDEST (a seq gap = drops)."""
+        evt["seq"] = self._seq
+        self._seq += 1
+        while True:
+            try:
+                self.queue.put_nowait(evt)
+                return
+            except asyncio.QueueFull:
+                try:
+                    self.queue.get_nowait()
+                    self.dropped += 1
+                except asyncio.QueueEmpty:  # pragma: no cover — single-threaded on the loop
+                    pass
+
+
+class _EventHub:
+    """Process-wide fan-out point between sim_log's thread and /ws clients."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._conns: set[_WsConn] = set()
+        self._run_id: str | None = None
+
+    # ── lifecycle (event loop side) ──
+    def attach(self, loop: asyncio.AbstractEventLoop) -> None:
+        with self._lock:
+            if self._loop is not None and self._loop is not loop:
+                # Two live apps sharing the process-wide hub would fan out to
+                # the first app's queues from the second app's loop —
+                # violating _WsConn's loop-only contract. One server per
+                # process by design; make the violation loud.
+                logger.warning("EventHub.attach: replacing a live loop — two concurrent build_app() servers?")
+            self._loop = loop
+
+    def detach(self) -> None:
+        with self._lock:
+            self._loop = None
+
+    def add_conn(self, conn: _WsConn) -> None:
+        with self._lock:
+            self._conns.add(conn)
+
+    def remove_conn(self, conn: _WsConn) -> None:
+        with self._lock:
+            self._conns.discard(conn)
+
+    # ── run correlation (run-thread side) ──
+    def set_run(self, run_id: str | None) -> None:
+        with self._lock:
+            self._run_id = run_id
+
+    # ── producers ──
+    def sink(self, record: dict[str, Any]) -> None:
+        """sim_log sink — runs on the PUBLISHING thread; enqueue-and-return."""
+        from maxim.simulation.sim_logger import subsystem_wire_tier
+
+        with self._lock:
+            loop = self._loop
+            run_id = self._run_id
+            has_conns = bool(self._conns)
+        if loop is None or not has_conns or loop.is_closed():
+            return
+        subsystem = str(record.get("subsystem", ""))
+        evt = {
+            "kind": subsystem.lower(),
+            "tier": subsystem_wire_tier(subsystem),
+            "seq": 0,  # per-connection; assigned at enqueue
+            "run_id": run_id,
+            "ts": time.time(),
+            "elapsed_s": record.get("t"),
+            "agent_id": record.get("agent_id"),
+            "agent": record.get("agent"),
+            "message": str(record.get("message", "")),
+            # Shallow-copy at bridge time (review finding): the record's data
+            # dict is the PRODUCER'S object; sim_log takes it by reference. A
+            # producer mutating it after sim_log returns would race
+            # send_json's iteration on the loop thread.
+            "data": dict(record.get("data") or {}),
+        }
+        try:
+            loop.call_soon_threadsafe(self._fanout, subsystem, evt)
+        except RuntimeError:  # loop shut down between the check and the call
+            return
+
+    def publish(self, kind: str, message: str, data: dict[str, Any]) -> None:
+        """Console-side meta-events (kind='run'), from any thread."""
+        with self._lock:
+            loop = self._loop
+            run_id = self._run_id
+        if loop is None or loop.is_closed():
+            return
+        evt = {
+            "kind": kind,
+            "tier": "clean",
+            "seq": 0,
+            "run_id": run_id,
+            "ts": time.time(),
+            "elapsed_s": None,
+            "agent_id": None,
+            "agent": None,
+            "message": message,
+            "data": data,
+        }
+        try:
+            loop.call_soon_threadsafe(self._fanout, "", evt)
+        except RuntimeError:
+            return
+
+    # ── fan-out (event loop side) ──
+    def _fanout(self, subsystem: str, evt: dict[str, Any]) -> None:
+        with self._lock:
+            conns = list(self._conns)
+        for conn in conns:
+            if conn.matches(evt["kind"], evt["tier"], subsystem):
+                # Copy: seq is per-connection and queues must not share the dict.
+                conn.enqueue(dict(evt))
+
+
+_event_hub = _EventHub()
+
+
 # ── app factory ─────────────────────────────────────────────────────────────
 
 
@@ -345,7 +578,18 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> Any:
-        yield
+        # EVENT seam: bridge sim_log records into the hub for /ws fan-out.
+        from maxim.simulation.sim_logger import register_sim_sink, unregister_sim_sink
+
+        _event_hub.attach(asyncio.get_running_loop())
+        register_sim_sink(_event_hub.sink)
+        try:
+            yield
+        finally:
+            # finally: an exception through shutdown must not strand the sink
+            # registration (review fold).
+            unregister_sim_sink(_event_hub.sink)
+            _event_hub.detach()
         # Shutdown: server exit mid-campaign would otherwise kill the daemon
         # run thread with the hippocampus capture queue unflushed — silent
         # learning loss. Join the live run (bounded) BEFORE stopping so the
@@ -373,15 +617,80 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
 
     @app.websocket("/ws")
     async def ws_events(websocket: WebSocket) -> None:
-        """EventClient stream — skeleton heartbeat (full bridge = the EVENT seam, which rides sim_log, not api.on())."""
+        """EventClient stream (EVENT seam) — sim_log records + meta-kinds.
+
+        Server→client: ConsoleEvent envelopes (v2). Client→server: optional
+        SubscribeFrame JSON messages; each frame REPLACES the connection's
+        filter. Heartbeats fire when the stream is idle; a "dropped" meta-event
+        reports backpressure losses (seq gaps mark where).
+        """
         await websocket.accept()
+        conn = _WsConn()
+        _event_hub.add_conn(conn)
+
+        async def _recv_frames() -> None:
+            while True:
+                try:
+                    msg = await websocket.receive_json()
+                    frame = SubscribeFrame.model_validate(msg)
+                except (ValueError, KeyError):
+                    # Malformed frame — keep the current filter. ValueError
+                    # covers both json.JSONDecodeError (non-JSON text) and
+                    # pydantic ValidationError; KeyError is starlette's raise
+                    # for a binary frame. Cross-confirmed review finding: any
+                    # of these previously killed the recv task and escaped the
+                    # endpoint as an unhandled ASGI exception.
+                    continue
+                conn.apply_frame(frame)
+
+        recv_task = asyncio.create_task(_recv_frames())
         try:
             while True:
-                evt = ConsoleEvent(kind="heartbeat", ts=time.time())
-                await websocket.send_json(evt.model_dump())
-                await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
-        except WebSocketDisconnect:
+                if recv_task.done():
+                    return  # client went away (receive raised/closed) — stop sending
+                try:
+                    evt = await asyncio.wait_for(conn.queue.get(), timeout=_HEARTBEAT_INTERVAL_S)
+                except (asyncio.TimeoutError, TimeoutError):
+                    # Idle: enqueue the heartbeat so it flows the one path
+                    # (same seq counter — monotonicity holds on the wire).
+                    conn.enqueue(
+                        ConsoleEvent(kind="heartbeat", tier="clean", seq=0, ts=time.time(), message="").model_dump()
+                    )
+                    continue
+                try:
+                    await websocket.send_json(evt)
+                except TypeError:
+                    # Non-JSON-serializable producer data (review finding):
+                    # without this, ONE poison record fans out to every
+                    # matching connection and kills them all. Drop the event,
+                    # warn once per connection, keep the stream alive.
+                    if not conn.warned_unserializable:
+                        conn.warned_unserializable = True
+                        logger.warning(
+                            "dropped non-JSON-serializable event kind=%r on /ws", evt.get("kind"), exc_info=True
+                        )
+                    continue
+                if conn.dropped > conn.dropped_reported:
+                    count = conn.dropped - conn.dropped_reported
+                    conn.dropped_reported = conn.dropped
+                    conn.enqueue(
+                        ConsoleEvent(
+                            kind="dropped",
+                            tier="clean",
+                            seq=0,
+                            ts=time.time(),
+                            message=f"{count} event(s) dropped (slow consumer)",
+                            data={"count": count, "total": conn.dropped},
+                        ).model_dump()
+                    )
+        except (WebSocketDisconnect, RuntimeError):
+            # RuntimeError: starlette's send-after-close — same meaning here.
             return
+        finally:
+            _event_hub.remove_conn(conn)
+            recv_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect, RuntimeError):
+                await recv_task
 
     # Static Console bundle at "/", or a clear "not installed" page.
     if ui_dist is not None and Path(ui_dist).is_dir():

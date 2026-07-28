@@ -231,13 +231,28 @@ class TestEventSubscription:
         from maxim.api import on
 
         h1 = on("tool_call", lambda e: None)
-        h2 = on("memory_capture", lambda e: None)
+        h2 = on("pain_signal", lambda e: None)
         assert h1.event_name == "tool_call"
-        assert h2.event_name == "memory_capture"
+        assert h2.event_name == "pain_signal"
         assert h1._handle_id != h2._handle_id
 
         h1.unsubscribe()
         h2.unsubscribe()
+
+    def test_unbridged_names_removed_from_supported_set(self, caplog):
+        # EVENT-seam cleanup: "memory_capture"/"prompt" were declared but never
+        # bridged — subscribing silently received nothing. They now warn as
+        # unknown (a dead name is worse than a smaller list). Re-adding one
+        # REQUIRES the matching _bridge_event_subscriptions branch.
+        import logging
+
+        from maxim.api import _EVENT_TYPES, on
+
+        assert set(_EVENT_TYPES) == {"tool_call", "pain_signal"}
+        with caplog.at_level(logging.WARNING):
+            handle = on("memory_capture", lambda e: None)
+        handle.unsubscribe()
+        assert any("Unknown event name" in r.getMessage() for r in caplog.records)
 
 
 # ---------------------------------------------------------------------------
