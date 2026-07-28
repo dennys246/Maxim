@@ -1,7 +1,7 @@
 # Maxim Plans
 
 Current version: **1.0.1** (1.0.0 published on PyPI as `pymaxim` 2026-06-17).
-Now: **1.1** — embodiment grounding + substrate-primary validation (orient-to-center on Reachy Mini, Exp 44 embodied choice, Oasis).
+Now: **1.1** — embodiment grounding + substrate-primary validation. Orient-to-center on Reachy Mini (Exp 45e ✓, PR #431) and Exp 44 embodied choice (✓ **reward-driven confirmed via counterbalance**, PR #429) are done; substrate-learns-from-lived-experience Phase 1 shipped (#437). **Oasis is the remaining build.**
 
 **Directory audited 2026-07-15** (deep plans review): every top-level plan verified against code + git history; 12 concluded plans archived, 19 paused plans moved to deferred/ with revive triggers. Root = active work only.
 
@@ -18,7 +18,7 @@ Now: **1.1** — embodiment grounding + substrate-primary validation (orient-to-
 | **0.9.2** | **Config unification + Hivemind shareability + LLM timeout scalability** — `~/.config/maxim/config.json`, `maxim config/model/substrate` CLIs, `hivemind/` substrate bundle, TTFT keepalive, per-tier timeout, context-overflow admission, stall detector, leader-local harness singleton guard | **SHIPPED** (2026-06-05) |
 | **0.9.3** | **Loud optional-dependency failures** — `utils/optional_deps.py` centralises 45+ import sites; missing requested backend raises `OptionalDependencyError` instead of silently returning empty responses | **SHIPPED** (2026-06-06) |
 | **1.0** | **Validation + stabilization + grounding** — cross-session proof, bio-system protocol freeze, sensorimotor cradle, SEM world enrichment, SCN feedback loop, cleanup, docs | **SHIPPED** (2026-06-17) |
-| **1.1** | **Embodiment grounding + substrate-primary validation** — exploration policy (shipped, Exp 42 GRADUATE), perception pipeline placement (shipped), substrate-native orienting on Reachy Mini (in flight), Exp 44 embodied choice (in flight), Oasis | In progress |
+| **1.1** | **Embodiment grounding + substrate-primary validation** — exploration policy (Exp 42 GRADUATE ✓), perception pipeline placement (✓), substrate-native orienting on Reachy Mini (Exp 45e ✓ PR #431), Exp 44 embodied choice (✓ reward-driven confirmed via counterbalance, PR #429), substrate-learns-from-experience Phase 1 (✓ #437). **Remaining: Oasis.** | In progress |
 
 **Discipline:** 0.7 was the last major feature version. 0.8 matured cognition and embodiment. 1.0 stabilizes, validates, and grounds — every bio-system fully operational with closed feedback loops, interfaces frozen with future-proof protocols, and the agent demonstrably learns from its own body.
 
