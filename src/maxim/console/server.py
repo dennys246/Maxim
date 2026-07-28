@@ -383,12 +383,72 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str, premise: 
         _event_hub.set_run(None)
 
 
+# Talk turns are serialized per process: the live loop is one agent, and two
+# concurrent utterances would interleave into one settle window.
+_talk_lock = threading.Lock()
+_TALK_RUN_ID = "talk"
+
+
+def _post_run_talk(body: RunRequest) -> RunAccepted:
+    """HANDLE talk mode — one conversational turn against the live loop.
+
+    Blocking by design: the turn's REPLY travels on ``/ws`` as CLEAN-tier
+    records (``user`` then ``response``), so the chat surface renders from the
+    stream; this response carries only the accept/reject + the run id used to
+    scope those events. Events emitted during the turn are stamped
+    ``run_id="talk"`` so a background adventure's narration cannot interleave
+    into a conversation.
+    """
+    text = (body.input or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="mode='talk' requires 'input' (what to say).")
+
+    with _handle_lock:
+        prev = _active_run["thread"]
+    if prev is not None and prev.is_alive():
+        raise HTTPException(
+            status_code=409,
+            detail="An adventure is running — talk is unavailable until it ends.",
+        )
+    if not _talk_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A talk turn is already in flight.")
+    try:
+        handle = _get_handle()
+        _event_hub.set_run(_TALK_RUN_ID)
+        try:
+            result = handle.talk(text)
+        finally:
+            _event_hub.set_run(None)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("talk turn failed")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+    finally:
+        _talk_lock.release()
+
+    timed_out = bool(result.get("timed_out"))
+    return RunAccepted(
+        session_id=_TALK_RUN_ID,
+        mode="talk",
+        status="started",
+        detail=(
+            "Turn timed out before a reply — the response may still arrive on /ws."
+            if timed_out
+            else f"Turn complete ({len(result.get('actions') or [])} action(s)); reply is on /ws as kind='response'."
+        ),
+    )
+
+
 @api.post("/run", response_model=RunAccepted, summary="Run a mode (talk/adventure/sim/rest)")
 def post_run(body: RunRequest) -> RunAccepted:
     # HANDLE seam (a): mode="adventure" runs an adventure AS the persistent
     # agent (campaign injection — the "Adventure teaches Talk" surface), in
     # two flavors: an authored campaign YAML (`campaign`) or a free-text
-    # premise the narrator improvises (`input`). talk/sim/rest stay 501.
+    # premise the narrator improvises (`input`). mode="talk" is the live-loop
+    # conversational mode. sim/rest stay 501.
+    if body.mode == "talk":
+        return _post_run_talk(body)
     if body.mode != "adventure":
         raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
 
@@ -656,10 +716,23 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def _lifespan(app: FastAPI) -> Any:
         # EVENT seam: bridge sim_log records into the hub for /ws fan-out.
-        from maxim.simulation.sim_logger import register_sim_sink, unregister_sim_sink
+        from maxim.simulation.sim_logger import (
+            enable_sim_logging,
+            get_active_display,
+            register_sim_sink,
+            unregister_sim_sink,
+        )
 
         _event_hub.attach(asyncio.get_running_loop())
         register_sim_sink(_event_hub.sink)
+        # sim_log is a no-op until logging is enabled, and only the sim
+        # orchestrator enables it — so without this, TALK (which never goes
+        # through the orchestrator) produced zero wire events. Headless:
+        # record-only, no Rich display, no color. A later sim re-enables with
+        # its own session log path, which is fine (and desirable — the session
+        # artifact still gets written).
+        if get_active_display() is None:
+            enable_sim_logging(use_color=False)
         try:
             yield
         finally:

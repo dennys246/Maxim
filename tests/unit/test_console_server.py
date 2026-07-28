@@ -68,9 +68,10 @@ def test_live_verb_models_ok(app):
 @pytest.mark.parametrize(
     "method,path,body",
     [
-        # recall + setup/cloud are both LIVE now (#425 + this seam) — only
-        # the Phase-3 run modes remain 501.
-        ("post", "/api/run", {"mode": "talk"}),
+        # recall + setup/cloud + adventure + TALK are all LIVE now (#425, the
+        # SETUP seam, HANDLE (a), and talk mode). Only sim/rest remain 501.
+        ("post", "/api/run", {"mode": "sim"}),
+        ("post", "/api/run", {"mode": "rest"}),
     ],
 )
 def test_seam_stubs_are_501(app, method, path, body):

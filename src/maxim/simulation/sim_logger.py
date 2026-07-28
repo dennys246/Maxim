@@ -511,6 +511,11 @@ _sim_start: float = 0.0
 _use_color = True
 _log_file = None
 _log_records: list[dict[str, Any]] = []
+# Ceiling on the in-memory record trail (see the trim in sim_log). High enough
+# that no realistic sim session reaches it; low enough to bound a long-lived
+# `maxim serve` process.
+_MAX_LOG_RECORDS = 200_000
+_records_trimmed = False
 _debug_mode = False
 _show_channels: set[str] | None = None  # None = show all, set = filter
 
@@ -941,6 +946,23 @@ def sim_log(
     if nickname is not None:
         record["agent"] = nickname
     _log_records.append(record)
+
+    # Bound the in-memory trail. A sim is short-lived, but the console's
+    # `maxim serve` enables sim logging for the whole process lifetime (that
+    # is how talk/adventure reach /ws), so an unbounded list would be a slow
+    # leak. Trim the oldest quarter and say so ONCE — a silent truncation
+    # would quietly hollow out a long session's report/telemetry.
+    if len(_log_records) > _MAX_LOG_RECORDS:
+        global _records_trimmed
+        del _log_records[: _MAX_LOG_RECORDS // 4]
+        if not _records_trimmed:
+            _records_trimmed = True
+            logger.warning(
+                "sim_log in-memory trail exceeded %d records — trimming oldest. "
+                "Session reports/telemetry from this process are now partial "
+                "(the JSONL log file, if configured, remains complete).",
+                _MAX_LOG_RECORDS,
+            )
 
     if _log_file is not None:
         import json
