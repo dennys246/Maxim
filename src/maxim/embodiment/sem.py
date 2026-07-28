@@ -402,6 +402,7 @@ class Entity:
         "vital_metrics",
         "failure_modes",
         "drive_specs",
+        "drive_breach_severity",
     )
 
     def __init__(
@@ -424,6 +425,20 @@ class Entity:
         self.vital_metrics: dict[str, float] = {}
         self.failure_modes: list[FailureMode] = []
         self.drive_specs: dict[str, DriveSpec] = {}  # sensor_name → DriveSpec
+        # Drive-pain breach latch: sensor_name → latched breach severity (in
+        # sensor units). Owned by the ENTITY, not the Embodiment wrapper, so a
+        # body cannot "forget" it is injured because a different observer
+        # looked at it (simulation tools construct ephemeral per-invocation
+        # Embodiments) or because it was reparented by entity acquisition.
+        # Written only by Embodiment.evaluate_failures; gates the PainBus
+        # channel so re-injury re-publishes but a standing breach does not
+        # re-fire per tick. Session-runtime state — deliberately NOT part of
+        # to_dict/from_dict, mirroring FailureMode.active's non-persistence.
+        # Contrast the two latch polarities: FailureMode.persistent means
+        # "keep firing until recovery"; this one means "stay quiet unless the
+        # injury deepens". Declaring `persistent: true` on a drive does
+        # nothing — drives are not FailureModes.
+        self.drive_breach_severity: dict[str, float] = {}
 
         if parent is not None:
             parent.children.append(self)

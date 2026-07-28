@@ -1,15 +1,30 @@
-# Transition-based drive-pain attribution
-
-> **PHASES 0-1 SHIPPED (2026-07-28, `feat/transition-drive-pain`)** as Stage 0a of
-> [live_audio_orient_wiring.md](../live_audio_orient_wiring.md) (the Track-2 live-azimuth
-> wiring is the trigger that fired). The breach latch lives on
-> `Embodiment.__init__::_drive_breach`; both channels now fire on band entry only.
-> Regression guard: `tests/unit/test_transition_drive_pain.py` (5 transition assertions
-> verified failing on the pre-fix emitter). Phase 2 unit/substrate blast radius is green
-> (142 tests); **OUTSTANDING: the Exp 42 triage re-run** (both arms, confirming GRADUATE
-> holds without leaning on B8) — which then gates **Phase 3 (B8 disposition)**; B8 is kept
-> as belt-and-suspenders until that run lands. Phase 4 (CLAUDE.md invariant) shipped in
-> the same commit.
+> **PHASES 0-1 SHIPPED (2026-07-28, `feat/transition-drive-pain`, PR #435)** as Stage 0a of
+> [live_audio_orient_wiring.md](../live_audio_orient_wiring.md).
+>
+> **SHIPPED SHAPE DIFFERS FROM THIS PLAN — read this before Phase 3.** The plan proposed
+> latching BOTH attribution channels and then retiring B8 (Phase 3). A pre-merge two-lens
+> round **disproved that design**: both lenses independently reproduced, on the real Exp 42
+> fixtures, that latching the direct channel starves B8 (which is state-INDEPENDENT and
+> therefore the only thing that still separates causer from bystander at sensor
+> **saturation**), so every *repeat* harmful affordance emitted no `embodiment_failures`
+> → `learn_success` flipped True → the collateral-harm gate went silent → the harmful
+> hearth booked **positive** cluster reward. What shipped instead:
+> - **Channel 1 (returned `FailureEvent`s): unchanged, state-based.** B8 filters it and
+>   **stays load-bearing — Phase 3's "remove B8" premise is retracted.**
+> - **Channel 2 (`_publish_drive_pain` → PainBus): severity-latched** — fires on band
+>   entry and on material re-injury (bio-faithful sensitization, not silence), with
+>   hysteresis on recovery so a noisy world-set sensor at the band edge cannot chatter.
+> - **Latch owner: `Entity.drive_breach_severity`**, not the `Embodiment` wrapper — fixes
+>   ephemeral per-invocation wrappers, reparenting, same-name siblings, and key leaks.
+>
+> Regression guards: `tests/unit/test_transition_drive_pain.py` (19) +
+> `test_substrate_primary_scene_harm.py::test_execute_delta_attribution_causing_vs_bystander_on_chilled_body`
+> (repeat-causer arm — verified to FAIL on the latched-direct-channel design). Phase 2
+> unit/substrate blast radius green (161 tests). Phase 4 (CLAUDE.md invariant) shipped.
+>
+> **OUTSTANDING:** the Exp 42 triage re-run (both arms) + confirmation that the SCN
+> oscillator still reaches its 3-observation cold-start floor on the cradle body now that
+> drive `TemporalEvent`s are per-episode rather than per-tick.
 
 > **DEFERRED (2026-07-15 plans audit):** Not shipped — `Body.evaluate_failures` is still state-based (re-fires per tick, no breach latch); B8 delta-attribution remains the only patch covering channel 1. Correct, well-scoped root-cause work (~25–40 LOC + blast-radius validation) but off the Exp 44 critical path, and touching shared embodiment code mid-experiment is the wrong moment. **Revive when:** a second drive-pain-attribution consumer appears, channel-2 (PainBus) mis-attribution actually bites an experiment (e.g. a safe source accruing spurious negative like pre-B8 Exp 42), or before any change to `evaluate_failures` cadence.
 >

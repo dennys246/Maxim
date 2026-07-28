@@ -265,11 +265,17 @@ def _intrinsically_harmful_sensors(root: Entity, *effect_dicts: dict[str, float]
     already-near-breach sensor over the line is a genuine partial cause yet is
     spared (false-negative attribution → its negative signal is lost). Exp 42
     avoids this because every harmful delta (+0.6) is well over the band (0.5).
-    The deeper root cause is that ``Body.evaluate_failures`` re-fires drive
-    discomfort every tick the sensor is out of band (state-based, not
-    transition-based), so there is no per-tick "which affordance caused THIS
-    breach" signal to key on; the proper long-term fix is transition-based
-    drive-pain attribution (docs/plans/deferred/transition_based_drive_pain.md).
+
+    LOAD-BEARING, DO NOT REMOVE (2026-07-28 transition-drive-pain fold): an
+    earlier draft of that plan proposed retiring this filter once drive pain
+    became transition-based, on the theory that a latched emitter would fire
+    only inside the causing action. The pre-merge two-lens round disproved it.
+    The ``Body.evaluate_failures`` **direct** channel deliberately stayed
+    state-based precisely because this filter is state-INDEPENDENT and so
+    remains correct when a sensor **saturates** (``arms.thermal`` clamps at
+    1.0, where no emitter-side severity latch can detect further deepening).
+    Only the PainBus channel is latched. See the channel-split invariant in
+    CLAUDE.md and docs/plans/deferred/transition_based_drive_pain.md.
     """
     specs: dict[str, Any] = {}
     for ent in root.walk():
