@@ -1,4 +1,5 @@
 """Edge-case smoke tests against the auto-spawned llama-cpp-server."""
+
 import json
 import time
 import urllib.error
@@ -10,12 +11,14 @@ URL = "http://127.0.0.1:8100/v1/chat/completions"
 def call(messages, max_tokens=10, temperature=0.0):
     req = urllib.request.Request(
         URL,
-        data=json.dumps({
-            "model": "m",
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }).encode(),
+        data=json.dumps(
+            {
+                "model": "m",
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+        ).encode(),
         headers={"Content-Type": "application/json"},
     )
     try:
@@ -60,10 +63,12 @@ def main():
         print(f"  response: {r['choices'][0]['message']['content']!r}")
 
     print("\n=== System prompt + user ===")
-    r = call([
-        {"role": "system", "content": "Respond only with the word GOOD."},
-        {"role": "user", "content": "Hi"},
-    ])
+    r = call(
+        [
+            {"role": "system", "content": "Respond only with the word GOOD."},
+            {"role": "user", "content": "Hi"},
+        ]
+    )
     if "error" in r:
         print(f"  error: {r['error']}")
     else:
@@ -75,7 +80,9 @@ def main():
         t0 = time.time()
         r = call([{"role": "user", "content": f"Say {i}."}], max_tokens=5)
         times.append(time.time() - t0)
-    print(f"  mean: {sum(times)/len(times)*1000:.0f}ms, min: {min(times)*1000:.0f}ms, max: {max(times)*1000:.0f}ms")
+    print(
+        f"  mean: {sum(times) / len(times) * 1000:.0f}ms, min: {min(times) * 1000:.0f}ms, max: {max(times) * 1000:.0f}ms"
+    )
 
 
 if __name__ == "__main__":

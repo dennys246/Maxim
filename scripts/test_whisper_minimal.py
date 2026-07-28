@@ -5,7 +5,7 @@ import os
 import sys
 
 # Hide GPU from CTranslate2
-os.environ['CUDA_VISIBLE_DEVICES'] = ''
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 print("=" * 60)
 print("WHISPER SEGFAULT DIAGNOSTIC TEST")
@@ -15,6 +15,7 @@ print("=" * 60)
 print("\n[1/5] Testing imports...")
 try:
     import ctranslate2
+
     print(f"  ✓ ctranslate2: {ctranslate2.__version__}")
 except ImportError as e:
     print(f"  ✗ ctranslate2: {e}")
@@ -22,6 +23,7 @@ except ImportError as e:
 
 try:
     import faster_whisper
+
     print(f"  ✓ faster-whisper: {faster_whisper.__version__}")
 except ImportError as e:
     print(f"  ✗ faster-whisper: {e}")
@@ -37,16 +39,13 @@ print("  This is where the segfault likely occurs...")
 
 try:
     from faster_whisper import WhisperModel
-    model = WhisperModel(
-        'tiny',
-        device='cpu',
-        compute_type='float32',
-        download_root='/tmp/whisper_test'
-    )
+
+    model = WhisperModel("tiny", device="cpu", compute_type="float32", download_root="/tmp/whisper_test")
     print("  ✓ Model created successfully!")
 except Exception as e:
     print(f"  ✗ Failed: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
 
@@ -54,6 +53,7 @@ except Exception as e:
 print("\n[4/5] Testing transcription...")
 try:
     import numpy as np
+
     # Create 1 second of silence
     dummy_audio = np.zeros(16000, dtype=np.float32)
     segments, info = model.transcribe(dummy_audio, beam_size=1)
@@ -62,6 +62,7 @@ try:
 except Exception as e:
     print(f"  ✗ Transcription failed: {e}")
     import traceback
+
     traceback.print_exc()
     sys.exit(1)
 
