@@ -636,6 +636,37 @@ class TestExecuteParallelActiveGoal:
         # credit_goal is what active_goal triggers inside record_outcome.
         nac.credit_goal.assert_called_with("explore_room", 1.0)
 
+    def test_drive_relief_only_reaches_the_batch_path(self):
+        # Phase 1 two-lens-review finding: the hook populates proposal.clusters,
+        # so the parallel path now carries a cluster. Without threading
+        # drive_relief_only, an always-succeed batched action (no
+        # drive_potential_diff) falls to the tool-success floor and floods the
+        # interoception cluster. With it, the floor is suppressed → no write.
+        from maxim.runtime.tool_dispatch import execute_parallel_actions
+
+        def _run(drive_relief_only):
+            nac = MagicMock()
+            execute_parallel_actions(
+                agent_id="test",
+                actions=[{"tool_name": "look", "params": {}}],
+                executor=self._make_executor(success=True),
+                autonomy_controller=self._make_autonomy(),
+                confidence=0.9,
+                reasoning="r",
+                recent_outcomes=[],
+                max_recent=10,
+                llm_worker=None,
+                context_pool=self._make_context_pool(),
+                nac=nac,
+                cluster_id="cluster-xyz",  # hook-populated in llm-primary
+                clusters={"interoception": "cluster-xyz"},
+                drive_relief_only=drive_relief_only,
+            )
+            return nac.update_cluster_reward.called
+
+        assert _run(drive_relief_only=True) is False  # floor suppressed on the batch path
+        assert _run(drive_relief_only=False) is True  # default keeps the floor (baseline)
+
 
 class TestImportPaths:
     """Verify internal import paths work."""

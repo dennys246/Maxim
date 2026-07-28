@@ -388,6 +388,7 @@ def execute_parallel_actions(
     active_goal: str | None = None,
     cluster_id: str | None = None,
     clusters: dict[str, str] | None = None,
+    drive_relief_only: bool = False,
 ) -> tuple[list[dict[str, Any]], str]:
     """Execute a batch of parallel actions with autonomy gating.
 
@@ -498,6 +499,12 @@ def execute_parallel_actions(
             tool_params=pr.get("params"),
             cluster_id=cluster_id,
             clusters=clusters,
+            # Phase 1 guardrail must reach the BATCH path too: without this, an
+            # llm-primary parallel action stream (populated clusters, no
+            # drive_potential_diff) would fall to the tool-success floor and flood
+            # the interoception cluster — the exact flooding the guard prevents on
+            # the single-action path (two-lens review, both lenses CONFIRMED).
+            drive_relief_only=drive_relief_only,
         )
 
     log_agentic(

@@ -923,10 +923,10 @@ def _encode_current_clusters(sensor_encoder: Any, agent_id: str, executor: Any) 
     if sensor_encoder is None:
         return clusters
     for ch in _SUBSTRATE_CHANNELS:
-        vals = ch.read_values(executor)
-        if not vals:
-            continue
         try:
+            vals = ch.read_values(executor)
+            if not vals:
+                continue
             node_id = sensor_encoder.encode_sensors(
                 agent_id=agent_id,
                 sensors=vals,
@@ -2673,6 +2673,7 @@ def run_agentic_loop(
                     active_goal=state.data.get("active_goal") if hasattr(state, "data") else None,
                     cluster_id=getattr(ctrl.pending_proposal, "cluster_id", None),
                     clusters=getattr(ctrl.pending_proposal, "clusters", None),
+                    drive_relief_only=_drive_relief_only,
                 )
 
                 # Queue as a followup for the next LLM call
