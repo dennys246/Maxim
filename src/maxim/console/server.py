@@ -291,6 +291,24 @@ def campaign_search_roots() -> list[tuple[Path, str]]:
     return [(data_home() / "campaigns", "user"), (Path("scenarios") / "campaigns", "repo")]
 
 
+def _is_within_search_root(path: Path) -> bool:
+    """Is ``path`` inside one of the discovery roots?
+
+    Discovery only ever yields ``iterdir()`` results, so this holds by
+    construction today — making it explicit keeps the file-read below safe
+    for ANY caller (and satisfies the path-injection analysis on a read
+    reachable from an HTTP endpoint) rather than relying on that invariant
+    living in the caller.
+    """
+    for root, _source in campaign_search_roots():
+        try:
+            path.resolve().relative_to(root.resolve())
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
+
+
 def _campaign_info(path: Path, source: str) -> CampaignInfo:
     """Read display metadata from a campaign YAML's ``campaign:`` head.
 
@@ -299,6 +317,8 @@ def _campaign_info(path: Path, source: str) -> CampaignInfo:
     silently hiding a malformed campaign would be the confusing outcome.
     """
     name, goal = path.stem, None
+    if not _is_within_search_root(path):
+        return CampaignInfo(name=name, path=str(path), goal=None, source=source)  # type: ignore[arg-type]
     try:
         import yaml
 

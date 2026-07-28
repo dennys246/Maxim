@@ -134,16 +134,30 @@ class TestCampaignDiscovery:
         assert ".maxim" in str(first_root)  # user dir wins over the repo dir
         assert first_source == "user"
 
-    def test_malformed_yaml_still_lists(self, tmp_path):
+    def test_malformed_yaml_still_lists(self, tmp_path, monkeypatch):
         # A campaign that cannot be parsed must still appear (by filename) —
         # hiding it would make the picker silently incomplete; the RUN call
-        # surfaces the real validation error.
-        from maxim.console.server import _campaign_info
+        # surfaces the real validation error. The root is patched so this
+        # exercises the PARSE-failure path, not the containment early-return.
+        import maxim.console.server as srv
 
+        monkeypatch.setattr(srv, "campaign_search_roots", lambda: [(tmp_path, "user")])
         bad = tmp_path / "broken.yaml"
         bad.write_text("campaign: [this is not a mapping")
-        info = _campaign_info(bad, "user")
+        info = srv._campaign_info(bad, "user")
         assert info.name == "broken"
+        assert info.goal is None
+
+    def test_read_outside_a_search_root_is_not_opened(self, tmp_path, monkeypatch):
+        # Containment is explicit, not caller-implicit: a path outside every
+        # discovery root lists by filename and is never read.
+        import maxim.console.server as srv
+
+        monkeypatch.setattr(srv, "campaign_search_roots", lambda: [(tmp_path / "roots", "user")])
+        outside = tmp_path / "elsewhere.yaml"
+        outside.write_text("campaign:\n  name: should_not_be_read\n")
+        info = srv._campaign_info(outside, "user")
+        assert info.name == "elsewhere"  # filename, NOT the YAML's name
         assert info.goal is None
 
 
