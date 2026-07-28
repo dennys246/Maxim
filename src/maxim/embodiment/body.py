@@ -74,6 +74,11 @@ class Embodiment:
         self._failure_history: list[FailureEvent] = []
         self._last_poll: float = 0.0
         self._tick_count: int = 0
+        # Drive-pain breach latch (transition_based_drive_pain plan): drive
+        # FailureEvents + PainBus publishes fire on band ENTRY only, keyed
+        # (entity_path, drive_name), cleared on the reverse transition.
+        # Session-runtime only — never persisted; a fresh Body starts clear.
+        self._drive_breach: set[tuple[str, str]] = set()
 
     # -- entity access ------------------------------------------------------
 
@@ -243,6 +248,17 @@ class Embodiment:
                 except Exception:
                     pass
 
+                # Transition latch: pain fires on band ENTRY only, so the
+                # crossing lands inside the CAUSING action's execute and a
+                # bystander evaluating during a lingering breach emits
+                # nothing — on both attribution channels. Motivation is
+                # untouched: it rides the drive VALUE (body_state_summary,
+                # _read_drive_states), not these events. The latch is
+                # evaluated against the post-drift value (drift ran above),
+                # so a sensor that drifts back within band clears here and
+                # a later genuine re-breach fires again.
+                breach_key = (ent.full_path, ds_name)
+
                 if isinstance(ds, HomeostaticDriveSpec):
                     # drive_pain_for_value is the single source of truth for the
                     # pain formula (shared with the motor-credit potential_diff).
@@ -251,41 +267,44 @@ class Embodiment:
                     # helper returns.
                     pain = drive_pain_for_value(ds, current)
                     if pain > 0:
-                        event = FailureEvent(
-                            entity_path=ent.full_path,
-                            failure_name=f"drive:{ds_name}:discomfort",
-                            pain_intensity=pain,
-                            sensor_readings=dict(readings),
-                        )
-                        events.append(event)
-                        self._failure_history.append(event)
-                        self._publish_drive_pain(ent, ds_name, pain, readings)
+                        if breach_key not in self._drive_breach:
+                            self._drive_breach.add(breach_key)
+                            event = FailureEvent(
+                                entity_path=ent.full_path,
+                                failure_name=f"drive:{ds_name}:discomfort",
+                                pain_intensity=pain,
+                                sensor_readings=dict(readings),
+                            )
+                            events.append(event)
+                            self._failure_history.append(event)
+                            self._publish_drive_pain(ent, ds_name, pain, readings)
+                    else:
+                        self._drive_breach.discard(breach_key)
 
                 elif isinstance(ds, EntropicDriveSpec):
                     # NB: this inline threshold check mirrors the entropic branch
                     # of drive_pain_for_value; kept explicit here to preserve the
                     # exact fire-on-threshold semantics regardless of the
                     # (degenerate) deprivation_pain == 0 config.
-                    if ds.drift_direction == "up" and current >= ds.deprivation_threshold:
-                        event = FailureEvent(
-                            entity_path=ent.full_path,
-                            failure_name=f"drive:{ds_name}:deprived",
-                            pain_intensity=ds.deprivation_pain,
-                            sensor_readings=dict(readings),
-                        )
-                        events.append(event)
-                        self._failure_history.append(event)
-                        self._publish_drive_pain(ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived")
-                    elif ds.drift_direction == "down" and current <= ds.deprivation_threshold:
-                        event = FailureEvent(
-                            entity_path=ent.full_path,
-                            failure_name=f"drive:{ds_name}:deprived",
-                            pain_intensity=ds.deprivation_pain,
-                            sensor_readings=dict(readings),
-                        )
-                        events.append(event)
-                        self._failure_history.append(event)
-                        self._publish_drive_pain(ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived")
+                    deprived = (ds.drift_direction == "up" and current >= ds.deprivation_threshold) or (
+                        ds.drift_direction == "down" and current <= ds.deprivation_threshold
+                    )
+                    if deprived:
+                        if breach_key not in self._drive_breach:
+                            self._drive_breach.add(breach_key)
+                            event = FailureEvent(
+                                entity_path=ent.full_path,
+                                failure_name=f"drive:{ds_name}:deprived",
+                                pain_intensity=ds.deprivation_pain,
+                                sensor_readings=dict(readings),
+                            )
+                            events.append(event)
+                            self._failure_history.append(event)
+                            self._publish_drive_pain(
+                                ent, ds_name, ds.deprivation_pain, readings, event_suffix="deprived"
+                            )
+                    else:
+                        self._drive_breach.discard(breach_key)
 
         return events
 
