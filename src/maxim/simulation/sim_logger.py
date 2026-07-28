@@ -128,6 +128,11 @@ _display_tier: DisplayTier = DisplayTier.CLEAN
 _interactive_mode: InteractiveMode = InteractiveMode.AUTO
 _display_floor: DisplayTier = DisplayTier.CLEAN  # User's --display setting (agent can't go below)
 
+# Agent display escalations are TEMPORARY — epoch deadline after which
+# maybe_auto_revert_display() drops back to the floor (0.0 = no escalation).
+_ESCALATION_HOLD_S = 120.0
+_escalation_expires_at: float = 0.0
+
 # Agent nickname registry — maps agent_id → short display name
 _agent_nicknames: dict[str, str] = {}
 _nickname_lock = threading.Lock()
@@ -188,16 +193,22 @@ def get_interactive_mode() -> InteractiveMode:
     return _interactive_mode
 
 
-def agent_escalate_display(tier: DisplayTier, reason: str = "") -> bool:
+def agent_escalate_display(tier: DisplayTier, reason: str = "", *, hold_s: float = _ESCALATION_HOLD_S) -> bool:
     """Allow the agent to temporarily escalate display tier.
+
+    The escalation is TEMPORARY: it auto-reverts to the user's floor after
+    ``hold_s`` seconds, via :func:`maybe_auto_revert_display` (ticked by the
+    agent loop). Time, not turns, is the unit — a loop iteration runs at
+    2-30Hz, so a turn count is not available at the tick point.
 
     Returns True if escalation was applied, False if tier is below floor.
     """
-    global _display_tier
+    global _display_tier, _escalation_expires_at
     if tier < _display_floor:
         return False  # Agent can't suppress below user's floor
     changed = _display_tier != tier
     _display_tier = tier
+    _escalation_expires_at = (time.time() + hold_s) if tier > _display_floor else 0.0
     # EVENT seam: surface the agent's display suggestion on the record stream
     # (kind="display" on the wire). The web UI keeps the floor semantics
     # client-side — the wire carries the suggestion, never enforces it.
@@ -212,11 +223,26 @@ def agent_escalate_display(tier: DisplayTier, reason: str = "") -> bool:
     return True
 
 
+def maybe_auto_revert_display() -> bool:
+    """Revert an EXPIRED agent escalation to the user's floor. Loop-ticked.
+
+    The production producer of the ``display``/revert wire event: without it
+    an escalation would stick forever (and ``DisplayModeTool``'s documented
+    "auto-revert" would be a lie). Cheap: one float compare on the common
+    no-escalation path. Returns True if a revert happened.
+    """
+    if _escalation_expires_at <= 0.0 or time.time() < _escalation_expires_at:
+        return False
+    revert_display_to_floor()
+    return True
+
+
 def revert_display_to_floor() -> None:
     """Revert display tier to user's --display setting."""
-    global _display_tier
+    global _display_tier, _escalation_expires_at
     reverted = _display_tier != _display_floor
     _display_tier = _display_floor
+    _escalation_expires_at = 0.0
     if reverted:
         sim_log(
             "DISPLAY",
@@ -232,10 +258,11 @@ def reset_sim_display_state() -> None:
     (e.g., in the menu loop where ``start_simulation_mode`` is called
     repeatedly in the same process).
     """
-    global _display_tier, _display_floor, _interactive_mode
+    global _display_tier, _display_floor, _interactive_mode, _escalation_expires_at
     _display_tier = DisplayTier.CLEAN
     _display_floor = DisplayTier.CLEAN
     _interactive_mode = InteractiveMode.AUTO
+    _escalation_expires_at = 0.0
     _sensor_last_logged.clear()
     clear_agent_nicknames()
 

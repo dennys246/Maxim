@@ -38,6 +38,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from maxim.console.schemas import (
+    CampaignInfo,
+    CampaignsResponse,
     CloudSetupRequest,
     ConsoleEvent,
     DiagnoseResponse,
@@ -271,7 +273,64 @@ def _get_handle() -> Any:
         return _handle
 
 
-def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
+def campaign_search_roots() -> list[Path]:
+    """Where ``GET /api/campaigns`` looks, in precedence order.
+
+    ``~/.maxim/campaigns/`` is the durable user location; ``./scenarios/
+    campaigns/`` is the dev-checkout convenience (CWD-relative, the same
+    convention ``api.benchmark`` documents per CC10). Nothing is bundled in
+    the wheel today, so a pip-install user sees only their own campaigns.
+    """
+    from maxim.utils.paths import data_home
+
+    return [data_home() / "campaigns", Path("scenarios") / "campaigns"]
+
+
+def _campaign_info(path: Path, source: str) -> CampaignInfo:
+    """Read display metadata from a campaign YAML's ``campaign:`` head.
+
+    Best-effort: a campaign that fails to parse still lists (by filename) so
+    the picker shows it and the RUN call surfaces the real validation error —
+    silently hiding a malformed campaign would be the confusing outcome.
+    """
+    name, goal = path.stem, None
+    try:
+        import yaml
+
+        with open(path) as f:
+            doc = yaml.safe_load(f) or {}
+        head = doc.get("campaign") or {}
+        if isinstance(head, dict):
+            name = str(head.get("name") or path.stem)
+            goal = str(head.get("goal")) if head.get("goal") else None
+    except Exception:
+        logger.debug("campaign listing: could not parse %s", path, exc_info=True)
+    return CampaignInfo(name=name, path=str(path), goal=goal, source=source)  # type: ignore[arg-type]
+
+
+@api.get("/campaigns", response_model=CampaignsResponse, summary="Discoverable campaign YAMLs")
+def get_campaigns() -> CampaignsResponse:
+    # Backs the launcher's picker dropdown so the operator stops pasting
+    # absolute YAML paths. Returns the path each entry should be RUN with.
+    seen: set[Path] = set()
+    out: list[CampaignInfo] = []
+    searched: list[str] = []
+    for root, source in zip(campaign_search_roots(), ("user", "repo")):
+        searched.append(str(root))
+        if not root.is_dir():
+            continue
+        for p in sorted(root.iterdir()):
+            if p.suffix.lower() not in (".yaml", ".yml") or not p.is_file():
+                continue
+            resolved = p.resolve()
+            if resolved in seen:  # user dir wins over a repo file of the same target
+                continue
+            seen.add(resolved)
+            out.append(_campaign_info(resolved, source))
+    return CampaignsResponse(campaigns=out, searched=searched)
+
+
+def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str, premise: str | None = None) -> None:
     import logging
 
     log = logging.getLogger(__name__)
@@ -283,10 +342,16 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
     _event_hub.publish(
         "run",
         f"run {run_id} started",
-        {"run_id": run_id, "status": "started", "mode": "adventure", "campaign": campaign_path},
+        {
+            "run_id": run_id,
+            "status": "started",
+            "mode": "adventure",
+            "campaign": campaign_path,
+            "premise": premise,
+        },
     )
     try:
-        result = handle.play_campaign(campaign_path)
+        result = handle.play_premise(premise) if premise else handle.play_campaign(campaign_path)
         log.info("console run %s finished: %s", run_id, getattr(result, "finish_reason", "?"))
         # SimulationResult has session_id/session_dir (empty-string defaults),
         # NOT a report_path field — the report convention is
@@ -320,23 +385,35 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
 
 @api.post("/run", response_model=RunAccepted, summary="Run a mode (talk/adventure/sim/rest)")
 def post_run(body: RunRequest) -> RunAccepted:
-    # HANDLE seam (a): mode="adventure" runs a DM campaign AS the persistent
-    # agent (campaign injection — the "Adventure teaches Talk" surface).
-    # talk/sim/rest stay 501 until Phase 3 streaming lands.
+    # HANDLE seam (a): mode="adventure" runs an adventure AS the persistent
+    # agent (campaign injection — the "Adventure teaches Talk" surface), in
+    # two flavors: an authored campaign YAML (`campaign`) or a free-text
+    # premise the narrator improvises (`input`). talk/sim/rest stay 501.
     if body.mode != "adventure":
         raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
-    if not body.campaign:
-        raise HTTPException(status_code=422, detail="mode='adventure' requires 'campaign' (a campaign YAML path).")
-    # The console is a 127.0.0.1-only OPERATOR surface: naming a local
-    # campaign file here is the same trust level as `maxim --sim <path>` on
-    # the CLI (CodeQL flags the request→path flow; it is by-design for a
-    # local-first tool). Constrain to what a campaign can be: an existing
-    # YAML file, resolved without following into surprises.
-    campaign_path = Path(body.campaign).expanduser().resolve()
-    if campaign_path.suffix.lower() not in (".yaml", ".yml"):
-        raise HTTPException(status_code=422, detail="'campaign' must point at a campaign YAML (.yaml/.yml).")
-    if not campaign_path.is_file():
-        raise HTTPException(status_code=404, detail=f"Campaign not found: {campaign_path}")
+
+    premise = (body.input or "").strip() or None
+    if bool(body.campaign) == bool(premise):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "mode='adventure' requires EXACTLY ONE of 'campaign' (a campaign YAML path) "
+                "or 'input' (a free-text premise to imagine)."
+            ),
+        )
+
+    campaign_path: Path | None = None
+    if body.campaign:
+        # The console is a 127.0.0.1-only OPERATOR surface: naming a local
+        # campaign file here is the same trust level as `maxim --sim <path>` on
+        # the CLI (CodeQL flags the request→path flow; it is by-design for a
+        # local-first tool). Constrain to what a campaign can be: an existing
+        # YAML file, resolved without following into surprises.
+        campaign_path = Path(body.campaign).expanduser().resolve()
+        if campaign_path.suffix.lower() not in (".yaml", ".yml"):
+            raise HTTPException(status_code=422, detail="'campaign' must point at a campaign YAML (.yaml/.yml).")
+        if not campaign_path.is_file():
+            raise HTTPException(status_code=404, detail=f"Campaign not found: {campaign_path}")
 
     handle = _get_handle()
     with _handle_lock:
@@ -353,19 +430,19 @@ def post_run(body: RunRequest) -> RunAccepted:
         run_id = time.strftime("%Y%m%d_%H%M%S")
         thread = threading.Thread(
             target=_run_campaign_thread,
-            args=(handle, str(campaign_path), run_id),
+            args=(handle, str(campaign_path) if campaign_path else "", run_id, premise),
             name=f"console.run.{run_id}",
             daemon=True,
         )
         _active_run["session_id"] = run_id
         _active_run["thread"] = thread
         thread.start()
-    return RunAccepted(
-        session_id=run_id,
-        mode="adventure",
-        status="started",
-        detail=f"Campaign {campaign_path.name} running as persistent agent {handle.agent_id!r}.",
+    detail = (
+        f"Imagining an adventure from your premise as persistent agent {handle.agent_id!r}."
+        if premise
+        else f"Campaign {campaign_path.name} running as persistent agent {handle.agent_id!r}."  # type: ignore[union-attr]
     )
+    return RunAccepted(session_id=run_id, mode="adventure", status="started", detail=detail)
 
 
 @api.get(

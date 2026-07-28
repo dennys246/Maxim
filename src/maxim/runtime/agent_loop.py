@@ -1172,6 +1172,21 @@ def tick_embodiment_drift(executor: Any, aut_mode: str) -> None:
         logger.debug("llm-primary embodiment tick: evaluate_failures raised", exc_info=True)
 
 
+def _maybe_auto_revert_display() -> None:
+    """Expire a temporary agent display escalation back to the user's floor.
+
+    ``DisplayModeTool`` documents escalations as auto-reverting; before this
+    tick nothing ever reverted one (``revert_display_to_floor`` had zero
+    production callers), so an escalation stuck for the rest of the session
+    and the EVENT seam's ``display``/revert wire event had no producer.
+    Cheap on the common path: one float compare, no escalation → immediate
+    return.
+    """
+    from maxim.simulation.sim_logger import maybe_auto_revert_display
+
+    maybe_auto_revert_display()
+
+
 def run_agentic_loop(
     agent: Any,
     environment: Any,
@@ -1492,6 +1507,11 @@ def run_agentic_loop(
         # AFTER the pause check so an operator-paused agent stays frozen.
         # No-op on substrate-primary (it ticks itself) and when unembodied.
         tick_embodiment_drift(executor, aut_mode)
+
+        # Expire a temporary agent display escalation back to the user's
+        # floor (DisplayModeTool's documented auto-revert). Also the
+        # production producer of the EVENT seam's display/revert event.
+        _maybe_auto_revert_display()
 
         # 0.5 CHECK PERCEPT SOURCE EXHAUSTION (simulation mode)
         if sim.check_exhaustion(ctrl.pending_proposal):

@@ -20,7 +20,12 @@ class DisplayModeTool(Tool):
 
     The agent can escalate display (clean → bio → debug) to surface
     important information, but cannot suppress below the user's
-    ``--display`` floor.  Escalations auto-revert after a few turns.
+    ``--display`` floor.  Escalations are TEMPORARY: the agent loop's
+    ``_maybe_auto_revert_display`` tick drops back to the floor after
+    ``sim_logger._ESCALATION_HOLD_S`` seconds (time, not turns — a loop
+    iteration runs at 2-30Hz, so no turn count exists at the tick point).
+    Both the escalate and the revert emit a ``DISPLAY`` record, which the
+    console's EVENT seam carries to the web UI as ``kind="display"``.
     """
 
     name = "display_mode"

@@ -1,6 +1,65 @@
 {
   "components": {
     "schemas": {
+      "CampaignInfo": {
+        "description": "One discoverable campaign \u2014 backs the launcher's picker dropdown.\n\n``path`` is what you hand back to ``POST /api/run`` as ``campaign``; the\nrest is display metadata read cheaply from the YAML head.",
+        "properties": {
+          "goal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "source": {
+            "default": "user",
+            "enum": [
+              "user",
+              "repo"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "path"
+        ],
+        "title": "CampaignInfo",
+        "type": "object"
+      },
+      "CampaignsResponse": {
+        "properties": {
+          "campaigns": {
+            "items": {
+              "$ref": "#/components/schemas/CampaignInfo"
+            },
+            "title": "Campaigns",
+            "type": "array"
+          },
+          "searched": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Searched",
+            "type": "array"
+          }
+        },
+        "title": "CampaignsResponse",
+        "type": "object"
+      },
       "CloudSetupRequest": {
         "properties": {
           "api_key": {
@@ -707,6 +766,27 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/campaigns": {
+      "get": {
+        "operationId": "get_campaigns_api_campaigns_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CampaignsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Discoverable campaign YAMLs",
+        "tags": [
+          "facade"
+        ]
+      }
+    },
     "/api/diagnose": {
       "get": {
         "operationId": "get_diagnose_api_diagnose_get",

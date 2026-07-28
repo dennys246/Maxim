@@ -114,6 +114,36 @@ class MaximHandle:
         if errors:
             raise ValueError(f"Campaign validation failed ({len(errors)} errors): {errors}")
 
+        return self._run_sim(
+            goal=f"dm:{campaign.name}",
+            persona="dungeon_master",
+            dm_campaign=campaign,
+            max_turns=max_turns,
+        )
+
+    def play_premise(self, premise: str, *, max_turns: int = 20) -> Any:
+        """Run a GENERATIVE campaign from a free-text premise, as the agent.
+
+        The "describe an adventure and let Maxim imagine it" path: the
+        narrator improvises the arc from ``premise`` (no authored YAML), with
+        the same persistent-agent injection as :meth:`play_campaign` — so an
+        imagined adventure teaches Talk exactly like an authored one.
+
+        ``max_turns`` defaults lower than the campaign path: a generative arc
+        has no authored end condition, so it runs until the turn cap.
+        """
+        if self._stopped:
+            raise RuntimeError("MaximHandle is stopped — build a new handle to play again")
+        premise = (premise or "").strip()
+        if not premise:
+            raise ValueError("premise must be non-empty")
+        return self._run_sim(goal=premise, persona="collaborative", generative=True, max_turns=max_turns)
+
+    def _run_sim(self, **kwargs: Any) -> Any:
+        """Shared sim-invocation body: one-at-a-time lock, non-interactive
+        forcing, and the tool-lease safety net. Both adventure flavors
+        (authored campaign / generative premise) route through here so the
+        lease + stdin discipline cannot drift between them."""
         if not self._campaign_lock.acquire(blocking=False):
             raise RuntimeError("A campaign is already running on this handle (one at a time)")
         try:
@@ -141,13 +171,7 @@ class MaximHandle:
             # after a clean finish is a no-op.
             _safety_lease = _CampaignToolLease.snapshot(self.instance.tool_registry)
             try:
-                return start_simulation_mode(
-                    goal=f"dm:{campaign.name}",
-                    persona="dungeon_master",
-                    dm_campaign=campaign,
-                    max_turns=max_turns,
-                    persistent_agent=self.instance,
-                )
+                return start_simulation_mode(persistent_agent=self.instance, **kwargs)
             finally:
                 dropped, restored = _safety_lease.restore(self.instance.tool_registry)
                 if dropped or restored:
