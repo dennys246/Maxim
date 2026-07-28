@@ -1,5 +1,16 @@
 # Transition-based drive-pain attribution
 
+> **PHASES 0-1 SHIPPED (2026-07-28, `feat/transition-drive-pain`)** as Stage 0a of
+> [live_audio_orient_wiring.md](../live_audio_orient_wiring.md) (the Track-2 live-azimuth
+> wiring is the trigger that fired). The breach latch lives on
+> `Embodiment.__init__::_drive_breach`; both channels now fire on band entry only.
+> Regression guard: `tests/unit/test_transition_drive_pain.py` (5 transition assertions
+> verified failing on the pre-fix emitter). Phase 2 unit/substrate blast radius is green
+> (142 tests); **OUTSTANDING: the Exp 42 triage re-run** (both arms, confirming GRADUATE
+> holds without leaning on B8) — which then gates **Phase 3 (B8 disposition)**; B8 is kept
+> as belt-and-suspenders until that run lands. Phase 4 (CLAUDE.md invariant) shipped in
+> the same commit.
+
 > **DEFERRED (2026-07-15 plans audit):** Not shipped — `Body.evaluate_failures` is still state-based (re-fires per tick, no breach latch); B8 delta-attribution remains the only patch covering channel 1. Correct, well-scoped root-cause work (~25–40 LOC + blast-radius validation) but off the Exp 44 critical path, and touching shared embodiment code mid-experiment is the wrong moment. **Revive when:** a second drive-pain-attribution consumer appears, channel-2 (PainBus) mis-attribution actually bites an experiment (e.g. a safe source accruing spurious negative like pre-B8 Exp 42), or before any change to `evaluate_failures` cadence.
 >
 > **⚠️ REVIVE TRIGGER FIRED (2026-07-17):** Track 1 of `embodiment_runtime_wiring.md` added a **per-live-loop-iteration** `evaluate_failures()` call (`agent_loop.py::tick_embodiment_drift`) so the llm-primary body drifts instead of freezing — i.e. it *changed the `evaluate_failures` cadence*, the exact trigger named above. The three-lens implementation review cross-confirmed this (bio-fidelity SF-1, architecture NH-3, executor #2). It was shipped as a should-fix, not a blocker, because the flood is dampened to **valence noise, not false causal links** (the drift tick discards its direct FailureEvents so only the PainBus channel fires; the PainBus refractory caps it to ~2 Hz; the `_context_similarity` denominator mismatch keeps it from linking to actions), AND it is **latent for the shipped reachy body** (its only drive, azimuth, is world-set with `drift_rate 0` at `initial 0` → centered, no breach, until DoA is fed in Track 2). **This plan is now on the near path**, not the far one: it should land before (a) Track 2 feeds live azimuth into the body, or (b) a body with self-drifting drives is declared for a live/opp-in run, or (c) Exp 44 embodied llm-primary numbers are re-baselined against the new cadence.
