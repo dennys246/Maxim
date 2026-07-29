@@ -104,3 +104,45 @@ class TestAgentPoolUnification:
         assert len(instance.hippocampus) >= 1
 
         pool.shutdown()
+
+
+class TestSingleLoggingLayer:
+    """percept_factory is the SINGLE percept-logging layer.
+
+    ConversationalSource used to log again after building through the factory,
+    so every conversational percept was emitted TWICE — in the terminal, the
+    JSONL trail, and the console /ws stream (where it showed as duplicate
+    `percept` events).
+    """
+
+    def test_conversational_source_does_not_relog(self):
+        # Structural: the source builds via the factory, so a sim_percept call
+        # here is by definition a duplicate.
+        import inspect
+
+        from maxim.simulation import conversational_source
+
+        src = inspect.getsource(conversational_source)
+        assert "make_text_percept" in src, "source no longer builds via the factory — revisit this guard"
+        # Ignore comments/docstring prose — assert on actual CALL sites.
+        code_lines = [ln for ln in src.splitlines() if not ln.lstrip().startswith("#")]
+        calls = [ln for ln in code_lines if "sim_percept(" in ln]
+        assert not calls, f"ConversationalSource must not log percepts (the factory already does): {calls}"
+
+    def test_factory_logs_each_percept_exactly_once(self, monkeypatch):
+        from maxim.agents import percept_factory as pf
+
+        seen: list[tuple] = []
+        monkeypatch.setattr(pf, "_log_percept", lambda *a, **k: seen.append(a))
+        pf.make_text_percept("hello", source="cli")
+        assert len(seen) == 1
+
+    def test_enqueue_through_conversational_source_logs_once(self, monkeypatch):
+        # Behavioural counterpart: drive the real path and count emissions.
+        from maxim.agents import percept_factory as pf
+        from maxim.simulation.conversational_source import ConversationalSource
+
+        seen: list[tuple] = []
+        monkeypatch.setattr(pf, "_log_percept", lambda *a, **k: seen.append(a))
+        ConversationalSource().inject_cli("hello there")
+        assert len(seen) == 1, f"expected exactly one percept log, got {len(seen)}"

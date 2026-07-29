@@ -108,10 +108,7 @@ def run_single_trial(trial_id: int, base_dir: Path) -> dict:
         teal_rates.append(teal / total_choices)
 
     control_escaped = runs[3]["escaped"]
-    control_teal = (
-        runs[3]["choice_counts"].get("teal_cylindrical_ceramic_vial", 0)
-        / max(1, len(runs[3]["choices"]))
-    )
+    control_teal = runs[3]["choice_counts"].get("teal_cylindrical_ceramic_vial", 0) / max(1, len(runs[3]["choices"]))
 
     return {
         "trial_id": trial_id,
@@ -175,9 +172,7 @@ def compute_statistics(trials: list[dict]) -> dict:
         from scipy.stats import wilcoxon
 
         # One-sided: alternative="greater" — Session 3 > Session 1
-        stat, p_value = wilcoxon(
-            s3_rates, s1_rates, alternative="greater", zero_method="wilcox"
-        )
+        stat, p_value = wilcoxon(s3_rates, s1_rates, alternative="greater", zero_method="wilcox")
         p_value = float(p_value)
     except Exception as e:
         p_value = None
@@ -188,9 +183,7 @@ def compute_statistics(trials: list[dict]) -> dict:
     try:
         from scipy.stats import mannwhitneyu
 
-        stat2, p_value_vs_control = mannwhitneyu(
-            s3_rates, control_rates, alternative="greater"
-        )
+        stat2, p_value_vs_control = mannwhitneyu(s3_rates, control_rates, alternative="greater")
         p_value_vs_control = float(p_value_vs_control)
     except Exception:
         pass
@@ -345,22 +338,11 @@ def print_report(trials: list[dict], stats: dict) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Tier 3 scale validation — 20+ seed organic learning"
-    )
-    parser.add_argument(
-        "--seeds", type=int, default=20,
-        help="Number of independent seeds to run (default: 20)"
-    )
-    parser.add_argument(
-        "--resume-dir", type=str, default=None,
-        help="Resume from a partial run directory"
-    )
+    parser = argparse.ArgumentParser(description="Tier 3 scale validation — 20+ seed organic learning")
+    parser.add_argument("--seeds", type=int, default=20, help="Number of independent seeds to run (default: 20)")
+    parser.add_argument("--resume-dir", type=str, default=None, help="Resume from a partial run directory")
     parser.add_argument("--json", action="store_true", help="JSON output")
-    parser.add_argument(
-        "--model", type=str, default=None,
-        help="Model override (default: peer config model)"
-    )
+    parser.add_argument("--model", type=str, default=None, help="Model override (default: peer config model)")
     args = parser.parse_args()
 
     # Set up base directory
@@ -404,10 +386,7 @@ def main():
             new_done = done - len(completed)
             per_trial = elapsed / new_done
             remaining = (args.seeds - done) * per_trial
-            print(
-                f"\n  Progress: {done}/{args.seeds} seeds, "
-                f"~{remaining / 60:.0f} min remaining"
-            )
+            print(f"\n  Progress: {done}/{args.seeds} seeds, ~{remaining / 60:.0f} min remaining")
 
     # Sort by trial_id for consistent output
     all_trials.sort(key=lambda t: t["trial_id"])

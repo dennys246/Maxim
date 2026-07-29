@@ -828,9 +828,7 @@ def main() -> int:
         )
     print(f"[learning] greedy turned-toward rate: first-10 trials {g1} -> last-10 trials {g2}")
     resid_all = round(sum(greedy_residuals) / len(greedy_residuals), 4) if greedy_residuals else None
-    resid_last = (
-        round(sum(greedy_residuals[-10:]) / len(greedy_residuals[-10:]), 4) if greedy_residuals else None
-    )
+    resid_last = round(sum(greedy_residuals[-10:]) / len(greedy_residuals[-10:]), 4) if greedy_residuals else None
     print(
         f"[S4 metric] greedy residual |az_after| (readout={args.readout}): "
         f"overall {resid_all} -> settled last-10 {resid_last}   (lower = better centering)"

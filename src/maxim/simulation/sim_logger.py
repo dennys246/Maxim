@@ -346,7 +346,15 @@ def _emit(text: str, color_key: str | None = None) -> None:
 
 
 def display_scene(text: str) -> None:
-    """Show scene/percept text (CLEAN tier)."""
+    """Show scene/percept text (CLEAN tier) AND put it on the record stream.
+
+    The record is what reaches the JSONL trail and the console ``/ws`` stream
+    as ``kind="scene"``. Without it, campaign prose reached a web client only
+    as the 200-char, BIO-tier ``PERCEPT`` summary — i.e. the narrative itself,
+    the thing an Adventure viewer is actually there to read, never arrived.
+    ``_terminal=False`` because this function IS the terminal renderer.
+    """
+    sim_log("SCENE", text, {"text": text}, _terminal=False)
     if _display_tier >= DisplayTier.CLEAN:
         _emit(text, "scene")
 
@@ -375,7 +383,8 @@ def display_entity_state(name: str, sensors: dict[str, Any]) -> None:
 
 
 def display_turn(n: int) -> None:
-    """Show turn marker (CLEAN tier)."""
+    """Show turn marker (CLEAN tier) AND put it on the record stream."""
+    sim_log("TURN", f"Turn {n}", {"turn": n}, _terminal=False)
     if _display_tier >= DisplayTier.CLEAN:
         display = get_active_display()
         if display is not None:
@@ -385,7 +394,9 @@ def display_turn(n: int) -> None:
 
 
 def display_summary(lines: list[str]) -> None:
-    """Show final summary (CLEAN tier)."""
+    """Show final summary (CLEAN tier) AND put it on the record stream."""
+    text = "\n".join(str(ln) for ln in lines)
+    sim_log("SUMMARY", text, {"text": text, "lines": list(lines)}, _terminal=False)
     if _display_tier >= DisplayTier.CLEAN:
         for line in lines:
             _emit(line, "summary")
@@ -895,6 +906,7 @@ def sim_log(
     *,
     agent_id: str | None = None,
     _force_debug: bool = False,
+    _terminal: bool = True,
 ) -> None:
     """Log a simulation event with subsystem label and timestamp.
 
@@ -1010,6 +1022,14 @@ def sim_log(
             },
         },
     )
+
+    # `_terminal=False`: record ONLY (sinks + JSONL + bridge, already done
+    # above) and skip terminal rendering. Used by the display_* helpers, which
+    # are themselves the terminal renderer — letting sim_log print too would
+    # duplicate every scene/turn/summary line, which is exactly the bug that
+    # made ConversationalSource log each percept twice.
+    if not _terminal:
+        return
 
     # Display-tier gate. Each subsystem declares its minimum visible tier via
     # _SUBSYSTEM_TIERS (unknown subsystems default to BIO). _force_debug

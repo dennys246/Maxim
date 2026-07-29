@@ -514,3 +514,55 @@ class TestRunLifecycleEvents:
         # Dataclass defaults are "" — the wire must carry None, not "".
         assert ended["sim_session_id"] is None
         assert ended["report_path"] is None
+
+
+class TestNarrativeReachesTheStream:
+    """Campaign PROSE — the thing an Adventure viewer is there to read.
+
+    display_scene/turn/summary were terminal-only: they called _emit directly
+    and produced no record, so a web client saw the narrative only as the
+    200-char BIO-tier PERCEPT summary. They now also emit CLEAN-tier records.
+    """
+
+    def test_scene_emits_a_clean_tier_record_with_full_text(self, sim_logging):
+        from maxim.simulation.sim_logger import display_scene, subsystem_wire_tier
+
+        prose = "The cavern narrows. " * 40  # well past the 200-char percept cap
+        display_scene(prose)
+        recs = [r for r in get_sim_records() if r["subsystem"] == "SCENE"]
+        assert len(recs) == 1
+        assert recs[0]["data"]["text"] == prose, "prose must not be truncated on the record"
+        assert subsystem_wire_tier("SCENE") == "clean"
+
+    def test_turn_and_summary_emit_records(self, sim_logging):
+        from maxim.simulation.sim_logger import display_summary, display_turn, subsystem_wire_tier
+
+        display_turn(7)
+        display_summary(["Score: 3", "Done."])
+        turns = [r for r in get_sim_records() if r["subsystem"] == "TURN"]
+        summaries = [r for r in get_sim_records() if r["subsystem"] == "SUMMARY"]
+        assert turns[-1]["data"]["turn"] == 7
+        assert summaries[-1]["data"]["lines"] == ["Score: 3", "Done."]
+        assert subsystem_wire_tier("TURN") == "clean"
+        assert subsystem_wire_tier("SUMMARY") == "clean"
+
+    def test_narrative_reaches_a_registered_sink(self, sim_logging):
+        # The /ws bridge is a sink — this is the actual delivery path.
+        from maxim.simulation.sim_logger import display_scene
+
+        seen: list[dict] = []
+        register_sim_sink(seen.append)
+        try:
+            display_scene("A door creaks open.")
+        finally:
+            unregister_sim_sink(seen.append)
+        assert [r["data"]["text"] for r in seen if r["subsystem"] == "SCENE"] == ["A door creaks open."]
+
+    def test_terminal_is_not_double_printed(self, sim_logging, capsys):
+        # display_* IS the terminal renderer; sim_log must not print too.
+        # This is the same duplication class as the percept double-log.
+        from maxim.simulation.sim_logger import display_scene
+
+        capsys.readouterr()
+        display_scene("Only once please.")
+        assert capsys.readouterr().out.count("Only once please.") == 1

@@ -111,9 +111,13 @@ Three rules make it work: **(1) provenance-filter** — show real memories; in-f
 
 **Front-gate:** ride existing infra? **Extras exist but the aarch64 lean combo is unverified.**
 
-**Work:** confirm `pymaxim[reachy, <one llm extra>, semantic, audio, tts]` installs on aarch64 with **no** torch/CUDA/llama-cpp pulled; verify faster-whisper / ctranslate2 / piper wheels exist for ARM; if a lean combo is awkward, add a curated extra. A one-click store install must not time out or fill the SD card.
+**Work (SHIPPED):** the originally-named combo was **self-contradictory** — `semantic` declares `torch>=2.1`, so `[reachy, <llm extra>, semantic, audio, tts]` could never meet its own "no torch" bar (and measured on aarch64 `semantic` pulls torch + triton + **nvidia-\* CUDA shards**). Resolved per FIT: the encoder goes on the **leader**, the peer takes the documented bag-of-words fallback. Shipped a curated **`pi`** extra (`reachy,console,llm-anthropic,tts`) — no LLM extra is needed for the mesh branch at all, since `_MaximPeerBackend` is core-only. `console` was also added explicitly to `all` (it worked there only by accident of looser transitive floors). Measured baseline: **81 packages, zero heavy backends** on `aarch64-manylinux_2_36`/cp311.
 
-**Regression guard:** an aarch64 install smoke (CI matrix or documented manual) asserting the heavy backends are absent.
+**The blocker PKG existed to find:** `reachy-mini` needs **PyGObject** (+ pycairo), which publish **no wheels on any platform** — a Pi compiles them and needs `apt install python3-dev gcc pkg-config libgirepository1.0-dev libcairo2-dev` FIRST. Not expressible in pip metadata; documented in [pi_install.md](../embodiment/reachy_mini/pi_install.md) and named by the checker when resolution fails.
+
+**Regression guard:** two CI jobs, because there are two distinct risks and neither covers the other — `aarch64-resolve` (every PR, seconds, x86 runner: cross-resolves `[pi]` and asserts no torch/CUDA) and `aarch64-install` (push/dispatch, free native `ubuntu-24.04-arm` + `debian:bookworm-slim`: the only thing that can catch a missing apt build-dep). Plus [scripts/check_aarch64_install.py](../../scripts/check_aarch64_install.py) + [tests/unit/test_pkg_aarch64_guard.py](../../tests/unit/test_pkg_aarch64_guard.py) (30 tests).
+
+**Methodology invariant (earned the hard way, both silent):** the resolve check uses **uv, not `pip --platform`** — pip evaluates environment markers against the HOST, so it reported *zero* `nvidia-*` for an x86_64 target from an arm64 host, i.e. it certifies "no CUDA" for a target where CUDA installs ([pypa/pip#6117](https://github.com/pypa/pip/issues/6117)). Absence of uv is a hard error, never a silent degrade to a wrong answer. Separately, `--platform` is EXACT-match: requesting only `manylinux2014_aarch64` rejects a wheel tagged solely `manylinux_2_28` and reports an installable package as missing.
 
 ---
 

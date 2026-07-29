@@ -183,14 +183,11 @@ class ConversationalSource:
         if self._transcript_path:
             self._save_transcript()
 
-        # Simulation verbosity
-        try:
-            from maxim.simulation.sim_logger import sim_percept
-
-            summary = yaml_record.get("cli_input") or yaml_record.get("content") or "signal"
-            sim_percept(percept.source, str(summary)[:200], step=yaml_record["at"])
-        except Exception:
-            pass
+        # NOTE: no sim_percept() here. Every percept enqueued on this source is
+        # built by percept_factory (make_text_percept / make_intero_percept),
+        # which logs at construction — so logging again here emitted each
+        # percept TWICE on the wire and in the terminal. The factory is the
+        # single logging layer; see its module docstring.
 
     def next_percept(self) -> Percept | None:
         """Return next queued percept (called by agent loop thread)."""

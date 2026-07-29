@@ -56,6 +56,12 @@ from maxim.console.schemas import (
     SetupResult,
     SubscribeFrame,
 )
+from maxim.console.ui_bundle import (
+    CONSOLE_CONTRACT_VERSION,
+    check_ui_contract,
+    packaged_ui_dist,
+    resolve_ui_dist,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -843,7 +849,9 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Maxim Console",
-        version="0.1.0",
+        # Single source of truth with the UI contract check — a bundle's
+        # maxim-ui.json::contract_version is compared against this exact value.
+        version=CONSOLE_CONTRACT_VERSION,
         summary="Localhost Console backend + the OpenAPI facade contract for maxim-pulse.",
         lifespan=_lifespan,
     )
@@ -934,12 +942,23 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
         @app.get("/", response_class=HTMLResponse, include_in_schema=False)
         def _no_ui() -> str:
             where = f" (looked in {ui_dist})" if ui_dist else ""
+            packaged = packaged_ui_dist()
+            why = (
+                ""
+                if packaged is not None
+                else (
+                    "<p>This build ships no vendored bundle — that is normal for a "
+                    "source checkout (the release wheel includes one).</p>"
+                )
+            )
             return (
                 "<h1>Maxim Console API is running</h1>"
                 f"<p>No Console UI bundle installed{where}. The API + OpenAPI schema are live at "
                 "<a href='/docs'>/docs</a> and <a href='/openapi.json'>/openapi.json</a>.</p>"
-                "<p>Point at a built bundle with <code>maxim serve --ui-dist &lt;path&gt;</code> "
-                "or <code>config.json::console.ui_dist</code>.</p>"
+                f"{why}"
+                "<p>Point at a built bundle with <code>maxim serve --ui-dist &lt;path&gt;</code>, "
+                "persist it with <code>maxim config set console.ui_dist &lt;path&gt;</code>, "
+                "or vendor one in with <code>python scripts/vendor_console_ui.py &lt;path&gt;</code>.</p>"
             )
 
     return app
@@ -977,14 +996,19 @@ def run_serve(argv: list[str]) -> int:
         return 0
 
     port = int(_resolve("console.port", args.port))
-    ui_dist_val = _resolve("console.ui_dist", args.ui_dist)
-    ui_dist = Path(ui_dist_val) if ui_dist_val else None
+    # CLI > config > PACKAGED bundle. `_resolve` already applies CLI > env >
+    # config; the packaged vendored bundle is the final fallback so a plain
+    # `pip install pymaxim[console] && maxim serve` just works.
+    ui_dist = resolve_ui_dist(args.ui_dist, _resolve("console.ui_dist", args.ui_dist))
+    check_ui_contract(ui_dist)
 
     app = build_app(ui_dist)
 
     import uvicorn
 
     # 127.0.0.1 ONLY — the console holds keys + can run/configure Maxim.
+    if ui_dist is not None:
+        print(f"maxim serve → serving Console UI from {ui_dist}")
     print(f"maxim serve → http://127.0.0.1:{port}  (API docs: /docs · schema: /openapi.json)")
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
     return 0

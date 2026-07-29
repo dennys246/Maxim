@@ -20,14 +20,12 @@ import sys
 
 def main():
     parser = argparse.ArgumentParser(description="Reachy Mini -> RTSP bridge")
-    parser.add_argument("--url", default="rtsp://localhost:8554/reachy",
-                        help="RTSP publish URL (default: rtsp://localhost:8554/reachy)")
-    parser.add_argument("--fps", type=int, default=20,
-                        help="Target frame rate (default: 20)")
-    parser.add_argument("--robot-name", default="reachy_mini",
-                        help="Reachy robot name (default: reachy_mini)")
-    parser.add_argument("--sim", action="store_true",
-                        help="Use simulation mode (no real robot)")
+    parser.add_argument(
+        "--url", default="rtsp://localhost:8554/reachy", help="RTSP publish URL (default: rtsp://localhost:8554/reachy)"
+    )
+    parser.add_argument("--fps", type=int, default=20, help="Target frame rate (default: 20)")
+    parser.add_argument("--robot-name", default="reachy_mini", help="Reachy robot name (default: reachy_mini)")
+    parser.add_argument("--sim", action="store_true", help="Use simulation mode (no real robot)")
     args = parser.parse_args()
 
     logging.basicConfig(
