@@ -142,6 +142,26 @@ maxim --sim cradle_pref_a --aut-mode substrate-primary \
   --embodiment bodies/infant_humanoid_chilled --interactive false --sim-max-turns 40
 ```
 
+## ⚠️ The runs are 30 turns, not 40 — and that is CORRECT for a replication
+
+`--sim-max-turns 40` is **dead input** on this path. The generative loop breaks on
+`narrator.is_done`, which is driven purely by the arc's own per-phase `turns_max`;
+`cradle_pref_a` / `cradle_pref_b` budget 6 + 12 + 12 = **30**. The flag is a ceiling
+only, and 30 < 40, so it never binds. Every run logs the truth at startup:
+`arc=cradle_pref_a (builtin), turns=20-30`.
+
+**Do NOT widen the phase tuples to "fix" this before re-running.** The frozen Exp 42
+used these same arcs, so it was *also* a 30-turn run. 30 is the exact replication
+condition; changing it would break comparability with the very result being checked.
+The "40 turns" in Exp 42's own writeup is a documentation error (the flag was passed
+and assumed effective), not an unmet condition — corrected there too.
+
+Separately: **`Finish: cancel` is a cosmetic mislabel** and carries zero information.
+Generative campaigns run inline and then unconditionally `stop_event.set()`, and
+`bridge.finish_context` is never populated on that path, so the reason falls through
+to the `stop_event` branch. *Every* generative campaign reports `cancel` regardless of
+how it ended. It is not evidence of a cancel, crash, or timeout.
+
 ## Pass criteria (frozen — copied, not re-derived)
 
 | # | Criterion | Original result |
@@ -150,6 +170,7 @@ maxim --sim cradle_pref_a --aut-mode substrate-primary \
 | C1 | identity-flip: safe identity swaps with the arm | +0.959 PASS |
 | C2 | harm net < safe net (learning signs) | PASS |
 | K | >= 10 exploitation choices/seed, 0 floored | 10/10 valid both arms |
+| turns | **30** (arc phase budget; the `40` in Exp 42's writeup never took effect) | 30 |
 
 **CLOSE the item iff** both arms still `GRADUATE` (exit 0) on the treatment run
 **and** the gating-OFF ablation still graduates. `safe_pref` need not match to

@@ -73,7 +73,7 @@ The triage **PASSED** — but only after three substrate-primary mechanism gaps 
 
 ## 4. Phase 1 — pre-registered metric (FROZEN on authorization after §3)
 
-**Design:** counterbalanced A/B, substrate-primary, exploration ON in both, cold body, `--sim-max-turns ~40` (validation spike: K=7 at 24 turns → ~40 for K≥10; T finalized at triage). ≥ 10 seeds/arm; `cost=$0`.
+**Design:** counterbalanced A/B, substrate-primary, exploration ON in both, cold body, `--sim-max-turns ~40` (**CORRECTION 2026-07-28: the runs were 30 turns, not 40.** `--sim-max-turns` is a ceiling only; the generative loop ends on `narrator.is_done`, driven by the arc's per-phase `turns_max` = 6+12+12 = 30, so the flag never bound. The frozen result IS a 30-turn result — the K≥10 validity gate was cleared regardless. Replications must keep 30 for comparability; see [42b](42b_drive_pain_fold_revalidation.md).) (validation spike: K=7 at 24 turns → ~40 for K≥10; T finalized at triage). ≥ 10 seeds/arm; `cost=$0`.
 
 **Exploitation phase (the operationalization).** Per run, from `actions.jsonl`, find the tick after which **both** warmth sources have each been selected via a contact affordance (`warm_self` or `touch`) at least once (the explore-first discovery point). All contact actions (`warm_self` + `touch` — identical `self_effect`, aggregated for sample density per the spike) on either source *after* that point are the **exploitation phase** — choices driven by learned scores, not the forced first trial.
 
