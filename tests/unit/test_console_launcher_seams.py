@@ -13,6 +13,8 @@ Covers the four items the pulse repo was waiting on besides talk mode:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from maxim.simulation.sim_logger import (
@@ -185,6 +187,35 @@ class TestAdventurePremise:
     def test_traversal_attempt_is_refused(self, client):
         r = client.post("/api/run", json={"mode": "adventure", "campaign": "../../../../etc/passwd"})
         assert r.status_code == 403
+
+    @pytest.mark.parametrize("form", ["absolute", "tilde", "cwd_relative"])
+    def test_hand_typed_path_forms_still_resolve(self, form, monkeypatch, tmp_path):
+        # The launcher is a free-text path box TODAY (the dropdown lands with
+        # the campaigns seam on the pulse side), so a hand-typed "~/..." or a
+        # CWD-relative path must keep working — otherwise the discovery-select
+        # rewrite is a silent regression for the surface that exists now.
+        import os
+
+        import maxim.console.server as srv
+
+        campaigns = tmp_path / "campaigns"
+        campaigns.mkdir()
+        (campaigns / "demo_v1.yaml").write_text("campaign:\n  name: demo\n")
+        monkeypatch.setattr(srv, "campaign_search_roots", lambda: [(campaigns, "user")])
+
+        target = str((campaigns / "demo_v1.yaml").resolve())
+        if form == "absolute":
+            requested = target
+        elif form == "tilde":
+            home = str(Path.home())
+            if not target.startswith(home):
+                pytest.skip("tmp_path is not under $HOME on this platform")
+            requested = "~" + target[len(home) :]
+        else:
+            monkeypatch.chdir(tmp_path)
+            requested = os.path.join("campaigns", "demo_v1.yaml")
+
+        assert srv._select_discovered_campaign(requested) == Path(target)
 
     def test_a_listed_campaign_resolves_by_path_name_or_stem(self):
         # The picker hands back `path`; humans/CLI may use the display name or

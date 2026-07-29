@@ -373,9 +373,22 @@ def _select_discovered_campaign(requested: str) -> Path | None:
     """
     if not requested:
         return None
+    # Normalize the request to a comparable STRING (expanduser + abspath are
+    # pure string/env operations — the result is only ever compared, never
+    # opened or used as a path). This keeps a hand-typed "~/..." or a
+    # CWD-relative path working, which the launcher's free-text box still
+    # emits today, without letting request data reach a path expression.
+    import os
+
+    try:
+        normalized = os.path.abspath(os.path.expanduser(requested))
+    except (OSError, ValueError):
+        normalized = requested
+
     listing = get_campaigns()
     for info in listing.campaigns:
-        if requested == info.path or requested == info.name or requested == Path(info.path).stem:
+        stem = Path(info.path).stem
+        if requested in (info.path, info.name, stem) or normalized == info.path:
             return Path(info.path)
     return None
 
