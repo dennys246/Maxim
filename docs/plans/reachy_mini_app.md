@@ -179,7 +179,7 @@ The load-bearing detail is **#4**: the dashboard's stop button becomes the sessi
 | **"What Maxim remembers" view** | **New (highest value)** | read-only surface over consolidated memory — makes the cross-session thesis visible. Data source TBD (open q #5) |
 | **Smoke test + status chip + wake/rest** | **New (small each)** | reuse `maxim doctor`, `_peer_test`, `ProcessingState` |
 | Connection test | **Reuse** | `_peer_test` (doctor) |
-| **ARM/Pi packaging** | **New** | lean install: no llama-cpp, no CUDA; `pymaxim[reachy,llm-anthropic,semantic]` sized for aarch64 |
+| **ARM/Pi packaging** | **New** | lean install: no llama-cpp, no CUDA, **no torch**; `pymaxim[pi]` (= `reachy,console,llm-anthropic,tts`) sized for aarch64. NOTE: `semantic` is deliberately OUT — it declares `torch>=2.1`, so the earlier `[reachy,llm-anthropic,semantic]` combo did NOT meet the no-torch bar. |
 | **Headless soak stability** | **New** | hours unattended, no TTY, Wi-Fi blips, cloud timeouts → degrade gracefully |
 | Privacy posture | **New (doc)** | listing must state what leaves the robot |
 
@@ -191,7 +191,7 @@ Estimate: a scrappy MVP is **~1–2 focused weeks** *if P0 passes* — most of i
 
 **P0 — Substrate fits the Pi (HARD gate, do first).** Measure real RSS of a Maxim peer on the wireless Reachy's Raspberry Pi with the large tier **remote** (mesh), substrate **local**: sentence-transformers + EC/NAc/hippocampus (+ spaCy iff concept-decomposition on), sharing RAM with the daemon + GStreamer. If it fits → the private mesh story is real. If it doesn't → fallback is "app is a thin sensor/actuator client, cognition on the owner's box," a worse install story that must be decided consciously. *This is the first thing to run; everything else assumes it passes.*
 
-**P1 — Lean ARM install.** Confirm `pip install pymaxim[reachy,llm-anthropic,semantic]` on aarch64 pulls no torch/CUDA/llama-cpp and doesn't time out / fill the SD card in a one-click store install.
+**P1 — Lean ARM install.** Confirm `pip install pymaxim[pi]` on aarch64 pulls no torch/CUDA/llama-cpp and doesn't time out / fill the SD card in a one-click store install. (The original wording named `[reachy,llm-anthropic,semantic]`, which was self-contradictory: `semantic` declares `torch>=2.1`. The encoder goes on the LEADER per FIT; the peer takes the documented bag-of-words fallback.)
 
 **P2 — Headless soak.** Run the bootstrap for hours with no terminal; inject a Wi-Fi drop and a cloud timeout; confirm the typed-error paths degrade without wedging the loop or corrupting session state.
 

@@ -1,0 +1,2 @@
+{"experiment": "exp42", "arm": "cradle_pref_a", "arc": "cradle_pref_a", "seed": 42, "git_hash": "b0526645", "mock": false, "n_actions": 430, "n_contact": 100, "n_exploit": 97, "safe_pref": 0.6082474226804123, "id_pref_a": 0.3917525773195876, "discovery_pos": 2, "harm_net": -0.4679, "safe_net": 0.005}
+{"experiment": "exp42", "arm": "cradle_pref_b", "arc": "cradle_pref_b", "seed": 42, "git_hash": "b0526645", "mock": false, "n_actions": 299, "n_contact": 85, "n_exploit": 82, "safe_pref": 0.5, "id_pref_a": 0.5, "discovery_pos": 2, "harm_net": -0.4791, "safe_net": -0.4791}

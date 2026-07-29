@@ -1311,6 +1311,14 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
     )
     data_section = _parse_typed_section(data.get("data"), "data", DataConfigSection, tolerate_unknown=is_future_minor)
     sim = _parse_typed_section(data.get("sim"), "sim", SimConfigSection, tolerate_unknown=is_future_minor)
+    # `console` was MISSING here: the section is declared on MaximConfig (so
+    # `console` passed the unknown-top-level-key check) and writable via
+    # `maxim config set`, but was silently dropped at parse — leaving
+    # console.port and console.ui_dist permanently at their defaults. The
+    # documented config path for the Console UI bundle was dead, and the
+    # packaged-bundle fallback MASKED it (a bare `maxim serve` still served a
+    # UI, just never the configured one).
+    console = _parse_typed_section(data.get("console"), "console", ConsoleConfigSection, tolerate_unknown=is_future_minor)
 
     return MaximConfig(
         _format_version=version,
@@ -1322,6 +1330,7 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
         auto_spawn=auto_spawn,
         data=data_section,
         sim=sim,
+        console=console,
     )
 
 

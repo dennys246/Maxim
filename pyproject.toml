@@ -72,8 +72,13 @@ audio = [
     "av>=14.0.0",
 ]
 # Reachy Mini robot hardware
+# NOTE: reachy-mini declares NO `gstreamer` extra (verified against PyPI metadata:
+# its extras are all/examples/mujoco/nn-kinematics/opencv/placo-kinematics/rerun/
+# wireless-version). The old `[gstreamer]` marker was a silent no-op — pip warns
+# and ignores an unknown extra. On Linux the SDK uses system GStreamer via
+# PyGObject (`gstreamer-bundle` is gated `sys_platform != "linux"`).
 reachy = [
-    "reachy-mini[gstreamer]>=1.8.3,<2.0",
+    "reachy-mini>=1.8.3,<2.0",
 ]
 # Web search
 search = [
@@ -124,8 +129,10 @@ llm-openai = [
     "openai>=1.0.0",
     "tiktoken>=0.7.0",
 ]
+# Floor is 1.3.0, NOT 1.2.0: 1.2.0 ships no aarch64 wheel (and needs
+# piper-phonemize); 1.3.0+ has a cp39-abi3 aarch64 wheel with espeak-ng bundled.
 tts = [
-    "piper-tts>=1.2.0",
+    "piper-tts>=1.3.0",
 ]
 # YOLOv8 vision backend (AGPL-3.0 — NOT included in core to keep Apache-2.0 clean)
 # Bounded to 8.x so security patches flow through; pin major to catch breaking
@@ -140,7 +147,13 @@ comms = [
     "fastapi>=0.100.0",
     "uvicorn>=0.24.0",
 ]
-# Phase 4: Neural semantic similarity (requires torch)
+# Phase 4: Neural semantic similarity (requires torch).
+# ⚠️ NOT for aarch64/Pi. torch >= 2.11 DROPPED the `platform_machine == "x86_64"`
+# guard on its CUDA deps, so on aarch64 it now pulls cuda-toolkit + nvidia-* +
+# triton (~2.4GB of libraries a Pi can never execute) — measured. Use the `pi`
+# extra there and place the encoder on the leader; if you genuinely need torch
+# on ARM, install it from the CPU index first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
 semantic = [
     "sentence-transformers>=2.2.0",
     "torch>=2.1",
@@ -155,10 +168,39 @@ database = [
     "psycopg[binary]>=3.1",
     "pgvector>=0.3",
 ]
+# Lean aarch64 / Raspberry Pi PEER install (the PKG seam).
+#
+# The Pi is a sensor/actuator client: LLM inference is REMOTE (mesh → the
+# owner's leader) through `_MaximPeerBackend`, which uses only core deps
+# (httpx via utils/http.py) — so NO llm-* extra is required for the mesh
+# branch. `llm-anthropic` is included because the setup wizard also offers a
+# CLOUD branch, and it is a small pure-Python client.
+#
+# DELIBERATELY EXCLUDED:
+#   * semantic / llm-torch — torch is a ~450MB runtime floor on the Pi (FIT,
+#     docs/embodiment/reachy_mini/fit_runbook.md). The encoder belongs on the
+#     leader (perception_pipeline_placement.md); without it the substrate
+#     degrades to the documented bag-of-words fallback rather than failing.
+#   * llm-llama / llm-server — no local inference on the peer.
+#   * training (tensorflow), yolo (AGPL), database, comms, search, temporal.
+#
+# `console` is listed explicitly rather than relying on reachy-mini pulling
+# fastapi/uvicorn transitively — that is an accident, not a contract.
+#
+# SYSTEM PREREQUISITE (not expressible in pip metadata): on Linux,
+# `reachy-mini` requires PyGObject, which is SDIST-ONLY on PyPI, so pip
+# compiles it. A bare Pi needs the build inputs first:
+#   sudo apt install python3-gi libgirepository1.0-dev libcairo2-dev pkg-config
+# See docs/embodiment/reachy_mini/pi_install.md.
+pi = [
+    "pymaxim[reachy,console,llm-anthropic,tts]",
+]
 # Everything except AGPL-licensed yolo, heavy llm-torch, and semantic (requires torch).
 # Install those individually if needed.
+# `console` is listed EXPLICITLY: it previously worked under `all` only because
+# comms/reachy dragged fastapi+uvicorn in at looser floors than console declares.
 all = [
-    "pymaxim[llm-llama,llm-server,llm-anthropic,llm-openai,vision,audio,reachy,comms,search,temporal,training,tts,database]",
+    "pymaxim[llm-llama,llm-server,llm-anthropic,llm-openai,vision,audio,reachy,comms,search,temporal,training,tts,database,console]",
 ]
 # Test dependencies
 test = [

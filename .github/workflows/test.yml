@@ -618,3 +618,57 @@ jobs:
           # focused sweep, not as a side effect of unrelated PRs.
           git fetch origin main --depth=1 || true
           python3 scripts/lint_multi_agent_marker.py
+
+  # ── PKG seam — the lean aarch64 (Raspberry Pi) install ────────────────────
+  # Two jobs because there are two DISTINCT risks and neither covers the other:
+  #   1. a dependency quietly drags in torch/CUDA  → resolution-level, cheap,
+  #      every PR;
+  #   2. it doesn't actually install on a Pi       → needs a real aarch64 +
+  #      glibc-2.36 + CPython-3.11 userland (only this can catch a missing apt
+  #      build-dep, which pygobject/pycairo require since they ship no wheels).
+  aarch64-resolve:
+    name: aarch64 resolve (lean Pi extra, no heavy backends)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # uv, NOT pip: `pip --platform` evaluates environment markers against the
+      # HOST, so it reports ZERO nvidia-* for a target where CUDA would install
+      # (pypa/pip#6117). That is precisely the assertion this job makes, so the
+      # pip answer is unsound. uv resolves markers against the TARGET.
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Resolve pymaxim[pi] for linux aarch64 / cp311 and assert no torch/CUDA
+        run: python3 scripts/check_aarch64_install.py --print-resolved
+
+  aarch64-install:
+    name: aarch64 real install smoke (Debian bookworm)
+    # Free + GA for public repos since 2025-08-07. Not on every PR: the
+    # pygobject/pycairo source builds cost minutes, and the fast resolve job
+    # above already guards the common regression.
+    runs-on: ubuntu-24.04-arm
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    container:
+      image: debian:bookworm-slim   # glibc 2.36 + CPython 3.11 == the Pi 5 target
+    steps:
+      - uses: actions/checkout@v4
+      - name: System build deps (pygobject/pycairo ship no wheels on any platform)
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            python3 python3-venv python3-dev python3-pip \
+            gcc pkg-config libgirepository1.0-dev libcairo2-dev ca-certificates
+          python3 --version
+      - name: Install pymaxim[pi]
+        run: |
+          python3 -m venv /venv
+          /venv/bin/pip install --upgrade pip
+          /venv/bin/pip install ".[pi]"
+      - name: Assert no heavy backends in the REAL install
+        run: |
+          /venv/bin/pip list --format=json > installed.json
+          python3 scripts/check_aarch64_install.py --from-json installed.json
+      - name: Import smoke + install size
+        run: |
+          /venv/bin/python -c "import maxim; print('maxim', maxim.__version__)"
+          du -sh /venv
