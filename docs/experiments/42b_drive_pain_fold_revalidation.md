@@ -1,24 +1,18 @@
 # Exp 42b — re-validation after the channel-split drive-pain fold
 
-**Status:** ⚠️ **RUN INVALID — RESULTS RETRACTED 2026-07-28.** The 40 sub-sims did
-NOT execute the fold. The `maxim` console script resolved `import maxim` to a stale
-editable install (`__editable__.maxim-0.1.0.pth`) pointing at the **main checkout**
-(then on `feat/console-rest-mode`, which contains no `drive_breach_severity`), and the
-shell that launched the run lost its `PYTHONPATH=src` to a short-circuited `&&`:
+**Status:** ✅ **FIRED + VERIFIED 2026-07-29 — GRADUATE #6 holds post-fold.** 40 sub-sims
+(10 seeds/arm × 2 arms × 2 configurations), 0 failed, 0 floored, on code whose identity is
+recorded in every run record (`executed_git_hash` = `7fcae756`, gate arm verified via
+`env_drive_gate_enabled` 1/0). Closes the Phase-2 behavioural item for
+[transition_based_drive_pain.md](../plans/deferred/transition_based_drive_pain.md)
+(PR #435).
 
-```
-$ source .venv/bin/activate && export PYTHONPATH=src
-source: no such file or directory: .venv/bin/activate     # &&, so the export never ran
-```
-
-The tell was a *different* symptom: a post-fix session wrote `aut_hippocampus/nac/ec/atl`
-but no `aut_scn.json` — impossible on code that has the `scn=` parameter. The numbers
-below therefore describe **pre-fold main**, not this branch. They are preserved for the
-re-baseline they do provide (see Interpretation) but **they do not validate the fold**.
-
-**The Phase-2 behavioural item is OPEN again.** Re-run per the Commands section, with the
-interpreter assertion added below. Everything downstream that cited this run — the plan
-header and the CLAUDE.md invariant — has been reverted to "outstanding".
+> A first attempt on 2026-07-28 was **retracted as invalid** — the sub-sims imported a
+> different checkout (stale editable `.pth` + a `PYTHONPATH` export lost to a
+> short-circuited `&&`). Its numbers survive as the pre-fold **main baseline**
+> (`42b_PREFOLD_main_baseline*.jsonl`), which turned out to be the right comparison
+> point. The provenance guard added in response is what makes this run auditable; see
+> the Interpretation and the provenance section below.
 
 **This is a replication, not a new experiment.** The design, metrics, thresholds
 (`safe_pref >= 0.66`, `K = 10`), verdict matrix and arcs are those frozen in
@@ -222,15 +216,13 @@ condition" result reproducing itself.)
 
 <!-- Analyzer appends "## Results" sections below this line -->
 
-## Results — treatment (post-fold)
+## Results — treatment (post-fold, gating ON)
 
-**Verdict: GRADUATE #6 — substrate drives adaptive, feedback-tracked behavior**  (exit 0)
+**Verdict: GRADUATE #6** (exit 0) · `executed_git_hash` = `7fcae756` = fold branch ·
+`env_drive_gate_enabled` = `1`
 
-- `substrate_signal` (H1, both arms ≥ 0.66): **True**
-- H1[cradle_pref_a] safe_pref = 0.996 → PASS
-- H1[cradle_pref_b] safe_pref = 1.000 → PASS
-- C1 (identity flip id_pref_a(b)−id_pref_a(a) ≥ 0.33): +0.996 → PASS
-- C2 (per-source learning, harm net < safe net): PASS
+- H1 both arms ≥ 0.66: **True** — a 0.996 PASS · b 1.000 PASS
+- C1 identity flip +0.996 PASS · C2 (harm net < safe net) PASS · 10/10 valid, 0 floored
 
 | arm | safe id | valid/total | floored | safe_pref | SD | id_pref_a | harm net | safe net |
 |---|---|---|---|---|---|---|---|---|
@@ -239,8 +231,9 @@ condition" result reproducing itself.)
 
 ## Results — gating-OFF ablation (post-fold)
 
-**Verdict: GRADUATE #6** (exit 0) — identical summary statistics to the treatment
-run (see the caveat below before reading anything into that).
+**Verdict: GRADUATE #6** (exit 0) · `executed_git_hash` = `7fcae756` ·
+`env_drive_gate_enabled` = **`0`** (toggle verified fired — this is what the retracted
+run could not establish)
 
 | arm | safe id | valid/total | floored | safe_pref | SD | id_pref_a | harm net | safe net |
 |---|---|---|---|---|---|---|---|---|
@@ -249,60 +242,55 @@ run (see the caveat below before reading anything into that).
 
 ## Interpretation
 
-**⚠️ RETRACTED — this run does not speak to the fold.** It executed pre-fold main (see
-Status). What it *is*: a clean 20-seed/arm re-baseline of **main** on current hardware,
-which is genuinely useful as the comparison point the real re-run will be measured
-against. H1, C1, C2 all pass and nothing floored, so the apparatus and thresholds are
-sound — only the code under test was wrong.
+**The fold preserves GRADUATE #6. The Phase-2 behavioural item is CLOSED.**
+40 sub-sims, 0 failed, 0 floored, K cleared by 10–28× (n_exploit 100–284 vs the K=10
+gate). H1/C1/C2 pass in both configurations, on code whose identity is recorded in
+every run record.
 
-**C2 settles the non-trivial reading of `safe_pref`.** `harm_net = −0.25` on every
-seed proves the harmful source *was* contacted and *did* accrue negative learning —
-so `safe_pref ≈ 1.0` means "tried the harmful source during explore-first, learned,
-never returned", not "never encountered it". The consistent `n_contact − n_exploit = 3`
-gap is that explore-first prefix, excluded from the metric by design.
+**The fold is behaviourally neutral on this metric — as designed.** Post-fold
+(0.996 / 1.000) is *identical* to the pre-fold main baseline (0.996 / 1.000, archived
+as `42b_PREFOLD_main_baseline*.jsonl`). That is the predicted result: Exp 42's
+discrimination rides the **direct** `FailureEvent` channel, which the fold deliberately
+left state-based; only the PainBus channel was severity-latched. A difference here
+would have meant the channel split leaked.
 
-**Discrimination is sharper than the frozen run — and the fold is NOT why.** 0.996 /
-1.000 here vs 0.984 / 0.975 originally (git `0d6ca70f`), SD collapsing to 0.000. I
-initially attributed this to the fold quieting channel-2 attribution noise. **That
-inference is falsified**: this run contained no fold. The delta comes from something
-else that landed between `0d6ca70f` and current main, and is currently unexplained.
-A cautionary note for the re-run: the frozen 0.984/0.975 is NOT the right comparison
-point for the fold — **this run is**, because it isolates main-vs-fold with everything
-else held constant. That is the one genuinely valuable thing this invalid run produced.
+**C2 makes `safe_pref ≈ 1.0` non-trivial.** `harm_net = −0.25` on every seed proves the
+harmful source was contacted and accrued negative learning — so this is "tried it during
+explore-first, learned, never returned", not "never encountered it". The consistent
+`n_contact − n_exploit = 3` gap is that explore-first prefix, excluded by design.
 
-**⚠️ The metric is now at its ceiling.** `safe_pref` sits at 0.996–1.000 with SD 0.000
-across 20 seeds. That satisfies H1 (≥ 0.66) comfortably, but it has no headroom left to
-detect *degradation* — a future regression could halve the discrimination and still
-score ~0.99. Any later arm that needs to measure a decrease should use a more sensitive
-statistic (e.g. time-to-first-avoidance, or harm contacts per exploitation window),
-not this one.
+**Retraction of an earlier inference, now settled.** I previously attributed the
+0.984/0.975 → 0.996/1.000 improvement over the frozen run (git `0d6ca70f`) to the fold
+quieting channel-2 attribution noise. **False.** Pre-fold main already scores
+0.996/1.000, so the gain came from something else that landed between `0d6ca70f` and
+current main, and remains unexplained. Having both measurements is what settled it —
+the one durable thing the invalid run produced.
 
-**⚠️ The gating-OFF arm is NOT confirmed to have had gating off.** The two run files
-are genuinely distinct (per-seed `n_exploit` differs: arm A treatment 262–283 vs
-ablation 261–281), so this is not a duplicated file — but:
-- The drive-gate state was **not recorded** in the run JSONL at the time of this run
-  (`ablation_arm` records the Exp 44 body-state arms, not B7 gating), so it cannot be
-  verified retroactively from the data.
-- The behavioural signature the frozen run used as proof that "the toggle demonstrably
-  fired" — a volume difference (treatment arm B spiking to ~106 contacts vs the
-  ablation's tight ~56–64) — is **absent**: both runs here sit at n_exploit ~100–121
-  in arm B.
+**⚠️ Read "identical" as saturation, not as proof of no difference.** `safe_pref` sits
+at 0.996–1.000 with **SD 0.000** across every condition — pre-fold, post-fold,
+gating-ON, gating-OFF. Four conditions collapsing to the same number is what a
+ceilinged metric looks like. It supports "the fold did not BREAK discrimination"
+(the question asked) but is weak evidence for "the fold changed nothing" — this metric
+could not detect a moderate regression. Any future arm measuring *degradation* needs a
+more sensitive statistic (time-to-first-avoidance, harm contacts per exploitation
+window), not this one.
 
-Two readings are consistent with that: (a) the env prefix did not reach the sub-sims and
-the "ablation" is a second treatment run, or (b) it fired but drive-gating no longer
-moves contact volume in this configuration. **This does not affect the fold's
-validation**, which rests on the treatment arm — and B7 was already marked `Dormant`
-by the frozen run, so nothing downstream depends on re-proving it. But the ablation
-row above should be read as *corroborating*, not as an independently verified
-gating-OFF result. Fixed forward: `benchmark_exp42_preference.py::_record` now emits
-`env_drive_gate_enabled`, so future run files are self-describing about which arm they
-are. Re-running the ablation with the current harness would settle it in ~100 minutes.
+**B7 drive-gating: the frozen run's volume signature did NOT reproduce.** The gate
+demonstrably fired (`env_drive_gate_enabled` 1 vs 0, recorded per run), yet treatment
+and ablation are indistinguishable in *both* discrimination and contact volume
+(arm A 264–284, arm B 103–125 in both files). The frozen writeup reported gating moving
+volume — arm B spiking to ~106 under treatment vs a tight ~56–64 under ablation. That
+no longer holds. B7 is already `Dormant` (it did not earn behavioural weight in the
+frozen run either), so nothing downstream depends on it; recorded as observed drift
+from `0d6ca70f`, not investigated here.
+
+**Provenance (the fix for what invalidated the first attempt).** Every record carries
+`harness_git_hash`, `executed_git_hash`, `executed_maxim_file`, `pythonpath` and
+`env_drive_gate_enabled`. Both hashes read `7fcae756` and the gate reads `1`/`0` per
+arm — so which code ran, and under which condition, is auditable from the artifact
+alone rather than from shell history.
 
 **Run conditions.** 10 seeds/arm × 2 counterbalanced arms × 2 configurations,
-substrate-primary (AUT is LLM-free), `smollm-1.7b-instruct` narrator, 40 turns
-requested, `cost=$0`, ~295 s/sub-sim. Executed on the Mac Mini with the leader's
-Qwen server stopped so the singleton guard served smollm on :8100.
-
-**Note on the harness's live output:** it prints `round(safe_pref, 2)`, so a true
-0.996 displays as `1.0` per seed. That is cosmetic — the analyzer's 3-decimal figures
-are authoritative.
+substrate-primary (AUT LLM-free), `smollm-1.7b-instruct` narrator, **30 turns**
+(arc phase budget — see the turn-count section above; the frozen run was also 30),
+`cost=$0`, ~300 s/sub-sim, Mac Mini with the leader's Qwen server stopped.

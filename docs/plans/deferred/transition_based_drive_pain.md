@@ -23,14 +23,17 @@
 > unit/substrate blast radius green (161 tests). Phase 4 (CLAUDE.md invariant) shipped.
 >
 > **VALIDATION STATUS (2026-07-28):**
-> - **Exp 42 triage re-run: OUTSTANDING (a first attempt was RETRACTED).** The 40-sub-sim
->   run on 2026-07-28 executed **pre-fold main**, not this branch: the `maxim` console
->   script resolved through a stale editable `.pth` to another checkout, and the launching
->   shell lost `PYTHONPATH=src` to a short-circuited `&&`. Symptom that exposed it: a
->   post-fix session wrote every `aut_*.json` EXCEPT `aut_scn.json`. Full post-mortem +
->   the retracted numbers (still useful as a main-side re-baseline):
+> - **Exp 42 triage re-run: DONE — GRADUATE #6 HOLDS (2026-07-29).** 40 sub-sims, 0 failed,
+>   0 floored; H1 0.996/1.000, C1 +0.996, C2 PASS in BOTH configurations, with the gating
+>   toggle verified fired (`env_drive_gate_enabled` 1 vs 0) and `executed_git_hash` pinned
+>   to the fold in every record. Post-fold is **identical** to the pre-fold main baseline —
+>   the predicted result, since Exp 42 rides the direct channel the fold deliberately left
+>   state-based. Caveat recorded: `safe_pref` is saturated (SD 0.000 across all four
+>   conditions), so this supports "did not break discrimination" but is weak evidence for
+>   "changed nothing". Full writeup:
 >   [docs/experiments/42b_drive_pain_fold_revalidation.md](../../experiments/42b_drive_pain_fold_revalidation.md).
->   **Re-run required, with an interpreter assertion, before this item can close.**
+>   (A 2026-07-28 attempt was retracted as invalid — wrong checkout; its numbers serve as
+>   the main-side baseline.)
 > - **SCN oscillator cold-start floor: CLOSED — concern VOID (2026-07-29).** Measured on a
 >   real substrate-primary cradle run: `aut_scn.json` carries 10 event signatures and
 >   **zero** `drive:*` ones. Cause is not density but wiring — `Body._emit_drive_temporal_event`
