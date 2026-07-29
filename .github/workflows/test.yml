@@ -638,6 +638,13 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+      # pygobject/pycairo ship no wheels ANYWHERE, so the resolver must build
+      # their metadata from sdist — which needs the same headers a Pi needs.
+      # Installing them here also keeps this job honest: it exercises the real
+      # prerequisite rather than resolving a set the Pi could not install.
+      - name: Sdist metadata build deps (pygobject/pycairo)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends
+             libgirepository1.0-dev libcairo2-dev pkg-config
       - name: Resolve pymaxim[pi] for linux aarch64 / cp311 and assert no torch/CUDA
         run: python3 scripts/check_aarch64_install.py --print-resolved
 

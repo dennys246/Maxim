@@ -96,7 +96,9 @@ class TestContractCheck:
 
     def test_contract_version_is_the_app_version(self):
         # One source of truth: a bundle compares itself against the same
-        # string the OpenAPI schema advertises.
+        # string the OpenAPI schema advertises. Needs the `console` extra
+        # (fastapi) — CI's unit-test job installs a lean set.
+        pytest.importorskip("fastapi", reason="requires the `console` extra")
         from maxim.console.server import build_app
 
         assert build_app(None).openapi()["info"]["version"] == CONSOLE_CONTRACT_VERSION

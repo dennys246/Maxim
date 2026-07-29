@@ -9,6 +9,18 @@ The factories are functions, not classes. They return Percept instances
 with the right PerceptContext and modality set. Callers that need a
 PerceptProducer-shaped object (next_percept() → Percept | None) wrap
 the factory in a polling adapter — the factory itself is stateless.
+
+**This module is the SINGLE percept-logging layer.** Each factory calls
+``_log_percept`` once at construction, so a percept appears exactly once in
+the terminal trace, the JSONL log, and the console ``/ws`` stream. A caller
+that ALSO logs its percept double-counts it — ``ConversationalSource`` did
+exactly that and every conversational percept was emitted twice. Do not add
+a ``sim_percept`` call at a layer that builds percepts through this module.
+
+Known exception: ``simulation/scenario_source.py`` constructs ``Percept``
+DIRECTLY rather than through a factory, so it carries its own ``sim_percept``
+call (single, not duplicated). Routing it through a factory would fold that
+last case in and is the tidier end state.
 """
 
 from __future__ import annotations

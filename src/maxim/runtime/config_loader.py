@@ -1318,7 +1318,9 @@ def _parse_config_dict(data: dict[str, Any]) -> MaximConfig:
     # documented config path for the Console UI bundle was dead, and the
     # packaged-bundle fallback MASKED it (a bare `maxim serve` still served a
     # UI, just never the configured one).
-    console = _parse_typed_section(data.get("console"), "console", ConsoleConfigSection, tolerate_unknown=is_future_minor)
+    console = _parse_typed_section(
+        data.get("console"), "console", ConsoleConfigSection, tolerate_unknown=is_future_minor
+    )
 
     return MaximConfig(
         _format_version=version,
