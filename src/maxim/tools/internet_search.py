@@ -180,7 +180,7 @@ def _search_duckduckgo(
     query: str,
     max_results: int = 5,
     timeout_s: float = 8.0,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], str | None]:
     """Search DuckDuckGo for web results.
 
     Tries multiple methods in order:
@@ -188,10 +188,14 @@ def _search_duckduckgo(
     2. HTML scraping of DuckDuckGo lite
     3. Instant Answer API (limited, only for knowledge base queries)
     """
+    # Tracks WHY nothing came back, so the caller can tell the difference
+    # between "nothing matched" and "the search broke". None == no failure yet.
+    failure: str | None = None
+
     # Method 1: Try the duckduckgo_search package first (best results)
     pkg_results = _search_with_ddg_package(query, max_results)
     if pkg_results is not None:
-        return pkg_results
+        return pkg_results, None
 
     logger.info("duckduckgo_search package not available, trying HTML scraping")
 
@@ -200,9 +204,10 @@ def _search_duckduckgo(
         lite_results = _search_duckduckgo_lite(query, max_results, timeout_s)
         if lite_results:
             logger.info(f"DuckDuckGo lite scraper returned {len(lite_results)} results")
-            return lite_results
+            return lite_results, None
     except Exception as e:
         logger.warning(f"DuckDuckGo lite scraper failed: {e}")
+        failure = f"the search provider could not be reached ({type(e).__name__}: {e})"
 
     logger.info("Lite scraper failed, trying Instant Answer API (limited)")
 
@@ -271,17 +276,26 @@ def _search_duckduckgo(
 
     except _http.HTTPError as e:
         logger.warning(f"DuckDuckGo API request failed: {e.fix_hint}")
+        failure = f"the search provider could not be reached ({e.fix_hint})"
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse DuckDuckGo response: {e}")
+        failure = f"the search provider returned an unreadable response ({e})"
     except Exception as e:
         logger.warning(f"DuckDuckGo search error: {e}")
+        failure = f"the search failed ({type(e).__name__}: {e})"
 
     if results:
         logger.info(f"Instant Answer API returned {len(results)} results")
-    else:
-        logger.warning("All search methods failed - no results found")
-
-    return results[:max_results]
+        return results[:max_results], None
+    if failure is None:
+        # Genuinely nothing matched — NOT an error. Keeping this distinct from
+        # a transport failure is the whole point: previously both returned []
+        # and the agent was told "search succeeded, 0 results" either way, so
+        # it could not tell the user its search had broken.
+        logger.info("Search returned no matches")
+        return [], None
+    logger.warning("All search methods failed - %s", failure)
+    return [], failure
 
 
 def _search_duckduckgo_lite(
@@ -534,7 +548,7 @@ class InternetSearchTool(Tool):
                 policy = self._get_internet_policy()
                 timeout = policy.request_timeout_s
 
-            results = _search_duckduckgo(
+            results, search_failure = _search_duckduckgo(
                 query,
                 max_results=min(max_results, 10),  # Cap at 10
                 timeout_s=timeout,
@@ -543,6 +557,18 @@ class InternetSearchTool(Tool):
             # Filter out blocked domains
             results = self._filter_results(results)
 
+            if search_failure:
+                # A BROKEN search is a failure, not an empty one. Previously
+                # both returned success=True/output=[] with "No results
+                # found", so the agent could not tell the user its search had
+                # broken — it just went quiet. Reporting success=False also
+                # gives NAc an honest outcome to learn from.
+                return ToolResult(
+                    success=False,
+                    error=f"Web search failed: {search_failure}. Tell the user the search did not work.",
+                    metadata={"query": query, "result_count": 0, "search_failed": True},
+                )
+
             if not results:
                 return ToolResult(
                     success=True,
@@ -550,7 +576,7 @@ class InternetSearchTool(Tool):
                     metadata={
                         "query": query,
                         "result_count": 0,
-                        "message": "No results found",
+                        "message": f"No results found for {query!r} (the search itself worked).",
                     },
                 )
 

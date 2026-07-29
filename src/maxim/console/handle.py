@@ -20,7 +20,11 @@ with ``auto_load=True`` over a ``~/.maxim`` home. Modes are methods:
   reaches the console's ``/ws`` stream as CLEAN-tier ``USER``/``RESPONSE``
   records (the EVENT seam — rides ``sim_log``, not ``api.on()``).
 
-``rest(...)`` remains unimplemented. Talk and an adventure are mutually
+* ``rest()`` — consolidate memory WITHOUT teardown; the agent stays usable,
+  so a later ``talk`` sees the consolidated substrate (that is the whole
+  distinction from ``stop``).
+
+Talk and an adventure are mutually
 exclusive: both drive the same bio-stack, so starting a campaign stops the
 talk loop first (the next ``talk()`` rebuilds it lazily).
 
@@ -64,6 +68,41 @@ def _extract_reply(turn: dict[str, Any]) -> str | None:
     if isinstance(fallback, dict) or not fallback:
         return None
     return str(fallback)
+
+
+def _action_names(turn: dict[str, Any]) -> list[str]:
+    return [str(getattr(a, "tool_name", "?")) for a in (turn.get("actions") or [])]
+
+
+def _failed_actions(turn: dict[str, Any]) -> list[str]:
+    """Tool names whose action failed or was blocked in this turn."""
+    out: list[str] = []
+    for a in turn.get("actions") or []:
+        failed = getattr(a, "result_success", None) is False or bool(getattr(a, "blocked", False))
+        if failed:
+            out.append(str(getattr(a, "tool_name", "?")))
+    return out
+
+
+def _describe_silent_turn(turn: dict[str, Any]) -> str:
+    """Explain a turn that produced no words, in the user's terms.
+
+    "(no reply)" is useless to the person who asked a question. Naming the
+    tools — and especially the FAILED ones — turns silence into an account of
+    what happened, which is the difference between a wedge and a degraded
+    state that is SHOWN.
+    """
+    if turn.get("timed_out"):
+        return "(no reply — the turn timed out before finishing)"
+    failed = _failed_actions(turn)
+    names = _action_names(turn)
+    if failed:
+        joined = ", ".join(dict.fromkeys(failed))
+        return f"(no reply — {joined} failed, so the turn produced no answer)"
+    if names:
+        joined = ", ".join(dict.fromkeys(names))
+        return f"(no reply — the turn ran {joined} but never said anything)"
+    return "(no reply — the turn took no action and said nothing)"
 
 
 class MaximHandle:
@@ -235,13 +274,23 @@ class MaximHandle:
         if reply:
             sim_log("RESPONSE", str(reply), {"text": str(reply)}, agent_id=self.agent_id)
         else:
-            # Say so on the wire rather than leaving the chat silent — a
-            # timeout or a turn that produced only non-verbal actions is a
-            # real outcome the UI should be able to render.
+            # A turn must never end silently. Naming WHAT the turn did — and
+            # which tools failed — is the difference between the chat showing
+            # "(no reply)" and showing "I ran internet_search and it failed".
+            # Reported from live console use: a question produced 163s of
+            # silence and the only explanation was an ❌ FAIL record buried in
+            # the bio panel.
+            summary = _describe_silent_turn(result)
             sim_log(
                 "RESPONSE",
-                "(no reply — the turn produced no respond/speak action)",
-                {"text": None, "timed_out": bool(result.get("timed_out"))},
+                summary,
+                {
+                    "text": None,
+                    "no_reply_reason": summary,
+                    "timed_out": bool(result.get("timed_out")),
+                    "actions": _action_names(result),
+                    "failed_actions": _failed_actions(result),
+                },
                 agent_id=self.agent_id,
             )
         return result

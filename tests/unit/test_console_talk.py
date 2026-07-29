@@ -467,3 +467,64 @@ class TestRestEndpoint:
         finally:
             alive.set()
             t.join(timeout=5)
+
+
+class TestSilentTurnsExplainThemselves:
+    """A turn must never end silently.
+
+    Reported from live console use: a question ran internet_search, the search
+    failed, and the turn produced no words — so the chat showed "(no reply)"
+    and the only explanation was an ❌ FAIL record buried in the bio panel.
+    """
+
+    def _act(self, name, ok=True, blocked=False):
+        from maxim.simulation.sinks import ActionRecord
+
+        return ActionRecord(timestamp=0.0, tool_name=name, result_success=ok, blocked=blocked)
+
+    def test_failed_tool_is_named(self):
+        from maxim.console.handle import _describe_silent_turn
+
+        msg = _describe_silent_turn({"actions": [self._act("internet_search", ok=False)]})
+        assert "internet_search" in msg and "failed" in msg
+
+    def test_blocked_tool_counts_as_failed(self):
+        from maxim.console.handle import _describe_silent_turn
+
+        assert "bash" in _describe_silent_turn({"actions": [self._act("bash", blocked=True)]})
+
+    def test_succeeded_tools_are_still_named(self):
+        from maxim.console.handle import _describe_silent_turn
+
+        msg = _describe_silent_turn({"actions": [self._act("read_file")]})
+        assert "read_file" in msg
+
+    def test_timeout_is_distinguished(self):
+        from maxim.console.handle import _describe_silent_turn
+
+        assert "timed out" in _describe_silent_turn({"actions": [], "timed_out": True})
+
+    def test_placeholder_carries_structured_reason_on_the_wire(self, sim_logging, monkeypatch):
+        # The web chat renders from the stream, so the reason must be in the
+        # RECORD, not only in the human string.
+        from maxim.console.handle import MaximHandle
+
+        class Bridge:
+            def send_and_wait(self, text, **kw):
+                return {
+                    "turn": 1,
+                    "response": None,
+                    "actions": [
+                        __import__("maxim.simulation.sinks", fromlist=["ActionRecord"]).ActionRecord(
+                            timestamp=0.0, tool_name="internet_search", result_success=False
+                        )
+                    ],
+                    "timed_out": False,
+                }
+
+        h = _bare_handle(Bridge())
+        monkeypatch.setattr(MaximHandle, "_ensure_talk_loop", lambda self: Bridge())
+        h.talk("what's the weather?")
+        rec = [r for r in get_sim_records() if r["subsystem"] == "RESPONSE"][-1]
+        assert rec["data"]["failed_actions"] == ["internet_search"]
+        assert "internet_search" in rec["data"]["no_reply_reason"]
