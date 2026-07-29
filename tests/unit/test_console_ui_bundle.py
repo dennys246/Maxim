@@ -150,3 +150,33 @@ def test_pyproject_ships_the_bundle_as_package_data(pattern):
     with open(pyproject, "rb") as f:
         data = tomllib.load(f)
     assert pattern in data["tool"]["setuptools"]["package-data"]["maxim"]
+
+
+class TestContractVersionIsNotDecorative:
+    """A stamp that never changes cannot detect drift.
+
+    #438 added /api/campaigns + /api/events/subscribe-frame, made
+    ConsoleEvent.tier/seq/message REQUIRED, and added RunAccepted.reply plus a
+    "completed" status — all things a 0.1.0 bundle predates — yet the version
+    stayed 0.1.0, so the stamp could not have flagged any of it.
+    """
+
+    def test_version_moved_past_the_initial_facade(self):
+        assert CONSOLE_CONTRACT_VERSION != "0.1.0"
+
+    def test_committed_openapi_snapshot_carries_the_same_version(self):
+        # The snapshot IS what maxim-pulse generates its client from; if it
+        # drifts from the constant the stamp compares against, the check lies.
+        import json
+        from pathlib import Path
+
+        snapshot = Path(__file__).resolve().parents[2] / "src" / "maxim" / "console" / "openapi.json"
+        schema = json.loads(snapshot.read_text())
+        assert schema["info"]["version"] == CONSOLE_CONTRACT_VERSION
+
+    def test_a_stale_bundle_is_now_flagged(self, tmp_path):
+        # The concrete regression: a bundle built against the pre-#438 contract
+        # must warn rather than pass silently.
+        stale = _bundle(tmp_path / "stale", contract="0.1.0")
+        msg = check_ui_contract(stale)
+        assert msg and "0.1.0" in msg and CONSOLE_CONTRACT_VERSION in msg

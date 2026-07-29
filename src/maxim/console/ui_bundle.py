@@ -38,7 +38,14 @@ logger = logging.getLogger(__name__)
 # the wire contract changes in a way a stale bundle would notice (an endpoint
 # removed/renamed, a required field added, an envelope reshaped). This is also
 # the FastAPI app's ``version`` — one source of truth so they cannot drift.
-CONSOLE_CONTRACT_VERSION = "0.1.0"
+#
+# CHANGELOG (bump on any change a stale bundle would notice):
+#   0.1.0 — initial facade (models/diagnose + the typed 501 seam stubs).
+#   0.2.0 — #438: /api/campaigns and /api/events/subscribe-frame added;
+#           ConsoleEvent gained REQUIRED tier/seq/message; RunAccepted gained
+#           a "completed" status and a `reply` field; RunRequest.input became
+#           meaningful for adventure. A 0.1.0 bundle predates all of it.
+CONSOLE_CONTRACT_VERSION = "0.2.0"
 
 #: Manifest filename the pulse build writes into every bundle.
 UI_MANIFEST_NAME = "maxim-ui.json"
