@@ -180,3 +180,62 @@ class TestContractVersionIsNotDecorative:
         stale = _bundle(tmp_path / "stale", contract="0.1.0")
         msg = check_ui_contract(stale)
         assert msg and "0.1.0" in msg and CONSOLE_CONTRACT_VERSION in msg
+
+
+class TestContractSurfaceCannotDriftSilently:
+    """Enforce the bump rule instead of relying on remembering it.
+
+    It was missed TWICE: #438 shipped two endpoints and a reshaped envelope at
+    0.1.0, and the identity surface itself first shipped at 0.2.0 — the very
+    blindness the 0.1.0→0.2.0 bump was meant to end. Both were ADDITIVE, which
+    is exactly the case that feels harmless and defeats the stamp: a client
+    generated before and one generated after are indistinguishable.
+
+    `contract_surface.json` records the path + schema surface for the current
+    contract version. Change the surface without changing the version and this
+    fails, naming what moved.
+    """
+
+    def _record(self):
+        import json
+        from pathlib import Path
+
+        p = Path(__file__).resolve().parents[2] / "src" / "maxim" / "console" / "contract_surface.json"
+        return json.loads(p.read_text()), p
+
+    def _live(self):
+        pytest.importorskip("fastapi", reason="requires the `console` extra")
+        from maxim.console.server import openapi_schema
+
+        s = openapi_schema()
+        return sorted(s["paths"]), sorted(s["components"]["schemas"]), s["info"]["version"]
+
+    def test_recorded_version_is_the_current_contract(self):
+        record, _ = self._record()
+        assert record["contract_version"] == CONSOLE_CONTRACT_VERSION
+
+    def test_schema_surface_matches_the_recorded_contract(self):
+        record, path = self._record()
+        paths, schemas, version = self._live()
+        added_paths = set(paths) - set(record["paths"])
+        removed_paths = set(record["paths"]) - set(paths)
+        added_schemas = set(schemas) - set(record["schemas"])
+        removed_schemas = set(record["schemas"]) - set(schemas)
+        drift = added_paths or removed_paths or added_schemas or removed_schemas
+        assert not drift, (
+            "The OpenAPI surface moved but the recorded contract did not.\n"
+            f"  added paths:    {sorted(added_paths)}\n"
+            f"  removed paths:  {sorted(removed_paths)}\n"
+            f"  added schemas:  {sorted(added_schemas)}\n"
+            f"  removed schemas:{sorted(removed_schemas)}\n"
+            f"ADDITIVE COUNTS: a client generated before this change cannot know the\n"
+            f"new surface exists. Bump CONSOLE_CONTRACT_VERSION (with a changelog line),\n"
+            f"regenerate the snapshot, then refresh {path.name}."
+        )
+        assert version == record["contract_version"]
+
+    def test_identity_surface_is_in_the_record(self):
+        # The concrete thing that shipped un-versioned.
+        record, _ = self._record()
+        assert "/api/identity" in record["paths"]
+        assert "IdentityResponse" in record["schemas"]

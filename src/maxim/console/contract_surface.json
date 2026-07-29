@@ -1,0 +1,42 @@
+{
+  "contract_version": "0.3.0",
+  "fingerprint": "851fb5654f90f550",
+  "paths": [
+    "/api/campaigns",
+    "/api/diagnose",
+    "/api/events/envelope",
+    "/api/events/subscribe-frame",
+    "/api/identity",
+    "/api/models",
+    "/api/probe",
+    "/api/recall",
+    "/api/run",
+    "/api/setup/cloud",
+    "/api/setup/mesh"
+  ],
+  "schemas": [
+    "CampaignInfo",
+    "CampaignsResponse",
+    "CloudSetupRequest",
+    "ConsoleEvent",
+    "DiagnoseResponse",
+    "DiagnoseSection",
+    "HTTPValidationError",
+    "IdentityResponse",
+    "MeshSetupRequest",
+    "ModelInfoWire",
+    "ModelsResponse",
+    "PlatformWire",
+    "Preference",
+    "ProbeRequest",
+    "ProbeResult",
+    "RecallResponse",
+    "RunAccepted",
+    "RunRequest",
+    "SeamStatus",
+    "SetupResult",
+    "StoryMemory",
+    "SubscribeFrame",
+    "ValidationError"
+  ]
+}
