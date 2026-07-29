@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Lets the slow aarch64 real-install job be run on demand (it is skipped on
+  # PRs). Without this its `github.event_name == 'workflow_dispatch'` condition
+  # could never fire, so the job would only ever execute post-merge on main.
+  workflow_dispatch:
 
 jobs:
   unit-tests:
