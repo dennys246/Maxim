@@ -130,9 +130,16 @@ def report_from_scn(path: Path) -> int:
     print(f"[scn] event signatures total={len(phases)}  drive={len(drive_sigs)}")
     if not drive_sigs:
         print("\n[WARN] no drive:* event signatures observed at all.")
-        print("       Either no drive breached during the run, or the pain channel")
-        print("       never reached the SCN distributor. Check the run exercised a")
-        print("       drive (cold body / hunger) before concluding anything about density.")
+        print("       EXPECTED IN PRODUCTION TODAY — this is a wiring gap, not a density")
+        print("       problem: Body._emit_drive_temporal_event early-returns on")
+        print("       `self._distributor is None`, and runtime/bootstrap.py::build_executor")
+        print("       passes distributor= to ToolPainBridge (:439) but NOT to Embodiment")
+        print("       (:456). So drive TemporalEvents never reach the SCN oscillator at all.")
+        print("       Any non-drive signatures above arrive via ToolPainBridge.")
+        print("       Verified 2026-07-29; see CLAUDE.md (transition-based drive-pain")
+        print("       invariant) and docs/experiments/42b_drive_pain_fold_revalidation.md.")
+        print("       Do NOT 'fix' this by wiring the distributor as a drive-by change —")
+        print("       it would activate a dead learning path and needs its own validation.")
         return 1
 
     print(f"\n{'event signature':<44} {'obs':>5} {'floor':>7}")

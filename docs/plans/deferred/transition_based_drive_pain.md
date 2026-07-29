@@ -31,9 +31,15 @@
 >   the retracted numbers (still useful as a main-side re-baseline):
 >   [docs/experiments/42b_drive_pain_fold_revalidation.md](../../experiments/42b_drive_pain_fold_revalidation.md).
 >   **Re-run required, with an interpreter assertion, before this item can close.**
-> - **SCN oscillator cold-start floor: OPEN.** Offline A/B measured (~100 -> 4 events for
->   4 breach episodes, so >= 3 real episodes are needed); the against-a-real-session arm
->   needs a run on verified fold code (`aut_scn.json` only exists post-71b6a68e).
+> - **SCN oscillator cold-start floor: CLOSED — concern VOID (2026-07-29).** Measured on a
+>   real substrate-primary cradle run: `aut_scn.json` carries 10 event signatures and
+>   **zero** `drive:*` ones. Cause is not density but wiring — `Body._emit_drive_temporal_event`
+>   early-returns on `self._distributor is None`, and `build_executor` gives its
+>   `distributor=` to `ToolPainBridge` (bootstrap.py:439) but not to `Embodiment`
+>   (bootstrap.py:456). **No drive TemporalEvent has ever reached the oscillator in any
+>   production run**, so this fold cannot have changed drive-phase density. The one-line
+>   wire is deliberately NOT applied here (it would activate a dead learning path — its own
+>   change, its own validation); recorded as dormant infrastructure in CLAUDE.md.
 
 > **DEFERRED (2026-07-15 plans audit):** Not shipped — `Body.evaluate_failures` is still state-based (re-fires per tick, no breach latch); B8 delta-attribution remains the only patch covering channel 1. Correct, well-scoped root-cause work (~25–40 LOC + blast-radius validation) but off the Exp 44 critical path, and touching shared embodiment code mid-experiment is the wrong moment. **Revive when:** a second drive-pain-attribution consumer appears, channel-2 (PainBus) mis-attribution actually bites an experiment (e.g. a safe source accruing spurious negative like pre-B8 Exp 42), or before any change to `evaluate_failures` cadence.
 >

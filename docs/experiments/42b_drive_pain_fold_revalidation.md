@@ -185,25 +185,40 @@ bug in the fold) or whether only the volume/variance changed (channel-2 density
 → expected, re-baseline). Record the finding here either way; a `Broken` entry
 blocks the next release per the graduation-candidates discipline.
 
-## Companion check — SCN oscillator cold-start floor
+## Companion check — SCN oscillator cold-start floor — **RESOLVED: concern VOID**
 
-The same fold changed drive `TemporalEvent` density from per-tick to
-per-episode. `OscillatorNetwork.predict_imminence` has a hard `< 3 observations`
-cold-start guard, so `anticipatory_pre_activate` can silently return `0.0` for
-drive event types if a run yields fewer than three genuine breach **episodes**.
+**Result (2026-07-29): the fold cannot have affected this, because the path is unwired.**
 
+A proper substrate-primary cradle run (exploration ON — tool diversity confirmed: 209
+warm_self / 62 observe / 60 touch / 57 harm-observe, `explore=0.04` in the plan string)
+persists `aut_scn.json` containing **10 event signatures, 0 of them `drive:*`**.
+
+Root cause is wiring, not density. `Body._emit_drive_temporal_event` returns early on
+`self._distributor is None`, and `runtime/bootstrap.py::build_executor` threads its
+`distributor=` argument into `ToolPainBridge` (`:439`) while constructing
+`Embodiment(entity, pain_bus=..., agent_id=...)` **without** it (`:456`) — in the same
+function. The 10 signatures that do arrive come via ToolPainBridge.
+
+So **no drive `TemporalEvent` has ever reached `OscillatorNetwork` in any production
+run**, pre- or post-fold, and `anticipatory_pre_activate` has never had drive events to
+predict from. The `< 3 observations` cold-start guard was never the constraint.
+
+The one-line wire (`distributor=distributor` on that `Embodiment`) is **deliberately not
+applied here**: it would activate a previously-dead learning path for the first time —
+a behavioural change deserving its own validation, not a drive-by edit inside an
+attribution fix. Recorded as dormant infrastructure.
+
+Reproduce:
 ```bash
-# Offline A/B — quantifies the density change, no LLM/robot needed:
-PYTHONPATH=src python scripts/check_oscillator_coldstart.py --simulate
-
-# Against a real session from the run above (preferred):
-PYTHONPATH=src python scripts/check_oscillator_coldstart.py --session ~/.maxim/sessions/<session-id>
+MAXIM_SIM_SUBSTRATE_EXPLORE_BONUS_WEIGHT=1.5 MAXIM_SIM_DRIVE_GATE_ENABLED=1 \
+maxim --sim cradle_pref_a --aut-mode substrate-primary \
+  --embodiment bodies/infant_humanoid_chilled --interactive false
+python scripts/check_oscillator_coldstart.py --session ~/.maxim/sim_reports/<newest>
 ```
-
-Exit 0 = all drive signatures clear the floor. Exit 1 = at least one is below —
-which is a **finding to document**, not a licence to restore per-tick pain.
-Measured offline: 4 breach episodes → 4 events (vs ~100 pre-fold), so the floor
-needs >= 3 real episodes in the run.
+(Exploration MUST be on: with the default `substrate_explore_bonus_weight=0.0` the
+substrate degenerates to pure argmax — one tool, 411 calls, the harm source never
+contacted, `safe_pref` undefined. That is the Exp 41 "exploration is the enabling
+condition" result reproducing itself.)
 
 <!-- Analyzer appends "## Results" sections below this line -->
 
