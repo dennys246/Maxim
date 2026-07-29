@@ -245,6 +245,86 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IdentityResponse": {
+        "description": "Self-describing backend identity.\n\nExists because a console could not previously answer \"which build is this?\"\n\u2014 and the answer changes silently. pymaxim is typically installed EDITABLE,\nso `maxim serve` follows whatever git branch is checked out: switch to a\nbranch predating a seam and that seam quietly vanishes from the UI. Add a\nstale `serve` process still holding the port and the console can be talking\nto code that no longer exists on disk.\n\nEvery field here is something a debugging session would otherwise have to\nguess. Also emitted as the FIRST /ws event on connect (kind=\"identity\"), so\na client knows what it is attached to before any other event arrives.",
+        "properties": {
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "git_branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Branch"
+          },
+          "git_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Git Sha"
+          },
+          "package_version": {
+            "title": "Package Version",
+            "type": "string"
+          },
+          "python_version": {
+            "default": "",
+            "title": "Python Version",
+            "type": "string"
+          },
+          "seams": {
+            "items": {
+              "$ref": "#/components/schemas/SeamStatus"
+            },
+            "title": "Seams",
+            "type": "array"
+          },
+          "ui_dist": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ui Dist"
+          },
+          "ui_manifest": {
+            "additionalProperties": true,
+            "title": "Ui Manifest",
+            "type": "object"
+          },
+          "ui_source": {
+            "default": "none",
+            "enum": [
+              "flag",
+              "config",
+              "packaged",
+              "none"
+            ],
+            "title": "Ui Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "package_version",
+          "contract_version"
+        ],
+        "title": "IdentityResponse",
+        "type": "object"
+      },
       "MeshSetupRequest": {
         "properties": {
           "api_key": {
@@ -623,6 +703,36 @@
         "title": "RunRequest",
         "type": "object"
       },
+      "SeamStatus": {
+        "description": "One console surface and whether it is live here.",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "live": {
+            "title": "Live",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "live"
+        ],
+        "title": "SeamStatus",
+        "type": "object"
+      },
       "SetupResult": {
         "properties": {
           "detail": {
@@ -857,6 +967,27 @@
           }
         },
         "summary": "WS filter frame shape (type-gen only; send frames on /ws)",
+        "tags": [
+          "facade"
+        ]
+      }
+    },
+    "/api/identity": {
+      "get": {
+        "operationId": "get_identity_api_identity_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Which backend is this?",
         "tags": [
           "facade"
         ]

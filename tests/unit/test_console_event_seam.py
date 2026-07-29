@@ -223,6 +223,18 @@ from maxim.console.schemas import ConsoleEvent, SubscribeFrame  # noqa: E402
 from maxim.console.server import _EventHub, _WsConn, build_app  # noqa: E402
 
 
+def _first_stream_event(ws):
+    """Drain the identity hello frame and return the first real event.
+
+    /ws now opens with kind="identity" so a client knows which backend it is
+    attached to before interpreting anything else.
+    """
+    evt = ws.receive_json()
+    if evt.get("kind") == "identity":
+        evt = ws.receive_json()
+    return evt
+
+
 def _drain(conn: _WsConn) -> list[dict]:
     out = []
     while True:
@@ -375,7 +387,7 @@ class TestWsEndToEnd:
                 )
                 t.start()
                 t.join()
-                evt = ws.receive_json()
+                evt = _first_stream_event(ws)
                 assert evt["kind"] == "learn"
                 assert evt["tier"] == "clean"
                 assert evt["message"] == "reward_bias updated"
@@ -394,6 +406,7 @@ class TestWsEndToEnd:
         app = build_app(None)
         with TestClient(app) as client:
             with client.websocket_connect("/ws") as ws:
+                assert ws.receive_json()["kind"] == "identity"  # hello frame
                 ws.send_json({"channels": ["memory"]})
                 motor_seen: set[int] = set()
                 for i in range(50):
@@ -432,7 +445,7 @@ class TestWsEndToEnd:
                 t = threading.Thread(target=sim_log, args=("LEARN", "still alive"))
                 t.start()
                 t.join()
-                evt = ws.receive_json()
+                evt = _first_stream_event(ws)
                 assert evt["kind"] == "learn"
 
     def test_openapi_carries_subscribe_frame(self):

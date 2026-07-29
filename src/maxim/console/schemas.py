@@ -69,6 +69,46 @@ class DiagnoseResponse(BaseModel):
     sections: list[DiagnoseSection] = Field(default_factory=list)
 
 
+# ── Identity — "which backend am I actually talking to?" ────────────────────
+
+
+class SeamStatus(BaseModel):
+    """One console surface and whether it is live here."""
+
+    name: str
+    live: bool
+    detail: str | None = None
+
+
+class IdentityResponse(BaseModel):
+    """Self-describing backend identity.
+
+    Exists because a console could not previously answer "which build is this?"
+    — and the answer changes silently. pymaxim is typically installed EDITABLE,
+    so `maxim serve` follows whatever git branch is checked out: switch to a
+    branch predating a seam and that seam quietly vanishes from the UI. Add a
+    stale `serve` process still holding the port and the console can be talking
+    to code that no longer exists on disk.
+
+    Every field here is something a debugging session would otherwise have to
+    guess. Also emitted as the FIRST /ws event on connect (kind="identity"), so
+    a client knows what it is attached to before any other event arrives.
+    """
+
+    package_version: str
+    contract_version: str
+    git_sha: str | None = None
+    git_branch: str | None = None
+    python_version: str = ""
+    # Where the served UI bundle came from, and what it claims to be built
+    # against — the other half of a contract mismatch.
+    ui_source: Literal["flag", "config", "packaged", "none"] = "none"
+    ui_dist: str | None = None
+    ui_manifest: dict[str, Any] = Field(default_factory=dict)
+    # Which console surfaces are live in THIS build.
+    seams: list[SeamStatus] = Field(default_factory=list)
+
+
 # ── PROBE seam — structured connection test ─────────────────────────────────
 
 
