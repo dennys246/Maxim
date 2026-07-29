@@ -38,6 +38,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from maxim.console.schemas import (
+    CampaignInfo,
+    CampaignsResponse,
     CloudSetupRequest,
     ConsoleEvent,
     DiagnoseResponse,
@@ -271,7 +273,127 @@ def _get_handle() -> Any:
         return _handle
 
 
-def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
+def campaign_search_roots() -> list[tuple[Path, str]]:
+    """Where ``GET /api/campaigns`` looks, in precedence order, with each
+    root's ``source`` label.
+
+    ``~/.maxim/campaigns/`` is the durable user location; ``./scenarios/
+    campaigns/`` is the dev-checkout convenience (CWD-relative, the same
+    convention ``api.benchmark`` documents per CC10). Nothing is bundled in
+    the wheel today, so a pip-install user sees only their own campaigns.
+
+    Returns (root, source) PAIRS rather than a bare list: a parallel label
+    tuple at the call site silently truncated if a third root were ever added
+    — that root would be neither searched nor reported (review finding).
+    """
+    from maxim.utils.paths import data_home
+
+    return [(data_home() / "campaigns", "user"), (Path("scenarios") / "campaigns", "repo")]
+
+
+def _is_within_search_root(path: Path) -> bool:
+    """Is ``path`` inside one of the discovery roots?
+
+    Discovery only ever yields ``iterdir()`` results, so this holds by
+    construction today — making it explicit keeps the file-read below safe
+    for ANY caller (and satisfies the path-injection analysis on a read
+    reachable from an HTTP endpoint) rather than relying on that invariant
+    living in the caller.
+    """
+    for root, _source in campaign_search_roots():
+        try:
+            path.resolve().relative_to(root.resolve())
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
+
+
+def _campaign_info(path: Path, source: str) -> CampaignInfo:
+    """Read display metadata from a campaign YAML's ``campaign:`` head.
+
+    Best-effort: a campaign that fails to parse still lists (by filename) so
+    the picker shows it and the RUN call surfaces the real validation error —
+    silently hiding a malformed campaign would be the confusing outcome.
+    """
+    name, goal = path.stem, None
+    if not _is_within_search_root(path):
+        return CampaignInfo(name=name, path=str(path), goal=None, source=source)  # type: ignore[arg-type]
+    try:
+        import yaml
+
+        with open(path, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+        head = doc.get("campaign") or {}
+        if isinstance(head, dict):
+            name = str(head.get("name") or path.stem)
+            goal = str(head.get("goal")) if head.get("goal") else None
+    except Exception:
+        logger.debug("campaign listing: could not parse %s", path, exc_info=True)
+    return CampaignInfo(name=name, path=str(path), goal=goal, source=source)  # type: ignore[arg-type]
+
+
+@api.get("/campaigns", response_model=CampaignsResponse, summary="Discoverable campaign YAMLs")
+def get_campaigns() -> CampaignsResponse:
+    # Backs the launcher's picker dropdown so the operator stops pasting
+    # absolute YAML paths. Returns the path each entry should be RUN with.
+    seen: set[Path] = set()
+    out: list[CampaignInfo] = []
+    searched: list[str] = []
+    for root, source in campaign_search_roots():
+        searched.append(str(root))
+        if not root.is_dir():
+            continue
+        try:
+            entries = sorted(root.iterdir())
+        except OSError:
+            # An unreadable root (perms, removed mid-listing) must not 500 the
+            # whole picker — report it as searched and move on (review finding).
+            logger.warning("campaign listing: could not read %s", root, exc_info=True)
+            continue
+        for p in entries:
+            if p.suffix.lower() not in (".yaml", ".yml") or not p.is_file():
+                continue
+            resolved = p.resolve()
+            if resolved in seen:  # user dir wins over a repo file of the same target
+                continue
+            seen.add(resolved)
+            out.append(_campaign_info(resolved, source))
+    return CampaignsResponse(campaigns=out, searched=searched)
+
+
+def _select_discovered_campaign(requested: str) -> Path | None:
+    """Map a requested campaign to a DISCOVERY-DERIVED path, or ``None``.
+
+    The returned Path is built by discovery (``iterdir`` under a known root),
+    never constructed from request data — so no request-controlled string ever
+    reaches a path expression. A request may name either the full path exactly
+    as ``/api/campaigns`` reported it, or the campaign's display name / file
+    stem (convenient for humans and CLI callers).
+    """
+    if not requested:
+        return None
+    # Normalize the request to a comparable STRING (expanduser + abspath are
+    # pure string/env operations — the result is only ever compared, never
+    # opened or used as a path). This keeps a hand-typed "~/..." or a
+    # CWD-relative path working, which the launcher's free-text box still
+    # emits today, without letting request data reach a path expression.
+    import os
+
+    try:
+        normalized = os.path.abspath(os.path.expanduser(requested))
+    except (OSError, ValueError):
+        normalized = requested
+
+    listing = get_campaigns()
+    for info in listing.campaigns:
+        stem = Path(info.path).stem
+        if requested in (info.path, info.name, stem) or normalized == info.path:
+            return Path(info.path)
+    return None
+
+
+def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str, premise: str | None = None) -> None:
     import logging
 
     log = logging.getLogger(__name__)
@@ -283,10 +405,16 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
     _event_hub.publish(
         "run",
         f"run {run_id} started",
-        {"run_id": run_id, "status": "started", "mode": "adventure", "campaign": campaign_path},
+        {
+            "run_id": run_id,
+            "status": "started",
+            "mode": "adventure",
+            "campaign": campaign_path,
+            "premise": premise,
+        },
     )
     try:
-        result = handle.play_campaign(campaign_path)
+        result = handle.play_premise(premise) if premise else handle.play_campaign(campaign_path)
         log.info("console run %s finished: %s", run_id, getattr(result, "finish_reason", "?"))
         # SimulationResult has session_id/session_dir (empty-string defaults),
         # NOT a report_path field — the report convention is
@@ -318,25 +446,120 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str) -> None:
         _event_hub.set_run(None)
 
 
+# Talk turns are serialized per process: the live loop is one agent, and two
+# concurrent utterances would interleave into one settle window.
+_talk_lock = threading.Lock()
+_TALK_RUN_ID = "talk"
+
+
+def _post_run_talk(body: RunRequest) -> RunAccepted:
+    """HANDLE talk mode — one conversational turn against the live loop.
+
+    Blocking by design: the turn's REPLY travels on ``/ws`` as CLEAN-tier
+    records (``user`` then ``response``), so the chat surface renders from the
+    stream; this response carries only the accept/reject + the run id used to
+    scope those events. Events emitted during the turn are stamped
+    ``run_id="talk"`` so a background adventure's narration cannot interleave
+    into a conversation.
+    """
+    text = (body.input or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="mode='talk' requires 'input' (what to say).")
+
+    with _handle_lock:
+        prev = _active_run["thread"]
+    if prev is not None and prev.is_alive():
+        raise HTTPException(
+            status_code=409,
+            detail="An adventure is running — talk is unavailable until it ends.",
+        )
+    if not _talk_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="A talk turn is already in flight.")
+    turn_id = f"talk_{time.strftime('%Y%m%d_%H%M%S')}"
+    try:
+        handle = _get_handle()
+        prev_run = _event_hub.set_run(_TALK_RUN_ID)
+        try:
+            result = handle.talk(text)
+        finally:
+            _event_hub.set_run(prev_run)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("talk turn failed")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+    finally:
+        _talk_lock.release()
+
+    timed_out = bool(result.get("timed_out"))
+    return RunAccepted(
+        # Per-turn id so a client can correlate a turn with its event burst;
+        # events during the turn carry run_id=_TALK_RUN_ID (the scope), while
+        # this identifies the turn itself.
+        session_id=turn_id,
+        mode="talk",
+        status="completed",
+        reply=result.get("response"),
+        detail=(
+            "Turn timed out before a reply — the response may still arrive on /ws."
+            if timed_out
+            else f"Turn complete ({len(result.get('actions') or [])} action(s)); also on /ws as kind='response'."
+        ),
+    )
+
+
 @api.post("/run", response_model=RunAccepted, summary="Run a mode (talk/adventure/sim/rest)")
 def post_run(body: RunRequest) -> RunAccepted:
-    # HANDLE seam (a): mode="adventure" runs a DM campaign AS the persistent
-    # agent (campaign injection — the "Adventure teaches Talk" surface).
-    # talk/sim/rest stay 501 until Phase 3 streaming lands.
+    # HANDLE seam (a): mode="adventure" runs an adventure AS the persistent
+    # agent (campaign injection — the "Adventure teaches Talk" surface), in
+    # two flavors: an authored campaign YAML (`campaign`) or a free-text
+    # premise the narrator improvises (`input`). mode="talk" is the live-loop
+    # conversational mode. sim/rest stay 501.
+    if body.mode == "talk":
+        return _post_run_talk(body)
     if body.mode != "adventure":
         raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
-    if not body.campaign:
-        raise HTTPException(status_code=422, detail="mode='adventure' requires 'campaign' (a campaign YAML path).")
-    # The console is a 127.0.0.1-only OPERATOR surface: naming a local
-    # campaign file here is the same trust level as `maxim --sim <path>` on
-    # the CLI (CodeQL flags the request→path flow; it is by-design for a
-    # local-first tool). Constrain to what a campaign can be: an existing
-    # YAML file, resolved without following into surprises.
-    campaign_path = Path(body.campaign).expanduser().resolve()
-    if campaign_path.suffix.lower() not in (".yaml", ".yml"):
-        raise HTTPException(status_code=422, detail="'campaign' must point at a campaign YAML (.yaml/.yml).")
-    if not campaign_path.is_file():
-        raise HTTPException(status_code=404, detail=f"Campaign not found: {campaign_path}")
+
+    premise = (body.input or "").strip() or None
+    if bool(body.campaign) == bool(premise):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "mode='adventure' requires EXACTLY ONE of 'campaign' (a campaign YAML path) "
+                "or 'input' (a free-text premise to imagine)."
+            ),
+        )
+
+    campaign_path: Path | None = None
+    if body.campaign:
+        # The request NAMES a campaign; the server SELECTS the path.
+        #
+        # 127.0.0.1-only is not sufficient justification for building a
+        # filesystem path out of request data — a page in the operator's
+        # browser can POST to localhost, so "the operator named the file" is
+        # not guaranteed. Rather than construct-then-validate (which leaves
+        # request data flowing into a path expression), we resolve the request
+        # against the ALREADY-DISCOVERED set and use the discovery-derived
+        # Path. The picker hands back exactly what /api/campaigns returned, so
+        # the normal flow is unchanged; anything else is refused.
+        # Dev escape hatch: drop or symlink the file into ~/.maxim/campaigns.
+        requested = body.campaign.strip()
+        campaign_path = _select_discovered_campaign(requested)
+        if campaign_path is None:
+            roots = ", ".join(str(r) for r, _ in campaign_search_roots())
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Unknown campaign {requested!r}. Runnable campaigns are the ones "
+                    f"GET /api/campaigns lists (searched: {roots}). Copy or symlink yours there."
+                ),
+            )
+
+    if _talk_lock.locked():
+        # Symmetric to the talk path's adventure check — without this an
+        # adventure could start under an in-flight talk turn and stop its
+        # loop mid-send (review finding).
+        raise HTTPException(status_code=409, detail="A talk turn is in flight — try again in a moment.")
 
     handle = _get_handle()
     with _handle_lock:
@@ -353,19 +576,19 @@ def post_run(body: RunRequest) -> RunAccepted:
         run_id = time.strftime("%Y%m%d_%H%M%S")
         thread = threading.Thread(
             target=_run_campaign_thread,
-            args=(handle, str(campaign_path), run_id),
+            args=(handle, str(campaign_path) if campaign_path else "", run_id, premise),
             name=f"console.run.{run_id}",
             daemon=True,
         )
         _active_run["session_id"] = run_id
         _active_run["thread"] = thread
         thread.start()
-    return RunAccepted(
-        session_id=run_id,
-        mode="adventure",
-        status="started",
-        detail=f"Campaign {campaign_path.name} running as persistent agent {handle.agent_id!r}.",
+    detail = (
+        f"Imagining an adventure from your premise as persistent agent {handle.agent_id!r}."
+        if premise
+        else f"Campaign {campaign_path.name} running as persistent agent {handle.agent_id!r}."  # type: ignore[union-attr]
     )
+    return RunAccepted(session_id=run_id, mode="adventure", status="started", detail=detail)
 
 
 @api.get(
@@ -495,9 +718,14 @@ class _EventHub:
             self._conns.discard(conn)
 
     # ── run correlation (run-thread side) ──
-    def set_run(self, run_id: str | None) -> None:
+    def set_run(self, run_id: str | None) -> str | None:
+        """Set the active run id; returns the PREVIOUS one so a nested scope
+        (a talk turn) can restore rather than clobber a live adventure's id
+        (review finding: an unconditional clear stranded the rest of a
+        campaign's events with run_id=None)."""
         with self._lock:
-            self._run_id = run_id
+            prev, self._run_id = self._run_id, run_id
+        return prev
 
     # ── producers ──
     def sink(self, record: dict[str, Any]) -> None:
@@ -582,6 +810,12 @@ def build_app(ui_dist: Path | None = None) -> FastAPI:
         from maxim.simulation.sim_logger import register_sim_sink, unregister_sim_sink
 
         _event_hub.attach(asyncio.get_running_loop())
+        # Registering the sink is SUFFICIENT: sim_log dispatches to sinks
+        # independently of `_sim_active` (the terminal-verbosity switch a sim
+        # owns and turns OFF at every campaign end). The console deliberately
+        # does NOT call enable_sim_logging — that would also opt this
+        # long-lived process into the in-memory record trail and the stdout
+        # print path, neither of which a server wants.
         register_sim_sink(_event_hub.sink)
         try:
             yield

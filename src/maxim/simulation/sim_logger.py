@@ -128,6 +128,11 @@ _display_tier: DisplayTier = DisplayTier.CLEAN
 _interactive_mode: InteractiveMode = InteractiveMode.AUTO
 _display_floor: DisplayTier = DisplayTier.CLEAN  # User's --display setting (agent can't go below)
 
+# Agent display escalations are TEMPORARY — epoch deadline after which
+# maybe_auto_revert_display() drops back to the floor (0.0 = no escalation).
+_ESCALATION_HOLD_S = 120.0
+_escalation_expires_at: float = 0.0
+
 # Agent nickname registry — maps agent_id → short display name
 _agent_nicknames: dict[str, str] = {}
 _nickname_lock = threading.Lock()
@@ -188,16 +193,22 @@ def get_interactive_mode() -> InteractiveMode:
     return _interactive_mode
 
 
-def agent_escalate_display(tier: DisplayTier, reason: str = "") -> bool:
+def agent_escalate_display(tier: DisplayTier, reason: str = "", *, hold_s: float = _ESCALATION_HOLD_S) -> bool:
     """Allow the agent to temporarily escalate display tier.
+
+    The escalation is TEMPORARY: it auto-reverts to the user's floor after
+    ``hold_s`` seconds, via :func:`maybe_auto_revert_display` (ticked by the
+    agent loop). Time, not turns, is the unit — a loop iteration runs at
+    2-30Hz, so a turn count is not available at the tick point.
 
     Returns True if escalation was applied, False if tier is below floor.
     """
-    global _display_tier
+    global _display_tier, _escalation_expires_at
     if tier < _display_floor:
         return False  # Agent can't suppress below user's floor
     changed = _display_tier != tier
     _display_tier = tier
+    _escalation_expires_at = (time.time() + hold_s) if tier > _display_floor else 0.0
     # EVENT seam: surface the agent's display suggestion on the record stream
     # (kind="display" on the wire). The web UI keeps the floor semantics
     # client-side — the wire carries the suggestion, never enforces it.
@@ -212,11 +223,26 @@ def agent_escalate_display(tier: DisplayTier, reason: str = "") -> bool:
     return True
 
 
+def maybe_auto_revert_display() -> bool:
+    """Revert an EXPIRED agent escalation to the user's floor. Loop-ticked.
+
+    The production producer of the ``display``/revert wire event: without it
+    an escalation would stick forever (and ``DisplayModeTool``'s documented
+    "auto-revert" would be a lie). Cheap: one float compare on the common
+    no-escalation path. Returns True if a revert happened.
+    """
+    if _escalation_expires_at <= 0.0 or time.time() < _escalation_expires_at:
+        return False
+    revert_display_to_floor()
+    return True
+
+
 def revert_display_to_floor() -> None:
     """Revert display tier to user's --display setting."""
-    global _display_tier
+    global _display_tier, _escalation_expires_at
     reverted = _display_tier != _display_floor
     _display_tier = _display_floor
+    _escalation_expires_at = 0.0
     if reverted:
         sim_log(
             "DISPLAY",
@@ -232,10 +258,11 @@ def reset_sim_display_state() -> None:
     (e.g., in the menu loop where ``start_simulation_mode`` is called
     repeatedly in the same process).
     """
-    global _display_tier, _display_floor, _interactive_mode
+    global _display_tier, _display_floor, _interactive_mode, _escalation_expires_at
     _display_tier = DisplayTier.CLEAN
     _display_floor = DisplayTier.CLEAN
     _interactive_mode = InteractiveMode.AUTO
+    _escalation_expires_at = 0.0
     _sensor_last_logged.clear()
     clear_agent_nicknames()
 
@@ -480,10 +507,17 @@ _SUBSYSTEM_TIERS: dict[str, "DisplayTier"] = {
 }
 
 _sim_active = False
-_sim_start: float = 0.0
+# Initialized at import so a SINK-only consumer (no sim ever enabled) still
+# gets a sane sim-elapsed `t`; enable_sim_logging() re-stamps it per session.
+_sim_start: float = time.time()
 _use_color = True
 _log_file = None
 _log_records: list[dict[str, Any]] = []
+# Ceiling on the in-memory record trail (see the trim in sim_log). High enough
+# that no realistic sim session reaches it; low enough to bound a long-lived
+# `maxim serve` process.
+_MAX_LOG_RECORDS = 200_000
+_records_trimmed = False
 _debug_mode = False
 _show_channels: set[str] | None = None  # None = show all, set = filter
 
@@ -879,7 +913,16 @@ def sim_log(
             Persisted as-is in JSONL records.
         _force_debug: If True, only show on terminal in debug mode
     """
-    if not _sim_active:
+    # Registered SINKS are a first-class output, independent of `_sim_active`
+    # (which is a TERMINAL-verbosity switch owned by whoever ran a sim).
+    # Cross-confirmed review finding: the console's /ws bridge is a sink with a
+    # PROCESS-lifetime consumer, and `start_simulation_mode` calls
+    # `disable_sim_logging()` at the end of EVERY campaign — so gating sinks on
+    # `_sim_active` meant one finished adventure permanently silenced the whole
+    # stream, with talk's reply (which travels only on the wire) unrecoverable
+    # and silent on both sides. This mirrors the EVENT seam's own rule: all
+    # events reach sinks regardless of terminal tier.
+    if not _sim_active and not _sim_sinks:
         return
 
     # Resolve agent_id: explicit parameter > contextvar > None
@@ -913,17 +956,37 @@ def sim_log(
         record["agent_id"] = agent_id
     if nickname is not None:
         record["agent"] = nickname
+
+    # Sinks FIRST and unconditionally — see the gate note above.
+    _dispatch_to_sinks(record)
+
+    # Everything below is the sim-session trail + terminal rendering, which
+    # only exist while a sim owns the logger.
+    if not _sim_active:
+        return
+
     _log_records.append(record)
+
+    # Bound the in-memory trail so a long-lived process cannot grow it without
+    # limit. Trim the oldest quarter and say so ONCE — a silent truncation
+    # would quietly hollow out a long session's report/telemetry.
+    if len(_log_records) > _MAX_LOG_RECORDS:
+        global _records_trimmed
+        del _log_records[: _MAX_LOG_RECORDS // 4]
+        if not _records_trimmed:
+            _records_trimmed = True
+            logger.warning(
+                "sim_log in-memory trail exceeded %d records — trimming oldest. "
+                "Session reports/telemetry from this process are now partial "
+                "(the JSONL log file, if configured, remains complete).",
+                _MAX_LOG_RECORDS,
+            )
 
     if _log_file is not None:
         import json
 
         _log_file.write(json.dumps(record) + "\n")
         _log_file.flush()
-
-    # EVENT seam: fan out to registered sinks (console /ws bridge). Same rule
-    # as JSONL persistence — before the display-tier gate, all events.
-    _dispatch_to_sinks(record)
 
     # Bridge into the unified MAXIM_LOG_FILE stream. The sim-session JSONL
     # above stays the canonical session artifact; this second emission lets

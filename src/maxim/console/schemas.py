@@ -148,8 +148,31 @@ class RecallResponse(BaseModel):
 
 class RunRequest(BaseModel):
     mode: Literal["talk", "adventure", "sim", "rest"]
+    # mode="talk": the user's utterance.
+    # mode="adventure": a free-text premise — "describe an adventure and let
+    #   Maxim imagine it" (generative campaign). Exactly one of input/campaign.
     input: str | None = None
-    campaign: str | None = None  # for mode="adventure"
+    campaign: str | None = None  # for mode="adventure": a campaign YAML path
+
+
+class CampaignInfo(BaseModel):
+    """One discoverable campaign — backs the launcher's picker dropdown.
+
+    ``path`` is what you hand back to ``POST /api/run`` as ``campaign``; the
+    rest is display metadata read cheaply from the YAML head.
+    """
+
+    name: str
+    path: str
+    goal: str | None = None
+    source: Literal["user", "repo"] = "user"
+
+
+class CampaignsResponse(BaseModel):
+    campaigns: list[CampaignInfo] = Field(default_factory=list)
+    # Where discovery looked — surfaced so an empty list is explainable in the
+    # UI ("no campaigns in ~/.maxim/campaigns") rather than mystifying.
+    searched: list[str] = Field(default_factory=list)
 
 
 class RunAccepted(BaseModel):
@@ -160,8 +183,17 @@ class RunAccepted(BaseModel):
     # doesn't assume filesystem correlation.
     session_id: str = Field(description="Console-side run id (minted at accept; not the sim's internal session_id).")
     mode: str
-    status: Literal["started", "rejected"]
+    # "started" = accepted, running in the background (adventure).
+    # "completed" = the call BLOCKED and the work is done (talk turn) — the
+    #   client should not wait for a background finish.
+    # "rejected" = not accepted.
+    status: Literal["started", "completed", "rejected"]
     detail: str | None = None
+    # Talk turns only: the agent's words. Also delivered on /ws as
+    # kind="response" (the live channel the chat renders from); this field
+    # makes delivery robust when the client connected late or the stream
+    # dropped events under backpressure. None for background modes.
+    reply: str | None = None
 
 
 # ── /ws event envelope — the EventClient stream contract (EVENT seam) ────────

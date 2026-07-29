@@ -351,6 +351,81 @@ def apply_cloud_setup(
     return secret_path, written
 
 
+def placement_resolvable(tier: str = "large") -> tuple[bool, str, str]:
+    """Is ``tier``'s LLM placement resolvable right now? The SETUP read-side.
+
+    The counterpart to :func:`apply_mesh_setup` / :func:`apply_cloud_setup`:
+    those WRITE a placement, this asks whether one is in place — so a caller
+    (the Reachy bootstrap, the console's setup wizard, a first-run check) can
+    branch on "is this box configured to think yet?" **without knowing config
+    vocabulary**. Before this helper, callers had to reach for
+    ``resolve_setting('lanes.large.remote_url')`` and friends and re-implement
+    the local/mesh/cloud precedence by hand — leaking exactly the schema
+    knowledge the SETUP seam exists to hide.
+
+    Resolution mirrors the runtime's own order: an explicit ``placement`` wins;
+    otherwise the legacy ``remote_url`` (mesh) / cloud-profile fields are
+    classified the way ``derive_placement`` does; otherwise a local profile.
+
+    Returns ``(resolvable, kind, detail)`` where ``kind`` is one of
+    ``"mesh"`` / ``"cloud"`` / ``"local"`` / ``"none"`` and ``detail`` is a
+    human-readable, UI-safe summary (never contains a key — only refs/URLs).
+    Never raises: an unreadable config answers ``(False, "none", <why>)``.
+    """
+    if tier not in ("large", "medium", "small"):
+        return False, "none", f"unknown tier {tier!r} (expected large/medium/small)"
+    try:
+        cfg = load_config()
+    except Exception as e:  # malformed config.json — answer, don't explode
+        return False, "none", f"config could not be loaded: {type(e).__name__}: {e}"
+
+    lane = getattr(cfg.lanes, tier, None)
+    if lane is None:
+        return False, "none", f"unknown tier {tier!r} (expected large/medium/small)"
+
+    # 1. Explicit placement wins (the authoritative carrier).
+    placement = getattr(lane, "placement", ()) or ()
+    if placement:
+        primary = placement[0]
+        origin = str(getattr(primary, "origin", "") or "")
+        model = getattr(primary, "model", None)
+        url = getattr(primary, "remote_url", None) or getattr(primary, "url", None)
+        if origin == "peer":
+            return (bool(url), "mesh", f"peer placement → {url}" if url else "peer placement missing a url")
+        if origin == "cloud":
+            ok = bool(model or url)
+            return ok, "cloud", f"cloud placement → {model or url}" if ok else "cloud placement missing model/url"
+        if origin == "local":
+            return (bool(model), "local", f"local placement → {model}" if model else "local placement missing a model")
+        return False, "none", f"placement has an unrecognized origin {origin!r}"
+
+    # 2. Legacy fields — resolved through `resolve_setting` so the ENV layer of
+    # the canonical CLI > env > config.json > default chain counts. Reading
+    # config.json alone would answer "none" on a box configured via
+    # MAXIM_LANE_LARGE_REMOTE_URL / MAXIM_LLM_PROFILE (the peer-migration and
+    # every documented env setup), pushing a working operator back through the
+    # setup wizard (review finding).
+    def _resolved(field_path: str, fallback: Any = None) -> Any:
+        try:
+            from maxim.runtime.config_loader import resolve_setting
+
+            result = resolve_setting(field_path)
+            return result[0] if isinstance(result, tuple) else result
+        except Exception:
+            return fallback
+
+    remote_url = _resolved(f"lanes.{tier}.remote_url", getattr(lane, "remote_url", None))
+    if remote_url:
+        return True, "mesh", f"remote lane → {remote_url}"
+    profile = _resolved("llm.profile", getattr(cfg.llm, "profile", None))
+    cloud_enabled = _resolved("cloud.enabled", getattr(cfg.cloud, "enabled", False))
+    if cloud_enabled and profile:
+        return True, "cloud", f"cloud enabled with profile {profile}"
+    if profile:
+        return True, "local", f"local profile {profile}"
+    return False, "none", "no placement, remote_url, or llm.profile configured"
+
+
 def _apply_field_to_config(
     config: MaximConfig,
     field_path: str,
