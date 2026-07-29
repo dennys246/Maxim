@@ -566,3 +566,60 @@ class TestNarrativeReachesTheStream:
         capsys.readouterr()
         display_scene("Only once please.")
         assert capsys.readouterr().out.count("Only once please.") == 1
+
+
+class TestGateRejectionTellsTheTruth:
+    """`score=0.00 < 0.00` was a FABRICATED log line.
+
+    agent_loop computed a real GateDecision (score, threshold_used, reason)
+    then discarded it and called sim_pre_deliberation with hardcoded 0.0/0.0.
+    Every rejection therefore rendered as a threshold comparison — including
+    refractory, energy-exhausted and empty-working-memory, which are not
+    threshold comparisons at all. A live console session read that number and
+    concluded the gate was scoring zero; it had never been measured.
+    """
+
+    def test_reason_is_shown_instead_of_a_fake_comparison(self, sim_logging):
+        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+        sim_pre_deliberation(
+            gate_passed=False, score=0.0, threshold=0.0, enrichment_sections=0, reason="empty working memory"
+        )
+        rec = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]
+        assert "empty working memory" in rec["message"]
+        assert "0.00 < 0.00" not in rec["message"]
+        assert rec["data"]["reason"] == "empty working memory"
+
+    def test_falls_back_to_the_comparison_when_no_reason(self, sim_logging):
+        from maxim.simulation.sim_logger import sim_pre_deliberation
+
+        sim_pre_deliberation(gate_passed=False, score=0.3, threshold=0.4, enrichment_sections=0)
+        rec = [r for r in get_sim_records() if r["subsystem"] == "THOUGHT"][-1]
+        assert "0.30 < 0.40" in rec["message"]
+
+    def test_agent_loop_passes_the_real_decision(self):
+        # Structural: the hardcoded zeros must not come back.
+        import inspect
+
+        from maxim.runtime import agent_loop
+
+        src = inspect.getsource(agent_loop)
+        assert "score=0.0, threshold=0.0" not in src, "gate rejection is hardcoding zeros again"
+        assert "_gate_reason" in src
+
+
+class TestDmNarrationIsRecordedInAutomatedMode:
+    def test_automated_branch_shows_the_stimulus(self):
+        # display_scene used to be called ONLY on the interactive branch, so a
+        # console campaign (which forces InteractiveMode.OFF) never emitted the
+        # prose — it reached a viewer only as the truncated BIO-tier PERCEPT.
+        import inspect
+
+        from maxim.simulation import dm_runtime
+
+        src = inspect.getsource(dm_runtime.DMRuntime.run) if hasattr(dm_runtime, "DMRuntime") else ""
+        if not src:
+            import pytest
+
+            pytest.skip("DMRuntime.run not introspectable")
+        assert src.count("display_scene(stimulus)") >= 2, "automated mode must also emit the narration"
