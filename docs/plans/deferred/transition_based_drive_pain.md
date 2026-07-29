@@ -22,9 +22,20 @@
 > (repeat-causer arm — verified to FAIL on the latched-direct-channel design). Phase 2
 > unit/substrate blast radius green (161 tests). Phase 4 (CLAUDE.md invariant) shipped.
 >
-> **OUTSTANDING:** the Exp 42 triage re-run (both arms) + confirmation that the SCN
-> oscillator still reaches its 3-observation cold-start floor on the cradle body now that
-> drive `TemporalEvent`s are per-episode rather than per-tick.
+> **VALIDATION STATUS (2026-07-28):**
+> - **Exp 42 triage re-run: DONE — GRADUATE #6 holds.** 20 seeds/arm × 2 configurations,
+>   0 failed, 0 floored; H1 0.996 / 1.000 (vs 0.984 / 0.975 frozen), C1 +0.996, C2 PASS.
+>   `harm_net = -0.25` on every seed confirms the harmful source was contacted and
+>   accrued negative learning, so `safe_pref ~ 1.0` is real discrimination, not absence
+>   of contact. Full writeup + caveats:
+>   [docs/experiments/42b_drive_pain_fold_revalidation.md](../../experiments/42b_drive_pain_fold_revalidation.md).
+>   Caveat carried there: the gating-OFF arm's toggle state was unverifiable from the run
+>   data (the harness now records `env_drive_gate_enabled` so future runs are
+>   self-describing); the fold's validation rests on the treatment arm, and B7 is already
+>   `Dormant`, so nothing downstream depends on re-proving the ablation.
+> - **SCN oscillator cold-start floor: OPEN.** Offline A/B measured (~100 -> 4 events for
+>   4 breach episodes, so >= 3 real episodes are needed); the against-a-real-session arm
+>   still needs running via `scripts/check_oscillator_coldstart.py --session <id>`.
 
 > **DEFERRED (2026-07-15 plans audit):** Not shipped — `Body.evaluate_failures` is still state-based (re-fires per tick, no breach latch); B8 delta-attribution remains the only patch covering channel 1. Correct, well-scoped root-cause work (~25–40 LOC + blast-radius validation) but off the Exp 44 critical path, and touching shared embodiment code mid-experiment is the wrong moment. **Revive when:** a second drive-pain-attribution consumer appears, channel-2 (PainBus) mis-attribution actually bites an experiment (e.g. a safe source accruing spurious negative like pre-B8 Exp 42), or before any change to `evaluate_failures` cadence.
 >

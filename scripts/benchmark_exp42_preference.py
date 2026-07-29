@@ -398,6 +398,15 @@ def _record(
         "ablation_arm": _ablation_arm(),
         "env_body_state_prompt": os.environ.get("MAXIM_ENABLE_BODY_STATE_PROMPT", ""),
         "env_coach_body_layers_disabled": os.environ.get("MAXIM_DISABLE_COACH_BODY_LAYERS", ""),
+        # Drive-gating (B7) arm marker. Records the value ACTUALLY propagated to
+        # the sub-sims (same `os.environ.get(..., "1")` default the launcher
+        # applies), so a run file is self-describing about which arm it is.
+        # Added 2026-07-28 after the Exp 42b re-validation: the treatment and
+        # gating-OFF files were behaviourally indistinguishable and nothing in
+        # the record could confirm the toggle had fired — "did the actuation
+        # actually happen?" must be answerable from the data, not the shell
+        # history.
+        "env_drive_gate_enabled": os.environ.get("MAXIM_SIM_DRIVE_GATE_ENABLED", "1"),
     }
     rec.update(compute_run_metrics(tools))
     rec.update(nets)

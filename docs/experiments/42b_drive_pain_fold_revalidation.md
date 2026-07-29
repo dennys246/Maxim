@@ -1,8 +1,11 @@
 # Exp 42b — re-validation after the channel-split drive-pain fold
 
-**Status:** Runbook, not fired. Outstanding validation item for
+**Status:** FIRED 2026-07-28 — **GRADUATE #6 holds post-fold** (both configurations,
+20 seeds/arm, 0 floored). Closes the behavioural half of the Phase-2 validation for
 [transition_based_drive_pain.md](../plans/deferred/transition_based_drive_pain.md)
-Phase 2 (shipped in PR #435 / `feat/transition-drive-pain`).
+(PR #435 / `feat/transition-drive-pain`). See Results + Interpretation below —
+including one honest caveat: the gating-OFF arm's toggle state could not be verified
+from the run data (fixed forward in the harness).
 
 **This is a replication, not a new experiment.** The design, metrics, thresholds
 (`safe_pref >= 0.66`, `K = 10`), verdict matrix and arcs are those frozen in
@@ -135,3 +138,88 @@ Measured offline: 4 breach episodes → 4 events (vs ~100 pre-fold), so the floo
 needs >= 3 real episodes in the run.
 
 <!-- Analyzer appends "## Results" sections below this line -->
+
+## Results — treatment (post-fold)
+
+**Verdict: GRADUATE #6 — substrate drives adaptive, feedback-tracked behavior**  (exit 0)
+
+- `substrate_signal` (H1, both arms ≥ 0.66): **True**
+- H1[cradle_pref_a] safe_pref = 0.996 → PASS
+- H1[cradle_pref_b] safe_pref = 1.000 → PASS
+- C1 (identity flip id_pref_a(b)−id_pref_a(a) ≥ 0.33): +0.996 → PASS
+- C2 (per-source learning, harm net < safe net): PASS
+
+| arm | safe id | valid/total | floored | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 10/10 | 0 | 0.996 | 0.000 | 0.004 | −0.250 | 0.990 |
+| cradle_pref_b | α | 10/10 | 0 | 1.000 | 0.000 | 1.000 | −0.250 | 0.990 |
+
+## Results — gating-OFF ablation (post-fold)
+
+**Verdict: GRADUATE #6** (exit 0) — identical summary statistics to the treatment
+run (see the caveat below before reading anything into that).
+
+| arm | safe id | valid/total | floored | safe_pref | SD | id_pref_a | harm net | safe net |
+|---|---|---|---|---|---|---|---|---|
+| cradle_pref_a | β | 10/10 | 0 | 0.996 | 0.000 | 0.004 | −0.250 | 0.990 |
+| cradle_pref_b | α | 10/10 | 0 | 1.000 | 0.000 | 1.000 | −0.250 | 0.990 |
+
+## Interpretation
+
+**The fold preserves GRADUATE #6.** 20 seeds/arm, 0 failed, 0 floored, K cleared by
+~10–28× (n_exploit 100–283 vs the K=10 gate). H1, C1 and C2 all pass in both arms.
+The outstanding Phase-2 item from
+[transition_based_drive_pain.md](../plans/deferred/transition_based_drive_pain.md)
+is **closed for the behavioural half**.
+
+**C2 settles the non-trivial reading of `safe_pref`.** `harm_net = −0.25` on every
+seed proves the harmful source *was* contacted and *did* accrue negative learning —
+so `safe_pref ≈ 1.0` means "tried the harmful source during explore-first, learned,
+never returned", not "never encountered it". The consistent `n_contact − n_exploit = 3`
+gap is that explore-first prefix, excluded from the metric by design.
+
+**Discrimination is slightly SHARPER than the frozen run** — 0.996 / 1.000 here vs
+0.984 / 0.975 originally (git `0d6ca70f`), with SD collapsing to 0.000. The plausible
+mechanism is the fold itself: pre-fold, channel 2 re-published drive pain every tick
+and `create_pain_nac_subscriber` attributed part of that flood via `_context_similarity`
+to whatever action was pending — including safe ones. Quieting that channel removes
+noise from the safe source's learning. This is the predicted direction, but it is an
+*inference*, not something this run isolates; it would take a channel-2-only ablation
+to attribute the delta cleanly. Recorded as an observation, not a claim.
+
+**⚠️ The metric is now at its ceiling.** `safe_pref` sits at 0.996–1.000 with SD 0.000
+across 20 seeds. That satisfies H1 (≥ 0.66) comfortably, but it has no headroom left to
+detect *degradation* — a future regression could halve the discrimination and still
+score ~0.99. Any later arm that needs to measure a decrease should use a more sensitive
+statistic (e.g. time-to-first-avoidance, or harm contacts per exploitation window),
+not this one.
+
+**⚠️ The gating-OFF arm is NOT confirmed to have had gating off.** The two run files
+are genuinely distinct (per-seed `n_exploit` differs: arm A treatment 262–283 vs
+ablation 261–281), so this is not a duplicated file — but:
+- The drive-gate state was **not recorded** in the run JSONL at the time of this run
+  (`ablation_arm` records the Exp 44 body-state arms, not B7 gating), so it cannot be
+  verified retroactively from the data.
+- The behavioural signature the frozen run used as proof that "the toggle demonstrably
+  fired" — a volume difference (treatment arm B spiking to ~106 contacts vs the
+  ablation's tight ~56–64) — is **absent**: both runs here sit at n_exploit ~100–121
+  in arm B.
+
+Two readings are consistent with that: (a) the env prefix did not reach the sub-sims and
+the "ablation" is a second treatment run, or (b) it fired but drive-gating no longer
+moves contact volume in this configuration. **This does not affect the fold's
+validation**, which rests on the treatment arm — and B7 was already marked `Dormant`
+by the frozen run, so nothing downstream depends on re-proving it. But the ablation
+row above should be read as *corroborating*, not as an independently verified
+gating-OFF result. Fixed forward: `benchmark_exp42_preference.py::_record` now emits
+`env_drive_gate_enabled`, so future run files are self-describing about which arm they
+are. Re-running the ablation with the current harness would settle it in ~100 minutes.
+
+**Run conditions.** 10 seeds/arm × 2 counterbalanced arms × 2 configurations,
+substrate-primary (AUT is LLM-free), `smollm-1.7b-instruct` narrator, 40 turns
+requested, `cost=$0`, ~295 s/sub-sim. Executed on the Mac Mini with the leader's
+Qwen server stopped so the singleton guard served smollm on :8100.
+
+**Note on the harness's live output:** it prints `round(safe_pref, 2)`, so a true
+0.996 displays as `1.0` per seed. That is cosmetic — the analyzer's 3-decimal figures
+are authoritative.
