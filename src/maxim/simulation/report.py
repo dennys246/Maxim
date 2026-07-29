@@ -454,17 +454,27 @@ def save_aut_state(
     session_id: str,
     ec: Any | None = None,
     atl: Any | None = None,
+    scn: Any | None = None,
 ) -> None:
-    """Persist AUT hippocampus, NAc, EC, and ATL state for post-hoc analysis.
+    """Persist AUT hippocampus, NAc, EC, ATL and SCN state for post-hoc analysis.
 
-    ``ec`` and ``atl`` are keyword-only with a None default for back-compat
-    with existing callers; pass the live instances (``memory_hub.ec`` /
-    ``memory_hub.atl``) to write ``aut_ec.json`` / ``aut_atl.json``
-    alongside the hippocampus/NAc dumps. Required for substrate-divergence
-    analyzers (``analysis/substrate_diff.py::ec_diff`` and the Roy-5a
+    ``ec``, ``atl`` and ``scn`` are keyword-only with a None default for
+    back-compat with existing callers; pass the live instances
+    (``memory_hub.ec`` / ``memory_hub.atl`` / ``memory_hub.scn``) to write
+    ``aut_ec.json`` / ``aut_atl.json`` / ``aut_scn.json`` alongside the
+    hippocampus/NAc dumps. Required for substrate-divergence analyzers
+    (``analysis/substrate_diff.py::ec_diff`` and the Roy-5a
     cosine-localization analyzer) that key off persisted EC centroid
     state. Missing args silently skip the corresponding file — same shape
     as hippocampus/NAc handling above.
+
+    ``scn`` carries the oscillator payload (``SCN.dump`` embeds
+    ``OscillatorNetwork.to_dict``, incl. ``event_phases``), which is what
+    ``scripts/check_oscillator_coldstart.py`` reads. Added 2026-07-28: the
+    sim previously persisted every other bio-system EXCEPT SCN, so the
+    oscillator's observation density was not inspectable from a completed
+    run at all — the transition-based drive-pain fold changed drive
+    ``TemporalEvent`` density and there was no artifact to measure it on.
     """
     session_dir = Path(base_dir) / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -500,6 +510,14 @@ def save_aut_state(
             logger.info("AUT ATL saved: %s", atl_path)
         except Exception as e:
             logger.debug("Failed to save AUT ATL: %s", e)
+
+    if scn is not None:
+        try:
+            scn_path = session_dir / "aut_scn.json"
+            scn.save(str(scn_path))
+            logger.info("AUT SCN saved: %s", scn_path)
+        except Exception as e:
+            logger.debug("Failed to save AUT SCN: %s", e)
 
 
 def analyze_simulation(

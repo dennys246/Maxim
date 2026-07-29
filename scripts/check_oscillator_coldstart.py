@@ -79,15 +79,32 @@ def _find_oscillator_blob(data: Any) -> dict[str, Any] | None:
 
 
 def _resolve_scn_path(session: Path | None, scn_json: Path | None) -> Path | None:
+    """Locate a persisted SCN dump for a session.
+
+    NOTE: sims write to ``~/.maxim/sim_reports/<id>/`` (NOT ``sessions/``), and
+    ``aut_scn.json`` only exists for runs made after 2026-07-28 — before that
+    ``save_aut_state`` persisted hippocampus/NAc/EC/ATL but *not* SCN, so the
+    oscillator was not inspectable from a completed run at all. An older
+    session legitimately has no SCN dump; re-run one sub-sim on current code.
+    """
     if scn_json is not None:
         return scn_json.expanduser()
-    if session is not None:
-        base = session.expanduser()
-        for candidate in ("aut_scn.json", "scn.json", "aut_hippocampus.json"):
-            p = base / candidate
-            if p.exists() and candidate != "aut_hippocampus.json":
+    if session is None:
+        return None
+    base = session.expanduser()
+    # Accept either a session dir or a bare session id under the usual roots.
+    candidates_roots = [base]
+    if not base.exists():
+        for root in (Path("~/.maxim/sim_reports").expanduser(), Path("~/.maxim/sessions").expanduser()):
+            candidates_roots.append(root / base.name)
+    for root in candidates_roots:
+        if not root.exists():
+            continue
+        for name in ("aut_scn.json", "scn.json"):
+            p = root / name
+            if p.exists():
                 return p
-        matches = sorted(base.glob("*scn*.json"))
+        matches = sorted(root.glob("*scn*.json"))
         if matches:
             return matches[0]
     return None
@@ -218,7 +235,12 @@ def main() -> int:
 
     path = _resolve_scn_path(args.session, args.scn_json)
     if path is None or not path.exists():
-        print("[FAIL] no SCN dump found. Pass --session <dir> or --scn-json <file>, or use --simulate.")
+        print("[FAIL] no SCN dump found for that session.")
+        print("       Sims write to ~/.maxim/sim_reports/<id>/, and aut_scn.json only")
+        print("       exists for runs on code from 2026-07-28 or later — before that")
+        print("       save_aut_state persisted hippocampus/NAc/EC/ATL but NOT SCN.")
+        print("       Fix: re-run one sub-sim on current code, then re-check. Or use")
+        print("       --simulate for the offline A/B, or --scn-json <file> directly.")
         return 2
     return report_from_scn(path)
 
