@@ -633,6 +633,12 @@ jobs:
   aarch64-resolve:
     name: aarch64 resolve (lean Pi extra, no heavy backends)
     runs-on: ubuntu-latest
+    # Least privilege: this job only checks out and resolves dependencies.
+    # An explicit block is also what CodeQL's actions/missing-workflow-permissions
+    # query requires — without it these jobs raise alerts that BLOCK the merge
+    # (the ruleset's code_scanning rule blocks on `alerts_threshold: all`).
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       # uv, NOT pip: `pip --platform` evaluates environment markers against the
@@ -654,6 +660,8 @@ jobs:
 
   aarch64-install:
     name: aarch64 real install smoke (Debian bookworm)
+    permissions:
+      contents: read
     # Free + GA for public repos since 2025-08-07. Not on every PR: the
     # pygobject/pycairo source builds cost minutes, and the fast resolve job
     # above already guards the common regression.
