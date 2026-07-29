@@ -456,6 +456,7 @@ def _run_campaign_thread(handle: Any, campaign_path: str, run_id: str, premise: 
 # concurrent utterances would interleave into one settle window.
 _talk_lock = threading.Lock()
 _TALK_RUN_ID = "talk"
+_REST_RUN_ID = "rest"
 
 
 def _post_run_talk(body: RunRequest) -> RunAccepted:
@@ -514,15 +515,68 @@ def _post_run_talk(body: RunRequest) -> RunAccepted:
     )
 
 
+def _post_run_rest() -> RunAccepted:
+    """HANDLE rest mode — consolidate memory without tearing the agent down.
+
+    Blocking and usually quick, but a large store can take a while, so the
+    counts come back in `detail` rather than as a bare "ok". Distinct from
+    `stop()`: the agent stays usable afterwards, and the next talk turn sees
+    the consolidated substrate.
+    """
+    with _handle_lock:
+        prev = _active_run["thread"]
+    if prev is not None and prev.is_alive():
+        raise HTTPException(status_code=409, detail="An adventure is running — rest is unavailable until it ends.")
+    if _talk_lock.locked():
+        raise HTTPException(status_code=409, detail="A talk turn is in flight — try again in a moment.")
+
+    prev_run = _event_hub.set_run(_REST_RUN_ID)
+    try:
+        results = _get_handle().rest()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("rest failed")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+    finally:
+        _event_hub.set_run(prev_run)
+
+    detail = (
+        "Consolidated: " + ", ".join(f"{k}={v}" for k, v in sorted(results.items()))
+        if results
+        else "Nothing to consolidate (no memory store wired)."
+    )
+    return RunAccepted(session_id=_REST_RUN_ID, mode="rest", status="completed", detail=detail)
+
+
 @api.post("/run", response_model=RunAccepted, summary="Run a mode (talk/adventure/sim/rest)")
 def post_run(body: RunRequest) -> RunAccepted:
     # HANDLE seam (a): mode="adventure" runs an adventure AS the persistent
     # agent (campaign injection — the "Adventure teaches Talk" surface), in
     # two flavors: an authored campaign YAML (`campaign`) or a free-text
     # premise the narrator improvises (`input`). mode="talk" is the live-loop
-    # conversational mode. sim/rest stay 501.
+    # conversational mode; mode="rest" consolidates without teardown.
+    # mode="sim" stays 501 — see the note at RunRequest.
     if body.mode == "talk":
         return _post_run_talk(body)
+    if body.mode == "rest":
+        return _post_run_rest()
+    if body.mode == "sim":
+        # DELIBERATELY not served here, and not a "coming soon" either: a raw
+        # goal-driven sim harness is a developer/research surface, and the CLI
+        # already does it better (personas, seeds, research telemetry, fixture
+        # paths). The console's modes are talk / adventure / rest. Kept in the
+        # enum with a POINTER rather than removed, because removing an enum
+        # value is a breaking wire change for the generated TS client — but the
+        # message is specific so it can never read as an unfinished stub.
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "mode='sim' is not a console surface — it is a developer/research one. "
+                'Use the CLI: `maxim --sim "<goal>" --interactive false` (add --persona / '
+                "--research / --seed as needed). The console serves talk, adventure and rest."
+            ),
+        )
     if body.mode != "adventure":
         raise HTTPException(status_code=501, detail=_NOT_IMPLEMENTED)
 

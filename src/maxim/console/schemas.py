@@ -147,6 +147,13 @@ class RecallResponse(BaseModel):
 
 
 class RunRequest(BaseModel):
+    # talk      — one conversational turn against the live loop (blocking).
+    # adventure — a campaign, authored (`campaign`) or imagined (`input`).
+    # rest      — consolidate memory WITHOUT teardown; the agent stays usable.
+    # sim       — deliberately NOT a console surface (developer/research); the
+    #             501 points at the CLI rather than reading as an unfinished
+    #             stub. Kept in the enum because removing a value is a breaking
+    #             wire change for the generated TS client.
     mode: Literal["talk", "adventure", "sim", "rest"]
     # mode="talk": the user's utterance.
     # mode="adventure": a free-text premise — "describe an adventure and let

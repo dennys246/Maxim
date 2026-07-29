@@ -503,6 +503,51 @@ class MaximHandle:
         finally:
             self._campaign_lock.release()
 
+    def rest(self, *, cluster: bool = True) -> dict[str, int]:
+        """Consolidate memory WITHOUT tearing the agent down (the third mode).
+
+        The distinction from :meth:`stop` is the whole point: ``stop`` ends the
+        session and the handle is finished, while ``rest`` is sleep — the agent
+        consolidates and remains usable, so a subsequent ``talk`` sees the
+        consolidated substrate. That is what makes rest a *mode* rather than an
+        alias for shutdown.
+
+        Uses ``sleep_with_clustering`` when the SCN is wired (temporal-cluster
+        consolidation — far cheaper on a large store than per-memory
+        evaluation), falling back to plain ``sleep``.
+
+        Returns the consolidation counts (compressed / removed / preserved /
+        promoted) so a caller can show what rest actually did rather than a
+        spinner that claims something happened.
+        """
+        if self._stopped:
+            raise RuntimeError("MaximHandle is stopped — build a new handle to rest")
+        if self._campaign_lock.locked():
+            raise RuntimeError("An adventure is running on this handle — rest is unavailable until it ends")
+
+        hippocampus = getattr(self.instance, "hippocampus", None)
+        if hippocampus is None:
+            return {}
+
+        from maxim.simulation.sim_logger import sim_log
+
+        # A live talk loop holds working state over the same substrate;
+        # consolidating under it would race the loop's own reads. Stop it —
+        # the next talk() rebuilds it lazily against the consolidated store.
+        self._stop_talk_loop(required=True)
+
+        sim_log("LEARN", "resting — consolidating memory", {"mode": "rest"}, agent_id=self.agent_id)
+        use_clustering = bool(cluster and getattr(hippocampus, "scn", None) is not None)
+        results = hippocampus.sleep_with_clustering() if use_clustering else hippocampus.sleep()
+        results = dict(results or {})
+        sim_log(
+            "LEARN",
+            "rest complete: " + ", ".join(f"{k}={v}" for k, v in sorted(results.items())) or "rest complete",
+            {"mode": "rest", "clustered": use_clustering, **results},
+            agent_id=self.agent_id,
+        )
+        return results
+
     # ── lifecycle ───────────────────────────────────────────────────────
 
     def stop(
