@@ -70,8 +70,9 @@ def test_live_verb_models_ok(app):
     [
         # recall + setup/cloud + adventure + TALK are all LIVE now (#425, the
         # SETUP seam, HANDLE (a), and talk mode). Only sim/rest remain 501.
+        # rest is LIVE (consolidation without teardown); only sim stays 501,
+        # and deliberately so — it points at the CLI.
         ("post", "/api/run", {"mode": "sim"}),
-        ("post", "/api/run", {"mode": "rest"}),
     ],
 )
 def test_seam_stubs_are_501(app, method, path, body):

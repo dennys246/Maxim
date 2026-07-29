@@ -20,7 +20,11 @@ with ``auto_load=True`` over a ``~/.maxim`` home. Modes are methods:
   reaches the console's ``/ws`` stream as CLEAN-tier ``USER``/``RESPONSE``
   records (the EVENT seam — rides ``sim_log``, not ``api.on()``).
 
-``rest(...)`` remains unimplemented. Talk and an adventure are mutually
+* ``rest()`` — consolidate memory WITHOUT teardown; the agent stays usable,
+  so a later ``talk`` sees the consolidated substrate (that is the whole
+  distinction from ``stop``).
+
+Talk and an adventure are mutually
 exclusive: both drive the same bio-stack, so starting a campaign stops the
 talk loop first (the next ``talk()`` rebuilds it lazily).
 
@@ -64,6 +68,41 @@ def _extract_reply(turn: dict[str, Any]) -> str | None:
     if isinstance(fallback, dict) or not fallback:
         return None
     return str(fallback)
+
+
+def _action_names(turn: dict[str, Any]) -> list[str]:
+    return [str(getattr(a, "tool_name", "?")) for a in (turn.get("actions") or [])]
+
+
+def _failed_actions(turn: dict[str, Any]) -> list[str]:
+    """Tool names whose action failed or was blocked in this turn."""
+    out: list[str] = []
+    for a in turn.get("actions") or []:
+        failed = getattr(a, "result_success", None) is False or bool(getattr(a, "blocked", False))
+        if failed:
+            out.append(str(getattr(a, "tool_name", "?")))
+    return out
+
+
+def _describe_silent_turn(turn: dict[str, Any]) -> str:
+    """Explain a turn that produced no words, in the user's terms.
+
+    "(no reply)" is useless to the person who asked a question. Naming the
+    tools — and especially the FAILED ones — turns silence into an account of
+    what happened, which is the difference between a wedge and a degraded
+    state that is SHOWN.
+    """
+    if turn.get("timed_out"):
+        return "(no reply — the turn timed out before finishing)"
+    failed = _failed_actions(turn)
+    names = _action_names(turn)
+    if failed:
+        joined = ", ".join(dict.fromkeys(failed))
+        return f"(no reply — {joined} failed, so the turn produced no answer)"
+    if names:
+        joined = ", ".join(dict.fromkeys(names))
+        return f"(no reply — the turn ran {joined} but never said anything)"
+    return "(no reply — the turn took no action and said nothing)"
 
 
 class MaximHandle:
@@ -235,13 +274,23 @@ class MaximHandle:
         if reply:
             sim_log("RESPONSE", str(reply), {"text": str(reply)}, agent_id=self.agent_id)
         else:
-            # Say so on the wire rather than leaving the chat silent — a
-            # timeout or a turn that produced only non-verbal actions is a
-            # real outcome the UI should be able to render.
+            # A turn must never end silently. Naming WHAT the turn did — and
+            # which tools failed — is the difference between the chat showing
+            # "(no reply)" and showing "I ran internet_search and it failed".
+            # Reported from live console use: a question produced 163s of
+            # silence and the only explanation was an ❌ FAIL record buried in
+            # the bio panel.
+            summary = _describe_silent_turn(result)
             sim_log(
                 "RESPONSE",
-                "(no reply — the turn produced no respond/speak action)",
-                {"text": None, "timed_out": bool(result.get("timed_out"))},
+                summary,
+                {
+                    "text": None,
+                    "no_reply_reason": summary,
+                    "timed_out": bool(result.get("timed_out")),
+                    "actions": _action_names(result),
+                    "failed_actions": _failed_actions(result),
+                },
                 agent_id=self.agent_id,
             )
         return result
@@ -502,6 +551,51 @@ class MaximHandle:
                 set_interactive_mode(_prior_mode)
         finally:
             self._campaign_lock.release()
+
+    def rest(self, *, cluster: bool = True) -> dict[str, int]:
+        """Consolidate memory WITHOUT tearing the agent down (the third mode).
+
+        The distinction from :meth:`stop` is the whole point: ``stop`` ends the
+        session and the handle is finished, while ``rest`` is sleep — the agent
+        consolidates and remains usable, so a subsequent ``talk`` sees the
+        consolidated substrate. That is what makes rest a *mode* rather than an
+        alias for shutdown.
+
+        Uses ``sleep_with_clustering`` when the SCN is wired (temporal-cluster
+        consolidation — far cheaper on a large store than per-memory
+        evaluation), falling back to plain ``sleep``.
+
+        Returns the consolidation counts (compressed / removed / preserved /
+        promoted) so a caller can show what rest actually did rather than a
+        spinner that claims something happened.
+        """
+        if self._stopped:
+            raise RuntimeError("MaximHandle is stopped — build a new handle to rest")
+        if self._campaign_lock.locked():
+            raise RuntimeError("An adventure is running on this handle — rest is unavailable until it ends")
+
+        hippocampus = getattr(self.instance, "hippocampus", None)
+        if hippocampus is None:
+            return {}
+
+        from maxim.simulation.sim_logger import sim_log
+
+        # A live talk loop holds working state over the same substrate;
+        # consolidating under it would race the loop's own reads. Stop it —
+        # the next talk() rebuilds it lazily against the consolidated store.
+        self._stop_talk_loop(required=True)
+
+        sim_log("LEARN", "resting — consolidating memory", {"mode": "rest"}, agent_id=self.agent_id)
+        use_clustering = bool(cluster and getattr(hippocampus, "scn", None) is not None)
+        results = hippocampus.sleep_with_clustering() if use_clustering else hippocampus.sleep()
+        results = dict(results or {})
+        sim_log(
+            "LEARN",
+            "rest complete: " + ", ".join(f"{k}={v}" for k, v in sorted(results.items())) or "rest complete",
+            {"mode": "rest", "clustered": use_clustering, **results},
+            agent_id=self.agent_id,
+        )
+        return results
 
     # ── lifecycle ───────────────────────────────────────────────────────
 

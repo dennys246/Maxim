@@ -272,10 +272,11 @@ class TestTalkEndpoint:
         with TestClient(build_app(None)) as c:
             assert c.post("/api/run", json={"mode": "talk", "input": "  "}).status_code == 422
 
-    def test_sim_and_rest_remain_501(self):
+    def test_only_sim_remains_501(self):
+        # rest is LIVE now; sim is deliberately a pointer at the CLI rather
+        # than a console surface (see TestSimModeIsAPointerNotAStub).
         with TestClient(build_app(None)) as c:
             assert c.post("/api/run", json={"mode": "sim"}).status_code == 501
-            assert c.post("/api/run", json={"mode": "rest"}).status_code == 501
 
     def test_turn_is_run_id_scoped_and_reply_goes_to_the_stream(self, monkeypatch):
         # run_id scoping is what keeps a background adventure's narration from
@@ -336,3 +337,194 @@ class TestTalkEndpoint:
         assert "no backend" in r.json()["detail"]
         assert srv._event_hub._run_id is None  # not stranded on the failure path
         assert not srv._talk_lock.locked()  # lock released for the next turn
+
+
+class TestRestMode:
+    """rest is a MODE, not an alias for stop: it consolidates and the agent
+    stays usable, so a later talk turn sees the consolidated substrate."""
+
+    def _handle_with_hippo(self, hippo):
+        h = _bare_handle()
+        h.instance = type("I", (), {"hippocampus": hippo})()
+        return h
+
+    def test_uses_clustering_when_scn_is_wired(self, sim_logging):
+        calls: list[str] = []
+
+        class Hippo:
+            scn = object()
+
+            def sleep_with_clustering(self):
+                calls.append("clustered")
+                return {"promoted": 2, "removed": 1}
+
+            def sleep(self):  # pragma: no cover
+                calls.append("plain")
+                return {}
+
+        h = self._handle_with_hippo(Hippo())
+        assert h.rest() == {"promoted": 2, "removed": 1}
+        assert calls == ["clustered"]
+
+    def test_falls_back_to_plain_sleep_without_scn(self, sim_logging):
+        calls: list[str] = []
+
+        class Hippo:
+            scn = None
+
+            def sleep(self):
+                calls.append("plain")
+                return {"promoted": 1}
+
+        h = self._handle_with_hippo(Hippo())
+        h.rest()
+        assert calls == ["plain"]
+
+    def test_does_not_stop_the_agent(self, sim_logging):
+        # The distinction from stop(): the handle remains usable afterwards.
+        class Hippo:
+            scn = None
+
+            def sleep(self):
+                return {}
+
+        h = self._handle_with_hippo(Hippo())
+        h.rest()
+        assert h._stopped is False
+
+    def test_stops_a_live_talk_loop_first(self, sim_logging, monkeypatch):
+        # Consolidating under a live loop would race its reads of the same
+        # substrate; required=True means refuse rather than run both.
+        stopped: list[dict] = []
+
+        class Hippo:
+            scn = None
+
+            def sleep(self):
+                return {}
+
+        h = self._handle_with_hippo(Hippo())
+        monkeypatch.setattr(type(h), "_stop_talk_loop", lambda self, **kw: stopped.append(kw))
+        h.rest()
+        assert stopped == [{"required": True}]
+
+    def test_refused_during_a_campaign_and_after_stop(self, sim_logging):
+        h = self._handle_with_hippo(None)
+        h._campaign_lock.acquire()
+        try:
+            with pytest.raises(RuntimeError, match="adventure is running"):
+                h.rest()
+        finally:
+            h._campaign_lock.release()
+        h._stopped = True
+        with pytest.raises(RuntimeError, match="stopped"):
+            h.rest()
+
+    def test_no_hippocampus_returns_empty_not_error(self, sim_logging):
+        h = self._handle_with_hippo(None)
+        assert h.rest() == {}
+
+
+class TestSimModeIsAPointerNotAStub:
+    def test_sim_501_names_the_cli_alternative(self):
+        with TestClient(build_app(None)) as c:
+            r = c.post("/api/run", json={"mode": "sim"})
+        assert r.status_code == 501
+        detail = r.json()["detail"]
+        assert "maxim --sim" in detail, "the 501 must point somewhere, not read as an unfinished stub"
+        assert "talk" in detail and "adventure" in detail and "rest" in detail
+
+
+class TestRestEndpoint:
+    def test_rest_returns_completed_with_counts(self, monkeypatch):
+        from maxim.console import server as srv
+
+        class FakeHandle:
+            agent_id = "console_agent"
+
+            def rest(self):
+                return {"promoted": 3, "removed": 1}
+
+        monkeypatch.setattr(srv, "_get_handle", lambda: FakeHandle())
+        with TestClient(build_app(None)) as c:
+            r = c.post("/api/run", json={"mode": "rest"})
+        body = r.json()
+        assert r.status_code == 200
+        assert body["mode"] == "rest" and body["status"] == "completed"
+        assert "promoted=3" in body["detail"]
+        assert srv._event_hub._run_id is None  # scope restored
+
+    def test_rest_refused_while_an_adventure_runs(self, monkeypatch):
+        from maxim.console import server as srv
+
+        alive = threading.Event()
+        t = threading.Thread(target=alive.wait, daemon=True)
+        t.start()
+        monkeypatch.setitem(srv._active_run, "thread", t)
+        try:
+            with TestClient(build_app(None)) as c:
+                assert c.post("/api/run", json={"mode": "rest"}).status_code == 409
+        finally:
+            alive.set()
+            t.join(timeout=5)
+
+
+class TestSilentTurnsExplainThemselves:
+    """A turn must never end silently.
+
+    Reported from live console use: a question ran internet_search, the search
+    failed, and the turn produced no words — so the chat showed "(no reply)"
+    and the only explanation was an ❌ FAIL record buried in the bio panel.
+    """
+
+    def _act(self, name, ok=True, blocked=False):
+        from maxim.simulation.sinks import ActionRecord
+
+        return ActionRecord(timestamp=0.0, tool_name=name, result_success=ok, blocked=blocked)
+
+    def test_failed_tool_is_named(self):
+        from maxim.console.handle import _describe_silent_turn
+
+        msg = _describe_silent_turn({"actions": [self._act("internet_search", ok=False)]})
+        assert "internet_search" in msg and "failed" in msg
+
+    def test_blocked_tool_counts_as_failed(self):
+        from maxim.console.handle import _describe_silent_turn
+
+        assert "bash" in _describe_silent_turn({"actions": [self._act("bash", blocked=True)]})
+
+    def test_succeeded_tools_are_still_named(self):
+        from maxim.console.handle import _describe_silent_turn
+
+        msg = _describe_silent_turn({"actions": [self._act("read_file")]})
+        assert "read_file" in msg
+
+    def test_timeout_is_distinguished(self):
+        from maxim.console.handle import _describe_silent_turn
+
+        assert "timed out" in _describe_silent_turn({"actions": [], "timed_out": True})
+
+    def test_placeholder_carries_structured_reason_on_the_wire(self, sim_logging, monkeypatch):
+        # The web chat renders from the stream, so the reason must be in the
+        # RECORD, not only in the human string.
+        from maxim.console.handle import MaximHandle
+
+        class Bridge:
+            def send_and_wait(self, text, **kw):
+                return {
+                    "turn": 1,
+                    "response": None,
+                    "actions": [
+                        __import__("maxim.simulation.sinks", fromlist=["ActionRecord"]).ActionRecord(
+                            timestamp=0.0, tool_name="internet_search", result_success=False
+                        )
+                    ],
+                    "timed_out": False,
+                }
+
+        h = _bare_handle(Bridge())
+        monkeypatch.setattr(MaximHandle, "_ensure_talk_loop", lambda self: Bridge())
+        h.talk("what's the weather?")
+        rec = [r for r in get_sim_records() if r["subsystem"] == "RESPONSE"][-1]
+        assert rec["data"]["failed_actions"] == ["internet_search"]
+        assert "internet_search" in rec["data"]["no_reply_reason"]
