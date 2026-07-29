@@ -182,61 +182,6 @@ def extract_learning_nets(causal_links: dict[str, Any]) -> dict[str, Any]:
 # ── sub-sim execution ────────────────────────────────────────────────────
 
 
-def _interpreter_mismatch() -> str | None:
-    """Abort if the `maxim` that sub-sims will import is NOT this repo's code.
-
-    Earned 2026-07-28: a 40-sub-sim Exp 42b re-validation silently measured a
-    DIFFERENT checkout. The venv carried a stale editable `.pth` pointing at
-    another tree, and the launching shell lost `PYTHONPATH=src` to a
-    short-circuited `&&` (`source .venv/bin/activate && export PYTHONPATH=src`
-    — the source failed, so the export never ran). Every run "succeeded" and
-    the recorded `git_hash` came from the harness's cwd, so the JSONL looked
-    authoritative while describing code that was never executed. Only an
-    unrelated missing-artifact symptom exposed it.
-
-    `git_hash` records where the HARNESS lives; this records where the CODE
-    lives. They must agree or the run means nothing.
-
-    Returns None when consistent, else an actionable message.
-    """
-    repo_src = (Path(__file__).resolve().parent.parent / "src").resolve()
-    binary = _resolve_maxim_binary()
-    # Probe through the CONSOLE SCRIPT'S OWN interpreter with the SAME env the
-    # sub-sims get — importing in-process would test the harness's interpreter,
-    # which need not be the one `maxim` runs under.
-    try:
-        interp = Path(binary).read_text().splitlines()[0].lstrip("#!").strip()
-    except OSError:
-        interp = sys.executable
-    try:
-        probe = subprocess.run(
-            [interp, "-c", "import maxim,sys; sys.stdout.write(maxim.__file__)"],
-            env=os.environ.copy(),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-    except Exception as exc:  # pragma: no cover - probe failure is its own error
-        return f"PREFLIGHT FAIL: could not probe `maxim` interpreter ({exc})"
-    if probe.returncode != 0 or not probe.stdout.strip():
-        return f"PREFLIGHT FAIL: `maxim` is not importable by {interp}\n{probe.stderr.strip()[:400]}"
-    imported = Path(probe.stdout.strip()).resolve().parent.parent
-    if imported == repo_src:
-        return None
-    return (
-        "PREFLIGHT FAIL: the `maxim` package being imported is NOT this repo's src.\n"
-        f"  harness repo src : {repo_src}\n"
-        f"  imported maxim   : {imported}\n"
-        "  → sub-sims would measure the WRONG CODE and the run would be invalid.\n"
-        "  Fix: run from the repo root with PYTHONPATH pointing at its src, e.g.\n"
-        f"       PYTHONPATH={repo_src} python scripts/benchmark_exp42_preference.py ...\n"
-        "  (and check for stale `__editable__*.pth` files in your venv's site-packages\n"
-        "   left behind by an old `pip install -e` from a deleted/other checkout).\n"
-        "  Override only if you genuinely intend to benchmark installed code: --mock is\n"
-        "  exempt; otherwise fix the path rather than bypassing this check."
-    )
-
-
 def _resolve_maxim_binary() -> str:
     found = shutil.which("maxim")
     if found:
@@ -417,6 +362,9 @@ def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in _TRUTHY
 
 
+_PROVENANCE: dict[str, str] = {}
+
+
 def _ablation_arm() -> str:
     """Normalize the Exp 44 arm from the two env vars: A (unwired status
     quo), B (body_state + coach layers off), C (body_state + coach on),
@@ -462,6 +410,9 @@ def _record(
         # actually happen?" must be answerable from the data, not the shell
         # history.
         "env_drive_gate_enabled": os.environ.get("MAXIM_SIM_DRIVE_GATE_ENABLED", "1"),
+        # Which code ACTUALLY ran (not just where the harness lives) — see
+        # scripts/_provenance.py. `git_hash` above answers the wrong question.
+        **_PROVENANCE,
     }
     rec.update(compute_run_metrics(tools))
     rec.update(nets)
@@ -610,9 +561,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: unknown arms {bad}; valid: {ARMS}", file=sys.stderr)
         return 2
 
-    if not args.mock and (msg := _interpreter_mismatch()) is not None:
-        print(msg, file=sys.stderr)
+    # Provenance guard (scripts/_provenance.py): refuse to run if the sub-sims
+    # would import a `maxim` from outside this repo. See that module for the
+    # Exp 42b post-mortem this was earned from.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _provenance import ProvenanceError, assert_repo_interpreter, executed_code_provenance
+
+    repo_root = Path(__file__).resolve().parent.parent
+    try:
+        assert_repo_interpreter(repo_root, _resolve_maxim_binary(), exempt=args.mock)
+    except ProvenanceError as exc:
+        print(f"PREFLIGHT FAIL: {exc}", file=sys.stderr)
         return 3
+    if not args.mock:
+        _PROVENANCE.update(executed_code_provenance(repo_root, _resolve_maxim_binary()))
 
     return run_benchmark(
         arms=arms,
