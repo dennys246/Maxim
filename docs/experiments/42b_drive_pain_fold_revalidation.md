@@ -1,11 +1,24 @@
 # Exp 42b — re-validation after the channel-split drive-pain fold
 
-**Status:** FIRED 2026-07-28 — **GRADUATE #6 holds post-fold** (both configurations,
-20 seeds/arm, 0 floored). Closes the behavioural half of the Phase-2 validation for
-[transition_based_drive_pain.md](../plans/deferred/transition_based_drive_pain.md)
-(PR #435 / `feat/transition-drive-pain`). See Results + Interpretation below —
-including one honest caveat: the gating-OFF arm's toggle state could not be verified
-from the run data (fixed forward in the harness).
+**Status:** ⚠️ **RUN INVALID — RESULTS RETRACTED 2026-07-28.** The 40 sub-sims did
+NOT execute the fold. The `maxim` console script resolved `import maxim` to a stale
+editable install (`__editable__.maxim-0.1.0.pth`) pointing at the **main checkout**
+(then on `feat/console-rest-mode`, which contains no `drive_breach_severity`), and the
+shell that launched the run lost its `PYTHONPATH=src` to a short-circuited `&&`:
+
+```
+$ source .venv/bin/activate && export PYTHONPATH=src
+source: no such file or directory: .venv/bin/activate     # &&, so the export never ran
+```
+
+The tell was a *different* symptom: a post-fix session wrote `aut_hippocampus/nac/ec/atl`
+but no `aut_scn.json` — impossible on code that has the `scn=` parameter. The numbers
+below therefore describe **pre-fold main**, not this branch. They are preserved for the
+re-baseline they do provide (see Interpretation) but **they do not validate the fold**.
+
+**The Phase-2 behavioural item is OPEN again.** Re-run per the Commands section, with the
+interpreter assertion added below. Everything downstream that cited this run — the plan
+header and the CLAUDE.md invariant — has been reverted to "outstanding".
 
 **This is a replication, not a new experiment.** The design, metrics, thresholds
 (`safe_pref >= 0.66`, `K = 10`), verdict matrix and arcs are those frozen in
@@ -48,6 +61,39 @@ item.**
   maxim doctor 2>/dev/null | grep -i "n_ctx\|profile"
   ```
 
+## ⚠️ Interpreter provenance — read before re-running
+
+The 2026-07-28 attempt was invalidated by this, so the re-run must not repeat it.
+
+`maxim` is a console script that resolves `import maxim` purely through `sys.path`.
+The venv used here carries stale editable `.pth` files pointing at OTHER checkouts, so
+**without an explicit `PYTHONPATH` the sub-sims silently import a different tree** — no
+error, no warning, and the `git_hash` recorded in the JSONL comes from the *harness's*
+directory, so the records look authoritative while describing code that never ran.
+
+Two compounding traps from the invalid run:
+
+1. `source .venv/bin/activate && export PYTHONPATH=src` — the `source` failed (wrong
+   path) and `&&` short-circuited, so **the export never happened**. Use separate lines
+   or `;`, never `&&`, for the export.
+2. `PYTHONPATH=src` is **relative** — it silently resolves to nothing if the sim is
+   launched from any directory other than the repo root. **Always use an absolute path.**
+
+The harness now runs `_interpreter_mismatch()` before any sub-sim and exits 3 with the
+offending paths if the imported `maxim` is not this repo's `src` (probed through the
+console script's own interpreter with the sub-sim's env). `--mock` is exempt.
+
+Verify by hand from the shell you will launch from:
+
+```bash
+"$(head -1 "$(command -v maxim)" | sed 's/^#!//')" -c '
+import maxim, maxim.simulation.report as r, os, sys
+print("cwd       :", os.getcwd())
+print("PYTHONPATH:", os.environ.get("PYTHONPATH", "<unset>"))
+print("maxim     :", maxim.__file__)
+print("aut_scn   :", "PRESENT" if "aut_scn.json" in open(r.__file__).read() else "ABSENT <-- WRONG TREE")'
+```
+
 ## Commands
 
 Output paths are **deliberately new** (`42b_*`). `analyze_exp42_preference.py`
@@ -57,7 +103,8 @@ original GRADUATE record. Always write to this doc instead.
 
 ```bash
 cd <worktree-with-the-fold>
-export PYTHONPATH=src            # worktree runs need this
+export PYTHONPATH="$PWD/src"     # ABSOLUTE — a relative 'src' silently resolves to nothing
+#   ...and put this on its OWN line; `&& export` after a failing `source` never runs.
 
 # ── Arm 1: treatment (exploration + drive-gating ON) — the frozen main arm ──
 python scripts/benchmark_exp42_preference.py \
@@ -166,11 +213,11 @@ run (see the caveat below before reading anything into that).
 
 ## Interpretation
 
-**The fold preserves GRADUATE #6.** 20 seeds/arm, 0 failed, 0 floored, K cleared by
-~10–28× (n_exploit 100–283 vs the K=10 gate). H1, C1 and C2 all pass in both arms.
-The outstanding Phase-2 item from
-[transition_based_drive_pain.md](../plans/deferred/transition_based_drive_pain.md)
-is **closed for the behavioural half**.
+**⚠️ RETRACTED — this run does not speak to the fold.** It executed pre-fold main (see
+Status). What it *is*: a clean 20-seed/arm re-baseline of **main** on current hardware,
+which is genuinely useful as the comparison point the real re-run will be measured
+against. H1, C1, C2 all pass and nothing floored, so the apparatus and thresholds are
+sound — only the code under test was wrong.
 
 **C2 settles the non-trivial reading of `safe_pref`.** `harm_net = −0.25` on every
 seed proves the harmful source *was* contacted and *did* accrue negative learning —
@@ -178,14 +225,14 @@ so `safe_pref ≈ 1.0` means "tried the harmful source during explore-first, lea
 never returned", not "never encountered it". The consistent `n_contact − n_exploit = 3`
 gap is that explore-first prefix, excluded from the metric by design.
 
-**Discrimination is slightly SHARPER than the frozen run** — 0.996 / 1.000 here vs
-0.984 / 0.975 originally (git `0d6ca70f`), with SD collapsing to 0.000. The plausible
-mechanism is the fold itself: pre-fold, channel 2 re-published drive pain every tick
-and `create_pain_nac_subscriber` attributed part of that flood via `_context_similarity`
-to whatever action was pending — including safe ones. Quieting that channel removes
-noise from the safe source's learning. This is the predicted direction, but it is an
-*inference*, not something this run isolates; it would take a channel-2-only ablation
-to attribute the delta cleanly. Recorded as an observation, not a claim.
+**Discrimination is sharper than the frozen run — and the fold is NOT why.** 0.996 /
+1.000 here vs 0.984 / 0.975 originally (git `0d6ca70f`), SD collapsing to 0.000. I
+initially attributed this to the fold quieting channel-2 attribution noise. **That
+inference is falsified**: this run contained no fold. The delta comes from something
+else that landed between `0d6ca70f` and current main, and is currently unexplained.
+A cautionary note for the re-run: the frozen 0.984/0.975 is NOT the right comparison
+point for the fold — **this run is**, because it isolates main-vs-fold with everything
+else held constant. That is the one genuinely valuable thing this invalid run produced.
 
 **⚠️ The metric is now at its ceiling.** `safe_pref` sits at 0.996–1.000 with SD 0.000
 across 20 seeds. That satisfies H1 (≥ 0.66) comfortably, but it has no headroom left to
