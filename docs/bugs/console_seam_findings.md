@@ -15,7 +15,19 @@ also true — two reported symptoms turned out to be instrument artifacts (see
 
 ## Open
 
-### Issue 1: ~2/sec hippocampus+scn record cadence while idle
+> Two of these were measured on 2026-07-29. Results are inline; the harnesses
+> are `scripts/measure_idle_stream_cadence.py` and
+> `scripts/measure_respond_fixation.py`.
+
+### Issue 1: ~2/sec hippocampus+scn record cadence while idle — NOT REPRODUCED
+
+**Status:** measured 2026-07-29 — **did not reproduce**. 60s idle with a live
+talk loop produced **zero** hippocampus/scn records; only `pipeline` at
+0.10/s. The reported cadence is an **active-turn** phenomenon, not an idle
+one. Re-scope before pursuing: measure *during* a turn.
+*(The first version of the harness printed "Confirms the report" for 0.10/s of
+`pipeline` — a 20x miss from judging against "any non-meta kind" instead of
+against the claim. Fixed; the verdict now names the reported kinds.)*
 
 **Severity:** Low-Medium (stream noise; would matter on a Pi's filtered UI)
 **Observed:** With a talk loop alive and nothing happening, `hippocampus` and
@@ -30,6 +42,20 @@ by kind, and correlate against loop iterations. **Measure it — do not reason
 about it.** Two symptoms in this same batch were instrument artifacts.
 
 ### Issue 2: talk's reward signal is degenerate
+
+**Measured 2026-07-29 — the respond FIXATION does not reproduce in console
+talk.** Across 12 turns whose probes each had an obvious non-respond action,
+`respond` appeared in **zero** action lists (`glob` appeared twice; the rest
+produced no tools). The aggregate is robust to the harness's per-turn
+attribution confound: stale events could only ADD respond occurrences, never
+remove them.
+
+**What that implies for the three hypotheses:** if it were the LLM's own prior
+(C) or learned saturation (B), it should appear in console talk too. It does
+not. That favours **A — prompt framing / context**: the April observation was a
+SIM-ORCHESTRATOR context, where the orchestrator addresses the AUT as though it
+were a human. The saturation concern below is still real as a *credit* problem;
+it is just not the cause of the fixation.
 
 **Severity:** Medium (undercuts a product claim, not a crash)
 **Observed:** `respond` always succeeds, so `record_outcome` books `+1`
@@ -58,6 +84,20 @@ happened, but still says nothing substantive.
 **Why not fixed:** forcing a closing response changes the agent loop's turn
 contract for every entry point, and manufacturing words the agent did not
 choose is a bigger decision than a bug fix. Left as an explicit option.
+
+### Issue 5: the reply path bypasses the executor
+
+**Severity:** Medium (observability; blocks attribution)
+**Observed:** across 12 console talk turns, `glob` was recorded in the action
+list but `respond` **never was** — while replies demonstrably occurred. Since
+`InstrumentedExecutor` records everything routed through `executor.execute()`,
+the console's reply path evidently is not that path.
+**Why it matters:** tool attribution for talk is incomplete, so "what did this
+turn do?" cannot be answered from the action list alone — which is exactly what
+the RESPONSE record's new `actions` field is meant to provide.
+**Not chased further:** found while measuring something else, and three
+successive harness failures argue for reading a raw `/ws` capture by hand
+rather than adding a fourth layer of tooling.
 
 ---
 
