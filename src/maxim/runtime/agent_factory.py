@@ -67,6 +67,20 @@ class AgentConfig:
     with_fear_gate: bool = False  # Wrap executor with FearGatedExecutor
     embodiment_ref: str | None = None  # SEM component ref for embodiment (non-sim only)
 
+    # Cross-session persistence (nac_cross_session_persistence.md): whether
+    # build_bio_stack RESTORES persisted state (hippocampus/NAc/EC/cerebellum)
+    # from persistence_dir at construction. Default True — a persistent agent
+    # home is expected to remember. Set False for agents that must start each
+    # run fresh while keeping their writes (the sim orchestrator NPC: its
+    # ~/.maxim/orchestrator home accumulates state for the future "Phase 3"
+    # cross-session-orchestration work, but reading months of unaudited
+    # accumulation into every sim run would make the narrator/orchestrator a
+    # cross-run confound — the narrator-state-confound class. Review fold,
+    # Arch #2.) NOTE: this is deliberately separate from create_agent's
+    # ``auto_load`` parameter, which governs only the skeleton subsystems
+    # that create_full_agent discards when with_bio_stack=True.
+    load_persisted: bool = True
+
 
 # ---------------------------------------------------------------------------
 # Agent Instance
@@ -409,8 +423,14 @@ class AgentFactory:
                 ``None`` (default), FearAgent uses pattern-matching only.
                 Pass the agent's LLM router for full LLM-powered safety
                 review (sim mode uses this).
-            auto_load: Restore persisted state from the agent's
-                persistence directory.
+            auto_load: Restore persisted state on the ``create_agent``
+                SKELETON subsystems only. When ``with_bio_stack=True``
+                those skeleton instances are discarded and replaced by
+                the bio-stack's — whose restore is governed by
+                ``config.load_persisted`` (default True), NOT by this
+                flag. Bio-stack persistence is always-on: an agent home
+                with prior files is restored unless
+                ``load_persisted=False``.
 
         Returns:
             A fully wired AgentInstance.
@@ -438,6 +458,7 @@ class AgentFactory:
                 persistence_dir=str(agent_dir),
                 pain_bus=pain_bus,
                 agent_id=config.agent_id,
+                load_persisted=config.load_persisted,
             )
             instance.bio_stack = bio
             instance.pain_bus = bio.pain_bus
@@ -446,6 +467,13 @@ class AgentFactory:
             # The create_agent versions are immediately discarded — this
             # wastes construction (review #4/#7) but is correct.  A
             # _create_agent_skeleton optimization is deferred.
+            #
+            # This overwrite is safe ONLY because build_bio_stack itself
+            # loads persisted state (hippocampus/NAc/EC/cerebellum) —
+            # bio.nac IS the restored instance. Before that landed
+            # (nac_cross_session_persistence.md), this line silently
+            # discarded create_agent's auto-loaded NAc, which is why a
+            # save-only persistence patch TRUNCATED every prior session.
             instance.hippocampus = bio.hippocampus
             instance.nac = bio.nac
             instance.atl = bio.atl

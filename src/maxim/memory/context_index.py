@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from maxim.utils.seeding import stable_hash_32
+
 
 class SimilarityIndex:
     """LSH-based similarity index that upgrades existing recall backends.
@@ -49,10 +51,18 @@ class SimilarityIndex:
         return {" ".join(words[i : i + k]) for i in range(len(words) - k + 1)}
 
     def _minhash(self, shingles: set[str]) -> list[int]:
-        """Compute MinHash signature for a set of shingles."""
+        """Compute MinHash signature for a set of shingles.
+
+        stable_hash_32, NOT builtin hash(): signatures + LSH bands are
+        persisted via save()/load(), and queries against a reloaded index
+        re-hash under the new process's seed — with randomized hashing a
+        reloaded index reports len==1 but returns [] for the exact text it
+        stored. (Also the root cause of the same-process CI flake in
+        test_context_index.py::test_similar_text_found.)
+        """
         sig = []
         for i in range(self.num_hashes):
-            min_hash = min(hash((i, s)) & 0xFFFFFFFF for s in shingles) if shingles else 0
+            min_hash = min(stable_hash_32(f"{i}:{s}") for s in shingles) if shingles else 0
             sig.append(min_hash)
         return sig
 
@@ -118,6 +128,8 @@ class SimilarityIndex:
         """Persist index to disk. Atomic write to prevent corruption."""
         data: dict[str, Any] = {
             "version": "1.0",
+            # Stable-hash provenance marker — see load()'s warning.
+            "hash_scheme": "stable-sha256-v1",
             "num_hashes": self.num_hashes,
             "num_bands": self.num_bands,
             "signatures": self.signatures,
@@ -138,6 +150,13 @@ class SimilarityIndex:
         with open(path) as f:
             data = json.load(f)
         check_format_version(data, "context_index", log=logging.getLogger(__name__))
+        if "hash_scheme" not in data:
+            logging.getLogger(__name__).warning(
+                "SimilarityIndex file %s predates stable hashing — its MinHash "
+                "values were computed with Python's randomized hash() and new "
+                "queries will not match them. Re-index to recover recall.",
+                path,
+            )
         idx = cls(data["num_hashes"], data["num_bands"])
         idx.signatures = data["signatures"]
         idx.bands = [{tuple(json.loads(k)): set(v) for k, v in band.items()} for band in data["bands"]]

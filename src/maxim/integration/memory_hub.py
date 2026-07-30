@@ -806,6 +806,18 @@ class MemoryHub:
                 except Exception as e:
                     logger.warning("Failed to save NAc state: %s", e)
 
+        # Save EC state (if persistence path set in ECConfig). Saved
+        # beside NAc because NAc's reward biases are keyed by EC node
+        # ids — restoring one without the other leaves dangling keys
+        # (nac_cross_session_persistence.md).
+        if self.ec is not None:
+            ec_path = getattr(getattr(self.ec, "config", None), "persistence_path", None)
+            if ec_path:
+                try:
+                    self.ec.save(ec_path)
+                except Exception as e:
+                    logger.warning("Failed to save EC state: %s", e)
+
         # Save ATL state
         if self.atl is not None:
             try:
@@ -902,6 +914,16 @@ class MemoryHub:
                     self.nac.save(nac_path)
                 except Exception as e:
                     logger.warning("Failed to save NAc state: %s", e)
+
+        # Save EC state (same pairing rationale as the full session-end
+        # path: NAc reward biases key on EC node ids).
+        if self.ec is not None:
+            ec_path = getattr(getattr(self.ec, "config", None), "persistence_path", None)
+            if ec_path:
+                try:
+                    self.ec.save(ec_path)
+                except Exception as e:
+                    logger.warning("Failed to save EC state: %s", e)
 
         # Flush ConceptExtractor before saving ATL — pending background
         # extractions write to ATL, so flush ensures ATL state is complete.

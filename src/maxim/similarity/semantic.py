@@ -23,6 +23,8 @@ from typing import Any
 
 import numpy as np
 
+from maxim.utils.seeding import stable_hash_64_signed
+
 logger = logging.getLogger(__name__)
 
 # Lazy import for optional sentence-transformers dependency
@@ -305,7 +307,10 @@ class NeuralSemanticLSH:
         bits = []
 
         for i in range(self.config.num_hash_bits):
-            h = sum(hash(f"{w}:{i}:42") for w in words)
+            # stable_hash_64_signed, NOT builtin hash(): these bits are
+            # stored in the persisted EmbeddingStore npz via memory_hub's
+            # semantic capture path, so they must survive a restart.
+            h = sum(stable_hash_64_signed(f"{w}:{i}:42") for w in words)
             bits.append(1 if h > 0 else 0)
 
         return tuple(bits)

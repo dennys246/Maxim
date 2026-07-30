@@ -210,9 +210,9 @@ def main() -> int:
     if confs:
         print(f"NAc respond confidence: {confs[0]:.3f} → {confs[-1]:.3f}")
     else:
-        print("NAc respond confidence: UNAVAILABLE — NAc is not persisted yet")
-        print("  (deliberate: docs/plans/deferred/nac_cross_session_persistence.md)")
-        print("  The saturation hypothesis cannot be tested from disk until that lands.")
+        print("NAc respond confidence: UNAVAILABLE — no nac.json found for this agent")
+        print("  (persistence shipped: docs/plans/archive/nac_cross_session_persistence.md;")
+        print("   an empty read now means the agent has not completed a session since.)")
 
     print()
     if r1 >= 0.8 and r2 >= 0.8:

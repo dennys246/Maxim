@@ -960,7 +960,9 @@ def _build_observer(home_dir: str) -> Any:
         nac = NAc()
         nac_file = os.path.join(memory_path, "nac.json")
         if os.path.isfile(nac_file):
-            nac.load(nac_file)
+            # apply_decay=False: observers report disk truth, not a
+            # time-varying view.
+            nac.load(nac_file, apply_decay=False)
         else:
             nac = None
     except Exception as e:
@@ -1069,7 +1071,8 @@ def _load_agent_home_state(agent_home: str) -> tuple[Any, Any]:
         nac_file = os.path.join(agent_home, "nac.json")
         if os.path.isfile(nac_file):
             nac = NAc()
-            nac.load(nac_file)
+            # apply_decay=False: read-only recall view — disk truth.
+            nac.load(nac_file, apply_decay=False)
     except Exception as e:
         logger.warning("Could not load agent-home NAc for recall: %s", e)
         nac = None

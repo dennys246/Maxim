@@ -95,7 +95,7 @@ with the never-loaded `bio.nac` — the same discard applies to hippocampus and 
 truncate the last while leaving a plausible populated `nac.json` — "no
 persistence" becomes "silently lossy persistence that looks like it works".
 **Plan (save + load + a decay-on-load decision + a two-session round-trip test):**
-[deferred/nac_cross_session_persistence.md](../plans/deferred/nac_cross_session_persistence.md).
+[archive/nac_cross_session_persistence.md](../plans/archive/nac_cross_session_persistence.md).
 
 ### Issue 6: the reply path bypasses the executor
 

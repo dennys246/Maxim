@@ -113,14 +113,17 @@ def fold_legacy_cluster_id(
 # - 1.1 → 1.2 (Wire 1, release_0_9_1.md Stage 4): added
 #   ``event_outcome_welford`` top-level key carrying per-(agent_id,
 #   event_signature) Welford variance state.
+# - 1.2 → 1.3 (nac_cross_session_persistence.md): added ``saved_at``
+#   wall-clock stamp; ``load()`` uses it for decay-on-load. Missing
+#   ``saved_at`` (pre-1.3 payload) → no decay applied.
 #
-# Both upgrades are additive: ``load_state`` reads missing keys as empty
-# dicts so older payloads (1.0 / 1.1) load cleanly. The bumped version
-# gives a ``check_format_version`` drift-warning surface that the file
-# was written by a different schema generation. The schema-version
+# All upgrades are additive: ``load_state`` reads missing keys as empty
+# dicts so older payloads (1.0 / 1.1 / 1.2) load cleanly. The bumped
+# version gives a ``check_format_version`` drift-warning surface that the
+# file was written by a different schema generation. The schema-version
 # coexistence convention is documented in CLAUDE.md
 # ("Persistence-format contract").
-_NAC_FORMAT_VERSION: str = "1.2"
+_NAC_FORMAT_VERSION: str = "1.3"
 
 
 # Exp 37 cross-session graduation ablation arm 3 env var.
@@ -243,7 +246,47 @@ class NACConfig:
     enable_hippocampus_queries: bool = True  # Query Hippocampus for similar episodes
     base_learning_rate: float = 0.2  # Rescorla-Wagner base learning rate
     use_ec_similarity: bool = False  # Phase 3 flag, default OFF
-    persistence_path: str | None = None  # Path for save/load (set by AgentFactory)
+    persistence_path: str | None = None  # Path for save/load (set by build_bio_stack / AgentFactory)
+
+    # Cross-session decay-on-load (nac_cross_session_persistence.md).
+    #
+    # NAc decay is otherwise TICK-anchored (decay_reward_biases /
+    # decay_cluster_reward_biases run per-tick from agent_loop §8.5), so a
+    # bias learned six months ago would load back indistinguishable from
+    # one learned a minute ago. ``load()`` reads the ``saved_at`` stamp
+    # from the persisted payload and applies elapsed-WALL-CLOCK exponential
+    # decay before the first tick. Framing note: this is time-based
+    # FORGETTING, an [engineering]-tier first calibration — not a
+    # validated bio claim (biological extinction requires unreinforced
+    # re-exposure, a different mechanism; review fold, Arch #6). The
+    # half-lives are tunable fields; wiring them through config.json
+    # (resolve_setting) is tracked follow-up in the archived plan doc.
+    #
+    # Two schedules (mirrors the B2-fold precedent of splitting decay
+    # timescales by use case):
+    # - ``cluster_bias_wall_decay_half_life_s`` (default 1 day) —
+    #   ``cluster_reward_bias``. Its 300-tick tau marks it a working
+    #   signal; persisting it unchanged would silently promote a
+    #   session-scoped signal to a cross-session one. A 1-day half-life
+    #   keeps same-day continuation (Exp 44-style resume) near-fresh
+    #   while a week-old preference fades to ~1% of its magnitude.
+    # - ``bias_wall_decay_half_life_s`` (default 7 days) —
+    #   ``reward_bias`` + ``goal_reward_bias`` + ``percept_valences``,
+    #   the designated cross-session transfer surfaces (CLAUDE.md:
+    #   "Cross-session transfer uses reward_bias (persisted)").
+    #   Yesterday's learning returns at ~90%; six-month-old biases
+    #   prune out (below the 0.001 floor). KNOWN weakest cell of this
+    #   matrix (review fold, Arch #6): ``percept_valences`` carries the
+    #   harm-avoidance signal, and conditioned aversion is biologically
+    #   the MOST persistent of these associations — a slower (or no)
+    #   wall schedule for negative valences is a calibration candidate
+    #   once an experiment earns it.
+    # Causal links + Welford variance are NOT decayed on load — they are
+    # accumulated statistics, and links already take the flat
+    # ``decay_all(0.95)`` confidence haircut at every session end.
+    # A payload without ``saved_at`` (pre-1.3 format) loads undecayed.
+    bias_wall_decay_half_life_s: float = 604800.0  # 7 days
+    cluster_bias_wall_decay_half_life_s: float = 86400.0  # 1 day
 
     # P2: Reward modulation of recognition
     reward_bias_alpha: float = 0.15  # Threshold modulation strength
@@ -1626,9 +1669,15 @@ class NAc:
         """Register an established causal pattern in EC for similarity queries."""
         try:
             from maxim.similarity.signature import SituationSignature
+            from maxim.utils.seeding import stable_hash_32
 
+            # stable_hash_32, NOT builtin hash(): these signatures land in
+            # EC._signatures, which is persisted via the agent-home
+            # ec.json — a randomized hash could never match across a
+            # process boundary (review fold, Arch #3; same rule as
+            # signature.py's from_memory path).
             sig = SituationSignature(
-                structural_hash=hash(f"{link.event_signature}:{link.outcome_signature}"),
+                structural_hash=stable_hash_32(f"{link.event_signature}:{link.outcome_signature}"),
                 temporal_hash=(0, 0, 0, 0),
                 tool_name=(
                     link.event_signature.split(":")[-1] if ":" in link.event_signature else link.event_signature
@@ -1638,7 +1687,11 @@ class NAc:
                 goal_keywords=(
                     tuple(link.event_context.get("goal", "").split()[:3]) if link.event_context.get("goal") else ()
                 ),
-                context_hash=(hash(frozenset(sorted(link.event_context.items()))) if link.event_context else 0),
+                context_hash=(
+                    stable_hash_32(":".join(f"{k}={v}" for k, v in sorted(link.event_context.items())))
+                    if link.event_context
+                    else 0
+                ),
                 semantic_hash=(),
             )
             self._ec.register(f"causal:{link.id}", sig)
@@ -3079,15 +3132,30 @@ class NAc:
         self._priors = state.get("priors", {})
         self._total_observations = state.get("total_observations", 0)
 
-        # P2: Load reward biases
+        # P2: Load reward biases. float() coercion + skip-on-failure
+        # mirrors the Welford block below: a corrupt (e.g. string-valued)
+        # bias must not load "successfully" and then poison every later
+        # arithmetic consumer — decay-on-load and the per-tick agent_loop
+        # §8.5 decay block both multiply these values, and a TypeError
+        # there disables ALL per-tick NAc maintenance for the session
+        # (review fold, Exec #1).
         self._reward_bias = {}
         for key_str, bias in state.get("reward_bias", {}).items():
             parts = key_str.split(":", 1)
-            if len(parts) == 2:
-                self._reward_bias[(parts[0], parts[1])] = bias
+            if len(parts) != 2:
+                continue
+            try:
+                self._reward_bias[(parts[0], parts[1])] = float(bias)
+            except (TypeError, ValueError):
+                continue
 
         # Goal-level reward biases (backward-compatible: missing → empty)
-        self._goal_reward_bias = dict(state.get("goal_reward_bias", {}))
+        self._goal_reward_bias = {}
+        for goal, bias in state.get("goal_reward_bias", {}).items():
+            try:
+                self._goal_reward_bias[goal] = float(bias)
+            except (TypeError, ValueError):
+                continue
 
         # G4: cluster-keyed reward biases. Missing field → empty dict
         # (backward-compatible: every aut_nac.json written before G4
@@ -3096,8 +3164,12 @@ class NAc:
         self._cluster_reward_bias = {}
         for key_str, bias in state.get("cluster_reward_bias", {}).items():
             parts = key_str.split("\x1f", 2)
-            if len(parts) == 3:
-                self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = bias
+            if len(parts) != 3:
+                continue
+            try:
+                self._cluster_reward_bias[(parts[0], parts[1], parts[2])] = float(bias)
+            except (TypeError, ValueError):
+                continue
 
         # Wire 2 (release_0_9_1.md Stage 3): per-agent percept valences.
         # Missing field → empty dict (backward-compat: any ``aut_nac.json``
@@ -3107,8 +3179,12 @@ class NAc:
         self._percept_valences = {}
         for key_str, valence in state.get("percept_valences", {}).items():
             parts = key_str.split("\x1f", 2)
-            if len(parts) == 3:
-                self._percept_valences[(parts[0], parts[1], parts[2])] = valence
+            if len(parts) != 3:
+                continue
+            try:
+                self._percept_valences[(parts[0], parts[1], parts[2])] = float(valence)
+            except (TypeError, ValueError):
+                continue
 
         # Wire 1 (release_0_9_1.md Stage 4): per-(agent_id, event_signature)
         # Welford state. Missing field → empty dict (backward-compat: any
@@ -3134,6 +3210,67 @@ class NAc:
                 # Corrupt entry — skip; tests assert this doesn't crash load.
                 continue
 
+    def apply_wall_clock_decay(self, elapsed_s: float) -> dict[str, int]:
+        """Age the bias surfaces by elapsed wall-clock seconds.
+
+        Called by ``load()`` with ``now - saved_at`` so that restored
+        biases reflect the time the agent was off, not just its tick
+        count (nac_cross_session_persistence.md decay-on-load decision;
+        schedule rationale on the NACConfig field comments).
+
+        Two half-life schedules:
+        - ``cluster_bias_wall_decay_half_life_s`` → ``_cluster_reward_bias``
+        - ``bias_wall_decay_half_life_s`` → ``_reward_bias``,
+          ``_goal_reward_bias``, ``_percept_valences``
+
+        Entries the decay itself pushes below the 0.001 magnitude floor
+        are pruned (same floor as the tick-anchored ``decay_*``
+        methods). Entries ALREADY below the floor at save time pass
+        through decayed-but-kept — pruning them here would make an
+        immediate save→load round-trip lossy (the first in-session tick
+        decay prunes them anyway, so production behavior is unchanged).
+        Causal links and Welford variance are deliberately untouched —
+        they are accumulated statistics, not activations.
+
+        Returns:
+            Dict of ``{surface_name: pruned_count}`` for surfaces that
+            had at least one entry pruned (empty when nothing changed).
+        """
+        if elapsed_s <= 0:
+            return {}
+
+        def _decay(biases: dict, half_life_s: float) -> tuple[dict, int]:
+            if not biases or half_life_s <= 0:
+                return biases, 0
+            factor = 0.5 ** (elapsed_s / half_life_s)
+            kept: dict = {}
+            pruned = 0
+            for key, value in biases.items():
+                new_value = value * factor
+                if abs(new_value) < 0.001 and abs(value) >= 0.001:
+                    pruned += 1
+                else:
+                    kept[key] = new_value
+            return kept, pruned
+
+        results: dict[str, int] = {}
+        slow = self.config.bias_wall_decay_half_life_s
+        fast = self.config.cluster_bias_wall_decay_half_life_s
+        with self._lock:
+            self._reward_bias, p = _decay(self._reward_bias, slow)
+            if p:
+                results["reward_bias_pruned"] = p
+            self._goal_reward_bias, p = _decay(self._goal_reward_bias, slow)
+            if p:
+                results["goal_reward_bias_pruned"] = p
+            self._percept_valences, p = _decay(self._percept_valences, slow)
+            if p:
+                results["percept_valences_pruned"] = p
+            self._cluster_reward_bias, p = _decay(self._cluster_reward_bias, fast)
+            if p:
+                results["cluster_reward_bias_pruned"] = p
+        return results
+
     def save(self, path: str | None = None) -> None:
         """Save NAc state to JSON file.
 
@@ -3155,14 +3292,37 @@ class NAc:
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, with_format_version(self.dump(), version=_NAC_FORMAT_VERSION))
+        payload = self.dump()
+        # Wall-clock stamp for decay-on-load (1.3,
+        # nac_cross_session_persistence.md). Stamped HERE, not in dump():
+        # dump() is the BioSystemSnapshot state surface (two dumps of
+        # identical state must compare equal — pinned by
+        # test_bio_system_snapshot.py); saved_at is a persistence-envelope
+        # concern of the file writer. Without it a future loader has
+        # nothing but file mtime to age biases by.
+        payload["saved_at"] = time.time()
+        atomic_write_json(path, with_format_version(payload, version=_NAC_FORMAT_VERSION))
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 
-    def load(self, path: str | None = None) -> None:
+    def load(self, path: str | None = None, *, apply_decay: bool = True) -> None:
         """Load NAc state from JSON file.
 
         If ``path`` is omitted, falls back to ``self.config.persistence_path``.
         Raises ``ValueError`` if neither is set.
+
+        Args:
+            apply_decay: When True (the agent-restart default), age the
+                bias surfaces by elapsed wall-clock time since the file's
+                ``saved_at`` stamp (see ``apply_wall_clock_decay``). Pass
+                False at call sites where wall-clock elapsed time is NOT
+                agent-experienced time or where disk truth is wanted:
+                the sim ``--resume-sim`` restore (sims are tick-anchored;
+                the operator's schedule between runs is an experimental
+                confound, and the Exp 44 tau-hold harness pattern depends
+                on resumed cluster biases loading verbatim) and read-only
+                observers (``maxim.load.nac``, ``maxim.observe``) which
+                must report what is on disk, not a time-varying view —
+                and whose load→save round-trips must not compound decay.
         """
         path = path or self.config.persistence_path
         if path is None:
@@ -3174,9 +3334,33 @@ class NAc:
 
         check_format_version(state, "nac", log=logger)
         self.load_state(state)
+
+        # Decay-on-load (1.3, nac_cross_session_persistence.md): age the
+        # bias surfaces by elapsed wall-clock time since save. Lives HERE
+        # (the file entry point) and NOT in load_state, so dump-shape
+        # round-trips that never crossed a wall-clock gap — hivemind
+        # nac_merge, snapshot restores — stay byte-faithful.
+        # ``isinstance(saved_at, bool)`` guard: JSON ``true`` passes the
+        # (int, float) check and would read as epoch-second 1 → ~56 years
+        # elapsed → every bias silently pruned from a corrupt-but-
+        # parseable file (review fold, Exec #6).
+        saved_at = state.get("saved_at")
+        if apply_decay and isinstance(saved_at, (int, float)) and not isinstance(saved_at, bool) and saved_at > 0:
+            elapsed_s = time.time() - float(saved_at)
+            decayed = self.apply_wall_clock_decay(elapsed_s)
+            if decayed:
+                # WARNING, not INFO: pruned learning is irreversible once
+                # the next save overwrites the file — an operator (or a
+                # harness that should have passed apply_decay=False) must
+                # be able to see it happened (review fold, Arch #1).
+                logger.warning(
+                    "NAc decay-on-load pruned entries: %.1fh elapsed since save — %s",
+                    elapsed_s / 3600.0,
+                    decayed,
+                )
         logger.info("Loaded NAc from %s (%d links, %d biases)", path, len(self), len(self._reward_bias))
 
-    def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:
+    def load_safe(self, path: str | None = None, *, apply_decay: bool = True) -> tuple[bool, str | None]:
         """Load with recovery on failure. Returns (success, error_message)."""
         path = path or self.config.persistence_path
         if path is None:
@@ -3185,15 +3369,28 @@ class NAc:
             logger.info("No existing NAc file at %s, starting fresh", path)
             return True, None
         try:
-            self.load(path)
+            self.load(path, apply_decay=apply_decay)
             return True, None
-        except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
+        except (json.JSONDecodeError, ValueError, KeyError, TypeError, AttributeError) as e:
+            # AttributeError joins the list for wrong-typed containers
+            # (e.g. {"links": "not-a-dict"} → .items() on a str) — the
+            # same corrupt-file class as the others (review fold).
             error_msg = f"Corrupt NAc file ({type(e).__name__}): {e}"
             logger.warning("%s — starting with empty causal model", error_msg)
+            # Reset EVERY surface load_state mutates, not just the link
+            # tables — a raise partway through load can leave earlier
+            # surfaces populated from the corrupt file, and "empty causal
+            # model" must be true, not aspirational (review fold, Exec #1
+            # + Arch #5).
             self._links = {}
             self._outcome_index = {}
             self._priors = {}
             self._total_observations = 0
+            self._reward_bias = {}
+            self._goal_reward_bias = {}
+            self._cluster_reward_bias = {}
+            self._percept_valences = {}
+            self._event_outcome_welford = {}
             return False, error_msg
 
     def get_version(self) -> str:

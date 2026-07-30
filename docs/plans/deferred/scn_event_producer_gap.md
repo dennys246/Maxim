@@ -146,3 +146,13 @@ genuinely needed; or a drive-conditioned anticipatory behaviour is on the critic
 None yet — this documents an absence. `scripts/check_oscillator_coldstart.py` reports
 `drive=0` with an explanation pointing here, which is the closest thing to a tripwire
 until item 3 above ships.
+## Persistence asymmetry (noted 2026-07-30, nac_cross_session_persistence fold)
+
+`build_bio_stack` now restores hippocampus + NAc + EC from the agent home, but
+still constructs `SCN()` with no `persistence_path` — oscillator phases and
+event bins restart cold every session (the save side in
+`MemoryHub.on_session_end` is guarded on a path that is never set on this
+path). Deliberately left unwired: with only one of six event categories
+producing (`tool`), persisting the oscillator would preserve state a mostly
+dead intake barely feeds. Decide SCN persistence together with the producer
+gap above — wiring persistence before producers exist would be backwards.

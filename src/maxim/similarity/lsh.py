@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from maxim.similarity.signature import SituationSignature
+from maxim.utils.seeding import stable_hash_64_signed
 
 
 @dataclass
@@ -54,8 +55,12 @@ class SemanticLSH:
         bits = []
 
         for i in range(self.num_planes):
-            # Hash words and sum with plane-specific salt
-            h = sum(hash(f"{w}:{i}:{self.seed}") for w in words)
+            # Hash words and sum with plane-specific salt.
+            # stable_hash_64_signed, NOT builtin hash(): the `seed` param
+            # routed through randomized hash() anyway, so this LOOKED
+            # deterministic and was not. Output lands in
+            # SituationSignature.semantic_hash, persisted via EC.save().
+            h = sum(stable_hash_64_signed(f"{w}:{i}:{self.seed}") for w in words)
             bits.append(1 if h > 0 else 0)
 
         return tuple(bits)
