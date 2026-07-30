@@ -92,8 +92,7 @@ class TestSituationSignatureCrossProcess:
             "signatures can never structurally match after a restart"
         )
         assert a["context_hash"] == b["context_hash"], (
-            "context_hash differs across PYTHONHASHSEED — persisted "
-            "signatures can never context-match after a restart"
+            "context_hash differs across PYTHONHASHSEED — persisted signatures can never context-match after a restart"
         )
 
     def test_reloaded_signature_similarity_is_self_identical(self):

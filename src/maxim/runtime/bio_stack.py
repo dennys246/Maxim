@@ -188,7 +188,7 @@ def build_bio_stack(
     # -- Step 1: Core bio-systems ------------------------------------------
     from maxim.decisions.nac import NAc, NACConfig
     from maxim.memory.hippocampus import Hippocampus, HippocampusConfig
-    from maxim.similarity.ec import EntorhinalCortex
+    from maxim.similarity.ec import ECConfig, EntorhinalCortex
     from maxim.time.scn import SCN
 
     p = Path(persistence_dir) if persistence_dir is not None else None
@@ -212,6 +212,16 @@ def build_bio_stack(
             persistence_path=str(p / "hippocampus.json") if p is not None else None,
         )
     )
+    # Cross-session restore (nac_cross_session_persistence.md): the save
+    # side always existed (sleep() auto-saves at session end) but nothing
+    # on this path ever LOADED — MemoryHub.on_session_start restores
+    # ATL/AngularGyrus/cross-layer/EC embeddings but not hippocampus, and
+    # AgentFactory.create_full_agent discards its auto-loaded instance in
+    # favor of this one. Load here so path ownership stays in one place.
+    if p is not None and (p / "hippocampus.json").exists():
+        _ok, _err = hippocampus.load_with_recovery()
+        if _ok:
+            logger.info("Restored hippocampus from %s (%d memories)", p / "hippocampus.json", len(hippocampus))
     # Substrate exploration policy (substrate_exploration_policy.md, 1.1):
     # resolve the novelty-bonus weight from config.json (CLI > env >
     # config.json > 0.0 default). 0.0 == OFF == legacy argmax; the Exp 41
@@ -251,15 +261,16 @@ def build_bio_stack(
     _nac_config = NACConfig(
         substrate_explore_bonus_weight=_explore_weight,
         drive_gate_enabled=_drive_gate,
-        # NOTE: deliberately NO persistence_path here yet. NAc is the only
-        # bio-system without one, which means its state is never saved — but
-        # adding the save ALONE makes things strictly worse: agent_factory
-        # overwrites the auto-loaded NAc with this one (agent_factory.py:450,
-        # which never loads), so each session would TRUNCATE the last while
-        # leaving a plausible populated nac.json. "No persistence" is better
-        # than "silently lossy persistence that looks like it works".
-        # Save + load + the decay-on-load decision land together:
-        # docs/plans/deferred/nac_cross_session_persistence.md
+        # Cross-session persistence (nac_cross_session_persistence.md).
+        # Setting the path activates the pre-existing save in
+        # MemoryHub.on_session_end / on_session_end_lightweight (guarded
+        # `if nac_path:`); the LOAD below closes the loop. The two ship
+        # together by design: a save alone made each session TRUNCATE the
+        # previous one (agent_factory overwrites its auto-loaded NAc with
+        # this instance), which is why the earlier save-only patch was
+        # reverted. Decay-on-load semantics live in NAc.load() /
+        # apply_wall_clock_decay (see NACConfig field comments).
+        persistence_path=str(p / "nac.json") if p is not None else None,
     )
     # Loud failure for the silent-no-op footgun: an untried tool's only score is
     # the novelty bonus, so a weight at or below the substrate min_confidence gate
@@ -276,9 +287,30 @@ def build_bio_stack(
             _nac_config.min_confidence_threshold,
         )
     nac = NAc(_nac_config)
+    # Mirror the cerebellum pattern: load-when-file-exists, recover on
+    # corruption (load_safe warns + starts empty). load() applies the
+    # wall-clock decay-on-load from the payload's saved_at stamp.
+    if p is not None and (p / "nac.json").exists():
+        nac.load_safe()
     scn = SCN()
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
-    ec = EntorhinalCortex()
+    # EC persists beside NAc (nac_cross_session_persistence.md): NAc's
+    # reward_bias / cluster_reward_bias are keyed by EC node ids, so
+    # restoring NAc without EC would leave every restored bias pointing
+    # at nodes a fresh EC will never re-allocate — persistence that
+    # LOOKS like it works while the biases silently dangle. The sim path
+    # already persists the pair (aut_nac.json + aut_ec.json); this
+    # closes the agent-home path. Sound only now that SituationSignature
+    # / SemanticLSH hashes are process-stable (see
+    # tests/unit/test_stable_hash_two_process.py).
+    ec = EntorhinalCortex(
+        config=ECConfig(persistence_path=str(p / "ec.json") if p is not None else None),
+    )
+    if p is not None and (p / "ec.json").exists():
+        try:
+            ec.load(str(p / "ec.json"))
+        except Exception as _ec_err:
+            logger.warning("Failed to load EC state (starting fresh): %s", _ec_err)
 
     # -- Step 2: Optional multi-layer memory (ATL + AngularGyrus) ----------
     atl = None

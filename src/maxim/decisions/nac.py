@@ -113,14 +113,17 @@ def fold_legacy_cluster_id(
 # - 1.1 → 1.2 (Wire 1, release_0_9_1.md Stage 4): added
 #   ``event_outcome_welford`` top-level key carrying per-(agent_id,
 #   event_signature) Welford variance state.
+# - 1.2 → 1.3 (nac_cross_session_persistence.md): added ``saved_at``
+#   wall-clock stamp; ``load()`` uses it for decay-on-load. Missing
+#   ``saved_at`` (pre-1.3 payload) → no decay applied.
 #
-# Both upgrades are additive: ``load_state`` reads missing keys as empty
-# dicts so older payloads (1.0 / 1.1) load cleanly. The bumped version
-# gives a ``check_format_version`` drift-warning surface that the file
-# was written by a different schema generation. The schema-version
+# All upgrades are additive: ``load_state`` reads missing keys as empty
+# dicts so older payloads (1.0 / 1.1 / 1.2) load cleanly. The bumped
+# version gives a ``check_format_version`` drift-warning surface that the
+# file was written by a different schema generation. The schema-version
 # coexistence convention is documented in CLAUDE.md
 # ("Persistence-format contract").
-_NAC_FORMAT_VERSION: str = "1.2"
+_NAC_FORMAT_VERSION: str = "1.3"
 
 
 # Exp 37 cross-session graduation ablation arm 3 env var.
@@ -243,7 +246,38 @@ class NACConfig:
     enable_hippocampus_queries: bool = True  # Query Hippocampus for similar episodes
     base_learning_rate: float = 0.2  # Rescorla-Wagner base learning rate
     use_ec_similarity: bool = False  # Phase 3 flag, default OFF
-    persistence_path: str | None = None  # Path for save/load (set by AgentFactory)
+    persistence_path: str | None = None  # Path for save/load (set by build_bio_stack / AgentFactory)
+
+    # Cross-session decay-on-load (nac_cross_session_persistence.md).
+    #
+    # NAc decay is otherwise TICK-anchored (decay_reward_biases /
+    # decay_cluster_reward_biases run per-tick from agent_loop §8.5), so a
+    # bias learned six months ago would load back indistinguishable from
+    # one learned a minute ago. ``load()`` reads the ``saved_at`` stamp
+    # from the persisted payload and applies elapsed-WALL-CLOCK exponential
+    # decay before the first tick. Biologically: NAc associations
+    # extinguish with elapsed time, not with the agent's tick count.
+    #
+    # Two schedules (mirrors the B2-fold precedent of splitting decay
+    # timescales by use case):
+    # - ``cluster_bias_wall_decay_half_life_s`` (default 1 day) —
+    #   ``cluster_reward_bias``. Its 300-tick tau marks it a working
+    #   signal; persisting it unchanged would silently promote a
+    #   session-scoped signal to a cross-session one. A 1-day half-life
+    #   keeps same-day continuation (Exp 44-style resume) near-fresh
+    #   while a week-old preference fades to ~1% of its magnitude.
+    # - ``bias_wall_decay_half_life_s`` (default 7 days) —
+    #   ``reward_bias`` + ``goal_reward_bias`` + ``percept_valences``,
+    #   the designated cross-session transfer surfaces (CLAUDE.md:
+    #   "Cross-session transfer uses reward_bias (persisted)").
+    #   Yesterday's learning returns at ~90%; six-month-old biases
+    #   prune out (below the 0.001 floor).
+    # Causal links + Welford variance are NOT decayed on load — they are
+    # accumulated statistics, and links already take the flat
+    # ``decay_all(0.95)`` confidence haircut at every session end.
+    # A payload without ``saved_at`` (pre-1.3 format) loads undecayed.
+    bias_wall_decay_half_life_s: float = 604800.0  # 7 days
+    cluster_bias_wall_decay_half_life_s: float = 86400.0  # 1 day
 
     # P2: Reward modulation of recognition
     reward_bias_alpha: float = 0.15  # Threshold modulation strength
@@ -3134,6 +3168,67 @@ class NAc:
                 # Corrupt entry — skip; tests assert this doesn't crash load.
                 continue
 
+    def apply_wall_clock_decay(self, elapsed_s: float) -> dict[str, int]:
+        """Age the bias surfaces by elapsed wall-clock seconds.
+
+        Called by ``load()`` with ``now - saved_at`` so that restored
+        biases reflect the time the agent was off, not just its tick
+        count (nac_cross_session_persistence.md decay-on-load decision;
+        schedule rationale on the NACConfig field comments).
+
+        Two half-life schedules:
+        - ``cluster_bias_wall_decay_half_life_s`` → ``_cluster_reward_bias``
+        - ``bias_wall_decay_half_life_s`` → ``_reward_bias``,
+          ``_goal_reward_bias``, ``_percept_valences``
+
+        Entries the decay itself pushes below the 0.001 magnitude floor
+        are pruned (same floor as the tick-anchored ``decay_*``
+        methods). Entries ALREADY below the floor at save time pass
+        through decayed-but-kept — pruning them here would make an
+        immediate save→load round-trip lossy (the first in-session tick
+        decay prunes them anyway, so production behavior is unchanged).
+        Causal links and Welford variance are deliberately untouched —
+        they are accumulated statistics, not activations.
+
+        Returns:
+            Dict of ``{surface_name: pruned_count}`` for surfaces that
+            had at least one entry pruned (empty when nothing changed).
+        """
+        if elapsed_s <= 0:
+            return {}
+
+        def _decay(biases: dict, half_life_s: float) -> tuple[dict, int]:
+            if not biases or half_life_s <= 0:
+                return biases, 0
+            factor = 0.5 ** (elapsed_s / half_life_s)
+            kept: dict = {}
+            pruned = 0
+            for key, value in biases.items():
+                new_value = value * factor
+                if abs(new_value) < 0.001 and abs(value) >= 0.001:
+                    pruned += 1
+                else:
+                    kept[key] = new_value
+            return kept, pruned
+
+        results: dict[str, int] = {}
+        slow = self.config.bias_wall_decay_half_life_s
+        fast = self.config.cluster_bias_wall_decay_half_life_s
+        with self._lock:
+            self._reward_bias, p = _decay(self._reward_bias, slow)
+            if p:
+                results["reward_bias_pruned"] = p
+            self._goal_reward_bias, p = _decay(self._goal_reward_bias, slow)
+            if p:
+                results["goal_reward_bias_pruned"] = p
+            self._percept_valences, p = _decay(self._percept_valences, slow)
+            if p:
+                results["percept_valences_pruned"] = p
+            self._cluster_reward_bias, p = _decay(self._cluster_reward_bias, fast)
+            if p:
+                results["cluster_reward_bias_pruned"] = p
+        return results
+
     def save(self, path: str | None = None) -> None:
         """Save NAc state to JSON file.
 
@@ -3155,7 +3250,16 @@ class NAc:
         from maxim.utils.atomic_io import atomic_write_json
         from maxim.utils.format_version import with_format_version
 
-        atomic_write_json(path, with_format_version(self.dump(), version=_NAC_FORMAT_VERSION))
+        payload = self.dump()
+        # Wall-clock stamp for decay-on-load (1.3,
+        # nac_cross_session_persistence.md). Stamped HERE, not in dump():
+        # dump() is the BioSystemSnapshot state surface (two dumps of
+        # identical state must compare equal — pinned by
+        # test_bio_system_snapshot.py); saved_at is a persistence-envelope
+        # concern of the file writer. Without it a future loader has
+        # nothing but file mtime to age biases by.
+        payload["saved_at"] = time.time()
+        atomic_write_json(path, with_format_version(payload, version=_NAC_FORMAT_VERSION))
         logger.info("Saved NAc to %s (%d links)", path, len(self))
 
     def load(self, path: str | None = None) -> None:
@@ -3174,6 +3278,22 @@ class NAc:
 
         check_format_version(state, "nac", log=logger)
         self.load_state(state)
+
+        # Decay-on-load (1.3, nac_cross_session_persistence.md): age the
+        # bias surfaces by elapsed wall-clock time since save. Lives HERE
+        # (the file entry point) and NOT in load_state, so dump-shape
+        # round-trips that never crossed a wall-clock gap — hivemind
+        # nac_merge, snapshot restores — stay byte-faithful.
+        saved_at = state.get("saved_at")
+        if isinstance(saved_at, (int, float)) and saved_at > 0:
+            elapsed_s = time.time() - float(saved_at)
+            decayed = self.apply_wall_clock_decay(elapsed_s)
+            if decayed:
+                logger.info(
+                    "NAc decay-on-load: %.1fh elapsed since save — %s",
+                    elapsed_s / 3600.0,
+                    decayed,
+                )
         logger.info("Loaded NAc from %s (%d links, %d biases)", path, len(self), len(self._reward_bias))
 
     def load_safe(self, path: str | None = None) -> tuple[bool, str | None]:

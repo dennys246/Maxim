@@ -1,6 +1,6 @@
 # Deferred — NAc cross-session persistence (save AND load, with a decay decision)
 
-**Status:** Deferred, drafted 2026-07-29. A partial fix (save only) was written, reviewed, and **deliberately reverted** — see [Why the partial fix was pulled](#why-the-partial-fix-was-pulled).
+**Status:** SHIPPED 2026-07-30 (feat/nac-cross-session-persistence) — save + load + decay-on-load landed together, plus the Step-0 prerequisite (stable hashing at persistence boundaries). Historical context below; see [What shipped](#what-shipped). The earlier partial fix (save only) was written, reviewed, and **deliberately reverted** — see [Why the partial fix was pulled](#why-the-partial-fix-was-pulled).
 **Severity:** High for the product claim — this is the substrate "it remembers you" rests on.
 **Revive trigger:** before any work that depends on cross-session NAc learning (Oasis contribution, the Exp 44 pre-load story, Reachy long-horizon), or the next time someone asks why an agent does not remember what it learned.
 
@@ -50,3 +50,50 @@ A **two-session round-trip**: write `tool_a` in session 1, restart, write `tool_
 `build_bio_stack` is the canonical construction site for CLI non-sim, the sim AUT, Reachy and headless `pymaxim`. This lands as **its own PR against main with its own review**, not folded into a console branch — the blast radius is every agent, and a console-titled PR points the reviewer at the wrong thing.
 
 Sim interaction is benign today: the AUT uses `persistence_dir=<sim tmpdir>`, so a new `nac.json` lands in a per-run temp dir and `resume_session` restores from the separate session-dir `aut_nac.json`. Note `analysis/substrate_diff.py` already globs `("aut_nac.json", "nac.json")`, so once agent-home `nac.json` exists, analysis tooling will start picking up a file that never previously appeared.
+
+## What shipped (2026-07-30)
+
+**Step 0 (prerequisite):** persisted values derived from Python's randomized
+`hash()` could never match across a process boundary — `SituationSignature`
+structural/context hashes (0.825 same-process vs 0.425 after reload,
+straddling NAc's `min_similarity=0.5` EC gate), `SimilarityIndex` MinHash
+(reloaded index returns `[]` for its own content), `SemanticLSH.hash` (the
+`seed` param routed through randomized `hash()` anyway), and
+`NeuralSemanticLSH._fallback_hash` (persisted `EmbeddingStore` npz). All four
+now use sha256-based `stable_hash_32` / `stable_hash_64_signed`
+(`utils/seeding.py`). Guard: `tests/unit/test_stable_hash_two_process.py` —
+two-process tests with differing PYTHONHASHSEED, all verified to FAIL pre-fix.
+This also removes the ~2.5% CI flake in
+`test_context_index.py::test_similar_text_found` (same root cause).
+
+**Step 1:** all four items from [What the real fix has to include](#what-the-real-fix-has-to-include):
+
+1. **Save** — `persistence_path=str(p / "nac.json")` in `build_bio_stack`,
+   activating the pre-existing guarded save in `MemoryHub.on_session_end` /
+   `on_session_end_lightweight`.
+2. **Load** — `nac.load_safe()` in `build_bio_stack` (cerebellum pattern),
+   plus the **hippocampus** hole (`load_with_recovery()` at build) and —
+   beyond the original scope, for the reason below — **EC** (`ec.json`,
+   `ECConfig.persistence_path`, saved beside NAc in both session-end paths).
+   NAc `reward_bias` / `cluster_reward_bias` are keyed by EC node ids;
+   restoring NAc without EC leaves every bias pointing at nodes a fresh EC
+   never re-allocates — persistence that looks like it works while the
+   biases silently dangle. Sound only after Step 0.
+3. **Decay-on-load** — `NAc.dump()` stamps `saved_at` (format 1.2 → 1.3);
+   `NAc.load()` applies elapsed-wall-clock exponential decay via
+   `apply_wall_clock_decay`: `cluster_reward_bias` at a 1-day half-life
+   (working signal; same-day resume stays near-fresh, week-old fades to ~1%),
+   `reward_bias` / `goal_reward_bias` / `percept_valences` at a 7-day
+   half-life (the designated cross-session transfer surfaces). Links +
+   Welford variance are not decayed on load (accumulated statistics; links
+   already take `decay_all(0.95)` at session end). Pre-1.3 payloads load
+   undecayed. `load_state` (hivemind merge path) never decays.
+4. **Format hygiene** — already routed through `atomic_write_json` +
+   `with_format_version`; version bumped with the additive `saved_at` key.
+
+**Regression guards:** `tests/unit/test_nac_persistence_decay.py` (decay
+semantics) + `tests/integration/test_cross_session_persistence.py` — the
+two-session, two-process (differing PYTHONHASHSEED) round-trip asserting
+RECALLED CONTENT, verified to fail on both the no-persistence state and a
+simulated save-only (truncating) implementation. Episodes verified to
+survive the same path (hippocampus recall content asserted in session 2).

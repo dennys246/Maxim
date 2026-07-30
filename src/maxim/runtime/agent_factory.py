@@ -446,6 +446,13 @@ class AgentFactory:
             # The create_agent versions are immediately discarded — this
             # wastes construction (review #4/#7) but is correct.  A
             # _create_agent_skeleton optimization is deferred.
+            #
+            # This overwrite is safe ONLY because build_bio_stack itself
+            # loads persisted state (hippocampus/NAc/EC/cerebellum) —
+            # bio.nac IS the restored instance. Before that landed
+            # (nac_cross_session_persistence.md), this line silently
+            # discarded create_agent's auto-loaded NAc, which is why a
+            # save-only persistence patch TRUNCATED every prior session.
             instance.hippocampus = bio.hippocampus
             instance.nac = bio.nac
             instance.atl = bio.atl
