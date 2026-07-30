@@ -79,7 +79,7 @@ This also removes the ~2.5% CI flake in
    restoring NAc without EC leaves every bias pointing at nodes a fresh EC
    never re-allocates — persistence that looks like it works while the
    biases silently dangle. Sound only after Step 0.
-3. **Decay-on-load** — `NAc.dump()` stamps `saved_at` (format 1.2 → 1.3);
+3. **Decay-on-load** — `NAc.save()` stamps `saved_at` (format 1.2 → 1.3; deliberately NOT `dump()`, which stays the pure BioSystemSnapshot surface so hivemind bundles carry no timestamp);
    `NAc.load()` applies elapsed-wall-clock exponential decay via
    `apply_wall_clock_decay`: `cluster_reward_bias` at a 1-day half-life
    (working signal; same-day resume stays near-fresh, week-old fades to ~1%),
@@ -97,3 +97,22 @@ two-session, two-process (differing PYTHONHASHSEED) round-trip asserting
 RECALLED CONTENT, verified to fail on both the no-persistence state and a
 simulated save-only (truncating) implementation. Episodes verified to
 survive the same path (hippocampus recall content asserted in session 2).
+
+## Pre-merge two-lens review fold (2026-07-30)
+
+Both lenses ran on the full branch diff; all blocking + cross-confirmed findings folded before the PR opened:
+
+- **`apply_decay: bool = True` kwarg on `NAc.load()`/`load_safe()`** (Arch #1 BLOCKING + Exec #2/#3, cross-confirmed): wall-clock decay must not reach call sites where elapsed time is not agent-experienced time. `--resume-sim` (orchestrator.py) passes `apply_decay=False` — sims are tick-anchored and the Exp 44 tau-hold harness depends on verbatim resume; read-only observers (`maxim.load.nac`, `api.py` Observer + recall) pass `False` — disk truth, no compounding on load→save round-trips. Decay-with-prunes logs at WARNING.
+- **`AgentConfig.load_persisted` / `build_bio_stack(load_persisted=)`** (Arch #2 BLOCKING): the sim orchestrator NPC (`~/.maxim/orchestrator`, months of write-only accumulation, saves at `shutdown()`) now opts out with `load_persisted=False` — write-but-don't-read, so the narrator/orchestrator cannot become a cross-run confound and worktree-shared `~/.maxim` cannot cross-contaminate experiments. `create_full_agent`'s `auto_load` docstring corrected (it governs only the discarded skeleton; bio-stack restore is governed by `load_persisted`).
+- **Fifth randomized-hash site fixed** (Arch #3): `nac.py::_register_causal_in_ec` now uses `stable_hash_32` (its signatures land in the newly-persisted `ec.json`).
+- **Corrupt-file robustness** (Exec #1 + Arch #5, cross-confirmed): `load_state` float-coerces all four bias surfaces (skip-on-failure, the in-file Welford precedent) so a string-valued bias cannot poison decay-on-load or the per-tick §8.5 decay block; `load_safe` recovery resets ALL mutable surfaces (and catches `AttributeError` for wrong-typed containers); `saved_at: true` (JSON bool) no longer reads as epoch 1 (bool guard). EC corrupt-load reconstructs a fresh instance instead of keeping a partially-mutated one (Arch #4 + Exec #4, cross-confirmed).
+- **Hash-scheme drift marker** (Arch #7 + Exec #7, cross-confirmed): `EC.save`/`SimilarityIndex.save` stamp `hash_scheme: "stable-sha256-v1"`; loaders WARN on pre-fix files so dead hashes read as a named condition, not "recall is noisy".
+- **Bio-framing corrected** (Arch #6): wall-clock forgetting documented as an `[engineering]`-tier calibration, not extinction; the 7-day `percept_valences` (harm-avoidance) cell flagged in NACConfig as the weakest choice, calibration candidate once an experiment earns it.
+
+## Tracked follow-ups (not in this branch)
+
+- **Config surface for the half-lives** — `bias_wall_decay_half_life_s` / `cluster_bias_wall_decay_half_life_s` are NACConfig fields with no `resolve_setting`/config.json path yet (prefer-config-over-env standard). Wire when an operator first needs to tune them.
+- **`percept_valences` decay schedule** — consider slower/no wall decay for negative valences (conditioned aversion is biologically the most persistent surface here); needs an experiment to earn the change.
+- **`ec.json` growth** — EC substrate nodes (384-float embeddings) accumulate without a prune counterpart and are rewritten in full each session end. Fine for months; revisit for the 1.1 Oasis horizon.
+- **SCN persistence asymmetry** — `build_bio_stack` still constructs `SCN()` with no `persistence_path`; oscillator phases restart cold every session. Deliberately NOT wired here (see [deferred/scn_event_producer_gap.md](../deferred/scn_event_producer_gap.md) — the intake is mostly dead; wiring persistence before producers exist would be backwards).
+- **Release note** — first post-upgrade run of a persistent agent loads a possibly-large, never-before-read `hippocampus.json` ("your agent suddenly remembers everything", plus load latency).

@@ -207,3 +207,35 @@ class TestTwoSessionRoundTrip:
         # sleep consolidation.
         hippo_after_s2 = (agent_home / "hippocampus.json").read_text()
         assert "avoid the hot stove" in hippo_after_s2
+
+
+class TestLoadPersistedOptOut:
+    def test_load_persisted_false_starts_fresh_but_keeps_write_paths(self, tmp_path):
+        """The sim orchestrator NPC pattern (review fold, Arch #2):
+        write-but-don't-read. An agent home with prior state must NOT be
+        restored when load_persisted=False, while persistence paths stay
+        set so session-end saves keep working."""
+        from maxim.decisions.nac import Valence
+        from maxim.runtime.bio_stack import build_bio_stack
+
+        d = str(tmp_path / "agent_home")
+        bio = build_bio_stack(persistence_dir=d, agent_id="fresh_agent")
+        bio.nac.observe(
+            "tool_call",
+            "tool_a",
+            "result",
+            "success",
+            Valence.POSITIVE,
+            0.5,
+            context={"agent_id": "fresh_agent"},
+        )
+        bio.memory_hub.on_session_start()
+        bio.memory_hub.on_session_end()
+        assert (Path(d) / "nac.json").exists()
+
+        bio2 = build_bio_stack(persistence_dir=d, agent_id="fresh_agent", load_persisted=False)
+        assert bio2.nac.get_links_for_event("tool_a") == []
+        assert len(bio2.hippocampus) == 0
+        # Write paths still armed — saves keep accumulating.
+        assert bio2.nac.config.persistence_path == str(Path(d) / "nac.json")
+        assert bio2.ec.config.persistence_path == str(Path(d) / "ec.json")

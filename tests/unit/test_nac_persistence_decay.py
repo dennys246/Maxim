@@ -149,6 +149,74 @@ class TestDecayOnLoad:
         nac2.load()
         assert nac2.cluster_reward_bias("a1", "cluster_1", "tool:warm") == pytest.approx(0.8)
 
+    def test_apply_decay_false_loads_verbatim(self, tmp_path):
+        """Opt-out for tick-anchored sims (--resume-sim) and read-only
+        observers: disk truth, no time-varying view, no compounding on
+        load→save round-trips (review fold, Arch #1 + Exec #2/#3)."""
+        import time
+
+        path = str(tmp_path / "nac.json")
+        _populated_nac(path).save()
+        _rewrite_saved_at(path, time.time() - 180 * DAY_S)
+
+        nac2 = NAc(NACConfig(persistence_path=path))
+        nac2.load(apply_decay=False)
+        assert nac2.cluster_reward_bias("a1", "cluster_1", "tool:warm") == pytest.approx(0.8)
+        assert nac2._reward_bias[("a1", "node_1")] == pytest.approx(0.2)
+
+    def test_boolean_saved_at_does_not_decay(self, tmp_path):
+        """JSON ``true`` passes isinstance(x, (int, float)) and would read
+        as epoch-second 1 → ~56 years elapsed → everything pruned from a
+        corrupt-but-parseable file (review fold, Exec #6)."""
+        path = str(tmp_path / "nac.json")
+        _populated_nac(path).save()
+        _rewrite_saved_at(path, True)
+
+        nac2 = NAc(NACConfig(persistence_path=path))
+        nac2.load()
+        assert nac2.cluster_reward_bias("a1", "cluster_1", "tool:warm") == pytest.approx(0.8)
+
+    def test_corrupt_string_bias_is_skipped_not_loaded(self, tmp_path):
+        """A string-valued bias must not load 'successfully' and then
+        poison every arithmetic consumer (decay-on-load, the per-tick
+        agent_loop §8.5 decay block) with a TypeError (review fold,
+        Exec #1). float-coercible strings coerce; garbage is skipped."""
+        path = str(tmp_path / "nac.json")
+        _populated_nac(path).save()
+        with open(path) as f:
+            state = json.load(f)
+        state["reward_bias"]["a1:node_1"] = "not-a-number"
+        state["cluster_reward_bias"]["a1\x1fcluster_1\x1ftool:warm"] = None
+        with open(path, "w") as f:
+            json.dump(state, f)
+
+        nac2 = NAc(NACConfig(persistence_path=path))
+        ok, err = nac2.load_safe()
+        assert ok, err
+        assert ("a1", "node_1") not in nac2._reward_bias
+        assert nac2.cluster_reward_bias("a1", "cluster_1", "tool:warm") == 0.0
+        # The rest of the file still loads.
+        assert len(nac2.get_links_for_event("tool_a")) == 1
+        assert nac2._percept_valences[("a1", "dragon", "burn")] == pytest.approx(-0.5)
+
+    def test_load_safe_recovery_resets_all_bias_surfaces(self, tmp_path):
+        """A corrupt file must not leave half-loaded bias surfaces behind
+        — 'starting with empty causal model' must be literally true
+        (review fold, Exec #1 + Arch #5)."""
+        path = str(tmp_path / "nac.json")
+        with open(path, "w") as f:
+            f.write('{"links": "not-a-dict"}')
+
+        nac = _populated_nac(str(tmp_path / "other.json"))  # pre-populated in-memory state
+        ok, err = nac.load_safe(path)
+        assert not ok
+        assert nac._links == {}
+        assert nac._reward_bias == {}
+        assert nac._goal_reward_bias == {}
+        assert nac._cluster_reward_bias == {}
+        assert nac._percept_valences == {}
+        assert nac._event_outcome_welford == {}
+
     def test_apply_wall_clock_decay_reports_pruned_counts(self):
         nac = NAc(NACConfig())
         with nac._lock:

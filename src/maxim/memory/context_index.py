@@ -128,6 +128,8 @@ class SimilarityIndex:
         """Persist index to disk. Atomic write to prevent corruption."""
         data: dict[str, Any] = {
             "version": "1.0",
+            # Stable-hash provenance marker — see load()'s warning.
+            "hash_scheme": "stable-sha256-v1",
             "num_hashes": self.num_hashes,
             "num_bands": self.num_bands,
             "signatures": self.signatures,
@@ -148,6 +150,13 @@ class SimilarityIndex:
         with open(path) as f:
             data = json.load(f)
         check_format_version(data, "context_index", log=logging.getLogger(__name__))
+        if "hash_scheme" not in data:
+            logging.getLogger(__name__).warning(
+                "SimilarityIndex file %s predates stable hashing — its MinHash "
+                "values were computed with Python's randomized hash() and new "
+                "queries will not match them. Re-index to recover recall.",
+                path,
+            )
         idx = cls(data["num_hashes"], data["num_bands"])
         idx.signatures = data["signatures"]
         idx.bands = [{tuple(json.loads(k)): set(v) for k, v in band.items()} for band in data["bands"]]

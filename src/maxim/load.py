@@ -84,7 +84,10 @@ def nac(path: str) -> "NAc":
     from maxim.decisions.nac import NAc
 
     n = NAc()
-    n.load(path)
+    # apply_decay=False: a read-only load must report disk truth — the
+    # same file inspected on two different days must give the same
+    # numbers, and a load→save round-trip must not compound decay.
+    n.load(path, apply_decay=False)
     return n
 
 

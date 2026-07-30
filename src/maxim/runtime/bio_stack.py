@@ -129,6 +129,13 @@ def build_bio_stack(
     # not a silent agent_id divergence. Test sites that don't care about
     # agent_id pass the literal ``"default_agent"`` explicitly.
     agent_id: str,
+    # Cross-session persistence (nac_cross_session_persistence.md): restore
+    # persisted hippocampus/NAc/EC state from persistence_dir at build.
+    # Default True. False = write-but-don't-read: persistence PATHS are
+    # still set (session-end saves keep working), but nothing is loaded —
+    # for agents that must start each run fresh (the sim orchestrator NPC;
+    # see AgentConfig.load_persisted).
+    load_persisted: bool = True,
 ) -> BioStack:
     """Construct the full bio-pipeline as a coherent unit.
 
@@ -218,7 +225,7 @@ def build_bio_stack(
     # ATL/AngularGyrus/cross-layer/EC embeddings but not hippocampus, and
     # AgentFactory.create_full_agent discards its auto-loaded instance in
     # favor of this one. Load here so path ownership stays in one place.
-    if p is not None and (p / "hippocampus.json").exists():
+    if load_persisted and p is not None and (p / "hippocampus.json").exists():
         _ok, _err = hippocampus.load_with_recovery()
         if _ok:
             logger.info("Restored hippocampus from %s (%d memories)", p / "hippocampus.json", len(hippocampus))
@@ -290,7 +297,7 @@ def build_bio_stack(
     # Mirror the cerebellum pattern: load-when-file-exists, recover on
     # corruption (load_safe warns + starts empty). load() applies the
     # wall-clock decay-on-load from the payload's saved_at stamp.
-    if p is not None and (p / "nac.json").exists():
+    if load_persisted and p is not None and (p / "nac.json").exists():
         nac.load_safe()
     scn = SCN()
     scn.enable_oscillator()  # B2: close SCN→NAc feedback loop
@@ -306,11 +313,19 @@ def build_bio_stack(
     ec = EntorhinalCortex(
         config=ECConfig(persistence_path=str(p / "ec.json") if p is not None else None),
     )
-    if p is not None and (p / "ec.json").exists():
+    if load_persisted and p is not None and (p / "ec.json").exists():
         try:
             ec.load(str(p / "ec.json"))
         except Exception as _ec_err:
+            # Reconstruct rather than keep the partially-mutated instance:
+            # EC.load mutates _lsh → _inverted → _signatures → substrate
+            # nodes in sequence, so a mid-load raise leaves an internally
+            # inconsistent EC — "starting fresh" must be literally true
+            # (review fold, Arch #4 + Exec #4, cross-confirmed).
             logger.warning("Failed to load EC state (starting fresh): %s", _ec_err)
+            ec = EntorhinalCortex(
+                config=ECConfig(persistence_path=str(p / "ec.json")),
+            )
 
     # -- Step 2: Optional multi-layer memory (ATL + AngularGyrus) ----------
     atl = None

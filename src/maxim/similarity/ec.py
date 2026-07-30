@@ -782,6 +782,13 @@ class EntorhinalCortex:
         """Save EC state to JSON file."""
         data = {
             "version": "1.0",
+            # Marks that persisted hash-derived values (signature
+            # structural/context/semantic hashes, LSH tables) were computed
+            # with the process-stable sha256 scheme. Files WITHOUT this key
+            # predate the stable-hash fix and their hashes can never match
+            # recomputed values — load() warns so the failure mode is
+            # visible instead of reading as "recall is just noisy".
+            "hash_scheme": "stable-sha256-v1",
             "config": {
                 "num_lsh_tables": self.config.num_lsh_tables,
                 "bits_per_table": self.config.bits_per_table,
@@ -832,6 +839,15 @@ class EntorhinalCortex:
         version = data.get("version", "0.0")
         if version != "1.0":
             raise ValueError(f"Unsupported EC version: {version}")
+
+        if "hash_scheme" not in data:
+            logger.warning(
+                "EC file %s predates stable hashing — its persisted signature "
+                "hashes were computed with Python's randomized hash() and "
+                "will not match values recomputed in this process. Matching "
+                "against these signatures will fail until they are re-learned.",
+                path,
+            )
 
         # Load config. dataclasses.replace on the LIVE config, not a
         # fresh ECConfig: only five fields are serialized, and rebuilding

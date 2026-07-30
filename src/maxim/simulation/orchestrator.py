@@ -790,7 +790,15 @@ def start_simulation_mode(
                 logger.debug("Failed to restore AUT hippocampus: %s", e)
         if aut_nac is not None and nac_path.exists():
             try:
-                aut_nac.load(str(nac_path))
+                # apply_decay=False: sims are tick-anchored (agent_loop
+                # §8.5); wall-clock elapsed between a training run and its
+                # --resume-sim is the OPERATOR's schedule, not agent-
+                # experienced time — decaying here would make resume-based
+                # harnesses (Exp 44's tau-hold pre-load) silently lose
+                # their held cluster biases and turn the resume gap into
+                # an unrecorded experimental variable (review fold,
+                # Arch #1 + Exec #2, cross-confirmed).
+                aut_nac.load(str(nac_path), apply_decay=False)
                 nac_links = sum(len(v) for v in aut_nac._links.values())
                 logger.info("Restored AUT NAc from %s (%d links)", nac_path, nac_links)
             except Exception as e:
@@ -1433,6 +1441,17 @@ def start_simulation_mode(
         with_executor=True,
         with_pain_bridge=False,
         with_fear_gate=False,
+        # Write-but-don't-read (review fold, Arch #2): shutdown() keeps
+        # persisting orch state for the future "Phase 3" cross-session
+        # orchestration work, but the orch must NOT restore it — reading
+        # an unaudited, ever-accumulating ~/.maxim/orchestrator home into
+        # every sim run would make the orchestrator/narrator a cross-run
+        # confound (the narrator-state-confound class), and ~/.maxim is
+        # shared across worktrees, so concurrent experiment sessions
+        # would cross-contaminate through it. Flip to True only as part
+        # of a deliberate, tuned Phase 3 (see the hippocampus NOTE at the
+        # run_agentic_loop call below).
+        load_persisted=False,
     )
     _orch_factory = AgentFactory(base_data_dir=_data_home() / "orchestrator")
     _orch_instance = _orch_factory.create_full_agent(
