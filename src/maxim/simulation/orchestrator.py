@@ -3175,6 +3175,7 @@ def start_simulation_mode(
             session_id=report.session_id,
             ec=aut_memory_hub.ec if aut_memory_hub is not None else None,
             atl=aut_memory_hub.atl if aut_memory_hub is not None else None,
+            scn=aut_memory_hub.scn if aut_memory_hub is not None else None,
         )
 
     # Copy experiment log to report directory (if any experiments were recorded)

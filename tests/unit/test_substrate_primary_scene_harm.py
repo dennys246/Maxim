@@ -409,6 +409,20 @@ def test_execute_delta_attribution_causing_vs_bystander_on_chilled_body():
     out_safe = stools["warmth_alpha_safe_warm_self"].execute()
     assert not thermal_failures(out_safe), "safe warm must NOT be blamed for the lingering breach (delta-attribution)"
 
+    # REPEAT CAUSER (transition-drive-pain fold): every harmful warm must be
+    # blamed, not just the first — including after arms.thermal SATURATES at
+    # 1.0, where no further deepening is detectable. This is why the direct
+    # channel stays state-based and B8 (state-INDEPENDENT delta test) remains
+    # load-bearing; a severity-latched direct channel silently flips these to
+    # `embodiment_failures == []` → learn_success=True → POSITIVE credit for
+    # the harmful hearth, collapsing the Exp 42 safe-vs-harm discrimination.
+    for i in range(2, 5):
+        out_repeat = htools["warmth_alpha_harm_warm_self"].execute()
+        assert thermal_failures(out_repeat), f"harmful warm #{i} must STILL be blamed (repeat causer, saturated sensor)"
+        assert (out_repeat.side_effects or {}).get("drive_potential_diff") is None, (
+            f"harmful warm #{i} must not book positive drive credit (collateral-harm gate must fire)"
+        )
+
 
 def test_introspection_tool_classes_all_in_filter_set():
     """Every read-only cognitive Tool defined in tools/introspection.py is a
